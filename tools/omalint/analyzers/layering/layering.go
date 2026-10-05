@@ -3,6 +3,7 @@ package layering
 
 import (
 	"go/ast"
+	"go/token"
 	"strconv"
 	"strings"
 
@@ -28,37 +29,51 @@ func run(pass *analysis.Pass) (any, error) {
 		return nil, nil
 	}
 	for _, file := range pass.Files {
-		for _, spec := range file.Imports {
-			path, err := strconv.Unquote(spec.Path.Value)
-			if err != nil || len(path) < len(rules.InternalImportPrefix) || path[:len(rules.InternalImportPrefix)] != rules.InternalImportPrefix {
-				continue
-			}
-			if allowed[path] || (isTestFile(pass, file) && rules.TestOnlyImports[path]) {
-				continue
-			}
-			if suppress.Check(pass, "layering", spec.Pos()) {
-				continue
-			}
-			pass.Reportf(spec.Pos(), "layering: %s may not import %s", pass.Pkg.Path(), path)
-		}
+		checkImports(pass, file, allowed, isTestFile(pass, file))
 	}
 	return nil, nil
 }
 
+func checkImports(pass *analysis.Pass, file *ast.File, allowed map[string]bool, isTest bool) {
+	for _, spec := range file.Imports {
+		path, err := strconv.Unquote(spec.Path.Value)
+		if err != nil || !strings.HasPrefix(path, rules.InternalImportPrefix) {
+			continue
+		}
+		if allowed[path] || isTest && rules.TestOnlyImports[path] {
+			continue
+		}
+		reportImport(pass, spec.Pos(), path)
+	}
+}
+
+func reportImport(pass *analysis.Pass, pos token.Pos, path string) {
+	if !suppress.Check(pass, "layering", pos) {
+		pass.Reportf(pos, "layering: %s may not import %s", pass.Pkg.Path(), path)
+	}
+}
+
 func runTools(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
-		for _, spec := range file.Imports {
-			path, err := strconv.Unquote(spec.Path.Value)
-			if err != nil || !strings.HasPrefix(path, rules.InternalImportPrefix) {
-				continue
-			}
-			allowed := strings.HasPrefix(pass.Pkg.Path(), rules.DocscheckPrefix) && path == rules.DocscheckAPIImport
-			if !allowed && !suppress.Check(pass, "layering", spec.Pos()) {
-				pass.Reportf(spec.Pos(), "layering: tools package %s may not import %s", pass.Pkg.Path(), path)
-			}
-		}
+		checkToolImports(pass, file)
 	}
 	return nil, nil
+}
+
+func checkToolImports(pass *analysis.Pass, file *ast.File) {
+	for _, spec := range file.Imports {
+		path, err := strconv.Unquote(spec.Path.Value)
+		if err != nil || !strings.HasPrefix(path, rules.InternalImportPrefix) || toolsImportAllowed(pass.Pkg.Path(), path) {
+			continue
+		}
+		if !suppress.Check(pass, "layering", spec.Pos()) {
+			pass.Reportf(spec.Pos(), "layering: tools package %s may not import %s", pass.Pkg.Path(), path)
+		}
+	}
+}
+
+func toolsImportAllowed(packagePath, importPath string) bool {
+	return strings.HasPrefix(packagePath, rules.DocscheckPrefix) && importPath == rules.DocscheckAPIImport
 }
 
 func isTestFile(pass *analysis.Pass, file *ast.File) bool {

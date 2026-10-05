@@ -64,3 +64,22 @@ var TestOnlyImports = map[string]bool{
 	"github.com/timlittle/omamessenger/backend/internal/connector/demo":          true,
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest": true,
 }
+
+// FrozenInterfaces records the C4 method-name golden sets.
+var FrozenInterfaces = map[string][]string{
+	"Sink":      {"AccountStatus", "Contact", "Conversation", "Incoming", "OutgoingStatus", "Typing"},
+	"Connector": {"Account", "MarkRead", "Run", "Send"},
+}
+
+const FrozenInterfacePackageName = "connector"
+
+// SensitiveDomainTypes may never be sent directly to logging or printing APIs.
+var SensitiveDomainTypes = map[string]bool{
+	"Account": true, "Contact": true, "Conversation": true, "Message": true,
+}
+
+// SensitiveDomainFields are content-bearing domain fields forbidden in output.
+var SensitiveDomainFields = map[string]bool{
+	"Text": true, "Name": true, "SenderName": true, "Title": true,
+	"Preview": true, "PreviewSender": true, "Match": true,
+}

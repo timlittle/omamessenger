@@ -13,15 +13,8 @@ func Validate(pass *analysis.Pass) {
 	for _, file := range pass.Files {
 		for _, group := range file.Comments {
 			for _, comment := range group.List {
-				text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
-				if i := strings.Index(text, "// want"); i >= 0 {
-					text = strings.TrimSpace(text[:i])
-				}
-				if !strings.HasPrefix(text, "omalint:ignore") {
-					continue
-				}
-				fields := strings.Fields(text)
-				if len(fields) < 3 || fields[0] != "omalint:ignore" {
+				_, directive, valid := parse(comment.Text)
+				if directive && !valid {
 					pass.Reportf(comment.Pos(), "suppression requires //omalint:ignore <rule> <reason>")
 				}
 			}
@@ -35,22 +28,30 @@ func Check(pass *analysis.Pass, rule string, pos token.Pos) bool {
 	for _, file := range pass.Files {
 		for _, group := range file.Comments {
 			for _, comment := range group.List {
-				text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
-				if i := strings.Index(text, "// want"); i >= 0 {
-					text = strings.TrimSpace(text[:i])
-				}
-				if !strings.HasPrefix(text, "omalint:ignore") {
+				name, directive, valid := parse(comment.Text)
+				if !directive || !valid || name != rule {
 					continue
 				}
-				fields := strings.Fields(text)
-				if len(fields) < 3 || fields[0] != "omalint:ignore" {
-					continue
-				}
-				if fields[1] == rule && comment.End() <= pos && pass.Fset.Position(pos).Line-pass.Fset.Position(comment.Pos()).Line <= 1 {
+				if comment.End() <= pos && pass.Fset.Position(pos).Line-pass.Fset.Position(comment.Pos()).Line <= 1 {
 					ignored = true
 				}
 			}
 		}
 	}
 	return ignored
+}
+
+func parse(comment string) (rule string, directive, valid bool) {
+	text := strings.TrimSpace(strings.TrimPrefix(comment, "//"))
+	if !strings.HasPrefix(text, "omalint:ignore") {
+		return "", false, false
+	}
+	if i := strings.Index(text, "// want"); i >= 0 {
+		text = strings.TrimSpace(text[:i])
+	}
+	fields := strings.Fields(text)
+	if len(fields) < 3 || fields[0] != "omalint:ignore" {
+		return "", true, false
+	}
+	return fields[1], true, true
 }

@@ -51,48 +51,68 @@ func checkFunction(pass *analysis.Pass, pos token.Pos, name string, body *ast.Bl
 }
 
 func metrics(body *ast.BlockStmt) (complexity, maxDepth int) {
-	complexity = 1
-	currentDepth := 0
-	var active []bool
-	ast.Inspect(body, func(node ast.Node) bool {
-		if node == nil {
-			if len(active) > 0 {
-				if active[len(active)-1] {
-					currentDepth--
-				}
-				active = active[:len(active)-1]
-			}
-			return true
-		}
-		if _, nested := node.(*ast.FuncLit); nested {
-			active = append(active, false)
-			return false
-		}
-		control := isControl(node)
-		active = append(active, control)
-		if control {
-			currentDepth++
-			if currentDepth > maxDepth {
-				maxDepth = currentDepth
-			}
-		}
-		switch n := node.(type) {
-		case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt:
-			complexity++
-		case *ast.CaseClause:
-			if n.List != nil {
-				complexity++
-			}
-		case *ast.CommClause:
-			complexity++
-		case *ast.BinaryExpr:
-			if n.Op == token.LAND || n.Op == token.LOR {
-				complexity++
-			}
-		}
+	counter := metricCounter{complexity: 1}
+	ast.Inspect(body, counter.visit)
+	return counter.complexity, counter.maxDepth
+}
+
+type metricCounter struct {
+	complexity   int
+	currentDepth int
+	maxDepth     int
+	active       []bool
+}
+
+func (counter *metricCounter) visit(node ast.Node) bool {
+	if node == nil {
+		counter.leave()
 		return true
-	})
-	return complexity, maxDepth
+	}
+	if _, nested := node.(*ast.FuncLit); nested {
+		counter.active = append(counter.active, false)
+		return false
+	}
+	counter.enter(isControl(node))
+	counter.countDecision(node)
+	return true
+}
+
+func (counter *metricCounter) leave() {
+	if len(counter.active) == 0 {
+		return
+	}
+	if counter.active[len(counter.active)-1] {
+		counter.currentDepth--
+	}
+	counter.active = counter.active[:len(counter.active)-1]
+}
+
+func (counter *metricCounter) enter(control bool) {
+	counter.active = append(counter.active, control)
+	if !control {
+		return
+	}
+	counter.currentDepth++
+	if counter.currentDepth > counter.maxDepth {
+		counter.maxDepth = counter.currentDepth
+	}
+}
+
+func (counter *metricCounter) countDecision(node ast.Node) {
+	switch n := node.(type) {
+	case *ast.IfStmt, *ast.ForStmt, *ast.RangeStmt:
+		counter.complexity++
+	case *ast.CaseClause:
+		if n.List != nil {
+			counter.complexity++
+		}
+	case *ast.CommClause:
+		counter.complexity++
+	case *ast.BinaryExpr:
+		if n.Op == token.LAND || n.Op == token.LOR {
+			counter.complexity++
+		}
+	}
 }
 
 func isControl(node ast.Node) bool {

@@ -9,14 +9,20 @@ import (
 
 func TestAnalyzerRegistry(t *testing.T) {
 	got := analyzers()
-	if len(got) != 3 || got[0].Name != "layering" || got[1].Name != "size" || got[2].Name != "complexity" {
+	want := []string{"layering", "size", "complexity", "dip", "frozeniface", "nologcontent"}
+	if len(got) != len(want) {
 		t.Fatalf("unexpected analyzer registry: %#v", got)
+	}
+	for i, analyzer := range got {
+		if analyzer.Name != want[i] {
+			t.Fatalf("analyzer %d = %q, want %q", i, analyzer.Name, want[i])
+		}
 	}
 }
 
 func TestMainRunsRegisteredAnalyzers(t *testing.T) {
 	called := false
-	runMultichecker = func(got ...*analysis.Analyzer) { called = len(got) == 3 }
+	runMultichecker = func(got ...*analysis.Analyzer) { called = len(got) == 6 }
 	defer func() { runMultichecker = multichecker.Main }()
 	main()
 	if !called {

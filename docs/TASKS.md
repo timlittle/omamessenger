@@ -523,11 +523,12 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - result: Go 1.23.12 tests pass; complexity analyzer coverage is 94.5%. Fixtures include four-level nesting at the limit, a five-level violation, valid suppression and missing-reason rejection.
 - verify: `go test -mod=vendor ./tools/omalint/...`
 
-### [ ] R01c · Design analyzers: dip, frozeniface, nologcontent (M)
+### [x] R01c · Design analyzers: dip, frozeniface, nologcontent (M)
 - deps: R01a
-- files: tools/omalint/analyzers/{dip,frozeniface,nologcontent}/ (+ testdata), tools/omalint/main.go, tools/omalint/rules/rules.go
+- files: tools/omalint/analyzers/{dip,frozeniface,nologcontent}/ (+ testdata), tools/omalint/main.go, tools/omalint/rules/rules.go, Makefile
 - do: implement the three rules exactly as C10 states. Use `pass.TypesInfo` (type-aware, not name matching) for `dip` and `nologcontent`.
 - accept: each analyzer has testdata with violating, allowed and suppressed cases; `frozeniface` fails when a method is added to or removed from the testdata copy of `Sink`.
+- result: `make test-omalint` passes with Go 1.23.12. `make cover-omalint` reports at least 80% for every executable omalint package (dip 92.5%, frozeniface 94.6%, nologcontent 91.8%; all others 81.1% or higher). Added `test-omalint`, `cover-omalint`, and `run-omalint` Make targets; `test-unit` now includes the analyzer tests. `make run-omalint OMALINT_PACKAGES='./tools/omalint/...'` is clean.
 - verify: `go test -mod=vendor ./tools/omalint/...`
 
 ### [ ] R01d · archtest: coupling and cohesion tests (M)
