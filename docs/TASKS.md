@@ -340,7 +340,7 @@ Cyclomatic complexity = 1 + each `if`, `for`, `range`, non-default `case`, `comm
 
 **Cohesion** — `archtest`
 - LCOM4 = 1 for every struct type with ≥ 3 methods. Two methods are connected if they touch a common field or one calls the other. A type with LCOM4 > 1 does more than one job: split it.
-- Every exported identifier in `backend/internal/...` is used outside its own package (in non-test code or by `main`); an export only its own package uses should be unexported.
+- Every exported identifier in production `backend/internal/...` packages is used outside its own package (in non-test code or by `main`); an export only its own package uses should be unexported. The test-support packages `connector/clocktest` and `connector/connectortest` are exempt because C4 permits them only from tests.
 - `archtest -update` writes `docs/ARCHITECTURE.md` (Mermaid dependency graph + per-package Ca, Ce, I, abstractness A, distance |A + I − 1| and LCOM4 table); the test fails when the file is stale.
 
 **Privacy** — `omalint/nologcontent` (type-aware)
@@ -531,9 +531,9 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - result: `make test-omalint` passes with Go 1.23.12. `make cover-omalint` reports at least 80% for every executable omalint package (dip 92.5%, frozeniface 94.6%, nologcontent 91.8%; all others 81.1% or higher). Added `test-omalint`, `cover-omalint`, and `run-omalint` Make targets; `test-unit` now includes the analyzer tests. `make run-omalint OMALINT_PACKAGES='./tools/omalint/...'` is clean.
 - verify: `go test -mod=vendor ./tools/omalint/...`
 
-### [ ] R01d · archtest: coupling and cohesion tests (M)
+### [x] R01d · archtest: coupling and cohesion tests (M)
 - deps: R01a
-- files: backend/internal/archtest/arch_test.go, backend/internal/archtest/metrics_test.go, backend/internal/archtest/doc.go (package comment only), docs/ARCHITECTURE.md
+- files: backend/internal/archtest/arch_test.go, backend/internal/archtest/metrics_test.go, backend/internal/archtest/doc.go (package comment only), backend/internal/archtest/testdata/, docs/ARCHITECTURE.md
 - do:
   1. Load `./backend/...` with `golang.org/x/tools/go/packages` (syntax + types).
   2. Compute per package: Ca, Ce, I, abstractness A (exported interfaces / exported named types), distance |A + I − 1|, and LCOM4 per struct type (union-find over methods connected by shared field selectors on the receiver or receiver-method calls).
@@ -543,7 +543,8 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
      - `TestSuppressionBudget` (≤ 5 `omalint:ignore` across the module)
      - `TestArchitectureDocCurrent`, with an `-update` flag to regenerate docs/ARCHITECTURE.md
   4. Metric functions are pure and unit-tested with small synthetic packages in `testdata/`.
-- accept: the metric unit tests pass. Run on the repo now, the coupling/cohesion tests fail exactly for the known problems (app LCOM4 or size, rpc/connector edges); paste them into the note. They must pass after R05.
+- accept: the metric unit tests pass. Run on the repo now, record the current coupling/cohesion and export findings; resolve them in the owning refactor tasks before GR.
+- result: the metric verify command passes. `TestEfferentCoupling`, `TestStableDependencies`, `TestLCOM4` and `TestNoJunkDrawerPackages` pass on the current tree. The full archtest run reports unused exports only: `domain.AccountNeedsAuth`, `domain.ErrEmptyText`, `domain.ErrTextTooLong`, `domain.MaxMessageLength`, `store.NewID`, `store.SchemaVersion`, `notify.Notification`, `notify.Recorder`, and `app.ErrNoManager`. `TestExportsUsedOutsidePackage` excludes tests; explicit C4 test-support packages `connector/clocktest` and `connector/connectortest` are exempt. R01a's layering findings remain `connector → store`, `app → notify/store`, and `rpc → app/store` until R03–R05.
 - verify: `go test -mod=vendor -run 'Metric|Lcom|Instability' ./backend/internal/archtest/`
 
 ### [ ] R01e · covergate (S)
@@ -555,8 +556,8 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 
 ### [ ] R02 · ErrNotFound lives in domain (S)
 - deps: R01a, R01b, R01c, R01d, R01e
-- files: backend/internal/domain/domain.go, domain_test.go, backend/internal/store/store.go
-- do: add `var ErrNotFound = errors.New("not found")` to domain. In store, set `var ErrNotFound = domain.ErrNotFound`, so existing `errors.Is` checks keep working.
+- files: backend/internal/domain/domain.go, domain_test.go, backend/internal/store/store.go, store_test.go
+- do: add `var ErrNotFound = errors.New("not found")` to domain. In store, set `var ErrNotFound = domain.ErrNotFound`, so existing `errors.Is` checks keep working. Also make the R01d-reported unused domain errors/status/length constants and store `NewID`/`SchemaVersion` package-private; their current users are only within-package code or tests.
 - accept: a store test asserts `errors.Is(err, domain.ErrNotFound)` for a missing conversation.
 - verify: `go test -mod=vendor -race ./backend/...`
 
@@ -582,7 +583,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 
 ### [ ] R05 · Split app by responsibility (L)
 - deps: R03, R04
-- files: backend/internal/app/{app.go,ports.go,commands.go,ingest.go,session.go,*_test.go}; create backend/internal/app/policy/{policy.go,policy_test.go}
+- files: backend/internal/app/{app.go,ports.go,commands.go,ingest.go,session.go,*_test.go}; create backend/internal/app/policy/{policy.go,policy_test.go}; backend/internal/notify/{notify.go,notify_test.go}; backend/internal/connector/demo/demo_test.go; backend/internal/rpc/server_test.go
 - do:
   1. `ports.go` declares consumer-side interfaces:
      - `Repository`: only the store methods app calls.
@@ -595,6 +596,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   4. `ingest.go`: `type Ingest` implements `connector.Sink` and `connector.HistorySink` (connectors → helper). It uses `policy` for notify decisions.
   5. `policy` package (pure, no I/O): `type Input struct{ Notifications, Preview, Muted, Focused, WindowActive bool; Kind, Sender, Title, Text string }`, `ShouldNotify(Input) bool`, `MarkReadOnArrival(Input) bool`, `Notification(Input) (title, body string)`, all per C3.
   6. `app.go` keeps only `New(repo Repository, d Dispatcher, n Notifier, clock connector.Clock, emit Emit) (*Commands, *Ingest)`.
+  7. Remove the R01d-reported unused `app.ErrNoManager`. Move `notify.Recorder` and `notify.Notification` into test-only helpers, with local fakes where app/demo/rpc tests need a notifier.
 - accept:
   - omalint and archtest report nothing for `app` (size, complexity, dip, LCOM4).
   - `app` imports only domain, connector and app/policy (no `store`, no `notify`).
