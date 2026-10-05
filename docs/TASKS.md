@@ -464,16 +464,16 @@ Cyclomatic complexity = 1 + each `if`, `for`, `range`, non-default `case`, `comm
   - GA4 Privacy: `git grep -nE '(log|fmt)\.(Print|Fatal|Fprint)[a-z]*\(.*\.(Text|Name|SenderName|Title)' -- backend` is empty.
 - note: Current phase-A verification: Go has 112 passing test cases (`go test -mod=vendor -json ./backend/...`); Node has 2 passing tests (`node --test tests/unit/*.test.cjs`). Aggregate core coverage is 85.7%; package statement coverage: app 91.4%, connector 88.4%, clocktest 92.5%, demo 88.8%, domain 100%, notify 100%, rpc 82.5%, store 85.8%; `backend` main package is excluded from the package gates. `make test` passes. Pre-R D2/D3 (three race runs), D6, D7 (30 s `FuzzDecode`), GA1–GA4 and D9 pass. D4/D5/D10 and tool-package D2/D3 are deferred to GR. D8 must be rerun against the final GA commit in a clean worktree. Current docs describe stdio JSON-lines IPC and the seeded demo, not the removed HTTP/token API. Replacing two `mktemp` templates that produced false `XXX` matches made the prescribed D9 scan meaningful.
 
-  D11 review table (reviewed against code commit `ceb60dd`; the C10 target rules are explicitly identified as Phase R work):
+  D11 review table (reviewed against code commit `c4c6975`; the C10 target rules are explicitly identified as Phase R work):
 
   | doc | reviewed at commit | result | what changed |
   |---|---|---|---|
-  | README.md | `ceb60dd` | updated | Describes JSON-lines IPC, demo mode, user data paths and old scaffold cleanup. |
-  | CONTRIBUTING.md | `ceb60dd` | updated | Test map describes JSON-lines RPC and SQLite behavior tests. |
-  | AGENTS.md | `ceb60dd` | updated | Layout follows C1 and labels root-level scaffold files as transitional. |
-  | FORGE_SPEC.md | `ceb60dd` | updated | Describes stdio IPC and the current demo versus real-service gap. |
-  | .agents/README.md | `ceb60dd` | updated | Removes the claim that `make test` runs Docker UI checks. |
-  | docs/TASKS.md (§0–§2) | `ceb60dd` | updated | Marks C1/C9/C10 as target architecture and scopes GA to pre-R behavior. |
+  | README.md | `c4c6975` | updated | Describes JSON-lines IPC, demo mode, user data paths and old scaffold cleanup. |
+  | CONTRIBUTING.md | `c4c6975` | updated | Test map describes JSON-lines RPC and SQLite behavior tests. |
+  | AGENTS.md | `c4c6975` | updated | Layout follows C1 and labels root-level scaffold files as transitional. |
+  | FORGE_SPEC.md | `c4c6975` | updated | Describes stdio IPC and the current demo versus real-service gap. |
+  | .agents/README.md | `c4c6975` | updated | Removes the claim that `make test` runs Docker UI checks. |
+  | docs/TASKS.md (§0–§2) | `c4c6975` | updated | Marks C1/C9/C10 as target architecture and scopes GA to pre-R behavior. |
   | docs/KEYS.md | n/a | n/a | Created in B15. |
   | docs/PROTOCOL.md | n/a | n/a | Created in R08. |
   | docs/ARCHITECTURE.md | n/a | n/a | Created in R01d. |
