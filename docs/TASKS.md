@@ -627,7 +627,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - tests: the 6 app tests moved unchanged in their assertions to `commands_test.go` / `ingest_test.go` over a shared `fixture_test.go`. Mid-test field mutation (`Demo`, `DemoInject`, `SetChatter`) became fixture options or `f.commands(modify)`. The demo test now reads `typing` events through JSON instead of type-asserting an anonymous struct.
 - found: archtest flagged `notify.Notifier` as unused once `app` declared its own consumer-side port; it is removed. omalint's layering rule had two loopholes: external test packages (`x_test`) and packages missing from the table were never checked. Both are fixed with tests. `connector/demo` tests importing `app` is now an explicit per-package test allowance (`rules.TestOnlyImportsFor`, recorded in C10).
 
-### [ ] R05b · Bring store, demo and manager within C10 limits (M)
+### [x] R05b · Bring store, demo and manager within C10 limits (M)
 - deps: R02, R03
 - files: backend/internal/store/{store.go,migrate.go,accounts.go,contacts.go,conversations.go,messages.go,store_test.go}, backend/internal/connector/demo/seed.go, backend/internal/connector/manager.go
 - do:
@@ -640,6 +640,20 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - All existing store, demo and manager tests pass unchanged.
   - Every new helper is covered.
 - verify: `go test -mod=vendor -race -cover ./backend/internal/store/ ./backend/internal/connector/... && go run -mod=vendor ./tools/omalint ./backend/internal/store/... ./backend/internal/connector/...`
+- result: omalint is clean for `store` and `connector/...`; only `main.run`'s 6 parameters remain (R06).
+  - `store.go` is split into `migrate.go`, `accounts.go`, `contacts.go`, `conversations.go` and `messages.go` (largest 166 lines).
+  - `AddMessage` uses `existingByRemote`, `withMessageDefaults` and `bumpConversation`; `Messages` uses `pageCursor`, `scanMessages` and `oldestFirstPage`.
+  - Demo `messagesFor` became per-message script methods (`isUnread`, `isOutgoing`, `sender`, `status`, `text`); the unchanged demo tests prove the seed is identical.
+  - `Manager.Start` uses `validate`, `indexByAccount` and `claimStart`.
+- coverage: `store` 92.7 %, `connector` 97.3 %, `connector/demo` 97.1 %. New tests:
+  - Every store operation on a closed database must return a storage error that isn't `ErrNotFound`.
+  - A failing migration rolls back and leaves `user_version` unchanged.
+  - Unusable database paths fail `Open`.
+  - `History` is routed to a `HistorySink`, or falls back to `Incoming`.
+  - Connected-time accounting ignores disconnected time and other accounts; this drives the backoff reset.
+  - `RealClock` works.
+  - Demo connectors refuse work when stopped or cancelled, reject a second `Run`, and reject unknown conversations.
+- found: demo chatter was a package-level global (`demo.SetChatter`, reset by every `demo.New`), so two demo suites in one process interfered. It now lives on the per-helper `suite` and is set through `(*demo.Injector).SetChatter`. `accountFor` was dead code and is removed.
 
 ### [ ] R06 · Helper main (M)  (formerly A11)
 - deps: R05, R05b, A10

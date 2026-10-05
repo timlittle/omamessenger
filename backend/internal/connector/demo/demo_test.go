@@ -23,6 +23,7 @@ type fixture struct {
 	store      *store.Store
 	commands   *app.Commands
 	sink       *app.Ingest
+	injector   *demo.Injector
 	connectors []connector.Connector
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
@@ -50,12 +51,13 @@ func newFixture(t *testing.T, chatter bool) *fixture {
 		}
 	}
 	connectors := demo.New(clock, rand.New(rand.NewSource(42)), chatter)
+	injector := demo.NewInjector(connectors...)
 	commands, sink := app.New(app.Config{
 		Repo: db, Notifier: silentNotifier{}, Clock: clock, Emit: emit,
-		Demo: true, DemoInject: demo.NewInjector(connectors...),
+		Demo: true, DemoInject: injector, SetChatter: injector.SetChatter,
 	})
 	ctx, cancel := context.WithCancel(context.Background())
-	f := &fixture{clock: clock, store: db, commands: commands, sink: sink, connectors: connectors, cancel: cancel, typing: typing}
+	f := &fixture{clock: clock, store: db, commands: commands, sink: sink, injector: injector, connectors: connectors, cancel: cancel, typing: typing}
 	for _, c := range connectors {
 		if err := db.UpsertAccount(c.Account()); err != nil {
 			t.Fatal(err)
@@ -262,7 +264,7 @@ func TestChatterCanBeToggled(t *testing.T) {
 	if got := len(f.conversations(t)); got != before {
 		t.Fatalf("disabled chatter altered conversation count: %d", got)
 	}
-	demo.SetChatter(true)
+	f.injector.SetChatter(true)
 	f.clock.Advance(2 * time.Minute)
 	total := 0
 	for _, c := range f.conversations(t) {
@@ -277,3 +279,56 @@ func TestChatterCanBeToggled(t *testing.T) {
 type silentNotifier struct{}
 
 func (silentNotifier) Notify(string, string) {}
+
+func TestNewDefaultsAndAccounts(t *testing.T) {
+	connectors := demo.New(nil, nil, false)
+	var ids []string
+	for _, c := range connectors {
+		ids = append(ids, c.Account().ID)
+	}
+	if want := []string{"wa-personal", "tg-personal", "tg-work"}; !reflect.DeepEqual(ids, want) {
+		t.Fatalf("demo accounts = %v, want %v", ids, want)
+	}
+}
+
+func TestStoppedConnectorRefusesWork(t *testing.T) {
+	connectors := demo.New(clocktest.New(time.Unix(0, 0)), rand.New(rand.NewSource(1)), false)
+	idle := connectors[0]
+	conv := domain.Conversation{AccountID: "wa-personal", RemoteID: "wa:mum", Title: "Mum", Kind: domain.KindDirect}
+	if err := idle.Send(context.Background(), conv, domain.Message{ID: "m"}); err == nil {
+		t.Error("Send on a connector that is not running succeeded")
+	}
+	if err := idle.MarkRead(context.Background(), conv); err == nil {
+		t.Error("MarkRead on a connector that is not running succeeded")
+	}
+	if _, err := demo.NewInjector(connectors...).Inject("wa:mum"); err == nil {
+		t.Error("Inject on a connector that is not running succeeded")
+	}
+	var nilCtx context.Context
+	if err := idle.Run(nilCtx, nil); err == nil {
+		t.Error("Run without a context and sink succeeded")
+	}
+}
+
+func TestRunningConnectorRules(t *testing.T) {
+	f := newFixture(t, false)
+	wa := f.connectors[0]
+	conv := find(t, f.conversations(t), "Mum")
+	if err := wa.MarkRead(context.Background(), conv); err != nil {
+		t.Errorf("MarkRead on a running connector = %v", err)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := wa.MarkRead(canceled, conv); err == nil {
+		t.Error("MarkRead with a canceled context succeeded")
+	}
+	if err := wa.Send(canceled, conv, domain.Message{ID: "m"}); err == nil {
+		t.Error("Send with a canceled context succeeded")
+	}
+	if err := wa.Run(context.Background(), f.sink); err == nil {
+		t.Error("a second Run on a running connector succeeded")
+	}
+	if _, err := f.injector.Inject("not-a-demo-conversation"); err == nil {
+		t.Error("Inject into an unknown conversation succeeded")
+	}
+}

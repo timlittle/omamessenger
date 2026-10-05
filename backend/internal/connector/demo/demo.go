@@ -18,10 +18,12 @@ import (
 var errNotRunning = errors.New("demo connector is not running")
 var errUnknownConversation = errors.New("demo conversation not found")
 
+// suite is the state shared by the demo connectors of one helper.
 type suite struct {
-	clock connector.Clock
-	rng   *rand.Rand
-	rngMu sync.Mutex
+	clock   connector.Clock
+	rng     *rand.Rand
+	rngMu   sync.Mutex
+	chatter atomic.Bool
 }
 
 type demoConnector struct {
@@ -37,11 +39,6 @@ type demoConnector struct {
 	inject  atomic.Uint64
 }
 
-var chatterSetting struct {
-	sync.RWMutex
-	enabled bool
-}
-
 // New creates one Connector per demo account. A nil Clock or RNG is replaced
 // with a real clock or a time-seeded random source.
 func New(clock connector.Clock, rng *rand.Rand, chatter bool) []connector.Connector {
@@ -51,8 +48,8 @@ func New(clock connector.Clock, rng *rand.Rand, chatter bool) []connector.Connec
 	if rng == nil {
 		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
-	SetChatter(chatter)
 	shared := &suite{clock: clock, rng: rng}
+	shared.chatter.Store(chatter)
 	connectors := make([]connector.Connector, 0, len(scripts))
 	for _, script := range scripts {
 		connectors = append(connectors, &demoConnector{
@@ -61,21 +58,6 @@ func New(clock connector.Clock, rng *rand.Rand, chatter bool) []connector.Connec
 		})
 	}
 	return connectors
-}
-
-// SetChatter enables or disables scripted incoming messages in all demo
-// connectors. Their timers remain scheduled while disabled so the setting can
-// be changed without restarting the helper.
-func SetChatter(enabled bool) {
-	chatterSetting.Lock()
-	chatterSetting.enabled = enabled
-	chatterSetting.Unlock()
-}
-
-func chatterEnabled() bool {
-	chatterSetting.RLock()
-	defer chatterSetting.RUnlock()
-	return chatterSetting.enabled
 }
 
 func (d *demoConnector) Account() domain.Account { return d.script.account }
@@ -236,7 +218,7 @@ func (d *demoConnector) reply(conversation *conversationScript, sentID string) d
 
 func (d *demoConnector) scheduleChatter() {
 	d.after(d.randomChatterDelay(), func(sink connector.Sink) {
-		if chatterEnabled() {
+		if d.suite.chatter.Load() {
 			conversation := d.randomConversation()
 			text := d.randomReply(conversation)
 			sink.Incoming(d.script.account.ID, conversation.remoteID, domain.Message{
@@ -333,6 +315,15 @@ func NewInjector(connectors ...connector.Connector) *Injector {
 		}
 	}
 	return injector
+}
+
+// SetChatter enables or disables scripted incoming messages in these demo
+// connectors. Their timers stay scheduled while disabled, so the setting can
+// change without restarting the helper.
+func (i *Injector) SetChatter(enabled bool) {
+	for _, demo := range i.connectors {
+		demo.suite.chatter.Store(enabled)
+	}
 }
 
 func (i *Injector) Inject(conversationRemoteID string) (domain.Message, error) {

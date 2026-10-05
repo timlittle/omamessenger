@@ -28,60 +28,84 @@ type Manager struct {
 // Start persists connector accounts and starts one supervised goroutine per
 // connector. It may be called once; Wait blocks until all runs have stopped.
 func (m *Manager) Start(ctx context.Context) error {
-	if ctx == nil {
-		return errors.New("connector manager requires a context")
+	if err := m.validate(ctx); err != nil {
+		return err
 	}
-	if m.Store == nil {
-		return errors.New("connector manager requires a store")
-	}
-	if m.Sink == nil {
-		return errors.New("connector manager requires a sink")
-	}
-	m.mu.Lock()
-	if m.started {
-		m.mu.Unlock()
-		return errors.New("connector manager already started")
-	}
-	m.mu.Unlock()
-	if m.Clock == nil {
-		m.Clock = RealClock{}
-	}
-
-	byAccount := make(map[string]Connector, len(m.Connectors))
-	accounts := make([]domain.Account, 0, len(m.Connectors))
-	for _, connector := range m.Connectors {
-		if connector == nil {
-			return errors.New("connector manager received a nil connector")
-		}
-		account := connector.Account()
-		if account.ID == "" {
-			return errors.New("connector account id is empty")
-		}
-		if _, exists := byAccount[account.ID]; exists {
-			return fmt.Errorf("duplicate connector account %q", account.ID)
-		}
-		byAccount[account.ID] = connector
-		accounts = append(accounts, account)
+	byAccount, accounts, err := indexByAccount(m.Connectors)
+	if err != nil {
+		return err
 	}
 	for _, account := range accounts {
 		if err := m.Store.UpsertAccount(account); err != nil {
 			return fmt.Errorf("upsert account %q: %w", account.ID, err)
 		}
 	}
+	if err := m.claimStart(byAccount); err != nil {
+		return err
+	}
+	for _, connector := range m.Connectors {
+		go m.run(ctx, connector)
+	}
+	return nil
+}
 
+// validate checks the Manager's dependencies and defaults its Clock.
+func (m *Manager) validate(ctx context.Context) error {
+	switch {
+	case ctx == nil:
+		return errors.New("connector manager requires a context")
+	case m.Store == nil:
+		return errors.New("connector manager requires a store")
+	case m.Sink == nil:
+		return errors.New("connector manager requires a sink")
+	case m.isStarted():
+		return errors.New("connector manager already started")
+	}
+	if m.Clock == nil {
+		m.Clock = RealClock{}
+	}
+	return nil
+}
+
+func (m *Manager) isStarted() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.started
+}
+
+// indexByAccount maps each connector to its account id, rejecting nil
+// connectors, empty ids and duplicates.
+func indexByAccount(connectors []Connector) (map[string]Connector, []domain.Account, error) {
+	byAccount := make(map[string]Connector, len(connectors))
+	accounts := make([]domain.Account, 0, len(connectors))
+	for _, connector := range connectors {
+		if connector == nil {
+			return nil, nil, errors.New("connector manager received a nil connector")
+		}
+		account := connector.Account()
+		if account.ID == "" {
+			return nil, nil, errors.New("connector account id is empty")
+		}
+		if _, exists := byAccount[account.ID]; exists {
+			return nil, nil, fmt.Errorf("duplicate connector account %q", account.ID)
+		}
+		byAccount[account.ID] = connector
+		accounts = append(accounts, account)
+	}
+	return byAccount, accounts, nil
+}
+
+// claimStart records the routing table and marks the Manager started, unless
+// a concurrent Start got there first.
+func (m *Manager) claimStart(byAccount map[string]Connector) error {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.started {
-		m.mu.Unlock()
 		return errors.New("connector manager already started")
 	}
 	m.started = true
 	m.byAccount = byAccount
 	m.wg.Add(len(m.Connectors))
-	m.mu.Unlock()
-
-	for _, connector := range m.Connectors {
-		go m.run(ctx, connector)
-	}
 	return nil
 }
 

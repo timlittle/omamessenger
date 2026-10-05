@@ -57,8 +57,9 @@ func run(parent context.Context, stdin io.Reader, stdout, stderr io.Writer, args
 		Emit: func(name string, data any) { _ = stream.Emit(name, data) },
 	}
 	if cfg.Demo {
-		appConfig.DemoInject = demo.NewInjector(connectors...)
-		appConfig.SetChatter = demo.SetChatter
+		injector := demo.NewInjector(connectors...)
+		appConfig.DemoInject = injector
+		appConfig.SetChatter = injector.SetChatter
 	}
 	commands, ingest := app.New(appConfig)
 	manager := &connector.Manager{Store: db, Sink: ingest, Clock: clock, Connectors: connectors}

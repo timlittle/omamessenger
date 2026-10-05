@@ -63,55 +63,71 @@ var scripts = []accountScript{
 func messagesFor(script conversationScript, now time.Time) []domain.Message {
 	messages := make([]domain.Message, 0, script.count)
 	for i := 0; i < script.count; i++ {
-		outgoing := script.allOutgoing || i%2 == 1
-		if script.lastOutgoing && i == script.count-1 {
-			outgoing = true
-		}
-		if script.unread > 0 && i >= script.count-script.unread {
-			outgoing = false
-		}
-		senderID, senderName := "self", "You"
-		if !outgoing {
-			senderID = script.remoteID
-			senderName = script.title
-			if len(script.groupSenders) > 0 {
-				senderName = script.groupSenders[i%len(script.groupSenders)]
-				senderID = senderName
-			}
-		}
-		status := domain.StatusReceived
-		if !outgoing && (script.unread == 0 || i < script.count-script.unread) {
-			status = domain.StatusRead
-		}
-		if outgoing {
-			if script.kind == domain.KindGroup {
-				status = domain.StatusDelivered
-			} else {
-				status = domain.StatusRead
-			}
-		}
-		text := fmt.Sprintf("%s message %d", script.title, i+1)
-		if len(script.texts) > 0 {
-			text = script.texts[i%len(script.texts)]
-		}
-		if script.remoteID == "wa:alex-chen" && i == script.count-1 {
-			text = "Here are the tickets: https://example.com/tickets"
-		}
-		created := now.Add(-6*24*time.Hour + time.Duration(i+1)*6*24*time.Hour/time.Duration(script.count+1)).UnixMilli()
-		messages = append(messages, domain.Message{
-			RemoteID: fmt.Sprintf("seed-%s-%d", script.remoteID, i+1),
-			SenderID: senderID, SenderName: senderName, Text: text,
-			Outgoing: outgoing, Status: status, Created: created,
-		})
+		messages = append(messages, script.seedMessage(i, now))
 	}
 	return messages
 }
 
-func accountFor(id string) (accountScript, bool) {
-	for _, script := range scripts {
-		if script.account.ID == id {
-			return script, true
-		}
+// seedMessage is message i of the script, spread evenly over the six days
+// before now.
+func (s conversationScript) seedMessage(i int, now time.Time) domain.Message {
+	outgoing := s.isOutgoing(i)
+	senderID, senderName := s.sender(i, outgoing)
+	return domain.Message{
+		RemoteID: fmt.Sprintf("seed-%s-%d", s.remoteID, i+1),
+		SenderID: senderID, SenderName: senderName, Text: s.text(i),
+		Outgoing: outgoing, Status: s.status(i, outgoing),
+		Created: now.Add(-6*24*time.Hour + time.Duration(i+1)*6*24*time.Hour/time.Duration(s.count+1)).UnixMilli(),
 	}
-	return accountScript{}, false
+}
+
+// isUnread reports whether message i is one of the trailing unread messages.
+func (s conversationScript) isUnread(i int) bool {
+	return s.unread > 0 && i >= s.count-s.unread
+}
+
+// isOutgoing alternates incoming and outgoing messages; unread messages are
+// always incoming.
+func (s conversationScript) isOutgoing(i int) bool {
+	if s.isUnread(i) {
+		return false
+	}
+	return s.allOutgoing || i%2 == 1 || s.lastOutgoing && i == s.count-1
+}
+
+func (s conversationScript) sender(i int, outgoing bool) (id, name string) {
+	switch {
+	case outgoing:
+		return "self", "You"
+	case len(s.groupSenders) > 0:
+		name := s.groupSenders[i%len(s.groupSenders)]
+		return name, name
+	default:
+		return s.remoteID, s.title
+	}
+}
+
+// status is delivered for group sends, read for direct sends and earlier
+// incoming messages, and received for unread ones.
+func (s conversationScript) status(i int, outgoing bool) string {
+	switch {
+	case outgoing && s.kind == domain.KindGroup:
+		return domain.StatusDelivered
+	case outgoing:
+		return domain.StatusRead
+	case s.isUnread(i):
+		return domain.StatusReceived
+	default:
+		return domain.StatusRead
+	}
+}
+
+func (s conversationScript) text(i int) string {
+	if s.remoteID == "wa:alex-chen" && i == s.count-1 {
+		return "Here are the tickets: https://example.com/tickets"
+	}
+	if len(s.texts) > 0 {
+		return s.texts[i%len(s.texts)]
+	}
+	return fmt.Sprintf("%s message %d", s.title, i+1)
 }
