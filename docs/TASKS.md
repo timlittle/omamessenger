@@ -484,11 +484,11 @@ Cyclomatic complexity = 1 + each `if`, `for`, `range`, non-default `case`, `comm
 
 Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before more code is written. `connector` imports `store`, `rpc` imports `app` and `store`, and `app.go` mixes six responsibilities. Fix this before anything else builds on these packages. Refactors keep behaviour identical: move tests with the code and keep their assertions.
 
-### [ ] R01a · omalint framework, layering and size rules (M)
+### [x] R01a · omalint framework, layering and size rules (M)
 - deps: GA
-- files: tools/omalint/main.go, tools/omalint/rules/rules.go, tools/omalint/analyzers/layering/, tools/omalint/analyzers/size/, `testdata/` under each analyzer, go.mod, go.sum, vendor/
+- files: tools/omalint/main.go, tools/omalint/rules/rules.go, tools/omalint/analyzers/layering/, tools/omalint/analyzers/size/, tools/omalint/suppress/, `testdata/` under each analyzer, go.mod, go.sum, vendor/
 - do:
-  1. `go get golang.org/x/tools@<latest version supporting go 1.23>`, then `go mod vendor`.
+  1. `go get golang.org/x/tools@v0.36.0` (latest release declaring `go 1.23.0`), then `go mod vendor`.
   2. `main.go` runs the analyzers with `multichecker.Main`.
   3. `rules.go` holds the C10 layering table, test-file extras and size limits as Go data (the single source).
   4. `layering` reports a forbidden import at the import spec position.
@@ -497,6 +497,22 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - accept:
   - `analysistest` tests per analyzer cover an allowed case, a violating case at threshold+1, a case exactly at the threshold, and a suppressed case (with and without reason).
   - Run on the repo now, it reports at least: `connector` imports `store`; `rpc` imports `app`; `rpc` imports `store`; `app/app.go` > 400 lines. Paste the output into the task note.
+- result: Go 1.23.12 analyzer tests pass. Coverage: omalint 100%, layering 93.1%, size 81.1%, suppress 84.6%.
+- current findings (`go run -mod=vendor ./tools/omalint ./backend/...`):
+  ```text
+  backend/internal/connector/manager.go:11:2: layering: connector may not import store
+  backend/internal/app/app.go:14:2: layering: app may not import notify
+  backend/internal/app/app.go:15:2: layering: app may not import store
+  backend/internal/rpc/server.go:14:2: layering: rpc may not import app
+  backend/internal/rpc/server.go:15:2: layering: rpc may not import store
+  backend/internal/rpc/server_test.go:19:2: layering: rpc test may not import app
+  backend/internal/rpc/server_test.go:20:2: layering: rpc test may not import connector
+  backend/internal/rpc/server_test.go:22:2: layering: rpc test may not import domain
+  backend/internal/store/store.go:5:1: size: 510 lines; maximum 400
+  backend/internal/app/app.go:3:1: size: 492 lines; maximum 400
+  backend/internal/rpc/server.go:94:1: size: function has 78 lines; maximum 60
+  backend/main.go:31:9: size: function has 6 parameters; maximum 5
+  ```
 - verify: `go test -mod=vendor ./tools/omalint/... && (go run -mod=vendor ./tools/omalint ./backend/...; test $? -ne 0)`
 
 ### [ ] R01b · Complexity analyzers (S)
