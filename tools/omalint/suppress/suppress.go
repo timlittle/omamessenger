@@ -32,13 +32,23 @@ func Check(pass *analysis.Pass, rule string, pos token.Pos) bool {
 				if !directive || !valid || name != rule {
 					continue
 				}
-				if comment.End() <= pos && pass.Fset.Position(pos).Line-pass.Fset.Position(comment.Pos()).Line <= 1 {
+				if covers(pass.Fset, comment.Pos(), comment.End(), pos) {
 					ignored = true
 				}
 			}
 		}
 	}
 	return ignored
+}
+
+// covers reports whether a directive spanning [start, end) applies to pos: the
+// same file, ending before pos, on pos's line or the line directly above.
+func covers(fset *token.FileSet, start, end, pos token.Pos) bool {
+	if fset.File(start) != fset.File(pos) || end > pos {
+		return false
+	}
+	distance := fset.Position(pos).Line - fset.Position(start).Line
+	return distance == 0 || distance == 1
 }
 
 func parse(comment string) (rule string, directive, valid bool) {

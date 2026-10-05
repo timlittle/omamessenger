@@ -50,3 +50,37 @@ func target() {}
 		t.Fatal("unexpected suppression across a blank line or for another rule")
 	}
 }
+
+// A suppression must only cover the next line of its own file. Positions in
+// a FileSet are global, so a comment in an earlier-parsed file has a smaller
+// Pos and, compared by line number alone, appeared to sit "above" every line
+// of later files.
+func TestCheckDoesNotSuppressAcrossFiles(t *testing.T) {
+	fset := token.NewFileSet()
+	first, err := parser.ParseFile(fset, "a.go", `package fixture
+
+func one() {}
+func two() {}
+func three() {}
+
+//omalint:ignore size documented reason
+func suppressed() {}
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := parser.ParseFile(fset, "b.go", `package fixture
+
+func violates() {}
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pass := &analysis.Pass{Fset: fset, Files: []*ast.File{first, second}, Report: func(analysis.Diagnostic) {}}
+	if !Check(pass, "size", first.Decls[3].Pos()) {
+		t.Fatal("suppression must cover the next line in its own file")
+	}
+	if Check(pass, "size", second.Decls[0].Pos()) {
+		t.Fatal("suppression in a.go must not cover a finding in b.go")
+	}
+}

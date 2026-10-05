@@ -7,5 +7,5 @@ import (
 )
 
 func TestSize(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), Analyzer, "sizecase")
+	analysistest.Run(t, analysistest.TestData(), Analyzer, "sizecase", "crossfile", "longfile", "longsuppressed", "generatedcase")
 }

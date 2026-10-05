@@ -279,9 +279,10 @@ These are target commands for the completed Phase R/B harness. The current pre-R
 - `make test`: `test-go test-js lint docs-check test-qml`. `test-e2e` (Docker) and `mutation` are separate.
 - `test-go`: `go test -mod=vendor -race -coverprofile=build/cover.out ./backend/... ./tools/...`, then `go run -mod=vendor ./tools/covergate build/cover.out`. Gates live in `tools/covergate` as a table (single source; docscheck verifies this list matches):
   - 100 %: `domain`, `app/policy`
-  - ≥ 90 %: `store`, `rpc`, `api`, `app`, `connector`, `connector/demo`, every `tools/*` package
+  - ≥ 90 %: `store`, `rpc`, `api`, `app`, `connector`, `connector/demo`, `connector/clocktest`, `connector/connectortest`, every `tools/*` package
+  - ≥ 80 %: `backend` (main); only `func main` is excluded, detected by AST
   - ≥ 75 %: `notify`
-  - `backend` (main): only `func main` is excluded, detected by AST.
+  - Packages with no statements are skipped; a package with statements but no gate fails.
 - `test-js`: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 tests/unit/` (Node ≥ 22.8), then `npm --prefix tools/uilint test`.
 - `lint`:
   - `gofmt -l backend tools` (must be empty); `go vet -mod=vendor ./...`
@@ -515,6 +516,8 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   ```
 - verify: `go test -mod=vendor ./tools/omalint/... && (go run -mod=vendor ./tools/omalint ./backend/...; test $? -ne 0)`
 - fix (after the session ended): standalone `go run ./tools/omalint ./backend/...` crashed under the installed Go 1.27 (`internal error: package "errors" without types`). The analyzer tests passed only because the Makefile pinned `GOTOOLCHAIN=go1.23.12` for omalint targets. Upgraded to x/tools v0.51.0 (module now `go 1.26.0`), removed the pin, and added `TestStandaloneRunOnRealPackage`. Standalone omalint now reports the known findings and exits non-zero.
+- fix: `suppress.Check` compared line numbers across files and accepted negative distances, so one valid `//omalint:ignore <rule>` in an earlier-parsed file suppressed that rule for every later file in the package. It is intermittent because `go/packages` parses files concurrently. Fixed to same-file, same-or-next-line only; `TestCheckDoesNotSuppressAcrossFiles` is the regression test.
+- fix: the `size` file-length rule measured the AST span from `package` to the last declaration, so comments before or after didn't count. It now uses the physical `LineCount()`. Added fixtures for long files, a suppressed long file, generated files, unnamed parameters, and cross-file suppression.
 
 ### [x] R01b · Complexity analyzers (S)
 - deps: R01a
@@ -548,12 +551,13 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - result: the metric verify command passes. `TestEfferentCoupling`, `TestStableDependencies`, `TestLCOM4` and `TestNoJunkDrawerPackages` pass on the current tree. The full archtest run reports unused exports only: `domain.AccountNeedsAuth`, `domain.ErrEmptyText`, `domain.ErrTextTooLong`, `domain.MaxMessageLength`, `store.NewID`, `store.SchemaVersion`, `notify.Notification`, `notify.Recorder`, and `app.ErrNoManager`. `TestExportsUsedOutsidePackage` excludes tests; explicit C4 test-support packages `connector/clocktest` and `connector/connectortest` are exempt. R01a's layering findings remain `connector → store`, `app → notify/store`, and `rpc → app/store` until R03–R05.
 - verify: `go test -mod=vendor -run 'Metric|Lcom|Instability' ./backend/internal/archtest/`
 
-### [ ] R01e · covergate (S)
+### [x] R01e · covergate (S)
 - deps: GA
 - files: tools/covergate/main.go, tools/covergate/gate.go, tools/covergate/gate_test.go, Makefile (`test-go`)
 - do: parse a cover profile; aggregate statements per package directory; exclude only the statements inside `func main` of `backend/main.go`, found via `go/parser`; compare against the C9 table in code; print a table; exit 1 on any miss. Packages missing from the table fail ("no gate defined").
 - accept: tests with synthetic profiles cover pass, fail, a missing gate and main exclusion.
 - verify: `go test -mod=vendor -cover ./tools/covergate/`
+- result: `tools/covergate` at 96.6 % coverage and omalint-clean. `make test-go` runs `go test -race -coverprofile=build/cover.out ./backend/... ./tools/...`, then covergate. Current misses, each owned by a refactor task: `backend` 50.7 % (R06), `connector` 88.4 % (R03, R05b), `connector/demo` 88.8 % (R05b), `rpc` 82.5 % (R04), `store` 85.8 % (R05b). The `size` analyzer was 81.1 %; fixtures raised it to 94.4 % (see the R01a fixes).
 
 ### [ ] R02 · ErrNotFound lives in domain (S)
 - deps: R01a, R01b, R01c, R01d, R01e

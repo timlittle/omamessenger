@@ -37,10 +37,11 @@ func run(pass *analysis.Pass) (any, error) {
 }
 
 func checkFile(pass *analysis.Pass, file *ast.File) {
-	start := pass.Fset.Position(file.Pos()).Line
-	end := pass.Fset.Position(file.End()).Line
-	if end-start+1 > rules.MaxFileLines && !suppress.Check(pass, "size", file.Pos()) {
-		pass.Reportf(file.Pos(), "size: file has %d lines; maximum is %d", end-start+1, rules.MaxFileLines)
+	// Count physical lines, including leading and trailing comments; the AST
+	// span from `package` to the last declaration under-counts.
+	lines := pass.Fset.File(file.Pos()).LineCount()
+	if lines > rules.MaxFileLines && !suppress.Check(pass, "size", file.Package) {
+		pass.Reportf(file.Package, "size: file has %d lines; maximum is %d", lines, rules.MaxFileLines)
 	}
 }
 

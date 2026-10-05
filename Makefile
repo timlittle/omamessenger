@@ -16,12 +16,11 @@ OMARCHY ?= omarchy
 OMARCHY_SHELL ?= omarchy-shell
 PLUGIN_ID := io.github.omamessenger
 PLUGIN_DIR ?= $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
-COVERAGE_MIN ?= 80
-COVERAGE_FILE ?= /tmp/oma-messenger-coverage.out
+COVERAGE_FILE ?= build/cover.out
 GOOS := $(shell $(GO) env GOOS)
 GOARCH := $(shell $(GO) env GOARCH)
 
-.PHONY: help build build-all test test-unit test-integration test-omalint cover-omalint run-omalint coverage lint validate install-local status pull clean
+.PHONY: help build build-all test test-go test-js test-unit test-integration test-omalint cover-omalint run-omalint coverage lint validate install-local status pull clean
 
 help: ## Show available development commands
 	@awk 'BEGIN {FS = ":.*##"; print "OmaMessenger development commands:"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  make %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -33,12 +32,16 @@ build: ## Build the helper for this machine's architecture
 build-all: ## Build bundled Linux amd64 and arm64 helpers
 	./scripts/build-release.sh
 
-test: ## Build and run backend, keyboard, coverage, and lint checks
+test: ## Build, then run Go (race + coverage gates), JS and lint checks
 	+$(MAKE) build
-	+$(MAKE) test-unit
-	+$(MAKE) test-integration
-	+$(MAKE) coverage
+	+$(MAKE) test-go
+	+$(MAKE) test-js
 	+$(MAKE) lint
+
+test-go: coverage ## Run all Go tests with the race detector and enforce per-package coverage gates
+
+test-js: ## Run the JavaScript logic tests
+	$(NODE) --test tests/unit/*.test.cjs
 
 test-unit: ## Run backend tests and keyboard/launcher logic tests
 	$(GO) test -mod=vendor ./backend/...
@@ -59,12 +62,15 @@ OMALINT_PACKAGES ?= ./backend/... ./tools/...
 test-integration: ## Run backend integration tests with the race detector
 	$(GO) test -mod=vendor -race ./backend/...
 
-coverage: ## Enforce at least 80% core Go coverage (process bootstrap excluded)
-	$(GO) test -mod=vendor -coverprofile=$(COVERAGE_FILE) ./backend/...
-	python3 scripts/check-coverage.py $(COVERAGE_FILE) $(COVERAGE_MIN)
+coverage: ## Run Go tests with -race and enforce the C9 per-package coverage gates (tools/covergate)
+	@mkdir -p $(dir $(COVERAGE_FILE))
+	$(GO) test -mod=vendor -race -coverprofile=$(COVERAGE_FILE) ./backend/... ./tools/...
+	$(GO) run -mod=vendor ./tools/covergate $(COVERAGE_FILE)
 
-lint: ## Check Go formatting, shell scripts, QML, and patch whitespace
-	@test -z "$$(gofmt -l backend)" || { echo "Go files are not formatted; run gofmt -w backend."; exit 1; }
+lint: ## Check Go formatting, vet, architecture rules (omalint), shell scripts, QML, and patch whitespace
+	@test -z "$$(gofmt -l backend tools)" || { echo "Go files are not formatted; run gofmt -w backend tools."; exit 1; }
+	$(GO) vet -mod=vendor ./...
+	+$(MAKE) run-omalint
 	bash -n scripts/*.sh tests/e2e/*.sh
 	qmllint -I tests/e2e/mocks Panel.qml Service.qml tests/e2e/shell.qml
 	git --no-pager diff --check
@@ -82,5 +88,5 @@ status: ## Show the current Git branch and worktree status
 pull: ## Fast-forward from the current branch's upstream
 	git pull --ff-only
 
-clean: ## Remove local test coverage output
-	rm -f "$(COVERAGE_FILE)"
+clean: ## Remove local build and test output
+	rm -rf build
