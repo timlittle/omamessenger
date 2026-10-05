@@ -257,7 +257,20 @@ Panel {
                                             Row {
                                                 width: parent.width
                                                 Text { width: parent.width - unread.width - Style.space(10); text: modelData.title; color: index === root.cursor ? Color.background : Color.foreground; font.pixelSize: Style.font.body; font.bold: true; elide: Text.ElideRight }
-                                                Text { id: unread; visible: modelData.unread > 0; text: modelData.unread; color: Color.background; font.pixelSize: Style.font.caption; padding: Style.space(3); background: Rectangle { radius: height / 2; color: Color.accent } }
+                                                Rectangle {
+                                                    visible: modelData.unread > 0
+                                                    width: unreadLabel.implicitWidth + Style.space(10)
+                                                    height: unreadLabel.implicitHeight + Style.space(6)
+                                                    radius: height / 2
+                                                    color: Color.accent
+                                                    Text {
+                                                        id: unreadLabel
+                                                        anchors.centerIn: parent
+                                                        text: modelData.unread
+                                                        color: Color.background
+                                                        font.pixelSize: Style.font.caption
+                                                    }
+                                                }
                                             }
                                             Text { width: parent.width; text: (modelData.service === "whatsapp" ? "WA" : "TG") + "   " + modelData.preview; color: Color.foreground; opacity: 0.66; font.pixelSize: Style.font.bodySmall; elide: Text.ElideRight }
                                         }
