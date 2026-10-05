@@ -346,8 +346,6 @@ Panel {
                 }
             }
         }
-    }
-
     Rectangle {
         id: composeDialog
         visible: root.composing
@@ -392,5 +390,6 @@ Panel {
                 }
             }
         }
+    }
     }
 }
