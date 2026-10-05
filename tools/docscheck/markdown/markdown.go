@@ -144,6 +144,20 @@ func RepoPaths(md string) []PathRef {
 	return refs
 }
 
+// IgnoredDirs returns the root-anchored directories a .gitignore excludes
+// ("/bin/dev/" becomes "bin/dev/"). They hold build output, so docs may name
+// paths inside them that a clean checkout does not have.
+func IgnoredDirs(gitignore string) []string {
+	var dirs []string
+	for _, line := range strings.Split(gitignore, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "/") && strings.HasSuffix(line, "/") {
+			dirs = append(dirs, strings.TrimPrefix(line, "/"))
+		}
+	}
+	return dirs
+}
+
 // PathExists reports whether root/p exists. Patterns with * or {a,b} must
 // match at least one file.
 func PathExists(root, p string) bool {

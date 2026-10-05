@@ -66,6 +66,13 @@ func TestCoverageGates(t *testing.T) {
 	}
 }
 
+func TestIgnoredDirs(t *testing.T) {
+	got := IgnoredDirs("/messages.db\n/bin/dev/\n*.session\n  /build/  \nnode_modules/\n")
+	if !reflect.DeepEqual(got, []string{"bin/dev/", "build/"}) {
+		t.Errorf("IgnoredDirs = %v", got)
+	}
+}
+
 func TestRelativeLinks(t *testing.T) {
 	md := "[a](CONTRIBUTING.md) [b](docs/KEYS.md#list) [c](https://example.com) [d](mailto:x@y) [e](#anchor)"
 	if got := RelativeLinks(md); !reflect.DeepEqual(got, []string{"CONTRIBUTING.md", "docs/KEYS.md"}) {

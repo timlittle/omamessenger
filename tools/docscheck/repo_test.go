@@ -80,16 +80,28 @@ func TestLinksResolve(t *testing.T) {
 }
 
 func TestPathsExist(t *testing.T) {
+	buildOutput := markdown.IgnoredDirs(read(t, ".gitignore"))
 	for _, d := range docs(t) {
 		if d.name == plannedDocs {
 			continue
 		}
 		for _, ref := range markdown.RepoPaths(d.text) {
-			if !ref.Planned && !markdown.PathExists(root, ref.Path) {
+			if !ref.Planned && !underAny(ref.Path, buildOutput) && !markdown.PathExists(root, ref.Path) {
 				t.Errorf("%s names %s, which does not exist (label the line \"(planned)\" if it is future work)", d.name, ref.Path)
 			}
 		}
 	}
+}
+
+// underAny reports whether p is inside one of dirs (build output that a
+// clean checkout does not contain).
+func underAny(p string, dirs []string) bool {
+	for _, dir := range dirs {
+		if strings.HasPrefix(p, dir) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestMakeTargetsExist(t *testing.T) {
