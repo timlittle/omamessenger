@@ -2,23 +2,15 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// The shell owns this helper for the lifetime of the loaded plugin. Build is
-// explicit and user initiated; plugin installation never compiles or runs it.
+// The shell owns this bundled helper for the lifetime of the loaded plugin.
 Item {
     id: root
 
     property var shell: null
     readonly property string pluginDir: Quickshell.env("HOME") + "/.config/omarchy/plugins/io.github.omamessenger"
-    readonly property string helperPath: pluginDir + "/oma-messenger-service"
+    readonly property string helperPath: pluginDir + "/bin/oma-messenger-service"
     property string status: "checking"
     property string detail: ""
-
-    function buildHelper() {
-        if (buildProcess.running || helper.running) return
-        detail = ""
-        status = "building"
-        buildProcess.running = true
-    }
 
     function startHelper() {
         if (helper.running) return
@@ -37,25 +29,10 @@ Item {
         command: ["test", "-x", root.helperPath]
         onExited: function(exitCode) {
             if (exitCode === 0) root.startHelper()
-            else root.status = "helper-missing"
-        }
-    }
-
-    Process {
-        id: buildProcess
-        command: ["go", "build", "-mod=vendor", "-buildvcs=false", "-o", root.helperPath, "./backend"]
-        workingDirectory: root.pluginDir
-        stderr: StdioCollector {
-            waitForEnd: true
-            onStreamFinished: root.detail = text.trim()
-        }
-        onExited: function(exitCode) {
-            if (exitCode !== 0) {
-                root.status = "build-error"
-                if (!root.detail) root.detail = "Build failed. Check that Go is installed and try again."
-                return
+            else {
+                root.status = "helper-missing"
+                root.detail = "The bundled helper is missing or is not executable. Update or reinstall the OmaMessenger plugin."
             }
-            root.startHelper()
         }
     }
 

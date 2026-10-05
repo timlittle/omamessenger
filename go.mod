@@ -1,4 +1,4 @@
-module github.com/omarchy/omamessenger
+module github.com/timlittle/omamessenger
 
 go 1.23
 

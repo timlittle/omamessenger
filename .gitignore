@@ -1,6 +1,7 @@
-/oma-messenger-service
 /messages.db
 /messages.db-shm
 /messages.db-wal
+/bin/dev/
+/build/
 *.session
 *.session-journal

@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "OmaMessenger contributors",
   "license": "MIT",
-  "description": "A keyboard-first unified messaging panel for Omarchy.",
+  "description": "A keyboard-first unified messaging client for Omarchy.",
   "kinds": ["panel", "service"],
   "entryPoints": {
     "panel": "Panel.qml",

@@ -1,0 +1,27 @@
+#!/usr/bin/env sh
+set -eu
+
+bin_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+dev_helper="$bin_dir/dev/oma-messenger-service"
+if [ -x "$dev_helper" ]; then
+    exec "$dev_helper" "$@"
+fi
+
+machine=$(uname -m)
+
+case "$machine" in
+    x86_64|amd64) target=linux-amd64 ;;
+    aarch64|arm64) target=linux-arm64 ;;
+    *)
+        printf 'OmaMessenger does not include a helper for architecture: %s\n' "$machine" >&2
+        exit 1
+        ;;
+esac
+
+helper="$bin_dir/oma-messenger-service-$target"
+if [ ! -x "$helper" ]; then
+    printf 'OmaMessenger helper is missing or not executable: %s\n' "$helper" >&2
+    exit 1
+fi
+
+exec "$helper" "$@"

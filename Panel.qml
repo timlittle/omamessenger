@@ -2,9 +2,10 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
-import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
+import qs.Ui as OmarchyUi
+import "keyboard.js" as Keyboard
 
 Panel {
     id: root
@@ -24,7 +25,42 @@ Panel {
     property int cursor: 0
     property string errorText: ""
     property bool composing: false
-    property bool focusPrimed: false
+    property string composeServiceId: "whatsapp"
+    property bool closingFromHost: false
+
+    function close() {
+        closingFromHost = true
+        composing = false
+        controller.hide()
+        Qt.callLater(function() { root.closingFromHost = false })
+    }
+
+    function dismiss() {
+        if (shell && typeof shell.hide === "function") shell.hide("io.github.omamessenger")
+        else close()
+    }
+
+    function openCompose() {
+        composeServiceId = serviceFilter === "telegram" ? "telegram" : "whatsapp"
+        composing = true
+        Qt.callLater(function() { composeTitle.forceActiveFocus() })
+    }
+
+    function createConversation() {
+        if (!composeTitle.text.trim() || !composeAccount.text.trim()) return
+        var service = composeServiceId
+        var account = composeAccount.text.trim()
+        var title = composeTitle.text.trim()
+        request("POST", "/conversations", {
+            "id": service + ":" + account + ":" + title,
+            "accountId": account, "service": service, "title": title
+        }, function() {
+            composing = false
+            composeTitle.text = ""
+            composeAccount.text = ""
+            refresh()
+        })
+    }
 
     function request(method, path, body, done) {
         var xhr = new XMLHttpRequest()
@@ -63,6 +99,13 @@ Panel {
         request("POST", "/conversations/" + encodeURIComponent(id) + "/read", {})
     }
 
+    function activeConversationTitle() {
+        for (var i = 0; i < conversations.length; i++) {
+            if (conversations[i].id === activeConversationId) return conversations[i].title
+        }
+        return "Conversation"
+    }
+
     function openConversation() {
         if (conversations.length) loadMessages(conversations[cursor].id)
     }
@@ -73,6 +116,29 @@ Panel {
         composeField.focus = false
         search.focus = false
         keyCatcher.forceActiveFocus()
+    }
+
+    function handleEscape() {
+        if (composing && composeService.popupOpen) {
+            composeService.close()
+            return
+        }
+        var action = Keyboard.escapeAction({
+            searchFocused: search.activeFocus,
+            composing: composing,
+            conversationOpen: activeConversationId !== ""
+        })
+        if (action === "unfocus-search") {
+            search.focus = false
+            keyCatcher.forceActiveFocus()
+        } else if (action === "close-compose") {
+            composing = false
+            Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+        } else if (action === "back") {
+            goBack()
+        } else {
+            root.dismiss()
+        }
     }
 
     function sendCurrent() {
@@ -86,9 +152,7 @@ Panel {
     function helperStatusText() {
         if (!backendService) return "OmaMessenger helper is unavailable. Rescan or restart omarchy-shell."
         if (backendService.status === "checking") return "Checking the OmaMessenger helper…"
-        if (backendService.status === "helper-missing") return "Build the local Go helper to start the messaging service."
-        if (backendService.status === "building") return "Building the local Go helper…"
-        if (backendService.status === "build-error") return backendService.detail || "Build failed. Install Go with `omarchy pkg add go` and try again."
+        if (backendService.status === "helper-missing") return backendService.detail || "The bundled helper is missing. Update or reinstall the OmaMessenger plugin."
         if (backendService.status === "runtime-error") return backendService.detail || "The helper stopped unexpectedly. Try restarting it."
         if (backendService.status === "stopped") return "The helper is stopped. Start it again to continue."
         if (backendService.status === "starting") return "Starting the local messaging service…"
@@ -100,7 +164,7 @@ Panel {
         if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_K) {
             search.forceActiveFocus(); search.selectAll(); event.accepted = true
         } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_N) {
-            composing = true; composeTitle.forceActiveFocus(); event.accepted = true
+            openCompose(); event.accepted = true
         } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_1) {
             serviceFilter = "whatsapp"; cursor = 0; activeConversationId = ""; refresh(); event.accepted = true
         } else if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_2) {
@@ -109,12 +173,6 @@ Panel {
             serviceFilter = "all"; cursor = 0; activeConversationId = ""; refresh(); event.accepted = true
         } else if ((search.activeFocus || composeField.activeFocus || composing) && event.key !== Qt.Key_Escape) {
             return
-        } else if (event.key === Qt.Key_Escape) {
-            if (search.activeFocus) { search.focus = false; keyCatcher.forceActiveFocus() }
-            else if (composing) composing = false
-            else if (activeConversationId) goBack()
-            else root.controller.hide()
-            event.accepted = true
         } else if (activeConversationId === "" && event.key === Qt.Key_J) {
             cursor = Math.min(cursor + 1, conversations.length - 1); event.accepted = true
         } else if (activeConversationId === "" && event.key === Qt.Key_K) {
@@ -142,30 +200,36 @@ Panel {
         running: root.opened && root.backendService && root.backendService.status === "running" && root.apiToken.length === 0
         onTriggered: apiTokenFile.reload()
     }
-    Timer { id: focusSettle; interval: 100; onTriggered: root.focusPrimed = true }
     onOpenedChanged: {
         if (opened) {
-            focusPrimed = false
-            focusSettle.restart()
             if (apiToken.length) refresh()
-            Qt.callLater(function() { keyCatcher.forceActiveFocus() })
-        } else {
-            focusPrimed = false
-            focusSettle.stop()
+            Qt.callLater(function() {
+                panel.requestActivate()
+                keyCatcher.forceActiveFocus()
+            })
         }
     }
 
-    PanelWindow {
+    FloatingWindow {
         id: panel
         visible: root.opened
-        anchors { top: true; bottom: true; left: true; right: true }
-        color: "transparent"
-        exclusionMode: ExclusionMode.Ignore
-        WlrLayershell.namespace: "omarchy-omamessenger"
-        WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: root.opened
-            ? (root.focusPrimed ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.Exclusive)
-            : WlrKeyboardFocus.None
+        title: "OmaMessenger"
+        flags: Qt.Window
+        modality: Qt.NonModal
+        implicitWidth: Style.space(1120)
+        implicitHeight: Style.space(760)
+        minimumSize: Qt.size(Style.space(760), Style.space(540))
+        color: Color.background
+        onClosing: root.dismiss()
+        onVisibleChanged: {
+            if (!visible && root.opened && !root.closingFromHost) root.dismiss()
+        }
+        Shortcut {
+            sequence: "Escape"
+            context: Qt.WindowShortcut
+            enabled: root.opened
+            onActivated: root.handleEscape()
+        }
 
         Rectangle {
             id: card
@@ -195,7 +259,8 @@ Panel {
                         Text { text: "OMA"; color: Color.accent; font.pixelSize: Style.font.heading; font.bold: true }
                         Text { text: "MESSENGER"; color: Color.foreground; font.pixelSize: Style.font.heading; font.bold: true }
                         Item { width: parent.width - 420; height: 1 }
-                        Text { text: "Ctrl K  Search     Ctrl N  Compose     Esc  Back"; color: Color.foreground; opacity: 0.62; font.pixelSize: Style.font.caption }
+                        Text { text: "Ctrl K  Search     Ctrl N  Compose     Esc  Back/Close"; color: Color.foreground; opacity: 0.62; font.pixelSize: Style.font.caption }
+                        Button { text: "Close"; onClicked: root.dismiss() }
                     }
 
                     Row {
@@ -204,7 +269,94 @@ Panel {
                         spacing: Style.space(14)
 
                         Rectangle {
-                            width: Math.min(Style.space(340), parent.width * 0.35)
+                            id: serviceRail
+                            width: Style.space(88)
+                            height: parent.height
+                            radius: Style.space(12)
+                            color: Color.background
+
+                            Column {
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: Style.space(8)
+                                spacing: Style.space(8)
+
+                                Text {
+                                    width: parent.width
+                                    height: Style.space(38)
+                                    text: "OMA"
+                                    color: Color.accent
+                                    font.pixelSize: Style.font.body
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+
+                                Repeater {
+                                    model: [
+                                        { id: "all", short: "ALL", name: "All" },
+                                        { id: "whatsapp", short: "WA", name: "WhatsApp" },
+                                        { id: "telegram", short: "TG", name: "Telegram" }
+                                    ]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: parent.width
+                                        height: Style.space(58)
+                                        radius: Style.space(9)
+                                        color: root.serviceFilter === modelData.id ? Color.accent : "transparent"
+
+                                        Column {
+                                            anchors.centerIn: parent
+                                            spacing: Style.space(2)
+                                            Text {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                text: modelData.short
+                                                color: root.serviceFilter === modelData.id ? Color.background : Color.foreground
+                                                font.pixelSize: Style.font.body
+                                                font.bold: true
+                                            }
+                                            Text {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                text: modelData.name
+                                                color: root.serviceFilter === modelData.id ? Color.background : Color.foreground
+                                                opacity: 0.76
+                                                font.pixelSize: Style.font.caption
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            onClicked: {
+                                                root.serviceFilter = modelData.id
+                                                root.cursor = 0
+                                                root.activeConversationId = ""
+                                                root.refresh()
+                                            }
+                                        }
+                                    }
+                                }
+
+                            }
+
+                            Button {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: Style.space(8)
+                                width: parent.width - Style.space(16)
+                                text: "+"
+                                font.pixelSize: Style.font.title
+                                onClicked: {
+                                    root.openCompose()
+                                }
+                                ToolTip.visible: hovered
+                                ToolTip.text: "New conversation (Ctrl+N)"
+                            }
+                        }
+
+                        Rectangle {
+                            id: conversationPane
+                            width: Math.min(Style.space(340), Math.max(Style.space(220), (parent.width - serviceRail.width - Style.space(28)) * 0.34))
                             height: parent.height
                             radius: Style.space(12)
                             color: Color.background
@@ -213,17 +365,20 @@ Panel {
                                 anchors.margins: Style.space(12)
                                 spacing: Style.space(10)
                                 Row {
-                                    spacing: Style.space(8)
-                                    Repeater {
-                                        model: [{id:"all",label:"All"},{id:"whatsapp",label:"WhatsApp"},{id:"telegram",label:"Telegram"}]
-                                        delegate: Rectangle {
-                                            required property var modelData
-                                            width: tabLabel.implicitWidth + Style.space(18); height: Style.space(32)
-                                            radius: Style.space(8)
-                                            color: root.serviceFilter === modelData.id ? Color.accent : Color.background
-                                            Text { id: tabLabel; anchors.centerIn: parent; text: modelData.label; color: root.serviceFilter === modelData.id ? Color.background : Color.foreground; font.pixelSize: Style.font.bodySmall }
-                                            MouseArea { anchors.fill: parent; onClicked: { root.serviceFilter = modelData.id; root.cursor = 0; root.activeConversationId = ""; root.refresh() } }
-                                        }
+                                    width: parent.width
+                                    Text {
+                                        text: "CONVERSATIONS"
+                                        color: Color.foreground
+                                        opacity: 0.68
+                                        font.pixelSize: Style.font.caption
+                                        font.bold: true
+                                    }
+                                    Item { width: parent.width - Style.space(120); height: 1 }
+                                    Text {
+                                        text: root.conversations.length
+                                        color: Color.foreground
+                                        opacity: 0.58
+                                        font.pixelSize: Style.font.caption
                                     }
                                 }
                                 TextField {
@@ -235,7 +390,6 @@ Panel {
                                     palette.base: Color.background
                                     palette.placeholderText: Color.foreground
                                     onTextChanged: { root.query = text; debounce.restart() }
-                                    Keys.onPressed: function(event) { if (event.key === Qt.Key_Escape) { focus = false; keyCatcher.forceActiveFocus(); event.accepted = true } }
                                 }
                                 Timer { id: debounce; interval: 180; onTriggered: root.refresh() }
                                 ListView {
@@ -283,7 +437,7 @@ Panel {
                         }
 
                         Rectangle {
-                            width: parent.width - Style.space(354)
+                            width: parent.width - serviceRail.width - conversationPane.width - Style.space(28)
                             height: parent.height
                             radius: Style.space(12)
                             color: Color.background
@@ -292,7 +446,7 @@ Panel {
                                 anchors.margins: Style.space(16)
                                 spacing: Style.space(12)
                                 Text {
-                                    text: root.activeConversationId ? "Conversation" : "Your messages, together"
+                                    text: root.activeConversationId ? root.activeConversationTitle() : "Your messages, together"
                                     color: Color.foreground; font.pixelSize: Style.font.title; font.bold: true
                                 }
                                 Text {
@@ -303,12 +457,9 @@ Panel {
                                 }
                                 Button {
                                     visible: !root.apiToken && root.backendService
-                                        && ["helper-missing", "build-error", "runtime-error", "stopped"].indexOf(root.backendService.status) !== -1
-                                    text: root.backendService && root.backendService.status === "stopped" ? "Start helper" : "Build helper"
-                                    onClicked: {
-                                        if (root.backendService.status === "stopped") root.backendService.startHelper()
-                                        else root.backendService.buildHelper()
-                                    }
+                                        && ["runtime-error", "stopped"].indexOf(root.backendService.status) !== -1
+                                    text: "Start helper"
+                                    onClicked: root.backendService.startHelper()
                                 }
                                 ListView {
                                     id: messageList
@@ -347,47 +498,61 @@ Panel {
             }
         }
     Rectangle {
+        id: composeScrim
+        anchors.fill: card
+        visible: root.composing
+        z: 2
+        color: Util.alpha(Color.background, 0.56)
+        MouseArea { anchors.fill: parent; onClicked: {} }
+    }
+    OmarchyUi.BorderSurface {
         id: composeDialog
         visible: root.composing
         z: 3
         anchors.centerIn: card
-        width: Style.space(420)
-        height: contentColumn.implicitHeight + Style.space(32)
+        width: Math.min(Style.space(440), card.width - Style.space(40))
+        height: contentColumn.implicitHeight + Style.space(36)
         radius: Style.cornerRadius
-        color: Color.background
-        border.color: Color.popups.border
-        border.width: Math.max(1, Style.space(1))
+        color: Color.popups.background
+        borderSpec: Border.localOrSurfaceSpec("popups", "border", Color.popups.border, Color.popups.border, Math.max(1, Style.space(1)))
+        padding: Style.space(18)
         Column {
             id: contentColumn
-            width: parent.width
-            anchors.centerIn: parent
-            anchors.margins: Style.space(16)
+            anchors.fill: parent
+            anchors.topMargin: composeDialog.contentTopInset
+            anchors.rightMargin: composeDialog.contentRightInset
+            anchors.bottomMargin: composeDialog.contentBottomInset
+            anchors.leftMargin: composeDialog.contentLeftInset
             spacing: Style.space(10)
-            Text { text: "New conversation"; color: Color.foreground; font.pixelSize: Style.font.title; font.bold: true }
-            ComboBox { id: composeService; width: parent.width; model: ["whatsapp", "telegram"] }
-            TextField { id: composeTitle; width: parent.width; placeholderText: "Contact or chat name"; palette.text: Color.foreground; palette.base: Color.background }
-            TextField { id: composeAccount; width: parent.width; placeholderText: "Account ID"; palette.text: Color.foreground; palette.base: Color.background }
+            Text { text: "New conversation"; color: Color.popups.text; font.pixelSize: Style.font.title; font.bold: true }
+            Text { text: "Choose a service and enter the account and contact details."; color: Color.popups.text; opacity: 0.72; font.pixelSize: Style.font.bodySmall; wrapMode: Text.WordWrap; width: parent.width }
+            OmarchyUi.Dropdown {
+                id: composeService
+                width: parent.width
+                showLabel: false
+                value: root.composeServiceId
+                options: [{ value: "whatsapp", label: "WhatsApp" }, { value: "telegram", label: "Telegram" }]
+                onChanged: function(value) { root.composeServiceId = value }
+            }
+            OmarchyUi.TextField {
+                id: composeTitle
+                width: parent.width
+                placeholderText: "Contact or chat name"
+                onAccepted: composeAccount.forceActiveFocus()
+            }
+            OmarchyUi.TextField {
+                id: composeAccount
+                width: parent.width
+                placeholderText: "Account ID"
+                onAccepted: root.createConversation()
+            }
             Row {
                 width: parent.width
+                anchors.right: parent.right
                 spacing: Style.space(8)
-                Button { text: "Cancel"; onClicked: root.composing = false }
-                Button {
-                    text: "Create"
-                    onClicked: {
-                        if (!composeTitle.text.trim() || !composeAccount.text.trim()) return
-                        var service = composeService.currentText
-                        var account = composeAccount.text.trim()
-                        var title = composeTitle.text.trim()
-                        root.request("POST", "/conversations", {
-                            "id": service + ":" + account + ":" + title,
-                            "accountId": account, "service": service, "title": title
-                        }, function() {
-                            root.composing = false
-                            composeTitle.text = ""
-                            root.refresh()
-                        })
-                    }
-                }
+                Item { width: parent.width - cancelButton.implicitWidth - createButton.implicitWidth - Style.space(8); height: 1 }
+                OmarchyUi.Button { id: cancelButton; text: "Cancel"; onClicked: root.handleEscape() }
+                OmarchyUi.Button { id: createButton; text: "Create"; selected: true; onClicked: root.createConversation() }
             }
         }
     }

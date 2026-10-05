@@ -1,35 +1,33 @@
 # OmaMessenger
 
-OmaMessenger is an Omarchy-native, keyboard-first messaging panel. Its Quickshell UI and Go helper communicate through a loopback HTTP API. The helper owns persistence and the protocol adapter boundary; the panel uses normalized accounts, conversations, and messages.
+OmaMessenger is an Omarchy-native, keyboard-first messaging client. Omarchy summons its normal, non-modal Quickshell window; the UI and Go helper communicate through a loopback HTTP API. The helper owns persistence and the protocol adapter boundary; the client uses normalized accounts, conversations, and messages.
 
 ## Current status
 
-The repository contains the Omarchy panel, keyboard navigation, a local Go API, and SQLite storage. The shell starts the Go helper as a child process after the user builds it once from the panel. The current service stores accounts and messages locally. WhatsApp and Telegram protocol adapters, QR/code authentication, remote conversation sync, and delivery are not connected yet; messages sent through this scaffold are local records. It cannot replace the desktop clients until those adapters work end to end.
+The repository contains the Omarchy plugin entry point, keyboard navigation, a local Go API, and SQLite storage. The entry point opens a standard Hyprland-managed window that can be moved, closed, or left on another workspace. The shell starts the bundled Go helper as a child process automatically. The current service stores accounts and messages locally. WhatsApp and Telegram protocol adapters, QR/code authentication, remote conversation sync, and delivery are not connected yet; messages sent through this scaffold are local records. It cannot replace the desktop clients until those adapters work end to end.
 
 The planned Go clients are `whatsmeow` for WhatsApp and `gotd/td` for Telegram. Media and reactions follow a reliable text workflow.
 
 ## Requirements
 
 - Omarchy with `omarchy-shell` and the third-party plugin manager
-- Go 1.23 or newer to build the helper (dependencies are vendored)
+- Linux x86_64 or ARM64
 
 ## Install on Omarchy
 
-After this repository has a public Git remote, install the plugin with Omarchy:
+Install the plugin with Omarchy:
 
 ```sh
-omarchy plugin add https://github.com/OWNER/omamessenger --enable
+omarchy plugin add https://github.com/timlittle/omamessenger --enable
 ```
 
-Open OmaMessenger:
+Open or focus OmaMessenger:
 
 ```sh
 omarchy-shell shell summon io.github.omamessenger '{}'
 ```
 
-On first launch, choose **Build helper**. This compiles the vendored Go source in the installed plugin directory and starts it under `omarchy-shell`. Future shell starts launch the built helper automatically. If Go is missing, install it with `omarchy pkg add go`, then choose **Build helper** again. There is no separate installer or systemd unit.
-
-This workspace does not have a configured Git remote, so replace `OWNER` with the actual repository owner after publishing it.
+The bundled helper starts automatically when the plugin loads in `omarchy-shell`; no Go compiler or separate service setup is needed. The binaries currently target Linux x86_64 and ARM64. There is no separate installer or systemd unit.
 
 Remove the plugin with:
 
@@ -75,25 +73,39 @@ go run -buildvcs=false ./backend
 
 The API is rooted at `http://127.0.0.1:43821/api/v1`; authenticated requests use `Authorization: Bearer <token>`. `POST /events/message` is the normalized incoming-message boundary for future connectors and triggers a desktop notification.
 
-Validate the plugin and QML on Omarchy:
+The root Makefile provides the regular development workflow:
 
 ```sh
-omarchy plugin validate .
-qmllint -I "$OMARCHY_PATH/shell" Panel.qml Service.qml
+make help             # list all targets
+make build            # build the helper for this machine
+make test             # build, run backend/keyboard tests, coverage, and lint
+make status           # inspect the current worktree
+make pull             # fast-forward from the configured upstream
+make install-local    # copy this checkout into Omarchy and enable it
 ```
 
-Then rescan and open it:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for project boundaries, the test map, UI review guidance, and pull request expectations. `AGENTS.md` contains the working rules used by both human and AI contributors.
+
+`make test` requires Go, Node, and QML lint tools. The Go API and SQLite tests run in process with temporary databases. `make coverage` enforces at least 80% statement coverage for core Go code, excluding only `main()` process startup wiring. `make test` does not launch a compositor or verify rendered pixels; inspect visual changes on Omarchy with `make install-local`.
+
+`make install-local` builds the native helper, stages the plugin runtime files into `~/.config/omarchy/plugins/io.github.omamessenger/`, validates it, asks the running Omarchy shell to rescan, and enables the plugin. Then open it with `omarchy-shell shell summon io.github.omamessenger '{}'`. This installs your current working tree so you can try changes before pushing.
+
+Build both bundled Linux helper binaries from source with Go 1.23 or newer:
 
 ```sh
-omarchy-shell shell rescanPlugins
-omarchy-shell shell summon io.github.omamessenger '{}'
+./scripts/build-release.sh
 ```
+
+GitHub Actions rebuilds and commits the bundled binaries when backend source changes on `main`. Pushing a `v*` tag also creates a GitHub Release with both architecture builds attached. The repository’s Actions workflow permissions must allow read and write access to contents for the binary commit and release steps. Plugin installs use the binaries tracked in the repository, so no release download or first-run setup is needed.
 
 ## Architecture
 
 - `backend/`: Go HTTP API, normalized domain, SQLite persistence, and connector boundary
 - `Panel.qml`: Omarchy-summoned Quickshell panel
-- `Service.qml`: shell-owned Go helper lifecycle and explicit first build
+- `Service.qml`: shell-owned Go helper lifecycle and automatic startup
+- `bin/`: bundled Linux x86_64 and ARM64 helpers plus architecture selector
+- `scripts/build-release.sh`: offline cross-build for bundled helpers
+- `Makefile`: build, test, coverage, validation, local install, status, and pull targets
 - `manifest.json`: Omarchy plugin manifest
 - `vendor/`: pinned Go dependencies for offline builds
 
