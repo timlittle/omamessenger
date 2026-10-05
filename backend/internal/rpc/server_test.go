@@ -274,3 +274,38 @@ func TestEmitAndWriteErrors(t *testing.T) {
 		t.Error("unencodable event data was accepted")
 	}
 }
+
+// blockingReader never returns from Read and cannot be closed, like a read
+// from a pipe that closing os.Stdin does not interrupt.
+type blockingReader struct{ entered, release chan struct{} }
+
+func (r blockingReader) Read([]byte) (int, error) {
+	select {
+	case r.entered <- struct{}{}:
+	default:
+	}
+	<-r.release
+	return 0, io.EOF
+}
+
+func TestServeStopsOnCancelEvenIfReadNeverReturns(t *testing.T) {
+	reader := blockingReader{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	defer close(reader.release)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Serve(ctx, reader, NewStream(io.Discard), echoHandler(), nil) }()
+	select {
+	case <-reader.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve never started reading")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve after cancel = %v, want nil", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve waited for a read that never returns instead of honouring cancel")
+	}
+}

@@ -655,7 +655,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - Demo connectors refuse work when stopped or cancelled, reject a second `Run`, and reject unknown conversations.
 - found: demo chatter was a package-level global (`demo.SetChatter`, reset by every `demo.New`), so two demo suites in one process interfered. It now lives on the per-helper `suite` and is set through `(*demo.Injector).SetChatter`. `accountFor` was dead code and is removed.
 
-### [ ] R06 · Helper main (M)  (formerly A11)
+### [x] R06 · Helper main (M)  (formerly A11)
 - deps: R05, R05b, A10
 - files: backend/main.go (rewrite), backend/config.go, backend/main_test.go (replace)
 - do:
@@ -668,6 +668,9 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - Privacy test: the captured stderr from that run contains none of the C5 seed message texts, contact names or conversation titles.
   - `go run -mod=vendor ./tools/omalint ./backend/` reports nothing. Today `run` takes 6 parameters; bundle stdin/stdout/stderr into an `ioStreams` struct.
 - verify: `go test -mod=vendor -race ./backend/`
+- result: the structure is `run(ctx, ioStreams, args, env)` → `serve` → `wire`; omalint is clean for the whole repo; `backend` coverage is 90.5 %. One protocol client drives both the built binary and in-process `run` through `exerciseProtocol`. It calls every C3 method (including a real failed-then-retried send to Sam) and checks `not_found`, `bad_request` and `unknown_method`. Both paths assert that stderr carries no seed content or database path. The startup line is `OmaMessenger helper <version> started (demo: <bool>)`.
+- fixed (bug): shutdown ordering. `defer cancel()` was registered before `defer manager.Wait()`, so when `rpc.Serve` returned an error (stdout broken because the UI died), Wait ran first and the helper hung forever. Regression test: `TestRunReturnsWhenOutputBreaks`.
+- fixed (bug): the helper did not exit on SIGTERM. `rpc.Serve` relied on closing stdin to unblock its read, but closing `os.Stdin` does not interrupt a read already blocked on a pipe. `Serve` now reads on its own goroutine (`readLines`) and selects on the context. Regression tests: `TestServeStopsOnCancelEvenIfReadNeverReturns` (rpc) and `TestBuiltHelperExitsCleanlyOnSIGTERM` (real process).
 
 ### [ ] R07 · Launcher prefers dev build (S)  (formerly A12)
 - deps: GA

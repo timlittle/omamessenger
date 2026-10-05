@@ -38,7 +38,7 @@ graph TD
 
 | package | Ca | Ce | I | A | distance | LCOM4 |
 |---|---:|---:|---:|---:|---:|---|
-| `backend (main)` | 0 | 7 | 1.00 | 0.00 | 0.00 | Config:0, discardWriter:1 |
+| `backend (main)` | 0 | 7 | 1.00 | 0.00 | 0.00 | Config:0, discardWriter:1, ioStreams:0 |
 | `api` | 1 | 3 | 0.75 | 1.00 | 0.75 | — |
 | `app` | 2 | 3 | 0.60 | 0.19 | 0.21 | Commands:1, Config:0, ContactsListParams:0, ConversationParams:0, ConversationsListParams:0, FocusParams:0, HelloResult:0, Ingest:1, InjectParams:0, MessagesListParams:0, MessagesListResult:0, OpenConversationParams:0, RetryParams:0, SendMessageParams:0, SetMutedParams:0, SettingsParams:0, publisher:1, session:1, settings:0, typingEvent:0, unreadEvent:0 |
 | `app/policy` | 1 | 1 | 0.50 | 0.00 | 0.50 | Input:0 |

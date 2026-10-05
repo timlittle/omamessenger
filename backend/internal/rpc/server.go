@@ -99,15 +99,44 @@ func Serve(ctx context.Context, r io.Reader, out *Stream, h Handler, coder Error
 		coder = internalOnly
 	}
 	sess := &session{ctx: ctx, stream: out, handler: h, coder: coder}
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 4096), maxLineBytes)
-	for ctx.Err() == nil && scanner.Scan() {
-		if err := sess.handleLine(scanner.Bytes()); err != nil {
-			sess.wait()
-			return err
+	lines, readErr := readLines(ctx, r)
+	for {
+		select {
+		case <-ctx.Done():
+			return sess.finish(nil)
+		case line, ok := <-lines:
+			if !ok {
+				return sess.finish(<-readErr)
+			}
+			if err := sess.handleLine(line); err != nil {
+				sess.wait()
+				return err
+			}
 		}
 	}
-	return sess.finish(scanner.Err())
+}
+
+// readLines scans r on its own goroutine so that Serve can honour
+// cancellation even when a read never returns: closing os.Stdin does not
+// interrupt a read already blocked on a pipe. lines is closed at EOF or on a
+// read error, which is then sent on readErr.
+func readLines(ctx context.Context, r io.Reader) (<-chan []byte, <-chan error) {
+	lines := make(chan []byte)
+	readErr := make(chan error, 1)
+	go func() {
+		defer close(lines)
+		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 4096), maxLineBytes)
+		for scanner.Scan() {
+			select {
+			case lines <- append([]byte(nil), scanner.Bytes()...):
+			case <-ctx.Done():
+				return
+			}
+		}
+		readErr <- scanner.Err()
+	}()
+	return lines, readErr
 }
 
 func internalOnly(error) (string, string) { return "internal", "internal error" }
@@ -143,7 +172,7 @@ type session struct {
 // handleLine answers malformed and unknown requests directly and starts a
 // goroutine for the rest. Only a failed direct write is returned.
 func (sess *session) handleLine(raw []byte) error {
-	req, err := decodeRequest(append([]byte(nil), raw...))
+	req, err := decodeRequest(raw)
 	if err != nil {
 		return sess.stream.write(errorFrame(0, "bad_request", errMalformedRequest.Error()))
 	}
