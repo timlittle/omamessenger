@@ -24,15 +24,18 @@ OmaMessenger is an Omarchy third-party Quickshell plugin backed by a Go helper p
 
 ## Layout
 
-- `Panel.qml`, `manifest.json`: Omarchy plugin entry point and panel UI.
+- `manifest.json`: Omarchy entry points under `ui/` (target layout in C1).
+- `ui/Service.qml`, `ui/Panel.qml`, `ui/BarWidget.qml`: shell lifecycle, window and bar widget.
+- `ui/service/`, `ui/controllers/`, `ui/components/`, `ui/lib/`: helper/RPC state, UI actions, views and pure logic.
 - `backend/`: Go JSON-lines helper, normalized domain, persistence, and service connectors.
-- `tests/`: pure logic and isolated compositor checks.
-- `scripts/`: build, test, coverage, and local installation helpers.
-- `Service.qml`: shell-owned lifecycle for the Go helper.
+- `tests/unit/`, `tests/qml/`, `tests/e2e/`: pure logic, offscreen QML and isolated compositor checks.
+- `scripts/`, `tools/`: build/test/install helpers and checked architecture, coverage and docs rules.
 - `vendor/`: vendored Go dependencies used to produce release binaries offline.
 - `bin/`: bundled Linux helper binaries and architecture-selecting launcher.
 - `scripts/build-release.sh`: reproducible cross-build for supported Linux architectures.
 
+The repository still has the original root-level `Panel.qml`, `Service.qml` and `keyboard.js` scaffold. Phase B migrates these into the `ui/` layout and removes the old files.
+
 ## Development
 
-The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries. On Omarchy, use `omarchy plugin validate .`, `qmllint -I "$OMARCHY_PATH/shell" Panel.qml`, and the Go build command when the user requests validation or the implementation task calls for it.
+The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries. On Omarchy, use `omarchy plugin validate .` and `make lint` when validation is requested. Phase B replaces the transitional QML lint command with `/usr/lib/qt6/bin/qmllint` and a Quickshell import directory prepared by `scripts/qml-imports.sh`.

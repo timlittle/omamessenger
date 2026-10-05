@@ -222,7 +222,7 @@ func TestAppMethodsAndConversationWorkflow(t *testing.T) {
 		t.Errorf("Inject without demo injector error = %v", err)
 	}
 	f.app.DemoInject = testInjector{}
-	injected, err := f.app.Inject(context.Background(), app.InjectParams{ConversationID: "remote-chat"})
+	injected, err := f.app.Inject(context.Background(), app.InjectParams{ConversationID: "chat"})
 	if err != nil || injected.Text != "injected" {
 		t.Errorf("Inject() = %#v, %v", injected, err)
 	}

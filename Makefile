@@ -38,19 +38,19 @@ test: ## Build and run backend, keyboard, coverage, and lint checks
 	+$(MAKE) coverage
 	+$(MAKE) lint
 
-test-unit: ## Run Go store/token tests and keyboard logic tests
-	$(GO) test -mod=vendor ./backend -run '^TestStoreAndTokenHelpers$$'
-	$(NODE) tests/unit/keyboard.test.cjs
+test-unit: ## Run backend tests and keyboard/launcher logic tests
+	$(GO) test -mod=vendor ./backend/...
+	$(NODE) --test tests/unit/*.test.cjs
 
-test-integration: ## Run API, SQLite persistence, auth, unread and search integration tests
-	$(GO) test -mod=vendor ./backend -run '^TestAPIEndToEndPersistenceSearchUnreadAndAuth$$'
+test-integration: ## Run backend integration tests with the race detector
+	$(GO) test -mod=vendor -race ./backend/...
 
 coverage: ## Enforce at least 80% core Go coverage (process bootstrap excluded)
-	$(GO) test -mod=vendor -coverprofile=$(COVERAGE_FILE) ./backend
+	$(GO) test -mod=vendor -coverprofile=$(COVERAGE_FILE) ./backend/...
 	python3 scripts/check-coverage.py $(COVERAGE_FILE) $(COVERAGE_MIN)
 
 lint: ## Check Go formatting, shell scripts, QML, and patch whitespace
-	@test -z "$$(gofmt -l backend/*.go)" || { echo "Go files are not formatted; run gofmt -w backend/*.go."; exit 1; }
+	@test -z "$$(gofmt -l backend)" || { echo "Go files are not formatted; run gofmt -w backend."; exit 1; }
 	bash -n scripts/*.sh tests/e2e/*.sh
 	qmllint -I tests/e2e/mocks Panel.qml Service.qml tests/e2e/shell.qml
 	git --no-pager diff --check

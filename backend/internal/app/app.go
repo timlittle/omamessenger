@@ -365,21 +365,16 @@ func (a *App) Inject(_ context.Context, params InjectParams) (domain.Message, er
 	if !a.Demo || a.DemoInject == nil {
 		return domain.Message{}, ErrUnknownMethod
 	}
-	message, err := a.DemoInject.Inject(params.ConversationID)
+	conversation, err := a.Store.Conversation(params.ConversationID)
+	if err != nil {
+		return domain.Message{}, err
+	}
+	message, err := a.DemoInject.Inject(conversation.RemoteID)
 	if err != nil {
 		return message, err
 	}
-	conversations, err := a.Store.Conversations("")
-	if err != nil {
-		return message, err
-	}
-	for _, conversation := range conversations {
-		if conversation.RemoteID != params.ConversationID {
-			continue
-		}
-		if stored, err := a.Store.MessageByRemote(conversation.ID, message.RemoteID); err == nil {
-			return stored, nil
-		}
+	if stored, err := a.Store.MessageByRemote(conversation.ID, message.RemoteID); err == nil {
+		return stored, nil
 	}
 	return message, nil
 }

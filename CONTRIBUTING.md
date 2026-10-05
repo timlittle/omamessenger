@@ -31,7 +31,7 @@ Run the relevant test once against the failing behavior before fixing it when pr
 make test
 ```
 
-This includes the 80% core Go statement coverage gate, API and persistence integration tests, keyboard logic tests, and lint. It does not start a compositor or claim to verify rendered QML. Review visual changes on Omarchy with `make install-local`, using both keyboard and mouse.
+This includes the 80% core Go statement coverage gate, JSON-lines RPC and persistence tests, keyboard logic tests, and lint. It does not start a compositor or claim to verify rendered QML. Review visual changes on Omarchy with `make install-local`, using both keyboard and mouse.
 
 
 ## Checking visual changes

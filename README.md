@@ -45,6 +45,8 @@ go run -mod=vendor ./backend --demo --no-chatter --seed 1 --data-dir "$(mktemp -
 
 The helper reads one JSON request per line from stdin and writes responses and events to stdout. `--demo` uses `demo.db`; normal mode uses `messages.db`. Both live under `${XDG_DATA_HOME:-$HOME/.local/share}/omamessenger/` unless `--data-dir` or `--db` is supplied. Data is private to the current user. No bearer token, TCP listener, or system service is used.
 
+An earlier scaffold used `~/.config/omamessenger/messages.db` and `api.token`; those files are not migrated. You may remove them if you no longer need that scaffold data.
+
 The demo seeds three local accounts and eleven conversations each time it starts; stable remote IDs prevent duplicate messages. `--seed N` makes scripted chatter deterministic, while `--no-chatter` disables unsolicited demo messages. This mode never logs message contents or credentials.
 
 ## Keyboard shortcuts

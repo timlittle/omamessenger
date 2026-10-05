@@ -168,7 +168,7 @@ func TestRegisterAndServeC3MethodsOverPipe(t *testing.T) {
 		{10, "contacts.list", `{"accountId":"wa","query":"new"}`},
 		{11, "ui.setFocus", `{"conversationId":"chat","windowActive":true}`},
 		{12, "settings.apply", `{"notifications":true,"notificationPreview":false,"demoChatter":false}`},
-		{13, "demo.inject", `{"conversationId":"remote-chat"}`},
+		{13, "demo.inject", `{"conversationId":"chat"}`},
 		{14, "method.does.not.exist", `{}`},
 		{15, "messages.list", `{"conversationId":"chat","limit":201}`},
 		{16, "conversations.markRead", `{"conversationId":"missing"}`},

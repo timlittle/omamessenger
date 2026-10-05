@@ -39,4 +39,4 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 
 ## Current gap
 
-The UI, API, persistence, and Omarchy plugin/helper lifecycle scaffold exist. Remote account authentication, synchronization, delivery, incoming updates, and notifications are not implemented yet. Do not describe this scaffold as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.
+The UI, JSON-lines IPC, persistence, and Omarchy plugin/helper lifecycle scaffold exist. The seeded demo exercises local sending, scripted delivery states, incoming replies, unread counts, and desktop notifications. Real account authentication, synchronization, delivery, and incoming updates are not implemented yet. Do not describe this scaffold as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.

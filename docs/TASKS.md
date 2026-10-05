@@ -12,21 +12,29 @@ Contracts (§2) are normative: tasks reference them instead of restating them.
 5. Never log message text, contact names, credentials, QR data or session keys (stderr included).
 6. Go: `gofmt`, `go vet` clean; build with `-mod=vendor` (see F9). QML JS libraries: see C8.
 7. Status markers: `[ ]` todo, `[x]` done, `[~]` partially done (the note says what remains).
-8. Every phase ends with a gate task (`GA`, `GR`, `GB`, `GQ`, `GD`). No task in a later phase may start until the previous gate is `[x]`. A gate is checked only when every item in §0.1 and the gate's own list passes. If a check fails, fix the cause in the owning task (re-open it as `[~]`); never weaken a check to pass a gate.
-9. Respect C10 (architecture rules). A change that needs a new import edge or a bigger file must first update C10 in this file, with the reason.
+8. Every phase ends with a gate task (`GA`, `GR`, `GB`, `GQ`, `GD`). No task in a later phase may start until the previous gate is `[x]`. A gate is checked only when every item in §0.1 and the gate's own list passes. A gate may scope a check to the code that exists at that phase and name the later gate that will enforce its full form. If a check fails, fix the cause in the owning task (re-open it as `[~]`); never waive a check permanently.
+9. Respect C10. Its rules are enforced **in code**: Go analyzers (`tools/omalint`), architecture tests (`backend/internal/archtest`), a tested UI linter (`tools/uilint`) and docs checks (`tools/docscheck`), not ad-hoc shell scripts. A change that needs a new import edge, a higher limit or a suppression must first update C10 and the rule table in code, with the reason.
+10. Suppressions are rare and explicit: `//omalint:ignore <rule> <reason>` (Go) or `// uilint-ignore <rule> <reason>` (QML/JS) on the line above. The reason is mandatory, and there are at most 5 suppressions per language, both enforced in code.
 
 ### 0.1 Definition of Done (every gate)
 
 - D1 All tasks in the phase are `[x]`; none is `[~]`.
-- D2 `gofmt -l backend` is empty; `go vet -mod=vendor ./backend/...` is clean.
-- D3 `go test -mod=vendor -race -count=3 ./backend/...` passes (3 runs catch flaky timing).
-- D4 `scripts/check-coverage.sh` passes the C9 gates.
-- D5 `scripts/check-architecture.sh` reports zero violations (C10).
+- D2 `gofmt -l backend tools` is empty; `go vet -mod=vendor ./...` is clean.
+- D3 `go test -mod=vendor -race -count=3 ./backend/... ./tools/...` passes (3 runs catch flaky timing).
+- D4 Coverage gates pass: `go run -mod=vendor ./tools/covergate build/cover.out` and the JS coverage flags in C9.
+- D5 Rules in code pass with zero findings: `go run -mod=vendor ./tools/omalint ./backend/... ./tools/...`, `go test -mod=vendor ./backend/internal/archtest/`, `npm --prefix tools/uilint run lint`. The tools' own tests pass too (they run under `go test ./...` and `npm --prefix tools/uilint test`).
 - D6 Every behaviour change has a test at the narrowest layer (CONTRIBUTING test map); the total test count never drops from the previous gate. Record it in the gate note: `go test -mod=vendor -json ./backend/... | grep -c '"Action":"pass","Package":"[^"]*","Test"'` plus `node --test` totals.
 - D7 Fuzz targets each run 30 s without failure: `go test -mod=vendor -run=^$ -fuzz=<Target> -fuzztime=30s <pkg>`, once per target.
 - D8 Clean-checkout build: `git stash -u` is forbidden. Instead run `git worktree add ../oma-gate HEAD` after committing, then run the phase's test command inside it, then `git worktree remove ../oma-gate`. This catches files that are only present untracked.
 - D9 `git grep -nE 'TODO|FIXME|XXX' -- backend ui scripts tests` lists only lines that name a task ID (e.g. `TODO(D14)`).
-- D10 Docs touched by the phase (README, CONTRIBUTING, AGENTS.md, this file's contracts) match the code.
+- D10 Docs checks in code pass: `make docs-check` (R08, B15). It catches generated docs that are stale, contracts that disagree with the code tables, broken links, paths that don't exist, unknown `make` targets and unknown flags.
+- D11 Docs reviewed and up to date. Add this table to the gate note, one row per document in the inventory below: `| doc | reviewed at <commit sha> | result: updated / no change needed | what changed |`. The reviewer reads each document in full against the code and confirms that every statement about behaviour, commands, paths, shortcuts, settings, data locations and project status is true. In particular:
+  - The FORGE_SPEC.md `Status` and `Current gap` and the README `Current status` describe only what works now (no connector claims before GD).
+  - CONTRIBUTING's test map names the current test layers and commands.
+  - AGENTS.md layout matches C1.
+  - This file's §1 facts are still true and its §2 contracts match the code.
+
+  Inventory: README.md, CONTRIBUTING.md, AGENTS.md, FORGE_SPEC.md, .agents/README.md, docs/TASKS.md (§0–§2), docs/KEYS.md, docs/PROTOCOL.md, docs/ARCHITECTURE.md. Files that don't exist yet are marked `n/a`.
 
 Task format:
 ```
@@ -48,7 +56,7 @@ Task format:
 - F6 Bar widget: get the service with `bar.shell.serviceFor("io.github.omamessenger")` and open the window with `bar.shell.toggle("io.github.omamessenger", "{}")`. Plugin settings arrive on the widget's `settings` property, not on the service; the widget forwards them with `service.applySettings(settings)`.
 - F7 `Service.qml` must declare **no `required` properties**; the plugin fails to load otherwise.
 - F8 Omarchy hot-reloads plugin code on any file write under `~/.config/omarchy/plugins/`. Keep databases and runtime files outside the plugin dir.
-- F9 `vendor/` is tracked. Deleting it needs the owner's approval, so keep building with `-mod=vendor`. Adding a Go dependency requires `go mod vendor` (or owner approval to drop vendoring).
+- F9 `vendor/` is tracked. Deleting it needs the owner's approval, so keep building with `-mod=vendor`. Adding a Go dependency requires `go mod vendor` (or owner approval to drop vendoring). R01a adds `golang.org/x/tools` this way (network needed once).
 - F10 Quickshell `Process`: set `stdinEnabled: true` and use `write(string)` to send; parse stdout with `stdout: SplitParser { onRead: function(line) {...} }`.
 - F11 Resolve the plugin's own files from QML with `Qt.resolvedUrl("../bin/oma-messenger-service")` and strip the `file://` prefix. This works for both installed copies and symlinked dev checkouts.
 - F12 Omarchy `Style` tokens: `Style.space(px)`, `Style.font.{caption,bodySmall,body,subtitle,title,heading,display}`, `Style.spacing.*`, `Style.hoverFill`, `Style.selectedFill`, `Style.selectedFillAlpha`, `Style.cornerRadius`. `Color.{foreground,background,accent,urgent,muted}`, `Color.popups.{background,text,border}`. Helper: `Util.alpha(color, a)`. Omarchy `qs.Ui` controls: `Button`, `TextField`, `Dropdown`, `Toggle`, `BarWidget`, `BarIconButton`, `Panel`, `BorderSurface`.
@@ -82,7 +90,14 @@ bin/dev/                      gitignored local builds
 tests/unit/                   node:test files + load.cjs
 tests/qml/                    quickshell offscreen harness
 tests/e2e/                    Docker headless Hyprland
-docs/KEYS.md                  generated from ui/lib/Keymap.js
+docs/KEYS.md                  generated from ui/lib/Keymap.js (also mirrored into README between markers)
+docs/PROTOCOL.md              generated from the api method/event descriptors
+docs/ARCHITECTURE.md          generated by archtest: dependency graph + coupling/cohesion metrics
+tools/omalint/                Go analyzers (go/analysis) enforcing C10; rule tables in tools/omalint/rules/rules.go
+tools/covergate/              per-package coverage gate (thresholds table in code)
+tools/docscheck/              docs-vs-code checks and generators
+tools/uilint/                 ESLint config + QML rules + keys doc generator (node, pinned dev deps)
+backend/internal/archtest/    test-only package: coupling and cohesion tests over the real module
 ```
 
 ### C2 · Storage
@@ -152,7 +167,7 @@ type Authenticator interface { BeginAuth(ctx context.Context, sink AuthSink) err
 ```
 The Manager depends on `type AccountStore interface { UpsertAccount(domain.Account) error; SetAccountStatus(id, status, detail string) (domain.Account, error) }`, declared in `connector`. It never imports `store`.
 
-Manager: upserts each `Account()` into the store, runs each connector in its own goroutine, and restarts it when `Run` returns an error. Backoff is 1s, 2s, 5s, 15s, then 60s capped, reset after 5 minutes connected. Before each wait it sets status `error` with `detail = err.Error()`. `Send`/`MarkRead` route by `AccountID`.
+Manager: target after R03, it takes the consumer-side `AccountStore` interface and upserts each `Account()`, runs each connector in its own goroutine, and restarts it when `Run` returns an error. Backoff is 1s, 2s, 5s, 15s, then 60s capped, reset after 5 minutes connected. Before each wait it sets status `error` with `detail = err.Error()`. `Send`/`MarkRead` route by `AccountID`. Phase A currently uses `*store.Store`; R03 removes that dependency.
 
 ### C5 · Demo connector (`--demo`)
 Accounts: `wa-personal` (whatsapp, "Personal"), `tg-personal` (telegram, "Personal"), `tg-work` (telegram, "Work").
@@ -258,15 +273,34 @@ Key spec syntax:
 - Every `.qml` under `ui/` passes Qt6 qmllint with the C9 import dir.
 
 ### C9 · Test commands
-- `make test`: `test-go test-js lint test-qml`. `test-e2e` (Docker) is separate.
-- `test-go`: `go test -mod=vendor -race -coverprofile=build/cover.out ./backend/...`, then `scripts/check-coverage.sh build/cover.out`. Per-package statement gates: `domain`, `app/policy` 100 %; `store`, `rpc`, `api`, `app`, `connector`, `connector/demo` ≥ 90 %; `notify` ≥ 75 %; `backend` (main) excluded only for `func main`.
-- `test-js`: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 tests/unit/` (Node ≥ 22.8).
-- `lint`: `gofmt -l backend` (must be empty), `go vet -mod=vendor ./backend/...`, `scripts/check-architecture.sh`, `scripts/qml-imports.sh` (creates `build/qml/qs/{Commons,Ui}` symlinks to `${OMARCHY_PATH:-/usr/share/omarchy}/shell/…`), `/usr/lib/qt6/bin/qmllint -I build/qml $(find ui -name '*.qml')`, `scripts/check-source.sh`, `bash -n scripts/*.sh tests/*/*.sh`.
-- `test-qml`: `tests/qml/run.sh` (task B23).
-- `mutation` (gate GQ only, not in `make test`): mutation testing of `domain`, `store`, `app`, `app/policy`, `api` (task Q07).
 
-### C10 · Architecture rules (machine-checked by `scripts/check-architecture.sh`)
-Allowed imports of `github.com/timlittle/omamessenger/...` packages (anything not listed is a violation; stdlib is always allowed):
+These are target commands for the completed Phase R/B harness. The current pre-R scaffold has a smaller Makefile; R01e and B19–B23 bring it into line before GR/GB.
+
+- `make test`: `test-go test-js lint docs-check test-qml`. `test-e2e` (Docker) and `mutation` are separate.
+- `test-go`: `go test -mod=vendor -race -coverprofile=build/cover.out ./backend/... ./tools/...`, then `go run -mod=vendor ./tools/covergate build/cover.out`. Gates live in `tools/covergate` as a table (single source; docscheck verifies this list matches):
+  - 100 %: `domain`, `app/policy`
+  - ≥ 90 %: `store`, `rpc`, `api`, `app`, `connector`, `connector/demo`, every `tools/*` package
+  - ≥ 75 %: `notify`
+  - `backend` (main): only `func main` is excluded, detected by AST.
+- `test-js`: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 tests/unit/` (Node ≥ 22.8), then `npm --prefix tools/uilint test`.
+- `lint`:
+  - `gofmt -l backend tools` (must be empty); `go vet -mod=vendor ./...`
+  - `go run -mod=vendor ./tools/omalint ./backend/... ./tools/...`
+  - `npm --prefix tools/uilint run lint`
+  - `scripts/qml-imports.sh` (creates `build/qml/qs/{Commons,Ui}` symlinks to `${OMARCHY_PATH:-/usr/share/omarchy}/shell/…`)
+  - `/usr/lib/qt6/bin/qmllint -I build/qml $(find ui -name '*.qml')` (settings in `ui/.qmllint.ini`)
+  - `bash -n scripts/*.sh tests/*/*.sh`
+- `docs-check`: `go test -mod=vendor ./tools/docscheck/ && node tools/uilint/gen-keys.cjs --check`.
+- `test-qml`: `tests/qml/run.sh` (task B23).
+- `mutation` (gate GQ only): mutation testing of `domain`, `store`, `app`, `app/policy`, `api` (task Q07).
+
+### C10 · Architecture, complexity, coupling and cohesion rules (enforced in code after Phase R)
+
+The table below is the target rule set. Phase A intentionally violates the `connector → store` and `rpc → app/store` edges and app size/cohesion limits; R01a–R05 add enforcement and remove these known violations before any UI phase begins.
+
+Every rule below has exactly one enforcing check, named in the right-hand column. Thresholds live in code (`tools/omalint/rules/rules.go`, `tools/uilint/rules.cjs`). `tools/docscheck` fails if these tables and the code disagree.
+
+**Layering** (allowed internal imports; stdlib always allowed; anything unlisted is a violation) — `omalint/layering`
 
 | package | may import |
 |---|---|
@@ -274,26 +308,48 @@ Allowed imports of `github.com/timlittle/omamessenger/...` packages (anything no
 | `backend/internal/store` | domain (+ `modernc.org/sqlite`) |
 | `backend/internal/connector`, `connector/clocktest` | domain |
 | `backend/internal/connector/demo` | connector, domain |
+| `backend/internal/connector/connectortest` | connector, domain, connector/clocktest (added by D00) |
 | `backend/internal/notify` | — |
 | `backend/internal/app/policy` | domain |
 | `backend/internal/app` | domain, connector, app/policy |
 | `backend/internal/rpc` | — |
 | `backend/internal/api` | app, rpc, domain |
 | `backend` (main) | any internal package |
+| `tools/*` | no `backend/internal/*` package except `tools/docscheck` → api (descriptors only) |
 
-Test files (`_test.go`) may additionally import `store`, `notify`, `connector/clocktest` and `connector/demo`.
+Test files (`_test.go`) may additionally import `store`, `notify`, `connector/clocktest`, `connector/demo` and `connector/connectortest`.
 
-Size and shape limits (non-test files):
-- Go file ≤ 400 lines; Go function ≤ 60 lines; ≤ 5 parameters per function (use a params struct).
-- QML file ≤ 350 lines; JS library ≤ 300 lines.
+**Complexity and size** (non-test code)
 
-Dependency direction:
-- Constructors take interfaces declared by the consumer (`app/ports.go`, `connector.AccountStore`), never concrete types from another internal package. `main` is the only place where concrete types meet.
+| metric | Go — `omalint/size`, `omalint/complexity` | JS in `ui/lib` — ESLint | JS inside QML — `uilint/qml` |
+|---|---|---|---|
+| cyclomatic complexity per function | ≤ 10 | ≤ 8 | ≤ 8 |
+| max nesting depth | ≤ 4 | ≤ 4 | ≤ 4 |
+| function length (lines) | ≤ 60 | ≤ 50 | ≤ 40 |
+| parameters | ≤ 5 | ≤ 5 | ≤ 5 |
+| file length (lines) | ≤ 400 | ≤ 300 | QML file ≤ 350 |
 
-UI rules (checked by `scripts/check-source.sh`):
-- `ui/components/*.qml` must not contain `service` or `request(`.
-- Only `ui/controllers/*.qml` and `ui/service/*.qml` may contain `request(`.
-- `ui/lib/*.js` must not contain `Qt.` except key constants in `Keymap.js`.
+Cyclomatic complexity = 1 + each `if`, `for`, `range`, non-default `case`, `comm` clause, `&&`, `||` (Go); ESLint's `complexity` rule (JS).
+
+**Coupling** — `archtest` (tests over the real module using `golang.org/x/tools/go/packages`)
+- Efferent coupling Ce (internal packages imported) ≤ 4 for every package except `backend` (main).
+- Stable Dependencies Principle: for every internal edge A → B, instability I(B) ≤ I(A), where I = Ce / (Ca + Ce); a package with Ca + Ce = 0 has I = 0.
+- No package named `util`, `utils`, `common`, `helpers`, `misc`, `shared` or `base`.
+- Dependency inversion — `omalint/dip`: exported `New*` functions in `backend/internal/...` take parameters from other internal packages only when they are interfaces or `domain` value types (no `*store.Store`, `*connector.Manager`, ...). `main` is the only place where concrete types meet.
+- Frozen interfaces — `omalint/frozeniface`: the method sets of `connector.Sink` (6 methods) and `connector.Connector` (4 methods) must equal the golden lists in `rules.go`. New capabilities are new optional interfaces (C4).
+
+**Cohesion** — `archtest`
+- LCOM4 = 1 for every struct type with ≥ 3 methods. Two methods are connected if they touch a common field or one calls the other. A type with LCOM4 > 1 does more than one job: split it.
+- Every exported identifier in `backend/internal/...` is used outside its own package (in non-test code or by `main`); an export only its own package uses should be unexported.
+- `archtest -update` writes `docs/ARCHITECTURE.md` (Mermaid dependency graph + per-package Ca, Ce, I, abstractness A, distance |A + I − 1| and LCOM4 table); the test fails when the file is stale.
+
+**Privacy** — `omalint/nologcontent` (type-aware)
+- No value of type `domain.Message`, `Contact`, `Conversation` or `Account`, and none of their fields `Text`, `Name`, `SenderName`, `Title`, `Preview`, `PreviewSender`, `Match`, may be passed to `log.*`, `slog.*`, `fmt.Print*`, or `fmt.Fprint*` to `os.Stderr`/`os.Stdout`.
+
+**UI placement and style** — `uilint/qml` (+ ESLint for `ui/lib`)
+- `ui/components/*.qml` must not contain `service` or `request(`. Only `ui/controllers/*.qml` and `ui/service/*.qml` may contain `request(`.
+- `ui/lib/*.js` must not reference `Qt` except key constants in `Keymap.js`. It starts with `.pragma library` and uses ES5 syntax only (no `let`, `const`, arrows or template literals).
+- No colour literals in `ui/` except `"transparent"` (C8); no `requestActivate`; relative imports and manifest entryPoints must exist.
 
 ## 3. Tasks
 
@@ -384,7 +440,7 @@ UI rules (checked by `scripts/check-source.sh`):
 
 ### [x] A10 · Demo connector (L)
 - deps: A06
-- files: backend/internal/connector/connector.go, manager.go, backend/internal/connector/demo/demo.go, seed.go, demo_test.go, backend/internal/app/app.go, app_test.go
+- files: backend/internal/connector/connector.go, manager.go, backend/internal/connector/demo/demo.go, seed.go, demo_test.go, backend/internal/app/app.go, app_test.go, backend/internal/rpc/server_test.go
 - do: implement C5 exactly. `New(clock, rand *rand.Rand, chatter bool) []connector.Connector`; `SetChatter(bool)`; `Inject(conversationRemoteID string)`.
 - accept: tests with `clocktest` + a recording Sink:
   - Seeding twice yields identical store state.
@@ -394,36 +450,93 @@ UI rules (checked by `scripts/check-source.sh`):
   - Chatter fires only when enabled.
   - Inject works.
 - note: added the optional `HistorySink` path so initial/backfilled incoming messages persist without triggering live desktop notifications; Manager forwards it and App implements it.
+- note: `demo.inject` takes a local `Conversation.id`; App resolves it to the connector's remote ID. The RPC integration case exercises that C3 shape.
 - verify: `go test -mod=vendor -race -cover ./backend/internal/connector/demo/`
 
 ### [ ] GA · Phase A gate (S)
 - deps: A01–A10
-- files: docs/TASKS.md, README.md, CONTRIBUTING.md, AGENTS.md, FORGE_SPEC.md, .agents/README.md, scripts/install-local.sh, scripts/test-docker.sh
-- checks: §0.1 D1, D2, D3, D6, D7 (`FuzzDecode`), D8, D9. D4 and D5 start at GR (their scripts arrive in R01); for now record `go test -mod=vendor -cover ./backend/...` per-package numbers in the gate note.
+- files: docs/TASKS.md, README.md, CONTRIBUTING.md, AGENTS.md, FORGE_SPEC.md, .agents/README.md, Makefile, scripts/install-local.sh, scripts/test-docker.sh, scripts/build-release.sh, bin/oma-messenger-service-linux-amd64, bin/oma-messenger-service-linux-arm64
+- checks: D1; pre-R D2 (`gofmt -l backend`, `go vet -mod=vendor ./backend/...`); pre-R D3 (`go test -mod=vendor -race -count=3 ./backend/...`); D6, D7 (`FuzzDecode`), D8, D9 and pre-R D11. D2/D3 over `tools/...`, D4, D5, D10 and architecture conformance in D11 are enforced at GR after R01a–R01e and R08. For now, record `go test -mod=vendor -cover ./backend/...` per-package numbers in the gate note.
 - plus:
   - GA1 Order independence: `go test -mod=vendor -race -shuffle=on -count=3 ./backend/...` passes.
   - GA2 Demo determinism: `go test -mod=vendor -race -count=5 ./backend/internal/connector/demo/` passes.
   - GA3 Ordering regression: `go test -mod=vendor -run 'Order' -v ./backend/internal/store/` shows the whole-second-after-fraction case passing.
   - GA4 Privacy: `git grep -nE '(log|fmt)\.(Print|Fatal|Fprint)[a-z]*\(.*\.(Text|Name|SenderName|Title)' -- backend` is empty.
-- note: Current phase-A verification: Go has 112 passing test cases (`go test -mod=vendor -json ./backend/...`); Node has 2 passing tests (`node --test tests/unit/*.test.cjs`). Package statement coverage: app 91.5%, connector 88.4%, clocktest 92.5%, demo 88.8%, domain 100%, notify 100%, rpc 82.5%, store 85.8%; `backend` main package is excluded from the package gates. D2, D3 (three shuffled runs), D6, D7 (30 s `FuzzDecode`), GA1–GA4 and D9 pass. D4/D5 are deferred to GR per this task. D8 remains pending the final documentation commit and clean-worktree check. Current docs now describe stdio JSON-lines IPC and the seeded demo, not the removed HTTP/token API. Replacing two `mktemp` templates that produced false `XXX` matches made the prescribed D9 scan meaningful.
+- note: Current phase-A verification: Go has 112 passing test cases (`go test -mod=vendor -json ./backend/...`); Node has 2 passing tests (`node --test tests/unit/*.test.cjs`). Aggregate core coverage is 85.7%; package statement coverage: app 91.4%, connector 88.4%, clocktest 92.5%, demo 88.8%, domain 100%, notify 100%, rpc 82.5%, store 85.8%; `backend` main package is excluded from the package gates. `make test` passes. Pre-R D2/D3 (three race runs), D6, D7 (30 s `FuzzDecode`), GA1–GA4 and D9 pass. D4/D5/D10 and tool-package D2/D3 are deferred to GR. D8 must be rerun against the final GA commit in a clean worktree. Current docs describe stdio JSON-lines IPC and the seeded demo, not the removed HTTP/token API. Replacing two `mktemp` templates that produced false `XXX` matches made the prescribed D9 scan meaningful.
+
+  D11 review table (reviewed against code commit `ceb60dd`; the C10 target rules are explicitly identified as Phase R work):
+
+  | doc | reviewed at commit | result | what changed |
+  |---|---|---|---|
+  | README.md | `ceb60dd` | updated | Describes JSON-lines IPC, demo mode, user data paths and old scaffold cleanup. |
+  | CONTRIBUTING.md | `ceb60dd` | updated | Test map describes JSON-lines RPC and SQLite behavior tests. |
+  | AGENTS.md | `ceb60dd` | updated | Layout follows C1 and labels root-level scaffold files as transitional. |
+  | FORGE_SPEC.md | `ceb60dd` | updated | Describes stdio IPC and the current demo versus real-service gap. |
+  | .agents/README.md | `ceb60dd` | updated | Removes the claim that `make test` runs Docker UI checks. |
+  | docs/TASKS.md (§0–§2) | `ceb60dd` | updated | Marks C1/C9/C10 as target architecture and scopes GA to pre-R behavior. |
+  | docs/KEYS.md | n/a | n/a | Created in B15. |
+  | docs/PROTOCOL.md | n/a | n/a | Created in R08. |
+  | docs/ARCHITECTURE.md | n/a | n/a | Created in R01d. |
+
+  The current Makefile's Go targets now run the present backend packages instead of the removed scaffold HTTP tests; its 80% aggregate coverage command covers all backend packages. Both bundled architecture binaries were rebuilt from the JSON-lines helper with `make build-all`.
 
 ### Phase R — refactor to the architecture rules (C10)
 
-Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports `app` and `store`, and `app.go` mixes six responsibilities. Fix this before anything else builds on these packages. Refactors keep behaviour identical: move tests with the code and keep their assertions.
+Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before more code is written. `connector` imports `store`, `rpc` imports `app` and `store`, and `app.go` mixes six responsibilities. Fix this before anything else builds on these packages. Refactors keep behaviour identical: move tests with the code and keep their assertions.
 
-### [ ] R01 · Architecture and coverage check scripts (M)
+### [ ] R01a · omalint framework, layering and size rules (M)
 - deps: GA
-- files: scripts/check-architecture.sh, scripts/check-coverage.sh, Makefile (`lint` and `test-go` call them)
+- files: tools/omalint/main.go, tools/omalint/rules/rules.go, tools/omalint/analyzers/layering/, tools/omalint/analyzers/size/, `testdata/` under each analyzer, go.mod, go.sum, vendor/
 - do:
-  1. `check-architecture.sh`: for every package from `go list -mod=vendor -f '{{.ImportPath}}|{{join .Imports ","}}|{{join .TestImports ","}}' ./backend/...`, compare internal imports against the C10 table (test imports use the extended list). Check non-test `.go` file length ≤ 400 and function length ≤ 60 (awk from `^func ` to the matching `^}`), plus `ui/**/*.qml` ≤ 350 and `ui/lib/*.js` ≤ 300 when those dirs exist. Print one line per violation as `VIOLATION <rule> <where>`; exit 1 if any.
-  2. `check-coverage.sh <profile>`: sum statements and covered statements per package directory from the profile (skip the `mode:` line). Exclude only the `func main` lines of `backend/main.go`. Compare with the C9 gates, print a table, exit 1 on any miss.
+  1. `go get golang.org/x/tools@<latest version supporting go 1.23>`, then `go mod vendor`.
+  2. `main.go` runs the analyzers with `multichecker.Main`.
+  3. `rules.go` holds the C10 layering table, test-file extras and size limits as Go data (the single source).
+  4. `layering` reports a forbidden import at the import spec position.
+  5. `size` reports file length, function length and parameter count over the limits. It skips `_test.go` and generated files.
+  6. Implement the suppression comment (§0 rule 10), shared by every analyzer, in `tools/omalint/suppress/`. A missing reason is itself a finding.
 - accept:
-  - Run now (before R02–R05), `check-architecture.sh` exits 1 and lists at least: `connector` imports `store`; `rpc` imports `app`; `rpc` imports `store`; `app/app.go` > 400 lines. Paste the output into the task note.
-  - `check-coverage.sh` prints a row for every package under `backend/internal`.
-- verify: `bash -n scripts/check-*.sh && (scripts/check-architecture.sh; test $? -eq 1)`
+  - `analysistest` tests per analyzer cover an allowed case, a violating case at threshold+1, a case exactly at the threshold, and a suppressed case (with and without reason).
+  - Run on the repo now, it reports at least: `connector` imports `store`; `rpc` imports `app`; `rpc` imports `store`; `app/app.go` > 400 lines. Paste the output into the task note.
+- verify: `go test -mod=vendor ./tools/omalint/... && (go run -mod=vendor ./tools/omalint ./backend/...; test $? -ne 0)`
+
+### [ ] R01b · Complexity analyzers (S)
+- deps: R01a
+- files: tools/omalint/analyzers/complexity/ (+ testdata), tools/omalint/main.go, tools/omalint/rules/rules.go
+- do: cyclomatic complexity and nesting depth per C10, for function declarations and function literals separately.
+- accept: testdata functions at exactly the limit pass and at limit+1 fail, for each counted construct (`if`, `for`, `range`, `case`, `select` case, `&&`, `||`, nested func literal).
+- verify: `go test -mod=vendor ./tools/omalint/...`
+
+### [ ] R01c · Design analyzers: dip, frozeniface, nologcontent (M)
+- deps: R01a
+- files: tools/omalint/analyzers/{dip,frozeniface,nologcontent}/ (+ testdata), tools/omalint/main.go, tools/omalint/rules/rules.go
+- do: implement the three rules exactly as C10 states. Use `pass.TypesInfo` (type-aware, not name matching) for `dip` and `nologcontent`.
+- accept: each analyzer has testdata with violating, allowed and suppressed cases; `frozeniface` fails when a method is added to or removed from the testdata copy of `Sink`.
+- verify: `go test -mod=vendor ./tools/omalint/...`
+
+### [ ] R01d · archtest: coupling and cohesion tests (M)
+- deps: R01a
+- files: backend/internal/archtest/arch_test.go, backend/internal/archtest/metrics_test.go, backend/internal/archtest/doc.go (package comment only), docs/ARCHITECTURE.md
+- do:
+  1. Load `./backend/...` with `golang.org/x/tools/go/packages` (syntax + types).
+  2. Compute per package: Ca, Ce, I, abstractness A (exported interfaces / exported named types), distance |A + I − 1|, and LCOM4 per struct type (union-find over methods connected by shared field selectors on the receiver or receiver-method calls).
+  3. Tests:
+     - `TestEfferentCoupling`, `TestStableDependencies`, `TestNoJunkDrawerPackages`
+     - `TestLCOM4`, `TestExportsUsedOutsidePackage`
+     - `TestSuppressionBudget` (≤ 5 `omalint:ignore` across the module)
+     - `TestArchitectureDocCurrent`, with an `-update` flag to regenerate docs/ARCHITECTURE.md
+  4. Metric functions are pure and unit-tested with small synthetic packages in `testdata/`.
+- accept: the metric unit tests pass. Run on the repo now, the coupling/cohesion tests fail exactly for the known problems (app LCOM4 or size, rpc/connector edges); paste them into the note. They must pass after R05.
+- verify: `go test -mod=vendor -run 'Metric|Lcom|Instability' ./backend/internal/archtest/`
+
+### [ ] R01e · covergate (S)
+- deps: GA
+- files: tools/covergate/main.go, tools/covergate/gate.go, tools/covergate/gate_test.go, Makefile (`test-go`)
+- do: parse a cover profile; aggregate statements per package directory; exclude only the statements inside `func main` of `backend/main.go`, found via `go/parser`; compare against the C9 table in code; print a table; exit 1 on any miss. Packages missing from the table fail ("no gate defined").
+- accept: tests with synthetic profiles cover pass, fail, a missing gate and main exclusion.
+- verify: `go test -mod=vendor -cover ./tools/covergate/`
 
 ### [ ] R02 · ErrNotFound lives in domain (S)
-- deps: R01
+- deps: R01a, R01b, R01c, R01d, R01e
 - files: backend/internal/domain/domain.go, domain_test.go, backend/internal/store/store.go
 - do: add `var ErrNotFound = errors.New("not found")` to domain. In store, set `var ErrNotFound = domain.ErrNotFound`, so existing `errors.Is` checks keep working.
 - accept: a store test asserts `errors.Is(err, domain.ErrNotFound)` for a missing conversation.
@@ -465,11 +578,11 @@ Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports 
   5. `policy` package (pure, no I/O): `type Input struct{ Notifications, Preview, Muted, Focused, WindowActive bool; Kind, Sender, Title, Text string }`, `ShouldNotify(Input) bool`, `MarkReadOnArrival(Input) bool`, `Notification(Input) (title, body string)`, all per C3.
   6. `app.go` keeps only `New(repo Repository, d Dispatcher, n Notifier, clock connector.Clock, emit Emit) (*Commands, *Ingest)`.
 - accept:
-  - Every file is ≤ 400 lines and every function ≤ 60 lines.
+  - omalint and archtest report nothing for `app` (size, complexity, dip, LCOM4).
   - `app` imports only domain, connector and app/policy (no `store`, no `notify`).
   - `policy_test.go` is a table over all 2^5 boolean combinations × {direct, group} and reaches 100 % coverage.
   - Previous app tests still pass, moved into `commands_test.go` / `ingest_test.go`, with a fake Repository or a real store from a test-only import.
-- verify: `go test -mod=vendor -race -cover ./backend/internal/app/... && scripts/check-architecture.sh`
+- verify: `go test -mod=vendor -race -cover ./backend/internal/app/... && go run -mod=vendor ./tools/omalint ./backend/... && go test -mod=vendor ./backend/internal/archtest/`
 
 ### [ ] R06 · Helper main (M)  (formerly A11)
 - deps: R05, A10
@@ -491,9 +604,28 @@ Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports 
 - accept: the test runs the script with a temp bin dir containing a stub dev binary and asserts it was chosen; without the stub it picks the arch binary; with neither it exits 1 with a message.
 - verify: `node --test tests/unit/launcher.test.cjs`
 
+### [ ] R08 · Docs checks in code (M)
+- deps: R04, R06, R01a, R01e
+- files: tools/docscheck/{main.go,check.go,protocol.go,check_test.go}, backend/internal/api/descriptors.go, docs/PROTOCOL.md, Makefile (`docs-check`)
+- do:
+  1. `api` exposes `Methods() []MethodDesc{Name, Params, Result, Errors}` and `Events() []EventDesc{Name, Data, When}` (descriptors only, no behaviour). `go run ./tools/docscheck -update` renders docs/PROTOCOL.md from them.
+  2. Checks, as tests in `check_test.go` that run over the real repo:
+     - `TestProtocolDocCurrent`: docs/PROTOCOL.md equals the rendering.
+     - `TestContractC3MatchesAPI`: method and event names in the C3 tables of docs/TASKS.md equal the descriptors, both ways.
+     - `TestContractC10MatchesRules`: the layering table equals `rules.go`.
+     - `TestContractC9MatchesCovergate`: the gates list equals `tools/covergate`.
+     - `TestLinksResolve`: relative markdown links in the inventory docs (§0.1 D11) resolve.
+     - `TestPathsExist`: backticked repo paths starting with `ui/`, `backend/`, `scripts/`, `tools/`, `tests/`, `docs/`, `bin/` in those docs exist (patterns with `*` or `{}` must match ≥ 1 file). docs/TASKS.md is excluded because it names planned files.
+     - `TestMakeTargetsExist`: every `make <target>` mentioned exists in the Makefile.
+     - `TestFlagsExist`: every `--flag` mentioned in README/CONTRIBUTING is defined in `backend/config.go` (parsed with `go/ast`).
+     - `TestKeysBlockCurrent`: when README has `<!-- keys:start -->`/`<!-- keys:end -->` markers, the block equals the table in docs/KEYS.md.
+  3. Each check function is unit-tested on small fixture docs in `testdata/` (pass and fail cases).
+- accept: `go test ./tools/docscheck/` passes on the repo; fixture tests prove each check fails on bad input.
+- verify: `go test -mod=vendor -cover ./tools/docscheck/`
+
 ### [ ] GR · Phase R gate (S)
-- deps: R01–R07
-- checks: §0.1 D1–D10, all of them.
+- deps: R01a–R01e, R02–R08
+- checks: all of §0.1 (D1–D11).
 - plus:
   - GR1 Test count ≥ GA's recorded count.
   - GR2 Binary smoke: `go build -mod=vendor -o bin/dev/oma-messenger-service ./backend && printf '{"id":1,"method":"hello","params":{}}\n' | bin/dev/oma-messenger-service --demo --no-chatter --data-dir "$(mktemp -d)"` prints one response line containing `"protocol":1` and exits 0.
@@ -622,9 +754,13 @@ Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports 
 - do: modal surface inside the window (`BorderSurface` + scrim). Account chooser (one button per account; Ctrl+Tab cycles), search field, filtered contact list (`contacts.list` results passed in), Enter opens. Signals `accountChanged(id)`, `queryChanged(q)`, `accepted(accountId, contactId)`, `cancelled()`.
 
 ### [ ] B15 · Help and hints (S)
-- deps: B03
-- files: ui/components/ShortcutHelp.qml, ui/components/KeyHints.qml, scripts/gen-keys-doc.cjs, docs/KEYS.md
-- do: help overlay from `Keymap.helpSections()`; footer hints from `Keymap.bindingsFor(context)` where `hint`; generator writes docs/KEYS.md; `scripts/check-source.sh` fails if docs/KEYS.md is stale.
+- deps: B03, B22
+- files: ui/components/ShortcutHelp.qml, ui/components/KeyHints.qml, tools/uilint/gen-keys.cjs, tools/uilint/test/gen-keys.test.cjs, docs/KEYS.md, README.md (keys block)
+- do:
+  1. Help overlay from `Keymap.helpSections()`; footer hints from `Keymap.bindingsFor(context)` where `hint`.
+  2. `gen-keys.cjs` writes docs/KEYS.md and the README block between `<!-- keys:start -->` and `<!-- keys:end -->`. `--check` exits 1 when either is stale.
+- accept: the generator test covers write, check-pass and check-fail; `node tools/uilint/gen-keys.cjs --check` passes.
+- verify: `npm --prefix tools/uilint test && node tools/uilint/gen-keys.cjs --check`
 
 ### [ ] B15a · Controllers and action registry (M)
 - deps: B05, B06
@@ -683,6 +819,8 @@ Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports 
 - deps: B19
 - files: README.md, AGENTS.md, CONTRIBUTING.md, FORGE_SPEC.md, .agents/README.md
 - do: update the layout (C1), protocol summary (C3), demo mode (C5, including the `Sam` failure path and `Ctrl+Shift+D`), shortcuts (link docs/KEYS.md), dev loop (`make link`, `make install`, `make demo-reset`), test map (C9), and the old-data cleanup note (C2). Remove claims that Docker runs in `make test`. Point AGENTS.md at this file.
+- accept: §0.1 D11 review table for every inventory doc is filled in the task note.
+- verify: `make docs-check`
 
 ### [ ] B21 · QML import dir + Qt6 lint (S)  (formerly Q01)
 - deps: GR
@@ -690,17 +828,21 @@ Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports 
 - do: create `build/qml/qs/Commons` and `build/qml/qs/Ui` symlinks from `${OMARCHY_SHELL_DIR:-${OMARCHY_PATH:-/usr/share/omarchy}/shell}`; fail with a clear message if missing; use `/usr/lib/qt6/bin/qmllint` (F1).
 - verify: `make lint`
 
-### [ ] B22 · Source checks (S)  (formerly Q02)
+### [ ] B22 · UI linter in code (M)  (formerly Q02)
 - deps: GR
-- files: scripts/check-source.sh
-- do: fail on
-  - hex/`rgb(`/`Qt.rgba(` colour literals in ui/;
-  - `requestActivate` anywhere in ui/;
-  - a `.js` in ui/ whose first line isn't `.pragma library`;
-  - a manifest entryPoint that doesn't exist;
-  - a stale docs/KEYS.md;
-  - a QML file importing a relative path that doesn't exist;
-  - the C10 UI rules (`service`/`request(` placement, `Qt.` in `ui/lib`).
+- files: tools/uilint/{package.json,package-lock.json,eslint.config.cjs,pragma-processor.cjs,rules.cjs,qml-rules.cjs,cli.cjs}, tools/uilint/test/*.test.cjs, tools/uilint/test/fixtures/, ui/.qmllint.ini, .gitignore (`tools/uilint/node_modules/`)
+- do:
+  1. Pin ESLint with an exact version in `package.json` (`"private": true`) and commit the lockfile.
+  2. `pragma-processor.cjs` blanks `.pragma`/`.import` lines while keeping line numbers.
+  3. `eslint.config.cjs` applies to `ui/lib/*.js` with the C10 JS limits (`complexity`, `max-depth`, `max-lines-per-function`, `max-params`, `max-lines`) and `no-restricted-syntax` for ES2015+ constructs. `Qt` is allowed as a global only in `Keymap.js`.
+  4. `qml-rules.cjs` is a pure node module. It strips comments and strings with a small tokenizer, then checks:
+     - the QML file length and the length, nesting and complexity of JS functions inside QML (C10)
+     - UI placement rules, colour literals, `requestActivate`, relative imports and manifest entryPoints
+     - the `.pragma library` first line, suppression syntax and the ≤ 5 suppression budget
+  5. `cli.cjs` runs ESLint plus the QML rules over `ui/`. The `npm run lint` and `npm test` scripts use it.
+  6. `ui/.qmllint.ini` raises qmllint's unqualified, unused-imports, missing-property and type categories to errors.
+- accept: every QML rule and every ESLint limit has a passing and a failing fixture test; `npm --prefix tools/uilint run lint` exits 0 on the repo.
+- verify: `npm --prefix tools/uilint ci && npm --prefix tools/uilint test && npm --prefix tools/uilint run lint`
 
 ### [ ] B23 · QML integration harness (L)  (formerly Q03)
 - deps: B16, B17, B21
@@ -728,9 +870,9 @@ Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports 
 
 ### [ ] GB · Phase B gate (M)
 - deps: B01–B23 (including B15a)
-- checks: §0.1 D1–D10, all of them.
+- checks: all of §0.1 (D1–D11).
 - plus:
-  - GB1 `make test` passes (test-go, test-js with coverage gates, lint with Qt6 qmllint, check-source, check-architecture, test-qml).
+  - GB1 `make test` passes (test-go with covergate, test-js with coverage gates, lint with omalint + uilint + Qt6 qmllint, docs-check, test-qml).
   - GB2 Harness stability: `for i in 1 2 3; do tests/qml/run.sh || exit 1; done`.
   - GB3 Sandbox install: `HOME=$(mktemp -d) OMARCHY=true OMARCHY_SHELL=true make install OPEN=0` exits 0. The staged plugin dir contains `manifest.json`, every file under `ui/`, `bin/oma-messenger-service` and `bin/dev/oma-messenger-service`, and contains no `backend/`, `vendor/` or `tests/`.
   - GB4 `omarchy plugin validate .` passes.
@@ -754,13 +896,13 @@ Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports 
 - verify: `make test-e2e`
 
 ### [x] Q05 · Coverage gate (S)
-- note: superseded by R01 (`scripts/check-coverage.sh`). Nothing to do.
+- note: superseded by R01e (`tools/covergate`). Nothing to do.
 
 ### [ ] Q06 · CI (M)
 - deps: GB
 - files: .github/workflows/ci.yml, .github/workflows/release.yml
 - do:
-  - `ci.yml` on PR and push: job `go-js` (ubuntu: setup-go 1.23, setup-node 22, `make test-go test-js`); job `qml` (container `archlinux:base-devel`: install quickshell qt6-declarative go nodejs; clone `omacom/omarchy` at tag `v4.0.4`; `OMARCHY_SHELL_DIR=…/shell make lint test-qml`).
+  - `ci.yml` on PR and push: job `go-js` (ubuntu: setup-go 1.23, setup-node 22, `npm --prefix tools/uilint ci`, `make test-go test-js docs-check` and the omalint/uilint parts of `lint`); job `qml` (container `archlinux:base-devel`: install quickshell qt6-declarative go nodejs; clone `omacom/omarchy` at tag `v4.0.4`; `OMARCHY_SHELL_DIR=…/shell make lint test-qml`).
   - `release.yml`: publish only after `ci.yml` succeeds (use `workflow_run` or `needs`); build binaries on `v*` tags and on main pushes that touch `backend/**`.
 
 ### [ ] Q07 · Mutation testing (M)
@@ -775,7 +917,7 @@ Why: A06/A08/A09 work but break C10. `connector` imports `store`, `rpc` imports 
 
 ### [ ] GQ · Phase Q gate (S)
 - deps: Q04, Q06, Q07
-- checks: §0.1 D1–D10, all of them.
+- checks: all of §0.1 (D1–D11).
 - plus:
   - GQ1 `make test-e2e` passes twice in a row.
   - GQ2 CI is green on a pull request for both jobs (`go-js`, `qml`). Put the run URL in the note.
@@ -878,7 +1020,7 @@ Do D only after GQ. Each connector task needs golden tests built from recorded/c
 
 ### [ ] GD · Phase D gate — feature complete (M)
 - deps: D00–D20
-- checks: §0.1 D1–D10, all of them.
+- checks: all of §0.1 (D1–D11).
 - plus:
   - GD1 Every normalizer has golden tests; `go test ./backend/... -run Golden -update` produces no diff.
   - GD2 Every `Fuzz*` target runs 60 s without failure.

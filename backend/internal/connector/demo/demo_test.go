@@ -238,7 +238,7 @@ func TestStatusSendFailureRetryReplyTypingAndInjection(t *testing.T) {
 		}
 	}
 
-	injected, err := f.app.Inject(context.Background(), app.InjectParams{ConversationID: "wa:mum"})
+	injected, err := f.app.Inject(context.Background(), app.InjectParams{ConversationID: find(t, f.conversations(t), "Mum").ID})
 	if err != nil || injected.ConversationID != find(t, f.conversations(t), "Mum").ID {
 		t.Fatalf("inject=%#v err=%v", injected, err)
 	}
