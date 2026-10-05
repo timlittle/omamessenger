@@ -19,9 +19,6 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// ErrNotFound is domain.ErrNotFound, kept so callers may use either name.
-var ErrNotFound = domain.ErrNotFound
-
 type Store struct{ db *sql.DB }
 
 // Open creates the database (owner-only) and applies pending migrations.
@@ -167,7 +164,7 @@ func (s *Store) SetAccountStatus(id, status, detail string) (domain.Account, err
 		return domain.Account{}, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return domain.Account{}, ErrNotFound
+		return domain.Account{}, domain.ErrNotFound
 	}
 	return s.Account(id)
 }
@@ -177,7 +174,7 @@ func (s *Store) Account(id string) (domain.Account, error) {
 	err := s.db.QueryRow(`SELECT id,service,name,status,detail FROM accounts WHERE id=?`, id).
 		Scan(&a.ID, &a.Service, &a.Name, &a.Status, &a.Detail)
 	if errors.Is(err, sql.ErrNoRows) {
-		return a, ErrNotFound
+		return a, domain.ErrNotFound
 	}
 	return a, err
 }
@@ -211,7 +208,7 @@ func (s *Store) Contact(accountID, remoteID string) (domain.Contact, error) {
 	c := domain.Contact{AccountID: accountID, RemoteID: remoteID}
 	err := s.db.QueryRow(`SELECT name FROM contacts WHERE account_id=? AND remote_id=?`, accountID, remoteID).Scan(&c.Name)
 	if errors.Is(err, sql.ErrNoRows) {
-		return c, ErrNotFound
+		return c, domain.ErrNotFound
 	}
 	return c, err
 }
@@ -268,7 +265,7 @@ func (s *Store) EnsureConversation(c domain.Conversation) (domain.Conversation, 
 		updated, err := s.Conversation(existing.ID)
 		return updated, false, err
 	}
-	if !errors.Is(err, ErrNotFound) {
+	if !errors.Is(err, domain.ErrNotFound) {
 		return c, false, err
 	}
 	if c.ID == "" {
@@ -287,7 +284,7 @@ func (s *Store) Conversation(id string) (domain.Conversation, error) {
 	c, err := scanConversation(s.db.QueryRow(`SELECT `+conversationColumns+`
 		FROM conversations c JOIN accounts a ON a.id=c.account_id WHERE c.id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return c, ErrNotFound
+		return c, domain.ErrNotFound
 	}
 	return c, err
 }
@@ -296,7 +293,7 @@ func (s *Store) ConversationByRemote(accountID, remoteID string) (domain.Convers
 	c, err := scanConversation(s.db.QueryRow(`SELECT `+conversationColumns+`
 		FROM conversations c JOIN accounts a ON a.id=c.account_id WHERE c.account_id=? AND c.remote_id=?`, accountID, remoteID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return c, ErrNotFound
+		return c, domain.ErrNotFound
 	}
 	return c, err
 }
@@ -352,7 +349,7 @@ func (s *Store) SetMuted(id string, muted bool) error {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
+		return domain.ErrNotFound
 	}
 	return nil
 }
@@ -385,7 +382,7 @@ func (s *Store) AddMessage(m domain.Message) (domain.Message, bool, error) {
 	if m.RemoteID != "" {
 		if existing, err := s.MessageByRemote(m.ConversationID, m.RemoteID); err == nil {
 			return existing, false, nil
-		} else if !errors.Is(err, ErrNotFound) {
+		} else if !errors.Is(err, domain.ErrNotFound) {
 			return m, false, err
 		}
 	}
@@ -417,7 +414,7 @@ func (s *Store) AddMessage(m domain.Message) (domain.Message, bool, error) {
 		return m, false, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return m, false, ErrNotFound
+		return m, false, domain.ErrNotFound
 	}
 	if _, err := tx.Exec(`INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?)`,
 		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created); err != nil {
@@ -429,7 +426,7 @@ func (s *Store) AddMessage(m domain.Message) (domain.Message, bool, error) {
 func (s *Store) Message(id string) (domain.Message, error) {
 	m, err := scanMessage(s.db.QueryRow(`SELECT `+messageColumns+` FROM messages WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return m, ErrNotFound
+		return m, domain.ErrNotFound
 	}
 	return m, err
 }
@@ -438,7 +435,7 @@ func (s *Store) MessageByRemote(conversationID, remoteID string) (domain.Message
 	m, err := scanMessage(s.db.QueryRow(`SELECT `+messageColumns+` FROM messages
 		WHERE conversation_id=? AND remote_id=? AND remote_id!=''`, conversationID, remoteID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return m, ErrNotFound
+		return m, domain.ErrNotFound
 	}
 	return m, err
 }
@@ -478,7 +475,7 @@ func (s *Store) Messages(conversationID, beforeID string, limit int) ([]domain.M
 		var created, rowid int64
 		err := s.db.QueryRow(`SELECT created,rowid FROM messages WHERE id=? AND conversation_id=?`, beforeID, conversationID).Scan(&created, &rowid)
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, false, ErrNotFound
+			return nil, false, domain.ErrNotFound
 		}
 		if err != nil {
 			return nil, false, err

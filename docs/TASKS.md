@@ -578,7 +578,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - verify: `go test -mod=vendor -race -cover ./backend/internal/connector/`
 - result: `connector` imports only `domain`. `AccountStore` declares just `UpsertAccount`, the only method the Manager calls; C4 is updated to match. Manager tests use an in-memory `memoryAccounts` fake that, like the store, rejects unknown services.
 
-### [ ] R04 · Generic rpc + api adapter (M)
+### [x] R04 · Generic rpc + api adapter (M)
 - deps: R02
 - files: backend/internal/rpc/server.go, server_test.go, fuzz_test.go; create backend/internal/api/api.go, api_test.go
 - do:
@@ -590,6 +590,8 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   3. Move method-level tests from `rpc` to `api_test.go` using a fake `Commands`. `rpc` tests cover only framing, errors, ids, concurrency and EOF.
 - accept: `rpc` imports stdlib only, including its tests; omalint reports nothing for `rpc` and `api` (today `Serve` is 78 lines with complexity 13 and `decodeRequest` has complexity 11); every C3 method has a happy-path and an error-path test in `api_test.go`; demo-only `demo.inject` is registered only when the Commands value reports demo mode.
 - verify: `go test -mod=vendor -race -cover ./backend/internal/rpc/ ./backend/internal/api/`
+- result: `rpc` imports only stdlib (tests too); `Serve` and `decodeRequest` are split into `session` helpers and `normalizeParams`; omalint is clean; coverage 100 %. `api` owns `Commands`, `Register` (`demo.inject` only when `DemoMode()`), `bind`, and `Code`; coverage 100 %. A table drives every C3 method through the fake (typed params checked) and its error path.
+- note: archtest found `rpc.Stream` LCOM4 = 2 (`Serve` shared nothing with `Emit`/`write`), so `Serve` is now a package function taking the `*Stream`: `rpc.Serve(ctx, r, stream, handler, coder)`. `store.ErrNotFound` lost its last outside user, so the alias was removed and everything uses `domain.ErrNotFound`. The old full-stack pipe test (real app and store over rpc) cannot live in `api`, whose tests may not import `connector`; R06's binary integration test now covers every C3 method.
 
 ### [ ] R05 · Split app by responsibility (L)
 - deps: R03, R04
@@ -637,7 +639,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   3. Exit 0 on stdin EOF or SIGTERM. Delete all HTTP/token code.
 - accept:
   - `resolveConfig` table tests cover every flag, the XDG fallbacks and invalid input.
-  - Integration test: build the binary into `t.TempDir()`; run it with `--demo --no-chatter --seed 1 --data-dir $TMP`; send `hello` and `conversations.list` → 11 conversations; send `demo.inject`; close stdin → exit 0 within 2 s.
+  - Integration test: build the binary into `t.TempDir()`; run it with `--demo --no-chatter --seed 1 --data-dir $TMP`; call **every** C3 method once with valid params and assert a result frame (replaces the full-stack test removed from `rpc` in R04), including `conversations.list` → 11 conversations and `demo.inject`; then one `not_found` and one `bad_request`; close stdin → exit 0 within 2 s.
   - Privacy test: the captured stderr from that run contains none of the C5 seed message texts, contact names or conversation titles.
   - `go run -mod=vendor ./tools/omalint ./backend/` reports nothing. Today `run` takes 6 parameters; bundle stdin/stdout/stderr into an `ioStreams` struct.
 - verify: `go test -mod=vendor -race ./backend/`

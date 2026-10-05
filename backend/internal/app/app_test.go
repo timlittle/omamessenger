@@ -166,7 +166,7 @@ func TestAppMethodsAndConversationWorkflow(t *testing.T) {
 	if _, err := f.app.ContactsList(context.Background(), app.ContactsListParams{}); !errors.Is(err, app.ErrBadRequest) {
 		t.Errorf("ContactsList(missing account) error = %v", err)
 	}
-	if _, err := f.app.ContactsList(context.Background(), app.ContactsListParams{AccountID: "missing"}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.app.ContactsList(context.Background(), app.ContactsListParams{AccountID: "missing"}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("ContactsList(unknown account) error = %v", err)
 	}
 
@@ -180,7 +180,7 @@ func TestAppMethodsAndConversationWorkflow(t *testing.T) {
 	if _, err := f.app.OpenConversation(context.Background(), app.OpenConversationParams{}); !errors.Is(err, app.ErrBadRequest) {
 		t.Errorf("OpenConversation(missing params) error = %v", err)
 	}
-	if _, err := f.app.OpenConversation(context.Background(), app.OpenConversationParams{AccountID: "wa", ContactID: "missing"}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.app.OpenConversation(context.Background(), app.OpenConversationParams{AccountID: "wa", ContactID: "missing"}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("OpenConversation(unknown contact) error = %v", err)
 	}
 
@@ -194,14 +194,14 @@ func TestAppMethodsAndConversationWorkflow(t *testing.T) {
 	if _, err := f.app.MessagesList(context.Background(), app.MessagesListParams{ConversationID: "chat", Limit: 201}); !errors.Is(err, app.ErrBadRequest) {
 		t.Errorf("MessagesList(invalid limit) error = %v", err)
 	}
-	if _, err := f.app.MessagesList(context.Background(), app.MessagesListParams{ConversationID: "missing"}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.app.MessagesList(context.Background(), app.MessagesListParams{ConversationID: "missing"}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("MessagesList(unknown conversation) error = %v", err)
 	}
 
 	if _, err := f.app.SetFocus(context.Background(), app.FocusParams{ConversationID: "chat", WindowActive: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.app.SetFocus(context.Background(), app.FocusParams{ConversationID: "missing"}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.app.SetFocus(context.Background(), app.FocusParams{ConversationID: "missing"}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("SetFocus(unknown conversation) error = %v", err)
 	}
 	if _, err := f.app.SetFocus(context.Background(), app.FocusParams{}); err != nil {
@@ -289,13 +289,13 @@ func TestSendFailureStatusRetryAndValidation(t *testing.T) {
 	if _, err := f.app.SendMessage(context.Background(), app.SendMessageParams{ConversationID: "chat", Text: string(make([]byte, 0))}); !errors.Is(err, app.ErrBadRequest) {
 		t.Errorf("SendMessage(empty bytes) error = %v", err)
 	}
-	if _, err := f.app.SendMessage(context.Background(), app.SendMessageParams{ConversationID: "missing", Text: "text"}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.app.SendMessage(context.Background(), app.SendMessageParams{ConversationID: "missing", Text: "text"}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("SendMessage(unknown conversation) error = %v", err)
 	}
 	if _, err := f.app.SendMessage(context.Background(), app.SendMessageParams{Text: "text"}); !errors.Is(err, app.ErrBadRequest) {
 		t.Errorf("SendMessage(missing conversation) error = %v", err)
 	}
-	if _, err := f.app.Retry(context.Background(), app.RetryParams{MessageID: "missing"}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.app.Retry(context.Background(), app.RetryParams{MessageID: "missing"}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("Retry(unknown) error = %v", err)
 	}
 	if _, err := f.app.Retry(context.Background(), app.RetryParams{MessageID: message.ID}); !errors.Is(err, app.ErrBadRequest) {
@@ -466,10 +466,10 @@ func TestReadMutedAndNoManagerPaths(t *testing.T) {
 	if err != nil || updated.Unread != 0 {
 		t.Fatalf("MarkRead() conversation = %#v, %v", updated, err)
 	}
-	if _, err := f.app.MarkRead(context.Background(), app.ConversationParams{ConversationID: "missing"}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.app.MarkRead(context.Background(), app.ConversationParams{ConversationID: "missing"}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("MarkRead(unknown) error = %v", err)
 	}
-	if _, err := f.app.SetMuted(context.Background(), app.SetMutedParams{ConversationID: "missing", Muted: true}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.app.SetMuted(context.Background(), app.SetMutedParams{ConversationID: "missing", Muted: true}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("SetMuted(unknown) error = %v", err)
 	}
 

@@ -1,5 +1,6 @@
-// Package rpc implements the local JSON-lines protocol between Quickshell and
-// the Go application service.
+// Package rpc implements the JSON-lines framing between Quickshell and the
+// helper: one request per input line, one response or event per output line.
+// It knows nothing about the methods it serves; see package api for those.
 package rpc
 
 import (
@@ -7,12 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
-
-	"github.com/timlittle/omamessenger/backend/internal/app"
-	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
 const maxLineBytes = 1 << 20
@@ -22,8 +19,12 @@ var errMalformedRequest = errors.New("malformed request")
 // Method handles a decoded JSON params object for one protocol method.
 type Method func(context.Context, json.RawMessage) (any, error)
 
-// Handler maps protocol method names to application operations.
+// Handler maps protocol method names to methods.
 type Handler map[string]Method
+
+// ErrorCoder turns a method error into a protocol error code and message.
+// It must never return internal details such as message text.
+type ErrorCoder func(error) (code, message string)
 
 type request struct {
 	ID     int             `json:"id"`
@@ -53,6 +54,7 @@ type Stream struct {
 	mu sync.Mutex
 }
 
+// NewStream returns a Stream writing frames to w.
 func NewStream(w io.Writer) *Stream { return &Stream{w: w} }
 
 // Emit writes one event frame. Errors are returned so the host can decide how
@@ -82,154 +84,147 @@ func (s *Stream) write(value any) error {
 	return nil
 }
 
-// Serve reads request lines until EOF, dispatches requests concurrently, and
-// writes response/event frames without interleaving. An io.Closer input is
-// closed when ctx is canceled so a blocked scan can exit.
-func Serve(ctx context.Context, r io.Reader, w io.Writer, h Handler) error {
-	return NewStream(w).Serve(ctx, r, h)
-}
-
-// Serve reads requests using this Stream, allowing App.Emit and responses to
-// share the same serialization lock.
-func (s *Stream) Serve(ctx context.Context, r io.Reader, h Handler) error {
+// Serve reads request lines from r until EOF or ctx is canceled, dispatches
+// each to its method concurrently, and writes responses to out. Events
+// emitted on the same Stream never interleave with responses. An io.Closer
+// input is closed on cancel so a blocked read returns. A nil coder reports
+// every method error as "internal".
+func Serve(ctx context.Context, r io.Reader, out *Stream, h Handler, coder ErrorCoder) error {
 	if ctx == nil {
 		return errors.New("rpc server requires a context")
 	}
-	done := make(chan struct{})
-	if closer, ok := r.(io.Closer); ok {
-		go func() {
-			select {
-			case <-ctx.Done():
-				_ = closer.Close()
-			case <-done:
-			}
-		}()
+	stop := closeOnCancel(ctx, r)
+	defer stop()
+	if coder == nil {
+		coder = internalOnly
 	}
-	defer close(done)
-
+	sess := &session{ctx: ctx, stream: out, handler: h, coder: coder}
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 4096), maxLineBytes)
-	var handlers sync.WaitGroup
-	var writeErrMu sync.Mutex
-	var writeErr error
-	for scanner.Scan() {
-		if ctx.Err() != nil {
-			break
+	for ctx.Err() == nil && scanner.Scan() {
+		if err := sess.handleLine(scanner.Bytes()); err != nil {
+			sess.wait()
+			return err
 		}
-		line := append([]byte(nil), scanner.Bytes()...)
-		decoded, err := decodeRequest(line)
-		if err != nil {
-			if writeErr := s.write(response{ID: 0, Error: &protocolError{Code: "bad_request", Message: errMalformedRequest.Error()}}); writeErr != nil {
-				return writeErr
-			}
-			continue
+	}
+	return sess.finish(scanner.Err())
+}
+
+func internalOnly(error) (string, string) { return "internal", "internal error" }
+
+// closeOnCancel closes r when ctx ends; the returned stop releases the watcher.
+func closeOnCancel(ctx context.Context, r io.Reader) (stop func()) {
+	closer, ok := r.(io.Closer)
+	if !ok {
+		return func() {}
+	}
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = closer.Close()
+		case <-done:
 		}
-		method, ok := h[decoded.Method]
-		if !ok {
-			if err := s.write(response{ID: decoded.ID, Error: &protocolError{Code: "unknown_method", Message: "unknown method"}}); err != nil {
-				return err
-			}
-			continue
-		}
-		handlers.Add(1)
-		go func(req request, call Method) {
-			defer handlers.Done()
-			result, err := call(ctx, req.Params)
-			frame := response{ID: req.ID}
-			if err != nil {
-				frame.Error = mapError(err)
-			} else {
-				frame.Result = result
-			}
-			if err := s.write(frame); err != nil {
-				writeErrMu.Lock()
-				if writeErr == nil {
-					writeErr = err
-				}
-				writeErrMu.Unlock()
-			}
-		}(decoded, method)
+	}()
+	return func() { close(done) }
+}
+
+// session is the state of one Serve call.
+type session struct {
+	ctx      context.Context
+	stream   *Stream
+	handler  Handler
+	coder    ErrorCoder
+	handlers sync.WaitGroup
+	mu       sync.Mutex
+	writeErr error
+}
+
+// handleLine answers malformed and unknown requests directly and starts a
+// goroutine for the rest. Only a failed direct write is returned.
+func (sess *session) handleLine(raw []byte) error {
+	req, err := decodeRequest(append([]byte(nil), raw...))
+	if err != nil {
+		return sess.stream.write(errorFrame(0, "bad_request", errMalformedRequest.Error()))
 	}
-	if err := scanner.Err(); err != nil {
-		_ = s.write(response{ID: 0, Error: &protocolError{Code: "bad_request", Message: "request line exceeds the 1 MiB limit"}})
-		handlers.Wait()
-		if ctx.Err() != nil {
-			return nil
-		}
-		return err
+	method, ok := sess.handler[req.Method]
+	if !ok {
+		return sess.stream.write(errorFrame(req.ID, "unknown_method", "unknown method"))
 	}
-	handlers.Wait()
-	writeErrMu.Lock()
-	defer writeErrMu.Unlock()
-	if writeErr != nil {
-		return writeErr
-	}
-	if ctx.Err() != nil {
-		return nil
-	}
+	sess.handlers.Add(1)
+	go sess.dispatch(req, method)
 	return nil
 }
 
-func decodeRequest(line []byte) (request, error) {
-	var req request
-	if err := json.Unmarshal(line, &req); err != nil {
-		return req, errMalformedRequest
+func (sess *session) dispatch(req request, method Method) {
+	defer sess.handlers.Done()
+	result, err := method(sess.ctx, req.Params)
+	frame := response{ID: req.ID, Result: result}
+	if err != nil {
+		code, message := sess.coder(err)
+		frame = errorFrame(req.ID, code, message)
 	}
+	if err := sess.stream.write(frame); err != nil {
+		sess.mu.Lock()
+		if sess.writeErr == nil {
+			sess.writeErr = err
+		}
+		sess.mu.Unlock()
+	}
+}
+
+func (sess *session) wait() { sess.handlers.Wait() }
+
+// finish waits for in-flight methods and reports the first failure: an
+// oversized line (answered with bad_request), then any write error. Errors
+// caused by cancellation are not failures.
+func (sess *session) finish(scanErr error) error {
+	if scanErr != nil {
+		_ = sess.stream.write(errorFrame(0, "bad_request", "request line exceeds the 1 MiB limit"))
+	}
+	sess.wait()
+	if sess.ctx.Err() != nil {
+		return nil
+	}
+	if scanErr != nil {
+		return scanErr
+	}
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	return sess.writeErr
+}
+
+func errorFrame(id int, code, message string) response {
+	return response{ID: id, Error: &protocolError{Code: code, Message: message}}
+}
+
+// decodeRequest parses one request line. The id field must be present and
+// non-negative, method must be non-empty, and params, when present and not
+// null, must be a JSON object.
+func decodeRequest(line []byte) (request, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(line, &fields); err != nil || fields == nil {
+		return request{}, errMalformedRequest
+	}
+	var req request
+	if err := json.Unmarshal(line, &req); err != nil {
 		return req, errMalformedRequest
 	}
 	if _, hasID := fields["id"]; !hasID || req.ID < 0 || req.Method == "" {
 		return req, errMalformedRequest
 	}
-	if len(req.Params) == 0 || string(req.Params) == "null" {
-		req.Params = json.RawMessage(`{}`)
+	params, err := normalizeParams(req.Params)
+	req.Params = params
+	return req, err
+}
+
+func normalizeParams(raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return json.RawMessage(`{}`), nil
 	}
 	var object map[string]json.RawMessage
-	if err := json.Unmarshal(req.Params, &object); err != nil || object == nil {
-		return req, errMalformedRequest
+	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+		return raw, errMalformedRequest
 	}
-	return req, nil
-}
-
-func mapError(err error) *protocolError {
-	switch {
-	case errors.Is(err, app.ErrBadRequest):
-		return &protocolError{Code: "bad_request", Message: err.Error()}
-	case errors.Is(err, store.ErrNotFound):
-		return &protocolError{Code: "not_found", Message: "not found"}
-	case errors.Is(err, app.ErrUnknownMethod):
-		return &protocolError{Code: "unknown_method", Message: "unknown method"}
-	default:
-		return &protocolError{Code: "internal", Message: "internal error"}
-	}
-}
-
-// Register maps every C3 method name to the corresponding typed App method.
-func Register(service *app.App) Handler {
-	return Handler{
-		"hello":                  bind(service.Hello),
-		"accounts.list":          bind(service.AccountsList),
-		"conversations.list":     bind(service.ConversationsList),
-		"messages.list":          bind(service.MessagesList),
-		"messages.send":          bind(service.SendMessage),
-		"messages.retry":         bind(service.Retry),
-		"conversations.markRead": bind(service.MarkRead),
-		"conversations.setMuted": bind(service.SetMuted),
-		"conversations.open":     bind(service.OpenConversation),
-		"contacts.list":          bind(service.ContactsList),
-		"ui.setFocus":            bind(service.SetFocus),
-		"settings.apply":         bind(service.ApplySettings),
-		"demo.inject":            bind(service.Inject),
-	}
-}
-
-func bind[P any, R any](fn func(context.Context, P) (R, error)) Method {
-	return func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var params P
-		if err := json.Unmarshal(raw, &params); err != nil {
-			return nil, fmt.Errorf("%w: invalid params", app.ErrBadRequest)
-		}
-		return fn(ctx, params)
-	}
+	return raw, nil
 }

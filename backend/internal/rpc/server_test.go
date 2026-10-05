@@ -8,238 +8,119 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/timlittle/omamessenger/backend/internal/app"
-	"github.com/timlittle/omamessenger/backend/internal/connector"
-	"github.com/timlittle/omamessenger/backend/internal/connector/clocktest"
-	"github.com/timlittle/omamessenger/backend/internal/domain"
-	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
-type rpcConnector struct{ account domain.Account }
-
-func (c *rpcConnector) Account() domain.Account { return c.account }
-func (*rpcConnector) Run(ctx context.Context, _ connector.Sink) error {
-	<-ctx.Done()
-	return nil
-}
-func (*rpcConnector) Send(context.Context, domain.Conversation, domain.Message) error { return nil }
-func (*rpcConnector) MarkRead(context.Context, domain.Conversation) error             { return nil }
-
-type rpcInjector struct{}
-
-func (rpcInjector) Inject(remoteID string) (domain.Message, error) {
-	return domain.Message{ConversationID: remoteID, Text: "demo injected"}, nil
-}
-
-type rpcFixture struct {
-	app     *app.App
-	store   *store.Store
-	ctx     context.Context
-	cancel  context.CancelFunc
-	manager *connector.Manager
-	stream  *Stream
-	output  *bytes.Buffer
-}
-
-func newRPCFixture(t *testing.T, w io.Writer) *rpcFixture {
-	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "data", "messages.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close store: %v", err)
-		}
-	})
-	clock := clocktest.New(time.Unix(1000, 0))
-	service := app.New(db, nil, silentNotifier{}, clock)
-	stream := NewStream(w)
-	service.Emit = func(name string, data any) { _ = stream.Emit(name, data) }
-	manager := &connector.Manager{
-		Store: db, Sink: service, Clock: clock,
-		Connectors: []connector.Connector{&rpcConnector{account: domain.Account{ID: "wa", Service: domain.ServiceWhatsApp, Name: "Personal"}}},
-	}
-	service.Manager = manager
-	ctx, cancel := context.WithCancel(context.Background())
-	if err := manager.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		cancel()
-		manager.Wait()
-	})
-	if _, _, err := db.EnsureConversation(domain.Conversation{
-		ID: "chat", AccountID: "wa", RemoteID: "remote-chat", Kind: domain.KindDirect, Title: "Chat",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.UpsertContact(domain.Contact{AccountID: "wa", RemoteID: "new-contact", Name: "New Contact"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := db.AddMessage(domain.Message{ID: "unread", ConversationID: "chat", Text: "unread", Created: 1}); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := db.AddMessage(domain.Message{ID: "retry", ConversationID: "chat", Text: "retry me", Outgoing: true, Status: domain.StatusPending, Created: 2}); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := db.UpdateMessageStatus("retry", domain.StatusFailed); err != nil {
-		t.Fatal(err)
-	}
-	service.Demo = true
-	service.DemoInject = rpcInjector{}
-	f := &rpcFixture{app: service, store: db, ctx: ctx, cancel: cancel, manager: manager, stream: stream}
-	if out, ok := w.(*bytes.Buffer); ok {
-		f.output = out
-	}
-	return f
-}
-
-func writeRequest(t *testing.T, w *io.PipeWriter, id int, method string, params string) {
-	t.Helper()
-	if _, err := fmt.Fprintf(w, `{"id":%d,"method":%q,"params":%s}`+"\n", id, method, params); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func readFrames(t *testing.T, output string) ([]map[string]json.RawMessage, error) {
+func readFrames(t *testing.T, output string) []map[string]json.RawMessage {
 	t.Helper()
 	frames := []map[string]json.RawMessage{}
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	for scanner.Scan() {
 		var frame map[string]json.RawMessage
 		if err := json.Unmarshal(scanner.Bytes(), &frame); err != nil {
-			return nil, fmt.Errorf("invalid output line %q: %w", scanner.Text(), err)
+			t.Fatalf("invalid output line %q: %v", scanner.Text(), err)
 		}
 		frames = append(frames, frame)
 	}
-	return frames, scanner.Err()
+	return frames
 }
 
 func responseByID(frames []map[string]json.RawMessage, id int) (map[string]json.RawMessage, bool) {
 	for _, frame := range frames {
 		var got int
-		if err := json.Unmarshal(frame["id"], &got); err == nil && got == id {
+		if err := json.Unmarshal(frame["id"], &got); err == nil && got == id && frame["event"] == nil {
 			return frame, true
 		}
 	}
 	return nil, false
 }
 
-func errorCode(t *testing.T, frame map[string]json.RawMessage) string {
+func errorOf(t *testing.T, frame map[string]json.RawMessage) protocolError {
 	t.Helper()
-	var responseError protocolError
-	if err := json.Unmarshal(frame["error"], &responseError); err != nil {
+	var e protocolError
+	if err := json.Unmarshal(frame["error"], &e); err != nil {
 		t.Fatalf("response error %s: %v", frame["error"], err)
 	}
-	return responseError.Code
+	return e
 }
 
-func TestRegisterAndServeC3MethodsOverPipe(t *testing.T) {
-	var output bytes.Buffer
-	f := newRPCFixture(t, &output)
-	reader, writer := io.Pipe()
-	done := make(chan error, 1)
-	go func() { done <- f.stream.Serve(f.ctx, reader, Register(f.app)) }()
+func echoHandler() Handler {
+	return Handler{"echo": func(_ context.Context, raw json.RawMessage) (any, error) {
+		return raw, nil
+	}}
+}
 
-	requests := []struct {
-		id     int
-		method string
-		params string
-	}{
-		{1, "hello", `{}`},
-		{2, "accounts.list", `{}`},
-		{3, "conversations.list", `{}`},
-		{4, "messages.list", `{"conversationId":"chat"}`},
-		{5, "messages.send", `{"conversationId":"chat","text":"hello"}`},
-		{6, "messages.retry", `{"messageId":"retry"}`},
-		{7, "conversations.markRead", `{"conversationId":"chat"}`},
-		{8, "conversations.setMuted", `{"conversationId":"chat","muted":true}`},
-		{9, "conversations.open", `{"accountId":"wa","contactId":"new-contact"}`},
-		{10, "contacts.list", `{"accountId":"wa","query":"new"}`},
-		{11, "ui.setFocus", `{"conversationId":"chat","windowActive":true}`},
-		{12, "settings.apply", `{"notifications":true,"notificationPreview":false,"demoChatter":false}`},
-		{13, "demo.inject", `{"conversationId":"chat"}`},
-		{14, "method.does.not.exist", `{}`},
-		{15, "messages.list", `{"conversationId":"chat","limit":201}`},
-		{16, "conversations.markRead", `{"conversationId":"missing"}`},
-	}
-	for _, request := range requests {
-		writeRequest(t, writer, request.id, request.method, request.params)
-	}
-	if _, err := io.WriteString(writer, "{\"id\":17\n[]\n"); err != nil {
+func TestServeDispatchesAndAnswersBadRequests(t *testing.T) {
+	input := strings.Join([]string{
+		`{"id":1,"method":"echo","params":{"a":1}}`,
+		`{"id":2,"method":"echo"}`,
+		`{"id":3,"method":"echo","params":null}`,
+		`{"id":4,"method":"nope","params":{}}`,
+		`not json`,
+		`[]`,
+		`{"method":"echo","params":{}}`,
+		`{"id":-1,"method":"echo","params":{}}`,
+		`{"id":5,"method":"","params":{}}`,
+		`{"id":6,"method":"echo","params":[]}`,
+		`{"id":7,"method":"echo","params":"x"}`,
+		`{"id":"8","method":"echo","params":{}}`,
+	}, "\n") + "\n"
+	var output bytes.Buffer
+	if err := Serve(context.Background(), strings.NewReader(input), NewStream(&output), echoHandler(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatalf("Serve(): %v", err)
-	}
-	frames, err := readFrames(t, output.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13} {
+	frames := readFrames(t, output.String())
+	for id, want := range map[int]string{1: `{"a":1}`, 2: `{}`, 3: `{}`} {
 		frame, ok := responseByID(frames, id)
-		if !ok || frame["error"] != nil || frame["result"] == nil {
-			t.Errorf("method request %d response = %#v", id, frame)
+		if !ok || string(frame["result"]) != want {
+			t.Errorf("request %d result = %s, want %s", id, frame["result"], want)
 		}
 	}
-	for id, want := range map[int]string{14: "unknown_method", 15: "bad_request", 16: "not_found"} {
-		frame, ok := responseByID(frames, id)
-		if !ok || errorCode(t, frame) != want {
-			t.Errorf("request %d error response = %#v, want %q", id, frame, want)
-		}
+	if frame, ok := responseByID(frames, 4); !ok || errorOf(t, frame).Code != "unknown_method" {
+		t.Errorf("unknown method response = %v", frame)
 	}
-	malformedCount := 0
+	badRequests := 0
 	for _, frame := range frames {
-		if errorCodeRaw, ok := frame["error"]; ok {
-			var responseError protocolError
-			if json.Unmarshal(errorCodeRaw, &responseError) == nil && responseError.Code == "bad_request" {
-				if _, hasID := frame["id"]; hasID {
-					var id int
-					_ = json.Unmarshal(frame["id"], &id)
-					if id == 0 {
-						malformedCount++
-					}
-				}
-			}
+		if frame["error"] != nil && errorOf(t, frame).Code == "bad_request" && string(frame["id"]) == "0" {
+			badRequests++
 		}
 	}
-	if malformedCount < 2 {
-		t.Errorf("got %d bad_request id=0 responses for malformed lines", malformedCount)
-	}
-	if len(Register(f.app)) != 13 {
-		t.Errorf("Register() has %d C3 methods, want 13", len(Register(f.app)))
+	if badRequests != 8 {
+		t.Errorf("got %d bad_request id=0 frames for malformed lines, want 8", badRequests)
 	}
 }
 
-func TestServeMapsInternalErrorsWithoutLeakingDetails(t *testing.T) {
-	var output bytes.Buffer
-	handler := Handler{"secret": func(context.Context, json.RawMessage) (any, error) {
+func TestServeMapsErrorsThroughCoder(t *testing.T) {
+	handler := Handler{"fail": func(context.Context, json.RawMessage) (any, error) {
 		return nil, errors.New("private message text and session key")
 	}}
-	if err := Serve(context.Background(), strings.NewReader(`{"id":9,"method":"secret","params":{}}`), &output, handler); err != nil {
+	line := `{"id":9,"method":"fail","params":{}}` + "\n"
+
+	var internal bytes.Buffer
+	if err := Serve(context.Background(), strings.NewReader(line), NewStream(&internal), handler, nil); err != nil {
 		t.Fatal(err)
 	}
-	frames, err := readFrames(t, output.String())
-	if err != nil || len(frames) != 1 {
-		t.Fatalf("frames = %#v, %v", frames, err)
+	frame, _ := responseByID(readFrames(t, internal.String()), 9)
+	if got := errorOf(t, frame); got != (protocolError{Code: "internal", Message: "internal error"}) {
+		t.Errorf("nil coder error = %+v", got)
 	}
-	if got := errorCode(t, frames[0]); got != "internal" {
-		t.Errorf("internal error code = %q", got)
+	if strings.Contains(internal.String(), "session key") {
+		t.Error("nil coder leaked the underlying error text")
 	}
-	if strings.Contains(output.String(), "session key") || strings.Contains(output.String(), "private message") {
-		t.Error("internal error response leaked the underlying error details")
+
+	var coded bytes.Buffer
+	coder := func(error) (string, string) { return "not_found", "not found" }
+	if err := Serve(context.Background(), strings.NewReader(line), NewStream(&coded), handler, coder); err != nil {
+		t.Fatal(err)
+	}
+	frame, _ = responseByID(readFrames(t, coded.String()), 9)
+	if got := errorOf(t, frame); got.Code != "not_found" {
+		t.Errorf("coder error = %+v", got)
 	}
 }
 
@@ -270,14 +151,12 @@ func (w *fragmentedWriter) String() string {
 }
 
 func TestConcurrentResponsesAndEventsDoNotInterleave(t *testing.T) {
-	const requestCount = 48
-	const eventCount = 24
+	const requestCount, eventCount = 48, 24
 	output := &fragmentedWriter{}
 	stream := NewStream(output)
-	entered := make(chan struct{})
-	release := make(chan struct{})
+	entered, release := make(chan struct{}), make(chan struct{})
 	var arrived atomic.Int32
-	handler := Handler{"echo": func(_ context.Context, raw json.RawMessage) (any, error) {
+	handler := Handler{"echo": func(context.Context, json.RawMessage) (any, error) {
 		if arrived.Add(1) == requestCount {
 			close(entered)
 		}
@@ -289,7 +168,7 @@ func TestConcurrentResponsesAndEventsDoNotInterleave(t *testing.T) {
 		fmt.Fprintf(&input, `{"id":%d,"method":"echo","params":{}}`+"\n", i)
 	}
 	done := make(chan error, 1)
-	go func() { done <- stream.Serve(context.Background(), strings.NewReader(input.String()), handler) }()
+	go func() { done <- Serve(context.Background(), strings.NewReader(input.String()), stream, handler, nil) }()
 	select {
 	case <-entered:
 	case <-time.After(2 * time.Second):
@@ -310,37 +189,88 @@ func TestConcurrentResponsesAndEventsDoNotInterleave(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	frames, err := readFrames(t, output.String())
-	if err != nil {
-		t.Fatal(err)
-	}
 	responses, eventsSeen := 0, 0
-	for _, frame := range frames {
+	for _, frame := range readFrames(t, output.String()) {
 		if frame["event"] != nil {
 			eventsSeen++
-		} else if frame["id"] != nil && frame["result"] != nil {
+		} else if frame["result"] != nil {
 			responses++
 		}
 	}
 	if responses != requestCount || eventsSeen != eventCount {
-		t.Errorf("valid frames responses=%d events=%d; want %d and %d", responses, eventsSeen, requestCount, eventCount)
+		t.Errorf("frames: responses=%d events=%d; want %d and %d", responses, eventsSeen, requestCount, eventCount)
 	}
 }
 
 func TestServeRejectsOversizedLine(t *testing.T) {
-	line := strings.Repeat("x", maxLineBytes+1)
 	var output bytes.Buffer
-	err := Serve(context.Background(), strings.NewReader(line), &output, Handler{})
+	err := Serve(context.Background(), strings.NewReader(strings.Repeat("x", maxLineBytes+1)), NewStream(&output), Handler{}, nil)
 	if err == nil {
 		t.Fatal("Serve() accepted a line larger than 1 MiB")
 	}
-	frames, parseErr := readFrames(t, output.String())
-	if parseErr != nil || len(frames) != 1 || errorCode(t, frames[0]) != "bad_request" {
-		t.Fatalf("oversized-line response = %#v, %v", frames, parseErr)
+	frames := readFrames(t, output.String())
+	if len(frames) != 1 || errorOf(t, frames[0]).Code != "bad_request" {
+		t.Fatalf("oversized-line response = %#v", frames)
 	}
 }
 
-// silentNotifier discards notifications so tests never run notify-send.
-type silentNotifier struct{}
+func TestServeRequiresContext(t *testing.T) {
+	var ctx context.Context // nil: the case under test
+	if err := Serve(ctx, strings.NewReader(""), NewStream(io.Discard), Handler{}, nil); err == nil {
+		t.Fatal("Serve(nil ctx) succeeded")
+	}
+}
 
-func (silentNotifier) Notify(string, string) {}
+func TestServeStopsOnCancelAndClosesInput(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer writer.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Serve(ctx, reader, NewStream(io.Discard), echoHandler(), nil) }()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve after cancel = %v, want nil", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve did not return after cancel; blocked read was not closed")
+	}
+}
+
+type failingWriter struct{ err error }
+
+func (w failingWriter) Write([]byte) (int, error) { return 0, w.err }
+
+type zeroWriter struct{}
+
+func (zeroWriter) Write([]byte) (int, error) { return 0, nil }
+
+func TestServeReportsWriteErrors(t *testing.T) {
+	broken := errors.New("broken pipe")
+	err := Serve(context.Background(), strings.NewReader("not json\n"), NewStream(failingWriter{broken}), Handler{}, nil)
+	if !errors.Is(err, broken) {
+		t.Errorf("direct-answer write error = %v, want %v", err, broken)
+	}
+	line := `{"id":1,"method":"echo","params":{}}` + "\n"
+	err = Serve(context.Background(), strings.NewReader(line), NewStream(failingWriter{broken}), echoHandler(), nil)
+	if !errors.Is(err, broken) {
+		t.Errorf("dispatched write error = %v, want %v", err, broken)
+	}
+}
+
+func TestEmitAndWriteErrors(t *testing.T) {
+	var output bytes.Buffer
+	if err := NewStream(&output).Emit("account.updated", map[string]string{"id": "wa"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); got != `{"event":"account.updated","data":{"id":"wa"}}`+"\n" {
+		t.Errorf("event frame = %q", got)
+	}
+	if err := NewStream(zeroWriter{}).Emit("x", nil); !errors.Is(err, io.ErrShortWrite) {
+		t.Errorf("zero-byte write = %v, want io.ErrShortWrite", err)
+	}
+	if err := NewStream(io.Discard).Emit("x", make(chan int)); err == nil {
+		t.Error("unencodable event data was accepted")
+	}
+}

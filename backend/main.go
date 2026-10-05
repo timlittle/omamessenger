@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/timlittle/omamessenger/backend/internal/api"
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/demo"
@@ -65,7 +66,7 @@ func run(parent context.Context, stdin io.Reader, stdout, stderr io.Writer, args
 	stream := rpc.NewStream(stdout)
 	service.Emit = func(name string, data any) { _ = stream.Emit(name, data) }
 	log.New(stderr, "", 0).Println("OmaMessenger helper started")
-	if err := stream.Serve(ctx, stdin, rpc.Register(service)); err != nil && !errors.Is(err, context.Canceled) {
+	if err := rpc.Serve(ctx, stdin, stream, api.Register(service), api.Code); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("serve local API: %w", err)
 	}
 	cancel()

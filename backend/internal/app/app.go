@@ -63,6 +63,10 @@ func New(s *store.Store, manager *connector.Manager, notifier notify.Notifier, c
 	}
 }
 
+// DemoMode reports whether the helper runs on seeded demo data, which
+// enables the demo-only protocol methods.
+func (a *App) DemoMode() bool { return a.Demo }
+
 func (a *App) emit(name string, data any) {
 	if a.Emit == nil {
 		return

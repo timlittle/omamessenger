@@ -146,11 +146,11 @@ func TestAccountsUpsertStatusAndValidation(t *testing.T) {
 	if err != nil || a.Status != domain.AccountConnected || a.Detail != "Ready" {
 		t.Fatalf("SetAccountStatus() = %#v, %v", a, err)
 	}
-	if _, err := s.SetAccountStatus("missing", domain.AccountError, "broken"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("SetAccountStatus(unknown) error = %v, want ErrNotFound", err)
+	if _, err := s.SetAccountStatus("missing", domain.AccountError, "broken"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetAccountStatus(unknown) error = %v, want domain.ErrNotFound", err)
 	}
-	if _, err := s.Account("missing"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("Account(unknown) error = %v, want ErrNotFound", err)
+	if _, err := s.Account("missing"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Account(unknown) error = %v, want domain.ErrNotFound", err)
 	}
 	accounts, err := s.Accounts()
 	if err != nil || len(accounts) != 1 || accounts[0].ID != "wa" {
@@ -185,14 +185,11 @@ func TestEnsureConversationCreatesUpdatesAndValidates(t *testing.T) {
 			t.Errorf("EnsureConversation(%#v) accepted missing fields", invalid)
 		}
 	}
-	if _, err := s.Conversation("unknown"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("Conversation(unknown) error = %v, want ErrNotFound", err)
-	}
 	if _, err := s.Conversation("unknown"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("Conversation(unknown) error = %v, want domain.ErrNotFound", err)
 	}
-	if _, err := s.ConversationByRemote("wa", "unknown"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("ConversationByRemote(unknown) error = %v, want ErrNotFound", err)
+	if _, err := s.ConversationByRemote("wa", "unknown"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("ConversationByRemote(unknown) error = %v, want domain.ErrNotFound", err)
 	}
 }
 
@@ -241,18 +238,18 @@ func TestAddMessagePreviewUnreadDedupeAndCascade(t *testing.T) {
 	if _, _, err := s.AddMessage(domain.Message{ConversationID: "chat", Text: ""}); err == nil {
 		t.Error("AddMessage accepted empty text")
 	}
-	if _, _, err := s.AddMessage(domain.Message{ConversationID: "missing", Text: "text"}); !errors.Is(err, ErrNotFound) {
-		t.Errorf("AddMessage(unknown conversation) error = %v, want ErrNotFound", err)
+	if _, _, err := s.AddMessage(domain.Message{ConversationID: "missing", Text: "text"}); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("AddMessage(unknown conversation) error = %v, want domain.ErrNotFound", err)
 	}
 
 	if _, err := s.db.Exec(`DELETE FROM accounts WHERE id=?`, "wa"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Conversation("chat"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("conversation after account delete error = %v, want ErrNotFound", err)
+	if _, err := s.Conversation("chat"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("conversation after account delete error = %v, want domain.ErrNotFound", err)
 	}
-	if _, err := s.Message("incoming"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("message after account delete error = %v, want ErrNotFound", err)
+	if _, err := s.Message("incoming"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("message after account delete error = %v, want domain.ErrNotFound", err)
 	}
 }
 
@@ -307,8 +304,8 @@ func TestMessagesPagination(t *testing.T) {
 	if err != nil || len(page3) != 20 || hasMore || page3[0].ID != "m-001" || page3[19].ID != "m-020" {
 		t.Fatalf("third Messages() = len %d, hasMore %t, err %v", len(page3), hasMore, err)
 	}
-	if _, _, err := s.Messages("chat", "unknown", 10); !errors.Is(err, ErrNotFound) {
-		t.Errorf("Messages(unknown cursor) error = %v, want ErrNotFound", err)
+	if _, _, err := s.Messages("chat", "unknown", 10); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Messages(unknown cursor) error = %v, want domain.ErrNotFound", err)
 	}
 	if _, _, err := s.Messages("missing", "", 50); err != nil {
 		t.Errorf("Messages(empty unknown conversation) error = %v, want empty result", err)
@@ -374,8 +371,8 @@ func TestReadMutedUnreadAndMessageStatus(t *testing.T) {
 	if err != nil || changed {
 		t.Fatalf("second MarkRead() = %t, %v", changed, err)
 	}
-	if _, err := s.MarkRead("unknown"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("MarkRead(unknown) error = %v, want ErrNotFound", err)
+	if _, err := s.MarkRead("unknown"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("MarkRead(unknown) error = %v, want domain.ErrNotFound", err)
 	}
 	if err := s.SetMuted("chat", true); err != nil {
 		t.Fatal(err)
@@ -392,8 +389,8 @@ func TestReadMutedUnreadAndMessageStatus(t *testing.T) {
 	if total, err := s.UnreadTotal(); err != nil || total != 1 {
 		t.Errorf("UnreadTotal() unmuted = %d, %v; want 1", total, err)
 	}
-	if err := s.SetMuted("missing", true); !errors.Is(err, ErrNotFound) {
-		t.Errorf("SetMuted(unknown) error = %v, want ErrNotFound", err)
+	if err := s.SetMuted("missing", true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetMuted(unknown) error = %v, want domain.ErrNotFound", err)
 	}
 	if _, err := s.UnreadTotal(); err != nil {
 		t.Fatal(err)
@@ -414,8 +411,8 @@ func TestReadMutedUnreadAndMessageStatus(t *testing.T) {
 	if err != nil || changed || updated.Status != domain.StatusRead {
 		t.Fatalf("read -> delivered = %#v, %t, %v", updated, changed, err)
 	}
-	if _, _, err := s.UpdateMessageStatus("missing", domain.StatusSent); !errors.Is(err, ErrNotFound) {
-		t.Errorf("UpdateMessageStatus(unknown) error = %v, want ErrNotFound", err)
+	if _, _, err := s.UpdateMessageStatus("missing", domain.StatusSent); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("UpdateMessageStatus(unknown) error = %v, want domain.ErrNotFound", err)
 	}
 	if err := s.SetMessageRemoteID("missing", "remote"); err != nil {
 		t.Errorf("SetMessageRemoteID(unknown) error = %v, want no-op", err)
@@ -441,8 +438,8 @@ func TestContactsSearchCaseInsensitiveAndSorted(t *testing.T) {
 	if err != nil || contact.Name != "Alice Cooper" {
 		t.Fatalf("Contact() = %#v, %v", contact, err)
 	}
-	if _, err := s.Contact("wa", "missing"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("Contact(unknown) error = %v, want ErrNotFound", err)
+	if _, err := s.Contact("wa", "missing"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Contact(unknown) error = %v, want domain.ErrNotFound", err)
 	}
 	contacts, err := s.Contacts("wa", "ALICE")
 	if err != nil {
