@@ -319,6 +319,7 @@ Every rule below has exactly one enforcing check, named in the right-hand column
 | `tools/*` | no `backend/internal/*` package except `tools/docscheck` → api (descriptors only) |
 
 Test files (`_test.go`) may additionally import `store`, `notify`, `connector/clocktest`, `connector/demo` and `connector/connectortest`.
+External test packages (`package x_test`) follow the rules of `x` and may import `x`. Per-package test allowances (`rules.TestOnlyImportsFor`): `connector/demo` tests may import `app`, because they persist through `app.Ingest` into a real store to check seeding, unread counts and delivery timelines. Any `backend/internal` package without a rule is itself a violation.
 
 **Complexity and size** (non-test code)
 
@@ -593,7 +594,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - result: `rpc` imports only stdlib (tests too); `Serve` and `decodeRequest` are split into `session` helpers and `normalizeParams`; omalint is clean; coverage 100 %. `api` owns `Commands`, `Register` (`demo.inject` only when `DemoMode()`), `bind`, and `Code`; coverage 100 %. A table drives every C3 method through the fake (typed params checked) and its error path.
 - note: archtest found `rpc.Stream` LCOM4 = 2 (`Serve` shared nothing with `Emit`/`write`), so `Serve` is now a package function taking the `*Stream`: `rpc.Serve(ctx, r, stream, handler, coder)`. `store.ErrNotFound` lost its last outside user, so the alias was removed and everything uses `domain.ErrNotFound`. The old full-stack pipe test (real app and store over rpc) cannot live in `api`, whose tests may not import `connector`; R06's binary integration test now covers every C3 method.
 
-### [ ] R05 · Split app by responsibility (L)
+### [x] R05 · Split app by responsibility (L)
 - deps: R03, R04
 - files: backend/internal/app/{app.go,ports.go,commands.go,ingest.go,session.go,*_test.go}; create backend/internal/app/policy/{policy.go,policy_test.go}; backend/internal/notify/{notify.go,notify_test.go}; backend/internal/connector/demo/demo_test.go; backend/internal/rpc/server_test.go
 - do:
@@ -615,6 +616,16 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - `policy_test.go` is a table over all 2^5 boolean combinations × {direct, group} and reaches 100 % coverage.
   - Previous app tests still pass, moved into `commands_test.go` / `ingest_test.go`, with a fake Repository or a real store from a test-only import.
 - verify: `go test -mod=vendor -race -cover ./backend/internal/app/... && go run -mod=vendor ./tools/omalint ./backend/... && go test -mod=vendor ./backend/internal/archtest/`
+- result: `app` imports only `domain`, `connector` and `app/policy`; omalint is clean; the largest file is 208 lines; coverage is 93.2 % (`policy` 100 %, all 64 combinations). Files:
+  - `ports.go`: `Repository`, `Dispatcher`, `Notifier`, `Emit`, `DemoInjector`.
+  - `publisher.go`: event sending and the unread-changed rule.
+  - `session.go`: settings and focus.
+  - `commands.go`, `messages.go`: `Commands`.
+  - `ingest.go`: `Ingest`, implementing `Sink` and `HistorySink`.
+  - `app.go`: `Config` and `New(Config) (*Commands, *Ingest)`.
+- deviation: `New` takes a `Config` struct (Repo, Notifier, Clock, Emit, Version, Demo, DemoInject, SetChatter) rather than five positional parameters. The Dispatcher is supplied by `(*Commands).AttachDispatcher`, because the Manager needs `Ingest` as its sink before it exists; this replaces mutating a public `Manager` field after construction. `Hello` now reports `Config.Version` (main passes `helperVersion`) instead of a hard-coded string.
+- tests: the 6 app tests moved unchanged in their assertions to `commands_test.go` / `ingest_test.go` over a shared `fixture_test.go`. Mid-test field mutation (`Demo`, `DemoInject`, `SetChatter`) became fixture options or `f.commands(modify)`. The demo test now reads `typing` events through JSON instead of type-asserting an anonymous struct.
+- found: archtest flagged `notify.Notifier` as unused once `app` declared its own consumer-side port; it is removed. omalint's layering rule had two loopholes: external test packages (`x_test`) and packages missing from the table were never checked. Both are fixed with tests. `connector/demo` tests importing `app` is now an explicit per-package test allowance (`rules.TestOnlyImportsFor`, recorded in C10).
 
 ### [ ] R05b · Bring store, demo and manager within C10 limits (M)
 - deps: R02, R03

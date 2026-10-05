@@ -2,6 +2,7 @@ package demo_test
 
 import (
 	"context"
+	"encoding/json"
 	"math/rand"
 	"path/filepath"
 	"reflect"
@@ -20,7 +21,8 @@ import (
 type fixture struct {
 	clock      *clocktest.Clock
 	store      *store.Store
-	app        *app.App
+	commands   *app.Commands
+	sink       *app.Ingest
 	connectors []connector.Connector
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
@@ -34,31 +36,32 @@ func newFixture(t *testing.T, chatter bool) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := app.New(db, nil, silentNotifier{}, clock)
 	typing := make(chan bool, 8)
-	a.Emit = func(name string, data any) {
+	// Decode typing events through JSON, as the UI receives them.
+	emit := func(name string, data any) {
 		if name != "typing" {
 			return
 		}
-		if value, ok := data.(struct {
-			ConversationID string `json:"conversationId"`
-			Name           string `json:"name"`
-			Active         bool   `json:"active"`
-		}); ok {
-			typing <- value.Active
+		var event struct {
+			Active bool `json:"active"`
+		}
+		if raw, err := json.Marshal(data); err == nil && json.Unmarshal(raw, &event) == nil {
+			typing <- event.Active
 		}
 	}
-	a.Demo = true
 	connectors := demo.New(clock, rand.New(rand.NewSource(42)), chatter)
-	a.DemoInject = demo.NewInjector(connectors...)
+	commands, sink := app.New(app.Config{
+		Repo: db, Notifier: silentNotifier{}, Clock: clock, Emit: emit,
+		Demo: true, DemoInject: demo.NewInjector(connectors...),
+	})
 	ctx, cancel := context.WithCancel(context.Background())
-	f := &fixture{clock: clock, store: db, app: a, connectors: connectors, cancel: cancel, typing: typing}
+	f := &fixture{clock: clock, store: db, commands: commands, sink: sink, connectors: connectors, cancel: cancel, typing: typing}
 	for _, c := range connectors {
 		if err := db.UpsertAccount(c.Account()); err != nil {
 			t.Fatal(err)
 		}
 		f.wg.Add(1)
-		go func(c connector.Connector) { defer f.wg.Done(); _ = c.Run(ctx, a) }(c)
+		go func(c connector.Connector) { defer f.wg.Done(); _ = c.Run(ctx, sink) }(c)
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -122,7 +125,7 @@ func TestSeededDemoAccountsUnreadAndIdempotency(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		var wg sync.WaitGroup
 		wg.Add(1)
-		go func() { defer wg.Done(); _ = script.Run(ctx, f.app) }()
+		go func() { defer wg.Done(); _ = script.Run(ctx, f.sink) }()
 		cancel()
 		wg.Wait()
 	}
@@ -237,7 +240,7 @@ func TestStatusSendFailureRetryReplyTypingAndInjection(t *testing.T) {
 		}
 	}
 
-	injected, err := f.app.Inject(context.Background(), app.InjectParams{ConversationID: find(t, f.conversations(t), "Mum").ID})
+	injected, err := f.commands.Inject(context.Background(), app.InjectParams{ConversationID: find(t, f.conversations(t), "Mum").ID})
 	if err != nil || injected.ConversationID != find(t, f.conversations(t), "Mum").ID {
 		t.Fatalf("inject=%#v err=%v", injected, err)
 	}

@@ -4,11 +4,6 @@ package notify
 
 import "os/exec"
 
-// Notifier sends a desktop notification.
-type Notifier interface {
-	Notify(title, body string)
-}
-
 // Desktop delegates notification display to notify-send. A missing daemon
 // utility or a rejected notification is intentionally non-fatal.
 type Desktop struct{}

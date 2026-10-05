@@ -51,22 +51,24 @@ func run(parent context.Context, stdin io.Reader, stdout, stderr io.Writer, args
 	if cfg.Demo {
 		connectors = demo.New(clock, rand.New(rand.NewSource(cfg.Seed)), cfg.Chatter)
 	}
-	service := app.New(db, nil, notify.Desktop{}, clock)
-	service.Demo = cfg.Demo
-	service.SetChatter = demo.SetChatter
-	if cfg.Demo {
-		service.DemoInject = demo.NewInjector(connectors...)
+	stream := rpc.NewStream(stdout)
+	appConfig := app.Config{
+		Repo: db, Notifier: notify.Desktop{}, Clock: clock, Version: helperVersion, Demo: cfg.Demo,
+		Emit: func(name string, data any) { _ = stream.Emit(name, data) },
 	}
-	manager := &connector.Manager{Store: db, Sink: service, Clock: clock, Connectors: connectors}
-	service.Manager = manager
+	if cfg.Demo {
+		appConfig.DemoInject = demo.NewInjector(connectors...)
+		appConfig.SetChatter = demo.SetChatter
+	}
+	commands, ingest := app.New(appConfig)
+	manager := &connector.Manager{Store: db, Sink: ingest, Clock: clock, Connectors: connectors}
+	commands.AttachDispatcher(manager)
 	if err := manager.Start(ctx); err != nil {
 		return fmt.Errorf("start connectors: %w", err)
 	}
 	defer manager.Wait()
-	stream := rpc.NewStream(stdout)
-	service.Emit = func(name string, data any) { _ = stream.Emit(name, data) }
 	log.New(stderr, "", 0).Println("OmaMessenger helper started")
-	if err := rpc.Serve(ctx, stdin, stream, api.Register(service), api.Code); err != nil && !errors.Is(err, context.Canceled) {
+	if err := rpc.Serve(ctx, stdin, stream, api.Register(commands), api.Code); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("serve local API: %w", err)
 	}
 	cancel()

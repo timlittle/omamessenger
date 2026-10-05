@@ -12,6 +12,9 @@ const (
 // InternalImportPrefix is the project module path used to identify internal edges.
 const InternalImportPrefix = "github.com/timlittle/omamessenger/backend/internal/"
 
+// MainPackage is the composition root; it may import any internal package.
+const MainPackage = "github.com/timlittle/omamessenger/backend"
+
 const (
 	ToolsPrefix        = "github.com/timlittle/omamessenger/tools/"
 	DocscheckPrefix    = "github.com/timlittle/omamessenger/tools/docscheck"
@@ -48,7 +51,8 @@ var AllowedImports = map[string]map[string]bool{
 		"github.com/timlittle/omamessenger/backend/internal/connector":  true,
 		"github.com/timlittle/omamessenger/backend/internal/app/policy": true,
 	},
-	"github.com/timlittle/omamessenger/backend/internal/rpc": {},
+	"github.com/timlittle/omamessenger/backend/internal/rpc":      {},
+	"github.com/timlittle/omamessenger/backend/internal/archtest": {},
 	"github.com/timlittle/omamessenger/backend/internal/api": {
 		"github.com/timlittle/omamessenger/backend/internal/app":    true,
 		"github.com/timlittle/omamessenger/backend/internal/rpc":    true,
@@ -63,6 +67,16 @@ var TestOnlyImports = map[string]bool{
 	"github.com/timlittle/omamessenger/backend/internal/connector/clocktest":     true,
 	"github.com/timlittle/omamessenger/backend/internal/connector/demo":          true,
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest": true,
+}
+
+// TestOnlyImportsFor are per-package extra edges allowed from test files,
+// beyond TestOnlyImports. Each entry needs a reason in C10.
+var TestOnlyImportsFor = map[string]map[string]bool{
+	// The demo connector's tests persist through app.Ingest into a real store
+	// to check seeding, unread counts and delivery timelines end to end.
+	"github.com/timlittle/omamessenger/backend/internal/connector/demo": {
+		"github.com/timlittle/omamessenger/backend/internal/app": true,
+	},
 }
 
 // FrozenInterfaces records the C4 method-name golden sets.

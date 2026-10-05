@@ -75,7 +75,7 @@ func (f *fakeCommands) Inject(_ context.Context, p app.InjectParams) (domain.Mes
 	return record(f, "Inject", p, domain.Message{ID: "m"})
 }
 
-var _ Commands = (*app.App)(nil)
+var _ Commands = (*app.Commands)(nil)
 
 // c3Calls is every C3 method with sample params and the typed call it must
 // produce. The table is the executable form of the C3 method list.

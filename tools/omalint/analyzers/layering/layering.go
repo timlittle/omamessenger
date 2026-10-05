@@ -24,32 +24,53 @@ func run(pass *analysis.Pass) (any, error) {
 	if strings.HasPrefix(pass.Pkg.Path(), rules.ToolsPrefix) {
 		return runTools(pass)
 	}
-	allowed, known := rules.AllowedImports[pass.Pkg.Path()]
+	// An external test package (x_test) follows the rules of x.
+	// The generated test main (x.test) imports only test packages; skip it.
+	pkgPath := strings.TrimSuffix(pass.Pkg.Path(), "_test")
+	if pkgPath == rules.MainPackage || strings.HasSuffix(pkgPath, ".test") || !strings.HasPrefix(pkgPath, rules.InternalImportPrefix) {
+		return nil, nil
+	}
+	allowed, known := rules.AllowedImports[pkgPath]
 	if !known {
+		reportUnknownPackage(pass, pkgPath)
 		return nil, nil
 	}
 	for _, file := range pass.Files {
-		checkImports(pass, file, allowed, isTestFile(pass, file))
+		checkImports(pass, file, pkgPath, allowed)
 	}
 	return nil, nil
 }
 
-func checkImports(pass *analysis.Pass, file *ast.File, allowed map[string]bool, isTest bool) {
+// reportUnknownPackage flags an internal package with no C10 rule, so a new
+// package cannot escape the layering check by being absent from the table.
+func reportUnknownPackage(pass *analysis.Pass, pkgPath string) {
+	if len(pass.Files) == 0 {
+		return
+	}
+	pos := pass.Files[0].Package
+	if !suppress.Check(pass, "layering", pos) {
+		pass.Reportf(pos, "layering: no C10 layering rule for package %s", pkgPath)
+	}
+}
+
+func checkImports(pass *analysis.Pass, file *ast.File, pkgPath string, allowed map[string]bool) {
+	isTest := isTestFile(pass, file)
 	for _, spec := range file.Imports {
 		path, err := strconv.Unquote(spec.Path.Value)
 		if err != nil || !strings.HasPrefix(path, rules.InternalImportPrefix) {
 			continue
 		}
-		if allowed[path] || isTest && rules.TestOnlyImports[path] {
+		// A test may always import the package it tests (external test packages).
+		if allowed[path] || isTest && (path == pkgPath || rules.TestOnlyImports[path] || rules.TestOnlyImportsFor[pkgPath][path]) {
 			continue
 		}
-		reportImport(pass, spec.Pos(), path)
+		reportImport(pass, spec.Pos(), pkgPath, path)
 	}
 }
 
-func reportImport(pass *analysis.Pass, pos token.Pos, path string) {
+func reportImport(pass *analysis.Pass, pos token.Pos, pkgPath, path string) {
 	if !suppress.Check(pass, "layering", pos) {
-		pass.Reportf(pos, "layering: %s may not import %s", pass.Pkg.Path(), path)
+		pass.Reportf(pos, "layering: %s may not import %s", pkgPath, path)
 	}
 }
 
@@ -77,7 +98,6 @@ func toolsImportAllowed(packagePath, importPath string) bool {
 }
 
 func isTestFile(pass *analysis.Pass, file *ast.File) bool {
-	_ = pass
 	filename := pass.Fset.Position(file.Pos()).Filename
 	return strings.HasSuffix(filename, "_test.go")
 }
