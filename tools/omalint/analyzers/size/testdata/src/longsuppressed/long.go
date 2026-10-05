@@ -1,5 +1,6 @@
 //omalint:ignore size fixture proves a whole file can be suppressed
 package longsuppressed
+
 // line 3
 // line 4
 // line 5
