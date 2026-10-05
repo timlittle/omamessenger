@@ -1,6 +1,6 @@
 # OmaMessenger implementation spec
 
-Status: MVP scaffold in progress
+Status: helper and demo complete (Phase R gate); plugin UI in progress (Phase B). Build plan: `docs/TASKS.md`.
 
 ## Objective
 
@@ -39,4 +39,4 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 
 ## Current gap
 
-The UI, JSON-lines IPC, persistence, and Omarchy plugin/helper lifecycle scaffold exist. The seeded demo exercises local sending, scripted delivery states, incoming replies, unread counts, and desktop notifications. Real account authentication, synchronization, delivery, and incoming updates are not implemented yet. Do not describe this scaffold as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.
+The Go helper, its JSON-lines IPC, persistence and the seeded demo are complete. The demo covers local sending, scripted delivery states, failure and retry, incoming replies, typing indicators, unread counts and desktop notifications. The plugin UI is still the original scaffold: it expects the removed HTTP API and does not work with the helper until Phase B replaces it. Real account authentication, synchronization, delivery and incoming updates are not implemented yet (Phase D). Do not describe this project as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.

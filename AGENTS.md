@@ -43,4 +43,4 @@ Planned in Phase B (target layout in `docs/TASKS.md` C1):
 
 ## Development
 
-The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries. On Omarchy, use `omarchy plugin validate .` and `make lint` when validation is requested. Phase B replaces the transitional QML lint command with `/usr/lib/qt6/bin/qmllint` and a Quickshell import directory prepared by `scripts/qml-imports.sh` (planned).
+The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries, and `docs/TASKS.md` for the build plan, its Definition of Done and its contracts. Architecture rules are enforced in code (`tools/omalint`, `backend/internal/archtest`), and `make docs-check` keeps the docs true to the code. On Omarchy, use `omarchy plugin validate .` and `make lint` when validation is requested. Phase B replaces the transitional QML lint command with `/usr/lib/qt6/bin/qmllint` and a Quickshell import directory prepared by `scripts/qml-imports.sh` (planned).

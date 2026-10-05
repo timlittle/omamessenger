@@ -23,6 +23,10 @@ Add a regression test with each behavior fix. Put the test at the narrowest laye
 | --- | --- |
 | Pure keyboard or data transformation logic | `tests/unit/`, runnable with Node |
 | Go persistence, RPC framing, or helper behavior | focused `backend/internal/*/*_test.go` or `backend/*_test.go`, using temporary SQLite databases and in-process JSON-lines streams |
+| Notification decisions | `backend/internal/app/policy`, exhaustive tables |
+| The C3 protocol (methods, params, errors) | `backend/internal/api` tests, plus the helper's `backend/main_test.go`, which drives the real binary through every method |
+| Architecture rules (imports, size, complexity, coupling, cohesion) | `tools/omalint` analyzers and `backend/internal/archtest`; change a rule in code and in `docs/TASKS.md` C10 together |
+| Documentation that names code (paths, make targets, flags, contracts) | `make docs-check` (`tools/docscheck`) |
 | Plugin manifest or QML validity | `make validate` and `make lint` |
 
 Run the relevant test once against the failing behavior before fixing it when practical. Before opening a pull request, run:
@@ -31,7 +35,7 @@ Run the relevant test once against the failing behavior before fixing it when pr
 make test
 ```
 
-This includes the 80% core Go statement coverage gate, JSON-lines RPC and persistence tests, keyboard logic tests, and lint. It does not start a compositor or claim to verify rendered QML. Review visual changes on Omarchy with `make install-local`, using both keyboard and mouse.
+This runs the Go tests with the race detector and the per-package coverage gates in `tools/covergate`, the JavaScript tests, lint (gofmt, go vet, and the architecture rules in `tools/omalint`), and `make docs-check`. It does not start a compositor or claim to verify rendered QML. Each phase in `docs/TASKS.md` ends with a gate whose Definition of Done (§0.1) lists the full set of checks, including a documentation review.
 
 
 ## Checking visual changes
