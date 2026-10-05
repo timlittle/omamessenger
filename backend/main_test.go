@@ -279,7 +279,7 @@ func assertNoContent(t *testing.T, stderr string) {
 func buildHelper(t *testing.T) string {
 	t.Helper()
 	binary := filepath.Join(t.TempDir(), "oma-messenger-service")
-	build := exec.Command("go", "build", "-mod=vendor", "-o", binary, ".")
+	build := exec.Command("go", "build", "-mod=vendor", "-buildvcs=false", "-o", binary, ".")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build helper: %v\n%s", err, out)
 	}

@@ -60,6 +60,7 @@ Task format:
 - F10 Quickshell `Process`: set `stdinEnabled: true` and use `write(string)` to send; parse stdout with `stdout: SplitParser { onRead: function(line) {...} }`.
 - F11 Resolve the plugin's own files from QML with `Qt.resolvedUrl("../bin/oma-messenger-service")` and strip the `file://` prefix. This works for both installed copies and symlinked dev checkouts.
 - F12 Omarchy `Style` tokens: `Style.space(px)`, `Style.font.{caption,bodySmall,body,subtitle,title,heading,display}`, `Style.spacing.*`, `Style.hoverFill`, `Style.selectedFill`, `Style.selectedFillAlpha`, `Style.cornerRadius`. `Color.{foreground,background,accent,urgent,muted}`, `Color.popups.{background,text,border}`. Helper: `Util.alpha(color, a)`. Omarchy `qs.Ui` controls: `Button`, `TextField`, `Dropdown`, `Toggle`, `BarWidget`, `BarIconButton`, `Panel`, `BorderSurface`.
+- F13 `node --test <directory>` does not run the tests in a directory on Node ≥ 22 (it fails with `Cannot find module`). Pass files or a quoted glob: `node --test 'tests/unit/**/*.test.cjs'`.
 
 ## 2. Contracts
 
@@ -283,7 +284,7 @@ These are target commands for the completed Phase R/B harness. The current pre-R
   - ≥ 80 %: `backend` (main); only `func main` is excluded, detected by AST
   - ≥ 75 %: `notify`
   - Packages with no statements are skipped; a package with statements but no gate fails.
-- `test-js`: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 tests/unit/` (Node ≥ 22.8), then `npm --prefix tools/uilint test`.
+- `test-js`: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'` (Node ≥ 22.8), then `npm --prefix tools/uilint test`.
 - `lint`:
   - `gofmt -l backend tools` (must be empty); `go vet -mod=vendor ./...`
   - `go run -mod=vendor ./tools/omalint ./backend/... ./tools/...`
@@ -710,7 +711,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - deps: GR
 - files: tests/unit/load.cjs, tests/unit/load.test.cjs
 - do: `load("lib/Keymap.js")` reads `ui/<path>`, strips the `.pragma library` line, resolves `.import "X.js" as X` recursively, evaluates in `new Function`, and returns an object of all top-level `function` and `var` names.
-- verify: `node --test tests/unit/`
+- verify: `node --test 'tests/unit/**/*.test.cjs'`
 
 ### [ ] B02 · Rpc.js (S)
 - deps: B01
@@ -759,7 +760,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - `escapeAction` and `keyContext` table tests cover every row of C6.
   - `Timeline` tests cover day changes, sender changes in groups, and none of that for direct chats.
   - C9 JS coverage gates hold per file.
-- verify: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 tests/unit/`
+- verify: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'`
 
 ### [ ] B06 · Service layer (M)
 - deps: GR, B02

@@ -16,7 +16,7 @@ func TestStandaloneRunOnRealPackage(t *testing.T) {
 		t.Skip("builds and runs the linter binary")
 	}
 	binary := filepath.Join(t.TempDir(), "omalint")
-	build := exec.Command("go", "build", "-o", binary, ".")
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", binary, ".")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build omalint: %v\n%s", err, out)
 	}
