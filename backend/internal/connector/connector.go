@@ -31,6 +31,13 @@ type HistorySink interface {
 	History(accountID, conversationRemoteID string, m domain.Message)
 }
 
+// AccountStore is the persistence the Manager needs: it records each
+// connector's account before the connector runs. Declared here, by the
+// consumer, so the connector layer does not depend on the store package.
+type AccountStore interface {
+	UpsertAccount(domain.Account) error
+}
+
 // Connector adapts one authenticated messaging account to the normalized
 // domain. Run blocks until its context is canceled or the connection fails.
 type Connector interface {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/clocktest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
-	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
 type sinkEvent struct {
@@ -70,16 +68,7 @@ func (c *fakeConnector) MarkRead(ctx context.Context, conv domain.Conversation) 
 
 func newManager(t *testing.T, fakeClock connector.Clock, sink connector.Sink, connectors ...connector.Connector) *connector.Manager {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "data", "messages.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := s.Close(); err != nil {
-			t.Errorf("close test store: %v", err)
-		}
-	})
-	return &connector.Manager{Store: s, Sink: sink, Clock: fakeClock, Connectors: connectors}
+	return &connector.Manager{Store: newMemoryAccounts(), Sink: sink, Clock: fakeClock, Connectors: connectors}
 }
 
 func testAccount(id string) domain.Account {
@@ -124,9 +113,9 @@ func TestManagerPersistsAccountsAndValidatesStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"wa", "tg"} {
-		account, err := manager.Store.Account(id)
-		if err != nil || account.ID != id {
-			t.Errorf("Start() did not persist account %q: %#v, %v", id, account, err)
+		account, ok := manager.Store.(*memoryAccounts).get(id)
+		if !ok || account.ID != id {
+			t.Errorf("Start() did not persist account %q: %#v", id, account)
 		}
 	}
 	if err := manager.Start(ctx); err == nil {
@@ -382,4 +371,32 @@ func TestFakeClockRunsCallbacksByTimeAndRegistrationOrder(t *testing.T) {
 	if got := clock.Now(); !got.Equal(time.Unix(300, 0).Add(2 * time.Second)) {
 		t.Errorf("clock now = %v", got)
 	}
+}
+
+// memoryAccounts is an in-memory connector.AccountStore. Like the real store
+// it rejects accounts with an unknown service.
+type memoryAccounts struct {
+	mu       sync.Mutex
+	accounts map[string]domain.Account
+}
+
+func newMemoryAccounts() *memoryAccounts {
+	return &memoryAccounts{accounts: map[string]domain.Account{}}
+}
+
+func (m *memoryAccounts) UpsertAccount(account domain.Account) error {
+	if !domain.ValidService(account.Service) {
+		return fmt.Errorf("invalid account %q", account.ID)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.accounts[account.ID] = account
+	return nil
+}
+
+func (m *memoryAccounts) get(id string) (domain.Account, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	account, ok := m.accounts[id]
+	return account, ok
 }

@@ -8,14 +8,13 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
-	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
 var restartBackoff = [...]time.Duration{time.Second, 2 * time.Second, 5 * time.Second, 15 * time.Second, 60 * time.Second}
 
 // Manager owns connector lifetimes and routes account-scoped operations.
 type Manager struct {
-	Store      *store.Store
+	Store      AccountStore
 	Sink       Sink
 	Clock      Clock
 	Connectors []Connector

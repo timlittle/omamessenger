@@ -165,7 +165,7 @@ type ReactionSink interface { Reaction(accountID, convRemoteID, remoteID, sender
 type HistoryLoader interface { LoadHistory(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) error }       // D08, implemented by connectors
 type Authenticator interface { BeginAuth(ctx context.Context, sink AuthSink) error; Submit(ctx context.Context, step, value string) error } // D01
 ```
-The Manager depends on `type AccountStore interface { UpsertAccount(domain.Account) error; SetAccountStatus(id, status, detail string) (domain.Account, error) }`, declared in `connector`. It never imports `store`.
+The Manager depends on `type AccountStore interface { UpsertAccount(domain.Account) error }`, declared in `connector`. It never imports `store`. Status changes go through `Sink.AccountStatus`, so the Manager needs no status method.
 
 Manager: target after R03, it takes the consumer-side `AccountStore` interface and upserts each `Account()`, runs each connector in its own goroutine, and restarts it when `Run` returns an error. Backoff is 1s, 2s, 5s, 15s, then 60s capped, reset after 5 minutes connected. Before each wait it sets status `error` with `detail = err.Error()`. `Send`/`MarkRead` route by `AccountID`. Phase A currently uses `*store.Store`; R03 removes that dependency.
 
@@ -570,12 +570,13 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - `domain` length/text errors and `store` `newID`/`schemaVersion` unexported.
 - note (scope): archtest also flagged `notify.Recorder`/`notify.Notification` (test helpers in production code) and `app.ErrNoManager`. The helpers were moved out: `app` tests use a local `recorder`, and the `demo`/`rpc` tests use a local `silentNotifier`. `ErrNoManager` is now `errNoManager`, exposed to black-box tests through `app/export_test.go`. `TestExportsUsedOutsidePackage` passes.
 
-### [ ] R03 · Manager depends on AccountStore (S)
+### [x] R03 · Manager depends on AccountStore (S)
 - deps: R02
 - files: backend/internal/connector/connector.go, manager.go, manager_test.go
 - do: declare `AccountStore` exactly as in C4. The Manager takes it instead of `*store.Store`. Tests use an in-memory fake (`map` + mutex) instead of SQLite.
 - accept: `go list -mod=vendor -f '{{join .Imports " "}}' ./backend/internal/connector` doesn't contain `/store`; all manager tests pass unchanged in intent.
 - verify: `go test -mod=vendor -race -cover ./backend/internal/connector/`
+- result: `connector` imports only `domain`. `AccountStore` declares just `UpsertAccount`, the only method the Manager calls; C4 is updated to match. Manager tests use an in-memory `memoryAccounts` fake that, like the store, rejects unknown services.
 
 ### [ ] R04 · Generic rpc + api adapter (M)
 - deps: R02
