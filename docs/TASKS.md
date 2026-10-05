@@ -672,12 +672,13 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - fixed (bug): shutdown ordering. `defer cancel()` was registered before `defer manager.Wait()`, so when `rpc.Serve` returned an error (stdout broken because the UI died), Wait ran first and the helper hung forever. Regression test: `TestRunReturnsWhenOutputBreaks`.
 - fixed (bug): the helper did not exit on SIGTERM. `rpc.Serve` relied on closing stdin to unblock its read, but closing `os.Stdin` does not interrupt a read already blocked on a pipe. `Serve` now reads on its own goroutine (`readLines`) and selects on the context. Regression tests: `TestServeStopsOnCancelEvenIfReadNeverReturns` (rpc) and `TestBuiltHelperExitsCleanlyOnSIGTERM` (real process).
 
-### [ ] R07 · Launcher prefers dev build (S)  (formerly A12)
+### [x] R07 · Launcher prefers dev build (S)  (formerly A12)
 - deps: GA
 - files: bin/oma-messenger-service, .gitignore, tests/unit/launcher.test.cjs
 - do: if `$bin_dir/dev/oma-messenger-service` is executable, `exec` it; else keep the arch selection. Add `/bin/dev/` and `/build/` to .gitignore.
 - accept: the test runs the script with a temp bin dir containing a stub dev binary and asserts it was chosen; without the stub it picks the arch binary; with neither it exits 1 with a message.
 - verify: `node --test tests/unit/launcher.test.cjs`
+- result: the other session had implemented the launcher and the `.gitignore` entries but tested only the dev case. Tests now cover all three: the dev build is preferred even when a release binary exists; fallback to this machine's architecture binary; exit 1 with a message when neither exists. `make build` now writes `bin/dev/oma-messenger-service`, so local builds no longer overwrite the tracked release binaries (pulled forward from B19).
 
 ### [ ] R08 · Docs checks in code (M)
 - deps: R04, R06, R01a, R01e

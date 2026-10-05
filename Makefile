@@ -25,9 +25,9 @@ GOARCH := $(shell $(GO) env GOARCH)
 help: ## Show available development commands
 	@awk 'BEGIN {FS = ":.*##"; print "OmaMessenger development commands:"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  make %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build: ## Build the helper for this machine's architecture
+build: ## Build the helper for this machine into bin/dev/ (the launcher prefers it; release binaries stay untouched)
 	@test "$(GOOS)" = linux || { echo "OmaMessenger helper builds target Linux (found $(GOOS))." >&2; exit 1; }
-	CGO_ENABLED=0 $(GO) build -mod=vendor -trimpath -buildvcs=false -o bin/oma-messenger-service-linux-$(GOARCH) ./backend
+	CGO_ENABLED=0 $(GO) build -mod=vendor -trimpath -buildvcs=false -o bin/dev/oma-messenger-service ./backend
 
 build-all: ## Build bundled Linux amd64 and arm64 helpers
 	./scripts/build-release.sh
