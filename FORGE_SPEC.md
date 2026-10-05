@@ -1,0 +1,40 @@
+# OmaMessenger implementation spec
+
+Status: MVP scaffold in progress
+
+## Objective
+
+Build an Omarchy-native, keyboard-first messaging panel with a decoupled Go service. Support WhatsApp and Telegram through proven Go clients, with normalized accounts, conversations, and messages so other services can be added later.
+
+## Product boundaries
+
+- The QML panel is a third-party Omarchy `panel` plugin loaded by the existing `omarchy-shell` process.
+- A small Go helper process owns protocol connections, local persistence, and the loopback API. Omarchy's shell starts and supervises it through the plugin service entry point.
+- The helper is built from vendored source after an explicit user action in the panel; plugin installation does not build or download executables.
+- Protocol sessions and the SQLite database stay under the user's configuration directory.
+- The MVP starts with text conversation workflows. Media and reactions come after stable text send/receive.
+- Do not implement WhatsApp or Telegram protocols from scratch and do not fork Omarchy.
+
+## MVP acceptance
+
+- WhatsApp and Telegram accounts can be authenticated and kept across restarts.
+- One unified conversation list shows service, preview, and unread count.
+- A conversation view loads persisted messages and can send text through the owning service connector.
+- Incoming text is persisted and shown without restarting the UI; unread state and desktop notifications update.
+- Search filters conversations and messages.
+- Multiple accounts are distinguishable and can be switched from keyboard and mouse.
+- `j` / `k`, `Enter`, `Esc`, `Ctrl+K`, `Ctrl+N`, and service/account switching work.
+- The panel follows active Omarchy `Color` and `Style` theme tokens.
+- README explains setup, authentication, installation, shortcuts, and development.
+
+## Failure and privacy behavior
+
+- Show disconnected, authenticating, and connector error states in the UI.
+- Bind the API only to loopback and validate request payloads.
+- Never expose authentication capabilities through the third-party Quickshell plugin API.
+- Do not include message content or secrets in logs.
+- Keep adapters behind a generic connector interface and avoid service-specific shapes in QML.
+
+## Current gap
+
+The UI, API, persistence, and Omarchy plugin/helper lifecycle scaffold exist. Remote account authentication, synchronization, delivery, incoming updates, and notifications are not implemented yet. Do not describe this scaffold as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.

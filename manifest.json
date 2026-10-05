@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.omamessenger",
+  "name": "OmaMessenger",
+  "version": "0.1.0",
+  "author": "OmaMessenger contributors",
+  "license": "MIT",
+  "description": "A keyboard-first unified messaging panel for Omarchy.",
+  "kinds": ["panel", "service"],
+  "entryPoints": {
+    "panel": "Panel.qml",
+    "service": "Service.qml"
+  }
+}
