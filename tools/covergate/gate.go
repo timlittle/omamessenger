@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/timlittle/omamessenger/tools/covergate/gates"
 )
 
 // ModulePath prefixes every file in the cover profile.
@@ -20,35 +22,6 @@ const ModulePath = "github.com/timlittle/omamessenger/"
 
 // MainFile is the only file whose func main is excluded from coverage.
 const MainFile = "backend/main.go"
-
-// Gate is a minimum statement coverage for one package directory.
-type Gate struct {
-	Package string
-	Min     float64
-}
-
-// Gates is the single source of the C9 coverage thresholds. docscheck
-// verifies that docs/TASKS.md C9 lists the same values.
-var Gates = []Gate{
-	{"backend", 80},
-	{"backend/internal/domain", 100},
-	{"backend/internal/app/policy", 100},
-	{"backend/internal/store", 90},
-	{"backend/internal/rpc", 90},
-	{"backend/internal/api", 90},
-	{"backend/internal/app", 90},
-	{"backend/internal/connector", 90},
-	{"backend/internal/connector/demo", 90},
-	{"backend/internal/connector/clocktest", 90},
-	{"backend/internal/connector/connectortest", 90},
-	{"backend/internal/notify", 75},
-}
-
-// ToolsPrefix packages share one gate.
-const ToolsPrefix = "tools/"
-
-// ToolsMin is the gate for every package under ToolsPrefix.
-const ToolsMin = 90
 
 // Count holds statement totals for one package.
 type Count struct {
@@ -179,19 +152,6 @@ type Result struct {
 // Passed reports whether the package met its gate.
 func (r Result) Passed() bool { return r.Problem == "" }
 
-// GateFor returns the threshold for pkg and whether one is defined.
-func GateFor(pkg string) (float64, bool) {
-	for _, gate := range Gates {
-		if gate.Package == pkg {
-			return gate.Min, true
-		}
-	}
-	if strings.HasPrefix(pkg, ToolsPrefix) {
-		return ToolsMin, true
-	}
-	return 0, false
-}
-
 // Evaluate compares counts with the gates. Packages without statements are
 // skipped; a package with statements and no gate fails.
 func Evaluate(counts map[string]Count) []Result {
@@ -200,7 +160,7 @@ func Evaluate(counts map[string]Count) []Result {
 		if count.Statements == 0 {
 			continue
 		}
-		min, ok := GateFor(pkg)
+		min, ok := gates.For(pkg)
 		result := Result{Package: pkg, Count: count, Min: min}
 		switch {
 		case !ok:

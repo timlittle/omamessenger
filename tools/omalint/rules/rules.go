@@ -15,11 +15,9 @@ const InternalImportPrefix = "github.com/timlittle/omamessenger/backend/internal
 // MainPackage is the composition root; it may import any internal package.
 const MainPackage = "github.com/timlittle/omamessenger/backend"
 
-const (
-	ToolsPrefix        = "github.com/timlittle/omamessenger/tools/"
-	DocscheckPrefix    = "github.com/timlittle/omamessenger/tools/docscheck"
-	DocscheckAPIImport = "github.com/timlittle/omamessenger/backend/internal/api"
-)
+// ToolsPrefix packages may not import backend/internal packages; Go's
+// internal-package rule forbids it as well.
+const ToolsPrefix = "github.com/timlittle/omamessenger/tools/"
 
 // AllowedImports lists the internal package imports permitted by C10.
 var AllowedImports = map[string]map[string]bool{

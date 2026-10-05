@@ -84,17 +84,13 @@ func runTools(pass *analysis.Pass) (any, error) {
 func checkToolImports(pass *analysis.Pass, file *ast.File) {
 	for _, spec := range file.Imports {
 		path, err := strconv.Unquote(spec.Path.Value)
-		if err != nil || !strings.HasPrefix(path, rules.InternalImportPrefix) || toolsImportAllowed(pass.Pkg.Path(), path) {
+		if err != nil || !strings.HasPrefix(path, rules.InternalImportPrefix) {
 			continue
 		}
 		if !suppress.Check(pass, "layering", spec.Pos()) {
 			pass.Reportf(spec.Pos(), "layering: tools package %s may not import %s", pass.Pkg.Path(), path)
 		}
 	}
-}
-
-func toolsImportAllowed(packagePath, importPath string) bool {
-	return strings.HasPrefix(packagePath, rules.DocscheckPrefix) && importPath == rules.DocscheckAPIImport
 }
 
 func isTestFile(pass *analysis.Pass, file *ast.File) bool {

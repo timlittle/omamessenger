@@ -24,18 +24,23 @@ OmaMessenger is an Omarchy third-party Quickshell plugin backed by a Go helper p
 
 ## Layout
 
-- `manifest.json`: Omarchy entry points under `ui/` (target layout in C1).
-- `ui/Service.qml`, `ui/Panel.qml`, `ui/BarWidget.qml`: shell lifecycle, window and bar widget.
-- `ui/service/`, `ui/controllers/`, `ui/components/`, `ui/lib/`: helper/RPC state, UI actions, views and pure logic.
-- `backend/`: Go JSON-lines helper, normalized domain, persistence, and service connectors.
-- `tests/unit/`, `tests/qml/`, `tests/e2e/`: pure logic, offscreen QML and isolated compositor checks.
-- `scripts/`, `tools/`: build/test/install helpers and checked architecture, coverage and docs rules.
-- `vendor/`: vendored Go dependencies used to produce release binaries offline.
-- `bin/`: bundled Linux helper binaries and architecture-selecting launcher.
-- `scripts/build-release.sh`: reproducible cross-build for supported Linux architectures.
+Today:
 
-The repository still has the original root-level `Panel.qml`, `Service.qml` and `keyboard.js` scaffold. Phase B migrates these into the `ui/` layout and removes the old files.
+- `manifest.json`, `Panel.qml`, `Service.qml`, `keyboard.js`: the original root-level plugin scaffold, which Phase B replaces.
+- `backend/`: Go JSON-lines helper: `backend/internal/domain`, `store`, `connector` (plus `connector/demo`), `app` (`Commands`, `Ingest`, `app/policy`), `api`, `rpc`, `notify`, and `archtest`.
+- `tools/`: rules enforced in code: `tools/omalint` (Go analyzers), `tools/covergate` (coverage gates), `tools/docscheck` (docs checks).
+- `tests/unit/`, `tests/e2e/`: launcher and keyboard logic tests, and isolated compositor checks.
+- `bin/`: bundled Linux helper binaries and the architecture-selecting launcher, which prefers a local `bin/dev/` build.
+- `scripts/build-release.sh`: reproducible cross-build for supported Linux architectures.
+- `vendor/`: vendored Go dependencies used to produce release binaries offline.
+- `docs/`: the build plan (`docs/TASKS.md`), the generated protocol reference (`docs/PROTOCOL.md`) and the generated architecture metrics (`docs/ARCHITECTURE.md`).
+
+Planned in Phase B (target layout in `docs/TASKS.md` C1):
+
+- `ui/Service.qml`, `ui/Panel.qml`, `ui/BarWidget.qml`: shell lifecycle, window and bar widget (planned).
+- `ui/service/`, `ui/controllers/`, `ui/components/`, `ui/lib/`: helper/RPC state, UI actions, views and pure logic (planned).
+- `tests/qml/`: offscreen QML integration harness (planned).
 
 ## Development
 
-The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries. On Omarchy, use `omarchy plugin validate .` and `make lint` when validation is requested. Phase B replaces the transitional QML lint command with `/usr/lib/qt6/bin/qmllint` and a Quickshell import directory prepared by `scripts/qml-imports.sh`.
+The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries. On Omarchy, use `omarchy plugin validate .` and `make lint` when validation is requested. Phase B replaces the transitional QML lint command with `/usr/lib/qt6/bin/qmllint` and a Quickshell import directory prepared by `scripts/qml-imports.sh` (planned).

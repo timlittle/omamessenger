@@ -27,7 +27,7 @@ func TestPackageRules(t *testing.T) {
 		name, packagePath, filename, source, want string
 	}{
 		{"tools forbidden", "github.com/timlittle/omamessenger/tools/toolcase", "fixture.go", `package toolcase; import _ "` + internal + `domain"`, "may not import"},
-		{"docscheck allowance", "github.com/timlittle/omamessenger/tools/docscheck", "fixture.go", `package docscheck; import _ "` + internal + `api"`, ""},
+		{"no tools allowance", "github.com/timlittle/omamessenger/tools/docscheck", "fixture.go", `package docscheck; import _ "` + internal + `api"`, "may not import"},
 		{"external test package follows its package", internal + "connector_test", "x_test.go", `package connector_test; import _ "` + internal + `app"`, "connector may not import"},
 		{"external test package gets test-only imports", internal + "connector_test", "x_test.go", `package connector_test; import _ "` + internal + `store"`, ""},
 		{"external test package imports the package under test", internal + "connector_test", "x_test.go", `package connector_test; import _ "` + internal + `connector"`, ""},

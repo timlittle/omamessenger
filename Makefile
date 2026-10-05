@@ -20,7 +20,7 @@ COVERAGE_FILE ?= build/cover.out
 GOOS := $(shell $(GO) env GOOS)
 GOARCH := $(shell $(GO) env GOARCH)
 
-.PHONY: help build build-all test test-go test-js test-unit test-integration test-omalint cover-omalint run-omalint coverage lint validate install-local status pull clean
+.PHONY: help build build-all test test-go test-js docs-check test-unit test-integration test-omalint cover-omalint run-omalint coverage lint validate install-local status pull clean
 
 help: ## Show available development commands
 	@awk 'BEGIN {FS = ":.*##"; print "OmaMessenger development commands:"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  make %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -32,11 +32,15 @@ build: ## Build the helper for this machine into bin/dev/ (the launcher prefers 
 build-all: ## Build bundled Linux amd64 and arm64 helpers
 	./scripts/build-release.sh
 
-test: ## Build, then run Go (race + coverage gates), JS and lint checks
+test: ## Build, then run Go (race + coverage gates), JS, lint and docs checks
 	+$(MAKE) build
 	+$(MAKE) test-go
 	+$(MAKE) test-js
 	+$(MAKE) lint
+	+$(MAKE) docs-check
+
+docs-check: ## Check docs against the code: generated protocol reference, C3/C9/C10 contracts, links, paths, make targets, flags
+	$(GO) test -mod=vendor -count=1 ./tools/docscheck/... ./backend/internal/api/ -run 'TestProtocolDocCurrent|TestContract|TestLinks|TestPaths|TestMakeTargets|TestFlags|TestKeys'
 
 test-go: coverage ## Run all Go tests with the race detector and enforce per-package coverage gates
 

@@ -184,3 +184,30 @@ func TestServeWithCode(t *testing.T) {
 		t.Fatalf("frame = %s (%v)", line, err)
 	}
 }
+
+func TestDescriptorsMatchRegister(t *testing.T) {
+	registered := Register(&fakeCommands{demo: true})
+	described := map[string]bool{}
+	for _, m := range Methods() {
+		if described[m.Name] {
+			t.Errorf("%s is described twice", m.Name)
+		}
+		described[m.Name] = true
+		if _, ok := registered[m.Name]; !ok {
+			t.Errorf("%s is described but not registered", m.Name)
+		}
+		if _, inPlainMode := Register(&fakeCommands{})[m.Name]; inPlainMode == m.DemoOnly {
+			t.Errorf("%s: DemoOnly=%t disagrees with Register", m.Name, m.DemoOnly)
+		}
+	}
+	for name := range registered {
+		if !described[name] {
+			t.Errorf("%s is registered but not described", name)
+		}
+	}
+	for _, e := range Events() {
+		if e.Name == "" || e.Data == "" || e.When == "" {
+			t.Errorf("incomplete event descriptor %+v", e)
+		}
+	}
+}
