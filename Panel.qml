@@ -258,6 +258,7 @@ Panel {
                                                 width: parent.width
                                                 Text { width: parent.width - unread.width - Style.space(10); text: modelData.title; color: index === root.cursor ? Color.background : Color.foreground; font.pixelSize: Style.font.body; font.bold: true; elide: Text.ElideRight }
                                                 Rectangle {
+                                                    id: unread
                                                     visible: modelData.unread > 0
                                                     width: unreadLabel.implicitWidth + Style.space(10)
                                                     height: unreadLabel.implicitHeight + Style.space(6)
