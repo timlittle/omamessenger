@@ -1,6 +1,6 @@
 # OmaMessenger agent guide
 
-OmaMessenger is an Omarchy third-party Quickshell plugin backed by a Go helper process. Its IPC-summoned entry point opens a normal, non-modal client window. Preserve the seam between the QML UI, the local API, and each service connector.
+OmaMessenger is an Omarchy third-party Quickshell plugin backed by a Go helper process. Its IPC-summoned entry point opens a normal, non-modal client window. Preserve the seam between the QML UI, local JSON-lines IPC, and each service connector.
 
 ## Project rules
 
@@ -25,7 +25,7 @@ OmaMessenger is an Omarchy third-party Quickshell plugin backed by a Go helper p
 ## Layout
 
 - `Panel.qml`, `manifest.json`: Omarchy plugin entry point and panel UI.
-- `backend/`: Go HTTP API, normalized domain, persistence, and service connectors.
+- `backend/`: Go JSON-lines helper, normalized domain, persistence, and service connectors.
 - `tests/`: pure logic and isolated compositor checks.
 - `scripts/`: build, test, coverage, and local installation helpers.
 - `Service.qml`: shell-owned lifecycle for the Go helper.

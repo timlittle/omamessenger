@@ -398,14 +398,14 @@ UI rules (checked by `scripts/check-source.sh`):
 
 ### [ ] GA · Phase A gate (S)
 - deps: A01–A10
-- files: docs/TASKS.md, scripts/install-local.sh, scripts/test-docker.sh
+- files: docs/TASKS.md, README.md, CONTRIBUTING.md, AGENTS.md, FORGE_SPEC.md, .agents/README.md, scripts/install-local.sh, scripts/test-docker.sh
 - checks: §0.1 D1, D2, D3, D6, D7 (`FuzzDecode`), D8, D9. D4 and D5 start at GR (their scripts arrive in R01); for now record `go test -mod=vendor -cover ./backend/...` per-package numbers in the gate note.
 - plus:
   - GA1 Order independence: `go test -mod=vendor -race -shuffle=on -count=3 ./backend/...` passes.
   - GA2 Demo determinism: `go test -mod=vendor -race -count=5 ./backend/internal/connector/demo/` passes.
   - GA3 Ordering regression: `go test -mod=vendor -run 'Order' -v ./backend/internal/store/` shows the whole-second-after-fraction case passing.
   - GA4 Privacy: `git grep -nE '(log|fmt)\.(Print|Fatal|Fprint)[a-z]*\(.*\.(Text|Name|SenderName|Title)' -- backend` is empty.
-- note: Current phase-A verification: Go has 112 passing test cases (`go test -mod=vendor -json ./backend/...`); Node has 2 passing tests (`node --test tests/unit/*.test.cjs`). Package statement coverage: app 91.5%, connector 88.4%, clocktest 92.5%, demo 88.8%, domain 100%, notify 100%, rpc 82.5%, store 85.8%; `backend` main package is excluded from the package gates. D2, D3 (three shuffled runs), D6, D7 (30 s `FuzzDecode`), GA1–GA4 and D9 pass. D4/D5 are deferred to GR per this task. D8 remains pending the required local commit and clean-worktree check. Replacing two `mktemp` templates that produced false `XXX` matches made the prescribed D9 scan meaningful.
+- note: Current phase-A verification: Go has 112 passing test cases (`go test -mod=vendor -json ./backend/...`); Node has 2 passing tests (`node --test tests/unit/*.test.cjs`). Package statement coverage: app 91.5%, connector 88.4%, clocktest 92.5%, demo 88.8%, domain 100%, notify 100%, rpc 82.5%, store 85.8%; `backend` main package is excluded from the package gates. D2, D3 (three shuffled runs), D6, D7 (30 s `FuzzDecode`), GA1–GA4 and D9 pass. D4/D5 are deferred to GR per this task. D8 remains pending the final documentation commit and clean-worktree check. Current docs now describe stdio JSON-lines IPC and the seeded demo, not the removed HTTP/token API. Replacing two `mktemp` templates that produced false `XXX` matches made the prescribed D9 scan meaningful.
 
 ### Phase R — refactor to the architecture rules (C10)
 

@@ -9,9 +9,9 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 ## Product boundaries
 
 - The QML plugin entry point is loaded by the existing `omarchy-shell` process and opens a standard Quickshell `FloatingWindow`, managed by Hyprland as a normal non-modal application window.
-- A small Go helper process owns protocol connections, local persistence, and the loopback API. Omarchy's shell starts and supervises it through the plugin service entry point.
+- A small Go helper process owns protocol connections and local persistence. Omarchy's shell starts and supervises it through the plugin service entry point; the UI and helper communicate over local JSON-lines IPC on stdio.
 - Linux x86_64 and ARM64 helper binaries ship with the plugin. `Service.qml` selects and starts the bundled helper; plugin installation needs no compiler, download step, or system service.
-- Protocol sessions and the SQLite database stay under the user's configuration directory.
+- Protocol sessions and the SQLite database stay under the user's data directory.
 - The MVP starts with text conversation workflows. Media and reactions come after stable text send/receive.
 - Do not implement WhatsApp or Telegram protocols from scratch and do not fork Omarchy.
 
@@ -32,7 +32,7 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 ## Failure and privacy behavior
 
 - Show disconnected, authenticating, and connector error states in the UI.
-- Bind the API only to loopback and validate request payloads.
+- Keep the local IPC private to the user session and validate request payloads.
 - Never expose authentication capabilities through the third-party Quickshell plugin API.
 - Do not include message content or secrets in logs.
 - Keep adapters behind a generic connector interface and avoid service-specific shapes in QML.

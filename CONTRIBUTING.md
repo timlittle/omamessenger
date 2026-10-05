@@ -5,7 +5,7 @@ OmaMessenger is an Omarchy plugin first and a messaging client second. Keep it n
 ## Before changing code
 
 - Read [AGENTS.md](AGENTS.md) for the project working agreements and [FORGE_SPEC.md](FORGE_SPEC.md) for product scope and acceptance criteria.
-- Keep the Quickshell plugin UI, local HTTP API, persistence, and service connectors independently understandable. The UI consumes normalized accounts, conversations, and messages; it must not speak WhatsApp or Telegram protocol details.
+- Keep the Quickshell plugin UI, local JSON-lines IPC, persistence, and service connectors independently understandable. The UI consumes normalized accounts, conversations, and messages; it must not speak WhatsApp or Telegram protocol details.
 - A service-specific capability belongs in the service connector. Do not show a control that suggests an operation is available when that service cannot perform it.
 - Keep credentials and message content out of logs, shell configuration, and test output. Use temporary directories and fake service data in tests.
 
@@ -22,7 +22,7 @@ Add a regression test with each behavior fix. Put the test at the narrowest laye
 | Change | Test location |
 | --- | --- |
 | Pure keyboard or data transformation logic | `tests/unit/`, runnable with Node |
-| Go persistence or API behavior | `backend/*_test.go`, using temporary SQLite databases and in-process HTTP handlers |
+| Go persistence, RPC framing, or helper behavior | focused `backend/internal/*/*_test.go` or `backend/*_test.go`, using temporary SQLite databases and in-process JSON-lines streams |
 | Plugin manifest or QML validity | `make validate` and `make lint` |
 
 Run the relevant test once against the failing behavior before fixing it when practical. Before opening a pull request, run:
