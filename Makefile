@@ -7,7 +7,6 @@ export GIT_PAGER := cat
 export SYSTEMD_PAGER := cat
 
 GO ?= go
-GO_TOOLCHAIN ?= go1.23.12
 GO_CACHE ?= /tmp/oma-go-cache
 GO_MODULE_CACHE ?= $(shell $(GO) env GOMODCACHE)
 NODE ?= node
@@ -47,13 +46,13 @@ test-unit: ## Run backend tests and keyboard/launcher logic tests
 	+$(MAKE) test-omalint
 
 test-omalint: ## Run the Go analyzer unit tests with the project Go toolchain
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) GOCACHE=$(GO_CACHE) GOMODCACHE=$(GO_MODULE_CACHE) $(GO) test -mod=vendor ./tools/omalint/...
+	GOCACHE=$(GO_CACHE) GOMODCACHE=$(GO_MODULE_CACHE) $(GO) test -mod=vendor ./tools/omalint/...
 
 cover-omalint: ## Show per-package coverage for the Go analyzer suite
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) GOCACHE=$(GO_CACHE) GOMODCACHE=$(GO_MODULE_CACHE) $(GO) test -mod=vendor -cover ./tools/omalint/...
+	GOCACHE=$(GO_CACHE) GOMODCACHE=$(GO_MODULE_CACHE) $(GO) test -mod=vendor -cover ./tools/omalint/...
 
 run-omalint: ## Run the Go analyzers over OMALINT_PACKAGES (currently reports known refactor findings)
-	GOTOOLCHAIN=$(GO_TOOLCHAIN) GOCACHE=$(GO_CACHE) GOMODCACHE=$(GO_MODULE_CACHE) $(GO) run -mod=vendor ./tools/omalint $(OMALINT_PACKAGES)
+	GOCACHE=$(GO_CACHE) GOMODCACHE=$(GO_MODULE_CACHE) $(GO) run -mod=vendor ./tools/omalint $(OMALINT_PACKAGES)
 
 OMALINT_PACKAGES ?= ./backend/... ./tools/...
 

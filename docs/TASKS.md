@@ -56,7 +56,7 @@ Task format:
 - F6 Bar widget: get the service with `bar.shell.serviceFor("io.github.omamessenger")` and open the window with `bar.shell.toggle("io.github.omamessenger", "{}")`. Plugin settings arrive on the widget's `settings` property, not on the service; the widget forwards them with `service.applySettings(settings)`.
 - F7 `Service.qml` must declare **no `required` properties**; the plugin fails to load otherwise.
 - F8 Omarchy hot-reloads plugin code on any file write under `~/.config/omarchy/plugins/`. Keep databases and runtime files outside the plugin dir.
-- F9 `vendor/` is tracked. Deleting it needs the owner's approval, so keep building with `-mod=vendor`. Adding a Go dependency requires `go mod vendor` (or owner approval to drop vendoring). R01a adds `golang.org/x/tools` this way (network needed once).
+- F9 `vendor/` is tracked. Deleting it needs the owner's approval, so keep building with `-mod=vendor`. Adding a Go dependency requires `go mod vendor` (or owner approval to drop vendoring). R01a adds `golang.org/x/tools` this way (network needed once). `x/tools` must understand the installed toolchain's export data: v0.36.0 crashes under Go 1.27 with `package "errors" without types was imported`. The module therefore requires Go ≥ 1.26 (x/tools v0.51.0), and `tools/omalint/selfcheck_test.go` runs the built linter on a real package to catch a repeat.
 - F10 Quickshell `Process`: set `stdinEnabled: true` and use `write(string)` to send; parse stdout with `stdout: SplitParser { onRead: function(line) {...} }`.
 - F11 Resolve the plugin's own files from QML with `Qt.resolvedUrl("../bin/oma-messenger-service")` and strip the `file://` prefix. This works for both installed copies and symlinked dev checkouts.
 - F12 Omarchy `Style` tokens: `Style.space(px)`, `Style.font.{caption,bodySmall,body,subtitle,title,heading,display}`, `Style.spacing.*`, `Style.hoverFill`, `Style.selectedFill`, `Style.selectedFillAlpha`, `Style.cornerRadius`. `Color.{foreground,background,accent,urgent,muted}`, `Color.popups.{background,text,border}`. Helper: `Util.alpha(color, a)`. Omarchy `qs.Ui` controls: `Button`, `TextField`, `Dropdown`, `Toggle`, `BarWidget`, `BarIconButton`, `Panel`, `BorderSurface`.
@@ -488,7 +488,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - deps: GA
 - files: tools/omalint/main.go, tools/omalint/rules/rules.go, tools/omalint/analyzers/layering/, tools/omalint/analyzers/size/, tools/omalint/suppress/, `testdata/` under each analyzer, go.mod, go.sum, vendor/
 - do:
-  1. `go get golang.org/x/tools@v0.36.0` (latest release declaring `go 1.23.0`), then `go mod vendor`.
+  1. `go get golang.org/x/tools@v0.51.0`, then `go mod vendor`. (v0.36.0 was used first; see the note below.)
   2. `main.go` runs the analyzers with `multichecker.Main`.
   3. `rules.go` holds the C10 layering table, test-file extras and size limits as Go data (the single source).
   4. `layering` reports a forbidden import at the import spec position.
@@ -514,6 +514,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   backend/main.go:31:9: size: function has 6 parameters; maximum 5
   ```
 - verify: `go test -mod=vendor ./tools/omalint/... && (go run -mod=vendor ./tools/omalint ./backend/...; test $? -ne 0)`
+- fix (after the session ended): standalone `go run ./tools/omalint ./backend/...` crashed under the installed Go 1.27 (`internal error: package "errors" without types`). The analyzer tests passed only because the Makefile pinned `GOTOOLCHAIN=go1.23.12` for omalint targets. Upgraded to x/tools v0.51.0 (module now `go 1.26.0`), removed the pin, and added `TestStandaloneRunOnRealPackage`. Standalone omalint now reports the known findings and exits non-zero.
 
 ### [x] R01b · Complexity analyzers (S)
 - deps: R01a
@@ -578,7 +579,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
      - `Register(c Commands) rpc.Handler` builds the C3 method table, decoding params into the app param structs.
      - `Code(err)` maps `domain.ErrNotFound` → `not_found` and `app.ErrBadRequest` → `bad_request` (message = err text); anything else → `internal` with message `"internal error"` (never leak internal text).
   3. Move method-level tests from `rpc` to `api_test.go` using a fake `Commands`. `rpc` tests cover only framing, errors, ids, concurrency and EOF.
-- accept: `rpc` imports stdlib only; every C3 method has a happy-path and an error-path test in `api_test.go`; demo-only `demo.inject` is registered only when the Commands value reports demo mode.
+- accept: `rpc` imports stdlib only, including its tests; omalint reports nothing for `rpc` and `api` (today `Serve` is 78 lines with complexity 13 and `decodeRequest` has complexity 11); every C3 method has a happy-path and an error-path test in `api_test.go`; demo-only `demo.inject` is registered only when the Commands value reports demo mode.
 - verify: `go test -mod=vendor -race -cover ./backend/internal/rpc/ ./backend/internal/api/`
 
 ### [ ] R05 · Split app by responsibility (L)
@@ -604,8 +605,22 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - Previous app tests still pass, moved into `commands_test.go` / `ingest_test.go`, with a fake Repository or a real store from a test-only import.
 - verify: `go test -mod=vendor -race -cover ./backend/internal/app/... && go run -mod=vendor ./tools/omalint ./backend/... && go test -mod=vendor ./backend/internal/archtest/`
 
+### [ ] R05b · Bring store, demo and manager within C10 limits (M)
+- deps: R02, R03
+- files: backend/internal/store/{store.go,migrate.go,accounts.go,contacts.go,conversations.go,messages.go,store_test.go}, backend/internal/connector/demo/seed.go, backend/internal/connector/manager.go
+- do:
+  1. Split `store.go` (510 lines) by aggregate into the files listed. Behaviour and exported API are unchanged.
+  2. Reduce `store.AddMessage` (complexity 14) and `store.Messages` (12) to ≤ 10 by extracting named helpers, e.g. `defaultStatus`, `existingByRemote`, `bumpConversation`, `pageCursor`, `scanMessages`.
+  3. Reduce demo `messagesFor` (17) to ≤ 10 by moving the per-conversation script into a data table.
+  4. Reduce `connector.Manager.Start` (14) to ≤ 10 by extracting the account upsert and the per-connector launch.
+- accept:
+  - `go run -mod=vendor ./tools/omalint ./backend/internal/store/... ./backend/internal/connector/...` reports nothing.
+  - All existing store, demo and manager tests pass unchanged.
+  - Every new helper is covered.
+- verify: `go test -mod=vendor -race -cover ./backend/internal/store/ ./backend/internal/connector/... && go run -mod=vendor ./tools/omalint ./backend/internal/store/... ./backend/internal/connector/...`
+
 ### [ ] R06 · Helper main (M)  (formerly A11)
-- deps: R05, A10
+- deps: R05, R05b, A10
 - files: backend/main.go (rewrite), backend/config.go, backend/main_test.go (replace)
 - do:
   1. `resolveConfig(args []string, env func(string) string) (Config, error)`. Flags: `--demo`, `--no-chatter`, `--seed`, `--data-dir`, `--db`, `--version`. Paths follow C2.
@@ -615,6 +630,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - `resolveConfig` table tests cover every flag, the XDG fallbacks and invalid input.
   - Integration test: build the binary into `t.TempDir()`; run it with `--demo --no-chatter --seed 1 --data-dir $TMP`; send `hello` and `conversations.list` → 11 conversations; send `demo.inject`; close stdin → exit 0 within 2 s.
   - Privacy test: the captured stderr from that run contains none of the C5 seed message texts, contact names or conversation titles.
+  - `go run -mod=vendor ./tools/omalint ./backend/` reports nothing. Today `run` takes 6 parameters; bundle stdin/stdout/stderr into an `ioStreams` struct.
 - verify: `go test -mod=vendor -race ./backend/`
 
 ### [ ] R07 · Launcher prefers dev build (S)  (formerly A12)
@@ -644,13 +660,13 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - verify: `go test -mod=vendor -cover ./tools/docscheck/`
 
 ### [ ] GR · Phase R gate (S)
-- deps: R01a–R01e, R02–R08
+- deps: R01a–R01e, R02–R05, R05b, R06–R08
 - checks: all of §0.1 (D1–D11).
 - plus:
   - GR1 Test count ≥ GA's recorded count.
   - GR2 Binary smoke: `go build -mod=vendor -o bin/dev/oma-messenger-service ./backend && printf '{"id":1,"method":"hello","params":{}}\n' | bin/dev/oma-messenger-service --demo --no-chatter --data-dir "$(mktemp -d)"` prints one response line containing `"protocol":1` and exits 0.
   - GR3 `go test -mod=vendor -race -shuffle=on -count=3 ./backend/...` passes.
-  - GR4 Offline: `docker run --rm --network none -v "$PWD":/src -w /src golang:1.23 go test -mod=vendor ./backend/...` passes (no test touches the network).
+  - GR4 Offline: `docker run --rm --network none -v "$PWD":/src -w /src golang:1.26 go test -mod=vendor ./backend/...` passes (no test touches the network).
 - note: record test counts and the coverage table.
 
 ### Phase B — UI on demo data
@@ -922,7 +938,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - deps: GB
 - files: .github/workflows/ci.yml, .github/workflows/release.yml
 - do:
-  - `ci.yml` on PR and push: job `go-js` (ubuntu: setup-go 1.23, setup-node 22, `npm --prefix tools/uilint ci`, `make test-go test-js docs-check` and the omalint/uilint parts of `lint`); job `qml` (container `archlinux:base-devel`: install quickshell qt6-declarative go nodejs; clone `omacom/omarchy` at tag `v4.0.4`; `OMARCHY_SHELL_DIR=…/shell make lint test-qml`).
+  - `ci.yml` on PR and push: job `go-js` (ubuntu: setup-go 1.26, setup-node 22, `npm --prefix tools/uilint ci`, `make test-go test-js docs-check` and the omalint/uilint parts of `lint`); job `qml` (container `archlinux:base-devel`: install quickshell qt6-declarative go nodejs; clone `omacom/omarchy` at tag `v4.0.4`; `OMARCHY_SHELL_DIR=…/shell make lint test-qml`).
   - `release.yml`: publish only after `ci.yml` succeeds (use `workflow_run` or `needs`); build binaries on `v*` tags and on main pushes that touch `backend/**`.
 
 ### [ ] Q07 · Mutation testing (M)
@@ -1044,7 +1060,7 @@ Do D only after GQ. Each connector task needs golden tests built from recorded/c
 - plus:
   - GD1 Every normalizer has golden tests; `go test ./backend/... -run Golden -update` produces no diff.
   - GD2 Every `Fuzz*` target runs 60 s without failure.
-  - GD3 Offline: `docker run --rm --network none -v "$PWD":/src -w /src golang:1.23 go test -mod=vendor ./backend/...` passes.
+  - GD3 Offline: `docker run --rm --network none -v "$PWD":/src -w /src golang:1.26 go test -mod=vendor ./backend/...` passes.
   - GD4 The WhatsApp and Telegram connectors pass `connectortest.Run` against their fakes.
   - GD5 Privacy: an integration test runs the helper with fake WhatsApp/Telegram sessions and asserts that stderr contains no message text, names, phone numbers, QR payloads or session data. Session files are 0600 and the data dir is 0700 (tested).
   - GD6 Every `FORGE_SPEC.md` "MVP acceptance" item is ticked, with the test or check that proves it named next to it.

@@ -89,7 +89,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for project boundaries, the test map, UI 
 
 `make install-local` builds the native helper, stages the plugin runtime files into `~/.config/omarchy/plugins/io.github.omamessenger/`, validates it, asks the running Omarchy shell to rescan, and enables the plugin. Then open it with `omarchy-shell shell summon io.github.omamessenger '{}'`. This installs your current working tree so you can try changes before pushing.
 
-Build both bundled Linux helper binaries from source with Go 1.23 or newer:
+Build both bundled Linux helper binaries from source with Go 1.26 or newer:
 
 ```sh
 ./scripts/build-release.sh
