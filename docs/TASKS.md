@@ -453,7 +453,7 @@ Cyclomatic complexity = 1 + each `if`, `for`, `range`, non-default `case`, `comm
 - note: `demo.inject` takes a local `Conversation.id`; App resolves it to the connector's remote ID. The RPC integration case exercises that C3 shape.
 - verify: `go test -mod=vendor -race -cover ./backend/internal/connector/demo/`
 
-### [ ] GA · Phase A gate (S)
+### [x] GA · Phase A gate (S)
 - deps: A01–A10
 - files: docs/TASKS.md, README.md, CONTRIBUTING.md, AGENTS.md, FORGE_SPEC.md, .agents/README.md, Makefile, scripts/install-local.sh, scripts/test-docker.sh, scripts/build-release.sh, bin/oma-messenger-service-linux-amd64, bin/oma-messenger-service-linux-arm64
 - checks: D1; pre-R D2 (`gofmt -l backend`, `go vet -mod=vendor ./backend/...`); pre-R D3 (`go test -mod=vendor -race -count=3 ./backend/...`); D6, D7 (`FuzzDecode`), D8, D9 and pre-R D11. D2/D3 over `tools/...`, D4, D5, D10 and architecture conformance in D11 are enforced at GR after R01a–R01e and R08. For now, record `go test -mod=vendor -cover ./backend/...` per-package numbers in the gate note.
@@ -462,7 +462,7 @@ Cyclomatic complexity = 1 + each `if`, `for`, `range`, non-default `case`, `comm
   - GA2 Demo determinism: `go test -mod=vendor -race -count=5 ./backend/internal/connector/demo/` passes.
   - GA3 Ordering regression: `go test -mod=vendor -run 'Order' -v ./backend/internal/store/` shows the whole-second-after-fraction case passing.
   - GA4 Privacy: `git grep -nE '(log|fmt)\.(Print|Fatal|Fprint)[a-z]*\(.*\.(Text|Name|SenderName|Title)' -- backend` is empty.
-- note: Current phase-A verification: Go has 112 passing test cases (`go test -mod=vendor -json ./backend/...`); Node has 2 passing tests (`node --test tests/unit/*.test.cjs`). Aggregate core coverage is 85.7%; package statement coverage: app 91.4%, connector 88.4%, clocktest 92.5%, demo 88.8%, domain 100%, notify 100%, rpc 82.5%, store 85.8%; `backend` main package is excluded from the package gates. `make test` passes. Pre-R D2/D3 (three race runs), D6, D7 (30 s `FuzzDecode`), GA1–GA4 and D9 pass. D4/D5/D10 and tool-package D2/D3 are deferred to GR. D8 must be rerun against the final GA commit in a clean worktree. Current docs describe stdio JSON-lines IPC and the seeded demo, not the removed HTTP/token API. Replacing two `mktemp` templates that produced false `XXX` matches made the prescribed D9 scan meaningful.
+- note: Current phase-A verification: Go has 112 passing test cases (`go test -mod=vendor -json ./backend/...`); Node has 2 passing tests (`node --test tests/unit/*.test.cjs`). Aggregate core coverage is 85.7%; package statement coverage: app 91.4%, connector 88.4%, clocktest 92.5%, demo 88.8%, domain 100%, notify 100%, rpc 82.5%, store 85.8%; `backend` main package is excluded from the package gates. `make test` passes. Pre-R D2/D3 (three race runs), D6, D7 (30 s `FuzzDecode`), GA1–GA4 and D9 pass. D4/D5/D10 and tool-package D2/D3 are deferred to GR. D8 passed in a clean checkout at `1bc3ca3`: Go tests (`-race -count=3`), Node tests, formatting and `go vet`. Current docs describe stdio JSON-lines IPC and the seeded demo, not the removed HTTP/token API. Replacing two `mktemp` templates that produced false `XXX` matches made the prescribed D9 scan meaningful.
 
   D11 review table (reviewed against code commit `c4c6975`; the C10 target rules are explicitly identified as Phase R work):
 
