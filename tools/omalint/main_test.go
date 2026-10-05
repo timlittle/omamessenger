@@ -9,14 +9,14 @@ import (
 
 func TestAnalyzerRegistry(t *testing.T) {
 	got := analyzers()
-	if len(got) != 2 || got[0].Name != "layering" || got[1].Name != "size" {
+	if len(got) != 3 || got[0].Name != "layering" || got[1].Name != "size" || got[2].Name != "complexity" {
 		t.Fatalf("unexpected analyzer registry: %#v", got)
 	}
 }
 
 func TestMainRunsRegisteredAnalyzers(t *testing.T) {
 	called := false
-	runMultichecker = func(got ...*analysis.Analyzer) { called = len(got) == 2 }
+	runMultichecker = func(got ...*analysis.Analyzer) { called = len(got) == 3 }
 	defer func() { runMultichecker = multichecker.Main }()
 	main()
 	if !called {

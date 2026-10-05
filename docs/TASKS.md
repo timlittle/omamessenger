@@ -515,11 +515,12 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   ```
 - verify: `go test -mod=vendor ./tools/omalint/... && (go run -mod=vendor ./tools/omalint ./backend/...; test $? -ne 0)`
 
-### [ ] R01b · Complexity analyzers (S)
+### [x] R01b · Complexity analyzers (S)
 - deps: R01a
 - files: tools/omalint/analyzers/complexity/ (+ testdata), tools/omalint/main.go, tools/omalint/rules/rules.go
 - do: cyclomatic complexity and nesting depth per C10, for function declarations and function literals separately.
 - accept: testdata functions at exactly the limit pass and at limit+1 fail, for each counted construct (`if`, `for`, `range`, `case`, `select` case, `&&`, `||`, nested func literal).
+- result: Go 1.23.12 tests pass; complexity analyzer coverage is 94.5%. Fixtures include four-level nesting at the limit, a five-level violation, valid suppression and missing-reason rejection.
 - verify: `go test -mod=vendor ./tools/omalint/...`
 
 ### [ ] R01c · Design analyzers: dip, frozeniface, nologcontent (M)

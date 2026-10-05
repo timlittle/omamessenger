@@ -5,6 +5,8 @@ const (
 	MaxFileLines     = 400
 	MaxFunctionLines = 60
 	MaxParameters    = 5
+	MaxComplexity    = 10
+	MaxNestingDepth  = 4
 )
 
 // InternalImportPrefix is the project module path used to identify internal edges.
