@@ -14,7 +14,6 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector/clocktest"
 	"github.com/timlittle/omamessenger/backend/internal/connector/demo"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
-	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -35,7 +34,7 @@ func newFixture(t *testing.T, chatter bool) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := app.New(db, nil, &notify.Recorder{}, clock)
+	a := app.New(db, nil, silentNotifier{}, clock)
 	typing := make(chan bool, 8)
 	a.Emit = func(name string, data any) {
 		if name != "typing" {
@@ -270,3 +269,8 @@ func TestChatterCanBeToggled(t *testing.T) {
 		t.Fatalf("enabled chatter did not add unread messages: %d", total)
 	}
 }
+
+// silentNotifier discards notifications so tests never run notify-send.
+type silentNotifier struct{}
+
+func (silentNotifier) Notify(string, string) {}

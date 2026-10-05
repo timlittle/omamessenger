@@ -20,7 +20,6 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/clocktest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
-	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -62,7 +61,7 @@ func newRPCFixture(t *testing.T, w io.Writer) *rpcFixture {
 		}
 	})
 	clock := clocktest.New(time.Unix(1000, 0))
-	service := app.New(db, nil, &notify.Recorder{}, clock)
+	service := app.New(db, nil, silentNotifier{}, clock)
 	stream := NewStream(w)
 	service.Emit = func(name string, data any) { _ = stream.Emit(name, data) }
 	manager := &connector.Manager{
@@ -340,3 +339,8 @@ func TestServeRejectsOversizedLine(t *testing.T) {
 		t.Fatalf("oversized-line response = %#v, %v", frames, parseErr)
 	}
 }
+
+// silentNotifier discards notifications so tests never run notify-send.
+type silentNotifier struct{}
+
+func (silentNotifier) Notify(string, string) {}

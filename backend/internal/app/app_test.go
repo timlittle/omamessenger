@@ -14,7 +14,6 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/clocktest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
-	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -79,7 +78,7 @@ type fixture struct {
 	store     *store.Store
 	connector *testConnector
 	clock     *clocktest.Clock
-	notifier  *notify.Recorder
+	notifier  *recorder
 	events    *eventLog
 }
 
@@ -95,7 +94,7 @@ func newFixture(t *testing.T, demo bool) *fixture {
 		}
 	})
 	clock := clocktest.New(time.Date(2026, 9, 12, 10, 30, 0, 0, time.UTC))
-	notifier := &notify.Recorder{}
+	notifier := &recorder{}
 	appService := app.New(db, nil, notifier, clock)
 	appService.Demo = demo
 	events := &eventLog{}
@@ -314,7 +313,7 @@ func TestIncomingDedupeEventsReadFocusAndNotificationPolicy(t *testing.T) {
 		t.Fatalf("incoming event order = %v, want %v", got, want)
 	}
 	calls := f.notifier.Calls()
-	if len(calls) != 1 || calls[0] != (notify.Notification{Title: "Alex", Body: "First"}) {
+	if len(calls) != 1 || calls[0] != (notification{Title: "Alex", Body: "First"}) {
 		t.Fatalf("direct notification = %#v", calls)
 	}
 	f.events.reset()
@@ -485,4 +484,29 @@ func TestReadMutedAndNoManagerPaths(t *testing.T) {
 	if !errors.Is(err, app.ErrNoManager) || retried.Status != domain.StatusFailed {
 		t.Errorf("Retry without manager = %#v, %v", retried, err)
 	}
+}
+
+// notification is one recorded call to recorder.Notify.
+type notification struct {
+	Title string
+	Body  string
+}
+
+// recorder is a concurrency-safe Notifier fake.
+type recorder struct {
+	mu    sync.Mutex
+	calls []notification
+}
+
+func (r *recorder) Notify(title, body string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, notification{Title: title, Body: body})
+}
+
+// Calls returns a snapshot of recorded notifications.
+func (r *recorder) Calls() []notification {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]notification(nil), r.calls...)
 }

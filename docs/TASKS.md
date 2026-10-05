@@ -559,12 +559,16 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - verify: `go test -mod=vendor -cover ./tools/covergate/`
 - result: `tools/covergate` at 96.6 % coverage and omalint-clean. `make test-go` runs `go test -race -coverprofile=build/cover.out ./backend/... ./tools/...`, then covergate. Current misses, each owned by a refactor task: `backend` 50.7 % (R06), `connector` 88.4 % (R03, R05b), `connector/demo` 88.8 % (R05b), `rpc` 82.5 % (R04), `store` 85.8 % (R05b). The `size` analyzer was 81.1 %; fixtures raised it to 94.4 % (see the R01a fixes).
 
-### [ ] R02 · ErrNotFound lives in domain (S)
+### [x] R02 · ErrNotFound lives in domain (S)
 - deps: R01a, R01b, R01c, R01d, R01e
 - files: backend/internal/domain/domain.go, domain_test.go, backend/internal/store/store.go, store_test.go
 - do: add `var ErrNotFound = errors.New("not found")` to domain. In store, set `var ErrNotFound = domain.ErrNotFound`, so existing `errors.Is` checks keep working. Also make the R01d-reported unused domain errors/status/length constants and store `NewID`/`SchemaVersion` package-private; their current users are only within-package code or tests.
 - accept: a store test asserts `errors.Is(err, domain.ErrNotFound)` for a missing conversation.
 - verify: `go test -mod=vendor -race ./backend/...`
+- result: `domain.ErrNotFound` added; `store.ErrNotFound` aliases it; a store test asserts `errors.Is(err, domain.ErrNotFound)`. Unused exports are resolved:
+  - `domain.AccountNeedsAuth` removed (D01 re-adds it when auth exists).
+  - `domain` length/text errors and `store` `newID`/`schemaVersion` unexported.
+- note (scope): archtest also flagged `notify.Recorder`/`notify.Notification` (test helpers in production code) and `app.ErrNoManager`. The helpers were moved out: `app` tests use a local `recorder`, and the `demo`/`rpc` tests use a local `silentNotifier`. `ErrNoManager` is now `errNoManager`, exposed to black-box tests through `app/export_test.go`. `TestExportsUsedOutsidePackage` passes.
 
 ### [ ] R03 · Manager depends on AccountStore (S)
 - deps: R02

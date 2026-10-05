@@ -18,7 +18,7 @@ import (
 var (
 	ErrBadRequest    = errors.New("bad request")
 	ErrUnknownMethod = errors.New("unknown method")
-	ErrNoManager     = errors.New("connector manager is unavailable")
+	errNoManager     = errors.New("connector manager is unavailable")
 )
 
 type settings struct {
@@ -184,7 +184,7 @@ func (a *App) SendMessage(ctx context.Context, params SendMessageParams) (domain
 		a.emitUnreadIfChanged(before)
 	}
 	if a.Manager == nil {
-		return a.failOutgoing(message, ErrNoManager)
+		return a.failOutgoing(message, errNoManager)
 	}
 	if err := a.Manager.Send(ctx, conv, message); err != nil {
 		return a.failOutgoing(message, err)
@@ -227,7 +227,7 @@ func (a *App) Retry(ctx context.Context, params RetryParams) (domain.Message, er
 		a.emit("message.updated", updated)
 	}
 	if a.Manager == nil {
-		return a.failOutgoing(updated, ErrNoManager)
+		return a.failOutgoing(updated, errNoManager)
 	}
 	if err := a.Manager.Send(ctx, conv, updated); err != nil {
 		return a.failOutgoing(updated, err)

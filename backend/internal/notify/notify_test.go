@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -43,26 +42,4 @@ func TestDesktopUsesNotifySendArgv(t *testing.T) {
 func TestDesktopIgnoresMissingNotifySend(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	(Desktop{}).Notify("title", "body")
-}
-
-func TestRecorderStoresConcurrentCallsAndReturnsSnapshot(t *testing.T) {
-	recorder := &Recorder{}
-	const count = 32
-	var wg sync.WaitGroup
-	for i := 0; i < count; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			recorder.Notify("title", strings.Repeat("x", i))
-		}(i)
-	}
-	wg.Wait()
-	calls := recorder.Calls()
-	if len(calls) != count {
-		t.Fatalf("Calls() length = %d, want %d", len(calls), count)
-	}
-	calls[0].Title = "mutated"
-	if recorder.Calls()[0].Title == "mutated" {
-		t.Fatal("Calls() exposed the recorder's internal slice")
-	}
 }

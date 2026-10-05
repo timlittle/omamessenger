@@ -19,7 +19,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-var ErrNotFound = errors.New("not found")
+// ErrNotFound is domain.ErrNotFound, kept so callers may use either name.
+var ErrNotFound = domain.ErrNotFound
 
 type Store struct{ db *sql.DB }
 
@@ -92,8 +93,8 @@ var migrations = []string{
 	CREATE INDEX messages_timeline ON messages(conversation_id, created);`,
 }
 
-// SchemaVersion is the version a freshly opened store reports.
-var SchemaVersion = len(migrations)
+// schemaVersion is the version a freshly opened store reports.
+var schemaVersion = len(migrations)
 
 func (s *Store) migrate() error {
 	var version int
@@ -123,8 +124,8 @@ func (s *Store) migrate() error {
 	return nil
 }
 
-// NewID returns a random identifier with a readable prefix.
-func NewID(prefix string) string {
+// newID returns a random identifier with a readable prefix.
+func newID(prefix string) string {
 	raw := make([]byte, 8)
 	if _, err := rand.Read(raw); err != nil {
 		panic(err)
@@ -271,7 +272,7 @@ func (s *Store) EnsureConversation(c domain.Conversation) (domain.Conversation, 
 		return c, false, err
 	}
 	if c.ID == "" {
-		c.ID = NewID("c")
+		c.ID = newID("c")
 	}
 	_, err = s.db.Exec(`INSERT INTO conversations(id,account_id,remote_id,kind,title,members,muted,last_activity)
 		VALUES(?,?,?,?,?,?,?,?)`, c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), c.LastActivity)
@@ -389,7 +390,7 @@ func (s *Store) AddMessage(m domain.Message) (domain.Message, bool, error) {
 		}
 	}
 	if m.ID == "" {
-		m.ID = NewID("m")
+		m.ID = newID("m")
 	}
 	if m.Status == "" {
 		if m.Outgoing {

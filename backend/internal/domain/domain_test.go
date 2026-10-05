@@ -43,11 +43,11 @@ func TestNormalizeOutgoingText(t *testing.T) {
 		wantErr error
 	}{
 		{name: "trims surrounding whitespace", text: " \t hello world \n", want: "hello world"},
-		{name: "rejects empty", text: " \t\n", wantErr: ErrEmptyText},
-		{name: "accepts maximum length", text: strings.Repeat("a", MaxMessageLength), want: strings.Repeat("a", MaxMessageLength)},
-		{name: "rejects over maximum", text: strings.Repeat("a", MaxMessageLength+1), wantErr: ErrTextTooLong},
-		{name: "counts unicode runes", text: strings.Repeat("界", MaxMessageLength), want: strings.Repeat("界", MaxMessageLength)},
-		{name: "rejects multibyte over maximum", text: strings.Repeat("界", MaxMessageLength+1), wantErr: ErrTextTooLong},
+		{name: "rejects empty", text: " \t\n", wantErr: errEmptyText},
+		{name: "accepts maximum length", text: strings.Repeat("a", maxMessageLength), want: strings.Repeat("a", maxMessageLength)},
+		{name: "rejects over maximum", text: strings.Repeat("a", maxMessageLength+1), wantErr: errTextTooLong},
+		{name: "counts unicode runes", text: strings.Repeat("界", maxMessageLength), want: strings.Repeat("界", maxMessageLength)},
+		{name: "rejects multibyte over maximum", text: strings.Repeat("界", maxMessageLength+1), wantErr: errTextTooLong},
 	}
 
 	for _, tt := range tests {

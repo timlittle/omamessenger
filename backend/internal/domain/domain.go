@@ -18,7 +18,6 @@ const (
 const (
 	AccountConnecting = "connecting"
 	AccountConnected  = "connected"
-	AccountNeedsAuth  = "needs-auth"
 	AccountError      = "error"
 	AccountOffline    = "offline"
 )
@@ -114,20 +113,24 @@ type Message struct {
 	Created        int64  `json:"created"`
 }
 
-// MaxMessageLength bounds outgoing text. Both services accept at least this.
-const MaxMessageLength = 4096
+// ErrNotFound reports a missing account, conversation, contact or message.
+// The store returns it and the API maps it to the not_found protocol code.
+var ErrNotFound = errors.New("not found")
 
-var ErrEmptyText = errors.New("message text is empty")
-var ErrTextTooLong = errors.New("message text is too long")
+// maxMessageLength bounds outgoing text. Both services accept at least this.
+const maxMessageLength = 4096
+
+var errEmptyText = errors.New("message text is empty")
+var errTextTooLong = errors.New("message text is too long")
 
 // NormalizeOutgoingText trims surrounding whitespace and validates length.
 func NormalizeOutgoingText(text string) (string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "", ErrEmptyText
+		return "", errEmptyText
 	}
-	if len([]rune(text)) > MaxMessageLength {
-		return "", ErrTextTooLong
+	if len([]rune(text)) > maxMessageLength {
+		return "", errTextTooLong
 	}
 	return text, nil
 }

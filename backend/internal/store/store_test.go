@@ -88,8 +88,8 @@ func TestOpenPermissionsMigrationAndReopen(t *testing.T) {
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != SchemaVersion {
-		t.Errorf("user_version = %d, want %d", version, SchemaVersion)
+	if version != schemaVersion {
+		t.Errorf("user_version = %d, want %d", version, schemaVersion)
 	}
 }
 
@@ -99,7 +99,7 @@ func TestOpenRejectsNewerSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d", SchemaVersion+1)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version=%d", schemaVersion+1)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -187,6 +187,9 @@ func TestEnsureConversationCreatesUpdatesAndValidates(t *testing.T) {
 	}
 	if _, err := s.Conversation("unknown"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Conversation(unknown) error = %v, want ErrNotFound", err)
+	}
+	if _, err := s.Conversation("unknown"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Conversation(unknown) error = %v, want domain.ErrNotFound", err)
 	}
 	if _, err := s.ConversationByRemote("wa", "unknown"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("ConversationByRemote(unknown) error = %v, want ErrNotFound", err)
