@@ -1,0 +1,96 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import qs.Commons
+import "../theme"
+
+// One entry in the service rail: glyph, label, unread badge and a status
+// dot, with a tooltip naming the entry and its status. Account entries are
+// smaller and indented under their service.
+Item {
+  id: root
+
+  // entry is one rail entry from Rail.items.
+  property var entry: ({})
+  // selected is true when the conversation list shows this entry.
+  property bool selected: false
+
+  readonly property bool account: root.entry.kind === "account"
+  readonly property string statusWord: root.entry.status
+    ? root.entry.status.charAt(0).toUpperCase() + root.entry.status.slice(1) : ""
+
+  // clicked fires when the entry is clicked anywhere, glyph included.
+  signal clicked()
+
+  objectName: "entry-" + root.entry.key
+  implicitHeight: root.account ? Style.space(44) : Style.space(60)
+  ToolTip.visible: hover.containsMouse
+  ToolTip.text: root.statusWord ? root.entry.label + " · " + root.statusWord : root.entry.label
+  ToolTip.delay: 500
+
+  Rectangle {
+    anchors.fill: parent
+    color: root.selected ? Util.alpha(Color.accent, Style.selectedFillAlpha)
+      : hover.containsMouse ? Style.hoverFill : "transparent"
+  }
+
+  // The selection bar matches the conversation list's.
+  Rectangle {
+    visible: root.selected
+    width: Style.space(2)
+    color: Color.accent
+    anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+  }
+
+  ColumnLayout {
+    spacing: Theme.spacing.xxs
+    anchors { centerIn: parent; horizontalCenterOffset: root.account ? Theme.spacing.xs : 0 }
+
+    Item {
+      Layout.alignment: Qt.AlignHCenter
+      implicitWidth: glyph.implicitWidth
+      implicitHeight: glyph.implicitHeight
+
+      ServiceGlyph {
+        id: glyph
+
+        service: root.entry.service ?? ""
+      }
+
+      // A hollow ring while connecting, a solid urgent dot on error.
+      Rectangle {
+        visible: root.entry.status === "connecting" || root.entry.status === "error"
+        width: Style.space(8)
+        height: Style.space(8)
+        radius: width / 2
+        color: root.entry.status === "error" ? Color.urgent : "transparent"
+        border { width: root.entry.status === "connecting" ? Theme.spacing.hairline : 0; color: Color.foreground }
+        anchors { right: parent.right; bottom: parent.bottom }
+      }
+    }
+
+    Text {
+      Layout.alignment: Qt.AlignHCenter
+      Layout.maximumWidth: root.width - Theme.spacing.xs * 2
+      text: root.entry.label ?? ""
+      color: Color.foreground
+      elide: Text.ElideRight
+      font { family: Theme.font.family; pixelSize: root.account ? Theme.font.caption : Theme.font.bodySmall }
+    }
+
+    UnreadBadge {
+      Layout.alignment: Qt.AlignHCenter
+      count: root.entry.unread ?? 0
+    }
+  }
+
+  // Above the glyph and label, so a click anywhere selects the entry and
+  // there is one tooltip rather than the glyph's own as well.
+  MouseArea {
+    id: hover
+
+    anchors.fill: parent
+    hoverEnabled: true
+    onClicked: root.clicked()
+  }
+}
