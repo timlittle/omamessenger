@@ -791,11 +791,12 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
   - Under offscreen Quickshell, every group returns Omarchy's live values.
 - verify: `make lint`
 
-### [ ] B02 · Rpc.js (S)
+### [x] B02 · Rpc.js (S)
 - deps: B01
 - files: ui/lib/Rpc.js, tests/unit/rpc.test.cjs
 - do: `encodeRequest(id, method, params)` → line with `\n`; `parseLine(line)` → `{kind:"response",id,result,error}` | `{kind:"event",name,data}` | `{kind:"invalid"}`; `errorText(error)` → user string.
 - accept: invalid JSON, missing fields and arrays → invalid.
+- result (Haiku, reviewed): `encodeRequest`, `parseLine` (response / event / invalid; arrays, `null`, non-numeric ids and missing fields are invalid; `id` wins over `event`) and `errorText`. The integrator rewrote `errorText`'s wording into full sentences, and `bad_request` now shows the helper's own message, which C3 guarantees is safe. 30 tests.
 
 ### [ ] B03 · Keymap.js (M)
 - deps: B01

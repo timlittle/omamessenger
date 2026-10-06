@@ -129,43 +129,44 @@ test('parseLine with both id and event', () => {
 });
 
 test('errorText for bad_request', () => {
-  const text = Rpc.errorText({ code: 'bad_request', message: 'Invalid input' });
-  assert.equal(text, 'Invalid request');
+  const text = Rpc.errorText({ code: 'bad_request', message: 'bad request: text is required' });
+  assert.equal(text, 'Bad request: text is required.');
+  assert.equal(Rpc.errorText({ code: 'bad_request' }), 'The helper could not accept that request.');
 });
 
 test('errorText for not_found', () => {
   const text = Rpc.errorText({ code: 'not_found', message: 'Resource not found' });
-  assert.equal(text, 'Not found');
+  assert.equal(text, 'That conversation or message no longer exists.');
 });
 
 test('errorText for unknown_method', () => {
   const text = Rpc.errorText({ code: 'unknown_method', message: 'Method does not exist' });
-  assert.equal(text, 'Unknown method');
+  assert.equal(text, 'This helper version does not support that action. Update the helper.');
 });
 
 test('errorText for internal', () => {
   const text = Rpc.errorText({ code: 'internal', message: 'Database connection failed' });
-  assert.equal(text, 'Something went wrong');
+  assert.equal(text, 'Something went wrong in the helper. Try again.');
 });
 
 test('errorText for unknown code', () => {
   const text = Rpc.errorText({ code: 'unknown_code', message: 'Some error' });
-  assert.equal(text, 'Error');
+  assert.equal(text, 'Unexpected error from the helper.');
 });
 
 test('errorText for null', () => {
   const text = Rpc.errorText(null);
-  assert.equal(text, 'Error');
+  assert.equal(text, 'Unexpected error from the helper.');
 });
 
 test('errorText for undefined', () => {
   const text = Rpc.errorText(undefined);
-  assert.equal(text, 'Error');
+  assert.equal(text, 'Unexpected error from the helper.');
 });
 
 test('errorText ignores internal message details', () => {
   const text = Rpc.errorText({ code: 'internal', message: 'Password: secret123' });
-  assert.equal(text, 'Something went wrong');
+  assert.equal(text, 'Something went wrong in the helper. Try again.');
   assert.ok(!text.includes('secret'));
 });
 

@@ -43,22 +43,24 @@ function parseLine(line) {
   return { kind: 'invalid' };
 }
 
-function errorText(error) {
-  if (error === null || error === undefined) {
-    return 'Error';
-  }
+// MESSAGES are the user-facing sentences for each C3 error code.
+var MESSAGES = {
+  bad_request: 'The helper could not accept that request.',
+  not_found: 'That conversation or message no longer exists.',
+  unknown_method: 'This helper version does not support that action. Update the helper.',
+  internal: 'Something went wrong in the helper. Try again.'
+};
 
-  var code = error.code;
-  switch (code) {
-    case 'bad_request':
-      return 'Invalid request';
-    case 'not_found':
-      return 'Not found';
-    case 'unknown_method':
-      return 'Unknown method';
-    case 'internal':
-      return 'Something went wrong';
-    default:
-      return 'Error';
+// errorText turns a C3 error into a short sentence for the UI. A bad_request
+// message describes the caller's mistake and is safe to show; every other
+// code uses a fixed sentence, so internal details never reach the screen.
+function errorText(error) {
+  if (!error) {
+    return 'Unexpected error from the helper.';
   }
+  if (error.code === 'bad_request' && error.message) {
+    var text = String(error.message);
+    return text.charAt(0).toUpperCase() + text.slice(1) + '.';
+  }
+  return MESSAGES[error.code] || 'Unexpected error from the helper.';
 }
