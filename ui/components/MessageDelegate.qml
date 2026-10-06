@@ -76,13 +76,13 @@ Item {
         anchors.right: root.message.outgoing ? parent.right : undefined
         anchors.left: root.message.outgoing ? undefined : parent.left
 
-        // The text's unwrapped width. TextEdit's own implicit width follows
-        // its wrapped width, so it cannot size the bubble.
+        // The widest line's unwrapped width. TextEdit's own implicit width
+        // follows its wrapped width, so it cannot size the bubble.
         TextMetrics {
           id: natural
 
           font: body.font
-          text: root.message.text
+          text: Format.longestLine(root.message.text)
         }
 
         TextEdit {
@@ -97,7 +97,7 @@ Item {
           selectByMouse: true
           wrapMode: TextEdit.Wrap
           textFormat: TextEdit.RichText
-          text: Format.linkify(Format.escapeHtml(root.message.text))
+          text: Format.messageHtml(root.message.text)
           color: Color.foreground
           font { family: Theme.font.family; pixelSize: Theme.font.body }
           onLinkActivated: link => Qt.openUrlExternally(link)

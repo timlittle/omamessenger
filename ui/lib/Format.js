@@ -28,6 +28,18 @@ function linkify(escaped) {
   });
 }
 
+// messageHtml shows a message's text as rich text, which would otherwise
+// run every line together: it escapes it, links URLs, and keeps line
+// breaks and runs of spaces, so lists and paragraphs keep their shape.
+function messageHtml(text) {
+  return linkify(escapeHtml(text)).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
+}
+
+// longestLine returns a text's widest line, which sets a bubble's width.
+function longestLine(text) {
+  return text.split('\n').reduce((longest, line) => (line.length > longest.length ? line : longest), '');
+}
+
 // highlight wraps case-insensitive matches of query in <b>, never inside an
 // HTML entity.
 function highlight(escaped, query) {

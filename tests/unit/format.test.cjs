@@ -309,3 +309,20 @@ test('a conversation with no activity yet has no time label', () => {
   assert.strictEqual(Format.timeLabel(0, now), '');
   assert.strictEqual(Format.dayLabel(0, now), '');
 });
+
+test('messageHtml keeps line breaks, so bullet lists stay on their own lines', () => {
+  assert.equal(Format.messageHtml('Plan:\n• one\n• two'), 'Plan:<br>• one<br>• two');
+});
+
+test('messageHtml keeps blank lines and runs of spaces', () => {
+  assert.equal(Format.messageHtml('a\n\nb   c'), 'a<br><br>b&nbsp;&nbsp; c');
+});
+
+test('messageHtml escapes and links before breaking lines', () => {
+  assert.equal(Format.messageHtml('<b>\nhttps://x.io'), '&lt;b&gt;<br><a href="https://x.io">https://x.io</a>');
+});
+
+test('longestLine picks the widest line to size a bubble by', () => {
+  assert.equal(Format.longestLine('short\na much longer line\nmid'), 'a much longer line');
+  assert.equal(Format.longestLine(''), '');
+});

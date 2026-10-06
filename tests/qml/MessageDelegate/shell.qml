@@ -71,6 +71,7 @@ ShellRoot {
     if (!root.checkOutgoingReadGlyph()) return;
     if (!root.checkFailedRetry()) return;
     if (!root.checkRichText()) return;
+    if (!root.checkLineBreaks()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -132,6 +133,19 @@ ShellRoot {
     if (!body) return root.fail("message body not found");
     if (body.text.indexOf("&lt;b&gt;") < 0) return root.fail("markup was not escaped: " + body.text);
     if (body.text.indexOf("<a href=") < 0) return root.fail("URL was not linkified: " + body.text);
+    return true;
+  }
+
+  // checkLineBreaks verifies a bulleted message keeps one line per bullet.
+  function checkLineBreaks(): bool {
+    delegate.message = { id: "m5", senderId: "s1", senderName: "Alex", text: "Plan:\n• one\n• two", outgoing: false, status: "delivered", created: root.now };
+
+    const nodes = [];
+    root.collect(delegate, nodes);
+    const body = nodes.find(node => node.objectName === "body");
+    if (!body) return root.fail("message body not found");
+    const breaks = (body.text.match(/<br/g) || []).length;
+    if (breaks !== 2) return root.fail("bulleted message has " + breaks + " line breaks, want 2: " + body.text);
     return true;
   }
 }
