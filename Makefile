@@ -21,6 +21,11 @@ GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
 
 FAKE_HELPER := build/fake/oma-messenger-service
 
+# Tests run the helper with fake accounts that send messages. Pointing the
+# session bus nowhere makes their notify-send calls fail quietly, so no
+# test notification reaches the desktop.
+NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
+
 .PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml lint tools validate install-local clean
 
 help: ## Show the development commands
@@ -44,7 +49,7 @@ test: test-go test-js ## Run the Go and JavaScript tests
 
 test-go: $(GO_TEST_COVERAGE) ## Run Go tests with the race detector and the coverage gates in .testcoverage.yml
 	@mkdir -p $(dir $(COVERAGE_FILE))
-	$(GO) test -race -tags fake -coverprofile=$(COVERAGE_FILE) ./...
+	$(NO_DESKTOP_BUS) $(GO) test -race -tags fake -coverprofile=$(COVERAGE_FILE) ./...
 	$(GO_TEST_COVERAGE) --config .testcoverage.yml
 
 test-js: ## Run the JavaScript tests with their coverage gate
@@ -54,8 +59,8 @@ test-js: ## Run the JavaScript tests with their coverage gate
 # Each tests/qml/<Name>/shell.qml runs offscreen in its own root, which holds
 # the test, the ui/ tree, Omarchy's Commons and Ui, and as its helper the
 # test build with fake accounts. WAYLAND_DISPLAY and
-# HYPRLAND_INSTANCE_SIGNATURE are unset so no test can reach the running
-# desktop. A test whose directory holds a no-dev-build file gets the real
+# HYPRLAND_INSTANCE_SIGNATURE are unset and the session bus points nowhere,
+# so no test can reach the running desktop or its notifications. A test whose directory holds a no-dev-build file gets the real
 # launcher instead, so the helper starts out not installed; it can publish
 # the test helper (OMA_FAKE_HELPER) to OMA_RELEASE_BASE and install it.
 test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the test helper
@@ -68,7 +73,7 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 		ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 		if [ -e "$$dir/no-dev-build" ]; then ln -s "$(CURDIR)/bin/oma-messenger-service" "$$root/bin/"; \
 		else ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; fi; \
-		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORM=offscreen \
+		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen \
 			XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
 		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
