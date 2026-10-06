@@ -23,7 +23,7 @@ Write the failing test first; a bug fix starts with a test that reproduces it. P
 | Storage | `backend/internal/store/<file>_test.go`, on a real SQLite database in a temporary directory |
 | What the client does | `backend/internal/app/<file>_test.go`, with a real store and fake connectors |
 | Notification decisions | `backend/internal/app/policy`, every combination |
-| Connector supervision and the demo | `backend/internal/connector/...`, inside `testing/synctest` |
+| Connector supervision and the fake connectors | `backend/internal/connector/...`, inside `testing/synctest` |
 | The helper API | `backend/internal/server`, through a real JSON-RPC client; `backend/main_test.go` drives the built binary |
 | Allowed imports, size and complexity | `.golangci.yml` |
 | No message content in logs | `tools/nologcontent` |

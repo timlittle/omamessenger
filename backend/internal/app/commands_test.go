@@ -3,7 +3,6 @@ package app_test
 import (
 	"context"
 	"errors"
-	"slices"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -61,31 +60,12 @@ func TestSetFocus_ChecksTheConversation(t *testing.T) {
 	}
 }
 
-func TestApplySettings_ControlsDemoChatter(t *testing.T) {
-	t.Parallel()
-
-	demo := newFixture(t, true)
-	demo.commands.ApplySettings(app.Settings{DemoChatter: false})
-	demo.commands.ApplySettings(app.Settings{DemoChatter: true})
-
-	if !slices.Equal(demo.demo.chatter, []bool{false, true}) {
-		t.Errorf("chatter changes = %v, want [false true]", demo.demo.chatter)
-	}
-
-	real := newFixture(t, false)
-	real.commands.ApplySettings(app.Settings{DemoChatter: false})
-
-	if len(real.demo.chatter) != 0 {
-		t.Errorf("chatter changed outside demo mode: %v", real.demo.chatter)
-	}
-}
-
 func TestInject_ReturnsTheStoredMessage(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, true)
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	f.demo.inject = func(ctx context.Context, remoteID string) (domain.Message, error) {
+	f.injector.inject = func(ctx context.Context, remoteID string) (domain.Message, error) {
 		m := incoming("injected-1", "hello")
 		f.ingest.Incoming(ctx, "wa", remoteID, m)
 
@@ -101,23 +81,23 @@ func TestInject_ReturnsTheStoredMessage(t *testing.T) {
 		t.Errorf("Inject(missing) = %v, want ErrNotFound", err)
 	}
 
-	f.demo.inject = func(context.Context, string) (domain.Message, error) {
+	f.injector.inject = func(context.Context, string) (domain.Message, error) {
 		return domain.Message{}, errors.New("stopped")
 	}
 	if _, err := f.commands.Inject(t.Context(), chat.ID); err == nil {
-		t.Error("Inject succeeded when the demo failed")
+		t.Error("Inject succeeded when the fake failed")
 	}
 }
 
-func TestInject_RefusedOutsideDemoMode(t *testing.T) {
+func TestInject_RefusedWithoutFakes(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
-	if f.commands.DemoMode() {
-		t.Error("DemoMode = true without a demo")
+	if f.commands.Faked() {
+		t.Error("Faked = true without fake connectors")
 	}
 
-	if _, err := f.commands.Inject(t.Context(), "chat"); !errors.Is(err, app.ErrNotDemo) {
-		t.Errorf("Inject = %v, want ErrNotDemo", err)
+	if _, err := f.commands.Inject(t.Context(), "chat"); !errors.Is(err, app.ErrNoFake) {
+		t.Errorf("Inject = %v, want ErrNoFake", err)
 	}
 }

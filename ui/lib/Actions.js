@@ -49,15 +49,13 @@ var OWNERS = {
   'dialog.accept': 'dialog',
   'dialog.nextAccount': 'dialog',
 
-  // WindowController: the command palette, closing and quitting, demo
-  // data and the Escape chain.
+  // WindowController: the command palette, closing and quitting, and the
+  // Escape chain.
   'palette.commands': 'window',
   'palette.conversations': 'window',
   'palette.down': 'window',
   'palette.up': 'window',
   'palette.accept': 'window',
-  'demo.inject': 'window',
-  'demo.injectLater': 'window',
   'window.hide': 'window',
   'app.quit': 'window',
   'escape': 'window'

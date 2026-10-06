@@ -12,14 +12,15 @@ import (
 type Commands struct {
 	store      *store.Store
 	dispatcher Dispatcher
-	demo       Demo
+	fake       Injector
 	events     *events
 	ui         *uiState
 }
 
-// DemoMode reports whether the helper is running the demo accounts.
-func (c *Commands) DemoMode() bool {
-	return c.demo != nil
+// Faked reports whether the helper runs the fake connectors of a test
+// build.
+func (c *Commands) Faked() bool {
+	return c.fake != nil
 }
 
 // UnreadTotal counts unread messages outside muted conversations.
@@ -62,17 +63,13 @@ func (c *Commands) SetFocus(ctx context.Context, conversationID string, windowAc
 // ApplySettings replaces the user's settings.
 func (c *Commands) ApplySettings(s Settings) {
 	c.ui.apply(s)
-
-	if c.demo != nil {
-		c.demo.SetChatter(s.DemoChatter)
-	}
 }
 
-// Inject asks the demo connectors to deliver a message into a conversation
+// Inject asks the fake connectors to deliver a message into a conversation
 // now, and returns it as stored.
 func (c *Commands) Inject(ctx context.Context, conversationID string) (domain.Message, error) {
-	if c.demo == nil {
-		return domain.Message{}, ErrNotDemo
+	if c.fake == nil {
+		return domain.Message{}, ErrNoFake
 	}
 
 	conv, err := c.store.Conversation(ctx, conversationID)
@@ -80,7 +77,7 @@ func (c *Commands) Inject(ctx context.Context, conversationID string) (domain.Me
 		return domain.Message{}, err
 	}
 
-	m, err := c.demo.Inject(ctx, conv.RemoteID)
+	m, err := c.fake.Inject(ctx, conv.RemoteID)
 	if err != nil {
 		return m, err
 	}

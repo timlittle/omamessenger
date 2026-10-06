@@ -14,7 +14,6 @@ import (
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
-	"github.com/timlittle/omamessenger/backend/internal/connector/demo"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -69,7 +68,7 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	logger := log.New(s.errOut, "", 0)
 	srv := server.New(helperVersion, logger)
 
-	commands, ingest, manager, err := wire(cfg, db, srv)
+	commands, ingest, manager, err := wire(db, srv)
 	if err != nil {
 		return err
 	}
@@ -88,22 +87,20 @@ func serve(ctx context.Context, cfg config, s streams) error {
 		return fmt.Errorf("start connectors: %w", err)
 	}
 
-	logger.Printf("OmaMessenger helper %s started (demo: %t)", helperVersion, cfg.demo)
+	logger.Printf("OmaMessenger helper %s started", helperVersion)
 	srv.Wait()
 
 	return nil
 }
 
-// wire builds the application around db and srv. Only the demo connectors
-// exist so far, so a real session runs with no connectors.
-func wire(cfg config, db *store.Store, srv *server.Server) (*app.Commands, *app.Ingest, *connector.Manager, error) {
+// wire builds the application around db and srv. Test builds add the fake
+// connectors; see fake.go.
+func wire(db *store.Store, srv *server.Server) (*app.Commands, *app.Ingest, *connector.Manager, error) {
 	deps := app.Deps{Store: db, Notifier: notify.Desktop{}, Publisher: srv}
 
-	var connectors []connector.Connector
-	if cfg.demo {
-		suite := demo.New(cfg.seed, cfg.chatter)
-		connectors = suite.Connectors()
-		deps.Demo = suite
+	connectors, injector := fakeConnectors()
+	if injector != nil {
+		deps.Fake = injector
 	}
 
 	manager, err := connector.NewManager(connectors...)

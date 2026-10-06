@@ -48,7 +48,6 @@ ShellRoot {
       anchors.fill: parent
       items: root.railItems
       selectedKey: "all"
-      demo: true
       onSelected: key => root.selectedKeys.push(key)
     }
   }
@@ -78,13 +77,6 @@ ShellRoot {
     if (JSON.stringify(root.selectedKeys) !== '["service:whatsapp"]')
       return fail("selected " + JSON.stringify(root.selectedKeys) + ", want [\"service:whatsapp\"]");
 
-    const demoChip = root.findByObjectName(rail, "demoChip");
-    if (!demoChip || !demoChip.visible)
-      return fail("demo chip not visible when demo is true");
-
-    rail.demo = false;
-    if (demoChip.visible)
-      return fail("demo chip still visible after demo was set to false");
 
     console.log("PASS ServiceRail");
     Qt.exit(0);

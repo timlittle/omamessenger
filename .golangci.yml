@@ -2,6 +2,9 @@
 # The rules behind these settings are in .claude/rules/go-style.md.
 version: "2"
 
+run:
+  build-tags: [fake] # lint the test wiring too; nofake.go is two lines
+
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:

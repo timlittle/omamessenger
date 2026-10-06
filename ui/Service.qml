@@ -24,8 +24,6 @@ Item {
   // status.
   readonly property string detail: helperProcess.detail
 
-  // demo is true while the helper serves seeded demo data.
-  readonly property bool demo: appState.demo
 
   // unreadTotal is the unread count across every conversation.
   readonly property int unreadTotal: appState.unreadTotal

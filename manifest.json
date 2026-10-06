@@ -23,8 +23,7 @@
     "allowMultiple": false,
     "defaults": {
       "notifications": true,
-      "notificationPreview": true,
-      "demoChatter": false
+      "notificationPreview": true
     },
     "schema": [
       {
@@ -40,13 +39,6 @@
         "label": "Notification preview",
         "description": "Include the message text in the notification, instead of just who it is from.",
         "defaultValue": true
-      },
-      {
-        "key": "demoChatter",
-        "type": "boolean",
-        "label": "Demo chatter",
-        "description": "Let the seeded demo accounts send messages in the background, with notifications.",
-        "defaultValue": false
       }
     ]
   }

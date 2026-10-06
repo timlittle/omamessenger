@@ -35,7 +35,6 @@ ShellRoot {
     id: fakeService
     property string status: "starting"
     property int unreadTotal: 0
-    property bool demo: false
     function applySettings(settings) { root.appliedSettings.push(settings); }
   }
 
@@ -100,10 +99,6 @@ ShellRoot {
     if (widget.tooltipText !== "OmaMessenger · 3 unread")
       return fail("tooltip was '" + widget.tooltipText + "'");
 
-    fakeService.demo = true;
-    if (widget.tooltipText !== "OmaMessenger · 3 unread · demo")
-      return fail("tooltip in demo mode was '" + widget.tooltipText + "'");
-    fakeService.demo = false;
 
     fakeService.unreadTotal = 0;
     if (badge.visible) return fail("badge still visible after unreadTotal returned to zero");

@@ -21,12 +21,12 @@ type fixture struct {
 	dispatcher *fakeDispatcher
 	notifier   *fakeNotifier
 	published  *fakePublisher
-	demo       *fakeDemo
+	injector   *fakeInjector
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
-// demo set, it runs in demo mode.
-func newFixture(t *testing.T, demo bool) *fixture {
+// faked set, it has fake connectors that can inject messages.
+func newFixture(t *testing.T, faked bool) *fixture {
 	t.Helper()
 
 	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
@@ -42,12 +42,12 @@ func newFixture(t *testing.T, demo bool) *fixture {
 
 	f := &fixture{
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
-		published: &fakePublisher{}, demo: &fakeDemo{},
+		published: &fakePublisher{}, injector: &fakeInjector{},
 	}
 
 	deps := app.Deps{Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published}
-	if demo {
-		deps.Demo = f.demo
+	if faked {
+		deps.Fake = f.injector
 	}
 
 	f.commands, f.ingest = app.New(deps)
@@ -158,18 +158,13 @@ func (p *fakePublisher) last() any {
 	return p.data[len(p.data)-1]
 }
 
-// fakeDemo records chatter changes and injects through the fixture's sink.
-type fakeDemo struct {
-	chatter []bool
-	inject  func(ctx context.Context, remoteID string) (domain.Message, error)
+// fakeInjector injects through whatever function the test sets.
+type fakeInjector struct {
+	inject func(ctx context.Context, remoteID string) (domain.Message, error)
 }
 
-func (d *fakeDemo) Inject(ctx context.Context, remoteID string) (domain.Message, error) {
-	return d.inject(ctx, remoteID)
-}
-
-func (d *fakeDemo) SetChatter(enabled bool) {
-	d.chatter = append(d.chatter, enabled)
+func (i *fakeInjector) Inject(ctx context.Context, remoteID string) (domain.Message, error) {
+	return i.inject(ctx, remoteID)
 }
 
 // incoming returns an incoming message from Alex with the given remote id.

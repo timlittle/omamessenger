@@ -17,7 +17,7 @@ Item {
   // already scoped to this plugin's own id.
   property var bar: null
   // settings holds this widget's bar-editor overrides: notifications,
-  // notificationPreview and demoChatter, read from shell.json.
+  // and notificationPreview, read from shell.json.
   property var settings: ({})
 
   // pluginId names this plugin to bar.shell, matching manifest.json.
@@ -31,11 +31,8 @@ Item {
   readonly property bool ready: root.service ? root.service.status === "ready" : false
   // unreadTotal is the unread count across every conversation.
   readonly property int unreadTotal: root.service ? root.service.unreadTotal : 0
-  // demo is true while the helper serves seeded demo data.
-  readonly property bool demo: root.service ? root.service.demo : false
-  // tooltipText names the plugin, its unread count and, in demo mode, says so.
+  // tooltipText names the plugin and its unread count.
   readonly property string tooltipText: "OmaMessenger · " + root.unreadTotal + " unread"
-    + (root.demo ? " · demo" : "")
 
   implicitWidth: Theme.bar.iconSlot
   implicitHeight: Theme.bar.iconSlot

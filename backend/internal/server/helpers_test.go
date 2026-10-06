@@ -28,8 +28,8 @@ type session struct {
 }
 
 // connect serves a fresh application with one account, "wa", and a direct
-// conversation, "chat". With demo set, demo.inject is available.
-func connect(t *testing.T, demo bool) *session {
+// conversation, "chat". With faked set, fake.inject is available.
+func connect(t *testing.T, faked bool) *session {
 	t.Helper()
 
 	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
@@ -41,8 +41,8 @@ func connect(t *testing.T, demo bool) *session {
 
 	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
 	deps := app.Deps{Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv}
-	if demo {
-		deps.Demo = unreachableDemo{}
+	if faked {
+		deps.Fake = unreachableFake{}
 	}
 
 	commands, ingest := app.New(deps)
@@ -138,11 +138,9 @@ type silent struct{}
 
 func (silent) Notify(string, string) {}
 
-// unreachableDemo is a demo whose conversations are never found.
-type unreachableDemo struct{}
+// unreachableFake is an injector whose conversations are never found.
+type unreachableFake struct{}
 
-func (unreachableDemo) Inject(context.Context, string) (domain.Message, error) {
+func (unreachableFake) Inject(context.Context, string) (domain.Message, error) {
 	return domain.Message{}, domain.ErrNotFound
 }
-
-func (unreachableDemo) SetChatter(bool) {}

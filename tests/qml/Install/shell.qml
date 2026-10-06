@@ -1,8 +1,8 @@
 // Checks the first-run path: with no helper installed the window says so
 // and offers to install it; pressing Install downloads the release named
-// in helper-version (a fake one the test builds from the dev binary,
-// served over file://), verifies it, and the helper starts with the demo
-// data. The runner provides the launcher without bin/dev for this test,
+// in helper-version (a fake release the test builds from the test helper,
+// served over file://), verifies it, and the helper starts with the fake
+// accounts. The runner provides the launcher without bin/dev for this test,
 // and points OMA_RELEASE_BASE at the release directory.
 import QtQuick
 import Quickshell
@@ -60,7 +60,7 @@ ShellRoot {
     return true;
   }
 
-  // waitForReady holds until the installed helper runs and the demo
+  // waitForReady holds until the installed helper runs and the fake
   // conversations arrive.
   function waitForReady(): var {
     const list = root.find(panel, "conversationListView");
@@ -99,7 +99,7 @@ ShellRoot {
     }
   }
 
-  // Publishes the repository's dev build as this machine's release asset.
+  // Publishes the test helper as this machine's release asset.
   Process {
     id: releaseBuilder
 
@@ -109,9 +109,8 @@ ShellRoot {
     command: ["sh", "-c", [
       "set -eu",
       "case $(uname -m) in x86_64|amd64) arch=amd64;; aarch64|arm64) arch=arm64;; esac",
-      "repo=$(dirname \"$(dirname \"$(readlink -f bin/oma-messenger-service)\")\")",
       "mkdir -p release",
-      "cp \"$repo/bin/dev/oma-messenger-service\" \"release/oma-messenger-service-linux-$arch\"",
+      "cp \"$OMA_FAKE_HELPER\" \"release/oma-messenger-service-linux-$arch\"",
       "cd release && sha256sum oma-messenger-service-linux-$arch > SHA256SUMS"
     ].join("\n")]
     onExited: code => releaseBuilder.exitCode = code

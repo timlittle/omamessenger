@@ -87,8 +87,7 @@ Item {
   // plain boolean back and sets `accepted` on its own, real event.
   function routeKey(key: int, modifiers: int, text: string): bool {
     const context = Navigation.keyContext(root._navState());
-    const demo = root.service ? root.service.demo : false;
-    const action = Keymap.match(context, key, modifiers, text, demo);
+    const action = Keymap.match(context, key, modifiers, text);
     if (!action) return false;
 
     const controllers = [listController, conversationController, dialogController, windowController];

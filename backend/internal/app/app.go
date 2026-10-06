@@ -16,8 +16,9 @@ import (
 // Its message is safe to show.
 var ErrInvalidInput = errors.New("invalid input")
 
-// ErrNotDemo reports a demo-only request made outside demo mode.
-var ErrNotDemo = errors.New("only available in demo mode")
+// ErrNoFake reports an injection asked of a helper built without the fake
+// connectors.
+var ErrNoFake = errors.New("no fake connectors in this build")
 
 // Dispatcher hands outgoing work to the connector that owns the account.
 type Dispatcher interface {
@@ -35,19 +36,19 @@ type Publisher interface {
 	Publish(ctx context.Context, event string, data any)
 }
 
-// Demo controls the scripted demo connectors.
-type Demo interface {
+// Injector delivers a scripted message, as if someone had sent it. Only
+// the fake connectors in test builds provide one.
+type Injector interface {
 	Inject(ctx context.Context, conversationRemoteID string) (domain.Message, error)
-	SetChatter(enabled bool)
 }
 
-// Deps are the application's dependencies. Demo is nil outside demo mode.
+// Deps are the application's dependencies. Fake is nil outside test builds.
 type Deps struct {
 	Store      *store.Store
 	Dispatcher Dispatcher
 	Notifier   Notifier
 	Publisher  Publisher
-	Demo       Demo
+	Fake       Injector
 }
 
 // New builds the two halves of the application, which share the event
@@ -57,7 +58,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, demo: d.Demo,
+		store: d.Store, dispatcher: d.Dispatcher, fake: d.Fake,
 		events: events, ui: state,
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}
@@ -69,7 +70,6 @@ func New(d Deps) (*Commands, *Ingest) {
 type Settings struct {
 	Notifications       bool
 	NotificationPreview bool
-	DemoChatter         bool
 }
 
 // DefaultSettings apply until the UI sends the user's settings.

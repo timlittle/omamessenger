@@ -1,4 +1,4 @@
-package demo_test
+package fake_test
 
 import (
 	"context"
@@ -8,14 +8,14 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/demo"
+	"github.com/timlittle/omamessenger/backend/internal/connector/fake"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestRun_ConnectsAfterDelayAndGoesOfflineOnStop(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := newRecordingSink()
-		stop := runDemo(t, demo.New(1, false), sink)
+		stop := runFake(t, fake.New(), sink)
 
 		synctest.Wait()
 		if !sink.has("status tg-work connecting") || sink.has("status wa-personal connected") {
@@ -43,12 +43,12 @@ func TestRun_ConnectsAfterDelayAndGoesOfflineOnStop(t *testing.T) {
 
 func TestRun_RefusesASecondRun(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		suite := demo.New(1, false)
-		stop := runDemo(t, suite, newRecordingSink())
+		suite := fake.New()
+		stop := runFake(t, suite, newRecordingSink())
 		defer stop()
 
 		synctest.Wait()
-		if err := suite.Connectors()[0].Run(t.Context(), newRecordingSink()); !errors.Is(err, demo.ErrAlreadyRunning) {
+		if err := suite.Connectors()[0].Run(t.Context(), newRecordingSink()); !errors.Is(err, fake.ErrAlreadyRunning) {
 			t.Errorf("second Run = %v, want ErrAlreadyRunning", err)
 		}
 	})
@@ -57,8 +57,8 @@ func TestRun_RefusesASecondRun(t *testing.T) {
 func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := newRecordingSink()
-		suite := demo.New(1, false)
-		stop := runDemo(t, suite, sink)
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
 		defer stop()
 
 		waitConnected(sink)
@@ -72,12 +72,12 @@ func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
 		synctest.Wait()
 
 		want := []string{
-			"outgoing m1 demo-m1 sent",
-			"outgoing m1 demo-m1 delivered",
-			"outgoing m1 demo-m1 read",
+			"outgoing m1 fake-m1 sent",
+			"outgoing m1 fake-m1 delivered",
+			"outgoing m1 fake-m1 read",
 			"typing wa:mum true",
 			"typing wa:mum false",
-			"incoming wa:mum demo-reply-m1",
+			"incoming wa:mum fake-reply-m1",
 		}
 		if got := sink.take(); !slices.Equal(got, want) {
 			t.Errorf("events = %v, want %v", got, want)
@@ -88,8 +88,8 @@ func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
 func TestSend_GroupHasNoReadReceiptOrReply(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := newRecordingSink()
-		suite := demo.New(1, false)
-		stop := runDemo(t, suite, sink)
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
 		defer stop()
 
 		waitConnected(sink)
@@ -102,7 +102,7 @@ func TestSend_GroupHasNoReadReceiptOrReply(t *testing.T) {
 		time.Sleep(replyWait)
 		synctest.Wait()
 
-		want := []string{"outgoing g1 demo-g1 sent", "outgoing g1 demo-g1 delivered"}
+		want := []string{"outgoing g1 fake-g1 sent", "outgoing g1 fake-g1 delivered"}
 		if got := sink.take(); !slices.Equal(got, want) {
 			t.Errorf("events = %v, want %v", got, want)
 		}
@@ -112,8 +112,8 @@ func TestSend_GroupHasNoReadReceiptOrReply(t *testing.T) {
 func TestSend_FlakyConversationFailsFirstAttempt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := newRecordingSink()
-		suite := demo.New(1, false)
-		stop := runDemo(t, suite, sink)
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
 		defer stop()
 
 		waitConnected(sink)
@@ -138,7 +138,7 @@ func TestSend_FlakyConversationFailsFirstAttempt(t *testing.T) {
 		time.Sleep(time.Second)
 		synctest.Wait()
 
-		if !sink.has("outgoing s1 demo-s1 sent") {
+		if !sink.has("outgoing s1 fake-s1 sent") {
 			t.Errorf("retry = %v, want sent", sink.take())
 		}
 	})
@@ -147,22 +147,22 @@ func TestSend_FlakyConversationFailsFirstAttempt(t *testing.T) {
 func TestStoppedConnector_RefusesWork(t *testing.T) {
 	t.Parallel()
 
-	wa := demo.New(1, false).Connectors()[0]
+	wa := fake.New().Connectors()[0]
 	conv := conversation("wa-personal", "wa:mum", domain.KindDirect)
 
-	if err := wa.Send(t.Context(), conv, domain.Message{ID: "m"}); !errors.Is(err, demo.ErrNotRunning) {
+	if err := wa.Send(t.Context(), conv, domain.Message{ID: "m"}); !errors.Is(err, fake.ErrNotRunning) {
 		t.Errorf("Send = %v, want ErrNotRunning", err)
 	}
 
-	if err := wa.MarkRead(t.Context(), conv); !errors.Is(err, demo.ErrNotRunning) {
+	if err := wa.MarkRead(t.Context(), conv); !errors.Is(err, fake.ErrNotRunning) {
 		t.Errorf("MarkRead = %v, want ErrNotRunning", err)
 	}
 }
 
 func TestRunningConnector_HonoursCancelledRequests(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		suite := demo.New(1, false)
-		stop := runDemo(t, suite, newRecordingSink())
+		suite := fake.New()
+		stop := runFake(t, suite, newRecordingSink())
 		defer stop()
 
 		synctest.Wait()

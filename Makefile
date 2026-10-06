@@ -19,7 +19,9 @@ TOOLS := $(CURDIR)/build/tools
 GOLANGCI_LINT := $(TOOLS)/golangci-lint
 GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
 
-.PHONY: help check build build-all install-helper test test-go test-js test-qml lint tools validate install-local clean
+FAKE_HELPER := build/fake/oma-messenger-service
+
+.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml lint tools validate install-local clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -28,6 +30,9 @@ check: build test test-qml lint ## Run every gate: build, tests with coverage, Q
 
 build: ## Build the helper for this machine into bin/dev/, which the launcher prefers
 	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/dev/oma-messenger-service ./backend
+
+build-fake: ## Build the test helper, which runs scripted fake accounts, into build/fake/
+	CGO_ENABLED=0 $(GO) build -tags fake -trimpath -buildvcs=false -o $(FAKE_HELPER) ./backend
 
 build-all: ## Build the release helpers and SHA256SUMS into build/release/
 	./scripts/build-release.sh
@@ -39,7 +44,7 @@ test: test-go test-js ## Run the Go and JavaScript tests
 
 test-go: $(GO_TEST_COVERAGE) ## Run Go tests with the race detector and the coverage gates in .testcoverage.yml
 	@mkdir -p $(dir $(COVERAGE_FILE))
-	$(GO) test -race -coverprofile=$(COVERAGE_FILE) ./...
+	$(GO) test -race -tags fake -coverprofile=$(COVERAGE_FILE) ./...
 	$(GO_TEST_COVERAGE) --config .testcoverage.yml
 
 test-js: ## Run the JavaScript tests with their coverage gate
@@ -47,23 +52,25 @@ test-js: ## Run the JavaScript tests with their coverage gate
 		--test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'
 
 # Each tests/qml/<Name>/shell.qml runs offscreen in its own root, which holds
-# the test, the ui/ tree and Omarchy's Commons and Ui. WAYLAND_DISPLAY and
+# the test, the ui/ tree, Omarchy's Commons and Ui, and as its helper the
+# test build with fake accounts. WAYLAND_DISPLAY and
 # HYPRLAND_INSTANCE_SIGNATURE are unset so no test can reach the running
-# desktop session. A test whose directory holds a no-dev-build file gets
-# the launcher without bin/dev, so the helper starts out not installed, and
-# OMA_RELEASE_BASE points the installer at a release the test creates.
-test-qml: ## Run the offscreen QML component tests in tests/qml/
+# desktop. A test whose directory holds a no-dev-build file gets the real
+# launcher instead, so the helper starts out not installed; it can publish
+# the test helper (OMA_FAKE_HELPER) to OMA_RELEASE_BASE and install it.
+test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the test helper
 	@./scripts/qml-imports.sh >/dev/null
 	@status=0; for dir in tests/qml/*/; do \
 		name=$$(basename "$$dir"); root=build/qml-tests/$$name; \
-		rm -rf "$$root"; mkdir -p "$$root"; cp -R "$$dir". "$$root/"; \
+		rm -rf "$$root"; mkdir -p "$$root/bin"; cp -R "$$dir". "$$root/"; \
 		for link in ui scripts helper-version; do ln -s "$(CURDIR)/$$link" "$$root/$$link"; done; \
-		if [ -e "$$dir/no-dev-build" ]; then mkdir "$$root/bin"; ln -s "$(CURDIR)/bin/oma-messenger-service" "$$root/bin/"; \
-		else ln -s "$(CURDIR)/bin" "$$root/bin"; fi; \
 		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 		ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
-		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORM=offscreen XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
-			timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
+		if [ -e "$$dir/no-dev-build" ]; then ln -s "$(CURDIR)/bin/oma-messenger-service" "$$root/bin/"; \
+		else ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; fi; \
+		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORM=offscreen \
+			XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
+			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
 		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
 	done; exit $$status
 

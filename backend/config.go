@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"time"
 )
 
 // helperVersion is this helper's release. It must match the helper-version
@@ -15,9 +14,6 @@ const helperVersion = "0.3.0"
 
 // config is the helper's command-line configuration.
 type config struct {
-	demo    bool
-	chatter bool
-	seed    uint64
 	dataDir string
 	dbPath  string
 	version bool
@@ -30,9 +26,6 @@ func resolveConfig(args []string, env func(string) string) (config, error) {
 
 	fs := flag.NewFlagSet("oma-messenger-service", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.BoolVar(&cfg.demo, "demo", false, "run the seeded demo accounts")
-	fs.BoolVar(&cfg.chatter, "chatter", false, "let the demo accounts send scripted messages in the background")
-	fs.Uint64Var(&cfg.seed, "seed", uint64(time.Now().UnixNano()), "random seed for demo chatter")
 	fs.StringVar(&cfg.dataDir, "data-dir", "", "data directory")
 	fs.StringVar(&cfg.dbPath, "db", "", "database file, overriding the data directory")
 	fs.BoolVar(&cfg.version, "version", false, "print the helper version and exit")
@@ -48,8 +41,7 @@ func resolveConfig(args []string, env func(string) string) (config, error) {
 	return withPaths(cfg, env)
 }
 
-// withPaths fills in the data directory and database file. The demo uses
-// its own database so it never mixes with real messages.
+// withPaths fills in the data directory and database file.
 func withPaths(cfg config, env func(string) string) (config, error) {
 	if cfg.dataDir == "" {
 		base := env("XDG_DATA_HOME")
@@ -65,12 +57,7 @@ func withPaths(cfg config, env func(string) string) (config, error) {
 	}
 
 	if cfg.dbPath == "" {
-		name := "messages.db"
-		if cfg.demo {
-			name = "demo.db"
-		}
-
-		cfg.dbPath = filepath.Join(cfg.dataDir, name)
+		cfg.dbPath = filepath.Join(cfg.dataDir, "messages.db")
 	}
 
 	return cfg, nil

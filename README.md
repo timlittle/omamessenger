@@ -4,8 +4,8 @@ OmaMessenger is a keyboard-first messaging client for [Omarchy](https://omarchy.
 
 ## Status
 
-- **Helper:** complete for an offline demo (`--demo`): seeded accounts and conversations, sending with delivery receipts, failures and retries, replies, typing indicators, notifications and unread counts.
-- **UI:** works end to end on demo data. `ui/Panel.qml` composes the service rail, conversation list, conversation view, shortcut help and new-chat dialog from `ui/components/` with the controllers in `ui/controllers/`, routing every key in [docs/plan.md](docs/plan.md)'s table to whichever one owns it.
+- **Helper and UI:** complete and tested against scripted fake accounts, which only test builds contain: sending with delivery receipts, failures and retries, unread counts, notifications, search, the command palette and keyboard navigation.
+- **Telegram:** in progress. Until it lands, the installed plugin has no accounts to show.
 - **WhatsApp and Telegram:** not connected yet. The planned libraries are [whatsmeow](https://github.com/tulir/whatsmeow) and [gotd/td](https://github.com/gotd/td).
 
 ## Requirements
@@ -31,7 +31,7 @@ Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. R
 
 ## Data and privacy
 
-The helper keeps its database in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db` normally, `demo.db` in demo mode. Both are readable only by you. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
+The helper keeps its database in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db`, readable only by you. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
 
 ## Keyboard shortcuts
 
@@ -51,8 +51,6 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 | Ctrl+Q | Quit |
 | Esc | Step back: close the palette or a dialog, clear the search, leave the composer or the conversation |
 
-In demo mode the palette also offers **Receive a demo message in 5 seconds**: run it, close the window with Ctrl+W and Keep in background, and a notification arrives. Demo accounts otherwise stay quiet unless you turn on demo chatter in the plugin settings.
-
 In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
 
 ## Helper API
@@ -60,14 +58,14 @@ In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes. In a con
 Omarchy's shell starts the helper and talks to it over its stdin and stdout with [JSON-RPC 2.0](https://www.jsonrpc.org/specification), one JSON object per line. The helper exits when stdin closes or on SIGTERM.
 
 ```sh
-oma-messenger-service [--demo] [--chatter] [--seed N] [--data-dir DIR] [--db FILE] [--version]
+oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 ```
 
 ### Methods
 
 | Method | Params | Result |
 | --- | --- | --- |
-| `hello` | | `{protocol, version, demo, unreadTotal}` |
+| `hello` | | `{protocol, version, unreadTotal}` |
 | `accounts.list` | | `[Account]` |
 | `contacts.list` | `{accountId, query}` | `[Contact]` |
 | `conversations.list` | `{query}` | `[Conversation]`, newest first; `match` holds the newest matching message |
@@ -78,10 +76,10 @@ oma-messenger-service [--demo] [--chatter] [--seed N] [--data-dir DIR] [--db FIL
 | `messages.send` | `{conversationId, text}` | `Message`; status `failed` if the service refused it |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
-| `settings.apply` | `{notifications, notificationPreview, demoChatter}` | `{}` |
-| `demo.inject` | `{conversationId}` | `Message`; demo mode only |
+| `settings.apply` | `{notifications, notificationPreview}` | `{}` |
+| `fake.inject` | `{conversationId}` | `Message`; only in the test build |
 
-The protocol version is `2`.
+The protocol version is `3`.
 
 ### Events
 
@@ -101,7 +99,7 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | Code | Meaning |
 | --- | --- |
 | `-32602` | Invalid params or input. The message says what to fix and is safe to show. |
-| `-32601` | Unknown method, for example `demo.inject` outside demo mode. |
+| `-32601` | Unknown method, for example `fake.inject` outside the test build. |
 | `-32001` | The account, contact, conversation or message does not exist. |
 | `-32603` | Internal error. Details stay in the helper. |
 
@@ -116,7 +114,7 @@ make help            # list the commands
 make check           # every gate: build, tests with coverage, lint
 make build           # build the helper into bin/dev/, which the launcher prefers
 make install-local   # install this checkout into Omarchy and enable it
-go run ./backend --demo --seed 1 --data-dir "$(mktemp -d)"
+go run -tags fake ./backend --data-dir "$(mktemp -d)"   # the test build, with fake accounts
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute and [AGENTS.md](AGENTS.md) for the project rules.
@@ -132,7 +130,7 @@ The release workflow tests the helper, builds both binaries, records a build-pro
 
 ## Layout
 
-- `backend/`: the Go helper. `internal/domain` (shared types), `store` (SQLite), `connector` (the service boundary, with `demo`), `app` (what the client does), `server` (JSON-RPC), `notify` (desktop notifications)
+- `backend/`: the Go helper. `internal/domain` (shared types), `store` (SQLite), `connector` (the service boundary, with `fake` accounts for tests), `app` (what the client does), `server` (JSON-RPC), `notify` (desktop notifications)
 - `ui/`: the QML UI: `theme/` (typed Omarchy tokens), `components/` (views), `lib/` (pure JavaScript, tested with node), `Service.qml`, `Panel.qml`, `BarWidget.qml`
 - `manifest.json`: the plugin manifest, pointing at the entry points in `ui/`
 - `bin/oma-messenger-service`: launcher that runs `bin/dev/` if built, otherwise the installed release

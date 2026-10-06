@@ -1,6 +1,6 @@
 # OmaMessenger implementation spec
 
-Status: helper and demo complete; plugin UI in progress. Build plan: `docs/plan.md`.
+Status: helper and plugin UI complete; Telegram connector in progress. Build plan: `docs/plan.md`.
 
 ## Objective
 
@@ -39,4 +39,4 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 
 ## Current gap
 
-The Go helper, its JSON-RPC interface, persistence and the seeded demo are complete. The demo covers local sending, scripted delivery states, failure and retry, incoming replies, typing indicators, unread counts and desktop notifications. The plugin UI is still the original scaffold: it expects the removed HTTP API and does not work with the helper until the new UI in `ui/` replaces it. Real account authentication, synchronization, delivery and incoming updates are not implemented yet. Do not describe this project as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.
+The Go helper, its JSON-RPC interface, persistence and the plugin UI are complete and tested against scripted fake accounts that only test builds contain. Real account authentication, synchronization, delivery and incoming updates are not implemented yet. Do not describe this project as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.

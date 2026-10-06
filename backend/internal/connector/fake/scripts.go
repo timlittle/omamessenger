@@ -1,4 +1,4 @@
-package demo
+package fake
 
 import (
 	"time"
@@ -6,7 +6,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// accountScript is one demo account and what it contains.
+// accountScript is one fake account and what it contains.
 type accountScript struct {
 	account       domain.Account
 	connectDelay  time.Duration
@@ -39,7 +39,7 @@ type conversationScript struct {
 	replies      []string
 }
 
-// scripts are the demo accounts, in the order the rail shows them.
+// scripts are the fake accounts, in the order the rail shows them.
 var scripts = []accountScript{
 	{
 		account:      domain.Account{ID: "wa-personal", Service: domain.ServiceWhatsApp, Name: "Personal"},

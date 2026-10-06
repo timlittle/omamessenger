@@ -10,67 +10,65 @@ const { KEY, MOD } = Keymap;
 // letter returns the Qt key code for a letter or digit.
 const letter = (ch) => ch.toUpperCase().charCodeAt(0);
 
-// Each row: context, key, modifiers, typed text, demo mode, expected action.
+// Each row: context, key, modifiers, typed text, expected action.
 const cases = [
-  ['list', KEY.Slash, MOD.Ctrl, '', false, 'palette.commands'],
-  ['list', KEY.Question, MOD.Ctrl | MOD.Shift, '', false, 'palette.commands'],
-  ['compose', letter('p'), MOD.Ctrl | MOD.Shift, '', false, 'palette.commands'],
-  ['list', letter('k'), MOD.Ctrl, '', false, 'palette.conversations'],
-  ['conversation', letter('t'), MOD.Ctrl, '', false, 'palette.conversations'],
-  ['list', letter('g'), MOD.Ctrl, '', false, 'search.focus'],
-  ['list', letter('n'), MOD.Ctrl, '', false, 'chat.new'],
-  ['list', letter('k'), MOD.Ctrl | MOD.Shift, '', false, 'chat.new'],
-  ['conversation', letter('j'), MOD.Ctrl, '', false, 'unread.next'],
-  ['list', KEY.Down, MOD.Alt | MOD.Shift, '', false, 'unread.next'],
-  ['list', KEY.Up, MOD.Alt | MOD.Shift, '', false, 'unread.prev'],
-  ['compose', KEY.Down, MOD.Alt, '', false, 'chat.next'],
-  ['compose', KEY.Up, MOD.Alt, '', false, 'chat.prev'],
-  ['list', letter('0'), MOD.Ctrl, '', false, 'rail.all'],
-  ['list', letter('1'), MOD.Ctrl, '', false, 'rail.whatsapp'],
-  ['list', letter('2'), MOD.Ctrl, '', false, 'rail.telegram'],
-  ['list', KEY.Tab, MOD.Ctrl, '', false, 'rail.next'],
-  ['list', KEY.Backtab, MOD.Ctrl | MOD.Shift, '', false, 'rail.prev'],
-  ['list', letter('w'), MOD.Ctrl, '', false, 'window.hide'],
-  ['compose', letter('q'), MOD.Ctrl, '', false, 'app.quit'],
-  ['list', letter('d'), MOD.Ctrl | MOD.Shift, '', true, 'demo.inject'],
-  ['list', letter('d'), MOD.Ctrl | MOD.Shift, '', false, ''],
-  ['compose', KEY.Escape, 0, '', false, 'escape'],
+  ['list', KEY.Slash, MOD.Ctrl, '', 'palette.commands'],
+  ['list', KEY.Question, MOD.Ctrl | MOD.Shift, '', 'palette.commands'],
+  ['compose', letter('p'), MOD.Ctrl | MOD.Shift, '', 'palette.commands'],
+  ['list', letter('k'), MOD.Ctrl, '', 'palette.conversations'],
+  ['conversation', letter('t'), MOD.Ctrl, '', 'palette.conversations'],
+  ['list', letter('g'), MOD.Ctrl, '', 'search.focus'],
+  ['list', letter('n'), MOD.Ctrl, '', 'chat.new'],
+  ['list', letter('k'), MOD.Ctrl | MOD.Shift, '', 'chat.new'],
+  ['conversation', letter('j'), MOD.Ctrl, '', 'unread.next'],
+  ['list', KEY.Down, MOD.Alt | MOD.Shift, '', 'unread.next'],
+  ['list', KEY.Up, MOD.Alt | MOD.Shift, '', 'unread.prev'],
+  ['compose', KEY.Down, MOD.Alt, '', 'chat.next'],
+  ['compose', KEY.Up, MOD.Alt, '', 'chat.prev'],
+  ['list', letter('0'), MOD.Ctrl, '', 'rail.all'],
+  ['list', letter('1'), MOD.Ctrl, '', 'rail.whatsapp'],
+  ['list', letter('2'), MOD.Ctrl, '', 'rail.telegram'],
+  ['list', KEY.Tab, MOD.Ctrl, '', 'rail.next'],
+  ['list', KEY.Backtab, MOD.Ctrl | MOD.Shift, '', 'rail.prev'],
+  ['list', letter('w'), MOD.Ctrl, '', 'window.hide'],
+  ['compose', letter('q'), MOD.Ctrl, '', 'app.quit'],
+  ['compose', KEY.Escape, 0, '', 'escape'],
 
-  ['list', letter('j'), 0, 'j', false, 'cursor.down'],
-  ['list', KEY.Down, 0, '', false, 'cursor.down'],
-  ['list', letter('k'), 0, 'k', false, 'cursor.up'],
-  ['list', letter('g'), 0, 'g', false, 'cursor.top'],
-  ['list', letter('g'), MOD.Shift, 'G', false, 'cursor.bottom'],
-  ['list', KEY.Return, 0, '\r', false, 'chat.open'],
-  ['list', KEY.Enter, 0, '\r', false, 'chat.open'],
-  ['list', KEY.Tab, 0, '\t', false, 'pane.conversation'],
-  ['list', letter('m'), 0, 'm', false, 'chat.mute'],
+  ['list', letter('j'), 0, 'j', 'cursor.down'],
+  ['list', KEY.Down, 0, '', 'cursor.down'],
+  ['list', letter('k'), 0, 'k', 'cursor.up'],
+  ['list', letter('g'), 0, 'g', 'cursor.top'],
+  ['list', letter('g'), MOD.Shift, 'G', 'cursor.bottom'],
+  ['list', KEY.Return, 0, '\r', 'chat.open'],
+  ['list', KEY.Enter, 0, '\r', 'chat.open'],
+  ['list', KEY.Tab, 0, '\t', 'pane.conversation'],
+  ['list', letter('m'), 0, 'm', 'chat.mute'],
 
-  ['conversation', letter('j'), 0, 'j', false, 'scroll.down'],
-  ['conversation', letter('d'), MOD.Ctrl, '', false, 'scroll.pageDown'],
-  ['conversation', letter('g'), MOD.Shift, 'G', false, 'scroll.newest'],
-  ['conversation', KEY.Return, 0, '\r', false, 'compose.focus'],
-  ['conversation', letter('h'), 0, 'h', false, 'pane.list'],
-  ['conversation', letter('r'), 0, 'r', false, 'message.retry'],
+  ['conversation', letter('j'), 0, 'j', 'scroll.down'],
+  ['conversation', letter('d'), MOD.Ctrl, '', 'scroll.pageDown'],
+  ['conversation', letter('g'), MOD.Shift, 'G', 'scroll.newest'],
+  ['conversation', KEY.Return, 0, '\r', 'compose.focus'],
+  ['conversation', letter('h'), 0, 'h', 'pane.list'],
+  ['conversation', letter('r'), 0, 'r', 'message.retry'],
 
-  ['compose', KEY.Return, 0, '\r', false, 'message.send'],
-  ['compose', KEY.Return, MOD.Shift, '\r', false, ''],
-  ['compose', letter('j'), 0, 'j', false, ''],
-  ['search', KEY.Return, 0, '\r', false, 'search.accept'],
-  ['search', letter('j'), 0, 'j', false, ''],
+  ['compose', KEY.Return, 0, '\r', 'message.send'],
+  ['compose', KEY.Return, MOD.Shift, '\r', ''],
+  ['compose', letter('j'), 0, 'j', ''],
+  ['search', KEY.Return, 0, '\r', 'search.accept'],
+  ['search', letter('j'), 0, 'j', ''],
 
-  ['dialog', letter('k'), MOD.Ctrl, '', false, 'dialog.up'],
-  ['dialog', KEY.Tab, MOD.Ctrl, '', false, 'dialog.nextAccount'],
-  ['palette', letter('k'), MOD.Ctrl, '', false, 'palette.up'],
-  ['palette', letter('j'), MOD.Ctrl, '', false, 'palette.down'],
-  ['palette', letter('n'), MOD.Ctrl, '', false, 'palette.down'],
-  ['palette', KEY.Return, 0, '\r', false, 'palette.accept'],
-  ['palette', letter('j'), 0, 'j', false, '']
+  ['dialog', letter('k'), MOD.Ctrl, '', 'dialog.up'],
+  ['dialog', KEY.Tab, MOD.Ctrl, '', 'dialog.nextAccount'],
+  ['palette', letter('k'), MOD.Ctrl, '', 'palette.up'],
+  ['palette', letter('j'), MOD.Ctrl, '', 'palette.down'],
+  ['palette', letter('n'), MOD.Ctrl, '', 'palette.down'],
+  ['palette', KEY.Return, 0, '\r', 'palette.accept'],
+  ['palette', letter('j'), 0, 'j', '']
 ];
 
-for (const [context, key, modifiers, text, demo, want] of cases) {
+for (const [context, key, modifiers, text, want] of cases) {
   test(`match in ${context}: key ${key.toString(16)} mods ${modifiers.toString(16)} → ${want || 'nothing'}`, () => {
-    assert.strictEqual(Keymap.match(context, key, modifiers, text, demo), want);
+    assert.strictEqual(Keymap.match(context, key, modifiers, text), want);
   });
 }
 
@@ -88,15 +86,12 @@ test('display shows keys the way people read them', () => {
   assert.strictEqual(Keymap.display('Ctrl+K'), 'Ctrl+K');
 });
 
-test('the palette offers commands with their first key, and demo ones only in demo', () => {
-  const real = Keymap.commands(false);
-  const demo = Keymap.commands(true);
+test('the palette offers commands with their first key', () => {
+  const commands = Keymap.commands();
 
-  const jump = real.find((c) => c.action === 'palette.conversations');
+  const jump = commands.find((c) => c.action === 'palette.conversations');
   assert.deepEqual(jump, { action: 'palette.conversations', label: 'Jump to conversation', keys: 'Ctrl+K' });
-  assert.ok(!real.some((c) => c.action === 'demo.inject'));
-  assert.ok(demo.some((c) => c.action === 'demo.inject'));
-  assert.ok(!real.some((c) => c.action === 'palette.commands' || c.action === 'cursor.down'));
+  assert.ok(!commands.some((c) => c.action === 'palette.commands' || c.action === 'cursor.down'));
 });
 
 test('bindingsFor puts the context hints before the global ones', () => {
@@ -105,11 +100,4 @@ test('bindingsFor puts the context hints before the global ones', () => {
   assert.strictEqual(actions[0], 'chat.open');
   assert.ok(actions.includes('palette.commands'));
   assert.ok(!actions.includes('message.send'));
-});
-
-test('a palette-only command has no key and shows none', () => {
-  const later = Keymap.commands(true).find((c) => c.action === 'demo.injectLater');
-
-  assert.deepEqual(later, { action: 'demo.injectLater', label: 'Receive a demo message in 5 seconds', keys: '' });
-  assert.ok(!Keymap.commands(false).some((c) => c.action === 'demo.injectLater'));
 });

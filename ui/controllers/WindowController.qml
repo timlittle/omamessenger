@@ -4,24 +4,22 @@ import "../lib/Actions.js" as Actions
 import "../lib/Keymap.js" as Keymap
 import "../lib/Palette.js" as Palette
 import "../lib/Rail.js" as Rail
-import "../lib/Rpc.js" as Rpc
 
-// Owns the command palette, closing and quitting (which ask first), demo
-// data and the Escape chain. The palette runs commands through whichever
+// Owns the command palette, closing and quitting (which ask first), and
+// the Escape chain. The palette runs commands through whichever
 // controller owns them, and Escape needs to know what the others are
 // showing, so it holds references to them, set once by whoever wires the
 // controllers together.
 //
-// Item rather than QtObject: only a type with a default property can hold
-// the Timer below.
-Item {
+// QtObject rather than Item: it holds no child objects.
+QtObject {
   id: root
 
   // service is the Service instance that owns the helper connection.
   property var service: null
 
   // listController supplies conversations for the palette and is read for
-  // the Escape chain and demo.inject's target conversation.
+  // the Escape chain.
   property var listController: null
 
   // conversationController is read and closed by the Escape chain, and
@@ -46,7 +44,7 @@ Item {
   // paletteResults are the matching commands or conversations, best first.
   readonly property var paletteResults: root.paletteMode === "conversations"
     ? Palette.search(root.listController ? root.listController.all : [], root.paletteQuery, (c) => c.title)
-    : Palette.search(Keymap.commands(root.service ? root.service.demo : false), root.paletteQuery, (c) => c.label)
+    : Palette.search(Keymap.commands(), root.paletteQuery, (c) => c.label)
 
   // paletteItems are paletteResults as rows to show: {label, detail, keys}.
   readonly property var paletteItems: root.paletteMode === "conversations"
@@ -78,9 +76,7 @@ Item {
       "palette.accept": () => root.acceptPalette(root.paletteIndex),
       "window.hide": () => root.askToClose(),
       "app.quit": () => root.quit(),
-      "escape": () => root._escape(),
-      "demo.inject": () => root._injectDemo(),
-      "demo.injectLater": () => demoTimer.restart()
+      "escape": () => root._escape()
     };
 
     const handler = handlers[action];
@@ -196,27 +192,5 @@ Item {
       activeId: state.activeId,
       query: root.listController ? root.listController.query : ""
     };
-  }
-
-  // _injectDemo delivers a scripted demo message into the open
-  // conversation, or the selected one, while the helper runs the demo.
-  function _injectDemo(): void {
-    if (!root.service || !root.service.demo) return;
-
-    const open = root.service.uiState.activeId;
-    const target = open || (root.listController ? root.listController.selectedId : "");
-    if (!target) return;
-
-    root.service.request("demo.inject", { conversationId: target }, function(error) {
-      if (error) root.lastError = Rpc.errorText(error);
-    });
-  }
-
-  // Gives time to hide the window first, to see the notification arrive.
-  Timer {
-    id: demoTimer
-
-    interval: 5000
-    onTriggered: root._injectDemo()
   }
 }

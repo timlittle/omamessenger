@@ -1,9 +1,8 @@
-package demo
+package fake
 
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,7 +11,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// Delays that make the demo feel like a real service.
+// Delays that make the fake behave like a real service.
 const (
 	failDelay      = 800 * time.Millisecond
 	sentDelay      = 250 * time.Millisecond
@@ -20,16 +19,12 @@ const (
 	readDelay      = 2500 * time.Millisecond
 	typingDelay    = 3 * time.Second
 	replyDelay     = 4500 * time.Millisecond
-	minChatter     = 30 * time.Second
-	maxChatter     = 90 * time.Second
 )
 
-// Connector is one scripted demo account.
+// Connector is one scripted fake account.
 type Connector struct {
-	script  accountScript
-	chatter *atomic.Bool
-	rng     *rand.Rand // used only by the chatter goroutine
-	seq     atomic.Uint64
+	script accountScript
+	seq    atomic.Uint64
 
 	mu       sync.Mutex
 	run      *run // nil when not running
@@ -44,14 +39,11 @@ type run struct {
 }
 
 // newConnector creates a stopped connector for script.
-func newConnector(script accountScript, chatter *atomic.Bool, rng *rand.Rand) *Connector {
-	return &Connector{
-		script: script, chatter: chatter, rng: rng,
-		attempts: make(map[string]int), replies: make(map[string]int),
-	}
+func newConnector(script accountScript) *Connector {
+	return &Connector{script: script, attempts: make(map[string]int), replies: make(map[string]int)}
 }
 
-// Account describes the demo account.
+// Account describes the fake account.
 func (c *Connector) Account() domain.Account {
 	return c.script.account
 }
@@ -70,7 +62,6 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	c.after(c.script.connectDelay, func(ctx context.Context, s connector.Sink) {
 		s.AccountStatus(ctx, id, domain.AccountConnected, "")
 	})
-	wg.Go(func() { c.chat(ctx, sink) })
 
 	<-ctx.Done()
 	c.stop()
@@ -205,7 +196,7 @@ type receipt struct {
 // deliver schedules the sent and delivered receipts for a message, and the
 // read receipt in a direct chat. Groups have no single reader.
 func (c *Connector) deliver(messageID string, direct bool) {
-	remoteID := "demo-" + messageID
+	remoteID := "fake-" + messageID
 	receipts := []receipt{{sentDelay, domain.StatusSent}, {deliveredDelay, domain.StatusDelivered}}
 	if direct {
 		receipts = append(receipts, receipt{readDelay, domain.StatusRead})
@@ -227,7 +218,7 @@ func (c *Connector) replyTo(script conversationScript, sentID string) {
 
 	c.after(replyDelay, func(ctx context.Context, s connector.Sink) {
 		s.Typing(ctx, id, script.remoteID, script.title, false)
-		s.Incoming(ctx, id, script.remoteID, script.reply(c.nextReply(script.remoteID), "demo-reply-"+sentID, time.Now()))
+		s.Incoming(ctx, id, script.remoteID, script.reply(c.nextReply(script.remoteID), "fake-reply-"+sentID, time.Now()))
 	})
 }
 
@@ -263,40 +254,16 @@ func (c *Connector) inject(ctx context.Context, remoteID string) (domain.Message
 
 	script, _ := c.script.find(remoteID)
 	m := domain.Message{
-		RemoteID:   fmt.Sprintf("demo-injected-%d", c.seq.Add(1)),
+		RemoteID:   fmt.Sprintf("fake-injected-%d", c.seq.Add(1)),
 		SenderID:   script.remoteID,
 		SenderName: script.title,
-		Text:       "A scripted demo message arrived.",
+		Text:       "A scripted message arrived.",
 		Status:     domain.StatusReceived,
 		Created:    time.Now().UnixMilli(),
 	}
 	r.sink.Incoming(ctx, c.script.account.ID, remoteID, m)
 
 	return m, nil
-}
-
-// chat delivers a random scripted reply at random intervals while chatter
-// is on, until ctx is cancelled.
-func (c *Connector) chat(ctx context.Context, sink connector.Sink) {
-	chatty := c.script.chatty()
-	if len(chatty) == 0 {
-		return
-	}
-
-	for sleep(ctx, c.chatterDelay()) {
-		if !c.chatter.Load() {
-			continue
-		}
-
-		script := chatty[c.rng.IntN(len(chatty))]
-		m := script.reply(c.rng.IntN(len(script.replies)), fmt.Sprintf("chatter-%d", c.seq.Add(1)), time.Now())
-		sink.Incoming(ctx, c.script.account.ID, script.remoteID, m)
-	}
-}
-
-// chatterDelay picks the wait before the next chatter message.
-func (c *Connector) chatterDelay() time.Duration {
-	return minChatter + time.Duration(c.rng.Int64N(int64(maxChatter-minChatter)+1))
 }
 
 // find returns the conversation script with the given remote id.
@@ -308,18 +275,6 @@ func (a accountScript) find(remoteID string) (conversationScript, bool) {
 	}
 
 	return conversationScript{}, false
-}
-
-// chatty returns the conversations that have scripted replies.
-func (a accountScript) chatty() []conversationScript {
-	var out []conversationScript
-	for _, conv := range a.conversations {
-		if len(conv.replies) > 0 {
-			out = append(out, conv)
-		}
-	}
-
-	return out
 }
 
 // sleep waits for d, returning false if ctx is cancelled first.

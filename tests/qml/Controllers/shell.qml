@@ -163,7 +163,7 @@ ShellRoot {
   // starts waiting for it to be marked read and for its messages to load.
   function checkOpenConversation(): void {
     const alex = root.findByTitle(listController.model, "Alex Chen");
-    if (!alex) return root.fail("no conversation titled Alex Chen in the demo data");
+    if (!alex) return root.fail("no conversation titled Alex Chen in the fake accounts");
     if (alex.unread <= 0) return root.fail("Alex Chen already has no unread messages to clear");
 
     conversationController.open(alex);
@@ -200,7 +200,7 @@ ShellRoot {
   // second call does nothing and only one page is ever fetched.
   function checkLoadOlder(): void {
     const omarchy = root.findByTitle(listController.model, "Omarchy Users");
-    if (!omarchy) return root.fail("no conversation titled Omarchy Users in the demo data");
+    if (!omarchy) return root.fail("no conversation titled Omarchy Users in the fake accounts");
 
     conversationController.open(omarchy);
     root.pollAttempts = 0;
@@ -240,7 +240,7 @@ ShellRoot {
   // is not flaky, sends a message and waits for it to be delivered.
   function checkSend(): void {
     const mum = root.findByTitle(listController.model, "Mum");
-    if (!mum) return root.fail("no conversation titled Mum in the demo data");
+    if (!mum) return root.fail("no conversation titled Mum in the fake accounts");
 
     conversationController.open(mum);
     conversationController.send("integration test");

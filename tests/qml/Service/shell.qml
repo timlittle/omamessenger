@@ -58,7 +58,7 @@ ShellRoot {
   // attempt, so the test is not flaky.
   function sendToMum(): void {
     const mum = root.conversations.find((c) => c.title === "Mum");
-    if (!mum) return root.fail("no conversation titled Mum in the demo data");
+    if (!mum) return root.fail("no conversation titled Mum in the fake accounts");
 
     root.pendingConversationId = mum.id;
     service.request("messages.send", { conversationId: mum.id, text: "integration test" }, function(error, result) {

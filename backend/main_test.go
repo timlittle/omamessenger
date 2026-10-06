@@ -1,3 +1,5 @@
+//go:build fake
+
 package main
 
 import (
@@ -30,7 +32,7 @@ func TestRun_ServesTheDemoAndStopsAtEndOfInput(t *testing.T) {
 	}
 
 	assertNoContent(t, stderr.String())
-	if !strings.Contains(stderr.String(), "OmaMessenger helper "+helperVersion+" started (demo: true)") {
+	if !strings.Contains(stderr.String(), "OmaMessenger helper "+helperVersion+" started") {
 		t.Errorf("startup line missing from %q", stderr.String())
 	}
 }
@@ -120,17 +122,16 @@ func TestBinary_ExitsCleanlyOnSIGTERM(t *testing.T) {
 	waitExit(t, cmd, stderr)
 }
 
-// exercise runs a short demo session through the protocol: the full stack
-// of server, application, store and demo connectors.
+// exercise runs a short session through the protocol: the full stack of
+// server, application, store and fake connectors.
 func exercise(t *testing.T, client *jsonrpc2.Conn) {
 	t.Helper()
 
 	var hello struct {
-		Demo    bool   `json:"demo"`
 		Version string `json:"version"`
 	}
 	call(t, client, "hello", nil, &hello)
-	if !hello.Demo || hello.Version != helperVersion {
+	if hello.Version != helperVersion {
 		t.Fatalf("hello = %+v", hello)
 	}
 
@@ -138,11 +139,11 @@ func exercise(t *testing.T, client *jsonrpc2.Conn) {
 
 	var sent domain.Message
 	call(t, client, "messages.send", map[string]string{"conversationId": sam.ID, "text": "hello from the test"}, &sent)
-	call(t, client, "demo.inject", map[string]string{"conversationId": sam.ID}, nil)
+	call(t, client, "fake.inject", map[string]string{"conversationId": sam.ID}, nil)
 	call(t, client, "settings.apply", map[string]bool{"notifications": false}, nil)
 }
 
-// waitForConversation polls until the demo has seeded the conversation.
+// waitForConversation polls until the fakes have seeded the conversation.
 func waitForConversation(t *testing.T, client *jsonrpc2.Conn, title string) domain.Conversation {
 	t.Helper()
 
@@ -199,7 +200,7 @@ func startInProcess(t *testing.T, ctx context.Context) (io.Closer, *jsonrpc2.Con
 	outR, outW := io.Pipe()
 	stderr := &lockedBuffer{}
 	done := make(chan error, 1)
-	args := []string{"--demo", "--seed", "1", "--data-dir", filepath.Join(t.TempDir(), "data")}
+	args := []string{"--data-dir", filepath.Join(t.TempDir(), "data")}
 
 	go func() {
 		done <- run(ctx, streams{in: inR, out: outW, errOut: stderr}, args, lookup(nil))
@@ -225,16 +226,16 @@ func await(t *testing.T, done chan error) error {
 	}
 }
 
-// startBinary builds the helper and runs it in demo mode.
+// startBinary builds the test helper, with its fake connectors, and runs it.
 func startBinary(t *testing.T) (*exec.Cmd, io.Closer, *jsonrpc2.Conn, *lockedBuffer) {
 	t.Helper()
 
 	binary := filepath.Join(t.TempDir(), "oma-messenger-service")
-	if out, err := exec.Command("go", "build", "-buildvcs=false", "-o", binary, ".").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-tags", "fake", "-buildvcs=false", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 
-	cmd := exec.Command(binary, "--demo", "--seed", "1", "--data-dir", filepath.Join(t.TempDir(), "data"))
+	cmd := exec.Command(binary, "--data-dir", filepath.Join(t.TempDir(), "data"))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

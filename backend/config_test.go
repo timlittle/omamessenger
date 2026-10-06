@@ -22,20 +22,16 @@ func TestResolveConfig(t *testing.T) {
 			want: config{dataDir: "/data/omamessenger", dbPath: "/data/omamessenger/messages.db"},
 		},
 		{
-			name: "demo has its own database", args: []string{"--demo", "--seed", "7"}, env: map[string]string{"XDG_DATA_HOME": "/data"},
-			want: config{demo: true, seed: 7, dataDir: "/data/omamessenger", dbPath: "/data/omamessenger/demo.db"},
+			name: "data-dir is used as given", args: []string{"--data-dir", "/tmp/oma"},
+			want: config{dataDir: "/tmp/oma", dbPath: "/tmp/oma/messages.db"},
 		},
 		{
-			name: "data-dir is used as given", args: []string{"--data-dir", "/tmp/oma", "--seed", "1"},
-			want: config{seed: 1, dataDir: "/tmp/oma", dbPath: "/tmp/oma/messages.db"},
+			name: "db overrides data-dir", args: []string{"--data-dir", "/tmp/oma", "--db", "/tmp/x.db"},
+			want: config{dataDir: "/tmp/oma", dbPath: "/tmp/x.db"},
 		},
-		{
-			name: "db overrides data-dir", args: []string{"--chatter", "--data-dir", "/tmp/oma", "--db", "/tmp/x.db", "--seed", "1"},
-			want: config{seed: 1, dataDir: "/tmp/oma", dbPath: "/tmp/x.db", chatter: true},
-		},
-		{name: "no HOME", args: []string{"--seed", "1"}, wantErr: true},
+		{name: "no HOME", wantErr: true},
 		{name: "unknown flag", args: []string{"--unknown"}, env: home, wantErr: true},
-		{name: "invalid seed", args: []string{"--seed", "x"}, env: home, wantErr: true},
+		{name: "a removed flag", args: []string{"--demo"}, env: home, wantErr: true},
 		{name: "extra argument", args: []string{"extra"}, env: home, wantErr: true},
 	}
 
@@ -50,10 +46,6 @@ func TestResolveConfig(t *testing.T) {
 				}
 
 				return
-			}
-
-			if tt.want.seed == 0 {
-				tt.want.seed = got.seed // the default seed is the clock
 			}
 
 			if err != nil || got != tt.want {

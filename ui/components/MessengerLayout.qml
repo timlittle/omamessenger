@@ -159,7 +159,6 @@ Item {
 
       items: root.listController.railItems
       selectedKey: root.listController.railKey
-      demo: root.service ? root.service.demo : false
 
       onSelected: key => root.listController.setRail(key)
       onNewChat: root.dialogController.run("chat.new")

@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
@@ -18,8 +17,6 @@ Item {
   property var items: []
   // selectedKey: the entry currently shown in the conversation list.
   property string selectedKey: ""
-  // demo: true while the helper is seeded with demo data.
-  property bool demo: false
 
   // selected fires when an entry is clicked.
   signal selected(string key)
@@ -51,39 +48,6 @@ Item {
         selected: modelData.key === root.selectedKey
         onClicked: root.selected(modelData.key)
       }
-    }
-
-    // DEMO chip: shown only while the helper is seeded, never implying a
-    // real account is connected.
-    Rectangle {
-      id: demoChip
-      objectName: "demoChip"
-      visible: root.demo
-      Layout.alignment: Qt.AlignHCenter
-      Layout.bottomMargin: Theme.spacing.xs
-      implicitWidth: demoLabel.implicitWidth + Theme.spacing.sm * 2
-      implicitHeight: demoLabel.implicitHeight + Theme.spacing.xxs * 2
-      radius: implicitHeight / 2
-      color: Util.alpha(Color.urgent, 0.25)
-
-      Text {
-        id: demoLabel
-        anchors.centerIn: parent
-        text: "DEMO"
-        color: Color.foreground
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-        font.weight: Font.Bold
-      }
-
-      MouseArea {
-        id: demoHover
-        anchors.fill: parent
-        hoverEnabled: true
-      }
-      ToolTip.visible: demoHover.containsMouse
-      ToolTip.text: "Seeded demo data. WhatsApp and Telegram are not connected."
-      ToolTip.delay: 500
     }
 
     Ui.Button {

@@ -1,17 +1,17 @@
-package demo_test
+package fake_test
 
 import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/demo"
+	"github.com/timlittle/omamessenger/backend/internal/connector/fake"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestSeed_HistoryHasScriptedCountsAndUnread(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := newRecordingSink()
-		stop := runDemo(t, demo.New(1, false), sink)
+		stop := runFake(t, fake.New(), sink)
 		synctest.Wait()
 		stop()
 
@@ -39,7 +39,7 @@ func TestSeed_HistoryHasScriptedCountsAndUnread(t *testing.T) {
 func TestSeed_HistoryIsOrderedAndAttributed(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := newRecordingSink()
-		stop := runDemo(t, demo.New(1, false), sink)
+		stop := runFake(t, fake.New(), sink)
 		synctest.Wait()
 		stop()
 

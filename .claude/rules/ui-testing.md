@@ -14,7 +14,7 @@ Two layers, both headless. Never test against the developer's running Hyprland s
 - Start the checks from a `Timer { running: true; interval: 0 }`, not `Component.onCompleted`: Quickshell ignores `Qt.exit()` until it has finished loading
 - Put the component in a `FloatingWindow` when it needs a size or focus
 - Drive real key events with `import QtTest` and `TestCase { id: t; when: false }`, then `t.keyClick(Qt.Key_Down)`
-- Components get fake data through their properties; no helper process is needed. Tests for `ui/service` start the helper with `--demo`
+- Components get fake data through their properties; no helper process is needed. Tests that need a running helper get the test build (`make build-fake`), whose fake accounts give them data
 - A test directory holding a `no-dev-build` file gets the launcher without `bin/dev`, so the helper starts out not installed; `OMA_RELEASE_BASE` points the installer at `release/` in the test root
 - Every test has run once with a deliberately broken expectation, to see it fail
 - No compositor or Docker-based end-to-end tests: they were slow and caught little. Manual checks happen in the installed plugin (`make install-local`)

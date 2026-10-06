@@ -26,7 +26,7 @@ Trade-off: a line that is not valid JSON closes the connection. The UI only send
 
 ## Real time in code, synctest in tests
 
-There is no clock interface. Code uses the `time` package, and tests of timing (connector restarts, demo delays, chatter) run inside `testing/synctest`, where time advances instantly and deterministically.
+There is no clock interface. Code uses the `time` package, and tests of timing (connector restarts, the fake connectors' delays) run inside `testing/synctest`, where time advances instantly and deterministically.
 
 ## Release binaries, installed on request
 
@@ -48,6 +48,6 @@ Automated tests do not start Hyprland or Docker. They were slow and caught littl
 
 Omarchy declares nested token groups (`Style.font`, `Color.popups`, …) as plain `QtObject` properties, so Qt 6 qmllint reports every use as a missing property. `ui/theme/Theme.qml` re-exports them with types, which keeps lint at zero warnings and still catches typos. It is the only file allowed to suppress that warning.
 
-## The demo has its own database
+## Fake accounts only in test builds
 
-`--demo` uses `demo.db`, never `messages.db`, so seeded data can never mix with real messages.
+The scripted fake connectors that tests run against are compiled in only with the `fake` build tag (`make build-fake`). Release builds cannot show seeded data, so it can never mix with real messages, and the product has no demo mode to explain.

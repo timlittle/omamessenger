@@ -18,7 +18,7 @@ func TestServer_AnswersRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got["protocol"] != float64(server.Protocol) || got["version"] != "1.2.3" || got["demo"] != false {
+	if got["protocol"] != float64(server.Protocol) || got["version"] != "1.2.3" {
 		t.Errorf("hello = %v", got)
 	}
 }
@@ -47,9 +47,9 @@ func TestServer_RejectsUnknownMethods(t *testing.T) {
 		t.Errorf("nope = %v, want method not found", err)
 	}
 
-	// Outside demo mode the demo method does not exist.
-	if _, err := call[any](t, s, "demo.inject", map[string]string{"conversationId": "chat"}); code(err) != server.CodeMethodNotFound {
-		t.Errorf("demo.inject = %v, want method not found", err)
+	// Without fake connectors the inject method does not exist.
+	if _, err := call[any](t, s, "fake.inject", map[string]string{"conversationId": "chat"}); code(err) != server.CodeMethodNotFound {
+		t.Errorf("fake.inject = %v, want method not found", err)
 	}
 }
 
@@ -79,7 +79,7 @@ func TestServer_MapsErrorsToCodes(t *testing.T) {
 		{"messages.send", map[string]any{"conversationId": "chat", "text": " "}, server.CodeInvalidParams},
 		{"messages.send", map[string]any{"conversationId": 7}, server.CodeInvalidParams},
 		{"messages.send", map[string]any{"conversationId": "missing", "text": "hi"}, server.CodeNotFound},
-		{"demo.inject", map[string]any{"conversationId": "chat"}, server.CodeNotFound},
+		{"fake.inject", map[string]any{"conversationId": "chat"}, server.CodeNotFound},
 	}
 
 	for _, tt := range tests {

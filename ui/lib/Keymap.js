@@ -23,7 +23,7 @@ var KEY_NAMES = { Slash: '/', Question: '?', Up: '↑', Down: '↓', Escape: 'Es
 
 // BINDINGS define every key action. Each has an action name, key specs,
 // the contexts it applies in (or "global"), a label, whether the footer
-// hints it, whether it is demo-only, and whether the command palette
+// hints it, and whether the command palette
 // offers it. Global bindings use Ctrl or Alt, or are Escape, so they never
 // steal typing.
 var BINDINGS = [
@@ -42,8 +42,6 @@ var BINDINGS = [
   { action: 'rail.prev', keys: ['Ctrl+Shift+Tab'], contexts: ['global'], label: 'Previous account or service', command: true },
   { action: 'window.hide', keys: ['Ctrl+W'], contexts: ['global'], label: 'Close window', command: true },
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
-  { action: 'demo.inject', keys: ['Ctrl+Shift+D'], contexts: ['global'], label: 'Add a demo message', demoOnly: true, command: true },
-  { action: 'demo.injectLater', keys: [], contexts: ['global'], label: 'Receive a demo message in 5 seconds', demoOnly: true, command: true },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
@@ -79,11 +77,10 @@ var BINDINGS = [
 
 // match returns the action for a key press in a context, or "". Bindings
 // for the context win over global ones.
-function match(context, key, modifiers, text, demo) {
+function match(context, key, modifiers, text) {
   const candidates = BINDINGS.filter((b) => b.contexts.includes(context))
     .concat(BINDINGS.filter((b) => b.contexts.includes('global')));
-  const hit = candidates.find((b) => (!b.demoOnly || demo)
-    && b.keys.some((spec) => specMatches(parseSpec(spec), key, modifiers, text)));
+  const hit = candidates.find((b) => b.keys.some((spec) => specMatches(parseSpec(spec), key, modifiers, text)));
 
   return hit ? hit.action : '';
 }
@@ -157,10 +154,9 @@ function display(spec) {
 }
 
 // commands returns what the command palette offers: every command
-// binding, with its first key shown so people learn it. A command with no
-// keys is reached only through the palette.
-function commands(demo) {
+// binding, with its first key shown so people learn it.
+function commands() {
   return BINDINGS
-    .filter((b) => b.command && (!b.demoOnly || demo))
-    .map((b) => ({ action: b.action, label: b.label, keys: b.keys.length > 0 ? display(b.keys[0]) : '' }));
+    .filter((b) => b.command)
+    .map((b) => ({ action: b.action, label: b.label, keys: display(b.keys[0]) }));
 }

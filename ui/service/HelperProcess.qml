@@ -14,8 +14,6 @@ import Quickshell.Io
 Item {
   id: root
 
-  // demo selects the launcher's --demo flag.
-  property bool demo: true
 
   // status reports the helper's lifecycle; see the type comment above.
   property string status: "starting"
@@ -57,7 +55,7 @@ Item {
 
     root.status = "starting";
     root.detail = "";
-    helper.command = root.demo ? [root._launcherPath, "--demo"] : [root._launcherPath];
+    helper.command = [root._launcherPath];
     helper.running = true;
   }
 

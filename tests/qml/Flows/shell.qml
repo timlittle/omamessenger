@@ -202,7 +202,7 @@ ShellRoot {
   function messageWhileHidden(): var {
     root.samUnread = -1;
     helperService.request("conversations.list", { query: "Sam (spotty" }, function(error, result) {
-      helperService.request("demo.inject", { conversationId: result[0].id }, function() {});
+      helperService.request("fake.inject", { conversationId: result[0].id }, function() {});
     });
     return true;
   }

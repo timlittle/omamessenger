@@ -57,9 +57,9 @@ test('installs the pinned release, which the launcher then runs', { skip: !arch 
   assert.equal(p.run('scripts/install-helper.sh', ['--status'], base).status, 0);
   assert.match(p.run('scripts/install-helper.sh', [], base).stdout, /already installed/);
 
-  const launched = p.run('bin/oma-messenger-service', ['--demo']);
+  const launched = p.run('bin/oma-messenger-service', ['--data-dir', '/tmp/x']);
   assert.equal(launched.status, 0, launched.stderr);
-  assert.equal(launched.stdout, 'release:--demo\n');
+  assert.equal(launched.stdout, 'release:--data-dir /tmp/x\n');
 });
 
 test('refuses a binary whose checksum does not match', { skip: !arch }, (t) => {
@@ -100,9 +100,9 @@ test('launcher prefers a local development build', (t) => {
   const p = plugin(t);
   stub(p.installed, 'release');
   stub(path.join(p.dir, 'bin', 'dev', 'oma-messenger-service'), 'dev');
-  const launched = p.run('bin/oma-messenger-service', ['--demo', '--seed', '12']);
+  const launched = p.run('bin/oma-messenger-service', ['--data-dir', '/tmp/y']);
   assert.equal(launched.status, 0, launched.stderr);
-  assert.equal(launched.stdout, 'dev:--demo --seed 12\n');
+  assert.equal(launched.stdout, 'dev:--data-dir /tmp/y\n');
 });
 
 test('launcher exits 3 with instructions when no helper is installed', (t) => {

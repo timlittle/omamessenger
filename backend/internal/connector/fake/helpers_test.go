@@ -1,4 +1,4 @@
-package demo_test
+package fake_test
 
 import (
 	"context"
@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
-	"github.com/timlittle/omamessenger/backend/internal/connector/demo"
+	"github.com/timlittle/omamessenger/backend/internal/connector/fake"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // recordingSink records every update as a short line, such as
-// "status wa-personal connected" or "incoming wa:mum demo-reply-m1".
+// "status wa-personal connected" or "incoming wa:mum fake-reply-m1".
 type recordingSink struct {
 	mu      sync.Mutex
 	events  []string
@@ -83,9 +83,9 @@ func (s *recordingSink) has(event string) bool {
 	return slices.Contains(s.events, event)
 }
 
-// runDemo starts every demo connector inside the current synctest bubble
+// runFake starts every fake connector inside the current synctest bubble
 // and returns a function that stops them and waits for Run to return.
-func runDemo(t *testing.T, suite *demo.Suite, sink connector.Sink) (stop func()) {
+func runFake(t *testing.T, suite *fake.Suite, sink connector.Sink) (stop func()) {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -104,12 +104,12 @@ func runDemo(t *testing.T, suite *demo.Suite, sink connector.Sink) (stop func())
 	}
 }
 
-// conversation returns a demo conversation as the app would pass it.
+// conversation returns a fake conversation as the app would pass it.
 func conversation(accountID, remoteID, kind string) domain.Conversation {
 	return domain.Conversation{AccountID: accountID, RemoteID: remoteID, Kind: kind}
 }
 
-// waitConnected lets every demo account connect, then forgets the events
+// waitConnected lets every fake account connect, then forgets the events
 // so far. It must run inside a synctest bubble.
 func waitConnected(sink *recordingSink) {
 	time.Sleep(2 * time.Second)

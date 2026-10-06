@@ -24,8 +24,9 @@ func bind[P any](handle func(ctx context.Context, p P) (any, error)) method {
 	}
 }
 
-// methods is the protocol's method table. demo.inject exists only in demo
-// mode, so a real session answers it as an unknown method.
+// methods is the protocol's method table. fake.inject exists only in test
+// builds with fake connectors, so a real helper answers it as an unknown
+// method.
 func methods(c *app.Commands, version string) map[string]method {
 	table := map[string]method{
 		"hello":                  bind(hello(c, version)),
@@ -42,8 +43,8 @@ func methods(c *app.Commands, version string) map[string]method {
 		"settings.apply":         bind(settingsApply(c)),
 	}
 
-	if c.DemoMode() {
-		table["demo.inject"] = bind(demoInject(c))
+	if c.Faked() {
+		table["fake.inject"] = bind(fakeInject(c))
 	}
 
 	return table
@@ -57,15 +58,14 @@ type none struct{}
 type helloResult struct {
 	Protocol    int    `json:"protocol"`
 	Version     string `json:"version"`
-	Demo        bool   `json:"demo"`
 	UnreadTotal int    `json:"unreadTotal"`
 }
 
-// hello reports the protocol version, the helper version, demo mode and the
-// unread total.
+// hello reports the protocol version, the helper version and the unread
+// total.
 func hello(c *app.Commands, version string) func(context.Context, none) (any, error) {
 	return func(ctx context.Context, _ none) (any, error) {
-		return helloResult{Protocol: Protocol, Version: version, Demo: c.DemoMode(), UnreadTotal: c.UnreadTotal(ctx)}, nil
+		return helloResult{Protocol: Protocol, Version: version, UnreadTotal: c.UnreadTotal(ctx)}, nil
 	}
 }
 
@@ -202,7 +202,6 @@ func uiSetFocus(c *app.Commands) func(context.Context, focusParams) (any, error)
 type settingsParams struct {
 	Notifications       bool `json:"notifications"`
 	NotificationPreview bool `json:"notificationPreview"`
-	DemoChatter         bool `json:"demoChatter"`
 }
 
 // settingsApply replaces the user's settings.
@@ -213,8 +212,9 @@ func settingsApply(c *app.Commands) func(context.Context, settingsParams) (any, 
 	}
 }
 
-// demoInject delivers a scripted demo message into a conversation.
-func demoInject(c *app.Commands) func(context.Context, conversationParams) (any, error) {
+// fakeInject delivers a scripted message into a conversation, in test
+// builds.
+func fakeInject(c *app.Commands) func(context.Context, conversationParams) (any, error) {
 	return func(ctx context.Context, p conversationParams) (any, error) {
 		return c.Inject(ctx, p.ConversationID)
 	}
