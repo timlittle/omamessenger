@@ -286,8 +286,16 @@ ShellRoot {
     windowController.run("escape");
     if (conversationController.activeId !== "") return root.fail("escape did not close the open conversation");
 
+    // With nothing left to undo, Escape asks before closing; a second
+    // Escape cancels, and choosing to keep it in the background hides it.
     windowController.run("escape");
-    if (!root.hidden) return root.fail("escape did not hide the window once nothing else was left to undo");
+    if (root.hidden || !windowController.confirmingClose)
+      return root.fail("escape did not ask before closing once nothing else was left to undo");
+    windowController.run("escape");
+    if (windowController.confirmingClose) return root.fail("escape did not cancel the close question");
+    windowController.run("escape");
+    windowController.keepInBackground();
+    if (!root.hidden) return root.fail("keeping it in the background did not hide the window");
 
     console.log("PASS Controllers");
     Qt.exit(0);

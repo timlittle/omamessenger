@@ -15,23 +15,23 @@ func TestResolveConfig(t *testing.T) {
 	}{
 		{
 			name: "defaults under HOME", env: home,
-			want: config{dataDir: "/home/test/.local/share/omamessenger", dbPath: "/home/test/.local/share/omamessenger/messages.db", chatter: true},
+			want: config{dataDir: "/home/test/.local/share/omamessenger", dbPath: "/home/test/.local/share/omamessenger/messages.db"},
 		},
 		{
 			name: "XDG_DATA_HOME wins", env: map[string]string{"HOME": "/home/test", "XDG_DATA_HOME": "/data"},
-			want: config{dataDir: "/data/omamessenger", dbPath: "/data/omamessenger/messages.db", chatter: true},
+			want: config{dataDir: "/data/omamessenger", dbPath: "/data/omamessenger/messages.db"},
 		},
 		{
 			name: "demo has its own database", args: []string{"--demo", "--seed", "7"}, env: map[string]string{"XDG_DATA_HOME": "/data"},
-			want: config{demo: true, seed: 7, dataDir: "/data/omamessenger", dbPath: "/data/omamessenger/demo.db", chatter: true},
+			want: config{demo: true, seed: 7, dataDir: "/data/omamessenger", dbPath: "/data/omamessenger/demo.db"},
 		},
 		{
 			name: "data-dir is used as given", args: []string{"--data-dir", "/tmp/oma", "--seed", "1"},
-			want: config{seed: 1, dataDir: "/tmp/oma", dbPath: "/tmp/oma/messages.db", chatter: true},
+			want: config{seed: 1, dataDir: "/tmp/oma", dbPath: "/tmp/oma/messages.db"},
 		},
 		{
-			name: "db overrides data-dir", args: []string{"--no-chatter", "--data-dir", "/tmp/oma", "--db", "/tmp/x.db", "--seed", "1"},
-			want: config{seed: 1, dataDir: "/tmp/oma", dbPath: "/tmp/x.db"},
+			name: "db overrides data-dir", args: []string{"--chatter", "--data-dir", "/tmp/oma", "--db", "/tmp/x.db", "--seed", "1"},
+			want: config{seed: 1, dataDir: "/tmp/oma", dbPath: "/tmp/x.db", chatter: true},
 		},
 		{name: "no HOME", args: []string{"--seed", "1"}, wantErr: true},
 		{name: "unknown flag", args: []string{"--unknown"}, env: home, wantErr: true},

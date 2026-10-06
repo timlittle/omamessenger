@@ -54,6 +54,16 @@ Item {
     helperProcess.install();
   }
 
+  // start runs the helper again after quit().
+  function start(): void {
+    helperProcess.start();
+  }
+
+  // quit stops the helper, and with it every notification, until start().
+  function quit(): void {
+    helperProcess.stop();
+  }
+
   // applySettings forwards the plugin's settings to the helper.
   function applySettings(settings: var): void {
     root.request("settings.apply", Settings.withDefaults(settings), function() {});

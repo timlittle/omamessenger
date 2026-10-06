@@ -43,9 +43,12 @@ ShellRoot {
     if (!item) return null;
     if (item.objectName === name) return item;
 
-    const kids = item.data || item.children || [];
-    for (const child of kids) {
-      const found = root.findByObjectName(child, name);
+    // Some objects have a data property that is not a child list.
+    const kids = item.data || item.children;
+    if (!kids || typeof kids.length !== "number") return null;
+
+    for (let i = 0; i < kids.length; i++) {
+      const found = root.findByObjectName(kids[i], name);
       if (found) return found;
     }
     return null;
@@ -188,7 +191,26 @@ ShellRoot {
     t.keyClick(Qt.Key_Escape);
 
     root.pollAttempts = 0;
-    root.waitForHide();
+    root.waitForQuestion(() => {
+      if (fakeShell.hideCalls.length !== 0) return root.fail("the window hid before asking");
+      root.find("keepButton").clicked();
+      root.waitForHide();
+    });
+  }
+
+  // waitForQuestion holds until the close question is showing, then runs next.
+  function waitForQuestion(next: var): void {
+    const question = root.find("closeConfirm");
+    if (question && question.visible) return next();
+
+    root.pollAttempts++;
+    if (root.pollAttempts >= 100) return root.fail("the close question never showed");
+    root.retry(() => root.waitForQuestion(next));
+  }
+
+  // find looks an object up by name anywhere in the panel.
+  function find(name: string): var {
+    return root.findByObjectName(panel, name);
   }
 
   // waitForHide holds for the third Escape's hide to reach the shell
@@ -262,7 +284,47 @@ ShellRoot {
     if (conversationView.width < Style.space(300))
       return root.fail("conversation view is only " + conversationView.width + " wide at the minimum size");
 
-    console.log("PASS Panel");
-    Qt.exit(0);
+    root.checkQuit();
+  }
+
+  // checkQuit asks to close with q, chooses Quit, and checks the helper
+  // stops; reopening the window starts it again.
+  function checkQuit(): void {
+    t.keyClick(Qt.Key_Q);
+    root.pollAttempts = 0;
+    root.waitForQuestion(() => {
+      root.find("quitButton").clicked();
+      if (service.status !== "stopped") return root.fail("Quit left the helper " + service.status);
+
+      panel.open("{}");
+      root.pollAttempts = 0;
+      root.waitForReadyAgain();
+    });
+  }
+
+  // waitForReadyAgain holds until reopening has restarted the helper.
+  function waitForReadyAgain(): void {
+    if (service.status === "ready") return root.checkCompositorClose();
+
+    root.pollAttempts++;
+    if (root.pollAttempts >= 100) return root.fail("reopening did not restart the helper: " + service.status);
+    root.retry(root.waitForReadyAgain);
+  }
+
+  // checkCompositorClose closes the window the way the compositor does,
+  // which cannot be refused, and checks it comes back asking.
+  function checkCompositorClose(): void {
+    const hidesBefore = fakeShell.hideCalls.length;
+    root.find("panelWindow").visible = false;
+
+    root.pollAttempts = 0;
+    root.waitForQuestion(() => {
+      if (!root.find("panelWindow").visible) return root.fail("the window did not come back to ask");
+      if (fakeShell.hideCalls.length !== hidesBefore) return root.fail("the window reported hidden before asking");
+
+      root.find("cancelButton").clicked();
+      console.log("PASS Panel");
+      Qt.exit(0);
+    });
   }
 }

@@ -5,7 +5,7 @@
 // here.
 
 // DEFAULTS mirror the defaultValue of each setting in manifest.json.
-var DEFAULTS = { notifications: true, notificationPreview: true, demoChatter: true };
+var DEFAULTS = { notifications: true, notificationPreview: true, demoChatter: false };
 
 // withDefaults returns every known setting, taking the user's value where
 // there is one and the default otherwise. Unknown keys are dropped.

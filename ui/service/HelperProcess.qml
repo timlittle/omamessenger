@@ -43,9 +43,17 @@ Item {
   // handler does not treat that exit as a crash.
   property bool _stopping: false
 
-  // start launches the helper. It does nothing if one is already running.
+  // _startAfterStop asks the exit handler to start the helper again, for a
+  // start() that arrived while a stopped helper was still exiting.
+  property bool _startAfterStop: false
+
+  // start launches the helper. If one is still shutting down after
+  // stop(), it starts again once that one has exited.
   function start(): void {
-    if (helper.running) return;
+    if (helper.running) {
+      root._startAfterStop = root._stopping;
+      return;
+    }
 
     root.status = "starting";
     root.detail = "";
@@ -75,6 +83,10 @@ Item {
   function _handleExit(exitCode: int): void {
     if (root._stopping) {
       root._stopping = false;
+      if (root._startAfterStop) {
+        root._startAfterStop = false;
+        root.start();
+      }
       return;
     }
 

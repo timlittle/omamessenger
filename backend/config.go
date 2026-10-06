@@ -27,12 +27,11 @@ type config struct {
 // the XDG base directory rules when it is not given.
 func resolveConfig(args []string, env func(string) string) (config, error) {
 	var cfg config
-	var noChatter bool
 
 	fs := flag.NewFlagSet("oma-messenger-service", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.BoolVar(&cfg.demo, "demo", false, "run the seeded demo accounts")
-	fs.BoolVar(&noChatter, "no-chatter", false, "turn off scripted demo messages")
+	fs.BoolVar(&cfg.chatter, "chatter", false, "let the demo accounts send scripted messages in the background")
 	fs.Uint64Var(&cfg.seed, "seed", uint64(time.Now().UnixNano()), "random seed for demo chatter")
 	fs.StringVar(&cfg.dataDir, "data-dir", "", "data directory")
 	fs.StringVar(&cfg.dbPath, "db", "", "database file, overriding the data directory")
@@ -45,8 +44,6 @@ func resolveConfig(args []string, env func(string) string) (config, error) {
 	if fs.NArg() != 0 {
 		return config{}, fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
-
-	cfg.chatter = !noChatter
 
 	return withPaths(cfg, env)
 }

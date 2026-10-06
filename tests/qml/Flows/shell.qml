@@ -153,10 +153,11 @@ ShellRoot {
 
   // openSam goes back to the full list and opens Sam's chat by keyboard.
   function openSam(): var {
+    // Leave the composer, close Alex Chen, then clear and leave the
+    // search the panel restored.
     t.keyClick(Qt.Key_Escape);
     t.keyClick(Qt.Key_Escape);
     t.keyClick(Qt.Key_K, Qt.ControlModifier);
-    t.keyClick(Qt.Key_Escape);
     t.keyClick(Qt.Key_Escape);
 
     const index = root.rowIndex("Sam (spotty signal)");

@@ -373,3 +373,10 @@ test('escapeAction closes a conversation still open behind the list', () => {
 
   assert.strictEqual(Navigation.escapeAction(state), 'close-conversation');
 });
+
+test('the close question takes keys before anything else', () => {
+  const state = { confirmOpen: true, helpOpen: true, dialogOpen: true, pane: 'conversation', activeId: 'c1' };
+
+  assert.strictEqual(Navigation.keyContext(state), 'confirm');
+  assert.strictEqual(Navigation.escapeAction(state), 'cancel-close');
+});

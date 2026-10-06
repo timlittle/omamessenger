@@ -3,8 +3,8 @@ import "../lib/Navigation.js" as Navigation
 import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
 
-// Owns the shortcut help sheet, hiding the window, demo data and the
-// Escape chain. Escape needs to know what the other three controllers are
+// Owns the shortcut help sheet, closing the window (which asks first),
+// demo data and the Escape chain. Escape needs to know what the other three controllers are
 // showing, so it holds references to them, set once by whoever wires the
 // controllers together.
 //
@@ -28,12 +28,40 @@ QtObject {
   // helpOpen shows the shortcut help sheet when true.
   property bool helpOpen: false
 
+  // confirmingClose shows the question asking what closing should do.
+  property bool confirmingClose: false
+
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
   // hideRequested asks the caller to hide the window. The panel turns
   // this into shell.hide, since only it holds the shell facade.
   signal hideRequested()
+
+  // askToClose shows the close question instead of closing at once.
+  function askToClose(): void {
+    root.confirmingClose = true;
+  }
+
+  // keepInBackground answers the close question: hide the window and keep
+  // notifying.
+  function keepInBackground(): void {
+    root.confirmingClose = false;
+    root.hideRequested();
+  }
+
+  // quit answers the close question: stop the helper, and with it every
+  // notification, until the window is opened again.
+  function quit(): void {
+    root.confirmingClose = false;
+    if (root.service) root.service.quit();
+    root.hideRequested();
+  }
+
+  // cancelClose leaves the window open.
+  function cancelClose(): void {
+    root.confirmingClose = false;
+  }
 
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
@@ -45,7 +73,7 @@ QtObject {
     const handlers = {
       "help.toggle": () => { root.helpOpen = !root.helpOpen; },
       "help.close": () => { root.helpOpen = false; },
-      "window.hide": () => root.hideRequested(),
+      "window.hide": () => root.askToClose(),
       "escape": () => root._escape(),
       "demo.inject": () => root._injectDemo()
     };
@@ -58,13 +86,14 @@ QtObject {
   // innermost thing currently open.
   function _escape(): void {
     const steps = {
+      "cancel-close": () => root.cancelClose(),
       "close-help": () => { root.helpOpen = false; },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
       "leave-compose": () => { if (root.conversationController) root.conversationController.leaveComposeRequested(); },
       "close-conversation": () => { if (root.conversationController) root.conversationController.close(); },
-      "hide-window": () => root.hideRequested()
+      "hide-window": () => root.askToClose()
     };
 
     const step = steps[Navigation.escapeAction(root._navState())];
@@ -77,6 +106,7 @@ QtObject {
     const state = root.service ? root.service.uiState : { pane: "list", activeId: "" };
 
     return {
+      confirmOpen: root.confirmingClose,
       helpOpen: root.helpOpen,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,

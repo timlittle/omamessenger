@@ -6,7 +6,11 @@
   "author": "OmaMessenger contributors",
   "license": "MIT",
   "description": "A keyboard-first unified messaging client for Omarchy.",
-  "kinds": ["panel", "service", "bar-widget"],
+  "kinds": [
+    "panel",
+    "service",
+    "bar-widget"
+  ],
   "entryPoints": {
     "panel": "ui/Panel.qml",
     "service": "ui/Service.qml",
@@ -20,7 +24,7 @@
     "defaults": {
       "notifications": true,
       "notificationPreview": true,
-      "demoChatter": true
+      "demoChatter": false
     },
     "schema": [
       {
@@ -41,8 +45,8 @@
         "key": "demoChatter",
         "type": "boolean",
         "label": "Demo chatter",
-        "description": "Let the seeded demo accounts keep sending messages in the background.",
-        "defaultValue": true
+        "description": "Let the seeded demo accounts send messages in the background, with notifications.",
+        "defaultValue": false
       }
     ]
   }

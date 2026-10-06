@@ -4,8 +4,9 @@
 // and what Escape does based on UI state.
 
 // keyContext determines the highest-priority context for key bindings based on
-// the current UI state. Precedence: help > dialog > search > compose > conversation > list.
+// the current UI state. Precedence: the close question > help > dialog > search > compose > conversation > list.
 function keyContext(state) {
+  if (state.confirmOpen) return 'confirm';
   if (state.helpOpen) return 'help';
   if (state.dialogOpen) return 'dialog';
   if (state.searchFocused) return 'search';
@@ -18,6 +19,7 @@ function keyContext(state) {
 // first (help, dialog, search, composer, open conversation, query) and
 // hides the window only when there is nothing left to undo.
 function escapeAction(state) {
+  if (state.confirmOpen) return 'cancel-close';
   if (state.helpOpen) return 'close-help';
   if (state.dialogOpen) return 'close-dialog';
 

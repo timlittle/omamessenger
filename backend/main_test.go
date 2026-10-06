@@ -199,7 +199,7 @@ func startInProcess(t *testing.T, ctx context.Context) (io.Closer, *jsonrpc2.Con
 	outR, outW := io.Pipe()
 	stderr := &lockedBuffer{}
 	done := make(chan error, 1)
-	args := []string{"--demo", "--no-chatter", "--seed", "1", "--data-dir", filepath.Join(t.TempDir(), "data")}
+	args := []string{"--demo", "--seed", "1", "--data-dir", filepath.Join(t.TempDir(), "data")}
 
 	go func() {
 		done <- run(ctx, streams{in: inR, out: outW, errOut: stderr}, args, lookup(nil))
@@ -234,7 +234,7 @@ func startBinary(t *testing.T) (*exec.Cmd, io.Closer, *jsonrpc2.Conn, *lockedBuf
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 
-	cmd := exec.Command(binary, "--demo", "--no-chatter", "--seed", "1", "--data-dir", filepath.Join(t.TempDir(), "data"))
+	cmd := exec.Command(binary, "--demo", "--seed", "1", "--data-dir", filepath.Join(t.TempDir(), "data"))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

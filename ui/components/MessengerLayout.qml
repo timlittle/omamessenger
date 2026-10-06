@@ -226,6 +226,16 @@ Item {
     onClosed: root.windowController.run("help.close")
   }
 
+  CloseConfirm {
+    open: root.windowController.confirmingClose
+    onKeep: root.windowController.keepInBackground()
+    onQuit: root.windowController.quit()
+    onCancelled: {
+      root.windowController.cancelClose();
+      if (root.focusDefault) root.focusDefault();
+    }
+  }
+
   NewChatDialog {
     objectName: "newChatDialog"
     id: dialog

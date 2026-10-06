@@ -54,7 +54,7 @@ The full table, with every context, is in [docs/plan.md](docs/plan.md). The shor
 Omarchy's shell starts the helper and talks to it over its stdin and stdout with [JSON-RPC 2.0](https://www.jsonrpc.org/specification), one JSON object per line. The helper exits when stdin closes or on SIGTERM.
 
 ```sh
-oma-messenger-service [--demo] [--no-chatter] [--seed N] [--data-dir DIR] [--db FILE] [--version]
+oma-messenger-service [--demo] [--chatter] [--seed N] [--data-dir DIR] [--db FILE] [--version]
 ```
 
 ### Methods
@@ -110,7 +110,7 @@ make help            # list the commands
 make check           # every gate: build, tests with coverage, lint
 make build           # build the helper into bin/dev/, which the launcher prefers
 make install-local   # install this checkout into Omarchy and enable it
-go run ./backend --demo --no-chatter --seed 1 --data-dir "$(mktemp -d)"
+go run ./backend --demo --seed 1 --data-dir "$(mktemp -d)"
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute and [AGENTS.md](AGENTS.md) for the project rules.

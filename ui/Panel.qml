@@ -31,6 +31,10 @@ Item {
   // asked for.
   property bool closingFromHost: false
 
+  // hidingByChoice is true only while _hide() lowers the window after the
+  // user answered the close question.
+  property bool hidingByChoice: false
+
   // nowMs refreshes every 30 seconds so the list and conversation can
   // recompute their relative time labels.
   property real nowMs: Date.now()
@@ -49,6 +53,7 @@ Item {
   function open(payloadJson: string): void {
     const alreadyVisible = window.visible;
     root.closingFromHost = false;
+    if (root.service && root.service.status === "stopped") root.service.start();
     window.visible = true;
     keyArea.forceActiveFocus();
 
@@ -92,6 +97,7 @@ Item {
   // controller owns each piece of it.
   function _navState(): var {
     return {
+      confirmOpen: windowController.confirmingClose,
       helpOpen: windowController.helpOpen,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,
@@ -138,10 +144,32 @@ Item {
     if (root._pendingAttempts < 20) pendingOpenTimer.restart();
   }
 
-  // _hide lowers the window; onVisibleChanged below reports it to the
-  // host, since a user-initiated hide (q, Escape) is not closingFromHost.
+  // _hide lowers the window once the user has chosen to; onVisibleChanged
+  // below reports it to the host.
   function _hide(): void {
+    root.hidingByChoice = true;
     window.visible = false;
+    root.hidingByChoice = false;
+  }
+
+  // _onWindowHidden handles the window going away. The host asking, or the
+  // user choosing in the close question, is final. Anything else is the
+  // compositor closing it, which cannot be refused, so the window comes
+  // straight back with the question.
+  function _onWindowHidden(): void {
+    if (root.closingFromHost) return;
+
+    if (root.hidingByChoice) {
+      if (root.shell && typeof root.shell.hide === "function") root.shell.hide("io.github.omamessenger");
+      return;
+    }
+
+    // Showing it again from inside its own hide notification is ignored,
+    // so it happens on the next turn of the event loop.
+    Qt.callLater(() => {
+      window.visible = true;
+      windowController.askToClose();
+    });
   }
 
   // _helperStatusText names the current helper status for the row shown
@@ -204,8 +232,7 @@ Item {
     minimumSize: Qt.size(Style.space(760), Style.space(540))
 
     onVisibleChanged: {
-      if (!window.visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function")
-        root.shell.hide("io.github.omamessenger");
+      if (!window.visible) root._onWindowHidden();
     }
 
     Item {

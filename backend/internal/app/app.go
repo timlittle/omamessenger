@@ -74,7 +74,7 @@ type Settings struct {
 
 // DefaultSettings apply until the UI sends the user's settings.
 func DefaultSettings() Settings {
-	return Settings{Notifications: true, NotificationPreview: true, DemoChatter: true}
+	return Settings{Notifications: true, NotificationPreview: true}
 }
 
 // uiState is what the user is doing in the UI: their settings and which
