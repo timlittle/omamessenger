@@ -743,10 +743,30 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
 - note: the committed binaries remain in git history (about 14 MB). Removing them needs a history rewrite, which is the owner's decision.
 - verify: `node --test 'tests/unit/**/*.test.cjs' && go test -mod=vendor -run TestHelperVersionMatchesPin ./backend/`
 
-### [ ] GS · Phase S gate (S)
+### [x] GS · Phase S gate (S)
 - deps: S01, S02
 - checks: all of §0.1 (D1–D11).
 - plus: GS1 no helper binary is tracked: `git ls-files 'bin/*linux*'` is empty.
+- note (gate run 2026-10-06, against `1fa15b0`):
+  - D1: S01 and S02 are `[x]`.
+  - D2/D4/D5/D10: `make coverage lint docs-check test-js` passes from a fresh `git worktree` (D8), building the pinned tools from scratch. golangci-lint reports 0 issues; total coverage is 95.8 % and every package meets its gate.
+  - D3: `go test -race -count=3 ./backend/... ./tools/...` passes.
+  - D6: 172 Go tests (159 backend + 13 tools) and 8 Node tests. GR had 215 Go tests (167 + 48) and 4 Node tests. The Go drop is the deliberate deletion of the replaced tools and their tests: archtest (8), omalint's five analyzers and suppression, and covergate. No test of remaining code was removed, and backend gained the frozen-interface and version-pin tests.
+  - D7: `FuzzDecode` ran 30 s without failure.
+  - D9: clean after replacing the installer's `XXXXXX` mktemp template.
+  - GS1: 0 tracked helper binaries.
+  - D11 review table (reviewed against `1fa15b0`):
+
+    | doc | reviewed at | result | what changed |
+    |---|---|---|---|
+    | README.md | `1fa15b0` | updated | Install now runs `install-helper.sh` and says no release exists yet (use `make build`); lint/coverage tools; release process; architecture list. |
+    | CONTRIBUTING.md | `1fa15b0` | updated | Test map: `.golangci.yml`, `tools/nologcontent`, helper install tests; prefer configuring existing tools. |
+    | AGENTS.md | `1fa15b0` | updated | Never commit helper binaries; pinned, verified, explicit installs; layout and development sections for the configured tools. |
+    | FORGE_SPEC.md | `1fa15b0` | updated | Product boundary: release assets with `SHA256SUMS`, pinned, installed explicitly. |
+    | .agents/README.md | `1fa15b0` | updated | `make test` description names golangci-lint and nologcontent. |
+    | docs/TASKS.md (§0–§2) | `1fa15b0` | updated | Rules 9–10, D2/D4/D5, F9, C1, C9, C10 rewritten around configured tools; Phase S added; B06/B19/B22/B23/GB/Q06/D20 updated. |
+    | docs/PROTOCOL.md | `1fa15b0` | no change needed | Generated; protocol unchanged. |
+    | docs/KEYS.md | n/a | n/a | Created in B15. |
 
 
 ### Phase B — UI on demo data
