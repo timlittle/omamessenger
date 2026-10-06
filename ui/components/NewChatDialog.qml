@@ -73,92 +73,69 @@ Item {
 
   anchors.fill: parent
 
-  Rectangle {
-    anchors.fill: parent
-    color: Theme.menu.scrim
+  ModalCard {
+    id: modal
 
-    MouseArea {
+    cardName: "newChatCard"
+    // Wide enough for every account button, which names its service.
+    cardWidth: Math.max(Style.space(360), accountRow.implicitWidth + modal.horizontalInsets)
+    cardHeight: Style.space(420)
+    onOutsideClicked: root.cancelled()
+
+    ColumnLayout {
       anchors.fill: parent
-      onClicked: root.cancelled()
-    }
+      spacing: Theme.spacing.md
 
-    Ui.BorderSurface {
-      id: card
-      anchors.centerIn: parent
-      objectName: "newChatCard"
-      // Wide enough for every account button, which names its service.
-      width: Math.min(parent.width - Theme.spacing.xxl * 2,
-        Math.max(Style.space(360), accountRow.implicitWidth + card.contentLeftInset + card.contentRightInset))
-      height: Style.space(420)
-      color: Theme.popups.background
-      borderSpec: Border.flat(Theme.popups.border, Style.normalBorderWidth)
-      radius: Style.cornerRadius
-      padding: Theme.spacing.panelPadding
+      RowLayout {
+        id: accountRow
 
-      MouseArea {
-        anchors.fill: parent
-        onClicked: () => {}
+        Layout.fillWidth: true
+        spacing: Theme.spacing.controlGap
+
+        Repeater {
+          model: root.accounts
+
+          Ui.Button {
+            required property var modelData
+
+            text: Rail.accountLabel(modelData)
+            selected: modelData.id === root.accountId
+            focusable: true
+            onClicked: root.accountChanged(modelData.id)
+          }
+        }
       }
 
-      ColumnLayout {
-        anchors.fill: parent
-        anchors.topMargin: card.contentTopInset
-        anchors.rightMargin: card.contentRightInset
-        anchors.bottomMargin: card.contentBottomInset
-        anchors.leftMargin: card.contentLeftInset
-        spacing: Theme.spacing.md
+      Ui.TextField {
+        id: searchField
+        Layout.fillWidth: true
+        placeholderText: "Search contacts"
+        text: root.query
 
-        RowLayout {
-          id: accountRow
-
-          Layout.fillWidth: true
-          spacing: Theme.spacing.controlGap
-
-          Repeater {
-            model: root.accounts
-
-            Ui.Button {
-              required property var modelData
-
-              text: Rail.accountLabel(modelData)
-              selected: modelData.id === root.accountId
-              focusable: true
-              onClicked: root.accountChanged(modelData.id)
-            }
-          }
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: event => {
+          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
         }
 
-        Ui.TextField {
-          id: searchField
-          Layout.fillWidth: true
-          placeholderText: "Search contacts"
-          text: root.query
+        onTextChanged: root.queryEdited(text)
+      }
 
-          Keys.priority: Keys.BeforeItem
-          Keys.onPressed: event => {
-            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
-          }
+      ListView {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        clip: true
+        model: root.contacts
 
-          onTextChanged: root.queryEdited(text)
-        }
+        delegate: NewChatContactRow {
+          required property var modelData
+          required property int index
 
-        ListView {
-          Layout.fillWidth: true
-          Layout.fillHeight: true
-          clip: true
-          model: root.contacts
-
-          delegate: NewChatContactRow {
-            required property var modelData
-            required property int index
-
-            width: ListView.view.width
-            contact: modelData
-            current: index === root.currentIndex
-            onChosen: {
-              root.currentIndex = index
-              root.accept()
-            }
+          width: ListView.view.width
+          contact: modelData
+          current: index === root.currentIndex
+          onChosen: {
+            root.currentIndex = index
+            root.accept()
           }
         }
       }

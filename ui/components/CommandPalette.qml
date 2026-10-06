@@ -45,44 +45,19 @@ Item {
     root.focusInput();
   }
 
-  Rectangle {
-    anchors.fill: parent
-    color: Theme.menu.scrim
-
-    MouseArea {
-      anchors.fill: parent
-      onClicked: root.cancelled()
-    }
-  }
-
   // Near the top of the window, like Telescope or Alfred, so the list has
   // room to grow downwards.
-  Ui.BorderSurface {
-    id: card
+  ModalCard {
+    id: modal
 
-    width: Math.min(parent.width - Theme.spacing.xxl * 2, Style.space(640))
-    height: Math.min(parent.height - Theme.spacing.xxl * 2, field.implicitHeight + list.contentHeight
-      + Theme.spacing.md + card.contentTopInset + card.contentBottomInset)
-    color: Theme.popups.background
-    borderSpec: Border.flat(Theme.popups.border, Style.normalBorderWidth)
-    radius: Style.cornerRadius
-    padding: Theme.spacing.panelPadding
-    anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: Theme.spacing.xxl * 2 }
-
-    MouseArea {
-      anchors.fill: parent
-      onClicked: () => {}
-    }
+    cardWidth: Style.space(640)
+    cardHeight: field.implicitHeight + list.contentHeight + Theme.spacing.md + modal.verticalInsets
+    atTop: true
+    onOutsideClicked: root.cancelled()
 
     ColumnLayout {
+      anchors.fill: parent
       spacing: Theme.spacing.md
-      anchors {
-        fill: parent
-        topMargin: card.contentTopInset
-        rightMargin: card.contentRightInset
-        bottomMargin: card.contentBottomInset
-        leftMargin: card.contentLeftInset
-      }
 
       Ui.TextField {
         id: field

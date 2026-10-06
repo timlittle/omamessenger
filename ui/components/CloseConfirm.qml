@@ -33,43 +33,17 @@ Item {
   // changes cannot take focus.
   onOpenChanged: if (root.open) Qt.callLater(root.focusDefault)
 
-  Rectangle {
-    anchors.fill: parent
-    color: Theme.menu.scrim
+  ModalCard {
+    id: modal
 
-    MouseArea {
-      anchors.fill: parent
-      onClicked: root.cancelled()
-    }
-  }
-
-  Ui.BorderSurface {
-    id: card
-
-    width: Math.min(parent.width - Theme.spacing.xxl * 2, Math.max(Style.space(420), buttons.implicitWidth + card.contentLeftInset + card.contentRightInset))
-    height: content.implicitHeight + card.contentTopInset + card.contentBottomInset
-    color: Theme.popups.background
-    borderSpec: Border.flat(Theme.popups.border, Style.normalBorderWidth)
-    radius: Style.cornerRadius
-    padding: Theme.spacing.panelPadding
-    anchors.centerIn: parent
-
-    MouseArea {
-      anchors.fill: parent
-      onClicked: () => {}
-    }
+    cardWidth: Math.max(Style.space(420), buttons.implicitWidth + modal.horizontalInsets)
+    onOutsideClicked: root.cancelled()
 
     ColumnLayout {
       id: content
 
+      anchors.fill: parent
       spacing: Theme.spacing.md
-      anchors {
-        fill: parent
-        topMargin: card.contentTopInset
-        rightMargin: card.contentRightInset
-        bottomMargin: card.contentBottomInset
-        leftMargin: card.contentLeftInset
-      }
 
       Text {
         text: "Close OmaMessenger?"

@@ -261,14 +261,15 @@ Item {
     }
   }
 
+  // Tests may build the layout without an account controller.
   AccountSetup {
-    visible: root.accountController.open
+    visible: root.accountController?.open ?? false
 
-    stage: root.accountController.stage
-    qr: root.accountController.qr
-    hint: root.accountController.hint
-    error: root.accountController.lastError
-    busy: root.accountController.busy
+    stage: root.accountController?.stage ?? "credentials"
+    qr: root.accountController?.qr ?? ""
+    hint: root.accountController?.hint ?? ""
+    error: root.accountController?.lastError ?? ""
+    busy: root.accountController?.busy ?? false
     routeKey: root.routeKey
 
     onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)

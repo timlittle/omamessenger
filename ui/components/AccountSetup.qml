@@ -55,39 +55,16 @@ Item {
   onStageChanged: Qt.callLater(root._focusStep)
   onVisibleChanged: if (root.visible) Qt.callLater(root._focusStep)
 
-  // The scrim takes clicks so nothing behind it reacts, but does not
-  // cancel: a stray click should not lose a sign-in half done.
-  Rectangle {
-    anchors.fill: parent
-    color: Theme.menu.scrim
-
-    MouseArea {
-      anchors.fill: parent
-    }
-  }
-
-  Ui.BorderSurface {
-    id: card
-
-    width: Math.min(parent.width - Theme.spacing.xxl * 2, Style.space(440))
-    height: content.implicitHeight + card.contentTopInset + card.contentBottomInset
-    color: Theme.popups.background
-    borderSpec: Border.flat(Theme.popups.border, Style.normalBorderWidth)
-    radius: Style.cornerRadius
-    padding: Theme.spacing.panelPadding
-    anchors.centerIn: parent
+  // Clicks outside the card do not cancel: a stray click should not lose a
+  // sign-in half done.
+  ModalCard {
+    cardWidth: Style.space(440)
 
     ColumnLayout {
       id: content
 
+      anchors.fill: parent
       spacing: Theme.spacing.md
-      anchors {
-        fill: parent
-        topMargin: card.contentTopInset
-        rightMargin: card.contentRightInset
-        bottomMargin: card.contentBottomInset
-        leftMargin: card.contentLeftInset
-      }
 
       Text {
         text: root.stage === "credentials" ? "Add a Telegram account" : "Sign in to Telegram"
