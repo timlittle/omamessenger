@@ -264,9 +264,9 @@ ShellRoot {
   // checkEscapeChain walks every step Navigation.escapeAction defines,
   // checking the owning controller undid exactly the innermost thing.
   function checkEscapeChain(): void {
-    windowController.helpOpen = true;
+    windowController.run("palette.commands");
     windowController.run("escape");
-    if (windowController.helpOpen) return root.fail("escape did not close help");
+    if (windowController.paletteOpen) return root.fail("escape did not close the command palette");
 
     dialogController.open = true;
     windowController.run("escape");

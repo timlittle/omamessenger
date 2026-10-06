@@ -252,15 +252,27 @@ ShellRoot {
     root.retry(root.waitForRailFilter);
   }
 
-  // checkHelp opens the shortcut sheet with F1 and closes it with Escape.
+  // checkHelp opens the command palette with Ctrl+/, finds "New message"
+  // by typing part of it, and runs it with Enter, which opens the new-chat
+  // dialog. Escape then closes the dialog.
   function checkHelp(): void {
-    t.keyClick(Qt.Key_F1);
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
 
-    const help = root.findByObjectName(panel, "shortcutHelp");
-    if (!help || !help.visible) return root.fail("F1 did not open the shortcut help");
+    const palette = root.findByObjectName(panel, "commandPalette");
+    if (!palette || !palette.visible) return root.fail("Ctrl+/ did not open the command palette");
+
+    for (const ch of "new mes") t.keyClick(ch);
+    if (palette.items.length === 0 || palette.items[0].label !== "New message")
+      return root.fail("typing \"new mes\" listed " + JSON.stringify(palette.items.map(i => i.label)));
+    if (palette.items[0].keys !== "Ctrl+N") return root.fail("the palette does not show New message's shortcut");
+
+    t.keyClick(Qt.Key_Return);
+    const dialog = root.findByObjectName(panel, "newChatDialog");
+    if (palette.visible) return root.fail("running a command left the palette open");
+    if (!dialog || !dialog.visible) return root.fail("running New message did not open the new-chat dialog");
 
     t.keyClick(Qt.Key_Escape);
-    if (help.visible) return root.fail("Escape did not close the shortcut help");
+    if (dialog.visible) return root.fail("Escape did not close the new-chat dialog");
 
     root.checkMinimumSize();
   }
@@ -287,10 +299,10 @@ ShellRoot {
     root.checkQuit();
   }
 
-  // checkQuit asks to close with q, chooses Quit, and checks the helper
-  // stops; reopening the window starts it again.
+  // checkQuit asks to close with Ctrl+W, chooses Quit, and checks the
+  // helper stops; reopening the window starts it again.
   function checkQuit(): void {
-    t.keyClick(Qt.Key_Q);
+    t.keyClick(Qt.Key_W, Qt.ControlModifier);
     root.pollAttempts = 0;
     root.waitForQuestion(() => {
       root.find("quitButton").clicked();

@@ -46,6 +46,15 @@ Item {
   readonly property real _listWidth: Math.max(Style.space(260),
     Math.min(Style.space(360), 0.32 * (columns.width - root._railWidth)))
 
+  // narrow is true when the list and an open conversation do not both fit
+  // beside the rail. The window then shows one of them at a time,
+  // following the conversation controller's pane.
+  readonly property bool narrow: root.width < root._railWidth + Style.space(260) + Style.space(360)
+
+  // _showList and _showConversation pick the columns a narrow window shows.
+  readonly property bool _showList: !root.narrow || root.conversationController.pane !== "conversation"
+  readonly property bool _showConversation: !root.narrow || root.conversationController.pane === "conversation"
+
   // _accountNames maps an account id to its name, for rows that show it.
   function _accountNames(): var {
     const map = {}
@@ -154,16 +163,18 @@ Item {
 
       onSelected: key => root.listController.setRail(key)
       onNewChat: root.dialogController.run("chat.new")
-      onHelp: root.windowController.run("help.toggle")
+      onHelp: root.windowController.run("palette.commands")
     }
 
     // Pinned to its width: a layout whose children fill would otherwise
-    // fill the row too and squeeze the conversation off the edge.
+    // fill the row too and squeeze the conversation off the edge. In a
+    // narrow window it is the only column, so it fills.
     ColumnLayout {
       objectName: "listColumn"
-      Layout.fillWidth: false
-      Layout.minimumWidth: root._listWidth
-      Layout.maximumWidth: root._listWidth
+      visible: root._showList
+      Layout.fillWidth: root.narrow
+      Layout.minimumWidth: root.narrow ? 0 : root._listWidth
+      Layout.maximumWidth: root.narrow ? Number.POSITIVE_INFINITY : root._listWidth
       Layout.preferredWidth: root._listWidth
       Layout.fillHeight: true
       spacing: Theme.spacing.sm
@@ -201,6 +212,7 @@ Item {
     ConversationView {
       id: conversationView
       objectName: "conversationView"
+      visible: root._showConversation
       Layout.fillWidth: true
       Layout.fillHeight: true
 
@@ -220,10 +232,16 @@ Item {
     }
   }
 
-  ShortcutHelp {
-    anchors.fill: parent
-    open: root.windowController.helpOpen
-    onClosed: root.windowController.run("help.close")
+  CommandPalette {
+    open: root.windowController.paletteOpen
+    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation" : "Type a command"
+    items: root.windowController.paletteItems
+    currentIndex: root.windowController.paletteIndex
+    routeKey: root.routeKey
+    onQueryEdited: text => root.windowController.setPaletteQuery(text)
+    onAccepted: index => root.windowController.acceptPalette(index)
+    onCancelled: root.windowController.closePalette()
+    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
   }
 
   CloseConfirm {

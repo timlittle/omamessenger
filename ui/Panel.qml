@@ -98,7 +98,7 @@ Item {
   function _navState(): var {
     return {
       confirmOpen: windowController.confirmingClose,
-      helpOpen: windowController.helpOpen,
+      paletteOpen: windowController.paletteOpen,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,
       composeFocused: conversationController.composeFocused,
@@ -229,7 +229,7 @@ Item {
     color: Color.background
     implicitWidth: Style.space(1120)
     implicitHeight: Style.space(760)
-    minimumSize: Qt.size(Style.space(760), Style.space(540))
+    minimumSize: Qt.size(Style.space(420), Style.space(420))
 
     onVisibleChanged: {
       if (!window.visible) root._onWindowHidden();

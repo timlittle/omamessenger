@@ -11,7 +11,7 @@ const Navigation = load('lib/Navigation.js');
 
 test('keyContext returns list when nothing is open', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -22,7 +22,7 @@ test('keyContext returns list when nothing is open', () => {
 
 test('keyContext returns conversation when pane is conversation', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -33,7 +33,7 @@ test('keyContext returns conversation when pane is conversation', () => {
 
 test('keyContext returns compose when composeFocused is true', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: true,
@@ -44,7 +44,7 @@ test('keyContext returns compose when composeFocused is true', () => {
 
 test('keyContext returns search when searchFocused is true', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: true,
     composeFocused: false,
@@ -55,7 +55,7 @@ test('keyContext returns search when searchFocused is true', () => {
 
 test('keyContext returns dialog when dialogOpen is true', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: true,
     searchFocused: false,
     composeFocused: false,
@@ -64,31 +64,31 @@ test('keyContext returns dialog when dialogOpen is true', () => {
   assert.strictEqual(Navigation.keyContext(state), 'dialog');
 });
 
-test('keyContext returns help when helpOpen is true', () => {
+test('keyContext returns palette when paletteOpen is true', () => {
   const state = {
-    helpOpen: true,
+    paletteOpen: true,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
     pane: 'list'
   };
-  assert.strictEqual(Navigation.keyContext(state), 'help');
+  assert.strictEqual(Navigation.keyContext(state), 'palette');
 });
 
-test('keyContext: help wins over all other contexts', () => {
+test('keyContext: palette wins over all other contexts', () => {
   const state = {
-    helpOpen: true,
+    paletteOpen: true,
     dialogOpen: true,
     searchFocused: true,
     composeFocused: true,
     pane: 'conversation'
   };
-  assert.strictEqual(Navigation.keyContext(state), 'help');
+  assert.strictEqual(Navigation.keyContext(state), 'palette');
 });
 
 test('keyContext: dialog wins over search, compose, conversation, list', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: true,
     searchFocused: true,
     composeFocused: true,
@@ -99,7 +99,7 @@ test('keyContext: dialog wins over search, compose, conversation, list', () => {
 
 test('keyContext: search wins over compose, conversation, list', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: true,
     composeFocused: true,
@@ -110,7 +110,7 @@ test('keyContext: search wins over compose, conversation, list', () => {
 
 test('keyContext: compose wins over conversation, list', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: true,
@@ -121,7 +121,7 @@ test('keyContext: compose wins over conversation, list', () => {
 
 test('keyContext: conversation wins over list', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -132,9 +132,9 @@ test('keyContext: conversation wins over list', () => {
 
 // escapeAction: Escape chain
 
-test('escapeAction: close-help when helpOpen', () => {
+test('escapeAction: close-palette when paletteOpen', () => {
   const state = {
-    helpOpen: true,
+    paletteOpen: true,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -142,12 +142,12 @@ test('escapeAction: close-help when helpOpen', () => {
     activeId: 'c1',
     pane: 'list'
   };
-  assert.strictEqual(Navigation.escapeAction(state), 'close-help');
+  assert.strictEqual(Navigation.escapeAction(state), 'close-palette');
 });
 
-test('escapeAction: help takes precedence over all', () => {
+test('escapeAction: palette takes precedence over all', () => {
   const state = {
-    helpOpen: true,
+    paletteOpen: true,
     dialogOpen: true,
     searchFocused: true,
     composeFocused: true,
@@ -155,12 +155,12 @@ test('escapeAction: help takes precedence over all', () => {
     activeId: 'c1',
     pane: 'conversation'
   };
-  assert.strictEqual(Navigation.escapeAction(state), 'close-help');
+  assert.strictEqual(Navigation.escapeAction(state), 'close-palette');
 });
 
 test('escapeAction: close-dialog when dialogOpen', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: true,
     searchFocused: false,
     composeFocused: false,
@@ -173,7 +173,7 @@ test('escapeAction: close-dialog when dialogOpen', () => {
 
 test('escapeAction: dialog takes precedence over search, compose, etc', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: true,
     searchFocused: true,
     composeFocused: true,
@@ -186,7 +186,7 @@ test('escapeAction: dialog takes precedence over search, compose, etc', () => {
 
 test('escapeAction: clear-search when searchFocused with non-empty query', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: true,
     composeFocused: false,
@@ -199,7 +199,7 @@ test('escapeAction: clear-search when searchFocused with non-empty query', () =>
 
 test('escapeAction: leave-search when searchFocused with empty query', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: true,
     composeFocused: false,
@@ -212,7 +212,7 @@ test('escapeAction: leave-search when searchFocused with empty query', () => {
 
 test('escapeAction: leave-search when searchFocused with null query', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: true,
     composeFocused: false,
@@ -225,7 +225,7 @@ test('escapeAction: leave-search when searchFocused with null query', () => {
 
 test('escapeAction: search takes precedence over compose, conversation, etc', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: true,
     composeFocused: true,
@@ -238,7 +238,7 @@ test('escapeAction: search takes precedence over compose, conversation, etc', ()
 
 test('escapeAction: leave-compose when composeFocused', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: true,
@@ -251,7 +251,7 @@ test('escapeAction: leave-compose when composeFocused', () => {
 
 test('escapeAction: compose takes precedence over conversation, etc', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: true,
@@ -264,7 +264,7 @@ test('escapeAction: compose takes precedence over conversation, etc', () => {
 
 test('escapeAction: close-conversation when pane is conversation with activeId', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -277,7 +277,7 @@ test('escapeAction: close-conversation when pane is conversation with activeId',
 
 test('escapeAction: close-conversation only when activeId exists', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -291,7 +291,7 @@ test('escapeAction: close-conversation only when activeId exists', () => {
 
 test('escapeAction: clear-search when pane is list with non-empty query', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -304,7 +304,7 @@ test('escapeAction: clear-search when pane is list with non-empty query', () => 
 
 test('escapeAction: hide-window when nothing else applies', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -317,7 +317,7 @@ test('escapeAction: hide-window when nothing else applies', () => {
 
 test('escapeAction: hide-window when pane is list with empty query', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -331,7 +331,7 @@ test('escapeAction: hide-window when pane is list with empty query', () => {
 // Edge cases
 test('escapeAction: close-conversation wins over clear-search query', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -344,7 +344,7 @@ test('escapeAction: close-conversation wins over clear-search query', () => {
 
 test('escapeAction: clear-search when searchFocused and has query', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: true,
     composeFocused: false,
@@ -357,7 +357,7 @@ test('escapeAction: clear-search when searchFocused and has query', () => {
 
 test('escapeAction: leave-search when searchFocused and no query, even with activeId', () => {
   const state = {
-    helpOpen: false,
+    paletteOpen: false,
     dialogOpen: false,
     searchFocused: true,
     composeFocused: false,
@@ -375,7 +375,7 @@ test('escapeAction closes a conversation still open behind the list', () => {
 });
 
 test('the close question takes keys before anything else', () => {
-  const state = { confirmOpen: true, helpOpen: true, dialogOpen: true, pane: 'conversation', activeId: 'c1' };
+  const state = { confirmOpen: true, paletteOpen: true, dialogOpen: true, pane: 'conversation', activeId: 'c1' };
 
   assert.strictEqual(Navigation.keyContext(state), 'confirm');
   assert.strictEqual(Navigation.escapeAction(state), 'cancel-close');

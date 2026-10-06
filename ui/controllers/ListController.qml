@@ -25,6 +25,10 @@ Item {
   // railItems is the rail's entries, from Rail.items.
   readonly property var railItems: Rail.items(root.service ? root.service.accounts : [], root._all)
 
+  // all is every conversation the helper reported, for the palette's
+  // jump-to-conversation list.
+  readonly property var all: root._all
+
   // railKey is the active rail filter, restored from service.uiState.
   property string railKey: "all"
 
@@ -69,6 +73,7 @@ Item {
       "cursor.top": () => root._select(Selection.edge(root.visibleIds(), "top")),
       "cursor.bottom": () => root._select(Selection.edge(root.visibleIds(), "bottom")),
       "unread.next": () => root._select(Selection.nextUnread(root._visible(), root.selectedId)),
+      "unread.prev": () => root._select(Selection.nextUnread(root._visible().slice().reverse(), root.selectedId)),
       "chat.mute": () => root._toggleMute(),
       "search.focus": () => { root.searchFocused = true; root.focusRequested(); }
     };

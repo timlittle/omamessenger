@@ -25,7 +25,7 @@ Item {
   signal selected(string key)
   // newChat fires when the "+" button is clicked.
   signal newChat()
-  // help fires when the "?" button is clicked.
+  // help fires when the "?" button is clicked; it opens the command palette.
   signal help()
 
   implicitWidth: Style.space(64)
@@ -100,7 +100,7 @@ Item {
       objectName: "helpButton"
       text: "?"
       focusable: true
-      tooltipText: "Shortcuts · F1"
+      tooltipText: "Commands · Ctrl+/"
       onClicked: root.help()
     }
   }

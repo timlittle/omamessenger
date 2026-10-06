@@ -1,7 +1,8 @@
 .pragma library
 
-// Key bindings for the OmaMessenger UI: global and context-specific shortcuts.
-// Matches key events to actions and provides help text and footer hints.
+// Key bindings for the OmaMessenger UI, following Slack's shortcuts where
+// Slack has one, with j/k-style keys as extras. Matches key events to
+// actions and lists the commands the command palette offers.
 
 // KEY holds the Qt key codes the bindings use; they are defined here
 // because the node tests have no Qt. Letters use their uppercase ASCII code
@@ -10,75 +11,69 @@ var KEY = {
   Escape: 0x01000000, Tab: 0x01000001, Backtab: 0x01000002,
   Return: 0x01000004, Enter: 0x01000005, Home: 0x01000010,
   End: 0x01000011, Up: 0x01000013, Down: 0x01000015,
-  PageUp: 0x01000016, PageDown: 0x01000017, F1: 0x01000030
+  PageUp: 0x01000016, PageDown: 0x01000017,
+  Slash: 0x2f, Question: 0x3f
 };
 
 // MOD holds the Qt keyboard modifier masks.
 var MOD = { Shift: 0x02000000, Ctrl: 0x04000000, Alt: 0x08000000 };
 
-// BINDINGS define every key action, grouped by context and global. Each binding
-// has an action name, key specs (how to press it), which contexts it applies in
-// (or ["global"]), a human label for hints and help, whether it's worth showing
-// in footer hints, and whether it's only active in demo mode.
+// KEY_NAMES shows spec names the way people type them.
+var KEY_NAMES = { Slash: '/', Question: '?', Up: '↑', Down: '↓', Escape: 'Esc' };
+
+// BINDINGS define every key action. Each has an action name, key specs,
+// the contexts it applies in (or "global"), a label, whether the footer
+// hints it, whether it is demo-only, and whether the command palette
+// offers it. Global bindings use Ctrl or Alt, or are Escape, so they never
+// steal typing.
 var BINDINGS = [
-  // Global bindings: Ctrl, Alt, F-keys, or Escape never steal typing.
-  { action: 'search.focus', keys: ['Ctrl+K'], contexts: ['global'], label: 'Search', hint: true },
-  { action: 'chat.new', keys: ['Ctrl+N'], contexts: ['global'], label: 'New chat', hint: true },
-  { action: 'rail.all', keys: ['Ctrl+0'], contexts: ['global'], label: 'All services' },
-  { action: 'rail.whatsapp', keys: ['Ctrl+1'], contexts: ['global'], label: 'WhatsApp' },
-  { action: 'rail.telegram', keys: ['Ctrl+2'], contexts: ['global'], label: 'Telegram' },
-  { action: 'rail.next', keys: ['Ctrl+Tab'], contexts: ['global'], label: 'Next service' },
-  { action: 'rail.prev', keys: ['Ctrl+Shift+Tab'], contexts: ['global'], label: 'Previous service' },
-  { action: 'help.toggle', keys: ['F1'], contexts: ['global'], label: 'Shortcuts', hint: true },
-  { action: 'demo.inject', keys: ['Ctrl+Shift+D'], contexts: ['global'], label: 'Add demo messages', demoOnly: true },
+  { action: 'palette.commands', keys: ['Ctrl+Slash', 'Ctrl+Shift+Question', 'Ctrl+Shift+P'], contexts: ['global'], label: 'Command palette', hint: true },
+  { action: 'palette.conversations', keys: ['Ctrl+K', 'Ctrl+T'], contexts: ['global'], label: 'Jump to conversation', hint: true, command: true },
+  { action: 'search.focus', keys: ['Ctrl+G'], contexts: ['global'], label: 'Search messages', command: true },
+  { action: 'chat.new', keys: ['Ctrl+N', 'Ctrl+Shift+K'], contexts: ['global'], label: 'New message', hint: true, command: true },
+  { action: 'unread.next', keys: ['Ctrl+J', 'Alt+Shift+Down'], contexts: ['global'], label: 'Next unread conversation', command: true },
+  { action: 'unread.prev', keys: ['Alt+Shift+Up'], contexts: ['global'], label: 'Previous unread conversation', command: true },
+  { action: 'chat.next', keys: ['Alt+Down'], contexts: ['global'], label: 'Next conversation', command: true },
+  { action: 'chat.prev', keys: ['Alt+Up'], contexts: ['global'], label: 'Previous conversation', command: true },
+  { action: 'rail.all', keys: ['Ctrl+0'], contexts: ['global'], label: 'Show all services', command: true },
+  { action: 'rail.whatsapp', keys: ['Ctrl+1'], contexts: ['global'], label: 'Show WhatsApp', command: true },
+  { action: 'rail.telegram', keys: ['Ctrl+2'], contexts: ['global'], label: 'Show Telegram', command: true },
+  { action: 'rail.next', keys: ['Ctrl+Tab'], contexts: ['global'], label: 'Next account or service', command: true },
+  { action: 'rail.prev', keys: ['Ctrl+Shift+Tab'], contexts: ['global'], label: 'Previous account or service', command: true },
+  { action: 'window.hide', keys: ['Ctrl+W'], contexts: ['global'], label: 'Close window', command: true },
+  { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
+  { action: 'demo.inject', keys: ['Ctrl+Shift+D'], contexts: ['global'], label: 'Add a demo message', demoOnly: true, command: true },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
-  // List context: conversation list.
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
   { action: 'cursor.up', keys: ['k', 'Up'], contexts: ['list'], label: 'Previous chat' },
   { action: 'cursor.top', keys: ['g', 'Home'], contexts: ['list'], label: 'First chat' },
   { action: 'cursor.bottom', keys: ['G', 'End'], contexts: ['list'], label: 'Last chat' },
   { action: 'chat.open', keys: ['Enter', 'l', 'o', 'i'], contexts: ['list'], label: 'Open chat', hint: true },
-  { action: 'pane.conversation', keys: ['Tab'], contexts: ['list'], label: 'Open chat' },
-  { action: 'chat.mute', keys: ['m'], contexts: ['list'], label: 'Mute chat' },
-  { action: 'unread.next', keys: ['u'], contexts: ['list'], label: 'Next unread' },
-  { action: 'search.focus', keys: ['/'], contexts: ['list'], label: 'Search' },
-  { action: 'help.toggle', keys: ['?'], contexts: ['list'], label: 'Shortcuts' },
-  { action: 'window.hide', keys: ['q'], contexts: ['list'], label: 'Hide' },
+  { action: 'pane.conversation', keys: ['Tab'], contexts: ['list'], label: 'Go to conversation' },
+  { action: 'chat.mute', keys: ['m'], contexts: ['list', 'conversation'], label: 'Mute or unmute chat', command: true },
 
-  // Conversation context: open message thread.
   { action: 'scroll.down', keys: ['j', 'Down'], contexts: ['conversation'], label: 'Scroll down' },
   { action: 'scroll.up', keys: ['k', 'Up'], contexts: ['conversation'], label: 'Scroll up' },
   { action: 'scroll.pageDown', keys: ['Ctrl+D', 'PageDown'], contexts: ['conversation'], label: 'Page down' },
   { action: 'scroll.pageUp', keys: ['Ctrl+U', 'PageUp'], contexts: ['conversation'], label: 'Page up' },
   { action: 'scroll.newest', keys: ['G', 'End'], contexts: ['conversation'], label: 'Newest message' },
   { action: 'scroll.oldest', keys: ['g', 'Home'], contexts: ['conversation'], label: 'Oldest message' },
-  { action: 'compose.focus', keys: ['i', 'a', 'Enter'], contexts: ['conversation'], label: 'Compose', hint: true },
-  { action: 'chat.next', keys: ['J'], contexts: ['conversation'], label: 'Next chat' },
-  { action: 'chat.prev', keys: ['K'], contexts: ['conversation'], label: 'Previous chat' },
-  { action: 'pane.list', keys: ['h', 'Tab'], contexts: ['conversation'], label: 'Show list' },
-  { action: 'message.retry', keys: ['r'], contexts: ['conversation'], label: 'Retry message' },
-  { action: 'chat.mute', keys: ['m'], contexts: ['conversation'], label: 'Mute chat' },
-  { action: 'unread.next', keys: ['u'], contexts: ['conversation'], label: 'Next unread' },
-  { action: 'search.focus', keys: ['/'], contexts: ['conversation'], label: 'Search' },
-  { action: 'help.toggle', keys: ['?'], contexts: ['conversation'], label: 'Shortcuts' },
-  { action: 'window.hide', keys: ['q'], contexts: ['conversation'], label: 'Hide' },
+  { action: 'compose.focus', keys: ['i', 'a', 'Enter'], contexts: ['conversation'], label: 'Write a message', hint: true },
+  { action: 'pane.list', keys: ['h', 'Tab'], contexts: ['conversation'], label: 'Back to the list' },
+  { action: 'message.retry', keys: ['r'], contexts: ['conversation'], label: 'Retry failed message', command: true },
 
-  // Compose context: text input in conversation.
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
-
-  // Search context: search input.
   { action: 'search.accept', keys: ['Enter', 'Down'], contexts: ['search'], label: 'First result', hint: true },
 
-  // Dialog context: modal dialogs.
-  { action: 'dialog.down', keys: ['Down', 'Ctrl+J'], contexts: ['dialog'], label: 'Next option' },
-  { action: 'dialog.up', keys: ['Up', 'Ctrl+K'], contexts: ['dialog'], label: 'Previous option' },
-  { action: 'dialog.accept', keys: ['Enter'], contexts: ['dialog'], label: 'Select', hint: true },
-  { action: 'dialog.nextAccount', keys: ['Ctrl+Tab'], contexts: ['dialog'], label: 'Next account' },
+  { action: 'dialog.down', keys: ['Down', 'Ctrl+J'], contexts: ['dialog'], label: 'Next contact' },
+  { action: 'dialog.up', keys: ['Up', 'Ctrl+K'], contexts: ['dialog'], label: 'Previous contact' },
+  { action: 'dialog.accept', keys: ['Enter'], contexts: ['dialog'], label: 'Start chat', hint: true },
+  { action: 'dialog.nextAccount', keys: ['Ctrl+Tab'], contexts: ['dialog'], label: 'Next account', hint: true },
 
-  // Help context: help sheet.
-  { action: 'help.toggle', keys: ['?'], contexts: ['help'], label: 'Close help' },
-  { action: 'help.close', keys: ['q'], contexts: ['help'], label: 'Close help' }
+  { action: 'palette.down', keys: ['Down', 'Ctrl+J', 'Ctrl+N'], contexts: ['palette'], label: 'Next item' },
+  { action: 'palette.up', keys: ['Up', 'Ctrl+K', 'Ctrl+P'], contexts: ['palette'], label: 'Previous item' },
+  { action: 'palette.accept', keys: ['Enter'], contexts: ['palette'], label: 'Run', hint: true }
 ];
 
 // match returns the action for a key press in a context, or "". Bindings
@@ -100,7 +95,7 @@ function parseSpec(spec) {
   const name = parts.pop();
   const lone = parts.length === 0;
 
-  if (name === '/' || name === '?') {
+  if (lone && (name === '/' || name === '?')) {
     return { text: name };
   }
 
@@ -154,16 +149,16 @@ function bindingsFor(context) {
     .concat(BINDINGS.filter((b) => b.contexts.includes('global') && hinted(b)));
 }
 
-// HELP_CONTEXTS orders the help sheet's sections.
-var HELP_CONTEXTS = ['global', 'list', 'conversation', 'compose', 'search', 'dialog', 'help'];
+// display shows a key spec the way people read it: "Ctrl+Slash" as
+// "Ctrl+/", "Alt+Down" as "Alt+↓".
+function display(spec) {
+  return spec.split('+').map((part) => KEY_NAMES[part] ?? part).join('+');
+}
 
-// helpSections groups the bindings by context for the help sheet.
-function helpSections() {
-  return HELP_CONTEXTS
-    .map((context) => ({
-      title: context.charAt(0).toUpperCase() + context.slice(1),
-      rows: BINDINGS.filter((b) => b.contexts.includes(context))
-        .map((b) => ({ keys: b.keys.join(', '), label: b.label }))
-    }))
-    .filter((section) => section.rows.length > 0);
+// commands returns what the command palette offers: every command
+// binding, with its first key shown so people learn it.
+function commands(demo) {
+  return BINDINGS
+    .filter((b) => b.command && (!b.demoOnly || demo))
+    .map((b) => ({ action: b.action, label: b.label, keys: display(b.keys[0]) }));
 }

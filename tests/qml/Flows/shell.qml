@@ -3,7 +3,7 @@
 // - search for "ticket" finds Alex Chen, Enter opens it, its unread clears
 //   and the bar widget's count follows
 // - a draft survives the panel being destroyed and recreated
-// - Sam's first send fails, and r retries it until it is delivered
+// - Ctrl+K jumps to Sam, whose first send fails, and r retries it
 // - Ctrl+N, cycling every account, "Ben", Enter opens a new chat with Ben
 // Each step polls until its condition holds, because every answer comes
 // back from the helper asynchronously.
@@ -97,9 +97,9 @@ ShellRoot {
     return root.listModel().count === 11;
   }
 
-  // searchTicket focuses search with Ctrl+K and types a query.
+  // searchTicket focuses search with Ctrl+G and types a query.
   function searchTicket(): var {
-    t.keyClick(Qt.Key_K, Qt.ControlModifier);
+    t.keyClick(Qt.Key_G, Qt.ControlModifier);
     root.type("ticket");
     return true;
   }
@@ -151,20 +151,12 @@ ShellRoot {
     return root.title() === "Alex Chen" && composer && composer.text === "draft kept";
   }
 
-  // openSam goes back to the full list and opens Sam's chat by keyboard.
+  // openSam jumps to Sam's chat with Ctrl+K, the conversation switcher,
+  // and sends a message there.
   function openSam(): var {
-    // Leave the composer, close Alex Chen, then clear and leave the
-    // search the panel restored.
-    t.keyClick(Qt.Key_Escape);
     t.keyClick(Qt.Key_Escape);
     t.keyClick(Qt.Key_K, Qt.ControlModifier);
-    t.keyClick(Qt.Key_Escape);
-
-    const index = root.rowIndex("Sam (spotty signal)");
-    if (index < 0) return false;
-
-    t.keyClick(Qt.Key_G);
-    for (let i = 0; i < index; i++) t.keyClick(Qt.Key_J);
+    root.type("sam");
     t.keyClick(Qt.Key_Return);
     root.type("are you there");
     t.keyClick(Qt.Key_Return);

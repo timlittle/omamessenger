@@ -35,19 +35,23 @@ The helper keeps its database in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/
 
 ## Keyboard shortcuts
 
-The full table, with every context, is in [docs/plan.md](docs/plan.md). The shortcuts that work anywhere in the window:
+The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists every command with its shortcut, so you can find anything there and learn the keys as you go.
 
-- `j` / `k`: move through conversations, or scroll the open one
-- `Enter`: open the selected conversation, or send from the composer
-- `Esc`: step back — close help or a dialog, clear search, leave the composer or the open conversation, then hide the window
-- `Ctrl+K`: search conversations
-- `Ctrl+N`: new conversation
-- `Ctrl+1` / `Ctrl+2` / `Ctrl+0`: WhatsApp / Telegram / all conversations
-- `F1` or `?`: show the shortcuts
-- `r`: retry a failed message
-- `m`: mute or unmute the open chat
-- `u`: jump to the next unread conversation
-- `q`: hide the window
+| Keys | Does |
+| --- | --- |
+| Ctrl+/ or Ctrl+Shift+P | Command palette |
+| Ctrl+K or Ctrl+T | Jump to a conversation |
+| Ctrl+G | Search messages |
+| Ctrl+N or Ctrl+Shift+K | New message |
+| Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation |
+| Alt+↓ / ↑ | Next / previous conversation |
+| Ctrl+0 / 1 / 2 | All / WhatsApp / Telegram |
+| Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
+| Ctrl+W | Close the window (asks whether to keep running) |
+| Ctrl+Q | Quit |
+| Esc | Step back: close the palette or a dialog, clear the search, leave the composer or the conversation |
+
+In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
 
 ## Helper API
 

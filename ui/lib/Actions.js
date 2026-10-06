@@ -21,6 +21,7 @@ var OWNERS = {
   'cursor.top': 'list',
   'cursor.bottom': 'list',
   'unread.next': 'list',
+  'unread.prev': 'list',
   'chat.mute': 'list',
 
   // ConversationController: the open conversation, paging, send, retry,
@@ -48,11 +49,16 @@ var OWNERS = {
   'dialog.accept': 'dialog',
   'dialog.nextAccount': 'dialog',
 
-  // WindowController: help, hiding, demo data and the Escape chain.
-  'help.toggle': 'window',
-  'help.close': 'window',
+  // WindowController: the command palette, closing and quitting, demo
+  // data and the Escape chain.
+  'palette.commands': 'window',
+  'palette.conversations': 'window',
+  'palette.down': 'window',
+  'palette.up': 'window',
+  'palette.accept': 'window',
   'demo.inject': 'window',
   'window.hide': 'window',
+  'app.quit': 'window',
   'escape': 'window'
 };
 

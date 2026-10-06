@@ -13,7 +13,7 @@ Text {
 
   // hintsText joins each hinted binding's primary key and label.
   readonly property string hintsText: Keymap.bindingsFor(root.context)
-    .map(b => `${b.keys[0]} ${b.label}`)
+    .map(b => `${Keymap.display(b.keys[0])} ${b.label}`)
     .join("   ")
 
   text: root.hintsText

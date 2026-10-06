@@ -1,10 +1,14 @@
 import QtQuick
 import "../lib/Navigation.js" as Navigation
 import "../lib/Actions.js" as Actions
+import "../lib/Keymap.js" as Keymap
+import "../lib/Palette.js" as Palette
+import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
 
-// Owns the shortcut help sheet, closing the window (which asks first),
-// demo data and the Escape chain. Escape needs to know what the other three controllers are
+// Owns the command palette, closing and quitting (which ask first), demo
+// data and the Escape chain. The palette runs commands through whichever
+// controller owns them, and Escape needs to know what the others are
 // showing, so it holds references to them, set once by whoever wires the
 // controllers together.
 //
@@ -15,18 +19,38 @@ QtObject {
   // service is the Service instance that owns the helper connection.
   property var service: null
 
-  // listController is read for the Escape chain and for demo.inject's
-  // target conversation.
+  // listController supplies conversations for the palette and is read for
+  // the Escape chain and demo.inject's target conversation.
   property var listController: null
 
-  // conversationController is read and closed by the Escape chain.
+  // conversationController is read and closed by the Escape chain, and
+  // opens conversations chosen in the palette.
   property var conversationController: null
 
   // dialogController is read and closed by the Escape chain.
   property var dialogController: null
 
-  // helpOpen shows the shortcut help sheet when true.
-  property bool helpOpen: false
+  // paletteOpen shows the command palette.
+  property bool paletteOpen: false
+
+  // paletteMode is "commands" or "conversations": what the palette lists.
+  property string paletteMode: "commands"
+
+  // paletteQuery is the palette's search text.
+  property string paletteQuery: ""
+
+  // paletteIndex is the highlighted palette row.
+  property int paletteIndex: 0
+
+  // paletteResults are the matching commands or conversations, best first.
+  readonly property var paletteResults: root.paletteMode === "conversations"
+    ? Palette.search(root.listController ? root.listController.all : [], root.paletteQuery, (c) => c.title)
+    : Palette.search(Keymap.commands(root.service ? root.service.demo : false), root.paletteQuery, (c) => c.label)
+
+  // paletteItems are paletteResults as rows to show: {label, detail, keys}.
+  readonly property var paletteItems: root.paletteMode === "conversations"
+    ? root.paletteResults.map((c) => ({ label: c.title, detail: Rail.serviceLabel(c.service), keys: "" }))
+    : root.paletteResults
 
   // confirmingClose shows the question asking what closing should do.
   property bool confirmingClose: false
@@ -37,6 +61,73 @@ QtObject {
   // hideRequested asks the caller to hide the window. The panel turns
   // this into shell.hide, since only it holds the shell facade.
   signal hideRequested()
+
+  // handles reports whether this controller owns action.
+  function handles(action: string): bool {
+    return Actions.owner(action) === "window";
+  }
+
+  // run performs action, the only entry point a key router needs.
+  function run(action: string): void {
+    const handlers = {
+      "palette.commands": () => root.openPalette("commands"),
+      "palette.conversations": () => root.openPalette("conversations"),
+      "palette.down": () => root.movePalette(1),
+      "palette.up": () => root.movePalette(-1),
+      "palette.accept": () => root.acceptPalette(root.paletteIndex),
+      "window.hide": () => root.askToClose(),
+      "app.quit": () => root.quit(),
+      "escape": () => root._escape(),
+      "demo.inject": () => root._injectDemo()
+    };
+
+    const handler = handlers[action];
+    if (handler) handler();
+  }
+
+  // openPalette shows the palette listing commands or conversations.
+  function openPalette(mode: string): void {
+    root.paletteMode = mode;
+    root.paletteQuery = "";
+    root.paletteIndex = 0;
+    root.paletteOpen = true;
+  }
+
+  // closePalette hides the palette.
+  function closePalette(): void {
+    root.paletteOpen = false;
+  }
+
+  // setPaletteQuery filters the palette and highlights the best match.
+  function setPaletteQuery(text: string): void {
+    root.paletteQuery = text;
+    root.paletteIndex = 0;
+  }
+
+  // movePalette moves the highlight, wrapping at the ends.
+  function movePalette(delta: int): void {
+    const count = root.paletteResults.length;
+    if (count === 0) return;
+
+    root.paletteIndex = ((root.paletteIndex + delta) % count + count) % count;
+  }
+
+  // acceptPalette runs the command, or opens the conversation, at index.
+  function acceptPalette(index: int): void {
+    const chosen = root.paletteResults[index];
+    if (!chosen) return;
+
+    root.closePalette();
+    if (root.paletteMode === "conversations") root._openConversation(chosen);
+    else root.runCommand(chosen.action);
+  }
+
+  // runCommand runs action through the controller that owns it.
+  function runCommand(action: string): void {
+    const controllers = [root.listController, root.conversationController, root.dialogController, root];
+    const owner = controllers.find((c) => c && c.handles(action));
+    if (owner) owner.run(action);
+  }
 
   // askToClose shows the close question instead of closing at once.
   function askToClose(): void {
@@ -50,8 +141,8 @@ QtObject {
     root.hideRequested();
   }
 
-  // quit answers the close question: stop the helper, and with it every
-  // notification, until the window is opened again.
+  // quit stops the helper, and with it every notification, until the
+  // window is opened again.
   function quit(): void {
     root.confirmingClose = false;
     if (root.service) root.service.quit();
@@ -63,23 +154,11 @@ QtObject {
     root.confirmingClose = false;
   }
 
-  // handles reports whether this controller owns action.
-  function handles(action: string): bool {
-    return Actions.owner(action) === "window";
-  }
+  // _openConversation opens a conversation picked in the palette.
+  function _openConversation(conversation: var): void {
+    if (!root.conversationController) return;
 
-  // run performs action, the only entry point a key router needs.
-  function run(action: string): void {
-    const handlers = {
-      "help.toggle": () => { root.helpOpen = !root.helpOpen; },
-      "help.close": () => { root.helpOpen = false; },
-      "window.hide": () => root.askToClose(),
-      "escape": () => root._escape(),
-      "demo.inject": () => root._injectDemo()
-    };
-
-    const handler = handlers[action];
-    if (handler) handler();
+    root.conversationController.open(conversation);
   }
 
   // _escape runs the one step Navigation.escapeAction says undoes the
@@ -87,7 +166,7 @@ QtObject {
   function _escape(): void {
     const steps = {
       "cancel-close": () => root.cancelClose(),
-      "close-help": () => { root.helpOpen = false; },
+      "close-palette": () => root.closePalette(),
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
@@ -107,7 +186,7 @@ QtObject {
 
     return {
       confirmOpen: root.confirmingClose,
-      helpOpen: root.helpOpen,
+      paletteOpen: root.paletteOpen,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,
       composeFocused: root.conversationController ? root.conversationController.composeFocused : false,
