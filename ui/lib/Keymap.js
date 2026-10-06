@@ -43,6 +43,7 @@ var BINDINGS = [
   { action: 'window.hide', keys: ['Ctrl+W'], contexts: ['global'], label: 'Close window', command: true },
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
   { action: 'demo.inject', keys: ['Ctrl+Shift+D'], contexts: ['global'], label: 'Add a demo message', demoOnly: true, command: true },
+  { action: 'demo.injectLater', keys: [], contexts: ['global'], label: 'Receive a demo message in 5 seconds', demoOnly: true, command: true },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
@@ -156,9 +157,10 @@ function display(spec) {
 }
 
 // commands returns what the command palette offers: every command
-// binding, with its first key shown so people learn it.
+// binding, with its first key shown so people learn it. A command with no
+// keys is reached only through the palette.
 function commands(demo) {
   return BINDINGS
     .filter((b) => b.command && (!b.demoOnly || demo))
-    .map((b) => ({ action: b.action, label: b.label, keys: display(b.keys[0]) }));
+    .map((b) => ({ action: b.action, label: b.label, keys: b.keys.length > 0 ? display(b.keys[0]) : '' }));
 }

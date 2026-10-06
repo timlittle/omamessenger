@@ -51,6 +51,8 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 | Ctrl+Q | Quit |
 | Esc | Step back: close the palette or a dialog, clear the search, leave the composer or the conversation |
 
+In demo mode the palette also offers **Receive a demo message in 5 seconds**: run it, close the window with Ctrl+W and Keep in background, and a notification arrives. Demo accounts otherwise stay quiet unless you turn on demo chatter in the plugin settings.
+
 In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
 
 ## Helper API

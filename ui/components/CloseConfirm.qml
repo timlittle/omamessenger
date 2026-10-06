@@ -6,7 +6,8 @@ import "../theme"
 
 // Asks what closing the window should do: keep OmaMessenger running in
 // the background, so messages still notify, or quit until it is opened
-// again. Tab moves between the buttons, Enter chooses, Escape cancels.
+// again. Left, Right and Tab move between the buttons, Enter chooses,
+// Escape cancels.
 Item {
   id: root
 
@@ -28,7 +29,9 @@ Item {
   objectName: "closeConfirm"
   anchors.fill: parent
   visible: root.open
-  onOpenChanged: if (root.open) root.focusDefault()
+  // Focus waits a turn of the event loop: an item still hidden when open
+  // changes cannot take focus.
+  onOpenChanged: if (root.open) Qt.callLater(root.focusDefault)
 
   Rectangle {
     anchors.fill: parent
@@ -89,16 +92,23 @@ Item {
         spacing: Theme.spacing.controlGap
 
         Ui.Button {
+          id: cancelButton
+
           objectName: "cancelButton"
           text: "Cancel"
           focusable: true
+          KeyNavigation.right: quitButton
           onClicked: root.cancelled()
         }
 
         Ui.Button {
+          id: quitButton
+
           objectName: "quitButton"
           text: "Quit"
           focusable: true
+          KeyNavigation.left: cancelButton
+          KeyNavigation.right: keepButton
           onClicked: root.quit()
         }
 
@@ -109,6 +119,7 @@ Item {
           text: "Keep in background"
           focusable: true
           selected: true
+          KeyNavigation.left: quitButton
           onClicked: root.keep()
         }
       }

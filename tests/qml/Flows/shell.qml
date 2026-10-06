@@ -4,6 +4,7 @@
 //   and the bar widget's count follows
 // - a draft survives the panel being destroyed and recreated
 // - Ctrl+K jumps to Sam, whose first send fails, and r retries it
+// - a message arriving in Sam's chat while the window is hidden stays unread
 // - Ctrl+N, cycling every account, "Ben", Enter opens a new chat with Ben
 // Each step polls until its condition holds, because every answer comes
 // back from the helper asynchronously.
@@ -18,6 +19,7 @@ ShellRoot {
   property int step: 0
   property int attempts: 0
   property string expected: ""
+  property int samUnread: -1
   property var steps: [
     root.waitForList,
     root.searchTicket,
@@ -31,6 +33,10 @@ ShellRoot {
     root.waitForSamFailed,
     root.retryWithR,
     root.waitForSamDelivered,
+    root.hideWithSamOpen,
+    root.messageWhileHidden,
+    root.waitForSamUnread,
+    root.reopen,
     root.newChatWithBen,
     root.waitForBen
   ]
@@ -178,6 +184,42 @@ ShellRoot {
   // waitForSamDelivered holds until the retried message is delivered.
   function waitForSamDelivered(): var {
     return root.messageStatus("are you there") === "delivered";
+  }
+
+  // hideWithSamOpen closes the window with Sam's chat still open and
+  // keeps OmaMessenger running in the background.
+  function hideWithSamOpen(): var {
+    t.keyClick(Qt.Key_W, Qt.ControlModifier);
+    const question = root.find(root.panel(), "closeConfirm");
+    if (!question || !question.visible) return false;
+
+    t.keyClick(Qt.Key_Return);
+    return !root.find(root.panel(), "panelWindow").visible;
+  }
+
+  // messageWhileHidden has a demo message arrive in Sam's chat. The list
+  // may still be filtered by the earlier search, so it asks the helper.
+  function messageWhileHidden(): var {
+    root.samUnread = -1;
+    helperService.request("conversations.list", { query: "Sam (spotty" }, function(error, result) {
+      helperService.request("demo.inject", { conversationId: result[0].id }, function() {});
+    });
+    return true;
+  }
+
+  // waitForSamUnread holds until that message counts as unread: nobody is
+  // looking at a hidden window, so it must not be read on arrival.
+  function waitForSamUnread(): var {
+    helperService.request("conversations.list", { query: "Sam (spotty" }, function(error, result) {
+      root.samUnread = result[0].unread;
+    });
+    return root.samUnread > 0;
+  }
+
+  // reopen shows the window again for the remaining steps.
+  function reopen(): var {
+    root.panel().open("{}");
+    return true;
   }
 
   // newChatWithBen starts a chat with a WhatsApp contact. Ctrl+Tab once per

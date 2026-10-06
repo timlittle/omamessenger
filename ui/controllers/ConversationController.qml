@@ -51,6 +51,11 @@ Item {
   // typingName is who is typing, for the header subtitle.
   property string typingName: ""
 
+  // windowActive is whether the user can see the window: shown and
+  // focused. The helper reads messages on arrival only while it is, and
+  // otherwise notifies.
+  property bool windowActive: true
+
   // composeFocused mirrors whether the composer holds keyboard focus; the
   // caller sets it from the real text field so the Escape chain can read it.
   property bool composeFocused: false
@@ -155,6 +160,15 @@ Item {
     });
   }
 
+  // setWindowActive records whether the window is shown and focused, and
+  // tells the helper.
+  function setWindowActive(active: bool): void {
+    if (root.windowActive === active) return;
+
+    root.windowActive = active;
+    root.service.request("ui.setFocus", { conversationId: root.activeId, windowActive: active }, function() {});
+  }
+
   // setDraft stores the composer's text for the open conversation, so it
   // survives the panel being recreated.
   function setDraft(text: string): void {
@@ -208,7 +222,7 @@ Item {
     root._saveUiState({ activeId: id, pane: "conversation" });
     timeline.loadInitial(root.service, id, () => id === root.activeId, root.isGroup);
     root.service.request("conversations.markRead", { conversationId: id }, function() {});
-    root.service.request("ui.setFocus", { conversationId: id, windowActive: true }, function() {});
+    root.service.request("ui.setFocus", { conversationId: id, windowActive: root.windowActive }, function() {});
   }
 
   // _showPane brings the conversation column forward without reopening it.
@@ -323,7 +337,7 @@ Item {
 
       root.conversation = root.listController.findConversation(root.activeId);
       if (root.conversation)
-        root.service.request("ui.setFocus", { conversationId: root.activeId, windowActive: true }, function() {});
+        root.service.request("ui.setFocus", { conversationId: root.activeId, windowActive: root.windowActive }, function() {});
     }
   }
 }

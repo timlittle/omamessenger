@@ -12,8 +12,9 @@ import "../lib/Rpc.js" as Rpc
 // showing, so it holds references to them, set once by whoever wires the
 // controllers together.
 //
-// QtObject rather than Item: it holds no child objects.
-QtObject {
+// Item rather than QtObject: only a type with a default property can hold
+// the Timer below.
+Item {
   id: root
 
   // service is the Service instance that owns the helper connection.
@@ -78,7 +79,8 @@ QtObject {
       "window.hide": () => root.askToClose(),
       "app.quit": () => root.quit(),
       "escape": () => root._escape(),
-      "demo.inject": () => root._injectDemo()
+      "demo.inject": () => root._injectDemo(),
+      "demo.injectLater": () => demoTimer.restart()
     };
 
     const handler = handlers[action];
@@ -196,13 +198,25 @@ QtObject {
     };
   }
 
-  // _injectDemo delivers a scripted demo message into the list's selected
-  // conversation, while the helper is seeded with demo data.
+  // _injectDemo delivers a scripted demo message into the open
+  // conversation, or the selected one, while the helper runs the demo.
   function _injectDemo(): void {
-    if (!root.service || !root.service.demo || !root.listController || !root.listController.selectedId) return;
+    if (!root.service || !root.service.demo) return;
 
-    root.service.request("demo.inject", { conversationId: root.listController.selectedId }, function(error) {
+    const open = root.service.uiState.activeId;
+    const target = open || (root.listController ? root.listController.selectedId : "");
+    if (!target) return;
+
+    root.service.request("demo.inject", { conversationId: target }, function(error) {
       if (error) root.lastError = Rpc.errorText(error);
     });
+  }
+
+  // Gives time to hide the window first, to see the notification arrive.
+  Timer {
+    id: demoTimer
+
+    interval: 5000
+    onTriggered: root._injectDemo()
   }
 }

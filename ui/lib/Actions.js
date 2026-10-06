@@ -57,6 +57,7 @@ var OWNERS = {
   'palette.up': 'window',
   'palette.accept': 'window',
   'demo.inject': 'window',
+  'demo.injectLater': 'window',
   'window.hide': 'window',
   'app.quit': 'window',
   'escape': 'window'

@@ -193,7 +193,8 @@ ShellRoot {
     root.pollAttempts = 0;
     root.waitForQuestion(() => {
       if (fakeShell.hideCalls.length !== 0) return root.fail("the window hid before asking");
-      root.find("keepButton").clicked();
+      // Enter chooses the default, Keep in background.
+      t.keyClick(Qt.Key_Return);
       root.waitForHide();
     });
   }
@@ -305,8 +306,10 @@ ShellRoot {
     t.keyClick(Qt.Key_W, Qt.ControlModifier);
     root.pollAttempts = 0;
     root.waitForQuestion(() => {
-      root.find("quitButton").clicked();
-      if (service.status !== "stopped") return root.fail("Quit left the helper " + service.status);
+      // Left moves from Keep in background to Quit.
+      t.keyClick(Qt.Key_Left);
+      t.keyClick(Qt.Key_Return);
+      if (service.status !== "stopped") return root.fail("Left then Enter on the close question left the helper " + service.status);
 
       panel.open("{}");
       root.pollAttempts = 0;
@@ -334,7 +337,8 @@ ShellRoot {
       if (!root.find("panelWindow").visible) return root.fail("the window did not come back to ask");
       if (fakeShell.hideCalls.length !== hidesBefore) return root.fail("the window reported hidden before asking");
 
-      root.find("cancelButton").clicked();
+      t.keyClick(Qt.Key_Escape);
+      if (root.find("closeConfirm").visible) return root.fail("Escape did not cancel the close question");
       console.log("PASS Panel");
       Qt.exit(0);
     });

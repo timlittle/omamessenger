@@ -31,6 +31,12 @@ Item {
   // asked for.
   property bool closingFromHost: false
 
+  // windowFocused is true while the window is shown and has keyboard
+  // focus: the only time the user is looking at the open conversation.
+  readonly property bool windowFocused: window.visible && keyArea.Window.active
+  onWindowFocusedChanged: conversationController.setWindowActive(root.windowFocused)
+  Component.onCompleted: conversationController.setWindowActive(root.windowFocused)
+
   // hidingByChoice is true only while _hide() lowers the window after the
   // user answered the close question.
   property bool hidingByChoice: false

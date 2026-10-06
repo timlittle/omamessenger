@@ -106,3 +106,10 @@ test('bindingsFor puts the context hints before the global ones', () => {
   assert.ok(actions.includes('palette.commands'));
   assert.ok(!actions.includes('message.send'));
 });
+
+test('a palette-only command has no key and shows none', () => {
+  const later = Keymap.commands(true).find((c) => c.action === 'demo.injectLater');
+
+  assert.deepEqual(later, { action: 'demo.injectLater', label: 'Receive a demo message in 5 seconds', keys: '' });
+  assert.ok(!Keymap.commands(false).some((c) => c.action === 'demo.injectLater'));
+});
