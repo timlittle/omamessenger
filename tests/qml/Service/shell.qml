@@ -6,6 +6,7 @@
 import QtQuick
 import Quickshell
 import "ui"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
@@ -13,12 +14,6 @@ ShellRoot {
   property var conversations: []
   property string pendingConversationId: ""
   property int listAttempts: 0
-
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL " + reason);
-    Qt.exit(1);
-  }
 
   // succeed reports a pass and stops the test.
   function succeed(): void {
@@ -38,7 +33,7 @@ ShellRoot {
   // documents, retrying for a few seconds while the demo connectors seed.
   function listConversations(): void {
     service.request("conversations.list", {}, function(error, result) {
-      if (error) return root.fail("conversations.list failed: " + JSON.stringify(error));
+      if (error) return Check.fail("conversations.list failed: " + JSON.stringify(error));
 
       if (Array.isArray(result) && result.length === 11) {
         root.conversations = result;
@@ -48,7 +43,7 @@ ShellRoot {
 
       root.listAttempts++;
       if (root.listAttempts >= 50)
-        return root.fail("got " + (result ? result.length : 0) + " conversations after retrying, want 11");
+        return Check.fail("got " + (result ? result.length : 0) + " conversations after retrying, want 11");
 
       retryTimer.start();
     });
@@ -58,12 +53,12 @@ ShellRoot {
   // attempt, so the test is not flaky.
   function sendToMum(): void {
     const mum = root.conversations.find((c) => c.title === "Mum");
-    if (!mum) return root.fail("no conversation titled Mum in the fake accounts");
+    if (!mum) return Check.fail("no conversation titled Mum in the fake accounts");
 
     root.pendingConversationId = mum.id;
     service.request("messages.send", { conversationId: mum.id, text: "integration test" }, function(error, result) {
-      if (error) return root.fail("messages.send failed: " + JSON.stringify(error));
-      if (!result || result.status === "failed") return root.fail("message was refused");
+      if (error) return Check.fail("messages.send failed: " + JSON.stringify(error));
+      if (!result || result.status === "failed") return Check.fail("message was refused");
     });
   }
 
@@ -94,6 +89,6 @@ ShellRoot {
   Timer {
     running: true
     interval: 20000
-    onTriggered: root.fail("timed out before the message was delivered")
+    onTriggered: Check.fail("timed out before the message was delivered")
   }
 }

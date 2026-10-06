@@ -3,43 +3,26 @@
 import QtQuick
 import Quickshell
 import "ui/components"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
 
   readonly property var noAnnotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
 
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL " + reason);
-    Qt.exit(1);
-  }
-
-  // find returns the descendant of item with the given objectName.
-  function find(item: Item, name: string): Item {
-    if (item.objectName === name)
-      return item;
-    for (let i = 0; i < item.children.length; i++) {
-      const found = root.find(item.children[i], name);
-      if (found)
-        return found;
-    }
-    return null;
-  }
-
   // run measures both bubbles once they have been laid out.
   function run(): void {
-    const short = root.find(shortMessage, "bubble");
-    const long = root.find(longMessage, "bubble");
+    const short = Check.find(shortMessage, "bubble");
+    const long = Check.find(longMessage, "bubble");
     const max = 600 * 0.72;
 
     if (short.width > 600 * 0.3)
-      return fail("short bubble is " + short.width + "px wide, want a small bubble");
+      return Check.fail("short bubble is " + short.width + "px wide, want a small bubble");
     if (Math.abs(long.width - max) > 1)
-      return fail("long bubble is " + long.width + "px wide, want " + max);
-    const lines = root.find(longMessage, "body").lineCount;
+      return Check.fail("long bubble is " + long.width + "px wide, want " + max);
+    const lines = Check.find(longMessage, "body").lineCount;
     if (lines < 2)
-      return fail("long message shows on " + lines + " line, want it wrapped");
+      return Check.fail("long message shows on " + lines + " line, want it wrapped");
 
     console.log("PASS MessageBubble");
     Qt.exit(0);

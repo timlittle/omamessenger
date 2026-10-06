@@ -10,6 +10,7 @@ import QtQuick
 import Quickshell
 import "ui"
 import "ui/controllers"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
@@ -18,12 +19,6 @@ ShellRoot {
   property int uiStateChanges: 0
   property bool hidden: false
   property var _next: null
-
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL " + reason);
-    Qt.exit(1);
-  }
 
   // retry schedules fn to run again shortly, for a condition that depends
   // on a reply from the helper.
@@ -96,7 +91,7 @@ ShellRoot {
   Timer {
     running: true
     interval: 45000
-    onTriggered: root.fail("timed out before the checks finished")
+    onTriggered: Check.fail("timed out before the checks finished")
   }
 
   // waitForConversations retries while the demo connectors are still
@@ -106,7 +101,7 @@ ShellRoot {
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
-      return root.fail("got " + listController.model.count + " conversations after retrying, want 11");
+      return Check.fail("got " + listController.model.count + " conversations after retrying, want 11");
     root.retry(root.waitForConversations);
   }
 
@@ -117,27 +112,27 @@ ShellRoot {
     // search match the helper leaves out when there is none.
     for (let i = 0; i < listController.model.count; i++) {
       if (typeof listController.model.get(i).match !== "string")
-        return root.fail("row " + i + " has no match field");
+        return Check.fail("row " + i + " has no match field");
     }
 
     // Saving durable UI state must notify, or the panel never sees it.
     const changesBefore = root.uiStateChanges;
     listController.run("rail.telegram");
     if (root.uiStateChanges === changesBefore)
-      return root.fail("changing the rail did not notify uiState watchers");
+      return Check.fail("changing the rail did not notify uiState watchers");
     if (service.uiState.railKey !== "service:telegram")
-      return root.fail("uiState.railKey is " + service.uiState.railKey);
+      return Check.fail("uiState.railKey is " + service.uiState.railKey);
     if (listController.model.count !== 5)
-      return root.fail("rail.telegram gave " + listController.model.count + " rows, want 5");
+      return Check.fail("rail.telegram gave " + listController.model.count + " rows, want 5");
 
     for (let i = 0; i < listController.model.count; i++) {
       if (listController.model.get(i).service !== "telegram")
-        return root.fail("rail.telegram included a non-Telegram row at index " + i);
+        return Check.fail("rail.telegram included a non-Telegram row at index " + i);
     }
 
     listController.run("rail.all");
     if (listController.model.count !== 11)
-      return root.fail("rail.all gave " + listController.model.count + " rows, want 11");
+      return Check.fail("rail.all gave " + listController.model.count + " rows, want 11");
 
     root.checkCursor();
   }
@@ -150,11 +145,11 @@ ShellRoot {
 
     listController.run("cursor.down");
     if (listController.selectedId !== ids[1])
-      return root.fail("cursor.down gave " + listController.selectedId + ", want " + ids[1]);
+      return Check.fail("cursor.down gave " + listController.selectedId + ", want " + ids[1]);
 
     listController.run("cursor.up");
     if (listController.selectedId !== ids[0])
-      return root.fail("cursor.up gave " + listController.selectedId + ", want " + ids[0]);
+      return Check.fail("cursor.up gave " + listController.selectedId + ", want " + ids[0]);
 
     root.checkOpenConversation();
   }
@@ -163,8 +158,8 @@ ShellRoot {
   // starts waiting for it to be marked read and for its messages to load.
   function checkOpenConversation(): void {
     const alex = root.findByTitle(listController.model, "Alex Chen");
-    if (!alex) return root.fail("no conversation titled Alex Chen in the fake accounts");
-    if (alex.unread <= 0) return root.fail("Alex Chen already has no unread messages to clear");
+    if (!alex) return Check.fail("no conversation titled Alex Chen in the fake accounts");
+    if (alex.unread <= 0) return Check.fail("Alex Chen already has no unread messages to clear");
 
     conversationController.open(alex);
     root.pollAttempts = 0;
@@ -179,18 +174,18 @@ ShellRoot {
 
     if (loaded && row && row.unread === 0) {
       if (conversationController.messages.count < 2)
-        return root.fail("Alex Chen loaded " + conversationController.messages.count + " messages, want at least 2");
+        return Check.fail("Alex Chen loaded " + conversationController.messages.count + " messages, want at least 2");
 
       const newest = conversationController.messages.get(0).created;
       const oldest = conversationController.messages.get(conversationController.messages.count - 1).created;
-      if (newest < oldest) return root.fail("messages are not newest first: index 0 is older than the last index");
+      if (newest < oldest) return Check.fail("messages are not newest first: index 0 is older than the last index");
 
       return root.checkLoadOlder();
     }
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
-      return root.fail("Alex Chen never finished opening: loaded=" + loaded + " unread=" + (row ? row.unread : "?"));
+      return Check.fail("Alex Chen never finished opening: loaded=" + loaded + " unread=" + (row ? row.unread : "?"));
     root.retry(() => root.waitForOpenConversation(id));
   }
 
@@ -200,7 +195,7 @@ ShellRoot {
   // second call does nothing and only one page is ever fetched.
   function checkLoadOlder(): void {
     const omarchy = root.findByTitle(listController.model, "Omarchy Users");
-    if (!omarchy) return root.fail("no conversation titled Omarchy Users in the fake accounts");
+    if (!omarchy) return Check.fail("no conversation titled Omarchy Users in the fake accounts");
 
     conversationController.open(omarchy);
     root.pollAttempts = 0;
@@ -219,7 +214,7 @@ ShellRoot {
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
-      return root.fail("Omarchy Users never finished its first page, has " + conversationController.messages.count);
+      return Check.fail("Omarchy Users never finished its first page, has " + conversationController.messages.count);
     root.retry(root.waitForFirstPage);
   }
 
@@ -228,11 +223,11 @@ ShellRoot {
   function waitForSecondPage(): void {
     if (conversationController.messages.count === 100) return root.checkSend();
     if (conversationController.messages.count > 100)
-      return root.fail("loadOlder's guard let two requests through: got " + conversationController.messages.count + " messages, want 100");
+      return Check.fail("loadOlder's guard let two requests through: got " + conversationController.messages.count + " messages, want 100");
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
-      return root.fail("loadOlder never finished, has " + conversationController.messages.count);
+      return Check.fail("loadOlder never finished, has " + conversationController.messages.count);
     root.retry(root.waitForSecondPage);
   }
 
@@ -240,7 +235,7 @@ ShellRoot {
   // is not flaky, sends a message and waits for it to be delivered.
   function checkSend(): void {
     const mum = root.findByTitle(listController.model, "Mum");
-    if (!mum) return root.fail("no conversation titled Mum in the fake accounts");
+    if (!mum) return Check.fail("no conversation titled Mum in the fake accounts");
 
     conversationController.open(mum);
     conversationController.send("integration test");
@@ -257,7 +252,7 @@ ShellRoot {
     }
 
     root.pollAttempts++;
-    if (root.pollAttempts >= 100) return root.fail("sent message never reached delivered");
+    if (root.pollAttempts >= 100) return Check.fail("sent message never reached delivered");
     root.retry(root.waitForDelivered);
   }
 
@@ -266,36 +261,36 @@ ShellRoot {
   function checkEscapeChain(): void {
     windowController.run("palette.commands");
     windowController.run("escape");
-    if (windowController.paletteOpen) return root.fail("escape did not close the command palette");
+    if (windowController.paletteOpen) return Check.fail("escape did not close the command palette");
 
     dialogController.open = true;
     windowController.run("escape");
-    if (dialogController.open) return root.fail("escape did not close the dialog");
+    if (dialogController.open) return Check.fail("escape did not close the dialog");
 
     listController.searchFocused = true;
     listController.setQuery("abc");
     windowController.run("escape");
-    if (listController.query !== "") return root.fail("escape did not clear a non-empty search query first");
-    if (!listController.searchFocused) return root.fail("escape left the search field after only clearing the query");
+    if (listController.query !== "") return Check.fail("escape did not clear a non-empty search query first");
+    if (!listController.searchFocused) return Check.fail("escape left the search field after only clearing the query");
 
     windowController.run("escape");
-    if (listController.searchFocused) return root.fail("escape did not leave the search field once the query was already clear");
+    if (listController.searchFocused) return Check.fail("escape did not leave the search field once the query was already clear");
 
     const mum = root.findByTitle(listController.model, "Mum");
     conversationController.open(mum);
     windowController.run("escape");
-    if (conversationController.activeId !== "") return root.fail("escape did not close the open conversation");
+    if (conversationController.activeId !== "") return Check.fail("escape did not close the open conversation");
 
     // With nothing left to undo, Escape asks before closing; a second
     // Escape cancels, and choosing to keep it in the background hides it.
     windowController.run("escape");
     if (root.hidden || !windowController.confirmingClose)
-      return root.fail("escape did not ask before closing once nothing else was left to undo");
+      return Check.fail("escape did not ask before closing once nothing else was left to undo");
     windowController.run("escape");
-    if (windowController.confirmingClose) return root.fail("escape did not cancel the close question");
+    if (windowController.confirmingClose) return Check.fail("escape did not cancel the close question");
     windowController.run("escape");
     windowController.keepInBackground();
-    if (!root.hidden) return root.fail("keeping it in the background did not hide the window");
+    if (!root.hidden) return Check.fail("keeping it in the background did not hide the window");
 
     console.log("PASS Controllers");
     Qt.exit(0);

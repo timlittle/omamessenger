@@ -6,27 +6,13 @@ import QtTest
 import Quickshell
 import qs.Commons
 import "ui/components"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
 
   property var retried: []
   property real now: Date.now()
-
-  // fail stops the test with a reason on stderr and reports failure to
-  // its caller, so each check can bail out with "return root.fail(...)".
-  function fail(reason: string): bool {
-    console.error("FAIL " + reason);
-    Qt.exit(1);
-    return false;
-  }
-
-  // collect walks the item tree gathering every node with a text property,
-  // since both Text and TextEdit expose one.
-  function collect(item, out) {
-    if (typeof item.text === "string") out.push(item);
-    for (const child of item.children) collect(child, out);
-  }
 
   // findText returns the first collected node whose text matches exactly.
   function findText(out, text) {
@@ -79,10 +65,9 @@ ShellRoot {
 
   // checkGroupSender verifies an incoming group message shows the sender.
   function checkGroupSender(): bool {
-    const nodes = [];
-    root.collect(delegate, nodes);
+    const nodes = Check.texts(delegate);
     const sender = root.findText(nodes, "Alex");
-    if (!sender || !sender.visible) return root.fail("sender name \"Alex\" not shown for a grouped incoming message");
+    if (!sender || !sender.visible) return Check.fail("sender name \"Alex\" not shown for a grouped incoming message");
     return true;
   }
 
@@ -92,14 +77,13 @@ ShellRoot {
     delegate.message = { id: "m2", senderId: "me", senderName: "Me", text: "ok", outgoing: true, status: "read", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
 
-    const nodes = [];
-    root.collect(delegate, nodes);
+    const nodes = Check.texts(delegate);
     const sender = root.findText(nodes, "Me");
-    if (sender && sender.visible) return root.fail("sender name shown for an outgoing message");
+    if (sender && sender.visible) return Check.fail("sender name shown for an outgoing message");
 
     const glyph = root.findText(nodes, "✓✓");
-    if (!glyph || !glyph.visible) return root.fail("read glyph not shown for an outgoing read message");
-    if (!Qt.colorEqual(glyph.color, Color.accent)) return root.fail("read glyph is not drawn in the accent colour");
+    if (!glyph || !glyph.visible) return Check.fail("read glyph not shown for an outgoing read message");
+    if (!Qt.colorEqual(glyph.color, Color.accent)) return Check.fail("read glyph is not drawn in the accent colour");
     return true;
   }
 
@@ -110,15 +94,14 @@ ShellRoot {
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
     t.waitForRendering(delegate);
 
-    const nodes = [];
-    root.collect(delegate, nodes);
+    const nodes = Check.texts(delegate);
     const retryLine = root.findText(nodes, "Not sent · r to retry");
-    if (!retryLine || !retryLine.visible) return root.fail("retry line not shown for a failed outgoing message");
-    if (!Qt.colorEqual(retryLine.color, Color.urgent)) return root.fail("retry line is not drawn in the urgent colour");
+    if (!retryLine || !retryLine.visible) return Check.fail("retry line not shown for a failed outgoing message");
+    if (!Qt.colorEqual(retryLine.color, Color.urgent)) return Check.fail("retry line is not drawn in the urgent colour");
 
     root.retried = [];
     t.mouseClick(retryLine);
-    if (JSON.stringify(root.retried) !== '["m3"]') return root.fail("retry " + JSON.stringify(root.retried) + ", want [\"m3\"]");
+    if (JSON.stringify(root.retried) !== '["m3"]') return Check.fail("retry " + JSON.stringify(root.retried) + ", want [\"m3\"]");
     return true;
   }
 
@@ -127,12 +110,11 @@ ShellRoot {
     delegate.message = { id: "m4", senderId: "s1", senderName: "Alex", text: "<b>bold</b> see http://example.com/x", outgoing: false, status: "delivered", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
 
-    const nodes = [];
-    root.collect(delegate, nodes);
+    const nodes = Check.texts(delegate);
     const body = nodes.find(node => node.text.indexOf("bold") >= 0);
-    if (!body) return root.fail("message body not found");
-    if (body.text.indexOf("&lt;b&gt;") < 0) return root.fail("markup was not escaped: " + body.text);
-    if (body.text.indexOf("<a href=") < 0) return root.fail("URL was not linkified: " + body.text);
+    if (!body) return Check.fail("message body not found");
+    if (body.text.indexOf("&lt;b&gt;") < 0) return Check.fail("markup was not escaped: " + body.text);
+    if (body.text.indexOf("<a href=") < 0) return Check.fail("URL was not linkified: " + body.text);
     return true;
   }
 
@@ -140,12 +122,11 @@ ShellRoot {
   function checkLineBreaks(): bool {
     delegate.message = { id: "m5", senderId: "s1", senderName: "Alex", text: "Plan:\n• one\n• two", outgoing: false, status: "delivered", created: root.now };
 
-    const nodes = [];
-    root.collect(delegate, nodes);
+    const nodes = Check.texts(delegate);
     const body = nodes.find(node => node.objectName === "body");
-    if (!body) return root.fail("message body not found");
+    if (!body) return Check.fail("message body not found");
     const breaks = (body.text.match(/<br/g) || []).length;
-    if (breaks !== 2) return root.fail("bulleted message has " + breaks + " line breaks, want 2: " + body.text);
+    if (breaks !== 2) return Check.fail("bulleted message has " + breaks + " line breaks, want 2: " + body.text);
     return true;
   }
 }

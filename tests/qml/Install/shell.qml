@@ -8,6 +8,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "ui"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
@@ -23,22 +24,10 @@ ShellRoot {
     Qt.exit(1);
   }
 
-  // find returns the descendant of item with the given objectName.
-  function find(item: var, name: string): var {
-    if (!item) return null;
-    if (item.objectName === name) return item;
-
-    for (const child of (item.data || item.children || [])) {
-      const found = root.find(child, name);
-      if (found) return found;
-    }
-    return null;
-  }
-
   // waitForMissing holds until the launcher reports no helper and the
   // window offers to install one.
   function waitForMissing(): var {
-    const button = root.find(panel, "installButton");
+    const button = Check.find(panel, "installButton");
     return helperService.status === "missing" && button && button.visible;
   }
 
@@ -56,14 +45,14 @@ ShellRoot {
 
   // pressInstall clicks Install helper.
   function pressInstall(): var {
-    root.find(panel, "installButton").clicked();
+    Check.find(panel, "installButton").clicked();
     return true;
   }
 
   // waitForReady holds until the installed helper runs and the fake
   // conversations arrive.
   function waitForReady(): var {
-    const list = root.find(panel, "conversationListView");
+    const list = Check.find(panel, "conversationListView");
     return helperService.status === "ready" && list && list.count === 11;
   }
 

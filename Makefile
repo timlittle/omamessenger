@@ -57,18 +57,19 @@ test-js: ## Run the JavaScript tests with their coverage gate
 		--test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'
 
 # Each tests/qml/<Name>/shell.qml runs offscreen in its own root, which holds
-# the test, the ui/ tree, Omarchy's Commons and Ui, and as its helper the
-# test build with fake accounts. WAYLAND_DISPLAY and
-# HYPRLAND_INSTANCE_SIGNATURE are unset and the session bus points nowhere,
-# so no test can reach the running desktop or its notifications. A test whose directory holds a no-dev-build file gets the real
-# launcher instead, so the helper starts out not installed; it can publish
-# the test helper (OMA_FAKE_HELPER) to OMA_RELEASE_BASE and install it.
+# the test, the shared tests/qml/Check.js, the ui/ tree, Omarchy's Commons
+# and Ui, and as its helper the test build with fake accounts.
+# WAYLAND_DISPLAY and HYPRLAND_INSTANCE_SIGNATURE are unset and the session
+# bus points nowhere, so no test can reach the running desktop or its
+# notifications. A test whose directory holds a no-dev-build file gets the
+# real launcher instead, so the helper starts out not installed; it can
+# publish the test helper (OMA_FAKE_HELPER) to OMA_RELEASE_BASE and install it.
 test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the test helper
 	@./scripts/qml-imports.sh >/dev/null
 	@status=0; for dir in tests/qml/*/; do \
 		name=$$(basename "$$dir"); root=build/qml-tests/$$name; \
 		rm -rf "$$root"; mkdir -p "$$root/bin"; cp -R "$$dir". "$$root/"; \
-		for link in ui scripts helper-version; do ln -s "$(CURDIR)/$$link" "$$root/$$link"; done; \
+		for link in ui scripts helper-version tests/qml/Check.js; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
 		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 		ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 		if [ -e "$$dir/no-dev-build" ]; then ln -s "$(CURDIR)/bin/oma-messenger-service" "$$root/bin/"; \

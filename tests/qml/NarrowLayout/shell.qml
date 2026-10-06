@@ -7,6 +7,7 @@ import Quickshell
 import "ui"
 import "ui/components"
 import "ui/controllers"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
@@ -21,19 +22,6 @@ ShellRoot {
     Qt.exit(1);
   }
 
-  // find returns the descendant of item with the given objectName.
-  function find(item: var, name: string): var {
-    if (!item) return null;
-    if (item.objectName === name) return item;
-
-    const kids = item.children;
-    for (let i = 0; i < kids.length; i++) {
-      const found = root.find(kids[i], name);
-      if (found) return found;
-    }
-    return null;
-  }
-
   // waitForList holds until the demo conversations fill a full-width list
   // and no conversation column is shown.
   function waitForList(): var {
@@ -43,8 +31,8 @@ ShellRoot {
 
   // checkListOnly checks the list is the only column and fills the space.
   function checkListOnly(): var {
-    const listColumn = root.find(layout, "listColumn");
-    const conversation = root.find(layout, "conversationView");
+    const listColumn = Check.find(layout, "listColumn");
+    const conversation = Check.find(layout, "conversationView");
     if (!layout.narrow) return "a 600-wide window is not treated as narrow";
     if (!listColumn.visible || conversation.visible) return "narrow window shows the conversation instead of the list";
     if (listColumn.width < 400) return "the list is only " + listColumn.width + " wide";
@@ -59,8 +47,8 @@ ShellRoot {
 
   // checkConversationOnly checks the conversation replaced the list.
   function checkConversationOnly(): var {
-    const listColumn = root.find(layout, "listColumn");
-    const conversation = root.find(layout, "conversationView");
+    const listColumn = Check.find(layout, "listColumn");
+    const conversation = Check.find(layout, "conversationView");
     if (listColumn.visible) return "the list is still showing beside the open conversation";
     if (!conversation.visible || conversation.width < 400) return "the conversation is not filling the window";
     return true;

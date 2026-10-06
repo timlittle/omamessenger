@@ -3,20 +3,13 @@
 import QtQuick
 import Quickshell
 import "ui/components"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
 
   property var accepted: null
   property string changedAccountId: ""
-
-  // fail stops the test with a reason on stderr and reports failure to
-  // its caller, so each check can bail out with "return root.fail(...)".
-  function fail(reason: string): bool {
-    console.error("FAIL " + reason);
-    Qt.exit(1);
-    return false;
-  }
 
   FloatingWindow {
     implicitWidth: 900
@@ -63,35 +56,25 @@ ShellRoot {
     dialog.moveCurrent(1);
     dialog.accept();
 
-    if (!root.accepted) return root.fail("accept() did not emit accepted");
+    if (!root.accepted) return Check.fail("accept() did not emit accepted");
     if (root.accepted.accountId !== "a1" || root.accepted.contactId !== "r2")
-      return root.fail("accepted " + JSON.stringify(root.accepted) + ", want a1/r2");
+      return Check.fail("accepted " + JSON.stringify(root.accepted) + ", want a1/r2");
     return true;
   }
 
   // checkFitsCard verifies every visible piece of the dialog lies inside
   // its card, with three accounts named after their services.
   function checkFitsCard(): bool {
-    const card = root.find(dialog, "newChatCard");
+    const card = Check.find(dialog, "newChatCard");
     const items = [];
     root.collect(card, items);
     for (const item of items) {
       if (!item.visible || item.width === 0) continue;
       const pos = item.mapToItem(card, 0, 0);
       if (pos.x < 0 || pos.x + item.width > card.width + 1)
-        return root.fail((item.text || item) + " runs outside the dialog card");
+        return Check.fail((item.text || item) + " runs outside the dialog card");
     }
     return true;
-  }
-
-  // find returns the descendant of item with the given objectName.
-  function find(item: var, name: string): var {
-    if (item.objectName === name) return item;
-    for (const child of item.children) {
-      const found = root.find(child, name);
-      if (found) return found;
-    }
-    return null;
   }
 
   // collect gathers every descendant of item into out.
@@ -108,7 +91,7 @@ ShellRoot {
     root.changedAccountId = "";
     dialog.nextAccount();
 
-    if (root.changedAccountId !== "a1") return root.fail("nextAccount() gave " + root.changedAccountId + ", want a1");
+    if (root.changedAccountId !== "a1") return Check.fail("nextAccount() gave " + root.changedAccountId + ", want a1");
     return true;
   }
 }

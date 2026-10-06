@@ -3,17 +3,12 @@
 import QtQuick
 import Quickshell
 import "ui/components"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
 
   property var sent: []
-
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL " + reason);
-    Qt.exit(1);
-  }
 
   FloatingWindow {
     implicitWidth: 400
@@ -45,11 +40,11 @@ ShellRoot {
     composer.submit();
 
     if (JSON.stringify(root.sent) !== '["hello"]')
-      return fail("sent " + JSON.stringify(root.sent) + ", want [\"hello\"]");
+      return Check.fail("sent " + JSON.stringify(root.sent) + ", want [\"hello\"]");
     if (composer.text !== "   ")
-      return fail("whitespace-only text was cleared or sent");
+      return Check.fail("whitespace-only text was cleared or sent");
     if (composer.input.placeholderText.indexOf("Mum") < 0)
-      return fail("placeholder \"" + composer.input.placeholderText + "\" does not name the conversation");
+      return Check.fail("placeholder \"" + composer.input.placeholderText + "\" does not name the conversation");
 
     console.log("PASS Composer");
     Qt.exit(0);

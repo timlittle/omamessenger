@@ -5,6 +5,7 @@ import QtQuick
 import Quickshell
 import "ui/components"
 import "ui/lib/Timeline.js" as Timeline
+import "Check.js" as Check
 
 ShellRoot {
   id: root
@@ -12,20 +13,6 @@ ShellRoot {
   property var sent: []
   property int loadOlderCount: 0
   property int pollAttempts: 0
-
-  // fail stops the test with a reason on stderr and reports failure to
-  // its caller, so each check can bail out with "return root.fail(...)".
-  function fail(reason: string): bool {
-    console.error("FAIL " + reason);
-    Qt.exit(1);
-    return false;
-  }
-
-  // collect walks the item tree gathering every node with a text property.
-  function collect(item, out) {
-    if (typeof item.text === "string") out.push(item);
-    for (const child of item.children) collect(child, out);
-  }
 
   // buildMessages returns count messages, newest first, one minute apart.
   function buildMessages(count) {
@@ -79,10 +66,9 @@ ShellRoot {
 
   // checkEmptyState verifies the placeholder shows when no chat is open.
   function checkEmptyState(): bool {
-    const nodes = [];
-    root.collect(view, nodes);
+    const nodes = Check.texts(view);
     const empty = nodes.find(node => node.text === "Pick a chat · j/k to move · Enter to open");
-    if (!empty || !empty.visible) return root.fail("empty state not shown for a null conversation");
+    if (!empty || !empty.visible) return Check.fail("empty state not shown for a null conversation");
     return true;
   }
 
@@ -115,7 +101,7 @@ ShellRoot {
     if (root.pollAttempts < 160) return;
 
     pollTimer.stop();
-    root.fail("scrollToOldest() did not trigger loadOlder()");
+    Check.fail("scrollToOldest() did not trigger loadOlder()");
   }
 
   // checkDraftRestore verifies a new draft still reaches the composer after
@@ -125,7 +111,7 @@ ShellRoot {
     view.composer.submit();
     view.draft = "second draft";
     if (view.composer.text !== "second draft")
-      return root.fail("composer shows \"" + view.composer.text + "\" after the draft changed, want \"second draft\"");
+      return Check.fail("composer shows \"" + view.composer.text + "\" after the draft changed, want \"second draft\"");
     return true;
   }
 
@@ -143,7 +129,7 @@ ShellRoot {
     root.sent = [];
     view.composer.text = "  hello there  ";
     view.composer.submit();
-    if (JSON.stringify(root.sent) !== '["hello there"]') return root.fail("sent " + JSON.stringify(root.sent) + ", want [\"hello there\"]");
+    if (JSON.stringify(root.sent) !== '["hello there"]') return Check.fail("sent " + JSON.stringify(root.sent) + ", want [\"hello there\"]");
     return true;
   }
 }

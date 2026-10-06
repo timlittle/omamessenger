@@ -12,6 +12,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "ui"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
@@ -47,18 +48,6 @@ ShellRoot {
     Qt.exit(1);
   }
 
-  // find returns the descendant of item with the given objectName.
-  function find(item: var, name: string): var {
-    if (!item) return null;
-    if (item.objectName === name) return item;
-
-    for (const child of (item.data || item.children || [])) {
-      const found = root.find(child, name);
-      if (found) return found;
-    }
-    return null;
-  }
-
   // panel is the live Panel, which the Loader may have recreated.
   function panel(): var {
     return panelLoader.item;
@@ -66,7 +55,7 @@ ShellRoot {
 
   // listModel is the conversation list the window shows.
   function listModel(): var {
-    return root.find(root.panel(), "conversationListView").model;
+    return Check.find(root.panel(), "conversationListView").model;
   }
 
   // rowIndex returns the visible row with the given title, or -1.
@@ -80,7 +69,7 @@ ShellRoot {
 
   // messageStatus returns the status of the newest message with text, or "".
   function messageStatus(text: string): string {
-    const model = root.find(root.panel(), "messageListView").model;
+    const model = Check.find(root.panel(), "messageListView").model;
     for (let i = 0; i < model.count; i++) {
       if (model.get(i).text === text) return model.get(i).status;
     }
@@ -89,7 +78,7 @@ ShellRoot {
 
   // title is the open conversation's header title.
   function title(): string {
-    const header = root.find(root.panel(), "conversationTitle");
+    const header = Check.find(root.panel(), "conversationTitle");
     return header ? header.text : "";
   }
 
@@ -132,7 +121,7 @@ ShellRoot {
     if (root.title() !== "Alex Chen") return false;
     if (String(helperService.unreadTotal) === root.expected) return false;
 
-    const badge = root.find(barWidget, "unreadBadge");
+    const badge = Check.find(barWidget, "unreadBadge");
     if (badge.count !== helperService.unreadTotal)
       return "bar shows " + badge.count + ", service has " + helperService.unreadTotal;
     return true;
@@ -156,7 +145,7 @@ ShellRoot {
   // waitForDraftRestored holds until the new panel reopens Alex Chen with
   // the draft still in the composer.
   function waitForDraftRestored(): var {
-    const composer = root.find(root.panel(), "composerInput");
+    const composer = Check.find(root.panel(), "composerInput");
     return root.title() === "Alex Chen" && composer && composer.text === "draft kept";
   }
 
@@ -193,11 +182,11 @@ ShellRoot {
   // keeps OmaMessenger running in the background.
   function hideWithSamOpen(): var {
     t.keyClick(Qt.Key_W, Qt.ControlModifier);
-    const question = root.find(root.panel(), "closeConfirm");
+    const question = Check.find(root.panel(), "closeConfirm");
     if (!question || !question.visible) return false;
 
     t.keyClick(Qt.Key_Return);
-    return !root.find(root.panel(), "panelWindow").visible;
+    return !Check.find(root.panel(), "panelWindow").visible;
   }
 
   // messageWhileHidden has a demo message arrive in Sam's chat. The list
@@ -241,7 +230,7 @@ ShellRoot {
   function waitForBen(): var {
     if (root.title() === "Ben Okafor") return true;
 
-    const dialog = root.find(root.panel(), "newChatDialog");
+    const dialog = Check.find(root.panel(), "newChatDialog");
     if (root.expected === "" && dialog && dialog.contacts.length === 1 && dialog.contacts[0].name === "Ben Okafor") {
       root.expected = "sent";
       t.keyClick(Qt.Key_Return);

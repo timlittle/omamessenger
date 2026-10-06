@@ -13,6 +13,7 @@ import QtTest
 import Quickshell
 import qs.Commons
 import "ui"
+import "Check.js" as Check
 
 ShellRoot {
   id: root
@@ -21,37 +22,11 @@ ShellRoot {
   property string expectedTitle: ""
   property var _next: null
 
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL " + reason);
-    Qt.exit(1);
-  }
-
   // retry schedules fn to run again shortly, for a condition that depends
   // on a reply from the helper or on a key event finishing its round trip.
   function retry(fn: var): void {
     root._next = fn;
     retryTimer.start();
-  }
-
-  // findByObjectName searches item and its descendants for a matching
-  // objectName, since Panel exposes nothing of its internals but this.
-  // It walks `data`, the default property every Item and window type
-  // stores its declared children in, rather than `children`, which
-  // leaves out windows and other non-visual objects.
-  function findByObjectName(item: var, name: string): var {
-    if (!item) return null;
-    if (item.objectName === name) return item;
-
-    // Some objects have a data property that is not a child list.
-    const kids = item.data || item.children;
-    if (!kids || typeof kids.length !== "number") return null;
-
-    for (let i = 0; i < kids.length; i++) {
-      const found = root.findByObjectName(kids[i], name);
-      if (found) return found;
-    }
-    return null;
   }
 
   Service {
@@ -91,7 +66,7 @@ ShellRoot {
   Timer {
     running: true
     interval: 55000
-    onTriggered: root.fail("timed out before the checks finished")
+    onTriggered: Check.fail("timed out before the checks finished")
   }
 
   // Checks run once Quickshell has finished loading; Qt.exit() is
@@ -112,12 +87,12 @@ ShellRoot {
   // seeding, the same race every other test against the demo helper has
   // to account for.
   function waitForConversations(): void {
-    const listView = root.findByObjectName(panel, "conversationListView");
+    const listView = Check.find(panel, "conversationListView");
     if (listView && listView.count === 11) return root.checkThirdConversation(listView);
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
-      return root.fail("got " + (listView ? listView.count : "no list view") + " conversations after retrying, want 11");
+      return Check.fail("got " + (listView ? listView.count : "no list view") + " conversations after retrying, want 11");
     root.retry(root.waitForConversations);
   }
 
@@ -139,15 +114,15 @@ ShellRoot {
   // waitForConversationOpen holds until the header names the row j, j
   // landed on and the composer has keyboard focus.
   function waitForConversationOpen(): void {
-    const title = root.findByObjectName(panel, "conversationTitle");
-    const composer = root.findByObjectName(panel, "composerInput");
+    const title = Check.find(panel, "conversationTitle");
+    const composer = Check.find(panel, "composerInput");
 
     if (title && title.text === root.expectedTitle && composer && composer.activeFocus)
       return root.sendMessage(composer);
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
-      return root.fail("opening the third conversation never finished: title=\""
+      return Check.fail("opening the third conversation never finished: title=\""
         + (title ? title.text : "?") + "\" want \"" + root.expectedTitle
         + "\" composerFocus=" + (composer ? composer.activeFocus : "?"));
     root.retry(root.waitForConversationOpen);
@@ -168,7 +143,7 @@ ShellRoot {
   // delivered through a message.updated event, read straight from the
   // message list's own model.
   function waitForDelivered(): void {
-    const messages = root.findByObjectName(panel, "messageListView");
+    const messages = Check.find(panel, "messageListView");
 
     if (messages && messages.model) {
       for (let i = 0; i < messages.model.count; i++) {
@@ -178,7 +153,7 @@ ShellRoot {
     }
 
     root.pollAttempts++;
-    if (root.pollAttempts >= 100) return root.fail("sent message never reached delivered");
+    if (root.pollAttempts >= 100) return Check.fail("sent message never reached delivered");
     root.retry(root.waitForDelivered);
   }
 
@@ -192,7 +167,7 @@ ShellRoot {
 
     root.pollAttempts = 0;
     root.waitForQuestion(() => {
-      if (fakeShell.hideCalls.length !== 0) return root.fail("the window hid before asking");
+      if (fakeShell.hideCalls.length !== 0) return Check.fail("the window hid before asking");
       // Enter chooses the default, Keep in background.
       t.keyClick(Qt.Key_Return);
       root.waitForHide();
@@ -205,13 +180,13 @@ ShellRoot {
     if (question && question.visible) return next();
 
     root.pollAttempts++;
-    if (root.pollAttempts >= 100) return root.fail("the close question never showed");
+    if (root.pollAttempts >= 100) return Check.fail("the close question never showed");
     root.retry(() => root.waitForQuestion(next));
   }
 
   // find looks an object up by name anywhere in the panel.
   function find(name: string): var {
-    return root.findByObjectName(panel, name);
+    return Check.find(panel, name);
   }
 
   // waitForHide holds for the third Escape's hide to reach the shell
@@ -219,16 +194,16 @@ ShellRoot {
   function waitForHide(): void {
     if (fakeShell.hideCalls.length === 1) {
       if (fakeShell.hideCalls[0] !== "io.github.omamessenger")
-        return root.fail("shell.hide called with \"" + fakeShell.hideCalls[0] + "\"");
+        return Check.fail("shell.hide called with \"" + fakeShell.hideCalls[0] + "\"");
       return root.checkRailFilter();
     }
 
     if (fakeShell.hideCalls.length > 1)
-      return root.fail("escape chain called shell.hide " + fakeShell.hideCalls.length + " times, want 1");
+      return Check.fail("escape chain called shell.hide " + fakeShell.hideCalls.length + " times, want 1");
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
-      return root.fail("escape chain never hid the window, called shell.hide " + fakeShell.hideCalls.length + " times");
+      return Check.fail("escape chain never hid the window, called shell.hide " + fakeShell.hideCalls.length + " times");
     root.retry(root.waitForHide);
   }
 
@@ -244,12 +219,12 @@ ShellRoot {
   // waitForRailFilter holds for the Telegram-only row count the demo
   // data gives, the same number tests/qml/Controllers/shell.qml checks.
   function waitForRailFilter(): void {
-    const listView = root.findByObjectName(panel, "conversationListView");
+    const listView = Check.find(panel, "conversationListView");
     if (listView && listView.count === 5) return root.checkHelp();
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
-      return root.fail("Ctrl+2 gave " + (listView ? listView.count : "?") + " rows, want 5");
+      return Check.fail("Ctrl+2 gave " + (listView ? listView.count : "?") + " rows, want 5");
     root.retry(root.waitForRailFilter);
   }
 
@@ -259,21 +234,21 @@ ShellRoot {
   function checkHelp(): void {
     t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
 
-    const palette = root.findByObjectName(panel, "commandPalette");
-    if (!palette || !palette.visible) return root.fail("Ctrl+/ did not open the command palette");
+    const palette = Check.find(panel, "commandPalette");
+    if (!palette || !palette.visible) return Check.fail("Ctrl+/ did not open the command palette");
 
     for (const ch of "new mes") t.keyClick(ch);
     if (palette.items.length === 0 || palette.items[0].label !== "New message")
-      return root.fail("typing \"new mes\" listed " + JSON.stringify(palette.items.map(i => i.label)));
-    if (palette.items[0].keys !== "Ctrl+N") return root.fail("the palette does not show New message's shortcut");
+      return Check.fail("typing \"new mes\" listed " + JSON.stringify(palette.items.map(i => i.label)));
+    if (palette.items[0].keys !== "Ctrl+N") return Check.fail("the palette does not show New message's shortcut");
 
     t.keyClick(Qt.Key_Return);
-    const dialog = root.findByObjectName(panel, "newChatDialog");
-    if (palette.visible) return root.fail("running a command left the palette open");
-    if (!dialog || !dialog.visible) return root.fail("running New message did not open the new-chat dialog");
+    const dialog = Check.find(panel, "newChatDialog");
+    if (palette.visible) return Check.fail("running a command left the palette open");
+    if (!dialog || !dialog.visible) return Check.fail("running New message did not open the new-chat dialog");
 
     t.keyClick(Qt.Key_Escape);
-    if (dialog.visible) return root.fail("Escape did not close the new-chat dialog");
+    if (dialog.visible) return Check.fail("Escape did not close the new-chat dialog");
 
     root.checkMinimumSize();
   }
@@ -281,21 +256,21 @@ ShellRoot {
   // checkMinimumSize resizes the window to the documented minimum and
   // checks every column still has real width, rather than collapsing.
   function checkMinimumSize(): void {
-    const win = root.findByObjectName(panel, "panelWindow");
+    const win = Check.find(panel, "panelWindow");
     win.width = Style.space(760);
     win.height = Style.space(540);
 
-    const rail = root.findByObjectName(panel, "serviceRail");
-    const listColumn = root.findByObjectName(panel, "listColumn");
-    const conversationView = root.findByObjectName(panel, "conversationView");
+    const rail = Check.find(panel, "serviceRail");
+    const listColumn = Check.find(panel, "listColumn");
+    const conversationView = Check.find(panel, "conversationView");
 
-    if (!rail || rail.width <= 0) return root.fail("service rail has no width at the minimum size");
-    if (!listColumn || listColumn.width <= 0) return root.fail("list column has no width at the minimum size");
-    if (!conversationView || conversationView.width <= 0) return root.fail("conversation view has no width at the minimum size");
+    if (!rail || rail.width <= 0) return Check.fail("service rail has no width at the minimum size");
+    if (!listColumn || listColumn.width <= 0) return Check.fail("list column has no width at the minimum size");
+    if (!conversationView || conversationView.width <= 0) return Check.fail("conversation view has no width at the minimum size");
     if (listColumn.width > Style.space(360) + 1)
-      return root.fail("list column is " + listColumn.width + " wide, more than its maximum of " + Style.space(360));
+      return Check.fail("list column is " + listColumn.width + " wide, more than its maximum of " + Style.space(360));
     if (conversationView.width < Style.space(300))
-      return root.fail("conversation view is only " + conversationView.width + " wide at the minimum size");
+      return Check.fail("conversation view is only " + conversationView.width + " wide at the minimum size");
 
     root.checkQuit();
   }
@@ -309,7 +284,7 @@ ShellRoot {
       // Left moves from Keep in background to Quit.
       t.keyClick(Qt.Key_Left);
       t.keyClick(Qt.Key_Return);
-      if (service.status !== "stopped") return root.fail("Left then Enter on the close question left the helper " + service.status);
+      if (service.status !== "stopped") return Check.fail("Left then Enter on the close question left the helper " + service.status);
 
       panel.open("{}");
       root.pollAttempts = 0;
@@ -322,7 +297,7 @@ ShellRoot {
     if (service.status === "ready") return root.checkCompositorClose();
 
     root.pollAttempts++;
-    if (root.pollAttempts >= 100) return root.fail("reopening did not restart the helper: " + service.status);
+    if (root.pollAttempts >= 100) return Check.fail("reopening did not restart the helper: " + service.status);
     root.retry(root.waitForReadyAgain);
   }
 
@@ -334,11 +309,11 @@ ShellRoot {
 
     root.pollAttempts = 0;
     root.waitForQuestion(() => {
-      if (!root.find("panelWindow").visible) return root.fail("the window did not come back to ask");
-      if (fakeShell.hideCalls.length !== hidesBefore) return root.fail("the window reported hidden before asking");
+      if (!root.find("panelWindow").visible) return Check.fail("the window did not come back to ask");
+      if (fakeShell.hideCalls.length !== hidesBefore) return Check.fail("the window reported hidden before asking");
 
       t.keyClick(Qt.Key_Escape);
-      if (root.find("closeConfirm").visible) return root.fail("Escape did not cancel the close question");
+      if (root.find("closeConfirm").visible) return Check.fail("Escape did not cancel the close question");
       console.log("PASS Panel");
       Qt.exit(0);
     });
