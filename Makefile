@@ -49,16 +49,20 @@ test-js: ## Run the JavaScript tests with their coverage gate
 # Each tests/qml/<Name>/shell.qml runs offscreen in its own root, which holds
 # the test, the ui/ tree and Omarchy's Commons and Ui. WAYLAND_DISPLAY and
 # HYPRLAND_INSTANCE_SIGNATURE are unset so no test can reach the running
-# desktop session.
+# desktop session. A test whose directory holds a no-dev-build file gets
+# the launcher without bin/dev, so the helper starts out not installed, and
+# OMA_RELEASE_BASE points the installer at a release the test creates.
 test-qml: ## Run the offscreen QML component tests in tests/qml/
 	@./scripts/qml-imports.sh >/dev/null
 	@status=0; for dir in tests/qml/*/; do \
 		name=$$(basename "$$dir"); root=build/qml-tests/$$name; \
 		rm -rf "$$root"; mkdir -p "$$root"; cp -R "$$dir". "$$root/"; \
-		for link in ui bin scripts; do ln -s "$(CURDIR)/$$link" "$$root/$$link"; done; \
+		for link in ui scripts helper-version; do ln -s "$(CURDIR)/$$link" "$$root/$$link"; done; \
+		if [ -e "$$dir/no-dev-build" ]; then mkdir "$$root/bin"; ln -s "$(CURDIR)/bin/oma-messenger-service" "$$root/bin/"; \
+		else ln -s "$(CURDIR)/bin" "$$root/bin"; fi; \
 		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 		ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
-		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORM=offscreen XDG_DATA_HOME="$(CURDIR)/$$root/data" \
+		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORM=offscreen XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 			timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
 		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
 	done; exit $$status

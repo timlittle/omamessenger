@@ -31,3 +31,24 @@ jobs:
         run: shellcheck scripts/*.sh bin/oma-messenger-service
       - name: Release build
         run: ./scripts/build-release.sh
+
+  # The QML tests and Qt 6 lint need Quickshell and Omarchy's shell, so they
+  # run in Arch with Omarchy's source checked out at the version the UI is
+  # built against.
+  qml:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    permissions:
+      contents: read
+    env:
+      OMARCHY_SHELL_DIR: /tmp/omarchy/shell
+    steps:
+      - name: Install Quickshell, Qt 6, Go and Node
+        run: pacman -Syu --noconfirm --needed git go nodejs quickshell qt6-declarative
+      - uses: actions/checkout@v4
+      - name: Check out Omarchy 4.0.4
+        run: git clone --depth 1 --branch v4.0.4 https://github.com/basecamp/omarchy /tmp/omarchy
+      - name: Offscreen QML tests
+        run: make build test-qml
+      - name: Qt 6 qmllint
+        run: ./scripts/qml-imports.sh && /usr/lib/qt6/bin/qmllint -I build/qml --max-warnings 0 $(find ui -name '*.qml')

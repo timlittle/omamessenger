@@ -237,6 +237,7 @@ Item {
           }
 
           Ui.Button {
+            objectName: "installButton"
             text: "Install helper"
             visible: root.service && root.service.status === "missing"
             onClicked: root.service.installHelper()
