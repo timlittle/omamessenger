@@ -919,11 +919,14 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
 - files: ui/components/MessageDelegate.qml
 - do: day separator (when `showDay`), sender name for incoming group messages when `showSender`, bubble per C8, time + status glyph row, failed retry link. Tighter top spacing when `groupedWithOlder`. Signal `retry(id)`.
 
-### [ ] B12 · Composer.qml (S)
+### [x] B12 · Composer.qml (S)
 - deps: GS
 - files: ui/components/Composer.qml
 - do: `TextArea` with wrap, grows to 6 lines then scrolls, placeholder "Message <title>". Props `text`, `enabled`; signal `submitted(text)`. Keys are forwarded by Panel (do not handle Enter locally except via Panel routing). Send button. Colours, spacing and fonts from F12 tokens only (C8).
 - verify: `scripts/qml-imports.sh && /usr/lib/qt6/bin/qmllint -I build/qml ui/components/Composer.qml` (B21 adds the script; until then create the two `build/qml/qs/{Commons,Ui}` symlinks by hand, per F2).
+- result (Sonnet, reviewed): API `title`, `text`, `input` (the inner TextArea, for Panel key routing), `submitted(text)`, `submit()` (trims; no-op when empty; clears after sending), `focusInput()`. It grows to 6 lines, then scrolls, and dims when disabled.
+  - The agent worked on the stale worktree base and missed F15, so the integrator moved it to `Theme.font`/`Theme.spacing` and Omarchy's control-state tokens (`normalFill`, `focusFillColor`, `focusBorderColor`, `selectionFill`).
+  - Qt 6 lint is clean; an offscreen Quickshell smoke test passed (placeholder, trimmed submit, whitespace no-op, cleared input, focus).
 
 ### [ ] B13 · ConversationView.qml (M)
 - deps: B11, B12

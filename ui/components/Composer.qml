@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
+import "../theme"
 
 // Message composer: a growing text input plus a Send button.
 //
@@ -49,14 +50,14 @@ Item {
 
   FontMetrics {
     id: fontMetrics
-    font.family: Style.font.family
-    font.pixelSize: Style.font.body
+    font.family: Theme.font.family
+    font.pixelSize: Theme.font.body
   }
 
   RowLayout {
     id: layout
     anchors.fill: parent
-    spacing: Style.spacing.controlGap
+    spacing: Theme.spacing.controlGap
 
     ScrollView {
       id: inputScroll
@@ -72,23 +73,24 @@ Item {
         selectByMouse: true
         placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
 
-        font.family: Style.font.family
-        font.pixelSize: Style.font.body
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.body
         color: Color.foreground
         placeholderTextColor: Util.alpha(Color.foreground, 0.4)
-        selectionColor: Util.alpha(Color.accent, 0.35)
+        selectionColor: Style.selectionFill
         selectedTextColor: Color.foreground
 
-        topPadding: Style.spacing.inputPaddingY
-        bottomPadding: Style.spacing.inputPaddingY
-        leftPadding: Style.spacing.controlPaddingX
-        rightPadding: Style.spacing.controlPaddingX
+        topPadding: Theme.spacing.inputPaddingY
+        bottomPadding: Theme.spacing.inputPaddingY
+        leftPadding: Theme.spacing.controlPaddingX
+        rightPadding: Theme.spacing.controlPaddingX
 
         background: Rectangle {
           radius: Style.cornerRadius
-          color: area.activeFocus ? Util.alpha(Color.foreground, 0.08) : Util.alpha(Color.foreground, 0.04)
-          border.width: area.activeFocus ? Style.space(1) : 0
-          border.color: area.activeFocus ? Util.alpha(Color.accent, 0.6) : "transparent"
+          // Omarchy's control-state tokens, so the input matches its own fields.
+          color: area.activeFocus ? Style.focusFillColor : Style.normalFill
+          border.width: area.activeFocus ? Style.focusBorderWidth : 0
+          border.color: area.activeFocus ? Style.focusBorderColor : "transparent"
 
           Behavior on color { ColorAnimation { duration: 120 } }
         }
