@@ -5,8 +5,8 @@ OmaMessenger is a keyboard-first messaging client for [Omarchy](https://omarchy.
 ## Status
 
 - **Helper and UI:** complete and tested against scripted fake accounts, which only test builds contain: sending with delivery receipts, failures and retries, unread counts, notifications, search, the command palette and keyboard navigation.
-- **Telegram:** in progress. Until it lands, the installed plugin has no accounts to show.
-- **WhatsApp and Telegram:** not connected yet. The planned libraries are [whatsmeow](https://github.com/tulir/whatsmeow) and [gotd/td](https://github.com/gotd/td).
+- **Telegram:** the helper connects through [gotd/td](https://github.com/gotd/td): sign-in by QR code, or phone and code with two-step verification, then recent chats, live messages, sending and read receipts. The window's account setup is in progress.
+- **WhatsApp:** not connected yet. The planned library is [whatsmeow](https://github.com/tulir/whatsmeow).
 
 ## Requirements
 
@@ -31,7 +31,7 @@ Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. R
 
 ## Data and privacy
 
-The helper keeps its database in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db`, readable only by you. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
+The helper keeps its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you: `messages.db`, and in `telegram/` each Telegram account's API credentials and session. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
 
 ## Keyboard shortcuts
 
@@ -67,6 +67,9 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | --- | --- | --- |
 | `hello` | | `{protocol, version, unreadTotal}` |
 | `accounts.list` | | `[Account]` |
+| `accounts.add` | `{service, apiId, apiHash}` | `Account`; Telegram only, with the API id and hash from [my.telegram.org](https://my.telegram.org) |
+| `accounts.remove` | `{accountId}` | `{}`; signs out and deletes the account's session, credentials and messages |
+| `auth.submit` | `{accountId, step, value}` | `{}`; answers an `auth.step`: `phone`, `code` or `password` |
 | `contacts.list` | `{accountId, query}` | `[Contact]` |
 | `conversations.list` | `{query}` | `[Conversation]`, newest first; `match` holds the newest matching message |
 | `conversations.open` | `{accountId, contactId}` | `Conversation`, created if needed |
@@ -87,7 +90,9 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 
 | Event | Data |
 | --- | --- |
-| `account.updated` | `Account` |
+| `account.updated` | `Account`; `status` is `connecting`, `connected`, `needs-auth`, `error` or `offline` |
+| `account.removed` | `{accountId}` |
+| `auth.step` | `{accountId, kind, qr, hint}`: `kind` is `qr` (a base64 PNG to scan; reply with a `phone` to sign in by code instead), `code` or `password` |
 | `conversation.updated` | `Conversation` |
 | `message.added` | `Message` |
 | `message.updated` | `Message` |

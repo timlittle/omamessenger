@@ -15,6 +15,7 @@ const (
 const (
 	AccountConnecting = "connecting"
 	AccountConnected  = "connected"
+	AccountNeedsAuth  = "needs-auth"
 	AccountError      = "error"
 	AccountOffline    = "offline"
 )

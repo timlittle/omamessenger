@@ -60,6 +60,10 @@ func (s *recordingSink) OutgoingStatus(_ context.Context, localID, remoteID, sta
 	s.record("outgoing %s %s %s", localID, remoteID, status)
 }
 
+func (s *recordingSink) AuthStep(_ context.Context, accountID string, step connector.AuthStep) {
+	s.record("auth %s %s", accountID, step.Kind)
+}
+
 func (s *recordingSink) Typing(_ context.Context, _, remoteID, _ string, active bool) {
 	s.record("typing %s %t", remoteID, active)
 }

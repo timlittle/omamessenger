@@ -31,6 +31,9 @@ func methods(c *app.Commands, version string) map[string]method {
 	table := map[string]method{
 		"hello":                  bind(hello(c, version)),
 		"accounts.list":          bind(accountsList(c)),
+		"accounts.add":           bind(accountsAdd(c)),
+		"accounts.remove":        bind(accountsRemove(c)),
+		"auth.submit":            bind(authSubmit(c)),
 		"contacts.list":          bind(contactsList(c)),
 		"conversations.list":     bind(conversationsList(c)),
 		"conversations.open":     bind(conversationsOpen(c)),
@@ -73,6 +76,47 @@ func hello(c *app.Commands, version string) func(context.Context, none) (any, er
 func accountsList(c *app.Commands) func(context.Context, none) (any, error) {
 	return func(ctx context.Context, _ none) (any, error) {
 		return c.Accounts(ctx)
+	}
+}
+
+// addAccountParams names the service and, for Telegram, the API id and
+// hash from my.telegram.org.
+type addAccountParams struct {
+	Service string `json:"service"`
+	APIID   int    `json:"apiId"`
+	APIHash string `json:"apiHash"`
+}
+
+// accountsAdd adds an account and starts signing it in.
+func accountsAdd(c *app.Commands) func(context.Context, addAccountParams) (any, error) {
+	return func(ctx context.Context, p addAccountParams) (any, error) {
+		return c.AddAccount(ctx, app.NewAccount{Service: p.Service, APIID: p.APIID, APIHash: p.APIHash})
+	}
+}
+
+// accountParams names one account.
+type accountParams struct {
+	AccountID string `json:"accountId"`
+}
+
+// accountsRemove signs an account out and deletes it.
+func accountsRemove(c *app.Commands) func(context.Context, accountParams) (any, error) {
+	return func(ctx context.Context, p accountParams) (any, error) {
+		return none{}, c.RemoveAccount(ctx, p.AccountID)
+	}
+}
+
+// authParams answers a sign-in step.
+type authParams struct {
+	AccountID string `json:"accountId"`
+	Step      string `json:"step"`
+	Value     string `json:"value"`
+}
+
+// authSubmit answers the step an account's sign-in asked for.
+func authSubmit(c *app.Commands) func(context.Context, authParams) (any, error) {
+	return func(ctx context.Context, p authParams) (any, error) {
+		return none{}, c.SubmitAuth(ctx, p.AccountID, p.Step, p.Value)
 	}
 }
 

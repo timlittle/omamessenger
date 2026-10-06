@@ -9,5 +9,9 @@ override:
     threshold: 100
   - path: ^backend/internal/notify$
     threshold: 75
+  # Run, sign-in and the gotd adapter need a live Telegram connection;
+  # everything they call is tested against a fake API.
+  - path: ^backend/internal/connector/telegram$
+    threshold: 80
   - path: ^backend$
     threshold: 80

@@ -107,6 +107,11 @@ func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, n
 	in.events.publish(ctx, EventTyping, Typing{ConversationID: conv.ID, Name: name, Active: active})
 }
 
+// AuthStep publishes what an account's sign-in needs from the user.
+func (in *Ingest) AuthStep(ctx context.Context, accountID string, step connector.AuthStep) {
+	in.events.publish(ctx, EventAuthStep, AuthStep{AccountID: accountID, Kind: step.Kind, QR: step.QR, Hint: step.Hint})
+}
+
 // save stores a message in a known conversation. ok is false when the
 // conversation is unknown, storing fails or the message is a duplicate.
 // before is the unread total before the message was stored.

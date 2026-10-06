@@ -29,6 +29,7 @@ func (s *statusSink) Incoming(context.Context, string, string, domain.Message) {
 func (s *statusSink) History(context.Context, string, string, domain.Message)  {}
 func (s *statusSink) OutgoingStatus(context.Context, string, string, string)   {}
 func (s *statusSink) Typing(context.Context, string, string, string, bool)     {}
+func (s *statusSink) AuthStep(context.Context, string, connector.AuthStep)     {}
 
 // recorded returns a copy of the statuses seen so far.
 func (s *statusSink) recorded() []string {
@@ -67,6 +68,18 @@ func (c *fakeConnector) Send(_ context.Context, _ domain.Conversation, m domain.
 }
 
 func (c *fakeConnector) MarkRead(context.Context, domain.Conversation) error {
+	return nil
+}
+
+// signingIn is a connector that signs in, recording what it was given.
+type signingIn struct {
+	fakeConnector
+	answers []string
+}
+
+func (c *signingIn) SubmitAuth(_ context.Context, step, value string) error {
+	c.answers = append(c.answers, step+"="+value)
+
 	return nil
 }
 

@@ -26,6 +26,26 @@ type Dispatcher interface {
 	MarkRead(ctx context.Context, conv domain.Conversation) error
 }
 
+// SignIn hands sign-in input, such as a code, to an account's connector.
+type SignIn interface {
+	SubmitAuth(ctx context.Context, accountID, step, value string) error
+}
+
+// NewAccount is what adding an account needs: the service, and for
+// Telegram the API id and hash from my.telegram.org.
+type NewAccount struct {
+	Service string
+	APIID   int
+	APIHash string
+}
+
+// Accounts adds and removes accounts, starting or stopping their
+// connectors and keeping or deleting their sessions.
+type Accounts interface {
+	Add(ctx context.Context, a NewAccount) (domain.Account, error)
+	Remove(ctx context.Context, accountID string) error
+}
+
 // Notifier shows a desktop notification.
 type Notifier interface {
 	Notify(title, body string)
@@ -48,6 +68,8 @@ type Deps struct {
 	Dispatcher Dispatcher
 	Notifier   Notifier
 	Publisher  Publisher
+	SignIn     SignIn
+	Accounts   Accounts
 	Fake       Injector
 }
 
@@ -58,7 +80,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, fake: d.Fake,
 		events: events, ui: state,
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}

@@ -23,6 +23,13 @@ const stableRun = 5 * time.Minute
 // ErrNoConnector reports an account no connector serves.
 var ErrNoConnector = errors.New("no connector for account")
 
+// ErrDuplicateAccount reports a connector for an account already served.
+var ErrDuplicateAccount = errors.New("account already has a connector")
+
+// ErrNoAuthentication reports sign-in input for a connector that does not
+// sign in.
+var ErrNoAuthentication = errors.New("connector does not sign in")
+
 // AccountUpserter records the accounts the Manager serves.
 type AccountUpserter interface {
 	UpsertAccount(ctx context.Context, a domain.Account) error
@@ -30,51 +37,122 @@ type AccountUpserter interface {
 
 // Manager runs one supervised goroutine per connector, restarting it with
 // backoff when it fails, and routes outgoing work to the right connector.
+// Connectors can be added and removed while it runs, as accounts are
+// added and removed.
 type Manager struct {
-	connectors []Connector
-	byAccount  map[string]Connector
-	wg         sync.WaitGroup
+	initial  []Connector
+	requests chan func(ctx context.Context, sink Sink)
+	wg       sync.WaitGroup
+
+	mu        sync.Mutex
+	byAccount map[string]*running
 }
 
-// NewManager indexes connectors by account, rejecting nil connectors,
-// empty account ids and duplicates.
-func NewManager(connectors ...Connector) (*Manager, error) {
-	m := &Manager{connectors: connectors, byAccount: make(map[string]Connector, len(connectors))}
+// running is one connector the Manager is supervising.
+type running struct {
+	conn   Connector
+	cancel context.CancelFunc
+	done   chan struct{}
+}
 
+// NewManager prepares the connectors to start with, rejecting nil
+// connectors, empty account ids and duplicates.
+func NewManager(connectors ...Connector) (*Manager, error) {
+	seen := make(map[string]bool, len(connectors))
 	for _, c := range connectors {
-		if c == nil {
-			return nil, errors.New("connector: nil connector")
+		if err := validate(c); err != nil {
+			return nil, err
 		}
 
 		id := c.Account().ID
-		if id == "" {
-			return nil, errors.New("connector: empty account id")
+		if seen[id] {
+			return nil, fmt.Errorf("connector: %w: %q", ErrDuplicateAccount, id)
 		}
-
-		if _, dup := m.byAccount[id]; dup {
-			return nil, fmt.Errorf("connector: duplicate account %q", id)
-		}
-
-		m.byAccount[id] = c
+		seen[id] = true
 	}
 
-	return m, nil
+	return &Manager{
+		initial:   connectors,
+		requests:  make(chan func(context.Context, Sink)),
+		byAccount: make(map[string]*running),
+	}, nil
 }
 
-// Start records each connector's account, then runs every connector until
-// ctx is cancelled. Call it once; Wait blocks until the runs have stopped.
+// Start records each initial connector's account, then runs connectors
+// until ctx is cancelled. Call it once; Wait blocks until every run has
+// stopped.
 func (m *Manager) Start(ctx context.Context, accounts AccountUpserter, sink Sink) error {
-	for _, c := range m.connectors {
+	for _, c := range m.initial {
 		if err := accounts.UpsertAccount(ctx, c.Account()); err != nil {
 			return fmt.Errorf("connector: record account %q: %w", c.Account().ID, err)
 		}
 	}
 
-	for _, c := range m.connectors {
-		m.wg.Go(func() { supervise(ctx, c, sink) })
+	for _, c := range m.initial {
+		m.launch(ctx, c, sink)
 	}
 
+	// Connectors added later start inside this loop, which owns ctx.
+	m.wg.Go(func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case start := <-m.requests:
+				start(ctx, sink)
+			}
+		}
+	})
+
 	return nil
+}
+
+// Add starts a connector for a newly added account. The caller records
+// the account first. It fails if the Manager is not running or the
+// account already has a connector.
+func (m *Manager) Add(ctx context.Context, c Connector) error {
+	if err := validate(c); err != nil {
+		return err
+	}
+
+	started := make(chan error, 1)
+	start := func(runCtx context.Context, sink Sink) {
+		if m.has(c.Account().ID) {
+			started <- fmt.Errorf("connector: %w: %q", ErrDuplicateAccount, c.Account().ID)
+			return
+		}
+
+		m.launch(runCtx, c, sink)
+		started <- nil
+	}
+
+	select {
+	case m.requests <- start:
+		return <-started
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Remove stops the connector for an account and waits for it to finish,
+// so its session files can be deleted safely.
+func (m *Manager) Remove(ctx context.Context, accountID string) error {
+	m.mu.Lock()
+	r, ok := m.byAccount[accountID]
+	delete(m.byAccount, accountID)
+	m.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("connector: %w %q", ErrNoConnector, accountID)
+	}
+
+	r.cancel()
+	select {
+	case <-r.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Wait blocks until every connector started by Start has stopped.
@@ -102,14 +180,72 @@ func (m *Manager) MarkRead(ctx context.Context, conv domain.Conversation) error 
 	return c.MarkRead(ctx, conv)
 }
 
+// SubmitAuth hands sign-in input, such as a code, to the connector for
+// its account.
+func (m *Manager) SubmitAuth(ctx context.Context, accountID, step, value string) error {
+	c, err := m.connectorFor(accountID)
+	if err != nil {
+		return err
+	}
+
+	auth, ok := c.(Authenticator)
+	if !ok {
+		return fmt.Errorf("connector: %w: %q", ErrNoAuthentication, accountID)
+	}
+
+	return auth.SubmitAuth(ctx, step, value)
+}
+
+// launch supervises c under its own context, so Remove can stop it alone.
+func (m *Manager) launch(ctx context.Context, c Connector, sink Sink) {
+	runCtx, cancel := context.WithCancel(ctx)
+	r := &running{conn: c, cancel: cancel, done: make(chan struct{})}
+
+	m.mu.Lock()
+	m.byAccount[c.Account().ID] = r
+	m.mu.Unlock()
+
+	m.wg.Go(func() {
+		defer close(r.done)
+		defer cancel()
+		supervise(runCtx, c, sink)
+	})
+}
+
+// has reports whether an account already has a running connector.
+func (m *Manager) has(accountID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	_, ok := m.byAccount[accountID]
+
+	return ok
+}
+
 // connectorFor returns the connector serving accountID.
 func (m *Manager) connectorFor(accountID string) (Connector, error) {
-	c, ok := m.byAccount[accountID]
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	r, ok := m.byAccount[accountID]
 	if !ok {
 		return nil, fmt.Errorf("connector: %w %q", ErrNoConnector, accountID)
 	}
 
-	return c, nil
+	return r.conn, nil
+}
+
+// validate rejects a nil connector or one without an account id.
+func validate(c Connector) error {
+	if c == nil {
+		return errors.New("connector: nil connector")
+	}
+
+	if c.Account().ID == "" {
+		return errors.New("connector: empty account id")
+	}
+
+	return nil
 }
 
 // supervise runs c until ctx is cancelled. Each failure is reported as an

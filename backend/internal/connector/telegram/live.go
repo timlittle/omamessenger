@@ -1,0 +1,108 @@
+package telegram
+
+import (
+	"context"
+	"strconv"
+	"strings"
+
+	"github.com/gotd/td/tg"
+
+	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/domain"
+)
+
+// handleUpdates reports live updates: new messages, read receipts for
+// what we sent, and typing.
+func (c *Connector) handleUpdates(d tg.UpdateDispatcher, sink connector.Sink) {
+	d.OnNewMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
+		c.newMessage(ctx, sink, u.Message, e)
+		return nil
+	})
+
+	d.OnNewChannelMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewChannelMessage) error {
+		c.newMessage(ctx, sink, u.Message, e)
+		return nil
+	})
+
+	d.OnReadHistoryOutbox(func(ctx context.Context, _ tg.Entities, u *tg.UpdateReadHistoryOutbox) error {
+		c.readUpTo(ctx, sink, shortKey(u.Peer), u.MaxID)
+		return nil
+	})
+
+	d.OnUserTyping(func(ctx context.Context, _ tg.Entities, u *tg.UpdateUserTyping) error {
+		c.typing(ctx, sink, u)
+		return nil
+	})
+}
+
+// newMessage reports a message, first reporting its conversation so a
+// brand-new chat is not dropped. Our own messages from other devices are
+// history: they never notify.
+func (c *Connector) newMessage(ctx context.Context, sink connector.Sink, m tg.MessageClass, te tg.Entities) {
+	msg, ok := m.(*tg.Message)
+	if !ok {
+		return
+	}
+
+	e := fromUpdate(te)
+	conv, ok := peerConversation(c.account.ID, msg.PeerID, e)
+	if !ok {
+		remote, known := c.lookup(shortKey(msg.PeerID))
+		if !known {
+			return
+		}
+		conv.RemoteID = remote
+	} else {
+		c.learn(conv.RemoteID)
+		sink.Conversation(ctx, conv)
+	}
+
+	if msg.Out {
+		sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+		return
+	}
+
+	sink.Incoming(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+}
+
+// readUpTo marks our messages in a conversation read, up to Telegram's
+// message id maxID.
+func (c *Connector) readUpTo(ctx context.Context, sink connector.Sink, key string, maxID int) {
+	remote, ok := c.lookup(key)
+	if !ok {
+		return
+	}
+
+	c.mu.Lock()
+	var read []string
+	for k, localID := range c.sent {
+		i := strings.LastIndex(k, "/")
+		conv, id := k[:i], k[i+1:]
+		n, err := strconv.Atoi(id)
+		if conv == remote && err == nil && n <= maxID {
+			read = append(read, localID)
+			delete(c.sent, k)
+		}
+	}
+	c.mu.Unlock()
+
+	for _, localID := range read {
+		sink.OutgoingStatus(ctx, localID, "", domain.StatusRead)
+	}
+}
+
+// typing reports someone typing in a direct chat.
+func (c *Connector) typing(ctx context.Context, sink connector.Sink, u *tg.UpdateUserTyping) {
+	remote, ok := c.lookup("user:" + strconv.FormatInt(u.UserID, 10))
+	if !ok {
+		return
+	}
+
+	_, stopped := u.Action.(*tg.SendMessageCancelAction)
+	sink.Typing(ctx, c.account.ID, remote, "", !stopped)
+}
+
+// fromUpdate turns an update's entities into ours.
+func fromUpdate(te tg.Entities) entities {
+	return entities{users: te.Users, chats: te.Chats, channels: te.Channels}
+}

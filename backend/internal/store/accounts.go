@@ -75,3 +75,14 @@ func scanAccount(row scanner) (domain.Account, error) {
 
 	return a, err
 }
+
+// DeleteAccount removes an account with its contacts, conversations and
+// messages.
+func (s *Store) DeleteAccount(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM accounts WHERE id=?`, id)
+	if err != nil {
+		return wrap("delete account", err)
+	}
+
+	return requireRow("delete account", res)
+}

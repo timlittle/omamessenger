@@ -145,12 +145,13 @@ func TestSend_RoutesByAccount(t *testing.T) {
 	t.Parallel()
 
 	a, b := &fakeConnector{id: "a"}, &fakeConnector{id: "b"}
-	m, err := connector.NewManager(a, b)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ctx, cancel := context.WithCancel(t.Context())
+	m, _ := startManager(t, ctx, a, b)
+	defer func() {
+		cancel()
+		m.Wait()
+	}()
 
-	ctx := t.Context()
 	if err := m.Send(ctx, domain.Conversation{AccountID: "b"}, domain.Message{ID: "m1"}); err != nil {
 		t.Fatal(err)
 	}
@@ -170,5 +171,116 @@ func TestSend_RoutesByAccount(t *testing.T) {
 		if !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("unknown account = %v, want ErrNoConnector", err)
 		}
+	}
+}
+
+func TestAdd_RunsAConnectorWhileTheManagerRuns(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		m, _ := startManager(t, ctx)
+
+		started := make(chan struct{})
+		added := &fakeConnector{id: "b", run: func(ctx context.Context) error {
+			close(started)
+			<-ctx.Done()
+			return nil
+		}}
+		if err := m.Add(ctx, added); err != nil {
+			t.Fatal(err)
+		}
+		<-started
+
+		if err := m.Send(ctx, domain.Conversation{AccountID: "b"}, domain.Message{ID: "m1"}); err != nil {
+			t.Errorf("Send to the added account = %v", err)
+		}
+
+		if err := m.Add(ctx, &fakeConnector{id: "b"}); !errors.Is(err, connector.ErrDuplicateAccount) {
+			t.Errorf("adding the same account again = %v, want ErrDuplicateAccount", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
+func TestRemove_StopsOnlyThatConnector(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		stopped := make(chan string, 2)
+		connectorFor := func(id string) *fakeConnector {
+			return &fakeConnector{id: id, run: func(ctx context.Context) error {
+				<-ctx.Done()
+				stopped <- id
+				return nil
+			}}
+		}
+		m, _ := startManager(t, ctx, connectorFor("a"), connectorFor("b"))
+		synctest.Wait()
+
+		if err := m.Remove(ctx, "a"); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := <-stopped; got != "a" {
+			t.Errorf("stopped %q, want a", got)
+		}
+
+		if err := m.Send(ctx, domain.Conversation{AccountID: "a"}, domain.Message{}); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("Send to a removed account = %v, want ErrNoConnector", err)
+		}
+
+		if err := m.Remove(ctx, "a"); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("removing it twice = %v, want ErrNoConnector", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
+func TestSubmitAuth_ReachesConnectorsThatSignIn(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &signingIn{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+
+		if err := m.SubmitAuth(ctx, "tg", "code", "12345"); err != nil {
+			t.Fatal(err)
+		}
+
+		if !slices.Equal(tg.answers, []string{"code=12345"}) {
+			t.Errorf("answers = %v", tg.answers)
+		}
+
+		if err := m.SubmitAuth(ctx, "plain", "code", "1"); !errors.Is(err, connector.ErrNoAuthentication) {
+			t.Errorf("SubmitAuth to a connector that does not sign in = %v", err)
+		}
+
+		if err := m.SubmitAuth(ctx, "nobody", "code", "1"); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("SubmitAuth to an unknown account = %v", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
+func TestAdd_GivesUpWhenTheManagerIsNotRunning(t *testing.T) {
+	t.Parallel()
+
+	m, err := connector.NewManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	if err := m.Add(ctx, &fakeConnector{id: "a"}); !errors.Is(err, context.Canceled) {
+		t.Errorf("Add before Start = %v, want context.Canceled", err)
+	}
+
+	if err := m.Add(ctx, nil); err == nil {
+		t.Error("Add(nil) succeeded")
 	}
 }

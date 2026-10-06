@@ -34,11 +34,20 @@ linters:
           allow:
             - $gostd
             - github.com/timlittle/omamessenger/backend/internal/domain$
-        demo:
+        fake:
           list-mode: strict
-          files: ["**/backend/internal/connector/demo/*.go", "!$test"]
+          files: ["**/backend/internal/connector/fake/*.go", "!$test"]
           allow:
             - $gostd
+            - github.com/timlittle/omamessenger/backend/internal/connector$
+            - github.com/timlittle/omamessenger/backend/internal/domain$
+        telegram:
+          list-mode: strict
+          files: ["**/backend/internal/connector/telegram/*.go", "!$test"]
+          allow:
+            - $gostd
+            - github.com/gotd/td
+            - rsc.io/qr
             - github.com/timlittle/omamessenger/backend/internal/connector$
             - github.com/timlittle/omamessenger/backend/internal/domain$
         policy:

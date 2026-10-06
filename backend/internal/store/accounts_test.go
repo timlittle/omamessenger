@@ -86,3 +86,41 @@ func TestAccounts_ListsAndFinds(t *testing.T) {
 		t.Errorf("Account(missing) = %v, want ErrNotFound", err)
 	}
 }
+
+func TestDeleteAccount_RemovesEverythingOfTheAccount(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addAccount(t, s, "keep")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addConversation(t, s, "keep", "other", "Other")
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", Text: "hi", Created: 1})
+	if err := s.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "c1", Name: "Ben"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteAccount(ctx, "wa"); err != nil {
+		t.Fatal(err)
+	}
+
+	for name, err := range map[string]error{
+		"account":      func() error { _, err := s.Account(ctx, "wa"); return err }(),
+		"conversation": func() error { _, err := s.Conversation(ctx, "chat"); return err }(),
+		"message":      func() error { _, err := s.Message(ctx, "m1"); return err }(),
+		"contact":      func() error { _, err := s.Contact(ctx, "wa", "c1"); return err }(),
+	} {
+		if !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("%s after deleting the account: %v, want ErrNotFound", name, err)
+		}
+	}
+
+	if _, err := s.Conversation(ctx, "other"); err != nil {
+		t.Errorf("another account's conversation went too: %v", err)
+	}
+
+	if err := s.DeleteAccount(ctx, "wa"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("deleting it twice = %v, want ErrNotFound", err)
+	}
+}

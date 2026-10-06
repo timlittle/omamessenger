@@ -22,6 +22,8 @@ type fixture struct {
 	notifier   *fakeNotifier
 	published  *fakePublisher
 	injector   *fakeInjector
+	accounts   *fakeAccounts
+	signIn     *fakeSignIn
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -43,9 +45,13 @@ func newFixture(t *testing.T, faked bool) *fixture {
 	f := &fixture{
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
+		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{},
 	}
 
-	deps := app.Deps{Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published}
+	deps := app.Deps{
+		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
+		Accounts: f.accounts, SignIn: f.signIn,
+	}
 	if faked {
 		deps.Fake = f.injector
 	}
@@ -170,4 +176,42 @@ func (i *fakeInjector) Inject(ctx context.Context, remoteID string) (domain.Mess
 // incoming returns an incoming message from Alex with the given remote id.
 func incoming(remoteID, text string) domain.Message {
 	return domain.Message{RemoteID: remoteID, SenderID: "alex", SenderName: "Alex", Text: text, Created: 1}
+}
+
+// fakeAccounts adds and removes accounts straight in the store, failing
+// with err when it is set.
+type fakeAccounts struct {
+	store *store.Store
+	added []app.NewAccount
+	err   error
+}
+
+func (a *fakeAccounts) Add(ctx context.Context, n app.NewAccount) (domain.Account, error) {
+	if a.err != nil {
+		return domain.Account{}, a.err
+	}
+
+	a.added = append(a.added, n)
+	account := domain.Account{ID: "tg-new", Service: n.Service, Name: "Telegram", Status: "needs-auth"}
+
+	return account, a.store.UpsertAccount(ctx, account)
+}
+
+func (a *fakeAccounts) Remove(ctx context.Context, accountID string) error {
+	if a.err != nil {
+		return a.err
+	}
+
+	return a.store.DeleteAccount(ctx, accountID)
+}
+
+// fakeSignIn records the sign-in answers it is given.
+type fakeSignIn struct {
+	answers []string
+}
+
+func (s *fakeSignIn) SubmitAuth(_ context.Context, accountID, step, value string) error {
+	s.answers = append(s.answers, accountID+" "+step+"="+value)
+
+	return nil
 }

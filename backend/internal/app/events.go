@@ -14,6 +14,8 @@ const (
 	EventMessageUpdated      = "message.updated"
 	EventUnreadChanged       = "unread.changed"
 	EventTyping              = "typing"
+	EventAccountRemoved      = "account.removed"
+	EventAuthStep            = "auth.step"
 )
 
 // UnreadChanged is the data of an unread.changed event.
@@ -26,6 +28,20 @@ type Typing struct {
 	ConversationID string `json:"conversationId"`
 	Name           string `json:"name"`
 	Active         bool   `json:"active"`
+}
+
+// AccountRemoved is the data of an account.removed event.
+type AccountRemoved struct {
+	AccountID string `json:"accountId"`
+}
+
+// AuthStep is the data of an auth.step event: what an account's sign-in
+// needs from the user next.
+type AuthStep struct {
+	AccountID string `json:"accountId"`
+	Kind      string `json:"kind"`
+	QR        string `json:"qr,omitempty"`
+	Hint      string `json:"hint,omitempty"`
 }
 
 // events publishes UI events, including the derived ones: a conversation's

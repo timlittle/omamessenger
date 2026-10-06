@@ -26,6 +26,28 @@ type Connector interface {
 	MarkRead(ctx context.Context, conv domain.Conversation) error
 }
 
+// Authenticator is a Connector that signs in to its service. While it
+// waits for the user it reports what it needs with Sink.AuthStep, and
+// SubmitAuth delivers the answer.
+type Authenticator interface {
+	// SubmitAuth answers the step the connector asked for: "phone",
+	// "code" or "password".
+	SubmitAuth(ctx context.Context, step, value string) error
+}
+
+// AuthStep is what a signing-in connector needs from the user next.
+type AuthStep struct {
+	// Kind is "qr", "phone", "code" or "password".
+	Kind string `json:"kind"`
+
+	// QR is a PNG image, base64-encoded, to scan with the service's phone
+	// app. Set only for the "qr" kind.
+	QR string `json:"qr,omitempty"`
+
+	// Hint explains the step, for example where the code was sent.
+	Hint string `json:"hint,omitempty"`
+}
+
 // Sink receives normalized updates from a running Connector. It has one
 // method per kind of update so that connectors stay free of any protocol
 // or storage detail.
@@ -51,4 +73,7 @@ type Sink interface {
 
 	// Typing reports that someone started or stopped typing.
 	Typing(ctx context.Context, accountID, conversationRemoteID, name string, active bool)
+
+	// AuthStep reports what a signing-in connector needs from the user.
+	AuthStep(ctx context.Context, accountID string, step AuthStep)
 }

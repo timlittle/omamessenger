@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -68,7 +69,8 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	logger := log.New(s.errOut, "", 0)
 	srv := server.New(helperVersion, logger)
 
-	commands, ingest, manager, err := wire(db, srv)
+	registry := &accountRegistry{db: db, dir: filepath.Join(cfg.dataDir, "telegram"), connect: telegramConnector}
+	commands, ingest, manager, err := wire(ctx, db, srv, registry)
 	if err != nil {
 		return err
 	}
@@ -93,22 +95,29 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	return nil
 }
 
-// wire builds the application around db and srv. Test builds add the fake
-// connectors; see fake.go.
-func wire(db *store.Store, srv *server.Server) (*app.Commands, *app.Ingest, *connector.Manager, error) {
-	deps := app.Deps{Store: db, Notifier: notify.Desktop{}, Publisher: srv}
+// wire builds the application around db and srv, starting with the
+// accounts already saved. Test builds add the fake connectors; see
+// fake.go.
+func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *accountRegistry) (*app.Commands, *app.Ingest, *connector.Manager, error) {
+	deps := app.Deps{Store: db, Notifier: notify.Desktop{}, Publisher: srv, Accounts: registry}
 
 	connectors, injector := fakeConnectors()
 	if injector != nil {
 		deps.Fake = injector
 	}
 
-	manager, err := connector.NewManager(connectors...)
+	saved, err := registry.saved(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	deps.Dispatcher = manager
+	manager, err := connector.NewManager(append(connectors, saved...)...)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	registry.manager = manager
+	deps.Dispatcher, deps.SignIn = manager, manager
 	commands, ingest := app.New(deps)
 
 	return commands, ingest, manager, nil

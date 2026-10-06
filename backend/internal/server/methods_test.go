@@ -57,7 +57,14 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("conversations.setMuted = %+v, %v", muted, err)
 	}
 
+	added, err := call[domain.Account](t, s, "accounts.add", map[string]any{"service": "telegram", "apiId": 1, "apiHash": "abc"})
+	if err != nil || added.ID != "tg-new" {
+		t.Errorf("accounts.add = %+v, %v", added, err)
+	}
+
 	for method, params := range map[string]any{
+		"auth.submit":            map[string]string{"accountId": "tg-new", "step": "code", "value": "12345"},
+		"accounts.remove":        map[string]string{"accountId": "tg-new"},
 		"conversations.markRead": map[string]string{"conversationId": "chat"},
 		"ui.setFocus":            map[string]any{"conversationId": "chat", "windowActive": true},
 		"settings.apply":         map[string]bool{"notifications": true},

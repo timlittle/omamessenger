@@ -12,6 +12,8 @@ import (
 type Commands struct {
 	store      *store.Store
 	dispatcher Dispatcher
+	signIn     SignIn
+	accounts   Accounts
 	fake       Injector
 	events     *events
 	ui         *uiState

@@ -101,6 +101,7 @@ func storeCalls(t *testing.T, s *store.Store) map[string]func() error {
 
 	return map[string]func() error{
 		"UpsertAccount":        func() error { return s.UpsertAccount(ctx, account) },
+		"DeleteAccount":        func() error { return s.DeleteAccount(ctx, "wa") },
 		"SetAccountStatus":     func() error { _, err := s.SetAccountStatus(ctx, "wa", "connected", ""); return err },
 		"Account":              func() error { _, err := s.Account(ctx, "wa"); return err },
 		"Accounts":             func() error { _, err := s.Accounts(ctx); return err },

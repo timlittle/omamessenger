@@ -40,7 +40,7 @@ func connect(t *testing.T, faked bool) *session {
 	seed(t, db)
 
 	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
-	deps := app.Deps{Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv}
+	deps := app.Deps{Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: storeAccounts{db}, SignIn: acceptAll{}}
 	if faked {
 		deps.Fake = unreachableFake{}
 	}
@@ -132,6 +132,24 @@ type acceptAll struct{}
 
 func (acceptAll) Send(context.Context, domain.Conversation, domain.Message) error { return nil }
 func (acceptAll) MarkRead(context.Context, domain.Conversation) error             { return nil }
+
+// SubmitAuth accepts any sign-in answer.
+func (acceptAll) SubmitAuth(context.Context, string, string, string) error { return nil }
+
+// storeAccounts adds and removes accounts straight in the store.
+type storeAccounts struct {
+	db *store.Store
+}
+
+func (a storeAccounts) Add(ctx context.Context, n app.NewAccount) (domain.Account, error) {
+	account := domain.Account{ID: "tg-new", Service: n.Service, Name: "Telegram"}
+
+	return account, a.db.UpsertAccount(ctx, account)
+}
+
+func (a storeAccounts) Remove(ctx context.Context, accountID string) error {
+	return a.db.DeleteAccount(ctx, accountID)
+}
 
 // silent is a notifier that shows nothing.
 type silent struct{}
