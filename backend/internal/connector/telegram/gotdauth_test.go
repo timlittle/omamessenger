@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"image/color"
 	"image/png"
 	"testing"
 
@@ -68,7 +69,26 @@ func TestQRPNG_DrawsAPNG(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := png.Decode(bytes.NewReader(raw)); err != nil {
-		t.Errorf("not a PNG: %v", err)
+	img, err := png.Decode(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("not a PNG: %v", err)
 	}
+
+	// A scanner needs a white margin round the code, and the code drawn
+	// large: the top-left finder square starts dark just inside the margin.
+	inside := qrMargin*qrScale + 1
+	if dark(img.At(1, 1)) || !dark(img.At(inside, inside)) {
+		t.Error("QR code is not drawn scaled inside a white margin")
+	}
+
+	if size := img.Bounds().Dx(); size < 200 {
+		t.Errorf("QR image is %d pixels wide, too small to scan", size)
+	}
+}
+
+// dark reports whether a pixel is closer to black than white.
+func dark(c color.Color) bool {
+	r, _, _, _ := c.RGBA()
+
+	return r < 0x8000
 }

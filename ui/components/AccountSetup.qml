@@ -135,8 +135,8 @@ Item {
       Image {
         objectName: "qrImage"
         Layout.alignment: Qt.AlignHCenter
-        Layout.preferredWidth: Style.space(220)
-        Layout.preferredHeight: Style.space(220)
+        Layout.preferredWidth: Style.space(280)
+        Layout.preferredHeight: Style.space(280)
         visible: root.stage === "qr"
         source: Setup.qrSource(root.qr)
         smooth: false
