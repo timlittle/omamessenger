@@ -222,6 +222,7 @@ Item {
   }
 
   NewChatDialog {
+    objectName: "newChatDialog"
     id: dialog
     anchors.fill: parent
     visible: root.dialogController.open

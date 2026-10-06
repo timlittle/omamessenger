@@ -47,8 +47,9 @@ test-js: ## Run the JavaScript tests with their coverage gate
 		--test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'
 
 # Each tests/qml/<Name>/shell.qml runs offscreen in its own root, which holds
-# the test, the ui/ tree and Omarchy's Commons and Ui, never touching the
-# running desktop session.
+# the test, the ui/ tree and Omarchy's Commons and Ui. WAYLAND_DISPLAY and
+# HYPRLAND_INSTANCE_SIGNATURE are unset so no test can reach the running
+# desktop session.
 test-qml: ## Run the offscreen QML component tests in tests/qml/
 	@./scripts/qml-imports.sh >/dev/null
 	@status=0; for dir in tests/qml/*/; do \
@@ -57,7 +58,7 @@ test-qml: ## Run the offscreen QML component tests in tests/qml/
 		for link in ui bin scripts; do ln -s "$(CURDIR)/$$link" "$$root/$$link"; done; \
 		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 		ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
-		if env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen XDG_DATA_HOME="$(CURDIR)/$$root/data" \
+		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORM=offscreen XDG_DATA_HOME="$(CURDIR)/$$root/data" \
 			timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
 		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
 	done; exit $$status

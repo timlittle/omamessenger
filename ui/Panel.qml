@@ -54,7 +54,9 @@ Item {
 
     const conversationId = root._conversationIdFrom(payloadJson);
     if (conversationId) root._openConversationId(conversationId);
-    if (alreadyVisible) Hyprland.dispatch("focuswindow title:^OmaMessenger$");
+    // Hyprland 0.56 takes Lua dispatchers; the old "focuswindow title:…"
+    // string no longer parses.
+    if (alreadyVisible) Hyprland.dispatch('hl.dsp.focus({ window = "title:^OmaMessenger$" })');
   }
 
   // close hides the window on the host's request, without reporting back.

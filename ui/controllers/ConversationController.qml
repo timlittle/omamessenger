@@ -308,6 +308,22 @@ Item {
     function onEvent(name, data) {
       if (name === "message.added" || name === "message.updated") root._upsertMessage(data);
       else if (name === "typing") root._handleTyping(data);
+      else if (name === "conversation.updated" && data.id === root.activeId) root.conversation = data;
+    }
+  }
+
+  // A recreated panel starts before the list has loaded, so the open
+  // conversation is filled in, and the helper told it is being looked at,
+  // as soon as the list knows it.
+  Connections {
+    target: root.listController
+
+    function onRailItemsChanged() {
+      if (!root.activeId || root.conversation) return;
+
+      root.conversation = root.listController.findConversation(root.activeId);
+      if (root.conversation)
+        root.service.request("ui.setFocus", { conversationId: root.activeId, windowActive: true }, function() {});
     }
   }
 }
