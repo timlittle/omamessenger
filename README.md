@@ -4,7 +4,7 @@ OmaMessenger is an Omarchy-native, keyboard-first messaging client. Omarchy summ
 
 ## Current status
 
-The Go helper is complete for an offline seeded demo (`--demo`): local sends, scripted delivery states, failures and retries, replies, typing indicators, notifications and unread counts. It is covered by race-tested Go tests and architecture checks.
+The Go helper is complete for an offline seeded demo (`--demo`): local sends, scripted delivery states, failures and retries, replies, typing indicators, notifications and unread counts. It is covered by race-tested Go tests, coverage gates and lint rules.
 
 **The plugin UI is not usable yet.** The window in the repository root (`Panel.qml`, `Service.qml`) is the original scaffold. It still expects an HTTP API on port 43821, and its service starts the helper without a stdin pipe, so the new stdio helper exits at once. Installing the plugin today opens a window that cannot load conversations. Phase B in [docs/TASKS.md](docs/TASKS.md) replaces this UI.
 
@@ -31,7 +31,17 @@ Open or focus OmaMessenger:
 omarchy-shell shell summon io.github.omamessenger '{}'
 ```
 
-The bundled helper starts automatically when the plugin loads in `omarchy-shell`; no Go compiler or separate service setup is needed. The binaries currently target Linux x86_64 and ARM64. There is no separate installer or systemd unit.
+Then install the helper, a small Go program the plugin runs:
+
+```sh
+~/.config/omarchy/plugins/io.github.omamessenger/scripts/install-helper.sh
+```
+
+- The script downloads the release pinned in `helper-version` from this repository's GitHub Releases. It checks the binary against the release's `SHA256SUMS` and confirms it reports the pinned version.
+- It installs the binary into `~/.local/share/omamessenger/bin/`, so you need no Go compiler.
+- Nothing is downloaded until you run it, and running it again when the helper is already installed does nothing.
+- `install-helper.sh --status` reports whether the helper is installed.
+- The helper targets Linux x86_64 and ARM64. There is no systemd unit; `omarchy-shell` starts the helper when the plugin loads.
 
 Remove the plugin with:
 
@@ -83,6 +93,7 @@ The root Makefile provides the regular development workflow:
 ```sh
 make help             # list all targets
 make build            # build the helper for this machine into bin/dev/
+make install-helper   # install the pinned helper release (same as scripts/install-helper.sh)
 make test             # build, Go tests (race + coverage gates), JS tests, lint, docs checks
 make docs-check       # check docs against the code
 make status           # inspect the current worktree
@@ -92,26 +103,40 @@ make install-local    # copy this checkout into Omarchy and enable it
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for project boundaries, the test map, UI review guidance, and pull request expectations. `AGENTS.md` contains the working rules used by both human and AI contributors.
 
-`make test` requires Go 1.26+, Node 22+, and QML lint tools. Go tests run with the race detector against temporary databases; `make coverage` enforces per-package statement gates (`tools/covergate`, excluding only the helper's `func main`). `make lint` runs gofmt, go vet and the architecture rules in `tools/omalint`; `backend/internal/archtest` checks coupling and cohesion as part of the Go tests. `make test` does not launch a compositor or verify rendered pixels.
+`make test` requires Go 1.26+, Node 22+, and QML lint tools.
+
+- `make coverage`: runs the Go tests with the race detector against temporary databases, and enforces the per-package coverage gates in `.testcoverage.yml` with go-test-coverage.
+- `make lint`: runs golangci-lint with `.golangci.yml`. That covers gofmt, go vet, staticcheck, the allowed imports per package, and the size and complexity limits. It also runs `tools/nologcontent`, which keeps message content out of logs.
+- The pinned versions of both tools are built into `build/tools/` on first use (`make tools`).
+
+`make test` does not launch a compositor or verify rendered pixels.
 
 `make install-local` builds the native helper, stages the plugin runtime files into `~/.config/omarchy/plugins/io.github.omamessenger/`, validates it, asks the running Omarchy shell to rescan, and enables the plugin. Then open it with `omarchy-shell shell summon io.github.omamessenger '{}'`. This installs your current working tree so you can try changes before pushing.
 
-Build both bundled Linux helper binaries from source with Go 1.26 or newer:
+Build both release helpers and their `SHA256SUMS` into `build/release/` with Go 1.26 or newer:
 
 ```sh
 ./scripts/build-release.sh
 ```
 
-GitHub Actions rebuilds and commits the bundled binaries when backend source changes on `main`. Pushing a `v*` tag also creates a GitHub Release with both architecture builds attached. The repository’s Actions workflow permissions must allow read and write access to contents for the binary commit and release steps. Plugin installs use the binaries tracked in the repository, so no release download or first-run setup is needed.
+Binaries are never committed. To release, update `helper-version` and the helper's version constant together (a test keeps them equal), then push a matching tag such as `v0.2.0`. The release workflow then:
+
+- tests the helper and builds both binaries
+- records a build-provenance attestation
+- publishes the binaries and `SHA256SUMS` as a GitHub Release
+
+The workflow needs read and write access to contents. CI (`.github/workflows/ci.yml`) runs the tests, lint, docs checks and a release build on every pull request.
 
 ## Architecture
 
 - `backend/`: Go stdio JSON-lines helper, normalized domain, SQLite persistence, and connector boundary
-- `tools/`: rules enforced in code (Go analyzers, coverage gates, docs checks)
-- `docs/`: the build plan, the generated protocol reference and the generated architecture metrics
+- `.golangci.yml`, `.testcoverage.yml`: lint rules (including the architecture rules) and coverage gates
+- `tools/`: the two project-specific checks: `tools/nologcontent` (privacy) and `tools/docscheck` (docs match the code)
+- `docs/`: the build plan and the generated protocol reference
 - `Panel.qml`, `Service.qml`: the scaffold Quickshell panel and helper lifecycle, replaced in Phase B
-- `bin/`: bundled Linux x86_64 and ARM64 helpers plus architecture selector
-- `scripts/build-release.sh`: offline cross-build for bundled helpers
+- `bin/oma-messenger-service`: launcher that prefers a `bin/dev/` build, then the installed pinned release
+- `helper-version`, `scripts/install-helper.sh`: the pinned helper release and its verified installer
+- `scripts/build-release.sh`: offline cross-build of the release helpers
 - `Makefile`: build, test, coverage, validation, local install, status, and pull targets
 - `manifest.json`: Omarchy plugin manifest
 - `vendor/`: pinned Go dependencies for offline builds

@@ -12,17 +12,17 @@ Contracts (§2) are normative: tasks reference them instead of restating them.
 5. Never log message text, contact names, credentials, QR data or session keys (stderr included).
 6. Go: `gofmt`, `go vet` clean; build with `-mod=vendor` (see F9). QML JS libraries: see C8.
 7. Status markers: `[ ]` todo, `[x]` done, `[~]` partially done (the note says what remains).
-8. Every phase ends with a gate task (`GA`, `GR`, `GB`, `GQ`, `GD`). No task in a later phase may start until the previous gate is `[x]`. A gate is checked only when every item in §0.1 and the gate's own list passes. A gate may scope a check to the code that exists at that phase and name the later gate that will enforce its full form. If a check fails, fix the cause in the owning task (re-open it as `[~]`); never waive a check permanently.
-9. Respect C10. Its rules are enforced **in code**: Go analyzers (`tools/omalint`), architecture tests (`backend/internal/archtest`), a tested UI linter (`tools/uilint`) and docs checks (`tools/docscheck`), not ad-hoc shell scripts. A change that needs a new import edge, a higher limit or a suppression must first update C10 and the rule table in code, with the reason.
-10. Suppressions are rare and explicit: `//omalint:ignore <rule> <reason>` (Go) or `// uilint-ignore <rule> <reason>` (QML/JS) on the line above. The reason is mandatory, and there are at most 5 suppressions per language, both enforced in code.
+8. Every phase ends with a gate task (`GA`, `GR`, `GS`, `GB`, `GQ`, `GD`). No task in a later phase may start until the previous gate is `[x]`. A gate is checked only when every item in §0.1 and the gate's own list passes. A gate may scope a check to the code that exists at that phase and name the later gate that will enforce its full form. If a check fails, fix the cause in the owning task (re-open it as `[~]`); never waive a check permanently.
+9. Respect C10. Its rules are configuration for existing tools wherever one exists: golangci-lint (`.golangci.yml`), go-test-coverage (`.testcoverage.yml`), ESLint and qmllint. Custom checks exist only for rules no tool covers: `tools/nologcontent` (privacy), `tools/docscheck` (docs match the code) and a few QML checks (B22). Do not write a custom check for something a pinned tool can be configured to do. A change that needs a new import edge or a higher limit updates the config and explains why in C10.
+10. Suppressions are rare and explicit. In Go, `//nolint:<linter> // <reason>` is the only form, and nolintlint requires both the linter and the reason. The privacy rule (`tools/nologcontent`) cannot be suppressed. In JS, `// eslint-disable-next-line <rule> -- <reason>`.
 
 ### 0.1 Definition of Done (every gate)
 
 - D1 All tasks in the phase are `[x]`; none is `[~]`.
-- D2 `gofmt -l backend tools` is empty; `go vet -mod=vendor ./...` is clean.
+- D2 `make lint` passes: golangci-lint with `.golangci.yml` (gofmt, go vet, staticcheck, errcheck, unused, depguard layering, revive size and complexity limits, nolintlint), `tools/nologcontent`, and the UI linters once they exist (B21–B22).
 - D3 `go test -mod=vendor -race -count=3 ./backend/... ./tools/...` passes (3 runs catch flaky timing).
-- D4 Coverage gates pass: `go run -mod=vendor ./tools/covergate build/cover.out` and the JS coverage flags in C9.
-- D5 Rules in code pass with zero findings: `go run -mod=vendor ./tools/omalint ./backend/... ./tools/...`, `go test -mod=vendor ./backend/internal/archtest/`, `npm --prefix tools/uilint run lint`. The tools' own tests pass too (they run under `go test ./...` and `npm --prefix tools/uilint test`).
+- D4 Coverage gates pass: `make coverage` (go-test-coverage with `.testcoverage.yml`) and the JS coverage flags in C9.
+- D5 The custom checks' own tests pass: `go test ./tools/...` (nologcontent fixtures and its run on the real backend, docscheck parsers). From B22, the UI linter's tests pass too.
 - D6 Every behaviour change has a test at the narrowest layer (CONTRIBUTING test map); the total test count never drops from the previous gate. Record it in the gate note: `go test -mod=vendor -json ./backend/... | grep -c '"Action":"pass","Package":"[^"]*","Test"'` plus `node --test` totals.
 - D7 Fuzz targets each run 30 s without failure: `go test -mod=vendor -run=^$ -fuzz=<Target> -fuzztime=30s <pkg>`, once per target.
 - D8 Clean-checkout build: `git stash -u` is forbidden. Instead run `git worktree add ../oma-gate HEAD` after committing, then run the phase's test command inside it, then `git worktree remove ../oma-gate`. This catches files that are only present untracked.
@@ -34,7 +34,7 @@ Contracts (§2) are normative: tasks reference them instead of restating them.
   - AGENTS.md layout matches C1.
   - This file's §1 facts are still true and its §2 contracts match the code.
 
-  Inventory: README.md, CONTRIBUTING.md, AGENTS.md, FORGE_SPEC.md, .agents/README.md, docs/TASKS.md (§0–§2), docs/KEYS.md, docs/PROTOCOL.md, docs/ARCHITECTURE.md. Files that don't exist yet are marked `n/a`.
+  Inventory: README.md, CONTRIBUTING.md, AGENTS.md, FORGE_SPEC.md, .agents/README.md, docs/TASKS.md (§0–§2), docs/KEYS.md, docs/PROTOCOL.md. Files that don't exist yet are marked `n/a`.
 
 Task format:
 ```
@@ -56,7 +56,7 @@ Task format:
 - F6 Bar widget: get the service with `bar.shell.serviceFor("io.github.omamessenger")` and open the window with `bar.shell.toggle("io.github.omamessenger", "{}")`. Plugin settings arrive on the widget's `settings` property, not on the service; the widget forwards them with `service.applySettings(settings)`.
 - F7 `Service.qml` must declare **no `required` properties**; the plugin fails to load otherwise.
 - F8 Omarchy hot-reloads plugin code on any file write under `~/.config/omarchy/plugins/`. Keep databases and runtime files outside the plugin dir.
-- F9 `vendor/` is tracked. Deleting it needs the owner's approval, so keep building with `-mod=vendor`. Adding a Go dependency requires `go mod vendor` (or owner approval to drop vendoring). R01a adds `golang.org/x/tools` this way (network needed once). `x/tools` must understand the installed toolchain's export data: v0.36.0 crashes under Go 1.27 with `package "errors" without types was imported`. The module therefore requires Go ≥ 1.26 (x/tools v0.51.0), and `tools/omalint/selfcheck_test.go` runs the built linter on a real package to catch a repeat.
+- F9 `vendor/` is tracked; build with `-mod=vendor`. Adding a Go dependency requires `go mod vendor`. `golang.org/x/tools` is vendored for `tools/nologcontent`, and it must understand the installed toolchain's export data: v0.36.0 crashed under Go 1.27. The module therefore requires Go ≥ 1.26, and nologcontent's test runs the built checker on the real backend. golangci-lint and go-test-coverage are not vendored: `make tools` builds the pinned versions with the local Go into `build/tools/`, which avoids the same toolchain mismatch.
 - F10 Quickshell `Process`: set `stdinEnabled: true` and use `write(string)` to send; parse stdout with `stdout: SplitParser { onRead: function(line) {...} }`.
 - F11 Resolve the plugin's own files from QML with `Qt.resolvedUrl("../bin/oma-messenger-service")` and strip the `file://` prefix. This works for both installed copies and symlinked dev checkouts.
 - F12 Omarchy `Style` tokens: `Style.space(px)`, `Style.font.{caption,bodySmall,body,subtitle,title,heading,display}`, `Style.spacing.*`, `Style.hoverFill`, `Style.selectedFill`, `Style.selectedFillAlpha`, `Style.cornerRadius`. `Color.{foreground,background,accent,urgent,muted}`, `Color.popups.{background,text,border}`. Helper: `Util.alpha(color, a)`. Omarchy `qs.Ui` controls: `Button`, `TextField`, `Dropdown`, `Toggle`, `BarWidget`, `BarIconButton`, `Panel`, `BorderSurface`.
@@ -86,19 +86,21 @@ backend/internal/app          Commands (UI use-cases) and Ingest (connector Sink
 backend/internal/app/policy   pure notification policy
 backend/internal/rpc          generic JSON-lines server; knows nothing of app or store
 backend/internal/api          adapter: method table + error→code mapping (app ↔ rpc)
-bin/oma-messenger-service     launcher; prefers bin/dev/oma-messenger-service when executable
-bin/dev/                      gitignored local builds
+bin/oma-messenger-service     launcher: bin/dev/ build, else the installed pinned release, else exit 3 (not installed)
+bin/dev/                      gitignored local builds (`make build`)
+helper-version                exact helper release the plugin installs (equals the helper's compiled-in version; tested)
+scripts/install-helper.sh     explicit, verified install of that release into ${XDG_DATA_HOME:-~/.local/share}/omamessenger/bin/
+scripts/build-release.sh      release binaries + SHA256SUMS into build/release/ (published by .github/workflows/release.yml)
+.golangci.yml                 lint rules: layering (depguard), size and complexity (revive), gofmt, vet, staticcheck
+.testcoverage.yml             per-package coverage gates (go-test-coverage)
 tests/unit/                   node:test files + load.cjs
 tests/qml/                    quickshell offscreen harness
 tests/e2e/                    Docker headless Hyprland
 docs/KEYS.md                  generated from ui/lib/Keymap.js (also mirrored into README between markers)
 docs/PROTOCOL.md              generated by backend/internal/api tests from the method/event descriptors
-docs/ARCHITECTURE.md          generated by archtest: dependency graph + coupling/cohesion metrics
-tools/omalint/                Go analyzers (go/analysis) enforcing C10; rule tables in tools/omalint/rules/rules.go
-tools/covergate/              per-package coverage gate (thresholds table in code)
+tools/nologcontent/           type-aware check: no domain content in logs or stdout/stderr (no suppression)
 tools/docscheck/              docs-vs-code checks (tests) over the parsers in tools/docscheck/markdown
-tools/uilint/                 ESLint config + QML rules + keys doc generator (node, pinned dev deps)
-backend/internal/archtest/    test-only package: coupling and cohesion tests over the real module
+tools/uilint/                 ESLint config, the few QML checks no tool covers, and the keys doc generator (B15, B22)
 ```
 
 ### C2 · Storage
@@ -275,82 +277,55 @@ Key spec syntax:
 
 ### C9 · Test commands
 
-These are target commands for the completed Phase R/B harness. The current pre-R scaffold has a smaller Makefile; R01e and B19–B23 bring it into line before GR/GB.
-
-- `make test`: `test-go test-js lint docs-check test-qml`. `test-e2e` (Docker) and `mutation` are separate.
-- `test-go`: `go test -mod=vendor -race -coverprofile=build/cover.out ./backend/... ./tools/...`, then `go run -mod=vendor ./tools/covergate build/cover.out`. Gates live in `tools/covergate` as a table (single source; docscheck verifies this list matches):
-  - 100 %: `domain`, `app/policy`
-  - ≥ 90 %: `store`, `rpc`, `api`, `app`, `connector`, `connector/demo`, `connector/clocktest`, `connector/connectortest`, every `tools/*` package
-  - ≥ 80 %: `backend` (main); only `func main` is excluded, detected by AST
-  - ≥ 75 %: `notify`
-  - Packages with no statements are skipped; a package with statements but no gate fails.
-- `test-js`: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'` (Node ≥ 22.8), then `npm --prefix tools/uilint test`.
+- `make test`: `build test-go test-js lint docs-check`, plus `test-qml` from B23. `test-e2e` (Docker) is separate.
+- `test-go` / `coverage`: `go test -mod=vendor -race -coverprofile=build/cover.out ./backend/... ./tools/...`, then go-test-coverage with `.testcoverage.yml`. The gates live only in that file: default 90 % per package; `domain` and `app/policy` 100 %; `backend` (main) 80 %, with `func main` excluded by its `// coverage-ignore` comment; `notify` 75 %.
+- `test-js`: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'` (Node ≥ 22.8; the include flag measures nothing until `ui/lib` exists). From B22 it also runs `npm --prefix tools/uilint test`.
 - `lint`:
-  - `gofmt -l backend tools` (must be empty); `go vet -mod=vendor ./...`
-  - `go run -mod=vendor ./tools/omalint ./backend/... ./tools/...`
-  - `npm --prefix tools/uilint run lint`
-  - `scripts/qml-imports.sh` (creates `build/qml/qs/{Commons,Ui}` symlinks to `${OMARCHY_PATH:-/usr/share/omarchy}/shell/…`)
-  - `/usr/lib/qt6/bin/qmllint -I build/qml $(find ui -name '*.qml')` (settings in `ui/.qmllint.ini`)
+  - `golangci-lint run ./...` with `.golangci.yml`
+  - `go run -mod=vendor ./tools/nologcontent ./backend/...`
+  - from B21–B22: `npm --prefix tools/uilint run lint` (ESLint and the QML checks), `scripts/qml-imports.sh` (creates `build/qml/qs/{Commons,Ui}` symlinks to `${OMARCHY_PATH:-/usr/share/omarchy}/shell/…`) and `/usr/lib/qt6/bin/qmllint -I build/qml $(find ui -name '*.qml')` (settings in `ui/.qmllint.ini`)
   - `bash -n scripts/*.sh tests/*/*.sh`
-- `docs-check`: `make docs-check` runs the docs tests in `tools/docscheck/...` and `backend/internal/api` (protocol reference and C3). From B15 it also runs `node tools/uilint/gen-keys.cjs --check`.
+- `tools`: builds the pinned golangci-lint and go-test-coverage into `build/tools/` (the other targets do this on first use).
+- `docs-check`: runs the docs tests in `tools/docscheck/...` and `backend/internal/api` (protocol reference and C3). From B15 it also runs `node tools/uilint/gen-keys.cjs --check`.
 - `test-qml`: `tests/qml/run.sh` (task B23).
 - `mutation` (gate GQ only): mutation testing of `domain`, `store`, `app`, `app/policy`, `api` (task Q07).
 
-### C10 · Architecture, complexity, coupling and cohesion rules (enforced in code after Phase R)
+### C10 · Architecture, size and privacy rules
 
-The table below is the target rule set. Phase A intentionally violates the `connector → store` and `rpc → app/store` edges and app size/cohesion limits; R01a–R05 add enforcement and remove these known violations before any UI phase begins.
+The rules are configuration; this section explains them, and the config files are the source of truth.
 
-Every rule below has exactly one enforcing check, named in the right-hand column. Thresholds live in code (`tools/omalint/rules/rules.go`, `tools/uilint/rules.cjs`). `tools/docscheck` fails if these tables and the code disagree.
-
-**Layering** (allowed internal imports; stdlib always allowed; anything unlisted is a violation) — `omalint/layering`
+**Layering** (`.golangci.yml`, depguard; production files only). Each `backend/internal` package has a strict allow list of the standard library plus:
 
 | package | may import |
 |---|---|
-| `backend/internal/domain` | — |
-| `backend/internal/store` | domain (+ `modernc.org/sqlite`) |
-| `backend/internal/connector`, `connector/clocktest` | domain |
-| `backend/internal/connector/demo` | connector, domain |
-| `backend/internal/connector/connectortest` | connector, domain, connector/clocktest (added by D00) |
-| `backend/internal/notify` | — |
-| `backend/internal/app/policy` | domain |
-| `backend/internal/app` | domain, connector, app/policy |
-| `backend/internal/rpc` | — |
-| `backend/internal/api` | app, rpc, domain |
-| `backend` (main) | any internal package |
-| `backend/internal/archtest` | — (test-only package) |
-| `tools/*` | no `backend/internal/*` package (Go's internal rule also forbids it) |
+| `domain`, `notify`, `rpc` | nothing internal |
+| `store` | `domain`, `modernc.org/sqlite` |
+| `connector`, `connector/clocktest` | `domain` |
+| `connector/demo` | `connector`, `domain` |
+| `app/policy` | `domain` |
+| `app` | `domain`, `connector`, `app/policy` |
+| `api` | `app`, `rpc`, `domain` |
 
-Test files (`_test.go`) may additionally import `store`, `notify`, `connector/clocktest`, `connector/demo` and `connector/connectortest`.
-External test packages (`package x_test`) follow the rules of `x` and may import `x`. Per-package test allowances (`rules.TestOnlyImportsFor`): `connector/demo` tests may import `app`, because they persist through `app.Ingest` into a real store to check seeding, unread counts and delivery timelines. Any `backend/internal` package without a rule is itself a violation.
+- `backend` (main) may import anything; it is the only place where concrete types meet.
+- Tests are not restricted.
+- A new `backend/internal` package needs its own depguard rule. depguard cannot flag a package that has no rule, so adding one is part of creating the package.
+- Allow entries end in `$` (exact match), so allowing `connector` does not allow `connector/demo`.
+- `tools/` cannot import `backend/internal` (Go's internal-package rule).
 
-**Complexity and size** (non-test code)
+**Size and complexity** (`.golangci.yml`, revive; non-test Go):
+- file ≤ 400 lines; function ≤ 60 lines; ≤ 5 parameters
+- cyclomatic complexity ≤ 10; control nesting ≤ 4
 
-| metric | Go — `omalint/size`, `omalint/complexity` | JS in `ui/lib` — ESLint | JS inside QML — `uilint/qml` |
-|---|---|---|---|
-| cyclomatic complexity per function | ≤ 10 | ≤ 8 | ≤ 8 |
-| max nesting depth | ≤ 4 | ≤ 4 | ≤ 4 |
-| function length (lines) | ≤ 60 | ≤ 50 | ≤ 40 |
-| parameters | ≤ 5 | ≤ 5 | ≤ 5 |
-| file length (lines) | ≤ 400 | ≤ 300 | QML file ≤ 350 |
+For JS in `ui/lib` the same limits are ESLint rules (`complexity` 8, `max-depth` 4, `max-lines-per-function` 50, `max-params` 5, `max-lines` 300). QML files stay ≤ 350 lines (B22).
 
-Cyclomatic complexity = 1 + each `if`, `for`, `range`, non-default `case`, `comm` clause, `&&`, `||` (Go); ESLint's `complexity` rule (JS).
+**Design rules** (enforced by tests or review, not linters):
+- Frozen interfaces: `connector.Sink` (6 methods) and `connector.Connector` (4 methods) never change; `backend/internal/connector/frozen_test.go` fails if they do. A new capability is an optional interface (C4).
+- Consumer-side ports: a package declares the small interfaces it needs (`app/ports.go`, `connector.AccountStore`), and constructors take those rather than concrete types from other internal packages. This is checked in review.
 
-**Coupling** — `archtest` (tests over the real module using `golang.org/x/tools/go/packages`)
-- Efferent coupling Ce (internal packages imported) ≤ 4 for every package except `backend` (main).
-- Stable Dependencies Principle: for every internal edge A → B, instability I(B) ≤ I(A), where I = Ce / (Ca + Ce); a package with Ca + Ce = 0 has I = 0.
-- No package named `util`, `utils`, `common`, `helpers`, `misc`, `shared` or `base`.
-- Dependency inversion — `omalint/dip`: exported `New*` functions in `backend/internal/...` take parameters from other internal packages only when they are interfaces or `domain` value types (no `*store.Store`, `*connector.Manager`, ...). `main` is the only place where concrete types meet.
-- Frozen interfaces — `omalint/frozeniface`: the method sets of `connector.Sink` (6 methods) and `connector.Connector` (4 methods) must equal the golden lists in `rules.go`. New capabilities are new optional interfaces (C4).
+**Privacy** (`tools/nologcontent`, type-aware, no suppression):
+- No value of type `domain.Message`, `Contact`, `Conversation` or `Account`, and none of their fields `Text`, `Name`, `SenderName`, `Title`, `Preview`, `PreviewSender`, `Match`, may reach `log.*`, `slog.*`, `fmt.Print*`, or `fmt.Fprint*` to `os.Stdout`/`os.Stderr`.
 
-**Cohesion** — `archtest`
-- LCOM4 = 1 for every struct type with ≥ 3 methods. Two methods are connected if they touch a common field or one calls the other. A type with LCOM4 > 1 does more than one job: split it.
-- Every exported identifier in production `backend/internal/...` packages is used outside its own package (in non-test code or by `main`); an export only its own package uses should be unexported. The test-support packages `connector/clocktest` and `connector/connectortest` are exempt because C4 permits them only from tests.
-- `archtest -update` writes `docs/ARCHITECTURE.md` (Mermaid dependency graph + per-package Ca, Ce, I, abstractness A, distance |A + I − 1| and LCOM4 table); the test fails when the file is stale.
-
-**Privacy** — `omalint/nologcontent` (type-aware)
-- No value of type `domain.Message`, `Contact`, `Conversation` or `Account`, and none of their fields `Text`, `Name`, `SenderName`, `Title`, `Preview`, `PreviewSender`, `Match`, may be passed to `log.*`, `slog.*`, `fmt.Print*`, or `fmt.Fprint*` to `os.Stderr`/`os.Stdout`.
-
-**UI placement and style** — `uilint/qml` (+ ESLint for `ui/lib`)
+**UI placement and style** (B22: ESLint, qmllint, and small QML checks in `tools/uilint`):
 - `ui/components/*.qml` must not contain `service` or `request(`. Only `ui/controllers/*.qml` and `ui/service/*.qml` may contain `request(`.
 - `ui/lib/*.js` must not reference `Qt` except key constants in `Keymap.js`. It starts with `.pragma library` and uses ES5 syntax only (no `let`, `const`, arrows or template literals).
 - No colour literals in `ui/` except `"transparent"` (C8); no `requestActivate`; relative imports and manifest entryPoints must exist.
@@ -486,7 +461,9 @@ Cyclomatic complexity = 1 + each `if`, `for`, `range`, non-default `case`, `comm
 
 ### Phase R — refactor to the architecture rules (C10)
 
-Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before more code is written. `connector` imports `store`, `rpc` imports `app` and `store`, and `app.go` mixes six responsibilities. Fix this before anything else builds on these packages. Refactors keep behaviour identical: move tests with the code and keep their assertions.
+Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before more code is written.
+
+Note: the custom tooling built in R01a–R01e (`tools/omalint` except the privacy check, `tools/covergate`, `backend/internal/archtest`) was replaced by configuration for existing tools in S01. The R task records below are kept as history. `connector` imports `store`, `rpc` imports `app` and `store`, and `app.go` mixes six responsibilities. Fix this before anything else builds on these packages. Refactors keep behaviour identical: move tests with the code and keep their assertions.
 
 ### [x] R01a · omalint framework, layering and size rules (M)
 - deps: GA
@@ -733,10 +710,49 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
     | docs/ARCHITECTURE.md | `d35bc4c` | generated | Regenerated by archtest; current. |
     | docs/KEYS.md | n/a | n/a | Created in B15. |
 
+### Phase S — simplify tooling, ship the helper from releases
+
+Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do with configuration, and the helper binaries were committed to git (about 14 MB per rebuild). Omamail and other Omarchy plugins with native helpers publish release binaries and install a pinned, checksum-verified version instead.
+
+### [x] S01 · Replace custom lint and coverage tooling with configured tools (M)
+- deps: GR
+- files: `.golangci.yml`, `.testcoverage.yml`, Makefile (`tools`, `lint`, `coverage`); create `tools/nologcontent/`, `backend/internal/connector/frozen_test.go`; delete `tools/omalint/`, `tools/covergate/`, `backend/internal/archtest/`, `docs/ARCHITECTURE.md`
+- result:
+  - golangci-lint v2.14.0 enforces gofmt, vet, staticcheck, errcheck, unused, depguard layering, the revive size and complexity limits, and nolintlint. go-test-coverage v2.20.0 enforces the per-package gates.
+  - Each rule was proven to fire on planted violations in a scratch copy: forbidden import, prefix-vs-exact import, 6 parameters, nesting 5, 62-line function, 402-line file, cyclomatic complexity 11, bare `//nolint`. A 99 % threshold fails with exit 1.
+  - The new linters found 5 issues the custom tools missed: unchecked `tx.Rollback` (3), an embedded-field selector, and one complexity hit. All are fixed.
+  - Kept as custom code, because no tool covers them:
+    - `tools/nologcontent`: one analyzer with no suppression; its test also runs it on the real backend.
+    - `tools/docscheck`, minus the C9/C10 sync tests: those tables now live only in the config files.
+  - The frozen-interface analyzer became a ten-line reflection test. The consumer-side-ports and LCOM4 checks were dropped (review guidelines in C10).
+  - `func main` is excluded from coverage by `// coverage-ignore`.
+- verify: `make lint coverage docs-check`
+
+### [x] S02 · Publish helper releases and install a pinned, verified release (M)
+- deps: GR
+- files: `helper-version`, `scripts/install-helper.sh`, `bin/oma-messenger-service`, `scripts/build-release.sh`, `.github/workflows/{release.yml,ci.yml}`, `.gitignore`, Makefile (`install-helper`, `build-all`), `scripts/install-local.sh`, `tests/unit/helper-install.test.cjs`, `backend/main_test.go`; delete the committed `bin/oma-messenger-service-linux-{amd64,arm64}`
+- result:
+  - `helper-version` pins the release; `TestHelperVersionMatchesPin` keeps it equal to the compiled-in version.
+  - `install-helper.sh` runs only when invoked. It downloads from the immutable `v<version>` tag over https only (`file://` for tests), with size and time limits. It requires a matching `SHA256SUMS` entry and the pinned `--version`, then moves the binary atomically into `~/.local/share/omamessenger/bin/` (mode 700) and removes older versions. `--status` reports the install.
+  - The launcher prefers `bin/dev/`, then the installed release; otherwise it exits 3 with instructions.
+  - `release.yml` runs on version tags only: it checks the tag equals `helper-version`, tests, builds, attests build provenance, and publishes the binaries and `SHA256SUMS`. It never commits.
+  - `ci.yml` runs on every PR.
+  - Seven node tests cover install, idempotence, `--status`, checksum mismatch, a missing checksum entry, a version mismatch, an unreachable release, launcher priority and the not-installed message.
+  - End to end: the real `build/release` output installed over `file://` and answered `hello` through the launcher.
+  - `install-local.sh` now also copies `keyboard.js`, which the scaffold panel imports (the original install bug).
+- note: the committed binaries remain in git history (about 14 MB). Removing them needs a history rewrite, which is the owner's decision.
+- verify: `node --test 'tests/unit/**/*.test.cjs' && go test -mod=vendor -run TestHelperVersionMatchesPin ./backend/`
+
+### [ ] GS · Phase S gate (S)
+- deps: S01, S02
+- checks: all of §0.1 (D1–D11).
+- plus: GS1 no helper binary is tracked: `git ls-files 'bin/*linux*'` is empty.
+
+
 ### Phase B — UI on demo data
 
 ### [ ] B01 · JS test loader (S)
-- deps: GR
+- deps: GS
 - files: tests/unit/load.cjs, tests/unit/load.test.cjs
 - do: `load("lib/Keymap.js")` reads `ui/<path>`, strips the `.pragma library` line, resolves `.import "X.js" as X` recursively, evaluates in `new Function`, and returns an object of all top-level `function` and `var` names.
 - verify: `node --test 'tests/unit/**/*.test.cjs'`
@@ -791,24 +807,27 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - verify: `node --test --experimental-test-coverage --test-coverage-include='ui/lib/**' --test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'`
 
 ### [ ] B06 · Service layer (M)
-- deps: GR, B02
+- deps: GS, B02
 - files: ui/Service.qml, ui/service/HelperProcess.qml, ui/service/RpcClient.qml, ui/service/AppState.qml
 - do:
   1. `HelperProcess.qml` (process only):
      - Properties `status` (`starting|ready|stopped|error|missing`), `detail`; functions `start()`, `stop()`, `write(line)`; `signal line(string text)`.
      - Process per F10/F11 with args `["--demo"]`; the binary path is resolved relative to the plugin root.
-     - Restart on unexpected exit after 1 s, 3 s, 10 s. After 5 exits within 60 s → `error` with the last stderr line as `detail`. Binary missing → `missing`.
+     - Restart on unexpected exit after 1 s, 3 s, 10 s. After 5 exits within 60 s → `error` with the last stderr line as `detail`.
+     - The launcher exiting with status 3 means no helper is installed → `missing` (no restart).
+     - `install()` runs `scripts/install-helper.sh` (resolved like the launcher, F11) in a second `Process`, exposes `installing` and the script's last output line, and calls `start()` when it succeeds. Nothing is downloaded unless `install()` is called (AGENTS.md).
   2. `RpcClient.qml` (protocol only):
      - `property var transport` (anything with `write(line)` and a `line` signal).
      - `request(method, params, callback(error, result))` with a pending map and 15 s timeout; `signal event(string name, var data)`; on transport restart, fail pending requests.
      - Uses `Rpc.js`.
   3. `AppState.qml` (state only): `accounts`, `unreadTotal`, `demo`, `version`, `uiState` (C7 defaults); `apply(name, data)` updates state from events.
   4. `Service.qml` (composition only, F7, ≤ 80 lines):
-     - Instantiates the three and exposes `status`, `detail`, `demo`, `unreadTotal`, `accounts`, `uiState`, `windowOpen`, `request()`, `event` and `applySettings(settings)` (→ `settings.apply`).
+     - Instantiates the three and exposes `status`, `detail`, `demo`, `unreadTotal`, `accounts`, `uiState`, `windowOpen`, `installing`, `request()`, `event`, `installHelper()` and `applySettings(settings)` (→ `settings.apply`).
      - On ready, sends `hello` and seeds AppState.
 - accept:
   - `RpcClient` works with a fake transport. Harness scenario S13 (B23) uses a QML fake transport to check timeout, error mapping and that events never resolve a pending request.
-  - Covered by B23 scenarios S1, S9, S13.
+  - Covered by B23 scenarios S1, S9, S13, S14.
+  - The window shows an "Install helper" button with the pinned version while `status` is `missing`, and the installer's error text if it fails (B16).
 
 ### [ ] B07 · Manifest (S)
 - files: manifest.json
@@ -901,19 +920,19 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - verify: `git grep -n "keyboard.js\|api.token\|43821"` returns nothing outside docs/TASKS.md and README's migration note
 
 ### [ ] B19 · Makefile and install scripts (M)
-- deps: GR, B18
+- deps: GS, B18
 - files: Makefile, scripts/install.sh, scripts/link.sh, scripts/build-release.sh
 - do: targets (each with a `##` help text):
   - `build` → bin/dev/oma-messenger-service for the host arch.
-  - `build-all` → release binaries.
-  - `install` → build; stage `manifest.json LICENSE README.md ui/ bin/` into a temp dir; back up an existing plugin dir to `~/.config/omarchy/plugin-backups/<id>-<timestamp>` (outside the plugins dir); rsync with `--delete`; `omarchy plugin validate`; `omarchy-shell shell rescanPlugins`; `omarchy plugin enable <id>`; `omarchy-shell shell summon <id> '{}'` unless `OPEN=0`.
+  - `build-all` → release binaries and `SHA256SUMS` in `build/release/` (exists); `install-helper` → `scripts/install-helper.sh` (exists).
+  - `install` → build; stage `manifest.json LICENSE README.md helper-version ui/ bin/oma-messenger-service bin/dev/ scripts/install-helper.sh` into a temp dir; back up an existing plugin dir to `~/.config/omarchy/plugin-backups/<id>-<timestamp>` (outside the plugins dir); rsync with `--delete`; `omarchy plugin validate`; `omarchy-shell shell rescanPlugins`; `omarchy plugin enable <id>`; `omarchy-shell shell summon <id> '{}'` unless `OPEN=0`.
   - `link` → same backup, then symlink the checkout (live reload).
   - `open`.
   - `uninstall` → `omarchy plugin remove <id> --yes`.
   - `demo-reset` → delete `${XDG_DATA_HOME:-~/.local/share}/omamessenger/demo.db*` after an interactive confirmation (skip it with `YES=1`).
   - `test test-go test-js lint test-qml test-e2e fuzz clean` per C9.
   - Refuse any target dir other than `~/.config/omarchy/plugins/io.github.omamessenger`.
-- accept: every `omarchy`/`omarchy-shell` call goes through the `OMARCHY`/`OMARCHY_SHELL` make variables (so GB3 can stub them); `make -n install` shows no sudo; `scripts/install.sh --dry-run` lists the staged files and includes every file under ui/.
+- accept: every `omarchy`/`omarchy-shell` call goes through the `OMARCHY`/`OMARCHY_SHELL` make variables (so GB3 can stub them); `make -n install` shows no sudo; `scripts/install.sh --dry-run` lists the staged files and includes every file under ui/; `scripts/install-local.sh` is removed (it is replaced by `make install`).
 
 ### [ ] B20 · Docs (S)
 - deps: B19
@@ -923,25 +942,25 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - verify: `make docs-check`
 
 ### [ ] B21 · QML import dir + Qt6 lint (S)  (formerly Q01)
-- deps: GR
+- deps: GS
 - files: scripts/qml-imports.sh, Makefile (`lint`)
 - do: create `build/qml/qs/Commons` and `build/qml/qs/Ui` symlinks from `${OMARCHY_SHELL_DIR:-${OMARCHY_PATH:-/usr/share/omarchy}/shell}`; fail with a clear message if missing; use `/usr/lib/qt6/bin/qmllint` (F1).
 - verify: `make lint`
 
-### [ ] B22 · UI linter in code (M)  (formerly Q02)
-- deps: GR
-- files: tools/uilint/{package.json,package-lock.json,eslint.config.cjs,pragma-processor.cjs,rules.cjs,qml-rules.cjs,cli.cjs}, tools/uilint/test/*.test.cjs, tools/uilint/test/fixtures/, ui/.qmllint.ini, .gitignore (`tools/uilint/node_modules/`)
+### [ ] B22 · UI linting (M)  (formerly Q02)
+- deps: GS
+- files: tools/uilint/{package.json,package-lock.json,eslint.config.cjs,qml-checks.cjs,qml-checks.test.cjs}, tools/uilint/test/fixtures/, ui/.qmllint.ini, .gitignore (`tools/uilint/node_modules/`)
+- principle: configure existing tools first (§0 rule 9). Custom code is only for the QML rules no tool covers.
 - do:
   1. Pin ESLint with an exact version in `package.json` (`"private": true`) and commit the lockfile.
-  2. `pragma-processor.cjs` blanks `.pragma`/`.import` lines while keeping line numbers.
-  3. `eslint.config.cjs` applies to `ui/lib/*.js` with the C10 JS limits (`complexity`, `max-depth`, `max-lines-per-function`, `max-params`, `max-lines`) and `no-restricted-syntax` for ES2015+ constructs. `Qt` is allowed as a global only in `Keymap.js`.
-  4. `qml-rules.cjs` is a pure node module. It strips comments and strings with a small tokenizer, then checks:
-     - the QML file length and the length, nesting and complexity of JS functions inside QML (C10)
-     - UI placement rules, colour literals, `requestActivate`, relative imports and manifest entryPoints
-     - the `.pragma library` first line, suppression syntax and the ≤ 5 suppression budget
-  5. `cli.cjs` runs ESLint plus the QML rules over `ui/`. The `npm run lint` and `npm test` scripts use it.
-  6. `ui/.qmllint.ini` raises qmllint's unqualified, unused-imports, missing-property and type categories to errors.
-- accept: every QML rule and every ESLint limit has a passing and a failing fixture test; `npm --prefix tools/uilint run lint` exits 0 on the repo.
+  2. `eslint.config.cjs` applies to `ui/lib/*.js`:
+     - the C10 JS limits (`complexity`, `max-depth`, `max-lines-per-function`, `max-params`, `max-lines`)
+     - `no-restricted-syntax` for ES2015+ constructs
+     - `Qt` allowed as a global only in `Keymap.js`
+     - The `.pragma library` / `.import` lines: use ESLint's processor API in a few lines inside the config, or have `Keymap.js` etc. carry them in a form ESLint accepts. Pick the smaller.
+  3. `ui/.qmllint.ini` raises qmllint's unqualified, unused-imports, missing-property and type categories to errors. qmllint covers QML syntax and types.
+  4. `qml-checks.cjs` (small, line-based) checks only what neither tool covers: QML file ≤ 350 lines; `service`/`request(` placement (C10); colour literals other than `"transparent"`; `requestActivate`; manifest entryPoints exist; `.pragma library` first line in `ui/lib/*.js`.
+- accept: each custom check has a passing and a failing fixture; ESLint limits are proven by one failing fixture each; `npm --prefix tools/uilint run lint` exits 0 on the repo.
 - verify: `npm --prefix tools/uilint ci && npm --prefix tools/uilint test && npm --prefix tools/uilint run lint`
 
 ### [ ] B23 · QML integration harness (L)  (formerly Q03)
@@ -965,6 +984,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
   - S11 for every `Actions.OWNERS` entry, the owning controller's `handles(action)` is true.
   - S12 at the minimum window size (`Style.space(760)×Style.space(540)`): rail, list and conversation panes all have width > 0 and don't overlap; the composer is visible; footer hints don't overflow.
   - S13 `RpcClient` with a fake transport: timeout fires the callback with an error after 15 s (fake timer); an error response maps to `Rpc.errorText`; an event line never resolves a pending request.
+  - S14 with no `bin/dev/` build and no installed helper, `status` is `missing` and the Install helper control is visible; `installHelper()` with `OMA_RELEASE_BASE` pointing at a fake `file://` release installs it, and the service reaches `ready`.
 - rules: scenarios are independent (each starts from a fresh demo data dir, or resets via a new Service) and use no sleeps longer than needed to await an event (poll ≤ 5 s with a clear FAIL message).
 - verify: `tests/qml/run.sh`
 
@@ -972,9 +992,9 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 - deps: B01–B23 (including B15a)
 - checks: all of §0.1 (D1–D11).
 - plus:
-  - GB1 `make test` passes (test-go with covergate, test-js with coverage gates, lint with omalint + uilint + Qt6 qmllint, docs-check, test-qml).
+  - GB1 `make test` passes (test-go with go-test-coverage, test-js with coverage gates, lint with golangci-lint + nologcontent + uilint + Qt6 qmllint, docs-check, test-qml).
   - GB2 Harness stability: `for i in 1 2 3; do tests/qml/run.sh || exit 1; done`.
-  - GB3 Sandbox install: `HOME=$(mktemp -d) OMARCHY=true OMARCHY_SHELL=true make install OPEN=0` exits 0. The staged plugin dir contains `manifest.json`, every file under `ui/`, `bin/oma-messenger-service` and `bin/dev/oma-messenger-service`, and contains no `backend/`, `vendor/` or `tests/`.
+  - GB3 Sandbox install: `HOME=$(mktemp -d) OMARCHY=true OMARCHY_SHELL=true make install OPEN=0` exits 0. The staged plugin dir contains `manifest.json`, `helper-version`, every file under `ui/`, `bin/oma-messenger-service`, `bin/dev/oma-messenger-service` and `scripts/install-helper.sh`, and contains no `backend/`, `vendor/`, `tests/` or release binaries.
   - GB4 `omarchy plugin validate .` passes.
   - GB5 No scaffold remnants: `git grep -nE 'keyboard\.js|api\.token|43821|XMLHttpRequest|requestActivate' -- ui scripts tests Makefile` is empty.
   - GB6 Owner review (a human, not the implementing model). Run `make install` and check, at the default and minimum window size and in one light and one dark Omarchy theme:
@@ -983,6 +1003,7 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
     - compose: Enter sends, Shift+Enter adds a newline; Sam's failed → `r` retry
     - the full Escape chain; Ctrl+N new chat; Ctrl+1/2/0 and Ctrl+Tab
     - F1 help; bar widget count and click; Ctrl+Shift+D demo message and its notification
+    - with no `bin/dev/` build and no installed helper: the Install helper button installs the pinned release (needs a published release; see D20)
 
     The owner records feedback as new tasks B24+ (same format) and ticks GB only after those are done.
 - note: record test counts and coverage tables.
@@ -1000,10 +1021,12 @@ Why: A06/A08/A09 work but break C10, and C10 must be enforced by code before mor
 
 ### [ ] Q06 · CI (M)
 - deps: GB
-- files: .github/workflows/ci.yml, .github/workflows/release.yml
-- do:
-  - `ci.yml` on PR and push: job `go-js` (ubuntu: setup-go 1.26, setup-node 22, `npm --prefix tools/uilint ci`, `make test-go test-js docs-check` and the omalint/uilint parts of `lint`); job `qml` (container `archlinux:base-devel`: install quickshell qt6-declarative go nodejs; clone `omacom/omarchy` at tag `v4.0.4`; `OMARCHY_SHELL_DIR=…/shell make lint test-qml`).
-  - `release.yml`: publish only after `ci.yml` succeeds (use `workflow_run` or `needs`); build binaries on `v*` tags and on main pushes that touch `backend/**`.
+- files: .github/workflows/ci.yml
+- note: S02 added `ci.yml` (job `go-js`: coverage gates, golangci-lint, nologcontent, JS tests, docs-check, release build) and the tag-only `release.yml` (tests, build, attestation, publish; no commit-back).
+- do: add a `ui` job in container `archlinux:base-devel`:
+  1. Install quickshell, qt6-declarative, go and nodejs.
+  2. Clone `omacom/omarchy` at tag `v4.0.4`.
+  3. Run `OMARCHY_SHELL_DIR=…/shell make lint test-qml` and `npm --prefix tools/uilint ci`.
 
 ### [ ] Q07 · Mutation testing (M)
 - deps: GB
@@ -1116,7 +1139,7 @@ Do D only after GQ. Each connector task needs golden tests built from recorded/c
 - do: setting `demoMode` (default true until the first real account is added); Service.qml starts the helper without `--demo` when false.
 
 ### [ ] D20 · Release 0.3.0 (S)
-- do: README privacy section (local-only data, WhatsApp ban risk for unofficial clients, Telegram API credentials); `make build-all`; tag `v0.3.0`.
+- do: README privacy section (local-only data, WhatsApp ban risk for unofficial clients, Telegram API credentials); set `helper-version` and the helper's version to `0.3.0` together; push tag `v0.3.0`. The release workflow tests, builds, attests and publishes the binaries and `SHA256SUMS`. Then confirm `scripts/install-helper.sh` installs it on a clean data directory.
 
 ### [ ] GD · Phase D gate — feature complete (M)
 - deps: D00–D20

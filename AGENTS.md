@@ -6,7 +6,7 @@ OmaMessenger is an Omarchy third-party Quickshell plugin backed by a Go helper p
 
 - Do not edit or fork files in Omarchy's packaged source. The install target is the user's `~/.config/omarchy/plugins/io.github.omamessenger/` directory.
 - Keep the UI inside the existing long-lived `omarchy-shell` process, but use a standard `FloatingWindow` so Hyprland can manage it like an application. Do not create a full-screen layer-shell overlay or start another Quickshell process.
-- Let Omarchy own the helper through `Service.qml`. Ship Linux x86_64 and ARM64 helper binaries in `bin/`; the service selects and starts the bundled binary automatically. Do not add systemd units or plugin installation hooks.
+- Let Omarchy own the helper through `Service.qml`, which starts it via the `bin/oma-messenger-service` launcher. Never commit helper binaries. Each release publishes Linux x86_64 and ARM64 binaries with `SHA256SUMS` on GitHub Releases. `helper-version` pins the exact release, and `scripts/install-helper.sh` (run explicitly, or from the UI's install button) downloads, verifies and installs it into `~/.local/share/omamessenger/bin/`. Loading the plugin never downloads anything. Do not add systemd units or plugin installation hooks.
 - Keep WhatsApp and Telegram protocol code in Go connectors. QML should use only the normalized local API.
 - Keep account sessions and message data local. Do not log credentials, QR tokens, message bodies, or session keys.
 - Use Omarchy's `qs.Commons` theme tokens and the installed `qs.Ui` components where they fit the interaction.
@@ -27,13 +27,15 @@ OmaMessenger is an Omarchy third-party Quickshell plugin backed by a Go helper p
 Today:
 
 - `manifest.json`, `Panel.qml`, `Service.qml`, `keyboard.js`: the original root-level plugin scaffold, which Phase B replaces.
-- `backend/`: Go JSON-lines helper: `backend/internal/domain`, `store`, `connector` (plus `connector/demo`), `app` (`Commands`, `Ingest`, `app/policy`), `api`, `rpc`, `notify`, and `archtest`.
-- `tools/`: rules enforced in code: `tools/omalint` (Go analyzers), `tools/covergate` (coverage gates), `tools/docscheck` (docs checks).
+- `backend/`: Go JSON-lines helper: `backend/internal/domain`, `store`, `connector` (plus `connector/demo`), `app` (`Commands`, `Ingest`, `app/policy`), `api`, `rpc` and `notify`.
+- `.golangci.yml`, `.testcoverage.yml`: the architecture rules (layering, size, complexity) and the per-package coverage gates, as configuration for golangci-lint and go-test-coverage.
+- `tools/`: the project-specific checks no existing tool covers: `tools/nologcontent` (no message content in logs) and `tools/docscheck` (docs match the code).
 - `tests/unit/`, `tests/e2e/`: launcher and keyboard logic tests, and isolated compositor checks.
-- `bin/`: bundled Linux helper binaries and the architecture-selecting launcher, which prefers a local `bin/dev/` build.
-- `scripts/build-release.sh`: reproducible cross-build for supported Linux architectures.
+- `bin/oma-messenger-service`: the launcher. It prefers a local `bin/dev/` build (`make build`), then the installed pinned release.
+- `helper-version`, `scripts/install-helper.sh`: the pinned helper release and its verified installer.
+- `scripts/build-release.sh`: reproducible cross-build into `build/release/` with `SHA256SUMS`, published by `.github/workflows/release.yml` on a version tag.
 - `vendor/`: vendored Go dependencies used to produce release binaries offline.
-- `docs/`: the build plan (`docs/TASKS.md`), the generated protocol reference (`docs/PROTOCOL.md`) and the generated architecture metrics (`docs/ARCHITECTURE.md`).
+- `docs/`: the build plan (`docs/TASKS.md`) and the generated protocol reference (`docs/PROTOCOL.md`).
 
 Planned in Phase B (target layout in `docs/TASKS.md` C1):
 
@@ -43,4 +45,4 @@ Planned in Phase B (target layout in `docs/TASKS.md` C1):
 
 ## Development
 
-The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries, and `docs/TASKS.md` for the build plan, its Definition of Done and its contracts. Architecture rules are enforced in code (`tools/omalint`, `backend/internal/archtest`), and `make docs-check` keeps the docs true to the code. On Omarchy, use `omarchy plugin validate .` and `make lint` when validation is requested. Phase B replaces the transitional QML lint command with `/usr/lib/qt6/bin/qmllint` and a Quickshell import directory prepared by `scripts/qml-imports.sh` (planned).
+The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries, and `docs/TASKS.md` for the build plan, its Definition of Done and its contracts. Architecture rules are enforced by `make lint` (golangci-lint with `.golangci.yml`, plus `tools/nologcontent`), coverage gates by `make coverage` (`.testcoverage.yml`), and `make docs-check` keeps the docs true to the code. Prefer configuring an existing tool over writing a custom check. On Omarchy, use `omarchy plugin validate .` and `make lint` when validation is requested. Phase B replaces the transitional QML lint command with `/usr/lib/qt6/bin/qmllint` and a Quickshell import directory prepared by `scripts/qml-imports.sh` (planned).
