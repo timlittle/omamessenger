@@ -31,8 +31,8 @@ OmaMessenger is an Omarchy plugin: a QML UI inside `omarchy-shell`, backed by a 
 ## Layout
 
 - `backend/`: the Go helper. `main.go` wires everything; `internal/domain` (shared types), `store` (SQLite), `connector` (the service boundary and its supervisor, with `demo`), `app` (what the client does: `Commands` for the UI, `Ingest` for connectors, `policy` for notifications), `server` (JSON-RPC), `notify` (desktop notifications).
-- `ui/`: the new UI, being built: `theme/`, `components/`, `lib/`. Planned: `Service.qml`, `Panel.qml`, `BarWidget.qml`, `service/`, `controllers/` (see the plan).
-- `Panel.qml`, `Service.qml`, `keyboard.js`, `manifest.json` in the root: the scaffold UI, replaced by `ui/`.
+- `ui/`: the UI: `theme/`, `components/`, `lib/`, `Service.qml`, `Panel.qml`, `BarWidget.qml`. Planned: `service/`, `controllers/` (see the plan).
+- `manifest.json` in the root: the plugin manifest, pointing at the entry points in `ui/`.
 - `bin/oma-messenger-service`: the launcher. `scripts/`: helper install, release build, local install, QML lint imports.
 - `tools/nologcontent`: keeps message content out of logs.
 - `tests/unit/`: node tests for `ui/lib` and the scripts.

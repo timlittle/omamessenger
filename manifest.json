@@ -2,13 +2,48 @@
   "schemaVersion": 1,
   "id": "io.github.omamessenger",
   "name": "OmaMessenger",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "author": "OmaMessenger contributors",
   "license": "MIT",
   "description": "A keyboard-first unified messaging client for Omarchy.",
-  "kinds": ["panel", "service"],
+  "kinds": ["panel", "service", "bar-widget"],
   "entryPoints": {
     "panel": "ui/Panel.qml",
-    "service": "ui/Service.qml"
+    "service": "ui/Service.qml",
+    "barWidget": "ui/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "OmaMessenger",
+    "description": "Unread WhatsApp and Telegram messages, with a click to open the conversation window.",
+    "category": "Messaging",
+    "allowMultiple": false,
+    "defaults": {
+      "notifications": true,
+      "notificationPreview": true,
+      "demoChatter": true
+    },
+    "schema": [
+      {
+        "key": "notifications",
+        "type": "boolean",
+        "label": "Notifications",
+        "description": "Show a desktop notification for new messages.",
+        "defaultValue": true
+      },
+      {
+        "key": "notificationPreview",
+        "type": "boolean",
+        "label": "Notification preview",
+        "description": "Include the message text in the notification, instead of just who it is from.",
+        "defaultValue": true
+      },
+      {
+        "key": "demoChatter",
+        "type": "boolean",
+        "label": "Demo chatter",
+        "description": "Let the seeded demo accounts keep sending messages in the background.",
+        "defaultValue": true
+      }
+    ]
   }
 }

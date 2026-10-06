@@ -5,7 +5,7 @@ OmaMessenger is a keyboard-first messaging client for [Omarchy](https://omarchy.
 ## Status
 
 - **Helper:** complete for an offline demo (`--demo`): seeded accounts and conversations, sending with delivery receipts, failures and retries, replies, typing indicators, notifications and unread counts.
-- **UI:** not usable yet. The window in the repository root (`Panel.qml`, `Service.qml`) is the original scaffold and cannot talk to the current helper. The new UI is being built in `ui/`; see [docs/plan.md](docs/plan.md).
+- **UI:** in progress in `ui/`. The service rail, conversation list, conversation view and bar icon exist as components and the panel runs the helper end to end, but the full keyboard-routed layout from [docs/plan.md](docs/plan.md) is not wired in yet.
 - **WhatsApp and Telegram:** not connected yet. The planned libraries are [whatsmeow](https://github.com/tulir/whatsmeow) and [gotd/td](https://github.com/gotd/td).
 
 ## Requirements
@@ -35,14 +35,19 @@ The helper keeps its database in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/
 
 ## Keyboard shortcuts
 
-These belong to the scaffold UI, which the new UI replaces.
+The full table, with every context, is in [docs/plan.md](docs/plan.md). The shortcuts that work anywhere in the window:
 
-- `j` / `k`: move through conversations
-- `Enter`: open the selected conversation
-- `Esc`: return to the list, then close the window
+- `j` / `k`: move through conversations, or scroll the open one
+- `Enter`: open the selected conversation, or send from the composer
+- `Esc`: step back — close help or a dialog, clear search, leave the composer or the open conversation, then hide the window
 - `Ctrl+K`: search conversations
 - `Ctrl+N`: new conversation
 - `Ctrl+1` / `Ctrl+2` / `Ctrl+0`: WhatsApp / Telegram / all conversations
+- `F1` or `?`: show the shortcuts
+- `r`: retry a failed message
+- `m`: mute or unmute the open chat
+- `u`: jump to the next unread conversation
+- `q`: hide the window
 
 ## Helper API
 
@@ -122,8 +127,8 @@ The release workflow tests the helper, builds both binaries, records a build-pro
 ## Layout
 
 - `backend/`: the Go helper. `internal/domain` (shared types), `store` (SQLite), `connector` (the service boundary, with `demo`), `app` (what the client does), `server` (JSON-RPC), `notify` (desktop notifications)
-- `ui/`: the new QML UI: `theme/` (typed Omarchy tokens), `components/` (views), `lib/` (pure JavaScript, tested with node)
-- `Panel.qml`, `Service.qml`, `keyboard.js`: the scaffold UI, replaced by `ui/`
+- `ui/`: the QML UI: `theme/` (typed Omarchy tokens), `components/` (views), `lib/` (pure JavaScript, tested with node), `Service.qml`, `Panel.qml`, `BarWidget.qml`
+- `manifest.json`: the plugin manifest, pointing at the entry points in `ui/`
 - `bin/oma-messenger-service`: launcher that runs `bin/dev/` if built, otherwise the installed release
 - `scripts/`: helper install, release build, local plugin install, QML lint imports
 - `tools/nologcontent`: a Go analyzer that keeps message content out of logs

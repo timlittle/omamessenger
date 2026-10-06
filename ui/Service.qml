@@ -1,4 +1,5 @@
 import QtQuick
+import "lib/Settings.js" as Settings
 import "service"
 
 // Owns the helper process and everything that must survive the panel
@@ -55,11 +56,7 @@ Item {
 
   // applySettings forwards the plugin's settings to the helper.
   function applySettings(settings: var): void {
-    root.request("settings.apply", {
-      notifications: settings.notifications,
-      notificationPreview: settings.notificationPreview,
-      demoChatter: settings.demoChatter
-    }, function() {});
+    root.request("settings.apply", Settings.withDefaults(settings), function() {});
   }
 
   // _sayHello greets the helper once it is ready and loads the accounts.
