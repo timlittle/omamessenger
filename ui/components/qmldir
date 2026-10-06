@@ -1,0 +1,4 @@
+module ui.components
+Avatar 1.0 Avatar.qml
+UnreadBadge 1.0 UnreadBadge.qml
+ServiceGlyph 1.0 ServiceGlyph.qml
