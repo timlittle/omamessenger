@@ -96,6 +96,7 @@ Item {
       }
 
       Text {
+        objectName: "stepHint"
         Layout.fillWidth: true
         text: root.stage === "credentials"
           ? "To use your own Telegram app instead of OmaMessenger's, sign in at <a href=\"https://my.telegram.org/apps\">my.telegram.org</a>, open API development tools, and copy the app's api_id and api_hash here. They stay on this computer."

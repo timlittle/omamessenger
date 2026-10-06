@@ -148,6 +148,9 @@ ShellRoot {
     view.submit();
     if (root.last().method !== "auth.submit" || root.last().params.step !== "phone") return root.fail("phone not sent");
 
+    service.event("auth.step", { accountId: "tg-1", kind: "code", hint: "That code did not work. Check it and try again." });
+    if (root.child(view, "stepHint").text.indexOf("did not work") < 0) return root.fail("wrong-code hint not shown");
+
     service.event("auth.step", { accountId: "tg-1", kind: "password", hint: "Two-step" });
     if (!root.child(view, "answerField").password) return root.fail("password not hidden");
 

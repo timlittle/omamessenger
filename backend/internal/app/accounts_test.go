@@ -121,9 +121,9 @@ func TestAuthStep_IsPublished(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
-	f.ingest.AuthStep(t.Context(), "tg", connector.AuthStep{Kind: "qr", QR: "cG5n"})
+	f.ingest.AuthStep(t.Context(), "tg", connector.AuthStep{Kind: "code", Hint: "That code did not work."})
 
-	want := app.AuthStep{AccountID: "tg", Kind: "qr", QR: "cG5n"}
+	want := app.AuthStep{AccountID: "tg", Kind: "code", Hint: "That code did not work."}
 	if got := f.published.last(); got != want {
 		t.Errorf("published %+v, want %+v", got, want)
 	}

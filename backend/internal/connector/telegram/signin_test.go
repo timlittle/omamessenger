@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -66,6 +67,7 @@ func (a *scriptedAuth) password(_ context.Context, pw string) error {
 type person struct {
 	mu      sync.Mutex
 	kinds   []string
+	hints   []string
 	replies map[string][]string
 	answers chan answer
 }
@@ -86,6 +88,7 @@ func (p *person) report(step connector.AuthStep) {
 	defer p.mu.Unlock()
 
 	p.kinds = append(p.kinds, step.Kind)
+	p.hints = append(p.hints, step.Hint)
 
 	kind := step.Kind
 	if kind == "qr" {
@@ -133,6 +136,10 @@ func TestSignIn_ByQRWithTwoStepVerification(t *testing.T) {
 	if !slices.Equal(p.shown(), []string{"qr", "password", "password"}) {
 		t.Errorf("steps = %v, want qr, then password asked twice", p.shown())
 	}
+
+	if retry := p.hints[2]; !strings.Contains(retry, "did not work") {
+		t.Errorf("retry hint = %q, want it to say the password did not work", retry)
+	}
 }
 
 func TestSignIn_ByPhoneInsteadOfQR(t *testing.T) {
@@ -152,6 +159,10 @@ func TestSignIn_ByPhoneInsteadOfQR(t *testing.T) {
 	want := []string{"qr", "code", "code", "password"}
 	if !slices.Equal(p.shown(), want) {
 		t.Errorf("steps = %v, want %v", p.shown(), want)
+	}
+
+	if retry := p.hints[2]; !strings.Contains(retry, "did not work") {
+		t.Errorf("retry hint = %q, want it to say the code did not work", retry)
 	}
 }
 
