@@ -54,7 +54,7 @@ test-qml: ## Run the offscreen QML component tests in tests/qml/
 	@status=0; for dir in tests/qml/*/; do \
 		name=$$(basename "$$dir"); root=build/qml-tests/$$name; \
 		rm -rf "$$root"; mkdir -p "$$root"; cp -R "$$dir". "$$root/"; \
-		ln -s "$(CURDIR)/ui" "$$root/ui"; \
+		for link in ui bin scripts; do ln -s "$(CURDIR)/$$link" "$$root/$$link"; done; \
 		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 		ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 		if env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen XDG_DATA_HOME="$(CURDIR)/$$root/data" \
@@ -79,8 +79,8 @@ $(GOLANGCI_LINT):
 $(GO_TEST_COVERAGE):
 	GOBIN=$(TOOLS) $(GO) install github.com/vladopajic/go-test-coverage/v2@$(GO_TEST_COVERAGE_VERSION)
 
-validate: ## Validate the plugin with Omarchy
-	$(OMARCHY) plugin validate .
+validate: ## Validate the plugin files, as staged for install, with Omarchy
+	OMARCHY="$(OMARCHY)" ./scripts/install-local.sh --check
 
 install-local: build ## Copy this checkout into the Omarchy plugin directory and enable it
 	OMARCHY="$(OMARCHY)" OMARCHY_SHELL="$(OMARCHY_SHELL)" RSYNC="$(RSYNC)" ./scripts/install-local.sh "$(PLUGIN_DIR)"

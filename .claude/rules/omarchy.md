@@ -21,4 +21,4 @@ Verified against Omarchy 4.0.4, Quickshell 0.3.1 and Qt 6.11. When a newer versi
 ### Tools
 
 - `/usr/bin/qmllint` and `/usr/bin/qmltestrunner` are Qt 5. Use the Qt 6 tools in `/usr/lib/qt6/bin/`
-- `omarchy plugin validate .` checks the manifest and entry points
+- `make validate` checks the manifest and entry points on a staged copy of the plugin. Do not validate the repository itself: the validator rejects the symlinks that lint and tests leave under `build/`

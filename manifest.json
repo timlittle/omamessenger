@@ -8,7 +8,7 @@
   "description": "A keyboard-first unified messaging client for Omarchy.",
   "kinds": ["panel", "service"],
   "entryPoints": {
-    "panel": "Panel.qml",
-    "service": "Service.qml"
+    "panel": "ui/Panel.qml",
+    "service": "ui/Service.qml"
   }
 }

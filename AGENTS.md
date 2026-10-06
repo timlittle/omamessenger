@@ -41,4 +41,4 @@ OmaMessenger is an Omarchy plugin: a QML UI inside `omarchy-shell`, backed by a 
 
 - `make check` runs every gate: build, Go tests with the race detector and coverage gates, JavaScript tests, golangci-lint, the privacy check, shellcheck and Qt 6 qmllint. It must pass before work is done.
 - `make install-local` installs the checkout into Omarchy for trying the UI.
-- `omarchy plugin validate .` checks the manifest.
+- `make validate` checks the plugin files as they would be installed.
