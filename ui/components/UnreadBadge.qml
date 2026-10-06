@@ -1,43 +1,33 @@
 import QtQuick
 import qs.Commons
+import "../theme"
 
-// Unread message count badge.
-//
-// Displays a circular badge with the message count. Hidden when count is 0.
-// Shows "99+" for counts above 99. When muted, uses a muted background color.
+// Unread count as a pill: hidden at 0, "99+" above 99. Muted conversations use
+// a dimmed pill, so unread state never relies on the accent colour alone.
 Item {
   id: root
 
-  // ------------------------------------------------------------- API
   property int count: 0
   property bool muted: false
-  readonly property string text: root.count > 99 ? "99+" : root.count.toString()
+  readonly property string text: root.count > 99 ? "99+" : String(root.count)
 
-  // ------------------------------------------------------------- impl
-  implicitWidth: badge.implicitWidth
-  implicitHeight: badge.implicitHeight
   visible: root.count > 0
+  implicitHeight: label.implicitHeight + Theme.spacing.xxs * 2
+  implicitWidth: Math.max(implicitHeight, label.implicitWidth + Theme.spacing.md * 2)
 
   Rectangle {
-    id: badge
-    width: Math.max(implicitWidth, implicitHeight)
-    height: width
-    radius: width / 2
-
+    anchors.fill: parent
+    radius: height / 2
     color: root.muted ? Util.alpha(Color.foreground, 0.25) : Color.accent
 
-    implicitWidth: Math.max(24, contentText.implicitWidth + 8)
-    implicitHeight: 24
-
     Text {
-      id: contentText
+      id: label
       anchors.centerIn: parent
       text: root.text
       color: root.muted ? Color.foreground : Color.background
-      font.pixelSize: 10
-      font.weight: Font.Black
-      horizontalAlignment: Text.AlignHCenter
-      verticalAlignment: Text.AlignVCenter
+      font.family: Theme.font.family
+      font.pixelSize: Theme.font.caption
+      font.weight: Font.Bold
     }
   }
 }

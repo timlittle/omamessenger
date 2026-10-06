@@ -895,10 +895,17 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
 - do: kinds `["service","panel","bar-widget"]`; entryPoints per C1; version `0.2.0`; author "Tim Little"; homepage = GitHub URL. `barWidget`: displayName "OmaMessenger", category "Communication", defaultSection "right", schema booleans `notifications` (true), `notificationPreview` (true), `demoChatter` (true) with labels/descriptions.
 - verify: `omarchy plugin validate .`
 
-### [ ] B08 · Small components (S)
+### [x] B08 · Small components (S)
 - deps: B04
 - files: ui/components/Avatar.qml (initials circle, `name`, `size`), ui/components/UnreadBadge.qml (`count`, `muted`; hidden at 0; "99+" cap), ui/components/ServiceGlyph.qml (`service`)
 - accept: C8 colours; qmllint clean
+- result (Haiku, rewritten by the integrator): `Avatar` (`name`, `size`, `text`), `UnreadBadge` (`count`, `muted`, `text`; a pill that grows for "99+") and `ServiceGlyph` (`service`, `text`, `label`, tooltip).
+- Haiku's version passed lint and its own smoke test but was wrong:
+  - every glyph was an empty string; the test checked only that the property existed
+  - font family and pixel sizes were hard-coded, ignoring theme scaling
+  - the badge was forced square, which clipped "99+"
+  - an added `ui/components/qmldir` listed only its three files, which hid `Composer` and every later component from `import "ui/components"`
+- After the rewrite: lint is clean and a smoke test checks the actual code points, the badge width and Composer still importing.
 
 ### [ ] B09 · ServiceRail.qml (M)
 - deps: B05, B08
