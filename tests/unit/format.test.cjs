@@ -148,14 +148,26 @@ test('timeLabel returns d MMM yyyy for another year', () => {
 });
 
 test('timeLabel handles DST boundary correctly (regression)', () => {
-  // Europe spring forward: 2026-03-29 02:00 becomes 03:00 (clock jumps forward 1 hour)
+  // Europe spring forward: 2026-03-29 01:00 GMT becomes 02:00 BST.
   // At midnight local time, two dates can be 23 hours apart.
   // Message at 2026-03-28 12:00, now at 2026-03-29 12:00
   // The calendar dates are 1 day apart, so it should return "Yesterday"
-  var messageDate = new Date(2026, 2, 28, 12, 0);  // March 28
-  var nowDate = new Date(2026, 2, 29, 12, 0);      // March 29 (after DST change)
-  var result = Format.timeLabel(messageDate.getTime(), nowDate.getTime());
-  assert.equal(result, 'Yesterday');
+  // Pin a timezone with DST so the test means the same thing on any machine
+  // (CI runs in UTC, which has no DST). Node applies TZ changes immediately.
+  var savedTZ = process.env.TZ;
+  process.env.TZ = 'Europe/London';
+  try {
+    // Clocks go forward at 01:00 on 29 March, so the local midnights of
+    // 29 and 30 March are only 23 hours apart: the case Math.floor got wrong.
+    var messageDate = new Date(2026, 2, 29, 12, 0);  // March 29
+    var nowDate = new Date(2026, 2, 30, 12, 0);      // March 30
+    var midnightGap = new Date(2026, 2, 30) - new Date(2026, 2, 29);
+    assert.equal(midnightGap, 23 * 60 * 60 * 1000, 'the two local midnights must be 23 h apart');
+    assert.equal(Format.timeLabel(messageDate.getTime(), nowDate.getTime()), 'Yesterday');
+    assert.equal(Format.dayLabel(messageDate.getTime(), nowDate.getTime()), 'Yesterday');
+  } finally {
+    if (savedTZ === undefined) delete process.env.TZ; else process.env.TZ = savedTZ;
+  }
 });
 
 test('dayLabel returns Today for today', () => {

@@ -813,7 +813,7 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
   - Invariant test: no global binding is a plain printable key.
   - The set of actions in `BINDINGS` equals the set of keys in `Actions.OWNERS` (B15a): no unbound owner entries and no unowned bindings.
 
-### [ ] B04 · Format.js (S)
+### [x] B04 · Format.js (S)
 - deps: B01
 - files: ui/lib/Format.js, tests/unit/format.test.cjs
 - do:
@@ -824,6 +824,12 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
   - `dayLabel(ms, nowMs)` → Today / Yesterday / `Monday` / `12 September 2026`.
   - `statusGlyph(status)` per C8; `previewLine(conv)` → `You: …` / `Priya: …` (groups) / text.
 - accept: tests use a fixed `nowMs` and local-time-independent assertions (construct dates with `new Date(y,m,d,h,mi)`).
+- result (Haiku, reviewed twice): all eight functions, 46 tests.
+- First review found three bugs, which Haiku fixed with tests:
+  - `Math.floor` day counting showed yesterday as a clock time across a DST change.
+  - Trailing `.`, `,` or `)` became part of links.
+  - Group previews read `undefined: …` without a sender.
+- Integrator found that the DST regression test did not exercise DST: it used 28→29 March, whose midnights are both in winter time, and it relied on the machine's timezone. It now pins `Europe/London`, uses 29→30 March, asserts the 23 h gap, and was shown to fail against the old `Math.floor` under `TZ=UTC`.
 
 ### [ ] B05 · UI logic libraries (M)
 - deps: B01, B03
