@@ -19,12 +19,12 @@ TOOLS := $(CURDIR)/build/tools
 GOLANGCI_LINT := $(TOOLS)/golangci-lint
 GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
 
-.PHONY: help check build build-all install-helper test test-go test-js lint tools validate install-local clean
+.PHONY: help check build build-all install-helper test test-go test-js test-qml lint tools validate install-local clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-check: build test lint ## Run every gate: build, tests with coverage, lint
+check: build test test-qml lint ## Run every gate: build, tests with coverage, QML tests, lint
 
 build: ## Build the helper for this machine into bin/dev/, which the launcher prefers
 	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/dev/oma-messenger-service ./backend
@@ -45,6 +45,22 @@ test-go: $(GO_TEST_COVERAGE) ## Run Go tests with the race detector and the cove
 test-js: ## Run the JavaScript tests with their coverage gate
 	$(NODE) --test --experimental-test-coverage --test-coverage-include='ui/lib/**' \
 		--test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'
+
+# Each tests/qml/<Name>/shell.qml runs offscreen in its own root, which holds
+# the test, the ui/ tree and Omarchy's Commons and Ui, never touching the
+# running desktop session.
+test-qml: ## Run the offscreen QML component tests in tests/qml/
+	@./scripts/qml-imports.sh >/dev/null
+	@status=0; for dir in tests/qml/*/; do \
+		name=$$(basename "$$dir"); root=build/qml-tests/$$name; \
+		rm -rf "$$root"; mkdir -p "$$root"; cp -R "$$dir". "$$root/"; \
+		ln -s "$(CURDIR)/ui" "$$root/ui"; \
+		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
+		ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
+		if env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen XDG_DATA_HOME="$(CURDIR)/$$root/data" \
+			timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
+		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
+	done; exit $$status
 
 lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QML
 	$(GOLANGCI_LINT) run ./...
