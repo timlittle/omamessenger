@@ -120,17 +120,23 @@ func (s *Store) Conversations(ctx context.Context, query string) ([]domain.Conve
 // MarkRead clears a conversation's unread count. changed is false when it
 // was already read.
 func (s *Store) MarkRead(ctx context.Context, id string) (changed bool, _ error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET unread=0 WHERE id=? AND unread>0`, id)
+	return s.SetUnread(ctx, id, 0)
+}
+
+// SetUnread sets a conversation's unread count, as the service counts it.
+// changed is false when it already had that count.
+func (s *Store) SetUnread(ctx context.Context, id string, count int) (changed bool, _ error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET unread=? WHERE id=? AND unread<>?`, count, id, count)
 	if err != nil {
-		return false, wrap("mark read", err)
+		return false, wrap("set unread", err)
 	}
 
-	changed, err = rowsChanged("mark read", res)
+	changed, err = rowsChanged("set unread", res)
 	if changed || err != nil {
 		return changed, err
 	}
 
-	// No row changed: either it was already read or it does not exist.
+	// No row changed: either it already had that count or it does not exist.
 	_, err = s.Conversation(ctx, id)
 
 	return false, err

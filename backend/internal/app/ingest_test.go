@@ -108,6 +108,31 @@ func TestHistory_NeverNotifiesOrReadsOnArrival(t *testing.T) {
 	}
 }
 
+func TestUnread_TakesTheServicesCount(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	for _, id := range []string{"h-1", "h-2"} {
+		f.ingest.History(ctx, "wa", chat.RemoteID, incoming(id, "old"))
+	}
+	f.published.take()
+
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 0)
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 0)
+	f.ingest.Unread(ctx, "wa", "nowhere", 4)
+
+	if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 0 {
+		t.Errorf("unread = %d, want 0", got.Unread)
+	}
+
+	want := []string{app.EventConversationUpdated, app.EventUnreadChanged}
+	if got := f.published.take(); !slices.Equal(got, want) {
+		t.Errorf("events = %v, want %v once", got, want)
+	}
+}
+
 func TestAccountStatus_RecordsAndPublishes(t *testing.T) {
 	t.Parallel()
 

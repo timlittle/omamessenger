@@ -74,6 +74,11 @@ type Sink interface {
 	// Typing reports that someone started or stopped typing.
 	Typing(ctx context.Context, accountID, conversationRemoteID, name string, active bool)
 
+	// Unread reports the service's own count of unread messages in a
+	// conversation, which replaces ours: after a sync, or when the user
+	// read it on another device.
+	Unread(ctx context.Context, accountID, conversationRemoteID string, count int)
+
 	// AuthStep reports what a signing-in connector needs from the user.
 	AuthStep(ctx context.Context, accountID string, step AuthStep)
 }

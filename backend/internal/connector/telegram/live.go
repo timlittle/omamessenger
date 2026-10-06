@@ -12,7 +12,7 @@ import (
 )
 
 // handleUpdates reports live updates: new messages, read receipts for
-// what we sent, and typing.
+// what we sent, what the user read elsewhere, and typing.
 func (c *Connector) handleUpdates(d tg.UpdateDispatcher, sink connector.Sink) {
 	d.OnNewMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
 		c.newMessage(ctx, sink, u.Message, e)
@@ -33,6 +33,24 @@ func (c *Connector) handleUpdates(d tg.UpdateDispatcher, sink connector.Sink) {
 		c.typing(ctx, sink, u)
 		return nil
 	})
+
+	d.OnReadHistoryInbox(func(ctx context.Context, _ tg.Entities, u *tg.UpdateReadHistoryInbox) error {
+		c.unread(ctx, sink, shortKey(u.Peer), u.StillUnreadCount)
+		return nil
+	})
+
+	d.OnReadChannelInbox(func(ctx context.Context, _ tg.Entities, u *tg.UpdateReadChannelInbox) error {
+		c.unread(ctx, sink, "channel:"+strconv.FormatInt(u.ChannelID, 10), u.StillUnreadCount)
+		return nil
+	})
+}
+
+// unread reports Telegram's unread count for a known conversation, after
+// the user read some of it here or on another device.
+func (c *Connector) unread(ctx context.Context, sink connector.Sink, key string, count int) {
+	if remote, ok := c.lookup(key); ok {
+		sink.Unread(ctx, c.account.ID, remote, count)
+	}
 }
 
 // newMessage reports a message, first reporting its conversation so a

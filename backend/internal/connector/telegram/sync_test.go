@@ -15,7 +15,7 @@ func TestSync_ReportsContactsDialogsAndHistory(t *testing.T) {
 	f := newFakeTelegram()
 	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContacts{Users: []tg.UserClass{nadia}})
 	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
-		Dialogs: []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}}, &tg.DialogFolder{Peer: &tg.PeerUser{UserID: 1}}},
+		Dialogs: []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, UnreadCount: 1}, &tg.DialogFolder{Peer: &tg.PeerUser{UserID: 1}}},
 		Users:   []tg.UserClass{nadia},
 	})
 	f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessages{
@@ -29,7 +29,7 @@ func TestSync_ReportsContactsDialogsAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []string{"contact user:42:99 Nadia", "conversation user:42:99 Nadia", "history user:42:99 3 hello"}
+	want := []string{"contact user:42:99 Nadia", "conversation user:42:99 Nadia", "history user:42:99 3 hello", "unread user:42:99 1"}
 	if got := sink.lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
 	}

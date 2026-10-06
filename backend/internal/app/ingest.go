@@ -82,6 +82,22 @@ func (in *Ingest) History(ctx context.Context, accountID, conversationRemoteID s
 	in.events.conversationChanged(ctx, conv.ID, before)
 }
 
+// Unread takes the service's unread count for a conversation, publishing
+// it only when it changed.
+func (in *Ingest) Unread(ctx context.Context, accountID, conversationRemoteID string, count int) {
+	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
+	if err != nil {
+		return
+	}
+
+	before := in.events.unreadTotal(ctx)
+	if changed, err := in.store.SetUnread(ctx, conv.ID, count); err != nil || !changed {
+		return
+	}
+
+	in.events.conversationChanged(ctx, conv.ID, before)
+}
+
 // OutgoingStatus records the service's id for a sent message and publishes
 // its delivery progress. Late or out-of-order receipts are ignored.
 func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, status string) {

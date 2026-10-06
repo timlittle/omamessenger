@@ -124,6 +124,32 @@ func TestMarkRead_ReportsChange(t *testing.T) {
 	}
 }
 
+func TestSetUnread_TakesTheServicesCount(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "in", ConversationID: "chat", Text: "one", Created: 1})
+
+	if changed, err := s.SetUnread(ctx, "chat", 3); err != nil || !changed {
+		t.Fatalf("SetUnread(3) = %t, %v; want a change", changed, err)
+	}
+
+	if c, _ := s.Conversation(ctx, "chat"); c.Unread != 3 {
+		t.Errorf("unread = %d, want 3", c.Unread)
+	}
+
+	if changed, err := s.SetUnread(ctx, "chat", 3); err != nil || changed {
+		t.Errorf("SetUnread(3) again = %t, %v; want no change", changed, err)
+	}
+
+	if _, err := s.SetUnread(ctx, "missing", 0); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetUnread(missing) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestUnreadTotal_IgnoresMutedConversations(t *testing.T) {
 	t.Parallel()
 

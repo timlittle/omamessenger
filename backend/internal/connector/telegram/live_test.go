@@ -127,6 +127,9 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 			&tg.UpdateNewChannelMessage{Message: &tg.Message{ID: 3, PeerID: &tg.PeerChannel{ChannelID: 5}, Message: "news"}},
 			&tg.UpdateReadHistoryOutbox{Peer: &tg.PeerUser{UserID: 42}, MaxID: 8},
 			&tg.UpdateUserTyping{UserID: 42, Action: &tg.SendMessageTypingAction{}},
+			&tg.UpdateReadHistoryInbox{Peer: &tg.PeerUser{UserID: 42}, StillUnreadCount: 2},
+			&tg.UpdateReadChannelInbox{ChannelID: 5, StillUnreadCount: 0},
+			&tg.UpdateReadChannelInbox{ChannelID: 6, StillUnreadCount: 0},
 		},
 		Users: []tg.UserClass{nadia},
 	})
@@ -139,6 +142,8 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 		"incoming channel:5:3 3 news",
 		"outgoing m1  " + domain.StatusRead,
 		"typing user:42:99 true",
+		"unread user:42:99 2",
+		"unread channel:5:3 0",
 	}
 	if got := sink.lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)

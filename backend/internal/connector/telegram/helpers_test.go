@@ -120,6 +120,11 @@ func (s *recordingSink) Typing(_ context.Context, _, remote, _ string, active bo
 	s.record("typing %s %t", remote, active)
 }
 
+// Unread records the service's unread count for a conversation.
+func (s *recordingSink) Unread(_ context.Context, _, remote string, count int) {
+	s.record("unread %s %d", remote, count)
+}
+
 // AuthStep records a sign-in step.
 func (s *recordingSink) AuthStep(_ context.Context, _ string, step connector.AuthStep) {
 	s.record("auth %s", step.Kind)

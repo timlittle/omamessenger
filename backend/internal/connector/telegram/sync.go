@@ -82,6 +82,10 @@ func (c *Connector) syncDialog(ctx context.Context, api *tg.Client, sink connect
 		}
 	}
 
+	// Telegram knows which of these were read; its count replaces the
+	// history's, which would otherwise count every old message as new.
+	sink.Unread(ctx, c.account.ID, conv.RemoteID, d.UnreadCount)
+
 	return nil
 }
 

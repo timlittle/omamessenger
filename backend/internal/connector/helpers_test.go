@@ -29,6 +29,7 @@ func (s *statusSink) Incoming(context.Context, string, string, domain.Message) {
 func (s *statusSink) History(context.Context, string, string, domain.Message)  {}
 func (s *statusSink) OutgoingStatus(context.Context, string, string, string)   {}
 func (s *statusSink) Typing(context.Context, string, string, string, bool)     {}
+func (s *statusSink) Unread(context.Context, string, string, int)              {}
 func (s *statusSink) AuthStep(context.Context, string, connector.AuthStep)     {}
 
 // recorded returns a copy of the statuses seen so far.
