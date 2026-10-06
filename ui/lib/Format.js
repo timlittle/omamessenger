@@ -1,5 +1,9 @@
 .pragma library
 
+var dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+var monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var monthsFull = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 function escapeHtml(text) {
   var result = text;
   result = result.split('&').join('&amp;');
@@ -13,7 +17,18 @@ function linkify(escaped) {
   // Match http(s) URLs, but not inside entities like &amp;
   var urlPattern = /(https?:\/\/[^\s<"&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\s<"&]*)*)/g;
   return escaped.replace(urlPattern, function(url) {
-    return '<a href="' + url + '">' + url + '</a>';
+    // Strip trailing punctuation that shouldn't be part of the URL
+    var punctuation = '';
+    while (url.length > 0) {
+      var lastChar = url.charAt(url.length - 1);
+      if (lastChar === '.' || lastChar === ',' || lastChar === ';' || lastChar === ':' || lastChar === '!' || lastChar === '?' || lastChar === ')') {
+        punctuation = lastChar + punctuation;
+        url = url.substring(0, url.length - 1);
+      } else {
+        break;
+      }
+    }
+    return '<a href="' + url + '">' + url + '</a>' + punctuation;
   });
 }
 
@@ -83,74 +98,71 @@ function initials(name) {
   return result.toUpperCase();
 }
 
-function timeLabel(ms, nowMs) {
+function daysAgo(ms, nowMs) {
   var date = new Date(ms);
   var now = new Date(nowMs);
   var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   var dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   var diff = todayStart - dateStart;
-  var daysAgo = Math.floor(diff / (24 * 60 * 60 * 1000));
+  return Math.round(diff / (24 * 60 * 60 * 1000));
+}
+
+function timeLabel(ms, nowMs) {
+  var date = new Date(ms);
+  var now = new Date(nowMs);
+  var days = daysAgo(ms, nowMs);
 
   // Today
-  if (daysAgo === 0) {
+  if (days === 0) {
     return pad(date.getHours()) + ':' + pad(date.getMinutes());
   }
 
   // Yesterday
-  if (daysAgo === 1) {
+  if (days === 1) {
     return 'Yesterday';
   }
 
   // Within 6 days
-  if (daysAgo >= 2 && daysAgo <= 6) {
-    var dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  if (days >= 2 && days <= 6) {
     return dayNames[date.getDay()];
   }
 
   // Same year
   if (date.getFullYear() === now.getFullYear()) {
-    var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return date.getDate() + ' ' + months[date.getMonth()];
+    return date.getDate() + ' ' + monthsShort[date.getMonth()];
   }
 
   // Different year
-  var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return date.getDate() + ' ' + months[date.getMonth()] + ' ' + date.getFullYear();
+  return date.getDate() + ' ' + monthsShort[date.getMonth()] + ' ' + date.getFullYear();
 }
 
 function dayLabel(ms, nowMs) {
   var date = new Date(ms);
   var now = new Date(nowMs);
-  var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  var dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  var diff = todayStart - dateStart;
-  var daysAgo = Math.floor(diff / (24 * 60 * 60 * 1000));
+  var days = daysAgo(ms, nowMs);
 
   // Today
-  if (daysAgo === 0) {
+  if (days === 0) {
     return 'Today';
   }
 
   // Yesterday
-  if (daysAgo === 1) {
+  if (days === 1) {
     return 'Yesterday';
   }
 
   // Within 6 days (weekday)
-  if (daysAgo >= 2 && daysAgo <= 6) {
-    var dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  if (days >= 2 && days <= 6) {
     return dayNames[date.getDay()];
   }
 
   // Same year
   if (date.getFullYear() === now.getFullYear()) {
-    var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    return date.getDate() + ' ' + months[date.getMonth()];
+    return date.getDate() + ' ' + monthsFull[date.getMonth()];
   }
 
   // Different year
-  var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  return date.getDate() + ' ' + months[date.getMonth()] + ' ' + date.getFullYear();
+  return date.getDate() + ' ' + monthsFull[date.getMonth()] + ' ' + date.getFullYear();
 }
 
 function pad(n) {
@@ -184,8 +196,10 @@ function previewLine(conv) {
   if (conv.kind === 'group') {
     if (conv.previewOutgoing) {
       return 'You: ' + conv.preview;
-    } else {
+    } else if (conv.previewSender) {
       return conv.previewSender + ': ' + conv.preview;
+    } else {
+      return conv.preview;
     }
   }
 

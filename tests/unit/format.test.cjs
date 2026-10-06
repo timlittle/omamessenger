@@ -54,6 +54,21 @@ test('linkify handles multiple URLs', () => {
   assert.equal(oneCount, 2);
 });
 
+test('linkify strips trailing period from URL', () => {
+  var result = Format.linkify('see https://example.com/tickets.');
+  assert.match(result, /<a href="https:\/\/example\.com\/tickets">https:\/\/example\.com\/tickets<\/a>\./);
+});
+
+test('linkify strips trailing comma from URL', () => {
+  var result = Format.linkify('visit https://example.com,');
+  assert.match(result, /<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>,/);
+});
+
+test('linkify strips trailing parenthesis from URL', () => {
+  var result = Format.linkify('check (https://example.com)');
+  assert.match(result, /check \(<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>\)/);
+});
+
 test('highlight wraps case-insensitive matches in <b>', () => {
   var result = Format.highlight('Hello WORLD', 'world');
   assert.match(result, /<b>WORLD<\/b>/);
@@ -130,6 +145,17 @@ test('timeLabel returns d MMM yyyy for another year', () => {
   var lastYear = new Date(2025, 4, 15, 14, 30);
   var result = Format.timeLabel(lastYear.getTime(), nowMs);
   assert.match(result, /^15 May 2025$/);
+});
+
+test('timeLabel handles DST boundary correctly (regression)', () => {
+  // Europe spring forward: 2026-03-29 02:00 becomes 03:00 (clock jumps forward 1 hour)
+  // At midnight local time, two dates can be 23 hours apart.
+  // Message at 2026-03-28 12:00, now at 2026-03-29 12:00
+  // The calendar dates are 1 day apart, so it should return "Yesterday"
+  var messageDate = new Date(2026, 2, 28, 12, 0);  // March 28
+  var nowDate = new Date(2026, 2, 29, 12, 0);      // March 29 (after DST change)
+  var result = Format.timeLabel(messageDate.getTime(), nowDate.getTime());
+  assert.equal(result, 'Yesterday');
 });
 
 test('dayLabel returns Today for today', () => {
@@ -234,4 +260,24 @@ test('previewLine returns empty string when preview is null', () => {
     previewOutgoing: false
   };
   assert.equal(Format.previewLine(conv), '');
+});
+
+test('previewLine returns preview text when group has no previewSender', () => {
+  var conv = {
+    kind: 'group',
+    preview: 'Hello team',
+    previewSender: '',
+    previewOutgoing: false
+  };
+  assert.equal(Format.previewLine(conv), 'Hello team');
+});
+
+test('previewLine returns preview text when group has null previewSender', () => {
+  var conv = {
+    kind: 'group',
+    preview: 'Hello team',
+    previewSender: null,
+    previewOutgoing: false
+  };
+  assert.equal(Format.previewLine(conv), 'Hello team');
 });
