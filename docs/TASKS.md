@@ -849,8 +849,28 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
   - Covered by B23 scenarios S1, S9, S13, S14.
   - The window shows an "Install helper" button with the pinned version while `status` is `missing`, and the installer's error text if it fails (B16).
 
-### [ ] B07 · Manifest (S)
+### [ ] B06a · Walking skeleton: a working installed window (M)
+- deps: B06
+- files: ui/Panel.qml (skeleton), manifest.json (`service` → `ui/Service.qml`, `panel` → `ui/Panel.qml`), Makefile (`install`), scripts/install.sh
+- why: until this task, the installed plugin does not work. It makes the plugin usable on demo data as early as possible; B16 later replaces this panel with the full composition.
+- do:
+  1. `ui/Panel.qml`: a `Panel` with a `FloatingWindow` per C7 sizes, using F12 tokens. Left: a `ListView` of `conversations.list` (title, unread count). Right: the selected conversation's `messages.list` (newest at the bottom) and a `TextField` that sends with `messages.send` on Enter. It refreshes the affected list on `message.added`/`message.updated`/`conversation.updated` events, and shows `service.status`/`detail` plus an "Install helper" button while `status` is `missing`. `open(payloadJson)`/`close()` per F5; no `requestActivate` (F3).
+  2. Switch `manifest.json` `service` and `panel` entry points to `ui/`.
+  3. `make install` with `scripts/install.sh`:
+     - Build, then stage `manifest.json LICENSE helper-version ui/ bin/oma-messenger-service bin/dev/ scripts/install-helper.sh` into a temp dir.
+     - Back up an existing plugin dir to `~/.config/omarchy/plugin-backups/<id>-<timestamp>`, then rsync with `--delete` into `~/.config/omarchy/plugins/io.github.omamessenger`.
+     - Validate, `omarchy-shell shell rescanPlugins`, `omarchy plugin enable`, and summon unless `OPEN=0`.
+     - Every `omarchy`/`omarchy-shell` call goes through the `OMARCHY`/`OMARCHY_SHELL` variables.
+- accept:
+  - qmllint (Qt 6, F1) is clean for `ui/`.
+  - `HOME=$(mktemp -d) OMARCHY=true OMARCHY_SHELL=true make install OPEN=0` exits 0, and the staged dir has the listed files and no `backend/` or `vendor/`.
+  - Owner check: `make install` opens a window that lists the 11 demo conversations and sends a message that turns delivered.
+- verify: `make lint && HOME=$(mktemp -d) OMARCHY=true OMARCHY_SHELL=true make install OPEN=0`
+
+### [ ] B07 · Manifest: bar widget and settings (S)
+- deps: B06a, B17
 - files: manifest.json
+- note: B06a already switched `service` and `panel` to `ui/`; this adds the bar widget and settings.
 - do: kinds `["service","panel","bar-widget"]`; entryPoints per C1; version `0.2.0`; author "Tim Little"; homepage = GitHub URL. `barWidget`: displayName "OmaMessenger", category "Communication", defaultSection "right", schema booleans `notifications` (true), `notificationPreview` (true), `demoChatter` (true) with labels/descriptions.
 - verify: `omarchy plugin validate .`
 
@@ -879,8 +899,10 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
 - do: day separator (when `showDay`), sender name for incoming group messages when `showSender`, bubble per C8, time + status glyph row, failed retry link. Tighter top spacing when `groupedWithOlder`. Signal `retry(id)`.
 
 ### [ ] B12 · Composer.qml (S)
+- deps: GS
 - files: ui/components/Composer.qml
-- do: `TextArea` with wrap, grows to 6 lines then scrolls, placeholder "Message <title>". Props `text`, `enabled`; signal `submitted(text)`. Keys are forwarded by Panel (do not handle Enter locally except via Panel routing). Send button.
+- do: `TextArea` with wrap, grows to 6 lines then scrolls, placeholder "Message <title>". Props `text`, `enabled`; signal `submitted(text)`. Keys are forwarded by Panel (do not handle Enter locally except via Panel routing). Send button. Colours, spacing and fonts from F12 tokens only (C8).
+- verify: `scripts/qml-imports.sh && /usr/lib/qt6/bin/qmllint -I build/qml ui/components/Composer.qml` (B21 adds the script; until then create the two `build/qml/qs/{Commons,Ui}` symlinks by hand, per F2).
 
 ### [ ] B13 · ConversationView.qml (M)
 - deps: B11, B12
@@ -918,8 +940,8 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
   - Covered by B23 scenarios S2–S8, S10, S11.
 
 ### [ ] B16 · Panel.qml (M)
-- deps: B06, B09–B15, B15a
-- files: ui/Panel.qml
+- deps: B06a, B09–B15, B15a
+- files: ui/Panel.qml (replaces the B06a skeleton)
 - do:
   1. Compose the window per C7 and instantiate the four controllers, passing `service`.
   2. One `routeKey(event)` serves the root key catcher and the search/composer/dialog fields (`Keys.priority: Keys.BeforeItem`):
@@ -940,12 +962,12 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
 - verify: `git grep -n "keyboard.js\|api.token\|43821"` returns nothing outside docs/TASKS.md and README's migration note
 
 ### [ ] B19 · Makefile and install scripts (M)
-- deps: GS, B18
+- deps: GS, B18, B06a
 - files: Makefile, scripts/install.sh, scripts/link.sh, scripts/build-release.sh
 - do: targets (each with a `##` help text):
   - `build` → bin/dev/oma-messenger-service for the host arch.
   - `build-all` → release binaries and `SHA256SUMS` in `build/release/` (exists); `install-helper` → `scripts/install-helper.sh` (exists).
-  - `install` → build; stage `manifest.json LICENSE README.md helper-version ui/ bin/oma-messenger-service bin/dev/ scripts/install-helper.sh` into a temp dir; back up an existing plugin dir to `~/.config/omarchy/plugin-backups/<id>-<timestamp>` (outside the plugins dir); rsync with `--delete`; `omarchy plugin validate`; `omarchy-shell shell rescanPlugins`; `omarchy plugin enable <id>`; `omarchy-shell shell summon <id> '{}'` unless `OPEN=0`.
+  - `install` (started in B06a) → build; stage `manifest.json LICENSE README.md helper-version ui/ bin/oma-messenger-service bin/dev/ scripts/install-helper.sh` into a temp dir; back up an existing plugin dir to `~/.config/omarchy/plugin-backups/<id>-<timestamp>` (outside the plugins dir); rsync with `--delete`; `omarchy plugin validate`; `omarchy-shell shell rescanPlugins`; `omarchy plugin enable <id>`; `omarchy-shell shell summon <id> '{}'` unless `OPEN=0`.
   - `link` → same backup, then symlink the checkout (live reload).
   - `open`.
   - `uninstall` → `omarchy plugin remove <id> --yes`.
