@@ -47,7 +47,7 @@ fetch() { curl --fail --silent --show-error --location --proto "$protocols" --pr
 
 mkdir -p "$bin_dir"
 chmod 700 "$bin_dir"
-work=$(mktemp -d "$bin_dir/.install.XXXXXX")
+work=$(TMPDIR="$bin_dir" mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 printf 'Downloading OmaMessenger helper %s for %s...\n' "$version" "$arch"
