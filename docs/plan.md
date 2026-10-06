@@ -4,6 +4,8 @@ What is left to build, in order. Product scope is in [FORGE_SPEC.md](../FORGE_SP
 
 Each brief stands on its own: hand one to a contributor or an agent together with the rules. Brief IDs exist only in this file; never put them in code, comments, tests or commit messages.
 
+**Scope:** build the thinnest slice that works against a real service, then let use decide what comes next. The UI is frozen at the panel; UI and UX changes come from feedback, not from this file. Propose features here; do not build them ahead of need.
+
 **Done means:** `make check` passes, every *accept* item holds, the README and this plan are updated, and for visible changes the flow has been tried in the installed plugin (`make install-local`) with keyboard and mouse.
 
 ## UI spec
@@ -134,51 +136,25 @@ Non-visual objects in `ui/controllers/`. They are the only UI code that calls `s
 - `manifest.json`: add the `bar-widget` kind and the settings schema (`notifications`, `notificationPreview`, `demoChatter`, all on by default).
 - Delete the scaffold: `Panel.qml`, `Service.qml`, `keyboard.js` and their tests in the repository root.
 
-### U8 · QML tests
+### U8 · Smoke test
 
-`tests/qml/`: run the real Service and Panel offscreen (`QT_QPA_PLATFORM=offscreen quickshell -p <root>`) against the demo helper, driving them with real key events. Cover:
-
-- startup with 3 accounts and 11 conversations
-- open with `j j Enter`, unread clears
-- send until delivered; Sam's failure, `r`, then delivered
-- the Escape chain
-- search for "ticket"
-- Ctrl+2 rail filter
-- new chat with Ben Okafor
-- bar count follows the unread total
-- state survives the panel being recreated
-- every pane is visible at the minimum size
-- the missing-helper install flow
-
-`make check` runs them; CI runs them in an Arch container with Omarchy's shell checked out.
+One offscreen test of the real Service and Panel against the demo helper: start, 11 conversations listed, open one with the keyboard, send a message that turns delivered. Deeper UI tests wait until the UI settles through use.
 
 ## Real services
 
-Do these after the UI. Connectors never reach real services in tests: use recorded or constructed library data with golden files, and fuzz every normalizer.
+Next after the panel: a thin Telegram slice that you can use with your own account, before any other feature. Connectors never reach real services in tests: use recorded or constructed library data with golden files, and fuzz every normalizer.
 
-1. **Connector conformance suite:** one shared test that every connector passes. It covers connect, cancel, send progress, incoming fields, duplicate deliveries and goroutine cleanup. The demo connector passes it first.
-2. **Authentication API:**
-   - methods `accounts.add`, `auth.submit` (phone, code, password), `accounts.logout`, `accounts.remove`
-   - events `auth.qr`, `auth.step`, `auth.done`, `auth.failed`
-   - an optional `Authenticator` connector interface
-3. **Account setup UI:** add an account from the rail; QR with countdown; phone, code and password steps.
-4. **WhatsApp connector** with whatsmeow, in four steps:
-   - pairing, with its session in `<data-dir>/whatsapp/<account>.db`
-   - history sync
-   - live receive, receipts and typing
-   - send and read receipts
-5. **Telegram connector** with gotd/td, in four steps:
-   - login with phone, code and 2FA, with the API id and hash from settings
-   - dialog sync, loading history on demand
-   - updates with gap recovery
-   - send and read
-6. **Richer messages:** edits and deletes, replies, reactions, media in and out.
-7. **Finishing:**
-   - full-text search (SQLite FTS5)
-   - pin and archive
-   - clicking a notification opens its chat
-   - demo off once a real account exists
-8. **Release:**
-   - document the privacy and account risks in the README
-   - bump the version and tag
-   - confirm `install-helper.sh` installs it on a clean machine
+1. **Telegram slice** with gotd/td:
+   - sign-in: `accounts.add`, `auth.submit` (phone, code, 2FA password) and the `auth.*` events, behind an optional `Authenticator` connector interface; the API id and hash come from settings
+   - a minimal sign-in view in the panel (the smallest thing that works; its design follows feedback)
+   - dialog sync and recent history, live receive, send and read receipts
+   - the helper runs without `--demo` once a real account exists
+2. **Use it, collect feedback,** and turn what hurts into briefs here.
+
+Later, in an order set by that feedback:
+
+- **WhatsApp** with whatsmeow: pairing, history sync, live receive, send and read.
+- **Richer messages:** edits and deletes, replies, reactions, media in and out.
+- **Finishing:** full-text search, pin and archive, clicking a notification opens its chat.
+- **Connector conformance suite** shared by every connector, once there are two.
+- **Release:** document the privacy and account risks in the README, bump the version and tag, confirm `install-helper.sh` installs it on a clean machine.
