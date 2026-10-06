@@ -61,6 +61,7 @@ Task format:
 - F11 Resolve the plugin's own files from QML with `Qt.resolvedUrl("../bin/oma-messenger-service")` and strip the `file://` prefix. This works for both installed copies and symlinked dev checkouts.
 - F12 Omarchy `Style` tokens: `Style.space(px)`, `Style.font.{caption,bodySmall,body,subtitle,title,heading,display}`, `Style.spacing.*`, `Style.hoverFill`, `Style.selectedFill`, `Style.selectedFillAlpha`, `Style.cornerRadius`. `Color.{foreground,background,accent,urgent,muted}`, `Color.popups.{background,text,border}`. Helper: `Util.alpha(color, a)`. Omarchy `qs.Ui` controls: `Button`, `TextField`, `Dropdown`, `Toggle`, `BarWidget`, `BarIconButton`, `Panel`, `BorderSurface`.
 - F13 `node --test <directory>` does not run the tests in a directory on Node ≥ 22 (it fails with `Cannot find module`). Pass files or a quoted glob: `node --test 'tests/unit/**/*.test.cjs'`.
+- F14 Values returned by `tests/unit/load.cjs` live in a separate `vm` realm. `assert.deepStrictEqual` fails on them even when the contents match, because the prototypes differ. Use `assert.deepEqual`, or compare `JSON.stringify(...)`.
 
 ## 2. Contracts
 
@@ -771,11 +772,12 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
 
 ### Phase B — UI on demo data
 
-### [ ] B01 · JS test loader (S)
+### [x] B01 · JS test loader (S)
 - deps: GS
 - files: tests/unit/load.cjs, tests/unit/load.test.cjs
 - do: `load("lib/Keymap.js")` reads `ui/<path>`, strips the `.pragma library` line, resolves `.import "X.js" as X` recursively, evaluates in `new Function`, and returns an object of all top-level `function` and `var` names.
 - verify: `node --test 'tests/unit/**/*.test.cjs'`
+- result: `load(path, { root })` runs each file in a `vm` context, so top-level `var`/`function` names are collected by the engine itself, and stack traces show the real file and line. Imports resolve relative to the importing file, results are cached, cycles and missing files give clear errors. 9 tests. Review caught a first version that split `var` statements on commas and broke on `var KEY = { Escape: 1, Tab: 2 };`; regression tests cover it (see F14).
 
 ### [ ] B02 · Rpc.js (S)
 - deps: B01
