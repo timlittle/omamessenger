@@ -41,6 +41,7 @@ Then install the helper, a small Go program the plugin runs:
 - It installs the binary into `~/.local/share/omamessenger/bin/`, so you need no Go compiler.
 - Nothing is downloaded until you run it, and running it again when the helper is already installed does nothing.
 - `install-helper.sh --status` reports whether the helper is installed.
+- **No release has been published yet**, so the script can't download anything until `v0.2.0` is tagged (see Development). Until then, build the helper from a checkout with `make build`; the launcher prefers that build.
 - The helper targets Linux x86_64 and ARM64. There is no systemd unit; `omarchy-shell` starts the helper when the plugin loads.
 
 Remove the plugin with:
