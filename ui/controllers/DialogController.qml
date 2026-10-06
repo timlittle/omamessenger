@@ -129,7 +129,11 @@ QtObject {
   function _loadContacts(): void {
     if (!root.service || !root.accountId) { root.contacts = []; root.currentIndex = -1; return; }
 
-    root.service.request("contacts.list", { accountId: root.accountId, query: root.query }, function(error, result) {
+    // The helper answers requests concurrently, so a reply for an earlier
+    // search can arrive after the latest one; only the latest counts.
+    const params = { accountId: root.accountId, query: root.query };
+    root.service.request("contacts.list", params, function(error, result) {
+      if (params.accountId !== root.accountId || params.query !== root.query) return;
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.contacts = result ?? [];
       root.currentIndex = root.contacts.length > 0 ? 0 : -1;
