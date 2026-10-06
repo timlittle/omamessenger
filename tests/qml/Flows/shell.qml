@@ -100,7 +100,10 @@ ShellRoot {
 
   // waitForList holds until the demo helper has seeded all 11 chats.
   function waitForList(): var {
-    return root.listModel().count === 11;
+    // Each fake account stores its history before it reports connected, so
+    // a search run any earlier could miss messages that are on their way.
+    const accounts = helperService.accounts;
+    return root.listModel().count === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
   }
 
   // searchTicket focuses search with Ctrl+G and types a query.

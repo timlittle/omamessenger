@@ -166,7 +166,16 @@ Item {
     if (root.windowActive === active) return;
 
     root.windowActive = active;
-    root.service.request("ui.setFocus", { conversationId: root.activeId, windowActive: active }, function() {});
+    root._reportFocus();
+  }
+
+  // _reportFocus tells the helper what the user is looking at. The panel
+  // reports focus as it is created, possibly before Omarchy hands it the
+  // service, so it is reported again when the service arrives.
+  function _reportFocus(): void {
+    if (!root.service) return;
+
+    root.service.request("ui.setFocus", { conversationId: root.activeId, windowActive: root.windowActive }, function() {});
   }
 
   // setDraft stores the composer's text for the open conversation, so it
@@ -289,6 +298,8 @@ Item {
   function _saveUiState(patch: var): void {
     root.service.uiState = Object.assign({}, root.service.uiState, patch);
   }
+
+  onServiceChanged: root._reportFocus()
 
   Component.onCompleted: {
     if (!root.service) return;
