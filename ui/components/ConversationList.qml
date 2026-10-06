@@ -58,6 +58,7 @@ Item {
 
   ListView {
     id: list
+    objectName: "conversationListView"
     anchors.fill: parent
     clip: true
     visible: !root._empty

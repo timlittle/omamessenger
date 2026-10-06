@@ -22,6 +22,15 @@ Item {
   // currentIndex is the highlighted row in contacts.
   property int currentIndex: 0
 
+  // searchField exposes the search input so a key router can intercept
+  // navigation keys before the field types them, the same way Composer
+  // exposes its own input.
+  property alias searchField: searchField
+  // routeKey intercepts a key press in the search field before the field
+  // handles it; see Composer.qml for why this is a function property
+  // rather than a signal carrying the KeyEvent.
+  property var routeKey: null
+
   // accountChanged reports a new account chosen from the row of buttons.
   signal accountChanged(string id)
   // queryEdited reports the search text as the user types it.
@@ -118,6 +127,12 @@ Item {
           Layout.fillWidth: true
           placeholderText: "Search contacts"
           text: root.query
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: event => {
+            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+          }
+
           onTextChanged: root.queryEdited(text)
         }
 

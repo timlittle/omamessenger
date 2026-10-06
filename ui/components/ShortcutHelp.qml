@@ -16,6 +16,7 @@ Item {
   // closed reports that the overlay should be dismissed.
   signal closed()
 
+  objectName: "shortcutHelp"
   anchors.fill: parent
   visible: root.open
 

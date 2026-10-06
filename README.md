@@ -5,7 +5,7 @@ OmaMessenger is a keyboard-first messaging client for [Omarchy](https://omarchy.
 ## Status
 
 - **Helper:** complete for an offline demo (`--demo`): seeded accounts and conversations, sending with delivery receipts, failures and retries, replies, typing indicators, notifications and unread counts.
-- **UI:** in progress in `ui/`. The service rail, conversation list, conversation view and bar icon exist as components and the panel runs the helper end to end, but the full keyboard-routed layout from [docs/plan.md](docs/plan.md) is not wired in yet.
+- **UI:** works end to end on demo data. `ui/Panel.qml` composes the service rail, conversation list, conversation view, shortcut help and new-chat dialog from `ui/components/` with the controllers in `ui/controllers/`, routing every key in [docs/plan.md](docs/plan.md)'s table to whichever one owns it.
 - **WhatsApp and Telegram:** not connected yet. The planned libraries are [whatsmeow](https://github.com/tulir/whatsmeow) and [gotd/td](https://github.com/gotd/td).
 
 ## Requirements

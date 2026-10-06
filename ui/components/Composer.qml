@@ -11,10 +11,15 @@ import "../theme"
 // no decision about *when* a message is sent beyond "the trimmed text is
 // non-empty" — that call belongs to whoever wires it up.
 //
-// Enter / Shift+Enter are deliberately NOT handled here. The Panel forwards
-// key events to a router, which calls submit() or focusInput() on this
-// component as needed. The `input` alias lets that router (or the
-// Panel) attach its own Keys handlers directly to the inner TextArea.
+// Enter / Shift+Enter are deliberately NOT handled here. routeKey, when
+// set, is called with a key press's (key, modifiers, text) before the
+// input does anything with it; returning true marks the key handled, so
+// Enter can call submit() instead of inserting a newline. It takes the
+// event's raw fields rather than the KeyEvent itself: a KeyEvent copies
+// when it crosses a signal, and mutating a copy's `accepted` would not
+// stop the real one, so the input sets `accepted` itself from the
+// boolean this returns. The `input` alias lets the same caller watch
+// activeFocus and focus the field itself.
 Item {
   id: root
 
@@ -22,9 +27,14 @@ Item {
   property string title: ""
   property alias text: area.text
   property alias input: area
+  // routeKey intercepts a key press before the input handles it; see the
+  // file comment above for why this is a function property, not a signal.
+  property var routeKey: null
 
+  // submitted reports the trimmed text a caller should send.
   signal submitted(string text)
 
+  // submit sends the input's trimmed text, unless it is empty.
   function submit() {
     var trimmed = area.text.trim()
     if (trimmed.length === 0) return
@@ -32,6 +42,7 @@ Item {
     area.text = ""
   }
 
+  // focusInput moves keyboard focus into the text input.
   function focusInput() {
     area.forceActiveFocus()
   }
@@ -68,10 +79,16 @@ Item {
 
       TextArea {
         id: area
+        objectName: "composerInput"
         enabled: root.enabled
         wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
         selectByMouse: true
         placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
+
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: event => {
+          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+        }
 
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body

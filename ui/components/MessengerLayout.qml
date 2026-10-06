@@ -1,0 +1,241 @@
+import QtQuick
+import QtQuick.Layouts
+import qs.Commons
+import qs.Ui as Ui
+import "../theme"
+
+// The three columns and the overlays that make up the OmaMessenger window:
+// the service rail, the search field and conversation list, and the open
+// conversation, plus the shortcut help sheet and the new-chat dialog. This
+// is Panel.qml's own body, split out only to keep that file within the
+// size guideline: unlike the views under ui/components it is allowed to
+// call the controllers directly, binding their data into the views below
+// and their functions to the views' signals. Panel.qml keeps every
+// service.request call and the keyboard router; this file only wires.
+Item {
+  id: root
+
+  // service is the Service instance that owns the helper connection.
+  property var service: null
+  // listController is bound into the rail and the list.
+  property var listController: null
+  // conversationController is bound into the open conversation.
+  property var conversationController: null
+  // dialogController is bound into the new-chat dialog.
+  property var dialogController: null
+  // windowController is bound into the shortcut help sheet.
+  property var windowController: null
+  // nowMs is the current time, refreshed by Panel.qml, for relative times.
+  property real nowMs: Date.now()
+  // routeKey is Panel's router: called with (key, modifiers, text) from
+  // the search field, the composer and the dialog's search field, before
+  // each handles its own key presses. See Composer.qml for why it is a
+  // function property passed down, rather than a signal carrying the
+  // KeyEvent back up.
+  property var routeKey: null
+  // focusDefault returns keyboard focus to Panel's own key area. Leaving
+  // the search field or the composer only clears that field's `focus`,
+  // which does not reliably hand active focus back to anything, so
+  // Panel passes this down to call after each such blur.
+  property var focusDefault: null
+
+  // _railWidth is the rail's fixed width.
+  readonly property real _railWidth: Style.space(64)
+  // _listWidth clamps the list column between 260 and 360, scaled with
+  // whatever width the rail leaves it.
+  readonly property real _listWidth: Math.max(Style.space(260),
+    Math.min(Style.space(360), 0.32 * (columns.width - root._railWidth)))
+
+  // _accountNames maps an account id to its name, for rows that show it.
+  function _accountNames(): var {
+    const map = {}
+    const accounts = root.service ? root.service.accounts : []
+    for (const a of accounts) map[a.id] = a.name
+    return map
+  }
+
+  // _multiAccountServices lists the services the rail split into per-account
+  // entries, which is exactly the services with more than one account.
+  function _multiAccountServices(): var {
+    const set = new Set()
+    for (const item of root.listController.railItems) {
+      if (item.kind === "account") set.add(item.service)
+    }
+    return Array.from(set)
+  }
+
+  // _openRow opens the conversation a list row or a dialog contact chose.
+  function _openRow(id: string): void {
+    const conversation = root.listController.findConversation(id)
+    if (conversation) root.conversationController.open(conversation)
+  }
+
+  // _scrollConversation turns a ConversationController.scroll() direction
+  // into the matching ConversationView call.
+  function _scrollConversation(direction: string): void {
+    if (direction === "down") conversationView.scrollBy(1)
+    else if (direction === "up") conversationView.scrollBy(-1)
+    else if (direction === "pageDown") conversationView.scrollPage(1)
+    else if (direction === "pageUp") conversationView.scrollPage(-1)
+    else if (direction === "newest") conversationView.scrollToNewest()
+    else if (direction === "oldest") conversationView.scrollToOldest()
+  }
+
+  // Composer focus mirrors ConversationController.composeFocused both
+  // ways: a request from the controller moves real focus, and real focus
+  // changes (a click, or leaving) are read back into the controller.
+  Connections {
+    target: root.conversationController
+
+    function onActiveIdChanged() {
+      if (root.conversationController.activeId) conversationView.focusComposer()
+    }
+
+    function onComposeFocusRequested() { conversationView.focusComposer() }
+    function onSubmitRequested() { conversationView.composer.submit() }
+    function onLeaveComposeRequested() {
+      conversationView.composer.input.focus = false
+      if (root.focusDefault) root.focusDefault()
+    }
+    function onScroll(direction) { root._scrollConversation(direction) }
+  }
+
+  Connections {
+    target: conversationView.composer.input
+    function onActiveFocusChanged() {
+      root.conversationController.composeFocused = conversationView.composer.input.activeFocus
+    }
+  }
+
+  // Search focus mirrors ListController.searchFocused the same way: a
+  // request focuses the field, a field focus change is read back, and the
+  // field is blurred if the controller leaves search while it still holds
+  // real focus (the Escape chain only updates the controller's flag).
+  Connections {
+    target: root.listController
+
+    function onFocusRequested() { searchField.forceActiveFocus() }
+    function onSearchFocusedChanged() {
+      if (root.listController.searchFocused || !searchField.activeFocus) return
+      searchField.focus = false
+      if (root.focusDefault) root.focusDefault()
+    }
+  }
+
+  Connections {
+    target: searchField
+    function onActiveFocusChanged() {
+      root.listController.searchFocused = searchField.activeFocus
+    }
+  }
+
+  // Opening the new-chat dialog focuses its search field.
+  Connections {
+    target: root.dialogController
+    function onOpenChanged() {
+      if (root.dialogController.open) dialog.focusSearch()
+    }
+  }
+
+  RowLayout {
+    id: columns
+    anchors.fill: parent
+    spacing: Theme.spacing.sm
+
+    ServiceRail {
+      id: rail
+      objectName: "serviceRail"
+      Layout.preferredWidth: root._railWidth
+      Layout.fillHeight: true
+
+      items: root.listController.railItems
+      selectedKey: root.listController.railKey
+      demo: root.service ? root.service.demo : false
+
+      onSelected: key => root.listController.setRail(key)
+      onNewChat: root.dialogController.run("chat.new")
+      onHelp: root.windowController.run("help.toggle")
+    }
+
+    ColumnLayout {
+      objectName: "listColumn"
+      Layout.preferredWidth: root._listWidth
+      Layout.fillHeight: true
+      spacing: Theme.spacing.sm
+
+      Ui.TextField {
+        id: searchField
+        Layout.fillWidth: true
+        placeholderText: "Search"
+        text: root.listController.query
+
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: event => {
+          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+        }
+
+        onTextChanged: root.listController.setQuery(text)
+      }
+
+      ConversationList {
+        id: list
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+
+        model: root.listController.model
+        selectedId: root.listController.selectedId
+        query: root.listController.query
+        nowMs: root.nowMs
+        accountNames: root._accountNames()
+        multiAccountServices: root._multiAccountServices()
+
+        onActivated: id => root._openRow(id)
+      }
+    }
+
+    ConversationView {
+      id: conversationView
+      objectName: "conversationView"
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+
+      conversation: root.conversationController.conversation
+      subtitle: root.conversationController.subtitle
+      messages: root.conversationController.messages
+      annotations: root.conversationController.annotations
+      nowMs: root.nowMs
+      draft: root.conversationController.draft
+      composeEnabled: root.conversationController.activeId !== ""
+      routeKey: root.routeKey
+
+      onLoadOlder: root.conversationController.loadOlder()
+      onRetry: id => root.conversationController.retryMessage(id)
+      onSend: text => root.conversationController.send(text)
+      onDraftEdited: text => root.conversationController.setDraft(text)
+    }
+  }
+
+  ShortcutHelp {
+    anchors.fill: parent
+    open: root.windowController.helpOpen
+    onClosed: root.windowController.run("help.close")
+  }
+
+  NewChatDialog {
+    id: dialog
+    anchors.fill: parent
+    visible: root.dialogController.open
+
+    accounts: root.service ? root.service.accounts : []
+    accountId: root.dialogController.accountId
+    query: root.dialogController.query
+    contacts: root.dialogController.contacts
+    currentIndex: root.dialogController.currentIndex
+    routeKey: root.routeKey
+
+    onAccountChanged: id => root.dialogController.setAccount(id)
+    onQueryEdited: text => root.dialogController.setQuery(text)
+    onAccepted: (accountId, contactId) => root.dialogController.openConversation(accountId, contactId)
+    onCancelled: root.dialogController.close()
+  }
+}

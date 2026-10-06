@@ -6,12 +6,15 @@ import qs.Commons
 import qs.Ui as Ui
 import "theme"
 import "components"
-import "lib/Format.js" as Format
+import "controllers"
+import "lib/Keymap.js" as Keymap
+import "lib/Navigation.js" as Navigation
 
-// The walking skeleton: a conversation list and the open conversation,
-// enough to prove the helper, the protocol and the UI are wired end to
-// end. The full three-column layout, keyboard routing and controllers
-// replace this once they exist.
+// The OmaMessenger window: the four controllers from ui/controllers, the
+// views they drive, and the one key router that decides which controller
+// a key press belongs to. Omarchy destroys this whole tree when the
+// window is hidden, so nothing here is state that must survive that; see
+// ui/Service.qml for what does.
 Item {
   id: root
 
@@ -28,21 +31,29 @@ Item {
   // asked for.
   property bool closingFromHost: false
 
-  // _selectedId is the open conversation, or "" when none is open.
-  property string _selectedId: ""
+  // nowMs refreshes every 30 seconds so the list and conversation can
+  // recompute their relative time labels.
+  property real nowMs: Date.now()
+
+  // _pendingConversationId is a conversation open() was asked to open
+  // before the list had loaded it, retried until it appears or this
+  // gives up.
+  property string _pendingConversationId: ""
+  // _pendingAttempts counts the retries _tryOpenPending has made.
+  property int _pendingAttempts: 0
 
   // open shows the window and, if the payload names a conversation,
   // opens it. Omarchy calls this every time the panel is summoned, even
-  // while it is already open, so it always reloads the conversation list
-  // and only focuses an already-visible window rather than reshowing it.
-  function open(payloadJson): void {
+  // while it is already open, so it always resets keyboard focus and
+  // only focuses an already-visible window rather than reshowing it.
+  function open(payloadJson: string): void {
     const alreadyVisible = window.visible;
     root.closingFromHost = false;
     window.visible = true;
-    root._loadConversations();
+    keyArea.forceActiveFocus();
 
     const conversationId = root._conversationIdFrom(payloadJson);
-    if (conversationId) root._selectConversation(conversationId);
+    if (conversationId) root._openConversationId(conversationId);
     if (alreadyVisible) Hyprland.dispatch("focuswindow title:^OmaMessenger$");
   }
 
@@ -51,6 +62,40 @@ Item {
     root.closingFromHost = true;
     window.visible = false;
     root.closingFromHost = false;
+  }
+
+  // routeKey matches a key press to an action for the current context and
+  // runs whichever controller owns it, returning whether one did. It
+  // takes the key's raw fields rather than the KeyEvent itself: a
+  // KeyEvent copies when it crosses a signal from a field several
+  // components away (the search field, the composer, the dialog), and
+  // setting `accepted` on a copy would not stop the real one. Every
+  // caller — the window's own key handler and those fields — gets a
+  // plain boolean back and sets `accepted` on its own, real event.
+  function routeKey(key: int, modifiers: int, text: string): bool {
+    const context = Navigation.keyContext(root._navState());
+    const demo = root.service ? root.service.demo : false;
+    const action = Keymap.match(context, key, modifiers, text, demo);
+    if (!action) return false;
+
+    const controllers = [listController, conversationController, dialogController, windowController];
+    const owner = controllers.find((c) => c.handles(action));
+    if (!owner) return false;
+
+    owner.run(action);
+    return true;
+  }
+
+  // _navState assembles what Navigation.keyContext needs from whichever
+  // controller owns each piece of it.
+  function _navState(): var {
+    return {
+      helpOpen: windowController.helpOpen,
+      dialogOpen: dialogController.open,
+      searchFocused: listController.searchFocused,
+      composeFocused: conversationController.composeFocused,
+      pane: conversationController.pane
+    };
   }
 
   // _conversationIdFrom reads conversationId out of open()'s JSON
@@ -66,93 +111,90 @@ Item {
     }
   }
 
-  // _loadConversations replaces the conversation list from the helper.
-  function _loadConversations(): void {
-    if (!root.service) return;
-
-    root.service.request("conversations.list", {}, function(error, result) {
-      if (error || !result) return;
-
-      conversationsModel.clear();
-      for (const conv of result) conversationsModel.append(conv);
-    });
+  // _openConversationId opens id once listController has loaded it,
+  // retrying briefly since the panel was just (re)created and its list
+  // may still be loading.
+  function _openConversationId(id: string): void {
+    root._pendingConversationId = id;
+    root._pendingAttempts = 0;
+    root._tryOpenPending();
   }
 
-  // _upsertConversation updates one row in place, or adds it at the top
-  // when it is new.
-  function _upsertConversation(conv: var): void {
-    for (let i = 0; i < conversationsModel.count; i++) {
-      if (conversationsModel.get(i).id === conv.id) {
-        conversationsModel.set(i, conv);
-        return;
-      }
+  // _tryOpenPending opens _pendingConversationId once it is found, or
+  // gives up quietly after twenty tries (three seconds).
+  function _tryOpenPending(): void {
+    if (!root._pendingConversationId) return;
+
+    const conversation = listController.findConversation(root._pendingConversationId);
+    if (conversation) {
+      conversationController.open(conversation);
+      root._pendingConversationId = "";
+      return;
     }
 
-    conversationsModel.insert(0, conv);
+    root._pendingAttempts++;
+    if (root._pendingAttempts < 20) pendingOpenTimer.restart();
   }
 
-  // _selectConversation opens one conversation: loads its messages, marks
-  // it read, tells the helper the user is looking at it, and remembers
-  // the choice in service.uiState so it survives the panel being
-  // recreated.
-  function _selectConversation(id: string): void {
-    if (!root.service || id === root._selectedId) return;
-
-    root._selectedId = id;
-    messagesModel.clear();
-    root.service.request("messages.list", { conversationId: id, limit: 50 }, function(error, result) {
-      if (error || !result) return;
-      for (const m of result.messages) root._upsertMessage(m);
-    });
-    root.service.request("conversations.markRead", { conversationId: id }, function() {});
-    root.service.request("ui.setFocus", { conversationId: id, windowActive: true }, function() {});
-
-    const state = root.service.uiState;
-    state.selectedId = id;
-    root.service.uiState = state;
+  // _hide lowers the window; onVisibleChanged below reports it to the
+  // host, since a user-initiated hide (q, Escape) is not closingFromHost.
+  function _hide(): void {
+    window.visible = false;
   }
 
-  // _upsertMessage updates one message in place, or appends it when it is
-  // new.
-  function _upsertMessage(message: var): void {
-    for (let i = 0; i < messagesModel.count; i++) {
-      if (messagesModel.get(i).id === message.id) {
-        messagesModel.set(i, message);
-        return;
-      }
-    }
-
-    messagesModel.append(message);
+  // _helperStatusText names the current helper status for the row shown
+  // while it is not ready.
+  function _helperStatusText(): string {
+    if (!root.service) return "Waiting for the helper service…";
+    if (root.service.status === "missing") return "The helper is not installed.";
+    if (root.service.status === "error") return "The helper stopped: " + root.service.detail;
+    return "Starting the helper…";
   }
 
-  // _sendMessage sends the composer's text to the open conversation.
-  function _sendMessage(text: string): void {
-    if (!root.service || !root._selectedId) return;
-
-    root.service.request("messages.send", { conversationId: root._selectedId, text: text }, function(error, result) {
-      if (!error && result) root._upsertMessage(result);
-    });
+  ListController {
+    id: listController
+    service: root.service
   }
 
-  // _handleEvent refreshes the lists a helper notification affects.
-  function _handleEvent(name: string, data: var): void {
-    if (name === "conversation.updated") {
-      root._upsertConversation(data);
-    } else if ((name === "message.added" || name === "message.updated") && data.conversationId === root._selectedId) {
-      root._upsertMessage(data);
-    }
+  ConversationController {
+    id: conversationController
+    service: root.service
+    listController: listController
   }
 
-  ListModel { id: conversationsModel }
-  ListModel { id: messagesModel }
+  DialogController {
+    id: dialogController
+    service: root.service
 
-  Connections {
-    target: root.service
-    function onEvent(name, data) { root._handleEvent(name, data); }
+    onOpened: (conversation) => conversationController.open(conversation)
+  }
+
+  WindowController {
+    id: windowController
+    service: root.service
+    listController: listController
+    conversationController: conversationController
+    dialogController: dialogController
+
+    onHideRequested: root._hide()
+  }
+
+  Timer {
+    interval: 30000
+    running: true
+    repeat: true
+    onTriggered: root.nowMs = Date.now()
+  }
+
+  Timer {
+    id: pendingOpenTimer
+    interval: 150
+    onTriggered: root._tryOpenPending()
   }
 
   FloatingWindow {
     id: window
+    objectName: "panelWindow"
     title: "OmaMessenger"
     color: Color.background
     implicitWidth: Style.space(1120)
@@ -160,152 +202,78 @@ Item {
     minimumSize: Qt.size(Style.space(760), Style.space(540))
 
     onVisibleChanged: {
-      if (!window.visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function") {
+      if (!window.visible && !root.closingFromHost && root.shell && typeof root.shell.hide === "function")
         root.shell.hide("io.github.omamessenger");
-      }
     }
 
-    Shortcut {
-      sequence: "Return"
-      context: Qt.WindowShortcut
-      enabled: composer.input.activeFocus
-      onActivated: composer.submit()
-    }
-
-    ColumnLayout {
+    Item {
+      id: keyArea
       anchors.fill: parent
-      anchors.margins: Theme.spacing.md
-      spacing: Theme.spacing.sm
+      focus: true
 
-      Row {
-        Layout.fillWidth: true
-        visible: !root.service || root.service.status !== "ready"
+      Keys.onPressed: event => {
+        if (root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+      }
+
+      ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: Theme.spacing.md
         spacing: Theme.spacing.sm
 
+        RowLayout {
+          Layout.fillWidth: true
+          visible: !root.service || root.service.status !== "ready"
+          spacing: Theme.spacing.sm
+
+          Text {
+            Layout.fillWidth: true
+            text: root._helperStatusText()
+            elide: Text.ElideRight
+            color: Color.foreground
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.bodySmall
+          }
+
+          Ui.Button {
+            text: "Install helper"
+            visible: root.service && root.service.status === "missing"
+            onClicked: root.service.installHelper()
+          }
+        }
+
         Text {
-          text: !root.service ? "Waiting for the helper service…"
-            : root.service.status === "missing" ? "The helper is not installed."
-            : root.service.status === "error" ? "The helper stopped: " + root.service.detail
-            : "Starting the helper…"
-          color: Color.foreground
+          id: errorLine
+          Layout.fillWidth: true
+          readonly property string message: conversationController.lastError || listController.lastError
+            || dialogController.lastError || windowController.lastError
+          visible: errorLine.message.length > 0
+          text: errorLine.message
+          elide: Text.ElideRight
+          color: Color.urgent
           font.family: Theme.font.family
           font.pixelSize: Theme.font.bodySmall
         }
 
-        Ui.Button {
-          text: "Install helper"
-          visible: root.service && root.service.status === "missing"
-          onClicked: root.service.installHelper()
-        }
-      }
-
-      RowLayout {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        spacing: Theme.spacing.sm
-
-        ListView {
-          id: conversationList
-          Layout.preferredWidth: Math.max(Style.space(260), Math.min(Style.space(360), window.width * 0.32))
-          Layout.fillHeight: true
-          clip: true
-          model: conversationsModel
-          delegate: conversationDelegate
-        }
-
-        ColumnLayout {
+        MessengerLayout {
+          id: layout
           Layout.fillWidth: true
           Layout.fillHeight: true
-          spacing: Theme.spacing.sm
 
-          ListView {
-            id: messageList
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            clip: true
-            spacing: Theme.spacing.xs
-            model: messagesModel
-            delegate: messageDelegate
-          }
-
-          Composer {
-            id: composer
-            Layout.fillWidth: true
-            enabled: root._selectedId !== ""
-            onSubmitted: function(text) { root._sendMessage(text); }
-          }
+          service: root.service
+          listController: listController
+          conversationController: conversationController
+          dialogController: dialogController
+          windowController: windowController
+          nowMs: root.nowMs
+          routeKey: root.routeKey
+          focusDefault: () => keyArea.forceActiveFocus()
         }
-      }
-    }
-  }
 
-  Component {
-    id: conversationDelegate
-
-    Rectangle {
-      id: convRow
-      required property string title
-      required property int unread
-      required property bool muted
-
-      width: ListView.view.width
-      height: Theme.spacing.controlHeight + Theme.spacing.md
-      color: model.id === root._selectedId
-        ? Util.alpha(Color.accent, Style.selectedFillAlpha)
-        : (hoverArea.containsMouse ? Style.hoverFill : "transparent")
-
-      RowLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.spacing.sm
-        spacing: Theme.spacing.sm
-
-        Text {
+        KeyHints {
           Layout.fillWidth: true
-          text: convRow.title
-          color: Color.foreground
-          font.family: Theme.font.family
-          font.pixelSize: Theme.font.body
-          font.bold: convRow.unread > 0
-          elide: Text.ElideRight
+          Layout.preferredHeight: Style.space(24)
+          context: Navigation.keyContext(root._navState())
         }
-
-        UnreadBadge {
-          count: convRow.unread
-          muted: convRow.muted
-        }
-      }
-
-      MouseArea {
-        id: hoverArea
-        anchors.fill: parent
-        hoverEnabled: true
-        onClicked: root._selectConversation(model.id)
-      }
-    }
-  }
-
-  Component {
-    id: messageDelegate
-
-    Item {
-      id: msgRow
-      required property string text
-      required property bool outgoing
-      required property string status
-
-      width: ListView.view.width
-      height: label.implicitHeight + Theme.spacing.md
-
-      Text {
-        id: label
-        anchors.right: msgRow.outgoing ? parent.right : undefined
-        anchors.left: msgRow.outgoing ? undefined : parent.left
-        width: Math.min(implicitWidth, msgRow.width * 0.72)
-        text: msgRow.outgoing ? (msgRow.text + "  " + Format.statusGlyph(msgRow.status)) : msgRow.text
-        color: Color.foreground
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.body
-        wrapMode: Text.Wrap
       }
     }
   }

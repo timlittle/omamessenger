@@ -26,6 +26,9 @@ Item {
   property bool composeEnabled: true
   // composer exposes the Composer instance so a key router can focus it.
   property alias composer: composer
+  // routeKey is forwarded straight to the composer; see Composer.qml for
+  // why a key router intercepts through a function property, not a signal.
+  property var routeKey: null
   // isGroup is true when the open conversation is a group chat.
   readonly property bool isGroup: root.conversation ? root.conversation.kind === "group" : false
 
@@ -114,6 +117,7 @@ Item {
         spacing: 0
 
         Text {
+          objectName: "conversationTitle"
           Layout.fillWidth: true
           text: root.conversation ? root.conversation.title : ""
           elide: Text.ElideRight
@@ -136,6 +140,7 @@ Item {
 
     ListView {
       id: messageList
+      objectName: "messageListView"
       Layout.fillWidth: true
       Layout.fillHeight: true
       clip: true
@@ -163,6 +168,7 @@ Item {
       Layout.margins: Theme.spacing.md
       title: root.conversation ? root.conversation.title : ""
       enabled: root.composeEnabled
+      routeKey: root.routeKey
       onSubmitted: text => root.send(text)
       onTextChanged: root.draftEdited(composer.text)
     }

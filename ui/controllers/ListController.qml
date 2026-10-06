@@ -102,6 +102,13 @@ Item {
     root._select(id);
   }
 
+  // setRail switches the active rail filter to key, for a click on a rail
+  // entry the keyboard table has no binding for, such as one account
+  // among several under the same service.
+  function setRail(key: string): void {
+    root._setRail(key);
+  }
+
   // visibleIds returns the ids of the rows currently shown, in order.
   function visibleIds(): var {
     return root._visible().map((c) => c.id);
