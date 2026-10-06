@@ -62,6 +62,7 @@ Task format:
 - F12 Omarchy `Style` tokens: `Style.space(px)`, `Style.font.{caption,bodySmall,body,subtitle,title,heading,display}`, `Style.spacing.*`, `Style.hoverFill`, `Style.selectedFill`, `Style.selectedFillAlpha`, `Style.cornerRadius`. `Color.{foreground,background,accent,urgent,muted}`, `Color.popups.{background,text,border}`. Helper: `Util.alpha(color, a)`. Omarchy `qs.Ui` controls: `Button`, `TextField`, `Dropdown`, `Toggle`, `BarWidget`, `BarIconButton`, `Panel`, `BorderSurface`.
 - F13 `node --test <directory>` does not run the tests in a directory on Node ≥ 22 (it fails with `Cannot find module`). Pass files or a quoted glob: `node --test 'tests/unit/**/*.test.cjs'`.
 - F14 Values returned by `tests/unit/load.cjs` live in a separate `vm` realm. `assert.deepStrictEqual` fails on them even when the contents match, because the prototypes differ. Use `assert.deepEqual`, or compare `JSON.stringify(...)`.
+- F15 Qt 6 qmllint cannot see the members of Omarchy's nested token groups (`Style.font`, `Style.spacing`, `Style.bar`, `Color.popups`, `Color.tooltip`, `Color.menu`, `Color.bar`, ...): they are declared as plain `QtObject` properties, so every use raises `missing-property`, which `make lint` treats as an error. Use `ui/theme/Theme.qml` instead (C8). Plain tokens (`Color.foreground`, `Style.space()`, `Style.cornerRadius`, `Style.hoverFill`, `Util.alpha()`) work directly.
 
 ## 2. Contracts
 
@@ -76,6 +77,7 @@ ui/Panel.qml                  window, pane composition, key routing to controlle
 ui/controllers/*.qml          non-visual; own RPC calls and action handling per area (B15a)
 ui/BarWidget.qml              unread badge, click toggles window, forwards settings
 ui/components/*.qml           views: take properties, emit signals, never call RPC
+ui/theme/Theme.qml, qmldir      typed singleton re-exporting Omarchy's nested token groups (F15); the only file allowed `// qmllint disable missing-property`
 ui/lib/{Rpc,Keymap,Actions,Format,Rail,Selection,ListSync,Timeline,Navigation}.js   `.pragma library`, pure logic, node-tested
 backend/main.go               composition root only: flags, construction, wiring
 backend/internal/domain       shared types, status rules, ErrNotFound
@@ -267,6 +269,7 @@ Key spec syntax:
 
 ### C8 · Visual and code rules
 - No colour literals in `ui/` except `"transparent"`. Derive everything from F12 tokens.
+- Nested token groups go through the typed adapter (F15): `import "../theme"` (or `"theme"` from `ui/`), then `Theme.font.body`, `Theme.spacing.md`, `Theme.popups.background`, `Theme.bar.iconSlot`, `Theme.barColors.text`. Plain tokens come from `qs.Commons` directly. No other file may disable a qmllint category.
 - Row hover: `Style.hoverFill`. Row selected: `Util.alpha(Color.accent, Style.selectedFillAlpha)` plus a 2 px `Color.accent` bar on the left edge.
 - Unread is a bold title plus a badge (bg `Color.accent`, text `Color.background`). A muted chat's badge uses bg `Util.alpha(Color.foreground, 0.25)`. Never rely on colour alone.
 - Bubbles: outgoing bg `Util.alpha(Color.accent, 0.22)`; incoming bg `Util.alpha(Color.foreground, 0.06)`; text `Color.foreground`; max width 72 % of the pane. Failed messages show `Not sent · r to retry` in `Color.urgent`; clicking it retries.
@@ -779,6 +782,15 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
 - verify: `node --test 'tests/unit/**/*.test.cjs'`
 - result: `load(path, { root })` runs each file in a `vm` context, so top-level `var`/`function` names are collected by the engine itself, and stack traces show the real file and line. Imports resolve relative to the importing file, results are cached, cycles and missing files give clear errors. 9 tests. Review caught a first version that split `var` statements on commas and broke on `var KEY = { Escape: 1, Tab: 2 };`; regression tests cover it (see F14).
 
+### [x] B00 · Typed theme adapter (S)
+- deps: B21
+- files: ui/theme/Theme.qml, ui/theme/qmldir
+- why: F15. Without it, every component using Omarchy's nested tokens fails `make lint`.
+- result: a singleton with one typed inline component per group: `font`, `spacing`, `bar` (Style.bar sizes), `barColors` (Color.bar), `popups`, `tooltip`, `menu`. Each mirrors Omarchy's member names and is generated from Omarchy 4.0.4's Commons.
+  - qmllint accepts `Theme.font.body` and still flags a typo such as `Theme.font.bodyTypo`.
+  - Under offscreen Quickshell, every group returns Omarchy's live values.
+- verify: `make lint`
+
 ### [ ] B02 · Rpc.js (S)
 - deps: B01
 - files: ui/lib/Rpc.js, tests/unit/rpc.test.cjs
@@ -985,11 +997,12 @@ Why: R01 rebuilt in about 2,000 lines what golangci-lint and go-test-coverage do
 - accept: §0.1 D11 review table for every inventory doc is filled in the task note.
 - verify: `make docs-check`
 
-### [ ] B21 · QML import dir + Qt6 lint (S)  (formerly Q01)
+### [x] B21 · QML import dir + Qt6 lint (S)  (formerly Q01)
 - deps: GS
 - files: scripts/qml-imports.sh, Makefile (`lint`)
 - do: create `build/qml/qs/Commons` and `build/qml/qs/Ui` symlinks from `${OMARCHY_SHELL_DIR:-${OMARCHY_PATH:-/usr/share/omarchy}/shell}`; fail with a clear message if missing; use `/usr/lib/qt6/bin/qmllint` (F1).
 - verify: `make lint`
+- result: `scripts/qml-imports.sh` is idempotent, works from any directory and names the variable to set when Omarchy's shell isn't found. `make lint` runs `$(QMLLINT) -I build/qml --max-warnings 0` over `ui/**/*.qml` (default `QMLLINT=/usr/lib/qt6/bin/qmllint`; skipped when there are no files), so any warning fails lint. Shown passing and failing on planted files. Found F15.
 
 ### [ ] B22 · UI linting (M)  (formerly Q02)
 - deps: GS
