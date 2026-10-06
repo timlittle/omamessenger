@@ -87,7 +87,7 @@ $(GO_TEST_COVERAGE):
 validate: ## Validate the plugin files, as staged for install, with Omarchy
 	OMARCHY="$(OMARCHY)" ./scripts/install-local.sh --check
 
-install-local: build ## Copy this checkout into the Omarchy plugin directory and enable it
+install-local: build ## Install this checkout into Omarchy, enable it and restart the shell
 	OMARCHY="$(OMARCHY)" OMARCHY_SHELL="$(OMARCHY_SHELL)" RSYNC="$(RSYNC)" ./scripts/install-local.sh "$(PLUGIN_DIR)"
 
 clean: ## Remove build output

@@ -5,7 +5,7 @@ Verified against Omarchy 4.0.4, Quickshell 0.3.1 and Qt 6.11. When a newer versi
 ### Plugin lifecycle
 
 - The plugin is installed in `~/.config/omarchy/plugins/io.github.omamessenger/`. Never edit Omarchy's packaged source in `/usr/share/omarchy`
-- Omarchy hot-reloads plugin code whenever a file under `~/.config/omarchy/plugins/` changes. Keep databases and runtime files outside it
+- Omarchy runs the shell with Quickshell's file watcher off (`QS_DISABLE_FILE_WATCHER=1` in `omarchy-launch-shell`), so new plugin files only take effect after `omarchy-restart-shell`; `make install-local` does that. Still keep databases and runtime files outside the plugin directory
 - `manifest.json` declares three entry points: the service, the panel and the bar widget
 - Omarchy loads the panel only while it is shown and destroys it on hide (`close()`); durable state belongs in `Service.qml`
 - The panel receives `property var service` (our Service instance) and `property var shell`, a facade with `serviceFor(id)`, `hide(id)`, `toggle(id, json)` and `summon(id, json)`. `summon` calls `panel.open(payloadJson)` every time, even when the panel is already open

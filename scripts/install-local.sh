@@ -3,9 +3,11 @@
 # Called by `make install-local` (and `make validate` with --check).
 #
 # It stages only the files the plugin needs, validates that staged copy
-# (the repository itself holds build symlinks the validator rejects), then
-# copies it into the plugin directory and enables it. With --check it
-# stops after validating and installs nothing.
+# (the repository itself holds build symlinks the validator rejects),
+# copies it into the plugin directory, enables it, and restarts the shell.
+# Omarchy runs the shell with Quickshell's file watcher off, so a running
+# shell keeps the old plugin code until it restarts. With --check it stops
+# after validating and installs nothing.
 set -Eeuo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -46,6 +48,17 @@ fi
 
 mkdir -p "$target_dir"
 "${RSYNC:-rsync}" -a --delete "$staging_dir/" "$target_dir/"
-"${OMARCHY_SHELL:-omarchy-shell}" shell rescanPlugins
 "${OMARCHY:-omarchy}" plugin enable "$plugin_id"
-printf 'Installed and enabled %s from %s\n' "$plugin_id" "$repo_root"
+"${OMARCHY_RESTART_SHELL:-omarchy-restart-shell}"
+
+# Wait for the restarted shell to answer, so a summon right after this
+# script reaches the new plugin.
+for _ in $(seq 1 50); do
+    if "${OMARCHY_SHELL:-omarchy-shell}" shell rescanPlugins >/dev/null 2>&1; then
+        printf 'Installed %s from %s and restarted the shell\n' "$plugin_id" "$repo_root"
+        exit 0
+    fi
+    sleep 0.2
+done
+printf 'Installed %s, but the shell did not come back within 10 seconds\n' "$plugin_id" >&2
+exit 1
