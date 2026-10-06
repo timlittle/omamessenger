@@ -14,8 +14,11 @@ fi
 staging_dir=$(mktemp -d)
 trap 'rm -rf "$staging_dir"' EXIT
 mkdir -p "$staging_dir/bin" "$target_dir"
-cp "$repo_root/manifest.json" "$repo_root/Panel.qml" "$repo_root/Service.qml" "$repo_root/LICENSE" "$staging_dir/"
-cp "$repo_root/bin/oma-messenger-service" "$repo_root"/bin/oma-messenger-service-linux-* "$staging_dir/bin/"
+mkdir -p "$staging_dir/bin/dev" "$staging_dir/scripts"
+cp "$repo_root/manifest.json" "$repo_root/Panel.qml" "$repo_root/Service.qml" "$repo_root/keyboard.js" "$repo_root/LICENSE" "$repo_root/helper-version" "$staging_dir/"
+cp "$repo_root/bin/oma-messenger-service" "$staging_dir/bin/"
+cp "$repo_root/bin/dev/oma-messenger-service" "$staging_dir/bin/dev/"
+cp "$repo_root/scripts/install-helper.sh" "$staging_dir/scripts/"
 
 "${OMARCHY:-omarchy}" plugin validate "$repo_root"
 "${RSYNC:-rsync}" -a "$staging_dir/" "$target_dir/"

@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  go-js:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Go tests with the race detector and coverage gates
+        run: make coverage
+      - name: Lint (golangci-lint and the privacy check)
+        run: |
+          make tools
+          build/tools/golangci-lint run ./...
+          go run -mod=vendor ./tools/nologcontent ./backend/...
+      - name: JavaScript and script tests
+        run: make test-js
+      - name: Docs match the code
+        run: make docs-check
+      - name: Release build
+        run: ./scripts/build-release.sh

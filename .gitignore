@@ -5,3 +5,5 @@
 /build/
 *.session
 *.session-journal
+# Release helpers are published to GitHub Releases, never committed.
+/bin/oma-messenger-service-linux-*

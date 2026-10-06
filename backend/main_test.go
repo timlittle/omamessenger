@@ -451,3 +451,15 @@ func TestVersionPrintsWithoutOpeningData(t *testing.T) {
 		t.Fatalf("version unexpectedly used data dir: %v", err)
 	}
 }
+
+// TestHelperVersionMatchesPin keeps the compiled-in version equal to the
+// helper-version pin that the installer downloads and checks against.
+func TestHelperVersionMatchesPin(t *testing.T) {
+	pin, err := os.ReadFile(filepath.Join("..", "helper-version"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(pin)); got != helperVersion {
+		t.Fatalf("helper-version pins %q but the helper reports %q; change both together", got, helperVersion)
+	}
+}

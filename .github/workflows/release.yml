@@ -1,77 +1,42 @@
-name: Build helper binaries
+name: Release helper
 
+# Publishes the helper for a version tag. Binaries are attached to the GitHub
+# Release, never committed: the plugin installs the release pinned in
+# helper-version with scripts/install-helper.sh, which verifies SHA256SUMS.
 on:
   push:
-    branches: [main]
-    paths-ignore:
-      - "bin/**"
-    tags:
-      - "v*"
-  pull_request:
-    paths:
-      - "backend/**"
-      - "go.mod"
-      - "go.sum"
-      - "vendor/**"
-      - "scripts/build-release.sh"
-      - ".github/workflows/release.yml"
+    tags: ["v*"]
 
 jobs:
-  validate-pull-request:
-    if: github.event_name == 'pull_request'
+  release:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write     # create the release
+      id-token: write     # sign the build provenance
+      attestations: write # store the build provenance
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Check the tag matches helper-version
+        run: test "$GITHUB_REF_NAME" = "v$(tr -d ' \n' < helper-version)"
+
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.26.x"
           cache: false
 
-      - name: Build Linux helpers
+      - name: Test
+        run: go test -mod=vendor -race ./backend/...
+
+      - name: Build helpers and SHA256SUMS
         run: ./scripts/build-release.sh
 
-  publish:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
         with:
-          go-version: "1.26.x"
-          cache: false
+          subject-path: build/release/oma-messenger-service-linux-*
 
-      - name: Build Linux helpers
-        run: ./scripts/build-release.sh
-
-      - name: Commit updated helpers to main
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          if git diff --quiet -- bin/; then
-            echo "Bundled helpers are already current."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bin/oma-messenger-service-linux-amd64 bin/oma-messenger-service-linux-arm64
-          git commit -m "Build bundled helper binaries [skip ci]"
-          git push origin HEAD:main
-
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" \
-            bin/oma-messenger-service-linux-amd64 \
-            bin/oma-messenger-service-linux-arm64 \
-            --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" build/release/* --generate-notes
