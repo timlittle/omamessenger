@@ -36,7 +36,6 @@ type conversationScript struct {
 
 	groupSenders []string
 	texts        []string
-	replies      []string
 }
 
 // scripts are the fake accounts, in the order the rail shows them.
@@ -47,35 +46,29 @@ var scripts = []accountScript{
 		conversations: []conversationScript{
 			{
 				remoteID: "wa:mum", title: "Mum", kind: domain.KindDirect, count: 14,
-				texts:   []string{"Call me when you're on your way.", "I made some soup for tomorrow", "Did you see the weather?"},
-				replies: []string{"Just leaving now", "I will bring it over", "Thanks for letting me know"},
+				texts: []string{"Call me when you're on your way.", "I made some soup for tomorrow", "Did you see the weather?"},
 			},
 			{
 				remoteID: "wa:climbing-crew", title: "Climbing Crew", kind: domain.KindGroup, members: 5, count: 30, unread: 3,
 				groupSenders: []string{"Priya", "Tom", "Jess", "Omar"},
 				texts:        []string{"Saturday at the gym?", "I can get there around ten", "Anyone bringing the rope?"},
-				replies:      []string{"Nice send!", "Route looks good", "See you at the wall"},
 			},
 			{
 				remoteID: "wa:alex-chen", title: "Alex Chen", kind: domain.KindDirect, count: 6, unread: 1,
-				texts:   []string{"Are we still on for lunch?", "I found a place near the station", "Here are the tickets: https://example.com/tickets"},
-				replies: []string{"That works for me", "Just sent the details", "Thanks, see you there"},
+				texts: []string{"Are we still on for lunch?", "I found a place near the station", "Here are the tickets: https://example.com/tickets"},
 			},
 			{
 				remoteID: "wa:sam-spotty", title: "Sam (spotty signal)", kind: domain.KindDirect, count: 4, flaky: true,
-				texts:   []string{"Can you hear me now?", "Signal is dropping again", "I'll try from outside"},
-				replies: []string{"It came through this time", "Sorry, lost connection", "Can you resend that?"},
+				texts: []string{"Can you hear me now?", "Signal is dropping again", "I'll try from outside"},
 			},
 			{
 				remoteID: "wa:flat-4b", title: "Flat 4B", kind: domain.KindGroup, members: 4, count: 12, unread: 5, muted: true,
 				groupSenders: []string{"Rae", "Morgan", "Jamie"},
 				texts:        []string{"Water bill is due Friday", "I can clean the kitchen", "Package arrived downstairs"},
-				replies:      []string{"I'll take care of it", "Thanks for the heads up", "Whose parcel is it?"},
 			},
 			{
 				remoteID: "wa:dentist", title: "Dr. Bartholomew Featherstonehaugh-Wainwright (Dentist)", kind: domain.KindDirect, count: 2,
-				texts:   []string{"Your appointment is confirmed", "Please arrive ten minutes early"},
-				replies: []string{"Thank you, see you then"},
+				texts: []string{"Your appointment is confirmed", "Please arrive ten minutes early"},
 			},
 		},
 		contacts: []domain.Contact{
@@ -95,13 +88,11 @@ var scripts = []accountScript{
 					"The plan is set.\nMeet by the old gate.\nBring water.",
 					"مرحبا، كيف حالك؟", "We should go again soon",
 				},
-				replies: []string{"I had a great time", "The new exhibit opens Friday", "أكيد، أراك قريباً"},
 			},
 			{
 				remoteID: "tg:omarchy-users", title: "Omarchy Users", kind: domain.KindGroup, members: 2400, count: 150, unread: 12,
 				groupSenders: []string{"Kai", "Mira", "Lee", "Nora", "Ash"},
 				texts:        []string{"Anyone tried the new shell update?", "The plugin docs helped a lot", "I found a small theme issue"},
-				replies:      []string{"I can reproduce that", "Thanks for sharing", "Fixed in the latest update"},
 			},
 			{
 				remoteID: "tg:saved-messages", title: "Saved Messages", kind: domain.KindDirect, count: 5, allOutgoing: true,
@@ -122,12 +113,10 @@ var scripts = []accountScript{
 				remoteID: "tg:platform-team", title: "Platform Team", kind: domain.KindGroup, members: 9, count: 20, unread: 4,
 				groupSenders: []string{"Jordan", "Hana", "Ivan", "Jo"},
 				texts:        []string{"Deploy window is Thursday", "I'll update the runbook", "Can someone review the rollout?"},
-				replies:      []string{"Looks good to me", "I can take that", "Let's sync after standup"},
 			},
 			{
 				remoteID: "tg:jordan-manager", title: "Jordan (Manager)", kind: domain.KindDirect, count: 8, lastOutgoing: true,
-				texts:   []string{"Let's talk about the project plan", "Could you send the estimate?", "Thanks, that answers my question"},
-				replies: []string{"Will do", "I will send it this afternoon", "Sounds good"},
+				texts: []string{"Let's talk about the project plan", "Could you send the estimate?", "Thanks, that answers my question"},
 			},
 		},
 		contacts: []domain.Contact{

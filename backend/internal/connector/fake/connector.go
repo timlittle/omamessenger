@@ -17,8 +17,6 @@ const (
 	sentDelay      = 250 * time.Millisecond
 	deliveredDelay = 900 * time.Millisecond
 	readDelay      = 2500 * time.Millisecond
-	typingDelay    = 3 * time.Second
-	replyDelay     = 4500 * time.Millisecond
 )
 
 // Connector is one scripted fake account.
@@ -29,7 +27,6 @@ type Connector struct {
 	mu       sync.Mutex
 	run      *run // nil when not running
 	attempts map[string]int
-	replies  map[string]int
 }
 
 // run is one Run call: where updates go and how work is scheduled.
@@ -40,7 +37,7 @@ type run struct {
 
 // newConnector creates a stopped connector for script.
 func newConnector(script accountScript) *Connector {
-	return &Connector{script: script, attempts: make(map[string]int), replies: make(map[string]int)}
+	return &Connector{script: script, attempts: make(map[string]int)}
 }
 
 // Account describes the fake account.
@@ -147,8 +144,8 @@ func (c *Connector) seed(ctx context.Context, sink connector.Sink) {
 }
 
 // Send plays out delivery of an outgoing message: sent, delivered and, in
-// direct chats, read followed by a typed reply. A flaky conversation fails
-// each message's first attempt.
+// direct chats, read. A flaky conversation fails each message's first
+// attempt.
 func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain.Message) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -167,12 +164,7 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 		return nil
 	}
 
-	direct := conv.Kind == domain.KindDirect
-	c.deliver(m.ID, direct)
-
-	if direct && len(script.replies) > 0 {
-		c.replyTo(script, m.ID)
-	}
+	c.deliver(m.ID, conv.Kind == domain.KindDirect)
 
 	return nil
 }
@@ -207,31 +199,6 @@ func (c *Connector) deliver(messageID string, direct bool) {
 			s.OutgoingStatus(ctx, messageID, remoteID, step.status)
 		})
 	}
-}
-
-// replyTo shows the other person typing, then delivers their reply.
-func (c *Connector) replyTo(script conversationScript, sentID string) {
-	id := c.script.account.ID
-	c.after(typingDelay, func(ctx context.Context, s connector.Sink) {
-		s.Typing(ctx, id, script.remoteID, script.title, true)
-	})
-
-	c.after(replyDelay, func(ctx context.Context, s connector.Sink) {
-		s.Typing(ctx, id, script.remoteID, script.title, false)
-		s.Incoming(ctx, id, script.remoteID, script.reply(c.nextReply(script.remoteID), "fake-reply-"+sentID, time.Now()))
-	})
-}
-
-// nextReply returns how many replies the conversation has had, then counts
-// one more.
-func (c *Connector) nextReply(remoteID string) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	n := c.replies[remoteID]
-	c.replies[remoteID]++
-
-	return n
 }
 
 // MarkRead accepts read receipts while the connector is running.

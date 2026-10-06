@@ -82,21 +82,3 @@ func (s conversationScript) status(i int, outgoing bool) string {
 		return domain.StatusReceived
 	}
 }
-
-// reply returns the nth scripted reply, from the next group member in turn
-// for groups.
-func (s conversationScript) reply(n int, remoteID string, now time.Time) domain.Message {
-	sender := s.title
-	if len(s.groupSenders) > 0 {
-		sender = s.groupSenders[n%len(s.groupSenders)]
-	}
-
-	return domain.Message{
-		RemoteID:   remoteID,
-		SenderID:   sender,
-		SenderName: sender,
-		Text:       s.replies[n%len(s.replies)],
-		Status:     domain.StatusReceived,
-		Created:    now.UnixMilli(),
-	}
-}

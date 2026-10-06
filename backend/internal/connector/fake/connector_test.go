@@ -55,7 +55,7 @@ func TestRun_RefusesASecondRun(t *testing.T) {
 	})
 }
 
-func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
+func TestSend_DirectChatGetsAReadReceipt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := &connectortest.Sink{}
 		suite := fake.New()
@@ -69,16 +69,13 @@ func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		time.Sleep(replyWait)
+		time.Sleep(receiptWait)
 		synctest.Wait()
 
 		want := []string{
 			"outgoing m1 fake-m1 sent",
 			"outgoing m1 fake-m1 delivered",
 			"outgoing m1 fake-m1 read",
-			"typing wa:mum true",
-			"typing wa:mum false",
-			"incoming wa:mum fake-reply-m1",
 		}
 		if got := sink.Take(); !slices.Equal(got, want) {
 			t.Errorf("events = %v, want %v", got, want)
@@ -86,7 +83,7 @@ func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
 	})
 }
 
-func TestSend_GroupHasNoReadReceiptOrReply(t *testing.T) {
+func TestSend_GroupHasNoReadReceipt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := &connectortest.Sink{}
 		suite := fake.New()
@@ -100,7 +97,7 @@ func TestSend_GroupHasNoReadReceiptOrReply(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		time.Sleep(replyWait)
+		time.Sleep(receiptWait)
 		synctest.Wait()
 
 		want := []string{"outgoing g1 fake-g1 sent", "outgoing g1 fake-g1 delivered"}
@@ -187,5 +184,5 @@ func TestRunningConnector_HonoursCancelledRequests(t *testing.T) {
 	})
 }
 
-// replyWait is long enough for every receipt and the reply to a send.
-const replyWait = 5 * time.Second
+// receiptWait is long enough for every receipt of a send.
+const receiptWait = 5 * time.Second
