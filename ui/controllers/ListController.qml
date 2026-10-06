@@ -171,7 +171,11 @@ Item {
       return;
     }
 
-    root.service.request("conversations.list", { query: root.query }, function(error, result) {
+    // The helper answers requests concurrently, so a reply for an earlier
+    // query can arrive after the latest one; only the latest counts.
+    const query = root.query;
+    root.service.request("conversations.list", { query: query }, function(error, result) {
+      if (query !== root.query) return;
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root._searchResults = result ?? [];
       root._syncModel();
