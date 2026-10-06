@@ -157,8 +157,13 @@ Item {
       onHelp: root.windowController.run("help.toggle")
     }
 
+    // Pinned to its width: a layout whose children fill would otherwise
+    // fill the row too and squeeze the conversation off the edge.
     ColumnLayout {
       objectName: "listColumn"
+      Layout.fillWidth: false
+      Layout.minimumWidth: root._listWidth
+      Layout.maximumWidth: root._listWidth
       Layout.preferredWidth: root._listWidth
       Layout.fillHeight: true
       spacing: Theme.spacing.sm

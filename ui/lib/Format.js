@@ -44,12 +44,22 @@ function highlight(escaped, query) {
 }
 
 // initials returns the first letter of the first two words, upper-cased,
-// or "?" when there are none. Emoji and other wide characters count as one.
+// or "?" when there are none. Bracketed asides such as "(Manager)" are
+// skipped, and so is punctuation, so "Sam (spotty signal)" gives "S".
+// Emoji and other wide characters count as one.
 function initials(name) {
-  const words = (name ?? '').trim().split(/\s+/).filter((word) => word.length > 0);
-  const letters = words.slice(0, 2).map((word) => Array.from(word)[0]).join('');
+  const full = name ?? '';
+  const withoutAsides = full.replace(/\([^)]*\)/g, ' ');
+  const source = /\S/.test(withoutAsides) ? withoutAsides : full;
+  const letters = source.split(/\s+/).map(firstLetter).filter((c) => c !== '').slice(0, 2).join('');
 
   return letters ? letters.toUpperCase() : '?';
+}
+
+// firstLetter returns a word's first character that is not punctuation,
+// or "".
+function firstLetter(word) {
+  return Array.from(word).find((ch) => !/[!-\/:-@\[-`{-~\s]/.test(ch)) ?? '';
 }
 
 // daysAgo counts calendar days from ms to nowMs in local time. It rounds
@@ -64,8 +74,13 @@ function daysAgo(ms, nowMs) {
 }
 
 // timeLabel is the time shown in the conversation list: HH:mm today, then
-// Yesterday, a weekday within the week, or a short date.
+// Yesterday, a weekday within the week, or a short date. A conversation
+// with no activity yet (time 0) has no label.
 function timeLabel(ms, nowMs) {
+  if (!ms) {
+    return '';
+  }
+
   const date = new Date(ms);
   if (daysAgo(ms, nowMs) === 0) {
     return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -77,6 +92,10 @@ function timeLabel(ms, nowMs) {
 // dayLabel is the separator shown between days in a conversation: Today,
 // Yesterday, a weekday within the week, or a full date.
 function dayLabel(ms, nowMs) {
+  if (!ms) {
+    return '';
+  }
+
   if (daysAgo(ms, nowMs) === 0) {
     return 'Today';
   }

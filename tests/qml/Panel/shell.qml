@@ -257,6 +257,10 @@ ShellRoot {
     if (!rail || rail.width <= 0) return root.fail("service rail has no width at the minimum size");
     if (!listColumn || listColumn.width <= 0) return root.fail("list column has no width at the minimum size");
     if (!conversationView || conversationView.width <= 0) return root.fail("conversation view has no width at the minimum size");
+    if (listColumn.width > Style.space(360) + 1)
+      return root.fail("list column is " + listColumn.width + " wide, more than its maximum of " + Style.space(360));
+    if (conversationView.width < Style.space(300))
+      return root.fail("conversation view is only " + conversationView.width + " wide at the minimum size");
 
     console.log("PASS Panel");
     Qt.exit(0);

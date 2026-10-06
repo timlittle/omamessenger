@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
+import "../lib/Rail.js" as Rail
 
 // New-chat modal: pick an account, search contacts, open one. An in-window
 // scrim and card, not a native dialog, so it stays inside the FloatingWindow.
@@ -84,7 +85,10 @@ Item {
     Ui.BorderSurface {
       id: card
       anchors.centerIn: parent
-      width: Style.space(360)
+      objectName: "newChatCard"
+      // Wide enough for every account button, which names its service.
+      width: Math.min(parent.width - Theme.spacing.xxl * 2,
+        Math.max(Style.space(360), accountRow.implicitWidth + card.contentLeftInset + card.contentRightInset))
       height: Style.space(420)
       color: Theme.popups.background
       borderSpec: Border.flat(Theme.popups.border, Style.normalBorderWidth)
@@ -105,6 +109,8 @@ Item {
         spacing: Theme.spacing.md
 
         RowLayout {
+          id: accountRow
+
           Layout.fillWidth: true
           spacing: Theme.spacing.controlGap
 
@@ -114,7 +120,7 @@ Item {
             Ui.Button {
               required property var modelData
 
-              text: modelData.name
+              text: Rail.accountLabel(modelData)
               selected: modelData.id === root.accountId
               focusable: true
               onClicked: root.accountChanged(modelData.id)

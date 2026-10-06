@@ -271,3 +271,13 @@ test('next: handles null or undefined items', () => {
   assert.strictEqual(Rail.next(null, 'any', 1), 'all');
   assert.strictEqual(Rail.next(undefined, 'any', 1), 'all');
 });
+
+test('serviceLabel names each service for display', () => {
+  assert.strictEqual(Rail.serviceLabel('whatsapp'), 'WhatsApp');
+  assert.strictEqual(Rail.serviceLabel('telegram'), 'Telegram');
+  assert.strictEqual(Rail.serviceLabel('signal'), 'signal');
+});
+
+test('accountLabel says which service an account belongs to', () => {
+  assert.strictEqual(Rail.accountLabel({ service: 'telegram', name: 'Work' }), 'Telegram · Work');
+});

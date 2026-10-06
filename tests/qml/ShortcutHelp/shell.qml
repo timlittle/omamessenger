@@ -39,6 +39,14 @@ ShellRoot {
     onTriggered: root.run()
   }
 
+  // clipped reports whether an ancestor of item clips its children.
+  function clipped(item: var): bool {
+    for (let p = item.parent; p; p = p.parent) {
+      if (p.clip) return true;
+    }
+    return false;
+  }
+
   // run checks every help section title is rendered, stopping at the
   // first missing one so Qt.exit(1) is the one that takes effect.
   function run(): void {
@@ -51,6 +59,16 @@ ShellRoot {
         root.fail("section title \"" + section.title + "\" not rendered");
         return;
       }
+    }
+
+    // Nothing may spill outside the overlay: every text either lies inside
+    // it or sits in a clipped, scrollable area.
+    for (const node of nodes) {
+      if (node.text === undefined || !node.visible) continue;
+      const pos = node.mapToItem(help, 0, 0);
+      const inside = pos.y >= 0 && pos.y + node.height <= help.height && pos.x + node.width <= help.width;
+      if (!inside && !root.clipped(node))
+        return root.fail("\"" + node.text + "\" spills outside the help overlay");
     }
 
     console.log("PASS ShortcutHelp");

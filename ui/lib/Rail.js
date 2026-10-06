@@ -26,7 +26,7 @@ function items(accounts, conversations) {
       continue;
     }
 
-    const serviceEntry = entry(`service:${service.id}`, 'service', service.label, own, conversations);
+    const serviceEntry = entry(`service:${service.id}`, 'service', serviceLabel(service.id), own, conversations);
     result.push(Object.assign(serviceEntry, { service: service.id }));
 
     if (own.length > 1) {
@@ -81,6 +81,19 @@ function next(items, key, delta) {
   const count = items.length;
 
   return items[(((current + delta) % count) + count) % count].key;
+}
+
+// serviceLabel returns a service's display name, or its id when unknown.
+function serviceLabel(service) {
+  const known = SERVICES.find((s) => s.id === service);
+
+  return known ? known.label : service;
+}
+
+// accountLabel names an account together with its service, because
+// account names such as "Personal" repeat across services.
+function accountLabel(account) {
+  return `${serviceLabel(account.service)} · ${account.name}`;
 }
 
 // unreadTotal sums the unread counts of conversations that are not muted.

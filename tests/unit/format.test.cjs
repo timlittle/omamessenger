@@ -293,3 +293,19 @@ test('previewLine returns preview text when group has null previewSender', () =>
   };
   assert.equal(Format.previewLine(conv), 'Hello team');
 });
+
+test('initials ignore bracketed text and punctuation', () => {
+  assert.strictEqual(Format.initials('Sam (spotty signal)'), 'S');
+  assert.strictEqual(Format.initials('Jordan (Manager)'), 'J');
+  assert.strictEqual(Format.initials('Dr. Bartholomew Featherstonehaugh-Wainwright (Dentist)'), 'DB');
+  assert.strictEqual(Format.initials('Flat 4B'), 'F4');
+  assert.strictEqual(Format.initials('(Notes)'), 'N');
+  assert.strictEqual(Format.initials('!!'), '?');
+});
+
+test('a conversation with no activity yet has no time label', () => {
+  const now = new Date(2026, 9, 6, 12, 0).getTime();
+
+  assert.strictEqual(Format.timeLabel(0, now), '');
+  assert.strictEqual(Format.dayLabel(0, now), '');
+});

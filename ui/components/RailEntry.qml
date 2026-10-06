@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
+import "../lib/Rail.js" as Rail
 
 // One entry in the service rail: glyph, label, unread badge and a status
 // dot, with a tooltip naming the entry and its status. Account entries are
@@ -23,9 +24,10 @@ Item {
   signal clicked()
 
   objectName: "entry-" + root.entry.key
-  implicitHeight: root.account ? Style.space(44) : Style.space(60)
+  implicitHeight: layout.implicitHeight + Theme.spacing.sm * 2
   ToolTip.visible: hover.containsMouse
-  ToolTip.text: root.statusWord ? root.entry.label + " · " + root.statusWord : root.entry.label
+  ToolTip.text: (root.account ? Rail.accountLabel({ service: root.entry.service, name: root.entry.label }) : root.entry.label)
+    + (root.statusWord ? " · " + root.statusWord : "")
   ToolTip.delay: 500
 
   Rectangle {
@@ -43,6 +45,8 @@ Item {
   }
 
   ColumnLayout {
+    id: layout
+
     spacing: Theme.spacing.xxs
     anchors { centerIn: parent; horizontalCenterOffset: root.account ? Theme.spacing.xs : 0 }
 

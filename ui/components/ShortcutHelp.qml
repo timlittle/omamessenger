@@ -29,10 +29,12 @@ Item {
       onClicked: root.closed()
     }
 
+    // The card fits its content, up to the window; beyond that the content
+    // scrolls inside it rather than spilling out.
     Rectangle {
       anchors.centerIn: parent
-      width: Math.min(parent.width - Theme.spacing.xxl * 2, Style.space(640))
-      height: Math.min(parent.height - Theme.spacing.xxl * 2, Style.space(420))
+      width: Math.min(parent.width - Theme.spacing.xxl * 2, Style.space(900))
+      height: Math.min(parent.height - Theme.spacing.xxl * 2, sections.implicitHeight + Theme.spacing.panelPadding * 2)
       radius: Style.cornerRadius
       color: Theme.popups.background
       border { color: Theme.popups.border; width: Style.normalBorderWidth }
@@ -42,50 +44,60 @@ Item {
         onClicked: () => {}
       }
 
-      Flow {
+      Flickable {
         anchors.fill: parent
         anchors.margins: Theme.spacing.panelPadding
-        spacing: Theme.spacing.xxl
+        clip: true
+        contentWidth: width
+        contentHeight: sections.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
 
-        Repeater {
-          model: Keymap.helpSections()
+        Flow {
+          id: sections
 
-          ColumnLayout {
-            id: section
-            required property var modelData
+          width: parent.width
+          spacing: Theme.spacing.xxl
 
-            spacing: Theme.spacing.xs
+          Repeater {
+            model: Keymap.helpSections()
 
-            Text {
-              text: section.modelData.title
-              color: Color.accent
-              font.family: Theme.font.family
-              font.pixelSize: Theme.font.subtitle
-              font.weight: Font.DemiBold
-            }
+            ColumnLayout {
+              id: section
+              required property var modelData
 
-            Repeater {
-              model: section.modelData.rows
+              spacing: Theme.spacing.xs
 
-              RowLayout {
-                id: row
-                required property var modelData
+              Text {
+                text: section.modelData.title
+                color: Color.accent
+                font.family: Theme.font.family
+                font.pixelSize: Theme.font.subtitle
+                font.weight: Font.DemiBold
+              }
 
-                spacing: Theme.spacing.md
+              Repeater {
+                model: section.modelData.rows
 
-                Text {
-                  Layout.preferredWidth: Style.space(120)
-                  text: row.modelData.keys
-                  color: Util.alpha(Color.foreground, 0.6)
-                  font.family: Theme.font.family
-                  font.pixelSize: Theme.font.bodySmall
-                }
+                RowLayout {
+                  id: row
+                  required property var modelData
 
-                Text {
-                  text: row.modelData.label
-                  color: Color.foreground
-                  font.family: Theme.font.family
-                  font.pixelSize: Theme.font.bodySmall
+                  spacing: Theme.spacing.md
+
+                  Text {
+                    Layout.preferredWidth: Style.space(120)
+                    text: row.modelData.keys
+                    color: Util.alpha(Color.foreground, 0.6)
+                    font.family: Theme.font.family
+                    font.pixelSize: Theme.font.bodySmall
+                  }
+
+                  Text {
+                    text: row.modelData.label
+                    color: Color.foreground
+                    font.family: Theme.font.family
+                    font.pixelSize: Theme.font.bodySmall
+                  }
                 }
               }
             }
