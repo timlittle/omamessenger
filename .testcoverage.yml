@@ -1,0 +1,14 @@
+# Per-package statement coverage gates (C9 in docs/TASKS.md).
+# `make test-go` writes the profile and runs go-test-coverage against this.
+profile: build/cover.out
+threshold:
+  package: 90
+override:
+  - path: ^backend/internal/domain$
+    threshold: 100
+  - path: ^backend/internal/app/policy$
+    threshold: 100
+  - path: ^backend/internal/notify$
+    threshold: 75
+  - path: ^backend$
+    threshold: 80

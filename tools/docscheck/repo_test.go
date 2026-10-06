@@ -3,13 +3,10 @@ package docscheck
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/timlittle/omamessenger/tools/covergate/gates"
 	"github.com/timlittle/omamessenger/tools/docscheck/markdown"
-	"github.com/timlittle/omamessenger/tools/omalint/rules"
 )
 
 const root = "../.."
@@ -17,7 +14,7 @@ const root = "../.."
 // inventory is the documentation reviewed at every gate (§0.1 D11).
 var inventory = []string{
 	"README.md", "CONTRIBUTING.md", "AGENTS.md", "FORGE_SPEC.md", ".agents/README.md",
-	"docs/TASKS.md", "docs/KEYS.md", "docs/PROTOCOL.md", "docs/ARCHITECTURE.md",
+	"docs/TASKS.md", "docs/KEYS.md", "docs/PROTOCOL.md",
 }
 
 // plannedDocs name files that do not exist yet; they are exempt from the
@@ -49,24 +46,6 @@ func read(t *testing.T, name string) string {
 		t.Fatal(err)
 	}
 	return string(data)
-}
-
-func TestContractC10MatchesRules(t *testing.T) {
-	table := markdown.LayeringTable(markdown.Section(read(t, "docs/TASKS.md"), "### C10"), rules.InternalImportPrefix)
-	if !reflect.DeepEqual(table, rules.AllowedImports) {
-		t.Errorf("C10 layering table and tools/omalint/rules disagree:\nC10:   %v\nrules: %v", table, rules.AllowedImports)
-	}
-}
-
-func TestContractC9MatchesCovergate(t *testing.T) {
-	documented := markdown.CoverageGates(markdown.Section(read(t, "docs/TASKS.md"), "### C9"))
-	code := map[string]float64{"tools/*": gates.ToolsMin}
-	for _, gate := range gates.Gates {
-		code[gate.Package] = gate.Min
-	}
-	if !reflect.DeepEqual(documented, code) {
-		t.Errorf("C9 gates and tools/covergate/gates disagree:\nC9:   %v\ncode: %v", documented, code)
-	}
 }
 
 func TestLinksResolve(t *testing.T) {

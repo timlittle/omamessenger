@@ -31,7 +31,8 @@ func (s *Store) AddMessage(m domain.Message) (domain.Message, bool, error) {
 	if err != nil {
 		return m, false, err
 	}
-	defer tx.Rollback()
+	// After a successful Commit, Rollback returns sql.ErrTxDone; that is expected.
+	defer func() { _ = tx.Rollback() }()
 	if err := bumpConversation(tx, m); err != nil {
 		return m, false, err
 	}

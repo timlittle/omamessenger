@@ -227,5 +227,5 @@ func (s trackedSink) History(accountID, conversationRemoteID string, message dom
 		history.History(accountID, conversationRemoteID, message)
 		return
 	}
-	s.Sink.Incoming(accountID, conversationRemoteID, message)
+	s.Incoming(accountID, conversationRemoteID, message)
 }

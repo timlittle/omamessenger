@@ -29,43 +29,6 @@ func TestSectionAndTableNames(t *testing.T) {
 	}
 }
 
-func TestLayeringTable(t *testing.T) {
-	md := "| package | may import |\n|---|---|\n" +
-		"| `backend/internal/domain` | — |\n" +
-		"| `backend/internal/store` | domain (+ `modernc.org/sqlite`) |\n" +
-		"| `backend/internal/connector`, `connector/clocktest` | domain |\n" +
-		"| `backend/internal/app` | domain, connector, app/policy |\n" +
-		"| `backend/internal/archtest` | — (test-only package) |\n" +
-		"| `backend` (main) | any internal package |\n" +
-		"| `tools/*` | nothing |\n"
-	const p = "x/"
-	want := map[string]map[string]bool{
-		"x/domain":              {},
-		"x/store":               {"x/domain": true},
-		"x/connector":           {"x/domain": true},
-		"x/connector/clocktest": {"x/domain": true},
-		"x/app":                 {"x/domain": true, "x/connector": true, "x/app/policy": true},
-		"x/archtest":            {},
-	}
-	if got := LayeringTable(md, p); !reflect.DeepEqual(got, want) {
-		t.Errorf("LayeringTable = %v, want %v", got, want)
-	}
-}
-
-func TestCoverageGates(t *testing.T) {
-	md := "- 100 %: `domain`, `app/policy`\n" +
-		"- ≥ 90 %: `store`, every `tools/*` package\n" +
-		"- ≥ 80 %: `backend` (main); only `func main` is excluded\n" +
-		"- not a gate: `ignored`\n"
-	want := map[string]float64{
-		"backend/internal/domain": 100, "backend/internal/app/policy": 100,
-		"backend/internal/store": 90, "tools/*": 90, "backend": 80,
-	}
-	if got := CoverageGates(md); !reflect.DeepEqual(got, want) {
-		t.Errorf("CoverageGates = %v, want %v", got, want)
-	}
-}
-
 func TestIgnoredDirs(t *testing.T) {
 	got := IgnoredDirs("/messages.db\n/bin/dev/\n*.session\n  /build/  \nnode_modules/\n")
 	if !reflect.DeepEqual(got, []string{"bin/dev/", "build/"}) {
@@ -108,7 +71,7 @@ func TestRepoPathsAndExistence(t *testing.T) {
 
 func TestCodeLinesMakeTargetsAndFlags(t *testing.T) {
 	md := "Run `make test` but make the window nice.\n" +
-		"```sh\nmake install-local\ngo run ./backend --demo --data-dir x\nomarchy plugin add url --enable\ngit pull --ff-only\n```\n" +
+		"```sh\nmake install-local\ngo run ./backend --demo --data-dir x\nomarchy plugin add url --enable\ngit pull --ff-only\nscripts/install-helper.sh --status\n```\n" +
 		"Use `--no-chatter` or `--seed N`.\n"
 	targets := MakeTargets(md)
 	sort.Strings(targets)

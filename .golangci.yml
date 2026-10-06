@@ -1,0 +1,75 @@
+# Lint configuration: the C10 architecture rules (docs/TASKS.md) as config.
+# Run with `make lint`; the pinned golangci-lint version is in the Makefile.
+version: "2"
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - depguard   # layering: which internal packages each package may import
+    - revive     # size and complexity limits
+    - nolintlint # every //nolint must name the linter and give a reason
+  settings:
+    depguard:
+      # Production files only. Tests may import more (for example a real
+      # store), and the main package (backend/*.go) may import anything.
+      # Allow entries ending in $ are exact; without $ they are prefixes.
+      rules:
+        domain:
+          list-mode: strict
+          files: ["**/backend/internal/domain/*.go", "!$test"]
+          allow: [$gostd]
+        store:
+          list-mode: strict
+          files: ["**/backend/internal/store/*.go", "!$test"]
+          allow: [$gostd, modernc.org/sqlite, github.com/timlittle/omamessenger/backend/internal/domain$]
+        connector:
+          list-mode: strict
+          files: ["**/backend/internal/connector/*.go", "**/backend/internal/connector/clocktest/*.go", "!$test"]
+          allow: [$gostd, github.com/timlittle/omamessenger/backend/internal/domain$]
+        demo:
+          list-mode: strict
+          files: ["**/backend/internal/connector/demo/*.go", "!$test"]
+          allow: [$gostd, github.com/timlittle/omamessenger/backend/internal/connector$, github.com/timlittle/omamessenger/backend/internal/domain$]
+        notify:
+          list-mode: strict
+          files: ["**/backend/internal/notify/*.go", "!$test"]
+          allow: [$gostd]
+        policy:
+          list-mode: strict
+          files: ["**/backend/internal/app/policy/*.go", "!$test"]
+          allow: [$gostd, github.com/timlittle/omamessenger/backend/internal/domain$]
+        app:
+          list-mode: strict
+          files: ["**/backend/internal/app/*.go", "!$test"]
+          allow: [$gostd, github.com/timlittle/omamessenger/backend/internal/domain$, github.com/timlittle/omamessenger/backend/internal/connector$, github.com/timlittle/omamessenger/backend/internal/app/policy$]
+        rpc:
+          list-mode: strict
+          files: ["**/backend/internal/rpc/*.go", "!$test"]
+          allow: [$gostd]
+        api:
+          list-mode: strict
+          files: ["**/backend/internal/api/*.go", "!$test"]
+          allow: [$gostd, github.com/timlittle/omamessenger/backend/internal/app$, github.com/timlittle/omamessenger/backend/internal/rpc$, github.com/timlittle/omamessenger/backend/internal/domain$]
+    revive:
+      rules:
+        - name: file-length-limit
+          arguments: [{max: 400, skip-comments: false, skip-blank-lines: false}]
+        - name: function-length
+          arguments: [0, 60] # [statements (off), lines]
+        - name: argument-limit
+          arguments: [5]
+        - name: cyclomatic
+          arguments: [10]
+        - name: max-control-nesting
+          arguments: [4]
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    presets: [std-error-handling]
+    rules:
+      - path: _test\.go
+        linters: [revive] # size limits apply to production code only
+
+formatters:
+  enable: [gofmt]

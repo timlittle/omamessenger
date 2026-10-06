@@ -20,7 +20,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
-func main() {
+func main() { // coverage-ignore: process entry point; run() is tested
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx, ioStreams{in: os.Stdin, out: os.Stdout, errOut: os.Stderr}, os.Args[1:], os.Getenv); err != nil {

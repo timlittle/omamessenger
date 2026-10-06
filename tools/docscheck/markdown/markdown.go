@@ -53,61 +53,6 @@ func TableNames(md string) map[string][]string {
 	return names
 }
 
-// LayeringTable parses the C10 layering table into package -> allowed
-// imports, as full paths under internalPrefix. Rows for the main package and
-// tools are skipped: they are rules, not import lists.
-func LayeringTable(md, internalPrefix string) map[string]map[string]bool {
-	table := map[string]map[string]bool{}
-	for _, line := range strings.Split(md, "\n") {
-		cells := strings.Split(line, "|")
-		if len(cells) < 4 || !strings.HasPrefix(strings.TrimSpace(cells[1]), "`backend/internal/") {
-			continue
-		}
-		allowed := map[string]bool{}
-		for _, part := range strings.Split(parenthetical.ReplaceAllString(cells[2], ""), ",") {
-			if name := strings.Fields(strings.Trim(part, " `—")); len(name) > 0 {
-				allowed[internalPrefix+strings.Trim(name[0], "`")] = true
-			}
-		}
-		for _, pkg := range backticked.FindAllStringSubmatch(cells[1], -1) {
-			table[internalPrefix+strings.TrimPrefix(pkg[1], "backend/internal/")] = allowed
-		}
-	}
-	return table
-}
-
-// parenthetical matches a note such as "(test-only package)" in a table cell.
-var parenthetical = regexp.MustCompile(`\([^)]*\)`)
-
-var gateLine = regexp.MustCompile(`^\s*- (?:≥ )?(\d+) %: (.*)$`)
-
-// CoverageGates parses C9 bullets such as "- ≥ 90 %: `store`, `rpc`" into
-// package -> threshold. Text after ";" is commentary. `backend` is the main
-// package, `tools/*` the tools prefix, and other names sit under
-// backend/internal/.
-func CoverageGates(md string) map[string]float64 {
-	gates := map[string]float64{}
-	for _, line := range strings.Split(md, "\n") {
-		match := gateLine.FindStringSubmatch(line)
-		if match == nil {
-			continue
-		}
-		min, _ := strconv.ParseFloat(match[1], 64)
-		names := strings.SplitN(match[2], ";", 2)[0]
-		for _, name := range backticked.FindAllStringSubmatch(names, -1) {
-			gates[gatePackage(name[1])] = min
-		}
-	}
-	return gates
-}
-
-func gatePackage(name string) string {
-	if name == "backend" || strings.HasPrefix(name, "tools/") {
-		return name
-	}
-	return "backend/internal/" + name
-}
-
 var linkTarget = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 
 // RelativeLinks returns markdown link targets that point into the repo,
@@ -224,7 +169,7 @@ func MakefileTargets(src string) map[string]bool {
 var flagName = regexp.MustCompile(`(?:^|\s)--([a-z][a-z-]*)`)
 
 // otherTools marks quoted commands whose flags belong to another program.
-var otherTools = []string{"omarchy", "git ", "go build", "go test", "go vet", "node "}
+var otherTools = []string{"omarchy", "git ", "go build", "go test", "go vet", "node ", "install-helper"}
 
 // HelperFlags returns --flags quoted in md, skipping commands of other tools.
 func HelperFlags(md string) []string {
