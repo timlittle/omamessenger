@@ -56,3 +56,11 @@ func TestForget_RemovesCredentialsAndSession(t *testing.T) {
 		t.Errorf("forgetting twice = %v, want nil", err)
 	}
 }
+
+func TestAppCredentials_AreComplete(t *testing.T) {
+	t.Parallel()
+
+	if c := AppCredentials(); c.APIID <= 0 || len(c.APIHash) != 32 {
+		t.Errorf("AppCredentials = %+v, want an id and a 32-character hash", c)
+	}
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/connector/telegram"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
@@ -198,5 +200,29 @@ func TestAccountRegistry_AddFailsWithoutTheDatabase(t *testing.T) {
 
 	if files, _ := os.ReadDir(r.dir); len(files) != 0 { // a missing directory reads as empty too
 		t.Errorf("credentials left behind: %v", files)
+	}
+}
+
+func TestAccountRegistry_UsesOurAppKeysUnlessGivenOthers(t *testing.T) {
+	t.Parallel()
+
+	r, _ := testRegistry(t, nil)
+	startManager(t, r)
+
+	for given, want := range map[int]int{0: telegram.AppCredentials().APIID, 777: 777} {
+		account, err := r.Add(t.Context(), app.NewAccount{Service: domain.ServiceTelegram, APIID: given, APIHash: "own"})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		data, err := os.ReadFile(filepath.Join(r.dir, account.ID+".json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var saved telegram.Credentials
+		if err := json.Unmarshal(data, &saved); err != nil || saved.APIID != want {
+			t.Errorf("given %d: saved %+v, %v; want API id %d", given, saved, err, want)
+		}
 	}
 }

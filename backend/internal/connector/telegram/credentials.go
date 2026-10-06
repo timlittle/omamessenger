@@ -8,6 +8,20 @@ import (
 	"path/filepath"
 )
 
+// OmaMessenger's Telegram app, registered at my.telegram.org. Telegram
+// identifies every client by these; they ship inside every helper, so
+// they are not a secret, and every account uses them unless the user
+// gives their own.
+const (
+	appID   = 38681077
+	appHash = "0c880dcfe05b996d7594872255a1707d"
+)
+
+// AppCredentials returns OmaMessenger's own Telegram app keys.
+func AppCredentials() Credentials {
+	return Credentials{APIID: appID, APIHash: appHash}
+}
+
 // Credentials are the API id and hash an account signs in with, from
 // my.telegram.org.
 type Credentials struct {

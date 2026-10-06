@@ -51,6 +51,7 @@ var OWNERS = {
 
   // AccountController: adding an account and signing it in.
   'account.add': 'account',
+  'account.addOwnKeys': 'account',
 
   // WindowController: the command palette, closing and quitting, and the
   // Escape chain.

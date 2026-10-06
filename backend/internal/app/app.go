@@ -32,7 +32,7 @@ type SignIn interface {
 }
 
 // NewAccount is what adding an account needs: the service, and for
-// Telegram the API id and hash from my.telegram.org.
+// Telegram optionally the user's own API id and hash from my.telegram.org.
 type NewAccount struct {
 	Service string
 	APIID   int

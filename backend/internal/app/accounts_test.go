@@ -24,6 +24,19 @@ func TestAddAccount_StartsATelegramAccount(t *testing.T) {
 	}
 }
 
+func TestAddAccount_LeavesTheKeysToTheHelperWhenNoneAreGiven(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	if _, err := f.commands.AddAccount(t.Context(), app.NewAccount{Service: domain.ServiceTelegram}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := f.accounts.added; len(got) != 1 || got[0].APIID != 0 {
+		t.Errorf("added %+v, want one account left to the built-in keys", got)
+	}
+}
+
 func TestAddAccount_RejectsWhatCannotBeSignedIn(t *testing.T) {
 	t.Parallel()
 

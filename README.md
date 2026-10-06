@@ -31,17 +31,13 @@ Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. R
 
 ## Add your Telegram account
 
-Telegram asks every client for an API id and hash of its own, so OmaMessenger uses yours:
+Choose **Add Telegram account** in the window (or **Add a Telegram account** in the command palette), then scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**). Or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password. Your recent chats appear once it connects, and the session stays on this computer.
 
-1. Sign in at [my.telegram.org](https://my.telegram.org/apps), open **API development tools**, and create an app. Any name works.
-2. In OmaMessenger, choose **Add Telegram account** (or **Add a Telegram account** in the command palette), and paste the app's `api_id` and `api_hash`.
-3. Scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**), or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password.
-
-Your recent chats appear once it connects. The credentials and the session stay on this computer.
+OmaMessenger signs in as its own Telegram app, whose API id and hash are in the source like any Telegram client's. To use an app of your own instead, register one at [my.telegram.org](https://my.telegram.org/apps) and choose **Add a Telegram account with your own API keys** in the command palette.
 
 ## Data and privacy
 
-The helper keeps its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you: `messages.db`, and in `telegram/` each Telegram account's API credentials and session. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
+The helper keeps its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you: `messages.db`, and in `telegram/` each Telegram account's session and the API keys it signs in with. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
 
 ## Keyboard shortcuts
 
@@ -77,7 +73,7 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | --- | --- | --- |
 | `hello` | | `{protocol, version, unreadTotal}` |
 | `accounts.list` | | `[Account]` |
-| `accounts.add` | `{service, apiId, apiHash}` | `Account`; Telegram only, with the API id and hash from [my.telegram.org](https://my.telegram.org) |
+| `accounts.add` | `{service, apiId, apiHash}` | `Account`; Telegram only. `apiId` and `apiHash` are optional: without them the account uses OmaMessenger's own Telegram app |
 | `accounts.remove` | `{accountId}` | `{}`; signs out and deletes the account's session, credentials and messages |
 | `auth.submit` | `{accountId, step, value}` | `{}`; answers an `auth.step`: `phone`, `code` or `password` |
 | `contacts.list` | `{accountId, query}` | `[Contact]` |

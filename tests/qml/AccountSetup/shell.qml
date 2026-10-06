@@ -1,5 +1,6 @@
-// Checks account setup end to end against a scripted service: the API id
-// and hash are checked before accounts.add is sent, each auth.step shows
+// Checks account setup end to end against a scripted service: adding
+// sends accounts.add at once with OmaMessenger's keys, your own API id and
+// hash are checked before they are sent, each auth.step shows
 // its stage, answers go out as auth.submit, connecting closes setup,
 // cancelling a half-added account removes it, and a step that arrived
 // while the panel was gone is shown when it is created again, where
@@ -92,6 +93,7 @@ ShellRoot {
 
   // run drives each scenario in turn.
   function run(): void {
+    if (!root.checkAddsWithoutKeys()) return;
     if (!root.checkCredentials()) return;
     if (!root.checkSignInByPhone()) return;
     if (!root.checkCancelRemoves()) return;
@@ -101,10 +103,23 @@ ShellRoot {
     Qt.exit(0);
   }
 
-  // checkCredentials refuses a non-numeric id, then adds the account.
-  function checkCredentials(): bool {
+  // checkAddsWithoutKeys adds the account straight away, with no keys.
+  function checkAddsWithoutKeys(): bool {
     controller.run("account.add");
-    if (!controller.open || controller.stage !== "credentials") return root.fail("account.add did not open setup");
+    const sent = root.last();
+    if (sent.method !== "accounts.add" || sent.params.apiId !== undefined) return root.fail("account.add sent " + JSON.stringify(sent));
+    if (!controller.open || controller.stage !== "waiting") return root.fail("account.add is not waiting: " + controller.stage);
+
+    controller.cancel();
+    service.requests = [];
+    return true;
+  }
+
+  // checkCredentials refuses a non-numeric id, then adds the account with
+  // the user's own keys.
+  function checkCredentials(): bool {
+    controller.run("account.addOwnKeys");
+    if (!controller.open || controller.stage !== "credentials") return root.fail("account.addOwnKeys did not open setup");
 
     root.child(view, "apiIdField").text = "abc";
     root.child(view, "apiHashField").text = "hash";
@@ -147,9 +162,6 @@ ShellRoot {
   // checkCancelRemoves removes an account that never signed in.
   function checkCancelRemoves(): bool {
     controller.begin();
-    root.child(view, "apiIdField").text = "123";
-    root.child(view, "apiHashField").text = "hash";
-    view.submit();
     controller.cancel();
 
     const sent = root.last();

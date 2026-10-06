@@ -13,14 +13,16 @@ import (
 var authSteps = []string{"phone", "code", "password"}
 
 // AddAccount adds an account and starts signing it in; the connector then
-// reports what it needs through auth.step events.
+// reports what it needs through auth.step events. Without an API id and
+// hash, the account uses OmaMessenger's own Telegram app keys.
 func (c *Commands) AddAccount(ctx context.Context, a NewAccount) (domain.Account, error) {
 	if a.Service != domain.ServiceTelegram {
 		return domain.Account{}, fmt.Errorf("%w: only Telegram accounts can be added so far", ErrInvalidInput)
 	}
 
-	if a.APIID <= 0 || strings.TrimSpace(a.APIHash) == "" {
-		return domain.Account{}, fmt.Errorf("%w: the API id and hash from my.telegram.org are required", ErrInvalidInput)
+	ownKeys := a.APIID != 0 || a.APIHash != ""
+	if ownKeys && (a.APIID <= 0 || strings.TrimSpace(a.APIHash) == "") {
+		return domain.Account{}, fmt.Errorf("%w: enter both the API id and the API hash from my.telegram.org", ErrInvalidInput)
 	}
 
 	account, err := c.accounts.Add(ctx, a)

@@ -51,12 +51,16 @@ func (r *accountRegistry) saved(ctx context.Context) ([]connector.Connector, err
 	return connectors, nil
 }
 
-// Add saves a new Telegram account's API credentials and starts its
-// connector, which then asks the user to sign in.
+// Add saves a new Telegram account's API credentials, OmaMessenger's own
+// unless the user gave theirs, and starts its connector, which then asks
+// the user to sign in.
 func (r *accountRegistry) Add(ctx context.Context, n app.NewAccount) (domain.Account, error) {
 	account := domain.Account{ID: newAccountID(), Service: domain.ServiceTelegram, Name: "Telegram", Status: domain.AccountConnecting}
 
-	creds := telegram.Credentials{APIID: n.APIID, APIHash: n.APIHash}
+	creds := telegram.AppCredentials()
+	if n.APIID != 0 {
+		creds = telegram.Credentials{APIID: n.APIID, APIHash: n.APIHash}
+	}
 	if err := telegram.SaveCredentials(r.dir, account.ID, creds); err != nil {
 		return domain.Account{}, fmt.Errorf("add account: %w", err)
 	}

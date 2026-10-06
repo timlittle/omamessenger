@@ -36,6 +36,7 @@ var BINDINGS = [
   { action: 'chat.next', keys: ['Alt+Down'], contexts: ['global'], label: 'Next conversation', command: true },
   { action: 'chat.prev', keys: ['Alt+Up'], contexts: ['global'], label: 'Previous conversation', command: true },
   { action: 'account.add', keys: [], contexts: ['global'], label: 'Add a Telegram account', command: true },
+  { action: 'account.addOwnKeys', keys: [], contexts: ['global'], label: 'Add a Telegram account with your own API keys', command: true },
   { action: 'rail.all', keys: ['Ctrl+0'], contexts: ['global'], label: 'Show all services', command: true },
   { action: 'rail.whatsapp', keys: ['Ctrl+1'], contexts: ['global'], label: 'Show WhatsApp', command: true },
   { action: 'rail.telegram', keys: ['Ctrl+2'], contexts: ['global'], label: 'Show Telegram', command: true },

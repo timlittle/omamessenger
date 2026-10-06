@@ -3,8 +3,8 @@ import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
 import "../lib/Setup.js" as Setup
 
-// Owns account setup: adding a Telegram account with its API id and hash,
-// then answering the sign-in steps its connector asks for until it
+// Owns account setup: adding a Telegram account, with OmaMessenger's own
+// app keys or the user's from my.telegram.org, then answering the sign-in steps its connector asks for until it
 // connects. The only controller that calls accounts.add, accounts.remove
 // and auth.submit. A sign-in step for a saved account whose session ran
 // out opens setup too, at that step.
@@ -50,10 +50,21 @@ Item {
   // run performs action, the only entry point a key router needs.
   function run(action: string): void {
     if (action === "account.add") root.begin();
+    else if (action === "account.addOwnKeys") root.beginWithOwnKeys();
   }
 
-  // begin opens setup at the credentials step for a new account.
+  // begin adds an account with OmaMessenger's keys and waits for its first
+  // sign-in step.
   function begin(): void {
+    root._reset();
+    root.open = true;
+    root.stage = "waiting";
+    root._add({ service: "telegram" });
+  }
+
+  // beginWithOwnKeys opens setup at the credentials step, for someone who
+  // would rather use their own Telegram app.
+  function beginWithOwnKeys(): void {
     root._reset();
     root.open = true;
   }
@@ -66,7 +77,12 @@ Item {
       return;
     }
 
-    const params = { service: "telegram", apiId: Setup.apiID(apiId), apiHash: apiHash.trim() };
+    root._add({ service: "telegram", apiId: Setup.apiID(apiId), apiHash: apiHash.trim() });
+  }
+
+  // _add asks the helper to add the account, then waits for its first
+  // sign-in step unless one has already arrived.
+  function _add(params: var): void {
     root._call("accounts.add", params, (account) => {
       root.accountId = account.id;
       root._added = true;

@@ -5,8 +5,8 @@ import qs.Ui as Ui
 import "../theme"
 import "../lib/Setup.js" as Setup
 
-// Adds a Telegram account and signs it in: the API id and hash from
-// my.telegram.org, then a QR code to scan, or a phone number, login code
+// Adds a Telegram account and signs it in: optionally the user's own API
+// id and hash from my.telegram.org, then a QR code to scan, or a phone number, login code
 // and two-step password. Enter continues, Escape cancels.
 Item {
   id: root
@@ -98,7 +98,7 @@ Item {
       Text {
         Layout.fillWidth: true
         text: root.stage === "credentials"
-          ? "Telegram needs an app of your own. Sign in at <a href=\"https://my.telegram.org/apps\">my.telegram.org</a>, open API development tools, and copy the app's api_id and api_hash here. They stay on this computer."
+          ? "To use your own Telegram app instead of OmaMessenger's, sign in at <a href=\"https://my.telegram.org/apps\">my.telegram.org</a>, open API development tools, and copy the app's api_id and api_hash here. They stay on this computer."
           : root.stage === "waiting" ? "Connecting to Telegram…" : root.hint
         visible: text !== ""
         textFormat: Text.StyledText
