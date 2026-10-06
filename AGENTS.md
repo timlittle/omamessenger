@@ -1,48 +1,44 @@
 # OmaMessenger agent guide
 
-OmaMessenger is an Omarchy third-party Quickshell plugin backed by a Go helper process. Its IPC-summoned entry point opens a normal, non-modal client window. Preserve the seam between the QML UI, local JSON-lines IPC, and each service connector.
+OmaMessenger is an Omarchy plugin: a QML UI inside `omarchy-shell`, backed by a Go helper it starts and talks to with JSON-RPC over stdio. Keep the seams clean between the UI, the helper API and each service connector.
+
+## Read first
+
+- [.claude/rules/](.claude/rules/): the coding standards. They apply to every change.
+- [docs/plan.md](docs/plan.md): what to build next, as self-contained briefs, with the UI spec.
+- [docs/decisions.md](docs/decisions.md): why things are the way they are.
+- [FORGE_SPEC.md](FORGE_SPEC.md): product scope and acceptance.
 
 ## Project rules
 
-- Do not edit or fork files in Omarchy's packaged source. The install target is the user's `~/.config/omarchy/plugins/io.github.omamessenger/` directory.
-- Keep the UI inside the existing long-lived `omarchy-shell` process, but use a standard `FloatingWindow` so Hyprland can manage it like an application. Do not create a full-screen layer-shell overlay or start another Quickshell process.
-- Let Omarchy own the helper through `Service.qml`, which starts it via the `bin/oma-messenger-service` launcher. Never commit helper binaries. Each release publishes Linux x86_64 and ARM64 binaries with `SHA256SUMS` on GitHub Releases. `helper-version` pins the exact release, and `scripts/install-helper.sh` (run explicitly, or from the UI's install button) downloads, verifies and installs it into `~/.local/share/omamessenger/bin/`. Loading the plugin never downloads anything. Do not add systemd units or plugin installation hooks.
-- Keep WhatsApp and Telegram protocol code in Go connectors. QML should use only the normalized local API.
-- Keep account sessions and message data local. Do not log credentials, QR tokens, message bodies, or session keys.
-- Use Omarchy's `qs.Commons` theme tokens and the installed `qs.Ui` components where they fit the interaction.
-- Keep the UI keyboard-first and mouse usable. Preserve the documented shortcuts when changing navigation.
-- Keep installation user-scoped. Do not use `sudo`, write to `/usr`, or change system Omarchy configuration from project scripts.
-- Update the README when setup, authentication, installation, API behavior, or shortcuts change.
+- Do not edit or fork Omarchy's packaged source. The plugin installs into `~/.config/omarchy/plugins/io.github.omamessenger/`.
+- Keep the UI inside the running `omarchy-shell`, in a standard `FloatingWindow` that Hyprland manages like an app. No full-screen layer-shell overlay, no second Quickshell process.
+- Omarchy owns the helper through the plugin's Service. Never commit helper binaries, and never download anything when the plugin loads; see the README for how the helper is released and installed. No systemd units or plugin installation hooks.
+- WhatsApp and Telegram protocol code lives in Go connectors. The UI uses only the helper API.
+- Account sessions and messages stay on this machine. Never log credentials, QR tokens, message text or session keys.
+- Keep installation user-scoped: no `sudo`, no writes to `/usr`, no changes to system Omarchy configuration.
+- Never test against the developer's running Hyprland session.
+- Update the README when setup, authentication, installation, the helper API or shortcuts change.
 
-## Interface layout
+## Interface
 
-- Use three clear areas: a narrow service rail, the unified conversation list, and the active conversation view.
-- Keep service filters in the rail and search beside the conversation list. Do not let navigation controls crowd message content.
-- Use Omarchy theme tokens for colors, spacing, type, and popups. Keep controls visually quiet until selected, hovered, or focused.
-- The service rail represents providers today. Add account switching there when the account API and UI behavior are ready; do not imply account switching is implemented before then.
-- Preserve a usable list and message pane at the minimum window size. Check long conversation names, empty states, unread badges, and the compose flow when adjusting pane widths.
+- Three areas: a narrow service rail, the unified conversation list and the open conversation. Service filters live in the rail, search beside the list.
+- Keyboard-first and mouse usable. Keep the documented shortcuts working when changing navigation.
+- Omarchy theme tokens for colour, spacing, type and popups. Controls stay quiet until hovered, focused or selected.
+- The rail shows services today. Do not imply account switching until the account API exists.
+- Keep the list and conversation usable at the minimum window size: check long names, empty states, unread badges and composing.
 
 ## Layout
 
-Today:
+- `backend/`: the Go helper. `main.go` wires everything; `internal/domain` (shared types), `store` (SQLite), `connector` (the service boundary and its supervisor, with `demo`), `app` (what the client does: `Commands` for the UI, `Ingest` for connectors, `policy` for notifications), `server` (JSON-RPC), `notify` (desktop notifications).
+- `ui/`: the new UI, being built: `theme/`, `components/`, `lib/`. Planned: `Service.qml`, `Panel.qml`, `BarWidget.qml`, `service/`, `controllers/` (see the plan).
+- `Panel.qml`, `Service.qml`, `keyboard.js`, `manifest.json` in the root: the scaffold UI, replaced by `ui/`.
+- `bin/oma-messenger-service`: the launcher. `scripts/`: helper install, release build, local install, QML lint imports.
+- `tools/nologcontent`: keeps message content out of logs.
+- `tests/unit/`: node tests for `ui/lib` and the scripts.
 
-- `manifest.json`, `Panel.qml`, `Service.qml`, `keyboard.js`: the original root-level plugin scaffold, which Phase B replaces.
-- `backend/`: Go JSON-lines helper: `backend/internal/domain`, `store`, `connector` (plus `connector/demo`), `app` (`Commands`, `Ingest`, `app/policy`), `api`, `rpc` and `notify`.
-- `.golangci.yml`, `.testcoverage.yml`: the architecture rules (layering, size, complexity) and the per-package coverage gates, as configuration for golangci-lint and go-test-coverage.
-- `tools/`: the project-specific checks no existing tool covers: `tools/nologcontent` (no message content in logs) and `tools/docscheck` (docs match the code).
-- `tests/unit/`, `tests/e2e/`: launcher and keyboard logic tests, and isolated compositor checks.
-- `bin/oma-messenger-service`: the launcher. It prefers a local `bin/dev/` build (`make build`), then the installed pinned release.
-- `helper-version`, `scripts/install-helper.sh`: the pinned helper release and its verified installer.
-- `scripts/build-release.sh`: reproducible cross-build into `build/release/` with `SHA256SUMS`, published by `.github/workflows/release.yml` on a version tag.
-- `vendor/`: vendored Go dependencies used to produce release binaries offline.
-- `docs/`: the build plan (`docs/TASKS.md`) and the generated protocol reference (`docs/PROTOCOL.md`).
+## Working
 
-Planned in Phase B (target layout in `docs/TASKS.md` C1):
-
-- `ui/Service.qml`, `ui/Panel.qml`, `ui/BarWidget.qml`: shell lifecycle, window and bar widget (planned).
-- `ui/service/`, `ui/controllers/`, `ui/components/`, `ui/lib/`: helper/RPC state, UI actions, views and pure logic (planned).
-- `tests/qml/`: offscreen QML integration harness (planned).
-
-## Development
-
-The project has no repository-specific AI framework dependencies. Read `FORGE_SPEC.md` for the product contract and acceptance boundaries, and `docs/TASKS.md` for the build plan, its Definition of Done and its contracts. Architecture rules are enforced by `make lint` (golangci-lint with `.golangci.yml`, plus `tools/nologcontent`), coverage gates by `make coverage` (`.testcoverage.yml`), and `make docs-check` keeps the docs true to the code. Prefer configuring an existing tool over writing a custom check. On Omarchy, use `omarchy plugin validate .` and `make lint` when validation is requested. Phase B replaces the transitional QML lint command with `/usr/lib/qt6/bin/qmllint` and a Quickshell import directory prepared by `scripts/qml-imports.sh` (planned).
+- `make check` runs every gate: build, Go tests with the race detector and coverage gates, JavaScript tests, golangci-lint, the privacy check, shellcheck and Qt 6 qmllint. It must pass before work is done.
+- `make install-local` installs the checkout into Omarchy for trying the UI.
+- `omarchy plugin validate .` checks the manifest.

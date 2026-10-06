@@ -1,56 +1,53 @@
 # Contributing to OmaMessenger
 
-OmaMessenger is an Omarchy plugin first and a messaging client second. Keep it native to the running Omarchy shell, let Hyprland manage its application window, and keep messaging protocols behind the Go service boundary.
+OmaMessenger is an Omarchy plugin first and a messaging client second. Keep it native to the running Omarchy shell, let Hyprland manage its window, and keep messaging protocols behind the Go connector boundary.
 
 ## Before changing code
 
-- Read [AGENTS.md](AGENTS.md) for the project working agreements and [FORGE_SPEC.md](FORGE_SPEC.md) for product scope and acceptance criteria.
-- Keep the Quickshell plugin UI, local JSON-lines IPC, persistence, and service connectors independently understandable. The UI consumes normalized accounts, conversations, and messages; it must not speak WhatsApp or Telegram protocol details.
-- A service-specific capability belongs in the service connector. Do not show a control that suggests an operation is available when that service cannot perform it.
-- Keep credentials and message content out of logs, shell configuration, and test output. Use temporary directories and fake service data in tests.
+- Read [AGENTS.md](AGENTS.md) for the project rules, [.claude/rules/](.claude/rules/) for the coding standards and [FORGE_SPEC.md](FORGE_SPEC.md) for product scope.
+- The UI uses only the helper's API (see the README). It never speaks WhatsApp or Telegram protocol details.
+- A service-specific capability belongs in its connector. Do not show a control for something a service cannot do.
+- Keep credentials and message content out of logs, configuration and test output. Tests use temporary directories and fake data.
 
 ## UI and interaction
 
-The conversation window uses three areas: a service navigation rail, the unified conversation list, and the active conversation. Keep these panes useful at the supported window sizes, and make the same actions available by keyboard and mouse.
-
-Use Omarchy theme tokens and existing Quickshell UI components. Preserve the documented shortcuts, keep focus inside the active window, and make Escape and the window close control behave predictably. When changing a visible interaction, update the shortcut documentation and include the affected states in verification.
+The window has three areas: a service rail, the conversation list and the open conversation. Keep them usable at the minimum window size, and make every action work from both keyboard and mouse. Use Omarchy's theme tokens and `qs.Ui` controls. When a visible interaction changes, update the shortcuts in the README and check the affected states.
 
 ## Tests
 
-Add a regression test with each behavior fix. Put the test at the narrowest layer that can observe the behavior:
+Write the failing test first; a bug fix starts with a test that reproduces it. Put each test at the narrowest layer that shows the behaviour:
 
-| Change | Test location |
+| Change | Where the test goes |
 | --- | --- |
-| Pure keyboard or data transformation logic | `tests/unit/`, runnable with Node |
-| Go persistence, RPC framing, or helper behavior | focused `backend/internal/*/*_test.go` or `backend/*_test.go`, using temporary SQLite databases and in-process JSON-lines streams |
-| Notification decisions | `backend/internal/app/policy`, exhaustive tables |
-| The C3 protocol (methods, params, errors) | `backend/internal/api` tests, plus the helper's `backend/main_test.go`, which drives the real binary through every method |
-| Architecture rules (allowed imports, size, complexity) | `.golangci.yml` (golangci-lint); explain any change in `docs/TASKS.md` C10 |
-| No message content in logs | `tools/nologcontent` and its fixtures |
-| Helper install and launcher | `tests/unit/helper-install.test.cjs`, against a fake release over `file://` |
-| Documentation that names code (paths, make targets, flags, contracts) | `make docs-check` (`tools/docscheck`) |
-| Plugin manifest or QML validity | `make validate` and `make lint` |
+| Pure UI logic in `ui/lib` | `tests/unit/<file>.test.cjs`, run with node |
+| Storage | `backend/internal/store/<file>_test.go`, on a real SQLite database in a temporary directory |
+| What the client does | `backend/internal/app/<file>_test.go`, with a real store and fake connectors |
+| Notification decisions | `backend/internal/app/policy`, every combination |
+| Connector supervision and the demo | `backend/internal/connector/...`, inside `testing/synctest` |
+| The helper API | `backend/internal/server`, through a real JSON-RPC client; `backend/main_test.go` drives the built binary |
+| Allowed imports, size and complexity | `.golangci.yml` |
+| No message content in logs | `tools/nologcontent` |
+| Helper install and launcher | `tests/unit/helper-install.test.cjs`, against a fake release |
 
-Run the relevant test once against the failing behavior before fixing it when practical. Before opening a pull request, run:
+Before opening a pull request, run:
 
 ```sh
-make test
+make check
 ```
 
-This runs the Go tests with the race detector and the per-package coverage gates in `.testcoverage.yml`, the JavaScript tests, lint (golangci-lint with `.golangci.yml`, and `tools/nologcontent`), and `make docs-check`. Prefer configuring an existing tool over writing a custom check. It does not start a compositor or claim to verify rendered QML. Each phase in `docs/TASKS.md` ends with a gate whose Definition of Done (§0.1) lists the full set of checks, including a documentation review.
-
+It builds the helper, runs the Go tests with the race detector and the coverage gates in `.testcoverage.yml`, runs the JavaScript tests, and lints Go, shell scripts and QML. It does not start a compositor or check the rendered UI.
 
 ## Checking visual changes
 
-Automated QML checks cover syntax. They do not replace looking at the rendered interface or testing window behavior. Use `make install-local` on an Omarchy development machine, open the plugin, and check the changed flow with both keyboard and mouse. When practical, include the Omarchy theme and window size used, plus a screenshot, in the pull request. Do not claim a live desktop check was performed if it was not.
+Automated checks cover logic and QML validity, not what the window looks like. Run `make install-local` on an Omarchy machine, open the plugin, and try the changed flow with keyboard and mouse. Include the theme, window size and a screenshot in the pull request when you can. Never claim a check you did not do.
 
 ## Pull requests
 
-Keep each pull request focused on one user-visible change or one maintenance task. Include:
+Keep each pull request to one user-visible change or one maintenance task. Include:
 
-- The problem and a short reproduction or design reason.
-- The behavior changed and any service-specific limitations.
-- Exact verification commands and their results, including whether Docker UI checks ran.
-- A screenshot for visual changes when available.
+- the problem, with a short reproduction or the reason for the design
+- what changed, and any service-specific limits
+- the verification commands you ran and their results
+- a screenshot for visual changes
 
-If an AI coding tool helped, the contributor remains responsible for reviewing the full diff and understanding each change. Follow the repository's `AGENTS.md`; do not invent a second set of agent-only project rules.
+If an AI tool helped, you remain responsible for reviewing and understanding the whole diff.

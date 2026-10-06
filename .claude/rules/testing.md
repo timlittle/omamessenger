@@ -10,10 +10,10 @@
 
 - Tests mirror source files: `store/messages.go` → `store/messages_test.go`. No grab-bag files named after a technique (`failure_test.go`, `frozen_test.go`, `fixture_test.go`); a failure-path test lives beside the happy path for the same function
 - Shared test helpers for a package go in `helpers_test.go`, and each one calls `t.Helper()`
-- Fuzz tests sit in the mirrored file (`FuzzDecodeRequest` in `server/codec_test.go`)
+- Fuzz tests, when a function parses untrusted input, sit in the mirrored file
 - Prefer black-box tests (`package store_test`). Use an internal test only when the behaviour cannot be reached through the public API, and say why in a comment
 - No `export_test.go` back doors; if a test needs it, the API is wrong
-- A fake shared across packages lives in a `<pkg>test` package (`connectortest.Clock`); otherwise it is unexported in the test file that uses it
+- Fakes are unexported and live in the package's `helpers_test.go`. Only if several packages need the same fake does it move to a `<pkg>test` package
 
 ### Style
 
@@ -23,7 +23,7 @@
 - More than 3 test doubles in one test means the unit has too many dependencies: redesign it
 - Use real SQLite in a `t.TempDir()`, not a fake store
 - Use `t.Context()`, never `context.Background()`, in tests
-- No `time.Sleep`; use the fake clock or synchronise on channels
+- Code with delays or timeouts is tested inside `synctest.Test`, so it runs instantly and deterministically. Outside a bubble, synchronise on channels; poll only for another process (a built binary, `notify-send`)
 - Assert on behaviour and returned values, not on internal calls
 
 ### Gates

@@ -1,145 +1,131 @@
 # OmaMessenger
 
-OmaMessenger is an Omarchy-native, keyboard-first messaging client. Omarchy summons its normal, non-modal Quickshell window; the UI and Go helper communicate over local JSON-lines IPC on the helper's standard input and output. The helper owns persistence and the protocol adapter boundary; the client uses normalized accounts, conversations, and messages.
+OmaMessenger is a keyboard-first messaging client for [Omarchy](https://omarchy.org), for WhatsApp and Telegram. It runs as an Omarchy plugin: the window is a normal Quickshell window inside `omarchy-shell`, and a small Go helper keeps the message database and talks to the messaging services.
 
-## Current status
+## Status
 
-The Go helper is complete for an offline seeded demo (`--demo`): local sends, scripted delivery states, failures and retries, replies, typing indicators, notifications and unread counts. It is covered by race-tested Go tests, coverage gates and lint rules.
-
-**The plugin UI is not usable yet.** The window in the repository root (`Panel.qml`, `Service.qml`) is the original scaffold. It still expects an HTTP API on port 43821, and its service starts the helper without a stdin pipe, so the new stdio helper exits at once. Installing the plugin today opens a window that cannot load conversations. Phase B in [docs/TASKS.md](docs/TASKS.md) replaces this UI.
-
-Real WhatsApp and Telegram authentication, remote sync and delivery are not connected yet, so this project does not replace those desktop clients.
-
-The planned Go clients are `whatsmeow` for WhatsApp and `gotd/td` for Telegram. Media and reactions follow a reliable text workflow.
+- **Helper:** complete for an offline demo (`--demo`): seeded accounts and conversations, sending with delivery receipts, failures and retries, replies, typing indicators, notifications and unread counts.
+- **UI:** not usable yet. The window in the repository root (`Panel.qml`, `Service.qml`) is the original scaffold and cannot talk to the current helper. The new UI is being built in `ui/`; see [docs/plan.md](docs/plan.md).
+- **WhatsApp and Telegram:** not connected yet. The planned libraries are [whatsmeow](https://github.com/tulir/whatsmeow) and [gotd/td](https://github.com/gotd/td).
 
 ## Requirements
 
-- Omarchy with `omarchy-shell` and the third-party plugin manager
+- Omarchy with `omarchy-shell` and its plugin manager
 - Linux x86_64 or ARM64
 
-## Install on Omarchy
-
-Installation works mechanically, but see Current status: the UI does not work with the current helper until Phase B. Install the plugin with Omarchy:
+## Install
 
 ```sh
 omarchy plugin add https://github.com/timlittle/omamessenger --enable
-```
-
-Open or focus OmaMessenger:
-
-```sh
-omarchy-shell shell summon io.github.omamessenger '{}'
-```
-
-Then install the helper, a small Go program the plugin runs:
-
-```sh
 ~/.config/omarchy/plugins/io.github.omamessenger/scripts/install-helper.sh
 ```
 
-- The script downloads the release pinned in `helper-version` from this repository's GitHub Releases. It checks the binary against the release's `SHA256SUMS` and confirms it reports the pinned version.
-- It installs the binary into `~/.local/share/omamessenger/bin/`, so you need no Go compiler.
-- Nothing is downloaded until you run it, and running it again when the helper is already installed does nothing.
-- `install-helper.sh --status` reports whether the helper is installed.
-- **No release has been published yet**, so the script can't download anything until `v0.2.0` is tagged (see Development). Until then, build the helper from a checkout with `make build`; the launcher prefers that build.
-- The helper targets Linux x86_64 and ARM64. There is no systemd unit; `omarchy-shell` starts the helper when the plugin loads.
+The second command installs the helper:
 
-Remove the plugin with:
+- It downloads the release named in `helper-version` from GitHub Releases, checks it against the release's `SHA256SUMS`, and confirms it reports that version.
+- It installs it into `~/.local/share/omamessenger/bin/`; you do not need Go.
+- Nothing is downloaded until you run it. Running it again does nothing, and `--status` reports whether the helper is installed.
+- **No release has been published yet**, so until `v0.3.0` is tagged, build the helper from a checkout with `make build`.
 
-```sh
-omarchy plugin remove io.github.omamessenger
-```
+Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. Remove the plugin with `omarchy plugin remove io.github.omamessenger`.
 
-## Accounts and authentication
+## Data and privacy
 
-Remote authentication is not implemented. To run the seeded demo helper from a checkout:
-
-```sh
-go run -mod=vendor ./backend --demo --no-chatter --seed 1 --data-dir "$(mktemp -d)"
-```
-
-The helper reads one JSON request per line from stdin and writes responses and events to stdout. `--demo` uses `demo.db`; normal mode uses `messages.db`. Both live under `${XDG_DATA_HOME:-$HOME/.local/share}/omamessenger/` unless `--data-dir` or `--db` is supplied. Data is private to the current user. No bearer token, TCP listener, or system service is used.
-
-An earlier scaffold used `~/.config/omamessenger/messages.db` and `api.token`; those files are not migrated. You may remove them if you no longer need that scaffold data.
-
-The demo seeds three local accounts and eleven conversations each time it starts; stable remote IDs prevent duplicate messages. `--seed N` makes scripted chatter deterministic, while `--no-chatter` disables unsolicited demo messages. This mode never logs message contents or credentials.
+The helper keeps its database in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db` normally, `demo.db` in demo mode. Both are readable only by you. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
 
 ## Keyboard shortcuts
 
-These describe the scaffold UI that Phase B replaces; the new keymap is specified in `docs/TASKS.md` (C6).
+These belong to the scaffold UI, which the new UI replaces.
 
 - `j` / `k`: move through conversations
 - `Enter`: open the selected conversation
-- `Esc`: return to the list, then close the panel
-- `Ctrl+K`: focus conversation search
-- `Ctrl+N`: create a local conversation
+- `Esc`: return to the list, then close the window
+- `Ctrl+K`: search conversations
+- `Ctrl+N`: new conversation
 - `Ctrl+1` / `Ctrl+2` / `Ctrl+0`: WhatsApp / Telegram / all conversations
-- Mouse clicks work for filters, conversation rows, and message controls
 
-The compose dialog expects an account ID and contact/chat label. Without service connectors, it creates only a local conversation.
+## Helper API
+
+Omarchy's shell starts the helper and talks to it over its stdin and stdout with [JSON-RPC 2.0](https://www.jsonrpc.org/specification), one JSON object per line. The helper exits when stdin closes or on SIGTERM.
+
+```sh
+oma-messenger-service [--demo] [--no-chatter] [--seed N] [--data-dir DIR] [--db FILE] [--version]
+```
+
+### Methods
+
+| Method | Params | Result |
+| --- | --- | --- |
+| `hello` | | `{protocol, version, demo, unreadTotal}` |
+| `accounts.list` | | `[Account]` |
+| `contacts.list` | `{accountId, query}` | `[Contact]` |
+| `conversations.list` | `{query}` | `[Conversation]`, newest first; `match` holds the newest matching message |
+| `conversations.open` | `{accountId, contactId}` | `Conversation`, created if needed |
+| `conversations.markRead` | `{conversationId}` | `{}` |
+| `conversations.setMuted` | `{conversationId, muted}` | `Conversation` |
+| `messages.list` | `{conversationId, before, limit}` | `{messages, hasMore}`, oldest first; `limit` 1–200, default 50 |
+| `messages.send` | `{conversationId, text}` | `Message`; status `failed` if the service refused it |
+| `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
+| `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
+| `settings.apply` | `{notifications, notificationPreview, demoChatter}` | `{}` |
+| `demo.inject` | `{conversationId}` | `Message`; demo mode only |
+
+The protocol version is `2`.
+
+### Events
+
+Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params":<data>}`.
+
+| Event | Data |
+| --- | --- |
+| `account.updated` | `Account` |
+| `conversation.updated` | `Conversation` |
+| `message.added` | `Message` |
+| `message.updated` | `Message` |
+| `unread.changed` | `{total}` |
+| `typing` | `{conversationId, name, active}` |
+
+### Errors
+
+| Code | Meaning |
+| --- | --- |
+| `-32602` | Invalid params or input. The message says what to fix and is safe to show. |
+| `-32601` | Unknown method, for example `demo.inject` outside demo mode. |
+| `-32001` | The account, contact, conversation or message does not exist. |
+| `-32603` | Internal error. Details stay in the helper. |
+
+The shapes of `Account`, `Contact`, `Conversation` and `Message` are the JSON fields in [backend/internal/domain/domain.go](backend/internal/domain/domain.go).
 
 ## Development
 
-Build or run the Go helper directly:
+You need Go 1.26+, Node 22+ and, for QML lint, Omarchy's shell and Qt 6.
 
 ```sh
-go build -mod=vendor -o /tmp/oma-messenger-service ./backend
-go run -mod=vendor ./backend --demo --no-chatter --seed 1
+make help            # list the commands
+make check           # every gate: build, tests with coverage, lint
+make build           # build the helper into bin/dev/, which the launcher prefers
+make install-local   # install this checkout into Omarchy and enable it
+go run ./backend --demo --no-chatter --seed 1 --data-dir "$(mktemp -d)"
 ```
 
-The transport is stdio JSON lines (protocol version 1); the method and event reference is generated into [docs/PROTOCOL.md](docs/PROTOCOL.md). The helper exits cleanly when stdin closes or on SIGTERM. Service connectors publish normalized messages and account state through the connector interface; real connectors are planned but are not implemented yet.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute and [AGENTS.md](AGENTS.md) for the project rules.
 
-The root Makefile provides the regular development workflow:
+### Releasing
 
-```sh
-make help             # list all targets
-make build            # build the helper for this machine into bin/dev/
-make install-helper   # install the pinned helper release (same as scripts/install-helper.sh)
-make test             # build, Go tests (race + coverage gates), JS tests, lint, docs checks
-make docs-check       # check docs against the code
-make status           # inspect the current worktree
-make pull             # fast-forward from the configured upstream
-make install-local    # copy this checkout into Omarchy and enable it
-```
+Binaries are never committed. To release:
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for project boundaries, the test map, UI review guidance, and pull request expectations. `AGENTS.md` contains the working rules used by both human and AI contributors.
+1. Change `helper-version` and `helperVersion` in `backend/config.go` together; a test checks they match.
+2. Push a matching tag such as `v0.3.0`.
 
-`make test` requires Go 1.26+, Node 22+, and QML lint tools.
+The release workflow tests the helper, builds both binaries, records a build-provenance attestation and publishes a GitHub Release with `SHA256SUMS`.
 
-- `make coverage`: runs the Go tests with the race detector against temporary databases, and enforces the per-package coverage gates in `.testcoverage.yml` with go-test-coverage.
-- `make lint`: runs golangci-lint with `.golangci.yml`. That covers gofmt, go vet, staticcheck, the allowed imports per package, and the size and complexity limits. It also runs `tools/nologcontent`, which keeps message content out of logs.
-- The pinned versions of both tools are built into `build/tools/` on first use (`make tools`).
+## Layout
 
-`make test` does not launch a compositor or verify rendered pixels.
-
-`make install-local` builds the native helper, stages the plugin runtime files into `~/.config/omarchy/plugins/io.github.omamessenger/`, validates it, asks the running Omarchy shell to rescan, and enables the plugin. Then open it with `omarchy-shell shell summon io.github.omamessenger '{}'`. This installs your current working tree so you can try changes before pushing.
-
-Build both release helpers and their `SHA256SUMS` into `build/release/` with Go 1.26 or newer:
-
-```sh
-./scripts/build-release.sh
-```
-
-Binaries are never committed. To release, update `helper-version` and the helper's version constant together (a test keeps them equal), then push a matching tag such as `v0.2.0`. The release workflow then:
-
-- tests the helper and builds both binaries
-- records a build-provenance attestation
-- publishes the binaries and `SHA256SUMS` as a GitHub Release
-
-The workflow needs read and write access to contents. CI (`.github/workflows/ci.yml`) runs the tests, lint, docs checks and a release build on every pull request.
-
-## Architecture
-
-- `backend/`: Go stdio JSON-lines helper, normalized domain, SQLite persistence, and connector boundary
-- `.golangci.yml`, `.testcoverage.yml`: lint rules (including the architecture rules) and coverage gates
-- `tools/`: the two project-specific checks: `tools/nologcontent` (privacy) and `tools/docscheck` (docs match the code)
-- `docs/`: the build plan and the generated protocol reference
-- `Panel.qml`, `Service.qml`: the scaffold Quickshell panel and helper lifecycle, replaced in Phase B
-- `bin/oma-messenger-service`: launcher that prefers a `bin/dev/` build, then the installed pinned release
-- `helper-version`, `scripts/install-helper.sh`: the pinned helper release and its verified installer
-- `scripts/build-release.sh`: offline cross-build of the release helpers
-- `Makefile`: build, test, coverage, validation, local install, status, and pull targets
-- `manifest.json`: Omarchy plugin manifest
-- `vendor/`: pinned Go dependencies for offline builds
-
-The panel and service entry points run inside the existing `omarchy-shell` process. The Go helper is a child process supervised by the shell and communicates with the UI through local JSON-lines IPC. Theme colors and styles come from Omarchy's live tokens.
+- `backend/`: the Go helper. `internal/domain` (shared types), `store` (SQLite), `connector` (the service boundary, with `demo`), `app` (what the client does), `server` (JSON-RPC), `notify` (desktop notifications)
+- `ui/`: the new QML UI: `theme/` (typed Omarchy tokens), `components/` (views), `lib/` (pure JavaScript, tested with node)
+- `Panel.qml`, `Service.qml`, `keyboard.js`: the scaffold UI, replaced by `ui/`
+- `bin/oma-messenger-service`: launcher that runs `bin/dev/` if built, otherwise the installed release
+- `scripts/`: helper install, release build, local plugin install, QML lint imports
+- `tools/nologcontent`: a Go analyzer that keeps message content out of logs
+- `tests/unit/`: JavaScript tests for `ui/lib` and the scripts
+- `docs/plan.md`, `docs/decisions.md`: the build plan and the reasons behind design choices

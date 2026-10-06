@@ -1,6 +1,6 @@
 # OmaMessenger implementation spec
 
-Status: helper and demo complete (Phase R gate); plugin UI in progress (Phase B). Build plan: `docs/TASKS.md`.
+Status: helper and demo complete; plugin UI in progress. Build plan: `docs/plan.md`.
 
 ## Objective
 
@@ -9,7 +9,7 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 ## Product boundaries
 
 - The QML plugin entry point is loaded by the existing `omarchy-shell` process and opens a standard Quickshell `FloatingWindow`, managed by Hyprland as a normal non-modal application window.
-- A small Go helper process owns protocol connections and local persistence. Omarchy's shell starts and supervises it through the plugin service entry point; the UI and helper communicate over local JSON-lines IPC on stdio.
+- A small Go helper process owns protocol connections and local persistence. Omarchy's shell starts and supervises it through the plugin service entry point; the UI and helper communicate over JSON-RPC 2.0 on the helper's stdin and stdout.
 - Linux x86_64 and ARM64 helper binaries are published as GitHub Release assets with `SHA256SUMS`, never committed. `helper-version` pins the exact release. An explicit, user-initiated install (`scripts/install-helper.sh` or the UI's install button) downloads and verifies it into the user's data directory. Loading the plugin never downloads anything, and no compiler or system service is needed. `Service.qml` starts the helper through the `bin/oma-messenger-service` launcher.
 - Protocol sessions and the SQLite database stay under the user's data directory.
 - The MVP starts with text conversation workflows. Media and reactions come after stable text send/receive.
@@ -39,4 +39,4 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 
 ## Current gap
 
-The Go helper, its JSON-lines IPC, persistence and the seeded demo are complete. The demo covers local sending, scripted delivery states, failure and retry, incoming replies, typing indicators, unread counts and desktop notifications. The plugin UI is still the original scaffold: it expects the removed HTTP API and does not work with the helper until Phase B replaces it. Real account authentication, synchronization, delivery and incoming updates are not implemented yet (Phase D). Do not describe this project as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.
+The Go helper, its JSON-RPC interface, persistence and the seeded demo are complete. The demo covers local sending, scripted delivery states, failure and retry, incoming replies, typing indicators, unread counts and desktop notifications. The plugin UI is still the original scaffold: it expects the removed HTTP API and does not work with the helper until the new UI in `ui/` replaces it. Real account authentication, synchronization, delivery and incoming updates are not implemented yet. Do not describe this project as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.

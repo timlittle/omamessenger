@@ -6,4 +6,5 @@
 - Never copy a struct that contains a mutex; pass by pointer
 - Never write to a map concurrently without synchronisation
 - Every goroutine has a clear termination condition, normally `ctx.Done()`; a goroutine leak is a bug
-- Wait with `sync.WaitGroup` or channels, never `time.Sleep`; time-dependent code takes a clock interface so tests use a fake clock
+- Start goroutines with `wg.Go(...)` and wait with the WaitGroup or a channel. Never use `time.Sleep` to wait for another goroutine
+- Use the real `time` package; no clock interfaces. Test timing with `testing/synctest`, where `time.Sleep` advances a fake clock instantly
