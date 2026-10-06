@@ -6,7 +6,7 @@ QML's JS engine supports modern ECMAScript (ES2016+), so write current JS: `cons
 - Pure functions only: input in, value out. No QML objects, no timers, no I/O. Anything stateful belongs in `ui/service` or a controller
 - Top level holds only `var` and `function` declarations: `tests/unit/load.cjs` runs the file in a `vm` context and exports what lands on its global object, which top-level `const`/`let` do not. Inside functions use `const`/`let`, never `var`. Share code between lib files with `.import "Other.js" as Other`; no `import`/`require`/`export`
 - Each file has a header comment saying what it is for; each exported function has a one-line comment
-- Name files by domain in PascalCase (`Format.js`, `Keys.js`), and import them in QML with a capitalised qualifier: `import "../lib/Format.js" as Format`
+- Name files by domain in PascalCase (`Format.js`, `Keymap.js`), and import them in QML with a capitalised qualifier: `import "../lib/Format.js" as Format`
 - Same size limits as Go: ~30-line functions, 50 hard; at most 3 levels of nesting
 - Never build HTML from untrusted text without `Format.escapeHtml` first
 

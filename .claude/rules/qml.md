@@ -37,7 +37,7 @@ Baselines: the Qt [QML coding conventions](https://doc.qt.io/qt-6/qml-codingconv
 
 ### Keyboard and windows
 
-- Every action is reachable from the keyboard and usable with the mouse. Shortcuts are defined once in `ui/lib/Keys.js` and documented in the README
+- Every action is reachable from the keyboard and usable with the mouse. Shortcuts are defined once in `ui/lib/Keymap.js` and documented in the README
 - Use a `FloatingWindow` so Hyprland manages the window like an app. No layer-shell overlay, no second Quickshell process
 - `FloatingWindow` has no `requestActivate()`; calling it throws and aborts the function. Focus an open window with `Hyprland.dispatch("focuswindow …")`
 - `open(payloadJson)` runs every time the panel is summoned, even when it is already open; it must be idempotent
