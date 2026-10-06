@@ -3,9 +3,9 @@
 // statements recursively (each import is relative to the *importing*
 // file's own directory, not the root), runs the result in a fresh `vm`
 // context, and returns every top-level `function` and `var` declaration
-// as a plain object. See docs/TASKS.md C8/C9 for the rules this is
-// testing: `ui/lib/*.js` files are `.pragma library`, ES5-only, and
-// declare only top-level `function`/`var` names.
+// as a plain object. Top-level `const` and `let` are not exported, which is
+// why `ui/lib` files declare their exports with `var` and `function`
+// (see .claude/rules/javascript.md).
 'use strict';
 
 const fs = require('node:fs');

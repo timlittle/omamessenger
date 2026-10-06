@@ -1,7 +1,7 @@
 // Tests for tests/unit/load.cjs, the loader `ui/lib/*.js` tests use to pull
-// in QML `.pragma library` files under plain Node. `ui/` doesn't exist yet
-// (Phase B), so every case here loads its own fixture under
-// tests/unit/fixtures/ui/ via the `root` option.
+// in QML `.pragma library` files under plain Node. Each case loads its own
+// fixture under tests/unit/fixtures/ui/ via the `root` option, so the tests
+// do not depend on the real library files.
 'use strict';
 
 const { test } = require('node:test');

@@ -1,193 +1,79 @@
 'use strict';
 
 const { test } = require('node:test');
-const assert = require('node:assert/strict');
+const assert = require('node:assert');
 const { load } = require('./load.cjs');
 
 const Rpc = load('lib/Rpc.js');
 
-test('encodeRequest with default params', () => {
-  const line = Rpc.encodeRequest(1, 'hello', undefined);
-  const parsed = JSON.parse(line.slice(0, -1));
-  assert.equal(parsed.id, 1);
-  assert.equal(parsed.method, 'hello');
-  assert.deepEqual(parsed.params, {});
-  assert.equal(line[line.length - 1], '\n');
+test('encodeRequest writes one JSON-RPC 2.0 line', () => {
+  const line = Rpc.encodeRequest(2, 'conversations.list', { query: 'test' });
+
+  assert.ok(line.endsWith('\n'));
+  assert.deepEqual(JSON.parse(line), {
+    jsonrpc: '2.0', id: 2, method: 'conversations.list', params: { query: 'test' }
+  });
 });
 
-test('encodeRequest with explicit params', () => {
-  const params = { query: 'test' };
-  const line = Rpc.encodeRequest(2, 'conversations.list', params);
-  const parsed = JSON.parse(line.slice(0, -1));
-  assert.equal(parsed.id, 2);
-  assert.equal(parsed.method, 'conversations.list');
-  assert.deepEqual(parsed.params, params);
-  assert.equal(line[line.length - 1], '\n');
+test('encodeRequest sends {} when there are no params', () => {
+  for (const params of [undefined, null]) {
+    assert.deepEqual(JSON.parse(Rpc.encodeRequest(1, 'hello', params)).params, {});
+  }
 });
 
-test('encodeRequest with null params', () => {
-  const line = Rpc.encodeRequest(3, 'test', null);
-  const parsed = JSON.parse(line.slice(0, -1));
-  assert.deepEqual(parsed.params, null);
+test('parseLine reads a response', () => {
+  const got = Rpc.parseLine('{"jsonrpc":"2.0","id":1,"result":{"version":"1.0"}}');
+
+  assert.strictEqual(got.kind, 'response');
+  assert.strictEqual(got.id, 1);
+  assert.deepEqual(got.result, { version: '1.0' });
+  assert.strictEqual(got.error, undefined);
 });
 
-test('parseLine with valid response', () => {
-  const line = '{"id":1,"result":{"version":"1.0"}}';
-  const result = Rpc.parseLine(line);
-  assert.equal(result.kind, 'response');
-  assert.equal(result.id, 1);
-  assert.equal(JSON.stringify(result.result), JSON.stringify({ version: '1.0' }));
-  assert.equal(result.error, undefined);
+test('parseLine reads an error response', () => {
+  const got = Rpc.parseLine('{"jsonrpc":"2.0","id":2,"error":{"code":-32001,"message":"not found"}}');
+
+  assert.strictEqual(got.kind, 'response');
+  assert.strictEqual(got.error.code, Rpc.CODES.notFound);
 });
 
-test('parseLine with response error', () => {
-  const line = '{"id":2,"error":{"code":"not_found","message":"Not found"}}';
-  const result = Rpc.parseLine(line);
-  assert.equal(result.kind, 'response');
-  assert.equal(result.id, 2);
-  assert.equal(result.result, undefined);
-  assert.equal(result.error.code, 'not_found');
-  assert.equal(result.error.message, 'Not found');
+test('parseLine reads an event', () => {
+  const got = Rpc.parseLine('{"jsonrpc":"2.0","method":"message.added","params":{"id":"m1"}}');
+
+  assert.strictEqual(got.kind, 'event');
+  assert.strictEqual(got.name, 'message.added');
+  assert.deepEqual(got.data, { id: 'm1' });
 });
 
-test('parseLine with valid event', () => {
-  const line = '{"event":"message.added","data":{"id":"123","text":"hello"}}';
-  const result = Rpc.parseLine(line);
-  assert.equal(result.kind, 'event');
-  assert.equal(result.name, 'message.added');
-  assert.equal(JSON.stringify(result.data), JSON.stringify({ id: '123', text: 'hello' }));
+test('parseLine rejects anything else', () => {
+  const lines = [
+    'not json', '{"id": 1', 'null', '42', '"hello"', '[1, 2]', '{}',
+    '{"id":"1","result":1}', '{"method":42}', '{"id":null,"method":"x"}'
+  ];
+
+  for (const line of lines) {
+    assert.deepEqual(Rpc.parseLine(line), { kind: 'invalid' }, line);
+  }
 });
 
-test('parseLine with invalid JSON', () => {
-  const result = Rpc.parseLine('not json');
-  assert.equal(result.kind, 'invalid');
-  assert.equal(Object.keys(result).length, 1);
+test('errorText shows messages written for the user', () => {
+  const error = { code: Rpc.CODES.invalidParams, message: 'invalid input: message text is empty' };
+
+  assert.strictEqual(Rpc.errorText(error), 'Message text is empty.');
 });
 
-test('parseLine with malformed JSON', () => {
-  const result = Rpc.parseLine('{"id": 1, "method": "test"');
-  assert.equal(result.kind, 'invalid');
-  assert.equal(Object.keys(result).length, 1);
-});
+test('errorText uses fixed sentences for everything else', () => {
+  const cases = [
+    [{ code: Rpc.CODES.invalidParams, message: 'invalid params' }, 'The helper could not accept that request.'],
+    [{ code: Rpc.CODES.notFound, message: 'not found' }, 'That conversation or message no longer exists.'],
+    [{ code: Rpc.CODES.methodNotFound }, 'This helper version does not support that action. Update the helper.'],
+    [{ code: Rpc.CODES.internal, message: 'Password: secret123' }, 'Something went wrong in the helper. Try again.'],
+    [{ code: 7 }, 'Unexpected error from the helper.'],
+    [null, 'Unexpected error from the helper.'],
+    [undefined, 'Unexpected error from the helper.']
+  ];
 
-test('parseLine with null', () => {
-  const result = Rpc.parseLine('null');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with number', () => {
-  const result = Rpc.parseLine('42');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with string', () => {
-  const result = Rpc.parseLine('"hello"');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with array', () => {
-  const result = Rpc.parseLine('[1, 2, 3]');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with empty array', () => {
-  const result = Rpc.parseLine('[]');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with object missing id and event', () => {
-  const result = Rpc.parseLine('{"data":"test"}');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with non-numeric id', () => {
-  const result = Rpc.parseLine('{"id":"1","result":"test"}');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with string id', () => {
-  const result = Rpc.parseLine('{"id":"abc","result":"test"}');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with non-string event', () => {
-  const result = Rpc.parseLine('{"event":123,"data":{}}');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with numeric event', () => {
-  const result = Rpc.parseLine('{"event":42,"data":{}}');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with both id and event', () => {
-  // When both are present, id takes precedence (response)
-  const line = '{"id":1,"event":"test","result":"value"}';
-  const result = Rpc.parseLine(line);
-  assert.equal(result.kind, 'response');
-  assert.equal(result.id, 1);
-});
-
-test('errorText for bad_request', () => {
-  const text = Rpc.errorText({ code: 'bad_request', message: 'bad request: text is required' });
-  assert.equal(text, 'Bad request: text is required.');
-  assert.equal(Rpc.errorText({ code: 'bad_request' }), 'The helper could not accept that request.');
-});
-
-test('errorText for not_found', () => {
-  const text = Rpc.errorText({ code: 'not_found', message: 'Resource not found' });
-  assert.equal(text, 'That conversation or message no longer exists.');
-});
-
-test('errorText for unknown_method', () => {
-  const text = Rpc.errorText({ code: 'unknown_method', message: 'Method does not exist' });
-  assert.equal(text, 'This helper version does not support that action. Update the helper.');
-});
-
-test('errorText for internal', () => {
-  const text = Rpc.errorText({ code: 'internal', message: 'Database connection failed' });
-  assert.equal(text, 'Something went wrong in the helper. Try again.');
-});
-
-test('errorText for unknown code', () => {
-  const text = Rpc.errorText({ code: 'unknown_code', message: 'Some error' });
-  assert.equal(text, 'Unexpected error from the helper.');
-});
-
-test('errorText for null', () => {
-  const text = Rpc.errorText(null);
-  assert.equal(text, 'Unexpected error from the helper.');
-});
-
-test('errorText for undefined', () => {
-  const text = Rpc.errorText(undefined);
-  assert.equal(text, 'Unexpected error from the helper.');
-});
-
-test('errorText ignores internal message details', () => {
-  const text = Rpc.errorText({ code: 'internal', message: 'Password: secret123' });
-  assert.equal(text, 'Something went wrong in the helper. Try again.');
-  assert.ok(!text.includes('secret'));
-});
-
-test('parseLine with empty object', () => {
-  const result = Rpc.parseLine('{}');
-  assert.equal(result.kind, 'invalid');
-});
-
-test('parseLine with event and no data field', () => {
-  const line = '{"event":"test.event"}';
-  const result = Rpc.parseLine(line);
-  assert.equal(result.kind, 'event');
-  assert.equal(result.name, 'test.event');
-  assert.equal(result.data, undefined);
-});
-
-test('parseLine response with missing result and error', () => {
-  const line = '{"id":42}';
-  const result = Rpc.parseLine(line);
-  assert.equal(result.kind, 'response');
-  assert.equal(result.id, 42);
-  assert.equal(result.result, undefined);
-  assert.equal(result.error, undefined);
+  for (const [error, want] of cases) {
+    assert.strictEqual(Rpc.errorText(error), want);
+  }
 });

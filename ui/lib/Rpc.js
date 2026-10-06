@@ -1,66 +1,67 @@
 .pragma library
 
+// Encoding and decoding for the helper's JSON-RPC 2.0 protocol: one JSON
+// object per line on the helper's stdin and stdout. Requests carry an id;
+// events from the helper are notifications without one.
+
+// CODES are the JSON-RPC error codes the helper sends.
+var CODES = {
+  invalidParams: -32602,
+  methodNotFound: -32601,
+  internal: -32603,
+  notFound: -32001
+};
+
+// MESSAGES are the fixed sentences shown for each error code.
+var MESSAGES = {
+  [-32602]: 'The helper could not accept that request.',
+  [-32601]: 'This helper version does not support that action. Update the helper.',
+  [-32603]: 'Something went wrong in the helper. Try again.',
+  [-32001]: 'That conversation or message no longer exists.'
+};
+
+// encodeRequest returns one request line for the helper's stdin.
 function encodeRequest(id, method, params) {
-  var p = params !== undefined ? params : {};
-  return JSON.stringify({ id: id, method: method, params: p }) + '\n';
+  return JSON.stringify({ jsonrpc: '2.0', id, method, params: params ?? {} }) + '\n';
 }
 
+// parseLine classifies one line from the helper as a response
+// ({kind, id, result, error}), an event ({kind, name, data}) or invalid.
 function parseLine(line) {
-  var obj;
+  let message;
   try {
-    obj = JSON.parse(line);
+    message = JSON.parse(line);
   } catch (e) {
     return { kind: 'invalid' };
   }
 
-  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+  if (message === null || typeof message !== 'object' || Array.isArray(message)) {
     return { kind: 'invalid' };
   }
 
-  if ('id' in obj) {
-    if (typeof obj.id !== 'number') {
-      return { kind: 'invalid' };
-    }
-    return {
-      kind: 'response',
-      id: obj.id,
-      result: obj.result,
-      error: obj.error
-    };
+  if (typeof message.id === 'number') {
+    return { kind: 'response', id: message.id, result: message.result, error: message.error };
   }
 
-  if ('event' in obj) {
-    if (typeof obj.event !== 'string') {
-      return { kind: 'invalid' };
-    }
-    return {
-      kind: 'event',
-      name: obj.event,
-      data: obj.data
-    };
+  if (!('id' in message) && typeof message.method === 'string') {
+    return { kind: 'event', name: message.method, data: message.params };
   }
 
   return { kind: 'invalid' };
 }
 
-// MESSAGES are the user-facing sentences for each C3 error code.
-var MESSAGES = {
-  bad_request: 'The helper could not accept that request.',
-  not_found: 'That conversation or message no longer exists.',
-  unknown_method: 'This helper version does not support that action. Update the helper.',
-  internal: 'Something went wrong in the helper. Try again.'
-};
-
-// errorText turns a C3 error into a short sentence for the UI. A bad_request
-// message describes the caller's mistake and is safe to show; every other
-// code uses a fixed sentence, so internal details never reach the screen.
+// errorText turns a helper error into a short sentence for the UI. Only
+// invalid-params messages are written for the user, so only they are shown;
+// every other code uses a fixed sentence and no internal detail leaks.
 function errorText(error) {
   if (!error) {
     return 'Unexpected error from the helper.';
   }
-  if (error.code === 'bad_request' && error.message) {
-    var text = String(error.message);
+
+  if (error.code === CODES.invalidParams && error.message && error.message !== 'invalid params') {
+    const text = String(error.message).replace(/^invalid input: /, '');
     return text.charAt(0).toUpperCase() + text.slice(1) + '.';
   }
-  return MESSAGES[error.code] || 'Unexpected error from the helper.';
+
+  return MESSAGES[error.code] ?? 'Unexpected error from the helper.';
 }

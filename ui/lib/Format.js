@@ -1,208 +1,128 @@
 .pragma library
 
-var dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-var monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-var monthsFull = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+// Text formatting for the conversation list and message view: HTML escaping
+// and links, search highlights, initials, time labels and status glyphs.
 
+var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+  'August', 'September', 'October', 'November', 'December'];
+
+// STATUS_GLYPHS are the delivery marks shown after an outgoing message.
+var STATUS_GLYPHS = { pending: '○', sent: '✓', delivered: '✓✓', read: '✓✓', failed: '!' };
+
+// URL_PATTERN matches http(s) links in escaped text. Entities such as &amp;
+// may appear inside a link; any other '&' ends it.
+var URL_PATTERN = /https?:\/\/[^\s<"&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\s<"&]*)*/g;
+
+// escapeHtml makes text safe to show as rich text.
 function escapeHtml(text) {
-  var result = text;
-  result = result.split('&').join('&amp;');
-  result = result.split('<').join('&lt;');
-  result = result.split('>').join('&gt;');
-  result = result.split('"').join('&quot;');
-  return result;
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// linkify turns http(s) URLs in escaped text into links. Punctuation that
+// ends a sentence stays outside the link.
 function linkify(escaped) {
-  // Match http(s) URLs, but not inside entities like &amp;
-  var urlPattern = /(https?:\/\/[^\s<"&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\s<"&]*)*)/g;
-  return escaped.replace(urlPattern, function(url) {
-    // Strip trailing punctuation that shouldn't be part of the URL
-    var punctuation = '';
-    while (url.length > 0) {
-      var lastChar = url.charAt(url.length - 1);
-      if (lastChar === '.' || lastChar === ',' || lastChar === ';' || lastChar === ':' || lastChar === '!' || lastChar === '?' || lastChar === ')') {
-        punctuation = lastChar + punctuation;
-        url = url.substring(0, url.length - 1);
-      } else {
-        break;
-      }
-    }
-    return '<a href="' + url + '">' + url + '</a>' + punctuation;
+  return escaped.replace(URL_PATTERN, (match) => {
+    const [, url, trailing] = match.match(/^(.*?)([.,;:!?)]*)$/);
+    return `<a href="${url}">${url}</a>${trailing}`;
   });
 }
 
+// highlight wraps case-insensitive matches of query in <b>, never inside an
+// HTML entity.
 function highlight(escaped, query) {
-  if (!query || query.length === 0) {
+  if (!query) {
     return escaped;
   }
-  // Split by entities and process text parts
-  var parts = escaped.split(/(&[^;]*;)/);
-  var result = '';
-  for (var i = 0; i < parts.length; i++) {
-    var part = parts[i];
-    // If it looks like an entity, don't highlight inside it
-    if (part.charAt(0) === '&' && part.charAt(part.length - 1) === ';') {
-      result += part;
-    } else {
-      // Wrap case-insensitive matches in <b>
-      var lowerPart = part.toLowerCase();
-      var lowerQuery = query.toLowerCase();
-      var highlighted = part;
-      var idx = 0;
-      var output = '';
-      var searchIdx = lowerPart.indexOf(lowerQuery);
-      while (searchIdx !== -1) {
-        output += highlighted.substring(idx, searchIdx);
-        output += '<b>' + highlighted.substring(searchIdx, searchIdx + query.length) + '</b>';
-        idx = searchIdx + query.length;
-        searchIdx = lowerPart.indexOf(lowerQuery, idx);
-      }
-      output += highlighted.substring(idx);
-      result += output;
-    }
-  }
-  return result;
+
+  const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+
+  return escaped
+    .split(/(&[^;]*;)/)
+    .map((part) => (part.startsWith('&') && part.endsWith(';') ? part : part.replace(pattern, '<b>$&</b>')))
+    .join('');
 }
 
+// initials returns the first letter of the first two words, upper-cased,
+// or "?" when there are none. Emoji and other wide characters count as one.
 function initials(name) {
-  if (!name || name.length === 0) {
-    return '?';
-  }
-  // Use Array.from to handle emoji and multi-byte characters
-  var chars = Array.from(name);
-  var result = '';
-  var state = 'skip_leading';
+  const words = (name ?? '').trim().split(/\s+/).filter((word) => word.length > 0);
+  const letters = words.slice(0, 2).map((word) => Array.from(word)[0]).join('');
 
-  for (var i = 0; i < chars.length && result.length < 2; i++) {
-    var ch = chars[i];
-    var isSpace = /\s/.test(ch);
-
-    if (state === 'skip_leading' && !isSpace) {
-      // First non-space character
-      result += ch;
-      state = 'in_word';
-    } else if (state === 'in_word' && isSpace) {
-      // End of first word
-      state = 'skip_whitespace';
-    } else if (state === 'skip_whitespace' && !isSpace) {
-      // First character of second word
-      result += ch;
-      state = 'done';
-    }
-  }
-
-  if (result.length === 0) {
-    return '?';
-  }
-  return result.toUpperCase();
+  return letters ? letters.toUpperCase() : '?';
 }
 
+// daysAgo counts calendar days from ms to nowMs in local time. It rounds
+// because a day across a daylight-saving change is 23 or 25 hours long.
 function daysAgo(ms, nowMs) {
-  var date = new Date(ms);
-  var now = new Date(nowMs);
-  var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  var dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  var diff = todayStart - dateStart;
-  return Math.round(diff / (24 * 60 * 60 * 1000));
+  const startOfDay = (t) => {
+    const d = new Date(t);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  };
+
+  return Math.round((startOfDay(nowMs) - startOfDay(ms)) / 86400000);
 }
 
+// timeLabel is the time shown in the conversation list: HH:mm today, then
+// Yesterday, a weekday within the week, or a short date.
 function timeLabel(ms, nowMs) {
-  var date = new Date(ms);
-  var now = new Date(nowMs);
-  var days = daysAgo(ms, nowMs);
-
-  // Today
-  if (days === 0) {
-    return pad(date.getHours()) + ':' + pad(date.getMinutes());
+  const date = new Date(ms);
+  if (daysAgo(ms, nowMs) === 0) {
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 
-  // Yesterday
-  if (days === 1) {
-    return 'Yesterday';
-  }
-
-  // Within 6 days
-  if (days >= 2 && days <= 6) {
-    return dayNames[date.getDay()];
-  }
-
-  // Same year
-  if (date.getFullYear() === now.getFullYear()) {
-    return date.getDate() + ' ' + monthsShort[date.getMonth()];
-  }
-
-  // Different year
-  return date.getDate() + ' ' + monthsShort[date.getMonth()] + ' ' + date.getFullYear();
+  return relativeDay(ms, nowMs, MONTHS[date.getMonth()].slice(0, 3));
 }
 
+// dayLabel is the separator shown between days in a conversation: Today,
+// Yesterday, a weekday within the week, or a full date.
 function dayLabel(ms, nowMs) {
-  var date = new Date(ms);
-  var now = new Date(nowMs);
-  var days = daysAgo(ms, nowMs);
-
-  // Today
-  if (days === 0) {
+  if (daysAgo(ms, nowMs) === 0) {
     return 'Today';
   }
 
-  // Yesterday
+  return relativeDay(ms, nowMs, MONTHS[new Date(ms).getMonth()]);
+}
+
+// relativeDay names a day before today: Yesterday, a weekday within the
+// week, or "day month", with the year when it is not this year.
+function relativeDay(ms, nowMs, month) {
+  const date = new Date(ms);
+  const days = daysAgo(ms, nowMs);
+
   if (days === 1) {
     return 'Yesterday';
   }
 
-  // Within 6 days (weekday)
   if (days >= 2 && days <= 6) {
-    return dayNames[date.getDay()];
+    return DAY_NAMES[date.getDay()];
   }
 
-  // Same year
-  if (date.getFullYear() === now.getFullYear()) {
-    return date.getDate() + ' ' + monthsFull[date.getMonth()];
-  }
+  const sameYear = date.getFullYear() === new Date(nowMs).getFullYear();
 
-  // Different year
-  return date.getDate() + ' ' + monthsFull[date.getMonth()] + ' ' + date.getFullYear();
+  return sameYear ? `${date.getDate()} ${month}` : `${date.getDate()} ${month} ${date.getFullYear()}`;
 }
 
+// pad writes n with at least two digits.
 function pad(n) {
-  return n < 10 ? '0' + n : '' + n;
+  return String(n).padStart(2, '0');
 }
 
+// statusGlyph returns the delivery mark for a status, or "" for none.
 function statusGlyph(status) {
-  if (status === 'pending') {
-    return '○';
-  }
-  if (status === 'sent') {
-    return '✓';
-  }
-  if (status === 'delivered') {
-    return '✓✓';
-  }
-  if (status === 'read') {
-    return '✓✓';
-  }
-  if (status === 'failed') {
-    return '!';
-  }
-  return '';
+  return STATUS_GLYPHS[status] ?? '';
 }
 
+// previewLine is the preview under a conversation's title. In groups it
+// names who wrote the last message.
 function previewLine(conv) {
-  if (!conv.preview) {
-    return '';
+  if (!conv.preview || conv.kind !== 'group') {
+    return conv.preview || '';
   }
 
-  if (conv.kind === 'group') {
-    if (conv.previewOutgoing) {
-      return 'You: ' + conv.preview;
-    } else if (conv.previewSender) {
-      return conv.previewSender + ': ' + conv.preview;
-    } else {
-      return conv.preview;
-    }
+  if (conv.previewOutgoing) {
+    return `You: ${conv.preview}`;
   }
 
-  // Direct message
-  return conv.preview;
+  return conv.previewSender ? `${conv.previewSender}: ${conv.preview}` : conv.preview;
 }

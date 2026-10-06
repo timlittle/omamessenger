@@ -3,7 +3,7 @@ import QtQuick.Controls
 import qs.Commons
 import "../theme"
 
-// A service's Nerd Font glyph (C8), always paired with a tooltip naming it.
+// A service's Nerd Font glyph, always paired with a tooltip naming it.
 Item {
   id: root
 

@@ -7,13 +7,13 @@ import "../theme"
 
 // Message composer: a growing text input plus a Send button.
 //
-// This is a view only. It holds no RPC/service references (C10) and makes
+// This is a view only. It holds no helper or service references and makes
 // no decision about *when* a message is sent beyond "the trimmed text is
 // non-empty" — that call belongs to whoever wires it up.
 //
 // Enter / Shift+Enter are deliberately NOT handled here. The Panel forwards
 // key events to a router, which calls submit() or focusInput() on this
-// component as needed (C6). The `input` alias lets that router (or the
+// component as needed. The `input` alias lets that router (or the
 // Panel) attach its own Keys handlers directly to the inner TextArea.
 Item {
   id: root

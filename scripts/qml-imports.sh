@@ -3,7 +3,7 @@
 #
 # qmllint resolves `import qs.Commons` / `import qs.Ui` the same way
 # Quickshell does: by finding `Commons` and `Ui` directories under a `qs`
-# directory on its import path (F2). This script creates
+# directory on its import path. This script creates
 # build/qml/qs/{Commons,Ui} as symlinks to the real Omarchy shell's
 # Commons and Ui directories, so `qmllint -I build/qml` can resolve them
 # without copying any Omarchy source.
