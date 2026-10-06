@@ -3,24 +3,38 @@ package telegram
 import (
 	"slices"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-func TestSync_ReportsContactsDialogsAndHistory(t *testing.T) {
+func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 	t.Parallel()
 
+	// Loading Nadia's history fails, as it does for a chat the user has
+	// left; the group after her must still be listed and loaded.
 	f := newFakeTelegram()
 	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContacts{Users: []tg.UserClass{nadia}})
 	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
-		Dialogs: []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, UnreadCount: 1}, &tg.DialogFolder{Peer: &tg.PeerUser{UserID: 1}}},
-		Users:   []tg.UserClass{nadia},
+		Dialogs: []tg.DialogClass{
+			&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, TopMessage: 9, UnreadCount: 1},
+			&tg.DialogFolder{Peer: &tg.PeerUser{UserID: 1}},
+			&tg.Dialog{Peer: &tg.PeerChat{ChatID: 7}, TopMessage: 4},
+		},
+		Messages: []tg.MessageClass{
+			&tg.Message{ID: 9, PeerID: &tg.PeerUser{UserID: 42}, Message: "latest"},
+			&tg.Message{ID: 4, PeerID: &tg.PeerChat{ChatID: 7}, Message: "top"},
+		},
+		Chats: []tg.ChatClass{&tg.Chat{ID: 7, Title: "Crew", Photo: &tg.ChatPhotoEmpty{}}},
+		Users: []tg.UserClass{nadia},
 	})
+	f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(400, "CHANNEL_PRIVATE"))
 	f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessages{
-		Messages: []tg.MessageClass{&tg.Message{ID: 3, PeerID: &tg.PeerUser{UserID: 42}, Message: "hello"}, &tg.MessageEmpty{}},
-		Users:    []tg.UserClass{nadia},
+		Messages: []tg.MessageClass{&tg.Message{ID: 3, PeerID: &tg.PeerChat{ChatID: 7}, Message: "older"}, &tg.MessageEmpty{}},
 	})
 
 	var sink recordingSink
@@ -29,14 +43,51 @@ func TestSync_ReportsContactsDialogsAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []string{"contact user:42:99 Nadia", "conversation user:42:99 Nadia", "history user:42:99 3 hello", "unread user:42:99 1"}
+	want := []string{
+		"contact user:42:99 Nadia",
+		"conversation user:42:99 Nadia", "history user:42:99 9 latest", "unread user:42:99 1",
+		"conversation chat:7 Crew", "history chat:7 4 top", "unread chat:7 0",
+		"history chat:7 3 older", "unread chat:7 0",
+	}
 	if got := sink.lines(); !slices.Equal(got, want) {
-		t.Errorf("events = %q, want %q", got, want)
+		t.Errorf("events =\n%q\nwant\n%q", got, want)
 	}
 
 	if _, ok := c.lookup("user:42"); !ok {
 		t.Error("synced conversation not remembered for live updates")
 	}
+}
+
+func TestSync_WaitsOutRateLimits(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		f := newFakeTelegram()
+		f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
+		f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
+			Dialogs: []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}}},
+			Users:   []tg.UserClass{nadia},
+		})
+		f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(420, "FLOOD_WAIT_3"))
+		f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessages{
+			Messages: []tg.MessageClass{&tg.Message{ID: 3, PeerID: &tg.PeerUser{UserID: 42}, Message: "hello"}},
+		})
+
+		var sink recordingSink
+		start := time.Now()
+		c := New(domain.Account{ID: "tg"}, "")
+		if err := c.sync(t.Context(), tg.NewClient(f), &sink); err != nil {
+			t.Fatal(err)
+		}
+
+		if waited := time.Since(start); waited < 3*time.Second {
+			t.Errorf("waited %v, want the 3s Telegram asked for", waited)
+		}
+
+		if !slices.Contains(sink.lines(), "history user:42:99 3 hello") {
+			t.Errorf("history not loaded after the wait: %q", sink.lines())
+		}
+	})
 }
 
 func TestSync_SkipsUnchangedReplies(t *testing.T) {
@@ -60,7 +111,6 @@ func TestSync_SkipsUnchangedReplies(t *testing.T) {
 func TestSync_ReportsFailures(t *testing.T) {
 	t.Parallel()
 
-	dialogs := &tg.MessagesDialogs{Dialogs: []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}}}, Users: []tg.UserClass{nadia}}
 	tests := []struct {
 		name    string
 		replies func(f *fakeTelegram)
@@ -68,10 +118,6 @@ func TestSync_ReportsFailures(t *testing.T) {
 		{"contacts", func(*fakeTelegram) {}},
 		{"dialogs", func(f *fakeTelegram) {
 			f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
-		}},
-		{"history", func(f *fakeTelegram) {
-			f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
-			f.reply(&tg.MessagesGetDialogsRequest{}, dialogs)
 		}},
 	}
 

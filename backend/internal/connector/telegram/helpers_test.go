@@ -17,12 +17,23 @@ import (
 type fakeTelegram struct {
 	mu       sync.Mutex
 	replies  map[string]bin.Encoder
+	failures map[string][]error
 	requests []bin.Encoder
 }
 
 // newFakeTelegram returns a fake with no replies; unanswered requests fail.
 func newFakeTelegram() *fakeTelegram {
-	return &fakeTelegram{replies: map[string]bin.Encoder{}}
+	return &fakeTelegram{replies: map[string]bin.Encoder{}, failures: map[string][]error{}}
+}
+
+// failNext makes the next requests of request's type fail with errs, in
+// order, before the canned reply is used again.
+func (f *fakeTelegram) failNext(request bin.Encoder, errs ...error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	key := fmt.Sprintf("%T", request)
+	f.failures[key] = append(f.failures[key], errs...)
 }
 
 // reply sets the answer to every request of the same type as request.
@@ -40,7 +51,13 @@ func (f *fakeTelegram) Invoke(_ context.Context, input bin.Encoder, output bin.D
 	defer f.mu.Unlock()
 
 	f.requests = append(f.requests, input)
-	response, ok := f.replies[fmt.Sprintf("%T", input)]
+	key := fmt.Sprintf("%T", input)
+	if errs := f.failures[key]; len(errs) > 0 {
+		f.failures[key] = errs[1:]
+		return errs[0]
+	}
+
+	response, ok := f.replies[key]
 	if !ok {
 		return fmt.Errorf("fake telegram: no reply for %T", input)
 	}

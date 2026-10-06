@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // Sync limits: the dialogs fetched at start, and the recent messages of
@@ -19,7 +21,10 @@ const (
 	historyLimit = 30
 )
 
-// sync reports the account's contacts, dialogs and their recent messages.
+// sync reports the account's contacts and dialogs, then each dialog's
+// recent messages. Every dialog is listed first, with the last message
+// Telegram sends alongside it, so a dialog whose history fails to load,
+// such as a channel the user has left, still shows and holds up no other.
 func (c *Connector) sync(ctx context.Context, api *tg.Client, sink connector.Sink) error {
 	if err := c.syncContacts(ctx, api, sink); err != nil {
 		return err
@@ -35,37 +40,70 @@ func (c *Connector) sync(ctx context.Context, api *tg.Client, sink connector.Sin
 		return nil
 	}
 
-	e := newEntities(dialogs.GetUsers(), dialogs.GetChats())
-	for _, d := range dialogs.GetDialogs() {
-		dialog, ok := d.(*tg.Dialog)
-		if !ok {
-			continue
-		}
-
-		if err := c.syncDialog(ctx, api, sink, dialog, e); err != nil {
-			return err
+	listed := c.listDialogs(ctx, sink, dialogs)
+	for _, l := range listed {
+		if err := c.syncHistory(ctx, api, sink, l.conv, l.dialog); err != nil && ctx.Err() != nil {
+			return ctx.Err()
 		}
 	}
 
 	return nil
 }
 
-// syncDialog reports one dialog and its recent messages.
-func (c *Connector) syncDialog(ctx context.Context, api *tg.Client, sink connector.Sink, d *tg.Dialog, e entities) error {
-	conv, ok := conversation(c.account.ID, d, e, time.Now())
-	if !ok {
-		return nil
+// listedDialog is a dialog already reported as a conversation.
+type listedDialog struct {
+	conv   domain.Conversation
+	dialog *tg.Dialog
+}
+
+// listDialogs reports each dialog as a conversation with its last message
+// and Telegram's unread count, returning the ones it reported.
+func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialogs tg.ModifiedMessagesDialogs) []listedDialog {
+	e := newEntities(dialogs.GetUsers(), dialogs.GetChats())
+	top := map[string]*tg.Message{}
+	for _, m := range dialogs.GetMessages() {
+		if msg, ok := m.(*tg.Message); ok {
+			top[shortKey(msg.PeerID)+"/"+strconv.Itoa(msg.ID)] = msg
+		}
 	}
 
-	c.learn(conv.RemoteID)
-	sink.Conversation(ctx, conv)
+	var listed []listedDialog
+	for _, d := range dialogs.GetDialogs() {
+		dialog, ok := d.(*tg.Dialog)
+		if !ok {
+			continue
+		}
 
+		conv, ok := conversation(c.account.ID, dialog, e, time.Now())
+		if !ok {
+			continue
+		}
+
+		c.learn(conv.RemoteID)
+		sink.Conversation(ctx, conv)
+		if msg, ok := top[shortKey(dialog.Peer)+"/"+strconv.Itoa(dialog.TopMessage)]; ok {
+			sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+		}
+		sink.Unread(ctx, c.account.ID, conv.RemoteID, dialog.UnreadCount)
+		listed = append(listed, listedDialog{conv: conv, dialog: dialog})
+	}
+
+	return listed
+}
+
+// syncHistory reports a dialog's recent messages, waiting out Telegram's
+// rate limit if it asks.
+func (c *Connector) syncHistory(ctx context.Context, api *tg.Client, sink connector.Sink, conv domain.Conversation, d *tg.Dialog) error {
 	peer, err := inputPeer(conv.RemoteID)
 	if err != nil {
 		return err
 	}
 
-	result, err := api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{Peer: peer, Limit: historyLimit})
+	request := &tg.MessagesGetHistoryRequest{Peer: peer, Limit: historyLimit}
+	result, err := api.MessagesGetHistory(ctx, request)
+	if waited, _ := tgerr.FloodWait(ctx, err); waited {
+		result, err = api.MessagesGetHistory(ctx, request)
+	}
 	if err != nil {
 		return fmt.Errorf("telegram: history: %w", err)
 	}

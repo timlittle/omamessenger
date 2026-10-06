@@ -125,6 +125,14 @@ func TestUserName_FallsBackSensibly(t *testing.T) {
 	}
 }
 
+func TestOwnName_IsThePersonNotTheirSavedMessages(t *testing.T) {
+	t.Parallel()
+
+	if got := ownName(&tg.User{Self: true, FirstName: "Tim"}); got != "Tim" {
+		t.Errorf("ownName = %q, want Tim", got)
+	}
+}
+
 func TestMessageText_LabelsMediaWithoutACaption(t *testing.T) {
 	t.Parallel()
 

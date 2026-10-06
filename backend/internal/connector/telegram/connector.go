@@ -90,7 +90,7 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 		}
 
 		c.connected(client.API(), sink)
-		sink.AccountStatus(ctx, c.account.ID, domain.AccountConnected, "Signed in as "+userName(self))
+		sink.AccountStatus(ctx, c.account.ID, domain.AccountConnected, "Signed in as "+ownName(self))
 		defer c.disconnected()
 
 		if err := c.sync(ctx, client.API(), sink); err != nil {

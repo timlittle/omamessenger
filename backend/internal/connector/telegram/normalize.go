@@ -148,14 +148,21 @@ func messageText(m *tg.Message) string {
 	}
 }
 
-// userName names a user the way Telegram does: their own saved messages,
-// first and last name, then username.
+// userName names a user the way Telegram's chat list does: the chat with
+// yourself is your saved messages.
 func userName(u *tg.User) string {
+	if u != nil && u.Self {
+		return "Saved Messages"
+	}
+
+	return ownName(u)
+}
+
+// ownName names a person by first and last name, then username.
+func ownName(u *tg.User) string {
 	switch {
 	case u == nil:
 		return "Telegram user"
-	case u.Self:
-		return "Saved Messages"
 	case strings.TrimSpace(u.FirstName+" "+u.LastName) != "":
 		return strings.TrimSpace(u.FirstName + " " + u.LastName)
 	case u.Username != "":
