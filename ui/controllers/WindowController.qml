@@ -29,6 +29,10 @@ QtObject {
   // dialogController is read and closed by the Escape chain.
   property var dialogController: null
 
+  // accountController adds accounts from the palette and is closed by the
+  // Escape chain.
+  property var accountController: null
+
   // paletteOpen shows the command palette.
   property bool paletteOpen: false
 
@@ -122,7 +126,7 @@ QtObject {
 
   // runCommand runs action through the controller that owns it.
   function runCommand(action: string): void {
-    const controllers = [root.listController, root.conversationController, root.dialogController, root];
+    const controllers = [root.listController, root.conversationController, root.dialogController, root.accountController, root];
     const owner = controllers.find((c) => c && c.handles(action));
     if (owner) owner.run(action);
   }
@@ -164,6 +168,7 @@ QtObject {
   function _escape(): void {
     const steps = {
       "cancel-close": () => root.cancelClose(),
+      "close-setup": () => { if (root.accountController) root.accountController.cancel(); },
       "close-palette": () => root.closePalette(),
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
@@ -184,6 +189,7 @@ QtObject {
 
     return {
       confirmOpen: root.confirmingClose,
+      setupOpen: root.accountController ? root.accountController.open : false,
       paletteOpen: root.paletteOpen,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,

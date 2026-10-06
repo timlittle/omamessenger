@@ -11,7 +11,11 @@ var SERVICES = [
 ];
 
 // STATUS_RANK orders account statuses from worst to best.
-var STATUS_RANK = { error: 0, connecting: 1, offline: 2, connected: 3 };
+// An account waiting for sign-in is worst: only the user can fix it.
+var STATUS_RANK = { 'needs-auth': -1, error: 0, connecting: 1, offline: 2, connected: 3 };
+
+// STATUS_LABELS names statuses whose id does not read as a word.
+var STATUS_LABELS = { 'needs-auth': 'Sign-in needed' };
 
 // items builds the rail entries for the accounts and conversations.
 function items(accounts, conversations) {
@@ -106,4 +110,14 @@ function worstStatus(accounts) {
   return accounts
     .map((a) => a.status)
     .reduce((worst, s) => ((STATUS_RANK[s] ?? 3) < STATUS_RANK[worst] ? s : worst), 'connected');
+}
+
+// statusLabel names an account status in words: "needs-auth" as
+// "Sign-in needed", "connecting" as "Connecting".
+function statusLabel(status) {
+  if (!status) {
+    return '';
+  }
+
+  return STATUS_LABELS[status] ?? status.charAt(0).toUpperCase() + status.slice(1);
 }

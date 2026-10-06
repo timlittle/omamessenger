@@ -5,7 +5,7 @@ OmaMessenger is a keyboard-first messaging client for [Omarchy](https://omarchy.
 ## Status
 
 - **Helper and UI:** complete and tested against scripted fake accounts, which only test builds contain: sending with delivery receipts, failures and retries, unread counts, notifications, search, the command palette and keyboard navigation.
-- **Telegram:** the helper connects through [gotd/td](https://github.com/gotd/td): sign-in by QR code, or phone and code with two-step verification, then recent chats, live messages, sending and read receipts. The window's account setup is in progress.
+- **Telegram:** the helper connects through [gotd/td](https://github.com/gotd/td): sign-in by QR code, or phone and code with two-step verification, then recent chats, live messages, sending and read receipts. Add an account from the window; see below.
 - **WhatsApp:** not connected yet. The planned library is [whatsmeow](https://github.com/tulir/whatsmeow).
 
 ## Requirements
@@ -29,6 +29,16 @@ The second command installs the helper:
 
 Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. Remove the plugin with `omarchy plugin remove io.github.omamessenger`.
 
+## Add your Telegram account
+
+Telegram asks every client for an API id and hash of its own, so OmaMessenger uses yours:
+
+1. Sign in at [my.telegram.org](https://my.telegram.org/apps), open **API development tools**, and create an app. Any name works.
+2. In OmaMessenger, choose **Add Telegram account** (or **Add a Telegram account** in the command palette), and paste the app's `api_id` and `api_hash`.
+3. Scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**), or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password.
+
+Your recent chats appear once it connects. The credentials and the session stay on this computer.
+
 ## Data and privacy
 
 The helper keeps its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you: `messages.db`, and in `telegram/` each Telegram account's API credentials and session. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
@@ -49,7 +59,7 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 | Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
 | Ctrl+W | Close the window (asks whether to keep running) |
 | Ctrl+Q | Quit |
-| Esc | Step back: close the palette or a dialog, clear the search, leave the composer or the conversation |
+| Esc | Step back: close the palette, a dialog or account setup, clear the search, leave the composer or the conversation |
 
 In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
 

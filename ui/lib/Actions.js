@@ -4,7 +4,7 @@
 // the one whose run(action) performs the whole effect, from ui/controllers.
 
 // OWNERS names the controller for each action: "list", "conversation",
-// "dialog" or "window". A key bound in more than one context (for example
+// "dialog", "account" or "window". A key bound in more than one context (for example
 // chat.mute in both "list" and "conversation") still has one owner, since
 // the owning controller reads whatever extra state it needs itself.
 var OWNERS = {
@@ -48,6 +48,9 @@ var OWNERS = {
   'dialog.up': 'dialog',
   'dialog.accept': 'dialog',
   'dialog.nextAccount': 'dialog',
+
+  // AccountController: adding an account and signing it in.
+  'account.add': 'account',
 
   // WindowController: the command palette, closing and quitting, and the
   // Escape chain.

@@ -201,6 +201,13 @@ Item {
     root._syncModel();
   }
 
+  // _dropAccount removes a removed account's conversations from the list.
+  function _dropAccount(accountId: string): void {
+    root._all = root._all.filter((c) => c.accountId !== accountId);
+    root._searchResults = root._searchResults.filter((c) => c.accountId !== accountId);
+    root._syncModel();
+  }
+
   // _syncModel brings the ListModel in line with the current visible set,
   // in place: structural changes through ListSync.planSync, then a field
   // refresh so unread counts and previews stay current.
@@ -255,6 +262,7 @@ Item {
     function onEvent(name, data) {
       if (name === "conversation.updated") root._applyConversationUpdated(data);
       else if (name === "unread.changed") root._syncModel();
+      else if (name === "account.removed") root._dropAccount(data.accountId);
     }
   }
 }

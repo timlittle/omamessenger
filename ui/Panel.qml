@@ -10,7 +10,7 @@ import "controllers"
 import "lib/Keymap.js" as Keymap
 import "lib/Navigation.js" as Navigation
 
-// The OmaMessenger window: the four controllers from ui/controllers, the
+// The OmaMessenger window: the five controllers from ui/controllers, the
 // views they drive, and the one key router that decides which controller
 // a key press belongs to. Omarchy destroys this whole tree when the
 // window is hidden, so nothing here is state that must survive that; see
@@ -90,7 +90,7 @@ Item {
     const action = Keymap.match(context, key, modifiers, text);
     if (!action) return false;
 
-    const controllers = [listController, conversationController, dialogController, windowController];
+    const controllers = [listController, conversationController, dialogController, accountController, windowController];
     const owner = controllers.find((c) => c.handles(action));
     if (!owner) return false;
 
@@ -103,6 +103,7 @@ Item {
   function _navState(): var {
     return {
       confirmOpen: windowController.confirmingClose,
+      setupOpen: accountController.open,
       paletteOpen: windowController.paletteOpen,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,
@@ -204,12 +205,18 @@ Item {
     onOpened: (conversation) => conversationController.open(conversation)
   }
 
+  AccountController {
+    id: accountController
+    service: root.service
+  }
+
   WindowController {
     id: windowController
     service: root.service
     listController: listController
     conversationController: conversationController
     dialogController: dialogController
+    accountController: accountController
 
     onHideRequested: root._hide()
   }
@@ -298,6 +305,7 @@ Item {
           listController: listController
           conversationController: conversationController
           dialogController: dialogController
+          accountController: accountController
           windowController: windowController
           nowMs: root.nowMs
           routeKey: root.routeKey

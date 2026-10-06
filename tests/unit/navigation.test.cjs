@@ -380,3 +380,13 @@ test('the close question takes keys before anything else', () => {
   assert.strictEqual(Navigation.keyContext(state), 'confirm');
   assert.strictEqual(Navigation.escapeAction(state), 'cancel-close');
 });
+
+test('keyContext puts account setup above everything but the close question', () => {
+  assert.strictEqual(Navigation.keyContext({ setupOpen: true, paletteOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ setupOpen: true, confirmOpen: true, pane: 'list' }), 'confirm');
+});
+
+test('escapeAction closes account setup before anything beneath it', () => {
+  assert.strictEqual(Navigation.escapeAction({ setupOpen: true, dialogOpen: true }), 'close-setup');
+  assert.strictEqual(Navigation.escapeAction({ setupOpen: true, confirmOpen: true }), 'cancel-close');
+});

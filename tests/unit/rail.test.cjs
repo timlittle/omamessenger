@@ -281,3 +281,18 @@ test('serviceLabel names each service for display', () => {
 test('accountLabel says which service an account belongs to', () => {
   assert.strictEqual(Rail.accountLabel({ service: 'telegram', name: 'Work' }), 'Telegram · Work');
 });
+
+test('items: an account waiting for sign-in ranks worst', () => {
+  const accounts = [
+    { id: 'a1', service: 'telegram', name: 'T1', status: 'error' },
+    { id: 'a2', service: 'telegram', name: 'T2', status: 'needs-auth' }
+  ];
+
+  assert.strictEqual(Rail.items(accounts, [])[0].status, 'needs-auth');
+});
+
+test('statusLabel names each status in words', () => {
+  assert.strictEqual(Rail.statusLabel('needs-auth'), 'Sign-in needed');
+  assert.strictEqual(Rail.statusLabel('connecting'), 'Connecting');
+  assert.strictEqual(Rail.statusLabel(''), '');
+});

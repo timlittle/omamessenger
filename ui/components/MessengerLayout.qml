@@ -23,6 +23,8 @@ Item {
   property var conversationController: null
   // dialogController is bound into the new-chat dialog.
   property var dialogController: null
+  // accountController is bound into account setup and the empty state.
+  property var accountController: null
   // windowController is bound into the shortcut help sheet.
   property var windowController: null
   // nowMs is the current time, refreshed by Panel.qml, for relative times.
@@ -192,6 +194,29 @@ Item {
         onTextChanged: root.listController.setQuery(text)
       }
 
+      // With no accounts yet, the list says how to add one.
+      ColumnLayout {
+        objectName: "noAccounts"
+        Layout.fillWidth: true
+        visible: root.service !== null && root.service.status === "ready" && root.service.accounts.length === 0
+        spacing: Theme.spacing.sm
+
+        Text {
+          Layout.fillWidth: true
+          text: "No accounts yet. Add your Telegram account to see your chats here."
+          wrapMode: Text.WordWrap
+          color: Util.alpha(Color.foreground, 0.7)
+          font { family: Theme.font.family; pixelSize: Theme.font.body }
+        }
+
+        Ui.Button {
+          objectName: "addAccountButton"
+          text: "Add Telegram account"
+          focusable: true
+          onClicked: root.accountController.begin()
+        }
+      }
+
       ConversationList {
         id: list
         Layout.fillWidth: true
@@ -249,6 +274,25 @@ Item {
     onQuit: root.windowController.quit()
     onCancelled: {
       root.windowController.cancelClose();
+      if (root.focusDefault) root.focusDefault();
+    }
+  }
+
+  AccountSetup {
+    visible: root.accountController.open
+
+    stage: root.accountController.stage
+    qr: root.accountController.qr
+    hint: root.accountController.hint
+    error: root.accountController.lastError
+    busy: root.accountController.busy
+    routeKey: root.routeKey
+
+    onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)
+    onPhoneRequested: root.accountController.usePhone()
+    onAnswered: value => root.accountController.answer(value)
+    onCancelled: {
+      root.accountController.cancel();
       if (root.focusDefault) root.focusDefault();
     }
   }

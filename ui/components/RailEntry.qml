@@ -17,8 +17,7 @@ Item {
   property bool selected: false
 
   readonly property bool account: root.entry.kind === "account"
-  readonly property string statusWord: root.entry.status
-    ? root.entry.status.charAt(0).toUpperCase() + root.entry.status.slice(1) : ""
+  readonly property string statusWord: Rail.statusLabel(root.entry.status)
 
   // clicked fires when the entry is clicked anywhere, glyph included.
   signal clicked()
@@ -63,11 +62,11 @@ Item {
 
       // A hollow ring while connecting, a solid urgent dot on error.
       Rectangle {
-        visible: root.entry.status === "connecting" || root.entry.status === "error"
+        visible: root.entry.status === "connecting" || root.entry.status === "error" || root.entry.status === "needs-auth"
         width: Style.space(8)
         height: Style.space(8)
         radius: width / 2
-        color: root.entry.status === "error" ? Color.urgent : "transparent"
+        color: root.entry.status === "error" || root.entry.status === "needs-auth" ? Color.urgent : "transparent"
         border { width: root.entry.status === "connecting" ? Theme.spacing.hairline : 0; color: Color.foreground }
         anchors { right: parent.right; bottom: parent.bottom }
       }

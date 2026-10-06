@@ -31,6 +31,9 @@ Item {
   // accounts is the signed-in accounts the helper reported.
   readonly property var accounts: appState.accounts
 
+  // pendingAuth is the sign-in step an account is waiting on, or null.
+  readonly property var pendingAuth: appState.pendingAuth
+
   // uiState is the panel's durable state: rail filter, selection, open
   // pane, search text and drafts. It is an alias onto AppState's own
   // property so the panel can read and write it directly and still have
@@ -84,6 +87,8 @@ Item {
   // forwarding it to the panel.
   function _handleEvent(name: string, data: var): void {
     if (name === "account.updated") appState.applyAccountUpdated(data);
+    else if (name === "account.removed") appState.applyAccountRemoved(data);
+    else if (name === "auth.step") appState.applyAuthStep(data);
     else if (name === "unread.changed") appState.applyUnreadChanged(data);
 
     root.event(name, data);
