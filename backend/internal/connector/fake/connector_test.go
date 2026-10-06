@@ -8,35 +8,36 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/connector/fake"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestRun_ConnectsAfterDelayAndGoesOfflineOnStop(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		sink := newRecordingSink()
+		sink := &connectortest.Sink{}
 		stop := runFake(t, fake.New(), sink)
 
 		synctest.Wait()
-		if !sink.has("status tg-work connecting") || sink.has("status wa-personal connected") {
-			t.Fatalf("at start: %v", sink.take())
+		if !sink.Has("status tg-work connecting") || sink.Has("status wa-personal connected") {
+			t.Fatalf("at start: %v", sink.Take())
 		}
 
 		time.Sleep(600 * time.Millisecond)
 		synctest.Wait()
-		if !sink.has("status wa-personal connected") || sink.has("status tg-work connected") {
-			t.Fatalf("at 600ms: %v", sink.take())
+		if !sink.Has("status wa-personal connected") || sink.Has("status tg-work connected") {
+			t.Fatalf("at 600ms: %v", sink.Take())
 		}
 
 		time.Sleep(1400 * time.Millisecond)
 		synctest.Wait()
-		if !sink.has("status tg-work connected") {
-			t.Fatalf("at 2s: %v", sink.take())
+		if !sink.Has("status tg-work connected") {
+			t.Fatalf("at 2s: %v", sink.Take())
 		}
 
 		stop()
-		if !sink.has("status wa-personal offline") {
-			t.Errorf("after stop: %v", sink.take())
+		if !sink.Has("status wa-personal offline") {
+			t.Errorf("after stop: %v", sink.Take())
 		}
 	})
 }
@@ -44,11 +45,11 @@ func TestRun_ConnectsAfterDelayAndGoesOfflineOnStop(t *testing.T) {
 func TestRun_RefusesASecondRun(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		suite := fake.New()
-		stop := runFake(t, suite, newRecordingSink())
+		stop := runFake(t, suite, &connectortest.Sink{})
 		defer stop()
 
 		synctest.Wait()
-		if err := suite.Connectors()[0].Run(t.Context(), newRecordingSink()); !errors.Is(err, fake.ErrAlreadyRunning) {
+		if err := suite.Connectors()[0].Run(t.Context(), &connectortest.Sink{}); !errors.Is(err, fake.ErrAlreadyRunning) {
 			t.Errorf("second Run = %v, want ErrAlreadyRunning", err)
 		}
 	})
@@ -56,7 +57,7 @@ func TestRun_RefusesASecondRun(t *testing.T) {
 
 func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		sink := newRecordingSink()
+		sink := &connectortest.Sink{}
 		suite := fake.New()
 		stop := runFake(t, suite, sink)
 		defer stop()
@@ -79,7 +80,7 @@ func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
 			"typing wa:mum false",
 			"incoming wa:mum fake-reply-m1",
 		}
-		if got := sink.take(); !slices.Equal(got, want) {
+		if got := sink.Take(); !slices.Equal(got, want) {
 			t.Errorf("events = %v, want %v", got, want)
 		}
 	})
@@ -87,7 +88,7 @@ func TestSend_DirectChatGetsReceiptsAndAReply(t *testing.T) {
 
 func TestSend_GroupHasNoReadReceiptOrReply(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		sink := newRecordingSink()
+		sink := &connectortest.Sink{}
 		suite := fake.New()
 		stop := runFake(t, suite, sink)
 		defer stop()
@@ -103,7 +104,7 @@ func TestSend_GroupHasNoReadReceiptOrReply(t *testing.T) {
 		synctest.Wait()
 
 		want := []string{"outgoing g1 fake-g1 sent", "outgoing g1 fake-g1 delivered"}
-		if got := sink.take(); !slices.Equal(got, want) {
+		if got := sink.Take(); !slices.Equal(got, want) {
 			t.Errorf("events = %v, want %v", got, want)
 		}
 	})
@@ -111,7 +112,7 @@ func TestSend_GroupHasNoReadReceiptOrReply(t *testing.T) {
 
 func TestSend_FlakyConversationFailsFirstAttempt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		sink := newRecordingSink()
+		sink := &connectortest.Sink{}
 		suite := fake.New()
 		stop := runFake(t, suite, sink)
 		defer stop()
@@ -127,7 +128,7 @@ func TestSend_FlakyConversationFailsFirstAttempt(t *testing.T) {
 		time.Sleep(time.Second)
 		synctest.Wait()
 
-		if got := sink.take(); !slices.Equal(got, []string{"outgoing s1  failed"}) {
+		if got := sink.Take(); !slices.Equal(got, []string{"outgoing s1  failed"}) {
 			t.Fatalf("first attempt = %v, want a failure", got)
 		}
 
@@ -138,8 +139,8 @@ func TestSend_FlakyConversationFailsFirstAttempt(t *testing.T) {
 		time.Sleep(time.Second)
 		synctest.Wait()
 
-		if !sink.has("outgoing s1 fake-s1 sent") {
-			t.Errorf("retry = %v, want sent", sink.take())
+		if !sink.Has("outgoing s1 fake-s1 sent") {
+			t.Errorf("retry = %v, want sent", sink.Take())
 		}
 	})
 }
@@ -162,7 +163,7 @@ func TestStoppedConnector_RefusesWork(t *testing.T) {
 func TestRunningConnector_HonoursCancelledRequests(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		suite := fake.New()
-		stop := runFake(t, suite, newRecordingSink())
+		stop := runFake(t, suite, &connectortest.Sink{})
 		defer stop()
 
 		synctest.Wait()

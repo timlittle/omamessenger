@@ -6,6 +6,7 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/connector/fake"
 )
 
@@ -24,7 +25,7 @@ func TestNew_CreatesTheDemoAccounts(t *testing.T) {
 
 func TestInject_DeliversIntoTheOwningAccount(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		sink := newRecordingSink()
+		sink := &connectortest.Sink{}
 		suite := fake.New()
 		stop := runFake(t, suite, sink)
 		defer stop()
@@ -36,8 +37,8 @@ func TestInject_DeliversIntoTheOwningAccount(t *testing.T) {
 			t.Fatalf("Inject = %+v, %v", m, err)
 		}
 
-		if !sink.has("incoming tg:nadia " + m.RemoteID) {
-			t.Errorf("events = %v", sink.take())
+		if !sink.Has("incoming tg:nadia " + m.RemoteID) {
+			t.Errorf("events = %v", sink.Take())
 		}
 
 		if _, err := suite.Inject(t.Context(), "wa:nobody"); !errors.Is(err, fake.ErrUnknownConversation) {

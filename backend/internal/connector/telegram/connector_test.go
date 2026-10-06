@@ -7,6 +7,7 @@ import (
 
 	"github.com/gotd/td/tg"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -19,7 +20,7 @@ func TestSend_ReportsSentThenReadWhenTheyReadIt(t *testing.T) {
 	f := newFakeTelegram()
 	f.reply(&tg.MessagesSendMessageRequest{}, &tg.UpdateShortSentMessage{ID: 77})
 
-	var sink recordingSink
+	var sink connectortest.Sink
 	c := connectedTo(f, &sink)
 	c.learn(chatWithNadia.RemoteID)
 	if err := c.Send(t.Context(), chatWithNadia, domain.Message{ID: "m1", Text: "hi"}); err != nil {
@@ -29,7 +30,7 @@ func TestSend_ReportsSentThenReadWhenTheyReadIt(t *testing.T) {
 	c.readUpTo(t.Context(), &sink, "user:42", 77)
 
 	want := []string{"outgoing m1 77 " + domain.StatusSent, "outgoing m1  " + domain.StatusRead}
-	if got := sink.lines(); !slices.Equal(got, want) {
+	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
 	}
 
@@ -48,8 +49,8 @@ func TestSend_Fails(t *testing.T) {
 		conv domain.Conversation
 	}{
 		{"before signing in", func() *Connector { return New(domain.Account{ID: "tg"}, "") }, chatWithNadia},
-		{"to a malformed peer", func() *Connector { return connectedTo(newFakeTelegram(), &recordingSink{}) }, domain.Conversation{RemoteID: "bad"}},
-		{"when Telegram refuses", func() *Connector { return connectedTo(newFakeTelegram(), &recordingSink{}) }, chatWithNadia},
+		{"to a malformed peer", func() *Connector { return connectedTo(newFakeTelegram(), &connectortest.Sink{}) }, domain.Conversation{RemoteID: "bad"}},
+		{"when Telegram refuses", func() *Connector { return connectedTo(newFakeTelegram(), &connectortest.Sink{}) }, chatWithNadia},
 	}
 
 	for _, tt := range tests {
@@ -70,7 +71,7 @@ func TestMarkRead_UsesTheChannelCallForChannels(t *testing.T) {
 	f.reply(&tg.MessagesReadHistoryRequest{}, &tg.MessagesAffectedMessages{})
 	f.reply(&tg.ChannelsReadHistoryRequest{}, &tg.BoolTrue{})
 
-	c := connectedTo(f, &recordingSink{})
+	c := connectedTo(f, &connectortest.Sink{})
 	for _, remote := range []string{"user:42:99", "channel:5:3"} {
 		if err := c.MarkRead(t.Context(), domain.Conversation{RemoteID: remote}); err != nil {
 			t.Fatal(err)
@@ -90,7 +91,7 @@ func TestMarkRead_UsesTheChannelCallForChannels(t *testing.T) {
 func TestMarkRead_Fails(t *testing.T) {
 	t.Parallel()
 
-	connected := connectedTo(newFakeTelegram(), &recordingSink{})
+	connected := connectedTo(newFakeTelegram(), &connectortest.Sink{})
 	for name, err := range map[string]error{
 		"before signing in":    New(domain.Account{ID: "tg"}, "").MarkRead(t.Context(), chatWithNadia),
 		"a malformed peer":     connected.MarkRead(t.Context(), domain.Conversation{RemoteID: "bad"}),
@@ -144,7 +145,7 @@ func TestSentID_FindsTheIDInEitherReply(t *testing.T) {
 func TestDisconnected_StopsSends(t *testing.T) {
 	t.Parallel()
 
-	c := connectedTo(newFakeTelegram(), &recordingSink{})
+	c := connectedTo(newFakeTelegram(), &connectortest.Sink{})
 	c.disconnected()
 
 	if err := c.Send(t.Context(), chatWithNadia, domain.Message{}); !errors.Is(err, errNotConnected) {

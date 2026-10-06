@@ -3,42 +3,12 @@ package connector_test
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
-
-// statusSink records account statuses and ignores every other update.
-type statusSink struct {
-	mu       sync.Mutex
-	statuses []string
-}
-
-func (s *statusSink) AccountStatus(_ context.Context, accountID, status, detail string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.statuses = append(s.statuses, accountID+":"+status+":"+detail)
-}
-
-func (s *statusSink) Contact(context.Context, domain.Contact)                  {}
-func (s *statusSink) Conversation(context.Context, domain.Conversation)        {}
-func (s *statusSink) Incoming(context.Context, string, string, domain.Message) {}
-func (s *statusSink) History(context.Context, string, string, domain.Message)  {}
-func (s *statusSink) OutgoingStatus(context.Context, string, string, string)   {}
-func (s *statusSink) Typing(context.Context, string, string, string, bool)     {}
-func (s *statusSink) Unread(context.Context, string, string, int)              {}
-func (s *statusSink) AuthStep(context.Context, string, connector.AuthStep)     {}
-
-// recorded returns a copy of the statuses seen so far.
-func (s *statusSink) recorded() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return append([]string(nil), s.statuses...)
-}
 
 // fakeConnector runs the run function, or blocks until cancelled when it
 // is nil, and records what it was asked to send.
@@ -99,9 +69,9 @@ func (a *accountList) UpsertAccount(_ context.Context, account domain.Account) e
 // errBroken is the failure fake connectors return.
 var errBroken = errors.New("broken")
 
-// startManager starts connectors with a statusSink and stops them when the
+// startManager starts connectors with a recording sink and stops them when the
 // test ends.
-func startManager(t *testing.T, ctx context.Context, connectors ...connector.Connector) (*connector.Manager, *statusSink) {
+func startManager(t *testing.T, ctx context.Context, connectors ...connector.Connector) (*connector.Manager, *connectortest.Sink) {
 	t.Helper()
 
 	m, err := connector.NewManager(connectors...)
@@ -109,7 +79,7 @@ func startManager(t *testing.T, ctx context.Context, connectors ...connector.Con
 		t.Fatal(err)
 	}
 
-	sink := &statusSink{}
+	sink := &connectortest.Sink{}
 	if err := m.Start(ctx, &accountList{}, sink); err != nil {
 		t.Fatal(err)
 	}

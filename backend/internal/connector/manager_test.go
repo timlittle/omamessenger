@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -41,7 +42,7 @@ func TestStart_RecordsAccountsBeforeRunning(t *testing.T) {
 
 	accounts := &accountList{}
 	ctx, cancel := context.WithCancel(t.Context())
-	if err := m.Start(ctx, accounts, &statusSink{}); err != nil {
+	if err := m.Start(ctx, accounts, &connectortest.Sink{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -61,7 +62,7 @@ func TestStart_FailsWhenAccountCannotBeRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := m.Start(t.Context(), &accountList{err: errBroken}, &statusSink{}); !errors.Is(err, errBroken) {
+	if err := m.Start(t.Context(), &accountList{err: errBroken}, &connectortest.Sink{}); !errors.Is(err, errBroken) {
 		t.Fatalf("Start = %v, want errBroken", err)
 	}
 }
@@ -87,8 +88,8 @@ func TestSupervise_RestartsWithGrowingDelay(t *testing.T) {
 			t.Errorf("starts = %v, want %v", starts, want)
 		}
 
-		if got := sink.recorded()[0]; got != "a:error:broken" {
-			t.Errorf("first status = %q, want a:error:broken", got)
+		if got := sink.Lines()[0]; got != "status a error broken" {
+			t.Errorf("first status = %q, want status a error broken", got)
 		}
 	})
 }
@@ -120,7 +121,7 @@ func TestSupervise_ResetsDelayAfterStableRun(t *testing.T) {
 			t.Errorf("starts = %v, want prefix %v", starts, want)
 		}
 
-		if got := sink.recorded()[0]; got != "a:error:connector stopped unexpectedly" {
+		if got := sink.Lines()[0]; got != "status a error connector stopped unexpectedly" {
 			t.Errorf("first status = %q", got)
 		}
 	})
@@ -135,7 +136,7 @@ func TestSupervise_StopsWithoutErrorOnCancel(t *testing.T) {
 		cancel()
 		m.Wait()
 
-		if got := sink.recorded(); len(got) != 0 {
+		if got := sink.Lines(); len(got) != 0 {
 			t.Errorf("statuses = %v, want none", got)
 		}
 	})

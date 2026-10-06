@@ -15,3 +15,7 @@ override:
     threshold: 80
   - path: ^backend$
     threshold: 80
+exclude:
+  paths:
+    # Test support shared by the connector tests; they exercise it.
+    - ^backend/internal/connector/connectortest/

@@ -4,13 +4,14 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/connector/fake"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestSeed_HistoryHasScriptedCountsAndUnread(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		sink := newRecordingSink()
+		sink := &connectortest.Sink{}
 		stop := runFake(t, fake.New(), sink)
 		synctest.Wait()
 		stop()
@@ -22,12 +23,12 @@ func TestSeed_HistoryHasScriptedCountsAndUnread(t *testing.T) {
 			"tg:platform-team": {20, 4}, "tg:jordan-manager": {8, 0},
 		}
 
-		if len(sink.history) != len(want) {
-			t.Fatalf("seeded %d conversations, want %d", len(sink.history), len(want))
+		if len(sink.Messages()) != len(want) {
+			t.Fatalf("seeded %d conversations, want %d", len(sink.Messages()), len(want))
 		}
 
 		for remoteID, w := range want {
-			messages := sink.history[remoteID]
+			messages := sink.Messages()[remoteID]
 			if len(messages) != w.count || unread(messages) != w.unread {
 				t.Errorf("%s: %d messages, %d unread; want %d, %d",
 					remoteID, len(messages), unread(messages), w.count, w.unread)
@@ -38,12 +39,12 @@ func TestSeed_HistoryHasScriptedCountsAndUnread(t *testing.T) {
 
 func TestSeed_HistoryIsOrderedAndAttributed(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		sink := newRecordingSink()
+		sink := &connectortest.Sink{}
 		stop := runFake(t, fake.New(), sink)
 		synctest.Wait()
 		stop()
 
-		for remoteID, messages := range sink.history {
+		for remoteID, messages := range sink.Messages() {
 			for i, m := range messages {
 				if i > 0 && m.Created <= messages[i-1].Created {
 					t.Errorf("%s: message %d is not newer than the one before", remoteID, i)
@@ -55,14 +56,14 @@ func TestSeed_HistoryIsOrderedAndAttributed(t *testing.T) {
 			}
 		}
 
-		saved := sink.history["tg:saved-messages"]
+		saved := sink.Messages()["tg:saved-messages"]
 		for _, m := range saved {
 			if !m.Outgoing {
 				t.Errorf("saved message %q is incoming", m.Text)
 			}
 		}
 
-		jordan := sink.history["tg:jordan-manager"]
+		jordan := sink.Messages()["tg:jordan-manager"]
 		if last := jordan[len(jordan)-1]; !last.Outgoing || last.Status != domain.StatusRead {
 			t.Errorf("Jordan's newest message = %+v, want outgoing and read", last)
 		}

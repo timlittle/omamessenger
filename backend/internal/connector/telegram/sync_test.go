@@ -9,6 +9,7 @@ import (
 	"github.com/gotd/td/tg"
 	"github.com/gotd/td/tgerr"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -37,7 +38,7 @@ func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 		Messages: []tg.MessageClass{&tg.Message{ID: 3, PeerID: &tg.PeerChat{ChatID: 7}, Message: "older"}, &tg.MessageEmpty{}},
 	})
 
-	var sink recordingSink
+	var sink connectortest.Sink
 	c := New(domain.Account{ID: "tg"}, "")
 	if err := c.sync(t.Context(), tg.NewClient(f), &sink); err != nil {
 		t.Fatal(err)
@@ -45,11 +46,11 @@ func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 
 	want := []string{
 		"contact user:42:99 Nadia",
-		"conversation user:42:99 Nadia", "history user:42:99 9 latest", "unread user:42:99 1",
-		"conversation chat:7 Crew", "history chat:7 4 top", "unread chat:7 0",
-		"history chat:7 3 older", "unread chat:7 0",
+		"conversation user:42:99 Nadia", "history user:42:99 9", "unread user:42:99 1",
+		"conversation chat:7 Crew", "history chat:7 4", "unread chat:7 0",
+		"history chat:7 3", "unread chat:7 0",
 	}
-	if got := sink.lines(); !slices.Equal(got, want) {
+	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events =\n%q\nwant\n%q", got, want)
 	}
 
@@ -73,7 +74,7 @@ func TestSync_WaitsOutRateLimits(t *testing.T) {
 			Messages: []tg.MessageClass{&tg.Message{ID: 3, PeerID: &tg.PeerUser{UserID: 42}, Message: "hello"}},
 		})
 
-		var sink recordingSink
+		var sink connectortest.Sink
 		start := time.Now()
 		c := New(domain.Account{ID: "tg"}, "")
 		if err := c.sync(t.Context(), tg.NewClient(f), &sink); err != nil {
@@ -84,8 +85,8 @@ func TestSync_WaitsOutRateLimits(t *testing.T) {
 			t.Errorf("waited %v, want the 3s Telegram asked for", waited)
 		}
 
-		if !slices.Contains(sink.lines(), "history user:42:99 3 hello") {
-			t.Errorf("history not loaded after the wait: %q", sink.lines())
+		if !slices.Contains(sink.Lines(), "history user:42:99 3") {
+			t.Errorf("history not loaded after the wait: %q", sink.Lines())
 		}
 	})
 }
@@ -97,13 +98,13 @@ func TestSync_SkipsUnchangedReplies(t *testing.T) {
 	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
 	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogsNotModified{})
 
-	var sink recordingSink
+	var sink connectortest.Sink
 	c := New(domain.Account{ID: "tg"}, "")
 	if err := c.sync(t.Context(), tg.NewClient(f), &sink); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := sink.lines(); len(got) != 0 {
+	if got := sink.Lines(); len(got) != 0 {
 		t.Errorf("events = %q, want none", got)
 	}
 }
@@ -129,7 +130,7 @@ func TestSync_ReportsFailures(t *testing.T) {
 			tt.replies(f)
 
 			c := New(domain.Account{ID: "tg"}, "")
-			if err := c.sync(t.Context(), tg.NewClient(f), &recordingSink{}); err == nil {
+			if err := c.sync(t.Context(), tg.NewClient(f), &connectortest.Sink{}); err == nil {
 				t.Error("sync succeeded, want the failure reported")
 			}
 		})
