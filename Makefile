@@ -21,6 +21,7 @@ GO_TEST_COVERAGE_VERSION := v2.20.0
 TOOLS := $(CURDIR)/build/tools
 GOLANGCI_LINT := $(TOOLS)/golangci-lint
 GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
+QMLLINT ?= /usr/lib/qt6/bin/qmllint
 GOOS := $(shell $(GO) env GOOS)
 GOARCH := $(shell $(GO) env GOARCH)
 
@@ -78,7 +79,11 @@ lint: $(GOLANGCI_LINT) ## golangci-lint (.golangci.yml: layering, size, complexi
 	$(GOLANGCI_LINT) run ./...
 	$(GO) run -mod=vendor ./tools/nologcontent ./backend/...
 	bash -n scripts/*.sh tests/e2e/*.sh
-	qmllint -I tests/e2e/mocks Panel.qml Service.qml tests/e2e/shell.qml
+	./scripts/qml-imports.sh
+	@qml_files="$$(find ui -name '*.qml' 2>/dev/null)"; \
+	if [ -n "$$qml_files" ]; then \
+		$(QMLLINT) -I build/qml --max-warnings 0 $$qml_files; \
+	fi
 	git --no-pager diff --check
 
 validate: ## Validate the plugin manifest with Omarchy
