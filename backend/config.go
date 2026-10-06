@@ -4,63 +4,77 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"path/filepath"
 	"time"
 )
 
-const helperVersion = "0.2.0"
+// helperVersion is this helper's release. It must match the helper-version
+// file, which the installer uses to download the matching release.
+const helperVersion = "0.3.0"
 
-type Config struct {
-	Demo    bool
-	Chatter bool
-	Seed    int64
-	DataDir string
-	DBPath  string
-	Version bool
+// config is the helper's command-line configuration.
+type config struct {
+	demo    bool
+	chatter bool
+	seed    uint64
+	dataDir string
+	dbPath  string
+	version bool
 }
 
-func resolveConfig(args []string, env func(string) string) (Config, error) {
-	if env == nil {
-		return Config{}, errors.New("environment lookup is required")
-	}
-	fs := flag.NewFlagSet("oma-messenger-service", flag.ContinueOnError)
-	fs.SetOutput(discardWriter{})
-	var cfg Config
+// resolveConfig parses the command line, filling in the data directory from
+// the XDG base directory rules when it is not given.
+func resolveConfig(args []string, env func(string) string) (config, error) {
+	var cfg config
 	var noChatter bool
-	fs.BoolVar(&cfg.Demo, "demo", false, "run the seeded local demo connector")
-	fs.BoolVar(&noChatter, "no-chatter", false, "disable scripted demo messages")
-	fs.Int64Var(&cfg.Seed, "seed", time.Now().UnixNano(), "random seed for demo behavior")
-	fs.StringVar(&cfg.DataDir, "data-dir", "", "application data directory")
-	fs.StringVar(&cfg.DBPath, "db", "", "database file (overrides data directory default)")
-	fs.BoolVar(&cfg.Version, "version", false, "print helper version and exit")
+
+	fs := flag.NewFlagSet("oma-messenger-service", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.BoolVar(&cfg.demo, "demo", false, "run the seeded demo accounts")
+	fs.BoolVar(&noChatter, "no-chatter", false, "turn off scripted demo messages")
+	fs.Uint64Var(&cfg.seed, "seed", uint64(time.Now().UnixNano()), "random seed for demo chatter")
+	fs.StringVar(&cfg.dataDir, "data-dir", "", "data directory")
+	fs.StringVar(&cfg.dbPath, "db", "", "database file, overriding the data directory")
+	fs.BoolVar(&cfg.version, "version", false, "print the helper version and exit")
+
 	if err := fs.Parse(args); err != nil {
-		return Config{}, err
+		return config{}, err
 	}
+
 	if fs.NArg() != 0 {
-		return Config{}, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+		return config{}, fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
-	cfg.Chatter = !noChatter
-	if cfg.DataDir == "" {
-		cfg.DataDir = env("XDG_DATA_HOME")
-		if cfg.DataDir == "" {
-			home := env("HOME")
-			if home == "" {
-				return Config{}, errors.New("HOME or XDG_DATA_HOME must be set")
-			}
-			cfg.DataDir = filepath.Join(home, ".local", "share")
+
+	cfg.chatter = !noChatter
+
+	return withPaths(cfg, env)
+}
+
+// withPaths fills in the data directory and database file. The demo uses
+// its own database so it never mixes with real messages.
+func withPaths(cfg config, env func(string) string) (config, error) {
+	if cfg.dataDir == "" {
+		base := env("XDG_DATA_HOME")
+		if base == "" && env("HOME") == "" {
+			return config{}, errors.New("HOME or XDG_DATA_HOME must be set")
 		}
-		cfg.DataDir = filepath.Join(cfg.DataDir, "omamessenger")
+
+		if base == "" {
+			base = filepath.Join(env("HOME"), ".local", "share")
+		}
+
+		cfg.dataDir = filepath.Join(base, "omamessenger")
 	}
-	if cfg.DBPath == "" {
+
+	if cfg.dbPath == "" {
 		name := "messages.db"
-		if cfg.Demo {
+		if cfg.demo {
 			name = "demo.db"
 		}
-		cfg.DBPath = filepath.Join(cfg.DataDir, name)
+
+		cfg.dbPath = filepath.Join(cfg.dataDir, name)
 	}
+
 	return cfg, nil
 }
-
-type discardWriter struct{}
-
-func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }

@@ -9,3 +9,4 @@
 /bin/oma-messenger-service-linux-*
 # Subagent worktrees
 /.claude/worktrees/
+/backend/backend

@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 jobs:
-  go-js:
+  check:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -18,16 +18,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Go tests with the race detector and coverage gates
-        run: make coverage
-      - name: Lint (golangci-lint and the privacy check)
+
+      # `make check` minus QML lint, which needs Omarchy's shell installed.
+      - name: Tests with coverage gates
+        run: make test
+      - name: Go lint and the privacy check
         run: |
           make tools
           build/tools/golangci-lint run ./...
-          go run -mod=vendor ./tools/nologcontent ./backend/...
-      - name: JavaScript and script tests
-        run: make test-js
-      - name: Docs match the code
-        run: make docs-check
+          go run ./tools/nologcontent ./backend/...
+      - name: Shell scripts
+        run: shellcheck scripts/*.sh bin/oma-messenger-service
       - name: Release build
         run: ./scripts/build-release.sh

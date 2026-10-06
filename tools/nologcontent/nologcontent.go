@@ -30,26 +30,33 @@ var Analyzer = &analysis.Analyzer{
 	Run:  run,
 }
 
+// main runs the analyzer as a standalone command.
 func main() { singlechecker.Main(Analyzer) }
 
+// run checks every call in the package.
 func run(pass *analysis.Pass) (any, error) {
 	for _, file := range pass.Files {
 		ast.Inspect(file, func(node ast.Node) bool {
 			if call, ok := node.(*ast.CallExpr); ok {
 				checkCall(pass, call)
 			}
+
 			return true
 		})
 	}
+
 	return nil, nil
 }
 
+// checkCall reports each sensitive argument of a call that writes to a log
+// or the process's output.
 func checkCall(pass *analysis.Pass, call *ast.CallExpr) {
 	pkgPath, name := calledFunction(pass, call.Fun)
 	firstContent, isOutput := contentStart(pass, pkgPath, name, call.Args)
 	if !isOutput {
 		return
 	}
+
 	for _, arg := range call.Args[firstContent:] {
 		if sensitiveExpr(pass, arg) {
 			pass.Reportf(arg.Pos(), "nologcontent: sensitive messaging data passed to %s.%s", pkgPath, name)
@@ -63,38 +70,48 @@ func contentStart(pass *analysis.Pass, pkgPath, name string, args []ast.Expr) (i
 	if pkgPath == "log" || pkgPath == "log/slog" || pkgPath == "fmt" && strings.HasPrefix(name, "Print") {
 		return 0, true
 	}
+
 	if pkgPath != "fmt" || !strings.HasPrefix(name, "Fprint") || len(args) == 0 || !standardOutput(pass, args[0]) {
 		return 0, false
 	}
+
 	return 1, true
 }
 
+// calledFunction returns the package path and name of the function a call
+// expression calls, as far as it can tell.
 func calledFunction(pass *analysis.Pass, fun ast.Expr) (pkgPath, name string) {
 	selector, ok := fun.(*ast.SelectorExpr)
 	if !ok {
 		return "", ""
 	}
+
 	name = selector.Sel.Name
 	if selection := pass.TypesInfo.Selections[selector]; selection != nil {
 		if fn, ok := selection.Obj().(*types.Func); ok && fn.Pkg() != nil {
 			return fn.Pkg().Path(), name
 		}
 	}
+
 	if fn, ok := pass.TypesInfo.Uses[selector.Sel].(*types.Func); ok && fn.Pkg() != nil {
 		return fn.Pkg().Path(), name
 	}
+
 	return "", name
 }
 
+// standardOutput reports whether expr is os.Stdout or os.Stderr.
 func standardOutput(pass *analysis.Pass, expr ast.Expr) bool {
 	selector, ok := expr.(*ast.SelectorExpr)
 	if !ok || selector.Sel.Name != "Stdout" && selector.Sel.Name != "Stderr" {
 		return false
 	}
+
 	obj, ok := pass.TypesInfo.Uses[selector.Sel].(*types.Var)
 	return ok && obj.Pkg() != nil && obj.Pkg().Path() == "os"
 }
 
+// sensitiveExpr reports whether expr contains a sensitive value anywhere.
 func sensitiveExpr(pass *analysis.Pass, expr ast.Expr) bool {
 	found := false
 	ast.Inspect(expr, func(node ast.Node) bool {
@@ -103,17 +120,22 @@ func sensitiveExpr(pass *analysis.Pass, expr ast.Expr) bool {
 		}
 		return !found
 	})
+
 	return found
 }
 
+// sensitiveNode reports whether node is a sensitive value or a content
+// field of one.
 func sensitiveNode(pass *analysis.Pass, node ast.Node) bool {
 	if expression, ok := node.(ast.Expr); ok && sensitiveType(pass.TypesInfo.TypeOf(expression)) {
 		return true
 	}
+
 	selector, ok := node.(*ast.SelectorExpr)
 	if !ok || !sensitiveFields[selector.Sel.Name] {
 		return false
 	}
+
 	selection := pass.TypesInfo.Selections[selector]
 	return selection != nil && selection.Kind() == types.FieldVal && sensitiveType(selection.Recv())
 }
@@ -130,5 +152,6 @@ func sensitiveType(typ types.Type) bool {
 		pkg := value.Obj().Pkg()
 		return pkg != nil && strings.HasSuffix(pkg.Path(), "/domain") && sensitiveTypes[value.Obj().Name()]
 	}
+
 	return false
 }

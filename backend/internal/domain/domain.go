@@ -1,12 +1,9 @@
 // Package domain holds the normalized shapes shared by the store, the
-// connectors, and the UI protocol. Nothing here knows about WhatsApp or
+// connectors and the UI protocol. Nothing here knows about WhatsApp or
 // Telegram wire formats.
 package domain
 
-import (
-	"errors"
-	"strings"
-)
+import "errors"
 
 // Services the UI knows how to present.
 const (
@@ -28,47 +25,10 @@ const (
 	KindGroup  = "group"
 )
 
-// Outgoing message delivery states, in the order they normally progress.
-const (
-	StatusPending   = "pending"
-	StatusSent      = "sent"
-	StatusDelivered = "delivered"
-	StatusRead      = "read"
-	StatusFailed    = "failed"
-	// StatusReceived marks every incoming message.
-	StatusReceived = "received"
-)
+// ErrNotFound reports a missing account, contact, conversation or message.
+var ErrNotFound = errors.New("not found")
 
-var statusRank = map[string]int{
-	StatusPending:   1,
-	StatusSent:      2,
-	StatusDelivered: 3,
-	StatusRead:      4,
-}
-
-// StatusAdvances reports whether moving from one delivery state to another is
-// forward progress. Receipts can arrive out of order; a late "delivered" must
-// not overwrite "read". A failed message may be retried back to pending.
-func StatusAdvances(from, to string) bool {
-	if from == to {
-		return false
-	}
-	if to == StatusFailed {
-		return from == StatusPending || from == StatusSent
-	}
-	if from == StatusFailed {
-		return to == StatusPending || to == StatusSent
-	}
-	f, okFrom := statusRank[from]
-	t, okTo := statusRank[to]
-	return okFrom && okTo && t > f
-}
-
-// ValidService reports whether service is a supported provider.
-func ValidService(service string) bool {
-	return service == ServiceWhatsApp || service == ServiceTelegram
-}
-
+// Account is one signed-in messaging account.
 type Account struct {
 	ID      string `json:"id"`
 	Service string `json:"service"`
@@ -77,12 +37,15 @@ type Account struct {
 	Detail  string `json:"detail"`
 }
 
+// Contact is a person the account can start a conversation with.
 type Contact struct {
 	AccountID string `json:"accountId"`
 	RemoteID  string `json:"remoteId"`
 	Name      string `json:"name"`
 }
 
+// Conversation is a direct chat or group, with the summary the
+// conversation list shows.
 type Conversation struct {
 	ID            string `json:"id"`
 	AccountID     string `json:"accountId"`
@@ -97,10 +60,13 @@ type Conversation struct {
 	Unread        int    `json:"unread"`
 	Muted         bool   `json:"muted"`
 	LastActivity  int64  `json:"lastActivity"`
+
 	// Match is a snippet of the newest message that matched a search query.
 	Match string `json:"match,omitempty"`
 }
 
+// Message is one message in a conversation. Created is in Unix
+// milliseconds.
 type Message struct {
 	ID             string `json:"id"`
 	ConversationID string `json:"conversationId"`
@@ -113,24 +79,7 @@ type Message struct {
 	Created        int64  `json:"created"`
 }
 
-// ErrNotFound reports a missing account, conversation, contact or message.
-// The store returns it and the API maps it to the not_found protocol code.
-var ErrNotFound = errors.New("not found")
-
-// maxMessageLength bounds outgoing text. Both services accept at least this.
-const maxMessageLength = 4096
-
-var errEmptyText = errors.New("message text is empty")
-var errTextTooLong = errors.New("message text is too long")
-
-// NormalizeOutgoingText trims surrounding whitespace and validates length.
-func NormalizeOutgoingText(text string) (string, error) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return "", errEmptyText
-	}
-	if len([]rune(text)) > maxMessageLength {
-		return "", errTextTooLong
-	}
-	return text, nil
+// ValidService reports whether service is a supported provider.
+func ValidService(service string) bool {
+	return service == ServiceWhatsApp || service == ServiceTelegram
 }

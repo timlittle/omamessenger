@@ -1,111 +1,145 @@
 package app
 
 import (
+	"context"
+	"time"
+
 	"github.com/timlittle/omamessenger/backend/internal/app/policy"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
-// Ingest receives normalized updates from connectors, persists them and
-// publishes the resulting events. It implements connector.Sink and
-// connector.HistorySink. Updates for unknown accounts or conversations are
-// dropped: a connector reports a conversation before its messages.
+// Ingest stores updates from connectors and publishes them to the UI.
+// Updates for unknown accounts or conversations are dropped: a connector
+// reports a conversation before its messages. Storage errors are dropped
+// too, because a connector has no way to act on them; the next update
+// brings the UI up to date.
 type Ingest struct {
-	repo     Repository
-	pub      *publisher
-	session  *session
+	store    *store.Store
 	notifier Notifier
-	clock    connector.Clock
+	events   *events
+	ui       *uiState
 }
 
-var (
-	_ connector.Sink        = (*Ingest)(nil)
-	_ connector.HistorySink = (*Ingest)(nil)
-)
+var _ connector.Sink = (*Ingest)(nil)
 
-// AccountStatus persists and publishes an account's connection state.
-func (in *Ingest) AccountStatus(accountID, status, detail string) {
-	if account, err := in.repo.SetAccountStatus(accountID, status, detail); err == nil {
-		in.pub.send("account.updated", account)
+// AccountStatus records and publishes an account's connection state.
+func (in *Ingest) AccountStatus(ctx context.Context, accountID, status, detail string) {
+	account, err := in.store.SetAccountStatus(ctx, accountID, status, detail)
+	if err != nil {
+		return
 	}
+
+	in.events.publish(ctx, EventAccountUpdated, account)
 }
 
-// Contact persists a normalized contact.
-func (in *Ingest) Contact(contact domain.Contact) {
-	_ = in.repo.UpsertContact(contact)
+// Contact records a contact.
+func (in *Ingest) Contact(ctx context.Context, c domain.Contact) {
+	_ = in.store.UpsertContact(ctx, c) // see the Ingest comment on dropped errors
 }
 
-// Conversation upserts a normalized conversation and publishes it.
-func (in *Ingest) Conversation(conversation domain.Conversation) {
-	if updated, _, err := in.repo.EnsureConversation(conversation); err == nil {
-		in.pub.send("conversation.updated", updated)
+// Conversation records a conversation and publishes it.
+func (in *Ingest) Conversation(ctx context.Context, c domain.Conversation) {
+	conv, _, err := in.store.EnsureConversation(ctx, c)
+	if err != nil {
+		return
 	}
+
+	in.events.publish(ctx, EventConversationUpdated, conv)
 }
 
-// Incoming persists a live message, then applies the arrival policy: read it
-// at once if the user is looking at the conversation, otherwise maybe notify.
-// A message already stored (same remote id) changes nothing.
-func (in *Ingest) Incoming(accountID, conversationRemoteID string, message domain.Message) {
-	conv, stored, before, ok := in.persist(accountID, conversationRemoteID, message)
+// Incoming records a live message. If the user is looking at its
+// conversation it is read at once; otherwise it may notify.
+func (in *Ingest) Incoming(ctx context.Context, accountID, conversationRemoteID string, m domain.Message) {
+	conv, m, before, ok := in.save(ctx, accountID, conversationRemoteID, m)
 	if !ok {
 		return
 	}
-	arrival := in.session.policyInput(conv, stored)
+
+	arrival := in.arrival(conv, m)
 	if policy.MarkReadOnArrival(arrival) {
-		_, _ = in.repo.MarkRead(conv.ID)
+		_, _ = in.store.MarkRead(ctx, conv.ID) // see the Ingest comment on dropped errors
 	}
-	in.publishArrival(conv.ID, stored, before)
-	if policy.ShouldNotify(arrival) && in.notifier != nil {
+
+	in.events.publish(ctx, EventMessageAdded, m)
+	in.events.conversationChanged(ctx, conv.ID, before)
+
+	if policy.ShouldNotify(arrival) {
 		in.notifier.Notify(policy.Notification(arrival))
 	}
 }
 
-// History persists an initial or backfilled message without the live
-// arrival policy: no notification and no read-on-arrival.
-func (in *Ingest) History(accountID, conversationRemoteID string, message domain.Message) {
-	if conv, stored, before, ok := in.persist(accountID, conversationRemoteID, message); ok {
-		in.publishArrival(conv.ID, stored, before)
+// History records an earlier message. It never notifies and is never read
+// on arrival.
+func (in *Ingest) History(ctx context.Context, accountID, conversationRemoteID string, m domain.Message) {
+	conv, m, before, ok := in.save(ctx, accountID, conversationRemoteID, m)
+	if !ok {
+		return
 	}
-}
 
-// persist stores a message for a known conversation. ok is false when the
-// conversation is unknown, storage fails, or the message is a duplicate.
-// before is the unread total prior to the insert.
-func (in *Ingest) persist(accountID, remoteID string, m domain.Message) (domain.Conversation, domain.Message, int, bool) {
-	conv, err := in.repo.ConversationByRemote(accountID, remoteID)
-	if err != nil {
-		return conv, m, 0, false
-	}
-	m.ConversationID = conv.ID
-	if m.Created == 0 {
-		m.Created = in.clock.Now().UnixMilli()
-	}
-	before := in.pub.unreadTotal()
-	stored, inserted, err := in.repo.AddMessage(m)
-	return conv, stored, before, err == nil && inserted
-}
-
-func (in *Ingest) publishArrival(conversationID string, m domain.Message, before int) {
-	in.pub.send("message.added", m)
-	if _, err := in.pub.conversation(conversationID); err == nil {
-		in.pub.unreadChanged(before)
-	}
+	in.events.publish(ctx, EventMessageAdded, m)
+	in.events.conversationChanged(ctx, conv.ID, before)
 }
 
 // OutgoingStatus records the service's id for a sent message and publishes
-// delivery progress that domain.StatusAdvances allows.
-func (in *Ingest) OutgoingStatus(localMessageID, remoteID, status string) {
+// its delivery progress. Late or out-of-order receipts are ignored.
+func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, status string) {
 	if remoteID != "" {
-		_ = in.repo.SetMessageRemoteID(localMessageID, remoteID)
+		_ = in.store.SetMessageRemoteID(ctx, localMessageID, remoteID) // see the Ingest comment on dropped errors
 	}
-	if message, changed, err := in.repo.UpdateMessageStatus(localMessageID, status); err == nil && changed {
-		in.pub.send("message.updated", message)
+
+	m, changed, err := in.store.UpdateMessageStatus(ctx, localMessageID, status)
+	if err != nil || !changed {
+		return
 	}
+
+	in.events.publish(ctx, EventMessageUpdated, m)
 }
 
 // Typing publishes a typing indicator for a known conversation.
-func (in *Ingest) Typing(accountID, conversationRemoteID, name string, active bool) {
-	if conv, err := in.repo.ConversationByRemote(accountID, conversationRemoteID); err == nil {
-		in.pub.send("typing", typingEvent{ConversationID: conv.ID, Name: name, Active: active})
+func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, name string, active bool) {
+	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
+	if err != nil {
+		return
+	}
+
+	in.events.publish(ctx, EventTyping, Typing{ConversationID: conv.ID, Name: name, Active: active})
+}
+
+// save stores a message in a known conversation. ok is false when the
+// conversation is unknown, storing fails or the message is a duplicate.
+// before is the unread total before the message was stored.
+func (in *Ingest) save(ctx context.Context, accountID, remoteID string, m domain.Message) (_ domain.Conversation, _ domain.Message, before int, ok bool) {
+	conv, err := in.store.ConversationByRemote(ctx, accountID, remoteID)
+	if err != nil {
+		return conv, m, 0, false
+	}
+
+	m.ConversationID = conv.ID
+	if m.Created == 0 {
+		m.Created = time.Now().UnixMilli()
+	}
+
+	before = in.events.unreadTotal(ctx)
+	m, inserted, err := in.store.AddMessage(ctx, m)
+
+	return conv, m, before, err == nil && inserted
+}
+
+// arrival describes a live message arriving under the current UI state.
+func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Input {
+	settings, focused, windowActive := in.ui.snapshot()
+
+	return policy.Input{
+		Notifications: settings.Notifications,
+		Preview:       settings.NotificationPreview,
+		Muted:         conv.Muted,
+		Focused:       focused == conv.ID,
+		WindowActive:  windowActive,
+		Kind:          conv.Kind,
+		Sender:        m.SenderName,
+		Title:         conv.Title,
+		Text:          m.Text,
 	}
 }

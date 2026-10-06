@@ -1,12 +1,14 @@
 package store
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 )
 
-// migrations are applied in order; PRAGMA user_version records progress.
-// Never edit a released migration: append a new one.
+// migrations are applied in order, and PRAGMA user_version records how many
+// have run. Never edit a released migration: append a new one.
 var migrations = []string{
 	`CREATE TABLE accounts(
 		id TEXT PRIMARY KEY,
@@ -47,31 +49,49 @@ var migrations = []string{
 	CREATE INDEX messages_timeline ON messages(conversation_id, created);`,
 }
 
-// schemaVersion is the version a freshly opened store reports.
-var schemaVersion = len(migrations)
+// ErrSchemaTooNew reports a database written by a newer helper. Opening it
+// would risk losing data, so the helper refuses.
+var ErrSchemaTooNew = errors.New("database schema is newer than this helper supports")
 
-func (s *Store) migrate() error {
+// migrate brings db up to date with steps, one transaction per step, so a
+// failed step leaves the schema at the last good version.
+func migrate(ctx context.Context, db *sql.DB, steps []string) error {
 	var version int
-	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
+
+	if version > len(steps) {
+		return fmt.Errorf("%w: found %d, supported %d", ErrSchemaTooNew, version, len(steps))
+	}
+
+	for i := version; i < len(steps); i++ {
+		if err := applyStep(ctx, db, i+1, steps[i]); err != nil {
+			return fmt.Errorf("migration %d: %w", i+1, err)
+		}
+	}
+
+	return nil
+}
+
+// applyStep runs one migration and records its version atomically.
+func applyStep(ctx context.Context, db *sql.DB, version int, step string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
 	}
-	if version > len(migrations) {
-		return fmt.Errorf("database schema %d is newer than this helper supports (%d)", version, len(migrations))
+
+	// Rollback after a successful Commit is a no-op that returns
+	// sql.ErrTxDone, so its error carries no information.
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, step); err != nil {
+		return err
 	}
-	for i := version; i < len(migrations); i++ {
-		tx, err := s.db.Begin()
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(migrations[i]); err != nil {
-			return fmt.Errorf("migration %d: %w", i+1, errors.Join(err, tx.Rollback()))
-		}
-		if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version=%d`, i+1)); err != nil {
-			return errors.Join(err, tx.Rollback())
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
+
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version=%d`, version)); err != nil {
+		return err
 	}
-	return nil
+
+	return tx.Commit()
 }

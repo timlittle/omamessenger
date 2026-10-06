@@ -1,48 +1,54 @@
-// Package connector defines the provider-neutral boundary between messaging
-// services and OmaMessenger's application layer.
+// Package connector is the boundary between messaging services and the
+// application. A Connector speaks one service's protocol and reports
+// normalized updates to a Sink; the Manager runs and supervises connectors.
 package connector
 
 import (
 	"context"
-	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// Clock makes connector timing deterministic in tests.
-type Clock interface {
-	Now() time.Time
-	AfterFunc(time.Duration, func()) (stop func() bool)
-}
-
-// Sink receives normalized account and messaging updates from a Connector.
-type Sink interface {
-	AccountStatus(accountID, status, detail string)
-	Contact(c domain.Contact)
-	Conversation(c domain.Conversation)
-	Incoming(accountID, conversationRemoteID string, m domain.Message)
-	OutgoingStatus(localMessageID, remoteID, status string)
-	Typing(accountID, conversationRemoteID, name string, active bool)
-}
-
-// HistorySink is an optional extension used for initial/backfilled messages.
-// Implementations persist messages without applying live-notification policy.
-type HistorySink interface {
-	History(accountID, conversationRemoteID string, m domain.Message)
-}
-
-// AccountStore is the persistence the Manager needs: it records each
-// connector's account before the connector runs. Declared here, by the
-// consumer, so the connector layer does not depend on the store package.
-type AccountStore interface {
-	UpsertAccount(domain.Account) error
-}
-
-// Connector adapts one authenticated messaging account to the normalized
-// domain. Run blocks until its context is canceled or the connection fails.
+// Connector adapts one signed-in messaging account to the normalized domain.
+// Send and MarkRead return quickly; progress is reported through the Sink.
 type Connector interface {
+	// Account describes the account this connector serves.
 	Account() domain.Account
+
+	// Run connects and reports updates to sink until ctx is cancelled or
+	// the connection fails.
 	Run(ctx context.Context, sink Sink) error
+
+	// Send delivers an outgoing message.
 	Send(ctx context.Context, conv domain.Conversation, m domain.Message) error
+
+	// MarkRead tells the service the user has read a conversation.
 	MarkRead(ctx context.Context, conv domain.Conversation) error
+}
+
+// Sink receives normalized updates from a running Connector. It has one
+// method per kind of update so that connectors stay free of any protocol
+// or storage detail.
+type Sink interface {
+	// AccountStatus reports a change in the account's connection state.
+	AccountStatus(ctx context.Context, accountID, status, detail string)
+
+	// Contact reports a contact, new or renamed.
+	Contact(ctx context.Context, c domain.Contact)
+
+	// Conversation reports a conversation, new or changed.
+	Conversation(ctx context.Context, c domain.Conversation)
+
+	// Incoming reports a live message, which may notify the user.
+	Incoming(ctx context.Context, accountID, conversationRemoteID string, m domain.Message)
+
+	// History reports an earlier message, which never notifies.
+	History(ctx context.Context, accountID, conversationRemoteID string, m domain.Message)
+
+	// OutgoingStatus reports delivery progress of a message we sent, with
+	// the service's id for it once known.
+	OutgoingStatus(ctx context.Context, localMessageID, remoteID, status string)
+
+	// Typing reports that someone started or stopped typing.
+	Typing(ctx context.Context, accountID, conversationRemoteID, name string, active bool)
 }

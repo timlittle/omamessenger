@@ -1,97 +1,135 @@
+// Command oma-messenger-service is OmaMessenger's helper. Omarchy's shell
+// starts it and talks JSON-RPC to it over stdin and stdout; it keeps the
+// message database and runs the connectors for each messaging service.
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/timlittle/omamessenger/backend/internal/api"
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/demo"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
-	"github.com/timlittle/omamessenger/backend/internal/rpc"
+	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
-func main() { // coverage-ignore: process entry point; run() is tested
+// main runs the helper until the UI disconnects or it receives SIGTERM.
+func main() { // coverage-ignore: process entry point; run is tested
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := run(ctx, ioStreams{in: os.Stdin, out: os.Stdout, errOut: os.Stderr}, os.Args[1:], os.Getenv); err != nil {
+
+	streams := streams{in: os.Stdin, out: os.Stdout, errOut: os.Stderr}
+	if err := run(ctx, streams, os.Args[1:], os.Getenv); err != nil {
 		fmt.Fprintln(os.Stderr, "OmaMessenger helper:", err)
 		os.Exit(1)
 	}
 }
 
-// ioStreams are the helper's protocol input, protocol output and log output.
-type ioStreams struct {
+// streams are the protocol input and output and the log output.
+type streams struct {
 	in     io.Reader
 	out    io.Writer
 	errOut io.Writer
 }
 
-// run resolves the configuration and serves the protocol until stdin ends or
-// ctx is canceled (SIGTERM), which are both a clean exit.
-func run(ctx context.Context, streams ioStreams, args []string, env func(string) string) error {
+// run reads the configuration and serves the UI until it disconnects or ctx
+// is cancelled; both are a clean exit.
+func run(ctx context.Context, s streams, args []string, env func(string) string) error {
 	cfg, err := resolveConfig(args, env)
 	if err != nil {
 		return err
 	}
-	if cfg.Version {
-		_, err := fmt.Fprintln(streams.out, helperVersion)
+
+	if cfg.version {
+		_, err := fmt.Fprintln(s.out, helperVersion)
 		return err
 	}
-	return serve(ctx, cfg, streams)
+
+	return serve(ctx, cfg, s)
 }
 
-func serve(parent context.Context, cfg Config, streams ioStreams) error {
-	db, err := store.Open(cfg.DBPath)
+// serve opens the database, wires the application and serves the UI.
+func serve(ctx context.Context, cfg config, s streams) error {
+	db, err := store.Open(ctx, cfg.dbPath)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer db.Close()
-	ctx, cancel := context.WithCancel(parent)
-	stream := rpc.NewStream(streams.out)
-	commands, manager := wire(cfg, db, stream)
-	if err := manager.Start(ctx); err != nil {
-		cancel()
-		return fmt.Errorf("start connectors: %w", err)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	logger := log.New(s.errOut, "", 0)
+	srv := server.New(helperVersion, logger)
+
+	commands, ingest, manager, err := wire(cfg, db, srv)
+	if err != nil {
+		return err
 	}
-	// Stop the connectors before waiting for them, on every return path.
+
+	// Serve before the connectors start, so the UI sees their first events.
+	// On every return, stop the connectors and finish requests in progress
+	// before the database closes.
+	srv.Start(ctx, stdio{s.in, s.out}, commands)
 	defer func() {
 		cancel()
+		srv.Wait()
 		manager.Wait()
 	}()
-	log.New(streams.errOut, "", 0).Printf("OmaMessenger helper %s started (demo: %t)", helperVersion, cfg.Demo)
-	if err := rpc.Serve(ctx, streams.in, stream, api.Register(commands), api.Code); err != nil && !errors.Is(err, context.Canceled) {
-		return fmt.Errorf("serve local API: %w", err)
+
+	if err := manager.Start(ctx, db, ingest); err != nil && ctx.Err() == nil {
+		return fmt.Errorf("start connectors: %w", err)
 	}
+
+	logger.Printf("OmaMessenger helper %s started (demo: %t)", helperVersion, cfg.demo)
+	srv.Wait()
+
 	return nil
 }
 
-// wire builds the application and the connector Manager around db, with
-// events written to stream. Only demo connectors exist so far.
-func wire(cfg Config, db *store.Store, stream *rpc.Stream) (*app.Commands, *connector.Manager) {
-	clock := connector.RealClock{}
-	appConfig := app.Config{
-		Repo: db, Notifier: notify.Desktop{}, Clock: clock, Version: helperVersion, Demo: cfg.Demo,
-		Emit: func(name string, data any) { _ = stream.Emit(name, data) },
-	}
+// wire builds the application around db and srv. Only the demo connectors
+// exist so far, so a real session runs with no connectors.
+func wire(cfg config, db *store.Store, srv *server.Server) (*app.Commands, *app.Ingest, *connector.Manager, error) {
+	deps := app.Deps{Store: db, Notifier: notify.Desktop{}, Publisher: srv}
+
 	var connectors []connector.Connector
-	if cfg.Demo {
-		connectors = demo.New(clock, rand.New(rand.NewSource(cfg.Seed)), cfg.Chatter)
-		injector := demo.NewInjector(connectors...)
-		appConfig.DemoInject = injector
-		appConfig.SetChatter = injector.SetChatter
+	if cfg.demo {
+		suite := demo.New(cfg.seed, cfg.chatter)
+		connectors = suite.Connectors()
+		deps.Demo = suite
 	}
-	commands, ingest := app.New(appConfig)
-	manager := &connector.Manager{Store: db, Sink: ingest, Clock: clock, Connectors: connectors}
-	commands.AttachDispatcher(manager)
-	return commands, manager
+
+	manager, err := connector.NewManager(connectors...)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	deps.Dispatcher = manager
+	commands, ingest := app.New(deps)
+
+	return commands, ingest, manager, nil
+}
+
+// stdio joins the helper's stdin and stdout into one connection.
+type stdio struct {
+	io.Reader
+	io.Writer
+}
+
+// Close closes stdin when it can be closed, which unblocks a pending read
+// in tests. A blocked read on a real pipe is not interrupted, but the
+// process is exiting by then.
+func (s stdio) Close() error {
+	if c, ok := s.Reader.(io.Closer); ok {
+		return c.Close()
+	}
+
+	return nil
 }

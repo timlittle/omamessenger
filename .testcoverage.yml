@@ -1,5 +1,4 @@
-# Per-package statement coverage gates (C9 in docs/TASKS.md).
-# `make test-go` writes the profile and runs go-test-coverage against this.
+# Statement coverage gates per package, checked by `make test-go`.
 profile: build/cover.out
 threshold:
   package: 90

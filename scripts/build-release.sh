@@ -13,7 +13,7 @@ mkdir -p "$out"
 for arch in amd64 arm64; do
     printf 'Building Linux %s helper...\n' "$arch"
     CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-        go build -mod=vendor -trimpath -buildvcs=false -ldflags='-s -w' \
+        go build -trimpath -buildvcs=false -ldflags='-s -w' \
         -o "$out/oma-messenger-service-linux-$arch" ./backend
 done
 (cd "$out" && sha256sum oma-messenger-service-linux-* > SHA256SUMS)

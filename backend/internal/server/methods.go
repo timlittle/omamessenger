@@ -1,0 +1,221 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/domain"
+)
+
+// method decodes a request's params and runs it.
+type method func(ctx context.Context, params json.RawMessage) (any, error)
+
+// bind adapts a handler taking typed params to a method.
+func bind[P any](handle func(ctx context.Context, p P) (any, error)) method {
+	return func(ctx context.Context, raw json.RawMessage) (any, error) {
+		var p P
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return nil, fmt.Errorf("%w: %w", errBadParams, err)
+		}
+
+		return handle(ctx, p)
+	}
+}
+
+// methods is the protocol's method table. demo.inject exists only in demo
+// mode, so a real session answers it as an unknown method.
+func methods(c *app.Commands, version string) map[string]method {
+	table := map[string]method{
+		"hello":                  bind(hello(c, version)),
+		"accounts.list":          bind(accountsList(c)),
+		"contacts.list":          bind(contactsList(c)),
+		"conversations.list":     bind(conversationsList(c)),
+		"conversations.open":     bind(conversationsOpen(c)),
+		"conversations.markRead": bind(conversationsMarkRead(c)),
+		"conversations.setMuted": bind(conversationsSetMuted(c)),
+		"messages.list":          bind(messagesList(c)),
+		"messages.send":          bind(messagesSend(c)),
+		"messages.retry":         bind(messagesRetry(c)),
+		"ui.setFocus":            bind(uiSetFocus(c)),
+		"settings.apply":         bind(settingsApply(c)),
+	}
+
+	if c.DemoMode() {
+		table["demo.inject"] = bind(demoInject(c))
+	}
+
+	return table
+}
+
+// none is the params of a method that takes none, and the result of one
+// that returns nothing; it encodes as {}.
+type none struct{}
+
+// helloResult describes the helper to the UI when it connects.
+type helloResult struct {
+	Protocol    int    `json:"protocol"`
+	Version     string `json:"version"`
+	Demo        bool   `json:"demo"`
+	UnreadTotal int    `json:"unreadTotal"`
+}
+
+// hello reports the protocol version, the helper version, demo mode and the
+// unread total.
+func hello(c *app.Commands, version string) func(context.Context, none) (any, error) {
+	return func(ctx context.Context, _ none) (any, error) {
+		return helloResult{Protocol: Protocol, Version: version, Demo: c.DemoMode(), UnreadTotal: c.UnreadTotal(ctx)}, nil
+	}
+}
+
+// accountsList lists the signed-in accounts.
+func accountsList(c *app.Commands) func(context.Context, none) (any, error) {
+	return func(ctx context.Context, _ none) (any, error) {
+		return c.Accounts(ctx)
+	}
+}
+
+// contactsParams selects contacts of one account by name.
+type contactsParams struct {
+	AccountID string `json:"accountId"`
+	Query     string `json:"query"`
+}
+
+// contactsList lists an account's contacts matching a query.
+func contactsList(c *app.Commands) func(context.Context, contactsParams) (any, error) {
+	return func(ctx context.Context, p contactsParams) (any, error) {
+		return c.Contacts(ctx, p.AccountID, p.Query)
+	}
+}
+
+// conversationsParams filters the conversation list.
+type conversationsParams struct {
+	Query string `json:"query"`
+}
+
+// conversationsList lists conversations, newest first.
+func conversationsList(c *app.Commands) func(context.Context, conversationsParams) (any, error) {
+	return func(ctx context.Context, p conversationsParams) (any, error) {
+		return c.Conversations(ctx, p.Query)
+	}
+}
+
+// openParams names a contact to chat with.
+type openParams struct {
+	AccountID string `json:"accountId"`
+	ContactID string `json:"contactId"`
+}
+
+// conversationsOpen returns the direct conversation with a contact.
+func conversationsOpen(c *app.Commands) func(context.Context, openParams) (any, error) {
+	return func(ctx context.Context, p openParams) (any, error) {
+		return c.OpenConversation(ctx, p.AccountID, p.ContactID)
+	}
+}
+
+// conversationParams names one conversation.
+type conversationParams struct {
+	ConversationID string `json:"conversationId"`
+}
+
+// conversationsMarkRead marks a conversation read.
+func conversationsMarkRead(c *app.Commands) func(context.Context, conversationParams) (any, error) {
+	return func(ctx context.Context, p conversationParams) (any, error) {
+		return none{}, c.MarkRead(ctx, p.ConversationID)
+	}
+}
+
+// mutedParams mutes or unmutes a conversation.
+type mutedParams struct {
+	ConversationID string `json:"conversationId"`
+	Muted          bool   `json:"muted"`
+}
+
+// conversationsSetMuted mutes or unmutes a conversation.
+func conversationsSetMuted(c *app.Commands) func(context.Context, mutedParams) (any, error) {
+	return func(ctx context.Context, p mutedParams) (any, error) {
+		return c.SetMuted(ctx, p.ConversationID, p.Muted)
+	}
+}
+
+// messagesParams selects a page of messages.
+type messagesParams struct {
+	ConversationID string `json:"conversationId"`
+	Before         string `json:"before"`
+	Limit          int    `json:"limit"`
+}
+
+// messagesResult is a page of messages, oldest first.
+type messagesResult struct {
+	Messages []domain.Message `json:"messages"`
+	HasMore  bool             `json:"hasMore"`
+}
+
+// messagesList returns a page of a conversation's messages.
+func messagesList(c *app.Commands) func(context.Context, messagesParams) (any, error) {
+	return func(ctx context.Context, p messagesParams) (any, error) {
+		page, more, err := c.Messages(ctx, p.ConversationID, p.Before, p.Limit)
+		return messagesResult{Messages: page, HasMore: more}, err
+	}
+}
+
+// sendParams is a message to send.
+type sendParams struct {
+	ConversationID string `json:"conversationId"`
+	Text           string `json:"text"`
+}
+
+// messagesSend sends a message.
+func messagesSend(c *app.Commands) func(context.Context, sendParams) (any, error) {
+	return func(ctx context.Context, p sendParams) (any, error) {
+		return c.Send(ctx, p.ConversationID, p.Text)
+	}
+}
+
+// retryParams names a failed message.
+type retryParams struct {
+	MessageID string `json:"messageId"`
+}
+
+// messagesRetry sends a failed message again.
+func messagesRetry(c *app.Commands) func(context.Context, retryParams) (any, error) {
+	return func(ctx context.Context, p retryParams) (any, error) {
+		return c.Retry(ctx, p.MessageID)
+	}
+}
+
+// focusParams says which conversation the user is looking at.
+type focusParams struct {
+	ConversationID string `json:"conversationId"`
+	WindowActive   bool   `json:"windowActive"`
+}
+
+// uiSetFocus records which conversation the user is looking at.
+func uiSetFocus(c *app.Commands) func(context.Context, focusParams) (any, error) {
+	return func(ctx context.Context, p focusParams) (any, error) {
+		return none{}, c.SetFocus(ctx, p.ConversationID, p.WindowActive)
+	}
+}
+
+// settingsParams are the plugin settings.
+type settingsParams struct {
+	Notifications       bool `json:"notifications"`
+	NotificationPreview bool `json:"notificationPreview"`
+	DemoChatter         bool `json:"demoChatter"`
+}
+
+// settingsApply replaces the user's settings.
+func settingsApply(c *app.Commands) func(context.Context, settingsParams) (any, error) {
+	return func(_ context.Context, p settingsParams) (any, error) {
+		c.ApplySettings(app.Settings(p))
+		return none{}, nil
+	}
+}
+
+// demoInject delivers a scripted demo message into a conversation.
+func demoInject(c *app.Commands) func(context.Context, conversationParams) (any, error) {
+	return func(ctx context.Context, p conversationParams) (any, error) {
+		return c.Inject(ctx, p.ConversationID)
+	}
+}

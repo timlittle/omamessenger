@@ -26,7 +26,7 @@ jobs:
           cache: false
 
       - name: Test
-        run: go test -mod=vendor -race ./backend/...
+        run: go test -race ./...
 
       - name: Build helpers and SHA256SUMS
         run: ./scripts/build-release.sh

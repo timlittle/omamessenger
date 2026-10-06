@@ -5,64 +5,124 @@
 package store
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
+	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
-	_ "modernc.org/sqlite"
+	"github.com/timlittle/omamessenger/backend/internal/domain"
+	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 )
 
-type Store struct{ db *sql.DB }
+// Store is the SQLite database holding accounts, contacts, conversations
+// and messages. It is safe for concurrent use.
+type Store struct {
+	db *sql.DB
+}
 
-// Open creates the database (owner-only) and applies pending migrations.
-func Open(path string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
+// Open creates the database file and its directory, readable only by the
+// owner, and applies any pending migrations.
+func Open(ctx context.Context, path string) (*Store, error) {
+	if err := createPrivateFile(path); err != nil {
+		return nil, fmt.Errorf("store: create %s: %w", path, err)
 	}
-	if f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600); err != nil {
-		return nil, err
-	} else {
-		f.Close()
-	}
+
 	dsn := "file:" + (&url.URL{Path: path}).EscapedPath() +
 		"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store: open: %w", err)
 	}
+
+	// SQLite allows one writer; a single connection avoids "database is
+	// locked" errors between our own goroutines.
 	db.SetMaxOpenConns(1)
-	s := &Store{db}
-	if err := s.migrate(); err != nil {
-		db.Close()
-		return nil, err
+
+	if err := migrate(ctx, db, migrations); err != nil {
+		return nil, errors.Join(fmt.Errorf("store: %w", err), db.Close())
 	}
-	return s, nil
+
+	return &Store{db: db}, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+// Close closes the database.
+func (s *Store) Close() error {
+	return s.db.Close()
+}
 
-// newID returns a random identifier with a readable prefix.
+// createPrivateFile makes sure path exists with owner-only permissions
+// before SQLite opens it, because SQLite would create it world-readable.
+func createPrivateFile(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+
+	return f.Close()
+}
+
+// wrap turns sql.ErrNoRows into domain.ErrNotFound and wraps any other
+// error with the operation name.
+func wrap(op string, err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, sql.ErrNoRows):
+		return fmt.Errorf("store: %s: %w", op, domain.ErrNotFound)
+	default:
+		return fmt.Errorf("store: %s: %w", op, err)
+	}
+}
+
+// rowsChanged reports whether a statement changed any rows.
+func rowsChanged(op string, res sql.Result) (bool, error) {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("store: %s: %w", op, err)
+	}
+
+	return n > 0, nil
+}
+
+// requireRow returns domain.ErrNotFound when a statement changed no rows.
+func requireRow(op string, res sql.Result) error {
+	changed, err := rowsChanged(op, res)
+	if err != nil || changed {
+		return err
+	}
+
+	return fmt.Errorf("store: %s: %w", op, domain.ErrNotFound)
+}
+
+// newID returns a random identifier with a readable prefix, such as
+// "m_4ZQ3…" for a message.
 func newID(prefix string) string {
-	raw := make([]byte, 8)
-	if _, err := rand.Read(raw); err != nil {
-		panic(err)
-	}
-	return prefix + "_" + hex.EncodeToString(raw)
+	return prefix + "_" + rand.Text()
 }
 
+// boolInt converts a bool to SQLite's integer form.
 func boolInt(v bool) int {
 	if v {
 		return 1
 	}
+
 	return 0
 }
 
-// escapeLike makes user input literal inside a LIKE pattern using '\' as the
-// escape character.
-func escapeLike(q string) string {
-	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q)
+// likePattern turns user input into a LIKE pattern that matches it anywhere,
+// treating '%' and '_' literally. Queries must say ESCAPE '\'.
+func likePattern(query string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.TrimSpace(query))
+
+	return "%" + escaped + "%"
 }
