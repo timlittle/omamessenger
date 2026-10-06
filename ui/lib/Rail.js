@@ -121,3 +121,19 @@ function statusLabel(status) {
 
   return STATUS_LABELS[status] ?? status.charAt(0).toUpperCase() + status.slice(1);
 }
+
+// accountNames maps each account id to its name, for rows that show it.
+function accountNames(accounts) {
+  const names = {};
+  for (const a of accounts ?? []) {
+    names[a.id] = a.name;
+  }
+
+  return names;
+}
+
+// multiAccountServices lists the services the rail split into per-account
+// entries: exactly the services with more than one account.
+function multiAccountServices(items) {
+  return [...new Set(items.filter((i) => i.kind === 'account').map((i) => i.service))];
+}

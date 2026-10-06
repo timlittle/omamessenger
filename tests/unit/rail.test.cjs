@@ -296,3 +296,19 @@ test('statusLabel names each status in words', () => {
   assert.strictEqual(Rail.statusLabel('connecting'), 'Connecting');
   assert.strictEqual(Rail.statusLabel(''), '');
 });
+
+test('accountNames maps each account id to its name', () => {
+  const accounts = [{ id: 'a1', name: 'Personal' }, { id: 'a2', name: 'Work' }];
+
+  assert.deepEqual(Rail.accountNames(accounts), { a1: 'Personal', a2: 'Work' });
+  assert.deepEqual(Rail.accountNames(null), {});
+});
+
+test('multiAccountServices lists the services the rail split by account', () => {
+  const items = [
+    { kind: 'all' }, { kind: 'service', service: 'telegram' },
+    { kind: 'account', service: 'telegram' }, { kind: 'account', service: 'telegram' }
+  ];
+
+  assert.deepEqual(Rail.multiAccountServices(items), ['telegram']);
+});

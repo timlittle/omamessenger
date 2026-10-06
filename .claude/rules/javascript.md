@@ -1,6 +1,6 @@
 ## JavaScript (`ui/lib`)
 
-QML's JS engine supports modern ECMAScript (ES2016+), so write current JS: `const`/`let`, arrow functions, template literals, destructuring, spread, `Array.prototype.includes`, optional chaining.
+QML's JS engine supports modern ECMAScript (ES2016+), so write current JS: `const`/`let`, arrow functions, template literals, destructuring, spread, `Array.prototype.includes`, optional chaining. It lacks some newer built-ins that node has, such as `Object.fromEntries`: the node tests pass while the UI throws, so check the offscreen QML tests too
 
 - Every file starts with `.pragma library` so QML shares one instance and the file cannot reach into QML scope
 - Pure functions only: input in, value out. No QML objects, no timers, no I/O. Anything stateful belongs in `ui/service` or a controller

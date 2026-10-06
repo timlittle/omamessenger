@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
+import "../lib/Rail.js" as Rail
 
 // The three columns and the overlays that make up the OmaMessenger window:
 // the service rail, the search field and conversation list, and the open
@@ -56,24 +57,6 @@ Item {
   // _showList and _showConversation pick the columns a narrow window shows.
   readonly property bool _showList: !root.narrow || root.conversationController.pane !== "conversation"
   readonly property bool _showConversation: !root.narrow || root.conversationController.pane === "conversation"
-
-  // _accountNames maps an account id to its name, for rows that show it.
-  function _accountNames(): var {
-    const map = {}
-    const accounts = root.service ? root.service.accounts : []
-    for (const a of accounts) map[a.id] = a.name
-    return map
-  }
-
-  // _multiAccountServices lists the services the rail split into per-account
-  // entries, which is exactly the services with more than one account.
-  function _multiAccountServices(): var {
-    const set = new Set()
-    for (const item of root.listController.railItems) {
-      if (item.kind === "account") set.add(item.service)
-    }
-    return Array.from(set)
-  }
 
   // _openRow opens the conversation a list row or a dialog contact chose.
   function _openRow(id: string): void {
@@ -226,8 +209,8 @@ Item {
         selectedId: root.listController.selectedId
         query: root.listController.query
         nowMs: root.nowMs
-        accountNames: root._accountNames()
-        multiAccountServices: root._multiAccountServices()
+        accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
+        multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
 
         onActivated: id => root._openRow(id)
       }
