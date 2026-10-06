@@ -80,11 +80,32 @@ test('runtime errors keep a useful file name and line number', () => {
   assert.throws(
     () => thrower.boom(),
     (err) => {
-      // new Function wraps the body in a 2-line header, so the reported
-      // line is the original line number plus that fixed offset.
-      const expected = new RegExp(escapeRegExp(file) + ':' + (throwLine + 2) + ':');
+      // vm.Script runs with { filename: absPath }, so the stack trace
+      // reports the real file and the exact original line, no offset.
+      const expected = new RegExp(escapeRegExp(file) + ':' + throwLine + ':');
       assert.match(err.stack, expected);
       return true;
     }
   );
+});
+
+test('a var initializer with a comma (object literal) exports only its own name', () => {
+  // Regression: a naive "split the var statement on commas" scanner would
+  // also "export" Tab from `var KEY = { Escape: 1, Tab: 2 }`.
+  const mod = load('lib/ObjectLiteralVar.js', { root: FIXTURES });
+  assert.deepEqual(Object.keys(mod), ['KEY']);
+  // mod.KEY is an object from the vm context's own realm, so it fails
+  // deepStrictEqual's prototype check against a plain object literal here;
+  // comparing its own properties is what we actually care about.
+  assert.deepEqual(Object.keys(mod.KEY).sort(), ['Escape', 'Tab']);
+  assert.equal(mod.KEY.Escape, 1);
+  assert.equal(mod.KEY.Tab, 2);
+});
+
+test('a var initializer with a call whose args contain a comma exports only its own name', () => {
+  // Regression: a naive scanner would also "export" the second arg name
+  // from `var x = f(a, b)`.
+  const mod = load('lib/CallArgsVar.js', { root: FIXTURES });
+  assert.deepEqual(Object.keys(mod).sort(), ['f', 'x']);
+  assert.equal(mod.x, 3);
 });

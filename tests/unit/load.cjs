@@ -1,15 +1,16 @@
 // load() reads a QML library file the way the Quickshell/QML engine would:
 // it strips the `.pragma library` line, resolves `.import "X.js" as X`
 // statements recursively (each import is relative to the *importing*
-// file's own directory, not the root), evaluates the result with
-// `new Function`, and returns every top-level `function` and `var`
-// declaration as a plain object. See docs/TASKS.md C8/C9 for the rules
-// this is testing: `ui/lib/*.js` files are `.pragma library`, ES5-only,
-// and declare only top-level `function`/`var` names.
+// file's own directory, not the root), runs the result in a fresh `vm`
+// context, and returns every top-level `function` and `var` declaration
+// as a plain object. See docs/TASKS.md C8/C9 for the rules this is
+// testing: `ui/lib/*.js` files are `.pragma library`, ES5-only, and
+// declare only top-level `function`/`var` names.
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const DEFAULT_ROOT = path.join(__dirname, '..', '..', 'ui');
 
@@ -42,27 +43,32 @@ function loadModule(absPath, label, cache, chain) {
   const nextChain = chain.concat(absPath);
   const { stripped, imports } = stripDirectives(source);
 
-  const paramNames = imports.map((imp) => imp.alias);
-  const paramValues = imports.map((imp) => {
+  // Each import's exports object is bound into the new module's global
+  // object under its alias, exactly as `.import "X.js" as X` makes `X`
+  // available at the top of the importing file.
+  const sandbox = {};
+  for (const imp of imports) {
     const importedAbsPath = path.resolve(path.dirname(absPath), imp.target);
-    return loadModule(importedAbsPath, imp.target, cache, nextChain);
-  });
+    sandbox[imp.alias] = loadModule(importedAbsPath, imp.target, cache, nextChain);
+  }
+  const preseededKeys = new Set(Object.keys(sandbox));
 
-  const names = topLevelNames(stripped);
-  const returnExpr = '{' + names.map((n) => JSON.stringify(n) + ': ' + n).join(', ') + '}';
-  // `//# sourceURL=` makes V8 report `absPath` (not `<anonymous>`) in stack
-  // traces. `new Function` always prepends a 2-line header ("function
-  // anonymous(params\n) {\n") before the body, so a runtime error on body
-  // line N is reported at line N + 2 — a fixed, predictable offset.
-  const body = stripped + '\nreturn ' + returnExpr + ';\n//# sourceURL=' + absPath;
-
-  let exportsObj;
+  // Running the stripped source as a vm.Script against a fresh context
+  // makes every top-level `var`/`function` declaration a real own
+  // property of that context's global object — correct by construction,
+  // unlike scanning the source text for declarations. `filename` keeps
+  // runtime error stack traces pointing at the real file and line.
+  const context = vm.createContext(sandbox);
   try {
-    const fn = new Function(...paramNames, body);
-    exportsObj = fn(...paramValues);
+    new vm.Script(stripped, { filename: absPath }).runInContext(context);
   } catch (err) {
     err.message = 'In ' + absPath + ': ' + err.message;
     throw err;
+  }
+
+  const exportsObj = {};
+  for (const key of Object.keys(context)) {
+    if (!preseededKeys.has(key)) exportsObj[key] = context[key];
   }
 
   cache.set(absPath, exportsObj);
@@ -104,92 +110,6 @@ function stripDirectives(source) {
   }
 
   return { stripped: lines.join('\n'), imports };
-}
-
-// topLevelNames scans `source` for `function name(...)` and `var name`
-// (including comma lists, `var a, b`) declarations that sit outside any
-// `{ ... }` block — the only two kinds of top-level declaration C8 allows
-// in `ui/lib/*.js`. String and comment contents are skipped so braces or
-// the words "function"/"var" inside them are never mistaken for code.
-function topLevelNames(source) {
-  const names = [];
-  let depth = 0;
-  let i = 0;
-  const n = source.length;
-
-  while (i < n) {
-    const ch = source[i];
-
-    if (ch === '"' || ch === "'") {
-      i = skipString(source, i);
-      continue;
-    }
-    if (ch === '/' && source[i + 1] === '/') {
-      i = indexOfOr(source, '\n', i, n);
-      continue;
-    }
-    if (ch === '/' && source[i + 1] === '*') {
-      i = indexOfOr(source, '*/', i + 2, n) + 2;
-      continue;
-    }
-    if (ch === '{') {
-      depth++;
-      i++;
-      continue;
-    }
-    if (ch === '}') {
-      depth--;
-      i++;
-      continue;
-    }
-
-    if (depth === 0 && keywordAt(source, i, 'function')) {
-      const m = /^\s+([A-Za-z_$][\w$]*)/.exec(source.slice(i + 8, i + 208));
-      if (m) names.push(m[1]);
-      i += 8;
-      continue;
-    }
-    if (depth === 0 && keywordAt(source, i, 'var')) {
-      const end = indexOfOr(source, ';', i + 3, n);
-      for (const part of source.slice(i + 3, end).split(',')) {
-        const m = /^\s*([A-Za-z_$][\w$]*)/.exec(part);
-        if (m) names.push(m[1]);
-      }
-      i = end + 1;
-      continue;
-    }
-    i++;
-  }
-
-  return names;
-}
-
-// indexOfOr is `source.indexOf(needle, from)`, defaulting to `end` (the
-// string length) when the needle never appears, so callers never have to
-// special-case an unterminated comment, string or statement.
-function indexOfOr(source, needle, from, end) {
-  const at = source.indexOf(needle, from);
-  return at === -1 ? end : at;
-}
-
-// skipString returns the index just past the string literal that starts
-// at `start` (which must point at the opening quote).
-function skipString(source, start) {
-  const quote = source[start];
-  let i = start + 1;
-  while (i < source.length && source[i] !== quote) {
-    i += source[i] === '\\' ? 2 : 1;
-  }
-  return i + 1;
-}
-
-// keywordAt reports whether `word` starts at index `i` on a word
-// boundary, so `var` doesn't match inside `variable` or `myvar`.
-function keywordAt(source, i, word) {
-  if (!source.startsWith(word, i)) return false;
-  const before = source[i - 1];
-  const after = source[i + word.length];
-  return !/[\w$]/.test(before || '') && !/[\w$]/.test(after || '');
 }
 
 module.exports = { load };
