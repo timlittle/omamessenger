@@ -50,6 +50,7 @@ const cases = [
   ['conversation', KEY.Return, 0, '\r', 'compose.focus'],
   ['conversation', letter('h'), 0, 'h', 'pane.list'],
   ['conversation', letter('r'), 0, 'r', 'message.retry'],
+  ['conversation', letter('r'), MOD.Shift, 'R', 'message.reply'],
 
   ['compose', KEY.Return, 0, '\r', 'message.send'],
   ['compose', KEY.Return, MOD.Shift, '\r', ''],

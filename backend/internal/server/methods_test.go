@@ -91,6 +91,22 @@ func TestMethods_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestMessagesSend_WithReplyToQuotesTheOriginalMessage(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+
+	original, err := call[domain.Message](t, s, "messages.send", map[string]string{"conversationId": "chat", "text": "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reply, err := call[domain.Message](t, s, "messages.send", map[string]string{"conversationId": "chat", "text": "sure", "replyTo": original.ID})
+	if err != nil || reply.ReplyTo == nil || reply.ReplyTo.Text != "hi" {
+		t.Errorf("messages.send with replyTo = %+v, %v", reply, err)
+	}
+}
+
 func TestAccountsAdd_AcceptsAGeneralOptionsObject(t *testing.T) {
 	t.Parallel()
 

@@ -123,6 +123,24 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 	}
 }
 
+func TestMessage_ReportsTheMessageItReplies(t *testing.T) {
+	t.Parallel()
+
+	header := &tg.MessageReplyHeader{}
+	header.SetReplyToMsgID(7)
+	withReply := &tg.Message{ID: 20, Date: 1, Message: "sure", PeerID: &tg.PeerUser{UserID: 42}, ReplyTo: header}
+
+	got := message(withReply, testEntities())
+	if got.ReplyTo == nil || got.ReplyTo.RemoteID != "7" {
+		t.Fatalf("message.ReplyTo = %+v, want it to quote remote id 7", got.ReplyTo)
+	}
+
+	plain := message(&tg.Message{ID: 21, Date: 1, Message: "hi", PeerID: &tg.PeerUser{UserID: 42}}, testEntities())
+	if plain.ReplyTo != nil {
+		t.Errorf("message.ReplyTo = %+v, want nil for a message that answers nothing", plain.ReplyTo)
+	}
+}
+
 func TestUserName_FallsBackSensibly(t *testing.T) {
 	t.Parallel()
 

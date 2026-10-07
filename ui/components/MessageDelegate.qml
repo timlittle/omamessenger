@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import qs.Commons
 import "../theme"
 import "../lib/Format.js" as Format
@@ -27,6 +28,8 @@ Item {
   readonly property bool showStatus: root.message.outgoing && !root.failed
   // media is what the message carries besides its text, or null.
   readonly property var media: Timeline.media(root.message)
+  // quote is the message this one replies to, or null.
+  readonly property var quote: Timeline.replyTo(root.message)
 
   // retry asks the caller to resend this message after a send failure.
   signal retry(string id)
@@ -34,6 +37,10 @@ Item {
   signal mediaWanted(string id)
   // mediaOpen asks for this message's photo, video or file to be opened.
   signal mediaOpen(string id)
+  // replyRequested asks the caller to start replying to this message.
+  signal replyRequested(string id)
+  // quoteOpened asks the caller to scroll to the message this one quotes.
+  signal quoteOpened(string remoteId)
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
@@ -65,8 +72,16 @@ Item {
     }
 
     Item {
+      id: bubbleRow
       width: parent.width
       height: bubble.height
+
+      // A passive hover handler shows the reply button without taking
+      // the bubble's own clicks, the same way the list row's pin glyph
+      // tracks hover beside its own MouseArea.
+      HoverHandler {
+        id: rowHover
+      }
 
       // The bubble wraps its text: as wide as the text needs, up to 72% of
       // the row, after which the text wraps.
@@ -101,6 +116,14 @@ Item {
           x: bubble.padding
           y: bubble.padding
           spacing: Theme.spacing.xs
+
+          ReplyQuote {
+            objectName: "replyQuote"
+            width: Math.min(implicitWidth, bubble.maxTextWidth)
+            visible: root.quote !== null
+            reply: root.quote ?? ({})
+            onOpened: remoteId => root.quoteOpened(remoteId)
+          }
 
           TextEdit {
             id: body
@@ -180,6 +203,34 @@ Item {
             color: root.message.status === "read" ? Color.accent : Util.alpha(Color.foreground, 0.5)
             font { family: Theme.font.family; pixelSize: Theme.font.caption }
           }
+        }
+      }
+
+      // replyButton appears on hover over the bubble, to start a reply
+      // to this message; it sits just outside the bubble, on the side
+      // nearer the middle of the row.
+      Text {
+        id: replyButton
+        objectName: "replyButton"
+        visible: rowHover.hovered
+        text: "↩"
+        color: Util.alpha(Color.foreground, 0.6)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.body
+        y: bubble.y + (bubble.height - height) / 2
+        x: root.message.outgoing ? bubble.x - width - Theme.spacing.xs : bubble.x + bubble.width + Theme.spacing.xs
+
+        HoverHandler {
+          id: replyButtonHover
+        }
+        ToolTip.visible: replyButtonHover.hovered
+        ToolTip.text: "Reply"
+        ToolTip.delay: 500
+
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.replyRequested(root.message.id)
         }
       }
     }

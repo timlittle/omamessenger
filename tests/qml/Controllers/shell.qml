@@ -238,7 +238,7 @@ ShellRoot {
     if (!mum) return Check.fail("no conversation titled Mum in the fake accounts");
 
     conversationController.open(mum);
-    conversationController.send("integration test");
+    conversationController.send("integration test", "");
     root.pollAttempts = 0;
     root.waitForDelivered();
   }

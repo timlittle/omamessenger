@@ -68,6 +68,7 @@ var BINDINGS = [
   { action: 'compose.focus', keys: ['i', 'a', 'Enter'], contexts: ['conversation'], label: 'Write a message', hint: true },
   { action: 'pane.list', keys: ['h', 'Tab'], contexts: ['conversation'], label: 'Back to the list' },
   { action: 'message.retry', keys: ['r'], contexts: ['conversation'], label: 'Retry failed message', command: true },
+  { action: 'message.reply', keys: ['R'], contexts: ['conversation'], label: 'Reply to the newest message', command: true },
 
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
   { action: 'search.accept', keys: ['Enter', 'Down'], contexts: ['search'], label: 'First result', hint: true },

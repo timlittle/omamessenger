@@ -357,6 +357,69 @@ func TestDeleteMessages_IgnoresAnEmptyScope(t *testing.T) {
 	}
 }
 
+func TestAddMessage_FillsReplySenderAndTextFromTheQuotedMessage(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "quoted", ConversationID: "chat", RemoteID: "1", Text: "original message", SenderName: "Alex", Created: 1})
+
+	reply, _, err := s.AddMessage(ctx, domain.Message{
+		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
+		ReplyTo: &domain.Reply{RemoteID: "1"},
+	})
+	if err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	if reply.ReplyTo == nil || reply.ReplyTo.SenderName != "Alex" || reply.ReplyTo.Text != "original message" {
+		t.Fatalf("reply.ReplyTo = %+v, want sender Alex and the quoted text", reply.ReplyTo)
+	}
+
+	stored, err := s.Message(ctx, "reply")
+	if err != nil || stored.ReplyTo == nil || stored.ReplyTo.RemoteID != "1" || stored.ReplyTo.SenderName != "Alex" {
+		t.Errorf("stored reply = %+v, %v", stored.ReplyTo, err)
+	}
+}
+
+func TestAddMessage_KeepsAReplysOwnSenderAndTextWhenAlreadyGiven(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	// The quoted message is not stored at all here: an outgoing reply
+	// already carries what it needs, filled in by the app from the
+	// message it answers, so the store must not need to look it up.
+	reply, _, err := s.AddMessage(ctx, domain.Message{
+		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
+		ReplyTo: &domain.Reply{RemoteID: "1", SenderName: "You", Text: "hi there"},
+	})
+	if err != nil || reply.ReplyTo == nil || reply.ReplyTo.SenderName != "You" || reply.ReplyTo.Text != "hi there" {
+		t.Fatalf("AddMessage = %+v, %v", reply.ReplyTo, err)
+	}
+}
+
+func TestAddMessage_LeavesAReplyToAnUnloadedMessageAsGiven(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	reply, _, err := s.AddMessage(ctx, domain.Message{
+		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
+		ReplyTo: &domain.Reply{RemoteID: "not-loaded"},
+	})
+	if err != nil || reply.ReplyTo == nil || reply.ReplyTo.RemoteID != "not-loaded" || reply.ReplyTo.SenderName != "" {
+		t.Fatalf("AddMessage = %+v, %v, want the bare reply unchanged", reply.ReplyTo, err)
+	}
+}
+
 func TestAddMessage_KeepsMediaAndFillsItInLater(t *testing.T) {
 	t.Parallel()
 

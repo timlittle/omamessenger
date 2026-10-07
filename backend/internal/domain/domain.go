@@ -99,6 +99,21 @@ type Message struct {
 	// Edited is true once the service reports this message changed after
 	// it was first sent.
 	Edited bool `json:"edited,omitempty"`
+
+	// ReplyTo is the message this one answers, or nil when it answers
+	// nothing.
+	ReplyTo *Reply `json:"replyTo,omitempty"`
+}
+
+// Reply is the message a reply answers: enough to show a quote above the
+// reply's own text, and, for an outgoing reply, enough for a connector to
+// thread it under the original on the service. SenderName and Text are
+// filled in from the quoted message once it is known locally; a
+// connector reporting an incoming reply may have only RemoteID.
+type Reply struct {
+	RemoteID   string `json:"remoteId"`
+	SenderName string `json:"senderName,omitempty"`
+	Text       string `json:"text,omitempty"`
 }
 
 // Media is what a message carries besides its text: a link preview, a

@@ -44,6 +44,7 @@ var OWNERS = {
   'chat.next': 'conversation',
   'chat.prev': 'conversation',
   'message.retry': 'conversation',
+  'message.reply': 'conversation',
   'message.send': 'conversation',
 
   // DialogController: the new-chat dialog.

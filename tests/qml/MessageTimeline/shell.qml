@@ -78,6 +78,31 @@ ShellRoot {
       return;
     }
 
+    if (timeline.newestId() !== "m70") {
+      Check.fail("newestId = " + timeline.newestId() + ", want m70");
+      return;
+    }
+
+    const got = timeline.messageById("m60");
+    if (!got || got.text !== "m60") {
+      Check.fail("messageById did not return the loaded message");
+      return;
+    }
+    if (timeline.messageById("missing") !== null) {
+      Check.fail("messageById did not return null for an unloaded id");
+      return;
+    }
+
+    timeline.upsert(Object.assign(root.message("m80", 80), { remoteId: "r80" }), false);
+    if (timeline.localIdForRemote("r80") !== "m80") {
+      Check.fail("localIdForRemote did not find the message by its remote id");
+      return;
+    }
+    if (timeline.localIdForRemote("missing") !== "") {
+      Check.fail("localIdForRemote did not return \"\" for an unknown remote id");
+      return;
+    }
+
     console.log("PASS MessageTimeline");
     Qt.exit(0);
   }

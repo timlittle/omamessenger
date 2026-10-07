@@ -57,6 +57,26 @@ func StatusAdvances(from, to string) bool {
 	return okFrom && okTo && t > f
 }
 
+// ExcerptLength bounds the quote Excerpt keeps, in characters.
+const ExcerptLength = 80
+
+// Excerpt is the short, single-line quote shown above a reply: the first
+// line of text, trimmed, cut to ExcerptLength characters with a trailing
+// "…" if it was longer.
+func Excerpt(text string) string {
+	if i := strings.IndexAny(text, "\r\n"); i != -1 {
+		text = text[:i]
+	}
+
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) <= ExcerptLength {
+		return text
+	}
+
+	return string(runes[:ExcerptLength]) + "…"
+}
+
 // NormalizeOutgoingText trims surrounding whitespace and checks the length.
 func NormalizeOutgoingText(text string) (string, error) {
 	text = strings.TrimSpace(text)

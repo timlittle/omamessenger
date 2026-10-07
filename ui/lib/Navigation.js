@@ -29,7 +29,9 @@ function escapeAction(state) {
     return state.query ? 'clear-search' : 'leave-search';
   }
 
-  if (state.composeFocused) return 'leave-compose';
+  if (state.composeFocused) {
+    return state.replying ? 'cancel-reply' : 'leave-compose';
+  }
 
   if (state.activeId) {
     return 'close-conversation';

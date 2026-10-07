@@ -327,6 +327,12 @@ test('longestLine picks the widest line to size a bubble by', () => {
   assert.equal(Format.longestLine(''), '');
 });
 
+test('singleLine collapses line breaks and runs of whitespace', () => {
+  assert.equal(Format.singleLine('line one\nline two'), 'line one line two');
+  assert.equal(Format.singleLine('a   lot   of    space'), 'a lot of space');
+  assert.equal(Format.singleLine('  padded  \n\n  '), 'padded');
+});
+
 test('messageHtml colours links so they read on the theme', () => {
   assert.equal(Format.messageHtml('see https://x.io', '#89b4fa'),
     'see <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');

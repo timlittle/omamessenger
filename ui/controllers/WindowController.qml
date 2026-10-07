@@ -173,6 +173,7 @@ QtObject {
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
+      "cancel-reply": () => { if (root.conversationController) root.conversationController.cancelReply(); },
       "leave-compose": () => { if (root.conversationController) root.conversationController.leaveComposeRequested(); },
       "close-conversation": () => { if (root.conversationController) root.conversationController.close(); },
       "hide-window": () => root.askToClose()
@@ -194,6 +195,7 @@ QtObject {
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,
       composeFocused: root.conversationController ? root.conversationController.composeFocused : false,
+      replying: root.conversationController ? root.conversationController.replying : false,
       pane: state.pane,
       activeId: state.activeId,
       query: root.listController ? root.listController.query : ""

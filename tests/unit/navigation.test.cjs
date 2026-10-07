@@ -249,6 +249,20 @@ test('escapeAction: leave-compose when composeFocused', () => {
   assert.strictEqual(Navigation.escapeAction(state), 'leave-compose');
 });
 
+test('escapeAction: cancel-reply when composeFocused while replying', () => {
+  const state = {
+    paletteOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: true,
+    replying: true,
+    query: '',
+    activeId: 'c1',
+    pane: 'conversation'
+  };
+  assert.strictEqual(Navigation.escapeAction(state), 'cancel-reply');
+});
+
 test('escapeAction: compose takes precedence over conversation, etc', () => {
   const state = {
     paletteOpen: false,

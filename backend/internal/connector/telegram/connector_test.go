@@ -40,6 +40,56 @@ func TestSend_ReportsSentThenReadWhenTheyReadIt(t *testing.T) {
 	}
 }
 
+func TestSend_ThreadsAReplyUnderTheQuotedMessage(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesSendMessageRequest{}, &tg.UpdateShortSentMessage{ID: 78})
+
+	var sink connectortest.Sink
+	c := connectedTo(f, &sink)
+	c.learn(chatWithNadia.RemoteID)
+
+	err := c.Send(t.Context(), chatWithNadia, domain.Message{
+		ID: "m2", Text: "sure", ReplyTo: &domain.Reply{RemoteID: "41"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req, ok := f.sent()[0].(*tg.MessagesSendMessageRequest)
+	if !ok {
+		t.Fatalf("request = %+v, want a MessagesSendMessageRequest", f.sent()[0])
+	}
+
+	replyTo, ok := req.ReplyTo.(*tg.InputReplyToMessage)
+	if !ok || replyTo.ReplyToMsgID != 41 {
+		t.Errorf("request.ReplyTo = %+v, want InputReplyToMessage{ReplyToMsgID: 41}", req.ReplyTo)
+	}
+}
+
+func TestSend_WithoutAReplyIDLeavesReplyToUnset(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesSendMessageRequest{}, &tg.UpdateShortSentMessage{ID: 79})
+
+	var sink connectortest.Sink
+	c := connectedTo(f, &sink)
+	c.learn(chatWithNadia.RemoteID)
+
+	// A reply whose quoted message has no remote id yet (still pending)
+	// cannot be threaded, so Send must not ask Telegram to reply to id 0.
+	if err := c.Send(t.Context(), chatWithNadia, domain.Message{ID: "m3", Text: "sure", ReplyTo: &domain.Reply{}}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := f.sent()[0].(*tg.MessagesSendMessageRequest)
+	if req.ReplyTo != nil {
+		t.Errorf("request.ReplyTo = %+v, want nil", req.ReplyTo)
+	}
+}
+
 func TestSend_Fails(t *testing.T) {
 	t.Parallel()
 

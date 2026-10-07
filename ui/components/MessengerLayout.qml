@@ -92,6 +92,7 @@ Item {
       if (root.focusDefault) root.focusDefault()
     }
     function onScroll(direction) { root._scrollConversation(direction) }
+    function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
   }
 
   Connections {
@@ -254,6 +255,7 @@ Item {
       annotations: root.conversationController.annotations
       nowMs: root.nowMs
       draft: root.conversationController.draft
+      replyTarget: root.conversationController.replyTarget
       composeEnabled: root.conversationController.activeId !== ""
       routeKey: root.routeKey
 
@@ -261,8 +263,11 @@ Item {
       onRetry: id => root.conversationController.retryMessage(id)
       onMediaWanted: id => root.conversationController.fetchMedia(id)
       onMediaOpen: id => root.conversationController.openMedia(id)
-      onSend: text => root.conversationController.send(text)
+      onSend: (text, replyToId) => root.conversationController.send(text, replyToId)
       onDraftEdited: text => root.conversationController.setDraft(text)
+      onReplyRequested: id => root.conversationController.startReply(id)
+      onReplyCanceled: root.conversationController.cancelReply()
+      onQuoteOpened: remoteId => root.conversationController.scrollToReply(remoteId)
     }
   }
 

@@ -2,6 +2,7 @@ import QtQuick
 import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
+import "../lib/Format.js" as Format
 
 // Owns the open conversation: which one is open, sending, retrying,
 // drafts and the typing indicator. The only controller that calls
@@ -48,6 +49,14 @@ Item {
   // draft is the open conversation's unsent composer text.
   property string draft: ""
 
+  // replyTarget is the message the composer is about to answer: {id,
+  // senderName, text}, or null when the user is not replying to anything.
+  property var replyTarget: null
+
+  // replying is true while replyTarget names a message, for the Escape
+  // chain: Escape cancels the reply before it leaves the composer.
+  readonly property bool replying: root.replyTarget !== null
+
   // typing is true while the other side is composing a reply.
   property bool typing: false
 
@@ -86,6 +95,10 @@ Item {
   // leaveComposeRequested asks the caller to move focus out of the composer.
   signal leaveComposeRequested()
 
+  // scrollToMessageRequested asks the caller to scroll the message view
+  // to a loaded message, by its local id.
+  signal scrollToMessageRequested(string id)
+
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
     return Actions.owner(action) === "conversation";
@@ -108,6 +121,7 @@ Item {
       "chat.next": () => root._step(1),
       "chat.prev": () => root._step(-1),
       "message.retry": () => root.retryMessage(timeline.newestFailedId()),
+      "message.reply": () => root.startReply(timeline.newestId()),
       "message.send": () => root.submitRequested()
     };
 
@@ -133,6 +147,7 @@ Item {
     root.activeId = "";
     root.conversation = null;
     root.pane = "list";
+    root.replyTarget = null;
     root._saveUiState({ activeId: "", pane: "list" });
     root._resetTyping();
   }
@@ -143,14 +158,41 @@ Item {
     timeline.loadOlder(root.service, root.activeId, root.isGroup);
   }
 
-  // send submits text to the open conversation.
-  function send(text: string): void {
+  // send submits text to the open conversation, answering the message
+  // replyToId names, if any. Sending clears the reply, whether or not it
+  // succeeds, the same as it clears the composer's text.
+  function send(text: string, replyToId: string): void {
     if (!root.activeId || !text) return;
 
-    root.service.request("messages.send", { conversationId: root.activeId, text: text }, function(error, result) {
+    const payload = { conversationId: root.activeId, text: text };
+    if (replyToId) payload.replyTo = replyToId;
+
+    root.service.request("messages.send", payload, function(error, result) {
       if (error) { timeline.lastError = Rpc.errorText(error); return; }
       root._upsertMessage(result);
     });
+    root.replyTarget = null;
+  }
+
+  // startReply makes id, a loaded message, the one the composer answers
+  // next. Nothing changes if it is not loaded.
+  function startReply(id: string): void {
+    const m = timeline.messageById(id);
+    if (!m) return;
+
+    root.replyTarget = { id: m.id, senderName: m.outgoing ? "You" : m.senderName, text: Format.singleLine(m.text) };
+  }
+
+  // cancelReply clears the composer's reply target without sending.
+  function cancelReply(): void {
+    root.replyTarget = null;
+  }
+
+  // scrollToReply asks the caller to scroll to the message a reply
+  // quotes, by the remote id Telegram gave it, when it is loaded.
+  function scrollToReply(remoteId: string): void {
+    const id = timeline.localIdForRemote(remoteId);
+    if (id) root.scrollToMessageRequested(id);
   }
 
   // fetchMedia downloads a message's photo and shows it once it is here.
@@ -264,6 +306,7 @@ Item {
     root.conversation = conversation;
     root.pane = "conversation";
     root.draft = root._draftFor(id);
+    root.replyTarget = null;
     root._resetTyping();
     root._saveUiState({ activeId: id, pane: "conversation" });
     timeline.loadInitial(root.service, id, () => id === root.activeId, root.isGroup);

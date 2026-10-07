@@ -88,6 +88,20 @@ Item {
     root._recomputeAnnotations(isGroup);
   }
 
+  // messageById returns a loaded message's full data, or null when it is
+  // not loaded.
+  function messageById(id: string): var {
+    return root._snapshot().find((m) => m.id === id) ?? null;
+  }
+
+  // localIdForRemote returns the loaded message id whose remote id is
+  // remoteId, or "" when it is not loaded: the user has not scrolled to
+  // it, or the service has not assigned it one yet.
+  function localIdForRemote(remoteId: string): string {
+    const row = root._snapshot().find((m) => m.remoteId === remoteId);
+    return row ? row.id : "";
+  }
+
   // mediaPath returns where a message's downloaded media is, or "".
   function mediaPath(id: string): string {
     const row = root._snapshot().find((m) => m.id === id);
@@ -108,6 +122,12 @@ Item {
       if (m.outgoing && m.status === "failed") return m.id;
     }
     return "";
+  }
+
+  // newestId returns the newest loaded message's id, or "" when none is
+  // loaded.
+  function newestId(): string {
+    return messagesModel.count > 0 ? messagesModel.get(0).id : "";
   }
 
   // _appendOlder adds a messages.list page to the newest-first model,

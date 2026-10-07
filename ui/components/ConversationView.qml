@@ -22,6 +22,9 @@ Item {
   property real nowMs: 0
   // draft is the composer's saved text for this conversation.
   property string draft: ""
+  // replyTarget is the message the composer is about to answer: {id,
+  // senderName, text}, or null.
+  property var replyTarget: null
   // composeEnabled is false while the conversation can't accept input.
   property bool composeEnabled: true
   // composer exposes the Composer instance so a key router can focus it.
@@ -42,10 +45,18 @@ Item {
   signal mediaWanted(string id)
   // mediaOpen asks for a message's photo, video or file to be opened.
   signal mediaOpen(string id)
-  // send reports a message the user submitted.
-  signal send(string text)
+  // send reports a message the user submitted, and the id of the message
+  // it answers, or "" when it answers nothing.
+  signal send(string text, string replyToId)
   // draftEdited reports the composer's text as the user types it.
   signal draftEdited(string text)
+  // replyRequested asks the caller to start replying to a loaded message.
+  signal replyRequested(string id)
+  // replyCanceled asks the caller to clear the reply in progress.
+  signal replyCanceled()
+  // quoteOpened asks the caller to scroll to the message a reply quotes,
+  // by the remote id the quote carries.
+  signal quoteOpened(string remoteId)
 
   // scrollBy moves the view by a number of lines; negative scrolls up.
   function scrollBy(lines: int): void {
@@ -69,6 +80,18 @@ Item {
     messageList.positionViewAtEnd()
   }
 
+  // scrollToMessage brings a loaded message into view, by its local id.
+  // Nothing happens when it is not loaded.
+  function scrollToMessage(id: string): void {
+    for (let i = 0; i < messageList.count; i++) {
+      const row = messageList.model.get ? messageList.model.get(i) : messageList.model[i];
+      if (row && row.id === id) {
+        messageList.positionViewAtIndex(i, ListView.Contain);
+        return;
+      }
+    }
+  }
+
   // focusComposer moves keyboard focus into the composer's text input.
   function focusComposer(): void {
     composer.focusInput()
@@ -82,7 +105,17 @@ Item {
       composer.text = root.draft;
   }
 
-  Component.onCompleted: composer.text = root.draft
+  // replyTarget is copied into the composer the same way, so sending or
+  // cancelling a reply inside the composer does not fight a live binding.
+  onReplyTargetChanged: {
+    if (composer.replyTo !== root.replyTarget)
+      composer.replyTo = root.replyTarget;
+  }
+
+  Component.onCompleted: {
+    composer.text = root.draft;
+    composer.replyTo = root.replyTarget;
+  }
 
   // _clampContentY keeps a scroll target within the list's scrollable range.
   // A BottomToTop ListView keeps 0 at the newest message and grows negative
@@ -162,6 +195,8 @@ Item {
         onRetry: id => root.retry(id)
         onMediaWanted: id => root.mediaWanted(id)
         onMediaOpen: id => root.mediaOpen(id)
+        onReplyRequested: id => root.replyRequested(id)
+        onQuoteOpened: remoteId => root.quoteOpened(remoteId)
       }
 
       onContentYChanged: root._checkLoadOlder()
@@ -175,8 +210,9 @@ Item {
       title: root.conversation ? root.conversation.title : ""
       enabled: root.composeEnabled
       routeKey: root.routeKey
-      onSubmitted: text => root.send(text)
+      onSubmitted: (text, replyToId) => root.send(text, replyToId)
       onTextChanged: root.draftEdited(composer.text)
+      onReplyCanceled: root.replyCanceled()
     }
   }
 

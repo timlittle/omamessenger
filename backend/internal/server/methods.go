@@ -262,16 +262,18 @@ func messagesList(c *app.Commands) func(context.Context, messagesParams) (any, e
 	}
 }
 
-// sendParams is a message to send.
+// sendParams is a message to send. ReplyTo, when set, is the local id of
+// a message in the same conversation this one answers.
 type sendParams struct {
 	ConversationID string `json:"conversationId"`
 	Text           string `json:"text"`
+	ReplyTo        string `json:"replyTo,omitempty"`
 }
 
 // messagesSend sends a message.
 func messagesSend(c *app.Commands) func(context.Context, sendParams) (any, error) {
 	return func(ctx context.Context, p sendParams) (any, error) {
-		return c.Send(ctx, p.ConversationID, p.Text)
+		return c.Send(ctx, p.ConversationID, p.Text, p.ReplyTo)
 	}
 }
 

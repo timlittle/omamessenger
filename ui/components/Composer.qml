@@ -5,11 +5,14 @@ import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 
-// Message composer: a growing text input plus a Send button.
+// Message composer: an optional "replying to" banner, a growing text
+// input and a Send button.
 //
 // This is a view only. It holds no helper or service references and makes
 // no decision about *when* a message is sent beyond "the trimmed text is
-// non-empty" — that call belongs to whoever wires it up.
+// non-empty" — that call belongs to whoever wires it up. replyTo is data
+// the caller hands in and gets back through submitted(); the composer
+// shows it and lets the user cancel it, nothing more.
 //
 // Enter / Shift+Enter are deliberately NOT handled here. routeKey, when
 // set, is called with a key press's (key, modifiers, text) before the
@@ -27,18 +30,24 @@ Item {
   property string title: ""
   property alias text: area.text
   property alias input: area
+  // replyTo is the message being answered: {id, senderName, text}, or
+  // null when the user is not replying to anything.
+  property var replyTo: null
   // routeKey intercepts a key press before the input handles it; see the
   // file comment above for why this is a function property, not a signal.
   property var routeKey: null
 
-  // submitted reports the trimmed text a caller should send.
-  signal submitted(string text)
+  // submitted reports the trimmed text a caller should send, and the id
+  // of the message it answers, or "" when it answers nothing.
+  signal submitted(string text, string replyToId)
+  // replyCanceled reports that the user dismissed the reply banner.
+  signal replyCanceled()
 
   // submit sends the input's trimmed text, unless it is empty.
   function submit() {
     var trimmed = area.text.trim()
     if (trimmed.length === 0) return
-    root.submitted(trimmed)
+    root.submitted(trimmed, root.replyTo ? root.replyTo.id : "")
     area.text = ""
   }
 
@@ -65,62 +74,111 @@ Item {
     font.pixelSize: Theme.font.body
   }
 
-  RowLayout {
+  ColumnLayout {
     id: layout
     anchors.fill: parent
-    spacing: Theme.spacing.controlGap
+    spacing: Theme.spacing.xs
 
-    ScrollView {
-      id: inputScroll
+    RowLayout {
+      id: replyBanner
+      objectName: "replyBanner"
       Layout.fillWidth: true
-      Layout.preferredHeight: Math.min(area.implicitHeight, root._maxInputHeight)
-      clip: true
-      ScrollBar.vertical.policy: area.implicitHeight > root._maxInputHeight ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+      visible: root.replyTo !== null
+      spacing: Theme.spacing.xs
 
-      TextArea {
-        id: area
-        objectName: "composerInput"
-        enabled: root.enabled
-        wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
-        selectByMouse: true
-        placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
+      Rectangle {
+        Layout.preferredWidth: Theme.spacing.xxs
+        Layout.fillHeight: true
+        radius: width / 2
+        color: Color.accent
+      }
 
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: event => {
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
-        }
-
+      Text {
+        objectName: "replyBannerText"
+        Layout.fillWidth: true
+        elide: Text.ElideRight
+        text: root.replyTo ? ("Replying to " + root.replyTo.senderName + ": " + root.replyTo.text) : ""
+        color: Util.alpha(Color.foreground, 0.7)
         font.family: Theme.font.family
-        font.pixelSize: Theme.font.body
-        color: Color.foreground
-        placeholderTextColor: Util.alpha(Color.foreground, 0.4)
-        selectionColor: Style.selectionFill
-        selectedTextColor: Color.foreground
+        font.pixelSize: Theme.font.bodySmall
+      }
 
-        topPadding: Theme.spacing.inputPaddingY
-        bottomPadding: Theme.spacing.inputPaddingY
-        leftPadding: Theme.spacing.controlPaddingX
-        rightPadding: Theme.spacing.controlPaddingX
+      Text {
+        objectName: "replyCancel"
+        text: "✕"
+        color: Util.alpha(Color.foreground, 0.6)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
 
-        background: Rectangle {
-          radius: Style.cornerRadius
-          // Omarchy's control-state tokens, so the input matches its own fields.
-          color: area.activeFocus ? Style.focusFillColor : Style.normalFill
-          border.width: area.activeFocus ? Style.focusBorderWidth : 0
-          border.color: area.activeFocus ? Style.focusBorderColor : "transparent"
+        HoverHandler { id: cancelHover }
+        ToolTip.visible: cancelHover.hovered
+        ToolTip.text: "Cancel reply"
+        ToolTip.delay: 500
 
-          Behavior on color { ColorAnimation { duration: 120 } }
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.replyCanceled()
         }
       }
     }
 
-    Ui.Button {
-      id: sendButton
-      Layout.alignment: Qt.AlignBottom
-      text: "Send"
-      focusable: true
-      enabled: root.enabled && root._hasText
-      onClicked: root.submit()
+    RowLayout {
+      Layout.fillWidth: true
+      spacing: Theme.spacing.controlGap
+
+      ScrollView {
+        id: inputScroll
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.min(area.implicitHeight, root._maxInputHeight)
+        clip: true
+        ScrollBar.vertical.policy: area.implicitHeight > root._maxInputHeight ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+
+        TextArea {
+          id: area
+          objectName: "composerInput"
+          enabled: root.enabled
+          wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+          selectByMouse: true
+          placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: event => {
+            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+          }
+
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.body
+          color: Color.foreground
+          placeholderTextColor: Util.alpha(Color.foreground, 0.4)
+          selectionColor: Style.selectionFill
+          selectedTextColor: Color.foreground
+
+          topPadding: Theme.spacing.inputPaddingY
+          bottomPadding: Theme.spacing.inputPaddingY
+          leftPadding: Theme.spacing.controlPaddingX
+          rightPadding: Theme.spacing.controlPaddingX
+
+          background: Rectangle {
+            radius: Style.cornerRadius
+            // Omarchy's control-state tokens, so the input matches its own fields.
+            color: area.activeFocus ? Style.focusFillColor : Style.normalFill
+            border.width: area.activeFocus ? Style.focusBorderWidth : 0
+            border.color: area.activeFocus ? Style.focusBorderColor : "transparent"
+
+            Behavior on color { ColorAnimation { duration: 120 } }
+          }
+        }
+      }
+
+      Ui.Button {
+        id: sendButton
+        Layout.alignment: Qt.AlignBottom
+        text: "Send"
+        focusable: true
+        enabled: root.enabled && root._hasText
+        onClicked: root.submit()
+      }
     }
   }
 }

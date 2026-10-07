@@ -37,6 +37,14 @@ function messageHtml(text, linkColor) {
   return linkify(escapeHtml(text), linkColor).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
 }
 
+// singleLine collapses a message's line breaks and runs of whitespace
+// into single spaces, for showing it on one line: the reply banner above
+// the composer, or a quote's preview text. Width-fitting is left to the
+// caller's own eliding.
+function singleLine(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 // longestLine returns a text's widest line, which sets a bubble's width.
 function longestLine(text) {
   return text.split('\n').reduce((longest, line) => (line.length > longest.length ? line : longest), '');

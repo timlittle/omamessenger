@@ -1,6 +1,7 @@
 // Checks ConversationView: the empty state with no conversation, loadOlder
-// firing once scrolled to the oldest loaded message, and a submitted
-// composer message reaching the send signal.
+// firing once scrolled to the oldest loaded message, a submitted composer
+// message reaching the send signal with its reply id, replyTarget copied
+// into the composer, and a delegate's reply signals relayed outward.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -11,6 +12,7 @@ ShellRoot {
   id: root
 
   property var sent: []
+  property var sentReplyIds: []
   property int loadOlderCount: 0
   property int pollAttempts: 0
 
@@ -36,7 +38,7 @@ ShellRoot {
       id: view
       anchors.fill: parent
       onLoadOlder: root.loadOlderCount += 1
-      onSend: text => root.sent.push(text)
+      onSend: (text, replyToId) => { root.sent.push(text); root.sentReplyIds.push(replyToId); }
     }
   }
 
@@ -119,17 +121,72 @@ ShellRoot {
   function finishLoadOlderCheck(): void {
     if (!root.checkSend()) return;
     if (!root.checkDraftRestore()) return;
+    if (!root.checkReplyTargetCopyIn()) return;
+    if (!root.checkReplySignalRelay()) return;
 
     console.log("PASS ConversationView");
     Qt.exit(0);
   }
 
-  // checkSend verifies a submitted composer message is trimmed and reported.
+  // checkSend verifies a submitted composer message is trimmed and
+  // reported with the id of the message it answers.
   function checkSend(): bool {
     root.sent = [];
+    root.sentReplyIds = [];
+    view.composer.replyTo = { id: "m9", senderName: "Alex", text: "quoted" };
     view.composer.text = "  hello there  ";
     view.composer.submit();
     if (JSON.stringify(root.sent) !== '["hello there"]') return Check.fail("sent " + JSON.stringify(root.sent) + ", want [\"hello there\"]");
+    if (JSON.stringify(root.sentReplyIds) !== '["m9"]') return Check.fail("sent replyToId " + JSON.stringify(root.sentReplyIds) + ", want [\"m9\"]");
+    return true;
+  }
+
+  // checkReplyTargetCopyIn verifies replyTarget reaches the composer, the
+  // same way draft does, and clearing it clears the composer's reply too.
+  function checkReplyTargetCopyIn(): bool {
+    view.replyTarget = { id: "m5", senderName: "Alex", text: "quoted text" };
+    if (!view.composer.replyTo || view.composer.replyTo.id !== "m5")
+      return Check.fail("replyTarget was not copied into the composer");
+
+    view.replyTarget = null;
+    if (view.composer.replyTo !== null)
+      return Check.fail("clearing replyTarget did not clear the composer's reply");
+    return true;
+  }
+
+  // checkReplySignalRelay verifies a message delegate's replyRequested and
+  // quoteOpened signals reach the view's own signals of the same name.
+  function checkReplySignalRelay(): bool {
+    view.scrollToNewest();
+    const listView = Check.find(view, "messageListView");
+    const delegateItem = listView.itemAtIndex(0);
+    if (!delegateItem) return Check.fail("no message delegate realized at index 0");
+
+    let replied = "";
+    view.replyRequested.connect((id) => { replied = id; });
+    delegateItem.replyRequested("m0");
+    if (replied !== "m0") return Check.fail("replyRequested was not relayed to the view's signal");
+
+    let quoted = "";
+    view.quoteOpened.connect((remoteId) => { quoted = remoteId; });
+    delegateItem.quoteOpened("r9");
+    if (quoted !== "r9") return Check.fail("quoteOpened was not relayed to the view's signal");
+
+    return root.checkScrollToMessage();
+  }
+
+  // checkScrollToMessage verifies scrolling to a loaded message brings it
+  // into view, and that an unloaded id changes nothing.
+  function checkScrollToMessage(): bool {
+    view.scrollToNewest();
+    view.scrollToMessage("m20");
+
+    const listView = Check.find(view, "messageListView");
+    if (!listView.itemAtIndex(20)) return Check.fail("scrollToMessage did not bring m20 into view");
+
+    const before = listView.contentY;
+    view.scrollToMessage("missing");
+    if (listView.contentY !== before) return Check.fail("scrollToMessage moved the view for an unknown id");
     return true;
   }
 }

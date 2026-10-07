@@ -92,16 +92,18 @@ func (f *fixture) conversation(t *testing.T, id, title, kind string) domain.Conv
 
 // fakeDispatcher records sends and read receipts, returning err for sends.
 type fakeDispatcher struct {
-	mu    sync.Mutex
-	sent  []string
-	read  []string
-	err   error
-	onRun func(domain.Message) // called during Send, like a fast service
+	mu       sync.Mutex
+	sent     []string
+	messages []domain.Message // the full message of each Send, in order
+	read     []string
+	err      error
+	onRun    func(domain.Message) // called during Send, like a fast service
 }
 
 func (d *fakeDispatcher) Send(_ context.Context, _ domain.Conversation, m domain.Message) error {
 	d.mu.Lock()
 	d.sent = append(d.sent, m.Text)
+	d.messages = append(d.messages, m)
 	onRun, err := d.onRun, d.err
 	d.mu.Unlock()
 
@@ -110,6 +112,14 @@ func (d *fakeDispatcher) Send(_ context.Context, _ domain.Conversation, m domain
 	}
 
 	return err
+}
+
+// last returns the most recent message given to Send.
+func (d *fakeDispatcher) last() domain.Message {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return d.messages[len(d.messages)-1]
 }
 
 func (d *fakeDispatcher) MarkRead(_ context.Context, conv domain.Conversation) error {

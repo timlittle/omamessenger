@@ -13,7 +13,7 @@ import (
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to`
 
 // Page sizes for Messages.
 const (
@@ -42,11 +42,37 @@ func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Mess
 	}
 
 	m = withMessageDefaults(m)
+	m = s.resolveReply(ctx, m)
 	if err := s.insertMessage(ctx, m); err != nil {
 		return m, false, wrap("add message", err)
 	}
 
 	return m, true, nil
+}
+
+// resolveReply fills a reply's quoted sender name and excerpt from the
+// message it answers, stored earlier in the same conversation, when the
+// caller did not already supply them: a connector reporting an incoming
+// reply often knows only the quoted message's remote id, while an
+// outgoing reply the app builds already carries both. A quoted message
+// not stored here yet, such as one still outside the loaded history,
+// leaves the reply as given.
+func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Message {
+	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" || (m.ReplyTo.SenderName != "" && m.ReplyTo.Text != "") {
+		return m
+	}
+
+	quoted, err := s.MessageByRemote(ctx, m.ConversationID, m.ReplyTo.RemoteID)
+	if err != nil {
+		return m
+	}
+
+	reply := *m.ReplyTo
+	reply.SenderName = quoted.SenderName
+	reply.Text = domain.Excerpt(quoted.Text)
+	m.ReplyTo = &reply
+
+	return m
 }
 
 // fillMedia adds media to a message stored before the service reported
@@ -118,8 +144,13 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message) error {
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited)
+	replyTo, err := encodeReply(m.ReplyTo)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo)
 	if err != nil {
 		return err
 	}
@@ -429,19 +460,26 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 // scanMessage reads one row selected with messageColumns.
 func scanMessage(row scanner) (domain.Message, error) {
 	var m domain.Message
-	var media string
+	var media, replyTo string
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
-		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited); err != nil {
+		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &replyTo); err != nil {
 		return m, err
 	}
 
-	if media == "" {
+	if media != "" {
+		m.Media = &domain.Media{}
+		if err := json.Unmarshal([]byte(media), m.Media); err != nil {
+			return m, err
+		}
+	}
+
+	if replyTo == "" {
 		return m, nil
 	}
 
-	m.Media = &domain.Media{}
+	m.ReplyTo = &domain.Reply{}
 
-	return m, json.Unmarshal([]byte(media), m.Media)
+	return m, json.Unmarshal([]byte(replyTo), m.ReplyTo)
 }
 
 // encodeMedia stores media as JSON, or "" for none.
@@ -451,6 +489,17 @@ func encodeMedia(media *domain.Media) (string, error) {
 	}
 
 	b, err := json.Marshal(media)
+
+	return string(b), err
+}
+
+// encodeReply stores a reply as JSON, or "" for none.
+func encodeReply(reply *domain.Reply) (string, error) {
+	if reply == nil {
+		return "", nil
+	}
+
+	b, err := json.Marshal(reply)
 
 	return string(b), err
 }

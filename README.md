@@ -59,7 +59,7 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 
 The list shows chats from the last month, plus any with unread messages; the line under it, or **Show or hide chats older than a month** in the command palette, shows the rest. Chats archived with the service are hidden too until you choose **Show archived chats** in the command palette. Search always looks through every chat, including archived ones: it matches a chat's title as substring text, and message bodies word by word as a prefix, ignoring case and accents, so "cafe" finds "café" and "tick" finds "ticket". Pinned chats always lead the list, with a pin mark; an archived chat's unread badge is dimmed like a muted one's, since it is already filed away, though it still counts towards the unread totals in the rail.
 
-In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes; **Pin or unpin chat** and **Archive or unarchive chat** are in the command palette. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
+In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes; **Pin or unpin chat** and **Archive or unarchive chat** are in the command palette. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, `r` retries a failed message, and `R` replies to the newest message; a reply button also appears when you hover a bubble. The composer shows "Replying to …" with a way to cancel it: `Esc`, or the `✕` beside it; sending clears it. A reply's quote in the bubble above its text scrolls to the original message when clicked, if it is loaded.
 
 ## Helper API
 
@@ -86,7 +86,7 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | `conversations.setPinned` | `{conversationId, pinned}` | `Conversation`; `conversations.list` always orders pinned conversations first |
 | `conversations.setArchived` | `{conversationId, archived}` | `Conversation`; `conversations.list` still returns archived conversations, the UI hides them by default |
 | `messages.list` | `{conversationId, before, limit}` | `{messages, hasMore}`, oldest first; `limit` 1–200, default 50. Past the oldest stored message it fetches older history from the service, which arrives as `message.added` too |
-| `messages.send` | `{conversationId, text}` | `Message`; status `failed` if the service refused it |
+| `messages.send` | `{conversationId, text, replyTo}` | `Message`; status `failed` if the service refused it. `replyTo`, optional, is the local id of a message in the same conversation this one answers |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
 | `media.fetch` | `{messageId}` | `{path}`: the message's photo, video or file, downloaded into the media cache the first time |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
@@ -112,7 +112,7 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | `typing` | `{conversationId, name, active}` |
 | `notification.clicked` | `{conversationId}`: the user clicked a desktop notification; the UI opens that conversation |
 
-A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video` or `file`. `thumb` is a small base64 JPEG preview sent with the message. `edited` is `true` once the service reports the message changed since it was first sent.
+A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video` or `file`. `thumb` is a small base64 JPEG preview sent with the message. `edited` is `true` once the service reports the message changed since it was first sent. A `Message` may also carry `replyTo`: `{remoteId, senderName, text}`, the message it answers, with `senderName` and `text` (a short excerpt) filled in once the quoted message is known locally.
 
 ### Errors
 

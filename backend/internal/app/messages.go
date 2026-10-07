@@ -120,8 +120,9 @@ func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversatio
 
 // Send stores a message as pending, publishes it and hands it to the
 // service. If the service refuses it, the message is returned as failed,
-// ready to retry; that is not an error.
-func (c *Commands) Send(ctx context.Context, conversationID, text string) (domain.Message, error) {
+// ready to retry; that is not an error. replyToID, when not "", is the
+// local id of a message in the same conversation this one answers.
+func (c *Commands) Send(ctx context.Context, conversationID, text, replyToID string) (domain.Message, error) {
 	text, err := domain.NormalizeOutgoingText(text)
 	if err != nil {
 		return domain.Message{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
@@ -132,10 +133,15 @@ func (c *Commands) Send(ctx context.Context, conversationID, text string) (domai
 		return domain.Message{}, err
 	}
 
+	replyTo, err := c.resolveReplyTo(ctx, conv.ID, replyToID)
+	if err != nil {
+		return domain.Message{}, err
+	}
+
 	before := c.events.unreadTotal(ctx)
 	m, _, err := c.store.AddMessage(ctx, domain.Message{
 		ConversationID: conv.ID, SenderName: "You", Text: text, Outgoing: true,
-		Status: domain.StatusPending, Created: time.Now().UnixMilli(),
+		Status: domain.StatusPending, Created: time.Now().UnixMilli(), ReplyTo: replyTo,
 	})
 	if err != nil {
 		return domain.Message{}, err
@@ -145,6 +151,27 @@ func (c *Commands) Send(ctx context.Context, conversationID, text string) (domai
 	c.events.conversationChanged(ctx, conv.ID, before)
 
 	return c.dispatch(ctx, conv, m)
+}
+
+// resolveReplyTo turns a local message id to reply to into the Reply a
+// connector can thread the new message under: the quoted message's
+// remote id (empty if the service has not assigned one yet), its sender
+// and a short excerpt of its text. An empty replyToID means no reply.
+func (c *Commands) resolveReplyTo(ctx context.Context, conversationID, replyToID string) (*domain.Reply, error) {
+	if replyToID == "" {
+		return nil, nil
+	}
+
+	quoted, err := c.store.Message(ctx, replyToID)
+	if err != nil {
+		return nil, err
+	}
+
+	if quoted.ConversationID != conversationID {
+		return nil, fmt.Errorf("%w: replyTo must be a message in the conversation", ErrInvalidInput)
+	}
+
+	return &domain.Reply{RemoteID: quoted.RemoteID, SenderName: quoted.SenderName, Text: domain.Excerpt(quoted.Text)}, nil
 }
 
 // Retry sends a failed outgoing message again.

@@ -112,6 +112,7 @@ func message(m *tg.Message, e entities) domain.Message {
 		Status:   domain.StatusReceived,
 		Created:  int64(m.Date) * 1000,
 		Media:    media(m.Media),
+		ReplyTo:  replyTo(m.ReplyTo),
 	}
 
 	if m.Out {
@@ -131,6 +132,24 @@ func message(m *tg.Message, e entities) domain.Message {
 	}
 
 	return out
+}
+
+// replyTo reports the message a Telegram message answers, from its
+// reply header, or nil when it answers nothing. The header carries only
+// the quoted message's id; the store fills in its sender and excerpt
+// from its own copy of that message, if it has one.
+func replyTo(h tg.MessageReplyHeaderClass) *domain.Reply {
+	header, ok := h.(*tg.MessageReplyHeader)
+	if !ok {
+		return nil
+	}
+
+	id, ok := header.GetReplyToMsgID()
+	if !ok {
+		return nil
+	}
+
+	return &domain.Reply{RemoteID: strconv.Itoa(id)}
 }
 
 // messageText is a message's text, or a label for media without a
