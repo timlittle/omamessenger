@@ -49,14 +49,22 @@ Item {
     spacing: Theme.spacing.xxs
     anchors { centerIn: parent; horizontalCenterOffset: root.account ? Theme.spacing.xs : 0 }
 
+    // The icon cell: the glyph, its status dot, and the unread badge. The
+    // badge sits outside the glyph's own box, to its top right, so a busy
+    // count never squashes into the icon it is counting for. Only its left
+    // edge is anchored to the glyph, which alone keeps the two apart: a
+    // badge can sit anywhere above that edge without ever reaching back
+    // over the glyph.
     Item {
       Layout.alignment: Qt.AlignHCenter
-      implicitWidth: glyph.implicitWidth
-      implicitHeight: glyph.implicitHeight
+      implicitWidth: glyph.implicitWidth + (badge.visible ? Theme.spacing.xxs + badge.implicitWidth : 0)
+      implicitHeight: Math.max(glyph.implicitHeight, badge.implicitHeight)
 
       ServiceGlyph {
         id: glyph
 
+        objectName: "glyph"
+        anchors { left: parent.left; verticalCenter: parent.verticalCenter }
         service: root.entry.service ?? ""
       }
 
@@ -68,22 +76,26 @@ Item {
         radius: width / 2
         color: root.entry.status === "error" || root.entry.status === "needs-auth" ? Color.urgent : "transparent"
         border { width: root.entry.status === "connecting" ? Theme.spacing.hairline : 0; color: Color.foreground }
-        anchors { right: parent.right; bottom: parent.bottom }
+        anchors { right: glyph.right; bottom: glyph.bottom }
+      }
+
+      UnreadBadge {
+        id: badge
+
+        objectName: "badge"
+        count: root.entry.unread ?? 0
+        anchors { left: glyph.right; top: parent.top; leftMargin: Theme.spacing.xxs }
       }
     }
 
     Text {
+      objectName: "label"
       Layout.alignment: Qt.AlignHCenter
       Layout.maximumWidth: root.width - Theme.spacing.xs * 2
       text: root.entry.label ?? ""
       color: Color.foreground
       elide: Text.ElideRight
       font { family: Theme.font.family; pixelSize: root.account ? Theme.font.caption : Theme.font.bodySmall }
-    }
-
-    UnreadBadge {
-      Layout.alignment: Qt.AlignHCenter
-      count: root.entry.unread ?? 0
     }
   }
 

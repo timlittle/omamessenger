@@ -187,6 +187,12 @@ function fileSize(bytes) {
   return unit === 0 ? `${size} B` : `${size.toFixed(1)} ${units[unit]}`;
 }
 
+// unreadLabel is the text an unread badge shows: the count itself, or
+// "99+" once a wider number would start crowding whatever sits beside it.
+function unreadLabel(count) {
+  return count > 99 ? '99+' : String(count);
+}
+
 // duration shows a length in seconds as m:ss, or h:mm:ss, or "" for none.
 function duration(seconds) {
   if (!seconds) {

@@ -1,15 +1,20 @@
 import QtQuick
 import qs.Commons
 import "../theme"
+import "../lib/Format.js" as Format
 
 // Unread count as a pill: hidden at 0, "99+" above 99. Muted conversations use
 // a dimmed pill, so unread state never relies on the accent colour alone.
 Item {
   id: root
 
+  // count is the number of unread messages the pill names.
   property int count: 0
+  // muted dims the pill so a muted conversation stays quiet in the list.
   property bool muted: false
-  readonly property string text: root.count > 99 ? "99+" : String(root.count)
+  // text is what the pill shows: the count, capped at "99+" so it never
+  // grows wide enough to crowd whatever sits beside it.
+  readonly property string text: Format.unreadLabel(root.count)
 
   visible: root.count > 0
   implicitHeight: label.implicitHeight + Theme.spacing.xxs * 2

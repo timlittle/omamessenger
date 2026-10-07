@@ -28,6 +28,24 @@ function find(item, name) {
   return null;
 }
 
+// rect returns item's geometry mapped into ancestor's coordinate space, so
+// two items anywhere in the same tree can be compared directly.
+function rect(item, ancestor) {
+  const p = item.mapToItem(ancestor, 0, 0);
+  return { x: p.x, y: p.y, width: item.width, height: item.height };
+}
+
+// overlapArea returns how many square pixels two rects share, 0 when they
+// do not touch. tolerance shrinks both rects first, so font-metric rounding
+// at a shared edge is not mistaken for a real overlap.
+function overlapArea(a, b, tolerance) {
+  const left = Math.max(a.x + tolerance, b.x + tolerance);
+  const right = Math.min(a.x + a.width - tolerance, b.x + b.width - tolerance);
+  const top = Math.max(a.y + tolerance, b.y + tolerance);
+  const bottom = Math.min(a.y + a.height - tolerance, b.y + b.height - tolerance);
+  return Math.max(0, right - left) * Math.max(0, bottom - top);
+}
+
 // texts returns every descendant of item that shows text.
 function texts(item) {
   const out = [];

@@ -355,3 +355,14 @@ test('duration shows minutes and seconds, and hours when there are some', () => 
   assert.strictEqual(Format.duration(65), '1:05');
   assert.strictEqual(Format.duration(3725), '1:02:05');
 });
+
+test('unreadLabel shows the count below 100', () => {
+  assert.strictEqual(Format.unreadLabel(0), '0');
+  assert.strictEqual(Format.unreadLabel(7), '7');
+  assert.strictEqual(Format.unreadLabel(99), '99');
+});
+
+test('unreadLabel caps a crowding count at 99+', () => {
+  assert.strictEqual(Format.unreadLabel(100), '99+');
+  assert.strictEqual(Format.unreadLabel(1234), '99+');
+});
