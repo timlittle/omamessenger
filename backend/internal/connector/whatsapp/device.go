@@ -10,6 +10,7 @@ import (
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 
@@ -53,6 +54,16 @@ type device interface {
 	// onStatus reports "connected", "disconnected" or "loggedout"
 	// whenever WhatsApp says so, until the returned func unregisters it.
 	onStatus(handler func(status string)) (unregister func())
+
+	// onEvent reports every event WhatsApp sends: history sync, incoming
+	// messages, receipts, typing and the dialog-organizing changes a
+	// phone makes. It runs alongside onStatus's own handler rather than
+	// replacing it, so Run's status loop keeps working unchanged.
+	onEvent(handler func(evt any)) (unregister func())
+
+	// groupName is a group's current name, for a history sync or a live
+	// message whose own data left it blank.
+	groupName(ctx context.Context, jid types.JID) (string, error)
 }
 
 // pairClientType and pairDisplayName name this companion to WhatsApp when
@@ -158,6 +169,23 @@ func (d *waDevice) onStatus(handler func(status string)) (unregister func()) {
 	})
 
 	return func() { d.cli.RemoveEventHandler(id) }
+}
+
+// onEvent reports every event WhatsApp sends.
+func (d *waDevice) onEvent(handler func(evt any)) (unregister func()) {
+	id := d.cli.AddEventHandler(handler)
+
+	return func() { d.cli.RemoveEventHandler(id) }
+}
+
+// groupName asks WhatsApp for a group's current name.
+func (d *waDevice) groupName(ctx context.Context, jid types.JID) (string, error) {
+	info, err := d.cli.GetGroupInfo(ctx, jid)
+	if err != nil {
+		return "", fmt.Errorf("whatsapp: group info: %w", err)
+	}
+
+	return info.Name, nil
 }
 
 // Status values device reports through onStatus. statusStopped covers

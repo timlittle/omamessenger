@@ -127,6 +127,20 @@ func (c *withReactor) React(_ context.Context, _ domain.Conversation, messageRem
 	return nil
 }
 
+// withLogout is a connector that can unlink itself from its service,
+// recording whether it was asked to and reporting logoutErr.
+type withLogout struct {
+	fakeConnector
+	loggedOut bool
+	logoutErr error
+}
+
+func (c *withLogout) Logout(context.Context) error {
+	c.loggedOut = true
+
+	return c.logoutErr
+}
+
 // accountList records upserted account ids, failing when err is set.
 type accountList struct {
 	ids []string

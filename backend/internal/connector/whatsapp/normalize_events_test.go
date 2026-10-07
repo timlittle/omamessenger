@@ -112,6 +112,32 @@ func TestReceiptStatus_MapsKnownTypesAndIgnoresTheRest(t *testing.T) {
 	}
 }
 
+func TestReactionTally_GroupsCountsAndFindsOurOwn(t *testing.T) {
+	t.Parallel()
+
+	tally := reactionTally(map[string]string{
+		"a@s.whatsapp.net": "👍",
+		"b@s.whatsapp.net": "👍",
+		"self":             "❤️",
+	}, "self")
+
+	want := []domain.Reaction{
+		{Emoji: "❤️", Count: 1, Mine: true},
+		{Emoji: "👍", Count: 2, Mine: false},
+	}
+	if !reflect.DeepEqual(tally, want) {
+		t.Errorf("reactionTally = %+v, want %+v", tally, want)
+	}
+}
+
+func TestReactionTally_EmptyWhenNobodyReacted(t *testing.T) {
+	t.Parallel()
+
+	if got := reactionTally(map[string]string{}, "self"); len(got) != 0 {
+		t.Errorf("reactionTally(none) = %+v, want empty", got)
+	}
+}
+
 func TestTypingActive_ComposingIsActivePausedIsNot(t *testing.T) {
 	t.Parallel()
 

@@ -118,6 +118,16 @@ type Organizer interface {
 	SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error
 }
 
+// LogoutOnRemove is a Connector that can tell its service to unlink this
+// device before Remove deletes its local session, so removing the
+// account here also removes it from the list of devices linked on the
+// user's phone.
+type LogoutOnRemove interface {
+	// Logout unlinks this device from its service. It is best effort:
+	// Remove deletes the local session whether or not it succeeds.
+	Logout(ctx context.Context) error
+}
+
 // AuthStep is what a signing-in connector needs from the user next.
 type AuthStep struct {
 	// Kind is "qr", "phone", "code" or "password".

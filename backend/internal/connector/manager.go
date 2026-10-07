@@ -142,7 +142,10 @@ func (m *Manager) Add(ctx context.Context, c Connector) error {
 }
 
 // Remove stops the connector for an account and waits for it to finish,
-// so its session files can be deleted safely.
+// so its session files can be deleted safely. A connector that can
+// unlink itself from its service is asked to, best effort, while it is
+// still connected: stopping it first would close the connection Logout
+// needs.
 func (m *Manager) Remove(ctx context.Context, accountID string) error {
 	m.mu.Lock()
 	r, ok := m.byAccount[accountID]
@@ -153,6 +156,8 @@ func (m *Manager) Remove(ctx context.Context, accountID string) error {
 		return fmt.Errorf("connector: %w %q", ErrNoConnector, accountID)
 	}
 
+	logOut(ctx, r.conn)
+
 	r.cancel()
 	select {
 	case <-r.done:
@@ -160,6 +165,24 @@ func (m *Manager) Remove(ctx context.Context, accountID string) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// logoutTimeout bounds a best-effort Logout, so a service that never
+// answers cannot hold up removing the account.
+const logoutTimeout = 10 * time.Second
+
+// logOut asks c to unlink itself from its service, if it supports that,
+// ignoring the result: Remove deletes the local session regardless.
+func logOut(ctx context.Context, c Connector) {
+	logouter, ok := c.(LogoutOnRemove)
+	if !ok {
+		return
+	}
+
+	logoutCtx, cancel := context.WithTimeout(ctx, logoutTimeout)
+	defer cancel()
+
+	_ = logouter.Logout(logoutCtx) // best effort; the local session is deleted either way
 }
 
 // Wait blocks until every connector started by Start has stopped.

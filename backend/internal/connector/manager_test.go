@@ -239,6 +239,42 @@ func TestRemove_StopsOnlyThatConnector(t *testing.T) {
 	})
 }
 
+func TestRemove_LogsOutAConnectorThatSupportsItBeforeStopping(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withLogout{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, tg)
+		synctest.Wait()
+
+		if err := m.Remove(ctx, "tg"); err != nil {
+			t.Fatal(err)
+		}
+
+		if !tg.loggedOut {
+			t.Error("Remove did not call Logout on a connector that supports it")
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
+func TestRemove_IgnoresALogoutFailureAndStillStops(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withLogout{fakeConnector: fakeConnector{id: "tg"}, logoutErr: errors.New("offline")}
+		m, _ := startManager(t, ctx, tg)
+		synctest.Wait()
+
+		if err := m.Remove(ctx, "tg"); err != nil {
+			t.Fatalf("Remove = %v, want nil even when Logout fails", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
 func TestSubmitAuth_ReachesConnectorsThatSignIn(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

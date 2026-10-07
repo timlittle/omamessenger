@@ -5,8 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waVnameCert"
+	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
 
@@ -227,6 +230,127 @@ func TestContextInfo_ReadsEveryMediaKindThatCarriesOne(t *testing.T) {
 	if got := contextInfo(&waE2E.Message{}); got != nil {
 		t.Errorf("contextInfo(plain) = %+v, want nil", got)
 	}
+}
+
+func TestHistoryMessage_DirectAndGroup(t *testing.T) {
+	t.Parallel()
+
+	direct := types.NewJID("15551234567", types.DefaultUserServer)
+	group := types.NewJID("12345-1600000000", types.GroupServer)
+
+	tests := []struct {
+		name string
+		chat types.JID
+		hm   *waHistorySync.HistorySyncMsg
+		want domain.Message
+	}{
+		{
+			"incoming direct message",
+			direct,
+			&waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
+				Key:              &waCommon.MessageKey{ID: strPtr("H1")},
+				Message:          &waE2E.Message{Conversation: strPtr("hi")},
+				PushName:         strPtr("Nadia"),
+				MessageTimestamp: u64(1_800_000_000),
+			}},
+			domain.Message{
+				RemoteID: "H1", SenderID: "15551234567@s.whatsapp.net", SenderName: "Nadia",
+				Text: "hi", Status: domain.StatusReceived, Created: 1_800_000_000_000,
+			},
+		},
+		{
+			"outgoing message",
+			direct,
+			&waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
+				Key:              &waCommon.MessageKey{ID: strPtr("H2"), FromMe: boolPtr(true)},
+				Message:          &waE2E.Message{Conversation: strPtr("back")},
+				MessageTimestamp: u64(1_800_000_000),
+			}},
+			domain.Message{
+				RemoteID: "H2", SenderID: "self", SenderName: "You",
+				Text: "back", Outgoing: true, Status: domain.StatusSent, Created: 1_800_000_000_000,
+			},
+		},
+		{
+			"group message names its participant",
+			group,
+			&waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
+				Key:              &waCommon.MessageKey{ID: strPtr("H3")},
+				Message:          &waE2E.Message{Conversation: strPtr("hi all")},
+				Participant:      strPtr("15551234567@s.whatsapp.net"),
+				PushName:         strPtr("Nadia"),
+				MessageTimestamp: u64(1_800_000_000),
+			}},
+			domain.Message{
+				RemoteID: "H3", SenderID: "15551234567@s.whatsapp.net", SenderName: "Nadia",
+				Text: "hi all", Status: domain.StatusReceived, Created: 1_800_000_000_000,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := historyMessage(tt.chat, tt.hm)
+			if !ok || !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("historyMessage = %+v, %t; want %+v, true", got, ok, tt.want)
+			}
+		})
+	}
+}
+
+func TestHistoryMessage_DropsReactionEditAndRevoke(t *testing.T) {
+	t.Parallel()
+
+	chat := types.NewJID("15551234567", types.DefaultUserServer)
+	tests := []struct {
+		name string
+		msg  *waE2E.Message
+	}{
+		{"reaction", &waE2E.Message{ReactionMessage: &waE2E.ReactionMessage{Text: strPtr("👍")}}},
+		{"revoke", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REVOKE.Enum()}}},
+		{
+			"edit",
+			&waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{
+				Type: waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(), EditedMessage: &waE2E.Message{Conversation: strPtr("new text")},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			hm := &waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
+				Key: &waCommon.MessageKey{ID: strPtr("H1")}, Message: tt.msg,
+			}}
+			if _, ok := historyMessage(chat, hm); ok {
+				t.Error("historyMessage reported a protocol message as content")
+			}
+		})
+	}
+}
+
+// FuzzHistoryMessage checks that historyMessage never panics on a history
+// sync message decoded from arbitrary bytes.
+func FuzzHistoryMessage(f *testing.F) {
+	seed, _ := proto.Marshal(&waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
+		Key: &waCommon.MessageKey{ID: strPtr("H1")}, Message: &waE2E.Message{Conversation: strPtr("hi")},
+	}})
+	f.Add(seed)
+	f.Add([]byte{})
+
+	chat := types.NewJID("15551234567", types.DefaultUserServer)
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var hm waHistorySync.HistorySyncMsg
+		if err := proto.Unmarshal(data, &hm); err != nil {
+			return
+		}
+
+		historyMessage(chat, &hm)
+	})
 }
 
 // FuzzMessage checks that message never panics on a message decoded

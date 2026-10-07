@@ -31,11 +31,16 @@ func TestConformance_Lifecycle(t *testing.T) {
 
 		dev := newFakeDevice()
 		dev.paired = true
+		media := newTestMediaStore(t)
 
 		return &Connector{
-			account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp},
-			answers: make(chan answer, 1),
-			open:    func(context.Context) (device, error) { return dev, nil },
+			account:   domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp},
+			answers:   make(chan answer, 1),
+			open:      func(context.Context) (device, error) { return dev, nil },
+			openMedia: func(context.Context) (*mediaStore, error) { return media, nil },
+			organize:  map[string]organizeState{},
+			names:     map[string]string{},
+			reactions: map[string]map[string]string{},
 		}
 	})
 }

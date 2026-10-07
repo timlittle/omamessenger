@@ -126,6 +126,15 @@ func directConversation(accountID string, info types.MessageInfo) domain.Convers
 	}
 }
 
+// phoneTitle is the fallback title for a direct chat with no name known
+// yet: the contact's phone number, the way WhatsApp's own clients title
+// an unsaved contact. It is not meaningful for a JID addressed by its
+// hidden id rather than a phone number, but it is still a better title
+// than none.
+func phoneTitle(jid types.JID) string {
+	return "+" + jid.User
+}
+
 // contactFromPushName turns one push name of a history sync into a
 // contact, or reports false when it names no one.
 func contactFromPushName(accountID string, p *waHistorySync.Pushname) (domain.Contact, bool) {

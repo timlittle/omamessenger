@@ -33,9 +33,13 @@ func (Provider) Connect(account domain.Account, dir string) connector.Connector 
 }
 
 // Forget deletes the account's session database, including its
-// write-ahead log and shared-memory files.
+// write-ahead log and shared-memory files, and its media reference
+// store.
 func (Provider) Forget(dir, accountID string) error {
-	return removeSessionFiles(sessionPath(dir, accountID))
+	return errors.Join(
+		removeSessionFiles(sessionPath(dir, accountID)),
+		removeIfExists(mediaStorePath(dir, accountID)),
+	)
 }
 
 // removeSessionFiles deletes a session database and the extra files
@@ -43,10 +47,18 @@ func (Provider) Forget(dir, accountID string) error {
 func removeSessionFiles(path string) error {
 	var errs []error
 	for _, p := range []string{path, path + "-wal", path + "-shm"} {
-		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
-			errs = append(errs, err)
-		}
+		errs = append(errs, removeIfExists(p))
 	}
 
 	return errors.Join(errs...)
+}
+
+// removeIfExists deletes path, treating it already being gone as
+// success.
+func removeIfExists(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	return nil
 }

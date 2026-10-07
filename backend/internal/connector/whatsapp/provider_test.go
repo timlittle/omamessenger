@@ -70,6 +70,25 @@ func TestProvider_ForgetDeletesTheSessionAndItsWALFiles(t *testing.T) {
 	}
 }
 
+func TestProvider_ForgetDeletesTheMediaStore(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "wa-1-media.db")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	p := whatsapp.Provider{}
+	if err := p.Forget(dir, "wa-1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("%s still exists after Forget", path)
+	}
+}
+
 func TestProvider_ForgetIsANoOpWithoutASession(t *testing.T) {
 	t.Parallel()
 

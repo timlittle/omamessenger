@@ -1,6 +1,8 @@
 package whatsapp
 
 import (
+	"slices"
+
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 
@@ -67,6 +69,36 @@ func receiptStatus(t types.ReceiptType) string {
 	default:
 		return ""
 	}
+}
+
+// reactionTally turns one message's reactions, one per person who picked
+// one, into the chips the UI shows: grouped by emoji, with how many
+// people picked each one and whether selfKey is among them. WhatsApp
+// reports one person's reaction change at a time, never a conversation's
+// full tally, so the connector keeps bySender itself, keyed by who
+// reacted, and recomputes this list on every change.
+func reactionTally(bySender map[string]string, selfKey string) []domain.Reaction {
+	counts := make(map[string]int, len(bySender))
+	mine := make(map[string]bool, len(bySender))
+	for sender, emoji := range bySender {
+		counts[emoji]++
+		if sender == selfKey {
+			mine[emoji] = true
+		}
+	}
+
+	emojis := make([]string, 0, len(counts))
+	for emoji := range counts {
+		emojis = append(emojis, emoji)
+	}
+	slices.Sort(emojis)
+
+	reactions := make([]domain.Reaction, len(emojis))
+	for i, emoji := range emojis {
+		reactions[i] = domain.Reaction{Emoji: emoji, Count: counts[emoji], Mine: mine[emoji]}
+	}
+
+	return reactions
 }
 
 // typingActive reports whether a chat presence update means someone

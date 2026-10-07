@@ -1,7 +1,11 @@
 package whatsapp
 
 import (
+	"time"
+
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -61,6 +65,57 @@ func message(info types.MessageInfo, raw *waE2E.Message) domain.Message {
 
 	out.SenderID, out.SenderName = remoteID(info.Sender), senderName(info)
 	return out
+}
+
+// historyMessage turns one message of a history sync conversation into
+// ours, through the same message normalizer a live one uses, or reports
+// false for a reaction, edit or revoke protocol message: those carry no
+// content of their own to show as history, and the live events that
+// cover such changes are never replayed from a bulk sync.
+func historyMessage(chat types.JID, hm *waHistorySync.HistorySyncMsg) (domain.Message, bool) {
+	raw := hm.GetMessage()
+	content := raw.GetMessage()
+	if content == nil || isReaction(content) || isRevoke(content) || isEdit(content) {
+		return domain.Message{}, false
+	}
+
+	return message(historyMessageInfo(chat, raw), content), true
+}
+
+// historyMessageInfo rebuilds the sender information a history sync's
+// WebMessageInfo carries, in the same shape a live events.Message has,
+// so both go through the same message normalizer.
+func historyMessageInfo(chat types.JID, raw *waWeb.WebMessageInfo) types.MessageInfo {
+	info := types.MessageInfo{
+		MessageSource: types.MessageSource{Chat: chat, IsFromMe: raw.GetKey().GetFromMe(), IsGroup: chat.Server == types.GroupServer},
+		ID:            raw.GetKey().GetID(),
+		PushName:      raw.GetPushName(),
+		Timestamp:     time.Unix(int64(raw.GetMessageTimestamp()), 0),
+	}
+
+	if !info.IsFromMe {
+		info.Sender = historySender(chat, raw)
+	}
+
+	return info
+}
+
+// historySender is who sent a history message we did not send ourselves:
+// the chat itself for a direct message, or whichever participant
+// WhatsApp recorded for a group one.
+func historySender(chat types.JID, raw *waWeb.WebMessageInfo) types.JID {
+	if chat.Server != types.GroupServer {
+		return chat
+	}
+
+	participant := raw.GetParticipant()
+	if participant == "" {
+		participant = raw.GetKey().GetParticipant()
+	}
+
+	jid, _ := types.ParseJID(participant)
+
+	return jid
 }
 
 // senderName names who sent a message: their self-chosen display name,

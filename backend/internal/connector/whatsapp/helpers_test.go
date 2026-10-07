@@ -6,10 +6,27 @@ package whatsapp
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
+	"testing"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 )
+
+// newTestMediaStore opens a media store in a fresh temporary directory,
+// closing it when the test ends.
+func newTestMediaStore(t *testing.T) *mediaStore {
+	t.Helper()
+
+	store, err := openMediaStore(t.Context(), filepath.Join(t.TempDir(), "whatsapp"), "wa-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.close() })
+
+	return store
+}
 
 // fakeDevice is a hand-written double for device: a test drives it by
 // pushing items onto its QR channel and calling status, and reads back
@@ -32,6 +49,13 @@ type fakeDevice struct {
 	unregistered bool
 
 	codes chan whatsmeow.QRChannelItem
+
+	eventHandlers     []func(evt any)
+	eventUnregistered int
+
+	groupNames map[string]string
+	groupErr   error
+	groupCalls []types.JID
 }
 
 // newFakeDevice returns a fake with an open QR channel and no session.
@@ -139,6 +163,46 @@ func (d *fakeDevice) status(s string) {
 	if h != nil {
 		h(s)
 	}
+}
+
+// onEvent records handler and returns an unregister func that counts its
+// calls.
+func (d *fakeDevice) onEvent(handler func(evt any)) func() {
+	d.mu.Lock()
+	d.eventHandlers = append(d.eventHandlers, handler)
+	d.mu.Unlock()
+
+	return func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		d.eventUnregistered++
+	}
+}
+
+// fire hands evt to every handler registered with onEvent, simulating a
+// whatsmeow event arriving.
+func (d *fakeDevice) fire(evt any) {
+	d.mu.Lock()
+	handlers := append([]func(evt any){}, d.eventHandlers...)
+	d.mu.Unlock()
+
+	for _, h := range handlers {
+		h(evt)
+	}
+}
+
+// groupName records the call and reports the scripted name or error.
+func (d *fakeDevice) groupName(_ context.Context, jid types.JID) (string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.groupCalls = append(d.groupCalls, jid)
+	if d.groupErr != nil {
+		return "", d.groupErr
+	}
+
+	return d.groupNames[jid.String()], nil
 }
 
 // strPtr takes the address of a string literal, since the generated
