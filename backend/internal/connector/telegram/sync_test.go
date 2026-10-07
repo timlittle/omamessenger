@@ -146,3 +146,53 @@ func TestPeerKey_DropsTheAccessHash(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadOlder_FetchesFromBeforeTheOldestMessage(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessages{
+		Messages: []tg.MessageClass{
+			&tg.Message{ID: 39, PeerID: &tg.PeerUser{UserID: 42}, Message: "older"},
+			&tg.Message{ID: 38, PeerID: &tg.PeerUser{UserID: 42}, Message: "oldest"},
+		},
+	})
+
+	var sink connectortest.Sink
+	c := connectedTo(f, &sink)
+	n, err := c.LoadOlder(t.Context(), chatWithNadia, "40", 30)
+	if err != nil || n != 2 {
+		t.Fatalf("LoadOlder = %d, %v; want 2", n, err)
+	}
+
+	req, ok := f.sent()[0].(*tg.MessagesGetHistoryRequest)
+	if !ok || req.OffsetID != 40 || req.Limit != 30 {
+		t.Errorf("request = %+v, want 30 messages before 40", f.sent()[0])
+	}
+
+	want := []string{"history user:42:99 39", "history user:42:99 38"}
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q", got, want)
+	}
+}
+
+func TestLoadOlder_Fails(t *testing.T) {
+	t.Parallel()
+
+	connected := connectedTo(newFakeTelegram(), &connectortest.Sink{})
+	for name, err := range map[string]error{
+		"before signing in":     errOf(New(domain.Account{ID: "tg"}, "").LoadOlder(t.Context(), chatWithNadia, "40", 30)),
+		"from a malformed id":   errOf(connected.LoadOlder(t.Context(), chatWithNadia, "x", 30)),
+		"for a malformed peer":  errOf(connected.LoadOlder(t.Context(), domain.Conversation{RemoteID: "bad"}, "40", 30)),
+		"when Telegram refuses": errOf(connected.LoadOlder(t.Context(), chatWithNadia, "40", 30)),
+	} {
+		if err == nil {
+			t.Errorf("LoadOlder %s succeeded, want an error", name)
+		}
+	}
+}
+
+// errOf keeps the error of a call that also returns a count.
+func errOf(_ int, err error) error {
+	return err
+}

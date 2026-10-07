@@ -147,3 +147,50 @@ func TestRetry_SendsAFailedMessageAgain(t *testing.T) {
 		t.Errorf("Retry(missing) = %v, want ErrNotFound", err)
 	}
 }
+
+func TestMessages_LoadsOlderHistoryFromTheService(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	for _, m := range []domain.Message{
+		{ID: "m50", ConversationID: "chat", RemoteID: "50", Text: "x", Created: 50},
+		{ID: "m60", ConversationID: "chat", RemoteID: "60", Text: "y", Created: 60},
+	} {
+		if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.history.older = []domain.Message{
+		{ID: "m30", RemoteID: "30", Text: "c", Created: 30},
+		{ID: "m20", RemoteID: "20", Text: "b", Created: 20},
+	}
+
+	page, more, err := f.commands.Messages(ctx, "chat", "m50", 10)
+	if err != nil || len(page) != 2 || page[0].ID != "m20" || !more {
+		t.Fatalf("Messages before m50 = %v, more %t, %v; want the two older ones, and maybe more", page, more, err)
+	}
+
+	page, more, err = f.commands.Messages(ctx, "chat", "m20", 10)
+	if err != nil || len(page) != 0 || more {
+		t.Errorf("Messages before m20 = %v, more %t, %v; want the end of history", page, more, err)
+	}
+
+	if !slices.Equal(f.history.from, []string{"50", "20"}) {
+		t.Errorf("loaded from %v, want [50 20]", f.history.from)
+	}
+}
+
+func TestMessages_KeepsWhatItHasWhenTheServiceFails(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.history.err = errors.New("offline")
+
+	page, more, err := f.commands.Messages(t.Context(), "chat", "", 10)
+	if err != nil || len(page) != 0 || more {
+		t.Errorf("Messages with the service offline = %v, %t, %v; want the local page and no error", page, more, err)
+	}
+}

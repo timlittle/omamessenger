@@ -133,6 +133,29 @@ func TestMessages_PagesBackwards(t *testing.T) {
 	}
 }
 
+func TestOldestRemoteID_SkipsMessagesTheServiceHasNotNumbered(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	if id, err := s.OldestRemoteID(ctx, "chat"); err != nil || id != "" {
+		t.Errorf("OldestRemoteID(empty chat) = %q, %v; want none", id, err)
+	}
+
+	addMessages(t, s,
+		domain.Message{ID: "draft", ConversationID: "chat", Text: "unsent", Created: 1},
+		domain.Message{ID: "m2", ConversationID: "chat", RemoteID: "20", Text: "b", Created: 2},
+		domain.Message{ID: "m3", ConversationID: "chat", RemoteID: "30", Text: "c", Created: 3},
+	)
+
+	if id, err := s.OldestRemoteID(ctx, "chat"); err != nil || id != "20" {
+		t.Errorf("OldestRemoteID = %q, %v; want 20", id, err)
+	}
+}
+
 func TestMessages_LimitsAndCursor(t *testing.T) {
 	t.Parallel()
 

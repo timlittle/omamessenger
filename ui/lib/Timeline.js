@@ -39,3 +39,11 @@ function sameDay(msA, msB) {
 function sameAuthor(a, b) {
   return a.outgoing === b.outgoing && a.senderId === b.senderId;
 }
+
+// insertIndex is where message belongs in a newest-first list: before the
+// first message older than or as old as it, so a message from earlier
+// history lands in its place rather than at the bottom.
+function insertIndex(newestFirst, message) {
+  const at = newestFirst.findIndex((m) => m.created <= message.created);
+  return at === -1 ? newestFirst.length : at;
+}

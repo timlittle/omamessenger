@@ -266,6 +266,33 @@ func TestSubmitAuth_ReachesConnectorsThatSignIn(t *testing.T) {
 	})
 }
 
+func TestLoadOlder_AsksConnectorsThatKeepHistory(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withHistory{fakeConnector: fakeConnector{id: "tg"}, count: 3}
+		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+
+		if n, err := m.LoadOlder(ctx, domain.Conversation{AccountID: "tg"}, "40", 30); err != nil || n != 3 {
+			t.Errorf("LoadOlder = %d, %v; want 3", n, err)
+		}
+
+		if !slices.Equal(tg.from, []string{"40"}) {
+			t.Errorf("loaded from %v, want [40]", tg.from)
+		}
+
+		if n, err := m.LoadOlder(ctx, domain.Conversation{AccountID: "plain"}, "40", 30); err != nil || n != 0 {
+			t.Errorf("LoadOlder from a connector without history = %d, %v; want nothing", n, err)
+		}
+
+		if _, err := m.LoadOlder(ctx, domain.Conversation{AccountID: "nobody"}, "40", 30); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("LoadOlder for an unknown account = %v", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
 func TestAdd_GivesUpWhenTheManagerIsNotRunning(t *testing.T) {
 	t.Parallel()
 

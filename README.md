@@ -83,7 +83,7 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | `conversations.open` | `{accountId, contactId}` | `Conversation`, created if needed |
 | `conversations.markRead` | `{conversationId}` | `{}` |
 | `conversations.setMuted` | `{conversationId, muted}` | `Conversation` |
-| `messages.list` | `{conversationId, before, limit}` | `{messages, hasMore}`, oldest first; `limit` 1–200, default 50 |
+| `messages.list` | `{conversationId, before, limit}` | `{messages, hasMore}`, oldest first; `limit` 1–200, default 50. Past the oldest stored message it fetches older history from the service, which arrives as `message.added` too |
 | `messages.send` | `{conversationId, text}` | `Message`; status `failed` if the service refused it |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |

@@ -91,33 +91,11 @@ func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialog
 	return listed
 }
 
-// syncHistory reports a dialog's recent messages, waiting out Telegram's
-// rate limit if it asks.
+// syncHistory reports a dialog's recent messages, then Telegram's count
+// of them still unread.
 func (c *Connector) syncHistory(ctx context.Context, api *tg.Client, sink connector.Sink, conv domain.Conversation, d *tg.Dialog) error {
-	peer, err := inputPeer(conv.RemoteID)
-	if err != nil {
+	if _, err := c.history(ctx, api, sink, page{conv: conv, limit: historyLimit}); err != nil {
 		return err
-	}
-
-	request := &tg.MessagesGetHistoryRequest{Peer: peer, Limit: historyLimit}
-	result, err := api.MessagesGetHistory(ctx, request)
-	if waited, _ := tgerr.FloodWait(ctx, err); waited {
-		result, err = api.MessagesGetHistory(ctx, request)
-	}
-	if err != nil {
-		return fmt.Errorf("telegram: history: %w", err)
-	}
-
-	history, ok := result.AsModified()
-	if !ok {
-		return nil
-	}
-
-	he := newEntities(history.GetUsers(), history.GetChats())
-	for _, m := range history.GetMessages() {
-		if msg, ok := m.(*tg.Message); ok {
-			sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, he))
-		}
 	}
 
 	// Telegram knows which of these were read; its count replaces the
@@ -125,6 +103,67 @@ func (c *Connector) syncHistory(ctx context.Context, api *tg.Client, sink connec
 	sink.Unread(ctx, c.account.ID, conv.RemoteID, d.UnreadCount)
 
 	return nil
+}
+
+// LoadOlder reports up to limit messages older than the one Telegram
+// numbers beforeRemoteID, or the newest when it is "", and says how many
+// it found.
+func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error) {
+	api, sink, err := c.session()
+	if err != nil {
+		return 0, err
+	}
+
+	offset := 0
+	if beforeRemoteID != "" {
+		if offset, err = strconv.Atoi(beforeRemoteID); err != nil {
+			return 0, fmt.Errorf("telegram: older history: %w", err)
+		}
+	}
+
+	return c.history(ctx, api, sink, page{conv: conv, beforeID: offset, limit: limit})
+}
+
+// page is a stretch of a conversation's history: up to limit messages
+// before the message Telegram numbers beforeID, or the newest when it is 0.
+type page struct {
+	conv     domain.Conversation
+	beforeID int
+	limit    int
+}
+
+// history reports a page of a conversation's messages, waiting out
+// Telegram's rate limit if it asks, and says how many it found.
+func (c *Connector) history(ctx context.Context, api *tg.Client, sink connector.Sink, p page) (int, error) {
+	peer, err := inputPeer(p.conv.RemoteID)
+	if err != nil {
+		return 0, err
+	}
+
+	request := &tg.MessagesGetHistoryRequest{Peer: peer, OffsetID: p.beforeID, Limit: p.limit}
+	result, err := api.MessagesGetHistory(ctx, request)
+	if waited, _ := tgerr.FloodWait(ctx, err); waited {
+		result, err = api.MessagesGetHistory(ctx, request)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("telegram: history: %w", err)
+	}
+
+	messages, ok := result.AsModified()
+	if !ok {
+		return 0, nil
+	}
+
+	e := newEntities(messages.GetUsers(), messages.GetChats())
+	found := 0
+	for _, m := range messages.GetMessages() {
+		if msg, ok := m.(*tg.Message); ok {
+			sink.History(ctx, c.account.ID, p.conv.RemoteID, message(msg, e))
+			found++
+		}
+	}
+
+	return found, nil
 }
 
 // syncContacts reports the account's contacts.

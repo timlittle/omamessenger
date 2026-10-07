@@ -165,6 +165,20 @@ func (s *Store) UpdateMessageStatus(ctx context.Context, id, status string) (_ d
 	return m, true, nil
 }
 
+// OldestRemoteID returns the service's id for the conversation's oldest
+// message that has one, or "" when none does. A connector fetches older
+// history from there.
+func (s *Store) OldestRemoteID(ctx context.Context, conversationID string) (string, error) {
+	var id string
+	err := s.db.QueryRowContext(ctx, `SELECT remote_id FROM messages
+		WHERE conversation_id=? AND remote_id<>'' ORDER BY created, rowid LIMIT 1`, conversationID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+
+	return id, wrap("oldest remote id", err)
+}
+
 // Messages returns up to limit messages older than beforeID, or the newest
 // when beforeID is empty, oldest first. hasMore reports whether older
 // messages remain. A limit outside 1..MaxPageSize means DefaultPageSize.

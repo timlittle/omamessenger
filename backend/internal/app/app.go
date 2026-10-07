@@ -26,6 +26,12 @@ type Dispatcher interface {
 	MarkRead(ctx context.Context, conv domain.Conversation) error
 }
 
+// HistoryLoader fetches a conversation's older history from its service,
+// storing it as it arrives, and says how many messages it found.
+type HistoryLoader interface {
+	LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error)
+}
+
 // SignIn hands sign-in input, such as a code, to an account's connector.
 type SignIn interface {
 	SubmitAuth(ctx context.Context, accountID, step, value string) error
@@ -70,6 +76,7 @@ type Deps struct {
 	Publisher  Publisher
 	SignIn     SignIn
 	Accounts   Accounts
+	History    HistoryLoader
 	Fake       Injector
 }
 
@@ -80,7 +87,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, fake: d.Fake,
 		events: events, ui: state,
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}

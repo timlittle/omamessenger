@@ -255,3 +255,13 @@ test('annotate respects different senders in direct chat labels', () => {
   // Direct chat: never show sender label regardless
   assert.strictEqual(result[0].showSender, false);
 });
+
+test('insertIndex places a message by time in a newest-first list', () => {
+  const newestFirst = [{ created: 30 }, { created: 20 }, { created: 10 }];
+
+  assert.strictEqual(Timeline.insertIndex(newestFirst, { created: 40 }), 0);
+  assert.strictEqual(Timeline.insertIndex(newestFirst, { created: 25 }), 1);
+  assert.strictEqual(Timeline.insertIndex(newestFirst, { created: 20 }), 1);
+  assert.strictEqual(Timeline.insertIndex(newestFirst, { created: 5 }), 3);
+  assert.strictEqual(Timeline.insertIndex([], { created: 5 }), 0);
+});

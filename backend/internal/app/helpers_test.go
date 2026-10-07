@@ -24,6 +24,7 @@ type fixture struct {
 	injector   *fakeInjector
 	accounts   *fakeAccounts
 	signIn     *fakeSignIn
+	history    *fakeHistory
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -45,12 +46,12 @@ func newFixture(t *testing.T, faked bool) *fixture {
 	f := &fixture{
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
-		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{},
+		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{store: db},
 	}
 
 	deps := app.Deps{
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
-		Accounts: f.accounts, SignIn: f.signIn,
+		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -203,6 +204,34 @@ func (a *fakeAccounts) Remove(ctx context.Context, accountID string) error {
 	}
 
 	return a.store.DeleteAccount(ctx, accountID)
+}
+
+// fakeHistory plays the service's older history: each LoadOlder stores
+// the next of older, as a connector would through the Sink, and records
+// where it was asked to load from.
+type fakeHistory struct {
+	store *store.Store
+	older []domain.Message
+	from  []string
+	err   error
+}
+
+func (h *fakeHistory) LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error) {
+	h.from = append(h.from, beforeRemoteID)
+	if h.err != nil {
+		return 0, h.err
+	}
+
+	n := min(limit, len(h.older))
+	for _, m := range h.older[:n] {
+		m.ConversationID = conv.ID
+		if _, _, err := h.store.AddMessage(ctx, m); err != nil {
+			return 0, err
+		}
+	}
+	h.older = h.older[n:]
+
+	return n, nil
 }
 
 // fakeSignIn records the sign-in answers it is given.

@@ -14,6 +14,7 @@ type Commands struct {
 	dispatcher Dispatcher
 	signIn     SignIn
 	accounts   Accounts
+	history    HistoryLoader
 	fake       Injector
 	events     *events
 	ui         *uiState

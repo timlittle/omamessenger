@@ -65,18 +65,15 @@ Item {
     });
   }
 
-  // upsert updates one message in place, or inserts it as the newest when
-  // it is not loaded yet.
+  // upsert updates one message in place, or inserts it where its time puts
+  // it when it is not loaded yet: new messages at the top, and older
+  // history fetched from the service further down.
   function upsert(message: var, isGroup: bool): void {
-    for (let i = 0; i < messagesModel.count; i++) {
-      if (messagesModel.get(i).id === message.id) {
-        messagesModel.set(i, message);
-        root._recomputeAnnotations(isGroup);
-        return;
-      }
-    }
+    const loaded = root._snapshot();
+    const at = loaded.findIndex((m) => m.id === message.id);
+    if (at !== -1) messagesModel.set(at, message);
+    else messagesModel.insert(Timeline.insertIndex(loaded, message), message);
 
-    messagesModel.insert(0, message);
     root._recomputeAnnotations(isGroup);
   }
 
@@ -91,19 +88,28 @@ Item {
   }
 
   // _appendOlder adds a messages.list page, oldest-first as the helper
-  // sends it, to the end of the newest-first model.
+  // sends it, to the end of the newest-first model. Messages already shown,
+  // which arrive as events while older history loads, are skipped.
   function _appendOlder(page: var, isGroup: bool): void {
-    for (const m of page.slice().reverse()) messagesModel.append(m);
+    const shown = new Set(root._snapshot().map((m) => m.id));
+    for (const m of page.slice().reverse()) {
+      if (!shown.has(m.id)) messagesModel.append(m);
+    }
     root._recomputeAnnotations(isGroup);
+  }
+
+  // _snapshot copies the loaded messages, newest first.
+  function _snapshot(): var {
+    const out = [];
+    for (let i = 0; i < messagesModel.count; i++) out.push(messagesModel.get(i));
+    return out;
   }
 
   // _recomputeAnnotations rebuilds the day separators and grouping from
   // the current message list. isGroup is read from the caller each time,
   // since this component holds no conversation state of its own.
   function _recomputeAnnotations(isGroup: bool): void {
-    const snapshot = [];
-    for (let i = 0; i < messagesModel.count; i++) snapshot.push(messagesModel.get(i));
-    root.annotations = Timeline.annotate(snapshot, isGroup, Date.now());
+    root.annotations = Timeline.annotate(root._snapshot(), isGroup, Date.now());
   }
 
   ListModel { id: messagesModel }

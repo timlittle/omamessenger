@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
 // MaxPageSize is the most messages one Messages call returns.
@@ -23,11 +24,38 @@ func (c *Commands) Messages(ctx context.Context, conversationID, beforeID string
 		return nil, false, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidInput, MaxPageSize)
 	}
 
-	if _, err := c.store.Conversation(ctx, conversationID); err != nil {
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
 		return nil, false, err
 	}
 
-	return c.store.Messages(ctx, conversationID, beforeID, limit)
+	page, more, err := c.store.Messages(ctx, conversationID, beforeID, limit)
+	if err != nil || more || c.history == nil {
+		return page, more, err
+	}
+
+	return c.olderFromService(ctx, conv, beforeID, limit, page)
+}
+
+// olderFromService fetches history the store does not have yet from the
+// conversation's service, then pages again. If the service cannot be
+// reached, the page already loaded stands: scrolling back is not worth an
+// error.
+func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) ([]domain.Message, bool, error) {
+	oldest, err := c.store.OldestRemoteID(ctx, conv.ID)
+	if err != nil {
+		return page, false, nil
+	}
+
+	loaded, err := c.history.LoadOlder(ctx, conv, oldest, max(limit, store.DefaultPageSize))
+	if err != nil || loaded == 0 {
+		return page, false, nil
+	}
+
+	page, _, err = c.store.Messages(ctx, conv.ID, beforeID, limit)
+
+	// The service may hold more still; the next page asks it again.
+	return page, true, err
 }
 
 // Send stores a message as pending, publishes it and hands it to the

@@ -35,6 +35,15 @@ type Authenticator interface {
 	SubmitAuth(ctx context.Context, step, value string) error
 }
 
+// HistoryLoader is a Connector that can fetch history older than what has
+// been reported, for when the user scrolls back past it.
+type HistoryLoader interface {
+	// LoadOlder reports, through the Sink's History, up to limit messages
+	// older than the one the service knows as beforeRemoteID, or the newest
+	// when it is "", and says how many it found.
+	LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error)
+}
+
 // AuthStep is what a signing-in connector needs from the user next.
 type AuthStep struct {
 	// Kind is "qr", "phone", "code" or "password".

@@ -180,6 +180,22 @@ func (m *Manager) MarkRead(ctx context.Context, conv domain.Conversation) error 
 	return c.MarkRead(ctx, conv)
 }
 
+// LoadOlder asks the conversation's connector for older history, if it
+// keeps any; one that does not finds nothing.
+func (m *Manager) LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error) {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return 0, err
+	}
+
+	loader, ok := c.(HistoryLoader)
+	if !ok {
+		return 0, nil
+	}
+
+	return loader.LoadOlder(ctx, conv, beforeRemoteID, limit)
+}
+
 // SubmitAuth hands sign-in input, such as a code, to the connector for
 // its account.
 func (m *Manager) SubmitAuth(ctx context.Context, accountID, step, value string) error {

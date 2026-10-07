@@ -117,7 +117,7 @@ func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *ac
 	}
 
 	registry.manager = manager
-	deps.Dispatcher, deps.SignIn = manager, manager
+	deps.Dispatcher, deps.SignIn, deps.History = manager, manager, manager
 	commands, ingest := app.New(deps)
 
 	return commands, ingest, manager, nil

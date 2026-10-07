@@ -54,6 +54,20 @@ func (c *signingIn) SubmitAuth(_ context.Context, step, value string) error {
 	return nil
 }
 
+// withHistory is a connector that loads older history, recording where
+// from, and says it found count messages.
+type withHistory struct {
+	fakeConnector
+	from  []string
+	count int
+}
+
+func (c *withHistory) LoadOlder(_ context.Context, _ domain.Conversation, beforeRemoteID string, _ int) (int, error) {
+	c.from = append(c.from, beforeRemoteID)
+
+	return c.count, nil
+}
+
 // accountList records upserted account ids, failing when err is set.
 type accountList struct {
 	ids []string
