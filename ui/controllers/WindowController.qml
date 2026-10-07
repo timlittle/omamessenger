@@ -56,14 +56,23 @@ QtObject {
   // paletteIndex is the highlighted palette row.
   property int paletteIndex: 0
 
-  // paletteResults are the matching commands or conversations, best first.
+  // linkChoices are the URLs offered when the palette opens in "links"
+  // mode: the highlighted message's own links, set by openLinkChooser.
+  property var linkChoices: []
+
+  // paletteResults are the matching commands, conversations or links,
+  // best first.
   readonly property var paletteResults: root.paletteMode === "conversations"
     ? Palette.search(root.listController ? root.listController.all : [], root.paletteQuery, (c) => c.title)
+    : root.paletteMode === "links"
+    ? Palette.search(root.linkChoices.map((url) => ({ url })), root.paletteQuery, (c) => c.url)
     : Palette.search(Keymap.commands(), root.paletteQuery, (c) => c.label)
 
   // paletteItems are paletteResults as rows to show: {label, detail, keys}.
   readonly property var paletteItems: root.paletteMode === "conversations"
     ? root.paletteResults.map((c) => ({ label: c.title, detail: Rail.serviceLabel(c.service, root.service ? root.service.services : []), keys: "" }))
+    : root.paletteMode === "links"
+    ? root.paletteResults.map((c) => ({ label: "Open link: " + c.url, detail: "", keys: "" }))
     : root.paletteResults
 
   // confirmingClose shows the question asking what closing should do.
@@ -91,6 +100,7 @@ QtObject {
       "palette.accept": () => root.acceptPalette(root.paletteIndex),
       "window.hide": () => root.askToClose(),
       "app.quit": () => root.quit(),
+      "helper.retryInstall": () => root.retryInstall(),
       "escape": () => root._escape()
     };
 
@@ -104,6 +114,21 @@ QtObject {
     root.paletteQuery = "";
     root.paletteIndex = 0;
     root.paletteOpen = true;
+  }
+
+  // openLinkChooser shows the palette listing urls, for o on a message
+  // that carries more than one link: picking one opens it, the same as
+  // the single-link case opens straight away without asking.
+  function openLinkChooser(urls: var): void {
+    root.linkChoices = urls;
+    root.openPalette("links");
+  }
+
+  // retryInstall retries installing the helper. Guarded on the status
+  // the Retry button itself only shows for, so the global key and the
+  // palette command both do nothing at any other time.
+  function retryInstall(): void {
+    if (root.service && root.service.status === "installFailed") root.service.installHelper();
   }
 
   // closePalette hides the palette.
@@ -125,13 +150,15 @@ QtObject {
     root.paletteIndex = ((root.paletteIndex + delta) % count + count) % count;
   }
 
-  // acceptPalette runs the command, or opens the conversation, at index.
+  // acceptPalette runs the command, opens the conversation, or opens the
+  // link, at index.
   function acceptPalette(index: int): void {
     const chosen = root.paletteResults[index];
     if (!chosen) return;
 
     root.closePalette();
     if (root.paletteMode === "conversations") root._openConversation(chosen);
+    else if (root.paletteMode === "links") Qt.openUrlExternally(chosen.url);
     else root.runCommand(chosen.action);
   }
 

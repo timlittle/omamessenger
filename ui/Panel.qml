@@ -35,6 +35,15 @@ Item {
   // focus: the only time the user is looking at the open conversation.
   readonly property bool windowFocused: window.visible && keyArea.Window.active
   onWindowFocusedChanged: conversationController.setWindowActive(root.windowFocused)
+
+  // helperInstallFailed tracks the Retry button's own visible condition,
+  // so focus follows it there the moment it shows: a user who just saw
+  // the helper fail to install should not have to tab to find out how to
+  // try again. Qt.callLater waits a turn of the event loop, the same as
+  // the photo viewer's own focus does, since an item still hidden when
+  // this changes cannot take focus.
+  readonly property bool helperInstallFailed: !!(root.service && root.service.status === "installFailed")
+  onHelperInstallFailedChanged: if (root.helperInstallFailed) Qt.callLater(() => retryButton.forceActiveFocus())
   Component.onCompleted: {
     if (!root.service) console.warn("OmaMessenger: the window opened without its service");
     conversationController.setWindowActive(root.windowFocused);
@@ -116,8 +125,7 @@ Item {
     const owner = controllers.find((c) => c.handles(action));
     if (!owner) return false;
 
-    owner.run(action);
-    return true;
+    return owner.run(action) !== false;
   }
 
   // _navState assembles what Navigation.keyContext needs from whichever
@@ -327,10 +335,12 @@ Item {
           }
 
           Ui.Button {
+            id: retryButton
             objectName: "retryButton"
-            text: "Retry"
+            text: "Retry (" + Keymap.keyFor("helper.retryInstall") + ")"
             visible: root.service && root.service.status === "installFailed"
-            onClicked: root.service.installHelper()
+            focusable: true
+            onClicked: windowController.retryInstall()
           }
         }
 

@@ -58,10 +58,10 @@ const MOUSE_ACTIONS = {
   'Composer remove-attachment "x"': 'escape', // Escape's clear-attachment step
   'PhotoView / FileView bubble click (open)': 'message.open',
   'PhotoViewer close "x"': 'escape',
-  'PhotoViewer "Open in image viewer" button': null, // GAP: no key opens the viewed photo externally
-  'LinkPreview click (open the URL)': null, // GAP: no key opens a link preview
-  'MessageBubbleContent text link click (open the URL)': null, // GAP: no key activates a link inside message text
-  'ReplyQuote click (jump to the quoted message)': null, // GAP: no key jumps to a quote
+  'PhotoViewer "Open in image viewer" button': 'viewer.openExternal',
+  'LinkPreview click (open the URL)': 'message.openLink',
+  'MessageBubbleContent text link click (open the URL)': 'message.openLink',
+  'ReplyQuote click (jump to the quoted message)': 'message.goToQuote',
   'PaletteRow click (run a command / open a conversation)': 'palette.accept',
   'NewChatDialog account button click': 'dialog.nextAccount',
   'NewChatContactRow click (open)': 'dialog.accept',
@@ -69,7 +69,7 @@ const MOUSE_ACTIONS = {
   'RemoveAccount account button click (choose which to remove)': null, // reached by Up/Down + Enter, not a Keymap action: see RemoveAccount.qml's KeyNavigation chain
   'RemoveAccount cancel button': 'escape',
   'AccountSetup service-chooser button click': 'account.add',
-  'Panel helper-install "Retry" button': null, // GAP: no key, not focusable, and not in the palette; see ui/Panel.qml's retryButton
+  'Panel helper-install "Retry" button': 'helper.retryInstall',
 };
 
 test('every mouse action with a keyboard counterpart stays reachable by key or the palette', () => {

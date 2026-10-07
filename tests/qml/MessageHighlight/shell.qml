@@ -9,7 +9,11 @@
 // once it arrives; the view follows the highlight to bring it into
 // view; t retries the highlighted message only when it has failed; e
 // opens the picker for it; r starts a reply to it; Enter opens its
-// photo; that the highlighted message's own visual cue hides the moment
+// photo; o asks to open its link, or lets the caller choose among
+// several; p moves the highlight to the message it replies to; o in the
+// photo viewer reaches openExternally (never a real download here, so
+// it only closes the viewer, never calling Qt.openUrlExternally for
+// real); that the highlighted message's own visual cue hides the moment
 // the composer takes focus and shows again once it leaves; and leaving
 // the composer with Escape resets the highlight to the newest message,
 // idempotently.
@@ -27,6 +31,10 @@ ShellRoot {
 
   property int pollAttempts: 0
   property var _next: null
+  // capturedLinks records the urls the last linksRequested signal
+  // carried, so o's single-link path is checked without ever calling
+  // the real Qt.openUrlExternally.
+  property var capturedLinks: null
 
   // retry schedules fn to run again shortly, for the one step here that
   // depends on real Qt focus rather than the scripted service.
@@ -75,11 +83,11 @@ ShellRoot {
           return;
         }
         callback(null, { hasMore: true, messages: [
-          service.fakeMessage("m1", service.base, {}),
-          service.fakeMessage("m2", service.base - 1000, {}),
+          service.fakeMessage("m1", service.base, { remoteId: "rm1" }),
+          service.fakeMessage("m2", service.base - 1000, { text: "see https://example.com/offer" }),
           service.fakeMessage("m3", service.base - 2000, { outgoing: true, status: "failed", text: "oops" }),
           service.fakeMessage("m4", service.base - 3000, { media: { kind: "photo", width: 10, height: 10, thumb: "" } }),
-          service.fakeMessage("m5", service.base - 4000, {})
+          service.fakeMessage("m5", service.base - 4000, { replyTo: { remoteId: "rm1", senderName: "Alex", text: "hi there" } })
         ] });
         return;
       }
@@ -87,6 +95,15 @@ ShellRoot {
       if (method === "messages.retry") {
         service.retried.push(params.messageId);
         callback(null, service.fakeMessage("m3", service.base - 2000, { outgoing: true, status: "delivered", text: "oops" }));
+        return;
+      }
+
+      // media.fetch answers with no path, same as a real download that
+      // never finishes here: an explicit "" rather than a missing field,
+      // so mediaPath never coerces to the literal string "undefined",
+      // which openExternally would then treat as a real path to open.
+      if (method === "media.fetch") {
+        callback(null, { path: "" });
         return;
       }
 
@@ -187,7 +204,7 @@ ShellRoot {
   FloatingWindow {
     id: win
     implicitWidth: 500
-    implicitHeight: 140
+    implicitHeight: 400
     visible: true
 
     Item {
@@ -232,6 +249,7 @@ ShellRoot {
   Connections {
     target: conversationController
     function onScrollToMessageRequested(id) { view.scrollToMessage(id) }
+    function onLinksRequested(urls) { root.capturedLinks = urls }
   }
 
   TestCase {
@@ -304,7 +322,13 @@ ShellRoot {
     t.keyClick(Qt.Key_Return);
     if (photoViewerController.viewerId !== "m4")
       return Check.fail("Enter did not open the highlighted message's photo: viewerId=" + photoViewerController.viewerId);
-    photoViewerController.close();
+
+    // o reaches openExternally in the viewer context; this fixture never
+    // downloads a real path, so it only closes the viewer, never calling
+    // Qt.openUrlExternally for real.
+    t.keyClick(Qt.Key_O);
+    if (photoViewerController.viewerOpen)
+      return Check.fail("o did not close the photo viewer via openExternally");
 
     t.keyClick(Qt.Key_K);
     if (conversationController.highlightedId !== "m5")
@@ -366,6 +390,38 @@ ShellRoot {
     if (!reactionsController.pickerOpen || reactionsController.pickerTarget !== "m2")
       return Check.fail("e did not open the picker for the highlighted message: open=" + reactionsController.pickerOpen + " target=" + reactionsController.pickerTarget);
     reactionsController.closePicker();
+
+    root.checkOpenLinkAndGoToQuote();
+  }
+
+  // checkOpenLinkAndGoToQuote checks o reports the highlighted message's
+  // own link through linksRequested, which the real caller opens with
+  // Qt.openUrlExternally (never exercised here, so this checks what was
+  // asked for rather than stubbing that call), and that p moves the
+  // highlight to the message m5 replies to and scrolls there.
+  function checkOpenLinkAndGoToQuote(): void {
+    if (root.hintText("m2") !== "r reply · e react · o open link")
+      return Check.fail("hint text for the linked message is \"" + root.hintText("m2") + "\"");
+
+    root.capturedLinks = null;
+    t.keyClick(Qt.Key_O);
+    if (JSON.stringify(root.capturedLinks) !== '["https://example.com/offer"]')
+      return Check.fail("o did not report the highlighted message's own link: " + JSON.stringify(root.capturedLinks));
+
+    t.keyClick(Qt.Key_K);
+    t.keyClick(Qt.Key_K);
+    t.keyClick(Qt.Key_K);
+    if (conversationController.highlightedId !== "m5") return Check.fail("setup: k,k,k did not reach m5");
+    if (root.hintText("m5") !== "r reply · e react · p go to quote")
+      return Check.fail("hint text for the reply is \"" + root.hintText("m5") + "\"");
+
+    t.keyClick(Qt.Key_P);
+    if (conversationController.highlightedId !== "m1")
+      return Check.fail("p did not move the highlight to the quoted message: got " + conversationController.highlightedId);
+    if (!root.delegateFor("m1")) return Check.fail("p did not scroll the view to the quoted message");
+
+    t.keyClick(Qt.Key_K);
+    if (conversationController.highlightedId !== "m2") return Check.fail("setup: k back to m2 failed");
 
     root.checkEscapeResetsHighlight();
   }

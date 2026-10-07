@@ -16,6 +16,11 @@
 .import "Selection.js" as Selection
 .import "Timeline.js" as Timeline
 
+// LINK_PATTERN matches http(s) links in a message's raw text, the shape
+// messageHtml's own linkify in Format.js uses on the escaped version. It
+// runs on the unescaped text, since this file never builds HTML.
+var LINK_PATTERN = /https?:\/\/[^\s]+/g;
+
 // older returns the id before currentId when moving toward older
 // messages (k/Up), stopping at the oldest loaded one rather than
 // wrapping or returning nothing: pressing k at the end of the loaded
@@ -36,18 +41,54 @@ function newer(ids, currentId) {
 
 // hints returns the key-hint text for message, naming what pressing a
 // key does to it right now. Reply and react are always on offer, since
-// every message can take either; Enter and retry only ever apply to
-// this particular message, so they only show when it actually carries a
-// photo, video or file, or is itself a failed outgoing send:
+// every message can take either; the rest only ever apply to this
+// particular message, so they only show when it actually carries a
+// photo, video or file, a link, a quote, or is itself a failed outgoing
+// send:
 //   "r reply · e react"
 //   "r reply · e react · Enter open"               (carries media)
+//   "r reply · e react · o open link"               (carries a link)
+//   "r reply · e react · p go to quote"             (is a reply)
 //   "r reply · e react · t retry"                   (failed to send)
-//   "r reply · e react · Enter open · t retry"      (both)
 function hints(message) {
   const parts = ['r reply', 'e react'];
   if (Timeline.media(message)) parts.push('Enter open');
+  if (links(message).length > 0) parts.push('o open link');
+  if (Timeline.replyTo(message)) parts.push('p go to quote');
   if (message.outgoing && message.status === 'failed') parts.push('t retry');
   return parts.join(' · ');
+}
+
+// links returns every URL the message's open key (o) can reach: the link
+// preview's own URL when it carries one, since that is what the mouse
+// opens, otherwise every http(s) link found in its text, in the order
+// they appear.
+function links(message) {
+  const media = Timeline.media(message);
+  if (media && media.kind === 'link' && media.url) {
+    return [media.url];
+  }
+
+  const text = message && message.text ? message.text : '';
+  const found = text.match(LINK_PATTERN) || [];
+  return found.map(stripTrailingPunctuation);
+}
+
+// stripTrailingPunctuation drops sentence punctuation a link's own text
+// swept up, such as the period ending "see http://x.com." or the
+// closing parenthesis of "(http://x.com)", the same trim Format.js's
+// linkify applies to a link found in escaped text.
+function stripTrailingPunctuation(url) {
+  return url.match(/^(.*?)[.,;:!?)]*$/)[1];
+}
+
+// primaryLink returns the one link the open key (o) opens when the
+// message carries exactly one: the mouse path's own choice, the link
+// preview's URL or the first link in the text. Callers needing every
+// link, for a message with several, use links() instead.
+function primaryLink(message) {
+  const found = links(message);
+  return found.length > 0 ? found[0] : '';
 }
 
 // atOldest reports whether currentId is already the oldest loaded

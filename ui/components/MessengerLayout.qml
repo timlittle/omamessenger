@@ -90,6 +90,10 @@ Item {
     }
     function onScroll(direction) { root._scrollConversation(direction) }
     function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
+    function onLinksRequested(urls) {
+      if (urls.length === 1) Qt.openUrlExternally(urls[0]);
+      else root.windowController.openLinkChooser(urls);
+    }
   }
 
   // Composer focus mirrors ComposerController.composeFocused both ways: a

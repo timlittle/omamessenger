@@ -4,6 +4,7 @@ import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
+import "../lib/Keymap.js" as Keymap
 
 // Shows a conversation photo over the whole window. Omarchy's Hyprland
 // window rule floats the external image viewer too small to reach with
@@ -110,7 +111,7 @@ Item {
 
     Ui.Button {
       objectName: "openExternalButton"
-      text: "Open in image viewer"
+      text: "Open in image viewer (" + Keymap.keyFor("viewer.openExternal") + ")"
       tooltipText: "Open in image viewer"
       focusable: true
       onClicked: root.openExternally()

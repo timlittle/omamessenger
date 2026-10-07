@@ -46,6 +46,7 @@ var BINDINGS = [
   { action: 'rail.prev', keys: ['Ctrl+Shift+Tab'], contexts: ['global'], label: 'Previous account or service', command: true },
   { action: 'window.hide', keys: ['Ctrl+W'], contexts: ['global'], label: 'Close window', command: true },
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
+  { action: 'helper.retryInstall', keys: ['Ctrl+R'], contexts: ['global'], label: 'Retry installing the helper', command: true },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
@@ -71,6 +72,8 @@ var BINDINGS = [
   { action: 'message.reply', keys: ['r'], contexts: ['conversation'], label: 'Reply to the highlighted message', command: true },
   { action: 'message.react', keys: ['e'], contexts: ['conversation'], label: 'React to the highlighted message', command: true },
   { action: 'message.retry', keys: ['t'], contexts: ['conversation'], label: 'Retry the highlighted message', command: true },
+  { action: 'message.openLink', keys: ['o'], contexts: ['conversation'], label: "Open the highlighted message's link", command: true },
+  { action: 'message.goToQuote', keys: ['p'], contexts: ['conversation'], label: 'Go to the replied-to message', command: true },
 
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
   { action: 'compose.newline', keys: ['Shift+Enter', 'Ctrl+J'], contexts: ['compose'], label: 'New line', hint: true },
@@ -80,6 +83,7 @@ var BINDINGS = [
 
   { action: 'viewer.next', keys: ['Right'], contexts: ['viewer'], label: 'Next photo', hint: true },
   { action: 'viewer.prev', keys: ['Left'], contexts: ['viewer'], label: 'Previous photo', hint: true },
+  { action: 'viewer.openExternal', keys: ['o'], contexts: ['viewer'], label: 'Open in your own image viewer', hint: true, command: true },
 
   { action: 'dialog.down', keys: ['Down', 'Ctrl+J'], contexts: ['dialog'], label: 'Next contact' },
   { action: 'dialog.up', keys: ['Up', 'Ctrl+K'], contexts: ['dialog'], label: 'Previous contact' },
@@ -171,6 +175,14 @@ function bindingsFor(context) {
 // "Ctrl+/", "Alt+Down" as "Alt+↓".
 function display(spec) {
   return spec.split('+').map((part) => KEY_NAMES[part] ?? part).join('+');
+}
+
+// keyFor returns the display text for action's primary key, or "" when
+// it has none, for a button label that wants to show its own shortcut
+// beside it rather than naming the key a second time by hand.
+function keyFor(action) {
+  const binding = BINDINGS.find((b) => b.action === action);
+  return binding && binding.keys.length > 0 ? display(binding.keys[0]) : '';
 }
 
 // commands returns what the command palette offers: every command

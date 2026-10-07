@@ -40,7 +40,8 @@ QtObject {
   function run(action: string): void {
     const handlers = {
       "viewer.next": () => root.step(1),
-      "viewer.prev": () => root.step(-1)
+      "viewer.prev": () => root.step(-1),
+      "viewer.openExternal": () => root.openExternally()
     };
 
     const handler = handlers[action];

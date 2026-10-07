@@ -1,7 +1,9 @@
 // Checks the controllers against the real demo helper, started by
 // Service itself: the list loads 11 conversations, a rail filter narrows
-// it to one service, the cursor moves by id, opening a conversation marks
-// it read and loads its messages newest first, a sent message reaches
+// it to one service, the cursor moves by id, pane.conversation reports it
+// did nothing while no conversation is open (so the key router can leave
+// Tab unaccepted rather than swallow it), opening a conversation marks it
+// read and loads its messages newest first, a sent message reaches
 // delivered, a second loadOlder() while one page is already loading is
 // ignored, removing an account closes one of its conversations if it was
 // left open and moves the list cursor off it, and the window Escape
@@ -158,6 +160,19 @@ ShellRoot {
     listController.run("cursor.up");
     if (listController.selectedId !== ids[0])
       return Check.fail("cursor.up gave " + listController.selectedId + ", want " + ids[0]);
+
+    root.checkPaneNoOp();
+  }
+
+  // checkPaneNoOp confirms pane.conversation reports it did nothing while
+  // no conversation is open yet: the signal Panel's key router reads to
+  // leave Tab unaccepted in that case, rather than swallowing it for no
+  // reason (see tests/qml/EmptyState for the focus-chain consequence of
+  // this with the real empty state's own button).
+  function checkPaneNoOp(): void {
+    if (conversationController.activeId !== "") return Check.fail("setup: a conversation is already open");
+    if (conversationController.run("pane.conversation") !== false)
+      return Check.fail("pane.conversation did not report false with no conversation open");
 
     root.checkOpenConversation();
   }

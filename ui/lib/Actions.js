@@ -45,6 +45,8 @@ var OWNERS = {
   'chat.next': 'conversation',
   'chat.prev': 'conversation',
   'message.retry': 'conversation',
+  'message.openLink': 'conversation',
+  'message.goToQuote': 'conversation',
 
   // ComposerController: the draft, replying, attaching and sending.
   'compose.focus': 'composer',
@@ -57,6 +59,7 @@ var OWNERS = {
   // PhotoViewerController: stepping through the in-app photo viewer.
   'viewer.next': 'photoViewer',
   'viewer.prev': 'photoViewer',
+  'viewer.openExternal': 'photoViewer',
 
   // ReactionsController: the emoji picker and reacting to a message.
   'message.react': 'reactions',
@@ -85,6 +88,7 @@ var OWNERS = {
   'palette.accept': 'window',
   'window.hide': 'window',
   'app.quit': 'window',
+  'helper.retryInstall': 'window',
   'escape': 'window'
 };
 

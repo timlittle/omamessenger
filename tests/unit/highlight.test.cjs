@@ -57,3 +57,60 @@ test('hints combines media and a failed retry', () => {
   const both = message({ outgoing: true, status: 'failed', media: { kind: 'file', fileName: 'a.pdf', size: 1 } });
   assert.strictEqual(Highlight.hints(both), 'r reply · e react · Enter open · t retry');
 });
+
+test('hints adds o open link for a message with a link preview', () => {
+  // A link preview is still "media" by Timeline.media's own test, so
+  // Enter open keeps showing beside it exactly as it already did before
+  // o existed; this only adds the new hint, it does not replace that one.
+  const linked = message({ media: { kind: 'link', url: 'https://example.com', title: 'Example' } });
+  assert.strictEqual(Highlight.hints(linked), 'r reply · e react · Enter open · o open link');
+});
+
+test('hints adds o open link for a plain message whose text carries a URL', () => {
+  const texted = message({ text: 'see https://example.com/path for more' });
+  assert.strictEqual(Highlight.hints(texted), 'r reply · e react · o open link');
+});
+
+test('hints leaves out o open link for a message with no link', () => {
+  assert.strictEqual(Highlight.hints(message({ text: 'just words' })), 'r reply · e react');
+});
+
+test('hints adds p go to quote for a reply', () => {
+  const reply = message({ replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' } });
+  assert.strictEqual(Highlight.hints(reply), 'r reply · e react · p go to quote');
+});
+
+test('hints combines a link, a quote and a failed retry, in order', () => {
+  const all = message({
+    outgoing: true,
+    status: 'failed',
+    text: 'see https://example.com',
+    replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' }
+  });
+  assert.strictEqual(Highlight.hints(all), 'r reply · e react · o open link · p go to quote · t retry');
+});
+
+test('links prefers the link preview\'s own URL over the text', () => {
+  const linked = message({ text: 'https://text.example/one', media: { kind: 'link', url: 'https://preview.example/two' } });
+  assert.deepEqual(Highlight.links(linked), ['https://preview.example/two']);
+});
+
+test('links finds every URL in the text, in order, trimming trailing punctuation', () => {
+  const texted = message({ text: 'see https://a.example/x. then (https://b.example/y) too' });
+  assert.deepEqual(Highlight.links(texted), ['https://a.example/x', 'https://b.example/y']);
+});
+
+test('links returns an empty list for a message with no link', () => {
+  assert.deepEqual(Highlight.links(message({ text: 'nothing here' })), []);
+  assert.deepEqual(Highlight.links(message({ media: { kind: 'photo', width: 1, height: 1 } })), []);
+});
+
+test('links reads a model row whose media is a JSON string, same as Timeline.media', () => {
+  const row = message({ media: JSON.stringify({ kind: 'link', url: 'https://example.com' }) });
+  assert.deepEqual(Highlight.links(row), ['https://example.com']);
+});
+
+test('primaryLink returns the first link, or "" for none', () => {
+  assert.strictEqual(Highlight.primaryLink(message({ text: 'https://a.example https://b.example' })), 'https://a.example');
+  assert.strictEqual(Highlight.primaryLink(message({ text: 'no links' })), '');
+});

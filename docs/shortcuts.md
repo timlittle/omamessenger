@@ -16,6 +16,7 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
 | Ctrl+W | Close the window (asks whether to keep running) |
 | Ctrl+Q | Quit |
+| Ctrl+R | Retry installing the helper, if it failed to install |
 | Esc | Step back: close the palette, a dialog, account setup or the photo viewer, clear the search, leave the composer or the conversation |
 
 ## Conversation list
@@ -41,6 +42,8 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | Enter | Open the highlighted message's photo, video or file |
 | r | Reply to the highlighted message |
 | e | React to the highlighted message |
+| o | Open the highlighted message's link, if it has one |
+| p | Go to the message it replies to, if it is one |
 | t | Retry the highlighted message, if it failed to send |
 | h | Back to the list |
 
@@ -59,5 +62,6 @@ Clicking a photo opens it inside the window, sized to fit.
 | Keys | Does |
 | --- | --- |
 | ← / → | Previous / next photo in the conversation |
+| o | Open in your own image viewer |
 
-**Open in image viewer** opens the photo in your own application; videos and files always open externally.
+**Open in image viewer** (o) opens the photo in your own application; videos and files always open externally.

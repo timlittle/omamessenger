@@ -28,6 +28,10 @@ test('owner: returns the mapped controller for a known action', () => {
   assert.strictEqual(Actions.owner('message.send'), 'composer');
   assert.strictEqual(Actions.owner('chat.new'), 'dialog');
   assert.strictEqual(Actions.owner('escape'), 'window');
+  assert.strictEqual(Actions.owner('message.openLink'), 'conversation');
+  assert.strictEqual(Actions.owner('message.goToQuote'), 'conversation');
+  assert.strictEqual(Actions.owner('viewer.openExternal'), 'photoViewer');
+  assert.strictEqual(Actions.owner('helper.retryInstall'), 'window');
 });
 
 test('owner: returns "" for an action Keymap does not define', () => {

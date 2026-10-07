@@ -61,7 +61,9 @@ Item {
 
   CommandPalette {
     open: root.windowController.paletteOpen
-    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation" : "Type a command"
+    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation"
+      : root.windowController.paletteMode === "links" ? "Open which link?"
+      : "Type a command"
     items: root.windowController.paletteItems
     currentIndex: root.windowController.paletteIndex
     routeKey: root.routeKey

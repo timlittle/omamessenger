@@ -55,6 +55,10 @@ const cases = [
   ['conversation', letter('e'), 0, 'e', 'message.react'],
   ['conversation', letter('t'), 0, 't', 'message.retry'],
   ['conversation', letter('r'), MOD.Shift, 'R', ''],
+  ['conversation', letter('o'), 0, 'o', 'message.openLink'],
+  ['conversation', letter('p'), 0, 'p', 'message.goToQuote'],
+  ['list', letter('r'), MOD.Ctrl, '', 'helper.retryInstall'],
+  ['conversation', letter('r'), MOD.Ctrl, '', 'helper.retryInstall'],
 
   ['compose', KEY.Return, 0, '\r', 'message.send'],
   ['compose', KEY.Return, MOD.Shift, '\r', 'compose.newline'],
@@ -81,6 +85,7 @@ const cases = [
   // answers to its own binding.
   ['viewer', KEY.Right, 0, '', 'viewer.next'],
   ['viewer', KEY.Left, 0, '', 'viewer.prev'],
+  ['viewer', letter('o'), 0, 'o', 'viewer.openExternal'],
   ['viewer', KEY.Escape, 0, '', 'escape'],
   ['viewer', KEY.Enter, 0, '\r', ''],
   ['list', KEY.Right, 0, '', '']
@@ -144,4 +149,24 @@ test('the palette offers commands that have no key, with none shown', () => {
 test('composeHint names the mode from the real compose.focus and escape keys', () => {
   assert.strictEqual(Keymap.composeHint(false), 'i to write');
   assert.strictEqual(Keymap.composeHint(true), 'Writing · Esc to stop');
+});
+
+test('keyFor shows an action\'s own primary key, for a label that names its own shortcut', () => {
+  assert.strictEqual(Keymap.keyFor('viewer.openExternal'), 'o');
+  assert.strictEqual(Keymap.keyFor('helper.retryInstall'), 'Ctrl+R');
+});
+
+test('keyFor returns "" for an action with no key', () => {
+  assert.strictEqual(Keymap.keyFor('list.showAll'), '');
+});
+
+test('the palette offers opening a link and going to a quote, and retrying the helper install', () => {
+  const commands = Keymap.commands();
+
+  assert.ok(commands.some((c) => c.action === 'message.openLink'));
+  assert.ok(commands.some((c) => c.action === 'message.goToQuote'));
+  assert.ok(commands.some((c) => c.action === 'viewer.openExternal'));
+
+  const retry = commands.find((c) => c.action === 'helper.retryInstall');
+  assert.deepEqual(retry, { action: 'helper.retryInstall', label: 'Retry installing the helper', keys: 'Ctrl+R' });
 });

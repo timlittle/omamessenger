@@ -1,6 +1,7 @@
 import QtQuick
 import "../lib/Selection.js" as Selection
 import "../lib/Highlight.js" as Highlight
+import "../lib/Timeline.js" as Timeline
 import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
 
@@ -98,13 +99,25 @@ Item {
   // to a loaded message, by its local id.
   signal scrollToMessageRequested(string id)
 
+  // linksRequested asks the caller to open the highlighted message's
+  // link: Qt.openUrlExternally on it directly when there is exactly one,
+  // the same choice the mouse path already makes, or let the user choose
+  // among several when there is more than one. Opening stays with the
+  // caller, rather than this controller, so it is checked by what it
+  // asked for rather than by stubbing Qt.openUrlExternally.
+  signal linksRequested(var urls)
+
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
     return Actions.owner(action) === "conversation";
   }
 
-  // run performs action, the only entry point a key router needs.
-  function run(action: string): void {
+  // run performs action, the only entry point a key router needs. It
+  // returns false only for an action that found nothing to do, such as
+  // pane.conversation with no conversation open, so the key router can
+  // leave the key event unaccepted and let it fall through to the normal
+  // focus chain instead of swallowing it for no reason.
+  function run(action: string): bool {
     const handlers = {
       "chat.open": () => root._openSelected(),
       "search.accept": () => root._openFirstVisible(),
@@ -113,6 +126,8 @@ Item {
       "message.highlightOlder": () => root._moveHighlight(true),
       "message.highlightNewer": () => root._moveHighlight(false),
       "message.open": () => root._openHighlighted(),
+      "message.openLink": () => root._openHighlightedLink(),
+      "message.goToQuote": () => root._goToHighlightedQuote(),
       "scroll.pageDown": () => root.scroll("pageDown"),
       "scroll.pageUp": () => root.scroll("pageUp"),
       "scroll.newest": () => root.scroll("newest"),
@@ -123,7 +138,7 @@ Item {
     };
 
     const handler = handlers[action];
-    if (handler) handler();
+    return handler ? handler() !== false : true;
   }
 
   // open shows conversation: loads its messages, marks it read, tells the
@@ -313,18 +328,26 @@ Item {
     root.service.request("ui.setFocus", { conversationId: id, windowActive: root.windowActive }, function() {});
   }
 
-  // _showPane brings the conversation column forward without reopening it.
-  function _showPane(): void {
-    if (!root.activeId) return;
+  // _showPane brings the conversation column forward without reopening
+  // it, or does nothing when there is no open conversation to show: that
+  // no-op reports false, so Tab falls through to the normal focus chain
+  // (reaching the empty state's own buttons) instead of being swallowed.
+  function _showPane(): bool {
+    if (!root.activeId) return false;
 
     root.pane = "conversation";
     root.saveUiState({ pane: "conversation" });
+    return true;
   }
 
-  // _hidePane brings the list column forward, leaving the conversation open.
-  function _hidePane(): void {
+  // _hidePane brings the list column forward, leaving the conversation
+  // open. Always a real change, since this is only ever reached from the
+  // "conversation" key context, which already means the pane was showing
+  // the conversation.
+  function _hidePane(): bool {
     root.pane = "list";
     root.saveUiState({ pane: "list" });
+    return true;
   }
 
   // resetHighlight moves the highlight to the newest loaded message.
@@ -361,6 +384,35 @@ Item {
   function _retryHighlighted(): void {
     const m = timeline.find(root.highlightedId);
     if (m && m.outgoing && m.status === "failed") root.retryMessage(m.id);
+  }
+
+  // _openHighlightedLink finds the highlighted message's link or links
+  // (the link preview's own URL, or every link in its text when it has
+  // no preview) and asks the caller to open them: nothing happens when
+  // it carries none.
+  function _openHighlightedLink(): void {
+    const message = timeline.find(root.highlightedId);
+    if (!message) return;
+
+    const found = Highlight.links(message);
+    if (found.length > 0) root.linksRequested(found);
+  }
+
+  // _goToHighlightedQuote moves the highlight to the message the
+  // highlighted one replies to, and scrolls to it, the same lookup by
+  // remote id the quote's own click already uses. Nothing happens when
+  // it answers nothing, or the quoted message is not loaded, the same as
+  // that click.
+  function _goToHighlightedQuote(): void {
+    const message = timeline.find(root.highlightedId);
+    const quote = message ? Timeline.replyTo(message) : null;
+    if (!quote || !quote.remoteId) return;
+
+    const id = timeline.localIdForRemote(quote.remoteId);
+    if (!id) return;
+
+    root.highlightedId = id;
+    root.scrollToMessageRequested(id);
   }
 
   // applyMessage applies a sent, retried or pushed message to the
