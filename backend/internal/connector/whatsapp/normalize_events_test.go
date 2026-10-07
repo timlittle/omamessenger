@@ -33,6 +33,7 @@ func TestIsContentless_RecognisesHousekeepingKinds(t *testing.T) {
 		{"secret encrypted", &waE2E.Message{SecretEncryptedMessage: &waE2E.SecretEncryptedMessage{}}, true},
 		{"group root key share", &waE2E.Message{GroupRootKeyShare: &waE2E.GroupRootKeyShare{}}, true},
 		{"root secret distribute", &waE2E.Message{RootSecretDistributeMessage: &waE2E.RootSecretDistributeMessage{}}, true},
+		{"album header", &waE2E.Message{AlbumMessage: &waE2E.AlbumMessage{}}, true},
 		{"a real revoke stays its own kind", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REVOKE.Enum()}}, false},
 	}
 

@@ -35,6 +35,12 @@ func unwrap(msg *waE2E.Message) *waE2E.Message {
 			msg = msg.GetViewOnceMessageV2Extension().GetMessage()
 		case msg.GetDeviceSentMessage().GetMessage() != nil:
 			msg = msg.GetDeviceSentMessage().GetMessage()
+		case msg.GetAssociatedChildMessage().GetMessage() != nil:
+			// An album's individual photo or video arrives wrapped this
+			// way; peeling it off here is what lets it show as an
+			// ordinary photo or video message, the same as one sent on
+			// its own.
+			msg = msg.GetAssociatedChildMessage().GetMessage()
 		case msg.GetPollCreationMessageV4().GetMessage() != nil:
 			// Unlike every earlier poll version, V4 wraps its content in
 			// the same forward-compatible envelope as an ephemeral or
@@ -234,8 +240,57 @@ func plainText(msg *waE2E.Message) string {
 	case msg.GetExtendedTextMessage() != nil:
 		return msg.GetExtendedTextMessage().GetText()
 	default:
+		return businessText(msg)
+	}
+}
+
+// businessText is the visible text of one of WhatsApp Business's own
+// message kinds: an interactive message's body, header or footer, a
+// buttons message's own content text, a template's hydrated text, or
+// the option a person picked replying to a template's buttons. It is
+// "" for anything else, including a business kind that carries no
+// text of its own, which falls back to mediaPlaceholder's generic
+// label like any other message would.
+func businessText(msg *waE2E.Message) string {
+	switch {
+	case msg.GetInteractiveMessage() != nil:
+		return interactiveText(msg.GetInteractiveMessage())
+	case msg.GetButtonsMessage() != nil:
+		return msg.GetButtonsMessage().GetContentText()
+	case msg.GetTemplateMessage() != nil:
+		return templateText(msg.GetTemplateMessage())
+	case msg.GetTemplateButtonReplyMessage() != nil:
+		return msg.GetTemplateButtonReplyMessage().GetSelectedDisplayText()
+	default:
 		return ""
 	}
+}
+
+// interactiveText is an interactive message's own visible text: its
+// body, falling back to its header's title or its footer's text, since
+// WhatsApp lets a business send any mix of the three.
+func interactiveText(m *waE2E.InteractiveMessage) string {
+	if text := m.GetBody().GetText(); text != "" {
+		return text
+	}
+	if title := m.GetHeader().GetTitle(); title != "" {
+		return title
+	}
+
+	return m.GetFooter().GetText()
+}
+
+// templateText is a template message's hydrated text, read from
+// whichever of the two fields WhatsApp populated: the dedicated
+// hydrated-template field, or, on an older message, the same content
+// carried inside the format union.
+func templateText(m *waE2E.TemplateMessage) string {
+	hydrated := m.GetHydratedTemplate()
+	if hydrated == nil {
+		hydrated = m.GetHydratedFourRowTemplate()
+	}
+
+	return hydrated.GetHydratedContentText()
 }
 
 // mediaCaption is the caption on a photo, video or file, or "" when the

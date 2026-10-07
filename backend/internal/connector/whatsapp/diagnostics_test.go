@@ -23,6 +23,12 @@ func TestUnknownContentKind_RecognisesEveryKindThisConnectorHandles(t *testing.T
 		{"reaction", &waE2E.Message{ReactionMessage: &waE2E.ReactionMessage{}}},
 		{"protocol", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{}}},
 		{"call", &waE2E.Message{Call: &waE2E.Call{}}},
+		{"album header", &waE2E.Message{AlbumMessage: &waE2E.AlbumMessage{}}},
+		{"album child", &waE2E.Message{AssociatedChildMessage: &waE2E.FutureProofMessage{}}},
+		{"interactive", &waE2E.Message{InteractiveMessage: &waE2E.InteractiveMessage{}}},
+		{"buttons", &waE2E.Message{ButtonsMessage: &waE2E.ButtonsMessage{}}},
+		{"template", &waE2E.Message{TemplateMessage: &waE2E.TemplateMessage{}}},
+		{"template button reply", &waE2E.Message{TemplateButtonReplyMessage: &waE2E.TemplateButtonReplyMessage{}}},
 		{"nothing at all", &waE2E.Message{}},
 	}
 
@@ -40,13 +46,13 @@ func TestUnknownContentKind_RecognisesEveryKindThisConnectorHandles(t *testing.T
 func TestUnknownContentKind_NamesAFieldThisConnectorDoesNotHandle(t *testing.T) {
 	t.Parallel()
 
-	// TemplateMessage is a real WhatsApp Business content kind this
+	// ProductMessage is a real WhatsApp Business content kind this
 	// connector has never been taught to show.
-	field, ok := unknownContentKind(&waE2E.Message{TemplateMessage: &waE2E.TemplateMessage{}})
+	field, ok := unknownContentKind(&waE2E.Message{ProductMessage: &waE2E.ProductMessage{}})
 	if !ok {
 		t.Fatal("unknownContentKind = false, want true for a kind this connector does not recognise")
 	}
-	if field != "templateMessage" {
-		t.Errorf("unknownContentKind field = %q, want %q", field, "templateMessage")
+	if field != "productMessage" {
+		t.Errorf("unknownContentKind field = %q, want %q", field, "productMessage")
 	}
 }

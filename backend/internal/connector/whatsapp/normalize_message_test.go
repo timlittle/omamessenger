@@ -121,6 +121,7 @@ func TestMessage_UnwrapsEphemeralAndViewOnce(t *testing.T) {
 		{"view once v2", &waE2E.Message{ViewOnceMessageV2: &waE2E.FutureProofMessage{Message: inner}}},
 		{"view once v2 extension", &waE2E.Message{ViewOnceMessageV2Extension: &waE2E.FutureProofMessage{Message: inner}}},
 		{"device sent", &waE2E.Message{DeviceSentMessage: &waE2E.DeviceSentMessage{Message: inner}}},
+		{"album child", &waE2E.Message{AssociatedChildMessage: &waE2E.FutureProofMessage{Message: inner}}},
 		{
 			"nested ephemeral view-once",
 			&waE2E.Message{EphemeralMessage: &waE2E.FutureProofMessage{Message: &waE2E.Message{
@@ -137,6 +138,23 @@ func TestMessage_UnwrapsEphemeralAndViewOnce(t *testing.T) {
 				t.Errorf("message(%s).Text = %q, want %q", tt.name, got.Text, "secret")
 			}
 		})
+	}
+}
+
+// TestMessage_UnwrapsAnAlbumChildToItsPhoto checks that an album's
+// individual photo, wrapped in associatedChildMessage, keeps its media
+// once unwrapped, not just its caption text (already covered by the
+// "album child" case above).
+func TestMessage_UnwrapsAnAlbumChildToItsPhoto(t *testing.T) {
+	t.Parallel()
+
+	wrapped := &waE2E.Message{AssociatedChildMessage: &waE2E.FutureProofMessage{
+		Message: &waE2E.Message{ImageMessage: &waE2E.ImageMessage{Caption: strPtr("beach")}},
+	}}
+
+	got := message(t.Context(), newFakeDevice(), testInfo(), wrapped)
+	if got.Media == nil || got.Media.Kind != domain.MediaPhoto {
+		t.Errorf("message.Media = %+v, want a photo", got.Media)
 	}
 }
 
@@ -217,6 +235,23 @@ func TestMessageText_LabelsMediaWithoutACaption(t *testing.T) {
 		{&waE2E.Message{PollCreationMessageV6: &waE2E.PollCreationMessage{Name: strPtr("V6?")}}, "[Poll: V6?]"},
 		{&waE2E.Message{GroupInviteMessage: &waE2E.GroupInviteMessage{}}, "[Group invite]"},
 		{&waE2E.Message{StickerPackMessage: &waE2E.StickerPackMessage{}}, "[Sticker pack]"},
+		// A business message's own visible text: an interactive message
+		// prefers its body, then its header, then its footer; the other
+		// kinds each carry one text field of their own.
+		{wantInteractiveText("Header", "Body", "Footer"), "Body"},
+		{wantInteractiveText("Header", "", "Footer"), "Header"},
+		{wantInteractiveText("", "", "Footer"), "Footer"},
+		{&waE2E.Message{InteractiveMessage: &waE2E.InteractiveMessage{}}, "[Message]"},
+		{&waE2E.Message{ButtonsMessage: &waE2E.ButtonsMessage{ContentText: strPtr("Pick one")}}, "Pick one"},
+		{&waE2E.Message{TemplateMessage: &waE2E.TemplateMessage{
+			HydratedTemplate: &waE2E.TemplateMessage_HydratedFourRowTemplate{HydratedContentText: strPtr("Shipped")},
+		}}, "Shipped"},
+		{&waE2E.Message{TemplateMessage: &waE2E.TemplateMessage{
+			Format: &waE2E.TemplateMessage_HydratedFourRowTemplate_{HydratedFourRowTemplate: &waE2E.TemplateMessage_HydratedFourRowTemplate{
+				HydratedContentText: strPtr("Older format"),
+			}},
+		}}, "Older format"},
+		{&waE2E.Message{TemplateButtonReplyMessage: &waE2E.TemplateButtonReplyMessage{SelectedDisplayText: strPtr("Yes please")}}, "Yes please"},
 		{&waE2E.Message{}, "[Message]"},
 	}
 
@@ -225,6 +260,25 @@ func TestMessageText_LabelsMediaWithoutACaption(t *testing.T) {
 			t.Errorf("messageText(%+v) = %q, want %q", tt.msg, got, tt.want)
 		}
 	}
+}
+
+// wantInteractiveText builds an interactive message with whichever of
+// its header, body and footer text is given, leaving the rest unset, so
+// TestMessageText_LabelsMediaWithoutACaption can check that body wins
+// over header, which wins over footer.
+func wantInteractiveText(header, body, footer string) *waE2E.Message {
+	m := &waE2E.InteractiveMessage{}
+	if header != "" {
+		m.Header = &waE2E.InteractiveMessage_Header{Title: strPtr(header)}
+	}
+	if body != "" {
+		m.Body = &waE2E.InteractiveMessage_Body{Text: strPtr(body)}
+	}
+	if footer != "" {
+		m.Footer = &waE2E.InteractiveMessage_Footer{Text: strPtr(footer)}
+	}
+
+	return &waE2E.Message{InteractiveMessage: m}
 }
 
 func TestMessage_UnwrapsAPollCreationMessageV4Wrapper(t *testing.T) {

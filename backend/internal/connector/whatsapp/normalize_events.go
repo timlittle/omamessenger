@@ -62,10 +62,13 @@ func edit(ctx context.Context, dev device, info types.MessageInfo, msg *waE2E.Me
 // or system notices rather than something a person sent: every
 // ProtocolMessage kind other than a revoke or an edit (handled
 // separately; see isRevoke and isEdit), a poll vote, a message pinned
-// or kept in a chat, a voice or video call's log entry, or one of the
-// other housekeeping kinds WhatsApp's wire format carries alongside a
-// session (a history-sync bundle or notice, a secret or key-share
-// payload), none of which carry anything a person actually said.
+// or kept in a chat, a voice or video call's log entry, an album's own
+// header (its photos and videos arrive as their own messages, each
+// wrapped in an associatedChildMessage that unwrap peels away; see
+// normalize_message.go), or one of the other housekeeping kinds
+// WhatsApp's wire format carries alongside a session (a history-sync
+// bundle or notice, a secret or key-share payload), none of which carry
+// anything a person actually said.
 func isContentless(msg *waE2E.Message) bool {
 	if pm := msg.GetProtocolMessage(); pm != nil {
 		return !isRevoke(msg) && !isEdit(msg)
@@ -78,6 +81,7 @@ func isContentless(msg *waE2E.Message) bool {
 		msg.GetCall() != nil,
 		msg.GetCallLogMesssage() != nil,
 		msg.GetBcallMessage() != nil,
+		msg.GetAlbumMessage() != nil,
 		msg.GetMessageHistoryBundle() != nil,
 		msg.GetMessageHistoryNotice() != nil,
 		msg.GetPlaceholderMessage() != nil,
