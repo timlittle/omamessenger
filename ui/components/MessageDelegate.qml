@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import qs.Commons
 import "../theme"
-import "../lib/Format.js" as Format
 import "../lib/Timeline.js" as Timeline
 
 // One message row in a conversation: an optional day separator, the sender
@@ -109,110 +108,33 @@ Item {
         // everything else stays clickable.
         HoverHandler { id: bubbleHover }
 
-        // The widest line's unwrapped width. TextEdit's own implicit width
-        // follows its wrapped width, so it cannot size the bubble.
-        TextMetrics {
-          id: natural
-
-          font: body.font
-          text: Format.longestLine(body.caption)
-        }
-
-        // The text, then any link preview or photo; parts a message lacks
-        // take no space.
-        Column {
+        // The text, then any link preview, photo or file; parts a
+        // message lacks take no space.
+        MessageBubbleContent {
           id: content
 
           x: bubble.padding
           y: bubble.padding
-          spacing: Theme.spacing.xs
-
-          ReplyQuote {
-            objectName: "replyQuote"
-            width: Math.min(implicitWidth, bubble.maxTextWidth)
-            visible: root.quote !== null
-            reply: root.quote ?? ({})
-            onOpened: remoteId => root.quoteOpened(remoteId)
-          }
-
-          TextEdit {
-            id: body
-
-            // caption leaves out the label a photo stands in for.
-            readonly property string caption: Format.caption(root.message.text, root.media)
-
-            objectName: "body"
-            visible: body.caption !== ""
-            width: Math.min(Math.ceil(natural.advanceWidth) + 1, bubble.maxTextWidth)
-            readOnly: true
-            selectByMouse: true
-            wrapMode: TextEdit.Wrap
-            textFormat: TextEdit.RichText
-            text: Format.messageHtml(body.caption, Color.accent)
-            color: Color.foreground
-            font { family: Theme.font.family; pixelSize: Theme.font.body }
-            onLinkActivated: link => Qt.openUrlExternally(link)
-          }
-
-          LinkPreview {
-            objectName: "linkPreview"
-            width: Math.min(implicitWidth, bubble.maxTextWidth)
-            visible: root.media !== null && root.media.kind === "link"
-            preview: root.media ?? ({})
-            onOpened: url => Qt.openUrlExternally(url)
-          }
-
-          PhotoView {
-            objectName: "photoView"
-            maxWidth: bubble.maxTextWidth
-            width: implicitWidth
-            height: implicitHeight
-            visible: root.media !== null && (root.media.kind === "photo" || root.media.kind === "video")
-            photo: root.media ?? ({})
-            path: root.message.mediaPath ?? ""
-            onWanted: root.mediaWanted(root.message.id)
-            onOpened: root.mediaOpen(root.message.id)
-          }
-
-          FileView {
-            objectName: "fileView"
-            width: Math.min(implicitWidth, bubble.maxTextWidth)
-            visible: root.media !== null && root.media.kind === "file"
-            file: root.media ?? ({})
-            onOpened: root.mediaOpen(root.message.id)
-          }
+          message: root.message
+          media: root.media
+          quote: root.quote
+          maxTextWidth: bubble.maxTextWidth
+          onMediaWanted: root.mediaWanted(root.message.id)
+          onMediaOpen: root.mediaOpen(root.message.id)
+          onQuoteOpened: remoteId => root.quoteOpened(remoteId)
         }
 
-        Row {
+        MessageMeta {
           id: meta
 
           y: content.y + content.height + Theme.spacing.xxs
-          spacing: Theme.spacing.xs
-          layoutDirection: root.message.outgoing ? Qt.RightToLeft : Qt.LeftToRight
           anchors.right: root.message.outgoing ? parent.right : undefined
           anchors.left: root.message.outgoing ? undefined : parent.left
           anchors.leftMargin: bubble.padding
           anchors.rightMargin: bubble.padding
-
-          Text {
-            text: Format.timeLabel(root.message.created, root.nowMs)
-            color: Util.alpha(Color.foreground, 0.5)
-            font { family: Theme.font.family; pixelSize: Theme.font.caption }
-          }
-
-          Text {
-            visible: root.message.edited === true
-            text: "edited"
-            color: Util.alpha(Color.foreground, 0.5)
-            font { family: Theme.font.family; pixelSize: Theme.font.caption }
-          }
-
-          Text {
-            visible: root.showStatus
-            text: Format.statusGlyph(root.message.status)
-            color: root.message.status === "read" ? Color.accent : Util.alpha(Color.foreground, 0.5)
-            font { family: Theme.font.family; pixelSize: Theme.font.caption }
-          }
+          message: root.message
+          nowMs: root.nowMs
+          showStatus: root.showStatus
         }
       }
 
