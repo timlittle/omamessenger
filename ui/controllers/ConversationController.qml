@@ -48,6 +48,13 @@ Item {
   // draft is the open conversation's unsent composer text.
   property string draft: ""
 
+  // attachmentPath is the file to send with the next message, or "" for
+  // none: set by attachFile (the composer's own file picker) or
+  // pasteImage (a clipboard image, through the helper), and read by
+  // send(). See Composer.qml for why the caller, not the composer,
+  // owns it.
+  property string attachmentPath: ""
+
   // typing is true while the other side is composing a reply.
   property bool typing: false
 
@@ -96,8 +103,17 @@ Item {
   // composeFocusRequested asks the caller to focus the composer.
   signal composeFocusRequested()
 
+  // attachFileRequested asks the caller to open the composer's file
+  // picker, for the command palette's "Attach a file" command.
+  signal attachFileRequested()
+
   // submitRequested asks the caller to submit whatever the composer holds.
   signal submitRequested()
+
+  // pasteFallbackRequested asks the caller to paste the clipboard's text
+  // into the composer, because pasteImage found no image there and
+  // Ctrl+V must still work as a plain text paste.
+  signal pasteFallbackRequested()
 
   // leaveComposeRequested asks the caller to move focus out of the composer.
   signal leaveComposeRequested()
@@ -126,7 +142,9 @@ Item {
       "message.retry": () => root.retryMessage(timeline.newestFailedId()),
       "message.send": () => root.submitRequested(),
       "viewer.next": () => root.stepViewer(1),
-      "viewer.prev": () => root.stepViewer(-1)
+      "viewer.prev": () => root.stepViewer(-1),
+      "compose.attach": () => root.pasteImage(),
+      "compose.attachFile": () => root.attachFileRequested()
     };
 
     const handler = handlers[action];
@@ -162,13 +180,42 @@ Item {
     timeline.loadOlder(root.service, root.activeId, root.isGroup);
   }
 
-  // send submits text to the open conversation.
+  // send submits text, and whatever attachFile or pasteImage already set
+  // as attachmentPath, to the open conversation.
   function send(text: string): void {
-    if (!root.activeId || !text) return;
+    if (!root.activeId || (!text && !root.attachmentPath)) return;
 
-    root.service.request("messages.send", { conversationId: root.activeId, text: text }, function(error, result) {
+    const params = { conversationId: root.activeId, text: text };
+    if (root.attachmentPath) params.attachment = { path: root.attachmentPath };
+
+    root.service.request("messages.send", params, function(error, result) {
       if (error) { timeline.lastError = Rpc.errorText(error); return; }
       root._upsertMessage(result);
+    });
+    root.attachmentPath = "";
+  }
+
+  // attachFile records a file the composer's own file picker chose, to
+  // send with the next message.
+  function attachFile(path: string): void {
+    root.attachmentPath = path;
+  }
+
+  // removeAttachment clears whatever attachFile or pasteImage set, from
+  // the composer's chip or the Escape chain.
+  function removeAttachment(): void {
+    root.attachmentPath = "";
+  }
+
+  // pasteImage asks the helper whether the clipboard holds an image; if
+  // it does, it is attached to the next message, and otherwise Ctrl+V
+  // still pastes text, same as it always did.
+  function pasteImage(): void {
+    if (!root.service) return;
+
+    root.service.request("media.paste", {}, function(error, result) {
+      if (error) { root.pasteFallbackRequested(); return; }
+      root.attachmentPath = result.path;
     });
   }
 

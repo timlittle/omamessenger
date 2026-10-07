@@ -22,6 +22,9 @@ Item {
   property real nowMs: 0
   // draft is the composer's saved text for this conversation.
   property string draft: ""
+  // attachmentPath is the file to send with the next message, or "" for
+  // none; see Composer.qml for why the caller owns it.
+  property string attachmentPath: ""
   // composeEnabled is false while the conversation can't accept input.
   property bool composeEnabled: true
   // composer exposes the Composer instance so a key router can focus it.
@@ -46,6 +49,10 @@ Item {
   signal send(string text)
   // draftEdited reports the composer's text as the user types it.
   signal draftEdited(string text)
+  // fileAttached reports a file the attach button's own picker chose.
+  signal fileAttached(string path)
+  // attachmentRemoveRequested asks the caller to clear attachmentPath.
+  signal attachmentRemoveRequested()
 
   // scrollBy moves the view by a number of lines; negative scrolls up.
   function scrollBy(lines: int): void {
@@ -174,9 +181,12 @@ Item {
       Layout.margins: Theme.spacing.md
       title: root.conversation ? root.conversation.title : ""
       enabled: root.composeEnabled
+      attachmentPath: root.attachmentPath
       routeKey: root.routeKey
       onSubmitted: text => root.send(text)
       onTextChanged: root.draftEdited(composer.text)
+      onFileAttached: path => root.fileAttached(path)
+      onAttachmentRemoveRequested: root.attachmentRemoveRequested()
     }
   }
 

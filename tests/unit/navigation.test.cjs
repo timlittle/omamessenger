@@ -249,6 +249,34 @@ test('escapeAction: leave-compose when composeFocused', () => {
   assert.strictEqual(Navigation.escapeAction(state), 'leave-compose');
 });
 
+test('escapeAction: clear-attachment when composeFocused with a pending attachment', () => {
+  const state = {
+    paletteOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: true,
+    hasAttachment: true,
+    query: '',
+    activeId: 'c1',
+    pane: 'conversation'
+  };
+  assert.strictEqual(Navigation.escapeAction(state), 'clear-attachment');
+});
+
+test('escapeAction: leave-compose once the attachment is gone', () => {
+  const state = {
+    paletteOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: true,
+    hasAttachment: false,
+    query: '',
+    activeId: 'c1',
+    pane: 'conversation'
+  };
+  assert.strictEqual(Navigation.escapeAction(state), 'leave-compose');
+});
+
 test('escapeAction: compose takes precedence over conversation, etc', () => {
   const state = {
     paletteOpen: false,

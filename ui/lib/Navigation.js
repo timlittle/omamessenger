@@ -33,7 +33,9 @@ function escapeAction(state) {
     return state.query ? 'clear-search' : 'leave-search';
   }
 
-  if (state.composeFocused) return 'leave-compose';
+  if (state.composeFocused) {
+    return state.hasAttachment ? 'clear-attachment' : 'leave-compose';
+  }
 
   if (state.activeId) {
     return 'close-conversation';

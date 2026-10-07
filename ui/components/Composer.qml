@@ -1,43 +1,64 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
+import "../lib/Format.js" as Format
 
-// Message composer: a growing text input plus a Send button.
+// Message composer: an attachment chip, a growing text input and a Send
+// button.
 //
 // This is a view only. It holds no helper or service references and makes
-// no decision about *when* a message is sent beyond "the trimmed text is
-// non-empty" — that call belongs to whoever wires it up.
+// no decision about *when* a message is sent beyond "there is text or an
+// attachment" — that call belongs to whoever wires it up. attachmentPath
+// is supplied by the caller, the same way title and draft text are: the
+// attach button's own file picker and a pasted image both need no
+// protocol call, but a pasted image does (media.paste), so the caller
+// decides what the picked or pasted file turned out to be and hands the
+// path back down, exactly like draft text already flows out through
+// submitted() and back in through this property.
 //
 // Enter / Shift+Enter are deliberately NOT handled here. routeKey, when
 // set, is called with a key press's (key, modifiers, text) before the
 // input does anything with it; returning true marks the key handled, so
-// Enter can call submit() instead of inserting a newline. It takes the
-// event's raw fields rather than the KeyEvent itself: a KeyEvent copies
-// when it crosses a signal, and mutating a copy's `accepted` would not
-// stop the real one, so the input sets `accepted` itself from the
-// boolean this returns. The `input` alias lets the same caller watch
-// activeFocus and focus the field itself.
+// Enter can call submit() instead of inserting a newline, and Ctrl+V can
+// ask the caller to check the clipboard for an image instead of pasting
+// text. It takes the event's raw fields rather than the KeyEvent itself:
+// a KeyEvent copies when it crosses a signal, and mutating a copy's
+// `accepted` would not stop the real one, so the input sets `accepted`
+// itself from the boolean this returns. The `input` alias lets the same
+// caller watch activeFocus and focus the field itself.
 Item {
   id: root
+  objectName: "composer"
 
   // ------------------------------------------------------------- API
   property string title: ""
   property alias text: area.text
   property alias input: area
+  // attachmentPath is the file to send with the next message, or "" for
+  // none. The chip above the text field shows it.
+  property string attachmentPath: ""
   // routeKey intercepts a key press before the input handles it; see the
   // file comment above for why this is a function property, not a signal.
   property var routeKey: null
 
-  // submitted reports the trimmed text a caller should send.
+  // submitted reports the trimmed text a caller should send, alongside
+  // whatever attachmentPath already holds.
   signal submitted(string text)
+  // fileAttached reports a file the attach button's own picker chose.
+  signal fileAttached(string path)
+  // attachmentRemoveRequested asks the caller to clear attachmentPath,
+  // from the chip's ✕ or Escape (handled by the caller's escape chain).
+  signal attachmentRemoveRequested()
 
-  // submit sends the input's trimmed text, unless it is empty.
+  // submit sends the input's trimmed text and whatever is attached,
+  // unless there is neither.
   function submit() {
     var trimmed = area.text.trim()
-    if (trimmed.length === 0) return
+    if (trimmed.length === 0 && root.attachmentPath === "") return
     root.submitted(trimmed)
     area.text = ""
   }
@@ -47,11 +68,20 @@ Item {
     area.forceActiveFocus()
   }
 
+  // openFilePicker opens the attach button's file dialog, for the
+  // command palette's "Attach a file" command.
+  function openFilePicker() {
+    fileDialog.open()
+  }
+
   // ------------------------------------------------------------- sizing
   readonly property int maxVisibleLines: 6
   readonly property real _lineHeight: fontMetrics.height
   readonly property real _maxInputHeight: _lineHeight * maxVisibleLines + area.topPadding + area.bottomPadding
-  readonly property bool _hasText: area.text.trim().length > 0
+  readonly property bool _canSend: area.text.trim().length > 0 || root.attachmentPath !== ""
+  // _attachmentKind guesses the chip's thumbnail-or-name choice from the
+  // file name alone, before the helper ever sniffs its real content.
+  readonly property string _attachmentKind: root.attachmentPath !== "" ? Format.guessMediaKind(root.attachmentPath) : ""
 
   implicitWidth: Style.space(280)
   implicitHeight: layout.implicitHeight
@@ -65,62 +95,134 @@ Item {
     font.pixelSize: Theme.font.body
   }
 
-  RowLayout {
+  FileDialog {
+    id: fileDialog
+    title: "Attach a file"
+    onAccepted: root.fileAttached(String(fileDialog.selectedFile).replace(/^file:\/\//, ""))
+  }
+
+  ColumnLayout {
     id: layout
     anchors.fill: parent
-    spacing: Theme.spacing.controlGap
+    spacing: Theme.spacing.xs
 
-    ScrollView {
-      id: inputScroll
+    RowLayout {
+      id: chipRow
+      objectName: "attachmentChip"
       Layout.fillWidth: true
-      Layout.preferredHeight: Math.min(area.implicitHeight, root._maxInputHeight)
-      clip: true
-      ScrollBar.vertical.policy: area.implicitHeight > root._maxInputHeight ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+      visible: root.attachmentPath !== ""
+      spacing: Theme.spacing.sm
 
-      TextArea {
-        id: area
-        objectName: "composerInput"
-        enabled: root.enabled
-        wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
-        selectByMouse: true
-        placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
+      Rectangle {
+        Layout.preferredWidth: Style.space(32)
+        Layout.preferredHeight: Style.space(32)
+        radius: Style.cornerRadius
+        clip: true
+        color: Util.alpha(Color.accent, 0.22)
 
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: event => {
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+        Image {
+          anchors.fill: parent
+          visible: root._attachmentKind === "photo"
+          source: root._attachmentKind === "photo" ? ("file://" + root.attachmentPath) : ""
+          fillMode: Image.PreserveAspectCrop
+          asynchronous: true
         }
 
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.body
+        Text {
+          anchors.centerIn: parent
+          visible: root._attachmentKind !== "photo"
+          text: root._attachmentKind === "video" ? "▶" : "📄"
+          color: Color.accent
+          font { family: Theme.font.family; pixelSize: Theme.font.icon }
+        }
+      }
+
+      Text {
+        objectName: "attachmentName"
+        Layout.fillWidth: true
+        text: root.attachmentPath !== "" ? Format.baseName(root.attachmentPath) : ""
+        elide: Text.ElideMiddle
         color: Color.foreground
-        placeholderTextColor: Util.alpha(Color.foreground, 0.4)
-        selectionColor: Style.selectionFill
-        selectedTextColor: Color.foreground
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
+      }
 
-        topPadding: Theme.spacing.inputPaddingY
-        bottomPadding: Theme.spacing.inputPaddingY
-        leftPadding: Theme.spacing.controlPaddingX
-        rightPadding: Theme.spacing.controlPaddingX
-
-        background: Rectangle {
-          radius: Style.cornerRadius
-          // Omarchy's control-state tokens, so the input matches its own fields.
-          color: area.activeFocus ? Style.focusFillColor : Style.normalFill
-          border.width: area.activeFocus ? Style.focusBorderWidth : 0
-          border.color: area.activeFocus ? Style.focusBorderColor : "transparent"
-
-          Behavior on color { ColorAnimation { duration: 120 } }
-        }
+      Ui.Button {
+        objectName: "removeAttachmentButton"
+        text: "✕"
+        tooltipText: "Remove the attachment"
+        focusable: true
+        onClicked: root.attachmentRemoveRequested()
       }
     }
 
-    Ui.Button {
-      id: sendButton
-      Layout.alignment: Qt.AlignBottom
-      text: "Send"
-      focusable: true
-      enabled: root.enabled && root._hasText
-      onClicked: root.submit()
+    RowLayout {
+      Layout.fillWidth: true
+      spacing: Theme.spacing.controlGap
+
+      Ui.Button {
+        id: attachButton
+        objectName: "attachButton"
+        Layout.alignment: Qt.AlignBottom
+        text: "📎"
+        tooltipText: "Attach a file"
+        focusable: true
+        enabled: root.enabled
+        onClicked: root.openFilePicker()
+      }
+
+      ScrollView {
+        id: inputScroll
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.min(area.implicitHeight, root._maxInputHeight)
+        clip: true
+        ScrollBar.vertical.policy: area.implicitHeight > root._maxInputHeight ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+
+        TextArea {
+          id: area
+          objectName: "composerInput"
+          enabled: root.enabled
+          wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+          selectByMouse: true
+          placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: event => {
+            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+          }
+
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.body
+          color: Color.foreground
+          placeholderTextColor: Util.alpha(Color.foreground, 0.4)
+          selectionColor: Style.selectionFill
+          selectedTextColor: Color.foreground
+
+          topPadding: Theme.spacing.inputPaddingY
+          bottomPadding: Theme.spacing.inputPaddingY
+          leftPadding: Theme.spacing.controlPaddingX
+          rightPadding: Theme.spacing.controlPaddingX
+
+          background: Rectangle {
+            radius: Style.cornerRadius
+            // Omarchy's control-state tokens, so the input matches its own fields.
+            color: area.activeFocus ? Style.focusFillColor : Style.normalFill
+            border.width: area.activeFocus ? Style.focusBorderWidth : 0
+            border.color: area.activeFocus ? Style.focusBorderColor : "transparent"
+
+            Behavior on color { ColorAnimation { duration: 120 } }
+          }
+        }
+      }
+
+      Ui.Button {
+        id: sendButton
+        Layout.alignment: Qt.AlignBottom
+        text: "Send"
+        focusable: true
+        enabled: root.enabled && root._canSend
+        onClicked: root.submit()
+      }
     }
   }
 }

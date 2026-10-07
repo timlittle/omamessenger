@@ -187,6 +187,34 @@ function fileSize(bytes) {
   return unit === 0 ? `${size} B` : `${size.toFixed(1)} ${units[unit]}`;
 }
 
+// IMAGE_EXTENSIONS and VIDEO_EXTENSIONS back guessMediaKind's preview-only
+// guess, before the helper has sniffed a picked file's real content.
+var IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
+var VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'mkv', 'avi'];
+
+// baseName returns a file path's last segment, so a local path never
+// shows in the composer's attachment chip.
+function baseName(path) {
+  return path.split('/').pop();
+}
+
+// guessMediaKind guesses whether a locally picked file is a photo, a
+// video or, for anything else, a file, from its name alone, so the
+// composer's attachment chip knows whether to show a thumbnail before
+// the message is ever sent. The helper sniffs the real content once it
+// is sent; this is only ever used for that one preview.
+function guessMediaKind(path) {
+  const ext = path.split('.').pop().toLowerCase();
+  if (IMAGE_EXTENSIONS.includes(ext)) {
+    return 'photo';
+  }
+  if (VIDEO_EXTENSIONS.includes(ext)) {
+    return 'video';
+  }
+
+  return 'file';
+}
+
 // unreadLabel is the text an unread badge shows: the count itself, or
 // "99+" once a wider number would start crowding whatever sits beside it.
 function unreadLabel(count) {

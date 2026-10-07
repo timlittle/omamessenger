@@ -92,6 +92,8 @@ Item {
       if (root.focusDefault) root.focusDefault()
     }
     function onScroll(direction) { root._scrollConversation(direction) }
+    function onAttachFileRequested() { conversationView.composer.openFilePicker() }
+    function onPasteFallbackRequested() { conversationView.composer.input.paste() }
   }
 
   Connections {
@@ -254,6 +256,7 @@ Item {
       annotations: root.conversationController.annotations
       nowMs: root.nowMs
       draft: root.conversationController.draft
+      attachmentPath: root.conversationController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
       routeKey: root.routeKey
 
@@ -263,6 +266,8 @@ Item {
       onMediaOpen: id => root.conversationController.openMedia(id)
       onSend: text => root.conversationController.send(text)
       onDraftEdited: text => root.conversationController.setDraft(text)
+      onFileAttached: path => root.conversationController.attachFile(path)
+      onAttachmentRemoveRequested: root.conversationController.removeAttachment()
     }
   }
 

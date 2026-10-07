@@ -373,3 +373,16 @@ test('photoSize shows pixel dimensions', () => {
   assert.strictEqual(Format.photoSize(100, 0), '');
   assert.strictEqual(Format.photoSize(0, 100), '');
 });
+
+test('baseName keeps only the last path segment', () => {
+  assert.strictEqual(Format.baseName('/home/tim/photo.png'), 'photo.png');
+  assert.strictEqual(Format.baseName('report.pdf'), 'report.pdf');
+});
+
+test('guessMediaKind recognizes common image and video extensions', () => {
+  assert.strictEqual(Format.guessMediaKind('/tmp/photo.PNG'), 'photo');
+  assert.strictEqual(Format.guessMediaKind('/tmp/photo.jpg'), 'photo');
+  assert.strictEqual(Format.guessMediaKind('/tmp/clip.mp4'), 'video');
+  assert.strictEqual(Format.guessMediaKind('/tmp/notes.txt'), 'file');
+  assert.strictEqual(Format.guessMediaKind('/tmp/noextension'), 'file');
+});
