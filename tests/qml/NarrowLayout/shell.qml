@@ -94,6 +94,28 @@ ShellRoot {
 
     service: helperService
     listController: listController
+    composer: composerController
+    photoViewer: photoViewerController
+  }
+
+  ComposerController {
+    id: composerController
+
+    service: helperService
+    conversation: conversationController
+  }
+
+  PhotoViewerController {
+    id: photoViewerController
+
+    conversation: conversationController
+  }
+
+  ReactionsController {
+    id: reactionsController
+
+    service: helperService
+    conversation: conversationController
   }
 
   DialogController {
@@ -108,6 +130,9 @@ ShellRoot {
     service: helperService
     listController: listController
     conversationController: conversationController
+    composerController: composerController
+    photoViewerController: photoViewerController
+    reactionsController: reactionsController
     dialogController: dialogController
   }
 
@@ -123,6 +148,9 @@ ShellRoot {
       service: helperService
       listController: listController
       conversationController: conversationController
+      composerController: composerController
+      photoViewerController: photoViewerController
+      reactionsController: reactionsController
       dialogController: dialogController
       windowController: windowController
     }

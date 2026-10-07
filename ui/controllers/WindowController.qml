@@ -26,6 +26,17 @@ QtObject {
   // opens conversations chosen in the palette.
   property var conversationController: null
 
+  // composerController is read and cleared by the Escape chain, and runs
+  // the command palette's composer commands.
+  property var composerController: null
+
+  // photoViewerController is read and closed by the Escape chain.
+  property var photoViewerController: null
+
+  // reactionsController is read and closed by the Escape chain, and runs
+  // the command palette's "react to the newest message" command.
+  property var reactionsController: null
+
   // dialogController is read and closed by the Escape chain.
   property var dialogController: null
 
@@ -126,7 +137,8 @@ QtObject {
 
   // runCommand runs action through the controller that owns it.
   function runCommand(action: string): void {
-    const controllers = [root.listController, root.conversationController, root.dialogController, root.accountController, root];
+    const controllers = [root.listController, root.conversationController, root.composerController,
+      root.photoViewerController, root.reactionsController, root.dialogController, root.accountController, root];
     const owner = controllers.find((c) => c && c.handles(action));
     if (owner) owner.run(action);
   }
@@ -170,14 +182,14 @@ QtObject {
       "cancel-close": () => root.cancelClose(),
       "close-setup": () => { if (root.accountController) root.accountController.cancel(); },
       "close-palette": () => root.closePalette(),
-      "close-viewer": () => { if (root.conversationController) root.conversationController.closeViewer(); },
-      "close-reaction-picker": () => { if (root.conversationController) root.conversationController.closeReactionPicker(); },
+      "close-viewer": () => { if (root.photoViewerController) root.photoViewerController.close(); },
+      "close-reaction-picker": () => { if (root.reactionsController) root.reactionsController.closePicker(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
-      "clear-attachment": () => { if (root.conversationController) root.conversationController.removeAttachment(); },
-      "cancel-reply": () => { if (root.conversationController) root.conversationController.cancelReply(); },
-      "leave-compose": () => { if (root.conversationController) root.conversationController.leaveComposeRequested(); },
+      "clear-attachment": () => { if (root.composerController) root.composerController.removeAttachment(); },
+      "cancel-reply": () => { if (root.composerController) root.composerController.cancelReply(); },
+      "leave-compose": () => { if (root.composerController) root.composerController.leaveComposeRequested(); },
       "close-conversation": () => { if (root.conversationController) root.conversationController.close(); },
       "hide-window": () => root.askToClose()
     };
@@ -194,14 +206,14 @@ QtObject {
     return {
       confirmOpen: root.confirmingClose,
       setupOpen: root.accountController ? root.accountController.open || root.accountController.removing : false,
-      viewerOpen: root.conversationController ? root.conversationController.viewerOpen : false,
+      viewerOpen: root.photoViewerController ? root.photoViewerController.viewerOpen : false,
       paletteOpen: root.paletteOpen,
-      reactionPickerOpen: root.conversationController ? root.conversationController.reactionPickerOpen : false,
+      reactionPickerOpen: root.reactionsController ? root.reactionsController.pickerOpen : false,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,
-      composeFocused: root.conversationController ? root.conversationController.composeFocused : false,
-      hasAttachment: root.conversationController ? root.conversationController.attachmentPath !== "" : false,
-      replying: root.conversationController ? root.conversationController.replying : false,
+      composeFocused: root.composerController ? root.composerController.composeFocused : false,
+      hasAttachment: root.composerController ? root.composerController.attachmentPath !== "" : false,
+      replying: root.composerController ? root.composerController.replying : false,
       pane: state.pane,
       activeId: state.activeId,
       query: root.listController ? root.listController.query : ""

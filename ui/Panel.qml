@@ -107,7 +107,8 @@ Item {
     const action = Keymap.match(context, key, modifiers, text);
     if (!action) return false;
 
-    const controllers = [listController, conversationController, dialogController, accountController, windowController];
+    const controllers = [listController, conversationController, composerController, photoViewerController,
+      reactionsController, dialogController, accountController, windowController];
     const owner = controllers.find((c) => c.handles(action));
     if (!owner) return false;
 
@@ -121,12 +122,12 @@ Item {
     return {
       confirmOpen: windowController.confirmingClose,
       setupOpen: accountController.open || accountController.removing,
-      viewerOpen: conversationController.viewerOpen,
+      viewerOpen: photoViewerController.viewerOpen,
       paletteOpen: windowController.paletteOpen,
-      reactionPickerOpen: conversationController.reactionPickerOpen,
+      reactionPickerOpen: reactionsController.pickerOpen,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,
-      composeFocused: conversationController.composeFocused,
+      composeFocused: composerController.composeFocused,
       pane: conversationController.pane
     };
   }
@@ -215,6 +216,25 @@ Item {
     id: conversationController
     service: root.service
     listController: listController
+    composer: composerController
+    photoViewer: photoViewerController
+  }
+
+  ComposerController {
+    id: composerController
+    service: root.service
+    conversation: conversationController
+  }
+
+  PhotoViewerController {
+    id: photoViewerController
+    conversation: conversationController
+  }
+
+  ReactionsController {
+    id: reactionsController
+    service: root.service
+    conversation: conversationController
   }
 
   DialogController {
@@ -234,6 +254,9 @@ Item {
     service: root.service
     listController: listController
     conversationController: conversationController
+    composerController: composerController
+    photoViewerController: photoViewerController
+    reactionsController: reactionsController
     dialogController: dialogController
     accountController: accountController
 
@@ -305,8 +328,8 @@ Item {
         Text {
           id: errorLine
           Layout.fillWidth: true
-          readonly property string message: conversationController.lastError || listController.lastError
-            || dialogController.lastError || windowController.lastError
+          readonly property string message: conversationController.lastError || reactionsController.lastError
+            || listController.lastError || dialogController.lastError || windowController.lastError
           visible: errorLine.message.length > 0
           text: errorLine.message
           elide: Text.ElideRight
@@ -323,6 +346,9 @@ Item {
           service: root.service
           listController: listController
           conversationController: conversationController
+          composerController: composerController
+          photoViewerController: photoViewerController
+          reactionsController: reactionsController
           dialogController: dialogController
           accountController: accountController
           windowController: windowController

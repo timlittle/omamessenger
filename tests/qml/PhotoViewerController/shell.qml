@@ -1,4 +1,4 @@
-// Checks ConversationController's in-app photo viewer against a scripted
+// Checks PhotoViewerController's in-app photo viewer against a scripted
 // service: opening a photo that is already downloaded shows it at once
 // without asking the helper again; opening one that is not downloaded yet
 // shows the viewer while it asks, and fills in the path once the helper
@@ -47,6 +47,12 @@ ShellRoot {
   ConversationController {
     id: controller
     service: service
+    photoViewer: viewer
+  }
+
+  PhotoViewerController {
+    id: viewer
+    conversation: controller
   }
 
   Timer {
@@ -70,7 +76,7 @@ ShellRoot {
     if (!root.checkCloseViewer()) return;
     if (!root.checkStepViewer()) return;
 
-    console.log("PASS ConversationController");
+    console.log("PASS PhotoViewerController");
     Qt.exit(0);
   }
 
@@ -80,10 +86,10 @@ ShellRoot {
     service.fetchRequests = [];
     controller.openMedia("p1");
 
-    if (controller.viewerId !== "p1") return Check.fail("viewerId is " + controller.viewerId + ", want p1");
-    if (!controller.viewerOpen) return Check.fail("viewerOpen is false for an open photo");
-    if (controller.viewerPath !== "/tmp/p1.jpg") return Check.fail("viewerPath is " + controller.viewerPath + ", want /tmp/p1.jpg");
-    if (!controller.viewerPhoto || controller.viewerPhoto.kind !== "photo") return Check.fail("viewerPhoto did not read back the photo's media");
+    if (viewer.viewerId !== "p1") return Check.fail("viewerId is " + viewer.viewerId + ", want p1");
+    if (!viewer.viewerOpen) return Check.fail("viewerOpen is false for an open photo");
+    if (viewer.viewerPath !== "/tmp/p1.jpg") return Check.fail("viewerPath is " + viewer.viewerPath + ", want /tmp/p1.jpg");
+    if (!viewer.viewerPhoto || viewer.viewerPhoto.kind !== "photo") return Check.fail("viewerPhoto did not read back the photo's media");
     if (service.fetchRequests.length !== 0) return Check.fail("opening an already-downloaded photo asked the helper to fetch it again");
     return true;
   }
@@ -95,20 +101,20 @@ ShellRoot {
     service.fetchRequests = [];
     controller.openMedia("p2");
 
-    if (controller.viewerId !== "p2") return Check.fail("viewerId is " + controller.viewerId + ", want p2");
-    if (controller.viewerPath !== "") return Check.fail("viewerPath is " + controller.viewerPath + " before the download finished");
+    if (viewer.viewerId !== "p2") return Check.fail("viewerId is " + viewer.viewerId + ", want p2");
+    if (viewer.viewerPath !== "") return Check.fail("viewerPath is " + viewer.viewerPath + " before the download finished");
     if (service.fetchRequests.indexOf("p2") < 0) return Check.fail("opening an undownloaded photo did not ask the helper to fetch it");
 
     root.answerFetch("p2", "/tmp/p2.jpg");
-    if (controller.viewerPath !== "/tmp/p2.jpg") return Check.fail("viewerPath did not fill in once the download finished");
+    if (viewer.viewerPath !== "/tmp/p2.jpg") return Check.fail("viewerPath did not fill in once the download finished");
     return true;
   }
 
   // checkCloseViewer verifies closing clears the viewer.
   function checkCloseViewer(): bool {
-    controller.closeViewer();
-    if (controller.viewerOpen) return Check.fail("closeViewer left the viewer open");
-    if (controller.viewerId !== "") return Check.fail("closeViewer left viewerId as " + controller.viewerId);
+    viewer.close();
+    if (viewer.viewerOpen) return Check.fail("close left the viewer open");
+    if (viewer.viewerId !== "") return Check.fail("close left viewerId as " + viewer.viewerId);
     return true;
   }
 
@@ -120,23 +126,23 @@ ShellRoot {
     service.fetchRequests = [];
     controller.openMedia("p1");
 
-    controller.stepViewer(-1);
-    if (controller.viewerId !== "p2") return Check.fail("stepping to an older photo gave " + controller.viewerId + ", want p2");
-    if (controller.viewerPath !== "/tmp/p2.jpg") return Check.fail("viewerPath for the already-downloaded p2 is " + controller.viewerPath);
+    viewer.step(-1);
+    if (viewer.viewerId !== "p2") return Check.fail("stepping to an older photo gave " + viewer.viewerId + ", want p2");
+    if (viewer.viewerPath !== "/tmp/p2.jpg") return Check.fail("viewerPath for the already-downloaded p2 is " + viewer.viewerPath);
     if (service.fetchRequests.length !== 0) return Check.fail("stepping to an already-downloaded photo asked the helper again");
 
-    controller.stepViewer(-1);
-    if (controller.viewerId !== "p3") return Check.fail("stepping again gave " + controller.viewerId + ", want p3 (skipping the video)");
+    viewer.step(-1);
+    if (viewer.viewerId !== "p3") return Check.fail("stepping again gave " + viewer.viewerId + ", want p3 (skipping the video)");
     if (service.fetchRequests.indexOf("p3") < 0) return Check.fail("stepping to an undownloaded photo did not ask to fetch it");
     root.answerFetch("p3", "/tmp/p3.jpg");
-    if (controller.viewerPath !== "/tmp/p3.jpg") return Check.fail("the stepped-to photo's path never filled in");
+    if (viewer.viewerPath !== "/tmp/p3.jpg") return Check.fail("the stepped-to photo's path never filled in");
 
-    controller.stepViewer(1);
-    controller.stepViewer(1);
-    if (controller.viewerId !== "p1") return Check.fail("stepping back twice gave " + controller.viewerId + ", want p1");
+    viewer.step(1);
+    viewer.step(1);
+    if (viewer.viewerId !== "p1") return Check.fail("stepping back twice gave " + viewer.viewerId + ", want p1");
 
-    controller.stepViewer(1);
-    if (controller.viewerId !== "p1") return Check.fail("stepping past the newest photo moved away from it: " + controller.viewerId);
+    viewer.step(1);
+    if (viewer.viewerId !== "p1") return Check.fail("stepping past the newest photo moved away from it: " + viewer.viewerId);
 
     return true;
   }

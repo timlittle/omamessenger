@@ -4,9 +4,10 @@
 // the one whose run(action) performs the whole effect, from ui/controllers.
 
 // OWNERS names the controller for each action: "list", "conversation",
-// "dialog", "account" or "window". A key bound in more than one context (for example
-// chat.mute in both "list" and "conversation") still has one owner, since
-// the owning controller reads whatever extra state it needs itself.
+// "composer", "photoViewer", "reactions", "dialog", "account" or "window".
+// A key bound in more than one context (for example chat.mute in both
+// "list" and "conversation") still has one owner, since the owning
+// controller reads whatever extra state it needs itself.
 var OWNERS = {
   // ListController: rail filter, search, the visible conversations,
   // selection and unread jump, mute.
@@ -28,9 +29,8 @@ var OWNERS = {
   'chat.pin': 'list',
   'chat.archive': 'list',
 
-  // ConversationController: the open conversation, paging, send, retry,
-  // replying, reacting, scrolling and composing, and moving between
-  // chats while one is open.
+  // ConversationController: the open conversation itself, paging,
+  // send, retry, scrolling, and moving between chats while one is open.
   'chat.open': 'conversation',
   'search.accept': 'conversation',
   'pane.conversation': 'conversation',
@@ -41,20 +41,26 @@ var OWNERS = {
   'scroll.pageUp': 'conversation',
   'scroll.newest': 'conversation',
   'scroll.oldest': 'conversation',
-  'compose.focus': 'conversation',
   'chat.next': 'conversation',
   'chat.prev': 'conversation',
   'message.retry': 'conversation',
-  'message.reply': 'conversation',
-  'message.react': 'conversation',
-  'reaction.left': 'conversation',
-  'reaction.right': 'conversation',
-  'reaction.accept': 'conversation',
-  'message.send': 'conversation',
-  'viewer.next': 'conversation',
-  'viewer.prev': 'conversation',
-  'compose.attach': 'conversation',
-  'compose.attachFile': 'conversation',
+
+  // ComposerController: the draft, replying, attaching and sending.
+  'compose.focus': 'composer',
+  'message.reply': 'composer',
+  'message.send': 'composer',
+  'compose.attach': 'composer',
+  'compose.attachFile': 'composer',
+
+  // PhotoViewerController: stepping through the in-app photo viewer.
+  'viewer.next': 'photoViewer',
+  'viewer.prev': 'photoViewer',
+
+  // ReactionsController: the emoji picker and reacting to a message.
+  'message.react': 'reactions',
+  'reaction.left': 'reactions',
+  'reaction.right': 'reactions',
+  'reaction.accept': 'reactions',
 
   // DialogController: the new-chat dialog.
   'chat.new': 'dialog',
