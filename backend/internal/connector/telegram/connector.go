@@ -33,6 +33,11 @@ type Connector struct {
 	dir     string
 	answers chan answer
 
+	// version is this helper's own release, reported to Telegram as the
+	// device's app version (see identity.go); Provider.Connect sets it,
+	// since New alone has no way to know it.
+	version string
+
 	mu      sync.Mutex
 	api     *tg.Client
 	sink    connector.Sink
@@ -81,6 +86,7 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	client := gotd.NewClient(creds.APIID, creds.APIHash, gotd.Options{
 		SessionStorage: &session.FileStorage{Path: sessionPath(c.dir, c.account.ID)},
 		UpdateHandler:  gaps,
+		Device:         deviceConfig(c.version),
 	})
 	c.handleUpdates(dispatcher, sink)
 

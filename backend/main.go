@@ -27,7 +27,7 @@ import (
 // providers lists every messaging service this helper can add an account
 // for. Adding a service means adding its Provider here.
 func providers() []connector.Provider {
-	return []connector.Provider{telegram.Provider{}, whatsapp.Provider{}}
+	return []connector.Provider{telegram.Provider{Version: helperVersion}, whatsapp.Provider{}}
 }
 
 // mediaCacheLimit is how much downloaded media the helper keeps before it

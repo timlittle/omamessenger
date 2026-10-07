@@ -51,8 +51,12 @@ var (
 	_ connector.Authenticator = (*Connector)(nil)
 )
 
-// New returns the connector for an account whose session is kept in dir.
+// New returns the connector for an account whose session is kept in
+// dir, having identified this helper to WhatsApp's own device list (see
+// identity.go) before Run can start pairing it.
 func New(account domain.Account, dir string) *Connector {
+	identifyDevice()
+
 	return &Connector{
 		account: account,
 		answers: make(chan answer, 1),

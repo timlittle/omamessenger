@@ -10,7 +10,12 @@ import (
 )
 
 // Provider implements connector.Provider for Telegram accounts.
-type Provider struct{}
+type Provider struct {
+	// Version is this helper's own release, carried to every connector
+	// Connect returns so it can tell Telegram which build is running
+	// (see identity.go's deviceConfig).
+	Version string
+}
 
 var _ connector.Provider = Provider{}
 
@@ -34,8 +39,11 @@ func (Provider) Prepare(dir, accountID string, options map[string]string) error 
 
 // Connect returns the Telegram connector for the account, reading what
 // Prepare saved from dir.
-func (Provider) Connect(account domain.Account, dir string) connector.Connector {
-	return New(account, dir)
+func (p Provider) Connect(account domain.Account, dir string) connector.Connector {
+	c := New(account, dir)
+	c.version = p.Version
+
+	return c
 }
 
 // Forget deletes the account's credentials and session from dir.
