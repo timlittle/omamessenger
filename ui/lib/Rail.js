@@ -162,3 +162,20 @@ function multiAccountServices(items) {
 function recent(conversations, nowMs, keepId) {
   return conversations.filter((c) => nowMs - c.lastActivity <= RECENT_MS || c.unread > 0 || c.id === keepId);
 }
+
+// unarchived drops archived conversations, except the one open as keepId,
+// which must never vanish from under the user.
+function unarchived(conversations, keepId) {
+  return conversations.filter((c) => !c.archived || c.id === keepId);
+}
+
+// compareConversations orders conversations the way the list shows them:
+// pinned ones first, then newest activity first. Pass to Array.sort or
+// ListSync.upsertById.
+function compareConversations(a, b) {
+  if (a.pinned !== b.pinned) {
+    return a.pinned ? -1 : 1;
+  }
+
+  return b.lastActivity - a.lastActivity;
+}

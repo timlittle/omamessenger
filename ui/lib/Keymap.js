@@ -30,6 +30,7 @@ var BINDINGS = [
   { action: 'palette.commands', keys: ['Ctrl+Slash', 'Ctrl+Shift+Question', 'Ctrl+Shift+P'], contexts: ['global'], label: 'Command palette', hint: true },
   { action: 'palette.conversations', keys: ['Ctrl+K', 'Ctrl+T'], contexts: ['global'], label: 'Jump to conversation', hint: true, command: true },
   { action: 'list.olderChats', keys: [], contexts: ['global'], label: 'Show or hide chats older than a month', command: true },
+  { action: 'list.showArchived', keys: [], contexts: ['global'], label: 'Show archived chats', command: true },
   { action: 'search.focus', keys: ['Ctrl+G'], contexts: ['global'], label: 'Search messages', command: true },
   { action: 'chat.new', keys: ['Ctrl+N', 'Ctrl+Shift+K'], contexts: ['global'], label: 'New message', hint: true, command: true },
   { action: 'unread.next', keys: ['Ctrl+J', 'Alt+Shift+Down'], contexts: ['global'], label: 'Next unread conversation', command: true },
@@ -55,6 +56,8 @@ var BINDINGS = [
   { action: 'chat.open', keys: ['Enter', 'l', 'o', 'i'], contexts: ['list'], label: 'Open chat', hint: true },
   { action: 'pane.conversation', keys: ['Tab'], contexts: ['list'], label: 'Go to conversation' },
   { action: 'chat.mute', keys: ['m'], contexts: ['list', 'conversation'], label: 'Mute or unmute chat', command: true },
+  { action: 'chat.pin', keys: [], contexts: ['list', 'conversation'], label: 'Pin or unpin chat', command: true },
+  { action: 'chat.archive', keys: [], contexts: ['list', 'conversation'], label: 'Archive or unarchive chat', command: true },
 
   { action: 'scroll.down', keys: ['j', 'Down'], contexts: ['conversation'], label: 'Scroll down' },
   { action: 'scroll.up', keys: ['k', 'Up'], contexts: ['conversation'], label: 'Scroll up' },

@@ -1,5 +1,6 @@
 // Checks the conversation list: a long title elides within the row, an
-// unread row's title is bold, both empty states show the right text, and
+// unread row's title is bold, a pinned row shows a pin mark and an
+// unpinned one does not, both empty states show the right text, and
 // clicking a row emits activated() with its id.
 import QtQuick
 import QtTest
@@ -17,19 +18,20 @@ ShellRoot {
   property var conversations: [
     {
       id: "c1", title: "Short Chat", kind: "direct", service: "whatsapp", accountId: "a1",
-      unread: 2, muted: false, lastActivity: root.now, preview: "See you then",
+      unread: 2, muted: false, pinned: false, archived: false, lastActivity: root.now, preview: "See you then",
       previewSender: "", previewOutgoing: false, match: ""
     },
     {
       id: "c2", title: "Muted Group", kind: "group", service: "telegram", accountId: "a2",
-      unread: 0, muted: true, lastActivity: root.now, preview: "ok",
+      unread: 0, muted: true, pinned: false, archived: false, lastActivity: root.now, preview: "ok",
       previewSender: "Sam", previewOutgoing: false, match: ""
     },
     {
       id: "c3",
       title: "A very long conversation title that will not fit in the narrow list column at all",
       kind: "direct", service: "whatsapp", accountId: "a1",
-      unread: 0, muted: false, lastActivity: root.now, preview: "A long preview that keeps going well past the edge of the narrow column",
+      unread: 0, muted: false, pinned: true, archived: false, lastActivity: root.now,
+      preview: "A long preview that keeps going well past the edge of the narrow column",
       previewSender: "", previewOutgoing: false, match: ""
     }
   ]
@@ -107,6 +109,15 @@ ShellRoot {
     const unreadTitle = unreadRow ? Check.find(unreadRow, "titleText") : null;
     if (!unreadTitle || !unreadTitle.font.bold)
       return Check.fail("unread row title is not bold");
+
+    const unpinnedPin = Check.find(unreadRow, "pinIcon");
+    if (!unpinnedPin || unpinnedPin.visible)
+      return Check.fail("an unpinned row shows a pin mark");
+
+    const pinnedRow = Check.find(list, "row-c3");
+    const pinnedMark = pinnedRow ? Check.find(pinnedRow, "pinIcon") : null;
+    if (!pinnedMark || !pinnedMark.visible)
+      return Check.fail("a pinned row does not show its pin mark");
 
     const noQueryEmpty = Check.find(emptyList, "emptyState");
     if (!noQueryEmpty || !noQueryEmpty.visible || noQueryEmpty.text.indexOf("Ctrl+N") < 0)

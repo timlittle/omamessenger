@@ -46,6 +46,7 @@ var (
 	_ connector.HistoryLoader    = (*Connector)(nil)
 	_ connector.MediaFetcher     = (*Connector)(nil)
 	_ connector.MessageRefresher = (*Connector)(nil)
+	_ connector.Organizer        = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose credentials and session
@@ -190,6 +191,52 @@ func (c *Connector) MarkRead(ctx context.Context, conv domain.Conversation) erro
 
 	if err != nil {
 		return fmt.Errorf("telegram: mark read: %w", err)
+	}
+
+	return nil
+}
+
+// SetPinned pins or unpins the dialog with Telegram.
+func (c *Connector) SetPinned(ctx context.Context, conv domain.Conversation, pinned bool) error {
+	api, _, err := c.session()
+	if err != nil {
+		return err
+	}
+
+	peer, err := inputPeer(conv.RemoteID)
+	if err != nil {
+		return err
+	}
+
+	request := &tg.MessagesToggleDialogPinRequest{Pinned: pinned, Peer: &tg.InputDialogPeer{Peer: peer}}
+	if _, err := api.MessagesToggleDialogPin(ctx, request); err != nil {
+		return fmt.Errorf("telegram: set pinned: %w", err)
+	}
+
+	return nil
+}
+
+// SetArchived moves the dialog into Telegram's archive folder, or back to
+// the default folder.
+func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error {
+	api, _, err := c.session()
+	if err != nil {
+		return err
+	}
+
+	peer, err := inputPeer(conv.RemoteID)
+	if err != nil {
+		return err
+	}
+
+	folderID := 0
+	if archived {
+		folderID = archiveFolderID
+	}
+
+	folderPeers := []tg.InputFolderPeer{{Peer: peer, FolderID: folderID}}
+	if _, err := api.FoldersEditPeerFolders(ctx, folderPeers); err != nil {
+		return fmt.Errorf("telegram: set archived: %w", err)
 	}
 
 	return nil

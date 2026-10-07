@@ -13,7 +13,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.last_activity`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.last_activity`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -49,11 +49,11 @@ func (s *Store) EnsureConversation(ctx context.Context, c domain.Conversation) (
 	return inserted, err == nil, err
 }
 
-// refreshConversation copies the remote service's title, kind and member
-// count onto a stored conversation.
+// refreshConversation copies the remote service's title, kind, member
+// count, pinned and archived state onto a stored conversation.
 func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Conversation) (domain.Conversation, error) {
-	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=? WHERE id=?`,
-		c.Title, c.Kind, c.Members, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=?,pinned=?,archived=? WHERE id=?`,
+		c.Title, c.Kind, c.Members, boolInt(c.Pinned), boolInt(c.Archived), id)
 	if err != nil {
 		return c, wrap("update conversation", err)
 	}
@@ -68,8 +68,8 @@ func (s *Store) insertConversation(ctx context.Context, c domain.Conversation) (
 	}
 
 	_, err := s.db.ExecContext(ctx, `INSERT INTO conversations
-		(id,account_id,remote_id,kind,title,members,muted,last_activity) VALUES(?,?,?,?,?,?,?,?)`,
-		c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), c.LastActivity)
+		(id,account_id,remote_id,kind,title,members,muted,pinned,archived,last_activity) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), boolInt(c.Pinned), boolInt(c.Archived), c.LastActivity)
 	if err != nil {
 		return c, wrap("insert conversation", err)
 	}
@@ -107,7 +107,7 @@ func (s *Store) Conversations(ctx context.Context, query string) ([]domain.Conve
 				ORDER BY m.created DESC, m.rowid DESC LIMIT 1) END AS match
 		`+conversationFrom+`)
 		WHERE ?='' OR title LIKE ? ESCAPE '\' OR match IS NOT NULL
-		ORDER BY last_activity DESC, id`, query, pattern, query, pattern)
+		ORDER BY pinned DESC, last_activity DESC, id`, query, pattern, query, pattern)
 	if err != nil {
 		return nil, wrap("conversations", err)
 	}
@@ -152,6 +152,28 @@ func (s *Store) SetMuted(ctx context.Context, id string, muted bool) error {
 	return requireRow("set muted", res)
 }
 
+// SetPinned pins or unpins a conversation, which decides whether it leads
+// the conversation list ahead of everything else.
+func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET pinned=? WHERE id=?`, boolInt(pinned), id)
+	if err != nil {
+		return wrap("set pinned", err)
+	}
+
+	return requireRow("set pinned", res)
+}
+
+// SetArchived archives or unarchives a conversation, which decides whether
+// it shows in the conversation list by default.
+func (s *Store) SetArchived(ctx context.Context, id string, archived bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET archived=? WHERE id=?`, boolInt(archived), id)
+	if err != nil {
+		return wrap("set archived", err)
+	}
+
+	return requireRow("set archived", res)
+}
+
 // UnreadTotal counts unread messages in conversations that are not muted.
 func (s *Store) UnreadTotal(ctx context.Context) (int, error) {
 	var total int
@@ -180,7 +202,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.LastActivity,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.LastActivity,
 	}, extra...)
 	err := row.Scan(dest...)
 

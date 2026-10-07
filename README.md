@@ -5,7 +5,7 @@ OmaMessenger is a keyboard-first messaging client for [Omarchy](https://omarchy.
 ## Status
 
 - **Helper and UI:** complete and tested against scripted fake accounts, which only test builds contain: sending with delivery receipts, failures and retries, unread counts, notifications, search, the command palette and keyboard navigation.
-- **Telegram:** the helper connects through [gotd/td](https://github.com/gotd/td): sign-in by QR code, or phone and code with two-step verification, then recent chats, live messages, sending and read receipts. Add an account from the window; see below.
+- **Telegram:** the helper connects through [gotd/td](https://github.com/gotd/td): sign-in by QR code, or phone and code with two-step verification, then recent chats, live messages, sending, read receipts, and pin and archive kept in step with the app. Add an account from the window; see below.
 - **WhatsApp:** not connected yet. The planned library is [whatsmeow](https://github.com/tulir/whatsmeow).
 
 ## Requirements
@@ -57,9 +57,9 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 | Ctrl+Q | Quit |
 | Esc | Step back: close the palette, a dialog or account setup, clear the search, leave the composer or the conversation |
 
-The list shows chats from the last month, plus any with unread messages; the line under it, or **Show or hide chats older than a month** in the command palette, shows the rest. Search always looks through every chat.
+The list shows chats from the last month, plus any with unread messages; the line under it, or **Show or hide chats older than a month** in the command palette, shows the rest. Chats archived with the service are hidden too until you choose **Show archived chats** in the command palette. Search always looks through every chat, including archived ones. Pinned chats always lead the list, with a pin mark; an archived chat's unread badge is dimmed like a muted one's, since it is already filed away, though it still counts towards the unread totals in the rail.
 
-In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
+In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes; **Pin or unpin chat** and **Archive or unarchive chat** are in the command palette. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
 
 ## Helper API
 
@@ -83,6 +83,8 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | `conversations.open` | `{accountId, contactId}` | `Conversation`, created if needed |
 | `conversations.markRead` | `{conversationId}` | `{}` |
 | `conversations.setMuted` | `{conversationId, muted}` | `Conversation` |
+| `conversations.setPinned` | `{conversationId, pinned}` | `Conversation`; `conversations.list` always orders pinned conversations first |
+| `conversations.setArchived` | `{conversationId, archived}` | `Conversation`; `conversations.list` still returns archived conversations, the UI hides them by default |
 | `messages.list` | `{conversationId, before, limit}` | `{messages, hasMore}`, oldest first; `limit` 1–200, default 50. Past the oldest stored message it fetches older history from the service, which arrives as `message.added` too |
 | `messages.send` | `{conversationId, text}` | `Message`; status `failed` if the service refused it |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
@@ -139,7 +141,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute and [AGENTS.md](AGE
 
 Every service plugs into the same boundary, so adding one means:
 
-1. A connector package under `backend/internal/connector/<service>/` implementing `connector.Connector` (and whichever optional capabilities it supports: `Authenticator`, `HistoryLoader`, `MediaFetcher`, `MessageRefresher`).
+1. A connector package under `backend/internal/connector/<service>/` implementing `connector.Connector` (and whichever optional capabilities it supports: `Authenticator`, `HistoryLoader`, `MediaFetcher`, `MessageRefresher`, `Organizer`).
 2. A `Provider` in that package implementing `connector.Provider`, so the registry can prepare, connect and forget its accounts.
 3. Registering it in `backend/main.go`'s `providers()`.
 4. A glyph for it in `ui/components/ServiceGlyph.qml`.

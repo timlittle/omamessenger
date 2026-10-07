@@ -103,6 +103,79 @@ func TestMarkRead_Fails(t *testing.T) {
 	}
 }
 
+func TestSetPinned_TogglesTheDialog(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesToggleDialogPinRequest{}, &tg.BoolTrue{})
+
+	c := connectedTo(f, &connectortest.Sink{})
+	c.learn(chatWithNadia.RemoteID)
+	if err := c.SetPinned(t.Context(), chatWithNadia, true); err != nil {
+		t.Fatal(err)
+	}
+
+	req, ok := f.sent()[0].(*tg.MessagesToggleDialogPinRequest)
+	if !ok || !req.Pinned {
+		t.Errorf("request = %+v, want Pinned true", f.sent()[0])
+	}
+}
+
+func TestSetPinned_Fails(t *testing.T) {
+	t.Parallel()
+
+	connected := connectedTo(newFakeTelegram(), &connectortest.Sink{})
+	for name, err := range map[string]error{
+		"before signing in": New(domain.Account{ID: "tg"}, "").SetPinned(t.Context(), chatWithNadia, true),
+		"a malformed peer":  connected.SetPinned(t.Context(), domain.Conversation{RemoteID: "bad"}, true),
+	} {
+		if err == nil {
+			t.Errorf("SetPinned %s succeeded, want an error", name)
+		}
+	}
+}
+
+func TestSetArchived_MovesTheDialogToFolder1(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.FoldersEditPeerFoldersRequest{}, &tg.Updates{})
+
+	c := connectedTo(f, &connectortest.Sink{})
+	c.learn(chatWithNadia.RemoteID)
+	if err := c.SetArchived(t.Context(), chatWithNadia, true); err != nil {
+		t.Fatal(err)
+	}
+
+	req, ok := f.sent()[0].(*tg.FoldersEditPeerFoldersRequest)
+	if !ok || len(req.FolderPeers) != 1 || req.FolderPeers[0].FolderID != archiveFolderID {
+		t.Errorf("request = %+v, want one peer in folder %d", f.sent()[0], archiveFolderID)
+	}
+
+	if err := c.SetArchived(t.Context(), chatWithNadia, false); err != nil {
+		t.Fatal(err)
+	}
+
+	req, ok = f.sent()[1].(*tg.FoldersEditPeerFoldersRequest)
+	if !ok || len(req.FolderPeers) != 1 || req.FolderPeers[0].FolderID != 0 {
+		t.Errorf("request = %+v, want one peer in folder 0", f.sent()[1])
+	}
+}
+
+func TestSetArchived_Fails(t *testing.T) {
+	t.Parallel()
+
+	connected := connectedTo(newFakeTelegram(), &connectortest.Sink{})
+	for name, err := range map[string]error{
+		"before signing in": New(domain.Account{ID: "tg"}, "").SetArchived(t.Context(), chatWithNadia, true),
+		"a malformed peer":  connected.SetArchived(t.Context(), domain.Conversation{RemoteID: "bad"}, true),
+	} {
+		if err == nil {
+			t.Errorf("SetArchived %s succeeded, want an error", name)
+		}
+	}
+}
+
 func TestSubmitAuth_OnlyWhileSigningIn(t *testing.T) {
 	t.Parallel()
 

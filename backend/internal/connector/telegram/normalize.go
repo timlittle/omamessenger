@@ -63,11 +63,17 @@ func (e entities) peer(p tg.PeerClass) (tg.InputPeerClass, bool) {
 	}
 }
 
+// archiveFolderID is the folder Telegram's clients file an archived chat
+// under; folder 0 is the default, unarchived list.
+const archiveFolderID = 1
+
 // conversation turns a dialog into a conversation, or reports false when
 // the response did not include the dialog's peer.
 func conversation(accountID string, d *tg.Dialog, e entities, now time.Time) (domain.Conversation, bool) {
 	c, ok := peerConversation(accountID, d.Peer, e)
 	c.Muted = int64(d.NotifySettings.MuteUntil) > now.Unix()
+	c.Pinned = d.Pinned
+	c.Archived = d.FolderID == archiveFolderID
 
 	return c, ok
 }

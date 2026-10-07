@@ -320,6 +320,60 @@ func TestRefreshMessages_AsksConnectorsThatKeepHistory(t *testing.T) {
 	})
 }
 
+func TestSetPinned_AsksConnectorsThatOrganize(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withOrganizer{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+
+		if err := m.SetPinned(ctx, domain.Conversation{AccountID: "tg"}, true); err != nil {
+			t.Fatal(err)
+		}
+
+		if !slices.Equal(tg.pinned, []bool{true}) {
+			t.Errorf("pinned %v, want [true]", tg.pinned)
+		}
+
+		if err := m.SetPinned(ctx, domain.Conversation{AccountID: "plain"}, true); err != nil {
+			t.Errorf("SetPinned on a connector that does not organize = %v, want nothing", err)
+		}
+
+		if err := m.SetPinned(ctx, domain.Conversation{AccountID: "nobody"}, true); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("SetPinned for an unknown account = %v", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
+func TestSetArchived_AsksConnectorsThatOrganize(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withOrganizer{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+
+		if err := m.SetArchived(ctx, domain.Conversation{AccountID: "tg"}, true); err != nil {
+			t.Fatal(err)
+		}
+
+		if !slices.Equal(tg.archived, []bool{true}) {
+			t.Errorf("archived %v, want [true]", tg.archived)
+		}
+
+		if err := m.SetArchived(ctx, domain.Conversation{AccountID: "plain"}, true); err != nil {
+			t.Errorf("SetArchived on a connector that does not organize = %v, want nothing", err)
+		}
+
+		if err := m.SetArchived(ctx, domain.Conversation{AccountID: "nobody"}, true); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("SetArchived for an unknown account = %v", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
 func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

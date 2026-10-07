@@ -232,6 +232,40 @@ func (m *Manager) RefreshMessages(ctx context.Context, conv domain.Conversation,
 	return refresher.RefreshMessages(ctx, conv, remoteIDs)
 }
 
+// SetPinned asks the conversation's connector to pin or unpin it with the
+// service, if it organizes conversations; one that does not leaves the
+// local pin as the only copy.
+func (m *Manager) SetPinned(ctx context.Context, conv domain.Conversation, pinned bool) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	organizer, ok := c.(Organizer)
+	if !ok {
+		return nil
+	}
+
+	return organizer.SetPinned(ctx, conv, pinned)
+}
+
+// SetArchived asks the conversation's connector to archive or unarchive it
+// with the service, if it organizes conversations; one that does not
+// leaves the local archive as the only copy.
+func (m *Manager) SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	organizer, ok := c.(Organizer)
+	if !ok {
+		return nil
+	}
+
+	return organizer.SetArchived(ctx, conv, archived)
+}
+
 // SubmitAuth hands sign-in input, such as a code, to the connector for
 // its account.
 func (m *Manager) SubmitAuth(ctx context.Context, accountID, step, value string) error {

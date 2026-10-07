@@ -19,6 +19,7 @@ type Commands struct {
 	media      MediaFetcher
 	cache      MediaCache
 	refresher  MessageRefresher
+	organizer  Organizer
 	fake       Injector
 	events     *events
 	ui         *uiState

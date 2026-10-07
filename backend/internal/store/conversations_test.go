@@ -150,6 +150,125 @@ func TestSetUnread_TakesTheServicesCount(t *testing.T) {
 	}
 }
 
+func TestSetPinned_PinsAndUnpins(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	if err := s.SetPinned(ctx, "chat", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || !c.Pinned {
+		t.Fatalf("Conversation after pin = %+v, %v; want Pinned true", c, err)
+	}
+
+	if err := s.SetPinned(ctx, "chat", false); err != nil {
+		t.Fatal(err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || c.Pinned {
+		t.Fatalf("Conversation after unpin = %+v, %v; want Pinned false", c, err)
+	}
+
+	if err := s.SetPinned(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetPinned(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSetArchived_ArchivesAndUnarchives(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	if err := s.SetArchived(ctx, "chat", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || !c.Archived {
+		t.Fatalf("Conversation after archive = %+v, %v; want Archived true", c, err)
+	}
+
+	if err := s.SetArchived(ctx, "chat", false); err != nil {
+		t.Fatal(err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || c.Archived {
+		t.Fatalf("Conversation after unarchive = %+v, %v; want Archived false", c, err)
+	}
+
+	if err := s.SetArchived(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetArchived(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestConversations_OrdersPinnedFirst(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "old-pinned", "Old Pinned")
+	addConversation(t, s, "wa", "new", "New")
+	addConversation(t, s, "wa", "new-pinned", "New Pinned")
+	addMessages(t, s,
+		domain.Message{ID: "m1", ConversationID: "old-pinned", Text: "one", Created: 10},
+		domain.Message{ID: "m2", ConversationID: "new", Text: "two", Created: 20},
+		domain.Message{ID: "m3", ConversationID: "new-pinned", Text: "three", Created: 30},
+	)
+
+	if err := s.SetPinned(ctx, "old-pinned", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPinned(ctx, "new-pinned", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// "old-pinned" has the oldest activity of the three but still leads
+	// "new", which is not pinned, because pinned conversations always come
+	// first; within pinned or unpinned, the newest activity leads.
+	got, err := s.Conversations(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var gotIDs []string
+	for _, c := range got {
+		gotIDs = append(gotIDs, c.ID)
+	}
+
+	want := []string{"new-pinned", "old-pinned", "new"}
+	if !slices.Equal(gotIDs, want) {
+		t.Errorf("Conversations order = %v, want %v", gotIDs, want)
+	}
+}
+
+func TestEnsureConversation_UpdatesPinnedAndArchived(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+
+	first := domain.Conversation{AccountID: "wa", RemoteID: "remote", Title: "Chat"}
+	created, _, err := s.EnsureConversation(ctx, first)
+	if err != nil || created.Pinned || created.Archived {
+		t.Fatalf("first EnsureConversation = %+v, %v; want neither pinned nor archived", created, err)
+	}
+
+	second := domain.Conversation{AccountID: "wa", RemoteID: "remote", Title: "Chat", Pinned: true, Archived: true}
+	updated, _, err := s.EnsureConversation(ctx, second)
+	if err != nil || !updated.Pinned || !updated.Archived {
+		t.Fatalf("second EnsureConversation = %+v, %v; want pinned and archived", updated, err)
+	}
+}
+
 func TestUnreadTotal_IgnoresMutedConversations(t *testing.T) {
 	t.Parallel()
 

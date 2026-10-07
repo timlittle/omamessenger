@@ -49,6 +49,10 @@ var migrations = []string{
 	CREATE INDEX messages_timeline ON messages(conversation_id, created);`,
 	// A message's link preview, photo, video or file, as JSON.
 	`ALTER TABLE messages ADD COLUMN media TEXT NOT NULL DEFAULT '';`,
+	// A conversation pinned to the top of the list, or filed away in the
+	// service's archive, as Telegram's dialogs report it.
+	`ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE conversations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

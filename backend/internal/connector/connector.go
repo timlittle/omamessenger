@@ -96,6 +96,20 @@ type MessageRefresher interface {
 	RefreshMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string) error
 }
 
+// Organizer is a Connector that keeps a conversation pinned or archived in
+// step with the service, so a change made here, or made on another
+// device and synced back, agrees everywhere. The two methods are kept
+// together because every service that offers either offers both through
+// the same mechanism (Telegram: toggling a dialog flag), so a caller that
+// type-asserts for one almost always wants the other.
+type Organizer interface {
+	// SetPinned pins or unpins a conversation at the top of the list.
+	SetPinned(ctx context.Context, conv domain.Conversation, pinned bool) error
+
+	// SetArchived files a conversation away, or brings it back.
+	SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error
+}
+
 // AuthStep is what a signing-in connector needs from the user next.
 type AuthStep struct {
 	// Kind is "qr", "phone", "code" or "password".

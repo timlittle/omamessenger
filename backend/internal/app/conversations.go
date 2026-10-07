@@ -73,3 +73,40 @@ func (c *Commands) SetMuted(ctx context.Context, conversationID string, muted bo
 
 	return c.store.Conversation(ctx, conversationID)
 }
+
+// SetPinned pins or unpins a conversation, then tells its service so a
+// pin made here, or synced back from another device, agrees everywhere.
+// The local change stands even if the service call fails; that failure is
+// returned so the caller can tell the user.
+func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned bool) (domain.Conversation, error) {
+	if err := c.store.SetPinned(ctx, conversationID, pinned); err != nil {
+		return domain.Conversation{}, err
+	}
+
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return conv, err
+	}
+
+	c.events.publish(ctx, EventConversationUpdated, conv)
+
+	return conv, c.organizer.SetPinned(ctx, conv, pinned)
+}
+
+// SetArchived files a conversation away, or brings it back, then tells its
+// service. The local change stands even if the service call fails; that
+// failure is returned so the caller can tell the user.
+func (c *Commands) SetArchived(ctx context.Context, conversationID string, archived bool) (domain.Conversation, error) {
+	if err := c.store.SetArchived(ctx, conversationID, archived); err != nil {
+		return domain.Conversation{}, err
+	}
+
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return conv, err
+	}
+
+	c.events.publish(ctx, EventConversationUpdated, conv)
+
+	return conv, c.organizer.SetArchived(ctx, conv, archived)
+}

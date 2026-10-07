@@ -361,3 +361,24 @@ test('recent keeps chats active within a month, unread ones and the open one', (
 
   assert.deepEqual(Rail.recent(conversations, now, 'old-open').map((c) => c.id), ['new', 'old-unread', 'old-open']);
 });
+
+test('unarchived keeps conversations that are not archived, and the open one', () => {
+  const conversations = [
+    { id: 'plain', archived: false },
+    { id: 'filed', archived: true },
+    { id: 'filed-open', archived: true }
+  ];
+
+  assert.deepEqual(Rail.unarchived(conversations, 'filed-open').map((c) => c.id), ['plain', 'filed-open']);
+});
+
+test('compareConversations puts pinned conversations first, then newest activity', () => {
+  const a = { id: 'a', pinned: false, lastActivity: 200 };
+  const b = { id: 'b', pinned: true, lastActivity: 100 };
+  const c = { id: 'c', pinned: false, lastActivity: 300 };
+  const d = { id: 'd', pinned: true, lastActivity: 400 };
+
+  const sorted = [a, b, c, d].sort(Rail.compareConversations).map((x) => x.id);
+
+  assert.deepEqual(sorted, ['d', 'b', 'c', 'a']);
+});
