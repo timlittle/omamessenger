@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "../theme"
 import "../lib/Timeline.js" as Timeline
+import "../lib/Highlight.js" as Highlight
 
 // One message row in a conversation: an optional day separator, the sender
 // name for a grouped incoming message, the bubble with its text and any
@@ -20,6 +21,10 @@ Item {
   property bool isGroup: false
   // nowMs is the current time, passed through to time formatting.
   property real nowMs: 0
+  // highlighted is true when this is the message the keyboard currently
+  // points at: shown with a selection fill, an accent bar and a row of
+  // key hints for what pressing a key does to it.
+  property bool highlighted: false
   // failed is true for an outgoing message the service could not send.
   readonly property bool failed: root.message.outgoing && root.message.status === "failed"
   // showStatus is true when the delivery glyph should be drawn.
@@ -49,6 +54,27 @@ Item {
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
+
+  // The highlighted message's selection fill and accent bar: colour
+  // alone never carries it, so the bar and the hint row inside the
+  // Column below are its non-colour cues.
+  Rectangle {
+    objectName: "highlightFill"
+    visible: root.highlighted
+    anchors.fill: parent
+    color: Util.alpha(Color.accent, Style.selectedFillAlpha)
+  }
+
+  Rectangle {
+    objectName: "highlightBar"
+    visible: root.highlighted
+    anchors.top: parent.top
+    anchors.bottom: parent.bottom
+    anchors.right: root.message.outgoing ? parent.right : undefined
+    anchors.left: root.message.outgoing ? undefined : parent.left
+    width: Style.space(2)
+    color: Color.accent
+  }
 
   Column {
     id: column
@@ -133,26 +159,56 @@ Item {
           showStatus: root.showStatus
         }
 
-        // hoverToolbar floats over the bubble's top corner, mostly above
-        // it with only a sliver overlapping the top padding, never the
-        // text: the near-the-middle corner for each direction, so it
-        // never lands over the window edge. It sits outside the message
-        // Column entirely, so fading it in or out never resizes or moves
-        // any bubble; z keeps it drawn above the bubble's own content.
+        // hoverToolbar sits beside the bubble, vertically centred on it,
+        // in whatever free horizontal space the row leaves: to the left
+        // of an outgoing bubble, to the right of an incoming one. That
+        // space is never a neighbouring message's, so the toolbar can
+        // never overlap one; clamping its y to the bubble's own height
+        // keeps it there even when the bubble is shorter than the
+        // toolbar. When the bubble is too wide to leave that room (an
+        // unusually narrow window, or one at its maximum width), it
+        // falls back inside the bubble's own top corner instead: still
+        // this message's own space, never a neighbour's. It sits outside
+        // the message Column entirely, so fading it in or out never
+        // resizes or moves any bubble; z keeps it drawn above the
+        // bubble's own content.
         MessageHoverToolbar {
           id: hoverToolbar
+
+          // besideSpace is the free width beside the bubble: at least
+          // 28% of the row, since the bubble's own width is capped at
+          // 72% of it, which is enough in practice for the toolbar even
+          // at the window's minimum size. fitsBeside guards the rare
+          // case it is not.
+          readonly property real besideSpace: bubbleRow.width - bubble.width
+          readonly property bool fitsBeside: hoverToolbar.besideSpace >= hoverToolbar.width + Theme.spacing.xs
 
           objectName: "hoverToolbar"
           z: 1
           active: rowHover.hovered || toolbarHover.hovered
-          x: root.message.outgoing ? 0 : bubble.width - width
-          y: -height + Theme.spacing.xs
+          x: hoverToolbar.fitsBeside
+            ? (root.message.outgoing ? -(hoverToolbar.width + Theme.spacing.xs) : bubble.width + Theme.spacing.xs)
+            : (root.message.outgoing ? Theme.spacing.xs : bubble.width - hoverToolbar.width - Theme.spacing.xs)
+          y: hoverToolbar.fitsBeside
+            ? Math.max(0, Math.min(bubble.height - hoverToolbar.height, (bubble.height - hoverToolbar.height) / 2))
+            : Theme.spacing.xs
           onReact: root.reactPickerRequested(root.message.id)
           onReply: root.replyRequested(root.message.id)
 
           HoverHandler { id: toolbarHover }
         }
       }
+    }
+
+    Text {
+      objectName: "highlightHints"
+      visible: root.highlighted
+      anchors.right: root.message.outgoing ? parent.right : undefined
+      anchors.left: root.message.outgoing ? undefined : parent.left
+      text: Highlight.hints(root.message)
+      color: Util.alpha(Color.foreground, 0.55)
+      font.family: Theme.font.family
+      font.pixelSize: Theme.font.caption
     }
 
     ReactionChips {
@@ -171,7 +227,7 @@ Item {
       Text {
         id: retryText
         anchors.right: parent.right
-        text: "Not sent · r to retry"
+        text: "Not sent · t to retry"
         color: Color.urgent
         font.family: Theme.font.family
         font.pixelSize: Theme.font.caption

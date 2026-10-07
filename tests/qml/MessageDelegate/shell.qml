@@ -3,9 +3,13 @@
 // linkifying URLs, a pipe table rendered as real columns instead of
 // smeared wrapped lines, a reply's quote, a photo whose full image fails
 // to load, the hover toolbar's react and reply buttons, reaction chips,
-// that hovering a message never moves or resizes any message, and that
-// the toolbar stays visible once the pointer reaches it, even after it
-// has left the bubble underneath.
+// that hovering a message never moves or resizes any message, that the
+// toolbar stays visible once the pointer reaches it, even after it has
+// left the bubble underneath, that the toolbar sits beside the bubble
+// without ever overlapping a neighbouring message for both an incoming
+// and an outgoing bubble, that it falls back inside the bubble's own
+// corner when there is no room beside it, and that a highlighted message
+// shows its selection fill, accent bar and key-hint text.
 import QtQuick
 import QtTest
 import Quickshell
@@ -61,7 +65,7 @@ ShellRoot {
   FloatingWindow {
     id: win
     implicitWidth: 400
-    implicitHeight: 900
+    implicitHeight: 1100
     visible: true
 
     MessageDelegate {
@@ -113,6 +117,27 @@ ShellRoot {
         annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         nowMs: root.now
       }
+
+      MessageDelegate {
+        id: rowD
+        width: 360
+        message: ({ id: "l4", senderId: "me", senderName: "Me", text: "fourth message", outgoing: true, status: "delivered", created: root.now })
+        annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
+        nowMs: root.now
+      }
+    }
+
+    // narrowDelegate is too narrow for the toolbar to fit beside its
+    // bubble: the bubble's own maximum width (72% of this) leaves less
+    // room than the toolbar needs, so it must fall back inside the
+    // bubble's own corner instead.
+    MessageDelegate {
+      id: narrowDelegate
+      y: 820
+      width: 140
+      message: ({ id: "n1", senderId: "s1", senderName: "Alex", text: "a message long enough to wrap onto several lines and reach the bubble's maximum width", outgoing: false, status: "received", created: root.now })
+      annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
+      nowMs: root.now
     }
   }
 
@@ -149,6 +174,9 @@ ShellRoot {
     if (!root.checkReactionChips()) return;
     if (!root.checkHoverNeverShiftsLayout()) return;
     if (!root.checkToolbarStaysVisibleOnItself()) return;
+    if (!root.checkHoverToolbarBesideBubble()) return;
+    if (!root.checkHoverToolbarFallbackInsideBubble()) return;
+    if (!root.checkHighlightVisuals()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -201,7 +229,7 @@ ShellRoot {
     t.waitForRendering(delegate);
 
     const nodes = Check.texts(delegate);
-    const retryLine = root.findText(nodes, "Not sent · r to retry");
+    const retryLine = root.findText(nodes, "Not sent · t to retry");
     if (!retryLine || !retryLine.visible) return Check.fail("retry line not shown for a failed outgoing message");
     if (!Qt.colorEqual(retryLine.color, Color.urgent)) return Check.fail("retry line is not drawn in the urgent colour");
 
@@ -531,6 +559,121 @@ ShellRoot {
     t.mouseMove(stack, 2, 2);
     t.wait(150); // let the fade-out finish
     if (toolbar.visible) return Check.fail("toolbar stayed visible once the pointer left both the bubble and the toolbar");
+    return true;
+  }
+
+  // checkHoverToolbarBesideBubble verifies the toolbar sits beside the
+  // bubble, on the correct side for each direction, rather than above
+  // it, for both an incoming and an outgoing message, and never
+  // overlaps a neighbouring message in the stack.
+  function checkHoverToolbarBesideBubble(): bool {
+    if (!root.checkToolbarBeside(rowB, false, rowA, rowC)) return false;
+    if (!root.checkToolbarBeside(rowD, true, rowC, null)) return false;
+    return true;
+  }
+
+  // checkToolbarBeside hovers row's bubble and checks its toolbar: on
+  // the side free space leaves it (left of an outgoing bubble, right of
+  // an incoming one), vertically centred on the bubble, and overlapping
+  // neither neighbourAbove's nor neighbourBelow's own rect.
+  function checkToolbarBeside(row: var, outgoing: bool, neighborAbove: var, neighborBelow: var): bool {
+    t.mouseMove(stack, 2, 2);
+    t.wait(150);
+
+    const bubble = Check.find(row, "bubble");
+    t.mouseMove(bubble, bubble.width / 2, bubble.height / 2);
+    t.wait(50);
+
+    const toolbar = Check.find(row, "hoverToolbar");
+    if (!toolbar.visible) return Check.fail("toolbar did not appear on hover");
+    if (!toolbar.fitsBeside) return Check.fail("this row was expected to leave room beside its bubble");
+
+    const bubbleRect = Check.rect(bubble, stack);
+    const toolbarRect = Check.rect(toolbar, stack);
+
+    if (outgoing && toolbarRect.x + toolbarRect.width > bubbleRect.x + 0.5) {
+      return Check.fail(`outgoing toolbar at x=${toolbarRect.x} does not sit to the left of the bubble at x=${bubbleRect.x}`);
+    }
+    if (!outgoing && toolbarRect.x < bubbleRect.x + bubbleRect.width - 0.5) {
+      return Check.fail(`incoming toolbar at x=${toolbarRect.x} does not sit to the right of the bubble ending at ${bubbleRect.x + bubbleRect.width}`);
+    }
+
+    const bubbleMid = bubbleRect.y + bubbleRect.height / 2;
+    const toolbarMid = toolbarRect.y + toolbarRect.height / 2;
+    if (Math.abs(bubbleMid - toolbarMid) > 1) {
+      return Check.fail(`toolbar is not vertically centred on the bubble: bubble mid ${bubbleMid}, toolbar mid ${toolbarMid}`);
+    }
+
+    for (const neighbor of [neighborAbove, neighborBelow]) {
+      if (!neighbor) continue;
+      const neighborRect = Check.rect(neighbor, stack);
+      const overlap = Check.overlapArea(toolbarRect, neighborRect, 0.5);
+      if (overlap > 0) return Check.fail(`toolbar overlaps a neighbouring message by ${overlap} square pixels`);
+    }
+
+    t.mouseMove(stack, 2, 2);
+    t.wait(150);
+    return true;
+  }
+
+  // checkHoverToolbarFallbackInsideBubble verifies that a bubble too wide
+  // to leave room beside it (because the row itself is narrow) falls back
+  // to showing the toolbar inside its own top corner, never reaching
+  // outside the bubble and so never a neighbour either.
+  function checkHoverToolbarFallbackInsideBubble(): bool {
+    t.waitForRendering(narrowDelegate);
+    const bubble = Check.find(narrowDelegate, "bubble");
+    t.mouseMove(bubble, bubble.width / 2, bubble.height / 2);
+    t.wait(50);
+
+    const toolbar = Check.find(narrowDelegate, "hoverToolbar");
+    if (!toolbar.visible) return Check.fail("toolbar did not appear on hover for the narrow bubble");
+    if (toolbar.fitsBeside) return Check.fail("the narrow bubble left room beside it; this check needs a true fallback case");
+
+    const toolbarRect = Check.rect(toolbar, bubble);
+    if (toolbarRect.x < -0.5 || toolbarRect.x + toolbarRect.width > bubble.width + 0.5) {
+      return Check.fail(`fallback toolbar is not inside the bubble's own width: x=${toolbarRect.x} width=${toolbarRect.width} bubble width=${bubble.width}`);
+    }
+    if (toolbarRect.y < -0.5) return Check.fail(`fallback toolbar is above the bubble's own top: y=${toolbarRect.y}`);
+
+    t.mouseMove(narrowDelegate, 2, 2);
+    t.wait(150);
+    return true;
+  }
+
+  // checkHighlightVisuals verifies the highlighted message's selection
+  // fill, its accent bar on the correct side for each direction, and its
+  // key-hint text for a plain message, a failed outgoing one and one
+  // carrying media.
+  function checkHighlightVisuals(): bool {
+    delegate.message = { id: "h1", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "received", created: root.now };
+    delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
+    delegate.highlighted = false;
+
+    if (Check.find(delegate, "highlightFill").visible) return Check.fail("highlight fill shown without being highlighted");
+    if (Check.find(delegate, "highlightHints").visible) return Check.fail("highlight hints shown without being highlighted");
+
+    delegate.highlighted = true;
+    const fill = Check.find(delegate, "highlightFill");
+    const bar = Check.find(delegate, "highlightBar");
+    const hints = Check.find(delegate, "highlightHints");
+    if (!fill.visible) return Check.fail("highlight fill not shown while highlighted");
+    if (!bar.visible) return Check.fail("highlight bar not shown while highlighted");
+    if (!Qt.colorEqual(bar.color, Color.accent)) return Check.fail("highlight bar is not drawn in the accent colour");
+    if (Check.rect(bar, delegate).x > 1) return Check.fail("an incoming message's highlight bar is not on the left");
+    if (!hints.visible || hints.text !== "r reply · e react") {
+      return Check.fail(`hint text is "${hints.text}", want "r reply · e react"`);
+    }
+
+    delegate.message = { id: "h2", senderId: "me", senderName: "Me", text: "oops", outgoing: true, status: "failed", created: root.now };
+    if (Check.rect(bar, delegate).x + bar.width < delegate.width - 1) return Check.fail("an outgoing message's highlight bar is not on the right");
+    if (hints.text !== "r reply · e react · t retry") return Check.fail(`hint text is "${hints.text}", want the failed-retry hint`);
+
+    const photo = { kind: "photo", width: 10, height: 10, thumb: "" };
+    delegate.message = { id: "h3", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo) };
+    if (hints.text !== "r reply · e react · Enter open") return Check.fail(`hint text is "${hints.text}", want the media-open hint`);
+
+    delegate.highlighted = false;
     return true;
   }
 }
