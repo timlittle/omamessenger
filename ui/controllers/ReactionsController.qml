@@ -2,6 +2,7 @@ import QtQuick
 import "../lib/Actions.js" as Actions
 import "../lib/Reactions.js" as Reactions
 import "../lib/Rpc.js" as Rpc
+import "../lib/Timeline.js" as Timeline
 
 // Owns the open conversation's reaction chips and the emoji picker: the
 // only controller that calls messages.react. conversation supplies the
@@ -61,9 +62,9 @@ QtObject {
     if (!id) return;
 
     const timeline = root.conversation.timeline;
-    const message = timeline.find(id);
-    const toSend = Reactions.emojiToSend(message ? message.reactions : [], emoji);
-    timeline.setReactions(id, Reactions.applyLocal(message ? message.reactions : [], toSend));
+    const current = Timeline.reactions(timeline.find(id) ?? {});
+    const toSend = Reactions.emojiToSend(current, emoji);
+    timeline.setReactions(id, Reactions.applyLocal(current, toSend));
 
     root.service.request("messages.react", { messageId: id, emoji: toSend }, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }

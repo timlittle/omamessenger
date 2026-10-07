@@ -59,3 +59,21 @@ test('applyLocal clearing leaves other people\'s reactions alone', () => {
 test('applyLocal tolerates an undefined reactions list', () => {
   assert.deepEqual(Reactions.applyLocal(undefined, '👍'), [{ emoji: '👍', count: 1, mine: true }]);
 });
+
+// listModel stands in for a QML ListModel role: once a message's
+// reactions role has been written once, reading it back gives this
+// shape rather than a plain array, because a QML ListModel wraps an
+// array of objects it is given.
+function listModel(rows) {
+  return { count: rows.length, get: (i) => rows[i] };
+}
+
+test('emojiToSend reads reactions given back as a QML list model', () => {
+  const reactions = listModel([{ emoji: '👍', count: 1, mine: true }]);
+  assert.strictEqual(Reactions.emojiToSend(reactions, '👍'), '');
+});
+
+test('applyLocal reads reactions given back as a QML list model', () => {
+  const reactions = listModel([{ emoji: '👍', count: 1, mine: true }]);
+  assert.deepEqual(Reactions.applyLocal(reactions, '❤️'), [{ emoji: '❤️', count: 1, mine: true }]);
+});

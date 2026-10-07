@@ -28,6 +28,8 @@ Item {
   readonly property var media: Timeline.media(root.message)
   // quote is the message this one replies to, or null.
   readonly property var quote: Timeline.replyTo(root.message)
+  // reactions are this message's reaction chips, or an empty list.
+  readonly property var reactions: Timeline.reactions(root.message)
 
   // retry asks the caller to resend this message after a send failure.
   signal retry(string id)
@@ -157,7 +159,7 @@ Item {
       objectName: "reactionChips"
       width: parent.width
       alignRight: root.message.outgoing
-      reactions: root.message.reactions ? root.message.reactions : []
+      reactions: root.reactions
       onToggled: emoji => root.react(root.message.id, emoji)
     }
 

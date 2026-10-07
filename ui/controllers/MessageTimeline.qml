@@ -164,10 +164,13 @@ Item {
 
   // setReactions replaces a message's reaction chips in place, for
   // instant feedback before the server's message.updated event confirms
-  // the real ones.
+  // the real ones. The role holds reactions as a JSON string, the same
+  // way row() stores media and replyTo: writing an array of objects to
+  // an existing ListModel row, rather than at its first insert, silently
+  // leaves the role empty.
   function setReactions(id: string, reactions: var): void {
     const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at !== -1) messagesModel.setProperty(at, "reactions", reactions);
+    if (at !== -1) messagesModel.setProperty(at, "reactions", JSON.stringify(reactions));
   }
 
   // _appendOlder adds a messages.list page to the newest-first model,

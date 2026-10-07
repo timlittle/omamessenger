@@ -298,9 +298,16 @@ test('replyTo reads a row\'s quoted message back, or null', () => {
   assert.deepEqual(Timeline.replyTo({ replyTo: { remoteId: '2' } }), { remoteId: '2' });
 });
 
-test('row defaults reactions to an empty list, so every model row has the same shape', () => {
+test('row keeps reactions as a string, so updating them later does not silently drop them', () => {
   const reactions = [{ emoji: '👍', count: 1, mine: true }];
 
-  assert.deepEqual(Timeline.row({ id: 'a' }).reactions, []);
-  assert.deepEqual(Timeline.row({ id: 'a', reactions }).reactions, reactions);
+  assert.strictEqual(Timeline.row({ id: 'a' }).reactions, '[]');
+  assert.strictEqual(Timeline.row({ id: 'a', reactions }).reactions, JSON.stringify(reactions));
+});
+
+test('reactions reads a row\'s reaction chips back, or an empty list', () => {
+  assert.deepEqual(Timeline.reactions({ reactions: '[{"emoji":"👍","count":1,"mine":true}]' }), [{ emoji: '👍', count: 1, mine: true }]);
+  assert.deepEqual(Timeline.reactions({ reactions: '' }), []);
+  assert.deepEqual(Timeline.reactions({ reactions: [{ emoji: '❤️', count: 2, mine: false }] }), [{ emoji: '❤️', count: 2, mine: false }]);
+  assert.deepEqual(Timeline.reactions({}), []);
 });

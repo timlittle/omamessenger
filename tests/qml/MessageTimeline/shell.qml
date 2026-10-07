@@ -8,6 +8,7 @@
 import QtQuick
 import Quickshell
 import "ui/controllers"
+import "ui/lib/Timeline.js" as Timeline
 import "Check.js" as Check
 
 ShellRoot {
@@ -140,6 +141,17 @@ ShellRoot {
     }
     if (timeline.photoNeighbor("unknown", 1) !== "") {
       Check.fail("photoNeighbor for an id that is not loaded should be \"\"");
+      return;
+    }
+
+    // setReactions updates an existing row, not a freshly inserted one,
+    // which is exactly the case a QML ListModel role holding an array of
+    // objects loses silently; row() and reactions() keep it as JSON to
+    // avoid that.
+    timeline.setReactions("m60", [{ emoji: "👍", count: 1, mine: true }]);
+    const reactions = Timeline.reactions(timeline.find("m60"));
+    if (reactions.length !== 1 || reactions[0].emoji !== "👍") {
+      Check.fail("setReactions did not stick: " + JSON.stringify(reactions));
       return;
     }
 

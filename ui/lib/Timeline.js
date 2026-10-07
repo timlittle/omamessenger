@@ -49,15 +49,18 @@ function insertIndex(newestFirst, message) {
 }
 
 // row is a message as a timeline model row. A ListModel needs every row to
-// share a shape, so media and replyTo, each an object or absent, are kept
-// as JSON strings, mediaPath, where its download is, starts empty, and
-// reactions, absent on a message with none, defaults to an empty list.
+// share a shape, so media, replyTo and reactions, each an object, a list
+// or absent, are kept as JSON strings: setting a ListModel role straight
+// to an array of objects, rather than at the row's first insert, silently
+// leaves the role empty, and reacting to a message is exactly that case,
+// an update rather than an insert. mediaPath, where its download is,
+// starts empty.
 function row(message) {
   return Object.assign({}, message, {
     media: message.media ? JSON.stringify(message.media) : '',
     replyTo: message.replyTo ? JSON.stringify(message.replyTo) : '',
     mediaPath: message.mediaPath ?? '',
-    reactions: message.reactions ?? []
+    reactions: JSON.stringify(message.reactions ?? [])
   });
 }
 
@@ -79,4 +82,14 @@ function replyTo(item) {
   }
 
   return typeof item.replyTo === 'string' ? JSON.parse(item.replyTo) : item.replyTo;
+}
+
+// reactions reads a row's reaction chips, or an empty list when it has
+// none. It also accepts a message as the helper sends it.
+function reactions(item) {
+  if (!item.reactions) {
+    return [];
+  }
+
+  return typeof item.reactions === 'string' ? JSON.parse(item.reactions) : item.reactions;
 }
