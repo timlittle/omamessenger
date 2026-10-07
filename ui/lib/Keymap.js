@@ -179,3 +179,15 @@ function commands() {
     .filter((b) => b.command)
     .map((b) => ({ action: b.action, label: b.label, keys: b.keys.length > 0 ? display(b.keys[0]) : '' }));
 }
+
+// composeHint names the composer's current mode in words: what starts
+// writing, or what stops it once the input already has focus. It reads
+// its wording off the real compose.focus and escape bindings, the same
+// ones the key router already matches, rather than naming a key a
+// second time by hand.
+function composeHint(writing) {
+  const action = writing ? 'escape' : 'compose.focus';
+  const key = display(BINDINGS.find((b) => b.action === action).keys[0]);
+
+  return writing ? `Writing · ${key} to stop` : `${key} to write`;
+}

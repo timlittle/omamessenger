@@ -119,7 +119,7 @@ ShellRoot {
     const composer = Check.find(panel, "composerInput");
 
     if (title && title.text === root.expectedTitle && composer && composer.activeFocus)
-      return root.checkMultilineNewlines(composer);
+      return root.checkWritingMode(composer);
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
@@ -127,6 +127,22 @@ ShellRoot {
         + (title ? title.text : "?") + "\" want \"" + root.expectedTitle
         + "\" composerFocus=" + (composer ? composer.activeFocus : "?"));
     root.retry(root.waitForConversationOpen);
+  }
+
+  // checkWritingMode checks the composer shows its accent-bordered
+  // "writing" state and names it in words as soon as it gets focus,
+  // before the rest of the test types into it. The report this exists
+  // for: scrolling and writing looked identical except for the blinking
+  // text cursor.
+  function checkWritingMode(composer: var): void {
+    const hint = Check.find(panel, "composerModeHint");
+    const frame = Check.find(panel, "composerFrame");
+    if (!hint || hint.text !== "Writing · Esc to stop")
+      return Check.fail("writing hint is \"" + (hint ? hint.text : "?") + "\", want \"Writing · Esc to stop\"");
+    if (!frame || !Qt.colorEqual(frame.border.color, Color.accent))
+      return Check.fail("composer frame is not accent-bordered while writing");
+
+    root.checkMultilineNewlines(composer);
   }
 
   // messageWithText reports whether any loaded message exactly matches
@@ -252,9 +268,40 @@ ShellRoot {
 
   // checkEscapeChain steps Escape back through leaving the composer and
   // closing the conversation, then checks the final Escape hides the
-  // window through the host's shell facade.
+  // window through the host's shell facade. The first Escape leaves the
+  // composer asynchronously, so the not-writing mode check waits for
+  // that before the chain continues.
   function checkEscapeChain(): void {
     t.keyClick(Qt.Key_Escape);
+
+    root.pollAttempts = 0;
+    root.waitForComposeLeft();
+  }
+
+  // waitForComposeLeft holds until the first Escape has blurred the
+  // composer, then checks the mode hint and frame reverted to the quiet,
+  // not-writing state before the rest of the chain runs.
+  function waitForComposeLeft(): void {
+    const composer = Check.find(panel, "composerInput");
+    if (composer && !composer.activeFocus) return root.checkNotWritingMode();
+
+    root.pollAttempts++;
+    if (root.pollAttempts >= 100) return Check.fail("the first Escape never left the composer");
+    root.retry(root.waitForComposeLeft);
+  }
+
+  // checkNotWritingMode checks the quiet, not-writing state the Escape
+  // chain's first step should have left the composer in, then finishes
+  // the chain: a second Escape closes the conversation and a third asks
+  // to hide the window.
+  function checkNotWritingMode(): void {
+    const hint = Check.find(panel, "composerModeHint");
+    const frame = Check.find(panel, "composerFrame");
+    if (!hint || hint.text !== "i to write")
+      return Check.fail("not-writing hint is \"" + (hint ? hint.text : "?") + "\", want \"i to write\"");
+    if (!frame || Qt.colorEqual(frame.border.color, Color.accent))
+      return Check.fail("composer frame still shows the accent border after leaving the composer");
+
     t.keyClick(Qt.Key_Escape);
     t.keyClick(Qt.Key_Escape);
 

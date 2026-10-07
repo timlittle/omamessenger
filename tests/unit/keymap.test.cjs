@@ -136,3 +136,8 @@ test('the palette offers commands that have no key, with none shown', () => {
   assert.ok(Keymap.commands().some((c) => c.action === 'account.remove'));
   assert.ok(Keymap.commands().some((c) => c.action === 'list.showAll'));
 });
+
+test('composeHint names the mode from the real compose.focus and escape keys', () => {
+  assert.strictEqual(Keymap.composeHint(false), 'i to write');
+  assert.strictEqual(Keymap.composeHint(true), 'Writing · Esc to stop');
+});

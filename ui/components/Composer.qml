@@ -6,6 +6,7 @@ import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
+import "../lib/Keymap.js" as Keymap
 
 // Message composer: an optional "replying to" banner, an attachment
 // chip, a growing text input and a Send button.
@@ -51,6 +52,16 @@ Item {
   // file comment above for why this is a function property, not a signal.
   property var routeKey: null
 
+  // writing is true while the text input holds keyboard focus: typing
+  // and scrolling the conversation look identical otherwise, bar the
+  // blinking text cursor, so the frame below and the mode hint both
+  // read this to show which one is active.
+  readonly property bool writing: area.activeFocus
+  // modeHint names the current mode in words, so it is not shown by
+  // colour alone: Keymap.composeHint derives it from the same bindings
+  // the key router already matches, rather than naming a key twice.
+  readonly property string modeHint: Keymap.composeHint(root.writing)
+
   // submitted reports the trimmed text a caller should send, alongside
   // whatever attachmentPath already holds, and the id of the message it
   // answers, or "" when it answers nothing.
@@ -93,7 +104,7 @@ Item {
   readonly property string _attachmentKind: root.attachmentPath !== "" ? Format.guessMediaKind(root.attachmentPath) : ""
 
   implicitWidth: Style.space(280)
-  implicitHeight: layout.implicitHeight
+  implicitHeight: layout.implicitHeight + 2 * Theme.spacing.xs
 
   opacity: root.enabled ? 1.0 : 0.5
   Behavior on opacity { NumberAnimation { duration: 120 } }
@@ -110,10 +121,38 @@ Item {
     onAccepted: root.fileAttached(String(fileDialog.selectedFile).replace(/^file:\/\//, ""))
   }
 
+  // frame outlines the whole composer, not just the text input, so the
+  // writing/not-writing state is visible at a glance. It goes to
+  // Color.accent while writing rather than the generic focus-border
+  // token, which is quiet by default on this theme: this one case is
+  // meant to stand out, not blend in.
+  Rectangle {
+    id: frame
+    objectName: "composerFrame"
+    anchors.fill: parent
+    color: "transparent"
+    radius: Style.cornerRadius
+    border.width: root.writing ? Style.focusBorderWidth : Style.normalBorderWidth
+    border.color: root.writing ? Color.accent : Style.normalBorderColor
+  }
+
   ColumnLayout {
     id: layout
     anchors.fill: parent
+    anchors.margins: Theme.spacing.xs
     spacing: Theme.spacing.xs
+
+    Text {
+      id: modeHintText
+      objectName: "composerModeHint"
+      Layout.fillWidth: true
+      horizontalAlignment: Text.AlignRight
+      elide: Text.ElideRight
+      text: root.modeHint
+      color: root.writing ? Color.accent : Util.alpha(Color.foreground, 0.5)
+      font.family: Theme.font.family
+      font.pixelSize: Theme.font.caption
+    }
 
     RowLayout {
       id: replyBanner
