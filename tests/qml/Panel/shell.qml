@@ -185,7 +185,7 @@ ShellRoot {
   }
 
   // checkShiftNewlineGrew checks Shift+Enter sent nothing and grew the
-  // composer, then runs the same checks for Ctrl+J.
+  // composer, then checks Ctrl+J instead.
   function checkShiftNewlineGrew(composer: var): void {
     if (root.messageWithText("one") || root.messageWithText("one\ntwo"))
       return Check.fail("Shift+Enter sent a message instead of inserting a newline");
@@ -194,48 +194,47 @@ ShellRoot {
         + root._newlineHeightBefore + ", now " + composer.implicitHeight);
 
     composer.text = "";
-    root.checkCtrlJNewline(composer);
+    root.checkCtrlJOpensUnread(composer);
   }
 
-  // checkCtrlJNewline types "three", Ctrl+J, then "four": Ctrl+J must
-  // insert a newline while composing, the same as everywhere else it
-  // means "next unread conversation".
-  function checkCtrlJNewline(composer: var): void {
-    root._newlineHeightBefore = composer.implicitHeight;
+  // checkCtrlJOpensUnread types "three" then Ctrl+J: Ctrl+J must always
+  // mean "next unread conversation", even while writing, rather than
+  // inserting a newline.
+  function checkCtrlJOpensUnread(composer: var): void {
     for (const ch of "three") t.keyClick(ch);
     t.keyClick(Qt.Key_J, Qt.ControlModifier);
-    for (const ch of "four") t.keyClick(ch);
 
     root.pollAttempts = 0;
-    root.waitForCtrlJNewline(composer);
+    root.waitForCtrlJOpensUnread(composer);
   }
 
-  // waitForCtrlJNewline holds until the composer's text shows the typed
-  // newline, then checks Ctrl+J did not navigate away or send, and that
-  // the composer grew, before handing off to the original sendMessage flow.
-  function waitForCtrlJNewline(composer: var): void {
+  // waitForCtrlJOpensUnread holds until Ctrl+J has switched the open
+  // conversation away from the one "three" was typed into.
+  function waitForCtrlJOpensUnread(composer: var): void {
     const title = Check.find(panel, "conversationTitle");
 
-    if (composer.text === "three\nfour") return root.checkCtrlJNewlineGrew(composer, title);
+    if (title && title.text !== root.expectedTitle) return root.checkCtrlJLandedWriting(composer, title);
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100) {
-      return Check.fail("Ctrl+J gave composer text " + JSON.stringify(composer.text)
-        + ", want \"three\\nfour\"; conversation title is now \"" + (title ? title.text : "?") + "\"");
+      return Check.fail("Ctrl+J never opened the next unread conversation; title is still \""
+        + (title ? title.text : "?") + "\"");
     }
-    root.retry(() => root.waitForCtrlJNewline(composer));
+    root.retry(() => root.waitForCtrlJOpensUnread(composer));
   }
 
-  // checkCtrlJNewlineGrew finishes the newline checks and clears the
-  // composer before the rest of the test sends "hello" through it.
-  function checkCtrlJNewlineGrew(composer: var, title: var): void {
-    if (title.text !== root.expectedTitle)
-      return Check.fail("Ctrl+J changed the open conversation to \"" + title.text + "\" instead of inserting a newline");
+  // checkCtrlJLandedWriting checks Ctrl+J kept writing mode in the
+  // conversation it switched to, left no trace of the old draft, and
+  // sent nothing, then clears the composer for the rest of the test.
+  function checkCtrlJLandedWriting(composer: var, title: var): void {
+    if (!composer.activeFocus)
+      return Check.fail("Ctrl+J left writing mode instead of keeping it in the next unread conversation");
+    if (composer.text.indexOf("three") !== -1)
+      return Check.fail("Ctrl+J carried the old draft over: " + JSON.stringify(composer.text));
     if (root.messageWithText("three") || root.messageWithText("three\nfour"))
-      return Check.fail("Ctrl+J sent a message instead of inserting a newline");
-    if (composer.implicitHeight <= root._newlineHeightBefore)
-      return Check.fail("the composer did not grow for a second line with Ctrl+J");
+      return Check.fail("Ctrl+J sent a message instead of jumping to the next unread conversation");
 
+    root.expectedTitle = title.text;
     composer.text = "";
     root.pollAttempts = 0;
     root.sendMessage(composer);

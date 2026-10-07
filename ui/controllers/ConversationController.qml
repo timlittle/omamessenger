@@ -134,7 +134,9 @@ Item {
       "scroll.oldest": () => root.scroll("oldest"),
       "chat.next": () => root._step(1),
       "chat.prev": () => root._step(-1),
-      "message.retry": () => root._retryHighlighted()
+      "message.retry": () => root._retryHighlighted(),
+      "unread.next": () => root._stepUnread(1),
+      "unread.prev": () => root._stepUnread(-1)
     };
 
     const handler = handlers[action];
@@ -308,6 +310,27 @@ Item {
 
     const next = Selection.move(root.listController.visibleIds(), root.activeId, delta);
     if (next && next !== root.activeId) root._openById(next);
+  }
+
+  // _stepUnread jumps to the next, or with a negative delta the previous,
+  // unread conversation. It opens the one it finds whenever a
+  // conversation is already open, since this is the global shortcut for
+  // "go to what still needs reading" even while writing a reply, and
+  // opening it never touches keyboard focus, so the composer stays
+  // focused there if it already was. With nothing open yet it only moves
+  // the list cursor, the same as j/k, leaving Enter to open it.
+  function _stepUnread(delta: int): void {
+    if (!root.listController) return;
+
+    const ids = root.listController.visibleIds();
+    const conversations = ids.map((id) => root.listController.findConversation(id)).filter((c) => c);
+    const ordered = delta > 0 ? conversations : conversations.slice().reverse();
+    const around = root.activeId || root.listController.selectedId;
+    const next = Selection.nextUnread(ordered, around);
+    if (!next) return;
+
+    if (root.activeId) root._openById(next);
+    else root.listController.selectId(next);
   }
 
   // _openById looks the conversation up through listController and opens it.

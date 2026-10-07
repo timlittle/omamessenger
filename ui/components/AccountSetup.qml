@@ -9,8 +9,9 @@ import "../lib/Setup.js" as Setup
 // Adds an account and signs it in: a chooser first when the helper offers
 // more than one service, then optionally the user's own API id and hash
 // from my.telegram.org for Telegram, then a QR code to scan, or a phone
-// number, login code and two-step password. The chooser also takes
-// Up/Down, wrapping onto Cancel. Enter continues, Escape cancels.
+// number, login code and two-step password. The chooser takes j/k,
+// Up/Down or a mnemonic letter; Enter chooses the highlight, Escape
+// cancels. The QR and phone steps can switch to each other with p or q.
 Item {
   id: root
 
@@ -22,6 +23,8 @@ Item {
   // serviceName names the service being set up, for every step after the
   // chooser.
   property string serviceName: "Telegram"
+  // chooseIndex is the chooser's highlighted service: -1 for Cancel.
+  property int chooseIndex: -1
   // qr is the QR code to scan, as a base64 PNG.
   property string qr: ""
   // hint explains the current step.
@@ -30,7 +33,9 @@ Item {
   property string error: ""
   // busy disables Continue while a request is in flight.
   property bool busy: false
-  // routeKey intercepts key presses in the fields first; see Composer.qml.
+  // routeKey intercepts key presses before a field or this step's own
+  // control handles them; see Composer.qml for why this is a function
+  // property, not a signal.
   property var routeKey: null
 
   // serviceChosen reports the service picked at the chooseService step.
@@ -39,6 +44,9 @@ Item {
   signal credentialsSubmitted(string apiId, string apiHash)
   // phoneRequested asks to sign in by phone number instead of QR code.
   signal phoneRequested()
+  // qrRequested asks to go back to the QR code already shown, from the
+  // phone step.
+  signal qrRequested()
   // answered reports what was typed for the phone, code or password step.
   signal answered(string value)
   // cancelled closes setup.
@@ -54,23 +62,25 @@ Item {
     else if (root._field) root.answered(answerField.text);
   }
 
-  // _focusStep focuses the stage's first control once it is visible. A
-  // step with nothing to type or choose (waiting for the helper, or
-  // WhatsApp's link-code step, which is read rather than answered) still
-  // needs a focused control, so Cancel is the fallback: it is the only
-  // button every stage shows.
+  // _focusStep moves real keyboard focus to the stage's own control: a
+  // text field for credentials, a phone number, a code or a password, and
+  // this Item itself for every other step, so j/k, the mnemonic letters
+  // and p/q reach it through routeKey rather than needing a focused
+  // button of their own.
   function _focusStep(): void {
-    if (root.stage === "chooseService") { if (serviceRepeater.count > 0) serviceRepeater.itemAt(0).forceActiveFocus(); }
-    else if (root.stage === "credentials") idField.forceActiveFocus();
-    else if (root.stage === "qr") usePhoneButton.forceActiveFocus();
-    else if (root._field) { answerField.text = ""; answerField.forceActiveFocus(); }
-    else cancelButton.forceActiveFocus();
+    if (root.stage === "credentials") { idField.forceActiveFocus(); return; }
+    if (root._field) { answerField.text = ""; answerField.forceActiveFocus(); return; }
+    root.forceActiveFocus();
   }
 
   objectName: "accountSetup"
   anchors.fill: parent
   onStageChanged: Qt.callLater(root._focusStep)
   onVisibleChanged: if (root.visible) Qt.callLater(root._focusStep)
+
+  Keys.onPressed: event => {
+    if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+  }
 
   // Clicks outside the card do not cancel: a stray click should not lose a
   // sign-in half done.
@@ -94,7 +104,7 @@ Item {
       Text {
         objectName: "stepHint"
         Layout.fillWidth: true
-        text: root.stage === "chooseService" ? "Choose which service to add an account for."
+        text: root.stage === "chooseService" ? "Choose which service to add an account for: j/k or a letter, Enter to choose."
           : root.stage === "credentials"
           ? "To use your own Telegram app instead of OmaMessenger's, sign in at <a href=\"https://my.telegram.org/apps\">my.telegram.org</a>, open API development tools, and copy the app's api_id and api_hash here. They stay on this computer."
           : root.stage === "waiting" ? "Connecting to " + root.serviceName + "…" : root.hint
@@ -124,12 +134,8 @@ Item {
             objectName: "serviceButton-" + modelData.id
             Layout.fillWidth: true
             leftAlign: true
-            text: modelData.name
-            focusable: true
-            // Up/Down cycle through the choices and wrap onto Cancel, the
-            // same way CloseConfirm's buttons chain with Left/Right.
-            KeyNavigation.up: index > 0 ? serviceRepeater.itemAt(index - 1) : cancelButton
-            KeyNavigation.down: index < serviceRepeater.count - 1 ? serviceRepeater.itemAt(index + 1) : cancelButton
+            text: Setup.mnemonicLabel(Setup.serviceMnemonic(modelData.id), modelData.name)
+            selected: index === root.chooseIndex
             onClicked: root.serviceChosen(modelData.id)
           }
         }
@@ -199,9 +205,6 @@ Item {
 
           objectName: "cancelButton"
           text: "Cancel"
-          focusable: true
-          KeyNavigation.up: (root.stage === "chooseService" && serviceRepeater.count > 0) ? serviceRepeater.itemAt(serviceRepeater.count - 1) : null
-          KeyNavigation.down: (root.stage === "chooseService" && serviceRepeater.count > 0) ? serviceRepeater.itemAt(0) : null
           onClicked: root.cancelled()
         }
 
@@ -209,9 +212,16 @@ Item {
           id: usePhoneButton
           objectName: "usePhoneButton"
           visible: root.stage === "qr"
-          text: "Use phone number instead"
-          focusable: true
+          text: "p  Use phone number instead"
           onClicked: root.phoneRequested()
+        }
+
+        Ui.Button {
+          id: useQrButton
+          objectName: "useQrButton"
+          visible: root.stage === "phone" && root.qr !== ""
+          text: "q  Use QR code instead"
+          onClicked: root.qrRequested()
         }
 
         Ui.Button {

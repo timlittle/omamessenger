@@ -62,7 +62,10 @@ const cases = [
 
   ['compose', KEY.Return, 0, '\r', 'message.send'],
   ['compose', KEY.Return, MOD.Shift, '\r', 'compose.newline'],
-  ['compose', letter('j'), MOD.Ctrl, '', 'compose.newline'],
+  // Ctrl+J must always mean "next unread conversation", even while
+  // writing, so it falls through to the global binding instead of
+  // inserting a newline.
+  ['compose', letter('j'), MOD.Ctrl, '', 'unread.next'],
   ['compose', letter('j'), 0, 'j', ''],
   ['search', KEY.Return, 0, '\r', 'search.accept'],
   ['search', letter('j'), 0, 'j', ''],
@@ -88,7 +91,38 @@ const cases = [
   ['viewer', letter('o'), 0, 'o', 'viewer.openExternal'],
   ['viewer', KEY.Escape, 0, '', 'escape'],
   ['viewer', KEY.Enter, 0, '\r', ''],
-  ['list', KEY.Right, 0, '', '']
+  ['list', KEY.Right, 0, '', ''],
+
+  ['chooseService', letter('j'), 0, 'j', 'setup.down'],
+  ['chooseService', KEY.Down, 0, '', 'setup.down'],
+  ['chooseService', letter('k'), 0, 'k', 'setup.up'],
+  ['chooseService', KEY.Return, 0, '\r', 'setup.accept'],
+  ['chooseService', letter('t'), 0, 't', 'setup.chooseTelegram'],
+  ['chooseService', letter('w'), 0, 'w', 'setup.chooseWhatsapp'],
+  ['chooseService', KEY.Escape, 0, '', 'escape'],
+
+  ['qr', letter('p'), 0, 'p', 'qr.usePhone'],
+  ['qr', KEY.Escape, 0, '', 'escape'],
+  ['phone', letter('q'), 0, 'q', 'phone.useQr'],
+  ['phone', KEY.Escape, 0, '', 'phone.back'],
+
+  ['removeAccount', letter('j'), 0, 'j', 'remove.down'],
+  ['removeAccount', KEY.Down, 0, '', 'remove.down'],
+  ['removeAccount', letter('k'), 0, 'k', 'remove.up'],
+  ['removeAccount', letter('2'), 0, '2', 'remove.pick2'],
+  ['removeAccount', letter('9'), 0, '9', 'remove.pick9'],
+  ['removeAccount', KEY.Return, 0, '\r', 'remove.accept'],
+  ['removeAccount', letter('y'), 0, 'y', 'remove.accept'],
+  ['removeAccount', letter('n'), 0, 'n', 'remove.cancel'],
+  ['removeAccount', KEY.Escape, 0, '', 'escape'],
+
+  ['confirm', letter('h'), 0, 'h', 'close.left'],
+  ['confirm', KEY.Left, 0, '', 'close.left'],
+  ['confirm', letter('l'), 0, 'l', 'close.right'],
+  ['confirm', KEY.Return, 0, '\r', 'close.accept'],
+  ['confirm', letter('c'), 0, 'c', 'close.cancel'],
+  ['confirm', letter('q'), 0, 'q', 'close.quit'],
+  ['confirm', letter('k'), 0, 'k', 'close.keep']
 ];
 
 for (const [context, key, modifiers, text, want] of cases) {

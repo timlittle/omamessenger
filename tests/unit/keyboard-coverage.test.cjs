@@ -65,10 +65,12 @@ const MOUSE_ACTIONS = {
   'PaletteRow click (run a command / open a conversation)': 'palette.accept',
   'NewChatDialog account button click': 'dialog.nextAccount',
   'NewChatContactRow click (open)': 'dialog.accept',
-  'CloseConfirm Keep/Quit/Cancel buttons': 'escape', // Escape cancels the same question; Enter accepts the focused choice
-  'RemoveAccount account button click (choose which to remove)': null, // reached by Up/Down + Enter, not a Keymap action: see RemoveAccount.qml's KeyNavigation chain
-  'RemoveAccount cancel button': 'escape',
-  'AccountSetup service-chooser button click': 'account.add',
+  'CloseConfirm Keep/Quit/Cancel buttons': 'close.accept', // h/l highlight one, a mnemonic letter or Enter chooses it
+  'RemoveAccount account button click (choose which to remove)': 'remove.accept', // j/k or a number highlight one, Enter or y removes it
+  'RemoveAccount cancel button': 'remove.cancel',
+  'AccountSetup service-chooser button click': 'setup.accept',
+  'AccountSetup "Use phone number instead" button': 'qr.usePhone',
+  'AccountSetup "Use QR code instead" button': 'phone.useQr',
   'Panel helper-install "Retry" button': 'helper.retryInstall',
 };
 

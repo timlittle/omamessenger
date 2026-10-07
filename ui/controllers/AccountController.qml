@@ -48,6 +48,20 @@ Item {
   // removing shows the question asking which account to remove.
   property bool removing: false
 
+  // chooseIndex is the highlighted row in the service chooser: -1 for
+  // Cancel, else an index into service.services.
+  property int chooseIndex: -1
+
+  // removeIndex is the highlighted row in the removal question: -1 for
+  // Cancel, else an index into service.accounts.
+  property int removeIndex: -1
+
+  // navContext names the key-router context for whichever step setup or
+  // removal is showing, so each one answers to its own keys instead of
+  // one catch-all "setup" context that could not tell them apart; "" when
+  // neither is open.
+  readonly property string navContext: root.removing ? "removeAccount" : (root.open ? root.stage : "")
+
   // _added is true when this setup created the account, so cancelling may
   // remove it. A saved account asking to sign in again is never removed.
   property bool _added: false
@@ -62,9 +76,82 @@ Item {
 
   // run performs action, the only entry point a key router needs.
   function run(action: string): void {
-    if (action === "account.add") root.begin();
-    else if (action === "account.addOwnKeys") root.beginWithOwnKeys();
-    else if (action === "account.remove") root.removing = true;
+    const handlers = {
+      "account.add": () => root.begin(),
+      "account.addOwnKeys": () => root.beginWithOwnKeys(),
+      "account.remove": () => { root.removing = true; root.removeIndex = -1; },
+      "setup.down": () => root._moveChoose(1),
+      "setup.up": () => root._moveChoose(-1),
+      "setup.accept": () => root._acceptChoose(),
+      "setup.chooseTelegram": () => root._chooseById("telegram"),
+      "setup.chooseWhatsapp": () => root._chooseById("whatsapp"),
+      "qr.usePhone": () => root.usePhone(),
+      "phone.useQr": () => root.useQr(),
+      "phone.back": () => (root.qr ? root.useQr() : root.cancel()),
+      "remove.down": () => root._moveRemove(1),
+      "remove.up": () => root._moveRemove(-1),
+      "remove.accept": () => root._acceptRemove(),
+      "remove.cancel": () => root.cancel(),
+      "remove.pick1": () => root._pickRemove(0),
+      "remove.pick2": () => root._pickRemove(1),
+      "remove.pick3": () => root._pickRemove(2),
+      "remove.pick4": () => root._pickRemove(3),
+      "remove.pick5": () => root._pickRemove(4),
+      "remove.pick6": () => root._pickRemove(5),
+      "remove.pick7": () => root._pickRemove(6),
+      "remove.pick8": () => root._pickRemove(7),
+      "remove.pick9": () => root._pickRemove(8)
+    };
+
+    const handler = handlers[action];
+    if (handler) handler();
+  }
+
+  // _moveChoose shifts the service chooser's highlight by delta, wrapping
+  // through Cancel the same way j/k already wrap the removal list.
+  function _moveChoose(delta: int): void {
+    const services = root.service && root.service.services ? root.service.services : [];
+    root.chooseIndex = Setup.wrapIndex(root.chooseIndex, delta, services.length);
+  }
+
+  // _acceptChoose adds the account for the highlighted service, or
+  // cancels setup when nothing is highlighted (Cancel).
+  function _acceptChoose(): void {
+    const services = root.service && root.service.services ? root.service.services : [];
+    const service = services[root.chooseIndex];
+    if (service) root.chooseService(service.id);
+    else root.cancel();
+  }
+
+  // _chooseById adds the account for serviceId straight away, for the
+  // chooser's own mnemonic letters; it does nothing when the helper did
+  // not offer that service.
+  function _chooseById(serviceId: string): void {
+    const services = root.service && root.service.services ? root.service.services : [];
+    if (services.some((s) => s.id === serviceId)) root.chooseService(serviceId);
+  }
+
+  // _moveRemove shifts the removal question's highlight by delta,
+  // wrapping through Cancel.
+  function _moveRemove(delta: int): void {
+    const accounts = root.service && root.service.accounts ? root.service.accounts : [];
+    root.removeIndex = Setup.wrapIndex(root.removeIndex, delta, accounts.length);
+  }
+
+  // _pickRemove highlights the account at index directly, for the
+  // removal question's number mnemonics; out of range does nothing.
+  function _pickRemove(index: int): void {
+    const accounts = root.service && root.service.accounts ? root.service.accounts : [];
+    if (index >= 0 && index < accounts.length) root.removeIndex = index;
+  }
+
+  // _acceptRemove removes the highlighted account, or cancels the
+  // question when nothing is highlighted (Cancel), for Enter and y.
+  function _acceptRemove(): void {
+    const accounts = root.service && root.service.accounts ? root.service.accounts : [];
+    const account = accounts[root.removeIndex];
+    if (account) root.remove(account.id);
+    else root.cancel();
   }
 
   // remove signs an account out and deletes it from this computer; the
@@ -144,6 +231,17 @@ Item {
     root.lastError = "";
   }
 
+  // useQr switches back to the QR code already shown, for someone who
+  // started typing a phone number by mistake or changed their mind; it
+  // does nothing without a QR code cached to go back to.
+  function useQr(): void {
+    if (!root.qr) return;
+
+    root.stage = "qr";
+    root.hint = "";
+    root.lastError = "";
+  }
+
   // answer sends what the user typed for the current step.
   function answer(value: string): void {
     const field = Setup.field(root.stage);
@@ -158,6 +256,7 @@ Item {
   function cancel(): void {
     if (root.removing) {
       root.removing = false;
+      root.removeIndex = -1;
       root.lastError = "";
       return;
     }
@@ -210,6 +309,7 @@ Item {
   // _accountRemoved closes the removal question, and setup for that account.
   function _accountRemoved(accountId: string): void {
     root.removing = false;
+    root.removeIndex = -1;
     if (accountId === root.accountId) root._close();
   }
 
@@ -228,6 +328,7 @@ Item {
     root.hint = "";
     root.busy = false;
     root.lastError = "";
+    root.chooseIndex = -1;
   }
 
   // A sign-in waiting for the user is shown again once the service is

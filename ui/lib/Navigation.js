@@ -10,7 +10,10 @@
 // together, so their relative order only matters in theory.
 function keyContext(state) {
   if (state.confirmOpen) return 'confirm';
-  if (state.setupOpen) return 'setup';
+  // setupContext names the exact step showing (chooseService, qr, phone,
+  // removeAccount, …) so each one can answer to its own keys; "setup"
+  // is the fallback for a caller that only knows setup is open.
+  if (state.setupOpen) return state.setupContext || 'setup';
   if (state.viewerOpen) return 'viewer';
   if (state.paletteOpen) return 'palette';
   if (state.reactionPickerOpen) return 'reactionPicker';

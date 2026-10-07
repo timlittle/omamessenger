@@ -6,13 +6,21 @@ import "../theme"
 
 // Asks what closing the window should do: keep OmaMessenger running in
 // the background, so messages still notify, or quit until it is opened
-// again. Left, Right and Tab move between the buttons, Enter chooses,
-// Escape cancels.
+// again. h/l (or Left/Right) move a highlight across Cancel, Quit and
+// Keep, Enter chooses it, a mnemonic letter jumps straight to one, and
+// Escape cancels. Every button stays clickable by mouse too.
 Item {
   id: root
 
   // open shows the question when true.
   property bool open: false
+  // highlightIndex is the caller's highlighted choice: 0 Cancel, 1 Quit,
+  // 2 Keep in background, left to right.
+  property int highlightIndex: 2
+  // routeKey is the panel's key router, so h/l, Enter and the mnemonic
+  // letters work while this question holds no real keyboard focus of
+  // its own control.
+  property var routeKey: null
 
   // keep hides the window and keeps notifying.
   signal keep()
@@ -21,17 +29,14 @@ Item {
   // cancelled leaves the window open.
   signal cancelled()
 
-  // focusDefault puts keyboard focus on the safest choice.
-  function focusDefault(): void {
-    keepButton.forceActiveFocus();
-  }
-
   objectName: "closeConfirm"
   anchors.fill: parent
   visible: root.open
-  // Focus waits a turn of the event loop: an item still hidden when open
-  // changes cannot take focus.
-  onOpenChanged: if (root.open) Qt.callLater(root.focusDefault)
+  focus: root.open
+
+  Keys.onPressed: event => {
+    if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+  }
 
   ModalCard {
     id: modal
@@ -69,9 +74,8 @@ Item {
           id: cancelButton
 
           objectName: "cancelButton"
-          text: "Cancel"
-          focusable: true
-          KeyNavigation.right: quitButton
+          text: "c  Cancel"
+          selected: root.highlightIndex === 0
           onClicked: root.cancelled()
         }
 
@@ -79,10 +83,8 @@ Item {
           id: quitButton
 
           objectName: "quitButton"
-          text: "Quit"
-          focusable: true
-          KeyNavigation.left: cancelButton
-          KeyNavigation.right: keepButton
+          text: "q  Quit"
+          selected: root.highlightIndex === 1
           onClicked: root.quit()
         }
 
@@ -90,10 +92,8 @@ Item {
           id: keepButton
 
           objectName: "keepButton"
-          text: "Keep in background"
-          focusable: true
-          selected: true
-          KeyNavigation.left: quitButton
+          text: "k  Keep in background"
+          selected: root.highlightIndex === 2
           onClicked: root.keep()
         }
       }

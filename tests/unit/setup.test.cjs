@@ -39,3 +39,27 @@ test('qrSource turns the helper\'s base64 PNG into an image URL', () => {
   assert.strictEqual(Setup.qrSource('cG5n'), 'data:image/png;base64,cG5n');
   assert.strictEqual(Setup.qrSource(''), '');
 });
+
+test('serviceMnemonic names the letter a known service answers to, avoiding j and k', () => {
+  assert.strictEqual(Setup.serviceMnemonic('telegram'), 't');
+  assert.strictEqual(Setup.serviceMnemonic('whatsapp'), 'w');
+  assert.strictEqual(Setup.serviceMnemonic('signal'), '');
+});
+
+test('mnemonicLabel prefixes the letter, or leaves text alone without one', () => {
+  assert.strictEqual(Setup.mnemonicLabel('t', 'Telegram'), 't  Telegram');
+  assert.strictEqual(Setup.mnemonicLabel('', 'Signal'), 'Signal');
+});
+
+test('wrapIndex moves through the list and wraps onto -1, the "nothing chosen" slot', () => {
+  assert.strictEqual(Setup.wrapIndex(-1, 1, 2), 0);
+  assert.strictEqual(Setup.wrapIndex(0, 1, 2), 1);
+  assert.strictEqual(Setup.wrapIndex(1, 1, 2), -1);
+  assert.strictEqual(Setup.wrapIndex(-1, -1, 2), 1);
+  assert.strictEqual(Setup.wrapIndex(0, -1, 2), -1);
+});
+
+test('wrapIndex stays at -1 with nothing to move through', () => {
+  assert.strictEqual(Setup.wrapIndex(-1, 1, 0), -1);
+  assert.strictEqual(Setup.wrapIndex(-1, -1, 0), -1);
+});

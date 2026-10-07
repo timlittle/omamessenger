@@ -4,18 +4,24 @@
 // its stage, answers go out as auth.submit, connecting closes setup,
 // cancelling a half-added account removes it, and a step that arrived
 // while the panel was gone is shown when it is created again, where
-// cancelling keeps the saved account. The rest drives the service chooser
-// and the removal question with real key events rather than calling the
-// controller directly: every step opens with keyboard focus already on
-// its primary control, including the steps that have nothing to type or
-// click, and both choice lists take Up/Down, wrapping onto Cancel, with
-// Enter picking the highlighted one. No helper runs, so nothing reaches
-// Telegram.
+// cancelling keeps the saved account.
+//
+// The rest drives the service chooser, the QR/phone switch and the
+// removal question with real key events only — no Tab, no arrows, no
+// mouse — through the same routeKey dispatch Panel.qml uses: adding a
+// Telegram account by pressing t, switching to the phone step and back
+// out with Escape; adding WhatsApp with w then its own QR/phone switch
+// down to the link-code step; removing the second of two accounts with
+// j then y, and cancelling a removal with n; and that typing letters
+// into a field (even ones that are mnemonics elsewhere) only ever types,
+// never fires a shortcut. No helper runs, so nothing reaches Telegram.
 import QtQuick
 import QtTest
 import Quickshell
 import "ui/components"
 import "ui/controllers"
+import "ui/lib/Keymap.js" as Keymap
+import "ui/lib/Navigation.js" as Navigation
 import "Check.js" as Check
 
 ShellRoot {
@@ -76,6 +82,22 @@ ShellRoot {
     AccountController {}
   }
 
+  // routeKey is the same dispatch Panel.routeKey does: match the active
+  // context, then hand the action to whichever controller owns it. Only
+  // AccountController is wired up, since that is everything these two
+  // dialogs ever reach.
+  function routeKey(key: int, modifiers: int, text: string): bool {
+    const context = Navigation.keyContext({
+      setupOpen: controller.open || controller.removing,
+      setupContext: controller.navContext,
+      pane: "list"
+    });
+    const action = Keymap.match(context, key, modifiers, text);
+    if (!action || !controller.handles(action)) return false;
+
+    return controller.run(action) !== false;
+  }
+
   FloatingWindow {
     implicitWidth: 800
     implicitHeight: 600
@@ -87,14 +109,17 @@ ShellRoot {
       stage: controller.stage
       services: service.services
       serviceName: controller.serviceName
+      chooseIndex: controller.chooseIndex
       qr: controller.qr
       hint: controller.hint
       error: controller.lastError
       busy: controller.busy
+      routeKey: root.routeKey
 
       onServiceChosen: serviceId => controller.chooseService(serviceId)
       onCredentialsSubmitted: (apiId, apiHash) => controller.submitCredentials(apiId, apiHash)
       onPhoneRequested: controller.usePhone()
+      onQrRequested: controller.useQr()
       onAnswered: value => controller.answer(value)
       onCancelled: controller.cancel()
     }
@@ -103,7 +128,9 @@ ShellRoot {
       id: removeView
       open: controller.removing
       accounts: service.accounts
+      removeIndex: controller.removeIndex
       error: controller.lastError
+      routeKey: root.routeKey
 
       onChosen: accountId => controller.remove(accountId)
       onCancelled: controller.cancel()
@@ -316,97 +343,132 @@ ShellRoot {
     return true;
   }
 
-  // beginKeyboardChecks opens the credentials step and checks the API id
-  // field already has focus, with nothing clicked.
+  // anyFocused reports whether the setup Item itself or one of its text
+  // fields currently holds real keyboard focus: whichever it is, a key
+  // event reaches routeKey, so a wait only needs to know focus landed
+  // somewhere in this step, not on a specific control.
+  function anyFocused(): bool {
+    return view.activeFocus || Check.find(view, "apiIdField").activeFocus
+      || Check.find(view, "answerField").activeFocus;
+  }
+
+  // beginKeyboardChecks opens the service chooser with two services and
+  // waits for the setup Item itself to hold focus, with nothing clicked.
   function beginKeyboardChecks(): void {
-    controller.run("account.addOwnKeys");
-    root.waitForFocus(() => Check.find(view, "apiIdField").activeFocus, "the API id field",
-      root.checkWaitingDefaultsToCancel);
-  }
-
-  // checkWaitingDefaultsToCancel adds an account with no chooser needed
-  // and checks the waiting step, which has nothing to type or click,
-  // still focuses Cancel: before this, nothing did, so Tab and Escape
-  // both landed nowhere.
-  function checkWaitingDefaultsToCancel(): void {
-    controller.cancel();
-    service.requests = [];
-    controller.run("account.add");
-    root.waitForFocus(() => Check.find(view, "cancelButton").activeFocus, "Cancel while waiting to connect",
-      root.checkLinkcodeDefaultsToCancel);
-  }
-
-  // checkLinkcodeDefaultsToCancel shows WhatsApp's link-code step, which
-  // is read rather than typed, and checks it focuses Cancel too.
-  function checkLinkcodeDefaultsToCancel(): void {
-    const accountId = controller.accountId;
-    service.event("auth.step", { accountId: accountId, kind: "linkcode", hint: "Enter this code on your phone: ABCD-1234" });
-    root.waitForFocus(() => Check.find(view, "cancelButton").activeFocus, "Cancel at the link-code step",
-      root.afterLinkcodeDefault);
-  }
-
-  // afterLinkcodeDefault leaves this account setup and starts the service
-  // chooser's keyboard navigation.
-  function afterLinkcodeDefault(): void {
-    controller.cancel();
-    root.pollAttempts = 0;
-    root.beginChooseServiceKeyboardNav();
-  }
-
-  // beginChooseServiceKeyboardNav opens the chooser with two services and
-  // checks the first one has focus, with nothing clicked yet.
-  function beginChooseServiceKeyboardNav(): void {
     service.services = [{ id: "telegram", name: "Telegram" }, { id: "whatsapp", name: "WhatsApp" }];
     service.requests = [];
     controller.run("account.add");
 
-    root.waitForFocus(() => Check.find(view, "serviceButton-telegram").activeFocus, "the first service choice",
-      root.chooseServiceStepDown1);
+    root.waitForFocus(() => view.activeFocus, "the service chooser", root.checkChooseServiceStartsOnCancel);
   }
 
-  // chooseServiceStepDown1 presses Down and checks focus moved to the
-  // second choice.
-  function chooseServiceStepDown1(): void {
-    t.keyClick(Qt.Key_Down);
-    root.waitForFocus(() => Check.find(view, "serviceButton-whatsapp").activeFocus, "the second service choice after Down",
-      root.chooseServiceStepDown2);
+  // checkChooseServiceStartsOnCancel checks the chooser starts with
+  // nothing picked (Cancel, the safe default) highlighted.
+  function checkChooseServiceStartsOnCancel(): void {
+    if (controller.chooseIndex !== -1) return Check.fail("the chooser did not start on Cancel");
+
+    root.checkChooseServiceSelectionFollowsJK();
   }
 
-  // chooseServiceStepDown2 presses Down again and checks focus wraps onto
-  // Cancel past the last choice.
-  function chooseServiceStepDown2(): void {
-    t.keyClick(Qt.Key_Down);
-    root.waitForFocus(() => Check.find(view, "cancelButton").activeFocus, "Cancel after wrapping past the last choice",
-      root.chooseServiceStepUp);
+  // checkChooseServiceSelectionFollowsJK presses j then k and checks the
+  // visible selection moves with it: a model-driven highlight, not just
+  // an invisible Qt focus ring.
+  function checkChooseServiceSelectionFollowsJK(): void {
+    t.keyClick("j");
+    if (controller.chooseIndex !== 0 || !Check.find(view, "serviceButton-telegram").selected)
+      return Check.fail("j did not highlight the first service");
+
+    t.keyClick("k");
+    if (controller.chooseIndex !== -1) return Check.fail("k did not move the highlight back to Cancel");
+
+    root.checkAddTelegramByLetter();
   }
 
-  // chooseServiceStepUp presses Up from Cancel and checks focus wraps back
-  // onto the last choice.
-  function chooseServiceStepUp(): void {
-    t.keyClick(Qt.Key_Up);
-    root.waitForFocus(() => Check.find(view, "serviceButton-whatsapp").activeFocus, "the last choice after wrapping Up from Cancel",
-      root.chooseServiceAccept);
+  // checkAddTelegramByLetter presses t to add Telegram straight away,
+  // without navigating to it first, then shows its QR code.
+  function checkAddTelegramByLetter(): void {
+    t.keyClick("t");
+    if (controller.stage !== "waiting" || controller.serviceName !== "Telegram")
+      return Check.fail("t did not add Telegram: " + controller.stage);
+
+    service.event("auth.step", { accountId: controller.accountId, kind: "qr", qr: "cG5n", hint: "Scan it" });
+    root.waitForFocus(() => controller.stage === "qr" && root.anyFocused(), "the QR step",
+      root.checkPhoneStepByLetterP);
   }
 
-  // chooseServiceAccept presses Enter on the highlighted choice and checks
-  // it, not the service the test started with, is the one added.
-  function chooseServiceAccept(): void {
-    t.keyClick(Qt.Key_Return);
-    const sent = root.last();
-    if (sent.method !== "accounts.add" || sent.params.service !== "whatsapp")
-      return Check.fail("Enter on the highlighted choice sent " + JSON.stringify(sent));
-    if (controller.serviceName !== "WhatsApp" || controller.stage !== "waiting")
-      return Check.fail("Enter did not choose WhatsApp: " + controller.stage);
+  // checkPhoneStepByLetterP presses p to switch to the phone step once
+  // the QR code is showing.
+  function checkPhoneStepByLetterP(): void {
+    t.keyClick("p");
+    root.waitForFocus(() => controller.stage === "phone" && root.anyFocused(), "the phone step",
+      root.checkEscapeBacksOutToQr);
+  }
+
+  // checkEscapeBacksOutToQr presses Escape at the phone step: it must
+  // back out to the QR code it came from, not cancel the whole sign-in.
+  function checkEscapeBacksOutToQr(): void {
+    t.keyClick(Qt.Key_Escape);
+    if (controller.stage !== "qr") return Check.fail("Escape at the phone step did not back out to the QR code");
+    if (!controller.open) return Check.fail("Escape at the phone step cancelled setup instead of backing out");
 
     controller.cancel();
     service.services = [];
     root.pollAttempts = 0;
-    root.beginRemoveAccountKeyboardNav();
+    root.beginAddWhatsAppByLetter();
   }
 
-  // beginRemoveAccountKeyboardNav opens the removal question with two
-  // accounts and checks Cancel, the safe choice, has focus by default.
-  function beginRemoveAccountKeyboardNav(): void {
+  // beginAddWhatsAppByLetter reopens the chooser with two services again
+  // and waits for it to take focus.
+  function beginAddWhatsAppByLetter(): void {
+    service.services = [{ id: "telegram", name: "Telegram" }, { id: "whatsapp", name: "WhatsApp" }];
+    service.requests = [];
+    controller.run("account.add");
+
+    root.waitForFocus(() => view.activeFocus, "the service chooser", root.checkAddWhatsAppByLetterW);
+  }
+
+  // checkAddWhatsAppByLetterW presses w to add WhatsApp straight away,
+  // then shows its QR code.
+  function checkAddWhatsAppByLetterW(): void {
+    t.keyClick("w");
+    if (controller.stage !== "waiting" || controller.serviceName !== "WhatsApp")
+      return Check.fail("w did not add WhatsApp: " + controller.stage);
+
+    service.event("auth.step", { accountId: controller.accountId, kind: "qr", qr: "cG5n", hint: "Scan it" });
+    root.waitForFocus(() => controller.stage === "qr" && root.anyFocused(), "WhatsApp's QR step",
+      root.checkWhatsAppPhoneByP);
+  }
+
+  // checkWhatsAppPhoneByP presses p to switch to the phone step, then
+  // waits for the phone number field itself to take focus so the typed
+  // number below lands in it.
+  function checkWhatsAppPhoneByP(): void {
+    t.keyClick("p");
+    root.waitForFocus(() => Check.find(view, "answerField").activeFocus, "the phone number field",
+      root.checkWhatsAppTypesPhoneNumber);
+  }
+
+  // checkWhatsAppTypesPhoneNumber types a phone number and submits it
+  // with Enter, then checks WhatsApp's link-code step shows.
+  function checkWhatsAppTypesPhoneNumber(): void {
+    for (const ch of "+15551234567") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return);
+
+    const sent = root.last();
+    if (sent.method !== "auth.submit" || sent.params.step !== "phone") return Check.fail("the phone number was not sent");
+
+    service.event("auth.step", { accountId: controller.accountId, kind: "linkcode", hint: "Enter this code on your phone: ABCD-1234" });
+    if (controller.stage !== "linkcode") return Check.fail("the link-code step did not show: " + controller.stage);
+
+    controller.cancel();
+    service.services = [];
+    root.pollAttempts = 0;
+    root.beginRemoveSecondOfTwo();
+  }
+
+  // beginRemoveSecondOfTwo opens the removal question with two accounts
+  // and waits for it to take focus, with nothing picked yet.
+  function beginRemoveSecondOfTwo(): void {
     service.accounts = [
       { id: "wa-1", service: "whatsapp", name: "Personal" },
       { id: "tg-1", service: "telegram", name: "Work" }
@@ -414,74 +476,90 @@ ShellRoot {
     service.requests = [];
     controller.run("account.remove");
 
-    root.waitForFocus(() => Check.find(removeView, "cancelButton").activeFocus, "Cancel, the safe choice, by default",
-      root.removeStepDownToFirst);
+    root.waitForFocus(() => removeView.activeFocus, "the removal question", root.checkRemoveStartsOnCancel);
   }
 
-  // removeStepDownToFirst presses Down from Cancel and checks focus
-  // landed on the first account.
-  function removeStepDownToFirst(): void {
-    t.keyClick(Qt.Key_Down);
-    root.waitForFocus(() => Check.find(removeView, "removeButton-wa-1").activeFocus, "the first account after Down from Cancel",
-      root.removeStepDownToLast);
+  // checkRemoveStartsOnCancel checks nothing is highlighted but the safe
+  // default, Cancel.
+  function checkRemoveStartsOnCancel(): void {
+    if (controller.removeIndex !== -1 || !Check.find(removeView, "cancelButton").selected)
+      return Check.fail("the removal question did not start on Cancel");
+
+    root.checkRemoveSecondWithJThenY();
   }
 
-  // removeStepDownToLast presses Down again and checks focus moved to the
-  // second account.
-  function removeStepDownToLast(): void {
-    t.keyClick(Qt.Key_Down);
-    root.waitForFocus(() => Check.find(removeView, "removeButton-tg-1").activeFocus, "the second account after Down",
-      root.removeStepWrap);
-  }
+  // checkRemoveSecondWithJThenY presses j twice to highlight the second
+  // of the two accounts, checking the visible selection follows each
+  // press, then y to remove it.
+  function checkRemoveSecondWithJThenY(): void {
+    t.keyClick("j");
+    if (controller.removeIndex !== 0 || !Check.find(removeView, "removeButton-wa-1").selected)
+      return Check.fail("j did not highlight the first account");
 
-  // removeStepWrap presses Down past the last account and checks focus
-  // wraps onto Cancel.
-  function removeStepWrap(): void {
-    t.keyClick(Qt.Key_Down);
-    root.waitForFocus(() => Check.find(removeView, "cancelButton").activeFocus, "Cancel after wrapping past the last account",
-      root.removeStepUp);
-  }
+    t.keyClick("j");
+    if (controller.removeIndex !== 1 || !Check.find(removeView, "removeButton-tg-1").selected)
+      return Check.fail("a second j did not highlight the second account");
 
-  // removeStepUp presses Up from Cancel and checks focus wraps back onto
-  // the last account, the destructive choice, which must stay reachable.
-  function removeStepUp(): void {
-    t.keyClick(Qt.Key_Up);
-    root.waitForFocus(() => Check.find(removeView, "removeButton-tg-1").activeFocus, "the last account after wrapping Up from Cancel",
-      root.removeStepAccept);
-  }
-
-  // removeStepAccept presses Enter on the highlighted account and checks
-  // that one, not the other, is removed.
-  function removeStepAccept(): void {
-    t.keyClick(Qt.Key_Return);
+    t.keyClick("y");
     const sent = root.last();
     if (sent.method !== "accounts.remove" || sent.params.accountId !== "tg-1")
-      return Check.fail("Enter on the highlighted account sent " + JSON.stringify(sent));
+      return Check.fail("y on the highlighted account sent " + JSON.stringify(sent));
 
     service.event("account.removed", { accountId: "tg-1" });
     if (controller.removing) return Check.fail("removal still showing after the account was removed");
 
     root.pollAttempts = 0;
-    root.beginRemoveAccountDefaultIsSafe();
+    root.beginCancelRemovalWithN();
   }
 
-  // beginRemoveAccountDefaultIsSafe reopens the question and waits for
-  // Cancel's default focus again before pressing Enter with no
-  // navigation at all.
-  function beginRemoveAccountDefaultIsSafe(): void {
+  // beginCancelRemovalWithN reopens the removal question and waits for
+  // it to take focus again.
+  function beginCancelRemovalWithN(): void {
     service.requests = [];
     controller.run("account.remove");
 
-    root.waitForFocus(() => Check.find(removeView, "cancelButton").activeFocus, "Cancel, the safe default, on reopening",
-      root.removeAccountDefaultAccept);
+    root.waitForFocus(() => removeView.activeFocus, "the removal question", root.checkCancelRemovalWithN);
   }
 
-  // removeAccountDefaultAccept presses Enter straight away and checks it
-  // chose Cancel, not a destructive removal, since nothing was navigated.
-  function removeAccountDefaultAccept(): void {
+  // checkCancelRemovalWithN highlights an account with j, then cancels
+  // with n: nothing should be removed, and the question should close.
+  function checkCancelRemovalWithN(): void {
+    t.keyClick("j");
+    if (controller.removeIndex !== 0) return Check.fail("j did not highlight an account");
+
+    const before = service.requests.length;
+    t.keyClick("n");
+    if (service.requests.length !== before) return Check.fail("n removed an account instead of cancelling");
+    if (controller.removing) return Check.fail("n did not close the removal question");
+
+    root.beginTypingLettersIntoFields();
+  }
+
+  // beginTypingLettersIntoFields opens the credentials step, whose
+  // fields take arbitrary text (an API id and hash), and waits for the
+  // first one to take focus.
+  function beginTypingLettersIntoFields(): void {
+    controller.run("account.addOwnKeys");
+    root.waitForFocus(() => Check.find(view, "apiIdField").activeFocus, "the API id field",
+      root.checkLettersTypeIntoFields);
+  }
+
+  // checkLettersTypeIntoFields types letters and digits that are
+  // shortcuts elsewhere (t, w, p, q, y, n, j, k and digits) into both
+  // credentials fields and checks every one landed as plain text, never
+  // firing a shortcut or changing the step.
+  function checkLettersTypeIntoFields(): void {
+    const idField = Check.find(view, "apiIdField");
+    idField.text = ""; // an earlier check already left "123" typed in here
+    for (const ch of "tpqwyn") t.keyClick(ch);
+    if (idField.text !== "tpqwyn") return Check.fail("the API id field got " + JSON.stringify(idField.text));
+
     t.keyClick(Qt.Key_Return);
-    if (service.requests.length !== 0) return Check.fail("Enter with no navigation removed an account instead of cancelling");
-    if (controller.removing) return Check.fail("Enter on Cancel did not close the removal question");
+    const hashField = Check.find(view, "apiHashField");
+    hashField.text = "";
+    for (const ch of "jk19") t.keyClick(ch);
+    if (hashField.text !== "jk19") return Check.fail("the API hash field got " + JSON.stringify(hashField.text));
+    if (controller.stage !== "credentials") return Check.fail("typing changed the step to " + controller.stage);
 
     console.log("PASS AccountSetup");
     Qt.exit(0);

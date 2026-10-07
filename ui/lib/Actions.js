@@ -22,8 +22,6 @@ var OWNERS = {
   'cursor.up': 'list',
   'cursor.top': 'list',
   'cursor.bottom': 'list',
-  'unread.next': 'list',
-  'unread.prev': 'list',
   'chat.mute': 'list',
   'chat.pin': 'list',
   'chat.archive': 'list',
@@ -47,6 +45,12 @@ var OWNERS = {
   'message.retry': 'conversation',
   'message.openLink': 'conversation',
   'message.goToQuote': 'conversation',
+  // unread.next/prev open the conversation they land on when one is
+  // already showing, which is why ConversationController (which already
+  // knows how to open one) owns them rather than ListController, which
+  // only ever moves the list cursor.
+  'unread.next': 'conversation',
+  'unread.prev': 'conversation',
 
   // ComposerController: the draft, replying, attaching and sending.
   'compose.focus': 'composer',
@@ -74,13 +78,35 @@ var OWNERS = {
   'dialog.accept': 'dialog',
   'dialog.nextAccount': 'dialog',
 
-  // AccountController: adding an account and signing it in.
+  // AccountController: adding an account and signing it in, choosing a
+  // service and a step's own navigation, and removing an account.
   'account.add': 'account',
   'account.addOwnKeys': 'account',
   'account.remove': 'account',
+  'setup.down': 'account',
+  'setup.up': 'account',
+  'setup.accept': 'account',
+  'setup.chooseTelegram': 'account',
+  'setup.chooseWhatsapp': 'account',
+  'qr.usePhone': 'account',
+  'phone.useQr': 'account',
+  'phone.back': 'account',
+  'remove.down': 'account',
+  'remove.up': 'account',
+  'remove.pick1': 'account',
+  'remove.pick2': 'account',
+  'remove.pick3': 'account',
+  'remove.pick4': 'account',
+  'remove.pick5': 'account',
+  'remove.pick6': 'account',
+  'remove.pick7': 'account',
+  'remove.pick8': 'account',
+  'remove.pick9': 'account',
+  'remove.accept': 'account',
+  'remove.cancel': 'account',
 
-  // WindowController: the command palette, closing and quitting, and the
-  // Escape chain.
+  // WindowController: the command palette, closing and quitting, the
+  // close question's own navigation, and the Escape chain.
   'palette.commands': 'window',
   'palette.conversations': 'window',
   'palette.down': 'window',
@@ -89,6 +115,12 @@ var OWNERS = {
   'window.hide': 'window',
   'app.quit': 'window',
   'helper.retryInstall': 'window',
+  'close.left': 'window',
+  'close.right': 'window',
+  'close.accept': 'window',
+  'close.cancel': 'window',
+  'close.quit': 'window',
+  'close.keep': 'window',
   'escape': 'window'
 };
 

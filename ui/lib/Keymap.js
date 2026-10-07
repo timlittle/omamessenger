@@ -76,7 +76,10 @@ var BINDINGS = [
   { action: 'message.goToQuote', keys: ['p'], contexts: ['conversation'], label: 'Go to the replied-to message', command: true },
 
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
-  { action: 'compose.newline', keys: ['Shift+Enter', 'Ctrl+J'], contexts: ['compose'], label: 'New line', hint: true },
+  // Ctrl+J is deliberately not bound here: it must always mean "next
+  // unread conversation" (see the global unread.next binding below),
+  // even while writing, so only Shift+Enter inserts a line break.
+  { action: 'compose.newline', keys: ['Shift+Enter'], contexts: ['compose'], label: 'New line', hint: true },
   { action: 'compose.attach', keys: ['Ctrl+V'], contexts: ['compose'], label: 'Paste a clipboard image as an attachment' },
   { action: 'compose.attachFile', keys: [], contexts: ['conversation', 'compose'], label: 'Attach a file', command: true },
   { action: 'search.accept', keys: ['Enter', 'Down'], contexts: ['search'], label: 'First result', hint: true },
@@ -96,7 +99,51 @@ var BINDINGS = [
 
   { action: 'reaction.left', keys: ['Left'], contexts: ['reactionPicker'], label: 'Previous emoji' },
   { action: 'reaction.right', keys: ['Right'], contexts: ['reactionPicker'], label: 'Next emoji' },
-  { action: 'reaction.accept', keys: ['Enter'], contexts: ['reactionPicker'], label: 'React', hint: true }
+  { action: 'reaction.accept', keys: ['Enter'], contexts: ['reactionPicker'], label: 'React', hint: true },
+
+  // The service chooser, at the first step of adding an account: j/k and
+  // Up/Down move the highlight, Enter chooses it, and t/w jump straight
+  // to a known service without needing to navigate there first.
+  { action: 'setup.down', keys: ['j', 'Down'], contexts: ['chooseService'], label: 'Next service' },
+  { action: 'setup.up', keys: ['k', 'Up'], contexts: ['chooseService'], label: 'Previous service' },
+  { action: 'setup.accept', keys: ['Enter'], contexts: ['chooseService'], label: 'Choose the highlighted service', hint: true },
+  { action: 'setup.chooseTelegram', keys: ['t'], contexts: ['chooseService'], label: 'Choose Telegram', hint: true },
+  { action: 'setup.chooseWhatsapp', keys: ['w'], contexts: ['chooseService'], label: 'Choose WhatsApp', hint: true },
+
+  // The QR and phone steps can switch to each other without starting
+  // over: p while the QR code is shown, q while typing a phone number.
+  { action: 'qr.usePhone', keys: ['p'], contexts: ['qr'], label: 'Use phone number instead', hint: true },
+  { action: 'phone.useQr', keys: ['q'], contexts: ['phone'], label: 'Use QR code instead', hint: true },
+  // Escape at the phone step backs out to the QR code rather than
+  // cancelling the whole sign-in, the one setup step with a real
+  // previous step to go back to.
+  { action: 'phone.back', keys: ['Escape'], contexts: ['phone'], label: 'Back to the QR code' },
+
+  // Removing an account: j/k and Up/Down highlight one, a number jumps
+  // straight to it, and Enter or y removes whichever is highlighted,
+  // which is nothing (Cancel) until it is actually moved there.
+  { action: 'remove.down', keys: ['j', 'Down'], contexts: ['removeAccount'], label: 'Next account' },
+  { action: 'remove.up', keys: ['k', 'Up'], contexts: ['removeAccount'], label: 'Previous account' },
+  { action: 'remove.pick1', keys: ['1'], contexts: ['removeAccount'], label: 'Highlight the first account' },
+  { action: 'remove.pick2', keys: ['2'], contexts: ['removeAccount'], label: 'Highlight the second account' },
+  { action: 'remove.pick3', keys: ['3'], contexts: ['removeAccount'], label: 'Highlight the third account' },
+  { action: 'remove.pick4', keys: ['4'], contexts: ['removeAccount'], label: 'Highlight the fourth account' },
+  { action: 'remove.pick5', keys: ['5'], contexts: ['removeAccount'], label: 'Highlight the fifth account' },
+  { action: 'remove.pick6', keys: ['6'], contexts: ['removeAccount'], label: 'Highlight the sixth account' },
+  { action: 'remove.pick7', keys: ['7'], contexts: ['removeAccount'], label: 'Highlight the seventh account' },
+  { action: 'remove.pick8', keys: ['8'], contexts: ['removeAccount'], label: 'Highlight the eighth account' },
+  { action: 'remove.pick9', keys: ['9'], contexts: ['removeAccount'], label: 'Highlight the ninth account' },
+  { action: 'remove.accept', keys: ['Enter', 'y'], contexts: ['removeAccount'], label: 'Remove the highlighted account', hint: true },
+  { action: 'remove.cancel', keys: ['n'], contexts: ['removeAccount'], label: 'Cancel', hint: true },
+
+  // The close question: h/l move the highlight across Cancel, Quit and
+  // Keep, Enter chooses it, and a mnemonic letter jumps straight to one.
+  { action: 'close.left', keys: ['h', 'Left'], contexts: ['confirm'], label: 'Previous choice' },
+  { action: 'close.right', keys: ['l', 'Right'], contexts: ['confirm'], label: 'Next choice' },
+  { action: 'close.accept', keys: ['Enter'], contexts: ['confirm'], label: 'Choose the highlighted answer', hint: true },
+  { action: 'close.cancel', keys: ['c'], contexts: ['confirm'], label: 'Cancel', hint: true },
+  { action: 'close.quit', keys: ['q'], contexts: ['confirm'], label: 'Quit', hint: true },
+  { action: 'close.keep', keys: ['k'], contexts: ['confirm'], label: 'Keep in background', hint: true }
 ];
 
 // match returns the action for a key press in a context, or "". Bindings

@@ -134,6 +134,7 @@ Item {
     return {
       confirmOpen: windowController.confirmingClose,
       setupOpen: accountController.open || accountController.removing,
+      setupContext: accountController.navContext,
       viewerOpen: photoViewerController.viewerOpen,
       paletteOpen: windowController.paletteOpen,
       reactionPickerOpen: reactionsController.pickerOpen,

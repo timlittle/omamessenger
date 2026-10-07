@@ -459,6 +459,12 @@ test('keyContext puts account setup above everything but the close question', ()
   assert.strictEqual(Navigation.keyContext({ setupOpen: true, confirmOpen: true, pane: 'list' }), 'confirm');
 });
 
+test('keyContext answers to setup\'s own step, such as "phone" or "removeAccount", when the caller names one', () => {
+  assert.strictEqual(Navigation.keyContext({ setupOpen: true, setupContext: 'phone', paletteOpen: true, pane: 'list' }), 'phone');
+  assert.strictEqual(Navigation.keyContext({ setupOpen: true, setupContext: 'removeAccount', pane: 'list' }), 'removeAccount');
+  assert.strictEqual(Navigation.keyContext({ setupOpen: true, setupContext: 'phone', confirmOpen: true, pane: 'list' }), 'confirm');
+});
+
 test('escapeAction closes account setup before anything beneath it', () => {
   assert.strictEqual(Navigation.escapeAction({ setupOpen: true, dialogOpen: true }), 'close-setup');
   assert.strictEqual(Navigation.escapeAction({ setupOpen: true, confirmOpen: true }), 'cancel-close');

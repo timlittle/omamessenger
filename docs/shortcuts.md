@@ -10,7 +10,7 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Ctrl+K or Ctrl+T | Jump to a conversation |
 | Ctrl+G | Search messages |
 | Ctrl+N or Ctrl+Shift+K | New message |
-| Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation |
+| Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (opens it, even while writing) |
 | Alt+↓ / ↑ | Next / previous conversation |
 | Ctrl+0 / 1 / 2 | All / WhatsApp / Telegram |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
@@ -52,8 +52,43 @@ The highlight starts on the newest message when the conversation opens or when y
 | Keys | Does |
 | --- | --- |
 | Enter | Send |
-| Shift+Enter or Ctrl+J | Start a new line instead of sending |
+| Shift+Enter | Start a new line instead of sending |
 | Ctrl+V | Paste a clipboard image as an attachment |
+
+Ctrl+J always jumps to the next unread conversation instead, even while writing (see Global); it lands there in writing mode too.
+
+## Adding an account
+
+The service chooser, shown when more than one service is offered, and the QR and phone steps all work without the mouse or Tab.
+
+| Keys | Does |
+| --- | --- |
+| j / k, ↓ / ↑ | Move the highlighted service |
+| Enter | Choose the highlighted service |
+| t / w | Jump straight to Telegram / WhatsApp |
+| p | At the QR step, use a phone number instead |
+| q | At the phone step, go back to the QR code |
+| Esc | At the phone step, back to the QR code; anywhere else, cancel setup |
+
+## Removing an account
+
+| Keys | Does |
+| --- | --- |
+| j / k, ↓ / ↑ | Move the highlighted account |
+| 1-9 | Jump straight to that account |
+| Enter or y | Remove the highlighted account (does nothing if Cancel, the default, is highlighted) |
+| n or Esc | Cancel without removing anything |
+
+## Closing the window
+
+Ctrl+W asks whether to keep OmaMessenger running in the background or quit.
+
+| Keys | Does |
+| --- | --- |
+| h / l, ← / → | Move the highlight between Cancel, Quit and Keep in background |
+| Enter | Choose the highlighted answer (Keep in background by default) |
+| c / q / k | Cancel / Quit / Keep in background, straight away |
+| Esc | Cancel |
 
 ## Photo viewer
 

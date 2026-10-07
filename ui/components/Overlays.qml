@@ -87,11 +87,23 @@ Item {
 
   CloseConfirm {
     open: root.windowController.confirmingClose
+    highlightIndex: root.windowController.confirmIndex
+    routeKey: root.routeKey
     onKeep: root.windowController.keepInBackground()
     onQuit: root.windowController.quit()
-    onCancelled: {
-      root.windowController.cancelClose();
-      if (root.focusDefault) root.focusDefault();
+    onCancelled: root.windowController.cancelClose()
+  }
+
+  // Escape cancels the close question straight through WindowController,
+  // never through CloseConfirm's own cancelled() signal, so this is the
+  // one place that covers every way the question closes: the buttons, an
+  // outside click and Escape alike. Without it, nothing has active
+  // keyboard focus afterward and every shortcut goes quiet until the
+  // window is closed and reopened.
+  Connections {
+    target: root.windowController
+    function onConfirmingCloseChanged() {
+      if (!root.windowController.confirmingClose && root.focusDefault) root.focusDefault();
     }
   }
 
@@ -102,6 +114,7 @@ Item {
     stage: root.accountController?.stage ?? "credentials"
     services: root.service ? root.service.services : []
     serviceName: root.accountController?.serviceName ?? "Telegram"
+    chooseIndex: root.accountController?.chooseIndex ?? -1
     qr: root.accountController?.qr ?? ""
     hint: root.accountController?.hint ?? ""
     error: root.accountController?.lastError ?? ""
@@ -111,6 +124,7 @@ Item {
     onServiceChosen: serviceId => root.accountController.chooseService(serviceId)
     onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)
     onPhoneRequested: root.accountController.usePhone()
+    onQrRequested: root.accountController.useQr()
     onAnswered: value => root.accountController.answer(value)
     onCancelled: root.accountController.cancel()
   }
@@ -118,8 +132,10 @@ Item {
   RemoveAccount {
     open: root.accountController?.removing ?? false
     accounts: root.service ? root.service.accounts : []
+    removeIndex: root.accountController?.removeIndex ?? -1
     error: root.accountController?.lastError ?? ""
     knownServices: root.service ? root.service.services : []
+    routeKey: root.routeKey
 
     onChosen: accountId => root.accountController.remove(accountId)
     onCancelled: root.accountController.cancel()

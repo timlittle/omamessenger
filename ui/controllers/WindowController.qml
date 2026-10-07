@@ -78,6 +78,10 @@ QtObject {
   // confirmingClose shows the question asking what closing should do.
   property bool confirmingClose: false
 
+  // confirmIndex is the close question's highlighted choice: 0 Cancel, 1
+  // Quit, 2 Keep in background (its safe default), left to right.
+  property int confirmIndex: 2
+
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
@@ -101,6 +105,12 @@ QtObject {
       "window.hide": () => root.askToClose(),
       "app.quit": () => root.quit(),
       "helper.retryInstall": () => root.retryInstall(),
+      "close.left": () => { root.confirmIndex = Math.max(0, root.confirmIndex - 1); },
+      "close.right": () => { root.confirmIndex = Math.min(2, root.confirmIndex + 1); },
+      "close.accept": () => root._acceptClose(),
+      "close.cancel": () => root.cancelClose(),
+      "close.quit": () => root.quit(),
+      "close.keep": () => root.keepInBackground(),
       "escape": () => root._escape()
     };
 
@@ -170,9 +180,18 @@ QtObject {
     if (owner) owner.run(action);
   }
 
-  // askToClose shows the close question instead of closing at once.
+  // askToClose shows the close question instead of closing at once,
+  // highlighted on its safe default, Keep in background.
   function askToClose(): void {
     root.confirmingClose = true;
+    root.confirmIndex = 2;
+  }
+
+  // _acceptClose runs whichever choice is highlighted, for Enter.
+  function _acceptClose(): void {
+    if (root.confirmIndex === 0) root.cancelClose();
+    else if (root.confirmIndex === 1) root.quit();
+    else root.keepInBackground();
   }
 
   // keepInBackground answers the close question: hide the window and keep
@@ -241,6 +260,7 @@ QtObject {
     return {
       confirmOpen: root.confirmingClose,
       setupOpen: root.accountController ? root.accountController.open || root.accountController.removing : false,
+      setupContext: root.accountController ? root.accountController.navContext : "",
       viewerOpen: root.photoViewerController ? root.photoViewerController.viewerOpen : false,
       paletteOpen: root.paletteOpen,
       reactionPickerOpen: root.reactionsController ? root.reactionsController.pickerOpen : false,

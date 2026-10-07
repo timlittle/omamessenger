@@ -7,9 +7,9 @@ import "../theme"
 import "../lib/Rail.js" as Rail
 
 // Asks which account to remove. Removing signs it out and deletes its
-// chats from this computer, so the safe choice, Cancel, has focus first;
-// Tab, or Up/Down, moves to each account, Enter or Space removes the
-// focused one, and Escape cancels.
+// chats from this computer, so the safe choice, Cancel, is highlighted
+// first; j/k, Up/Down or a number highlight an account, Enter or y
+// removes whichever is highlighted, n or Escape cancels.
 Item {
   id: root
 
@@ -17,11 +17,18 @@ Item {
   property bool open: false
   // accounts are the accounts that can be removed.
   property var accounts: []
+  // removeIndex is the highlighted account: -1 for Cancel, the safe
+  // default.
+  property int removeIndex: -1
   // error is the last failure, shown under the choices.
   property string error: ""
   // knownServices: the helper's own services, from hello, for each
   // account's label; falls back to the built-in labels when empty.
   property var knownServices: []
+  // routeKey intercepts a key press before this question's own control
+  // handles it; see Composer.qml for why this is a function property,
+  // not a signal.
+  property var routeKey: null
 
   // chosen reports the account to remove.
   signal chosen(string accountId)
@@ -31,9 +38,11 @@ Item {
   objectName: "removeAccount"
   anchors.fill: parent
   visible: root.open
-  // Focus waits a turn of the event loop: an item still hidden when open
-  // changes cannot take focus.
-  onOpenChanged: if (root.open) Qt.callLater(() => cancelButton.forceActiveFocus())
+  focus: root.open
+
+  Keys.onPressed: event => {
+    if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+  }
 
   ModalCard {
     onOutsideClicked: root.cancelled()
@@ -51,7 +60,7 @@ Item {
       Text {
         Layout.fillWidth: true
         text: root.accounts.length > 0
-          ? "This signs the account out and deletes its chats from this computer. They stay on your phone."
+          ? "This signs the account out and deletes its chats from this computer. They stay on your phone. j/k or a number highlight one, Enter or y removes it."
           : "There are no accounts to remove."
         wrapMode: Text.WordWrap
         color: Util.alpha(Color.foreground, 0.7)
@@ -69,12 +78,8 @@ Item {
           objectName: "removeButton-" + modelData.id
           Layout.fillWidth: true
           leftAlign: true
-          text: "Remove " + Rail.accountDescription(modelData, root.knownServices)
-          focusable: true
-          // Up/Down cycle through the accounts and wrap onto Cancel, the
-          // same way CloseConfirm's buttons chain with Left/Right.
-          KeyNavigation.up: index > 0 ? accountRepeater.itemAt(index - 1) : cancelButton
-          KeyNavigation.down: index < accountRepeater.count - 1 ? accountRepeater.itemAt(index + 1) : cancelButton
+          text: (index < 9 ? (index + 1) + "  " : "") + "Remove " + Rail.accountDescription(modelData, root.knownServices)
+          selected: index === root.removeIndex
           onClicked: root.chosen(modelData.id)
         }
       }
@@ -93,11 +98,8 @@ Item {
 
         objectName: "cancelButton"
         Layout.alignment: Qt.AlignRight
-        text: "Cancel"
-        focusable: true
-        selected: true
-        KeyNavigation.up: accountRepeater.count > 0 ? accountRepeater.itemAt(accountRepeater.count - 1) : null
-        KeyNavigation.down: accountRepeater.count > 0 ? accountRepeater.itemAt(0) : null
+        text: "n  Cancel"
+        selected: root.removeIndex === -1
         onClicked: root.cancelled()
       }
     }

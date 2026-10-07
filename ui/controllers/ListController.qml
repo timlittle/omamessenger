@@ -89,8 +89,6 @@ Item {
       "cursor.up": () => root._select(Selection.move(root.visibleIds(), root.selectedId, -1)),
       "cursor.top": () => root._select(Selection.edge(root.visibleIds(), "top")),
       "cursor.bottom": () => root._select(Selection.edge(root.visibleIds(), "bottom")),
-      "unread.next": () => root._select(Selection.nextUnread(root._visible(), root.selectedId)),
-      "unread.prev": () => root._select(Selection.nextUnread(root._visible().slice().reverse(), root.selectedId)),
       "chat.mute": () => root._toggleMute(),
       "chat.pin": () => root._togglePin(),
       "chat.archive": () => root._toggleArchive(),
