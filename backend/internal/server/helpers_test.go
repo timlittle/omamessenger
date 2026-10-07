@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,11 +21,12 @@ import (
 
 // session is a server connected to a test client over an in-memory pipe.
 type session struct {
-	client *jsonrpc2.Conn
-	server *server.Server
-	store  *store.Store
-	events *notifications
-	ingest *app.Ingest
+	client   *jsonrpc2.Conn
+	server   *server.Server
+	store    *store.Store
+	events   *notifications
+	ingest   *app.Ingest
+	accounts *storeAccounts
 }
 
 // connect serves a fresh application with one account, "wa", and a direct
@@ -40,7 +42,8 @@ func connect(t *testing.T, faked bool) *session {
 	seed(t, db)
 
 	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
-	deps := app.Deps{Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: storeAccounts{db}, SignIn: acceptAll{}}
+	accounts := &storeAccounts{db: db}
+	deps := app.Deps{Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts, SignIn: acceptAll{}}
 	if faked {
 		deps.Fake = unreachableFake{}
 	}
@@ -61,7 +64,7 @@ func connect(t *testing.T, faked bool) *session {
 		_ = db.Close()
 	})
 
-	return &session{client: client, server: srv, store: db, events: events, ingest: ingest}
+	return &session{client: client, server: srv, store: db, events: events, ingest: ingest, accounts: accounts}
 }
 
 // seed stores account "wa" and conversation "chat".
@@ -136,19 +139,41 @@ func (acceptAll) MarkRead(context.Context, domain.Conversation) error           
 // SubmitAuth accepts any sign-in answer.
 func (acceptAll) SubmitAuth(context.Context, string, string, string) error { return nil }
 
-// storeAccounts adds and removes accounts straight in the store.
+// storeAccounts adds and removes accounts straight in the store,
+// recording the options of the last Add call so tests can check what
+// reached it.
 type storeAccounts struct {
 	db *store.Store
+
+	mu      sync.Mutex
+	options map[string]string
 }
 
-func (a storeAccounts) Add(ctx context.Context, n app.NewAccount) (domain.Account, error) {
+func (a *storeAccounts) Add(ctx context.Context, n app.NewAccount) (domain.Account, error) {
+	a.mu.Lock()
+	a.options = n.Options
+	a.mu.Unlock()
+
 	account := domain.Account{ID: "tg-new", Service: n.Service, Name: "Telegram"}
 
 	return account, a.db.UpsertAccount(ctx, account)
 }
 
-func (a storeAccounts) Remove(ctx context.Context, accountID string) error {
+func (a *storeAccounts) Remove(ctx context.Context, accountID string) error {
 	return a.db.DeleteAccount(ctx, accountID)
+}
+
+// Services reports one service, so tests can check hello includes it.
+func (a *storeAccounts) Services() []domain.Service {
+	return []domain.Service{{ID: domain.ServiceTelegram, Name: "Telegram"}}
+}
+
+// lastOptions returns the setup options of the most recent Add call.
+func (a *storeAccounts) lastOptions() map[string]string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	return a.options
 }
 
 // silent is a notifier that shows nothing.

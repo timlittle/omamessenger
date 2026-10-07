@@ -1,10 +1,12 @@
 package server_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 )
 
@@ -20,6 +22,24 @@ func TestServer_AnswersRequests(t *testing.T) {
 
 	if got["protocol"] != float64(server.Protocol) || got["version"] != "1.2.3" {
 		t.Errorf("hello = %v", got)
+	}
+}
+
+func TestServer_HelloListsAvailableServices(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+
+	got, err := call[struct {
+		Services []domain.Service `json:"services"`
+	}](t, s, "hello", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []domain.Service{{ID: domain.ServiceTelegram, Name: "Telegram"}}
+	if !slices.Equal(got.Services, want) {
+		t.Errorf("hello services = %+v, want %+v", got.Services, want)
 	}
 }
 

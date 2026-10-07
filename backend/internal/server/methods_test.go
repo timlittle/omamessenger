@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -62,6 +63,11 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("accounts.add = %+v, %v", added, err)
 	}
 
+	want := map[string]string{"apiId": "1", "apiHash": "abc"}
+	if got := s.accounts.lastOptions(); !maps.Equal(got, want) {
+		t.Errorf("accounts.add options = %v, want %v", got, want)
+	}
+
 	for method, params := range map[string]any{
 		"auth.submit":            map[string]string{"accountId": "tg-new", "step": "code", "value": "12345"},
 		"accounts.remove":        map[string]string{"accountId": "tg-new"},
@@ -72,5 +78,43 @@ func TestMethods_RoundTrip(t *testing.T) {
 		if _, err := call[struct{}](t, s, method, params); err != nil {
 			t.Errorf("%s = %v", method, err)
 		}
+	}
+}
+
+func TestAccountsAdd_AcceptsAGeneralOptionsObject(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+
+	if _, err := call[domain.Account](t, s, "accounts.add", map[string]any{
+		"service": "telegram",
+		"options": map[string]string{"apiId": "1", "apiHash": "abc"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]string{"apiId": "1", "apiHash": "abc"}
+	if got := s.accounts.lastOptions(); !maps.Equal(got, want) {
+		t.Errorf("accounts.add options = %v, want %v", got, want)
+	}
+}
+
+func TestAccountsAdd_ApiIDAndApiHashOverrideOptions(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+
+	if _, err := call[domain.Account](t, s, "accounts.add", map[string]any{
+		"service": "telegram",
+		"apiId":   2,
+		"apiHash": "own",
+		"options": map[string]string{"apiId": "1", "apiHash": "abc"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]string{"apiId": "2", "apiHash": "own"}
+	if got := s.accounts.lastOptions(); !maps.Equal(got, want) {
+		t.Errorf("accounts.add options = %v, want %v", got, want)
 	}
 }
