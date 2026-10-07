@@ -1,8 +1,10 @@
 package whatsapp
 
-// dispatch is unexported, and Run is the only caller that wires it to a
-// device's events, so these tests drive it the way Run does: through a
-// fake device's onEvent handler, inside a running connector.
+// handleEvents is driven through the fake device's onEvent registration,
+// firing a raw event as whatsmeow would, rather than calling a handler
+// directly as the other handler tests do: this is what actually proves
+// the dispatcher in events.go is wired to each case, and that Run itself
+// wires handleEvents to a running device.
 
 import (
 	"context"
@@ -18,11 +20,115 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+func TestHandleEvents_DispatchesReceiptsToSink(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	defer unregister()
+
+	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-7"}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev.fireEvent(&events.Receipt{
+		MessageSource: types.MessageSource{Chat: directPeer, Sender: directPeer},
+		Type:          types.ReceiptTypeRead,
+		MessageIDs:    []types.MessageID{dev.sent[0].id},
+	})
+
+	if !sink.Has("outgoing local-7  " + domain.StatusRead) {
+		t.Errorf("events = %q, want local-7 read, dispatched through handleEvents", sink.Lines())
+	}
+}
+
+func TestHandleEvents_IgnoresAnEventKindItDoesNotSwitchOn(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	defer unregister()
+
+	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-8"}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev.fireEvent(&events.Connected{}) // onStatus's own handler covers connection status, not this switch
+
+	if updates := sink.Outgoing("local-8"); len(updates) != 1 {
+		t.Errorf("outgoing updates = %v, want only the initial sent status", updates)
+	}
+}
+
+func TestHandleEvents_UnregisterStopsFurtherDispatch(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+
+	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-9"}); err != nil {
+		t.Fatal(err)
+	}
+
+	unregister()
+	dev.fireEvent(&events.Receipt{
+		MessageSource: types.MessageSource{Chat: directPeer, Sender: directPeer},
+		Type:          types.ReceiptTypeRead,
+		MessageIDs:    []types.MessageID{dev.sent[0].id},
+	})
+
+	if updates := sink.Outgoing("local-9"); len(updates) != 1 {
+		t.Errorf("outgoing updates = %v, want no read reported after unregister", updates)
+	}
+}
+
+func TestHandleEvents_DropsAMuteChangeWithoutReportingAnything(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	defer unregister()
+
+	dev.fireEvent(&events.Mute{JID: types.NewJID("15551234567", types.DefaultUserServer)})
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want a mute change to report nothing", sink.Lines())
+	}
+}
+
 func TestRun_RoutesEventsToTheirHandlers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev := newFakeDevice()
 		dev.paired = true
-		c := newTestConnector(t, dev)
+		c := newTestConnector(dev)
 		var sink connectortest.Sink
 
 		done := make(chan error, 1)
@@ -30,7 +136,7 @@ func TestRun_RoutesEventsToTheirHandlers(t *testing.T) {
 		go func() { done <- c.Run(ctx, &sink) }()
 		synctest.Wait()
 
-		dev.fire(&events.HistorySync{Data: &waHistorySync.HistorySync{
+		dev.fireEvent(&events.HistorySync{Data: &waHistorySync.HistorySync{
 			Conversations: []*waHistorySync.Conversation{{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia")}},
 		}})
 		synctest.Wait()
@@ -39,8 +145,10 @@ func TestRun_RoutesEventsToTheirHandlers(t *testing.T) {
 			t.Errorf("events = %q, want the history sync routed to its handler", sink.Lines())
 		}
 
-		dev.fire(&events.Message{
-			Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: types.NewJID("15551234567", types.DefaultUserServer), Sender: types.NewJID("15551234567", types.DefaultUserServer)}, ID: "M1"},
+		dev.fireEvent(&events.Message{
+			Info: types.MessageInfo{MessageSource: types.MessageSource{
+				Chat: types.NewJID("15551234567", types.DefaultUserServer), Sender: types.NewJID("15551234567", types.DefaultUserServer),
+			}, ID: "M1"},
 			Message: &waE2E.Message{Conversation: strPtr("hi")},
 		})
 		synctest.Wait()
@@ -49,28 +157,8 @@ func TestRun_RoutesEventsToTheirHandlers(t *testing.T) {
 			t.Errorf("events = %q, want the message routed to its handler", sink.Lines())
 		}
 
-		// An event no handler acts on, and the pairing status events
-		// onStatus already covers, must never panic the dispatcher.
-		dev.fire(&events.QR{})
-		synctest.Wait()
-
 		cancel()
 		synctest.Wait()
 		drain(t, done)
 	})
-}
-
-func TestDispatch_MuteIsReceivedButNotPropagated(t *testing.T) {
-	t.Parallel()
-
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
-
-	c.dispatch(t.Context(), &sink, dev, media, &events.Mute{JID: types.NewJID("15551234567", types.DefaultUserServer)})
-
-	if len(sink.Lines()) != 0 {
-		t.Errorf("events = %q, want a mute change to report nothing", sink.Lines())
-	}
 }

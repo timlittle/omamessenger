@@ -35,11 +35,13 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 }
 
 // handleContent reports a message's own content. An incoming message's
-// conversation is reported first, so a brand-new chat is never dropped;
-// an outgoing one WhatsApp reports from another of this account's
-// devices skips that, since it carries no reliable name for an
-// already-known chat and would otherwise overwrite a good title with a
-// generic one. Such a message is history: it never notifies.
+// conversation is reported first, so a brand-new chat is never dropped,
+// and it is noted as unread so a later MarkRead for this conversation
+// tells WhatsApp about it; an outgoing one WhatsApp reports from another
+// of this account's devices skips both, since it carries no reliable
+// name for an already-known chat and would otherwise overwrite a good
+// title with a generic one, and it was never unread to begin with. Such
+// a message is history: it never notifies.
 func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	remote := remoteID(e.Info.Chat)
 	if !e.Info.IsFromMe {
@@ -54,6 +56,7 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 		return
 	}
 
+	c.notePendingRead(remote, m.SenderID, m.RemoteID)
 	sink.Incoming(ctx, c.account.ID, remote, m)
 }
 

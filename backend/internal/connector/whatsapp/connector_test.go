@@ -21,21 +21,15 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// newTestConnector returns a connector over dev, ready for Run, with a
-// media store opened in a fresh temporary directory.
-func newTestConnector(t *testing.T, dev *fakeDevice) *Connector {
-	t.Helper()
-
-	media := newTestMediaStore(t)
-
+// newTestConnector returns a connector over dev, ready for Run, with an
+// in-memory media store: a test that needs to inspect what was saved
+// opens its own with newTestMediaStore instead.
+func newTestConnector(dev *fakeDevice) *Connector {
 	return &Connector{
 		account:   domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp},
 		answers:   make(chan answer, 1),
 		open:      func(context.Context) (device, error) { return dev, nil },
-		openMedia: func(context.Context) (*mediaStore, error) { return media, nil },
-		organize:  map[string]organizeState{},
-		names:     map[string]string{},
-		reactions: map[string]map[string]string{},
+		openMedia: func(ctx context.Context) (*mediaStore, error) { return newInMemoryMediaStore(ctx) },
 	}
 }
 
@@ -46,7 +40,7 @@ func TestRun_PairsByQRThenConnects(t *testing.T) {
 
 		done := make(chan error, 1)
 		ctx, cancel := context.WithCancel(t.Context())
-		go func() { done <- newTestConnector(t, dev).Run(ctx, &sink) }()
+		go func() { done <- newTestConnector(dev).Run(ctx, &sink) }()
 		synctest.Wait()
 
 		dev.codes <- whatsmeow.QRChannelItem{Event: whatsmeow.QRChannelEventCode, Code: "1@abc"}
@@ -78,7 +72,7 @@ func TestRun_SwitchesToPhoneAndReportsTheLinkCode(t *testing.T) {
 		dev.pairCode = "ABCD-1234"
 		var sink connectortest.Sink
 
-		c := newTestConnector(t, dev)
+		c := newTestConnector(dev)
 		done := make(chan error, 1)
 		ctx, cancel := context.WithCancel(t.Context())
 		go func() { done <- c.Run(ctx, &sink) }()
@@ -118,7 +112,7 @@ func TestRun_RetriesAfterABadPhoneNumber(t *testing.T) {
 		dev.pairErr = errors.New("phone number is too short")
 		var sink connectortest.Sink
 
-		c := newTestConnector(t, dev)
+		c := newTestConnector(dev)
 		done := make(chan error, 1)
 		ctx, cancel := context.WithCancel(t.Context())
 		go func() { done <- c.Run(ctx, &sink) }()
@@ -160,7 +154,7 @@ func TestRun_AlreadyPairedConnectsWithoutAsking(t *testing.T) {
 
 		done := make(chan error, 1)
 		ctx, cancel := context.WithCancel(t.Context())
-		go func() { done <- newTestConnector(t, dev).Run(ctx, &sink) }()
+		go func() { done <- newTestConnector(dev).Run(ctx, &sink) }()
 		synctest.Wait()
 
 		if !sink.Has("status wa-1 " + domain.AccountConnected) {
@@ -185,7 +179,7 @@ func TestRun_EndsWhenWhatsAppWillNotReconnectOnItsOwn(t *testing.T) {
 		done := make(chan error, 1)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		go func() { done <- newTestConnector(t, dev).Run(ctx, &sink) }()
+		go func() { done <- newTestConnector(dev).Run(ctx, &sink) }()
 		synctest.Wait()
 
 		dev.status(statusStopped)
@@ -206,7 +200,7 @@ func TestRun_RefusesASecondConcurrentRun(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev := newFakeDevice()
 		dev.paired = true
-		c := newTestConnector(t, dev)
+		c := newTestConnector(dev)
 		var sink connectortest.Sink
 
 		done := make(chan error, 1)
@@ -228,7 +222,7 @@ func TestLogout_LogsOutTheConnectedDeviceWhileRunIsActive(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev := newFakeDevice()
 		dev.paired = true
-		c := newTestConnector(t, dev)
+		c := newTestConnector(dev)
 
 		done := make(chan error, 1)
 		ctx, cancel := context.WithCancel(t.Context())
@@ -251,7 +245,7 @@ func TestLogout_LogsOutTheConnectedDeviceWhileRunIsActive(t *testing.T) {
 func TestLogout_IsANoOpWhenNothingIsRunning(t *testing.T) {
 	t.Parallel()
 
-	c := newTestConnector(t, newFakeDevice())
+	c := newTestConnector(newFakeDevice())
 	if err := c.Logout(t.Context()); err != nil {
 		t.Errorf("Logout with no connection = %v, want nil", err)
 	}
@@ -284,21 +278,21 @@ func TestReactTo_AccumulatesPerSenderAndClears(t *testing.T) {
 func TestSubmitAuth_RejectsAnAnswerWhenNotWaiting(t *testing.T) {
 	t.Parallel()
 
-	c := newTestConnector(t, newFakeDevice())
+	c := newTestConnector(newFakeDevice())
 	if err := c.SubmitAuth(t.Context(), "phone", "+1"); !errors.Is(err, errNotPairing) {
 		t.Errorf("SubmitAuth = %v, want errNotPairing", err)
 	}
 }
 
-func TestSend_IsNotSupportedYet(t *testing.T) {
+func TestSend_FailsBeforeConnecting(t *testing.T) {
 	t.Parallel()
 
-	c := newTestConnector(t, newFakeDevice())
-	if err := c.Send(t.Context(), domain.Conversation{}, domain.Message{}); !errors.Is(err, errSendNotSupported) {
-		t.Errorf("Send = %v, want errSendNotSupported", err)
+	c := newTestConnector(newFakeDevice())
+	if err := c.Send(t.Context(), domain.Conversation{}, domain.Message{}); !errors.Is(err, errNotConnected) {
+		t.Errorf("Send = %v, want errNotConnected", err)
 	}
-	if err := c.MarkRead(t.Context(), domain.Conversation{}); !errors.Is(err, errSendNotSupported) {
-		t.Errorf("MarkRead = %v, want errSendNotSupported", err)
+	if err := c.MarkRead(t.Context(), domain.Conversation{}); !errors.Is(err, errNotConnected) {
+		t.Errorf("MarkRead = %v, want errNotConnected", err)
 	}
 }
 

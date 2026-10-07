@@ -71,6 +71,56 @@ func TestHandleHistorySync_ReportsContactsConversationsAndMessages(t *testing.T)
 	}
 }
 
+func TestHandleHistorySync_NotesTheNewestUnreadMessagesForMarkRead(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media := newTestMediaStore(t)
+
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), UnreadCount: u32(1),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "older", false), historyMsg("H2", "newest", false)},
+		}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if err := c.MarkRead(t.Context(), domain.Conversation{RemoteID: "15551234567@s.whatsapp.net"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.markReadCalls) != 1 || len(dev.markReadCalls[0].ids) != 1 || string(dev.markReadCalls[0].ids[0]) != "H2" {
+		t.Errorf("markRead calls = %+v, want one call for H2, the newest of the one unread message", dev.markReadCalls)
+	}
+}
+
+func TestHandleHistorySync_NotesNothingForMarkReadWhenNothingIsUnread(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media := newTestMediaStore(t)
+
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "older", false)},
+		}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if err := c.MarkRead(t.Context(), domain.Conversation{RemoteID: "15551234567@s.whatsapp.net"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.markReadCalls) != 0 {
+		t.Errorf("markRead calls = %+v, want none when the sync reported nothing unread", dev.markReadCalls)
+	}
+}
+
 func TestHandleHistorySync_ResolvesAGroupNameAndCachesIt(t *testing.T) {
 	t.Parallel()
 

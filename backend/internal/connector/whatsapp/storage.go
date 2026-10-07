@@ -45,6 +45,14 @@ func openMediaStore(ctx context.Context, dir, accountID string) (*mediaStore, er
 	}
 
 	dsn := "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=busy_timeout(5000)"
+
+	return openMediaStoreDSN(ctx, dsn)
+}
+
+// openMediaStoreDSN opens a media store from a database/sql data source
+// name, shared by openMediaStore's real file and the in-memory one a
+// connector under test defaults to (see newInMemoryMediaStore).
+func openMediaStoreDSN(ctx context.Context, dsn string) (*mediaStore, error) {
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp: open media store: %w", err)

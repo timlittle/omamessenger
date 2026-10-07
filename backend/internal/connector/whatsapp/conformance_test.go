@@ -16,6 +16,8 @@ import (
 	"context"
 	"testing"
 
+	"go.mau.fi/whatsmeow/types"
+
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -43,4 +45,24 @@ func TestConformance_Lifecycle(t *testing.T) {
 			reactions: map[string]map[string]string{},
 		}
 	})
+}
+
+// TestConformance_SendProgress runs the shared send-progress check
+// against a message WhatsApp reports sent and then read.
+func TestConformance_SendProgress(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+
+	peer := types.NewJID("15559998888", types.DefaultUserServer)
+	conv := domain.Conversation{RemoteID: remoteID(peer), Kind: domain.KindDirect}
+	if err := c.Send(t.Context(), conv, domain.Message{ID: "progress", Text: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+
+	c.fireReceipt(t.Context(), peer, peer, dev.sent[0].id, types.ReceiptTypeRead)
+
+	connectortest.CheckSendProgress(t, &sink, "progress")
 }

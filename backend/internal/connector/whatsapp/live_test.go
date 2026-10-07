@@ -48,6 +48,50 @@ func TestHandleMessage_ReportsIncomingContentAndItsConversation(t *testing.T) {
 	}
 }
 
+func TestHandleMessage_NotesIncomingContentForMarkRead(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media := newTestMediaStore(t)
+
+	e := &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}}
+	c.handleMessage(t.Context(), &sink, dev, media, e)
+
+	conv := domain.Conversation{RemoteID: "15551234567@s.whatsapp.net"}
+	if err := c.MarkRead(t.Context(), conv); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.markReadCalls) != 1 || len(dev.markReadCalls[0].ids) != 1 || string(dev.markReadCalls[0].ids[0]) != "M1" {
+		t.Errorf("markRead calls = %+v, want one call noting M1 as read", dev.markReadCalls)
+	}
+}
+
+func TestHandleMessage_NeverNotesOurOwnMessageFromAnotherDeviceForMarkRead(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media := newTestMediaStore(t)
+
+	info := liveInfo()
+	info.IsFromMe = true
+	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("sent from my phone")}}
+	c.handleMessage(t.Context(), &sink, dev, media, e)
+
+	conv := domain.Conversation{RemoteID: "15551234567@s.whatsapp.net"}
+	if err := c.MarkRead(t.Context(), conv); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.markReadCalls) != 0 {
+		t.Errorf("markRead calls = %+v, want none for a message we sent ourselves", dev.markReadCalls)
+	}
+}
+
 func TestHandleMessage_ReportsOurOwnMessageFromAnotherDeviceAsHistory(t *testing.T) {
 	t.Parallel()
 
