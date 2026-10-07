@@ -5,7 +5,7 @@ Verified against Omarchy 4.0.4, Quickshell 0.3.1 and Qt 6.11. When a newer versi
 ### Plugin lifecycle
 
 - The plugin is installed in `~/.config/omarchy/plugins/io.github.omamessenger/`. Never edit Omarchy's packaged source in `/usr/share/omarchy`
-- Omarchy runs the shell with Quickshell's file watcher off (`QS_DISABLE_FILE_WATCHER=1` in `omarchy-launch-shell`), so `make install-local` restarts the shell to load new plugin files
+- Omarchy runs the shell with Quickshell's file watcher off (`QS_DISABLE_FILE_WATCHER=1` in `omarchy-launch-shell`), but reloads a plugin itself when its files change (see below), clearing Qt's QML cache, so `make install-local` only copies the files. Never restart the shell on top of that reload: destroying and recreating the service at once has crashed Quickshell. `scripts/install-local.sh --restart` exists for when a reload did not take
 - Omarchy watches `~/.config/omarchy/plugins` itself (`inotifywait` in `PluginRegistry.qml`) and reloads a plugin when any file in its folder changes, as does `omarchy-shell shell rescanPlugins`. A reload destroys the plugin's service, which stops the helper, and creates a new one, so never write runtime files into the plugin folder
 - A reload while the shell is still starting has crashed Quickshell. To wait for a restarted shell, call the read-only `omarchy-shell shell listPlugins`, never `rescanPlugins`
 - The panel may receive its `service` after it is created, or a replacement later. Controllers start up whenever `service` changes, not only in `Component.onCompleted`
