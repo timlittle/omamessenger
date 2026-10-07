@@ -26,7 +26,7 @@ omarchy plugin add https://github.com/timlittle/omamessenger --enable
 
 The first time you open the window, it downloads and verifies the helper release pinned in `helper-version`, then starts it. No release has been published yet, so until `v0.3.0` is tagged, build the helper from a checkout instead (`make build`; see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
-Installing the helper adds OmaMessenger to Omarchy's apps menu (**SUPER+ALT+SPACE**). To bind it to a key instead, add a line to `~/.config/hypr/bindings.lua`:
+It also adds OmaMessenger to Omarchy's apps menu (**SUPER+ALT+SPACE**). To bind it to a key instead, add a line to `~/.config/hypr/bindings.lua`:
 
 ```lua
 o.bind("SUPER + ALT + M", "OmaMessenger", "omarchy-shell shell summon io.github.omamessenger '{}'")
