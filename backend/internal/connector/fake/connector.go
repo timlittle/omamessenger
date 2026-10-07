@@ -1,12 +1,8 @@
 package fake
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image"
-	"image/color"
-	"image/jpeg"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -249,22 +245,6 @@ func (c *Connector) FetchMedia(_ context.Context, _ domain.Conversation, _, path
 	}
 
 	return os.WriteFile(path, placeholderPhoto(), 0o600)
-}
-
-// placeholderPhoto renders a small solid-colour JPEG, the stand-in every
-// scripted photo downloads as.
-func placeholderPhoto() []byte {
-	img := image.NewRGBA(image.Rect(0, 0, 320, 240))
-	fill := color.RGBA{R: 90, G: 140, B: 190, A: 255}
-	for y := range 240 {
-		for x := range 320 {
-			img.Set(x, y, fill)
-		}
-	}
-
-	var buf bytes.Buffer
-	_ = jpeg.Encode(&buf, img, nil) // encoding a fixed in-memory image never fails
-	return buf.Bytes()
 }
 
 // React sets or clears the user's own reaction and reports it back

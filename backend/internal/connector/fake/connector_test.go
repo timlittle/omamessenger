@@ -3,6 +3,7 @@ package fake_test
 import (
 	"context"
 	"errors"
+	"image/color"
 	"image/jpeg"
 	"os"
 	"path/filepath"
@@ -267,8 +268,30 @@ func TestFetchMedia_WritesTheScriptedPhoto(t *testing.T) {
 		}
 		defer f.Close() // read-only open; nothing to lose by skipping the error
 
-		if _, err := jpeg.Decode(f); err != nil {
-			t.Errorf("downloaded photo does not decode as a JPEG: %v", err)
+		img, err := jpeg.Decode(f)
+		if err != nil {
+			t.Fatalf("downloaded photo does not decode as a JPEG: %v", err)
+		}
+
+		// A single flat colour reads as a broken placeholder, which is
+		// exactly what a demo recording or screenshot must not show;
+		// sampling the four corners and the centre catches that without
+		// pinning down the picture's exact look.
+		bounds := img.Bounds()
+		points := [][2]int{
+			{bounds.Min.X, bounds.Min.Y},
+			{bounds.Max.X - 1, bounds.Min.Y},
+			{bounds.Min.X, bounds.Max.Y - 1},
+			{bounds.Max.X - 1, bounds.Max.Y - 1},
+			{bounds.Dx() / 2, bounds.Dy() / 2},
+		}
+		colors := map[color.RGBA]bool{}
+		for _, p := range points {
+			r, g, b, a := img.At(p[0], p[1]).RGBA()
+			colors[color.RGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8)}] = true
+		}
+		if len(colors) < 2 {
+			t.Errorf("downloaded photo is a single flat colour, reads as a placeholder: %v", colors)
 		}
 	})
 }

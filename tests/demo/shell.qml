@@ -58,6 +58,7 @@ ShellRoot {
     root.holdFor(8),
     root.openReactCommand,
     root.waitForReactionPicker,
+    root.holdFor(4),
     root.pickReaction,
     root.waitForReactionApplied,
     root.holdFor(10)
@@ -251,21 +252,6 @@ ShellRoot {
     return Timeline.reactions(model.get(0)).length > 0;
   }
 
-  // _OVERLAY_NAMES are every full-window overlay's object name: whichever
-  // of them is open hides the columns row for the single frame captured
-  // while it is; see captureFrame for why.
-  readonly property var _OVERLAY_NAMES: ["photoViewer", "reactionPicker", "commandPalette", "newChatDialog", "closeConfirm", "accountSetup", "removeAccount"]
-
-  // _openOverlay returns whichever full-window overlay is currently open,
-  // or null when none is.
-  function _openOverlay(): var {
-    for (const name of root._OVERLAY_NAMES) {
-      const item = Check.find(root.panel(), name);
-      if (item && item.visible) return item;
-    }
-    return null;
-  }
-
   // captureFrame grabs the window's own content, overlay label included,
   // and saves it as the next numbered frame. It grabs Panel's own
   // "keyArea", not the window's contentItem: the window's content item is
@@ -277,21 +263,9 @@ ShellRoot {
     const item = Check.find(root.panel(), "keyArea");
     if (!item) return;
 
-    // Offscreen, grabToImage sometimes paints the rail, list and
-    // conversation columns over a full-window overlay despite them being
-    // behind it in both z and paint order; hiding that whole row for just
-    // the frame being grabbed works around it without changing anything
-    // the product itself ever shows. The row has no object name of its
-    // own, so it is found as the rail's parent.
-    const overlayOpen = root._openOverlay() !== null;
-    const rail = Check.find(root.panel(), "serviceRail");
-    const columns = overlayOpen && rail ? rail.parent : null;
-    if (columns) columns.visible = false;
-
     const index = root.frameIndex;
     root.frameIndex++;
     item.grabToImage((result) => {
-      if (columns) columns.visible = true;
       const n = String(index).length >= 5 ? String(index) : ("00000" + index).slice(-5);
       result.saveToFile(root.framesDir + "/frame-" + n + ".png");
     });
@@ -348,15 +322,19 @@ ShellRoot {
 
     property string text: ""
 
+    // Anchored to the top-right corner: every step's content sits in the
+    // list, the conversation body or the composer, none of which reach
+    // up here, so the label never covers anything it is labelling.
     visible: text.length > 0
     width: label.implicitWidth + 32
     height: label.implicitHeight + 16
     radius: 8
     color: "#1a1a1aE6"
     z: 10000
-    anchors.bottom: parent ? parent.bottom : undefined
-    anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
-    anchors.bottomMargin: 24
+    anchors.top: parent ? parent.top : undefined
+    anchors.right: parent ? parent.right : undefined
+    anchors.topMargin: 16
+    anchors.rightMargin: 16
 
     Text {
       id: label
@@ -400,12 +378,24 @@ ShellRoot {
   // open() creates. The window keeps Panel's own default size: setting
   // implicitWidth/implicitHeight here, before or after open(), changed
   // nothing offscreen, so the recording is at whatever size that is.
+  //
+  // The three columns (rail, list, conversation) are forced onto their
+  // own texture layer once, up front: offscreen, grabToImage otherwise
+  // sometimes paints them over a full-window overlay despite them being
+  // behind it in both z and paint order, so a dimmed background behind
+  // the reaction picker or the command palette came out solid black
+  // instead. Compositing the columns as one flat layer, the way a real
+  // GPU-backed window already effectively does, fixes the order for
+  // real rather than hiding the columns for the frames it would show.
   Timer {
     running: true
     interval: 50
     onTriggered: {
       root.panel().open("{}");
       keyLabel.parent = Check.find(root.panel(), "keyArea");
+
+      const rail = Check.find(root.panel(), "serviceRail");
+      if (rail && rail.parent) rail.parent.layer.enabled = true;
 
       root.runStep();
     }
