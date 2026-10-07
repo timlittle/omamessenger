@@ -71,6 +71,8 @@ In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes; **Pin or
 
 Clicking a photo opens it inside the window, as large as the window allows, rather than in your system's image viewer: Omarchy floats that viewer too small to reach with the keyboard, and focus stays on OmaMessenger, so a photo opened there would get stuck with no way to close it. While the full photo is still downloading it shows the same blurred preview the message bubble does. Esc, the ✕ button or a click outside the photo closes it; ← / → steps to the previous or next photo in the conversation; and **Open in image viewer** opens it in your own application instead. Videos and files still open externally, as before.
 
+To send a photo or file, click the composer's attach button (📎) or choose **Attach a file** in the command palette to pick one, or paste an image with **Ctrl+V** while writing; pasting text still works as before. The picked or pasted attachment shows as a chip above the text field with a ✕ to remove it; `Esc` removes it too, before leaving the composer.
+
 ## Helper API
 
 Omarchy's shell starts the helper and talks to it over its stdin and stdout with [JSON-RPC 2.0](https://www.jsonrpc.org/specification), one JSON object per line. The helper exits when stdin closes or on SIGTERM.
@@ -96,9 +98,10 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | `conversations.setPinned` | `{conversationId, pinned}` | `Conversation`; `conversations.list` always orders pinned conversations first |
 | `conversations.setArchived` | `{conversationId, archived}` | `Conversation`; `conversations.list` still returns archived conversations, the UI hides them by default |
 | `messages.list` | `{conversationId, before, limit}` | `{messages, hasMore}`, oldest first; `limit` 1–200, default 50. Past the oldest stored message it fetches older history from the service, which arrives as `message.added` too |
-| `messages.send` | `{conversationId, text}` | `Message`; status `failed` if the service refused it |
+| `messages.send` | `{conversationId, text, attachment}` | `Message`; status `failed` if the service refused it. `attachment` is optional: `{path}` names a file on this machine to send, with `text` as its caption (`text` may then be empty); files over 2 GB are rejected |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
 | `media.fetch` | `{messageId}` | `{path}`: the message's photo, video or file, downloaded into the media cache the first time |
+| `media.paste` | | `{path, kind, width, height}`: an image copied off the clipboard into the outgoing media area, for the composer to attach to the next message sent; fails with an invalid-input error when the clipboard holds no image |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
 | `settings.apply` | `{notifications, notificationPreview}` | `{}` |
 | `fake.inject` | `{conversationId}` | `Message`; only in the test build |
