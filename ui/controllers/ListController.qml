@@ -66,6 +66,12 @@ Item {
   // field, after search.focus set searchFocused.
   signal focusRequested()
 
+  // conversationFolded fires when id has just dropped out of the standard
+  // list (hidden or archived while visible), so a caller showing it open
+  // can close it instead of following the list's own reselect onto a
+  // neighbour, which would mark that neighbour read as a side effect.
+  signal conversationFolded(string id)
+
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
     return Actions.owner(action) === "list";
@@ -257,8 +263,10 @@ Item {
 
   // _applyConversationUpdated upserts one conversation into the full list
   // and, while it is already part of the active search, into the search
-  // results too.
+  // results too, then folds it away at once if hiding or archiving just
+  // dropped it from the standard list.
   function _applyConversationUpdated(conversation: var): void {
+    const beforeIds = root.visibleIds();
     root._all = ListSync.upsertById(root._all, conversation, Rail.compareConversations);
 
     if (root.query.length > 0 && root._searchResults.some((c) => c.id === conversation.id)) {
@@ -266,6 +274,25 @@ Item {
     }
 
     root._syncModel();
+    root._foldIfNeeded(conversation.id, beforeIds);
+  }
+
+  // _foldIfNeeded moves the highlight off id once its row has just
+  // vanished from the standard list: the neighbouring row it left behind
+  // takes the highlight, by id, never by index. A query or show-all keeps
+  // every row in view, so this is a no-op then. The caller finds out
+  // through conversationFolded, so it can close id instead of opening the
+  // neighbour onto it, which would mark the neighbour read.
+  function _foldIfNeeded(id: string, beforeIds: var): void {
+    if (!beforeIds.includes(id) || root._visible().some((c) => c.id === id)) return;
+
+    if (root.selectedId === id) {
+      const neighbor = Selection.afterRemoval(beforeIds, id);
+      root.selectedId = neighbor;
+      root._saveUiState({ selectedId: neighbor });
+    }
+
+    root.conversationFolded(id);
   }
 
   // _start restores the saved list state and loads the conversations once

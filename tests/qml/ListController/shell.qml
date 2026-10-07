@@ -2,9 +2,11 @@
 // Omarchy hands it a ready service after it was created, hides chats older
 // than a month, archived with the service or hidden by the user until
 // asked to show them all, dims and labels those chats once shown, orders
-// pinned chats first, and a late reply for an earlier search does not
-// replace the results for the query typed last, since the helper may
-// answer out of order.
+// pinned chats first, a late reply for an earlier search does not replace
+// the results for the query typed last, since the helper may answer out
+// of order, and hiding the open conversation drops it from the standard
+// list at once, moving the highlight to its neighbour and closing the
+// pane rather than opening the neighbour and marking it read.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -87,6 +89,56 @@ ShellRoot {
     service: orderedService
   }
 
+  // foldService backs the fold-on-hide scenario: hiding the open
+  // conversation must drop it from the standard list at once, and moving
+  // the highlight onto its neighbour must never mark that neighbour read.
+  QtObject {
+    id: foldService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", query: "", drafts: {} })
+    property var conversations: [
+      { id: "f1", title: "First", lastActivity: Date.now() - 1000, unread: 0, pinned: false, archived: false, hidden: false },
+      { id: "f2", title: "Second", lastActivity: Date.now() - 2000, unread: 3, pinned: false, archived: false, hidden: false },
+      { id: "f3", title: "Third", lastActivity: Date.now() - 3000, unread: 0, pinned: false, archived: false, hidden: false }
+    ]
+    property int markReadCalls: 0
+
+    signal event(string name, var data)
+
+    // Every reply is a fresh copy, the way a real JSON-RPC result is:
+    // handing the list controller the same object it already holds would
+    // make a later mutation visible before the reply that is meant to
+    // carry it, breaking the "was it visible before this change" check.
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") {
+        callback(null, foldService.conversations.map((c) => Object.assign({}, c)));
+        return;
+      }
+      if (method === "conversations.setHidden") {
+        const index = foldService.conversations.findIndex((c) => c.id === params.conversationId);
+        foldService.conversations[index] = Object.assign({}, foldService.conversations[index], { hidden: params.hidden });
+        callback(null, Object.assign({}, foldService.conversations[index]));
+        return;
+      }
+      if (method === "conversations.markRead") foldService.markReadCalls++;
+    }
+  }
+
+  ListController {
+    id: foldList
+    service: foldService
+
+    onConversationFolded: (id) => foldConversation.closeIfOpen(id)
+  }
+
+  ConversationController {
+    id: foldConversation
+    service: foldService
+    listController: foldList
+  }
+
   Timer {
     running: true
     interval: 0
@@ -158,6 +210,57 @@ ShellRoot {
     ordered.run("list.showAll");
     if (ordered.model.count !== 2 || orderedService.uiState.showAll) {
       Check.fail("toggling show-all again did not fold the chats back away");
+      return;
+    }
+
+    root.checkFoldOnHide();
+  }
+
+  // checkFoldOnHide opens the second of three chats, hides it, and checks
+  // it disappears from the standard list immediately, the highlight moves
+  // to its neighbour, the conversation pane closes rather than opening
+  // the neighbour, and no mark-read ever fires beyond the original open.
+  function checkFoldOnHide(): void {
+    foldConversation.open(foldList.findConversation("f2"));
+    if (foldConversation.activeId !== "f2" || foldList.selectedId !== "f2") {
+      Check.fail("opening the second chat did not make it the open and selected one");
+      return;
+    }
+    if (foldService.markReadCalls !== 1) {
+      Check.fail("opening an unread chat should mark it read exactly once, got " + foldService.markReadCalls);
+      return;
+    }
+
+    foldList.run("chat.hide");
+
+    const ids = [];
+    for (let i = 0; i < foldList.model.count; i++) ids.push(foldList.model.get(i).id);
+    if (JSON.stringify(ids) !== '["f1","f3"]') {
+      Check.fail("hiding the open chat did not drop it from the standard list at once: " + JSON.stringify(ids));
+      return;
+    }
+    if (foldList.selectedId !== "f3") {
+      Check.fail("hiding the open chat did not move the highlight to its neighbour: selected " + foldList.selectedId);
+      return;
+    }
+    if (foldConversation.activeId !== "" || foldConversation.pane !== "list") {
+      Check.fail("hiding the open chat did not close the conversation pane: activeId "
+        + foldConversation.activeId + " pane " + foldConversation.pane);
+      return;
+    }
+    if (foldService.markReadCalls !== 1) {
+      Check.fail("hiding the open chat marked a neighbour read: markReadCalls " + foldService.markReadCalls);
+      return;
+    }
+
+    // f3 is now the last row; hiding it should fall back to the one
+    // before it instead of a next row that no longer exists.
+    foldList.run("chat.hide");
+    const idsAfter = [];
+    for (let i = 0; i < foldList.model.count; i++) idsAfter.push(foldList.model.get(i).id);
+    if (JSON.stringify(idsAfter) !== '["f1"]' || foldList.selectedId !== "f1") {
+      Check.fail("hiding the last row did not fall back to the previous one: ids "
+        + JSON.stringify(idsAfter) + ", selected " + foldList.selectedId);
       return;
     }
 

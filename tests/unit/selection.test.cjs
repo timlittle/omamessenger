@@ -241,3 +241,29 @@ test('nextUnread: the only unread conversation is found again from itself', () =
 
   assert.strictEqual(Selection.nextUnread(conversations, 'c1'), 'c1');
 });
+
+test('afterRemoval: selects the next id when the removed one was not last', () => {
+  const ids = ['c1', 'c2', 'c3'];
+
+  assert.strictEqual(Selection.afterRemoval(ids, 'c1'), 'c2');
+  assert.strictEqual(Selection.afterRemoval(ids, 'c2'), 'c3');
+});
+
+test('afterRemoval: selects the previous id when the removed one was last', () => {
+  const ids = ['c1', 'c2', 'c3'];
+
+  assert.strictEqual(Selection.afterRemoval(ids, 'c3'), 'c2');
+});
+
+test('afterRemoval: returns empty string when the removed id was the only one', () => {
+  assert.strictEqual(Selection.afterRemoval(['c1'], 'c1'), '');
+});
+
+test('afterRemoval: returns empty string when the id is not in the list', () => {
+  assert.strictEqual(Selection.afterRemoval(['c1', 'c2'], 'unknown'), '');
+});
+
+test('afterRemoval: returns empty string for null or undefined ids', () => {
+  assert.strictEqual(Selection.afterRemoval(null, 'c1'), '');
+  assert.strictEqual(Selection.afterRemoval(undefined, 'c1'), '');
+});

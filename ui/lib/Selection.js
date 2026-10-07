@@ -24,6 +24,18 @@ function edge(ids, which) {
   return which === 'bottom' ? ids[ids.length - 1] : ids[0];
 }
 
+// afterRemoval returns the id that should take the highlight once id
+// itself is gone from ids: the next one, or the previous when id was
+// last. "" when id was the only one, or was not in ids at all.
+function afterRemoval(ids, id) {
+  const index = (ids ?? []).indexOf(id);
+  if (index === -1) {
+    return '';
+  }
+
+  return ids[index + 1] ?? ids[index - 1] ?? '';
+}
+
 // nextUnread returns the next conversation after the selected one that has
 // unread messages and is not muted, wrapping round to the selected one
 // itself. With no known selection the search starts at the top. "" when

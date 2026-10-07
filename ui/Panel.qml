@@ -210,6 +210,8 @@ Item {
   ListController {
     id: listController
     service: root.service
+
+    onConversationFolded: (id) => conversationController.closeIfOpen(id)
   }
 
   ConversationController {

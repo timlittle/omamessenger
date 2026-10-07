@@ -362,24 +362,24 @@ test('standard keeps chats active within a month, unread ones and the open one',
   assert.deepEqual(Rail.standard(conversations, now, 'old-open').map((c) => c.id), ['new', 'old-unread', 'old-open']);
 });
 
-test('standard drops archived conversations, except the open one', () => {
+test('standard drops an archived conversation at once, even the open one', () => {
   const conversations = [
     { id: 'plain', archived: false, hidden: false, lastActivity: Date.now(), unread: 0 },
     { id: 'filed', archived: true, hidden: false, lastActivity: Date.now(), unread: 0 },
     { id: 'filed-open', archived: true, hidden: false, lastActivity: Date.now(), unread: 0 }
   ];
 
-  assert.deepEqual(Rail.standard(conversations, Date.now(), 'filed-open').map((c) => c.id), ['plain', 'filed-open']);
+  assert.deepEqual(Rail.standard(conversations, Date.now(), 'filed-open').map((c) => c.id), ['plain']);
 });
 
-test('standard drops hidden conversations, except the open one, even when recent or unread', () => {
+test('standard drops a hidden conversation at once, even the open one, recent or unread', () => {
   const conversations = [
     { id: 'plain', archived: false, hidden: false, lastActivity: Date.now(), unread: 0 },
     { id: 'hidden-unread', archived: false, hidden: true, lastActivity: Date.now(), unread: 3 },
     { id: 'hidden-open', archived: false, hidden: true, lastActivity: Date.now(), unread: 0 }
   ];
 
-  assert.deepEqual(Rail.standard(conversations, Date.now(), 'hidden-open').map((c) => c.id), ['plain', 'hidden-open']);
+  assert.deepEqual(Rail.standard(conversations, Date.now(), 'hidden-open').map((c) => c.id), ['plain']);
 });
 
 test('standard: sending in an old chat brings it back once its activity is recent again', () => {
@@ -399,18 +399,19 @@ test('standard: sending in a hidden chat keeps it hidden even once its activity 
   assert.deepEqual(Rail.standard([sent], now, ''), []);
 });
 
-test('isDimmed: true for anything the standard list would not show, false for the open chat', () => {
+test('isDimmed: true for anything the standard list would not show; the open chat is exempt only from being merely old', () => {
   const now = Date.now();
   const old = { id: 'old', archived: false, hidden: false, lastActivity: 0, unread: 0 };
   const hidden = { id: 'hidden', archived: false, hidden: true, lastActivity: now, unread: 0 };
 
   assert.strictEqual(Rail.isDimmed(old, now, ''), true);
+  assert.strictEqual(Rail.isDimmed(old, now, 'old'), false);
   assert.strictEqual(Rail.isDimmed(hidden, now, ''), true);
-  assert.strictEqual(Rail.isDimmed(hidden, now, 'hidden'), false);
+  assert.strictEqual(Rail.isDimmed(hidden, now, 'hidden'), true);
   assert.strictEqual(Rail.isDimmed({ id: 'plain', archived: false, hidden: false, lastActivity: now, unread: 0 }, now, ''), false);
 });
 
-test('dimLabel names hidden or archived, and is blank for a merely older or non-dimmed chat', () => {
+test('dimLabel names hidden or archived even for the open chat, and is blank for a merely older or non-dimmed chat', () => {
   const now = Date.now();
   const hidden = { id: 'h', archived: false, hidden: true, lastActivity: now, unread: 0 };
   const archived = { id: 'a', archived: true, hidden: false, lastActivity: now, unread: 0 };
@@ -421,7 +422,8 @@ test('dimLabel names hidden or archived, and is blank for a merely older or non-
   assert.strictEqual(Rail.dimLabel(archived, now, ''), 'Archived');
   assert.strictEqual(Rail.dimLabel(old, now, ''), '');
   assert.strictEqual(Rail.dimLabel(plain, now, ''), '');
-  assert.strictEqual(Rail.dimLabel(hidden, now, 'h'), '');
+  assert.strictEqual(Rail.dimLabel(hidden, now, 'h'), 'Hidden');
+  assert.strictEqual(Rail.dimLabel(old, now, 'o'), '');
 });
 
 test('compareConversations puts pinned conversations first, then newest activity', () => {

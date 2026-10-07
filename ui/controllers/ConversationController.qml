@@ -126,6 +126,15 @@ Item {
     if (root.listController) root.listController.selectId(conversation.id);
   }
 
+  // closeIfOpen closes the open conversation if it is id: used when the
+  // list reports id just folded out of the standard view, so the pane
+  // goes back to the empty state instead of following the list's own
+  // reselect onto a neighbour, which would mark that neighbour read as a
+  // side effect of hiding or archiving this one.
+  function closeIfOpen(id: string): void {
+    if (root.activeId === id) root.close();
+  }
+
   // close leaves the open conversation: tells the helper no one is
   // looking, and switches the pane back to the list.
   function close(): void {
