@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 
@@ -51,6 +52,11 @@ type fakeDevice struct {
 	markReadCalls []markReadCall
 	eventHandler  func(evt any)
 
+	// duringConnect holds events connect delivers before it returns, the
+	// way WhatsApp sends history and offline messages as soon as a
+	// session connects.
+	duringConnect []any
+
 	// groupNames, groupErr and groupCalls script and record groupName,
 	// which history.go and live.go call to resolve a group's name.
 	groupNames map[string]string
@@ -70,6 +76,13 @@ type fakeDevice struct {
 	uploadResp  whatsmeow.UploadResponse
 	uploadErr   error
 	uploadCalls []uploadCall
+
+	// appStateErr and appStateBlocks script sendAppState, which
+	// organize_test.go drives to check pin and archive changes without
+	// reaching WhatsApp's servers; appStatePatches records what was sent.
+	appStateErr     error
+	appStateBlocks  bool
+	appStatePatches []appstate.PatchInfo
 }
 
 // uploadCall records one call to uploadMedia.
@@ -105,11 +118,14 @@ func newFakeDevice() *fakeDevice {
 func (d *fakeDevice) connect(context.Context) error {
 	d.mu.Lock()
 	d.connects++
-	err, handler, paired := d.connectErr, d.handler, d.paired
+	err, handler, paired, during := d.connectErr, d.handler, d.paired, d.duringConnect
 	d.mu.Unlock()
 
 	if err == nil && paired && handler != nil {
 		handler(statusConnected)
+	}
+	for _, evt := range during {
+		d.fireEvent(evt)
 	}
 
 	return err
@@ -316,21 +332,51 @@ func (d *fakeDevice) uploadMedia(_ context.Context, data []byte, kind mediaKind)
 	return d.uploadResp, nil
 }
 
+// sendAppState records patch and reports appStateErr, or blocks on ctx
+// when appStateBlocks is set, as a real patch that never hears back from
+// the server does.
+func (d *fakeDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
+	d.mu.Lock()
+	d.appStatePatches = append(d.appStatePatches, patch)
+	blocks, err := d.appStateBlocks, d.appStateErr
+	d.mu.Unlock()
+
+	if blocks {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+
+	return err
+}
+
 // connectedTo returns a connector whose Send, MarkRead and event
-// handling act on dev, as if Run had already connected it.
+// handling act on dev, as if Run had already connected it. It carries
+// no media store: a test that needs React or a reply quoted with more
+// than a stanza id uses connectedToWithMedia instead.
 func connectedTo(dev device, sink connector.Sink) *Connector {
 	c := &Connector{account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp}, answers: make(chan answer, 1)}
-	c.connected(dev, sink)
+	c.connected(dev, sink, nil)
 
 	return c
 }
 
-// connectedToWithMedia returns a connector whose Send, FetchMedia and
-// event handling act on dev and media, as if Run had already connected
-// it and opened its media reference store.
-func connectedToWithMedia(dev device, media *mediaStore, sink connector.Sink) *Connector {
-	c := connectedTo(dev, sink)
-	c.setMedia(media)
+// connectedToWithMedia is connectedTo with an in-memory media store
+// wired in too, for a test that reacts to, replies to or fetches a
+// message's attachment and so needs somewhere to save and look up
+// message keys or media references; fetch it back with c.mediaFor() to
+// seed a reference before calling FetchMedia, or to read one back after
+// Send.
+func connectedToWithMedia(t *testing.T, dev device, sink connector.Sink) *Connector {
+	t.Helper()
+
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = media.close() }) // a synctest caller that must close it sooner does so itself
+
+	c := &Connector{account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp}, answers: make(chan answer, 1)}
+	c.connected(dev, sink, media)
 
 	return c
 }

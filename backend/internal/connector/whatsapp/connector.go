@@ -47,7 +47,7 @@ type Connector struct {
 	waiting bool
 	dev     device
 	sink    connector.Sink
-	media   *mediaStore // this run's media reference store; see setMedia
+	media   *mediaStore
 
 	// sent and unread are read and written by send.go and receipts.go:
 	// sent matches a receipt's chat and WhatsApp id back to the local
@@ -66,6 +66,7 @@ var (
 	_ connector.Authenticator  = (*Connector)(nil)
 	_ connector.LogoutOnRemove = (*Connector)(nil)
 	_ connector.MediaFetcher   = (*Connector)(nil)
+	_ connector.Organizer      = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose session is kept in
@@ -109,25 +110,25 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	}
 	defer func() { _ = media.close() }() // same as the session close above
 
-	c.setMedia(media)
-	defer c.clearMedia()
-
 	sink.AccountStatus(ctx, c.account.ID, domain.AccountConnecting, "")
 
 	stopped := make(chan error, 1)
 	unregister := dev.onStatus(func(status string) { c.reportStatus(ctx, sink, status, stopped) })
 	defer unregister()
 
+	// WhatsApp sends history and missed messages as soon as a session
+	// connects, and right after pairing, before connectOrPair returns, so
+	// the handlers listen first or those events are lost for good.
+	unregisterEvents := c.handleEvents(ctx, dev, media, sink)
+	defer unregisterEvents()
+
 	if err := c.connectOrPair(ctx, dev, sink); err != nil {
 		return err
 	}
 	defer dev.disconnect()
 
-	c.connected(dev, sink)
+	c.connected(dev, sink, media)
 	defer c.disconnected()
-
-	unregisterEvents := c.handleEvents(ctx, dev, media, sink)
-	defer unregisterEvents()
 
 	select {
 	case <-ctx.Done():
@@ -206,22 +207,23 @@ func (c *Connector) Logout(ctx context.Context) error {
 	return dev.logOut(ctx)
 }
 
-// connected records the device and sink of a signed-in run, so Send,
-// MarkRead and incoming events have something to act on.
-func (c *Connector) connected(dev device, sink connector.Sink) {
+// connected records the device, sink and media store of a signed-in
+// run, so Send, MarkRead, React and incoming events have something to
+// act on.
+func (c *Connector) connected(dev device, sink connector.Sink, media *mediaStore) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.dev, c.sink = dev, sink
+	c.dev, c.sink, c.media = dev, sink, media
 }
 
-// disconnected forgets the run's device and sink, so Send and MarkRead
-// fail until the account reconnects.
+// disconnected forgets the run's device, sink and media store, so Send
+// and MarkRead fail until the account reconnects.
 func (c *Connector) disconnected() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.dev, c.sink = nil, nil
+	c.dev, c.sink, c.media = nil, nil, nil
 }
 
 // session returns the device and sink of the current run, or
@@ -237,35 +239,15 @@ func (c *Connector) session() (device, connector.Sink, error) {
 	return c.dev, c.sink, nil
 }
 
-// setMedia records this run's media reference store, for FetchMedia and
-// outgoing sends to save and look up references in.
-func (c *Connector) setMedia(media *mediaStore) {
+// mediaFor returns the media store of the current run, or nil when this
+// connector was never given one, such as a test built without one; a
+// nil result means a reply or reaction can still be sent, just without
+// anything saved locally to improve on the plain stanza-id fallback.
+func (c *Connector) mediaFor() *mediaStore {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.media = media
-}
-
-// clearMedia forgets the run's media reference store, so FetchMedia and
-// outgoing sends stop using it once Run ends.
-func (c *Connector) clearMedia() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.media = nil
-}
-
-// currentMedia returns the media reference store of the current run,
-// or errNotConnected when no run has one open.
-func (c *Connector) currentMedia() (*mediaStore, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.media == nil {
-		return nil, errNotConnected
-	}
-
-	return c.media, nil
+	return c.media
 }
 
 // startRun records that this connector is running, refusing a second

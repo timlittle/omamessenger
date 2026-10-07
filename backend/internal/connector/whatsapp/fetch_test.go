@@ -1,8 +1,9 @@
 package whatsapp
 
-// FetchMedia is driven through a fake device and a real, temporary
-// media store, because the fake is the only way to see what Connector
-// asked whatsmeow to download without reaching WhatsApp's servers.
+// FetchMedia is driven through a fake device and the in-memory media
+// store connectedToWithMedia wires in, because the fake is the only way
+// to see what Connector asked whatsmeow to download without reaching
+// WhatsApp's servers.
 
 import (
 	"context"
@@ -23,16 +24,15 @@ func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 
 	dev := newFakeDevice()
 	dev.downloadData = []byte("decrypted bytes")
-	media := newTestMediaStore(t)
+	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
 	ref := mediaRef{
 		Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"),
 		FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 16, Mimetype: "image/jpeg",
 	}
-	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
 		t.Fatal(err)
 	}
 
-	c := connectedToWithMedia(dev, media, &connectortest.Sink{})
 	path := filepath.Join(t.TempDir(), "out.jpg")
 	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err != nil {
 		t.Fatal(err)
@@ -57,8 +57,7 @@ func TestFetchMedia_ReportsNotFoundForAnUnsavedMessage(t *testing.T) {
 	t.Parallel()
 
 	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	c := connectedToWithMedia(dev, media, &connectortest.Sink{})
+	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
 
 	err := c.FetchMedia(t.Context(), directChat, "missing", filepath.Join(t.TempDir(), "x"))
 	if !errors.Is(err, domain.ErrNotFound) {
@@ -85,12 +84,11 @@ func TestFetchMedia_WrapsADownloadError(t *testing.T) {
 
 	dev := newFakeDevice()
 	dev.downloadErr = errors.New("media server unavailable")
-	media := newTestMediaStore(t)
-	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
+	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
 		t.Fatal(err)
 	}
 
-	c := connectedToWithMedia(dev, media, &connectortest.Sink{})
 	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"))
 	if !errors.Is(err, dev.downloadErr) {
 		t.Errorf("FetchMedia = %v, want it to wrap the device's error", err)
@@ -101,11 +99,11 @@ func TestFetchMedia_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev := newFakeDevice()
 		dev.downloadBlocks = true
-		media := newTestMediaStore(t)
-		if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+		c := connectedToWithMedia(t, dev, &connectortest.Sink{})
+		defer func() { _ = c.mediaFor().close() }() // stop its connection-opener goroutine before the bubble ends
+		if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
 			t.Fatal(err)
 		}
-		c := connectedToWithMedia(dev, media, &connectortest.Sink{})
 
 		done := make(chan error, 1)
 		path := filepath.Join(t.TempDir(), "x")

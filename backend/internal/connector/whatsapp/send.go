@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -39,7 +40,8 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 
-	msg, err := buildOutgoing(sendCtx, dev, m)
+	target := sendTarget{media: c.mediaFor(), conversationRemoteID: conv.RemoteID, chat: jid}
+	msg, err := buildOutgoing(sendCtx, dev, target, m)
 	if err != nil {
 		return err
 	}
@@ -49,37 +51,52 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 		return fmt.Errorf("whatsapp: send: %w", err)
 	}
 
-	c.saveOutgoingRef(ctx, conv.RemoteID, string(id), msg)
+	saveOutgoingRef(sendCtx, target.media, conv.RemoteID, string(id), msg)
+	saveMessageKey(sendCtx, target.media, conv.RemoteID, string(id), messageKey{fromMe: true})
 	c.trackSent(sentKey(conv.RemoteID, string(id)), m.ID, expectedRecipients(conv))
 	sink.OutgoingStatus(ctx, m.ID, string(id), domain.StatusSent)
 
 	return nil
 }
 
+// sendTarget bundles what building an outgoing message needs besides
+// ctx, dev and the message itself: the media store to save a
+// reference or look up a quoted message's key in, the conversation's
+// remote id, and the chat to send to. Bundling these keeps
+// buildOutgoing and uploadAttachment within the same argument count a
+// plain text message's own building already uses (see reply.go's
+// outgoingMessage).
+type sendTarget struct {
+	media                *mediaStore
+	conversationRemoteID string
+	chat                 types.JID
+}
+
 // buildOutgoing builds m's message proto: a plain or quoted-reply text
-// message, or an uploaded attachment.
-func buildOutgoing(ctx context.Context, dev device, m domain.Message) (*waE2E.Message, error) {
+// message (see reply.go's outgoingMessage), or an uploaded attachment.
+func buildOutgoing(ctx context.Context, dev device, target sendTarget, m domain.Message) (*waE2E.Message, error) {
 	if m.Media == nil {
-		return outgoingTextMessage(m), nil
+		return outgoingMessage(ctx, target.media, target.conversationRemoteID, target.chat, m), nil
 	}
 
-	return uploadAttachment(ctx, dev, m)
+	return uploadAttachment(ctx, dev, target, m)
 }
 
 // saveOutgoingRef remembers an outgoing attachment's reference under
 // the wire id WhatsApp gave it, so FetchMedia can download this
 // account's own sent copy back later; msg carries nothing to save when
-// m had no attachment. Saving is best effort: a failed save only means
-// this one message cannot be re-downloaded later, which matters far
-// less than the message already being on its way.
-func (c *Connector) saveOutgoingRef(ctx context.Context, conversationRemoteID, messageRemoteID string, msg *waE2E.Message) {
-	ref, ok := downloadRef(msg)
-	if !ok {
+// m had no attachment. Saving is best effort, the same as
+// saveMessageKey: a failed save, or a nil media store such as a test
+// connector built without one, only means this one message cannot be
+// re-downloaded later, which matters far less than the message already
+// being on its way.
+func saveOutgoingRef(ctx context.Context, media *mediaStore, conversationRemoteID, messageRemoteID string, msg *waE2E.Message) {
+	if media == nil {
 		return
 	}
 
-	media, err := c.currentMedia()
-	if err != nil {
+	ref, ok := downloadRef(msg)
+	if !ok {
 		return
 	}
 
@@ -103,34 +120,6 @@ func expectedRecipients(conv domain.Conversation) int {
 	}
 
 	return 1
-}
-
-// outgoingTextMessage builds the WhatsApp message proto for a text-only
-// m: its text alone, or, when it replies to another message, an
-// extended text message quoting that message's stanza id.
-func outgoingTextMessage(m domain.Message) *waE2E.Message {
-	ctxInfo := replyContext(m.ReplyTo)
-	if ctxInfo == nil {
-		return &waE2E.Message{Conversation: strp(m.Text)}
-	}
-
-	return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strp(m.Text), ContextInfo: ctxInfo}}
-}
-
-// replyContext is the quoting WhatsApp needs for a message that
-// replies to another, by stanza id alone, or nil when it does not
-// reply to anything. The stored Reply keeps only the quoted message's
-// remote id and a display name (see domain.Reply), not its sender's
-// JID or its own WhatsApp content, so this cannot fill in
-// ContextInfo's Participant or QuotedMessage. WhatsApp still renders
-// the quote correctly from the id alone, since the recipient's own
-// client already holds a copy of the quoted message.
-func replyContext(reply *domain.Reply) *waE2E.ContextInfo {
-	if reply == nil || reply.RemoteID == "" {
-		return nil
-	}
-
-	return &waE2E.ContextInfo{StanzaID: strp(reply.RemoteID)}
 }
 
 // wireCaption is m's text to send as its attachment's caption: empty

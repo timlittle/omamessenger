@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -89,6 +90,10 @@ type device interface {
 	// for an attachment of kind, returning what a message proto needs to
 	// point at the result.
 	uploadMedia(ctx context.Context, data []byte, kind mediaKind) (whatsmeow.UploadResponse, error)
+
+	// sendAppState sends an app-state patch, such as a pin or archive
+	// change, so WhatsApp's own record of the chat agrees with it.
+	sendAppState(ctx context.Context, patch appstate.PatchInfo) error
 }
 
 // pairClientType and pairDisplayName name this companion to WhatsApp when
@@ -242,6 +247,11 @@ func (d *waDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, err
 // an attachment of kind.
 func (d *waDevice) uploadMedia(ctx context.Context, data []byte, kind mediaKind) (whatsmeow.UploadResponse, error) {
 	return d.cli.Upload(ctx, data, appInfo(kind))
+}
+
+// sendAppState sends patch with WhatsApp.
+func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
+	return d.cli.SendAppState(ctx, patch)
 }
 
 // Status values device reports through onStatus. statusStopped covers

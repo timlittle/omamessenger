@@ -31,9 +31,9 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return err
 	}
 
-	media, err := c.currentMedia()
-	if err != nil {
-		return err
+	media := c.mediaFor()
+	if media == nil {
+		return errNotConnected
 	}
 
 	ref, ok, err := media.get(ctx, conv.RemoteID, messageRemoteID)

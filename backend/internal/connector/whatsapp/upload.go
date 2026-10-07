@@ -40,8 +40,9 @@ const thumbMaxSize = 48
 
 // uploadAttachment uploads m's attachment to WhatsApp's media servers
 // and returns the submessage that carries it, with m's caption and
-// reply quoting.
-func uploadAttachment(ctx context.Context, dev device, m domain.Message) (*waE2E.Message, error) {
+// reply quoting (see reply.go's quoteContext, which this shares with
+// a plain text reply).
+func uploadAttachment(ctx context.Context, dev device, target sendTarget, m domain.Message) (*waE2E.Message, error) {
 	kind, err := attachmentKind(m.Media.Kind)
 	if err != nil {
 		return nil, err
@@ -59,10 +60,22 @@ func uploadAttachment(ctx context.Context, dev device, m domain.Message) (*waE2E
 
 	content := attachmentContent{
 		data: data, mimetype: sniffMimeType(data), fileName: m.Media.FileName,
-		caption: wireCaption(m), ctxInfo: replyContext(m.ReplyTo),
+		caption: wireCaption(m), ctxInfo: attachmentQuoteContext(ctx, target, m.ReplyTo),
 	}
 
 	return attachmentMessage(kind, resp, content), nil
+}
+
+// attachmentQuoteContext is quoteContext, guarded the same way
+// outgoingMessage guards it for plain text: nil when m does not reply
+// to anything, since quoteContext itself assumes a real reply to
+// build a stanza id from.
+func attachmentQuoteContext(ctx context.Context, target sendTarget, reply *domain.Reply) *waE2E.ContextInfo {
+	if reply == nil || reply.RemoteID == "" {
+		return nil
+	}
+
+	return quoteContext(ctx, target.media, target.conversationRemoteID, target.chat, reply)
 }
 
 // attachmentKind says which whatsmeow media type an attachment of

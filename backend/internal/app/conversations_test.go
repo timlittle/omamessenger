@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -161,6 +162,19 @@ func TestSetPinned_ReportsAServiceFailure(t *testing.T) {
 	// The local pin stands even though the service call failed.
 	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || !got.Pinned {
 		t.Errorf("Conversation after a failed SetPinned = %+v, %v; want Pinned true", got, err)
+	}
+}
+
+func TestSetPinned_ReportsAPinLimitAsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.organizer.err = connector.ErrPinLimit
+
+	if _, err := f.commands.SetPinned(ctx, chat.ID, true); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("SetPinned past the service's pin limit = %v, want ErrInvalidInput", err)
 	}
 }
 

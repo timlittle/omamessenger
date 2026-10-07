@@ -1,9 +1,10 @@
 package whatsapp
 
-// Send's attachment path is driven through a fake device and a real,
-// temporary media store, as send_test.go drives plain text, because the
-// fake is the only way to see what Connector asked whatsmeow to upload
-// and send without reaching WhatsApp's servers.
+// Send's attachment path is driven through a fake device and the
+// in-memory media store connectedToWithMedia wires in, as send_test.go
+// drives plain text, because the fake is the only way to see what
+// Connector asked whatsmeow to upload and send without reaching
+// WhatsApp's servers.
 
 import (
 	"bytes"
@@ -55,9 +56,8 @@ func TestSend_UploadsAPhotoWithItsCaptionAndThumbnail(t *testing.T) {
 	dev.uploadResp = whatsmeow.UploadResponse{
 		DirectPath: "/v/new", MediaKey: []byte("key"), FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 20,
 	}
-	media := newTestMediaStore(t)
 	var sink connectortest.Sink
-	c := connectedToWithMedia(dev, media, &sink)
+	c := connectedToWithMedia(t, dev, &sink)
 
 	path := writeAttachment(t, "photo.png", testPNG(t))
 	m := domain.Message{ID: "local-1", Text: "look", Media: &domain.Media{Kind: domain.MediaPhoto, Path: path, FileName: "photo.png"}}
@@ -85,7 +85,7 @@ func TestSend_UploadsAPhotoWithItsCaptionAndThumbnail(t *testing.T) {
 		t.Errorf("events = %q, want local-1 reported sent", sink.Lines())
 	}
 
-	ref, ok, err := media.get(t.Context(), directChat.RemoteID, "wire-1")
+	ref, ok, err := c.mediaFor().get(t.Context(), directChat.RemoteID, "wire-1")
 	if err != nil || !ok || ref.DirectPath != "/v/new" || ref.Kind != mediaKindImage {
 		t.Errorf("saved reference = %+v, %v, %v, want the uploaded reference saved under the wire id", ref, ok, err)
 	}
@@ -97,9 +97,8 @@ func TestSend_UploadsAVideoWithItsCaption(t *testing.T) {
 	dev := newFakeDevice()
 	dev.nextMessageID = "wire-2"
 	dev.uploadResp = whatsmeow.UploadResponse{DirectPath: "/v/video", FileLength: 99}
-	media := newTestMediaStore(t)
 	var sink connectortest.Sink
-	c := connectedToWithMedia(dev, media, &sink)
+	c := connectedToWithMedia(t, dev, &sink)
 
 	path := writeAttachment(t, "clip.mp4", []byte("fake mp4 bytes"))
 	m := domain.Message{
@@ -130,9 +129,8 @@ func TestSend_UploadsADocumentWithItsFileName(t *testing.T) {
 	dev := newFakeDevice()
 	dev.nextMessageID = "wire-3"
 	dev.uploadResp = whatsmeow.UploadResponse{DirectPath: "/v/doc"}
-	media := newTestMediaStore(t)
 	var sink connectortest.Sink
-	c := connectedToWithMedia(dev, media, &sink)
+	c := connectedToWithMedia(t, dev, &sink)
 
 	path := writeAttachment(t, "report.pdf", []byte("%PDF-1.4 fake"))
 	m := domain.Message{ID: "local-3", Text: "see attached", Media: &domain.Media{Kind: domain.MediaFile, Path: path, FileName: "report.pdf"}}
@@ -154,9 +152,8 @@ func TestSend_QuotesAReplyWhenSendingAnAttachment(t *testing.T) {
 	t.Parallel()
 
 	dev := newFakeDevice()
-	media := newTestMediaStore(t)
 	var sink connectortest.Sink
-	c := connectedToWithMedia(dev, media, &sink)
+	c := connectedToWithMedia(t, dev, &sink)
 
 	path := writeAttachment(t, "report.pdf", []byte("fake"))
 	m := domain.Message{
