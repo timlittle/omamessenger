@@ -57,6 +57,8 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 | Ctrl+Q | Quit |
 | Esc | Step back: close the palette, a dialog or account setup, clear the search, leave the composer or the conversation |
 
+The list shows chats from the last month, plus any with unread messages; the line under it, or **Show or hide chats older than a month** in the command palette, shows the rest. Search always looks through every chat.
+
 In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
 
 ## Helper API

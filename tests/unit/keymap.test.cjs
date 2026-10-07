@@ -108,4 +108,5 @@ test('the palette offers commands that have no key, with none shown', () => {
   assert.deepEqual(add, { action: 'account.add', label: 'Add a Telegram account', keys: '' });
   assert.ok(Keymap.commands().some((c) => c.action === 'account.addOwnKeys'));
   assert.ok(Keymap.commands().some((c) => c.action === 'account.remove'));
+  assert.ok(Keymap.commands().some((c) => c.action === 'list.olderChats'));
 });

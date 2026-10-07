@@ -11,6 +11,7 @@ var OWNERS = {
   // ListController: rail filter, search, the visible conversations,
   // selection and unread jump, mute.
   'search.focus': 'list',
+  'list.olderChats': 'list',
   'rail.all': 'list',
   'rail.whatsapp': 'list',
   'rail.telegram': 'list',

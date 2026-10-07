@@ -317,3 +317,17 @@ test('accountDescription names an account by who is signed in when known', () =>
   assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Telegram', detail: 'Signed in as Tim' }), 'Telegram · Signed in as Tim');
   assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Work', detail: '' }), 'Telegram · Work');
 });
+
+test('recent keeps chats active within a month, unread ones and the open one', () => {
+  const day = 24 * 60 * 60 * 1000;
+  const now = 100 * day;
+  const conversations = [
+    { id: 'new', lastActivity: now - 2 * day, unread: 0 },
+    { id: 'old', lastActivity: now - 40 * day, unread: 0 },
+    { id: 'old-unread', lastActivity: now - 400 * day, unread: 2 },
+    { id: 'old-open', lastActivity: now - 400 * day, unread: 0 },
+    { id: 'never', lastActivity: 0, unread: 0 }
+  ];
+
+  assert.deepEqual(Rail.recent(conversations, now, 'old-open').map((c) => c.id), ['new', 'old-unread', 'old-open']);
+});

@@ -214,6 +214,30 @@ Item {
 
         onActivated: id => root._openRow(id)
       }
+
+      // Chats older than a month are hidden until asked for.
+      RowLayout {
+        objectName: "olderChats"
+        Layout.fillWidth: true
+        visible: root.listController.hiddenCount > 0 || (root.listController.showOlder && root.listController.query === "")
+        spacing: Theme.spacing.sm
+
+        Text {
+          Layout.fillWidth: true
+          text: root.listController.showOlder ? "Showing chats older than a month"
+            : root.listController.hiddenCount + (root.listController.hiddenCount === 1 ? " older chat hidden" : " older chats hidden")
+          elide: Text.ElideRight
+          color: Util.alpha(Color.foreground, 0.7)
+          font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
+        }
+
+        Ui.Button {
+          objectName: "olderChatsButton"
+          text: root.listController.showOlder ? "Hide" : "Show"
+          focusable: true
+          onClicked: root.listController.setShowOlder(!root.listController.showOlder)
+        }
+      }
     }
 
     ConversationView {

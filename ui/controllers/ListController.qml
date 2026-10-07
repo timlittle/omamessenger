@@ -44,6 +44,13 @@ Item {
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
+  // showOlder shows chats older than a month, which are hidden by default
+  // unless they are unread or open.
+  property bool showOlder: false
+
+  // hiddenCount is how many chats the month filter hides right now.
+  property int hiddenCount: 0
+
   // _all holds every conversation the helper reported, unfiltered by the
   // rail or a search.
   property var _all: []
@@ -75,7 +82,8 @@ Item {
       "unread.next": () => root._select(Selection.nextUnread(root._visible(), root.selectedId)),
       "unread.prev": () => root._select(Selection.nextUnread(root._visible().slice().reverse(), root.selectedId)),
       "chat.mute": () => root._toggleMute(),
-      "search.focus": () => { root.searchFocused = true; root.focusRequested(); }
+      "search.focus": () => { root.searchFocused = true; root.focusRequested(); },
+      "list.olderChats": () => root.setShowOlder(!root.showOlder)
     };
 
     const handler = handlers[action];
@@ -89,6 +97,13 @@ Item {
     root.query = text;
     root._saveUiState({ query: text });
     root._search();
+  }
+
+  // setShowOlder shows or hides chats older than a month, and remembers it.
+  function setShowOlder(show: bool): void {
+    root.showOlder = show;
+    root._saveUiState({ showOlder: show });
+    root._syncModel();
   }
 
   // clearSearch empties the query and shows the rail-filtered list again.
@@ -128,9 +143,15 @@ Item {
   // _visible returns the conversations the rail filter currently covers,
   // from the search results while a query is active, otherwise the full
   // list.
+  // A search looks through every chat; otherwise chats older than a month
+  // are left out unless showOlder is set.
   function _visible(): var {
-    const source = root.query.length > 0 ? root._searchResults : root._all;
-    return Rail.filter(source, root.railKey);
+    if (root.query.length > 0) return Rail.filter(root._searchResults, root.railKey);
+
+    const all = Rail.filter(root._all, root.railKey);
+    if (root.showOlder) return all;
+
+    return Rail.recent(all, Date.now(), root.service ? root.service.uiState.activeId : "");
   }
 
   // _select moves the list cursor to id and remembers it in uiState.
@@ -214,6 +235,7 @@ Item {
     root.railKey = state.railKey || "all";
     root.selectedId = state.selectedId || "";
     root.query = state.query || "";
+    root.showOlder = state.showOlder || false;
     if (root.service.status === "ready") root._loadAll();
   }
 
@@ -229,6 +251,7 @@ Item {
   // refresh so unread counts and previews stay current.
   function _syncModel(): void {
     const visible = root._visible();
+    root.hiddenCount = root.query.length > 0 || root.showOlder ? 0 : Rail.filter(root._all, root.railKey).length - visible.length;
     const oldIds = [];
     for (let i = 0; i < listModel.count; i++) oldIds.push(listModel.get(i).id);
 

@@ -10,6 +10,10 @@ var SERVICES = [
   { id: 'telegram', label: 'Telegram' }
 ];
 
+// RECENT_MS is how recent a chat's last message must be to show while older
+// chats are hidden: a month.
+var RECENT_MS = 30 * 24 * 60 * 60 * 1000;
+
 // STATUS_RANK orders account statuses from worst to best.
 // An account waiting for sign-in is worst: only the user can fix it.
 var STATUS_RANK = { 'needs-auth': -1, error: 0, connecting: 1, offline: 2, connected: 3 };
@@ -142,4 +146,10 @@ function accountNames(accounts) {
 // entries: exactly the services with more than one account.
 function multiAccountServices(items) {
   return [...new Set(items.filter((i) => i.kind === 'account').map((i) => i.service))];
+}
+
+// recent keeps the conversations active within the last month, plus any
+// with unread messages and the one open as keepId, which must never vanish.
+function recent(conversations, nowMs, keepId) {
+  return conversations.filter((c) => nowMs - c.lastActivity <= RECENT_MS || c.unread > 0 || c.id === keepId);
 }
