@@ -13,6 +13,7 @@ var OWNERS = {
   // selection and unread jump, mute.
   'search.focus': 'list',
   'list.showAll': 'list',
+  'list.unread': 'list',
   'rail.all': 'list',
   'rail.whatsapp': 'list',
   'rail.telegram': 'list',

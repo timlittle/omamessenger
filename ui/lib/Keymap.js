@@ -30,6 +30,12 @@ var BINDINGS = [
   { action: 'palette.commands', keys: ['Ctrl+Slash', 'Ctrl+Shift+Question', 'Ctrl+Shift+P'], contexts: ['global'], label: 'Command palette', hint: true },
   { action: 'palette.conversations', keys: ['Ctrl+K', 'Ctrl+T'], contexts: ['global'], label: 'Jump to conversation', hint: true, command: true },
   { action: 'list.showAll', keys: [], contexts: ['global'], label: 'Show or hide all chats', command: true },
+  // The all-unreads view, like Slack's Ctrl+Shift+A: every unread
+  // conversation across every service and account, overriding the rail
+  // filter rather than narrowing it, the same way Slack's own shows every
+  // workspace's unreads at once. Esc or the shortcut again returns to
+  // whatever the list showed before.
+  { action: 'list.unread', keys: ['Ctrl+Shift+A'], contexts: ['global'], label: 'Show unread conversations', command: true },
   { action: 'search.focus', keys: ['Ctrl+G'], contexts: ['global'], label: 'Search messages', command: true },
   { action: 'chat.new', keys: ['Ctrl+N', 'Ctrl+Shift+K'], contexts: ['global'], label: 'New message', hint: true, command: true },
   { action: 'unread.next', keys: ['Ctrl+J', 'Alt+Shift+Down'], contexts: ['global'], label: 'Next unread conversation', command: true },

@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
+import "../lib/Keymap.js" as Keymap
 
 // The search field, conversation list and its show-all fold, plus the
 // empty state shown before any account is added. Takes its data through
@@ -30,6 +31,9 @@ ColumnLayout {
   property bool showAll: false
   // hiddenCount is how many chats the standard list hides right now.
   property int hiddenCount: 0
+  // unreadView is true while the all-unreads view is showing, overriding
+  // the rail filter.
+  property bool unreadView: false
   // routeKey is forwarded to the search field; see Composer.qml for why
   // a key router intercepts through a function property, not a signal.
   property var routeKey: null
@@ -47,6 +51,9 @@ ColumnLayout {
   // showAllToggled asks the caller to flip whether every folded-away chat
   // (older, hidden or archived) shows.
   signal showAllToggled()
+  // unreadViewLeft asks the caller to turn off the all-unreads view, from
+  // the header's own button; the shortcut and Esc reach the same effect.
+  signal unreadViewLeft()
 
   spacing: Theme.spacing.sm
 
@@ -87,6 +94,31 @@ ColumnLayout {
     }
   }
 
+  // The "Unread" header: shown while the all-unreads view (Ctrl+Shift+A)
+  // overrides the rail filter below. Bold, accent-coloured text pairs with
+  // the "Leave" button's own label, so the state never relies on colour
+  // alone.
+  RowLayout {
+    objectName: "unreadHeaderRow"
+    Layout.fillWidth: true
+    visible: root.unreadView
+    spacing: Theme.spacing.sm
+
+    Text {
+      Layout.fillWidth: true
+      text: "Unread"
+      color: Color.accent
+      font { family: Theme.font.family; pixelSize: Theme.font.subtitle; weight: Font.DemiBold }
+    }
+
+    Ui.Button {
+      objectName: "leaveUnreadViewButton"
+      text: "Leave (" + Keymap.keyFor("list.unread") + ")"
+      focusable: true
+      onClicked: root.unreadViewLeft()
+    }
+  }
+
   ConversationList {
     id: list
     Layout.fillWidth: true
@@ -98,6 +130,7 @@ ColumnLayout {
     nowMs: root.nowMs
     accountNames: root.accountNames
     multiAccountServices: root.multiAccountServices
+    unreadView: root.unreadView
 
     onActivated: id => root.activated(id)
   }
@@ -107,7 +140,7 @@ ColumnLayout {
   RowLayout {
     objectName: "showAllRow"
     Layout.fillWidth: true
-    visible: root.hiddenCount > 0 || (root.showAll && root.query === "")
+    visible: !root.unreadView && (root.hiddenCount > 0 || (root.showAll && root.query === ""))
     spacing: Theme.spacing.sm
 
     Text {

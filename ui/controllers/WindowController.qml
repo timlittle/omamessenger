@@ -67,14 +67,16 @@ QtObject {
   // paletteResults are the matching commands, conversations or links,
   // best first.
   readonly property var paletteResults: root.paletteMode === "conversations"
-    ? Palette.search(root.listController ? root.listController.all : [], root.paletteQuery, (c) => c.title)
+    ? Palette.search(root.listController ? Palette.conversationOrder(root.listController.all) : [], root.paletteQuery, (c) => c.title)
     : root.paletteMode === "links"
     ? Palette.search(root.linkChoices.map((url) => ({ url })), root.paletteQuery, (c) => c.url)
     : Palette.search(Keymap.commands(), root.paletteQuery, (c) => c.label)
 
-  // paletteItems are paletteResults as rows to show: {label, detail, keys}.
+  // paletteItems are paletteResults as rows to show: {label, detail, keys,
+  // unread}. Conversations carry their unread count so PaletteRow can show
+  // the same badge the list does.
   readonly property var paletteItems: root.paletteMode === "conversations"
-    ? root.paletteResults.map((c) => ({ label: c.title, detail: Rail.serviceLabel(c.service, root.service ? root.service.services : []), keys: "" }))
+    ? root.paletteResults.map((c) => ({ label: c.title, detail: Rail.serviceLabel(c.service, root.service ? root.service.services : []), keys: "", unread: c.unread ?? 0 }))
     : root.paletteMode === "links"
     ? root.paletteResults.map((c) => ({ label: "Open link: " + c.url, detail: "", keys: "" }))
     : root.paletteResults
@@ -246,6 +248,7 @@ QtObject {
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
+      "leave-unread-view": () => { if (root.listController) root.listController.setUnreadView(false); },
       "clear-attachment": () => { if (root.composerController) root.composerController.removeAttachment(); },
       "cancel-reply": () => { if (root.composerController) root.composerController.cancelReply(); },
       "leave-compose": () => root._leaveCompose(),
@@ -277,7 +280,8 @@ QtObject {
       replying: root.composerController ? root.composerController.replying : false,
       pane: state.pane,
       activeId: state.activeId,
-      query: root.listController ? root.listController.query : ""
+      query: root.listController ? root.listController.query : "",
+      unreadView: root.listController ? root.listController.unreadView : false
     };
   }
 }

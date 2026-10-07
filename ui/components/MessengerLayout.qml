@@ -190,12 +190,14 @@ Item {
       showEmptyState: root.service !== null && root.service.status === "ready" && root.service.accounts.length === 0
       showAll: root.listController.showAll
       hiddenCount: root.listController.hiddenCount
+      unreadView: root.listController.unreadView
       routeKey: root.routeKey
 
       onQueryEdited: text => root.listController.setQuery(text)
       onActivated: id => root._openRow(id)
       onAddAccountRequested: root.accountController.begin()
       onShowAllToggled: root.listController.setShowAll(!root.listController.showAll)
+      onUnreadViewLeft: root.listController.setUnreadView(false)
     }
 
     ConversationView {

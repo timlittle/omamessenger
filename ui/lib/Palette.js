@@ -20,6 +20,22 @@ function search(items, query, textOf) {
     .map((entry) => entry.item);
 }
 
+// conversationOrder sorts conversations the way Ctrl+K lists them before a
+// query narrows them: every unread one first, most recently active within
+// that group, then the rest by recency. search()'s own tie-break keeps the
+// original index order for equally-scored matches, so sorting into this
+// order first keeps unread chats grouped first among the matches too, not
+// just in the unfiltered list.
+function conversationOrder(conversations) {
+  return (conversations ?? []).slice().sort((a, b) => {
+    const unreadA = (a.unread ?? 0) > 0;
+    const unreadB = (b.unread ?? 0) > 0;
+    if (unreadA !== unreadB) return unreadA ? -1 : 1;
+
+    return (b.lastActivity ?? 0) - (a.lastActivity ?? 0);
+  });
+}
+
 // score rates how well text matches wanted, or returns 0 when the letters
 // do not all appear in order. Each matched letter scores 1, plus 3 at the
 // start of a word and 2 when it follows the previous match directly. Text

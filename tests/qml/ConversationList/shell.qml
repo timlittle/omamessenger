@@ -1,8 +1,9 @@
 // Checks the conversation list: a long title elides within the row, an
 // unread row's title is bold, a pinned row shows a pin mark and an
 // unpinned one does not, a dimmed row (shown only because show-all is on)
-// is drawn with reduced opacity and a "Hidden" label, both empty states
-// show the right text, clicking a row emits activated() with its id, and
+// is drawn with reduced opacity and a "Hidden" label, every empty state
+// shows the right text, including the all-unreads view's own wording,
+// clicking a row emits activated() with its id, and
 // a row ListController keeps in place across a conversation.updated event
 // (reordering it, rather than tearing the row down and redrawing it) still
 // shows its pin and mute marks as soon as they change, not just on first
@@ -123,9 +124,20 @@ ShellRoot {
     }
 
     ConversationList {
+      id: unreadEmptyList
+      x: 0
+      y: Style.space(480)
+      width: Style.space(300)
+      height: Style.space(80)
+      model: []
+      query: ""
+      unreadView: true
+    }
+
+    ConversationList {
       id: liveList
       x: 0
-      y: Style.space(490)
+      y: Style.space(580)
       width: Style.space(300)
       height: Style.space(210)
       model: liveController.model
@@ -218,6 +230,11 @@ ShellRoot {
     if (!queryEmpty || !queryEmpty.visible || queryEmpty.text.indexOf("ticket") < 0)
       return Check.fail("empty state for a search query is wrong: "
         + (queryEmpty ? queryEmpty.text : "missing"));
+
+    const unreadEmpty = Check.find(unreadEmptyList, "emptyState");
+    if (!unreadEmpty || !unreadEmpty.visible || unreadEmpty.text.indexOf("No unread") < 0 || unreadEmpty.text.indexOf("Esc") < 0)
+      return Check.fail("empty state for the all-unreads view is wrong: "
+        + (unreadEmpty ? unreadEmpty.text : "missing"));
 
     const mutedRow = Check.find(list, "row-c2");
     if (!mutedRow)

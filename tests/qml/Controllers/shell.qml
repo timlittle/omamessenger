@@ -340,6 +340,13 @@ ShellRoot {
     windowController.run("escape");
     if (conversationController.activeId !== "") return Check.fail("escape did not close the open conversation");
 
+    // The all-unreads view is the last thing escape undoes before it asks
+    // to close the window.
+    listController.run("list.unread");
+    windowController.run("escape");
+    if (listController.unreadView) return Check.fail("escape did not leave the all-unreads view");
+    if (windowController.confirmingClose) return Check.fail("escape asked to close instead of just leaving the unread view");
+
     // With nothing left to undo, Escape asks before closing; a second
     // Escape cancels, and choosing to keep it in the background hides it.
     windowController.run("escape");

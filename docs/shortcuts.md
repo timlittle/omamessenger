@@ -11,13 +11,14 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Ctrl+G | Search messages |
 | Ctrl+N or Ctrl+Shift+K | New message |
 | Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (opens it, even while writing) |
+| Ctrl+Shift+A | Show only unread conversations, across every service and account (Esc or the same shortcut returns to the previous list) |
 | Alt+↓ / ↑ | Next / previous conversation |
 | Ctrl+0 / 1 / 2 | All / WhatsApp / Telegram |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
 | Ctrl+W | Close the window (asks whether to keep running) |
 | Ctrl+Q | Quit |
 | Ctrl+R | Retry installing the helper, if it failed to install |
-| Esc | Step back: close the palette, a dialog, account setup or the photo viewer, clear the search, leave the composer or the conversation |
+| Esc | Step back: close the palette, a dialog, account setup or the photo viewer, clear the search, leave the composer or the conversation, or leave the unread view |
 
 ## Conversation list
 
@@ -28,6 +29,8 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | m | Mute / unmute |
 
 Pin, archive and hide are in the command palette, and are local to this computer only.
+
+Ctrl+Shift+A shows the "Unread" view in place of the usual list: every unread conversation across every service and account, overriding whichever rail filter was active rather than narrowing it, the way Slack's own all-unreads view does. Opening a chat from it and reading it keeps that chat visible until you leave it or open another, so it never disappears from under the cursor. With nothing unread, it says "No unread conversations · Esc to leave".
 
 ## Open conversation
 

@@ -513,3 +513,27 @@ test('escapeAction closes the delete question before the dialog beneath it, but 
   assert.strictEqual(Navigation.escapeAction({ deleteConfirmOpen: true, dialogOpen: true }), 'close-delete-confirm');
   assert.strictEqual(Navigation.escapeAction({ deleteConfirmOpen: true, reactionPickerOpen: true }), 'close-reaction-picker');
 });
+
+test('escapeAction: leave-unread-view when nothing else is open', () => {
+  const state = { pane: 'list', activeId: '', query: '', unreadView: true };
+
+  assert.strictEqual(Navigation.escapeAction(state), 'leave-unread-view');
+});
+
+test('escapeAction: closing the conversation opened from the unread view wins over leaving the view', () => {
+  const state = { pane: 'conversation', activeId: 'c1', query: '', unreadView: true };
+
+  assert.strictEqual(Navigation.escapeAction(state), 'close-conversation');
+});
+
+test('escapeAction: clearing a query typed while the unread view is on wins over leaving the view', () => {
+  const state = { pane: 'list', activeId: '', query: 'abc', unreadView: true };
+
+  assert.strictEqual(Navigation.escapeAction(state), 'clear-search');
+});
+
+test('escapeAction: hide-window once the unread view is already off', () => {
+  const state = { pane: 'list', activeId: '', query: '', unreadView: false };
+
+  assert.strictEqual(Navigation.escapeAction(state), 'hide-window');
+});

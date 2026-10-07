@@ -4,9 +4,12 @@
 // asked to show them all, dims and labels those chats once shown, orders
 // pinned chats first, a late reply for an earlier search does not replace
 // the results for the query typed last, since the helper may answer out
-// of order, and hiding the open conversation drops it from the standard
-// list at once, moving the highlight to its neighbour and closing the
-// pane rather than opening the neighbour and marking it read.
+// of order, hiding the open conversation drops it from the standard list
+// at once, moving the highlight to its neighbour and closing the pane
+// rather than opening the neighbour and marking it read, and the
+// all-unreads view overrides the rail filter with every unread, non-muted
+// chat across every service, keeps the one just read visible while it is
+// still open, and drops it the moment the user moves on to another chat.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -139,6 +142,41 @@ ShellRoot {
     listController: foldList
   }
 
+  // unreadService backs the all-unreads view scenario: chats spread across
+  // both services, one muted and unread (which the view excludes, matching
+  // the rail's own unread badge), and the rail filter deliberately narrowed
+  // to one service throughout, since the view must override it rather than
+  // narrow it further.
+  QtObject {
+    id: unreadService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "service:whatsapp", selectedId: "", activeId: "", query: "", drafts: {} })
+    // Listed already in the order the real helper's conversations.list
+    // guarantees (newest activity first), the same convention the ordered
+    // service above follows, since ListController's own sort (triggered by
+    // the conversation.updated event below) would otherwise reorder it out
+    // from under a naively-ordered fixture.
+    property var conversations: [
+      { id: "u2", title: "TG Unread Newer", service: "telegram", lastActivity: Date.now(), unread: 1, muted: false, pinned: false, archived: false, hidden: false },
+      { id: "u4", title: "WA Read", service: "whatsapp", lastActivity: Date.now() - 100, unread: 0, muted: false, pinned: false, archived: false, hidden: false },
+      { id: "u3", title: "TG Muted Unread", service: "telegram", lastActivity: Date.now() - 500, unread: 5, muted: true, pinned: false, archived: false, hidden: false },
+      { id: "u1", title: "WA Unread", service: "whatsapp", lastActivity: Date.now() - 1000, unread: 2, muted: false, pinned: false, archived: false, hidden: false }
+    ]
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") callback(null, unreadService.conversations.map((c) => Object.assign({}, c)));
+    }
+  }
+
+  ListController {
+    id: unreadList
+    service: unreadService
+  }
+
   Timer {
     running: true
     interval: 0
@@ -261,6 +299,65 @@ ShellRoot {
     if (JSON.stringify(idsAfter) !== '["f1"]' || foldList.selectedId !== "f1") {
       Check.fail("hiding the last row did not fall back to the previous one: ids "
         + JSON.stringify(idsAfter) + ", selected " + foldList.selectedId);
+      return;
+    }
+
+    root.checkUnreadView();
+  }
+
+  // checkUnreadView drives the all-unreads view against unreadList: it
+  // overrides the rail filter (left narrowed to "service:whatsapp" the
+  // whole time) rather than narrowing it further, excludes a muted chat
+  // the same way the rail's own unread badge does, orders by most recent
+  // activity, keeps the chat just read visible while it is still the one
+  // open, drops it the moment the user moves on to another, and leaves the
+  // view exactly where the rail filter had been.
+  function checkUnreadView(): void {
+    const idsBefore = [];
+    for (let i = 0; i < unreadList.model.count; i++) idsBefore.push(unreadList.model.get(i).id);
+    if (JSON.stringify(idsBefore) !== '["u4","u1"]') {
+      Check.fail("setup: the whatsapp rail filter should show u4 and u1 before the unread view is on, got "
+        + JSON.stringify(idsBefore));
+      return;
+    }
+
+    unreadList.run("list.unread");
+    const unreadIds = [];
+    for (let i = 0; i < unreadList.model.count; i++) unreadIds.push(unreadList.model.get(i).id);
+    if (JSON.stringify(unreadIds) !== '["u2","u1"]') {
+      Check.fail("the unread view did not override the rail filter with every unread, non-muted chat newest first: "
+        + JSON.stringify(unreadIds));
+      return;
+    }
+
+    // Opening u2 from the view and reading it (its unread count drops to
+    // zero) must not yank it out from under the cursor while it is still
+    // the one open.
+    unreadService.uiState = Object.assign({}, unreadService.uiState, { activeId: "u2" });
+    const u2 = unreadService.conversations.find((c) => c.id === "u2");
+    unreadService.event("conversation.updated", Object.assign({}, u2, { unread: 0 }));
+    const afterRead = [];
+    for (let i = 0; i < unreadList.model.count; i++) afterRead.push(unreadList.model.get(i).id);
+    if (JSON.stringify(afterRead) !== '["u2","u1"]') {
+      Check.fail("reading the open chat dropped it from the unread view before it was left: " + JSON.stringify(afterRead));
+      return;
+    }
+
+    // Moving on to a different chat drops the now-read one at once.
+    unreadService.uiState = Object.assign({}, unreadService.uiState, { activeId: "u1" });
+    unreadService.event("unread.changed", {});
+    const afterMoveOn = [];
+    for (let i = 0; i < unreadList.model.count; i++) afterMoveOn.push(unreadList.model.get(i).id);
+    if (JSON.stringify(afterMoveOn) !== '["u1"]') {
+      Check.fail("moving on to another chat did not drop the now-read one from the unread view: " + JSON.stringify(afterMoveOn));
+      return;
+    }
+
+    unreadList.run("list.unread");
+    const afterToggleOff = [];
+    for (let i = 0; i < unreadList.model.count; i++) afterToggleOff.push(unreadList.model.get(i).id);
+    if (JSON.stringify(afterToggleOff) !== '["u4","u1"]') {
+      Check.fail("toggling the unread view off did not return to the previous rail-filtered list: " + JSON.stringify(afterToggleOff));
       return;
     }
 

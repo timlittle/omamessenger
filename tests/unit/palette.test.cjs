@@ -41,3 +41,44 @@ test('a title containing the whole query beats one matching letter by letter', (
 
   assert.deepEqual(ranked, ['Sam (spotty signal)', 'Saved Messages']);
 });
+
+test('conversationOrder: puts every unread conversation ahead of read ones', () => {
+  const conversations = [
+    { id: 'read-new', unread: 0, lastActivity: 300 },
+    { id: 'unread-old', unread: 2, lastActivity: 100 },
+    { id: 'read-old', unread: 0, lastActivity: 50 },
+    { id: 'unread-new', unread: 1, lastActivity: 200 }
+  ];
+
+  const order = Palette.conversationOrder(conversations).map((c) => c.id);
+
+  assert.deepEqual(order, ['unread-new', 'unread-old', 'read-new', 'read-old']);
+});
+
+test('conversationOrder: orders each group by most recent activity first', () => {
+  const unread = [
+    { id: 'u1', unread: 1, lastActivity: 100 },
+    { id: 'u2', unread: 3, lastActivity: 300 }
+  ];
+  const read = [
+    { id: 'r1', unread: 0, lastActivity: 10 },
+    { id: 'r2', unread: 0, lastActivity: 20 }
+  ];
+
+  assert.deepEqual(Palette.conversationOrder(unread).map((c) => c.id), ['u2', 'u1']);
+  assert.deepEqual(Palette.conversationOrder(read).map((c) => c.id), ['r2', 'r1']);
+});
+
+test('conversationOrder: does not mutate its input', () => {
+  const conversations = [{ id: 'a', unread: 0, lastActivity: 1 }, { id: 'b', unread: 1, lastActivity: 2 }];
+  const copy = conversations.slice();
+
+  Palette.conversationOrder(conversations);
+
+  assert.deepEqual(conversations, copy);
+});
+
+test('conversationOrder: handles null or undefined input', () => {
+  assert.deepEqual(Palette.conversationOrder(null), []);
+  assert.deepEqual(Palette.conversationOrder(undefined), []);
+});

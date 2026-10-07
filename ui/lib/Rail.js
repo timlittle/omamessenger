@@ -197,6 +197,31 @@ function dimLabel(c, nowMs, keepId) {
   return '';
 }
 
+// isUnreadVisible reports whether a conversation belongs in the all-unreads
+// view (Ctrl+Shift+A): unread and not muted, matching what the rail's own
+// badge already counts (see unreadTotal), and not archived or hidden, the
+// same exclusions the standard list applies. The conversation currently
+// open as keepId is the one exception: it stays once reading it drops its
+// unread count to zero, so it does not vanish under the cursor, until the
+// user leaves it or opens another, which is why a caller passes the open
+// conversation's id here the same way Rail.standard already does.
+function isUnreadVisible(c, keepId) {
+  if (c.archived || c.hidden) return false;
+  if (c.id === keepId) return true;
+
+  return !c.muted && (c.unread ?? 0) > 0;
+}
+
+// unreadConversations returns the conversations the all-unreads view shows,
+// across every service and account, most recently active first; see
+// isUnreadVisible for which ones qualify.
+function unreadConversations(conversations, keepId) {
+  return (conversations ?? [])
+    .filter((c) => isUnreadVisible(c, keepId))
+    .slice()
+    .sort((a, b) => b.lastActivity - a.lastActivity);
+}
+
 // compareConversations orders conversations the way the list shows them:
 // pinned ones first, then newest activity first. Pass to Array.sort or
 // ListSync.upsertById.

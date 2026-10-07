@@ -49,6 +49,7 @@ Choose **Add an account** in the window or the command palette. Scan the QR code
 | --- | --- |
 | Ctrl+/ | Command palette |
 | Ctrl+K | Jump to a conversation |
+| Ctrl+Shift+A | Show unread conversations |
 | Ctrl+N | New message |
 | Ctrl+G | Search messages |
 | Enter | Send (while writing) |

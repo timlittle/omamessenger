@@ -27,10 +27,10 @@ function keyContext(state) {
 
 // escapeAction returns what Escape does: it undoes the innermost thing
 // first (account setup, the photo viewer, palette, the reaction picker, the
-// delete question, dialog, search, composer, open conversation, query) and
-// hides the window only when there is nothing left to undo. Inside the
-// composer itself the order is: remove a pending attachment, then cancel a
-// reply in progress, then leave the composer.
+// delete question, dialog, search, composer, open conversation, query, the
+// all-unreads view) and hides the window only when there is nothing left to
+// undo. Inside the composer itself the order is: remove a pending
+// attachment, then cancel a reply in progress, then leave the composer.
 function escapeAction(state) {
   if (state.confirmOpen) return 'cancel-close';
   if (state.setupOpen) return 'close-setup';
@@ -56,6 +56,10 @@ function escapeAction(state) {
 
   if (state.query) {
     return 'clear-search';
+  }
+
+  if (state.unreadView) {
+    return 'leave-unread-view';
   }
 
   return 'hide-window';

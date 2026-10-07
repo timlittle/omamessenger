@@ -47,6 +47,12 @@ Item {
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
     }
 
+    // A conversation row's own unread count, the same pill the list shows.
+    UnreadBadge {
+      objectName: "unreadBadge"
+      count: root.item.unread ?? 0
+    }
+
     Text {
       visible: text !== ""
       text: root.item.keys ?? ""

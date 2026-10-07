@@ -49,6 +49,7 @@ const MOUSE_ACTIONS = {
   'ConversationRow click (open a chat)': 'chat.open',
   'ListColumn "Add an account" button (empty state)': 'account.add',
   'ListColumn "Show all / Show fewer" button': 'list.showAll',
+  'ListColumn unread-view "Leave" button': 'list.unread', // the shortcut toggles the same view; Esc also leaves it
   'MessageHoverToolbar "+" button (react)': 'message.react',
   'MessageHoverToolbar reply button': 'message.reply',
   'ReactionChips chip click (toggle own reaction)': 'message.react', // the picker's common emoji can reproduce the same toggle

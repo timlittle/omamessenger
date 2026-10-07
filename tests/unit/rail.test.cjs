@@ -434,6 +434,56 @@ test('dimLabel names hidden or archived even for the open chat, and is blank for
   assert.strictEqual(Rail.dimLabel(old, now, 'o'), '');
 });
 
+test('isUnreadVisible: true for an unread, non-muted conversation that is not archived or hidden', () => {
+  const c = { id: 'c1', unread: 2, muted: false, archived: false, hidden: false };
+
+  assert.strictEqual(Rail.isUnreadVisible(c, ''), true);
+});
+
+test('isUnreadVisible: false for a read conversation, unless it is the one kept open', () => {
+  const c = { id: 'c1', unread: 0, muted: false, archived: false, hidden: false };
+
+  assert.strictEqual(Rail.isUnreadVisible(c, ''), false);
+  assert.strictEqual(Rail.isUnreadVisible(c, 'c1'), true);
+});
+
+test('isUnreadVisible: false for a muted conversation, even unread, matching the rail\'s own unread total', () => {
+  const c = { id: 'c1', unread: 5, muted: true, archived: false, hidden: false };
+
+  assert.strictEqual(Rail.isUnreadVisible(c, ''), false);
+});
+
+test('isUnreadVisible: an archived or hidden conversation leaves at once, even the one kept open', () => {
+  const archived = { id: 'c1', unread: 3, muted: false, archived: true, hidden: false };
+  const hidden = { id: 'c2', unread: 3, muted: false, archived: false, hidden: true };
+
+  assert.strictEqual(Rail.isUnreadVisible(archived, 'c1'), false);
+  assert.strictEqual(Rail.isUnreadVisible(hidden, 'c2'), false);
+});
+
+test('unreadConversations: keeps only unread conversations across every service, newest activity first', () => {
+  const conversations = [
+    { id: 'c1', service: 'whatsapp', unread: 0, muted: false, archived: false, hidden: false, lastActivity: 300 },
+    { id: 'c2', service: 'telegram', unread: 3, muted: false, archived: false, hidden: false, lastActivity: 100 },
+    { id: 'c3', service: 'whatsapp', unread: 1, muted: false, archived: false, hidden: false, lastActivity: 200 }
+  ];
+
+  assert.deepEqual(Rail.unreadConversations(conversations, '').map((c) => c.id), ['c3', 'c2']);
+});
+
+test('unreadConversations: the conversation just opened from this view stays until it is read, then leaving it drops it', () => {
+  const c = { id: 'c1', unread: 2, muted: false, archived: false, hidden: false, lastActivity: 100 };
+  const read = Object.assign({}, c, { unread: 0 });
+
+  assert.deepEqual(Rail.unreadConversations([read], 'c1').map((x) => x.id), ['c1']);
+  assert.deepEqual(Rail.unreadConversations([read], ''), []);
+});
+
+test('unreadConversations: handles null or undefined input', () => {
+  assert.deepEqual(Rail.unreadConversations(null, ''), []);
+  assert.deepEqual(Rail.unreadConversations(undefined, ''), []);
+});
+
 test('compareConversations puts pinned conversations first, then newest activity', () => {
   const a = { id: 'a', pinned: false, lastActivity: 200 };
   const b = { id: 'b', pinned: true, lastActivity: 100 };

@@ -58,6 +58,10 @@ const cases = [
   ['conversation', letter('r'), MOD.Shift, 'R', ''],
   ['conversation', letter('o'), 0, 'o', 'message.openLink'],
   ['conversation', letter('p'), 0, 'p', 'message.goToQuote'],
+  ['list', letter('a'), MOD.Ctrl | MOD.Shift, '', 'list.unread'],
+  ['conversation', letter('a'), MOD.Ctrl | MOD.Shift, '', 'list.unread'],
+  ['compose', letter('a'), MOD.Ctrl | MOD.Shift, '', 'list.unread'],
+  ['list', letter('a'), MOD.Ctrl, '', ''],
   ['list', letter('r'), MOD.Ctrl, '', 'helper.retryInstall'],
   ['conversation', letter('r'), MOD.Ctrl, '', 'helper.retryInstall'],
 
@@ -213,4 +217,11 @@ test('the palette offers opening a link and going to a quote, and retrying the h
 
   const retry = commands.find((c) => c.action === 'helper.retryInstall');
   assert.deepEqual(retry, { action: 'helper.retryInstall', label: 'Retry installing the helper', keys: 'Ctrl+R' });
+});
+
+test('the palette offers showing unread conversations, with its shortcut', () => {
+  const unread = Keymap.commands().find((c) => c.action === 'list.unread');
+
+  assert.deepEqual(unread, { action: 'list.unread', label: 'Show unread conversations', keys: 'Ctrl+Shift+A' });
+  assert.strictEqual(Keymap.keyFor('list.unread'), 'Ctrl+Shift+A');
 });

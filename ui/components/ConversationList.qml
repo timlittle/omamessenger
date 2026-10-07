@@ -25,6 +25,9 @@ Item {
   property var accountNames: ({})
   // multiAccountServices: services with more than one account.
   property var multiAccountServices: []
+  // unreadView: true while the all-unreads view is showing, for the empty
+  // state's own wording.
+  property bool unreadView: false
 
   // activated fires when a row is clicked.
   signal activated(string id)
@@ -77,6 +80,8 @@ Item {
     wrapMode: Text.WordWrap
     text: root.query.length > 0
       ? "No chats match “" + root.query + "”"
+      : root.unreadView
+      ? "No unread conversations · Esc to leave"
       : "No conversations yet · Ctrl+N to start one"
     color: Util.alpha(Color.foreground, 0.6)
     font.family: Theme.font.family

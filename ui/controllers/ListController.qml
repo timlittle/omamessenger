@@ -52,6 +52,13 @@ Item {
   // each dimmed, unless they are unread or open.
   property bool showAll: false
 
+  // unreadView shows every unread chat across every service and account,
+  // overriding the rail filter, like Slack's all-unreads view. It is not
+  // saved to uiState: unlike the rail filter and search, it is a momentary
+  // view the Ctrl+Shift+A shortcut applies after opening the window, not a
+  // durable preference to restore next time.
+  property bool unreadView: false
+
   // hiddenCount is how many chats the standard list hides right now.
   property int hiddenCount: 0
 
@@ -94,7 +101,8 @@ Item {
       "chat.archive": () => root._toggleArchive(),
       "chat.hide": () => root._toggleHidden(),
       "search.focus": () => { root.searchFocused = true; root.focusRequested(); },
-      "list.showAll": () => root.setShowAll(!root.showAll)
+      "list.showAll": () => root.setShowAll(!root.showAll),
+      "list.unread": () => root.setUnreadView(!root.unreadView)
     };
 
     const handler = handlers[action];
@@ -115,6 +123,13 @@ Item {
   function setShowAll(show: bool): void {
     root.showAll = show;
     root._saveUiState({ showAll: show });
+    root._syncModel();
+  }
+
+  // setUnreadView shows or hides the all-unreads view. It is left out of
+  // uiState on purpose; see the unreadView property doc.
+  function setUnreadView(show: bool): void {
+    root.unreadView = show;
     root._syncModel();
   }
 
@@ -155,10 +170,13 @@ Item {
   // _visible returns the conversations the rail filter currently covers,
   // from the search results while a query is active, otherwise the full
   // list.
-  // A search looks through every chat; otherwise only the standard list
-  // shows, unless show-all is on.
+  // A search looks through every chat regardless of any other view;
+  // otherwise the all-unreads view, when on, overrides the rail filter
+  // rather than narrowing it; otherwise only the standard list shows,
+  // unless show-all is on.
   function _visible(): var {
     if (root.query.length > 0) return Rail.filter(root._searchResults, root.railKey);
+    if (root.unreadView) return Rail.unreadConversations(root._all, root._keepId());
 
     const filtered = Rail.filter(root._all, root.railKey);
     if (root.showAll) return filtered;
@@ -337,7 +355,7 @@ Item {
   function _syncModel(): void {
     const visible = root._visible();
     const filtered = Rail.filter(root._all, root.railKey);
-    root.hiddenCount = root.query.length > 0 || root.showAll ? 0 : filtered.length - visible.length;
+    root.hiddenCount = root.query.length > 0 || root.showAll || root.unreadView ? 0 : filtered.length - visible.length;
     const oldIds = [];
     for (let i = 0; i < listModel.count; i++) oldIds.push(listModel.get(i).id);
 
