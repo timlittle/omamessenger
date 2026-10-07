@@ -129,7 +129,7 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 			FileName: d.name, Size: doc.Size, Thumb: strippedThumb(doc.Thumbs),
 		}
 	case d.voice:
-		return &domain.Media{Kind: domain.MediaFile, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}
+		return &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}
 	case d.name == "":
 		return &domain.Media{Kind: domain.MediaFile, FileName: "file", Size: doc.Size}
 	default:

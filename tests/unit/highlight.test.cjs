@@ -43,6 +43,11 @@ test('hints adds Enter open for a message carrying media', () => {
   assert.strictEqual(Highlight.hints(photo), 'r reply · e react · Enter open');
 });
 
+test('hints adds Enter play, not Enter open, for a voice note', () => {
+  const voice = message({ media: { kind: 'voice', duration: 12 } });
+  assert.strictEqual(Highlight.hints(voice), 'r reply · e react · Enter play');
+});
+
 test('hints adds t retry only for a failed outgoing message', () => {
   const failed = message({ outgoing: true, status: 'failed' });
   assert.strictEqual(Highlight.hints(failed), 'r reply · e react · t retry');

@@ -11,6 +11,7 @@ OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and H
 - A unified conversation list across every connected account, with a rail to filter by service
 - Unread badges, search across every conversation (including archived ones), and older history that loads as you scroll back
 - Photos, video and files, with an in-window photo viewer and link previews
+- Voice notes play inline, with a scrubber and elapsed/total time; in-window playback needs `qt6-multimedia` (not installed by every Omarchy setup), otherwise a voice message opens in your default player instead
 - Replies and reactions; edits and deletes sync from the service
 - Pin, archive and a local-only hide, with a one-month recency filter and a "show all" to see everything
 - Desktop notifications; click one to open its conversation

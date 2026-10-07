@@ -39,7 +39,7 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | Ctrl+D, PageDown / Ctrl+U, PageUp | Page down / up |
 | G, End / g, Home | Jump to the newest / oldest message |
 | i or a | Start writing |
-| Enter | Open the highlighted message's photo, video or file |
+| Enter | Open the highlighted message's photo, video or file, or play/pause its voice note |
 | r | Reply to the highlighted message |
 | e | React to the highlighted message |
 | o | Open the highlighted message's link, if it has one |

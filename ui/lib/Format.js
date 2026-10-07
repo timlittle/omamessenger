@@ -185,9 +185,10 @@ function previewLine(conv) {
   return conv.previewSender ? `${conv.previewSender}: ${conv.preview}` : conv.preview;
 }
 
-// MEDIA_LABELS are the texts the helper gives a photo, video or file sent
-// without a caption, so lists and notifications have something to show.
-var MEDIA_LABELS = { photo: '[Photo]', video: '[Video]', file: '[File]' };
+// MEDIA_LABELS are the texts the helper gives a photo, video, file or
+// voice note sent without a caption, so lists and notifications have
+// something to show.
+var MEDIA_LABELS = { photo: '[Photo]', video: '[Video]', file: '[File]', voice: '[Voice message]' };
 
 // caption is the text to show beside media: none when the text is only
 // the label standing in for the media the bubble already shows.
@@ -252,9 +253,22 @@ function duration(seconds) {
     return '';
   }
 
+  return formatClock(seconds);
+}
+
+// elapsed shows the same m:ss / h:mm:ss clock as duration, but always,
+// even at zero: the voice note player's own position counts up from
+// "0:00" rather than vanishing before playback starts, which duration's
+// "unknown length" blank would do for an actual position of zero.
+function elapsed(seconds) {
+  return formatClock(Math.max(0, seconds || 0));
+}
+
+// formatClock is the m:ss / h:mm:ss text duration and elapsed share.
+function formatClock(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
+  const s = Math.floor(seconds % 60);
 
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }

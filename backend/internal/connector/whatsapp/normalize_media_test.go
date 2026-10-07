@@ -65,7 +65,7 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 				PTT: boolPtr(true), Seconds: u32(12), FileLength: u64(512), Mimetype: strPtr("audio/ogg"),
 				DirectPath: strPtr("/v/voice"), MediaKey: []byte("key"),
 			}},
-			&domain.Media{Kind: domain.MediaFile, FileName: "voice-message.ogg", Duration: 12, Size: 512},
+			&domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Duration: 12, Size: 512},
 			mediaRef{Kind: mediaKindAudio, DirectPath: "/v/voice", MediaKey: []byte("key"), FileLength: 512, Mimetype: "audio/ogg"},
 			true,
 		},

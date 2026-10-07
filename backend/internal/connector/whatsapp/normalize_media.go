@@ -139,15 +139,17 @@ func videoMedia(m *waE2E.VideoMessage) (*domain.Media, mediaRef, bool) {
 	return video, ref, true
 }
 
-// audioMedia is a voice note or other audio file, shown as a file with
-// its duration, and its reference for FetchMedia to download it later.
+// audioMedia is a voice note or other audio file, with its duration and
+// its reference for FetchMedia to download it later. A voice note (PTT,
+// "push to talk") gets its own kind so the UI can show an inline player
+// instead of the plain file row an ordinary audio message gets.
 func audioMedia(m *waE2E.AudioMessage) (*domain.Media, mediaRef, bool) {
-	name := "audio-message.ogg"
+	kind, name := domain.MediaFile, "audio-message.ogg"
 	if m.GetPTT() {
-		name = "voice-message.ogg"
+		kind, name = domain.MediaVoice, "voice-message.ogg"
 	}
 
-	audio := &domain.Media{Kind: domain.MediaFile, FileName: name, Size: int64(m.GetFileLength()), Duration: int(m.GetSeconds())}
+	audio := &domain.Media{Kind: kind, FileName: name, Size: int64(m.GetFileLength()), Duration: int(m.GetSeconds())}
 	ref := mediaRef{
 		Kind: mediaKindAudio, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),
 		FileEncSHA256: m.GetFileEncSHA256(), FileLength: m.GetFileLength(), Mimetype: m.GetMimetype(),

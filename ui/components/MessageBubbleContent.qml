@@ -21,13 +21,19 @@ Column {
   required property var media
   // quote is the message this one replies to, or null.
   required property var quote
-  // maxTextWidth caps how wide the text, link preview, photo or file may
-  // grow before wrapping or eliding.
+  // maxTextWidth caps how wide the text, link preview, photo, file or
+  // voice note may grow before wrapping or eliding.
   required property real maxTextWidth
+  // voiceNotes is the playback state the caller reads from
+  // VoiceNoteController: {available, playingId, positionMs, durationMs}.
+  // A plain summary rather than the controller itself, so this view only
+  // ever reads data, never calls into a controller.
+  property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
 
-  // mediaWanted asks for this message's photo to be downloaded.
+  // mediaWanted asks for this message's photo or voice note to be downloaded.
   signal mediaWanted()
-  // mediaOpen asks for this message's photo, video or file to be opened.
+  // mediaOpen asks for this message's photo, video, file or voice note
+  // to be opened, played or paused.
   signal mediaOpen()
   // quoteOpened asks the caller to scroll to the message this one quotes.
   signal quoteOpened(string remoteId)
@@ -96,6 +102,21 @@ Column {
     width: Math.min(implicitWidth, root.maxTextWidth)
     visible: root.media && root.media.kind === "file"
     file: root.media ? root.media : ({})
+    onOpened: root.mediaOpen()
+  }
+
+  VoiceNotePlayer {
+    objectName: "voiceNotePlayer"
+    width: Math.min(implicitWidth, root.maxTextWidth)
+    visible: root.media && root.media.kind === "voice"
+    media: root.media ? root.media : ({})
+    path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
+    failed: !!(root.message && root.message.mediaFailed)
+    available: root.voiceNotes.available
+    playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id
+    positionMs: playing ? root.voiceNotes.positionMs : 0
+    durationMs: playing ? root.voiceNotes.durationMs : 0
+    onWanted: root.mediaWanted()
     onOpened: root.mediaOpen()
   }
 }

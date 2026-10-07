@@ -21,6 +21,10 @@ Item {
   property bool isGroup: false
   // nowMs is the current time, passed through to time formatting.
   property real nowMs: 0
+  // voiceNotes is the playback state the voice note player reads; see
+  // MessageBubbleContent for its shape. Recycled delegates only ever
+  // read this, never own it, so scrolling never interrupts playback.
+  property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
   // highlighted is true when this is the message the keyboard currently
   // points at: shown with a thin accent outline and a short accent bar
   // on the bubble itself, and a row of key hints for what pressing a
@@ -145,6 +149,7 @@ Item {
           media: root.media
           quote: root.quote
           maxTextWidth: bubble.maxTextWidth
+          voiceNotes: root.voiceNotes
           onMediaWanted: root.mediaWanted(root.message.id)
           onMediaOpen: root.mediaOpen(root.message.id)
           onQuoteOpened: remoteId => root.quoteOpened(remoteId)

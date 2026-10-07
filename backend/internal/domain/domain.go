@@ -26,12 +26,16 @@ const (
 	KindGroup  = "group"
 )
 
-// Media kinds a message can carry besides its text.
+// Media kinds a message can carry besides its text. MediaVoice is a voice
+// note (WhatsApp's push-to-talk audio, Telegram's voice message), kept
+// apart from MediaFile so the UI can offer an inline player instead of a
+// plain "open externally" file row.
 const (
 	MediaLink  = "link"
 	MediaPhoto = "photo"
 	MediaVideo = "video"
 	MediaFile  = "file"
+	MediaVoice = "voice"
 )
 
 // ErrNotFound reports a missing account, contact, conversation or message.
@@ -130,9 +134,11 @@ type Reply struct {
 }
 
 // Media is what a message carries besides its text: a link preview, a
-// photo, a video or a file. Thumb is a small JPEG preview in base64, sent
-// with the message; a full photo, video or file is fetched only when the
-// user wants it. Duration is in seconds and Size in bytes.
+// photo, a video, a file or a voice note. Thumb is a small JPEG preview in
+// base64, sent with the message; a full photo, video, file or voice note
+// is fetched only when the user wants it. Duration is in seconds and Size
+// in bytes; a voice note always carries Duration, for its player's elapsed
+// time label before playback has started.
 type Media struct {
 	Kind        string `json:"kind"`
 	URL         string `json:"url,omitempty"`

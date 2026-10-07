@@ -41,6 +41,11 @@ Item {
   // photo to, and closes when the open conversation closes or switches.
   property var photoViewer: null
 
+  // voiceController is the VoiceNoteController this controller asks to
+  // play or pause a voice note, and reads playback state from for the
+  // message list to show.
+  property var voiceController: null
+
   // activeId is the open conversation's id, or "" when none is open.
   property string activeId: ""
 
@@ -90,6 +95,18 @@ Item {
 
   // lastError is the safe text of the most recent request failure.
   property string lastError: timeline.lastError
+
+  // voiceNotes is the playback state the message list reads for each
+  // bubble's voice note player: which message, if any, is playing, how
+  // far into it, and whether in-window playback is available at all. A
+  // plain summary rather than voiceController itself, so a (recycled)
+  // bubble only ever reads data, never calls into a controller.
+  readonly property var voiceNotes: root.voiceController ? {
+    available: root.voiceController.available,
+    playingId: root.voiceController.playingId,
+    positionMs: root.voiceController.positionMs,
+    durationMs: root.voiceController.durationMs
+  } : ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
 
   // scroll asks the caller to move the message view: "down", "up",
   // "pageDown", "pageUp", "newest" or "oldest".
@@ -219,17 +236,31 @@ Item {
     root.downloadMedia(id, false, () => {});
   }
 
-  // openMedia opens a message's photo, video or file. A photo opens in the
-  // in-app viewer: Omarchy's window rule floats the external image viewer
-  // small and keeps keyboard focus on this window, so its close keys never
-  // reach it. Video and files still open in the user's own application.
+  // openMedia opens a message's photo, video, file or voice note. A photo
+  // opens in the in-app viewer: Omarchy's window rule floats the external
+  // image viewer small and keeps keyboard focus on this window, so its
+  // close keys never reach it. A voice note plays or pauses in place
+  // through voiceController, when it is there and QtMultimedia loaded;
+  // otherwise it falls through to the same "open in your own application"
+  // path a video or file already gets.
   function openMedia(id: string): void {
     const media = timeline.media(id);
     if (media && media.kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
+    if (media && media.kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(id, media); return; }
 
     const path = timeline.mediaPath(id);
     if (path) Qt.openUrlExternally("file://" + path);
     else root.downloadMedia(id, true, (downloaded) => Qt.openUrlExternally("file://" + downloaded));
+  }
+
+  // _toggleVoice plays or pauses a voice note, downloading it first if it
+  // has not been fetched yet; voice notes are small, so this is quick and
+  // happens the same way a photo's own missing full image would.
+  function _toggleVoice(id: string, media: var): void {
+    const path = timeline.mediaPath(id);
+    if (path) { root.voiceController.toggle(id, path, (media.duration || 0) * 1000); return; }
+
+    root.downloadMedia(id, true, (downloaded) => root.voiceController.toggle(id, downloaded, (media.duration || 0) * 1000));
   }
 
   // downloadMedia asks the helper for a message's media once, records

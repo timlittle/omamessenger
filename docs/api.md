@@ -29,7 +29,7 @@ The protocol version is `3`.
 | `messages.send` | `{conversationId, text, attachment, replyTo}` | `Message`; status `failed` if the service refused it. `attachment` is optional: `{path}` names a file on this machine to send, with `text` as its caption (`text` may then be empty); files over 2 GB are rejected. `replyTo`, also optional, is the local id of a message in the same conversation this one answers; it works together with `attachment` |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
 | `messages.react` | `{messageId, emoji}` | `Message`; sets the user's reaction to `emoji`, or clears it when `emoji` is `""`. Fails with invalid params if the service does not support reactions |
-| `media.fetch` | `{messageId}` | `{path}`: the message's photo, video or file. For a message you sent, its own local copy is returned at once; otherwise it is downloaded into the media cache the first time |
+| `media.fetch` | `{messageId}` | `{path}`: the message's photo, video, file or voice note. For a message you sent, its own local copy is returned at once; otherwise it is downloaded into the media cache the first time |
 | `media.paste` | | `{path, kind, width, height}`: an image copied off the clipboard into the outgoing media area, for the composer to attach to the next message sent; fails with an invalid-input error when the clipboard holds no image |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
 | `settings.apply` | `{notifications, notificationPreview}` | `{}` |
@@ -52,7 +52,7 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | `typing` | `{conversationId, name, active}` |
 | `notification.clicked` | `{conversationId}`: the user clicked a desktop notification; the UI opens that conversation |
 
-A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video` or `file`. `thumb` is a small base64 JPEG preview sent with the message. `edited` is `true` once the service reports the message changed since it was first sent. A `Message` may also carry `replyTo`: `{remoteId, senderName, text}`, the message it answers, with `senderName` and `text` (a short excerpt) filled in once the quoted message is known locally. `reactions` is `[{emoji, count, mine}]`, omitted when the message has none; a custom-emoji reaction Telegram sends is left out rather than shown as a misleading placeholder.
+A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video`, `file` or `voice` (a voice note: WhatsApp's push-to-talk audio, Telegram's voice message). `thumb` is a small base64 JPEG preview sent with the message. `duration` (seconds) is always set on a `voice` or `video` media. `edited` is `true` once the service reports the message changed since it was first sent. A `Message` may also carry `replyTo`: `{remoteId, senderName, text}`, the message it answers, with `senderName` and `text` (a short excerpt) filled in once the quoted message is known locally. `reactions` is `[{emoji, count, mine}]`, omitted when the message has none; a custom-emoji reaction Telegram sends is left out rather than shown as a misleading placeholder.
 
 ## Errors
 

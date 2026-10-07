@@ -23,6 +23,9 @@ Item {
   property string highlightedId: ""
   // nowMs is the current time, passed to each message delegate.
   property real nowMs: 0
+  // voiceNotes is the playback state each message delegate reads for its
+  // voice note player; see MessageBubbleContent for its shape.
+  property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
   // draft is the composer's saved text for this conversation.
   property string draft: ""
   // replyTarget is the message the composer is about to answer: {id,
@@ -208,6 +211,7 @@ Item {
         annotation: root.annotations[index] ?? ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         isGroup: root.isGroup
         nowMs: root.nowMs
+        voiceNotes: root.voiceNotes
         // The highlight and its hint row only make sense in scroll
         // mode: while the composer has focus, j/k do not move it and
         // r/e/t/Enter do not act on it, so showing it would say

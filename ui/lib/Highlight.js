@@ -43,16 +43,19 @@ function newer(ids, currentId) {
 // key does to it right now. Reply and react are always on offer, since
 // every message can take either; the rest only ever apply to this
 // particular message, so they only show when it actually carries a
-// photo, video or file, a link, a quote, or is itself a failed outgoing
-// send:
+// photo, video, file or voice note, a link, a quote, or is itself a
+// failed outgoing send:
 //   "r reply · e react"
 //   "r reply · e react · Enter open"               (carries media)
+//   "r reply · e react · Enter play"                (carries a voice note)
 //   "r reply · e react · o open link"               (carries a link)
 //   "r reply · e react · p go to quote"             (is a reply)
 //   "r reply · e react · t retry"                   (failed to send)
 function hints(message) {
   const parts = ['r reply', 'e react'];
-  if (Timeline.media(message)) parts.push('Enter open');
+  const media = Timeline.media(message);
+  if (media && media.kind === 'voice') parts.push('Enter play');
+  else if (media) parts.push('Enter open');
   if (links(message).length > 0) parts.push('o open link');
   if (Timeline.replyTo(message)) parts.push('p go to quote');
   if (message.outgoing && message.status === 'failed') parts.push('t retry');

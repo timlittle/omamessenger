@@ -235,6 +235,11 @@ Item {
     listController: listController
     composer: composerController
     photoViewer: photoViewerController
+    voiceController: voiceNoteController
+  }
+
+  VoiceNoteController {
+    id: voiceNoteController
   }
 
   ComposerController {

@@ -376,10 +376,11 @@ test('messageHtml defaults a table\'s border colour when none is given', () => {
   assert.match(Format.messageHtml(text), /border:1px solid #888888/);
 });
 
-test('caption drops the label a photo, video or file stands in for', () => {
+test('caption drops the label a photo, video, file or voice note stands in for', () => {
   assert.strictEqual(Format.caption('[Photo]', { kind: 'photo' }), '');
   assert.strictEqual(Format.caption('[Video]', { kind: 'video' }), '');
   assert.strictEqual(Format.caption('[File]', { kind: 'file' }), '');
+  assert.strictEqual(Format.caption('[Voice message]', { kind: 'voice' }), '');
   assert.strictEqual(Format.caption('Sunset', { kind: 'photo' }), 'Sunset');
   assert.strictEqual(Format.caption('[Photo]', null), '[Photo]');
   assert.strictEqual(Format.caption('see x.io', { kind: 'link' }), 'see x.io');
@@ -398,6 +399,14 @@ test('duration shows minutes and seconds, and hours when there are some', () => 
   assert.strictEqual(Format.duration(5), '0:05');
   assert.strictEqual(Format.duration(65), '1:05');
   assert.strictEqual(Format.duration(3725), '1:02:05');
+});
+
+test('elapsed shows the same clock as duration, but never blank at zero', () => {
+  assert.strictEqual(Format.elapsed(0), '0:00');
+  assert.strictEqual(Format.elapsed(5), '0:05');
+  assert.strictEqual(Format.elapsed(65), '1:05');
+  assert.strictEqual(Format.elapsed(3725), '1:02:05');
+  assert.strictEqual(Format.elapsed(-3), '0:00');
 });
 
 test('unreadLabel shows the count below 100', () => {

@@ -114,6 +114,7 @@ func TestMediaPlaceholder(t *testing.T) {
 		{domain.MediaPhoto, "[Photo]"},
 		{domain.MediaVideo, "[Video]"},
 		{domain.MediaFile, "[File]"},
+		{domain.MediaVoice, "[Voice message]"},
 		{"unknown", "[File]"},
 	}
 

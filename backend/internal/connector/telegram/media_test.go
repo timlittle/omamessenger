@@ -80,7 +80,7 @@ func TestMedia_VideoFileAndVoice(t *testing.T) {
 	}{
 		"video": {video, domain.Media{Kind: domain.MediaVideo, Width: 1280, Height: 720, Duration: 65, FileName: "clip.mp4", Size: 1000}},
 		"file":  {file, domain.Media{Kind: domain.MediaFile, FileName: "report.pdf", Size: 2048}},
-		"voice": {voice, domain.Media{Kind: domain.MediaFile, FileName: "voice-message.ogg", Size: 300, Duration: 5}},
+		"voice": {voice, domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: 300, Duration: 5}},
 	}
 
 	for name, tt := range tests {
