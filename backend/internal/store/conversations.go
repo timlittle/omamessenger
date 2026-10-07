@@ -215,6 +215,29 @@ func (s *Store) SetUnread(ctx context.Context, id string, count int) (changed bo
 	return false, err
 }
 
+// AdjustUnread changes a conversation's unread count by delta, which may be
+// negative, clamping at zero, and reports whether that changed it. Unlike
+// SetUnread, the change is relative to whatever the count currently is, so
+// it never overwrites a concurrent change (a MarkRead landing while an
+// older-history fetch for the same conversation is still in flight) with a
+// value read before that change happened.
+func (s *Store) AdjustUnread(ctx context.Context, id string, delta int) (changed bool, _ error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET unread=MAX(unread+?,0) WHERE id=?`, delta, id)
+	if err != nil {
+		return false, wrap("adjust unread", err)
+	}
+
+	changed, err = rowsChanged("adjust unread", res)
+	if changed || err != nil {
+		return changed, err
+	}
+
+	// No row changed: the conversation does not exist.
+	_, err = s.Conversation(ctx, id)
+
+	return false, err
+}
+
 // SetMuted mutes or unmutes a conversation.
 func (s *Store) SetMuted(ctx context.Context, id string, muted bool) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET muted=? WHERE id=?`, boolInt(muted), id)

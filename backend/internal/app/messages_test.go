@@ -62,6 +62,29 @@ func TestSend_StoresPublishesAndDispatches(t *testing.T) {
 	}
 }
 
+// TestSend_ReturnsTheConfirmedMessageWhenTheDispatcherIsFast reproduces a
+// bubble stuck showing the pending clock glyph forever: a connector such
+// as Telegram's can confirm delivery, through the sink, before its Send
+// call returns. That confirmation's message.updated notification reaches
+// the UI first; if the messages.send reply that follows still carried
+// the pending message handed to the dispatcher, applying it after would
+// regress the bubble back to pending with no later update to fix it.
+func TestSend_ReturnsTheConfirmedMessageWhenTheDispatcherIsFast(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.dispatcher.onRun = func(m domain.Message) {
+		f.ingest.OutgoingStatus(ctx, m.ID, "remote-1", domain.StatusSent)
+	}
+
+	m, err := f.commands.Send(ctx, "chat", "send this", "", "")
+	if err != nil || m.Status != domain.StatusSent || m.RemoteID != "remote-1" {
+		t.Fatalf("Send = %+v, %v; want the confirmed, sent copy", m, err)
+	}
+}
+
 func TestSend_UpdatesActivityButKeepsAHiddenChatHidden(t *testing.T) {
 	t.Parallel()
 
@@ -209,8 +232,12 @@ func TestRetry_SendsAFailedMessageAgain(t *testing.T) {
 		f.ingest.OutgoingStatus(ctx, m.ID, "remote-1", domain.StatusSent)
 	}
 
+	// The dispatcher confirms delivery before Send returns, like the real
+	// Telegram connector does; Retry must hand back that confirmed copy,
+	// not the pending one it gave the dispatcher, or a UI applying this
+	// result after the sent notification would regress the bubble.
 	retried, err := f.commands.Retry(ctx, failed.ID)
-	if err != nil || retried.Status != domain.StatusPending {
+	if err != nil || retried.Status != domain.StatusSent || retried.RemoteID != "remote-1" {
 		t.Fatalf("Retry = %+v, %v", retried, err)
 	}
 
@@ -374,5 +401,41 @@ func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
 	// window must hear the corrected one last.
 	if got, ok := f.published.lastOf(app.EventUnreadChanged).(app.UnreadChanged); !ok || got.Total != 0 {
 		t.Errorf("last unread total published = %+v, want 0", got)
+	}
+}
+
+// TestMessages_OlderHistorySurvivesAMarkReadThatLandsWhileItIsInFlight
+// reproduces opening a conversation that was never paged locally before,
+// such as an old chat reached through search or "show all" that is still
+// on the service's initial sync page: the UI sends messages.list and
+// conversations.markRead together, and the JSON-RPC server runs requests
+// concurrently, so markRead can finish while the history fetch triggered
+// by messages.list is still running. A fetch that restores the unread
+// count it read before it started, rather than undoing only what it
+// itself added, would overwrite that mark-read back to unread.
+func TestMessages_OlderHistorySurvivesAMarkReadThatLandsWhileItIsInFlight(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 12)
+	f.published.take()
+	f.history.older = []domain.Message{
+		{ID: "m30", RemoteID: "30", Text: "c", Created: 30, Status: domain.StatusReceived},
+		{ID: "m20", RemoteID: "20", Text: "b", Created: 20, Status: domain.StatusReceived},
+	}
+	f.history.duringLoad = func() {
+		if err := f.commands.MarkRead(ctx, chat.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 0 {
+		t.Errorf("unread = %d after a concurrent MarkRead during the fetch, want 0", got.Unread)
 	}
 }

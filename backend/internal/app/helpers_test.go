@@ -297,6 +297,10 @@ type fakeHistory struct {
 	older  []domain.Message
 	from   []string
 	err    error
+	// duringLoad, when set, runs after the messages are reported but
+	// before LoadOlder returns, standing in for a request that lands on
+	// another connection while this fetch is still in flight.
+	duringLoad func()
 }
 
 func (h *fakeHistory) LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error) {
@@ -310,6 +314,10 @@ func (h *fakeHistory) LoadOlder(ctx context.Context, conv domain.Conversation, b
 		h.ingest.History(ctx, conv.AccountID, conv.RemoteID, m)
 	}
 	h.older = h.older[n:]
+
+	if h.duringLoad != nil {
+		h.duringLoad()
+	}
 
 	return n, nil
 }
