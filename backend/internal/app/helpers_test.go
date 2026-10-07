@@ -46,7 +46,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 	f := &fixture{
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
-		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{store: db},
+		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{},
 	}
 
 	deps := app.Deps{
@@ -58,6 +58,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 	}
 
 	f.commands, f.ingest = app.New(deps)
+	f.history.ingest = f.ingest
 
 	return f
 }
@@ -165,6 +166,20 @@ func (p *fakePublisher) last() any {
 	return p.data[len(p.data)-1]
 }
 
+// lastOf returns the data of the most recent event named name, or nil.
+func (p *fakePublisher) lastOf(name string) any {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	for i := len(p.names) - 1; i >= 0; i-- {
+		if p.names[i] == name {
+			return p.data[i]
+		}
+	}
+
+	return nil
+}
+
 // fakeInjector injects through whatever function the test sets.
 type fakeInjector struct {
 	inject func(ctx context.Context, remoteID string) (domain.Message, error)
@@ -206,14 +221,14 @@ func (a *fakeAccounts) Remove(ctx context.Context, accountID string) error {
 	return a.store.DeleteAccount(ctx, accountID)
 }
 
-// fakeHistory plays the service's older history: each LoadOlder stores
-// the next of older, as a connector would through the Sink, and records
-// where it was asked to load from.
+// fakeHistory plays the service's older history: each LoadOlder reports
+// the next of older through the ingest, as a connector does through its
+// Sink, and records where it was asked to load from.
 type fakeHistory struct {
-	store *store.Store
-	older []domain.Message
-	from  []string
-	err   error
+	ingest *app.Ingest
+	older  []domain.Message
+	from   []string
+	err    error
 }
 
 func (h *fakeHistory) LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error) {
@@ -224,10 +239,7 @@ func (h *fakeHistory) LoadOlder(ctx context.Context, conv domain.Conversation, b
 
 	n := min(limit, len(h.older))
 	for _, m := range h.older[:n] {
-		m.ConversationID = conv.ID
-		if _, _, err := h.store.AddMessage(ctx, m); err != nil {
-			return 0, err
-		}
+		h.ingest.History(ctx, conv.AccountID, conv.RemoteID, m)
 	}
 	h.older = h.older[n:]
 

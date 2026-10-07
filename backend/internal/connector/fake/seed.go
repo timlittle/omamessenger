@@ -82,3 +82,23 @@ func (s conversationScript) status(i int, outgoing bool) string {
 		return domain.StatusReceived
 	}
 }
+
+// olderHistory returns the older messages, an hour apart before the seed
+// window, oldest first.
+func (s conversationScript) olderHistory(now time.Time) []domain.Message {
+	start := now.Add(-seedWindow)
+	messages := make([]domain.Message, s.older)
+
+	for i := range messages {
+		messages[i] = domain.Message{
+			RemoteID:   fmt.Sprintf("older-%s-%d", s.remoteID, i+1),
+			SenderID:   s.title,
+			SenderName: s.title,
+			Text:       s.texts[i%len(s.texts)],
+			Status:     domain.StatusReceived,
+			Created:    start.Add(-time.Duration(s.older-i) * time.Hour).UnixMilli(),
+		}
+	}
+
+	return messages
+}

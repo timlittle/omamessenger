@@ -34,6 +34,10 @@ type conversationScript struct {
 	// flaky fails the first send attempt of every message.
 	flaky bool
 
+	// older incoming messages from before the seeded history load when
+	// the user scrolls back past it, as from a real service.
+	older int
+
 	groupSenders []string
 	texts        []string
 }
@@ -45,7 +49,7 @@ var scripts = []accountScript{
 		connectDelay: 600 * time.Millisecond,
 		conversations: []conversationScript{
 			{
-				remoteID: "wa:mum", title: "Mum", kind: domain.KindDirect, count: 14,
+				remoteID: "wa:mum", title: "Mum", kind: domain.KindDirect, count: 14, older: 40,
 				texts: []string{"Call me when you're on your way.", "I made some soup for tomorrow", "Did you see the weather?"},
 			},
 			{

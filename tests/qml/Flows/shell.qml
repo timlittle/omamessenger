@@ -1,11 +1,13 @@
 // Drives the whole window through the flows a person relies on, with real
-// key events against the demo helper:
+// key events against the test helper:
 // - search for "ticket" finds Alex Chen, Enter opens it, its unread clears
 //   and the bar widget's count follows
 // - a draft survives the panel being destroyed and recreated
 // - Ctrl+K jumps to Sam, whose first send fails, and r retries it
 // - a message arriving in Sam's chat while the window is hidden stays unread
 // - Ctrl+N, cycling every account, "Ben", Enter opens a new chat with Ben
+// - Ctrl+K to Mum, whose short stored history makes the helper fetch older
+//   messages: her newest stays at the bottom and the unread total holds
 // Each step polls until its condition holds, because every answer comes
 // back from the helper asynchronously.
 import QtQuick
@@ -39,7 +41,9 @@ ShellRoot {
     root.waitForSamUnread,
     root.reopen,
     root.newChatWithBen,
-    root.waitForBen
+    root.waitForBen,
+    root.openMum,
+    root.waitForMumWithOlderHistory
   ]
 
   // fail stops the test with a reason on stderr.
@@ -237,6 +241,33 @@ ShellRoot {
     }
     return false;
   }
+  // openMum jumps to Mum, whose few stored messages make opening her chat
+  // fetch older history from the fake service.
+  function openMum(): var {
+    root.expected = String(helperService.unreadTotal);
+    t.keyClick(Qt.Key_Escape);
+    t.keyClick(Qt.Key_K, Qt.ControlModifier);
+    root.type("mum");
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitForMumWithOlderHistory holds until Mum's chat shows a full page,
+  // older history included, with her newest message at the bottom and no
+  // older message counted as unread.
+  function waitForMumWithOlderHistory(): var {
+    const model = Check.find(root.panel(), "messageListView").model;
+    if (root.title() !== "Mum" || model.count < 50) return false;
+
+    let newest = 0;
+    for (let i = 0; i < model.count; i++) newest = Math.max(newest, model.get(i).created);
+    if (model.get(0).created !== newest) return Check.fail("Mum's newest message is not at the bottom");
+    if (String(helperService.unreadTotal) !== root.expected) {
+      return Check.fail(`older history changed the unread total from ${root.expected} to ${helperService.unreadTotal}`);
+    }
+    return true;
+  }
+
 
   // runStep runs the current step and advances, retries or fails.
   function runStep(): void {

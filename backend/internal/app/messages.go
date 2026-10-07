@@ -48,14 +48,15 @@ func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversatio
 		return page, false, nil
 	}
 
-	totalBefore := c.events.unreadTotal(ctx)
 	loaded, err := c.history.LoadOlder(ctx, conv, oldest, max(limit, store.DefaultPageSize))
 	if err != nil || loaded == 0 {
 		return page, false, nil
 	}
 
+	// Storing the older messages announced rising totals; announce the
+	// corrected one even though it matches the total before the load.
 	if changed, _ := c.store.SetUnread(ctx, conv.ID, conv.Unread); changed { // a failure leaves a count the next sync corrects
-		c.events.conversationChanged(ctx, conv.ID, totalBefore)
+		c.events.conversationChanged(ctx, conv.ID, -1)
 	}
 
 	page, _, err = c.store.Messages(ctx, conv.ID, beforeID, limit)

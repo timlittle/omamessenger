@@ -27,7 +27,10 @@ type Connector struct {
 	mu       sync.Mutex
 	run      *run // nil when not running
 	attempts map[string]int
+	olderOut map[string]bool // conversations whose older history was delivered
 }
+
+var _ connector.HistoryLoader = (*Connector)(nil)
 
 // run is one Run call: where updates go and how work is scheduled.
 type run struct {
@@ -37,7 +40,7 @@ type run struct {
 
 // newConnector creates a stopped connector for script.
 func newConnector(script accountScript) *Connector {
-	return &Connector{script: script, attempts: make(map[string]int)}
+	return &Connector{script: script, attempts: make(map[string]int), olderOut: make(map[string]bool)}
 }
 
 // Account describes the fake account.
@@ -199,6 +202,39 @@ func (c *Connector) deliver(messageID string, direct bool) {
 			s.OutgoingStatus(ctx, messageID, remoteID, step.status)
 		})
 	}
+}
+
+// LoadOlder delivers a conversation's scripted older history the first
+// time it is asked for, and nothing after that.
+func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, _ string, _ int) (int, error) {
+	r, err := c.current()
+	if err != nil {
+		return 0, err
+	}
+
+	script, _ := c.script.find(conv.RemoteID)
+	if !c.firstOlderLoad(conv.RemoteID) {
+		return 0, nil
+	}
+
+	older := script.olderHistory(time.Now())
+	for _, m := range older {
+		r.sink.History(ctx, c.script.account.ID, conv.RemoteID, m)
+	}
+
+	return len(older), nil
+}
+
+// firstOlderLoad records that a conversation's older history was asked
+// for, reporting whether this is the first time.
+func (c *Connector) firstOlderLoad(remoteID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	first := !c.olderOut[remoteID]
+	c.olderOut[remoteID] = true
+
+	return first
 }
 
 // MarkRead accepts read receipts while the connector is running.

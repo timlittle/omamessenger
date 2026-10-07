@@ -213,4 +213,10 @@ func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
 	if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 0 {
 		t.Errorf("unread = %d after loading older history, want 0", got.Unread)
 	}
+
+	// Storing the older messages announced higher totals on the way; the
+	// window must hear the corrected one last.
+	if got, ok := f.published.lastOf(app.EventUnreadChanged).(app.UnreadChanged); !ok || got.Total != 0 {
+		t.Errorf("last unread total published = %+v, want 0", got)
+	}
 }
