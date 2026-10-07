@@ -100,6 +100,10 @@ Item {
 
     function onComposeFocusRequested() { conversationView.focusComposer() }
     function onSubmitRequested() { conversationView.composer.submit() }
+    function onNewlineRequested() {
+      const input = conversationView.composer.input
+      input.insert(input.cursorPosition, "\n")
+    }
     function onLeaveComposeRequested() {
       conversationView.composer.input.focus = false
       if (root.focusDefault) root.focusDefault()

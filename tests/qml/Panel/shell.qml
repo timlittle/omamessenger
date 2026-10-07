@@ -21,6 +21,7 @@ ShellRoot {
   property int pollAttempts: 0
   property string expectedTitle: ""
   property var _next: null
+  property real _newlineHeightBefore: 0
 
   // retry schedules fn to run again shortly, for a condition that depends
   // on a reply from the helper or on a key event finishing its round trip.
@@ -118,7 +119,7 @@ ShellRoot {
     const composer = Check.find(panel, "composerInput");
 
     if (title && title.text === root.expectedTitle && composer && composer.activeFocus)
-      return root.sendMessage(composer);
+      return root.checkMultilineNewlines(composer);
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100)
@@ -126,6 +127,98 @@ ShellRoot {
         + (title ? title.text : "?") + "\" want \"" + root.expectedTitle
         + "\" composerFocus=" + (composer ? composer.activeFocus : "?"));
     root.retry(root.waitForConversationOpen);
+  }
+
+  // messageWithText reports whether any loaded message exactly matches
+  // text, so a check is immune to this conversation's own history still
+  // loading in the background (its count keeps changing on its own).
+  function messageWithText(text: string): bool {
+    const model = Check.find(panel, "messageListView").model;
+    for (let i = 0; i < model.count; i++) {
+      if (model.get(i).text === text) return true;
+    }
+    return false;
+  }
+
+  // checkMultilineNewlines types "one", Shift+Enter, then "two" and
+  // checks the composer grew a line rather than sending anything.
+  function checkMultilineNewlines(composer: var): void {
+    root._newlineHeightBefore = composer.implicitHeight;
+
+    for (const ch of "one") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return, Qt.ShiftModifier);
+    for (const ch of "two") t.keyClick(ch);
+
+    root.pollAttempts = 0;
+    root.waitForShiftNewline(composer);
+  }
+
+  // waitForShiftNewline holds until the composer's text shows the typed
+  // newline, then checks nothing was sent and the composer grew.
+  function waitForShiftNewline(composer: var): void {
+    if (composer.text === "one\ntwo") return root.checkShiftNewlineGrew(composer);
+
+    root.pollAttempts++;
+    if (root.pollAttempts >= 100)
+      return Check.fail("Shift+Enter gave composer text " + JSON.stringify(composer.text) + ", want \"one\\ntwo\"");
+    root.retry(() => root.waitForShiftNewline(composer));
+  }
+
+  // checkShiftNewlineGrew checks Shift+Enter sent nothing and grew the
+  // composer, then runs the same checks for Ctrl+J.
+  function checkShiftNewlineGrew(composer: var): void {
+    if (root.messageWithText("one") || root.messageWithText("one\ntwo"))
+      return Check.fail("Shift+Enter sent a message instead of inserting a newline");
+    if (composer.implicitHeight <= root._newlineHeightBefore)
+      return Check.fail("the composer did not grow for a second line: was "
+        + root._newlineHeightBefore + ", now " + composer.implicitHeight);
+
+    composer.text = "";
+    root.checkCtrlJNewline(composer);
+  }
+
+  // checkCtrlJNewline types "three", Ctrl+J, then "four": Ctrl+J must
+  // insert a newline while composing, the same as everywhere else it
+  // means "next unread conversation".
+  function checkCtrlJNewline(composer: var): void {
+    root._newlineHeightBefore = composer.implicitHeight;
+    for (const ch of "three") t.keyClick(ch);
+    t.keyClick(Qt.Key_J, Qt.ControlModifier);
+    for (const ch of "four") t.keyClick(ch);
+
+    root.pollAttempts = 0;
+    root.waitForCtrlJNewline(composer);
+  }
+
+  // waitForCtrlJNewline holds until the composer's text shows the typed
+  // newline, then checks Ctrl+J did not navigate away or send, and that
+  // the composer grew, before handing off to the original sendMessage flow.
+  function waitForCtrlJNewline(composer: var): void {
+    const title = Check.find(panel, "conversationTitle");
+
+    if (composer.text === "three\nfour") return root.checkCtrlJNewlineGrew(composer, title);
+
+    root.pollAttempts++;
+    if (root.pollAttempts >= 100) {
+      return Check.fail("Ctrl+J gave composer text " + JSON.stringify(composer.text)
+        + ", want \"three\\nfour\"; conversation title is now \"" + (title ? title.text : "?") + "\"");
+    }
+    root.retry(() => root.waitForCtrlJNewline(composer));
+  }
+
+  // checkCtrlJNewlineGrew finishes the newline checks and clears the
+  // composer before the rest of the test sends "hello" through it.
+  function checkCtrlJNewlineGrew(composer: var, title: var): void {
+    if (title.text !== root.expectedTitle)
+      return Check.fail("Ctrl+J changed the open conversation to \"" + title.text + "\" instead of inserting a newline");
+    if (root.messageWithText("three") || root.messageWithText("three\nfour"))
+      return Check.fail("Ctrl+J sent a message instead of inserting a newline");
+    if (composer.implicitHeight <= root._newlineHeightBefore)
+      return Check.fail("the composer did not grow for a second line with Ctrl+J");
+
+    composer.text = "";
+    root.pollAttempts = 0;
+    root.sendMessage(composer);
   }
 
   // sendMessage types "hello" character by character, the way a person

@@ -53,7 +53,8 @@ const cases = [
   ['conversation', letter('r'), MOD.Shift, 'R', 'message.reply'],
 
   ['compose', KEY.Return, 0, '\r', 'message.send'],
-  ['compose', KEY.Return, MOD.Shift, '\r', ''],
+  ['compose', KEY.Return, MOD.Shift, '\r', 'compose.newline'],
+  ['compose', letter('j'), MOD.Ctrl, '', 'compose.newline'],
   ['compose', letter('j'), 0, 'j', ''],
   ['search', KEY.Return, 0, '\r', 'search.accept'],
   ['search', letter('j'), 0, 'j', ''],

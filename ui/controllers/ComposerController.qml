@@ -50,6 +50,12 @@ QtObject {
   // submitRequested asks the caller to submit whatever the composer holds.
   signal submitRequested()
 
+  // newlineRequested asks the caller to insert a line break at the
+  // composer's cursor, for Shift+Enter and Ctrl+J: both mean "new line"
+  // while composing, even though Ctrl+J means "next unread conversation"
+  // everywhere else (see Keymap.js's compose context).
+  signal newlineRequested()
+
   // pasteFallbackRequested asks the caller to paste the clipboard's text
   // into the composer, because pasteImage found no image there and
   // Ctrl+V must still work as a plain text paste.
@@ -69,6 +75,7 @@ QtObject {
       "compose.focus": () => root.composeFocusRequested(),
       "message.reply": () => root.startReply(root.conversation.timeline.newestId()),
       "message.send": () => root.submitRequested(),
+      "compose.newline": () => root.newlineRequested(),
       "compose.attach": () => root.pasteImage(),
       "compose.attachFile": () => root.attachFileRequested()
     };

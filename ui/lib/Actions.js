@@ -49,6 +49,7 @@ var OWNERS = {
   'compose.focus': 'composer',
   'message.reply': 'composer',
   'message.send': 'composer',
+  'compose.newline': 'composer',
   'compose.attach': 'composer',
   'compose.attachFile': 'composer',
 

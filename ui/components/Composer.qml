@@ -20,12 +20,15 @@ import "../lib/Format.js" as Format
 // what each turned out to be and hands it back down, exactly like draft
 // text already flows out through submitted() and back in through text.
 //
-// Enter / Shift+Enter are deliberately NOT handled here. routeKey, when
-// set, is called with a key press's (key, modifiers, text) before the
-// input does anything with it; returning true marks the key handled, so
-// Enter can call submit() instead of inserting a newline, and Ctrl+V can
-// ask the caller to check the clipboard for an image instead of pasting
-// text. It takes the event's raw fields rather than the KeyEvent itself:
+// Enter, Shift+Enter and Ctrl+J are deliberately NOT handled here.
+// routeKey, when set, is called with a key press's (key, modifiers, text)
+// before the input does anything with it; returning true marks the key
+// handled, so Enter can call submit() instead of inserting a newline,
+// Shift+Enter and Ctrl+J can insert a newline explicitly (Ctrl+J would
+// otherwise mean "next unread conversation", see Keymap.js's compose
+// context), and Ctrl+V can ask the caller to check the clipboard for an
+// image instead of pasting text. It takes the event's raw fields rather
+// than the KeyEvent itself:
 // a KeyEvent copies when it crosses a signal, and mutating a copy's
 // `accepted` would not stop the real one, so the input sets `accepted`
 // itself from the boolean this returns. The `input` alias lets the same
