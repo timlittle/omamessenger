@@ -16,5 +16,5 @@ if [ -x "$helper" ]; then
     exec "$helper" "$@"
 fi
 
-printf 'OmaMessenger helper %s is not installed. Install it with scripts/install-helper.sh or the Install helper button.\n' "$version" >&2
+printf 'OmaMessenger helper %s is not installed. Opening the window installs it, or run scripts/install-helper.sh by hand.\n' "$version" >&2
 exit 3

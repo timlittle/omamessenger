@@ -14,7 +14,7 @@ The first tagged release: a keyboard-first unified messaging client for Omarchy,
 - **Pin and archive** — pin or unpin, and archive or unarchive, a conversation, kept in step with the Telegram app
 - **Notifications** — desktop notifications for new messages, with an option to include or hide the message preview; clicking a notification opens its conversation
 - **Keyboard and command palette** — every action reachable from the keyboard, Slack-style shortcuts, and a command palette (**Ctrl+/**) that lists every command with its shortcut
-- **Install** — `scripts/install-helper.sh` downloads and verifies the matching helper release, with no download at plugin load time; installing it also adds OmaMessenger to Omarchy's apps menu
+- **Install** — opening the window downloads and verifies the matching helper release the first time it is missing or out of date, with no download at plugin load time and no click needed; installing it also adds OmaMessenger to Omarchy's apps menu
 
 ### Known limitations
 

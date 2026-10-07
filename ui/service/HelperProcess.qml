@@ -2,12 +2,18 @@ import QtQuick
 import Quickshell.Io
 
 // Runs the plugin's helper launcher as a child process and restarts it on
-// crash. status is one of "starting", "ready", "stopped", "error" or
-// "missing": starting while the process is launching, ready once
-// Quickshell reports it running and able to accept JSON-RPC requests,
-// stopped after a deliberate stop, error once the restart budget below is
-// exhausted, and missing when the launcher's exit code says no helper is
-// installed.
+// crash. status is one of "starting", "ready", "stopped", "error",
+// "missing", "installing" or "installFailed": starting while the process
+// is launching, ready once Quickshell reports it running and able to
+// accept JSON-RPC requests, stopped after a deliberate stop, error once
+// the restart budget below is exhausted, missing when the launcher's exit
+// code says no helper is installed (or installed at a different version:
+// the launcher looks for a file named after the pinned version), installing
+// while install() runs scripts/install-helper.sh, and installFailed if
+// that script does not succeed. installFailed never reverts to missing on
+// its own, so a caller only retries by calling install() again (the
+// window's Retry button); missing is the state a caller should treat as
+// "try installing".
 //
 // Item rather than QtObject: only a type with a default property can hold
 // the Process and Timer children below without naming a property for them.
@@ -74,8 +80,12 @@ Item {
   }
 
   // install runs the install script and starts the helper once it reports
-  // success.
+  // success. While it runs, status is "installing"; a failure leaves it
+  // "installFailed" with detail set to why, rather than reverting to
+  // "missing", so a caller never retries on its own after a failure.
   function install(): void {
+    root.status = "installing";
+    root.detail = "";
     installer.running = true;
   }
 
@@ -166,6 +176,7 @@ Item {
     target: installer
     function onExited(exitCode) {
       if (exitCode === 0) root.start();
+      else root.status = "installFailed";
     }
   }
 

@@ -1,9 +1,9 @@
-// Checks the first-run path: with no helper installed the window says so
-// and offers to install it; pressing Install downloads the release named
-// in helper-version (a fake release the test builds from the test helper,
-// served over file://), verifies it, and the helper starts with the fake
-// accounts. The runner provides the launcher without bin/dev for this test,
-// and points OMA_RELEASE_BASE at the release directory.
+// Checks the automatic install path: with no helper installed, nothing is
+// downloaded until the window is opened; opening it then installs and
+// starts the helper with no click. A release with a bad checksum shows the
+// error with a Retry button instead, and clicking Retry once a good release
+// is published succeeds. The runner provides the launcher without bin/dev
+// for this test, and points OMA_RELEASE_BASE at the release directory.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -16,7 +16,9 @@ ShellRoot {
   property int step: 0
   property int attempts: 0
   readonly property string testRoot: String(Qt.resolvedUrl(".")).replace("file://", "")
-  property var steps: [root.waitForMissing, root.buildRelease, root.waitForRelease, root.pressInstall, root.waitForReady]
+  property var steps: [root.waitUnopenedAndMissing, root.buildBadRelease, root.waitForBadRelease,
+    root.openWindow, root.waitForInstallFailed, root.fixRelease, root.waitForFixedRelease,
+    root.clickRetry, root.waitForReady]
 
   // fail stops the test with a reason on stderr.
   function fail(reason: string): void {
@@ -24,28 +26,62 @@ ShellRoot {
     Qt.exit(1);
   }
 
-  // waitForMissing holds until the launcher reports no helper and the
-  // window offers to install one.
-  function waitForMissing(): var {
-    const button = Check.find(panel, "installButton");
-    return helperService.status === "missing" && button && button.visible;
-  }
-
-  // buildRelease publishes the dev binary as a release with its checksum.
-  function buildRelease(): var {
-    releaseBuilder.running = true;
+  // waitUnopenedAndMissing holds for a second with the window never
+  // opened, then checks the launcher reported no helper installed and
+  // that nothing tried to download one: no release exists yet, so an
+  // install attempt would fail with its own, different message.
+  function waitUnopenedAndMissing(): var {
+    if (helperService.status !== "missing") return false;
+    if (helperService.detail.indexOf("could not download") !== -1)
+      return "an install was attempted before the window was ever opened";
+    if (root.attempts < 10) return false;
     return true;
   }
 
-  // waitForRelease holds until the release directory is complete.
-  function waitForRelease(): var {
-    if (releaseBuilder.running) return false;
-    return releaseBuilder.exitCode === 0 ? true : "building the fake release failed";
+  // buildBadRelease publishes a release whose SHA256SUMS does not match
+  // the binary, so the installer must refuse it.
+  function buildBadRelease(): var {
+    badReleaseBuilder.running = true;
+    return true;
   }
 
-  // pressInstall clicks Install helper.
-  function pressInstall(): var {
-    Check.find(panel, "installButton").clicked();
+  // waitForBadRelease holds until the bad release is written.
+  function waitForBadRelease(): var {
+    if (badReleaseBuilder.running) return false;
+    return badReleaseBuilder.exitCode === 0 ? true : "building the bad release failed";
+  }
+
+  // openWindow opens the panel, the one user action this flow needs; the
+  // install itself must start on its own.
+  function openWindow(): var {
+    panel.open("{}");
+    return true;
+  }
+
+  // waitForInstallFailed holds until the checksum mismatch is reported and
+  // the window offers Retry as the only way on.
+  function waitForInstallFailed(): var {
+    const button = Check.find(panel, "retryButton");
+    if (helperService.status !== "installFailed") return false;
+    if (helperService.detail.indexOf("checksum mismatch") === -1) return false;
+    return button && button.visible ? true : "installFailed but no visible Retry button";
+  }
+
+  // fixRelease rewrites SHA256SUMS with the binary's real checksum.
+  function fixRelease(): var {
+    goodReleaseBuilder.running = true;
+    return true;
+  }
+
+  // waitForFixedRelease holds until the corrected release is written.
+  function waitForFixedRelease(): var {
+    if (goodReleaseBuilder.running) return false;
+    return goodReleaseBuilder.exitCode === 0 ? true : "fixing the release failed";
+  }
+
+  // clickRetry presses the Retry button shown after the failed install.
+  function clickRetry(): var {
+    Check.find(panel, "retryButton").clicked();
     return true;
   }
 
@@ -88,9 +124,10 @@ ShellRoot {
     }
   }
 
-  // Publishes the test helper as this machine's release asset.
+  // Publishes the test helper as this machine's release asset, with a
+  // SHA256SUMS that does not match it.
   Process {
-    id: releaseBuilder
+    id: badReleaseBuilder
 
     property int exitCode: -1
 
@@ -100,9 +137,25 @@ ShellRoot {
       "case $(uname -m) in x86_64|amd64) arch=amd64;; aarch64|arm64) arch=arm64;; esac",
       "mkdir -p release",
       "cp \"$OMA_FAKE_HELPER\" \"release/oma-messenger-service-linux-$arch\"",
+      "printf '%064d  oma-messenger-service-linux-%s\\n' 0 \"$arch\" > release/SHA256SUMS"
+    ].join("\n")]
+    onExited: code => badReleaseBuilder.exitCode = code
+  }
+
+  // Rewrites SHA256SUMS with the binary's real checksum, leaving the rest
+  // of the release as badReleaseBuilder published it.
+  Process {
+    id: goodReleaseBuilder
+
+    property int exitCode: -1
+
+    workingDirectory: root.testRoot
+    command: ["sh", "-c", [
+      "set -eu",
+      "case $(uname -m) in x86_64|amd64) arch=amd64;; aarch64|arm64) arch=arm64;; esac",
       "cd release && sha256sum oma-messenger-service-linux-$arch > SHA256SUMS"
     ].join("\n")]
-    onExited: code => releaseBuilder.exitCode = code
+    onExited: code => goodReleaseBuilder.exitCode = code
   }
 
   Timer {
@@ -113,13 +166,11 @@ ShellRoot {
   }
 
   // Start once Quickshell has finished loading; Qt.exit() is ignored
-  // before then.
+  // before then. The window is deliberately left closed here: the first
+  // step must see nothing download without it.
   Timer {
     running: true
     interval: 50
-    onTriggered: {
-      panel.open("{}");
-      root.runStep();
-    }
+    onTriggered: root.runStep()
   }
 }

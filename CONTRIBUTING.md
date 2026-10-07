@@ -2,6 +2,17 @@
 
 OmaMessenger is an Omarchy plugin first and a messaging client second. Keep it native to the running Omarchy shell, let Hyprland manage its window, and keep messaging protocols behind the Go connector boundary.
 
+## Setup
+
+Needs Go 1.26+, Node 22+, and, for QML lint and the offscreen tests, Omarchy's shell and Qt 6.
+
+```sh
+make help            # list the commands
+make check           # every gate: build, tests with coverage, lint
+make build           # build the helper into bin/dev/, which the launcher prefers
+make install-local   # install this checkout into Omarchy and enable it
+```
+
 ## Before changing code
 
 - Read [AGENTS.md](AGENTS.md) for the project rules, [.claude/rules/](.claude/rules/) for the coding standards and [FORGE_SPEC.md](FORGE_SPEC.md) for product scope.
@@ -11,7 +22,7 @@ OmaMessenger is an Omarchy plugin first and a messaging client second. Keep it n
 
 ## UI and interaction
 
-The window has three areas: a service rail, the conversation list and the open conversation. Keep them usable at the minimum window size, and make every action work from both keyboard and mouse. Use Omarchy's theme tokens and `qs.Ui` controls. When a visible interaction changes, update the shortcuts in the README and check the affected states.
+The window has three areas: a service rail, the conversation list and the open conversation. Keep them usable at the minimum window size, and make every action work from both keyboard and mouse. Use Omarchy's theme tokens and `qs.Ui` controls. When a visible interaction changes, update [docs/shortcuts.md](docs/shortcuts.md) (and the README's essentials table, if it changed) and check the affected states.
 
 ## Tests
 

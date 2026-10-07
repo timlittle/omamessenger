@@ -16,8 +16,8 @@ import "service"
 Item {
   id: root
 
-  // status mirrors the helper process: starting, ready, stopped, error
-  // or missing.
+  // status mirrors the helper process: starting, ready, stopped, error,
+  // missing, installing or installFailed. See ui/service/HelperProcess.qml.
   readonly property string status: helperProcess.status
 
   // detail is the last diagnostic line from the helper, shown beside the
@@ -60,7 +60,10 @@ Item {
     rpcClient.request(method, params, callback);
   }
 
-  // installHelper downloads the pinned helper release and starts it.
+  // installHelper downloads the pinned helper release and starts it. The
+  // panel calls this itself the first time it opens with the helper
+  // missing or out of date; it is also the Retry button's action after a
+  // failed install.
   function installHelper(): void {
     helperProcess.install();
   }

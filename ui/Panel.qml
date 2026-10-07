@@ -63,6 +63,10 @@ Item {
     const alreadyVisible = window.visible;
     root.closingFromHost = false;
     if (root.service && root.service.status === "stopped") root.service.start();
+    // "missing" means no attempt has been made yet (install() leaves a
+    // failed attempt at "installFailed" instead), so opening the window
+    // is the one moment this starts without the user clicking anything.
+    if (root.service && root.service.status === "missing") root.service.installHelper();
     window.visible = true;
     keyArea.forceActiveFocus();
 
@@ -202,7 +206,9 @@ Item {
   // while it is not ready.
   function _helperStatusText(): string {
     if (!root.service) return "Waiting for the helper service…";
-    if (root.service.status === "missing") return "The helper is not installed.";
+    if (root.service.status === "installing") return "Installing the helper…";
+    if (root.service.status === "installFailed") return "Could not install the helper: " + root.service.detail;
+    if (root.service.status === "missing") return "Installing the helper…";
     if (root.service.status === "error") return "The helper stopped: " + root.service.detail;
     return "Starting the helper…";
   }
@@ -321,9 +327,9 @@ Item {
           }
 
           Ui.Button {
-            objectName: "installButton"
-            text: "Install helper"
-            visible: root.service && root.service.status === "missing"
+            objectName: "retryButton"
+            text: "Retry"
+            visible: root.service && root.service.status === "installFailed"
             onClicked: root.service.installHelper()
           }
         }

@@ -10,7 +10,7 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 
 - The QML plugin entry point is loaded by the existing `omarchy-shell` process and opens a standard Quickshell `FloatingWindow`, managed by Hyprland as a normal non-modal application window.
 - A small Go helper process owns protocol connections and local persistence. Omarchy's shell starts and supervises it through the plugin service entry point; the UI and helper communicate over JSON-RPC 2.0 on the helper's stdin and stdout.
-- Linux x86_64 and ARM64 helper binaries are published as GitHub Release assets with `SHA256SUMS`, never committed. `helper-version` pins the exact release. An explicit, user-initiated install (`scripts/install-helper.sh` or the UI's install button) downloads and verifies it into the user's data directory. Loading the plugin never downloads anything, and no compiler or system service is needed. `Service.qml` starts the helper through the `bin/oma-messenger-service` launcher.
+- Linux x86_64 and ARM64 helper binaries are published as GitHub Release assets with `SHA256SUMS`, never committed. `helper-version` pins the exact release. The window installs it the first time it opens and finds the helper missing or pinned to a different version, downloading and verifying it into the user's data directory with no click needed; `scripts/install-helper.sh` runs the same installer by hand, and a Retry button is the manual path after a failed automatic attempt. Loading the plugin never downloads anything, and no compiler or system service is needed. `Service.qml` starts the helper through the `bin/oma-messenger-service` launcher.
 - Protocol sessions and the SQLite database stay under the user's data directory.
 - The MVP starts with text conversation workflows. Media and reactions come after stable text send/receive.
 - Do not implement WhatsApp or Telegram protocols from scratch and do not fork Omarchy.
@@ -27,7 +27,7 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 - `j` / `k`, `Enter`, `Esc`, `Ctrl+K`, `Ctrl+N`, and service/account switching work.
 - The panel follows active Omarchy `Color` and `Style` theme tokens.
 - The window can receive focus on summon, yield focus when the user switches away, move across workspaces, and close through Escape, its Close button, or the compositor window-close action.
-- README explains setup, authentication, installation, shortcuts, and development.
+- README explains installation, sign-in and the essential shortcuts, linking to `docs/shortcuts.md`, `docs/telegram.md` and `CONTRIBUTING.md` for the rest.
 
 ## Failure and privacy behavior
 

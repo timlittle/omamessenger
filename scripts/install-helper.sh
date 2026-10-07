@@ -1,12 +1,14 @@
 #!/usr/bin/env sh
 # Install the OmaMessenger helper release pinned in helper-version.
 #
-# Run it explicitly (`make install-helper`, or the UI's "Install helper"
-# button); loading the plugin never downloads anything. The binary comes from
-# the immutable GitHub release tag, must match the release's SHA256SUMS and
-# report the pinned version, and is moved into place atomically. It lives
-# outside the plugin directory, so installing it neither hot-reloads the
-# plugin nor dirties its git checkout.
+# The window runs this itself the first time it opens and finds the helper
+# missing or pinned to a different version (and again if that Retry button
+# is clicked after a failed attempt); `make install-helper` runs the same
+# script by hand. Loading the plugin never downloads anything. The binary
+# comes from the immutable GitHub release tag, must match the release's
+# SHA256SUMS and report the pinned version, and is moved into place
+# atomically. It lives outside the plugin directory, so installing it
+# neither hot-reloads the plugin nor dirties its git checkout.
 #
 #   install-helper.sh            install (no-op if already installed)
 #   install-helper.sh --status   exit 0 if installed, 1 if not

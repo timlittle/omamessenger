@@ -28,9 +28,13 @@ Trade-off: a line that is not valid JSON closes the connection. The UI only send
 
 There is no clock interface. Code uses the `time` package, and tests of timing (connector restarts, the fake connectors' delays) run inside `testing/synctest`, where time advances instantly and deterministically.
 
-## Release binaries, installed on request
+## Release binaries, installed automatically on first open
 
-Helper binaries are published on GitHub Releases with `SHA256SUMS` and build provenance, never committed. `helper-version` names the release, and `scripts/install-helper.sh` downloads and verifies it only when the user asks. Loading the plugin never downloads anything. A local `make build` in `bin/dev/` takes precedence, for development.
+Helper binaries are published on GitHub Releases with `SHA256SUMS` and build provenance, never committed. `helper-version` names the release, and `scripts/install-helper.sh` downloads and verifies it.
+
+`omarchy plugin add` only clones the repository; by Omarchy's design a plugin has no install hook to run afterwards. Asking the user to then run a script or press a separate "Install helper" button made OmaMessenger a two-step install when every other plugin is one — Omarchy's own Spotify plugin resolves the same gap the same way. So the window now runs the installer itself, the first time it opens and finds the helper missing or pinned to a different version than `helper-version` (a plugin update changes that file, and the launcher looks for a binary named after the new version, so it is "missing" again until the next open installs it). It shows a quiet "Installing the helper…" state and starts the helper on success. A failed install (offline, a bad checksum, no release yet) shows the error with a Retry button, the only remaining manual path; it does not retry on its own on the next open, and it never touches a working helper already in place, since the installer verifies into a version-named temporary file and only `mv`s it over the version-named destination after that check passes.
+
+Verification — the release's `SHA256SUMS` and the binary's own reported version — stays mandatory either way. Loading the plugin itself still never downloads anything: the trigger is opening the window, never the shell starting. A local `make build` in `bin/dev/` still takes precedence, for development.
 
 ## No vendor directory
 
