@@ -24,14 +24,15 @@ import (
 func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	switch {
 	case isReaction(e.Message):
-		c.handleReaction(ctx, sink, e)
+		c.handleReaction(ctx, sink, dev, e)
 	case isRevoke(e.Message):
-		c.handleRevoke(ctx, sink, e)
+		c.handleRevoke(ctx, sink, dev, e)
 	case isEdit(e.Message):
 		c.handleEdit(ctx, sink, dev, e)
 	case isContentless(e.Message):
 		// WhatsApp's own protocol and system notices carry nothing a
 		// person sent; see isContentless. Nothing is reported for one.
+		logDropped(reasonContentless)
 	default:
 		c.handleContent(ctx, sink, dev, media, e)
 	}
@@ -55,14 +56,26 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 		return
 	}
 
-	remote := remoteID(e.Info.Chat)
-	if !e.Info.IsFromMe || dev.isSelfChat(e.Info.Chat) {
+	if field, ok := unknownContentKind(unwrap(e.Message)); ok {
+		logUnknownKind(field)
+	}
+
+	remote := chatID(ctx, dev, e.Info.Chat)
+	if !e.Info.IsFromMe || dev.isSelfChat(ctx, e.Info.Chat) {
 		c.ensureChat(ctx, sink, dev, e.Info)
 	}
 
-	m := message(ctx, dev, e.Info, e.Message)
+	m := c.improvedSenderName(message(ctx, dev, e.Info, e.Message))
 	saveMediaRef(ctx, media, remote, m.RemoteID, e.Message)
 	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe})
+
+	// A redelivery of a message first seen as an UndecryptableMessage
+	// (see handleUndecryptable) carries the same id: replace its
+	// placeholder rather than report it a second time.
+	if c.resolveUndecryptable(remote, m.RemoteID) {
+		sink.Edited(ctx, c.account.ID, remote, m)
+		return
+	}
 
 	if e.Info.IsFromMe {
 		sink.History(ctx, c.account.ID, remote, m)
@@ -78,9 +91,9 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 // seen it yet, or a direct chat, so a message in a chat that history
 // sync has not reached still gets somewhere to live.
 func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev device, info types.MessageInfo) {
-	remote := remoteID(info.Chat)
+	remote := chatID(ctx, dev, info.Chat)
 
-	if dev.isSelfChat(info.Chat) {
+	if dev.isSelfChat(ctx, info.Chat) {
 		c.reportConversation(ctx, sink, domain.Conversation{
 			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: selfChatTitle,
 		})
@@ -105,8 +118,8 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 
 // handleReaction folds a live reaction change into its message's full
 // tally and reports the result.
-func (c *Connector) handleReaction(ctx context.Context, sink connector.Sink, e *events.Message) {
-	remote := remoteID(e.Info.Chat)
+func (c *Connector) handleReaction(ctx context.Context, sink connector.Sink, dev device, e *events.Message) {
+	remote := chatID(ctx, dev, e.Info.Chat)
 	messageRemoteID, emoji := reaction(e.Message)
 
 	tally := c.reactTo(remote, messageRemoteID, reactorKey(e.Info), emoji)
@@ -125,26 +138,27 @@ func reactorKey(info types.MessageInfo) string {
 }
 
 // handleRevoke reports a message deleted from the service.
-func (c *Connector) handleRevoke(ctx context.Context, sink connector.Sink, e *events.Message) {
-	remote := remoteID(e.Info.Chat)
+func (c *Connector) handleRevoke(ctx context.Context, sink connector.Sink, dev device, e *events.Message) {
+	remote := chatID(ctx, dev, e.Info.Chat)
 	sink.Deleted(ctx, c.account.ID, []string{remote}, []string{revoke(e.Message)})
 }
 
 // handleEdit reports a message changed after it was sent.
 func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev device, e *events.Message) {
-	sink.Edited(ctx, c.account.ID, remoteID(e.Info.Chat), edit(ctx, dev, e.Info, e.Message))
+	m := c.improvedSenderName(edit(ctx, dev, e.Info, e.Message))
+	sink.Edited(ctx, c.account.ID, chatID(ctx, dev, e.Info.Chat), m)
 }
 
 // handleChatPresence reports someone typing or stopping, naming them
 // only in a group: a direct chat's single header has no room for a
 // name, matching how this helper's other connector reports it.
-func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink, e *events.ChatPresence) {
+func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink, dev device, e *events.ChatPresence) {
 	name := ""
 	if e.IsGroup {
 		name = c.nameFor(remoteID(e.Sender))
 	}
 
-	sink.Typing(ctx, c.account.ID, remoteID(e.Chat), name, typingActive(e.State))
+	sink.Typing(ctx, c.account.ID, chatID(ctx, dev, e.Chat), name, typingActive(e.State))
 }
 
 // handleReceipt reports the one kind of receipt that is ours to handle
@@ -153,7 +167,7 @@ func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink,
 // marked read. A receipt about a message this account sent (IsFromMe
 // false here, since then the chat partner is the one acknowledging it)
 // is lane B's outgoing delivery and read progress instead.
-func (c *Connector) handleReceipt(ctx context.Context, sink connector.Sink, e *events.Receipt) {
+func (c *Connector) handleReceipt(ctx context.Context, sink connector.Sink, dev device, e *events.Receipt) {
 	if !e.IsFromMe {
 		return
 	}
@@ -162,13 +176,13 @@ func (c *Connector) handleReceipt(ctx context.Context, sink connector.Sink, e *e
 		return
 	}
 
-	sink.Unread(ctx, c.account.ID, remoteID(e.Chat), 0)
+	sink.Unread(ctx, c.account.ID, chatID(ctx, dev, e.Chat), 0)
 }
 
 // handlePin reports a chat pinned or unpinned from the phone, merging it
 // with whichever archived state this connector last knew for it.
-func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, e *events.Pin) {
-	remote := remoteID(e.JID)
+func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev device, e *events.Pin) {
+	remote := chatID(ctx, dev, e.JID)
 	pinned := e.Action.GetPinned()
 
 	state := c.setOrganized(remote, &pinned, nil)
@@ -178,10 +192,58 @@ func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, e *event
 // handleArchive reports a chat archived or unarchived from the phone,
 // merging it with whichever pinned state this connector last knew for
 // it.
-func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, e *events.Archive) {
-	remote := remoteID(e.JID)
+func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev device, e *events.Archive) {
+	remote := chatID(ctx, dev, e.JID)
 	archived := e.Action.GetArchived()
 
 	state := c.setOrganized(remote, nil, &archived)
 	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
+}
+
+// undecryptablePlaceholder stands in for a message whatsmeow could not
+// decrypt, in WhatsApp's own wording style, until either the real
+// content replaces it (see resolveUndecryptable) or it is accepted as
+// permanently lost.
+const undecryptablePlaceholder = "Waiting for this message"
+
+// handleUndecryptable reports a placeholder for a message whatsmeow
+// received but could not decrypt. This is most often one of this
+// account's own other linked devices (such as a bot replying in the
+// self-chat) sending before a session with that device exists yet;
+// whatsmeow already asks the sender to retry on its own, and if that
+// succeeds the redelivery arrives as an ordinary events.Message with
+// the same id, which handleContent then uses to replace this
+// placeholder (see markUndecryptable) instead of reporting it twice.
+// Nothing is reported for a system JID, the same as a real message.
+func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink, dev device, e *events.UndecryptableMessage) {
+	logUndecryptable(e.IsUnavailable, e.DecryptFailMode)
+
+	if isSystemJID(e.Info.Chat) {
+		return
+	}
+
+	remote := chatID(ctx, dev, e.Info.Chat)
+	if !e.Info.IsFromMe || dev.isSelfChat(ctx, e.Info.Chat) {
+		c.ensureChat(ctx, sink, dev, e.Info)
+	}
+	c.markUndecryptable(remote, e.Info.ID)
+
+	m := domain.Message{
+		RemoteID: e.Info.ID,
+		Text:     undecryptablePlaceholder,
+		Outgoing: e.Info.IsFromMe,
+		Status:   domain.StatusReceived,
+		Created:  e.Info.Timestamp.UnixMilli(),
+	}
+
+	if e.Info.IsFromMe {
+		m.SenderID, m.SenderName, m.Status = "self", "You", domain.StatusSent
+		sink.History(ctx, c.account.ID, remote, m)
+		return
+	}
+
+	m.SenderID, m.SenderName = remoteID(e.Info.Sender), senderName(e.Info)
+	m = c.improvedSenderName(m)
+	c.notePendingRead(remote, m.SenderID, m.RemoteID)
+	sink.Incoming(ctx, c.account.ID, remote, m)
 }

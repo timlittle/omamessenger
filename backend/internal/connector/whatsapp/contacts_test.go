@@ -21,9 +21,10 @@ func TestHandleContactUpdate_RetitlesAnAlreadyKnownDirectChat(t *testing.T) {
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
 	c.rememberName(remoteID(jid), "+15551234567", nameRankPushName) // the chat's current, weak fallback
+	dev := newFakeDevice()
 	var sink connectortest.Sink
 
-	c.handleContactUpdate(t.Context(), &sink, &events.Contact{
+	c.handleContactUpdate(t.Context(), &sink, dev, &events.Contact{
 		JID: jid, Action: &waSyncAction.ContactAction{FullName: strPtr("Nadia Rahman")},
 	})
 
@@ -37,12 +38,31 @@ func TestHandleContactUpdate_IgnoresAnActionThatNamesNoOne(t *testing.T) {
 
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := newFakeDevice()
 	var sink connectortest.Sink
 
-	c.handleContactUpdate(t.Context(), &sink, &events.Contact{JID: jid, Action: &waSyncAction.ContactAction{}})
+	c.handleContactUpdate(t.Context(), &sink, dev, &events.Contact{JID: jid, Action: &waSyncAction.ContactAction{}})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want nothing reported for a contact action with no name", sink.Lines())
+	}
+}
+
+func TestHandleContactUpdate_NeverRetitlesTheSelfChat(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	own := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := newFakeDevice()
+	dev.selfJID = own
+	var sink connectortest.Sink
+
+	c.handleContactUpdate(t.Context(), &sink, dev, &events.Contact{
+		JID: own, Action: &waSyncAction.ContactAction{FullName: strPtr("Tim Little")},
+	})
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want the self-chat left untouched rather than re-titled with a resolved contact name", sink.Lines())
 	}
 }
 
@@ -51,9 +71,10 @@ func TestHandlePushNameUpdate_RetitlesAFallbackTitledChat(t *testing.T) {
 
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := newFakeDevice()
 	var sink connectortest.Sink
 
-	c.handlePushNameUpdate(t.Context(), &sink, &events.PushName{JID: jid, NewPushName: "Nadia"})
+	c.handlePushNameUpdate(t.Context(), &sink, dev, &events.PushName{JID: jid, NewPushName: "Nadia"})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
 		t.Errorf("events = %q, want the conversation re-titled with the new push name", sink.Lines())
@@ -66,12 +87,32 @@ func TestHandlePushNameUpdate_NeverDowngradesAResolvedContactName(t *testing.T) 
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
 	c.rememberName(remoteID(jid), "Nadia Rahman", nameRankContact)
+	dev := newFakeDevice()
 	var sink connectortest.Sink
 
-	c.handlePushNameUpdate(t.Context(), &sink, &events.PushName{JID: jid, NewPushName: "nads99"})
+	c.handlePushNameUpdate(t.Context(), &sink, dev, &events.PushName{JID: jid, NewPushName: "nads99"})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want a push name never to replace an already-resolved contact name", sink.Lines())
+	}
+}
+
+func TestHandleAppStateSyncComplete_NeverRetitlesTheSelfChat(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	own := types.NewJID("15551234567", types.DefaultUserServer)
+	c.noteChat(remoteID(own), domain.KindDirect)
+
+	dev := newFakeDevice()
+	dev.selfJID = own
+	dev.contactNames = map[string]string{"15551234567@s.whatsapp.net": "Tim Little"}
+	var sink connectortest.Sink
+
+	c.handleAppStateSyncComplete(t.Context(), &sink, dev, &events.AppStateSyncComplete{})
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want the self-chat's rescan to report nothing rather than a resolved contact name", sink.Lines())
 	}
 }
 

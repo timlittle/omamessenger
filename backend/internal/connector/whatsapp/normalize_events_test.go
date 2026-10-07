@@ -12,6 +12,41 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+func TestIsContentless_RecognisesHousekeepingKinds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		msg  *waE2E.Message
+		want bool
+	}{
+		{"plain text", &waE2E.Message{Conversation: strPtr("hi")}, false},
+		{"poll vote", &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{}}, true},
+		{"pin in chat", &waE2E.Message{PinInChatMessage: &waE2E.PinInChatMessage{}}, true},
+		{"keep in chat", &waE2E.Message{KeepInChatMessage: &waE2E.KeepInChatMessage{}}, true},
+		{"call", &waE2E.Message{Call: &waE2E.Call{}}, true},
+		{"call log", &waE2E.Message{CallLogMesssage: &waE2E.CallLogMessage{}}, true},
+		{"group voice/video call", &waE2E.Message{BcallMessage: &waE2E.BCallMessage{}}, true},
+		{"history sync bundle", &waE2E.Message{MessageHistoryBundle: &waE2E.MessageHistoryBundle{}}, true},
+		{"history sync notice", &waE2E.Message{MessageHistoryNotice: &waE2E.MessageHistoryNotice{}}, true},
+		{"placeholder", &waE2E.Message{PlaceholderMessage: &waE2E.PlaceholderMessage{}}, true},
+		{"secret encrypted", &waE2E.Message{SecretEncryptedMessage: &waE2E.SecretEncryptedMessage{}}, true},
+		{"group root key share", &waE2E.Message{GroupRootKeyShare: &waE2E.GroupRootKeyShare{}}, true},
+		{"root secret distribute", &waE2E.Message{RootSecretDistributeMessage: &waE2E.RootSecretDistributeMessage{}}, true},
+		{"a real revoke stays its own kind", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REVOKE.Enum()}}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isContentless(tt.msg); got != tt.want {
+				t.Errorf("isContentless(%s) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsReaction_AndReaction_ReadTheTargetAndEmoji(t *testing.T) {
 	t.Parallel()
 

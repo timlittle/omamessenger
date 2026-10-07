@@ -56,11 +56,12 @@ type Connector struct {
 	sent   map[string]*sentMessage
 	unread map[string]map[string][]string
 
-	organize     map[string]organizeState     // conversation remote id to its last known pinned/archived state
-	names        map[string]namedEntry        // contact, push and group names resolved so far, by remote id
-	groupMembers map[string]int               // a group's last known member count, by remote id
-	chatKinds    map[string]string            // every conversation remote id this connector has reported, to its kind
-	reactions    map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji
+	organize      map[string]organizeState     // conversation remote id to its last known pinned/archived state
+	names         map[string]namedEntry        // contact, push and group names resolved so far, by remote id
+	groupMembers  map[string]int               // a group's last known member count, by remote id
+	chatKinds     map[string]string            // every conversation remote id this connector has reported, to its kind
+	reactions     map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji
+	undecryptable map[string]bool              // "<conversation remote id>/<message remote id>" still waiting on a placeholder (see live.go's handleUndecryptable)
 }
 
 // nameRank orders how much a resolved name can be trusted, so
@@ -311,6 +312,27 @@ func (c *Connector) nameFor(remoteID string) string {
 	return c.names[remoteID].name
 }
 
+// improvedSenderName replaces m's sender name with this connector's own
+// cached name for the sender (see nameFor and rememberName), but only
+// when message or historyMessage could not resolve one of their own
+// and fell all the way back to genericSenderName: a group's history
+// sync often carries no push name of its own for each individual
+// message, even though the account-wide push name list (see
+// syncPushnames) or a later contact event already named that same
+// sender from somewhere else. A message that already carries a real
+// name, or one that is this account's own, is returned unchanged.
+func (c *Connector) improvedSenderName(m domain.Message) domain.Message {
+	if m.Outgoing || m.SenderName != genericSenderName {
+		return m
+	}
+
+	if cached := c.nameFor(m.SenderID); cached != "" {
+		m.SenderName = cached
+	}
+
+	return m
+}
+
 // rememberName records name for remoteID if rank is at least as
 // trustworthy as whatever is already cached for it, so a later, weaker
 // report, such as a push name arriving after a saved contact name
@@ -374,6 +396,22 @@ func (c *Connector) noteChat(remoteID, kind string) {
 		c.chatKinds = map[string]string{}
 	}
 	c.chatKinds[remoteID] = kind
+}
+
+// knownChat reports whether this connector has already reported a
+// conversation for remoteID during this run (see reportConversation
+// and noteChat): once it has, a later history sync that only updates
+// its pinned, archived or unread state, with no new messages of its
+// own in that particular batch, still reaches it, rather than being
+// mistaken for a chat that was never worth creating in the first
+// place.
+func (c *Connector) knownChat(remoteID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, ok := c.chatKinds[remoteID]
+
+	return ok
 }
 
 // knownDirectChats lists the remote id of every direct chat this
@@ -440,4 +478,35 @@ func (c *Connector) reactTo(conversationRemoteID, messageRemoteID, sender, emoji
 	}
 
 	return reactionTally(bySender, "self")
+}
+
+// markUndecryptable records that the message named by
+// conversationRemoteID and messageRemoteID was stored only as a
+// placeholder, because whatsmeow could not decrypt it, so a later
+// redelivery of the same id can replace it instead of being silently
+// deduplicated away by the store (see resolveUndecryptable).
+func (c *Connector) markUndecryptable(conversationRemoteID, messageRemoteID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.undecryptable == nil {
+		c.undecryptable = map[string]bool{}
+	}
+	c.undecryptable[conversationRemoteID+"/"+messageRemoteID] = true
+}
+
+// resolveUndecryptable reports whether the message named by
+// conversationRemoteID and messageRemoteID was waiting on a placeholder
+// (see markUndecryptable), forgetting it either way so a later message
+// that happens to reuse the same id is never treated as a replacement
+// again.
+func (c *Connector) resolveUndecryptable(conversationRemoteID, messageRemoteID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	key := conversationRemoteID + "/" + messageRemoteID
+	found := c.undecryptable[key]
+	delete(c.undecryptable, key)
+
+	return found
 }

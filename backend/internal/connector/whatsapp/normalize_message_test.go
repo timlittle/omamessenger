@@ -213,6 +213,10 @@ func TestMessageText_LabelsMediaWithoutACaption(t *testing.T) {
 		{&waE2E.Message{LocationMessage: &waE2E.LocationMessage{}}, "[Location]"},
 		{&waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{}}, "[Poll]"},
 		{&waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{Name: strPtr("Pizza tonight?")}}, "[Poll: Pizza tonight?]"},
+		{&waE2E.Message{PollCreationMessageV5: &waE2E.PollCreationMessage{Name: strPtr("V5?")}}, "[Poll: V5?]"},
+		{&waE2E.Message{PollCreationMessageV6: &waE2E.PollCreationMessage{Name: strPtr("V6?")}}, "[Poll: V6?]"},
+		{&waE2E.Message{GroupInviteMessage: &waE2E.GroupInviteMessage{}}, "[Group invite]"},
+		{&waE2E.Message{StickerPackMessage: &waE2E.StickerPackMessage{}}, "[Sticker pack]"},
 		{&waE2E.Message{}, "[Message]"},
 	}
 
@@ -220,6 +224,22 @@ func TestMessageText_LabelsMediaWithoutACaption(t *testing.T) {
 		if got := messageText(tt.msg); got != tt.want {
 			t.Errorf("messageText(%+v) = %q, want %q", tt.msg, got, tt.want)
 		}
+	}
+}
+
+func TestMessage_UnwrapsAPollCreationMessageV4Wrapper(t *testing.T) {
+	t.Parallel()
+
+	// Unlike every other poll version, V4 wraps its content in the same
+	// forward-compatible envelope as an ephemeral message, rather than
+	// carrying a PollCreationMessage field directly.
+	wrapped := &waE2E.Message{PollCreationMessageV4: &waE2E.FutureProofMessage{
+		Message: &waE2E.Message{PollCreationMessageV2: &waE2E.PollCreationMessage{Name: strPtr("V4?")}},
+	}}
+
+	got := message(t.Context(), newFakeDevice(), testInfo(), wrapped)
+	if got.Text != "[Poll: V4?]" {
+		t.Errorf("message.Text = %q, want the V4 wrapper unwrapped to its inner poll", got.Text)
 	}
 }
 

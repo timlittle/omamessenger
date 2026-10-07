@@ -49,6 +49,51 @@ func TestHandleEvents_DispatchesReceiptsToSink(t *testing.T) {
 	}
 }
 
+func TestHandleEvents_DispatchesSelfReadReceiptsToSink(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	defer unregister()
+
+	dev.fireEvent(&events.Receipt{
+		MessageSource: types.MessageSource{Chat: directPeer, IsFromMe: true},
+		Type:          types.ReceiptTypeReadSelf,
+	})
+
+	if !sink.Has("unread 15551234567@s.whatsapp.net 0") {
+		t.Errorf("events = %q, want this account's own read, synced from another device, dispatched through handleEvents", sink.Lines())
+	}
+}
+
+func TestHandleEvents_DispatchesUndecryptableMessagesToSink(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	defer unregister()
+
+	dev.fireEvent(&events.UndecryptableMessage{Info: liveInfo()})
+
+	if !sink.Has("incoming 15551234567@s.whatsapp.net M1") {
+		t.Errorf("events = %q, want an undecryptable message's placeholder dispatched through handleEvents", sink.Lines())
+	}
+}
+
 func TestHandleEvents_IgnoresAnEventKindItDoesNotSwitchOn(t *testing.T) {
 	t.Parallel()
 
@@ -129,7 +174,10 @@ func TestRun_HandlesEventsThatArriveWhileConnecting(t *testing.T) {
 		dev := newFakeDevice()
 		dev.paired = true
 		dev.duringConnect = []any{&events.HistorySync{Data: &waHistorySync.HistorySync{
-			Conversations: []*waHistorySync.Conversation{{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia")}},
+			Conversations: []*waHistorySync.Conversation{{
+				ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
+				Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+			}},
 		}}}
 		c := newTestConnector(dev)
 		var sink connectortest.Sink
@@ -162,7 +210,10 @@ func TestRun_RoutesEventsToTheirHandlers(t *testing.T) {
 		synctest.Wait()
 
 		dev.fireEvent(&events.HistorySync{Data: &waHistorySync.HistorySync{
-			Conversations: []*waHistorySync.Conversation{{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia")}},
+			Conversations: []*waHistorySync.Conversation{{
+				ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
+				Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+			}},
 		}})
 		synctest.Wait()
 

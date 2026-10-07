@@ -1,6 +1,7 @@
 package whatsapp
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -34,6 +35,21 @@ var errBadRemoteID = errors.New("whatsapp: not a canonical id")
 // instead (see jidFromRemoteID for the matching read-back rule).
 func remoteID(jid types.JID) string {
 	return jid.ToNonAD().String()
+}
+
+// chatID is the canonical remote id for the conversation a message, a
+// history sync entry, a receipt or an organizing change addresses: the
+// account's own self-chat always collapses to one id, dev.selfChatID(),
+// no matter whether this particular report named it by phone JID or by
+// LID, so every linked device's messages, receipts, reactions and pin
+// or archive changes land in the one "Message yourself" conversation.
+// Any other chat keeps its own JID's plain remote id.
+func chatID(ctx context.Context, dev device, jid types.JID) string {
+	if dev.isSelfChat(ctx, jid) {
+		return dev.selfChatID()
+	}
+
+	return remoteID(jid)
 }
 
 // jidFromRemoteID parses a stored remote id back into the JID whatsmeow

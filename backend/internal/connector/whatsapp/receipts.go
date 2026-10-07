@@ -83,13 +83,13 @@ func (c *Connector) trackSent(key, localID string, expected int) {
 // whatsmeow receipt event names, dropping any id this account did not
 // send or whose progress whatsmeow reports in a kind this connector does
 // not track, such as a retry request.
-func (c *Connector) receipt(ctx context.Context, sink connector.Sink, e *events.Receipt) {
+func (c *Connector) receipt(ctx context.Context, sink connector.Sink, dev device, e *events.Receipt) {
 	rank := rankOf(receiptStatus(e.Type))
 	if rank == 0 {
 		return
 	}
 
-	chat, participant := remoteID(e.Chat), remoteID(e.Sender)
+	chat, participant := chatID(ctx, dev, e.Chat), remoteID(e.Sender)
 	for _, id := range e.MessageIDs {
 		if localID, status := c.advanceSent(sentKey(chat, id), participant, rank); status != "" {
 			sink.OutgoingStatus(ctx, localID, "", status)

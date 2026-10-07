@@ -118,6 +118,32 @@ func TestReceipt_DirectChatReportsOnTheOnlyRecipient(t *testing.T) {
 	}
 }
 
+func TestReceipt_CanonicalizesTheSelfChatsLIDToMatchTheSentMessage(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	lid := types.NewJID("111222", types.HiddenUserServer)
+	dev.selfJID = phone
+	dev.selfLID = lid
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+
+	selfChat := domain.Conversation{RemoteID: remoteID(phone), Kind: domain.KindDirect}
+	if err := c.Send(t.Context(), selfChat, domain.Message{ID: "local-self"}); err != nil {
+		t.Fatal(err)
+	}
+	wireID := dev.sent[0].id
+
+	// WhatsApp reports the receipt addressed by the account's LID, not
+	// the phone JID Send used.
+	c.fireReceipt(t.Context(), lid, lid, wireID, types.ReceiptTypeDelivered)
+
+	if !sink.Has("outgoing local-self  " + domain.StatusDelivered) {
+		t.Errorf("events = %q, want the LID-addressed receipt matched back to the phone-addressed send", sink.Lines())
+	}
+}
+
 func TestReceipt_GroupWaitsForEveryMemberBeforeAdvancing(t *testing.T) {
 	t.Parallel()
 
@@ -186,7 +212,7 @@ func TestReceipt_IgnoresAReceiptKindItDoesNotTrack(t *testing.T) {
 // for a receipt naming chat, from participant, for the given WhatsApp
 // message id and type.
 func (c *Connector) fireReceipt(ctx context.Context, chat, participant types.JID, id types.MessageID, rt types.ReceiptType) {
-	c.receipt(ctx, c.sink, &events.Receipt{
+	c.receipt(ctx, c.sink, c.dev, &events.Receipt{
 		MessageSource: types.MessageSource{Chat: chat, Sender: participant, IsGroup: chat.Server == types.GroupServer},
 		Type:          rt,
 		MessageIDs:    []types.MessageID{id},

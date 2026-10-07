@@ -69,10 +69,17 @@ type fakeDevice struct {
 	// whichever JID (a phone JID or a LID) the lookup should resolve.
 	contactNames map[string]string
 
-	// selfJID scripts isSelfChat: a JID whose bare form matches it, or
-	// its LID equivalent, is this account's own self-chat. The zero
-	// value matches nothing.
+	// selfJID scripts isSelfChat and selfChatID: a JID whose bare form
+	// matches it, or matches selfLID, is this account's own self-chat,
+	// and selfChatID always returns selfJID's remote id. The zero value
+	// matches nothing.
 	selfJID types.JID
+
+	// selfLID additionally scripts isSelfChat, for a test that addresses
+	// the self-chat by a LID distinct from selfJID, the way WhatsApp's
+	// own servers increasingly do; selfChatID still canonicalizes to
+	// selfJID either way. The zero value matches nothing beyond selfJID.
+	selfLID types.JID
 
 	// downloadData, downloadErr and downloadBlocks script downloadMedia,
 	// and downloadCalls records what it was asked to fetch; fetch_test.go
@@ -320,13 +327,25 @@ func (d *fakeDevice) contactName(_ context.Context, jid types.JID) string {
 }
 
 // isSelfChat reports whether jid's bare form matches the scripted
-// selfJID, the way the real device compares against the account's own
-// phone JID or LID.
-func (d *fakeDevice) isSelfChat(jid types.JID) bool {
+// selfJID or selfLID, the way the real device compares against the
+// account's own phone JID or LID.
+func (d *fakeDevice) isSelfChat(_ context.Context, jid types.JID) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	return !d.selfJID.IsEmpty() && jid.ToNonAD() == d.selfJID.ToNonAD()
+	bare := jid.ToNonAD()
+
+	return !d.selfJID.IsEmpty() && bare == d.selfJID.ToNonAD() ||
+		!d.selfLID.IsEmpty() && bare == d.selfLID.ToNonAD()
+}
+
+// selfChatID returns the scripted selfJID's remote id, the way the real
+// device always canonicalizes the self-chat to its phone JID.
+func (d *fakeDevice) selfChatID() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return remoteID(d.selfJID)
 }
 
 // downloadMedia records ref and reports the scripted bytes or error, or

@@ -245,6 +245,40 @@ func TestHandleMessage_CreatesAndFillsTheSelfChatFromAnOutgoingMessage(t *testin
 	}
 }
 
+func TestHandleMessage_CollapsesTheSelfChatsLIDAndPhoneJIDIntoOneConversation(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	phone, lid := types.NewJID("15551234567", types.DefaultUserServer), types.NewJID("111222", types.HiddenUserServer)
+	dev.selfJID, dev.selfLID = phone, lid
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	// The user's own message, sent and addressed by phone JID.
+	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: phone, Sender: phone, IsFromMe: true}, ID: "M1", Timestamp: time.Unix(1, 0)},
+		Message: &waE2E.Message{Conversation: strPtr("note to self")},
+	})
+
+	// A bot's reply, posted from another of this account's own linked
+	// devices, addressed by the account's LID instead.
+	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: lid, Sender: lid, IsFromMe: true}, ID: "M2", Timestamp: time.Unix(2, 0)},
+		Message: &waE2E.Message{Conversation: strPtr("reply from the bot")},
+	})
+
+	if !sink.Has("history 15551234567@s.whatsapp.net M1") {
+		t.Errorf("events = %q, want the phone-addressed message filed under the phone JID", sink.Lines())
+	}
+	if !sink.Has("history 15551234567@s.whatsapp.net M2") {
+		t.Errorf("events = %q, want the LID-addressed message filed under the same phone JID, not a second conversation", sink.Lines())
+	}
+	if sink.Has("conversation 111222@lid Message yourself") {
+		t.Errorf("events = %q, want no separate conversation created for the LID form", sink.Lines())
+	}
+}
+
 func TestHandleMessage_PersistsAMediaReference(t *testing.T) {
 	t.Parallel()
 
@@ -336,10 +370,11 @@ func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	c.rememberName("15551234567@s.whatsapp.net", "Nadia", nameRankPushName)
+	dev := newFakeDevice()
 	var sink connectortest.Sink
 
 	direct := types.NewJID("15551234567", types.DefaultUserServer)
-	c.handleChatPresence(t.Context(), &sink, &events.ChatPresence{
+	c.handleChatPresence(t.Context(), &sink, dev, &events.ChatPresence{
 		MessageSource: types.MessageSource{Chat: direct, Sender: direct}, State: types.ChatPresenceComposing,
 	})
 	if !sink.Has("typing 15551234567@s.whatsapp.net true") {
@@ -347,7 +382,7 @@ func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	}
 
 	group := types.NewJID("12345-1600000000", types.GroupServer)
-	c.handleChatPresence(t.Context(), &sink, &events.ChatPresence{
+	c.handleChatPresence(t.Context(), &sink, dev, &events.ChatPresence{
 		MessageSource: types.MessageSource{Chat: group, Sender: direct, IsGroup: true}, State: types.ChatPresencePaused,
 	})
 	if !sink.Has("typing 12345-1600000000@g.us false") {
@@ -376,8 +411,9 @@ func TestHandleReceipt_OnlyActsOnOurOwnReadReceipts(t *testing.T) {
 			t.Parallel()
 
 			c := New(domain.Account{ID: "wa"}, t.TempDir())
+			dev := newFakeDevice()
 			var sink connectortest.Sink
-			c.handleReceipt(t.Context(), &sink, tt.evt)
+			c.handleReceipt(t.Context(), &sink, dev, tt.evt)
 
 			got := sink.Has("unread 15551234567@s.whatsapp.net 0")
 			if got != tt.want {
@@ -391,21 +427,76 @@ func TestHandlePinAndArchive_MergeWithTheOtherKnownFlag(t *testing.T) {
 	t.Parallel()
 
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
 	var sink connectortest.Sink
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
 
-	c.handlePin(t.Context(), &sink, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
 	if !sink.Has("organized 15551234567@s.whatsapp.net true false") {
 		t.Errorf("events = %q, want pinned true archived false", sink.Lines())
 	}
 
-	c.handleArchive(t.Context(), &sink, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
+	c.handleArchive(t.Context(), &sink, dev, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
 	if !sink.Has("organized 15551234567@s.whatsapp.net true true") {
 		t.Errorf("events = %q, want pinned still true, archived now true", sink.Lines())
 	}
 
-	c.handlePin(t.Context(), &sink, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
+	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
 	if !sink.Has("organized 15551234567@s.whatsapp.net false true") {
 		t.Errorf("events = %q, want pinned false, archived still true", sink.Lines())
+	}
+}
+
+func TestHandleUndecryptable_ReportsAPlaceholderForAnIncomingMessage(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c.handleUndecryptable(t.Context(), &sink, dev, &events.UndecryptableMessage{Info: liveInfo()})
+
+	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
+		t.Errorf("events = %q, want the chat ensured so the placeholder has somewhere to live", sink.Lines())
+	}
+	live := sink.LiveMessages()["15551234567@s.whatsapp.net"]
+	if len(live) != 1 || live[0].Text != undecryptablePlaceholder {
+		t.Errorf("placeholder text = %+v, want %q", live, undecryptablePlaceholder)
+	}
+}
+
+func TestHandleUndecryptable_SkipsASystemChat(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c.handleUndecryptable(t.Context(), &sink, dev, &events.UndecryptableMessage{
+		Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: types.StatusBroadcastJID}, ID: "M9"},
+	})
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want nothing reported for a system JID", sink.Lines())
+	}
+}
+
+func TestHandleContent_ReplacesAnUndecryptablePlaceholderOnRedelivery(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev, media := newFakeDevice(), newTestMediaStore(t)
+	var sink connectortest.Sink
+	c.handleUndecryptable(t.Context(), &sink, dev, &events.UndecryptableMessage{Info: liveInfo()})
+
+	// whatsmeow's own retry succeeds: the same id arrives again, this
+	// time as an ordinary, decryptable message.
+	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+		Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")},
+	})
+
+	if !sink.Has("edited 15551234567@s.whatsapp.net M1") {
+		t.Errorf("events = %q, want the redelivered message to replace the placeholder", sink.Lines())
+	}
+	if live := sink.LiveMessages()["15551234567@s.whatsapp.net"]; len(live) != 1 {
+		t.Errorf("live messages = %+v, want only the placeholder's single incoming report, not a second one for the redelivery", live)
 	}
 }
