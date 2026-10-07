@@ -57,6 +57,16 @@ linters:
             - rsc.io/qr
             - github.com/timlittle/omamessenger/backend/internal/connector$
             - github.com/timlittle/omamessenger/backend/internal/domain$
+        whatsapp:
+          list-mode: strict
+          files: ["**/backend/internal/connector/whatsapp/*.go", "!$test"]
+          allow:
+            - $gostd
+            - go.mau.fi/whatsmeow
+            - rsc.io/qr
+            - modernc.org/sqlite
+            - github.com/timlittle/omamessenger/backend/internal/connector$
+            - github.com/timlittle/omamessenger/backend/internal/domain$
         policy:
           list-mode: strict
           files: ["**/backend/internal/app/policy/*.go", "!$test"]
