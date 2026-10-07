@@ -8,7 +8,8 @@ import "../lib/Rail.js" as Rail
 
 // Asks which account to remove. Removing signs it out and deletes its
 // chats from this computer, so the safe choice, Cancel, has focus first;
-// Tab moves to each account and Escape cancels.
+// Tab, or Up/Down, moves to each account, Enter or Space removes the
+// focused one, and Escape cancels.
 Item {
   id: root
 
@@ -58,15 +59,22 @@ Item {
       }
 
       Repeater {
+        id: accountRepeater
         model: root.accounts
 
         Ui.Button {
           required property var modelData
+          required property int index
 
+          objectName: "removeButton-" + modelData.id
           Layout.fillWidth: true
           leftAlign: true
           text: "Remove " + Rail.accountDescription(modelData, root.knownServices)
           focusable: true
+          // Up/Down cycle through the accounts and wrap onto Cancel, the
+          // same way CloseConfirm's buttons chain with Left/Right.
+          KeyNavigation.up: index > 0 ? accountRepeater.itemAt(index - 1) : cancelButton
+          KeyNavigation.down: index < accountRepeater.count - 1 ? accountRepeater.itemAt(index + 1) : cancelButton
           onClicked: root.chosen(modelData.id)
         }
       }
@@ -83,10 +91,13 @@ Item {
       Ui.Button {
         id: cancelButton
 
+        objectName: "cancelButton"
         Layout.alignment: Qt.AlignRight
         text: "Cancel"
         focusable: true
         selected: true
+        KeyNavigation.up: accountRepeater.count > 0 ? accountRepeater.itemAt(accountRepeater.count - 1) : null
+        KeyNavigation.down: accountRepeater.count > 0 ? accountRepeater.itemAt(0) : null
         onClicked: root.cancelled()
       }
     }

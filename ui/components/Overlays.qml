@@ -30,6 +30,17 @@ Item {
   // overlay that took it closes.
   property var focusDefault: null
 
+  // _refocusIfSetupClosed returns keyboard focus to the key area once
+  // account setup and its removal question are both closed: whichever
+  // button or field had focus is gone by then, cancelling, finishing a
+  // sign-in and the helper reporting an account removed all end here, so
+  // one check after each covers every way out instead of a focusDefault
+  // call scattered over every signal that can close them.
+  function _refocusIfSetupClosed(): void {
+    if (!root.accountController || root.accountController.open || root.accountController.removing) return;
+    if (root.focusDefault) root.focusDefault();
+  }
+
   // Opening the new-chat dialog focuses its search field.
   Connections {
     target: root.dialogController
@@ -99,10 +110,7 @@ Item {
     onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)
     onPhoneRequested: root.accountController.usePhone()
     onAnswered: value => root.accountController.answer(value)
-    onCancelled: {
-      root.accountController.cancel();
-      if (root.focusDefault) root.focusDefault();
-    }
+    onCancelled: root.accountController.cancel()
   }
 
   RemoveAccount {
@@ -112,10 +120,18 @@ Item {
     knownServices: root.service ? root.service.services : []
 
     onChosen: accountId => root.accountController.remove(accountId)
-    onCancelled: {
-      root.accountController.cancel();
-      if (root.focusDefault) root.focusDefault();
-    }
+    onCancelled: root.accountController.cancel()
+  }
+
+  // Covers every way account setup or its removal question can close:
+  // cancelling, a sign-in finishing, or the helper reporting an account
+  // removed. Without this, the control that had focus is simply gone
+  // once the overlay hides, and the key area never gets it back, so
+  // shortcuts stop doing anything until the window is closed and reopened.
+  Connections {
+    target: root.accountController
+    function onOpenChanged() { root._refocusIfSetupClosed(); }
+    function onRemovingChanged() { root._refocusIfSetupClosed(); }
   }
 
   NewChatDialog {

@@ -399,6 +399,60 @@ ShellRoot {
     t.keyClick(Qt.Key_Escape);
     if (dialog.visible) return Check.fail("Escape did not close the new-chat dialog");
 
+    root.checkRemoveAccountKeyboard();
+  }
+
+  // checkRemoveAccountKeyboard runs "Remove an account" from the command
+  // palette, cancels once with Escape before choosing anything, then
+  // opens it again and removes the first account with Down then Enter,
+  // entirely from the keyboard.
+  function checkRemoveAccountKeyboard(): void {
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    for (const ch of "remove an acc") t.keyClick(ch);
+
+    const palette = Check.find(panel, "commandPalette");
+    if (!palette || palette.items.length === 0 || palette.items[0].label !== "Remove an account") {
+      return Check.fail("typing \"remove an acc\" listed " + JSON.stringify(palette ? palette.items.map(i => i.label) : []));
+    }
+
+    t.keyClick(Qt.Key_Return);
+    const question = Check.find(panel, "removeAccount");
+    if (!question || !question.visible) return Check.fail("Enter on \"Remove an account\" did not open the question");
+
+    t.keyClick(Qt.Key_Escape);
+    if (question.visible) return Check.fail("Escape did not cancel the removal question");
+
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    for (const ch of "remove an acc") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return);
+    if (!question.visible) return Check.fail("reopening \"Remove an account\" after cancelling it with Escape did not work");
+
+    t.keyClick(Qt.Key_Down);
+    t.keyClick(Qt.Key_Return);
+
+    root.pollAttempts = 0;
+    root.waitForAccountRemoved();
+  }
+
+  // waitForAccountRemoved holds until the removal question has closed,
+  // then checks straight away that a shortcut still does something: the
+  // bug this guards against left keyboard focus nowhere once an account
+  // was actually removed, so Ctrl+/ did nothing until the window was
+  // closed and reopened.
+  function waitForAccountRemoved(): void {
+    const question = Check.find(panel, "removeAccount");
+    if (question && question.visible) {
+      root.pollAttempts++;
+      if (root.pollAttempts >= 100) return Check.fail("the account was never removed");
+      return root.retry(root.waitForAccountRemoved);
+    }
+
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    const commandPalette = Check.find(panel, "commandPalette");
+    if (!commandPalette || !commandPalette.visible)
+      return Check.fail("Ctrl+/ did nothing right after removing an account: focus was left nowhere");
+
+    t.keyClick(Qt.Key_Escape);
     root.checkMinimumSize();
   }
 

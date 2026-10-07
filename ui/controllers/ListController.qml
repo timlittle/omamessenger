@@ -310,11 +310,27 @@ Item {
     if (root.service.status === "ready") root._loadAll();
   }
 
-  // _dropAccount removes a removed account's conversations from the list.
+  // _dropAccount removes a removed account's conversations from the list,
+  // moves the cursor off any of them the same way folding one away does,
+  // and reports each one that was visible so an open conversation among
+  // them closes instead of lingering on a deleted account.
   function _dropAccount(accountId: string): void {
+    const beforeIds = root.visibleIds();
+    const removedIds = root._all.filter((c) => c.accountId === accountId).map((c) => c.id);
+
     root._all = root._all.filter((c) => c.accountId !== accountId);
     root._searchResults = root._searchResults.filter((c) => c.accountId !== accountId);
     root._syncModel();
+
+    if (removedIds.includes(root.selectedId)) {
+      const neighbor = Selection.afterRemoval(beforeIds, root.selectedId);
+      root.selectedId = neighbor;
+      root._saveUiState({ selectedId: neighbor });
+    }
+
+    for (const id of removedIds) {
+      if (beforeIds.includes(id)) root.conversationFolded(id);
+    }
   }
 
   // _syncModel brings the ListModel in line with the current visible set,

@@ -9,8 +9,8 @@ import "../lib/Setup.js" as Setup
 // Adds an account and signs it in: a chooser first when the helper offers
 // more than one service, then optionally the user's own API id and hash
 // from my.telegram.org for Telegram, then a QR code to scan, or a phone
-// number, login code and two-step password. Enter continues, Escape
-// cancels.
+// number, login code and two-step password. The chooser also takes
+// Up/Down, wrapping onto Cancel. Enter continues, Escape cancels.
 Item {
   id: root
 
@@ -54,12 +54,17 @@ Item {
     else if (root._field) root.answered(answerField.text);
   }
 
-  // _focusStep focuses the stage's first control once it is visible.
+  // _focusStep focuses the stage's first control once it is visible. A
+  // step with nothing to type or choose (waiting for the helper, or
+  // WhatsApp's link-code step, which is read rather than answered) still
+  // needs a focused control, so Cancel is the fallback: it is the only
+  // button every stage shows.
   function _focusStep(): void {
     if (root.stage === "chooseService") { if (serviceRepeater.count > 0) serviceRepeater.itemAt(0).forceActiveFocus(); }
     else if (root.stage === "credentials") idField.forceActiveFocus();
     else if (root.stage === "qr") usePhoneButton.forceActiveFocus();
     else if (root._field) { answerField.text = ""; answerField.forceActiveFocus(); }
+    else cancelButton.forceActiveFocus();
   }
 
   objectName: "accountSetup"
@@ -114,12 +119,17 @@ Item {
 
           Ui.Button {
             required property var modelData
+            required property int index
 
             objectName: "serviceButton-" + modelData.id
             Layout.fillWidth: true
             leftAlign: true
             text: modelData.name
             focusable: true
+            // Up/Down cycle through the choices and wrap onto Cancel, the
+            // same way CloseConfirm's buttons chain with Left/Right.
+            KeyNavigation.up: index > 0 ? serviceRepeater.itemAt(index - 1) : cancelButton
+            KeyNavigation.down: index < serviceRepeater.count - 1 ? serviceRepeater.itemAt(index + 1) : cancelButton
             onClicked: root.serviceChosen(modelData.id)
           }
         }
@@ -185,8 +195,13 @@ Item {
         spacing: Theme.spacing.controlGap
 
         Ui.Button {
+          id: cancelButton
+
+          objectName: "cancelButton"
           text: "Cancel"
           focusable: true
+          KeyNavigation.up: (root.stage === "chooseService" && serviceRepeater.count > 0) ? serviceRepeater.itemAt(serviceRepeater.count - 1) : null
+          KeyNavigation.down: (root.stage === "chooseService" && serviceRepeater.count > 0) ? serviceRepeater.itemAt(0) : null
           onClicked: root.cancelled()
         }
 

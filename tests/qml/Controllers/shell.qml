@@ -1,11 +1,12 @@
-// Checks the four controllers against the real demo helper, started by
+// Checks the controllers against the real demo helper, started by
 // Service itself: the list loads 11 conversations, a rail filter narrows
 // it to one service, the cursor moves by id, opening a conversation marks
 // it read and loads its messages newest first, a sent message reaches
 // delivered, a second loadOlder() while one page is already loading is
-// ignored, and the window Escape chain dispatches to the right
-// controller. XDG_DATA_HOME is set by the test runner, so this never
-// touches real data.
+// ignored, removing an account closes one of its conversations if it was
+// left open and moves the list cursor off it, and the window Escape
+// chain dispatches to the right controller. XDG_DATA_HOME is set by the
+// test runner, so this never touches real data.
 import QtQuick
 import Quickshell
 import "ui"
@@ -55,6 +56,8 @@ ShellRoot {
   ListController {
     id: listController
     service: service
+
+    onConversationFolded: (id) => conversationController.closeIfOpen(id)
   }
 
   ConversationController {
@@ -78,6 +81,11 @@ ShellRoot {
     dialogController: dialogController
 
     onHideRequested: root.hidden = true
+  }
+
+  AccountController {
+    id: accountController
+    service: service
   }
 
   Timer {
@@ -248,12 +256,48 @@ ShellRoot {
   function waitForDelivered(): void {
     for (let i = 0; i < conversationController.messages.count; i++) {
       const m = conversationController.messages.get(i);
-      if (m.text === "integration test" && m.status === "delivered") return root.checkEscapeChain();
+      if (m.text === "integration test" && m.status === "delivered") return root.checkRemoveAccountClosesOpenConversation();
     }
 
     root.pollAttempts++;
     if (root.pollAttempts >= 100) return Check.fail("sent message never reached delivered");
     root.retry(root.waitForDelivered);
+  }
+
+  // checkRemoveAccountClosesOpenConversation opens a conversation that
+  // belongs to an account not named anywhere else in this test, removes
+  // that account, and starts waiting for its conversations to leave the
+  // list.
+  function checkRemoveAccountClosesOpenConversation(): void {
+    const platformTeam = root.findByTitle(listController.model, "Platform Team");
+    if (!platformTeam) return Check.fail("no conversation titled Platform Team in the fake accounts");
+
+    conversationController.open(platformTeam);
+    if (conversationController.activeId !== platformTeam.id) return Check.fail("Platform Team did not open");
+
+    accountController.remove("tg-work");
+    root.pollAttempts = 0;
+    root.waitForAccountRemoved(platformTeam.id);
+  }
+
+  // waitForAccountRemoved holds until the removed account's conversations
+  // are gone from the list, then checks the open conversation closed
+  // instead of lingering on a deleted account, with the list cursor
+  // moved off it too rather than left dangling on a row that no longer
+  // exists.
+  function waitForAccountRemoved(removedId: string): void {
+    if (listController.all.some((c) => c.accountId === "tg-work")) {
+      root.pollAttempts++;
+      if (root.pollAttempts >= 100) return Check.fail("tg-work was never removed from the list");
+      return root.retry(() => root.waitForAccountRemoved(removedId));
+    }
+
+    if (conversationController.activeId !== "" || conversationController.pane !== "list")
+      return Check.fail("removing the account left the conversation open: activeId=" + conversationController.activeId);
+    if (listController.selectedId === removedId)
+      return Check.fail("the list cursor is still on a conversation from the removed account");
+
+    root.checkEscapeChain();
   }
 
   // checkEscapeChain walks every step Navigation.escapeAction defines,
