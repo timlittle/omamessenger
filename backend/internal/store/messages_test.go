@@ -283,7 +283,7 @@ func TestDeleteMessages_FallsBackPreviewAndLowersUnread(t *testing.T) {
 		domain.Message{ID: "m2", ConversationID: "chat", RemoteID: "2", SenderName: "Alex", Text: "second", Created: 2},
 	)
 
-	deleted, err := s.DeleteMessages(ctx, "wa", "r-chat", []string{"2"})
+	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"2"})
 	if err != nil || !slices.Equal(ids(deleted), []string{"m2"}) {
 		t.Fatalf("DeleteMessages = %v, %v", ids(deleted), err)
 	}
@@ -298,26 +298,32 @@ func TestDeleteMessages_FallsBackPreviewAndLowersUnread(t *testing.T) {
 	}
 }
 
-func TestDeleteMessages_SearchesTheWholeAccountWhenConversationIsUnknown(t *testing.T) {
+// TestDeleteMessages_OnlyTouchesConversationsInScope reproduces a bug: a
+// private chat and a channel can both hold a message under the same
+// remote id, because Telegram numbers channel messages in their own
+// space, so a deletion naming only the chat must never reach the
+// channel's copy. The caller, not the store, decides which conversations
+// an id might belong to.
+func TestDeleteMessages_OnlyTouchesConversationsInScope(t *testing.T) {
 	t.Parallel()
 
 	s := openStore(t)
 	ctx := t.Context()
 	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat1", "Chat 1")
-	addConversation(t, s, "wa", "chat2", "Chat 2")
+	addConversation(t, s, "wa", "chat", "Private Chat")
+	addConversation(t, s, "wa", "channel", "Channel")
 	addMessages(t, s,
-		domain.Message{ID: "m1", ConversationID: "chat1", RemoteID: "5", Text: "a", Created: 1},
-		domain.Message{ID: "m2", ConversationID: "chat2", RemoteID: "9", Text: "b", Created: 1},
+		domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "5", Text: "a", Created: 1},
+		domain.Message{ID: "m2", ConversationID: "channel", RemoteID: "5", Text: "b", Created: 1},
 	)
 
-	deleted, err := s.DeleteMessages(ctx, "wa", "", []string{"5"})
+	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"5"})
 	if err != nil || !slices.Equal(ids(deleted), []string{"m1"}) {
-		t.Fatalf("DeleteMessages(no conversation) = %v, %v", ids(deleted), err)
+		t.Fatalf("DeleteMessages(chat only) = %v, %v", ids(deleted), err)
 	}
 
 	if _, err := s.Message(ctx, "m2"); err != nil {
-		t.Errorf("unrelated conversation's message was touched: %v", err)
+		t.Errorf("message outside the scope was touched: %v", err)
 	}
 }
 
@@ -330,9 +336,24 @@ func TestDeleteMessages_IgnoresUnknownRemoteIDs(t *testing.T) {
 	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "a", Created: 1})
 
-	deleted, err := s.DeleteMessages(ctx, "wa", "r-chat", []string{"missing"})
+	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"missing"})
 	if err != nil || len(deleted) != 0 {
 		t.Fatalf("DeleteMessages(unknown remote id) = %v, %v; want none deleted", deleted, err)
+	}
+}
+
+func TestDeleteMessages_IgnoresAnEmptyScope(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "a", Created: 1})
+
+	deleted, err := s.DeleteMessages(ctx, "wa", nil, []string{"1"})
+	if err != nil || len(deleted) != 0 {
+		t.Fatalf("DeleteMessages(no scope) = %v, %v; want none deleted", deleted, err)
 	}
 }
 

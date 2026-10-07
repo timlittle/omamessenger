@@ -168,7 +168,7 @@ func TestDeleted_RemovesMessagesAndPublishes(t *testing.T) {
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("d2", "second"))
 	f.published.take()
 
-	f.ingest.Deleted(ctx, "wa", chat.RemoteID, []string{"d2"})
+	f.ingest.Deleted(ctx, "wa", []string{chat.RemoteID}, []string{"d2"})
 
 	want := []string{app.EventMessageRemoved, app.EventConversationUpdated, app.EventUnreadChanged}
 	if got := f.published.take(); !slices.Equal(got, want) {
@@ -189,8 +189,8 @@ func TestDeleted_IgnoresAnEmptyOrUnknownBatch(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
-	f.ingest.Deleted(t.Context(), "wa", "nowhere", []string{"x"})
-	f.ingest.Deleted(t.Context(), "wa", "", nil)
+	f.ingest.Deleted(t.Context(), "wa", []string{"nowhere"}, []string{"x"})
+	f.ingest.Deleted(t.Context(), "wa", nil, nil)
 
 	if len(f.published.take()) != 0 {
 		t.Error("deleting nothing published an event")

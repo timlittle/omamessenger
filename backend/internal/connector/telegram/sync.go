@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -204,6 +205,28 @@ func (c *Connector) lookup(key string) (string, bool) {
 	remote, ok := c.remotes[key]
 
 	return remote, ok
+}
+
+// nonChannelRemotes lists the full remote ids of every private chat and
+// basic group this connector has learned about, sorted for a stable
+// order. Those two kinds share one message id space per account, unlike
+// a channel, which numbers its own messages, so callers that need every
+// conversation a bare message id could belong to must start here rather
+// than with every known conversation.
+func (c *Connector) nonChannelRemotes() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	remotes := make([]string, 0, len(c.remotes))
+	for _, remote := range c.remotes {
+		if !strings.HasPrefix(remote, "channel:") {
+			remotes = append(remotes, remote)
+		}
+	}
+
+	slices.Sort(remotes)
+
+	return remotes
 }
 
 // peerKey drops the access hash from a remote id: "user:42:99" gives

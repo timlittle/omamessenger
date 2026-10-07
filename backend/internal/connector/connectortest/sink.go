@@ -142,8 +142,8 @@ func (s *Sink) Edited(_ context.Context, _, remote string, m domain.Message) {
 }
 
 // Deleted records messages removed from the service.
-func (s *Sink) Deleted(_ context.Context, _, remote string, remoteIDs []string) {
-	s.record("deleted %s %s", remote, strings.Join(remoteIDs, ","))
+func (s *Sink) Deleted(_ context.Context, _ string, conversationRemoteIDs, remoteIDs []string) {
+	s.record("deleted %s %s", strings.Join(conversationRemoteIDs, ","), strings.Join(remoteIDs, ","))
 }
 
 // OutgoingStatus records a change to a sent message and keeps the update

@@ -133,12 +133,12 @@ type Sink interface {
 	Edited(ctx context.Context, accountID, conversationRemoteID string, m domain.Message)
 
 	// Deleted reports messages removed from the service, named by the
-	// ids it gave them. conversationRemoteID is "" for a deletion that
-	// carries no peer, which happens on services whose message ids are
-	// unique per account rather than per conversation; the Sink must
-	// then look for them across the account's conversations. It never
-	// notifies.
-	Deleted(ctx context.Context, accountID, conversationRemoteID string, remoteIDs []string)
+	// ids it gave them. conversationRemoteIDs lists every conversation
+	// the ids might belong to: a connector whose service gives message
+	// ids that are unique per account rather than per conversation lists
+	// every such conversation it knows, since only it knows which of its
+	// conversations share that numbering. It never notifies.
+	Deleted(ctx context.Context, accountID string, conversationRemoteIDs, remoteIDs []string)
 
 	// OutgoingStatus reports delivery progress of a message we sent, with
 	// the service's id for it once known.

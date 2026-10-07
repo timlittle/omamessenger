@@ -102,10 +102,10 @@ func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID st
 // Deleted removes stored messages and publishes a removal for each one,
 // plus the conversations they left changed and the unread total if it
 // moved. It never notifies.
-func (in *Ingest) Deleted(ctx context.Context, accountID, conversationRemoteID string, remoteIDs []string) {
+func (in *Ingest) Deleted(ctx context.Context, accountID string, conversationRemoteIDs, remoteIDs []string) {
 	before := in.events.unreadTotal(ctx)
 
-	deleted, err := in.store.DeleteMessages(ctx, accountID, conversationRemoteID, remoteIDs)
+	deleted, err := in.store.DeleteMessages(ctx, accountID, conversationRemoteIDs, remoteIDs)
 	if err != nil || len(deleted) == 0 {
 		return
 	}

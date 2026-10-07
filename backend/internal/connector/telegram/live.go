@@ -43,8 +43,11 @@ func (c *Connector) handleMessageUpdates(d tg.UpdateDispatcher, sink connector.S
 
 	d.OnDeleteMessages(func(ctx context.Context, _ tg.Entities, u *tg.UpdateDeleteMessages) error {
 		// Users and basic groups share one message id space per account,
-		// so this update carries no peer: the sink must search for them.
-		c.deleteMessages(ctx, sink, "", u.Messages)
+		// so this update carries no peer: scope the search to every such
+		// conversation we know, never a channel, which numbers its own
+		// messages and could otherwise lose an unrelated one that shares
+		// the same id.
+		c.deleteMessages(ctx, sink, c.nonChannelRemotes(), u.Messages)
 		return nil
 	})
 
@@ -53,7 +56,7 @@ func (c *Connector) handleMessageUpdates(d tg.UpdateDispatcher, sink connector.S
 		if !ok {
 			return nil
 		}
-		c.deleteMessages(ctx, sink, remote, u.Messages)
+		c.deleteMessages(ctx, sink, []string{remote}, u.Messages)
 		return nil
 	})
 }
@@ -103,10 +106,10 @@ func (c *Connector) editMessage(ctx context.Context, sink connector.Sink, m tg.M
 }
 
 // deleteMessages reports messages removed from the service, named by
-// Telegram's own ids for them. remote is the conversation they belonged
-// to, or "" when the update named none.
-func (c *Connector) deleteMessages(ctx context.Context, sink connector.Sink, remote string, messageIDs []int) {
-	if len(messageIDs) == 0 {
+// Telegram's own ids for them, scoped to the conversations they might
+// belong to.
+func (c *Connector) deleteMessages(ctx context.Context, sink connector.Sink, remotes []string, messageIDs []int) {
+	if len(messageIDs) == 0 || len(remotes) == 0 {
 		return
 	}
 
@@ -115,7 +118,7 @@ func (c *Connector) deleteMessages(ctx context.Context, sink connector.Sink, rem
 		remoteIDs[i] = strconv.Itoa(id)
 	}
 
-	sink.Deleted(ctx, c.account.ID, remote, remoteIDs)
+	sink.Deleted(ctx, c.account.ID, remotes, remoteIDs)
 }
 
 // unread reports Telegram's unread count for a known conversation, after

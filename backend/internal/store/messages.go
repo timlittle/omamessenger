@@ -220,20 +220,21 @@ func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID, text 
 }
 
 // DeleteMessages removes messages a service reports deleted, found by the
-// ids it gave them. When conversationRemoteID is "" the search covers
-// every conversation of the account, for a service whose message ids are
-// unique per account rather than per conversation; a remote id that is
-// not stored is ignored. Each conversation a removal touches has its
-// preview and activity fall back to its newest remaining message, and its
-// unread count drops by one for every removed message that was unread.
-// deleted lists the removed messages, each still carrying its
-// conversation id.
-func (s *Store) DeleteMessages(ctx context.Context, accountID, conversationRemoteID string, remoteIDs []string) ([]domain.Message, error) {
+// ids it gave them, within conversationRemoteIDs: the conversations of
+// the account the ids might belong to. The caller names them explicitly
+// because the store has no notion of a service's own rules for when an id
+// is unique to one conversation or shared account-wide; a remote id that
+// is not stored in one of them is ignored. Each conversation a removal
+// touches has its preview and activity fall back to its newest remaining
+// message, and its unread count drops by one for every removed message
+// that was unread. deleted lists the removed messages, each still
+// carrying its conversation id.
+func (s *Store) DeleteMessages(ctx context.Context, accountID string, conversationRemoteIDs, remoteIDs []string) ([]domain.Message, error) {
 	if len(remoteIDs) == 0 {
 		return nil, nil
 	}
 
-	convIDs, err := s.deletionScope(ctx, accountID, conversationRemoteID)
+	convIDs, err := s.deletionScope(ctx, accountID, conversationRemoteIDs)
 	if err != nil || len(convIDs) == 0 {
 		return nil, err
 	}
@@ -250,33 +251,24 @@ func (s *Store) DeleteMessages(ctx context.Context, accountID, conversationRemot
 	return deleted, nil
 }
 
-// deletionScope returns the conversation ids a deletion may touch: one,
-// when conversationRemoteID names it, or every conversation of the
-// account, when the caller cannot name one.
-func (s *Store) deletionScope(ctx context.Context, accountID, conversationRemoteID string) ([]string, error) {
-	if conversationRemoteID != "" {
-		conv, err := s.ConversationByRemote(ctx, accountID, conversationRemoteID)
+// deletionScope resolves each of conversationRemoteIDs to its local
+// conversation id, skipping any that is not a conversation of the
+// account.
+func (s *Store) deletionScope(ctx context.Context, accountID string, conversationRemoteIDs []string) ([]string, error) {
+	ids := make([]string, 0, len(conversationRemoteIDs))
+	for _, remote := range conversationRemoteIDs {
+		conv, err := s.ConversationByRemote(ctx, accountID, remote)
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, nil
+			continue
 		}
 		if err != nil {
 			return nil, err
 		}
 
-		return []string{conv.ID}, nil
+		ids = append(ids, conv.ID)
 	}
 
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM conversations WHERE account_id=?`, accountID)
-	if err != nil {
-		return nil, wrap("deletion scope", err)
-	}
-
-	ids, err := scanAll(rows, func(row scanner) (string, error) {
-		var id string
-		return id, row.Scan(&id)
-	})
-
-	return ids, wrap("deletion scope", err)
+	return ids, nil
 }
 
 // findDeletable returns the stored messages among remoteIDs, in any of

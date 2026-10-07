@@ -103,28 +103,59 @@ func TestEditMessage_IgnoresAnUpdateThatIsNotAMessage(t *testing.T) {
 	}
 }
 
-func TestDeleteMessages_ReportsIDsWithNoConversation(t *testing.T) {
+func TestDeleteMessages_ReportsIDsScopedToTheGivenConversations(t *testing.T) {
 	t.Parallel()
 
 	var sink connectortest.Sink
 	c := New(domain.Account{ID: "tg"}, "")
-	c.deleteMessages(t.Context(), &sink, "", []int{7, 8})
+	c.deleteMessages(t.Context(), &sink, []string{"user:42:99", "chat:7"}, []int{7, 8})
 
-	want := []string{"deleted  7,8"}
+	want := []string{"deleted user:42:99,chat:7 7,8"}
 	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
 	}
 }
 
-func TestDeleteMessages_IgnoresAnEmptyBatch(t *testing.T) {
+func TestDeleteMessages_IgnoresAnEmptyBatchOrScope(t *testing.T) {
 	t.Parallel()
 
 	var sink connectortest.Sink
 	c := New(domain.Account{ID: "tg"}, "")
-	c.deleteMessages(t.Context(), &sink, "chat:1", nil)
+	c.deleteMessages(t.Context(), &sink, []string{"chat:1"}, nil)
+	c.deleteMessages(t.Context(), &sink, nil, []int{1})
 
 	if got := sink.Lines(); len(got) != 0 {
 		t.Errorf("events = %q, want none", got)
+	}
+}
+
+// TestHandleUpdates_DeleteMessagesScopesToNonChannelConversations
+// reproduces a bug: Telegram numbers a channel's messages in their own
+// space, so a deletion with no peer (which only private chats and basic
+// groups can raise) must never be scoped to a channel, even one this
+// connector has learned about, or a coincidentally matching channel
+// message would be deleted along with the intended one.
+func TestHandleUpdates_DeleteMessagesScopesToNonChannelConversations(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	c.learn("user:42:99")
+	c.learn("chat:7")
+	c.learn("channel:5:3")
+
+	d := tg.NewUpdateDispatcher()
+	c.handleUpdates(d, &sink)
+	err := d.Handle(t.Context(), &tg.Updates{
+		Updates: []tg.UpdateClass{&tg.UpdateDeleteMessages{Messages: []int{5}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"deleted chat:7,user:42:99 5"}
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q: a channel must never share this scope", got, want)
 	}
 }
 
@@ -216,7 +247,7 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 		"unread channel:5:3 0",
 		"edited user:42:99 7",
 		"edited channel:5:3 3",
-		"deleted  8,9",
+		"deleted user:42:99 8,9",
 		"deleted channel:5:3 3",
 	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
