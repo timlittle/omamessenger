@@ -52,9 +52,11 @@ mkdir -p "$target_dir"
 "${OMARCHY_RESTART_SHELL:-omarchy-restart-shell}"
 
 # Wait for the restarted shell to answer, so a summon right after this
-# script reaches the new plugin.
+# script reaches the new plugin. listPlugins only reads: rescanPlugins
+# would reload the plugin while the shell is still starting, which has
+# crashed Quickshell and left the window without its service.
 for _ in $(seq 1 50); do
-    if "${OMARCHY_SHELL:-omarchy-shell}" shell rescanPlugins >/dev/null 2>&1; then
+    if "${OMARCHY_SHELL:-omarchy-shell}" shell listPlugins >/dev/null 2>&1; then
         printf 'Installed %s from %s and restarted the shell\n' "$plugin_id" "$repo_root"
         exit 0
     fi
