@@ -1,14 +1,15 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls
 import qs.Commons
+import qs.Ui as Ui
 import "../theme"
 
 // The reaction chips under a message bubble: one per emoji with its
 // count. The user's own reaction gets the accent colour, a border and a
 // bolder weight, so it still reads without relying on colour alone, plus
-// a tooltip saying so. A quiet "+" chip appears while hovering is true,
-// to open the emoji picker.
+// a tooltip saying so. Adding a reaction is started from the message's
+// hover toolbar, not from here, so this row only takes space when the
+// message already has reactions.
 Item {
   id: root
 
@@ -17,23 +18,19 @@ Item {
   // whose message is being torn down between recycles, so it is never
   // read directly below.
   required property var reactions
-  // hovering shows the "+" chip even when there are no reactions yet.
-  property bool hovering: false
   // alignRight puts the chips under an outgoing message's right-aligned
   // bubble.
   property bool alignRight: false
 
   // toggled asks the caller to add or remove emoji as the user's reaction.
   signal toggled(string emoji)
-  // addRequested asks the caller to open the emoji picker for this message.
-  signal addRequested()
 
   // visible guards reactions with "&&" rather than a separate normalizing
   // property: a message's reactions can be reset straight to a QML null
   // while its delegate is destroyed, bypassing whatever an intermediate
   // property's own binding would have computed, so the null must be
   // caught in the same expression that reads .length.
-  visible: (root.reactions && root.reactions.length > 0) || root.hovering
+  visible: root.reactions && root.reactions.length > 0
   implicitWidth: row.implicitWidth
   implicitHeight: row.implicitHeight
 
@@ -58,9 +55,11 @@ Item {
         border.color: Color.accent
         width: chipText.implicitWidth + Theme.spacing.sm * 2
         height: chipText.implicitHeight + Theme.spacing.xxs * 2
-        ToolTip.visible: chip.modelData.mine && chipHover.containsMouse
-        ToolTip.text: "You reacted"
-        ToolTip.delay: 500
+
+        Ui.PanelToolTip {
+          visible: chip.modelData.mine && chipHover.containsMouse
+          text: "You reacted"
+        }
 
         Text {
           id: chipText
@@ -80,34 +79,6 @@ Item {
           cursorShape: Qt.PointingHandCursor
           onClicked: root.toggled(chip.modelData.emoji)
         }
-      }
-    }
-
-    Rectangle {
-      id: addChip
-      objectName: "addChip"
-      visible: root.hovering
-      radius: Style.cornerRadius
-      color: addHover.containsMouse ? Style.hoverFill : "transparent"
-      width: addText.implicitWidth + Theme.spacing.sm * 2
-      height: addText.implicitHeight + Theme.spacing.xxs * 2
-
-      Text {
-        id: addText
-        anchors.centerIn: parent
-        text: "+"
-        color: Util.alpha(Color.foreground, 0.7)
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
-      }
-
-      MouseArea {
-        id: addHover
-        objectName: "addChipArea"
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: root.addRequested()
       }
     }
   }

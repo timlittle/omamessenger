@@ -1,7 +1,10 @@
 // Checks MessageDelegate: sender names in groups, the read glyph, the
 // retry line on a failed message, that rich text escapes markup while
-// linkifying URLs, a reply's quote, the hover reply button, a photo whose
-// full image fails to load, and reaction chips.
+// linkifying URLs, a reply's quote, a photo whose full image fails to load,
+// the hover toolbar's react and reply buttons, reaction chips, that
+// hovering a message never moves or resizes any message, and that the
+// toolbar stays visible once the pointer reaches it, even after it has
+// left the bubble underneath.
 import QtQuick
 import QtTest
 import Quickshell
@@ -51,7 +54,7 @@ ShellRoot {
   FloatingWindow {
     id: win
     implicitWidth: 400
-    implicitHeight: 500
+    implicitHeight: 900
     visible: true
 
     MessageDelegate {
@@ -68,6 +71,41 @@ ShellRoot {
       onQuoteOpened: remoteId => root.quoted.push(remoteId)
       onReact: (id, emoji) => root.reacted.push(id + " " + emoji)
       onReactPickerRequested: id => root.pickerRequests.push(id)
+    }
+
+    // A stack of three delegates, stood up only to measure layout: it
+    // checks that hovering one message never moves or resizes another,
+    // or itself, the way a single delegate in isolation cannot.
+    Column {
+      id: stack
+      y: 520
+      width: 360
+
+      MessageDelegate {
+        id: rowA
+        width: 360
+        message: ({ id: "l1", senderId: "s1", senderName: "Alex", text: "first message", outgoing: false, status: "received", created: root.now })
+        annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
+        nowMs: root.now
+      }
+
+      MessageDelegate {
+        id: rowB
+        width: 360
+        message: ({ id: "l2", senderId: "s1", senderName: "Alex", text: "second message", outgoing: false, status: "received", created: root.now })
+        annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
+        nowMs: root.now
+        onReplyRequested: id => root.replied.push(id)
+        onReactPickerRequested: id => root.pickerRequests.push(id)
+      }
+
+      MessageDelegate {
+        id: rowC
+        width: 360
+        message: ({ id: "l3", senderId: "s1", senderName: "Alex", text: "third message", outgoing: false, status: "received", created: root.now })
+        annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
+        nowMs: root.now
+      }
     }
   }
 
@@ -99,8 +137,10 @@ ShellRoot {
     if (!root.checkPhotoLoadFailure()) return;
     if (!root.checkVideoAndFile()) return;
     if (!root.checkReplyQuote()) return;
-    if (!root.checkHoverReplyButton()) return;
+    if (!root.checkHoverToolbar()) return;
     if (!root.checkReactionChips()) return;
+    if (!root.checkHoverNeverShiftsLayout()) return;
+    if (!root.checkToolbarStaysVisibleOnItself()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -299,38 +339,47 @@ ShellRoot {
     return true;
   }
 
-  // checkHoverReplyButton verifies the reply button is hidden until the
-  // bubble is hovered, and that clicking it asks to reply to the message.
-  function checkHoverReplyButton(): bool {
+  // checkHoverToolbar verifies the hover toolbar is hidden until the
+  // bubble is hovered, and that its "+" and "↩" buttons ask to open the
+  // emoji picker and to reply.
+  function checkHoverToolbar(): bool {
     delegate.message = { id: "m13", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "received", created: root.now };
 
     // Move the pointer away first: an earlier click left it resting on
-    // the bubble, which would otherwise count as an existing hover.
+    // the bubble, which would otherwise count as an existing hover. The
+    // wait lets the fade-out finish, since the toolbar stays visible for
+    // the length of its opacity Behavior after a hover ends.
     t.mouseMove(delegate, 2, 2);
+    t.wait(150);
 
-    const button = Check.find(delegate, "replyButton");
-    if (button.visible) return Check.fail("reply button shown without a hover");
+    const toolbar = Check.find(delegate, "hoverToolbar");
+    if (toolbar.visible) return Check.fail("hover toolbar shown without a hover");
 
     const bubble = Check.find(delegate, "bubble");
     t.mouseMove(bubble, bubble.width / 2, bubble.height / 2);
-    t.wait(50); // let the hover-driven visibility and anchors settle
-    if (!button.visible) return Check.fail("reply button not shown on hover");
+    t.wait(50); // let the hover-driven opacity settle
+    if (!toolbar.visible) return Check.fail("hover toolbar not shown on hover");
+
+    root.pickerRequests = [];
+    t.mouseClick(Check.find(toolbar, "reactButton"));
+    if (JSON.stringify(root.pickerRequests) !== '["m13"]') return Check.fail("+ click reported " + JSON.stringify(root.pickerRequests) + ", want [\"m13\"]");
 
     root.replied = [];
-    t.mouseClick(button);
+    t.mouseClick(Check.find(toolbar, "replyButton"));
     if (JSON.stringify(root.replied) !== '["m13"]') return Check.fail("reply click reported " + JSON.stringify(root.replied) + ", want [\"m13\"]");
     return true;
   }
 
   // checkReactionChips verifies a message's reactions show as chips, a
-  // message without any shows none while the bubble is not hovered, and
-  // clicking a chip reports this message's id and emoji.
+  // message without any shows none, and clicking a chip reports this
+  // message's id and emoji.
   function checkReactionChips(): bool {
     delegate.message = {
       id: "m14", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "delivered", created: root.now,
       reactions: [{ emoji: "👍", count: 1, mine: true }]
     };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
+    t.waitForRendering(delegate); // let the chip row realize before it is clicked
 
     const chips = Check.find(delegate, "reactionChips");
     if (!chips || !chips.visible) return Check.fail("reaction chips not shown for a message with reactions");
@@ -339,13 +388,78 @@ ShellRoot {
     t.mouseClick(Check.find(chips, "chipArea-👍"));
     if (JSON.stringify(root.reacted) !== '["m14 👍"]') return Check.fail("reacted " + JSON.stringify(root.reacted) + ", want [\"m14 \\ud83d\\udc4d\"]");
 
-    // Move the pointer away from the bubble, so an earlier click near it
-    // does not leave it hovered once the layout settles around a shorter
-    // message.
-    t.mouseMove(delegate, delegate.width - 5, 2);
     delegate.message = { id: "m15", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "delivered", created: root.now };
     t.waitForRendering(delegate);
-    if (Check.find(delegate, "reactionChips").visible) return Check.fail("reaction chips shown for a message with none, unhovered");
+    if (Check.find(delegate, "reactionChips").visible) return Check.fail("reaction chips shown for a message with none");
+    return true;
+  }
+
+  // checkHoverNeverShiftsLayout verifies that hovering a message to show
+  // its toolbar never moves or resizes any message in the stack: the
+  // toolbar floats outside each delegate's own Column, so appearing must
+  // not change a single y or height.
+  function checkHoverNeverShiftsLayout(): bool {
+    t.mouseMove(stack, 2, 2); // start with the pointer away from every row
+    t.waitForRendering(rowB);
+
+    const rows = [rowA, rowB, rowC];
+    const before = rows.map(r => ({ y: r.y, height: r.height }));
+
+    const bubble = Check.find(rowB, "bubble");
+    t.mouseMove(bubble, bubble.width / 2, bubble.height / 2);
+    t.wait(50); // let the hover-driven opacity settle
+    if (!Check.find(rowB, "hoverToolbar").visible) return Check.fail("hover toolbar did not appear over the hovered row");
+
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].y !== before[i].y || rows[i].height !== before[i].height) {
+        return Check.fail(`row ${i} moved or resized on hover: was y=${before[i].y} h=${before[i].height}, now y=${rows[i].y} h=${rows[i].height}`);
+      }
+    }
+    return true;
+  }
+
+  // checkToolbarStaysVisibleOnItself verifies that once hovering the
+  // bubble has revealed the toolbar, moving the pointer on to one of its
+  // own buttons keeps it visible, even though the toolbar floats above
+  // the bubble's own bounds and the pointer has therefore left the area
+  // that first revealed it. It also checks the toolbar hides again once
+  // the pointer leaves both.
+  function checkToolbarStaysVisibleOnItself(): bool {
+    // Start clean: an earlier check left the pointer resting on rowB's
+    // bubble, which would otherwise make the next assertion meaningless.
+    t.mouseMove(stack, 2, 2);
+    t.wait(150);
+
+    const toolbar = Check.find(rowB, "hoverToolbar");
+    if (toolbar.visible) return Check.fail("toolbar visible before any hover");
+
+    // Hover the bubble first, exactly as a user would before reaching
+    // for one of the toolbar's buttons: the toolbar cannot be hovered
+    // directly while it is still hidden.
+    const bubble = Check.find(rowB, "bubble");
+    t.mouseMove(bubble, bubble.width / 2, bubble.height / 2);
+    t.wait(50);
+    if (!toolbar.visible) return Check.fail("toolbar did not appear on hovering the bubble");
+
+    // Move on to the toolbar's own button next; only its own hover area
+    // can be keeping it shown once the pointer has left the bubble.
+    const reactButton = Check.find(toolbar, "reactButton");
+    t.mouseMove(reactButton, reactButton.width / 2, reactButton.height / 2);
+    t.wait(150); // long enough that a real fade-out would have finished
+    if (!toolbar.visible) return Check.fail("toolbar hid when the pointer moved from the bubble onto its own button");
+
+    root.pickerRequests = [];
+    t.mouseClick(reactButton);
+    if (JSON.stringify(root.pickerRequests) !== '["l2"]') return Check.fail("+ click reported " + JSON.stringify(root.pickerRequests) + ", want [\"l2\"]");
+
+    const replyButton = Check.find(toolbar, "replyButton");
+    root.replied = [];
+    t.mouseClick(replyButton);
+    if (JSON.stringify(root.replied) !== '["l2"]') return Check.fail("reply click reported " + JSON.stringify(root.replied) + ", want [\"l2\"]");
+
+    t.mouseMove(stack, 2, 2);
+    t.wait(150); // let the fade-out finish
+    if (toolbar.visible) return Check.fail("toolbar stayed visible once the pointer left both the bubble and the toolbar");
     return true;
   }
 }

@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import qs.Commons
 import "../theme"
 import "../lib/Timeline.js" as Timeline
@@ -43,7 +42,7 @@ Item {
   // react asks the caller to toggle this message's reaction with emoji.
   signal react(string id, string emoji)
   // reactPickerRequested asks the caller to open the emoji picker for
-  // this message, from the chips row's "+" button.
+  // this message, from the hover toolbar's "+" button.
   signal reactPickerRequested(string id)
 
   width: ListView.view ? ListView.view.width : implicitWidth
@@ -80,7 +79,7 @@ Item {
       width: parent.width
       height: bubble.height
 
-      // A passive hover handler shows the reply button without taking
+      // A passive hover handler shows the hover toolbar without taking
       // the bubble's own clicks, the same way the list row's pin glyph
       // tracks hover beside its own MouseArea.
       HoverHandler {
@@ -102,11 +101,6 @@ Item {
         color: root.message.outgoing ? Util.alpha(Color.accent, 0.22) : Util.alpha(Color.foreground, 0.06)
         anchors.right: root.message.outgoing ? parent.right : undefined
         anchors.left: root.message.outgoing ? undefined : parent.left
-
-        // Tracks hover without taking mouse events away from the text
-        // and media below, so the "+" reaction chip can appear while
-        // everything else stays clickable.
-        HoverHandler { id: bubbleHover }
 
         // The text, then any link preview, photo or file; parts a
         // message lacks take no space.
@@ -136,33 +130,25 @@ Item {
           nowMs: root.nowMs
           showStatus: root.showStatus
         }
-      }
 
-      // replyButton appears on hover over the bubble, to start a reply
-      // to this message; it sits just outside the bubble, on the side
-      // nearer the middle of the row.
-      Text {
-        id: replyButton
-        objectName: "replyButton"
-        visible: rowHover.hovered
-        text: "↩"
-        color: Util.alpha(Color.foreground, 0.6)
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.body
-        y: bubble.y + (bubble.height - height) / 2
-        x: root.message.outgoing ? bubble.x - width - Theme.spacing.xs : bubble.x + bubble.width + Theme.spacing.xs
+        // hoverToolbar floats over the bubble's top corner, mostly above
+        // it with only a sliver overlapping the top padding, never the
+        // text: the near-the-middle corner for each direction, so it
+        // never lands over the window edge. It sits outside the message
+        // Column entirely, so fading it in or out never resizes or moves
+        // any bubble; z keeps it drawn above the bubble's own content.
+        MessageHoverToolbar {
+          id: hoverToolbar
 
-        HoverHandler {
-          id: replyButtonHover
-        }
-        ToolTip.visible: replyButtonHover.hovered
-        ToolTip.text: "Reply"
-        ToolTip.delay: 500
+          objectName: "hoverToolbar"
+          z: 1
+          active: rowHover.hovered || toolbarHover.hovered
+          x: root.message.outgoing ? 0 : bubble.width - width
+          y: -height + Theme.spacing.xs
+          onReact: root.reactPickerRequested(root.message.id)
+          onReply: root.replyRequested(root.message.id)
 
-        MouseArea {
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          onClicked: root.replyRequested(root.message.id)
+          HoverHandler { id: toolbarHover }
         }
       }
     }
@@ -172,9 +158,7 @@ Item {
       width: parent.width
       alignRight: root.message.outgoing
       reactions: root.message.reactions ? root.message.reactions : []
-      hovering: bubbleHover.hovered
       onToggled: emoji => root.react(root.message.id, emoji)
-      onAddRequested: root.reactPickerRequested(root.message.id)
     }
 
     Item {

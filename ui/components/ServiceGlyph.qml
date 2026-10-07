@@ -1,6 +1,6 @@
 import QtQuick
-import QtQuick.Controls
 import qs.Commons
+import qs.Ui as Ui
 import "../theme"
 
 // A service's Nerd Font glyph, always paired with a tooltip naming it.
@@ -30,7 +30,8 @@ Item {
     hoverEnabled: true
   }
 
-  ToolTip.visible: hover.containsMouse
-  ToolTip.text: root.label
-  ToolTip.delay: 500
+  Ui.PanelToolTip {
+    visible: hover.containsMouse
+    text: root.label
+  }
 }

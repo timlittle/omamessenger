@@ -1,6 +1,8 @@
 // Checks ReactionChips: chips show their emoji and count, the user's own
 // reaction is marked with more than colour alone, clicking a chip toggles
-// it, and the "+" chip only appears, and only works, while hovering.
+// it, and the row takes no space when a message has no reactions. Adding
+// a reaction is started from the message's hover toolbar instead, so
+// that is checked by the MessageDelegate test.
 import QtQuick
 import QtTest
 import Quickshell
@@ -11,7 +13,6 @@ ShellRoot {
   id: root
 
   property var toggled: []
-  property int addRequests: 0
 
   FloatingWindow {
     id: win
@@ -27,7 +28,6 @@ ShellRoot {
         { emoji: "❤️", count: 1, mine: true }
       ]
       onToggled: emoji => root.toggled.push(emoji)
-      onAddRequested: root.addRequests++
     }
   }
 
@@ -46,8 +46,7 @@ ShellRoot {
     if (!root.checkChipsShowEmojiAndCount()) return;
     if (!root.checkMineIsMarkedBeyondColour()) return;
     if (!root.checkClickingAChipToggles()) return;
-    if (!root.checkAddChipOnlyWhileHovering()) return;
-    if (!root.checkHiddenWithNoReactionsAndNotHovering()) return;
+    if (!root.checkHiddenWithNoReactions()) return;
 
     console.log("PASS ReactionChips");
     Qt.exit(0);
@@ -79,25 +78,9 @@ ShellRoot {
     return true;
   }
 
-  function checkAddChipOnlyWhileHovering(): bool {
-    chips.hovering = false;
-    if (Check.find(chips, "addChip").visible) return Check.fail("the + chip is shown without hovering");
-
-    chips.hovering = true;
-    t.waitForRendering(chips);
-    const plus = Check.find(chips, "addChip");
-    if (!plus.visible) return Check.fail("the + chip did not appear while hovering");
-
-    root.addRequests = 0;
-    t.mouseClick(Check.find(chips, "addChipArea"));
-    if (root.addRequests !== 1) return Check.fail("clicking + asked to open the picker " + root.addRequests + " times, want 1");
-    return true;
-  }
-
-  function checkHiddenWithNoReactionsAndNotHovering(): bool {
-    chips.hovering = false;
+  function checkHiddenWithNoReactions(): bool {
     chips.reactions = [];
-    if (chips.visible) return Check.fail("chips still visible with no reactions and no hover");
+    if (chips.visible) return Check.fail("chips still visible with no reactions");
     return true;
   }
 }

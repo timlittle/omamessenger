@@ -1,6 +1,6 @@
 import QtQuick
-import QtQuick.Controls
 import qs.Commons
+import qs.Ui as Ui
 import "theme"
 import "components"
 
@@ -78,7 +78,8 @@ Item {
     }
   }
 
-  ToolTip.visible: hover.containsMouse
-  ToolTip.text: root.tooltipText
-  ToolTip.delay: 500
+  Ui.PanelToolTip {
+    visible: hover.containsMouse
+    text: root.tooltipText
+  }
 }

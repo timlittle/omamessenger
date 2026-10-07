@@ -1,7 +1,7 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
+import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
 
@@ -126,9 +126,10 @@ Item {
           HoverHandler {
             id: pinHover
           }
-          ToolTip.visible: pinHover.hovered
-          ToolTip.text: "Pinned"
-          ToolTip.delay: 500
+          Ui.PanelToolTip {
+            visible: pinHover.hovered
+            text: "Pinned"
+          }
         }
 
         Text {
@@ -190,9 +191,10 @@ Item {
           HoverHandler {
             id: muteHover
           }
-          ToolTip.visible: muteHover.hovered
-          ToolTip.text: "Muted"
-          ToolTip.delay: 500
+          Ui.PanelToolTip {
+            visible: muteHover.hovered
+            text: "Muted"
+          }
         }
 
         UnreadBadge {

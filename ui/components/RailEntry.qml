@@ -1,7 +1,7 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
+import qs.Ui as Ui
 import "../theme"
 import "../lib/Rail.js" as Rail
 
@@ -27,10 +27,12 @@ Item {
 
   objectName: "entry-" + root.entry.key
   implicitHeight: layout.implicitHeight + Theme.spacing.sm * 2
-  ToolTip.visible: hover.containsMouse
-  ToolTip.text: (root.account ? Rail.accountLabel({ service: root.entry.service, name: root.entry.label }, root.knownServices) : root.entry.label)
-    + (root.statusWord ? " · " + root.statusWord : "")
-  ToolTip.delay: 500
+
+  Ui.PanelToolTip {
+    visible: hover.containsMouse
+    text: (root.account ? Rail.accountLabel({ service: root.entry.service, name: root.entry.label }, root.knownServices) : root.entry.label)
+      + (root.statusWord ? " · " + root.statusWord : "")
+  }
 
   Rectangle {
     anchors.fill: parent
