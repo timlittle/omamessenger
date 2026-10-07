@@ -308,3 +308,31 @@ func TestUnreadTotal_IgnoresMutedConversations(t *testing.T) {
 		t.Errorf("SetMuted(missing) = %v, want ErrNotFound", err)
 	}
 }
+
+func TestConversations_SearchFollowsEditsAndDeletes(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "lunch on friday", Created: 1})
+
+	if _, found, err := s.EditMessage(ctx, "chat", "1", "dinner on saturday", nil); err != nil || !found {
+		t.Fatalf("EditMessage = %t, %v", found, err)
+	}
+
+	for query, want := range map[string]int{"lunch": 0, "dinner": 1} {
+		if got, err := s.Conversations(ctx, query); err != nil || len(got) != want {
+			t.Errorf("after the edit, search %q found %d chats (%v), want %d", query, len(got), err, want)
+		}
+	}
+
+	if _, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := s.Conversations(ctx, "dinner"); err != nil || len(got) != 0 {
+		t.Errorf("after the delete, search found %d chats (%v), want none", len(got), err)
+	}
+}
