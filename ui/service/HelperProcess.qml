@@ -53,6 +53,7 @@ Item {
       return;
     }
 
+    console.info("OmaMessenger: starting the helper");
     root.status = "starting";
     root.detail = "";
     helper.command = [root._launcherPath];
@@ -61,6 +62,7 @@ Item {
 
   // stop ends the helper deliberately; the exit handler will not restart it.
   function stop(): void {
+    console.info("OmaMessenger: stopping the helper");
     root._stopping = true;
     helper.running = false;
     root.status = "stopped";
@@ -79,6 +81,7 @@ Item {
 
   // _handleExit applies the restart policy to one helper exit.
   function _handleExit(exitCode: int): void {
+    console.info(`OmaMessenger: the helper exited with code ${exitCode}${root._stopping ? " when asked to stop" : ""}`);
     if (root._stopping) {
       root._stopping = false;
       if (root._startAfterStop) {
@@ -127,8 +130,13 @@ Item {
       onRead: function(data) { root.line(data); }
     }
 
+    // The helper's diagnostics never hold message content (see
+    // tools/nologcontent), so they go to the shell's log as well.
     stderr: SplitParser {
-      onRead: function(data) { root.detail = data; }
+      onRead: function(data) {
+        root.detail = data;
+        console.info(`OmaMessenger helper: ${data}`);
+      }
     }
 
     onRunningChanged: {
@@ -162,4 +170,5 @@ Item {
   }
 
   Component.onCompleted: root.start()
+  Component.onDestruction: console.info("OmaMessenger: the helper's service was destroyed")
 }

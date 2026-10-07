@@ -35,7 +35,10 @@ Item {
   // focus: the only time the user is looking at the open conversation.
   readonly property bool windowFocused: window.visible && keyArea.Window.active
   onWindowFocusedChanged: conversationController.setWindowActive(root.windowFocused)
-  Component.onCompleted: conversationController.setWindowActive(root.windowFocused)
+  Component.onCompleted: {
+    if (!root.service) console.warn("OmaMessenger: the window opened without its service");
+    conversationController.setWindowActive(root.windowFocused);
+  }
 
   // hidingByChoice is true only while _hide() lowers the window after the
   // user answered the close question.
