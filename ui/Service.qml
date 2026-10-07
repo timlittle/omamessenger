@@ -38,6 +38,12 @@ Item {
   // pendingAuth is the sign-in step an account is waiting on, or null.
   readonly property var pendingAuth: appState.pendingAuth
 
+  // shell is the host facade Omarchy injects after creating this service,
+  // used to summon the panel open on a conversation when a notification is
+  // clicked. Never `required`: Quickshell refuses to load a service that
+  // declares one, and the host sets it after construction anyway.
+  property var shell: null
+
   // uiState is the panel's durable state: rail filter, selection, open
   // pane, search text and drafts. It is an alias onto AppState's own
   // property so the panel can read and write it directly and still have
@@ -94,8 +100,20 @@ Item {
     else if (name === "account.removed") appState.applyAccountRemoved(data);
     else if (name === "auth.step") appState.applyAuthStep(data);
     else if (name === "unread.changed") appState.applyUnreadChanged(data);
+    else if (name === "notification.clicked") root._openOnNotificationClick(data);
 
     root.event(name, data);
+  }
+
+  // _openOnNotificationClick summons the panel open on the conversation a
+  // clicked notification carried, the same way the bar widget summons it.
+  // Without a shell facade (a host too old to inject one, or a test) this
+  // does nothing; the event still reaches the panel through root.event.
+  function _openOnNotificationClick(data: var): void {
+    if (!root.shell || typeof root.shell.summon !== "function") return;
+    if (!data || typeof data.conversationId !== "string" || !data.conversationId) return;
+
+    root.shell.summon("io.github.omamessenger", JSON.stringify({ conversationId: data.conversationId }));
   }
 
   AppState {

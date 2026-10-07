@@ -2,7 +2,9 @@
 // demo seeds the right number of conversations, and a sent message is
 // reported delivered. Uses the real demo helper, started by Service
 // itself; XDG_DATA_HOME is set by the test runner, so this never touches
-// real data.
+// real data. Also checks, with a fake shell facade and no helper
+// involved, that a notification.clicked event summons this plugin with
+// the clicked conversation's id, and is tolerated with no shell at all.
 import QtQuick
 import Quickshell
 import "ui"
@@ -14,6 +16,22 @@ ShellRoot {
   property var conversations: []
   property string pendingConversationId: ""
   property int listAttempts: 0
+
+  // notificationClickForwarded records whether Service's event signal
+  // relayed a notification.clicked, as the panel would rely on.
+  property bool notificationClickForwarded: false
+
+  // fakeShell stands in for the host facade Omarchy injects: a plain
+  // object recording what it was asked to summon.
+  property var fakeShell: ({
+    summonedId: "",
+    summonedPayload: "",
+    summon: function(id, payloadJson) {
+      root.fakeShell.summonedId = id;
+      root.fakeShell.summonedPayload = payloadJson;
+      return true;
+    }
+  })
 
   // succeed reports a pass and stops the test.
   function succeed(): void {
@@ -49,6 +67,29 @@ ShellRoot {
     });
   }
 
+  // checkNotificationClicked exercises Service's notification.clicked
+  // handling directly, needing no helper connection: tolerated with no
+  // shell facade at all, then summoning this plugin with the clicked
+  // conversation's id once a fake one is set.
+  function checkNotificationClicked(): void {
+    service._handleEvent("notification.clicked", { conversationId: "conv-9" }); // no shell: must not throw
+
+    service.shell = root.fakeShell;
+    service._handleEvent("notification.clicked", { conversationId: "conv-42" });
+    service.shell = null;
+
+    if (root.fakeShell.summonedId !== "io.github.omamessenger")
+      return Check.fail("summoned plugin id = " + JSON.stringify(root.fakeShell.summonedId)
+        + ", want io.github.omamessenger");
+
+    const payload = JSON.parse(root.fakeShell.summonedPayload);
+    if (payload.conversationId !== "conv-42")
+      return Check.fail("summon payload = " + root.fakeShell.summonedPayload + ", want conversationId conv-42");
+
+    if (!root.notificationClickForwarded)
+      return Check.fail("Service did not forward notification.clicked through its event signal");
+  }
+
   // sendToMum sends a message to a conversation that never fails a send
   // attempt, so the test is not flaky.
   function sendToMum(): void {
@@ -70,10 +111,19 @@ ShellRoot {
     }
 
     onEvent: function(name, data) {
+      if (name === "notification.clicked") root.notificationClickForwarded = true;
       if (name !== "message.updated") return;
       if (data.conversationId !== root.pendingConversationId) return;
       if (data.status === "delivered") root.succeed();
     }
+  }
+
+  // Runs once at startup: the notification-click check needs no helper
+  // connection, so it does not wait for ready.
+  Timer {
+    running: true
+    interval: 0
+    onTriggered: root.checkNotificationClicked()
   }
 
   // retryTimer re-lists conversations while the demo connectors are still
