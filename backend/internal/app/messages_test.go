@@ -47,7 +47,7 @@ func TestSend_StoresPublishesAndDispatches(t *testing.T) {
 	f := newFixture(t, false)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 
-	m, err := f.commands.Send(t.Context(), "chat", "  send this  ")
+	m, err := f.commands.Send(t.Context(), "chat", "  send this  ", "")
 	if err != nil || m.Text != "send this" || !m.Outgoing || m.Status != domain.StatusPending {
 		t.Fatalf("Send = %+v, %v", m, err)
 	}
@@ -69,7 +69,7 @@ func TestSend_RefusedMessageIsFailedNotAnError(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.dispatcher.err = errors.New("offline")
 
-	m, err := f.commands.Send(t.Context(), "chat", "hello")
+	m, err := f.commands.Send(t.Context(), "chat", "hello", "")
 	if err != nil || m.Status != domain.StatusFailed {
 		t.Fatalf("Send = %+v, %v; want a failed message", m, err)
 	}
@@ -102,7 +102,7 @@ func TestSend_RejectsInvalidInput(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if _, err := f.commands.Send(ctx, tt.conversationID, tt.text); !errors.Is(err, tt.want) {
+		if _, err := f.commands.Send(ctx, tt.conversationID, tt.text, ""); !errors.Is(err, tt.want) {
 			t.Errorf("%s: Send = %v, want %v", tt.name, err, tt.want)
 		}
 	}
@@ -116,7 +116,7 @@ func TestRetry_SendsAFailedMessageAgain(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.dispatcher.err = errors.New("offline")
 
-	failed, _ := f.commands.Send(ctx, "chat", "hello")
+	failed, _ := f.commands.Send(ctx, "chat", "hello", "")
 	f.published.take()
 
 	f.dispatcher.err = nil

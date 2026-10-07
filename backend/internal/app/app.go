@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -56,6 +57,29 @@ type Organizer interface {
 // asked for.
 type MediaCache interface {
 	Fetch(ctx context.Context, name string, fill func(ctx context.Context, path string) error) (string, error)
+}
+
+// OutgoingMedia stores the bytes of a file the user is sending into the
+// outgoing media area, named by the message's id, so a retry can resend
+// it even after the user moves, renames or deletes the original. Path is
+// pure and needs no context; keeping it alongside Store, rather than
+// splitting it into its own one-method interface, keeps the one thing a
+// caller needs for an attachment, store it and find it again, in one
+// place.
+type OutgoingMedia interface {
+	Store(ctx context.Context, id, fileName string, r io.Reader) (string, error)
+	Path(id, fileName string) string
+}
+
+// ClipboardRunner reads the Wayland clipboard. Quickshell's QML cannot
+// read clipboard image data itself, only ask whether a paste happened, so
+// the helper shells out to wl-paste; this is what PasteImage asks of it.
+type ClipboardRunner interface {
+	// Types lists the MIME types the clipboard currently offers.
+	Types(ctx context.Context) ([]string, error)
+
+	// Read writes the clipboard's data of mimeType to w.
+	Read(ctx context.Context, mimeType string, w io.Writer) error
 }
 
 // SignIn hands sign-in input, such as a code, to an account's connector.
@@ -115,6 +139,8 @@ type Deps struct {
 	Cache      MediaCache
 	Refresher  MessageRefresher
 	Organizer  Organizer
+	Outgoing   OutgoingMedia
+	Clipboard  ClipboardRunner
 	Fake       Injector
 }
 
@@ -126,6 +152,7 @@ func New(d Deps) (*Commands, *Ingest) {
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, fake: d.Fake,
+		outgoing: d.Outgoing, clipboard: d.Clipboard,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}
