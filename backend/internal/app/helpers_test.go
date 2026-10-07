@@ -205,9 +205,10 @@ func incoming(remoteID, text string) domain.Message {
 // fakeAccounts adds and removes accounts straight in the store, failing
 // with err when it is set.
 type fakeAccounts struct {
-	store *store.Store
-	added []app.NewAccount
-	err   error
+	store    *store.Store
+	added    []app.NewAccount
+	services []domain.Service
+	err      error
 }
 
 func (a *fakeAccounts) Add(ctx context.Context, n app.NewAccount) (domain.Account, error) {
@@ -228,6 +229,22 @@ func (a *fakeAccounts) Remove(ctx context.Context, accountID string) error {
 
 	return a.store.DeleteAccount(ctx, accountID)
 }
+
+// Services lists the services fakeAccounts was told to offer, so tests can
+// exercise Commands.Services without a real registry.
+func (a *fakeAccounts) Services() []domain.Service {
+	return a.services
+}
+
+// noListerAccounts is an Accounts that does not implement
+// app.ServiceLister, for testing that Commands.Services tolerates that.
+type noListerAccounts struct{}
+
+func (noListerAccounts) Add(context.Context, app.NewAccount) (domain.Account, error) {
+	return domain.Account{}, nil
+}
+
+func (noListerAccounts) Remove(context.Context, string) error { return nil }
 
 // fakeHistory plays the service's older history: each LoadOlder reports
 // the next of older through the ingest, as a connector does through its

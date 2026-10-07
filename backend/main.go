@@ -16,10 +16,17 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/connector/telegram"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
+
+// providers lists every messaging service this helper can add an account
+// for. Adding a service means adding its Provider here.
+func providers() []connector.Provider {
+	return []connector.Provider{telegram.Provider{}}
+}
 
 // mediaCacheLimit is how much downloaded media the helper keeps before it
 // drops the least recently used: 1 GiB.
@@ -74,7 +81,7 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	logger := log.New(s.errOut, "", 0)
 	srv := server.New(helperVersion, logger)
 
-	registry := &accountRegistry{db: db, dir: filepath.Join(cfg.dataDir, "telegram"), connect: telegramConnector}
+	registry := newAccountRegistry(db, cfg.dataDir, providers())
 	media := cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit)
 	commands, ingest, manager, err := wire(ctx, db, srv, registry, media)
 	if err != nil {

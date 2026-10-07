@@ -56,12 +56,12 @@ type SignIn interface {
 	SubmitAuth(ctx context.Context, accountID, step, value string) error
 }
 
-// NewAccount is what adding an account needs: the service, and for
-// Telegram optionally the user's own API id and hash from my.telegram.org.
+// NewAccount is what adding an account needs: the service, and whatever
+// options its provider's Prepare wants, such as Telegram's "apiId" and
+// "apiHash" from my.telegram.org.
 type NewAccount struct {
 	Service string
-	APIID   int
-	APIHash string
+	Options map[string]string
 }
 
 // Accounts adds and removes accounts, starting or stopping their
@@ -69,6 +69,14 @@ type NewAccount struct {
 type Accounts interface {
 	Add(ctx context.Context, a NewAccount) (domain.Account, error)
 	Remove(ctx context.Context, accountID string) error
+}
+
+// ServiceLister lists the messaging services a provider is registered
+// for, so the UI can offer them when adding an account. The accounts
+// registry implements it; Commands.Services returns none when the given
+// Accounts does not.
+type ServiceLister interface {
+	Services() []domain.Service
 }
 
 // Notifier shows a desktop notification.

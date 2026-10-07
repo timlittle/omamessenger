@@ -14,7 +14,7 @@ func TestAddAccount_StartsATelegramAccount(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
-	account, err := f.commands.AddAccount(t.Context(), app.NewAccount{Service: domain.ServiceTelegram, APIID: 12345, APIHash: "abc"})
+	account, err := f.commands.AddAccount(t.Context(), app.NewAccount{Service: domain.ServiceTelegram, Options: map[string]string{"apiId": "12345", "apiHash": "abc"}})
 	if err != nil || account.ID != "tg-new" {
 		t.Fatalf("AddAccount = %+v, %v", account, err)
 	}
@@ -24,7 +24,7 @@ func TestAddAccount_StartsATelegramAccount(t *testing.T) {
 	}
 }
 
-func TestAddAccount_LeavesTheKeysToTheHelperWhenNoneAreGiven(t *testing.T) {
+func TestAddAccount_LeavesSetupOptionsToTheRegistry(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
@@ -32,21 +32,21 @@ func TestAddAccount_LeavesTheKeysToTheHelperWhenNoneAreGiven(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := f.accounts.added; len(got) != 1 || got[0].APIID != 0 {
-		t.Errorf("added %+v, want one account left to the built-in keys", got)
+	if got := f.accounts.added; len(got) != 1 || got[0].Options != nil {
+		t.Errorf("added %+v, want one account passed through with no options", got)
 	}
 }
 
-func TestAddAccount_RejectsWhatCannotBeSignedIn(t *testing.T) {
+func TestAddAccount_MapsRegistryFailuresToInvalidInput(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
-	for name, n := range map[string]app.NewAccount{
-		"WhatsApp":    {Service: domain.ServiceWhatsApp},
-		"no API id":   {Service: domain.ServiceTelegram, APIHash: "abc"},
-		"no API hash": {Service: domain.ServiceTelegram, APIID: 1, APIHash: " "},
+	for name, registryErr := range map[string]error{
+		"unknown service": connector.ErrUnknownProvider,
+		"invalid setup":   connector.ErrInvalidSetup,
 	} {
-		if _, err := f.commands.AddAccount(t.Context(), n); !errors.Is(err, app.ErrInvalidInput) {
+		f.accounts.err = registryErr
+		if _, err := f.commands.AddAccount(t.Context(), app.NewAccount{Service: domain.ServiceTelegram}); !errors.Is(err, app.ErrInvalidInput) {
 			t.Errorf("%s: AddAccount = %v, want ErrInvalidInput", name, err)
 		}
 	}
@@ -62,12 +62,33 @@ func TestAddAccount_ReportsFailure(t *testing.T) {
 	f := newFixture(t, false)
 	f.accounts.err = errors.New("disk full")
 
-	if _, err := f.commands.AddAccount(t.Context(), app.NewAccount{Service: domain.ServiceTelegram, APIID: 1, APIHash: "abc"}); err == nil {
+	if _, err := f.commands.AddAccount(t.Context(), app.NewAccount{Service: domain.ServiceTelegram, Options: map[string]string{"apiId": "1", "apiHash": "abc"}}); err == nil {
 		t.Error("AddAccount succeeded although adding failed")
 	}
 
 	if len(f.published.take()) != 0 {
 		t.Error("a failed add published an account")
+	}
+}
+
+func TestServices_IsEmptyWithoutALister(t *testing.T) {
+	t.Parallel()
+
+	commands, _ := app.New(app.Deps{Accounts: noListerAccounts{}})
+	if got := commands.Services(); got != nil {
+		t.Errorf("Services() = %+v, want none", got)
+	}
+}
+
+func TestServices_ListsWhatTheRegistryOffers(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	want := []domain.Service{{ID: domain.ServiceTelegram, Name: "Telegram"}}
+	f.accounts.services = want
+
+	if got := f.commands.Services(); !slices.Equal(got, want) {
+		t.Errorf("Services() = %+v, want %+v", got, want)
 	}
 }
 

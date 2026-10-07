@@ -37,6 +37,12 @@ const (
 // ErrNotFound reports a missing account, contact, conversation or message.
 var ErrNotFound = errors.New("not found")
 
+// Service is a messaging service the helper can add an account for.
+type Service struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // Account is one signed-in messaging account.
 type Account struct {
 	ID      string `json:"id"`
