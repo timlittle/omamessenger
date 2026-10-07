@@ -1,7 +1,9 @@
 .pragma library
+.import "Markdown.js" as Markdown
 
 // Text formatting for the conversation list and message view: HTML escaping
-// and links, search highlights, initials, time labels and status glyphs.
+// and links, pipe tables (via Markdown.js), search highlights, initials,
+// time labels and status glyphs.
 
 var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -31,9 +33,24 @@ function linkify(escaped, color) {
 
 // messageHtml shows a message's text as rich text, which would otherwise
 // run every line together: it escapes it, links URLs, and keeps line
-// breaks and runs of spaces, so lists and paragraphs keep their shape.
-// Links take linkColor, since a TextEdit has no link color of its own.
-function messageHtml(text, linkColor) {
+// breaks and runs of spaces, so lists and paragraphs keep their shape. A
+// GitHub-style pipe table in the text renders as a real HTML table
+// instead, with text before and after it handled as usual. Links take
+// linkColor, and a table's cell borders take tableBorderColor, since a
+// TextEdit has no colors of its own for either.
+function messageHtml(text, linkColor, tableBorderColor) {
+  const borderColor = tableBorderColor ?? '#888888';
+  return Markdown.splitTables(text)
+    .map((part) => (part.kind === 'table'
+      ? Markdown.tableHtml(part.table, escapeHtml, (cell) => linkify(cell, linkColor), borderColor)
+      : lineHtml(part.text, linkColor)))
+    .join('');
+}
+
+// lineHtml is messageHtml's handling for a stretch of text that is not a
+// table: escape it, link URLs, and keep its line breaks and runs of
+// spaces.
+function lineHtml(text, linkColor) {
   return linkify(escapeHtml(text), linkColor).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
 }
 

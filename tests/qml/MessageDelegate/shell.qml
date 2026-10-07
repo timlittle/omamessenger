@@ -1,10 +1,11 @@
 // Checks MessageDelegate: sender names in groups, the read glyph, the
 // retry line on a failed message, that rich text escapes markup while
-// linkifying URLs, a reply's quote, a photo whose full image fails to load,
-// the hover toolbar's react and reply buttons, reaction chips, that
-// hovering a message never moves or resizes any message, and that the
-// toolbar stays visible once the pointer reaches it, even after it has
-// left the bubble underneath.
+// linkifying URLs, a pipe table rendered as real columns instead of
+// smeared wrapped lines, a reply's quote, a photo whose full image fails
+// to load, the hover toolbar's react and reply buttons, reaction chips,
+// that hovering a message never moves or resizes any message, and that
+// the toolbar stays visible once the pointer reaches it, even after it
+// has left the bubble underneath.
 import QtQuick
 import QtTest
 import Quickshell
@@ -27,6 +28,12 @@ ShellRoot {
   property var reacted: []
   property var pickerRequests: []
   property real now: Date.now()
+
+  // testRoot is this test's own directory, resolved from the running
+  // file rather than the process's working directory: a path outside it
+  // resolves to a blackhole offscreen, so a screenshot saved for a human
+  // to look at has to land inside it.
+  readonly property string testRoot: String(Qt.resolvedUrl(".")).replace("file://", "")
 
   // tinyThumb is a valid 2x2 JPEG, base64 encoded, standing in for the
   // kind of preview a real photo carries.
@@ -132,6 +139,7 @@ ShellRoot {
     if (!root.checkFailedRetry()) return;
     if (!root.checkRichText()) return;
     if (!root.checkLineBreaks()) return;
+    if (!root.checkPipeTable()) return;
     if (!root.checkLinkPreview()) return;
     if (!root.checkPhoto()) return;
     if (!root.checkPhotoLoadFailure()) return;
@@ -226,6 +234,46 @@ ShellRoot {
     if (!body) return Check.fail("message body not found");
     const breaks = (body.text.match(/<br/g) || []).length;
     if (breaks !== 2) return Check.fail("bulleted message has " + breaks + " line breaks, want 2: " + body.text);
+    return true;
+  }
+
+  // checkPipeTable verifies a bot's Markdown pipe table renders as a real
+  // HTML table: a bold header row, a border on every cell, the data
+  // preserved, the dash separator row gone from what is actually shown,
+  // and the whole table fitting inside the bubble rather than overflowing
+  // it. It also saves a screenshot for a human to look at.
+  function checkPipeTable(): bool {
+    const text = [
+      "| Job                | When                     | What it does |",
+      "| ------------------ | ------------------------ | ------------- |",
+      "| 06:30 check        | Daily, 06:30             | It compares today's Strava run against yesterday's and writes a short note about the difference, then saves it for the weekly digest |",
+      "| Missed-run reminder | Every 30 min, 12:00-20:30 | Looks for a run between those hours and pings if none has shown up yet |",
+    ].join("\n");
+    delegate.message = { id: "tbl1", senderId: "s1", senderName: "Alex", text: text, outgoing: false, status: "received", created: root.now };
+    delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
+    t.waitForRendering(delegate);
+
+    const body = Check.find(delegate, "body");
+    // TextEdit's own "text" getter reads the parsed document back as Qt's
+    // normalized HTML, which folds "<th>" into a styled "<td>", so a bold
+    // header shows as a bold span rather than the original tag name.
+    if (body.text.indexOf("<table") < 0) return Check.fail("table markup not rendered for a pipe table message: " + body.text);
+    if (!/font-weight:700;">Job<\/span>/.test(body.text)) return Check.fail("table header not rendered in bold: " + body.text);
+    if (body.contentWidth > body.width + 1) return Check.fail(`table overflows its column width: contentWidth ${body.contentWidth} > width ${body.width}`);
+
+    const rowCount = (body.text.match(/<tr>/g) || []).length;
+    if (rowCount !== 3) return Check.fail(`table has ${rowCount} rows, want 3 (one header and two data rows): ${body.text}`);
+
+    // The padded dashes that smear across many lines as plain text are
+    // gone from what is actually shown: only its surrounding borders are
+    // drawn with lines, never the separator row's own text.
+    const shown = body.text.replace(/<[^>]*>/g, ' ');
+    if (/-{3,}/.test(shown)) return Check.fail("the separator row's dashes still show as visible text: " + shown);
+    if (shown.indexOf('06:30 check') < 0) return Check.fail("a data cell's text is missing from the rendered table: " + shown);
+
+    const bubble = Check.find(delegate, "bubble");
+    bubble.grabToImage((result) => result.saveToFile(root.testRoot + "/pipe-table.png"));
+    t.wait(200); // give the async grab time to save before anything else runs
     return true;
   }
 

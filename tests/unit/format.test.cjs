@@ -338,6 +338,44 @@ test('messageHtml colours links so they read on the theme', () => {
     'see <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');
 });
 
+test('messageHtml renders a pipe table as a real table, not wrapped text', () => {
+  const text = '| Job | When |\n| --- | --- |\n| 06:30 check | Daily |';
+  const html = Format.messageHtml(text, '#89b4fa', '#444444');
+  assert.match(html, /<table[^>]*>/);
+  assert.match(html, /<th[^>]*>Job<\/th>/);
+  assert.match(html, /<td[^>]*>06:30 check<\/td>/);
+  assert.match(html, /border:1px solid #444444/);
+});
+
+test('messageHtml keeps text before and after a table as plain rich text', () => {
+  const text = 'Here is the schedule:\n| Job | When |\n| --- | --- |\n| run | 06:30 |\nThat is all.';
+  const html = Format.messageHtml(text, '#89b4fa', '#444444');
+  assert.match(html, /^Here is the schedule:<table/);
+  assert.match(html, /<\/table>That is all\.$/);
+});
+
+test('messageHtml escapes a table cell\'s markup', () => {
+  const text = '| Name |\n| --- |\n| <script>alert(1)</script> |';
+  const html = Format.messageHtml(text);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /&lt;script&gt;/);
+});
+
+test('messageHtml linkifies a URL inside a table cell', () => {
+  const text = '| Link |\n| --- |\n| see https://x.io |';
+  const html = Format.messageHtml(text, '#89b4fa');
+  assert.match(html, /<a href="https:\/\/x\.io" style="color:#89b4fa">https:\/\/x\.io<\/a>/);
+});
+
+test('messageHtml does not touch plain text that merely contains a pipe', () => {
+  assert.equal(Format.messageHtml('cost | revenue grew'), 'cost | revenue grew');
+});
+
+test('messageHtml defaults a table\'s border colour when none is given', () => {
+  const text = '| A |\n| --- |\n| 1 |';
+  assert.match(Format.messageHtml(text), /border:1px solid #888888/);
+});
+
 test('caption drops the label a photo, video or file stands in for', () => {
   assert.strictEqual(Format.caption('[Photo]', { kind: 'photo' }), '');
   assert.strictEqual(Format.caption('[Video]', { kind: 'video' }), '');

@@ -55,7 +55,7 @@ Column {
     selectByMouse: true
     wrapMode: TextEdit.Wrap
     textFormat: TextEdit.RichText
-    text: Format.messageHtml(body.caption, Color.accent)
+    text: Format.messageHtml(body.caption, Color.accent, Color.muted)
     color: Color.foreground
     font { family: Theme.font.family; pixelSize: Theme.font.body }
     onLinkActivated: link => Qt.openUrlExternally(link)
