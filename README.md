@@ -31,7 +31,7 @@ Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. R
 
 ## Add your Telegram account
 
-Choose **Add Telegram account** in the window (or **Add a Telegram account** in the command palette), then scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**). Or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password. Your recent chats appear once it connects, and the session stays on this computer.
+Choose **Add Telegram account** in the window (or **Add a Telegram account** in the command palette), then scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**). Or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password. Your recent chats appear once it connects, and the session stays on this computer. To remove an account, choose **Remove an account** in the command palette: it signs the account out and deletes its chats from this computer.
 
 OmaMessenger signs in as its own Telegram app, whose API id and hash are in the source like any Telegram client's. To use an app of your own instead, register one at [my.telegram.org](https://my.telegram.org/apps) and choose **Add a Telegram account with your own API keys** in the command palette.
 

@@ -106,7 +106,7 @@ Item {
   function _navState(): var {
     return {
       confirmOpen: windowController.confirmingClose,
-      setupOpen: accountController.open,
+      setupOpen: accountController.open || accountController.removing,
       paletteOpen: windowController.paletteOpen,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,

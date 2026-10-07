@@ -189,7 +189,7 @@ QtObject {
 
     return {
       confirmOpen: root.confirmingClose,
-      setupOpen: root.accountController ? root.accountController.open : false,
+      setupOpen: root.accountController ? root.accountController.open || root.accountController.removing : false,
       paletteOpen: root.paletteOpen,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,

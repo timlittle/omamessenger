@@ -281,6 +281,18 @@ Item {
     }
   }
 
+  RemoveAccount {
+    open: root.accountController?.removing ?? false
+    accounts: root.service ? root.service.accounts : []
+    error: root.accountController?.lastError ?? ""
+
+    onChosen: accountId => root.accountController.remove(accountId)
+    onCancelled: {
+      root.accountController.cancel();
+      if (root.focusDefault) root.focusDefault();
+    }
+  }
+
   NewChatDialog {
     objectName: "newChatDialog"
     id: dialog

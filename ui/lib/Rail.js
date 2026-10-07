@@ -100,6 +100,12 @@ function accountLabel(account) {
   return `${serviceLabel(account.service)} · ${account.name}`;
 }
 
+// accountDescription names an account by who is signed in to it when the
+// helper says so, since its name is often just the service's.
+function accountDescription(account) {
+  return `${serviceLabel(account.service)} · ${account.detail || account.name}`;
+}
+
 // unreadTotal sums the unread counts of conversations that are not muted.
 function unreadTotal(conversations) {
   return conversations.reduce((sum, c) => sum + (c.muted ? 0 : c.unread ?? 0), 0);

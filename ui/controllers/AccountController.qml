@@ -7,7 +7,7 @@ import "../lib/Setup.js" as Setup
 // app keys or the user's from my.telegram.org, then answering the sign-in steps its connector asks for until it
 // connects. The only controller that calls accounts.add, accounts.remove
 // and auth.submit. A sign-in step for a saved account whose session ran
-// out opens setup too, at that step.
+// out opens setup too, at that step. It also removes accounts.
 //
 // Item rather than QtObject: it holds a Connections child.
 Item {
@@ -38,6 +38,9 @@ Item {
   // lastError is the safe text of the most recent failure.
   property string lastError: ""
 
+  // removing shows the question asking which account to remove.
+  property bool removing: false
+
   // _added is true when this setup created the account, so cancelling may
   // remove it. A saved account asking to sign in again is never removed.
   property bool _added: false
@@ -51,6 +54,13 @@ Item {
   function run(action: string): void {
     if (action === "account.add") root.begin();
     else if (action === "account.addOwnKeys") root.beginWithOwnKeys();
+    else if (action === "account.remove") root.removing = true;
+  }
+
+  // remove signs an account out and deletes it from this computer; the
+  // question closes when the helper reports it removed.
+  function remove(accountId: string): void {
+    root._call("accounts.remove", { accountId: accountId }, () => {});
   }
 
   // begin adds an account with OmaMessenger's keys and waits for its first
@@ -109,6 +119,12 @@ Item {
   // cancel closes setup. An account added here that never finished
   // signing in is removed, so it does not linger half added.
   function cancel(): void {
+    if (root.removing) {
+      root.removing = false;
+      root.lastError = "";
+      return;
+    }
+
     const account = (root.service ? root.service.accounts : []).find((a) => a.id === root.accountId);
     if (root._added && (!account || account.status !== "connected")) {
       root.service.request("accounts.remove", { accountId: root.accountId }, function() {});
@@ -154,6 +170,12 @@ Item {
     });
   }
 
+  // _accountRemoved closes the removal question, and setup for that account.
+  function _accountRemoved(accountId: string): void {
+    root.removing = false;
+    if (accountId === root.accountId) root._close();
+  }
+
   // _close hides setup and clears it.
   function _close(): void {
     root.open = false;
@@ -182,7 +204,7 @@ Item {
     function onEvent(name, data) {
       if (name === "auth.step") root._showStep(data);
       else if (name === "account.updated") root._accountUpdated(data);
-      else if (name === "account.removed" && data.accountId === root.accountId) root._close();
+      else if (name === "account.removed") root._accountRemoved(data.accountId);
     }
   }
 }

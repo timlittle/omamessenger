@@ -81,6 +81,7 @@ ShellRoot {
     if (!root.checkSignInByPhone()) return;
     if (!root.checkCancelRemoves()) return;
     if (!root.checkResumesPendingStep()) return;
+    if (!root.checkRemovesAnAccount()) return;
 
     console.log("PASS AccountSetup");
     Qt.exit(0);
@@ -167,6 +168,26 @@ ShellRoot {
     const before = service.requests.length;
     resumed.cancel();
     if (service.requests.length !== before) return Check.fail("cancelling a saved account's sign-in removed it");
+    return true;
+  }
+
+  // checkRemovesAnAccount asks which account, removes the one chosen, and
+  // closes once the helper reports it gone; cancelling removes nothing.
+  function checkRemovesAnAccount(): bool {
+    controller.run("account.remove");
+    if (!controller.removing) return Check.fail("account.remove did not ask which account");
+
+    let before = service.requests.length;
+    controller.cancel();
+    if (controller.removing || service.requests.length !== before) return Check.fail("cancelling removal removed something");
+
+    controller.run("account.remove");
+    controller.remove("tg-9");
+    const sent = root.last();
+    if (sent.method !== "accounts.remove" || sent.params.accountId !== "tg-9") return Check.fail("remove sent " + JSON.stringify(sent));
+
+    service.event("account.removed", { accountId: "tg-9" });
+    if (controller.removing) return Check.fail("removal still showing after the account was removed");
     return true;
   }
 }

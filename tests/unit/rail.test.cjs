@@ -312,3 +312,8 @@ test('multiAccountServices lists the services the rail split by account', () => 
 
   assert.deepEqual(Rail.multiAccountServices(items), ['telegram']);
 });
+
+test('accountDescription names an account by who is signed in when known', () => {
+  assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Telegram', detail: 'Signed in as Tim' }), 'Telegram · Signed in as Tim');
+  assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Work', detail: '' }), 'Telegram · Work');
+});
