@@ -86,9 +86,9 @@ type ServiceLister interface {
 	Services() []domain.Service
 }
 
-// Notifier shows a desktop notification.
+// Notifier shows a desktop notification for a conversation.
 type Notifier interface {
-	Notify(title, body string)
+	Notify(title, body, conversationID string)
 }
 
 // Publisher sends an event to the UI.

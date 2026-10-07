@@ -12,15 +12,23 @@ const (
 	EventConversationUpdated = "conversation.updated"
 	EventMessageAdded        = "message.added"
 	EventMessageUpdated      = "message.updated"
+	EventMessageRemoved      = "message.removed"
 	EventUnreadChanged       = "unread.changed"
 	EventTyping              = "typing"
 	EventAccountRemoved      = "account.removed"
 	EventAuthStep            = "auth.step"
+	EventNotificationClicked = "notification.clicked"
 )
 
 // UnreadChanged is the data of an unread.changed event.
 type UnreadChanged struct {
 	Total int `json:"total"`
+}
+
+// MessageRemoved is the data of a message.removed event.
+type MessageRemoved struct {
+	ConversationID string `json:"conversationId"`
+	MessageID      string `json:"messageId"`
 }
 
 // Typing is the data of a typing event.
@@ -42,6 +50,13 @@ type AuthStep struct {
 	Kind      string `json:"kind"`
 	QR        string `json:"qr,omitempty"`
 	Hint      string `json:"hint,omitempty"`
+}
+
+// NotificationClicked is the data of a notification.clicked event: the
+// conversation a desktop notification carried, which clicking it should
+// open.
+type NotificationClicked struct {
+	ConversationID string `json:"conversationId"`
 }
 
 // events publishes UI events, including the derived ones: a conversation's

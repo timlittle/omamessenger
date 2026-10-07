@@ -168,6 +168,13 @@ Item {
           }
 
           Text {
+            visible: root.message.edited === true
+            text: "edited"
+            color: Util.alpha(Color.foreground, 0.5)
+            font { family: Theme.font.family; pixelSize: Theme.font.caption }
+          }
+
+          Text {
             visible: root.showStatus
             text: Format.statusGlyph(root.message.status)
             color: root.message.status === "read" ? Color.accent : Util.alpha(Color.foreground, 0.5)

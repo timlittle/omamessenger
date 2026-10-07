@@ -236,6 +236,127 @@ func TestSetMessageRemoteID_FindsByRemote(t *testing.T) {
 	}
 }
 
+func TestEditMessage_UpdatesTextMediaAndSetsEdited(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Created: 1})
+
+	link := &domain.Media{Kind: domain.MediaLink, URL: "https://x.io"}
+	got, found, err := s.EditMessage(ctx, "chat", "r1", "hi there", link)
+	if err != nil || !found || got.Text != "hi there" || got.Media == nil || !got.Edited {
+		t.Fatalf("EditMessage = %+v, found %t, %v", got, found, err)
+	}
+
+	stored, err := s.Message(ctx, "m1")
+	if err != nil || stored.Text != "hi there" || !stored.Edited || stored.Media == nil {
+		t.Errorf("stored message not updated: %+v, %v", stored, err)
+	}
+}
+
+func TestEditMessage_IgnoresAMessageThatIsNotStored(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	got, found, err := s.EditMessage(ctx, "chat", "missing", "edited", nil)
+	if err != nil || found || got.ID != "" {
+		t.Fatalf("EditMessage(missing) = %+v, found %t, %v; want ignored", got, found, err)
+	}
+}
+
+func TestDeleteMessages_FallsBackPreviewAndLowersUnread(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s,
+		domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", SenderName: "Alex", Text: "first", Created: 1},
+		domain.Message{ID: "m2", ConversationID: "chat", RemoteID: "2", SenderName: "Alex", Text: "second", Created: 2},
+	)
+
+	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"2"})
+	if err != nil || !slices.Equal(ids(deleted), []string{"m2"}) {
+		t.Fatalf("DeleteMessages = %v, %v", ids(deleted), err)
+	}
+
+	chat, err := s.Conversation(ctx, "chat")
+	if err != nil || chat.Preview != "first" || chat.LastActivity != 1 || chat.Unread != 1 {
+		t.Errorf("conversation after deletion = %+v, %v", chat, err)
+	}
+
+	if _, err := s.Message(ctx, "m2"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("deleted message still stored: %v", err)
+	}
+}
+
+// TestDeleteMessages_OnlyTouchesConversationsInScope reproduces a bug: a
+// private chat and a channel can both hold a message under the same
+// remote id, because Telegram numbers channel messages in their own
+// space, so a deletion naming only the chat must never reach the
+// channel's copy. The caller, not the store, decides which conversations
+// an id might belong to.
+func TestDeleteMessages_OnlyTouchesConversationsInScope(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Private Chat")
+	addConversation(t, s, "wa", "channel", "Channel")
+	addMessages(t, s,
+		domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "5", Text: "a", Created: 1},
+		domain.Message{ID: "m2", ConversationID: "channel", RemoteID: "5", Text: "b", Created: 1},
+	)
+
+	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"5"})
+	if err != nil || !slices.Equal(ids(deleted), []string{"m1"}) {
+		t.Fatalf("DeleteMessages(chat only) = %v, %v", ids(deleted), err)
+	}
+
+	if _, err := s.Message(ctx, "m2"); err != nil {
+		t.Errorf("message outside the scope was touched: %v", err)
+	}
+}
+
+func TestDeleteMessages_IgnoresUnknownRemoteIDs(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "a", Created: 1})
+
+	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"missing"})
+	if err != nil || len(deleted) != 0 {
+		t.Fatalf("DeleteMessages(unknown remote id) = %v, %v; want none deleted", deleted, err)
+	}
+}
+
+func TestDeleteMessages_IgnoresAnEmptyScope(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "a", Created: 1})
+
+	deleted, err := s.DeleteMessages(ctx, "wa", nil, []string{"1"})
+	if err != nil || len(deleted) != 0 {
+		t.Fatalf("DeleteMessages(no scope) = %v, %v; want none deleted", deleted, err)
+	}
+}
+
 func TestAddMessage_KeepsMediaAndFillsItInLater(t *testing.T) {
 	t.Parallel()
 

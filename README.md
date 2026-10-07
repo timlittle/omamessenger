@@ -57,7 +57,7 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 | Ctrl+Q | Quit |
 | Esc | Step back: close the palette, a dialog or account setup, clear the search, leave the composer or the conversation |
 
-The list shows chats from the last month, plus any with unread messages; the line under it, or **Show or hide chats older than a month** in the command palette, shows the rest. Chats archived with the service are hidden too until you choose **Show archived chats** in the command palette. Search always looks through every chat, including archived ones. Pinned chats always lead the list, with a pin mark; an archived chat's unread badge is dimmed like a muted one's, since it is already filed away, though it still counts towards the unread totals in the rail.
+The list shows chats from the last month, plus any with unread messages; the line under it, or **Show or hide chats older than a month** in the command palette, shows the rest. Chats archived with the service are hidden too until you choose **Show archived chats** in the command palette. Search always looks through every chat, including archived ones: it matches a chat's title as substring text, and message bodies word by word as a prefix, ignoring case and accents, so "cafe" finds "café" and "tick" finds "ticket". Pinned chats always lead the list, with a pin mark; an archived chat's unread badge is dimmed like a muted one's, since it is already filed away, though it still counts towards the unread totals in the rail.
 
 In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes; **Pin or unpin chat** and **Archive or unarchive chat** are in the command palette. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
 
@@ -106,11 +106,13 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | `auth.step` | `{accountId, kind, qr, hint}`: `kind` is `qr` (a base64 PNG to scan; reply with a `phone` to sign in by code instead), `code` or `password` |
 | `conversation.updated` | `Conversation` |
 | `message.added` | `Message` |
-| `message.updated` | `Message` |
+| `message.updated` | `Message`; also sent when the service reports a message edited |
+| `message.removed` | `{conversationId, messageId}`; sent when the service reports a message deleted |
 | `unread.changed` | `{total}` |
 | `typing` | `{conversationId, name, active}` |
+| `notification.clicked` | `{conversationId}`: the user clicked a desktop notification; the UI opens that conversation |
 
-A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video` or `file`. `thumb` is a small base64 JPEG preview sent with the message.
+A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video` or `file`. `thumb` is a small base64 JPEG preview sent with the message. `edited` is `true` once the service reports the message changed since it was first sent.
 
 ### Errors
 

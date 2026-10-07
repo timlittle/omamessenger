@@ -11,9 +11,16 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// handleUpdates reports live updates: new messages, read receipts for
-// what we sent, what the user read elsewhere, and typing.
+// handleUpdates reports live updates: new, edited and deleted messages,
+// read receipts for what we sent, what the user read elsewhere, and
+// typing.
 func (c *Connector) handleUpdates(d tg.UpdateDispatcher, sink connector.Sink) {
+	c.handleMessageUpdates(d, sink)
+	c.handleReceiptUpdates(d, sink)
+}
+
+// handleMessageUpdates reports messages arriving, edited or deleted.
+func (c *Connector) handleMessageUpdates(d tg.UpdateDispatcher, sink connector.Sink) {
 	d.OnNewMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
 		c.newMessage(ctx, sink, u.Message, e)
 		return nil
@@ -24,6 +31,38 @@ func (c *Connector) handleUpdates(d tg.UpdateDispatcher, sink connector.Sink) {
 		return nil
 	})
 
+	d.OnEditMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateEditMessage) error {
+		c.editMessage(ctx, sink, u.Message, e)
+		return nil
+	})
+
+	d.OnEditChannelMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateEditChannelMessage) error {
+		c.editMessage(ctx, sink, u.Message, e)
+		return nil
+	})
+
+	d.OnDeleteMessages(func(ctx context.Context, _ tg.Entities, u *tg.UpdateDeleteMessages) error {
+		// Users and basic groups share one message id space per account,
+		// so this update carries no peer: scope the search to every such
+		// conversation we know, never a channel, which numbers its own
+		// messages and could otherwise lose an unrelated one that shares
+		// the same id.
+		c.deleteMessages(ctx, sink, c.nonChannelRemotes(), u.Messages)
+		return nil
+	})
+
+	d.OnDeleteChannelMessages(func(ctx context.Context, _ tg.Entities, u *tg.UpdateDeleteChannelMessages) error {
+		remote, ok := c.lookup("channel:" + strconv.FormatInt(u.ChannelID, 10))
+		if !ok {
+			return nil
+		}
+		c.deleteMessages(ctx, sink, []string{remote}, u.Messages)
+		return nil
+	})
+}
+
+// handleReceiptUpdates reports read receipts, typing and unread counts.
+func (c *Connector) handleReceiptUpdates(d tg.UpdateDispatcher, sink connector.Sink) {
 	d.OnReadHistoryOutbox(func(ctx context.Context, _ tg.Entities, u *tg.UpdateReadHistoryOutbox) error {
 		c.readUpTo(ctx, sink, shortKey(u.Peer), u.MaxID)
 		return nil
@@ -43,6 +82,43 @@ func (c *Connector) handleUpdates(d tg.UpdateDispatcher, sink connector.Sink) {
 		c.unread(ctx, sink, "channel:"+strconv.FormatInt(u.ChannelID, 10), u.StillUnreadCount)
 		return nil
 	})
+}
+
+// editMessage reports a message changed after it was sent, dropping the
+// update when its conversation is not known to us.
+func (c *Connector) editMessage(ctx context.Context, sink connector.Sink, m tg.MessageClass, te tg.Entities) {
+	msg, ok := m.(*tg.Message)
+	if !ok {
+		return
+	}
+
+	e := fromUpdate(te)
+	conv, ok := peerConversation(c.account.ID, msg.PeerID, e)
+	if !ok {
+		remote, known := c.lookup(shortKey(msg.PeerID))
+		if !known {
+			return
+		}
+		conv.RemoteID = remote
+	}
+
+	sink.Edited(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+}
+
+// deleteMessages reports messages removed from the service, named by
+// Telegram's own ids for them, scoped to the conversations they might
+// belong to.
+func (c *Connector) deleteMessages(ctx context.Context, sink connector.Sink, remotes []string, messageIDs []int) {
+	if len(messageIDs) == 0 || len(remotes) == 0 {
+		return
+	}
+
+	remoteIDs := make([]string, len(messageIDs))
+	for i, id := range messageIDs {
+		remoteIDs[i] = strconv.Itoa(id)
+	}
+
+	sink.Deleted(ctx, c.account.ID, remotes, remoteIDs)
 }
 
 // unread reports Telegram's unread count for a known conversation, after

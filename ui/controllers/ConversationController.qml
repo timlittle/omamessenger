@@ -292,6 +292,13 @@ Item {
     timeline.upsert(message, root.isGroup);
   }
 
+  // _removeMessage drops a deleted message from the timeline, ignoring
+  // one for a conversation that is not the open one.
+  function _removeMessage(data: var): void {
+    if (data.conversationId !== root.activeId) return;
+    timeline.remove(data.messageId, root.isGroup);
+  }
+
   // _draftFor reads a conversation's saved draft out of uiState.
   function _draftFor(id: string): string {
     const drafts = root.service.uiState.drafts || {};
@@ -377,6 +384,7 @@ Item {
 
     function onEvent(name, data) {
       if (name === "message.added" || name === "message.updated") root._upsertMessage(data);
+      else if (name === "message.removed") root._removeMessage(data);
       else if (name === "typing") root._handleTyping(data);
       else if (name === "conversation.updated" && data.id === root.activeId) root.conversation = data;
     }

@@ -49,6 +49,27 @@ var migrations = []string{
 	CREATE INDEX messages_timeline ON messages(conversation_id, created);`,
 	// A message's link preview, photo, video or file, as JSON.
 	`ALTER TABLE messages ADD COLUMN media TEXT NOT NULL DEFAULT '';`,
+	// Full-text search over message bodies. The table holds no data of its
+	// own (content='messages'): it indexes the messages table in place, so
+	// triggers must keep it in step, and a rebuild indexes what already
+	// exists. remove_diacritics 2 folds accents and case; the prefix
+	// indexes speed up the short prefixes a search box types first.
+	`CREATE VIRTUAL TABLE messages_fts USING fts5(text,
+			content='messages', content_rowid='rowid',
+			tokenize='unicode61 remove_diacritics 2', prefix='2 3');
+		CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages BEGIN
+			INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, new.text);
+		END;
+		CREATE TRIGGER messages_fts_delete AFTER DELETE ON messages BEGIN
+			INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+		END;
+		CREATE TRIGGER messages_fts_update AFTER UPDATE ON messages BEGIN
+			INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
+			INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, new.text);
+		END;
+		INSERT INTO messages_fts(messages_fts) VALUES ('rebuild');`,
+	// Whether a message has been edited since it was first stored.
+	`ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;`,
 	// A conversation pinned to the top of the list, or filed away in the
 	// service's archive, as Telegram's dialogs report it.
 	`ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;

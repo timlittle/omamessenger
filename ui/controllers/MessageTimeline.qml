@@ -77,6 +77,17 @@ Item {
     root._recomputeAnnotations(isGroup);
   }
 
+  // remove drops a message from the model by id, doing nothing when it is
+  // not loaded: the service already removed it, so there is nothing left
+  // to find.
+  function remove(id: string, isGroup: bool): void {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    if (at === -1) return;
+
+    messagesModel.remove(at);
+    root._recomputeAnnotations(isGroup);
+  }
+
   // mediaPath returns where a message's downloaded media is, or "".
   function mediaPath(id: string): string {
     const row = root._snapshot().find((m) => m.id === id);

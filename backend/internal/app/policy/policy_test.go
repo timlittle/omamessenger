@@ -14,15 +14,16 @@ func everyInput() []policy.Input {
 	for bits := range 32 {
 		for _, kind := range []string{domain.KindDirect, domain.KindGroup} {
 			inputs = append(inputs, policy.Input{
-				Notifications: bits&1 != 0,
-				Preview:       bits&2 != 0,
-				Muted:         bits&4 != 0,
-				Focused:       bits&8 != 0,
-				WindowActive:  bits&16 != 0,
-				Kind:          kind,
-				Sender:        "Priya",
-				Title:         "Climbing Crew",
-				Text:          "see you at 7",
+				Notifications:  bits&1 != 0,
+				Preview:        bits&2 != 0,
+				Muted:          bits&4 != 0,
+				Focused:        bits&8 != 0,
+				WindowActive:   bits&16 != 0,
+				Kind:           kind,
+				Sender:         "Priya",
+				Title:          "Climbing Crew",
+				Text:           "see you at 7",
+				ConversationID: "chat-1",
 			})
 		}
 	}
@@ -66,8 +67,12 @@ func TestNotification_NamesGroupsAndHidesTextWithoutPreview(t *testing.T) {
 			wantBody = "see you at 7"
 		}
 
-		if title, body := policy.Notification(in); title != wantTitle || body != wantBody {
+		title, body, conversationID := policy.Notification(in)
+		if title != wantTitle || body != wantBody {
 			t.Errorf("%+v: Notification = %q, %q; want %q, %q", in, title, body, wantTitle, wantBody)
+		}
+		if conversationID != in.ConversationID {
+			t.Errorf("%+v: Notification conversation id = %q, want %q", in, conversationID, in.ConversationID)
 		}
 	}
 }

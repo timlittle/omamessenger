@@ -33,6 +33,20 @@ func TestIncoming_StoresPublishesAndNotifies(t *testing.T) {
 	}
 }
 
+func TestIncoming_NotifiesWithTheConversationID(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "First"))
+
+	if got := f.notifier.conversations(); !slices.Equal(got, []string{chat.ID}) {
+		t.Errorf("notified conversations = %v, want [%s]", got, chat.ID)
+	}
+}
+
 func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 	t.Parallel()
 
@@ -105,6 +119,81 @@ func TestHistory_NeverNotifiesOrReadsOnArrival(t *testing.T) {
 	want := []string{app.EventMessageAdded, app.EventConversationUpdated, app.EventUnreadChanged}
 	if got := f.published.take(); !slices.Equal(got, want) {
 		t.Errorf("events = %v, want %v", got, want)
+	}
+}
+
+func TestEdited_UpdatesTheStoredMessageAndPublishes(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "first"))
+	f.published.take()
+
+	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e1", Text: "fixed"})
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventMessageUpdated}) {
+		t.Errorf("events = %v, want %v", got, []string{app.EventMessageUpdated})
+	}
+
+	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
+	if err != nil || len(messages) != 1 || messages[0].Text != "fixed" || !messages[0].Edited {
+		t.Fatalf("messages = %+v, %v; want the text updated and edited set", messages, err)
+	}
+}
+
+func TestEdited_IgnoresUnknownConversationsAndMessages(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+	f.ingest.Edited(ctx, "wa", "nowhere", domain.Message{RemoteID: "e1", Text: "x"})
+	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "missing", Text: "x"})
+
+	if len(f.published.take()) != 0 {
+		t.Error("an unknown edit published an event")
+	}
+}
+
+func TestDeleted_RemovesMessagesAndPublishes(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("d1", "first"))
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("d2", "second"))
+	f.published.take()
+
+	f.ingest.Deleted(ctx, "wa", []string{chat.RemoteID}, []string{"d2"})
+
+	want := []string{app.EventMessageRemoved, app.EventConversationUpdated, app.EventUnreadChanged}
+	if got := f.published.take(); !slices.Equal(got, want) {
+		t.Errorf("events = %v, want %v", got, want)
+	}
+
+	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
+	if err != nil || len(messages) != 1 || messages[0].Text != "first" {
+		t.Fatalf("messages after delete = %+v, %v", messages, err)
+	}
+
+	if got, _ := f.store.Conversation(ctx, chat.ID); got.Preview != "first" || got.Unread != 1 {
+		t.Errorf("conversation after delete = %+v", got)
+	}
+}
+
+func TestDeleted_IgnoresAnEmptyOrUnknownBatch(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.ingest.Deleted(t.Context(), "wa", []string{"nowhere"}, []string{"x"})
+	f.ingest.Deleted(t.Context(), "wa", nil, nil)
+
+	if len(f.published.take()) != 0 {
+		t.Error("deleting nothing published an event")
 	}
 }
 

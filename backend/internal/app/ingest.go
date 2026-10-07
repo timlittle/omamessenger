@@ -82,6 +82,61 @@ func (in *Ingest) History(ctx context.Context, accountID, conversationRemoteID s
 	in.events.conversationChanged(ctx, conv.ID, before)
 }
 
+// Edited updates a stored message's text and media after the service
+// reports it changed. It never notifies; the open conversation refreshes
+// the message in place.
+func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID string, m domain.Message) {
+	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
+	if err != nil {
+		return
+	}
+
+	updated, found, err := in.store.EditMessage(ctx, conv.ID, m.RemoteID, m.Text, m.Media)
+	if err != nil || !found {
+		return
+	}
+
+	in.events.publish(ctx, EventMessageUpdated, updated)
+}
+
+// Deleted removes stored messages and publishes a removal for each one,
+// plus the conversations they left changed and the unread total if it
+// moved. It never notifies.
+func (in *Ingest) Deleted(ctx context.Context, accountID string, conversationRemoteIDs, remoteIDs []string) {
+	before := in.events.unreadTotal(ctx)
+
+	deleted, err := in.store.DeleteMessages(ctx, accountID, conversationRemoteIDs, remoteIDs)
+	if err != nil || len(deleted) == 0 {
+		return
+	}
+
+	for _, m := range deleted {
+		in.events.publish(ctx, EventMessageRemoved, MessageRemoved{ConversationID: m.ConversationID, MessageID: m.ID})
+	}
+
+	for _, conv := range distinctConversations(deleted) {
+		in.events.conversationChanged(ctx, conv, before)
+		before = in.events.unreadTotal(ctx)
+	}
+}
+
+// distinctConversations lists the conversation ids messages belonged to,
+// each once, in first-seen order.
+func distinctConversations(messages []domain.Message) []string {
+	seen := map[string]bool{}
+	ids := make([]string, 0, len(messages))
+	for _, m := range messages {
+		if seen[m.ConversationID] {
+			continue
+		}
+
+		seen[m.ConversationID] = true
+		ids = append(ids, m.ConversationID)
+	}
+
+	return ids
+}
+
 // Unread takes the service's unread count for a conversation, publishing
 // it only when it changed.
 func (in *Ingest) Unread(ctx context.Context, accountID, conversationRemoteID string, count int) {
@@ -153,14 +208,15 @@ func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Inp
 	settings, focused, windowActive := in.ui.snapshot()
 
 	return policy.Input{
-		Notifications: settings.Notifications,
-		Preview:       settings.NotificationPreview,
-		Muted:         conv.Muted,
-		Focused:       focused == conv.ID,
-		WindowActive:  windowActive,
-		Kind:          conv.Kind,
-		Sender:        m.SenderName,
-		Title:         conv.Title,
-		Text:          m.Text,
+		Notifications:  settings.Notifications,
+		Preview:        settings.NotificationPreview,
+		Muted:          conv.Muted,
+		Focused:        focused == conv.ID,
+		WindowActive:   windowActive,
+		Kind:           conv.Kind,
+		Sender:         m.SenderName,
+		Title:          conv.Title,
+		Text:           m.Text,
+		ConversationID: conv.ID,
 	}
 }

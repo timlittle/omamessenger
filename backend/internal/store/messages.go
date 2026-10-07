@@ -7,12 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited`
 
 // Page sizes for Messages.
 const (
@@ -117,8 +118,8 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message) error {
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media)
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited)
 	if err != nil {
 		return err
 	}
@@ -192,6 +193,174 @@ func (s *Store) UpdateMessageStatus(ctx context.Context, id, status string) (_ d
 	return m, true, nil
 }
 
+// EditMessage updates a stored message's text and media after the service
+// reports it changed, found by its conversation and the service's id for
+// it. A message that is not stored is ignored, not an error.
+func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID, text string, media *domain.Media) (_ domain.Message, found bool, _ error) {
+	m, err := s.MessageByRemote(ctx, conversationID, remoteID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.Message{}, false, nil
+	}
+	if err != nil {
+		return m, false, err
+	}
+
+	encoded, err := encodeMedia(media)
+	if err != nil {
+		return m, false, wrap("edit message", err)
+	}
+
+	if _, err := s.db.ExecContext(ctx, `UPDATE messages SET text=?,media=?,edited=1 WHERE id=?`, text, encoded, m.ID); err != nil {
+		return m, false, wrap("edit message", err)
+	}
+
+	m.Text, m.Media, m.Edited = text, media, true
+
+	return m, true, nil
+}
+
+// DeleteMessages removes messages a service reports deleted, found by the
+// ids it gave them, within conversationRemoteIDs: the conversations of
+// the account the ids might belong to. The caller names them explicitly
+// because the store has no notion of a service's own rules for when an id
+// is unique to one conversation or shared account-wide; a remote id that
+// is not stored in one of them is ignored. Each conversation a removal
+// touches has its preview and activity fall back to its newest remaining
+// message, and its unread count drops by one for every removed message
+// that was unread. deleted lists the removed messages, each still
+// carrying its conversation id.
+func (s *Store) DeleteMessages(ctx context.Context, accountID string, conversationRemoteIDs, remoteIDs []string) ([]domain.Message, error) {
+	if len(remoteIDs) == 0 {
+		return nil, nil
+	}
+
+	convIDs, err := s.deletionScope(ctx, accountID, conversationRemoteIDs)
+	if err != nil || len(convIDs) == 0 {
+		return nil, err
+	}
+
+	deleted, err := s.findDeletable(ctx, convIDs, remoteIDs)
+	if err != nil || len(deleted) == 0 {
+		return nil, err
+	}
+
+	if err := s.removeMessages(ctx, deleted); err != nil {
+		return nil, wrap("delete messages", err)
+	}
+
+	return deleted, nil
+}
+
+// deletionScope resolves each of conversationRemoteIDs to its local
+// conversation id, skipping any that is not a conversation of the
+// account.
+func (s *Store) deletionScope(ctx context.Context, accountID string, conversationRemoteIDs []string) ([]string, error) {
+	ids := make([]string, 0, len(conversationRemoteIDs))
+	for _, remote := range conversationRemoteIDs {
+		conv, err := s.ConversationByRemote(ctx, accountID, remote)
+		if errors.Is(err, domain.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		ids = append(ids, conv.ID)
+	}
+
+	return ids, nil
+}
+
+// findDeletable returns the stored messages among remoteIDs, in any of
+// convIDs.
+func (s *Store) findDeletable(ctx context.Context, convIDs, remoteIDs []string) ([]domain.Message, error) {
+	query := `SELECT ` + messageColumns + ` FROM messages
+		WHERE remote_id<>'' AND conversation_id IN (` + placeholders(len(convIDs)) + `)
+		AND remote_id IN (` + placeholders(len(remoteIDs)) + `)`
+
+	args := make([]any, 0, len(convIDs)+len(remoteIDs))
+	for _, id := range convIDs {
+		args = append(args, id)
+	}
+	for _, id := range remoteIDs {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, wrap("find deletable", err)
+	}
+
+	messages, err := scanAll(rows, scanMessage)
+
+	return messages, wrap("find deletable", err)
+}
+
+// removeMessages deletes messages and brings each conversation they left
+// up to date: preview, activity and unread count.
+func (s *Store) removeMessages(ctx context.Context, messages []domain.Message) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// Rollback after a successful Commit is a no-op that returns
+	// sql.ErrTxDone, so its error carries no information.
+	defer func() { _ = tx.Rollback() }()
+
+	touched := map[string]bool{}
+	for _, m := range messages {
+		if err := deleteOneMessage(ctx, tx, m); err != nil {
+			return err
+		}
+		touched[m.ConversationID] = true
+	}
+
+	for conv := range touched {
+		if err := refreshAfterDeletion(ctx, tx, conv); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// deleteOneMessage removes a message and lowers its conversation's unread
+// count when the message was counted in it.
+func deleteOneMessage(ctx context.Context, tx *sql.Tx, m domain.Message) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE id=?`, m.ID); err != nil {
+		return err
+	}
+
+	if m.Outgoing || m.Status == domain.StatusRead {
+		return nil
+	}
+
+	_, err := tx.ExecContext(ctx, `UPDATE conversations SET unread=MAX(unread-1,0) WHERE id=?`, m.ConversationID)
+
+	return err
+}
+
+// refreshAfterDeletion recomputes a conversation's preview and activity
+// from whatever messages it has left, after one or more were removed.
+func refreshAfterDeletion(ctx context.Context, tx *sql.Tx, conversationID string) error {
+	const newest = `SELECT %s FROM messages WHERE conversation_id=? ORDER BY created DESC, rowid DESC LIMIT 1`
+	_, err := tx.ExecContext(ctx, `UPDATE conversations SET
+			preview=COALESCE((`+fmt.Sprintf(newest, "text")+`),''),
+			preview_sender=COALESCE((`+fmt.Sprintf(newest, "sender_name")+`),''),
+			preview_out=COALESCE((`+fmt.Sprintf(newest, "outgoing")+`),0),
+			last_activity=COALESCE((`+fmt.Sprintf(newest, "created")+`),0)
+		WHERE id=?`,
+		conversationID, conversationID, conversationID, conversationID, conversationID)
+
+	return err
+}
+
+// placeholders returns n comma-separated "?" placeholders for an IN clause.
+func placeholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+
 // OldestRemoteID returns the service's id for the conversation's oldest
 // message that has one, or "" when none does. A connector fetches older
 // history from there.
@@ -262,7 +431,7 @@ func scanMessage(row scanner) (domain.Message, error) {
 	var m domain.Message
 	var media string
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
-		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media); err != nil {
+		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited); err != nil {
 		return m, err
 	}
 

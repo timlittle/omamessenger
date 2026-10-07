@@ -66,6 +66,18 @@ ShellRoot {
       return;
     }
 
+    timeline.remove("m50", false);
+    if (root.ids() !== "m70,m60,m20,m10") {
+      Check.fail("remove did not drop the message: " + root.ids());
+      return;
+    }
+
+    timeline.remove("m50", false);
+    if (root.ids() !== "m70,m60,m20,m10") {
+      Check.fail("removing an id twice changed the model: " + root.ids());
+      return;
+    }
+
     console.log("PASS MessageTimeline");
     Qt.exit(0);
   }

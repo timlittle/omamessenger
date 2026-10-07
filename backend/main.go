@@ -32,6 +32,10 @@ func providers() []connector.Provider {
 // drops the least recently used: 1 GiB.
 const mediaCacheLimit = 1 << 30
 
+// notify.Desktop is the only Notifier the helper wires; app can't import
+// notify (see .golangci.yml), so the pairing is checked here instead.
+var _ app.Notifier = notify.Desktop{}
+
 // main runs the helper until the UI disconnects or it receives SIGTERM.
 func main() { // coverage-ignore: process entry point; run is tested
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -112,7 +116,10 @@ func serve(ctx context.Context, cfg config, s streams) error {
 // accounts already saved. Test builds add the fake connectors; see
 // fake.go.
 func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *accountRegistry, media *cache.Cache) (*app.Commands, *app.Ingest, *connector.Manager, error) {
-	deps := app.Deps{Store: db, Notifier: notify.Desktop{}, Publisher: srv, Accounts: registry, Cache: media}
+	notifier := notify.Desktop{Click: func(conversationID string) {
+		srv.Publish(ctx, app.EventNotificationClicked, app.NotificationClicked{ConversationID: conversationID})
+	}}
+	deps := app.Deps{Store: db, Notifier: notifier, Publisher: srv, Accounts: registry, Cache: media}
 
 	connectors, injector := fakeConnectors()
 	if injector != nil {

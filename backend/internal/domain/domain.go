@@ -95,6 +95,10 @@ type Message struct {
 	Status         string `json:"status"`
 	Created        int64  `json:"created"`
 	Media          *Media `json:"media,omitempty"`
+
+	// Edited is true once the service reports this message changed after
+	// it was first sent.
+	Edited bool `json:"edited,omitempty"`
 }
 
 // Media is what a message carries besides its text: a link preview, a

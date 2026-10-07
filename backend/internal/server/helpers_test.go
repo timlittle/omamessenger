@@ -186,7 +186,7 @@ func (a *storeAccounts) lastOptions() map[string]string {
 // silent is a notifier that shows nothing.
 type silent struct{}
 
-func (silent) Notify(string, string) {}
+func (silent) Notify(string, string, string) {}
 
 // unreachableFake is an injector whose conversations are never found.
 type unreachableFake struct{}

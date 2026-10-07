@@ -142,6 +142,18 @@ type Sink interface {
 	// History reports an earlier message, which never notifies.
 	History(ctx context.Context, accountID, conversationRemoteID string, m domain.Message)
 
+	// Edited reports a message changed after it was sent: its new text
+	// and media. It never notifies.
+	Edited(ctx context.Context, accountID, conversationRemoteID string, m domain.Message)
+
+	// Deleted reports messages removed from the service, named by the
+	// ids it gave them. conversationRemoteIDs lists every conversation
+	// the ids might belong to: a connector whose service gives message
+	// ids that are unique per account rather than per conversation lists
+	// every such conversation it knows, since only it knows which of its
+	// conversations share that numbering. It never notifies.
+	Deleted(ctx context.Context, accountID string, conversationRemoteIDs, remoteIDs []string)
+
 	// OutgoingStatus reports delivery progress of a message we sent, with
 	// the service's id for it once known.
 	OutgoingStatus(ctx context.Context, localMessageID, remoteID, status string)
