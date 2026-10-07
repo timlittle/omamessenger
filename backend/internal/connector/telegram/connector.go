@@ -144,7 +144,8 @@ func (c *Connector) SubmitAuth(ctx context.Context, step, value string) error {
 	}
 }
 
-// Send sends a text message and reports it sent with Telegram's id.
+// Send sends a message, uploading its attachment first when it has one,
+// and reports it sent with Telegram's id.
 func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain.Message) error {
 	api, sink, err := c.session()
 	if err != nil {
@@ -156,7 +157,7 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 		return err
 	}
 
-	result, err := api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{Peer: peer, Message: m.Text, RandomID: randomID()})
+	result, err := sendRequest(ctx, api, peer, m)
 	if err != nil {
 		return fmt.Errorf("telegram: send: %w", err)
 	}
