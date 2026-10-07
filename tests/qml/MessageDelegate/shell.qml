@@ -9,7 +9,8 @@
 // without ever overlapping a neighbouring message for both an incoming
 // and an outgoing bubble, that it falls back inside the bubble's own
 // corner when there is no room beside it, and that a highlighted message
-// shows its selection fill, accent bar and key-hint text.
+// shows its accent outline and accent bar confined to the bubble itself
+// (nothing wider ever tints) and its key-hint text, never clipped.
 import QtQuick
 import QtTest
 import Quickshell
@@ -46,6 +47,19 @@ ShellRoot {
   // findText returns the first collected node whose text matches exactly.
   function findText(out, text) {
     return out.find(node => node.text === text) ?? null;
+  }
+
+  // collectWideTints returns every Rectangle-like descendant of item
+  // (one with its own "color" property) wider than maxWidth, into out:
+  // used to check that nothing but the bubble itself ever tints while a
+  // message is highlighted.
+  function collectWideTints(item, maxWidth, out) {
+    if (item.color !== undefined && item.width > maxWidth + 0.5) out.push(item);
+    const kids = item.data || item.children;
+    if (kids && typeof kids.length === 'number') {
+      for (let i = 0; i < kids.length; i++) root.collectWideTints(kids[i], maxWidth, out);
+    }
+    return out;
   }
 
   // waitUntil polls predicate, letting the event loop run between tries,
@@ -177,6 +191,7 @@ ShellRoot {
     if (!root.checkHoverToolbarBesideBubble()) return;
     if (!root.checkHoverToolbarFallbackInsideBubble()) return;
     if (!root.checkHighlightVisuals()) return;
+    if (!root.checkHighlightNeverShiftsLayout()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -641,39 +656,103 @@ ShellRoot {
     return true;
   }
 
-  // checkHighlightVisuals verifies the highlighted message's selection
-  // fill, its accent bar on the correct side for each direction, and its
-  // key-hint text for a plain message, a failed outgoing one and one
-  // carrying media.
+  // checkHighlightVisuals verifies the highlighted message shows its
+  // accent outline and accent bar confined to the bubble itself, never
+  // a tint across the whole row, that the bar sits on the correct side
+  // for each direction, that its key-hint text is correct for a plain
+  // message, a failed outgoing one and one carrying media, and that the
+  // hint text is never clipped at the row's edge.
   function checkHighlightVisuals(): bool {
     delegate.message = { id: "h1", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "received", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
     delegate.highlighted = false;
+    t.waitForRendering(delegate);
 
-    if (Check.find(delegate, "highlightFill").visible) return Check.fail("highlight fill shown without being highlighted");
-    if (Check.find(delegate, "highlightHints").visible) return Check.fail("highlight hints shown without being highlighted");
-
-    delegate.highlighted = true;
-    const fill = Check.find(delegate, "highlightFill");
+    const bubble = Check.find(delegate, "bubble");
     const bar = Check.find(delegate, "highlightBar");
     const hints = Check.find(delegate, "highlightHints");
-    if (!fill.visible) return Check.fail("highlight fill not shown while highlighted");
+    if (bubble.border.width > 0) return Check.fail("bubble shows its accent outline without being highlighted");
+    if (bar.visible) return Check.fail("highlight bar shown without being highlighted");
+    if (hints.opacity > 0) return Check.fail("highlight hints shown without being highlighted");
+
+    delegate.highlighted = true;
+    t.waitForRendering(delegate);
+    if (bubble.border.width <= 0 || !Qt.colorEqual(bubble.border.color, Color.accent)) {
+      return Check.fail(`bubble does not show its accent outline while highlighted: width=${bubble.border.width} color=${bubble.border.color}`);
+    }
     if (!bar.visible) return Check.fail("highlight bar not shown while highlighted");
     if (!Qt.colorEqual(bar.color, Color.accent)) return Check.fail("highlight bar is not drawn in the accent colour");
-    if (Check.rect(bar, delegate).x > 1) return Check.fail("an incoming message's highlight bar is not on the left");
-    if (!hints.visible || hints.text !== "r reply · e react") {
+
+    // Saved for a human to look at: the quiet highlight on an incoming
+    // bubble, with its hint row underneath.
+    delegate.grabToImage((result) => result.saveToFile(root.testRoot + "/highlight.png"));
+    t.wait(200); // give the async grab time to save before anything else runs
+
+    const wide = root.collectWideTints(delegate, bubble.width, []);
+    if (wide.length > 0) return Check.fail(`${wide.length} element(s) wider than the bubble are tinted while highlighted`);
+
+    const barInBubble = Check.rect(bar, bubble);
+    if (barInBubble.x < -0.5 || barInBubble.x + barInBubble.width > bubble.width + 0.5) {
+      return Check.fail(`highlight bar reaches outside the bubble's own width: x=${barInBubble.x} width=${barInBubble.width} bubble width=${bubble.width}`);
+    }
+    if (Check.rect(bar, delegate).x > bubble.width) return Check.fail("an incoming message's highlight bar is not on the left");
+
+    if (hints.opacity <= 0) return Check.fail("highlight hints not shown while highlighted");
+    if (hints.text !== "r reply · e react") {
       return Check.fail(`hint text is "${hints.text}", want "r reply · e react"`);
     }
+    const hintsRect = Check.rect(hints, delegate);
+    if (hintsRect.x < 1) return Check.fail(`hint row sits flush against the row's own edge and would clip: x=${hintsRect.x}`);
+    if (hintsRect.x + hintsRect.width > delegate.width + 0.5) return Check.fail("hint row's text reaches past the row's right edge");
 
     delegate.message = { id: "h2", senderId: "me", senderName: "Me", text: "oops", outgoing: true, status: "failed", created: root.now };
-    if (Check.rect(bar, delegate).x + bar.width < delegate.width - 1) return Check.fail("an outgoing message's highlight bar is not on the right");
+    t.waitForRendering(delegate);
+    if (Check.rect(bar, delegate).x + bar.width < delegate.width - bubble.width) return Check.fail("an outgoing message's highlight bar is not on the right");
     if (hints.text !== "r reply · e react · t retry") return Check.fail(`hint text is "${hints.text}", want the failed-retry hint`);
+    const outgoingHintsRect = Check.rect(hints, delegate);
+    if (outgoingHintsRect.x + outgoingHintsRect.width > delegate.width - 1) return Check.fail(`an outgoing hint row sits flush against the row's own edge and would clip: right edge=${outgoingHintsRect.x + outgoingHintsRect.width}`);
 
     const photo = { kind: "photo", width: 10, height: 10, thumb: "" };
     delegate.message = { id: "h3", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo) };
     if (hints.text !== "r reply · e react · Enter open") return Check.fail(`hint text is "${hints.text}", want the media-open hint`);
 
     delegate.highlighted = false;
+    return true;
+  }
+
+  // checkHighlightNeverShiftsLayout verifies that highlighting one
+  // message in the stack, then moving the highlight to another, never
+  // moves or resizes any row: the hint row always reserves its own
+  // space in each delegate's own layout, so turning it on or off (or
+  // moving which row shows it) never changes any row's height.
+  function checkHighlightNeverShiftsLayout(): bool {
+    rowA.highlighted = false;
+    rowB.highlighted = false;
+    rowC.highlighted = false;
+    rowD.highlighted = false;
+    t.waitForRendering(rowB);
+
+    const rows = [rowA, rowB, rowC, rowD];
+    const before = rows.map(r => ({ y: r.y, height: r.height }));
+
+    rowB.highlighted = true;
+    t.waitForRendering(rowB);
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].y !== before[i].y || rows[i].height !== before[i].height) {
+        return Check.fail(`row ${i} moved or resized when a different row was highlighted: was y=${before[i].y} h=${before[i].height}, now y=${rows[i].y} h=${rows[i].height}`);
+      }
+    }
+
+    rowB.highlighted = false;
+    rowD.highlighted = true;
+    t.waitForRendering(rowD);
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].y !== before[i].y || rows[i].height !== before[i].height) {
+        return Check.fail(`row ${i} moved or resized when the highlight moved to another row: was y=${before[i].y} h=${before[i].height}, now y=${rows[i].y} h=${rows[i].height}`);
+      }
+    }
+
+    rowD.highlighted = false;
     return true;
   }
 }

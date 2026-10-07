@@ -9,8 +9,10 @@
 // once it arrives; the view follows the highlight to bring it into
 // view; t retries the highlighted message only when it has failed; e
 // opens the picker for it; r starts a reply to it; Enter opens its
-// photo; and leaving the composer with Escape resets the highlight to
-// the newest message, idempotently.
+// photo; that the highlighted message's own visual cue hides the moment
+// the composer takes focus and shows again once it leaves; and leaving
+// the composer with Escape resets the highlight to the newest message,
+// idempotently.
 import QtQuick
 import QtTest
 import Quickshell
@@ -170,6 +172,16 @@ ShellRoot {
   function hintText(id: string): string {
     const d = root.delegateFor(id);
     return d ? Check.find(d, "highlightHints").text : "";
+  }
+
+  // isVisuallyHighlighted reads id's own bubble outline, which only
+  // shows while root.highlighted is true for that delegate: false while
+  // the composer has focus, even if the controller still names this
+  // message highlightedId, since ConversationView hides the cue in
+  // writing mode.
+  function isVisuallyHighlighted(id: string): bool {
+    const d = root.delegateFor(id);
+    return !!d && Check.find(d, "bubble").border.width > 0;
   }
 
   FloatingWindow {
@@ -358,23 +370,31 @@ ShellRoot {
     root.checkEscapeResetsHighlight();
   }
 
-  // checkEscapeResetsHighlight focuses the composer with i, leaves it
-  // with Escape, and checks the highlight came back to the newest
-  // message, idempotently.
+  // checkEscapeResetsHighlight checks m2's own highlight cue shows
+  // while scrolling, focuses the composer with i, leaves it with
+  // Escape, and checks the highlight came back to the newest message,
+  // idempotently.
   function checkEscapeResetsHighlight(): void {
+    if (!root.isVisuallyHighlighted("m2")) return Check.fail("m2 does not show its highlight cue before writing starts");
+
     t.keyClick(Qt.Key_I);
     root.pollAttempts = 0;
     root.waitForComposeFocus();
   }
 
   // waitForComposeFocus holds until i has really focused the composer's
-  // input, a real Qt focus change rather than the scripted service.
+  // input, a real Qt focus change rather than the scripted service, then
+  // checks that writing hid m2's own highlight cue even though it is
+  // still conversationController.highlightedId underneath.
   function waitForComposeFocus(): void {
-    if (composerController.composeFocused) return root.leaveComposeWithEscape();
+    if (!composerController.composeFocused) {
+      root.pollAttempts++;
+      if (root.pollAttempts >= 100) return Check.fail("i never focused the composer");
+      return root.retry(root.waitForComposeFocus);
+    }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("i never focused the composer");
-    root.retry(root.waitForComposeFocus);
+    if (root.isVisuallyHighlighted("m2")) return Check.fail("m2 still shows its highlight cue while the composer is writing");
+    root.leaveComposeWithEscape();
   }
 
   // leaveComposeWithEscape presses Escape and waits for it to blur the
@@ -394,10 +414,12 @@ ShellRoot {
   }
 
   // finish checks Escape reset the highlight to the newest message, that
-  // resetHighlight is idempotent, and ends the test.
+  // its cue is visible again now writing has stopped, that resetHighlight
+  // is idempotent, and ends the test.
   function finish(): void {
     if (conversationController.highlightedId !== "m1")
       return Check.fail("leaving the composer with Escape did not reset the highlight to the newest message: got " + conversationController.highlightedId);
+    if (!root.isVisuallyHighlighted("m1")) return Check.fail("m1 does not show its highlight cue once writing has stopped");
 
     conversationController.resetHighlight();
     if (conversationController.highlightedId !== "m1")

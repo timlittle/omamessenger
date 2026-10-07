@@ -22,8 +22,10 @@ Item {
   // nowMs is the current time, passed through to time formatting.
   property real nowMs: 0
   // highlighted is true when this is the message the keyboard currently
-  // points at: shown with a selection fill, an accent bar and a row of
-  // key hints for what pressing a key does to it.
+  // points at: shown with a thin accent outline and a short accent bar
+  // on the bubble itself, and a row of key hints for what pressing a
+  // key does to it. The caller hides this while the composer has focus,
+  // so scrolling and writing never show it at the same time.
   property bool highlighted: false
   // failed is true for an outgoing message the service could not send.
   readonly property bool failed: root.message.outgoing && root.message.status === "failed"
@@ -54,27 +56,6 @@ Item {
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
-
-  // The highlighted message's selection fill and accent bar: colour
-  // alone never carries it, so the bar and the hint row inside the
-  // Column below are its non-colour cues.
-  Rectangle {
-    objectName: "highlightFill"
-    visible: root.highlighted
-    anchors.fill: parent
-    color: Util.alpha(Color.accent, Style.selectedFillAlpha)
-  }
-
-  Rectangle {
-    objectName: "highlightBar"
-    visible: root.highlighted
-    anchors.top: parent.top
-    anchors.bottom: parent.bottom
-    anchors.right: root.message.outgoing ? parent.right : undefined
-    anchors.left: root.message.outgoing ? undefined : parent.left
-    width: Style.space(2)
-    color: Color.accent
-  }
 
   Column {
     id: column
@@ -129,6 +110,29 @@ Item {
         color: root.message.outgoing ? Util.alpha(Color.accent, 0.22) : Util.alpha(Color.foreground, 0.06)
         anchors.right: root.message.outgoing ? parent.right : undefined
         anchors.left: root.message.outgoing ? undefined : parent.left
+        // The highlighted message's own cue: a thin accent outline, no
+        // wider than the bubble itself, so nothing beyond it ever tints.
+        border.width: root.highlighted ? Style.space(1) : 0
+        border.color: root.highlighted ? Color.accent : "transparent"
+
+        // highlightMark pairs the outline with a shape, not colour
+        // alone: a short accent bar beside the bubble's own near edge,
+        // exactly as tall as the bubble, never the whole row.
+        Rectangle {
+          objectName: "highlightBar"
+          visible: root.highlighted
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          anchors.topMargin: Theme.spacing.xxs
+          anchors.bottomMargin: Theme.spacing.xxs
+          anchors.left: root.message.outgoing ? undefined : parent.left
+          anchors.right: root.message.outgoing ? parent.right : undefined
+          anchors.leftMargin: root.message.outgoing ? 0 : Theme.spacing.xxs
+          anchors.rightMargin: root.message.outgoing ? Theme.spacing.xxs : 0
+          width: Style.space(2)
+          radius: width / 2
+          color: Color.accent
+        }
 
         // The text, then any link preview, photo or file; parts a
         // message lacks take no space.
@@ -200,15 +204,23 @@ Item {
       }
     }
 
+    // highlightHints always takes its row's space in the Column, so
+    // showing or hiding it on the highlighted message never changes
+    // this delegate's height and never shifts any other message; only
+    // its opacity follows root.highlighted. The small left/right inset
+    // keeps its first character from touching the ListView's own clip
+    // edge, which otherwise clips a hair off it.
     Text {
       objectName: "highlightHints"
-      visible: root.highlighted
+      opacity: root.highlighted ? 1 : 0
       anchors.right: root.message.outgoing ? parent.right : undefined
       anchors.left: root.message.outgoing ? undefined : parent.left
+      anchors.rightMargin: root.message.outgoing ? Theme.spacing.xxs : 0
+      anchors.leftMargin: root.message.outgoing ? 0 : Theme.spacing.xxs
       text: Highlight.hints(root.message)
-      color: Util.alpha(Color.foreground, 0.55)
+      color: Util.alpha(Color.foreground, 0.5)
       font.family: Theme.font.family
-      font.pixelSize: Theme.font.caption
+      font.pixelSize: Theme.font.bodySmall
     }
 
     ReactionChips {

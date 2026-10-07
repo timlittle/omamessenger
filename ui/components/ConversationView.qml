@@ -208,7 +208,11 @@ Item {
         annotation: root.annotations[index] ?? ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         isGroup: root.isGroup
         nowMs: root.nowMs
-        highlighted: root.highlightedId !== "" && modelData.id === root.highlightedId
+        // The highlight and its hint row only make sense in scroll
+        // mode: while the composer has focus, j/k do not move it and
+        // r/e/t/Enter do not act on it, so showing it would say
+        // something no longer true.
+        highlighted: !composer.writing && root.highlightedId !== "" && modelData.id === root.highlightedId
         onRetry: id => root.retry(id)
         onMediaWanted: id => root.mediaWanted(id)
         onMediaOpen: id => root.mediaOpen(id)
