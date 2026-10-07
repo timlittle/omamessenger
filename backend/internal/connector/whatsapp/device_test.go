@@ -58,6 +58,27 @@ func TestOpenDevice_CreatesAPrivateFreshSession(t *testing.T) {
 	}
 }
 
+func TestOpenDevice_EnablesAutomaticMessageRerequestFromPhone(t *testing.T) {
+	t.Parallel()
+
+	// Without this, a message whatsmeow cannot decrypt (such as a bot
+	// replying from another linked device before a session exists with
+	// it) is only ever recovered if the sender's own retry succeeds; if
+	// the sender never answers the retry receipt, whatsmeow otherwise
+	// never asks the primary phone to resend it, and the placeholder
+	// never gets replaced (see live.go's handleUndecryptable).
+	dir := filepath.Join(t.TempDir(), "whatsapp")
+	dev, err := openDevice(t.Context(), dir, "wa-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = dev.close() }()
+
+	if !dev.cli.AutomaticMessageRerequestFromPhone {
+		t.Error("AutomaticMessageRerequestFromPhone = false, want true")
+	}
+}
+
 func TestOpenDevice_ReopensAnExistingSession(t *testing.T) {
 	dir := t.TempDir()
 	first, err := openDevice(t.Context(), dir, "wa-1")

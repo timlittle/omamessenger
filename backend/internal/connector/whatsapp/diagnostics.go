@@ -50,6 +50,15 @@ func logUnknownKind(field string) {
 	log.Printf("whatsapp: unknown message kind (field=%s)", field)
 }
 
+// logPhoneResend reports a message the primary phone resent after
+// AutomaticMessageRerequestFromPhone asked it to (see device.go and
+// live.go's handleContent), replacing a placeholder first reported as
+// undecryptable, so a report of "messages missing" can confirm the
+// phone actually answered the request.
+func logPhoneResend() {
+	log.Printf("whatsapp: phone resent an undecryptable message")
+}
+
 // recognizedContentFields are the waE2E.Message fields this connector
 // already turns into a real message (see messageText and its helpers
 // in normalize_message.go), handles as its own event (a reaction, an

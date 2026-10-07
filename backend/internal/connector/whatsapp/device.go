@@ -152,7 +152,17 @@ func openDevice(ctx context.Context, dir, accountID string) (*waDevice, error) {
 		return nil, fmt.Errorf("whatsapp: load session: %w", err)
 	}
 
-	return &waDevice{cli: whatsmeow.NewClient(dev, waLog.Noop), container: container}, nil
+	cli := whatsmeow.NewClient(dev, waLog.Noop)
+	// Without this, a message whatsmeow cannot decrypt is only ever
+	// recovered if the original sender's own retry succeeds. This
+	// account's self-chat gets replies from a bot running as another of
+	// its own linked devices, and that bot does not answer whatsmeow's
+	// retry receipts, so the primary phone is the only other copy of
+	// the message left to ask; enabling this is what lets whatsmeow ask
+	// it (see live.go's handleUndecryptable and handleContent).
+	cli.AutomaticMessageRerequestFromPhone = true
+
+	return &waDevice{cli: cli, container: container}, nil
 }
 
 // openContainer opens the SQLite database at path, in WAL mode with

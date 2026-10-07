@@ -73,6 +73,12 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 	// (see handleUndecryptable) carries the same id: replace its
 	// placeholder rather than report it a second time.
 	if c.resolveUndecryptable(remote, m.RemoteID) {
+		if e.UnavailableRequestID != "" {
+			// whatsmeow sets this when the redelivery came from the
+			// primary phone answering AutomaticMessageRerequestFromPhone's
+			// request, rather than the original sender's own retry.
+			logPhoneResend()
+		}
 		sink.Edited(ctx, c.account.ID, remote, m)
 		return
 	}
@@ -211,12 +217,14 @@ const undecryptablePlaceholder = "Waiting for this message"
 // handleUndecryptable reports a placeholder for a message whatsmeow
 // received but could not decrypt. This is most often one of this
 // account's own other linked devices (such as a bot replying in the
-// self-chat) sending before a session with that device exists yet;
-// whatsmeow already asks the sender to retry on its own, and if that
-// succeeds the redelivery arrives as an ordinary events.Message with
-// the same id, which handleContent then uses to replace this
-// placeholder (see markUndecryptable) instead of reporting it twice.
-// Nothing is reported for a system JID, the same as a real message.
+// self-chat) sending before a session with that device exists yet.
+// whatsmeow first asks the sender to retry on its own; if the sender
+// never answers, AutomaticMessageRerequestFromPhone (set in device.go)
+// has it ask the primary phone directly instead. Either way, a
+// successful redelivery arrives as an ordinary events.Message with the
+// same id, which handleContent then uses to replace this placeholder
+// (see markUndecryptable) instead of reporting it twice. Nothing is
+// reported for a system JID, the same as a real message.
 func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink, dev device, e *events.UndecryptableMessage) {
 	logUndecryptable(e.IsUnavailable, e.DecryptFailMode)
 

@@ -479,24 +479,26 @@ func TestHandleUndecryptable_SkipsASystemChat(t *testing.T) {
 	}
 }
 
+// TestHandleContent_ReplacesAnUndecryptablePlaceholderOnRedelivery covers
+// both ways a redelivery can reach handleContent with the same id as a
+// placeholder: the original sender's own retry (no UnavailableRequestID),
+// or AutomaticMessageRerequestFromPhone's request answered by the
+// primary phone instead, once the sender never answers (UnavailableRequestID
+// set; see device.go).
 func TestHandleContent_ReplacesAnUndecryptablePlaceholderOnRedelivery(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev, media := newFakeDevice(), newTestMediaStore(t)
-	var sink connectortest.Sink
-	c.handleUndecryptable(t.Context(), &sink, dev, &events.UndecryptableMessage{Info: liveInfo()})
-
-	// whatsmeow's own retry succeeds: the same id arrives again, this
-	// time as an ordinary, decryptable message.
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
-		Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")},
-	})
-
-	if !sink.Has("edited 15551234567@s.whatsapp.net M1") {
-		t.Errorf("events = %q, want the redelivered message to replace the placeholder", sink.Lines())
-	}
-	if live := sink.LiveMessages()["15551234567@s.whatsapp.net"]; len(live) != 1 {
-		t.Errorf("live messages = %+v, want only the placeholder's single incoming report, not a second one for the redelivery", live)
+	for _, reqID := range []string{"", "REQ1"} {
+		c, dev, media := New(domain.Account{ID: "wa"}, t.TempDir()), newFakeDevice(), newTestMediaStore(t)
+		var sink connectortest.Sink
+		c.handleUndecryptable(t.Context(), &sink, dev, &events.UndecryptableMessage{Info: liveInfo()})
+		msg := &waE2E.Message{Conversation: strPtr("hi")}
+		c.handleMessage(t.Context(), &sink, dev, media, &events.Message{Info: liveInfo(), Message: msg, UnavailableRequestID: reqID})
+		if !sink.Has("edited 15551234567@s.whatsapp.net M1") {
+			t.Errorf("events = %q, want the redelivered message to replace the placeholder", sink.Lines())
+		}
+		if live := sink.LiveMessages()["15551234567@s.whatsapp.net"]; len(live) != 1 {
+			t.Errorf("live messages = %+v, want only the placeholder's single incoming report", live)
+		}
 	}
 }
