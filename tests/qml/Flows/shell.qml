@@ -12,6 +12,9 @@
 // - a file from the test's own directory is attached (as the attach
 //   button's file dialog would report it) and sent to Mum with a
 //   caption, and is delivered as a file attachment
+// - a photo from the test's own directory is attached the same way and
+//   sent to Mum, and its bubble shows the real downloaded image, not an
+//   empty box, once it is delivered
 // Each step polls until its condition holds, because every answer comes
 // back from the helper asynchronously.
 import QtQuick
@@ -51,7 +54,9 @@ ShellRoot {
     root.waitForMumWithOlderHistory,
     root.waitForMumsPhoto,
     root.attachAndSendToMum,
-    root.waitForAttachmentDelivered
+    root.waitForAttachmentDelivered,
+    root.attachImageToMum,
+    root.waitForImageDelivered
   ]
 
   // fail stops the test with a reason on stderr.
@@ -311,6 +316,67 @@ ShellRoot {
 
     return root.messageStatus("see attached") === "sent" || root.messageStatus("see attached") === "delivered";
   }
+  // attachImageToMum attaches a photo from the test's own directory, the
+  // way the composer's file dialog would report it having been picked,
+  // then sends it with a caption.
+  function attachImageToMum(): var {
+    const composer = Check.find(root.panel(), "composer");
+    composer.fileAttached(root.testRoot + "/photo.png");
+
+    const chip = Check.find(root.panel(), "attachmentChip");
+    if (!chip || !chip.visible) return Check.fail("attachment chip did not appear after attaching the photo");
+
+    const name = Check.find(root.panel(), "attachmentName");
+    if (!name || name.text !== "photo.png")
+      return Check.fail("attachment chip name = " + (name && name.text) + ", want photo.png");
+
+    root.type("see this photo");
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // messageIdFor returns the id of the newest loaded message with the
+  // given text, or "" when none matches.
+  function messageIdFor(text: string): var {
+    const model = Check.find(root.panel(), "messageListView").model;
+    for (let i = 0; i < model.count; i++) {
+      if (model.get(i).text === text) return model.get(i).id;
+    }
+    return "";
+  }
+
+  // photoImageFor returns the "photoImage" Image inside the loaded
+  // delegate for messageId, or null when that delegate is not built.
+  function photoImageFor(messageId: string): var {
+    const items = Check.find(root.panel(), "messageListView").contentItem.children;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].modelData && items[i].modelData.id === messageId) return Check.find(items[i], "photoImage");
+    }
+    return null;
+  }
+
+  // waitForImageDelivered holds until the attached photo is delivered and
+  // its bubble shows the real downloaded image: a non-empty source that
+  // has finished loading, not an empty box and not stuck waiting.
+  function waitForImageDelivered(): var {
+    const chip = Check.find(root.panel(), "attachmentChip");
+    if (chip && chip.visible) return false;
+
+    const status = root.messageStatus("see this photo");
+    if (status !== "sent" && status !== "delivered") return false;
+
+    const image = root.photoImageFor(root.messageIdFor("see this photo"));
+    if (!image) return false;
+    if (String(image.source) === "") return false;
+    if (image.status === Image.Error) return Check.fail("the sent photo's image failed to load");
+    if (image.status !== Image.Ready) return false;
+
+    // The real file, not just the small inline thumb, must be what
+    // loaded: that is the whole point of the local copy being used.
+    if (String(image.source).indexOf("file://") !== 0) return Check.fail("the sent photo shows its thumb, not the real downloaded image: " + image.source);
+    return true;
+  }
+
   // runStep runs the current step and advances, retries or fails.
   function runStep(): void {
     const result = root.steps[root.step]();

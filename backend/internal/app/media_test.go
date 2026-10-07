@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -73,6 +74,66 @@ func TestFetchMedia_Rejects(t *testing.T) {
 		if _, err := f.commands.FetchMedia(ctx, id); !errors.Is(err, want) {
 			t.Errorf("FetchMedia(%q) = %v, want %v", id, err, want)
 		}
+	}
+}
+
+func TestFetchMedia_OutgoingPhotoUsesTheLocalCopyWhileStillPending(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	path := writeTestPNG(t, "photo.png", 2, 2)
+
+	sent, err := f.commands.Send(ctx, "chat", "look", path, "")
+	if err != nil || sent.Status != domain.StatusPending || sent.RemoteID != "" {
+		t.Fatalf("Send() = %+v, %v; want it still pending with no remote id", sent, err)
+	}
+
+	got, err := f.commands.FetchMedia(ctx, sent.ID)
+	if err != nil {
+		t.Fatalf("FetchMedia() error = %v", err)
+	}
+
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	have, err := os.ReadFile(got)
+	if err != nil || !bytes.Equal(have, want) {
+		t.Errorf("FetchMedia() = %q, %v; want the same bytes as the attachment sent", got, err)
+	}
+
+	if len(f.media.fetched) != 0 {
+		t.Errorf("downloaded from the service %v, want the local copy used instead", f.media.fetched)
+	}
+}
+
+func TestFetchMedia_OutgoingPhotoFallsBackToDownloadIfTheLocalCopyIsGone(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	path := writeTestPNG(t, "photo.png", 2, 2)
+
+	sent, err := f.commands.Send(ctx, "chat", "look", path, "")
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	if err := os.Remove(f.outgoing.Path(sent.ID, "photo.png")); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.SetMessageRemoteID(ctx, sent.ID, "99"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := f.commands.FetchMedia(ctx, sent.ID)
+	if err != nil || filepath.Base(got) != sent.ID+".jpg" {
+		t.Fatalf("FetchMedia() = %q, %v; want the service's copy once the local one is gone", got, err)
+	}
+	if !slices.Equal(f.media.fetched, []string{"99"}) {
+		t.Errorf("fetched = %v, want the service asked for remote id 99", f.media.fetched)
 	}
 }
 

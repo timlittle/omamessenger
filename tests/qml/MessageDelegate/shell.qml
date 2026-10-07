@@ -1,7 +1,7 @@
 // Checks MessageDelegate: sender names in groups, the read glyph, the
 // retry line on a failed message, that rich text escapes markup while
-// linkifying URLs, a reply's quote, the hover reply button, and
-// reaction chips.
+// linkifying URLs, a reply's quote, the hover reply button, a photo whose
+// full image fails to load, and reaction chips.
 import QtQuick
 import QtTest
 import Quickshell
@@ -25,9 +25,27 @@ ShellRoot {
   property var pickerRequests: []
   property real now: Date.now()
 
+  // tinyThumb is a valid 2x2 JPEG, base64 encoded, standing in for the
+  // kind of preview a real photo carries.
+  readonly property string tinyThumb: "/9j/2wCEAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDIBCQkJDAsMGA0NGDIhHCEyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMv/AABEIAAIAAgMBIgACEQEDEQH/xAGiAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgsQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+gEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoLEQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2gAMAwEAAhEDEQA/APAGZnYszFmY5JJySaSiigG76s//2Q=="
+
   // findText returns the first collected node whose text matches exactly.
   function findText(out, text) {
     return out.find(node => node.text === text) ?? null;
+  }
+
+  // waitUntil polls predicate, letting the event loop run between tries,
+  // until it is true or timeoutMs has passed; its last result is the
+  // return value either way. An async image load needs this, since it
+  // finishes on a later turn of the event loop, not within this function.
+  function waitUntil(predicate, timeoutMs) {
+    const start = Date.now();
+    let ok = predicate();
+    while (!ok && Date.now() - start < timeoutMs) {
+      t.wait(20);
+      ok = predicate();
+    }
+    return ok;
   }
 
   FloatingWindow {
@@ -78,6 +96,7 @@ ShellRoot {
     if (!root.checkLineBreaks()) return;
     if (!root.checkLinkPreview()) return;
     if (!root.checkPhoto()) return;
+    if (!root.checkPhotoLoadFailure()) return;
     if (!root.checkVideoAndFile()) return;
     if (!root.checkReplyQuote()) return;
     if (!root.checkHoverReplyButton()) return;
@@ -201,6 +220,30 @@ ShellRoot {
 
     delegate.message = Object.assign({}, delegate.message, { mediaPath: "/tmp/m8.jpg" });
     if (String(Check.find(delegate, "photoImage").source) !== "file:///tmp/m8.jpg") return Check.fail("the downloaded photo is not shown");
+    return true;
+  }
+
+  // checkPhotoLoadFailure verifies a photo whose full image fails to load
+  // (a mediaPath left over from a file since moved or deleted) falls back
+  // to its thumb when it has one, or otherwise shows a quiet message
+  // naming the file rather than staying an empty box.
+  function checkPhotoLoadFailure(): bool {
+    const noThumb = { kind: "photo", width: 400, height: 200, thumb: "", fileName: "trip.jpg" };
+    delegate.message = { id: "m16", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(noThumb), mediaPath: "/does/not/exist.jpg" };
+
+    // The PhotoView swaps the Image away from the failed file once it
+    // reports the error, so the visible outcome, not the Image's own
+    // status, is what settles.
+    const label = Check.find(delegate, "unavailableLabel");
+    if (!root.waitUntil(() => label.visible, 3000)) return Check.fail("unavailable message not shown once the photo failed to load");
+    if (label.text.indexOf("trip.jpg") < 0) return Check.fail("unavailable message does not name the file: " + label.text);
+
+    const withThumb = { kind: "photo", width: 400, height: 200, thumb: root.tinyThumb, fileName: "trip.jpg" };
+    delegate.message = { id: "m16b", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(withThumb), mediaPath: "/does/not/exist-either.jpg" };
+
+    const image2 = Check.find(delegate, "photoImage");
+    if (!root.waitUntil(() => String(image2.source).indexOf("data:image/jpeg") === 0, 3000)) return Check.fail("thumb fallback not shown once the full image failed");
+    if (Check.find(delegate, "unavailableLabel").visible) return Check.fail("unavailable message shown although a thumb is available");
     return true;
   }
 

@@ -3,14 +3,18 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// FetchMedia returns the path of a message's photo, video or file,
-// downloading it from the service the first time.
+// FetchMedia returns the path of a message's photo, video or file. An
+// outgoing message's own attachment is already on this machine, so its
+// local copy is returned at once, with no remote id needed; anything
+// else is downloaded from the service the first time, then kept in the
+// media cache.
 func (c *Commands) FetchMedia(ctx context.Context, messageID string) (string, error) {
 	if strings.TrimSpace(messageID) == "" {
 		return "", fmt.Errorf("%w: messageId is required", ErrInvalidInput)
@@ -21,7 +25,15 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string) (string, er
 		return "", err
 	}
 
-	if m.Media == nil || m.Media.Kind == domain.MediaLink || m.RemoteID == "" || c.media == nil || c.cache == nil {
+	if m.Media == nil || m.Media.Kind == domain.MediaLink {
+		return "", fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
+	}
+
+	if path, ok := c.localAttachment(m); ok {
+		return path, nil
+	}
+
+	if m.RemoteID == "" || c.media == nil || c.cache == nil {
 		return "", fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
 	}
 
@@ -33,6 +45,25 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string) (string, er
 	return c.cache.Fetch(ctx, mediaFileName(m), func(ctx context.Context, path string) error {
 		return c.media.FetchMedia(ctx, conv, m.RemoteID, path)
 	})
+}
+
+// localAttachment returns the path of an outgoing message's own
+// attachment, already copied into the outgoing media area when it was
+// sent, so the UI never has to download a photo back from the service it
+// was just uploaded to. It reports false for an incoming message, or an
+// outgoing one whose local copy is gone, so the caller falls back to
+// downloading it.
+func (c *Commands) localAttachment(m domain.Message) (string, bool) {
+	if !m.Outgoing || c.outgoing == nil {
+		return "", false
+	}
+
+	path := c.outgoing.Path(m.ID, m.Media.FileName)
+	if _, err := os.Stat(path); err != nil {
+		return "", false
+	}
+
+	return path, true
 }
 
 // mediaFileName names a message's media in the cache by the message's id,

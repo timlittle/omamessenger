@@ -115,7 +115,7 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | `messages.send` | `{conversationId, text, attachment, replyTo}` | `Message`; status `failed` if the service refused it. `attachment` is optional: `{path}` names a file on this machine to send, with `text` as its caption (`text` may then be empty); files over 2 GB are rejected. `replyTo`, also optional, is the local id of a message in the same conversation this one answers; it works together with `attachment` |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
 | `messages.react` | `{messageId, emoji}` | `Message`; sets the user's reaction to `emoji`, or clears it when `emoji` is `""`. Fails with invalid params if the service does not support reactions |
-| `media.fetch` | `{messageId}` | `{path}`: the message's photo, video or file, downloaded into the media cache the first time |
+| `media.fetch` | `{messageId}` | `{path}`: the message's photo, video or file. For a message you sent, its own local copy is returned at once; otherwise it is downloaded into the media cache the first time |
 | `media.paste` | | `{path, kind, width, height}`: an image copied off the clipboard into the outgoing media area, for the composer to attach to the next message sent; fails with an invalid-input error when the clipboard holds no image |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
 | `settings.apply` | `{notifications, notificationPreview}` | `{}` |

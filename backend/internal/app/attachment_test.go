@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"image"
 	"image/png"
@@ -73,6 +74,54 @@ func TestSend_WithAttachment_StoresMediaAndCopiesTheFile(t *testing.T) {
 
 	if !slices.Contains(f.dispatcher.sent, "look at this") {
 		t.Errorf("dispatched = %v, want it to include the caption", f.dispatcher.sent)
+	}
+}
+
+func TestSend_WithAttachment_GivesAPhotoASmallThumbAtOnce(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	path := writeTestPNG(t, "photo.png", 400, 300)
+
+	m, err := f.commands.Send(ctx, "chat", "look at this", path, "")
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	if m.Media.Thumb == "" {
+		t.Fatal("Media.Thumb is empty, want a small preview the bubble can show before the full photo loads")
+	}
+
+	raw, err := base64.StdEncoding.DecodeString(m.Media.Thumb)
+	if err != nil {
+		t.Fatalf("Thumb is not valid base64: %v", err)
+	}
+
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("Thumb is not a decodable image: %v", err)
+	}
+	if cfg.Width > 64 || cfg.Height > 64 {
+		t.Errorf("Thumb is %dx%d, want it shrunk small", cfg.Width, cfg.Height)
+	}
+}
+
+func TestSend_WithAttachment_FileGetsNoThumb(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	path := writeTestFile(t, "notes.txt", []byte("plain text file"))
+
+	m, err := f.commands.Send(ctx, "chat", "", path, "")
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	if m.Media.Thumb != "" {
+		t.Errorf("Thumb = %q, want none for a plain file", m.Media.Thumb)
 	}
 }
 

@@ -1,13 +1,15 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"image"
-	_ "image/gif"  // registers GIF decoding for image.DecodeConfig
-	_ "image/jpeg" // registers JPEG decoding for image.DecodeConfig
-	_ "image/png"  // registers PNG decoding for image.DecodeConfig
+	_ "image/gif" // registers GIF decoding for image.DecodeConfig
+	"image/jpeg"
+	_ "image/png" // registers PNG decoding for image.DecodeConfig
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +22,11 @@ import (
 // Telegram, the only service this helper sends media through today,
 // refuses more than this for a non-Premium account.
 const MaxAttachmentSize = 2 << 30
+
+// thumbMaxSize bounds an outgoing photo's inline preview, in pixels on
+// its longer side: large enough to recognise, small enough that sending
+// it with every message costs nothing worth noticing.
+const thumbMaxSize = 48
 
 // prepareAttachment copies the file at path into the outgoing media
 // area under id and describes it as a domain.Media: a photo or video for
@@ -85,9 +92,67 @@ func describeAttachment(storedPath, name string, size int64) *domain.Media {
 
 	if kind == domain.MediaPhoto {
 		media.Width, media.Height = imageDimensions(storedPath)
+		media.Thumb = photoThumb(storedPath)
 	}
 
 	return media
+}
+
+// photoThumb returns a small base64 JPEG preview of the photo at path, so
+// an outgoing photo's bubble has something to show before its own local
+// copy loads, the same as an incoming photo's stripped preview. It
+// returns "" when the file cannot be decoded, which only costs that
+// moment: the full image still loads once sent.
+func photoThumb(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close() // reading only; nothing was written to flush
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return ""
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, shrink(img, thumbMaxSize), &jpeg.Options{Quality: 60}); err != nil {
+		return ""
+	}
+
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
+// shrink returns a nearest-neighbour copy of img no larger than limit on
+// its longer side, cheap enough to run inline while sending; img itself
+// when it is already within limit.
+func shrink(img image.Image, limit int) image.Image {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= limit && h <= limit {
+		return img
+	}
+
+	scale := float64(limit) / float64(max(w, h))
+	nw, nh := scaledSize(w, scale), scaledSize(h, scale)
+
+	out := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	for y := 0; y < nh; y++ {
+		for x := 0; x < nw; x++ {
+			out.Set(x, y, img.At(b.Min.X+x*w/nw, b.Min.Y+y*h/nh))
+		}
+	}
+
+	return out
+}
+
+// scaledSize applies scale to n, never below one pixel.
+func scaledSize(n int, scale float64) int {
+	if s := int(float64(n) * scale); s > 0 {
+		return s
+	}
+
+	return 1
 }
 
 // sniffKind reads a file's first bytes to say whether it is a photo, a
