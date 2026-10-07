@@ -249,7 +249,7 @@ Item {
       objectName: "reactionChips"
       width: parent.width
       alignRight: root.message.outgoing
-      reactions: root.message.reactions ?? []
+      reactions: root.message.reactions ? root.message.reactions : []
       hovering: bubbleHover.hovered
       onToggled: emoji => root.react(root.message.id, emoji)
       onAddRequested: root.reactPickerRequested(root.message.id)

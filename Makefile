@@ -78,7 +78,11 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 			XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
 		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
-	done; exit $$status
+	done; \
+	warnings=$$(grep -lEi "TypeError|ReferenceError|binding loop" build/qml-tests/*/log 2>/dev/null); \
+	if [ -n "$$warnings" ]; then status=1; echo "FAIL unexpected warnings:"; \
+		grep -Ei "TypeError|ReferenceError|binding loop" $$warnings; fi; \
+	exit $$status
 
 lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QML
 	$(GOLANGCI_LINT) run ./...

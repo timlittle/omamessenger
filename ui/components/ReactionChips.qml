@@ -12,7 +12,10 @@ import "../theme"
 Item {
   id: root
 
-  // reactions are the message's chips: {emoji, count, mine}.
+  // reactions are the message's chips: {emoji, count, mine}. The caller
+  // may hand this null or undefined: a message with none, or a delegate
+  // whose message is being torn down between recycles, so it is never
+  // read directly below.
   required property var reactions
   // hovering shows the "+" chip even when there are no reactions yet.
   property bool hovering: false
@@ -25,7 +28,12 @@ Item {
   // addRequested asks the caller to open the emoji picker for this message.
   signal addRequested()
 
-  visible: root.reactions.length > 0 || root.hovering
+  // visible guards reactions with "&&" rather than a separate normalizing
+  // property: a message's reactions can be reset straight to a QML null
+  // while its delegate is destroyed, bypassing whatever an intermediate
+  // property's own binding would have computed, so the null must be
+  // caught in the same expression that reads .length.
+  visible: (root.reactions && root.reactions.length > 0) || root.hovering
   implicitWidth: row.implicitWidth
   implicitHeight: row.implicitHeight
 
@@ -36,7 +44,7 @@ Item {
     spacing: Theme.spacing.xxs
 
     Repeater {
-      model: root.reactions
+      model: root.reactions ? root.reactions : []
 
       Rectangle {
         id: chip
