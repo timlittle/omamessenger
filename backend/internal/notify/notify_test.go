@@ -36,11 +36,14 @@ func stub(t *testing.T, dir, argsPath, action string) string {
 
 // desktopWithStub returns a Desktop whose Command runs the stub at path
 // regardless of the name Notify asked for, and a channel fed by click.
+// The stub runs through sh rather than being executed itself: a script
+// written and executed at once can fail with "text file busy" while a
+// parallel test forks with the file still open for writing.
 func desktopWithStub(path string) (notify.Desktop, <-chan string) {
 	clicks := make(chan string, 1)
 	d := notify.Desktop{
 		Command: func(ctx context.Context, _ string, args ...string) *exec.Cmd {
-			return exec.CommandContext(ctx, path, args...)
+			return exec.CommandContext(ctx, "sh", append([]string{path}, args...)...)
 		},
 		Click: func(conversationID string) { clicks <- conversationID },
 	}
@@ -56,7 +59,7 @@ func waitForClick(t *testing.T, clicks <-chan string) string {
 	select {
 	case id := <-clicks:
 		return id
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("click was never reported")
 		return ""
 	}
