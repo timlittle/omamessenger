@@ -1,5 +1,6 @@
 import QtQuick
 import "../lib/Selection.js" as Selection
+import "../lib/Highlight.js" as Highlight
 import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
 
@@ -47,6 +48,13 @@ Item {
 
   // pane is "list" or "conversation": which column a narrow window shows.
   property string pane: "list"
+
+  // highlightedId is the message id j/k move through, by id rather than
+  // index, so loading older history or a new message arriving never
+  // moves it to a different message. It starts on the newest message
+  // each time a conversation (re)loads, and r, e, t and Enter all act on
+  // whichever message this names.
+  property string highlightedId: ""
 
   // messages is the loaded timeline, newest first.
   readonly property alias messages: timeline.model
@@ -102,15 +110,16 @@ Item {
       "search.accept": () => root._openFirstVisible(),
       "pane.conversation": () => root._showPane(),
       "pane.list": () => root._hidePane(),
-      "scroll.down": () => root.scroll("down"),
-      "scroll.up": () => root.scroll("up"),
+      "message.highlightOlder": () => root._moveHighlight(true),
+      "message.highlightNewer": () => root._moveHighlight(false),
+      "message.open": () => root._openHighlighted(),
       "scroll.pageDown": () => root.scroll("pageDown"),
       "scroll.pageUp": () => root.scroll("pageUp"),
       "scroll.newest": () => root.scroll("newest"),
       "scroll.oldest": () => root.scroll("oldest"),
       "chat.next": () => root._step(1),
       "chat.prev": () => root._step(-1),
-      "message.retry": () => root.retryMessage(timeline.newestFailedId())
+      "message.retry": () => root._retryHighlighted()
     };
 
     const handler = handlers[action];
@@ -144,6 +153,7 @@ Item {
     root.activeId = "";
     root.conversation = null;
     root.pane = "list";
+    root.highlightedId = "";
     if (root.composer) root.composer.cancelReply();
     if (root.photoViewer) root.photoViewer.close();
     root.saveUiState({ activeId: "", pane: "list" });
@@ -293,6 +303,7 @@ Item {
     root.activeId = id;
     root.conversation = conversation;
     root.pane = "conversation";
+    root.highlightedId = "";
     if (root.composer) root.composer.restore(id);
     if (root.photoViewer) root.photoViewer.close();
     root._resetTyping();
@@ -314,6 +325,42 @@ Item {
   function _hidePane(): void {
     root.pane = "list";
     root.saveUiState({ pane: "list" });
+  }
+
+  // resetHighlight moves the highlight to the newest loaded message.
+  // Idempotent: calling it again while already there changes nothing.
+  // Called when a conversation (re)loads and when the user leaves
+  // writing mode with Escape.
+  function resetHighlight(): void {
+    root.highlightedId = timeline.newestId();
+  }
+
+  // _moveHighlight moves the highlight one message toward older or newer,
+  // stopping at either end rather than overscrolling; at the oldest
+  // loaded message, moving further asks for more history instead,
+  // leaving the highlight where it is until that page arrives.
+  function _moveHighlight(older: bool): void {
+    const ids = timeline.ids();
+    if (ids.length === 0) return;
+
+    if (older && Highlight.atOldest(ids, root.highlightedId)) { root.loadOlder(); return; }
+
+    root.highlightedId = older ? Highlight.older(ids, root.highlightedId) : Highlight.newer(ids, root.highlightedId);
+    root.scrollToMessageRequested(root.highlightedId);
+  }
+
+  // _openHighlighted opens the highlighted message's photo, video or
+  // file; Enter does nothing when it carries none, rather than guessing
+  // at some other action.
+  function _openHighlighted(): void {
+    if (root.highlightedId && timeline.media(root.highlightedId)) root.openMedia(root.highlightedId);
+  }
+
+  // _retryHighlighted resends the highlighted message, only when it is
+  // itself a failed outgoing one.
+  function _retryHighlighted(): void {
+    const m = timeline.find(root.highlightedId);
+    if (m && m.outgoing && m.status === "failed") root.retryMessage(m.id);
   }
 
   // applyMessage applies a sent, retried or pushed message to the
@@ -393,7 +440,10 @@ Item {
     }
   }
 
-  MessageTimeline { id: timeline }
+  MessageTimeline {
+    id: timeline
+    onInitialLoaded: root.resetHighlight()
+  }
 
   Timer {
     id: typingTimer

@@ -25,6 +25,11 @@ Item {
   // _loadingMore guards messages.list so only one older page loads at once.
   property bool _loadingMore: false
 
+  // initialLoaded fires once loadInitial's page has been applied to the
+  // model, for whoever resets the highlighted message to the newest one
+  // each time a conversation (re)opens.
+  signal initialLoaded()
+
   // reset clears the loaded messages, for a conversation about to load.
   function reset(): void {
     messagesModel.clear();
@@ -46,6 +51,7 @@ Item {
 
       root.hasMore = result.hasMore;
       root._appendOlder(result.messages, isGroup);
+      root.initialLoaded();
     });
   }
 
@@ -140,18 +146,15 @@ Item {
     if (at !== -1) messagesModel.setProperty(at, "mediaPath", path);
   }
 
-  // newestFailedId returns the newest failed outgoing message's id, or ""
-  // when none failed.
-  function newestFailedId(): string {
-    for (let i = 0; i < messagesModel.count; i++) {
-      const m = messagesModel.get(i);
-      if (m.outgoing && m.status === "failed") return m.id;
-    }
-    return "";
+  // ids returns every loaded message's id, newest first, for moving the
+  // highlighted message: the highlight is always one of these ids, never
+  // an index, so a reorder or a new page never moves it to the wrong one.
+  function ids(): var {
+    return root._snapshot().map((m) => m.id);
   }
 
   // newestId returns the newest loaded message's id, or "" when none is
-  // loaded, for the "reply to" and "react to" the newest message commands.
+  // loaded, for resetting the highlight when a conversation (re)loads.
   function newestId(): string {
     return messagesModel.count > 0 ? messagesModel.get(0).id : "";
   }

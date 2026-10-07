@@ -6,8 +6,9 @@ import "../theme"
 
 // A short picker of common emoji, for adding a reaction without typing
 // one: arrow keys move the highlight, Enter picks it, Escape cancels. The
-// same picker opens from a message's "+" chip or the "react to the
-// newest message" command, so it carries no message state of its own.
+// same picker opens from a message's "+" chip or e, the "react to the
+// highlighted message" shortcut, so it carries no message state of its
+// own.
 Item {
   id: root
 

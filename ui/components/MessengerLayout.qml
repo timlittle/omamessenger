@@ -202,6 +202,7 @@ Item {
       subtitle: root.conversationController.subtitle
       messages: root.conversationController.messages
       annotations: root.conversationController.annotations
+      highlightedId: root.conversationController.highlightedId
       nowMs: root.nowMs
       draft: root.composerController.draft
       replyTarget: root.composerController.replyTarget

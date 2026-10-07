@@ -56,7 +56,7 @@ ShellRoot {
     root.submitReply,
     root.waitForReplyDelivered,
     root.holdFor(8),
-    root.openReactCommand,
+    root.openReactPicker,
     root.waitForReactionPicker,
     root.holdFor(4),
     root.pickReaction,
@@ -221,13 +221,14 @@ ShellRoot {
     return status === "sent" || status === "delivered";
   }
 
-  // openReactCommand opens the command palette and runs "react to the
-  // newest message" through it, rather than the hover toolbar's "+".
-  function openReactCommand(): var {
-    root.showLabel("Ctrl+/  →  react");
-    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
-    root.typeText("react");
-    t.keyClick(Qt.Key_Return);
+  // openReactPicker leaves the composer with Escape, which moves the
+  // highlight onto the reply just sent, then presses e to open the
+  // picker for it: the direct shortcut, rather than the hover toolbar's
+  // "+" or the command palette.
+  function openReactPicker(): var {
+    root.showLabel("Esc  ·  e  →  react");
+    t.keyClick(Qt.Key_Escape);
+    t.keyClick(Qt.Key_E);
     return true;
   }
 

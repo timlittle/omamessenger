@@ -34,7 +34,7 @@ QtObject {
   property var photoViewerController: null
 
   // reactionsController is read and closed by the Escape chain, and runs
-  // the command palette's "react to the newest message" command.
+  // the command palette's "react to the highlighted message" command.
   property var reactionsController: null
 
   // dialogController is read and closed by the Escape chain.
@@ -168,6 +168,14 @@ QtObject {
     root.confirmingClose = false;
   }
 
+  // _leaveCompose blurs the composer and resets the highlighted message
+  // to the newest one, so scroll mode always starts there once writing
+  // stops, the same as opening a conversation does.
+  function _leaveCompose(): void {
+    if (root.composerController) root.composerController.leaveComposeRequested();
+    if (root.conversationController) root.conversationController.resetHighlight();
+  }
+
   // _openConversation opens a conversation picked in the palette.
   function _openConversation(conversation: var): void {
     if (!root.conversationController) return;
@@ -189,7 +197,7 @@ QtObject {
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
       "clear-attachment": () => { if (root.composerController) root.composerController.removeAttachment(); },
       "cancel-reply": () => { if (root.composerController) root.composerController.cancelReply(); },
-      "leave-compose": () => { if (root.composerController) root.composerController.leaveComposeRequested(); },
+      "leave-compose": () => root._leaveCompose(),
       "close-conversation": () => { if (root.conversationController) root.conversationController.close(); },
       "hide-window": () => root.askToClose()
     };

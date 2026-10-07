@@ -6,9 +6,9 @@ import "../lib/Timeline.js" as Timeline
 
 // Owns the open conversation's reaction chips and the emoji picker: the
 // only controller that calls messages.react. conversation supplies the
-// loaded timeline the chips and the "react to the newest message"
-// command read and write; set it once, from whoever wires the
-// controllers together.
+// loaded timeline the chips read and write, and the highlighted message
+// id the "react to the highlighted message" command reads; set it once,
+// from whoever wires the controllers together.
 //
 // QtObject rather than Item: it holds no child objects.
 QtObject {
@@ -44,7 +44,7 @@ QtObject {
   // run performs action, the only entry point a key router needs.
   function run(action: string): void {
     const handlers = {
-      "message.react": () => root.openPicker(root.conversation.timeline.newestId()),
+      "message.react": () => root.openPicker(root.conversation.highlightedId),
       "reaction.left": () => root.movePicker(-1),
       "reaction.right": () => root.movePicker(1),
       "reaction.accept": () => root.acceptPicker()
@@ -73,7 +73,7 @@ QtObject {
   }
 
   // openPicker shows the emoji picker for a message, for the "+" chip or
-  // the "react to the newest message" command.
+  // the "react to the highlighted message" command.
   function openPicker(id: string): void {
     if (!id) return;
 

@@ -73,7 +73,7 @@ QtObject {
   function run(action: string): void {
     const handlers = {
       "compose.focus": () => root.composeFocusRequested(),
-      "message.reply": () => root.startReply(root.conversation.timeline.newestId()),
+      "message.reply": () => root.startReply(root.conversation.highlightedId),
       "message.send": () => root.submitRequested(),
       "compose.newline": () => root.newlineRequested(),
       "compose.attach": () => root.pasteImage(),

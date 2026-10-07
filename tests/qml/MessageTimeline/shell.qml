@@ -3,8 +3,10 @@
 // and new messages at the top; a page that arrives after older history
 // already came in as events still puts its newer messages at the top; a
 // page that repeats a message already shown does not show it twice; media()
-// reads a loaded message's photo or video back; and photoNeighbor() steps
-// between the photos in the loaded history, skipping messages without one.
+// reads a loaded message's photo or video back; photoNeighbor() steps
+// between the photos in the loaded history, skipping messages without one;
+// ids() lists the loaded messages for moving a highlight; and
+// initialLoaded() fires once loadInitial's page has landed.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -30,8 +32,11 @@ ShellRoot {
     }
   }
 
+  property int initialLoadedCount: 0
+
   MessageTimeline {
     id: timeline
+    onInitialLoaded: root.initialLoadedCount++
   }
 
   Timer {
@@ -62,15 +67,27 @@ ShellRoot {
     timeline.loadInitial(service, "chat", () => true, false);
     timeline.upsert(root.message("m20", 20), false);
     service.firstPage(null, { hasMore: true, messages: [root.message("m50", 50), root.message("m60", 60)] });
+    if (root.initialLoadedCount !== 1) {
+      Check.fail("initialLoaded fired " + root.initialLoadedCount + " times, want 1");
+      return;
+    }
     timeline.upsert(root.message("m70", 70), false);
     if (root.ids() !== "m70,m60,m50,m20") {
       Check.fail("messages not placed by time: " + root.ids());
+      return;
+    }
+    if (timeline.ids().join(",") !== "m70,m60,m50,m20") {
+      Check.fail("ids() did not match the loaded messages: " + timeline.ids().join(","));
       return;
     }
 
     timeline.loadOlder(service, "chat", false);
     if (root.ids() !== "m70,m60,m50,m20,m10") {
       Check.fail("older page duplicated or misplaced a message: " + root.ids());
+      return;
+    }
+    if (root.initialLoadedCount !== 1) {
+      Check.fail("loadOlder fired initialLoaded, want only loadInitial to");
       return;
     }
 

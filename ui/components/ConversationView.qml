@@ -18,6 +18,9 @@ Item {
   property var messages: []
   // annotations is Timeline.annotate's output, same order as messages.
   property var annotations: []
+  // highlightedId is the message id j/k move through, by id rather than
+  // index, or "" when nothing is highlighted.
+  property string highlightedId: ""
   // nowMs is the current time, passed to each message delegate.
   property real nowMs: 0
   // draft is the composer's saved text for this conversation.
@@ -205,6 +208,7 @@ Item {
         annotation: root.annotations[index] ?? ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         isGroup: root.isGroup
         nowMs: root.nowMs
+        highlighted: root.highlightedId !== "" && modelData.id === root.highlightedId
         onRetry: id => root.retry(id)
         onMediaWanted: id => root.mediaWanted(id)
         onMediaOpen: id => root.mediaOpen(id)

@@ -3,7 +3,7 @@
 // - search for "ticket" finds Alex Chen, Enter opens it, its unread clears
 //   and the bar widget's count follows
 // - a draft survives the panel being destroyed and recreated
-// - Ctrl+K jumps to Sam, whose first send fails, and r retries it
+// - Ctrl+K jumps to Sam, whose first send fails, and t retries it
 // - a message arriving in Sam's chat while the window is hidden stays unread
 // - Ctrl+N, cycling every account, "Ben", Enter opens a new chat with Ben
 // - Ctrl+K to Mum, whose short stored history makes the helper fetch older
@@ -42,7 +42,7 @@ ShellRoot {
     root.waitForDraftRestored,
     root.openSam,
     root.waitForSamFailed,
-    root.retryWithR,
+    root.retryWithT,
     root.waitForSamDelivered,
     root.hideWithSamOpen,
     root.messageWhileHidden,
@@ -183,10 +183,11 @@ ShellRoot {
     return root.title() === "Sam (spotty signal)" && root.messageStatus("are you there") === "failed";
   }
 
-  // retryWithR leaves the composer and retries with r.
-  function retryWithR(): var {
+  // retryWithT leaves the composer, which resets the highlight to the
+  // newest message (the one that just failed), and retries it with t.
+  function retryWithT(): var {
     t.keyClick(Qt.Key_Escape);
-    t.keyClick(Qt.Key_R);
+    t.keyClick(Qt.Key_T);
     return true;
   }
 
