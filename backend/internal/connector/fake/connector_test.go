@@ -3,6 +3,7 @@ package fake_test
 import (
 	"context"
 	"errors"
+	"image/jpeg"
 	"os"
 	"path/filepath"
 	"slices"
@@ -255,6 +256,55 @@ func TestFetchMedia_WritesTheScriptedPhoto(t *testing.T) {
 
 		if info, err := os.Stat(path); err != nil || info.Size() == 0 {
 			t.Errorf("downloaded %v, %v; want a file", info, err)
+		}
+
+		// A real photo decodes; the UI falls back to a quiet label for one
+		// that does not, so the fake's stand-in needs to decode too, the
+		// way a demo recording or a screenshot test depends on.
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close() // read-only open; nothing to lose by skipping the error
+
+		if _, err := jpeg.Decode(f); err != nil {
+			t.Errorf("downloaded photo does not decode as a JPEG: %v", err)
+		}
+	})
+}
+
+// TestReact_RecordsTheReactionThroughTheSink confirms the fake connector
+// supports reactions, the way a real one does, so a demo or a screenshot
+// test can show one actually taking effect rather than failing with
+// "reactions are not supported here".
+func TestReact_RecordsTheReactionThroughTheSink(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
+		defer stop()
+
+		waitConnected(sink)
+		mum := conversation("wa-personal", "wa:mum", domain.KindDirect)
+		seeded := sink.Messages()["wa:mum"][0]
+
+		wa, ok := suite.Connectors()[0].(connector.Reactor)
+		if !ok {
+			t.Fatal("fake connector does not support reactions")
+		}
+
+		if err := wa.React(t.Context(), mum, seeded.RemoteID, "❤️"); err != nil {
+			t.Fatal(err)
+		}
+		if !sink.Has("reacted wa:mum " + seeded.RemoteID + " 1") {
+			t.Errorf("reacting did not report through the sink: %v", sink.Lines())
+		}
+
+		if err := wa.React(t.Context(), mum, seeded.RemoteID, ""); err != nil {
+			t.Fatal(err)
+		}
+		if !sink.Has("reacted wa:mum " + seeded.RemoteID + " 0") {
+			t.Errorf("clearing did not report through the sink: %v", sink.Lines())
 		}
 	})
 }

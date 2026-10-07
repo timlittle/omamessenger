@@ -42,9 +42,32 @@ func (s conversationScript) history(now time.Time) []domain.Message {
 		newest := &messages[s.count-1]
 		newest.Text = "[Photo]"
 		newest.Media = &domain.Media{Kind: domain.MediaPhoto, Width: 400, Height: 300}
+
+		if older := s.count - 1 - s.extraPhotoOffset; s.extraPhotoOffset > 0 && older >= 0 {
+			messages[older].Text = "[Photo]"
+			messages[older].Media = &domain.Media{Kind: domain.MediaPhoto, Width: 300, Height: 400}
+		}
+	}
+
+	if s.linkPreviewText != "" {
+		for i := range messages {
+			if messages[i].Text == s.linkPreviewText {
+				messages[i].Media = linkPreviewMedia()
+			}
+		}
 	}
 
 	return messages
+}
+
+// linkPreviewMedia is the stand-in link preview a real service would have
+// fetched from the page a seeded message links to.
+func linkPreviewMedia() *domain.Media {
+	return &domain.Media{
+		Kind: domain.MediaLink, URL: "https://example.com/tickets",
+		SiteName: "example.com", Title: "Event tickets",
+		Description: "Two tickets, front row, Saturday night.",
+	}
 }
 
 // isUnread reports whether message i is one of the trailing unread ones.

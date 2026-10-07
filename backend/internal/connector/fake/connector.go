@@ -1,8 +1,12 @@
 package fake
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -34,6 +38,7 @@ type Connector struct {
 var (
 	_ connector.HistoryLoader = (*Connector)(nil)
 	_ connector.MediaFetcher  = (*Connector)(nil)
+	_ connector.Reactor       = (*Connector)(nil)
 )
 
 // run is one Run call: where updates go and how work is scheduled.
@@ -234,13 +239,50 @@ func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, _ s
 	return len(older), nil
 }
 
-// FetchMedia writes a stand-in for a scripted photo to path.
+// FetchMedia writes a stand-in for a scripted photo to path: a small,
+// solid-colour JPEG that decodes like a real downloaded photo, so the UI
+// has something real to show rather than falling back to its "photo
+// unavailable" label.
 func (c *Connector) FetchMedia(_ context.Context, _ domain.Conversation, _, path string) error {
 	if _, err := c.current(); err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, []byte("fake photo"), 0o600)
+	return os.WriteFile(path, placeholderPhoto(), 0o600)
+}
+
+// placeholderPhoto renders a small solid-colour JPEG, the stand-in every
+// scripted photo downloads as.
+func placeholderPhoto() []byte {
+	img := image.NewRGBA(image.Rect(0, 0, 320, 240))
+	fill := color.RGBA{R: 90, G: 140, B: 190, A: 255}
+	for y := range 240 {
+		for x := range 320 {
+			img.Set(x, y, fill)
+		}
+	}
+
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, img, nil) // encoding a fixed in-memory image never fails
+	return buf.Bytes()
+}
+
+// React sets or clears the user's own reaction and reports it back
+// through the sink at once, the way Telegram echoes its own response
+// rather than waiting for a matching live update.
+func (c *Connector) React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error {
+	r, err := c.current()
+	if err != nil {
+		return err
+	}
+
+	reactions := []domain.Reaction{}
+	if emoji != "" {
+		reactions = []domain.Reaction{{Emoji: emoji, Count: 1, Mine: true}}
+	}
+
+	r.sink.Reacted(ctx, c.script.account.ID, conv.RemoteID, messageRemoteID, reactions)
+	return nil
 }
 
 // firstOlderLoad records that a conversation's older history was asked

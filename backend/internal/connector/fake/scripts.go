@@ -37,6 +37,16 @@ type conversationScript struct {
 	// lastPhoto makes the newest seeded message a photo without a caption.
 	lastPhoto bool
 
+	// extraPhotoOffset, when non-zero, also makes the message that many
+	// positions before the newest a photo, so the demo has a second,
+	// older photo to step to from the newest one.
+	extraPhotoOffset int
+
+	// linkPreviewText, when set, marks which seeded text carries a link
+	// preview, the way a messaging service would have fetched one from
+	// the page it links to.
+	linkPreviewText string
+
 	// older incoming messages from before the seeded history load when
 	// the user scrolls back past it, as from a real service.
 	older int
@@ -52,7 +62,8 @@ var scripts = []accountScript{
 		connectDelay: 600 * time.Millisecond,
 		conversations: []conversationScript{
 			{
-				remoteID: "wa:mum", title: "Mum", kind: domain.KindDirect, count: 14, older: 40, lastPhoto: true,
+				remoteID: "wa:mum", title: "Mum", kind: domain.KindDirect, count: 14, older: 40,
+				lastPhoto: true, extraPhotoOffset: 3,
 				texts: []string{"Call me when you're on your way.", "I made some soup for tomorrow", "Did you see the weather?"},
 			},
 			{
@@ -62,7 +73,8 @@ var scripts = []accountScript{
 			},
 			{
 				remoteID: "wa:alex-chen", title: "Alex Chen", kind: domain.KindDirect, count: 6, unread: 1,
-				texts: []string{"Are we still on for lunch?", "I found a place near the station", "Here are the tickets: https://example.com/tickets"},
+				texts:           []string{"Are we still on for lunch?", "I found a place near the station", "Here are the tickets: https://example.com/tickets"},
+				linkPreviewText: "Here are the tickets: https://example.com/tickets",
 			},
 			{
 				remoteID: "wa:sam-spotty", title: "Sam (spotty signal)", kind: domain.KindDirect, count: 4, flaky: true,

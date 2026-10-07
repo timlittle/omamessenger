@@ -70,6 +70,58 @@ func TestSeed_HistoryIsOrderedAndAttributed(t *testing.T) {
 	})
 }
 
+// TestSeed_LinkPreviewCarriesSiteAndTitle confirms the seeded message that
+// mentions tickets comes with a link preview, the way a real service would
+// have fetched one, so the UI has something to demonstrate besides plain
+// text and photos.
+func TestSeed_LinkPreviewCarriesSiteAndTitle(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		stop := runFake(t, fake.New(), sink)
+		synctest.Wait()
+		stop()
+
+		found := false
+		for _, m := range sink.Messages()["wa:alex-chen"] {
+			if m.Media == nil {
+				continue
+			}
+
+			found = true
+			if m.Media.Kind != domain.MediaLink || m.Media.URL == "" || m.Media.Title == "" {
+				t.Errorf("tickets message media = %+v, want a link preview with a URL and title", m.Media)
+			}
+		}
+
+		if !found {
+			t.Error("no message in Alex Chen's history carries a link preview")
+		}
+	})
+}
+
+// TestSeed_MumHasTwoPhotosToStepBetween confirms Mum's history carries a
+// second, older photo besides her newest one, so the in-app photo viewer
+// has something to step to.
+func TestSeed_MumHasTwoPhotosToStepBetween(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		stop := runFake(t, fake.New(), sink)
+		synctest.Wait()
+		stop()
+
+		photos := 0
+		for _, m := range sink.Messages()["wa:mum"] {
+			if m.Media != nil && m.Media.Kind == domain.MediaPhoto {
+				photos++
+			}
+		}
+
+		if photos != 2 {
+			t.Errorf("Mum's history carries %d photos, want 2", photos)
+		}
+	})
+}
+
 // unread counts the messages still marked received.
 func unread(messages []domain.Message) int {
 	n := 0
