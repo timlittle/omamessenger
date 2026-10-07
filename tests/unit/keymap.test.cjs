@@ -63,7 +63,12 @@ const cases = [
   ['palette', letter('j'), MOD.Ctrl, '', 'palette.down'],
   ['palette', letter('n'), MOD.Ctrl, '', 'palette.down'],
   ['palette', KEY.Return, 0, '\r', 'palette.accept'],
-  ['palette', letter('j'), 0, 'j', '']
+  ['palette', letter('j'), 0, 'j', ''],
+
+  ['reactionPicker', KEY.Left, 0, '', 'reaction.left'],
+  ['reactionPicker', KEY.Right, 0, '', 'reaction.right'],
+  ['reactionPicker', KEY.Enter, 0, '\r', 'reaction.accept'],
+  ['reactionPicker', KEY.Escape, 0, '', 'escape']
 ];
 
 for (const [context, key, modifiers, text, want] of cases) {

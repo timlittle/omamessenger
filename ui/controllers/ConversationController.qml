@@ -1,12 +1,14 @@
 import QtQuick
 import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
+import "../lib/Reactions.js" as Reactions
 import "../lib/Rpc.js" as Rpc
 
 // Owns the open conversation: which one is open, sending, retrying,
-// drafts and the typing indicator. The only controller that calls
-// messages.send, messages.retry, conversations.markRead and ui.setFocus;
-// paging through messages.list is delegated to the timeline child below.
+// reacting and the emoji picker, drafts and the typing indicator. The
+// only controller that calls messages.send, messages.retry,
+// messages.react, conversations.markRead and ui.setFocus; paging through
+// messages.list is delegated to the timeline child below.
 //
 // listController supplies the list cursor and the visible ids that
 // chat.open, chat.next/prev and search.accept need; set it once, from
@@ -73,6 +75,18 @@ Item {
   // lastError is the safe text of the most recent request failure.
   property string lastError: timeline.lastError
 
+  // reactionPickerOpen shows the emoji picker.
+  property bool reactionPickerOpen: false
+
+  // reactionPickerTarget is the id of the message the picker reacts to.
+  property string reactionPickerTarget: ""
+
+  // reactionPickerIndex is the highlighted emoji in the picker.
+  property int reactionPickerIndex: 0
+
+  // reactionPickerEmojis are the picker's choices, in order.
+  readonly property var reactionPickerEmojis: Reactions.COMMON_EMOJI
+
   // scroll asks the caller to move the message view: "down", "up",
   // "pageDown", "pageUp", "newest" or "oldest".
   signal scroll(string direction)
@@ -108,6 +122,10 @@ Item {
       "chat.next": () => root._step(1),
       "chat.prev": () => root._step(-1),
       "message.retry": () => root.retryMessage(timeline.newestFailedId()),
+      "message.react": () => root.openReactionPicker(timeline.newestMessageId()),
+      "reaction.left": () => root.moveReactionPicker(-1),
+      "reaction.right": () => root.moveReactionPicker(1),
+      "reaction.accept": () => root.acceptReactionPicker(),
       "message.send": () => root.submitRequested()
     };
 
@@ -195,6 +213,63 @@ Item {
       if (error) { timeline.lastError = Rpc.errorText(error); return; }
       root._upsertMessage(result);
     });
+  }
+
+  // react toggles the message's reaction with emoji: clicking a chip
+  // already the user's own clears it, any other pick replaces it. The
+  // chips update at once, from Reactions.applyLocal, before the
+  // helper's reply confirms them.
+  function react(id: string, emoji: string): void {
+    if (!id) return;
+
+    const message = timeline.find(id);
+    const toSend = Reactions.emojiToSend(message ? message.reactions : [], emoji);
+    timeline.setReactions(id, Reactions.applyLocal(message ? message.reactions : [], toSend));
+
+    root.service.request("messages.react", { messageId: id, emoji: toSend }, function(error, result) {
+      if (error) { timeline.lastError = Rpc.errorText(error); return; }
+      root._upsertMessage(result);
+    });
+  }
+
+  // openReactionPicker shows the emoji picker for a message, for the "+"
+  // chip or the "react to the newest message" command.
+  function openReactionPicker(id: string): void {
+    if (!id) return;
+
+    root.reactionPickerTarget = id;
+    root.reactionPickerIndex = 0;
+    root.reactionPickerOpen = true;
+  }
+
+  // closeReactionPicker hides the emoji picker without reacting.
+  function closeReactionPicker(): void {
+    root.reactionPickerOpen = false;
+    root.reactionPickerTarget = "";
+  }
+
+  // moveReactionPicker moves the picker's highlight, wrapping at the ends.
+  function moveReactionPicker(delta: int): void {
+    const count = root.reactionPickerEmojis.length;
+    if (count === 0) return;
+
+    root.reactionPickerIndex = ((root.reactionPickerIndex + delta) % count + count) % count;
+  }
+
+  // acceptReactionPicker reacts to the picker's target with the
+  // highlighted emoji, then closes the picker.
+  function acceptReactionPicker(): void {
+    root.pickReactionAt(root.reactionPickerIndex);
+  }
+
+  // pickReactionAt reacts to the picker's target with the emoji at
+  // index, then closes the picker; a click in the picker names its own
+  // index directly, rather than going through the highlight.
+  function pickReactionAt(index: int): void {
+    const id = root.reactionPickerTarget;
+    const emoji = root.reactionPickerEmojis[index];
+    root.closeReactionPicker();
+    root.react(id, emoji);
   }
 
   // setWindowActive records whether the window is shown and focused, and

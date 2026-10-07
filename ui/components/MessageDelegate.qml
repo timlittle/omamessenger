@@ -34,6 +34,11 @@ Item {
   signal mediaWanted(string id)
   // mediaOpen asks for this message's photo, video or file to be opened.
   signal mediaOpen(string id)
+  // react asks the caller to toggle this message's reaction with emoji.
+  signal react(string id, string emoji)
+  // reactPickerRequested asks the caller to open the emoji picker for
+  // this message, from the chips row's "+" button.
+  signal reactPickerRequested(string id)
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
@@ -83,6 +88,11 @@ Item {
         color: root.message.outgoing ? Util.alpha(Color.accent, 0.22) : Util.alpha(Color.foreground, 0.06)
         anchors.right: root.message.outgoing ? parent.right : undefined
         anchors.left: root.message.outgoing ? undefined : parent.left
+
+        // Tracks hover without taking mouse events away from the text
+        // and media below, so the "+" reaction chip can appear while
+        // everything else stays clickable.
+        HoverHandler { id: bubbleHover }
 
         // The widest line's unwrapped width. TextEdit's own implicit width
         // follows its wrapped width, so it cannot size the bubble.
@@ -182,6 +192,16 @@ Item {
           }
         }
       }
+    }
+
+    ReactionChips {
+      objectName: "reactionChips"
+      width: parent.width
+      alignRight: root.message.outgoing
+      reactions: root.message.reactions ?? []
+      hovering: bubbleHover.hovered
+      onToggled: emoji => root.react(root.message.id, emoji)
+      onAddRequested: root.reactPickerRequested(root.message.id)
     }
 
     Item {

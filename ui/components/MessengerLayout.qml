@@ -261,9 +261,21 @@ Item {
       onRetry: id => root.conversationController.retryMessage(id)
       onMediaWanted: id => root.conversationController.fetchMedia(id)
       onMediaOpen: id => root.conversationController.openMedia(id)
+      onReact: (id, emoji) => root.conversationController.react(id, emoji)
+      onReactPickerRequested: id => root.conversationController.openReactionPicker(id)
       onSend: text => root.conversationController.send(text)
       onDraftEdited: text => root.conversationController.setDraft(text)
     }
+  }
+
+  ReactionPicker {
+    open: root.conversationController.reactionPickerOpen
+    emojis: root.conversationController.reactionPickerEmojis
+    currentIndex: root.conversationController.reactionPickerIndex
+    routeKey: root.routeKey
+    onPicked: index => root.conversationController.pickReactionAt(index)
+    onCancelled: root.conversationController.closeReactionPicker()
+    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
   }
 
   CommandPalette {

@@ -390,3 +390,17 @@ test('escapeAction closes account setup before anything beneath it', () => {
   assert.strictEqual(Navigation.escapeAction({ setupOpen: true, dialogOpen: true }), 'close-setup');
   assert.strictEqual(Navigation.escapeAction({ setupOpen: true, confirmOpen: true }), 'cancel-close');
 });
+
+test('keyContext returns reactionPicker when open, above dialog, search and compose', () => {
+  const state = { reactionPickerOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
+  assert.strictEqual(Navigation.keyContext(state), 'reactionPicker');
+});
+
+test('keyContext: palette and setup still win over the reaction picker', () => {
+  assert.strictEqual(Navigation.keyContext({ reactionPickerOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
+  assert.strictEqual(Navigation.keyContext({ reactionPickerOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+});
+
+test('escapeAction closes the reaction picker before the dialog beneath it', () => {
+  assert.strictEqual(Navigation.escapeAction({ reactionPickerOpen: true, dialogOpen: true }), 'close-reaction-picker');
+});

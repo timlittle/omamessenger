@@ -42,6 +42,11 @@ Item {
   signal mediaWanted(string id)
   // mediaOpen asks for a message's photo, video or file to be opened.
   signal mediaOpen(string id)
+  // react asks the caller to toggle a message's reaction with emoji.
+  signal react(string id, string emoji)
+  // reactPickerRequested asks the caller to open the emoji picker for a
+  // message, from its chips row's "+" button.
+  signal reactPickerRequested(string id)
   // send reports a message the user submitted.
   signal send(string text)
   // draftEdited reports the composer's text as the user types it.
@@ -162,6 +167,8 @@ Item {
         onRetry: id => root.retry(id)
         onMediaWanted: id => root.mediaWanted(id)
         onMediaOpen: id => root.mediaOpen(id)
+        onReact: (id, emoji) => root.react(id, emoji)
+        onReactPickerRequested: id => root.reactPickerRequested(id)
       }
 
       onContentYChanged: root._checkLoadOlder()

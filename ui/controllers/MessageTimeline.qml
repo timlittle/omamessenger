@@ -110,6 +110,26 @@ Item {
     return "";
   }
 
+  // newestMessageId returns the newest loaded message's id, or "" when
+  // none is loaded, for the "react to the newest message" command.
+  function newestMessageId(): string {
+    return messagesModel.count > 0 ? messagesModel.get(0).id : "";
+  }
+
+  // find returns a loaded message by id, or null when it is not loaded.
+  function find(id: string): var {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    return at === -1 ? null : messagesModel.get(at);
+  }
+
+  // setReactions replaces a message's reaction chips in place, for
+  // instant feedback before the server's message.updated event confirms
+  // the real ones.
+  function setReactions(id: string, reactions: var): void {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    if (at !== -1) messagesModel.setProperty(at, "reactions", reactions);
+  }
+
   // _appendOlder adds a messages.list page to the newest-first model,
   // each message where its time puts it: older history the helper fetched
   // for this page may already have arrived as events, so the page is not

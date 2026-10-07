@@ -284,3 +284,10 @@ test('row keeps a downloaded media path, and starts without one', () => {
   assert.strictEqual(Timeline.row({ id: 'a' }).mediaPath, '');
   assert.strictEqual(Timeline.row({ id: 'a', mediaPath: '/m/a.jpg' }).mediaPath, '/m/a.jpg');
 });
+
+test('row defaults reactions to an empty list, so every model row has the same shape', () => {
+  const reactions = [{ emoji: '👍', count: 1, mine: true }];
+
+  assert.deepEqual(Timeline.row({ id: 'a' }).reactions, []);
+  assert.deepEqual(Timeline.row({ id: 'a', reactions }).reactions, reactions);
+});

@@ -122,6 +122,7 @@ Item {
       confirmOpen: windowController.confirmingClose,
       setupOpen: accountController.open || accountController.removing,
       paletteOpen: windowController.paletteOpen,
+      reactionPickerOpen: conversationController.reactionPickerOpen,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,
       composeFocused: conversationController.composeFocused,

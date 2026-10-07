@@ -10,7 +10,8 @@
 var KEY = {
   Escape: 0x01000000, Tab: 0x01000001, Backtab: 0x01000002,
   Return: 0x01000004, Enter: 0x01000005, Home: 0x01000010,
-  End: 0x01000011, Up: 0x01000013, Down: 0x01000015,
+  End: 0x01000011, Left: 0x01000012, Up: 0x01000013,
+  Right: 0x01000014, Down: 0x01000015,
   PageUp: 0x01000016, PageDown: 0x01000017,
   Slash: 0x2f, Question: 0x3f
 };
@@ -68,6 +69,7 @@ var BINDINGS = [
   { action: 'compose.focus', keys: ['i', 'a', 'Enter'], contexts: ['conversation'], label: 'Write a message', hint: true },
   { action: 'pane.list', keys: ['h', 'Tab'], contexts: ['conversation'], label: 'Back to the list' },
   { action: 'message.retry', keys: ['r'], contexts: ['conversation'], label: 'Retry failed message', command: true },
+  { action: 'message.react', keys: [], contexts: ['conversation'], label: 'React to the newest message', command: true },
 
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
   { action: 'search.accept', keys: ['Enter', 'Down'], contexts: ['search'], label: 'First result', hint: true },
@@ -79,7 +81,11 @@ var BINDINGS = [
 
   { action: 'palette.down', keys: ['Down', 'Ctrl+J', 'Ctrl+N'], contexts: ['palette'], label: 'Next item' },
   { action: 'palette.up', keys: ['Up', 'Ctrl+K', 'Ctrl+P'], contexts: ['palette'], label: 'Previous item' },
-  { action: 'palette.accept', keys: ['Enter'], contexts: ['palette'], label: 'Run', hint: true }
+  { action: 'palette.accept', keys: ['Enter'], contexts: ['palette'], label: 'Run', hint: true },
+
+  { action: 'reaction.left', keys: ['Left'], contexts: ['reactionPicker'], label: 'Previous emoji' },
+  { action: 'reaction.right', keys: ['Right'], contexts: ['reactionPicker'], label: 'Next emoji' },
+  { action: 'reaction.accept', keys: ['Enter'], contexts: ['reactionPicker'], label: 'React', hint: true }
 ];
 
 // match returns the action for a key press in a context, or "". Bindings

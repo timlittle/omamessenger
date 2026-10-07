@@ -16,6 +16,8 @@ ShellRoot {
   // opened records the ids of messages whose media was asked to open.
   property var opened: []
   property var wanted: []
+  property var reacted: []
+  property var pickerRequests: []
   property real now: Date.now()
 
   // findText returns the first collected node whose text matches exactly.
@@ -39,6 +41,8 @@ ShellRoot {
       onRetry: id => root.retried.push(id)
       onMediaWanted: id => root.wanted.push(id)
       onMediaOpen: id => root.opened.push(id)
+      onReact: (id, emoji) => root.reacted.push(id + " " + emoji)
+      onReactPickerRequested: id => root.pickerRequests.push(id)
     }
   }
 
@@ -68,6 +72,7 @@ ShellRoot {
     if (!root.checkLinkPreview()) return;
     if (!root.checkPhoto()) return;
     if (!root.checkVideoAndFile()) return;
+    if (!root.checkReactionChips()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -217,6 +222,33 @@ ShellRoot {
     t.wait(50);
     t.mouseClick(fileView);
     if (root.opened.indexOf("m10") < 0) return Check.fail("clicking a file did not ask to open it");
+    return true;
+  }
+
+  // checkReactionChips verifies a message's reactions show as chips, a
+  // message without any shows none while the bubble is not hovered, and
+  // clicking a chip reports this message's id and emoji.
+  function checkReactionChips(): bool {
+    delegate.message = {
+      id: "m11", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "delivered", created: root.now,
+      reactions: [{ emoji: "👍", count: 1, mine: true }]
+    };
+    delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
+
+    const chips = Check.find(delegate, "reactionChips");
+    if (!chips || !chips.visible) return Check.fail("reaction chips not shown for a message with reactions");
+
+    root.reacted = [];
+    t.mouseClick(Check.find(chips, "chipArea-👍"));
+    if (JSON.stringify(root.reacted) !== '["m11 👍"]') return Check.fail("reacted " + JSON.stringify(root.reacted) + ", want [\"m11 \\ud83d\\udc4d\"]");
+
+    // Move the pointer away from the bubble, so an earlier click near it
+    // does not leave it hovered once the layout settles around a shorter
+    // message.
+    t.mouseMove(delegate, delegate.width - 5, 2);
+    delegate.message = { id: "m12", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "delivered", created: root.now };
+    t.waitForRendering(delegate);
+    if (Check.find(delegate, "reactionChips").visible) return Check.fail("reaction chips shown for a message with none, unhovered");
     return true;
   }
 }
