@@ -8,13 +8,19 @@ import "../lib/Format.js" as Format
 // One row in the conversation list: avatar, title, time, a preview line or
 // a highlighted search match, the owning account when more than one
 // account shares a service, a pin mark, and a mute or unread indicator. A
-// pinned chat is marked with a glyph and tooltip; an archived chat's
-// unread badge is dimmed like a muted one's, since the chat is already
-// filed away, though its count still adds to the rail's unread total. A
-// row shown only because show-all is on (older, hidden or archived) is
-// drawn with reduced opacity and a small "Hidden" or "Archived" label, so
-// the chats someone usually looks at still stand out without relying on
-// opacity alone.
+// pinned chat is marked with a glyph, a "Pinned" tag and a tooltip, never
+// the glyph alone, since a pin sorted to the top of the list is otherwise
+// the only cue it is pinned at all; a muted chat gets the same glyph and
+// tooltip treatment. Both glyphs are plain Unicode symbols, like the rest
+// of the app's icons (the composer's paperclip, the hover toolbar's reply
+// arrow): an icon font's own private-use codepoint has no glyph in the
+// app's regular font and draws nothing. An archived chat's unread badge is
+// dimmed like a muted one's, since the chat is already filed away, though
+// its count still adds to the rail's unread total. A row shown only
+// because show-all is on (older, hidden or archived) is drawn with
+// reduced opacity and a small "Hidden" or "Archived" label, so the chats
+// someone usually looks at still stand out without relying on opacity
+// alone.
 // This is a view only: it reports intent through a signal and never
 // calls the helper.
 Item {
@@ -116,7 +122,7 @@ Item {
         Text {
           objectName: "pinIcon"
           visible: root._pinned
-          text: ""
+          text: "📌"
           color: Util.alpha(Color.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -130,6 +136,15 @@ Item {
             visible: pinHover.hovered
             text: "Pinned"
           }
+        }
+
+        Text {
+          objectName: "pinnedLabel"
+          visible: root._pinned
+          text: "Pinned"
+          color: Util.alpha(Color.foreground, 0.5)
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
         }
 
         Text {
@@ -180,7 +195,7 @@ Item {
         Text {
           objectName: "muteIcon"
           visible: root._muted
-          text: ""
+          text: "🔇"
           color: Util.alpha(Color.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption

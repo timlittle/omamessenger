@@ -2,7 +2,11 @@
 // with no label, a row dimmed only for being older is faded but carries
 // no label (its timestamp already explains it), and a hidden or archived
 // row is faded with a "Hidden" or "Archived" label, so the cue is never
-// colour or opacity alone.
+// colour or opacity alone. Also checks the pin and mute markers: a pinned
+// or muted row's glyph actually renders (non-zero width, not just an
+// empty or unmapped-codepoint string), and a pinned row also carries a
+// "Pinned" tag, so a chat sorted to the top of the list is not left with
+// only a glyph as its only cue.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -43,6 +47,18 @@ ShellRoot {
     dimLabel: "Archived"
   }
 
+  ConversationRow {
+    id: pinnedRow
+    width: 260
+    conversation: ({ id: "c5", title: "Pinned Chat", lastActivity: Date.now(), pinned: true })
+  }
+
+  ConversationRow {
+    id: mutedRow
+    width: 260
+    conversation: ({ id: "c6", title: "Muted Chat", lastActivity: Date.now(), muted: true })
+  }
+
   Timer {
     running: true
     interval: 0
@@ -74,6 +90,34 @@ ShellRoot {
     const archivedLabel = Check.find(archivedRow, "dimLabel");
     if (!archivedLabel || !archivedLabel.visible || archivedLabel.text !== "Archived")
       return Check.fail("an archived row does not carry an \"Archived\" label");
+
+    const plainPin = Check.find(plainRow, "pinIcon");
+    if (!plainPin || plainPin.visible)
+      return Check.fail("an unpinned row shows a pin icon");
+    const plainPinnedLabel = Check.find(plainRow, "pinnedLabel");
+    if (!plainPinnedLabel || plainPinnedLabel.visible)
+      return Check.fail("an unpinned row shows a \"Pinned\" tag");
+    const plainMute = Check.find(plainRow, "muteIcon");
+    if (!plainMute || plainMute.visible)
+      return Check.fail("an unmuted row shows a mute icon");
+
+    const pinIcon = Check.find(pinnedRow, "pinIcon");
+    if (!pinIcon || !pinIcon.visible)
+      return Check.fail("a pinned row does not show a pin icon");
+    if (pinIcon.implicitWidth <= 0)
+      return Check.fail("a pinned row's pin glyph has no width: \"" + pinIcon.text + "\" does not render in this font");
+    const pinnedLabel = Check.find(pinnedRow, "pinnedLabel");
+    if (!pinnedLabel || !pinnedLabel.visible || pinnedLabel.text !== "Pinned")
+      return Check.fail("a pinned row does not carry a \"Pinned\" tag beside its glyph");
+
+    const muteIcon = Check.find(mutedRow, "muteIcon");
+    if (!muteIcon || !muteIcon.visible)
+      return Check.fail("a muted row does not show a mute icon");
+    if (muteIcon.implicitWidth <= 0)
+      return Check.fail("a muted row's mute glyph has no width: \"" + muteIcon.text + "\" does not render in this font");
+    const mutedPinnedLabel = Check.find(mutedRow, "pinnedLabel");
+    if (mutedPinnedLabel.visible)
+      return Check.fail("a merely muted row shows a \"Pinned\" tag");
 
     console.log("PASS ConversationRow");
     Qt.exit(0);
