@@ -130,20 +130,21 @@ Item {
   }
 
   // _clampContentY keeps a scroll target within the list's scrollable range.
-  // A BottomToTop ListView keeps 0 at the newest message and grows negative
-  // toward the oldest, so the valid range sits at or below zero.
+  // originY is not 0 for a BottomToTop ListView, and shifts as delegates
+  // are created and their estimated sizes are replaced by real ones, so the
+  // range has to track originY rather than assume the content starts at 0.
   function _clampContentY(y: real): real {
-    const oldestY = Math.min(0, -(messageList.contentHeight - messageList.height))
-    return Math.max(oldestY, Math.min(0, y))
+    const oldestY = messageList.originY
+    const newestY = oldestY + Math.max(0, messageList.contentHeight - messageList.height)
+    return Math.max(oldestY, Math.min(newestY, y))
   }
 
   // _checkLoadOlder emits loadOlder() once the view is within one viewport
-  // of the oldest loaded message. A BottomToTop ListView reaches the oldest
-  // message at contentY = height - contentHeight, so that is the distance
-  // still to travel.
+  // of the oldest loaded message, which for a BottomToTop ListView sits at
+  // originY, so that is the distance still to travel.
   function _checkLoadOlder(): void {
     if (messageList.contentHeight <= messageList.height) return
-    const remaining = messageList.contentY - (messageList.height - messageList.contentHeight)
+    const remaining = messageList.contentY - messageList.originY
     if (remaining <= messageList.height) root.loadOlder()
   }
 

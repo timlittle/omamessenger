@@ -1,7 +1,8 @@
 // Checks ConversationView: the empty state with no conversation, loadOlder
 // firing once scrolled to the oldest loaded message, a submitted composer
 // message reaching the send signal with its reply id, replyTarget copied
-// into the composer, and a delegate's reply signals relayed outward.
+// into the composer, a delegate's reply signals relayed outward, and j/k
+// and paging clamping at the real newest/oldest ends of the message list.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -123,6 +124,9 @@ ShellRoot {
     if (!root.checkDraftRestore()) return;
     if (!root.checkReplyTargetCopyIn()) return;
     if (!root.checkReplySignalRelay()) return;
+    if (!root.checkScrollClampAtNewest()) return;
+    if (!root.checkScrollClampAtOldest()) return;
+    if (!root.checkScrollPageClamp()) return;
 
     console.log("PASS ConversationView");
     Qt.exit(0);
@@ -187,6 +191,65 @@ ShellRoot {
     const before = listView.contentY;
     view.scrollToMessage("missing");
     if (listView.contentY !== before) return Check.fail("scrollToMessage moved the view for an unknown id");
+    return true;
+  }
+
+  // scrollBounds returns the list's real scrollable range, read straight
+  // from its geometry: a BottomToTop ListView's originY is not 0 and shifts
+  // as delegates are created and estimated, so a correct clamp has to track
+  // it rather than assume the content starts at 0.
+  function scrollBounds(listView) {
+    const oldest = listView.originY;
+    const newest = oldest + Math.max(0, listView.contentHeight - listView.height);
+    return { oldest: oldest, newest: newest };
+  }
+
+  // checkScrollClampAtNewest verifies that scrolling j past the newest
+  // message stops exactly at it instead of continuing past the end.
+  function checkScrollClampAtNewest(): bool {
+    view.scrollToOldest();
+    for (let i = 0; i < 200; i++) view.scrollBy(1);
+
+    const listView = Check.find(view, "messageListView");
+    const bounds = root.scrollBounds(listView);
+    if (listView.contentY > bounds.newest + 0.5)
+      return Check.fail("scrollBy(1) past the newest message left contentY " + listView.contentY + ", want at most " + bounds.newest);
+    if (!listView.itemAtIndex(0))
+      return Check.fail("the newest message's delegate is not visible after scrolling past it with j");
+    return true;
+  }
+
+  // checkScrollClampAtOldest verifies that scrolling k past the oldest
+  // loaded message stops exactly at it instead of continuing past the end.
+  function checkScrollClampAtOldest(): bool {
+    view.scrollToNewest();
+    for (let i = 0; i < 200; i++) view.scrollBy(-1);
+
+    const listView = Check.find(view, "messageListView");
+    const bounds = root.scrollBounds(listView);
+    if (listView.contentY < bounds.oldest - 0.5)
+      return Check.fail("scrollBy(-1) past the oldest message left contentY " + listView.contentY + ", want at least " + bounds.oldest);
+    if (!listView.itemAtIndex(listView.count - 1))
+      return Check.fail("the oldest message's delegate is not visible after scrolling past it with k");
+    return true;
+  }
+
+  // checkScrollPageClamp verifies Ctrl+D/Ctrl+U paging clamps the same way
+  // as j/k, at both ends of the loaded messages.
+  function checkScrollPageClamp(): bool {
+    view.scrollToOldest();
+    for (let i = 0; i < 20; i++) view.scrollPage(1);
+    let listView = Check.find(view, "messageListView");
+    let bounds = root.scrollBounds(listView);
+    if (listView.contentY > bounds.newest + 0.5)
+      return Check.fail("scrollPage(1) past the newest message left contentY " + listView.contentY + ", want at most " + bounds.newest);
+
+    view.scrollToNewest();
+    for (let i = 0; i < 20; i++) view.scrollPage(-1);
+    listView = Check.find(view, "messageListView");
+    bounds = root.scrollBounds(listView);
+    if (listView.contentY < bounds.oldest - 0.5)
+      return Check.fail("scrollPage(-1) past the oldest message left contentY " + listView.contentY + ", want at least " + bounds.oldest);
     return true;
   }
 }
