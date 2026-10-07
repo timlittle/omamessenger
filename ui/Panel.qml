@@ -121,6 +121,7 @@ Item {
     return {
       confirmOpen: windowController.confirmingClose,
       setupOpen: accountController.open || accountController.removing,
+      viewerOpen: conversationController.viewerOpen,
       paletteOpen: windowController.paletteOpen,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,

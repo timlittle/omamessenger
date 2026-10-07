@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -31,6 +32,8 @@ type fixture struct {
 	media      *fakeMedia
 	refresher  *fakeRefresher
 	organizer  *fakeOrganizer
+	outgoing   *cache.Outgoing
+	clipboard  *fakeClipboard
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -54,6 +57,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{},
+		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), clipboard: &fakeClipboard{},
 	}
 
 	deps := app.Deps{
@@ -61,6 +65,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer,
+		Outgoing: f.outgoing, Clipboard: f.clipboard,
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -120,6 +125,19 @@ func (d *fakeDispatcher) last() domain.Message {
 	defer d.mu.Unlock()
 
 	return d.messages[len(d.messages)-1]
+}
+
+// lastMedia returns the media of the most recently dispatched message, or
+// nil if it had none or nothing was dispatched.
+func (d *fakeDispatcher) lastMedia() *domain.Media {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if len(d.messages) == 0 {
+		return nil
+	}
+
+	return d.messages[len(d.messages)-1].Media
 }
 
 func (d *fakeDispatcher) MarkRead(_ context.Context, conv domain.Conversation) error {
@@ -362,6 +380,31 @@ func (o *fakeOrganizer) SetArchived(_ context.Context, conv domain.Conversation,
 	o.archived = append(o.archived, fmt.Sprintf("%s %t", conv.ID, archived))
 
 	return o.err
+}
+
+// fakeClipboard answers a clipboard check from canned data, keyed by MIME
+// type, in place of running wl-paste.
+type fakeClipboard struct {
+	types    []string
+	data     map[string][]byte
+	typesErr error
+	readErr  error
+}
+
+// Types reports the MIME types the test set the clipboard to offer.
+func (c *fakeClipboard) Types(context.Context) ([]string, error) {
+	return c.types, c.typesErr
+}
+
+// Read writes the canned data for mimeType, or fails with readErr.
+func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) error {
+	if c.readErr != nil {
+		return c.readErr
+	}
+
+	_, err := w.Write(c.data[mimeType])
+
+	return err
 }
 
 // fakeSignIn records the sign-in answers it is given.

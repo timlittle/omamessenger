@@ -132,6 +132,15 @@ type Media struct {
 	Duration    int    `json:"duration,omitempty"`
 	FileName    string `json:"fileName,omitempty"`
 	Size        int64  `json:"size,omitempty"`
+
+	// Path is where an outgoing attachment's file sits in the helper's
+	// own outgoing media area, for a connector to read and upload. It is
+	// never the user's original path, which they might move, rename or
+	// delete after picking it, and it never crosses the protocol: the UI
+	// already knows the path it offered, and a remote one holds nothing
+	// meaningful on this machine, so json:"-" keeps it local rather than
+	// adding a field every other message would carry as empty.
+	Path string `json:"-"`
 }
 
 // ValidService reports whether service is a supported provider.

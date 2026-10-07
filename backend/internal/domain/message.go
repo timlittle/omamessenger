@@ -90,3 +90,19 @@ func NormalizeOutgoingText(text string) (string, error) {
 
 	return text, nil
 }
+
+// MediaPlaceholder is the caption a photo, video or file gets when the
+// user sends it without one, since every stored message has text. The UI
+// hides a caption that exactly matches its media's placeholder (see
+// Format.caption in ui/lib), and a connector never sends the placeholder
+// itself as the real caption (see the Telegram connector's Send).
+func MediaPlaceholder(kind string) string {
+	switch kind {
+	case MediaPhoto:
+		return "[Photo]"
+	case MediaVideo:
+		return "[Video]"
+	default:
+		return "[File]"
+	}
+}

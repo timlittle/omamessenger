@@ -9,6 +9,9 @@
 // - Ctrl+K to Mum, whose short stored history makes the helper fetch older
 //   messages: her newest stays at the bottom and the unread total holds,
 //   and her newest, a photo, is downloaded into the media cache
+// - a file from the test's own directory is attached (as the attach
+//   button's file dialog would report it) and sent to Mum with a
+//   caption, and is delivered as a file attachment
 // Each step polls until its condition holds, because every answer comes
 // back from the helper asynchronously.
 import QtQuick
@@ -24,6 +27,7 @@ ShellRoot {
   property int attempts: 0
   property string expected: ""
   property int samUnread: -1
+  readonly property string testRoot: String(Qt.resolvedUrl(".")).replace("file://", "")
   property var steps: [
     root.waitForList,
     root.searchTicket,
@@ -45,7 +49,9 @@ ShellRoot {
     root.waitForBen,
     root.openMum,
     root.waitForMumWithOlderHistory,
-    root.waitForMumsPhoto
+    root.waitForMumsPhoto,
+    root.attachAndSendToMum,
+    root.waitForAttachmentDelivered
   ]
 
   // fail stops the test with a reason on stderr.
@@ -276,8 +282,35 @@ ShellRoot {
     return newest.mediaPath !== "" && newest.mediaPath.indexOf("/omamessenger/media/") >= 0;
   }
 
+  // attachAndSendToMum attaches a file from the test's own directory, the
+  // way the composer's file dialog would report it having been picked,
+  // then sends it with a caption. Driving a real file dialog headlessly
+  // is not possible, so this calls the signal the dialog's onAccepted
+  // handler would have emitted.
+  function attachAndSendToMum(): var {
+    const composer = Check.find(root.panel(), "composer");
+    composer.fileAttached(root.testRoot + "/attachment.txt");
 
+    const chip = Check.find(root.panel(), "attachmentChip");
+    if (!chip || !chip.visible) return Check.fail("attachment chip did not appear after fileAttached");
 
+    const name = Check.find(root.panel(), "attachmentName");
+    if (!name || name.text !== "attachment.txt")
+      return Check.fail("attachment chip name = " + (name && name.text) + ", want attachment.txt");
+
+    root.type("see attached");
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitForAttachmentDelivered holds until Mum's chat shows the
+  // attachment delivered, and the chip is gone from the composer.
+  function waitForAttachmentDelivered(): var {
+    const chip = Check.find(root.panel(), "attachmentChip");
+    if (chip && chip.visible) return false;
+
+    return root.messageStatus("see attached") === "sent" || root.messageStatus("see attached") === "delivered";
+  }
   // runStep runs the current step and advances, retries or fails.
   function runStep(): void {
     const result = root.steps[root.step]();

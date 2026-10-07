@@ -93,6 +93,8 @@ Item {
     }
     function onScroll(direction) { root._scrollConversation(direction) }
     function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
+    function onAttachFileRequested() { conversationView.composer.openFilePicker() }
+    function onPasteFallbackRequested() { conversationView.composer.input.paste() }
   }
 
   Connections {
@@ -256,6 +258,7 @@ Item {
       nowMs: root.nowMs
       draft: root.conversationController.draft
       replyTarget: root.conversationController.replyTarget
+      attachmentPath: root.conversationController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
       routeKey: root.routeKey
 
@@ -268,6 +271,8 @@ Item {
       onReplyRequested: id => root.conversationController.startReply(id)
       onReplyCanceled: root.conversationController.cancelReply()
       onQuoteOpened: remoteId => root.conversationController.scrollToReply(remoteId)
+      onFileAttached: path => root.conversationController.attachFile(path)
+      onAttachmentRemoveRequested: root.conversationController.removeAttachment()
     }
   }
 
@@ -281,6 +286,18 @@ Item {
     onAccepted: index => root.windowController.acceptPalette(index)
     onCancelled: root.windowController.closePalette()
     onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+  }
+
+  PhotoViewer {
+    objectName: "photoViewer"
+    anchors.fill: parent
+    open: root.conversationController.viewerOpen
+    photo: root.conversationController.viewerPhoto
+    path: root.conversationController.viewerPath
+    routeKey: root.routeKey
+
+    onClosed: root.conversationController.closeViewer()
+    onOpenExternally: root.conversationController.openViewerExternally()
   }
 
   CloseConfirm {

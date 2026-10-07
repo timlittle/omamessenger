@@ -46,6 +46,10 @@ var OWNERS = {
   'message.retry': 'conversation',
   'message.reply': 'conversation',
   'message.send': 'conversation',
+  'viewer.next': 'conversation',
+  'viewer.prev': 'conversation',
+  'compose.attach': 'conversation',
+  'compose.attachFile': 'conversation',
 
   // DialogController: the new-chat dialog.
   'chat.new': 'dialog',

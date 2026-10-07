@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -119,11 +120,23 @@ func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversatio
 }
 
 // Send stores a message as pending, publishes it and hands it to the
-// service. If the service refuses it, the message is returned as failed,
-// ready to retry; that is not an error. replyToID, when not "", is the
-// local id of a message in the same conversation this one answers.
-func (c *Commands) Send(ctx context.Context, conversationID, text, replyToID string) (domain.Message, error) {
-	text, err := domain.NormalizeOutgoingText(text)
+// service. attachmentPath names a file on this machine to send along
+// with text as its caption, or "" for a plain text message. replyToID,
+// when not "", is the local id of a message in the same conversation
+// this one answers. If the service refuses it, the message is returned
+// as failed, ready to retry; that is not an error.
+func (c *Commands) Send(ctx context.Context, conversationID, text, attachmentPath, replyToID string) (domain.Message, error) {
+	id := ""
+	if attachmentPath != "" {
+		id = newAttachmentID()
+	}
+
+	media, err := c.prepareAttachment(ctx, id, attachmentPath)
+	if err != nil {
+		return domain.Message{}, err
+	}
+
+	text, err = captionText(text, media)
 	if err != nil {
 		return domain.Message{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
 	}
@@ -140,8 +153,8 @@ func (c *Commands) Send(ctx context.Context, conversationID, text, replyToID str
 
 	before := c.events.unreadTotal(ctx)
 	m, _, err := c.store.AddMessage(ctx, domain.Message{
-		ConversationID: conv.ID, SenderName: "You", Text: text, Outgoing: true,
-		Status: domain.StatusPending, Created: time.Now().UnixMilli(), ReplyTo: replyTo,
+		ID: id, ConversationID: conv.ID, SenderName: "You", Text: text, Outgoing: true,
+		Status: domain.StatusPending, Created: time.Now().UnixMilli(), Media: media, ReplyTo: replyTo,
 	})
 	if err != nil {
 		return domain.Message{}, err
@@ -174,7 +187,29 @@ func (c *Commands) resolveReplyTo(ctx context.Context, conversationID, replyToID
 	return &domain.Reply{RemoteID: quoted.RemoteID, SenderName: quoted.SenderName, Text: domain.Excerpt(quoted.Text)}, nil
 }
 
-// Retry sends a failed outgoing message again.
+// captionText validates a message's text, required unless media stands
+// in for it: a photo, video or file with no caption still gets the
+// placeholder every stored message needs, which the UI shows as no
+// caption at all (see domain.MediaPlaceholder).
+func captionText(text string, media *domain.Media) (string, error) {
+	text = strings.TrimSpace(text)
+	if text != "" {
+		if utf8.RuneCountInString(text) > domain.MaxTextLength {
+			return "", domain.ErrTextTooLong
+		}
+
+		return text, nil
+	}
+
+	if media == nil {
+		return "", domain.ErrEmptyText
+	}
+
+	return domain.MediaPlaceholder(media.Kind), nil
+}
+
+// Retry sends a failed outgoing message again, re-reading an attachment's
+// stored copy since a stored message does not keep its path.
 func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message, error) {
 	m, err := c.store.Message(ctx, messageID)
 	if err != nil {
@@ -193,6 +228,13 @@ func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message,
 	m, err = c.setStatus(ctx, m, domain.StatusPending)
 	if err != nil {
 		return m, err
+	}
+
+	// setStatus reloads the message from the store, which never keeps an
+	// attachment's local path (see domain.Media.Path), so it is restored
+	// here, right before the connector needs it.
+	if m.Media != nil && c.outgoing != nil {
+		m.Media.Path = c.outgoing.Path(m.ID, m.Media.FileName)
 	}
 
 	return c.dispatch(ctx, conv, m)

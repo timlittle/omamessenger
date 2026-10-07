@@ -1,8 +1,8 @@
 // Checks the composer: trimmed submit, whitespace ignored, cleared input,
-// a placeholder naming the conversation, the reply banner and sending
-// the id it answers, and cancelling a reply.
+// a placeholder naming the conversation, the reply banner and sending the
+// id it answers, cancelling a reply, the attachment chip, and both the
+// banner and the chip showing together.
 import QtQuick
-import QtTest
 import Quickshell
 import "ui/components"
 import "Check.js" as Check
@@ -13,9 +13,10 @@ ShellRoot {
   property var sent: []
   property var sentReplyIds: []
   property int cancelCount: 0
+  property var attached: []
+  property int removeRequests: 0
 
   FloatingWindow {
-    id: win
     implicitWidth: 400
     implicitHeight: 200
     visible: true
@@ -27,12 +28,9 @@ ShellRoot {
       title: "Mum"
       onSubmitted: (text, replyToId) => { root.sent.push(text); root.sentReplyIds.push(replyToId); }
       onReplyCanceled: root.cancelCount += 1
+      onFileAttached: path => root.attached.push(path)
+      onAttachmentRemoveRequested: root.removeRequests++
     }
-  }
-
-  TestCase {
-    id: t
-    when: false
   }
 
   // Checks run once Quickshell has finished loading; Qt.exit() is ignored
@@ -47,6 +45,8 @@ ShellRoot {
   function run(): void {
     if (!root.checkSubmit()) return;
     if (!root.checkReplyBanner()) return;
+    if (!root.checkAttachment()) return;
+    if (!root.checkBannerAndChipTogether()) return;
 
     console.log("PASS Composer");
     Qt.exit(0);
@@ -93,8 +93,59 @@ ShellRoot {
     composer.replyTo = { id: "m2", senderName: "Alex", text: "another one" };
     const cancelButton = Check.find(composer, "replyCancel");
     root.cancelCount = 0;
-    t.mouseClick(cancelButton);
+    cancelButton.clicked();
     if (root.cancelCount !== 1) return Check.fail("replyCanceled fired " + root.cancelCount + " times, want 1");
+
+    composer.replyTo = null;
+    return true;
+  }
+
+  // checkAttachment drives the attachment chip: it appears with a name,
+  // lets a captionless message submit, and a click on its ✕ asks to
+  // remove it.
+  function checkAttachment(): bool {
+    const chip = Check.find(composer, "attachmentChip");
+    if (!chip) return Check.fail("no attachmentChip found");
+    if (chip.visible) return Check.fail("chip visible before an attachment was set");
+
+    composer.attachmentPath = "/tmp/photo.png";
+    if (!chip.visible) return Check.fail("chip not visible with an attachment set");
+
+    const name = Check.find(composer, "attachmentName");
+    if (!name || name.text !== "photo.png")
+      return Check.fail("attachment name = " + (name && name.text) + ", want photo.png");
+
+    composer.text = "";
+    composer.submit();
+    if (JSON.stringify(root.sent) !== '["sure",""]')
+      return Check.fail("a captionless attachment did not submit: sent " + JSON.stringify(root.sent));
+
+    const removeButton = Check.find(composer, "removeAttachmentButton");
+    if (!removeButton) return Check.fail("no removeAttachmentButton found");
+    removeButton.clicked();
+    if (root.removeRequests !== 1)
+      return Check.fail("attachmentRemoveRequested fired " + root.removeRequests + " times, want 1");
+
+    composer.attachmentPath = "";
+    return true;
+  }
+
+  // checkBannerAndChipTogether verifies replying to a message while an
+  // attachment is already picked shows both the banner and the chip, and
+  // that sending carries the reply id alongside the attachment.
+  function checkBannerAndChipTogether(): bool {
+    composer.attachmentPath = "/tmp/report.pdf";
+    composer.replyTo = { id: "m3", senderName: "Alex", text: "see attached" };
+
+    if (!Check.find(composer, "replyBanner").visible) return Check.fail("reply banner hidden while an attachment is pending");
+    if (!Check.find(composer, "attachmentChip").visible) return Check.fail("attachment chip hidden while replying");
+
+    root.sent = [];
+    root.sentReplyIds = [];
+    composer.text = "";
+    composer.submit();
+    if (JSON.stringify(root.sentReplyIds) !== '["m3"]')
+      return Check.fail("submitted replyToId " + JSON.stringify(root.sentReplyIds) + " alongside an attachment, want [\"m3\"]");
 
     return true;
   }

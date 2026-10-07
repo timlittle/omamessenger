@@ -25,6 +25,9 @@ Item {
   // replyTarget is the message the composer is about to answer: {id,
   // senderName, text}, or null.
   property var replyTarget: null
+  // attachmentPath is the file to send with the next message, or "" for
+  // none; see Composer.qml for why the caller owns it.
+  property string attachmentPath: ""
   // composeEnabled is false while the conversation can't accept input.
   property bool composeEnabled: true
   // composer exposes the Composer instance so a key router can focus it.
@@ -57,6 +60,10 @@ Item {
   // quoteOpened asks the caller to scroll to the message a reply quotes,
   // by the remote id the quote carries.
   signal quoteOpened(string remoteId)
+  // fileAttached reports a file the attach button's own picker chose.
+  signal fileAttached(string path)
+  // attachmentRemoveRequested asks the caller to clear attachmentPath.
+  signal attachmentRemoveRequested()
 
   // scrollBy moves the view by a number of lines; negative scrolls up.
   function scrollBy(lines: int): void {
@@ -209,10 +216,13 @@ Item {
       Layout.margins: Theme.spacing.md
       title: root.conversation ? root.conversation.title : ""
       enabled: root.composeEnabled
+      attachmentPath: root.attachmentPath
       routeKey: root.routeKey
       onSubmitted: (text, replyToId) => root.send(text, replyToId)
       onTextChanged: root.draftEdited(composer.text)
       onReplyCanceled: root.replyCanceled()
+      onFileAttached: path => root.fileAttached(path)
+      onAttachmentRemoveRequested: root.attachmentRemoveRequested()
     }
   }
 

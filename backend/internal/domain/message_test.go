@@ -103,3 +103,23 @@ func TestNormalizeOutgoingText(t *testing.T) {
 		})
 	}
 }
+
+func TestMediaPlaceholder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		kind string
+		want string
+	}{
+		{domain.MediaPhoto, "[Photo]"},
+		{domain.MediaVideo, "[Video]"},
+		{domain.MediaFile, "[File]"},
+		{"unknown", "[File]"},
+	}
+
+	for _, tt := range tests {
+		if got := domain.MediaPlaceholder(tt.kind); got != tt.want {
+			t.Errorf("MediaPlaceholder(%q) = %q, want %q", tt.kind, got, tt.want)
+		}
+	}
+}

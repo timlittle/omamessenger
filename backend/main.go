@@ -15,6 +15,7 @@ import (
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
+	"github.com/timlittle/omamessenger/backend/internal/clipboard"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/telegram"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
@@ -86,8 +87,11 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	srv := server.New(helperVersion, logger)
 
 	registry := newAccountRegistry(db, cfg.dataDir, providers())
-	media := cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit)
-	commands, ingest, manager, err := wire(ctx, db, srv, registry, media)
+	caches := mediaCaches{
+		downloaded: cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit),
+		outgoing:   cache.NewOutgoing(filepath.Join(cfg.dataDir, "media", "outgoing")),
+	}
+	commands, ingest, manager, err := wire(ctx, db, srv, registry, caches)
 	if err != nil {
 		return err
 	}
@@ -112,14 +116,25 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	return nil
 }
 
+// mediaCaches are the two directories the helper keeps media in:
+// downloaded media, pruned once it grows past a limit, and outgoing
+// attachments, kept until their message is no longer worth retrying.
+type mediaCaches struct {
+	downloaded *cache.Cache
+	outgoing   *cache.Outgoing
+}
+
 // wire builds the application around db and srv, starting with the
 // accounts already saved. Test builds add the fake connectors; see
 // fake.go.
-func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *accountRegistry, media *cache.Cache) (*app.Commands, *app.Ingest, *connector.Manager, error) {
+func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *accountRegistry, caches mediaCaches) (*app.Commands, *app.Ingest, *connector.Manager, error) {
 	notifier := notify.Desktop{Click: func(conversationID string) {
 		srv.Publish(ctx, app.EventNotificationClicked, app.NotificationClicked{ConversationID: conversationID})
 	}}
-	deps := app.Deps{Store: db, Notifier: notifier, Publisher: srv, Accounts: registry, Cache: media}
+	deps := app.Deps{
+		Store: db, Notifier: notifier, Publisher: srv, Accounts: registry, Cache: caches.downloaded,
+		Outgoing: caches.outgoing, Clipboard: clipboard.Wayland{},
+	}
 
 	connectors, injector := fakeConnectors()
 	if injector != nil {

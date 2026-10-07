@@ -29,6 +29,14 @@ The second command installs the helper:
 
 Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. Remove the plugin with `omarchy plugin remove io.github.omamessenger`.
 
+Installing the helper also adds OmaMessenger to Omarchy's apps menu (**SUPER+ALT+SPACE**), so you can launch it from there like any other app. To bind it to a key instead, add a line to `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + ALT + M", "OmaMessenger", "omarchy-shell shell summon io.github.omamessenger '{}'")
+```
+
+The apps-menu entry is `~/.local/share/applications/io.github.omamessenger.desktop`; removing the plugin does not remove it, so delete that file yourself if you want it gone.
+
 ## Add your Telegram account
 
 Choose **Add an account** in the window (or in the command palette), then scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**). With more than one messaging service available, a small chooser asks which one first. Or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password. Your recent chats appear once it connects, and the session stays on this computer. To remove an account, choose **Remove an account** in the command palette: it signs the account out and deletes its chats from this computer.
@@ -55,11 +63,15 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 | Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
 | Ctrl+W | Close the window (asks whether to keep running) |
 | Ctrl+Q | Quit |
-| Esc | Step back: close the palette, a dialog or account setup, clear the search, leave the composer or the conversation |
+| Esc | Step back: close the palette, a dialog, account setup or the photo viewer, clear the search, leave the composer or the conversation |
 
 The list shows chats from the last month, plus any with unread messages; the line under it, or **Show or hide chats older than a month** in the command palette, shows the rest. Chats archived with the service are hidden too until you choose **Show archived chats** in the command palette. Search always looks through every chat, including archived ones: it matches a chat's title as substring text, and message bodies word by word as a prefix, ignoring case and accents, so "cafe" finds "café" and "tick" finds "ticket". Pinned chats always lead the list, with a pin mark; an archived chat's unread badge is dimmed like a muted one's, since it is already filed away, though it still counts towards the unread totals in the rail.
 
 In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes; **Pin or unpin chat** and **Archive or unarchive chat** are in the command palette. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, `r` retries a failed message, and `R` replies to the newest message; a reply button also appears when you hover a bubble. The composer shows "Replying to …" with a way to cancel it: `Esc`, or the `✕` beside it; sending clears it. A reply's quote in the bubble above its text scrolls to the original message when clicked, if it is loaded.
+
+Clicking a photo opens it inside the window, as large as the window allows, rather than in your system's image viewer: Omarchy floats that viewer too small to reach with the keyboard, and focus stays on OmaMessenger, so a photo opened there would get stuck with no way to close it. While the full photo is still downloading it shows the same blurred preview the message bubble does. Esc, the ✕ button or a click outside the photo closes it; ← / → steps to the previous or next photo in the conversation; and **Open in image viewer** opens it in your own application instead. Videos and files still open externally, as before.
+
+To send a photo or file, click the composer's attach button (📎) or choose **Attach a file** in the command palette to pick one, or paste an image with **Ctrl+V** while writing; pasting text still works as before. The picked or pasted attachment shows as a chip above the text field with a ✕ to remove it; `Esc` removes it too, before leaving the composer.
 
 ## Helper API
 
@@ -86,9 +98,10 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | `conversations.setPinned` | `{conversationId, pinned}` | `Conversation`; `conversations.list` always orders pinned conversations first |
 | `conversations.setArchived` | `{conversationId, archived}` | `Conversation`; `conversations.list` still returns archived conversations, the UI hides them by default |
 | `messages.list` | `{conversationId, before, limit}` | `{messages, hasMore}`, oldest first; `limit` 1–200, default 50. Past the oldest stored message it fetches older history from the service, which arrives as `message.added` too |
-| `messages.send` | `{conversationId, text, replyTo}` | `Message`; status `failed` if the service refused it. `replyTo`, optional, is the local id of a message in the same conversation this one answers |
+| `messages.send` | `{conversationId, text, attachment, replyTo}` | `Message`; status `failed` if the service refused it. `attachment` is optional: `{path}` names a file on this machine to send, with `text` as its caption (`text` may then be empty); files over 2 GB are rejected. `replyTo`, also optional, is the local id of a message in the same conversation this one answers; it works together with `attachment` |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
 | `media.fetch` | `{messageId}` | `{path}`: the message's photo, video or file, downloaded into the media cache the first time |
+| `media.paste` | | `{path, kind, width, height}`: an image copied off the clipboard into the outgoing media area, for the composer to attach to the next message sent; fails with an invalid-input error when the clipboard holds no image |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
 | `settings.apply` | `{notifications, notificationPreview}` | `{}` |
 | `fake.inject` | `{conversationId}` | `Message`; only in the test build |

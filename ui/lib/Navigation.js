@@ -4,10 +4,12 @@
 // and what Escape does based on UI state.
 
 // keyContext determines the highest-priority context for key bindings based on
-// the current UI state. Precedence: the close question > account setup > palette > dialog > search > compose > conversation > list.
+// the current UI state. Precedence: the close question > account setup > the
+// photo viewer > palette > dialog > search > compose > conversation > list.
 function keyContext(state) {
   if (state.confirmOpen) return 'confirm';
   if (state.setupOpen) return 'setup';
+  if (state.viewerOpen) return 'viewer';
   if (state.paletteOpen) return 'palette';
   if (state.dialogOpen) return 'dialog';
   if (state.searchFocused) return 'search';
@@ -17,11 +19,14 @@ function keyContext(state) {
 }
 
 // escapeAction returns what Escape does: it undoes the innermost thing
-// first (account setup, palette, dialog, search, composer, open conversation, query) and
-// hides the window only when there is nothing left to undo.
+// first (account setup, the photo viewer, palette, dialog, search, composer,
+// open conversation, query) and hides the window only when there is nothing
+// left to undo. Inside the composer itself the order is: remove a pending
+// attachment, then cancel a reply in progress, then leave the composer.
 function escapeAction(state) {
   if (state.confirmOpen) return 'cancel-close';
   if (state.setupOpen) return 'close-setup';
+  if (state.viewerOpen) return 'close-viewer';
   if (state.paletteOpen) return 'close-palette';
   if (state.dialogOpen) return 'close-dialog';
 
@@ -30,7 +35,9 @@ function escapeAction(state) {
   }
 
   if (state.composeFocused) {
-    return state.replying ? 'cancel-reply' : 'leave-compose';
+    if (state.hasAttachment) return 'clear-attachment';
+    if (state.replying) return 'cancel-reply';
+    return 'leave-compose';
   }
 
   if (state.activeId) {

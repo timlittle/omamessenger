@@ -19,7 +19,7 @@ function plugin(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-helper-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const dir = path.join(root, 'plugin');
-  for (const rel of ['bin/oma-messenger-service', 'scripts/install-helper.sh', 'helper-version']) {
+  for (const rel of ['bin/oma-messenger-service', 'scripts/install-helper.sh', 'scripts/desktop-entry.sh', 'helper-version']) {
     fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
     fs.copyFileSync(path.join(repo, rel), path.join(dir, rel));
     fs.chmodSync(path.join(dir, rel), 0o755);
@@ -27,7 +27,11 @@ function plugin(t) {
   const data = path.join(root, 'data');
   const env = (extra) => ({ ...process.env, HOME: root, XDG_DATA_HOME: data, ...extra });
   const run = (rel, args, extra) => spawnSync(path.join(dir, rel), args, { encoding: 'utf8', env: env(extra) });
-  return { root, dir, data, run, installed: path.join(data, 'omamessenger', 'bin', `oma-messenger-service-${version}`) };
+  return {
+    root, dir, data, run,
+    installed: path.join(data, 'omamessenger', 'bin', `oma-messenger-service-${version}`),
+    desktopFile: path.join(data, 'applications', 'io.github.omamessenger.desktop'),
+  };
 }
 
 // stub writes an executable that answers --version and echoes its args.
@@ -54,8 +58,17 @@ test('installs the pinned release, which the launcher then runs', { skip: !arch 
   const install = p.run('scripts/install-helper.sh', [], base);
   assert.equal(install.status, 0, install.stderr);
   assert.ok(fs.existsSync(p.installed));
+
+  // Installing the helper also drops OmaMessenger into the apps menu.
+  assert.ok(fs.existsSync(p.desktopFile));
+  assert.equal(fs.statSync(p.desktopFile).mode & 0o777, 0o644);
+  const entry = fs.readFileSync(p.desktopFile, 'utf8');
+  assert.match(entry, /^Name=OmaMessenger$/m);
+  assert.match(entry, /^Exec=omarchy-shell shell summon io\.github\.omamessenger "\{\}"$/m);
+
   assert.equal(p.run('scripts/install-helper.sh', ['--status'], base).status, 0);
   assert.match(p.run('scripts/install-helper.sh', [], base).stdout, /already installed/);
+  assert.equal(fs.readFileSync(p.desktopFile, 'utf8'), entry);
 
   const launched = p.run('bin/oma-messenger-service', ['--data-dir', '/tmp/x']);
   assert.equal(launched.status, 0, launched.stderr);
