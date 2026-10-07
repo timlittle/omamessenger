@@ -3,6 +3,7 @@ import QtQuick
 import qs.Commons
 import "../theme"
 import "../lib/Format.js" as Format
+import "../lib/Media.js" as Media
 
 // The bubble's content stack: a reply quote if this message answers one,
 // then its text, then any link preview, photo or file it carries. Split
@@ -37,6 +38,18 @@ Column {
   signal mediaOpen()
   // quoteOpened asks the caller to scroll to the message this one quotes.
   signal quoteOpened(string remoteId)
+
+  // _mediaKind is which view media belongs in: "link", "photo", "video",
+  // "voice", "file", or "" for no media. It is also an audio file the
+  // connector only ever marked as a plain file (see Media.js), so an old
+  // voice note that predates the "voice" media kind still gets a player
+  // instead of the plain file row. Computed once here, rather than
+  // inline on each view's own visible binding, so the path below is
+  // never handed to a view other than the one that matches: an
+  // invisible sibling would otherwise still try to load it, which is
+  // how a voice note's audio file once reached the image view and
+  // failed to decode as a photo.
+  readonly property string _mediaKind: Media.kindFor(root.media) ?? ""
 
   spacing: Theme.spacing.xs
 
@@ -79,7 +92,7 @@ Column {
   LinkPreview {
     objectName: "linkPreview"
     width: Math.min(implicitWidth, root.maxTextWidth)
-    visible: root.media && root.media.kind === "link"
+    visible: root._mediaKind === "link"
     preview: root.media ? root.media : ({})
     onOpened: url => Qt.openUrlExternally(url)
   }
@@ -89,10 +102,10 @@ Column {
     maxWidth: root.maxTextWidth
     width: implicitWidth
     height: implicitHeight
-    visible: root.media && (root.media.kind === "photo" || root.media.kind === "video")
+    visible: root._mediaKind === "photo" || root._mediaKind === "video"
     photo: root.media ? root.media : ({})
-    path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
-    failed: !!(root.message && root.message.mediaFailed)
+    path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
+    failed: visible && !!(root.message && root.message.mediaFailed)
     onWanted: root.mediaWanted()
     onOpened: root.mediaOpen()
   }
@@ -100,7 +113,7 @@ Column {
   FileView {
     objectName: "fileView"
     width: Math.min(implicitWidth, root.maxTextWidth)
-    visible: root.media && root.media.kind === "file"
+    visible: root._mediaKind === "file"
     file: root.media ? root.media : ({})
     onOpened: root.mediaOpen()
   }
@@ -108,10 +121,10 @@ Column {
   VoiceNotePlayer {
     objectName: "voiceNotePlayer"
     width: Math.min(implicitWidth, root.maxTextWidth)
-    visible: root.media && root.media.kind === "voice"
+    visible: root._mediaKind === "voice"
     media: root.media ? root.media : ({})
-    path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
-    failed: !!(root.message && root.message.mediaFailed)
+    path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
+    failed: visible && !!(root.message && root.message.mediaFailed)
     available: root.voiceNotes.available
     playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id
     positionMs: playing ? root.voiceNotes.positionMs : 0

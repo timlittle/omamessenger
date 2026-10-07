@@ -4,6 +4,7 @@ import "../lib/Highlight.js" as Highlight
 import "../lib/Timeline.js" as Timeline
 import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
+import "../lib/Media.js" as Media
 
 // Owns the open conversation itself: which one is open, paging through
 // its messages, sending, retrying, scrolling and the typing indicator.
@@ -242,11 +243,15 @@ Item {
   // close keys never reach it. A voice note plays or pauses in place
   // through voiceController, when it is there and QtMultimedia loaded;
   // otherwise it falls through to the same "open in your own application"
-  // path a video or file already gets.
+  // path a video or file already gets. Media.kindFor also catches a
+  // voice note stored before the helper's "voice" media kind existed,
+  // which still carries kind "file" forever (see Media.js), so it plays
+  // in place too rather than opening externally.
   function openMedia(id: string): void {
     const media = timeline.media(id);
-    if (media && media.kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
-    if (media && media.kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(id, media); return; }
+    const kind = Media.kindFor(media);
+    if (kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
+    if (kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(id, media); return; }
 
     const path = timeline.mediaPath(id);
     if (path) Qt.openUrlExternally("file://" + path);
