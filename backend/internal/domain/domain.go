@@ -74,6 +74,8 @@ type Conversation struct {
 	PreviewOut    bool   `json:"previewOutgoing"`
 	Unread        int    `json:"unread"`
 	Muted         bool   `json:"muted"`
+	Pinned        bool   `json:"pinned"`
+	Archived      bool   `json:"archived"`
 	LastActivity  int64  `json:"lastActivity"`
 
 	// Match is a snippet of the newest message that matched a search query.

@@ -7,9 +7,12 @@ import "../lib/Format.js" as Format
 
 // One row in the conversation list: avatar, title, time, a preview line or
 // a highlighted search match, the owning account when more than one
-// account shares a service, and a mute or unread indicator. This is a
-// view only: it reports intent through a signal and never calls the
-// helper.
+// account shares a service, a pin mark, and a mute or unread indicator. A
+// pinned chat is marked with a glyph and tooltip; an archived chat's
+// unread badge is dimmed like a muted one's, since the chat is already
+// filed away, though its count still adds to the rail's unread total.
+// This is a view only: it reports intent through a signal and never
+// calls the helper.
 Item {
   id: root
 
@@ -33,6 +36,8 @@ Item {
   readonly property var _conv: root.conversation ?? {}
   readonly property bool _unread: (root._conv.unread ?? 0) > 0
   readonly property bool _muted: root._conv.muted ?? false
+  readonly property bool _pinned: root._conv.pinned ?? false
+  readonly property bool _archived: root._conv.archived ?? false
   readonly property string _previewHtml: root.query.length > 0 && root._conv.match
     ? Format.highlight(Format.escapeHtml(root._conv.match), root.query)
     : Format.escapeHtml(Format.previewLine(root._conv))
@@ -96,6 +101,24 @@ Item {
         }
 
         Text {
+          objectName: "pinIcon"
+          visible: root._pinned
+          text: ""
+          color: Util.alpha(Color.foreground, 0.5)
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+
+          // A passive hover handler, like the mute glyph below: it must
+          // not swallow the row's own click.
+          HoverHandler {
+            id: pinHover
+          }
+          ToolTip.visible: pinHover.hovered
+          ToolTip.text: "Pinned"
+          ToolTip.delay: 500
+        }
+
+        Text {
           text: Format.timeLabel(root._conv.lastActivity ?? 0, root.nowMs)
           color: Util.alpha(Color.foreground, 0.6)
           font.family: Theme.font.family
@@ -153,7 +176,7 @@ Item {
         UnreadBadge {
           objectName: "unreadBadge"
           count: root._conv.unread ?? 0
-          muted: root._muted
+          muted: root._muted || root._archived
         }
       }
     }

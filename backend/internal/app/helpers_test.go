@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,6 +30,7 @@ type fixture struct {
 	history    *fakeHistory
 	media      *fakeMedia
 	refresher  *fakeRefresher
+	organizer  *fakeOrganizer
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -51,14 +53,14 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
-		refresher: &fakeRefresher{},
+		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{},
 	}
 
 	deps := app.Deps{
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher,
+		Refresher: f.refresher, Organizer: f.organizer,
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -323,6 +325,33 @@ func (r *fakeRefresher) RefreshMessages(ctx context.Context, conv domain.Convers
 	}
 
 	return nil
+}
+
+// fakeOrganizer records the pins and archives it is asked for, as
+// "<conversationId> <value>", failing with err when it is set.
+type fakeOrganizer struct {
+	mu       sync.Mutex
+	pinned   []string
+	archived []string
+	err      error
+}
+
+func (o *fakeOrganizer) SetPinned(_ context.Context, conv domain.Conversation, pinned bool) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.pinned = append(o.pinned, fmt.Sprintf("%s %t", conv.ID, pinned))
+
+	return o.err
+}
+
+func (o *fakeOrganizer) SetArchived(_ context.Context, conv domain.Conversation, archived bool) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	o.archived = append(o.archived, fmt.Sprintf("%s %t", conv.ID, archived))
+
+	return o.err
 }
 
 // fakeSignIn records the sign-in answers it is given.

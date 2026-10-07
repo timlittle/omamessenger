@@ -95,6 +95,8 @@ Item {
       required property string accountId
       required property int unread
       required property bool muted
+      required property bool pinned
+      required property bool archived
       required property real lastActivity
       required property string preview
       required property string previewSender
@@ -120,6 +122,8 @@ Item {
           "accountId": wrapper.accountId,
           "unread": wrapper.unread,
           "muted": wrapper.muted,
+          "pinned": wrapper.pinned,
+          "archived": wrapper.archived,
           "lastActivity": wrapper.lastActivity,
           "preview": wrapper.preview,
           "previewSender": wrapper.previewSender,

@@ -31,22 +31,24 @@ func bind[P any](handle func(ctx context.Context, p P) (any, error)) method {
 // method.
 func methods(c *app.Commands, version string) map[string]method {
 	table := map[string]method{
-		"hello":                  bind(hello(c, version)),
-		"accounts.list":          bind(accountsList(c)),
-		"accounts.add":           bind(accountsAdd(c)),
-		"accounts.remove":        bind(accountsRemove(c)),
-		"auth.submit":            bind(authSubmit(c)),
-		"contacts.list":          bind(contactsList(c)),
-		"conversations.list":     bind(conversationsList(c)),
-		"conversations.open":     bind(conversationsOpen(c)),
-		"conversations.markRead": bind(conversationsMarkRead(c)),
-		"conversations.setMuted": bind(conversationsSetMuted(c)),
-		"messages.list":          bind(messagesList(c)),
-		"messages.send":          bind(messagesSend(c)),
-		"messages.retry":         bind(messagesRetry(c)),
-		"media.fetch":            bind(mediaFetch(c)),
-		"ui.setFocus":            bind(uiSetFocus(c)),
-		"settings.apply":         bind(settingsApply(c)),
+		"hello":                     bind(hello(c, version)),
+		"accounts.list":             bind(accountsList(c)),
+		"accounts.add":              bind(accountsAdd(c)),
+		"accounts.remove":           bind(accountsRemove(c)),
+		"auth.submit":               bind(authSubmit(c)),
+		"contacts.list":             bind(contactsList(c)),
+		"conversations.list":        bind(conversationsList(c)),
+		"conversations.open":        bind(conversationsOpen(c)),
+		"conversations.markRead":    bind(conversationsMarkRead(c)),
+		"conversations.setMuted":    bind(conversationsSetMuted(c)),
+		"conversations.setPinned":   bind(conversationsSetPinned(c)),
+		"conversations.setArchived": bind(conversationsSetArchived(c)),
+		"messages.list":             bind(messagesList(c)),
+		"messages.send":             bind(messagesSend(c)),
+		"messages.retry":            bind(messagesRetry(c)),
+		"media.fetch":               bind(mediaFetch(c)),
+		"ui.setFocus":               bind(uiSetFocus(c)),
+		"settings.apply":            bind(settingsApply(c)),
 	}
 
 	if c.Faked() {
@@ -210,6 +212,32 @@ type mutedParams struct {
 func conversationsSetMuted(c *app.Commands) func(context.Context, mutedParams) (any, error) {
 	return func(ctx context.Context, p mutedParams) (any, error) {
 		return c.SetMuted(ctx, p.ConversationID, p.Muted)
+	}
+}
+
+// pinnedParams pins or unpins a conversation.
+type pinnedParams struct {
+	ConversationID string `json:"conversationId"`
+	Pinned         bool   `json:"pinned"`
+}
+
+// conversationsSetPinned pins or unpins a conversation.
+func conversationsSetPinned(c *app.Commands) func(context.Context, pinnedParams) (any, error) {
+	return func(ctx context.Context, p pinnedParams) (any, error) {
+		return c.SetPinned(ctx, p.ConversationID, p.Pinned)
+	}
+}
+
+// archivedParams archives or unarchives a conversation.
+type archivedParams struct {
+	ConversationID string `json:"conversationId"`
+	Archived       bool   `json:"archived"`
+}
+
+// conversationsSetArchived archives or unarchives a conversation.
+func conversationsSetArchived(c *app.Commands) func(context.Context, archivedParams) (any, error) {
+	return func(ctx context.Context, p archivedParams) (any, error) {
+		return c.SetArchived(ctx, p.ConversationID, p.Archived)
 	}
 }
 

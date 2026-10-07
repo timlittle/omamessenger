@@ -59,6 +59,21 @@ func TestConversation_FromEachKindOfDialog(t *testing.T) {
 	}
 }
 
+func TestConversation_NeverSetsPinnedOrArchived(t *testing.T) {
+	t.Parallel()
+
+	// Pinned and archived reach the store only through Sink.Organized
+	// (see listDialogs), never through the conversation a dialog
+	// otherwise reports, so a later bare report can never clear them.
+	now := time.Now()
+	dialog := &tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, Pinned: true, FolderID: archiveFolderID}
+
+	got, ok := conversation("tg", dialog, testEntities(), now)
+	if !ok || got.Pinned || got.Archived {
+		t.Errorf("conversation = %+v, %t; want neither Pinned nor Archived set", got, ok)
+	}
+}
+
 func TestConversation_SkipsUnknownPeers(t *testing.T) {
 	t.Parallel()
 

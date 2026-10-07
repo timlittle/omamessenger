@@ -45,6 +45,13 @@ type MessageRefresher interface {
 	RefreshMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string) error
 }
 
+// Organizer keeps a conversation's pinned and archived state in step with
+// its service.
+type Organizer interface {
+	SetPinned(ctx context.Context, conv domain.Conversation, pinned bool) error
+	SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error
+}
+
 // MediaCache keeps downloaded media, filling a file the first time it is
 // asked for.
 type MediaCache interface {
@@ -107,6 +114,7 @@ type Deps struct {
 	Media      MediaFetcher
 	Cache      MediaCache
 	Refresher  MessageRefresher
+	Organizer  Organizer
 	Fake       Injector
 }
 
@@ -117,7 +125,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, fake: d.Fake,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}

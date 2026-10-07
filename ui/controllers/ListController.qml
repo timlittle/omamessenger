@@ -6,7 +6,8 @@ import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
 
 // Owns the rail filter, search and the visible conversation list: the
-// only controller that calls conversations.list and conversations.setMuted.
+// only controller that calls conversations.list, conversations.setMuted,
+// conversations.setPinned and conversations.setArchived.
 // The list itself is a ListModel kept in sync in place with ListSync, so
 // opening or scrolling never resets because of an unrelated event.
 //
@@ -49,6 +50,10 @@ Item {
   // unless they are unread or open.
   property bool showOlder: false
 
+  // showArchived shows chats archived with the service, which are hidden
+  // by default unless they are the open conversation.
+  property bool showArchived: false
+
   // hiddenCount is how many chats the month filter hides right now.
   property int hiddenCount: 0
 
@@ -83,8 +88,11 @@ Item {
       "unread.next": () => root._select(Selection.nextUnread(root._visible(), root.selectedId)),
       "unread.prev": () => root._select(Selection.nextUnread(root._visible().slice().reverse(), root.selectedId)),
       "chat.mute": () => root._toggleMute(),
+      "chat.pin": () => root._togglePin(),
+      "chat.archive": () => root._toggleArchive(),
       "search.focus": () => { root.searchFocused = true; root.focusRequested(); },
-      "list.olderChats": () => root.setShowOlder(!root.showOlder)
+      "list.olderChats": () => root.setShowOlder(!root.showOlder),
+      "list.showArchived": () => root.setShowArchived(!root.showArchived)
     };
 
     const handler = handlers[action];
@@ -104,6 +112,14 @@ Item {
   function setShowOlder(show: bool): void {
     root.showOlder = show;
     root._saveUiState({ showOlder: show });
+    root._syncModel();
+  }
+
+  // setShowArchived shows or hides chats archived with the service, and
+  // remembers it.
+  function setShowArchived(show: bool): void {
+    root.showArchived = show;
+    root._saveUiState({ showArchived: show });
     root._syncModel();
   }
 
@@ -145,14 +161,24 @@ Item {
   // from the search results while a query is active, otherwise the full
   // list.
   // A search looks through every chat; otherwise chats older than a month
-  // are left out unless showOlder is set.
+  // or archived with the service are left out unless shown.
   function _visible(): var {
     if (root.query.length > 0) return Rail.filter(root._searchResults, root.railKey);
 
-    const all = Rail.filter(root._all, root.railKey);
-    if (root.showOlder) return all;
+    const keepId = root.service ? root.service.uiState.activeId : "";
+    const afterArchive = root._afterArchiveFilter(Rail.filter(root._all, root.railKey));
+    if (root.showOlder) return afterArchive;
 
-    return Rail.recent(all, Date.now(), root.service ? root.service.uiState.activeId : "");
+    return Rail.recent(afterArchive, Date.now(), keepId);
+  }
+
+  // _afterArchiveFilter drops archived chats, unless shown, from list. Kept
+  // apart from the month filter so "N older chats hidden" counts only the
+  // month filter's own hiding, not chats already filed away.
+  function _afterArchiveFilter(list: var): var {
+    if (root.showArchived) return list;
+
+    return Rail.unarchived(list, root.service ? root.service.uiState.activeId : "");
   }
 
   // _select moves the list cursor to id and remembers it in uiState.
@@ -173,12 +199,33 @@ Item {
   // _toggleMute mutes or unmutes whichever conversation is contextually
   // current: the open conversation if one is showing, else the list cursor.
   function _toggleMute(): void {
+    root._setOnCurrent("conversations.setMuted", "muted");
+  }
+
+  // _togglePin pins or unpins whichever conversation is contextually
+  // current, the same way _toggleMute does.
+  function _togglePin(): void {
+    root._setOnCurrent("conversations.setPinned", "pinned");
+  }
+
+  // _toggleArchive archives or unarchives whichever conversation is
+  // contextually current, the same way _toggleMute does.
+  function _toggleArchive(): void {
+    root._setOnCurrent("conversations.setArchived", "archived");
+  }
+
+  // _setOnCurrent flips boolean field on whichever conversation is
+  // contextually current: the open conversation if one is showing, else
+  // the list cursor, by calling method with {conversationId, <field>}.
+  function _setOnCurrent(method: string, field: string): void {
     const state = root.service.uiState;
     const id = (state.pane === "conversation" && state.activeId) ? state.activeId : root.selectedId;
     const conversation = id ? root.findConversation(id) : null;
     if (!conversation) return;
 
-    root.service.request("conversations.setMuted", { conversationId: id, muted: !conversation.muted }, function(error, result) {
+    const params = { conversationId: id };
+    params[field] = !conversation[field];
+    root.service.request(method, params, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root._applyConversationUpdated(result);
     });
@@ -218,10 +265,10 @@ Item {
   // and, while it is already part of the active search, into the search
   // results too.
   function _applyConversationUpdated(conversation: var): void {
-    root._all = ListSync.upsertById(root._all, conversation, (a, b) => b.lastActivity - a.lastActivity);
+    root._all = ListSync.upsertById(root._all, conversation, Rail.compareConversations);
 
     if (root.query.length > 0 && root._searchResults.some((c) => c.id === conversation.id)) {
-      root._searchResults = ListSync.upsertById(root._searchResults, conversation, (a, b) => b.lastActivity - a.lastActivity);
+      root._searchResults = ListSync.upsertById(root._searchResults, conversation, Rail.compareConversations);
     }
 
     root._syncModel();
@@ -237,6 +284,7 @@ Item {
     root.selectedId = state.selectedId || "";
     root.query = state.query || "";
     root.showOlder = state.showOlder || false;
+    root.showArchived = state.showArchived || false;
     if (root.service.status === "ready") root._loadAll();
   }
 
@@ -252,7 +300,8 @@ Item {
   // refresh so unread counts and previews stay current.
   function _syncModel(): void {
     const visible = root._visible();
-    root.hiddenCount = root.query.length > 0 || root.showOlder ? 0 : Rail.filter(root._all, root.railKey).length - visible.length;
+    const afterArchive = root._afterArchiveFilter(Rail.filter(root._all, root.railKey));
+    root.hiddenCount = root.query.length > 0 || root.showOlder ? 0 : afterArchive.length - visible.length;
     const oldIds = [];
     for (let i = 0; i < listModel.count; i++) oldIds.push(listModel.get(i).id);
 

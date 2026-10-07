@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -46,8 +47,8 @@ func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 
 	want := []string{
 		"contact user:42:99 Nadia",
-		"conversation user:42:99 Nadia", "history user:42:99 9", "unread user:42:99 1",
-		"conversation chat:7 Crew", "history chat:7 4", "unread chat:7 0",
+		"conversation user:42:99 Nadia", "organized user:42:99 false false", "history user:42:99 9", "unread user:42:99 1",
+		"conversation chat:7 Crew", "organized chat:7 false false", "history chat:7 4", "unread chat:7 0",
 		"history chat:7 3", "unread chat:7 0",
 	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
@@ -56,6 +57,56 @@ func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 
 	if _, ok := c.lookup("user:42"); !ok {
 		t.Error("synced conversation not remembered for live updates")
+	}
+}
+
+func TestSync_ReportsOrganizedForPinnedAndArchivedDialogs(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
+	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
+		Dialogs: []tg.DialogClass{
+			&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, Pinned: true},
+			&tg.Dialog{Peer: &tg.PeerChat{ChatID: 7}, FolderID: archiveFolderID},
+		},
+		Chats: []tg.ChatClass{&tg.Chat{ID: 7, Title: "Crew", Photo: &tg.ChatPhotoEmpty{}}},
+		Users: []tg.UserClass{nadia},
+	})
+	f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(400, "CHANNEL_PRIVATE"))
+	f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(400, "CHANNEL_PRIVATE"))
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	if err := c.sync(t.Context(), tg.NewClient(f), &sink); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"organized user:42:99 true false", "organized chat:7 false true"}
+	var got []string
+	for _, line := range sink.Lines() {
+		if strings.HasPrefix(line, "organized ") {
+			got = append(got, line)
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("organized lines = %q, want %q", got, want)
+	}
+}
+
+func TestNewMessage_NeverReportsOrganized(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	c.newMessage(t.Context(), &sink, &tg.Message{
+		ID: 1, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi",
+	}, tg.Entities{Users: map[int64]*tg.User{42: nadia}})
+
+	for _, line := range sink.Lines() {
+		if strings.HasPrefix(line, "organized ") {
+			t.Errorf("a live message reported %q, want it to leave pinned and archived alone", line)
+		}
 	}
 }
 

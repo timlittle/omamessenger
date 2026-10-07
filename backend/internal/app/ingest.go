@@ -153,6 +153,27 @@ func (in *Ingest) Unread(ctx context.Context, accountID, conversationRemoteID st
 	in.events.conversationChanged(ctx, conv.ID, before)
 }
 
+// Organized records a conversation's pinned and archived state, from a
+// dialog sync, publishing it only when it changed.
+func (in *Ingest) Organized(ctx context.Context, accountID, conversationRemoteID string, pinned, archived bool) {
+	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
+	if err != nil {
+		return
+	}
+
+	changed, err := in.store.SetOrganized(ctx, conv.ID, pinned, archived)
+	if err != nil || !changed {
+		return
+	}
+
+	updated, err := in.store.Conversation(ctx, conv.ID)
+	if err != nil {
+		return
+	}
+
+	in.events.publish(ctx, EventConversationUpdated, updated)
+}
+
 // OutgoingStatus records the service's id for a sent message and publishes
 // its delivery progress. Late or out-of-order receipts are ignored.
 func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, status string) {

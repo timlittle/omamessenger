@@ -58,6 +58,16 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("conversations.setMuted = %+v, %v", muted, err)
 	}
 
+	pinned, err := call[domain.Conversation](t, s, "conversations.setPinned", map[string]any{"conversationId": "chat", "pinned": true})
+	if err != nil || !pinned.Pinned {
+		t.Errorf("conversations.setPinned = %+v, %v", pinned, err)
+	}
+
+	archived, err := call[domain.Conversation](t, s, "conversations.setArchived", map[string]any{"conversationId": "chat", "archived": true})
+	if err != nil || !archived.Archived {
+		t.Errorf("conversations.setArchived = %+v, %v", archived, err)
+	}
+
 	added, err := call[domain.Account](t, s, "accounts.add", map[string]any{"service": "telegram", "apiId": 1, "apiHash": "abc"})
 	if err != nil || added.ID != "tg-new" {
 		t.Errorf("accounts.add = %+v, %v", added, err)

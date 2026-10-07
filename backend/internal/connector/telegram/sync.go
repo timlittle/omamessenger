@@ -57,8 +57,9 @@ type listedDialog struct {
 	dialog *tg.Dialog
 }
 
-// listDialogs reports each dialog as a conversation with its last message
-// and Telegram's unread count, returning the ones it reported.
+// listDialogs reports each dialog as a conversation with its pinned and
+// archived state, its last message and Telegram's unread count,
+// returning the ones it reported.
 func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialogs tg.ModifiedMessagesDialogs) []listedDialog {
 	e := newEntities(dialogs.GetUsers(), dialogs.GetChats())
 	top := map[string]*tg.Message{}
@@ -82,6 +83,7 @@ func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialog
 
 		c.learn(conv.RemoteID)
 		sink.Conversation(ctx, conv)
+		sink.Organized(ctx, c.account.ID, conv.RemoteID, dialog.Pinned, dialog.FolderID == archiveFolderID)
 		if msg, ok := top[shortKey(dialog.Peer)+"/"+strconv.Itoa(dialog.TopMessage)]; ok {
 			sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, e))
 		}

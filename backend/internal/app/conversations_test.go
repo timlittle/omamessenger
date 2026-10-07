@@ -120,3 +120,88 @@ func TestSetMuted_UpdatesUnreadTotal(t *testing.T) {
 		t.Errorf("SetMuted(missing) = %v, want ErrNotFound", err)
 	}
 }
+
+func TestSetPinned_StoresThenTellsTheService(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	got, err := f.commands.SetPinned(ctx, chat.ID, true)
+	if err != nil || !got.Pinned {
+		t.Fatalf("SetPinned = %+v, %v", got, err)
+	}
+
+	if !slices.Equal(f.organizer.pinned, []string{"chat true"}) {
+		t.Errorf("organizer saw %v, want [chat true]", f.organizer.pinned)
+	}
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events = %v", got)
+	}
+
+	if _, err := f.commands.SetPinned(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetPinned(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSetPinned_ReportsAServiceFailure(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.organizer.err = errors.New("offline")
+
+	if _, err := f.commands.SetPinned(ctx, chat.ID, true); !errors.Is(err, f.organizer.err) {
+		t.Errorf("SetPinned with a failing service = %v, want %v", err, f.organizer.err)
+	}
+
+	// The local pin stands even though the service call failed.
+	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || !got.Pinned {
+		t.Errorf("Conversation after a failed SetPinned = %+v, %v; want Pinned true", got, err)
+	}
+}
+
+func TestSetArchived_StoresThenTellsTheService(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	got, err := f.commands.SetArchived(ctx, chat.ID, true)
+	if err != nil || !got.Archived {
+		t.Fatalf("SetArchived = %+v, %v", got, err)
+	}
+
+	if !slices.Equal(f.organizer.archived, []string{"chat true"}) {
+		t.Errorf("organizer saw %v, want [chat true]", f.organizer.archived)
+	}
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events = %v", got)
+	}
+
+	if _, err := f.commands.SetArchived(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetArchived(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSetArchived_ReportsAServiceFailure(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.organizer.err = errors.New("offline")
+
+	if _, err := f.commands.SetArchived(ctx, chat.ID, true); !errors.Is(err, f.organizer.err) {
+		t.Errorf("SetArchived with a failing service = %v, want %v", err, f.organizer.err)
+	}
+
+	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || !got.Archived {
+		t.Errorf("Conversation after a failed SetArchived = %+v, %v; want Archived true", got, err)
+	}
+}

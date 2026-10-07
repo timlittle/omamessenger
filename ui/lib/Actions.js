@@ -12,6 +12,7 @@ var OWNERS = {
   // selection and unread jump, mute.
   'search.focus': 'list',
   'list.olderChats': 'list',
+  'list.showArchived': 'list',
   'rail.all': 'list',
   'rail.whatsapp': 'list',
   'rail.telegram': 'list',
@@ -24,6 +25,8 @@ var OWNERS = {
   'unread.next': 'list',
   'unread.prev': 'list',
   'chat.mute': 'list',
+  'chat.pin': 'list',
+  'chat.archive': 'list',
 
   // ConversationController: the open conversation, paging, send, retry,
   // scrolling and composing, and moving between chats while one is open.

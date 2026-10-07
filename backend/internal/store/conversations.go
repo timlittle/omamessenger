@@ -14,7 +14,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.last_activity`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.last_activity`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -51,7 +51,10 @@ func (s *Store) EnsureConversation(ctx context.Context, c domain.Conversation) (
 }
 
 // refreshConversation copies the remote service's title, kind and member
-// count onto a stored conversation.
+// count onto a stored conversation. It never touches pinned or archived:
+// most reports, such as a live message's own conversation, carry neither
+// field meaningfully, so only SetOrganized, from a dialog sync, may set
+// them.
 func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Conversation) (domain.Conversation, error) {
 	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=? WHERE id=?`,
 		c.Title, c.Kind, c.Members, id)
@@ -63,6 +66,7 @@ func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Con
 }
 
 // insertConversation stores a new conversation, assigning an id if needed.
+// It always starts unpinned and unarchived; see refreshConversation.
 func (s *Store) insertConversation(ctx context.Context, c domain.Conversation) (domain.Conversation, error) {
 	if c.ID == "" {
 		c.ID = newID("c")
@@ -103,7 +107,7 @@ func (s *Store) ConversationByRemote(ctx context.Context, accountID, remoteID st
 const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match
 	` + conversationFrom + `
 	WHERE :query = '' OR c.title LIKE :pattern ESCAPE '\'
-	ORDER BY c.last_activity DESC, c.id`
+	ORDER BY c.pinned DESC, c.last_activity DESC, c.id`
 
 // conversationsByTitleOrMessage lists conversations whose title matches
 // pattern or that have a message matching fts. A title match ranks above
@@ -220,6 +224,49 @@ func (s *Store) SetMuted(ctx context.Context, id string, muted bool) error {
 	return requireRow("set muted", res)
 }
 
+// SetPinned pins or unpins a conversation, which decides whether it leads
+// the conversation list ahead of everything else.
+func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET pinned=? WHERE id=?`, boolInt(pinned), id)
+	if err != nil {
+		return wrap("set pinned", err)
+	}
+
+	return requireRow("set pinned", res)
+}
+
+// SetArchived archives or unarchives a conversation, which decides whether
+// it shows in the conversation list by default.
+func (s *Store) SetArchived(ctx context.Context, id string, archived bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET archived=? WHERE id=?`, boolInt(archived), id)
+	if err != nil {
+		return wrap("set archived", err)
+	}
+
+	return requireRow("set archived", res)
+}
+
+// SetOrganized sets a conversation's pinned and archived state, as a
+// dialog sync reports it. changed is false when both already matched.
+func (s *Store) SetOrganized(ctx context.Context, id string, pinned, archived bool) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE conversations SET pinned=?,archived=? WHERE id=? AND (pinned<>? OR archived<>?)`,
+		boolInt(pinned), boolInt(archived), id, boolInt(pinned), boolInt(archived))
+	if err != nil {
+		return false, wrap("set organized", err)
+	}
+
+	changed, err := rowsChanged("set organized", res)
+	if changed || err != nil {
+		return changed, err
+	}
+
+	// No row changed: either it already matched or it does not exist.
+	_, err = s.Conversation(ctx, id)
+
+	return false, err
+}
+
 // UnreadTotal counts unread messages in conversations that are not muted.
 func (s *Store) UnreadTotal(ctx context.Context) (int, error) {
 	var total int
@@ -248,7 +295,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.LastActivity,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.LastActivity,
 	}, extra...)
 	err := row.Scan(dest...)
 

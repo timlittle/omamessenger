@@ -94,6 +94,26 @@ func (c *withRefresh) RefreshMessages(_ context.Context, _ domain.Conversation, 
 	return nil
 }
 
+// withOrganizer is a connector that pins and archives, recording what it
+// was asked.
+type withOrganizer struct {
+	fakeConnector
+	pinned   []bool
+	archived []bool
+}
+
+func (c *withOrganizer) SetPinned(_ context.Context, _ domain.Conversation, pinned bool) error {
+	c.pinned = append(c.pinned, pinned)
+
+	return nil
+}
+
+func (c *withOrganizer) SetArchived(_ context.Context, _ domain.Conversation, archived bool) error {
+	c.archived = append(c.archived, archived)
+
+	return nil
+}
+
 // accountList records upserted account ids, failing when err is set.
 type accountList struct {
 	ids []string
