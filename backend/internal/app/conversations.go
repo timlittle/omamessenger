@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -90,7 +92,18 @@ func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned 
 
 	c.events.publish(ctx, EventConversationUpdated, conv)
 
-	return conv, c.organizer.SetPinned(ctx, conv, pinned)
+	return conv, pinError(c.organizer.SetPinned(ctx, conv, pinned))
+}
+
+// pinError turns a connector's pin limit refusal into ErrInvalidInput
+// with a safe message the UI can show; anything else, such as a network
+// failure, is returned unchanged so it becomes a fixed internal error.
+func pinError(err error) error {
+	if errors.Is(err, connector.ErrPinLimit) {
+		return fmt.Errorf("%w: this service limits how many conversations can stay pinned", ErrInvalidInput)
+	}
+
+	return err
 }
 
 // SetArchived files a conversation away, or brings it back, then tells its

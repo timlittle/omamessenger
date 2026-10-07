@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 
@@ -61,6 +62,13 @@ type fakeDevice struct {
 	groupNames map[string]string
 	groupErr   error
 	groupCalls []types.JID
+
+	// appStateErr and appStateBlocks script sendAppState, which
+	// organize_test.go drives to check pin and archive changes without
+	// reaching WhatsApp's servers; appStatePatches records what was sent.
+	appStateErr     error
+	appStateBlocks  bool
+	appStatePatches []appstate.PatchInfo
 }
 
 // sentCall records one call to sendMessage.
@@ -268,6 +276,23 @@ func (d *fakeDevice) groupName(_ context.Context, jid types.JID) (string, error)
 	}
 
 	return d.groupNames[jid.String()], nil
+}
+
+// sendAppState records patch and reports appStateErr, or blocks on ctx
+// when appStateBlocks is set, as a real patch that never hears back from
+// the server does.
+func (d *fakeDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
+	d.mu.Lock()
+	d.appStatePatches = append(d.appStatePatches, patch)
+	blocks, err := d.appStateBlocks, d.appStateErr
+	d.mu.Unlock()
+
+	if blocks {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+
+	return err
 }
 
 // connectedTo returns a connector whose Send, MarkRead and event

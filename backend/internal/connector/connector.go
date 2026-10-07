@@ -104,6 +104,11 @@ type Reactor interface {
 	React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error
 }
 
+// ErrPinLimit reports a pin an Organizer's service refuses because the
+// account already has as many conversations pinned as that service
+// allows.
+var ErrPinLimit = errors.New("connector: pin limit reached")
+
 // Organizer is a Connector that keeps a conversation pinned or archived in
 // step with the service, so a change made here, or made on another
 // device and synced back, agrees everywhere. The two methods are kept

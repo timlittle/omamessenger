@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
@@ -78,6 +79,10 @@ type device interface {
 	// groupName is a group's current name, for a history sync or a live
 	// message whose own data left it blank.
 	groupName(ctx context.Context, jid types.JID) (string, error)
+
+	// sendAppState sends an app-state patch, such as a pin or archive
+	// change, so WhatsApp's own record of the chat agrees with it.
+	sendAppState(ctx context.Context, patch appstate.PatchInfo) error
 }
 
 // pairClientType and pairDisplayName name this companion to WhatsApp when
@@ -216,6 +221,11 @@ func (d *waDevice) groupName(ctx context.Context, jid types.JID) (string, error)
 	}
 
 	return info.Name, nil
+}
+
+// sendAppState sends patch with WhatsApp.
+func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
+	return d.cli.SendAppState(ctx, patch)
 }
 
 // Status values device reports through onStatus. statusStopped covers

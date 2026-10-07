@@ -65,6 +65,7 @@ var (
 	_ connector.Connector      = (*Connector)(nil)
 	_ connector.Authenticator  = (*Connector)(nil)
 	_ connector.LogoutOnRemove = (*Connector)(nil)
+	_ connector.Organizer      = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose session is kept in
