@@ -20,6 +20,7 @@ Verified against Omarchy 4.0.4, Quickshell 0.3.1 and Qt 6.11. When a newer versi
 - Start the helper with `Process` (`stdinEnabled: true`, `write(line)`) and read its stdout with `stdout: SplitParser { onRead: … }`
 - Resolve the plugin's own files with `Qt.resolvedUrl("../bin/oma-messenger-service")` and strip the `file://` prefix; this works for installed copies and symlinked dev checkouts
 - `FloatingWindow` has no `requestActivate()`
+- Hyprland 0.56 moved dispatch strings to a Lua call syntax (`hl.dsp.focus({ window = "title:…" })`); even syntactically valid calls can fail at runtime ("hl.focus: window not found") and the exact form is tied to the Hyprland version. To focus this plugin's own already-open window, do what Omarchy's own bar widget does to refocus any window: `import Quickshell.Wayland`, find the matching entry in `ToplevelManager.toplevels.values` (by title) and call `.activate()`. That goes through the Wayland foreign-toplevel protocol, which does not change with the compositor version
 
 ### Tools
 

@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
-import Quickshell.Hyprland
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui as Ui
 import "theme"
@@ -68,9 +68,23 @@ Item {
 
     const conversationId = root._conversationIdFrom(payloadJson);
     if (conversationId) root._openConversationId(conversationId);
-    // Hyprland 0.56 takes Lua dispatchers; the old "focuswindow title:…"
-    // string no longer parses.
-    if (alreadyVisible) Hyprland.dispatch('hl.dsp.focus({ window = "title:^OmaMessenger$" })');
+    if (alreadyVisible) root._focusWindow();
+  }
+
+  // _focusWindow asks the compositor to raise and focus this panel's own
+  // window, the way Omarchy's own bar widget refocuses windows: through
+  // the Wayland foreign-toplevel protocol's activate request. A Hyprland
+  // dispatch string ("hl.dsp.focus({ window = "title:…" })") looked right
+  // but Hyprland 0.56 reported "window not found" for it, and dispatch
+  // syntax is tied to the Hyprland version; activate() is not.
+  function _focusWindow(): void {
+    const toplevels = ToplevelManager.toplevels.values;
+    for (let i = 0; i < toplevels.length; i++) {
+      if (toplevels[i].title === window.title) {
+        toplevels[i].activate();
+        return;
+      }
+    }
   }
 
   // close hides the window on the host's request, without reporting back.
