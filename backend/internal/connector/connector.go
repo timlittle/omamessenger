@@ -5,9 +5,17 @@ package connector
 
 import (
 	"context"
+	"errors"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
+
+// ErrInvalidSetup reports options Provider.Prepare could not use, such as
+// an API id given without its hash.
+var ErrInvalidSetup = errors.New("connector: invalid setup")
+
+// ErrUnknownProvider reports a service with no registered Provider.
+var ErrUnknownProvider = errors.New("connector: unknown provider")
 
 // Connector adapts one signed-in messaging account to the normalized domain.
 // Send and MarkRead return quickly; progress is reported through the Sink.
@@ -24,6 +32,32 @@ type Connector interface {
 
 	// MarkRead tells the service the user has read a conversation.
 	MarkRead(ctx context.Context, conv domain.Conversation) error
+}
+
+// Provider is the published way to add a messaging service to
+// OmaMessenger: it names the service, prepares a new account's
+// credentials, connects it, and forgets it when removed. The four methods
+// beyond Service are justified by what a new service must supply end to
+// end, not just a running connection: a Connector alone cannot be set up
+// or torn down without service-specific code living outside this package.
+type Provider interface {
+	// Service is the service id this provider handles, such as "telegram".
+	Service() string
+
+	// Name is the human-readable name the UI shows for this service.
+	Name() string
+
+	// Prepare saves whatever a new account needs before it first
+	// connects, reading any user-supplied values from options. Invalid
+	// options return an error wrapping ErrInvalidSetup.
+	Prepare(dir, accountID string, options map[string]string) error
+
+	// Connect returns the account's connector, reading what Prepare saved
+	// from dir.
+	Connect(account domain.Account, dir string) Connector
+
+	// Forget deletes everything Prepare saved for the account.
+	Forget(dir, accountID string) error
 }
 
 // Authenticator is a Connector that signs in to its service. While it
