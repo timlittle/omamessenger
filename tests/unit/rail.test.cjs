@@ -133,6 +133,15 @@ test('items: empty account list returns only all entry with connected status', (
   assert.strictEqual(result[0].status, 'connected');
 });
 
+test('items: labels a service from knownServices when given', () => {
+  const accounts = [{ id: 'a1', service: 'telegram', name: 'Tel1', status: 'connected' }];
+  const known = [{ id: 'telegram', name: 'Telegram (beta)' }];
+
+  const result = Rail.items(accounts, [], known);
+
+  assert.strictEqual(result[1].label, 'Telegram (beta)');
+});
+
 test('items: handles null or undefined inputs', () => {
   assert.deepEqual(Rail.items(null, []), []);
   assert.deepEqual(Rail.items([], null), []);
@@ -278,8 +287,23 @@ test('serviceLabel names each service for display', () => {
   assert.strictEqual(Rail.serviceLabel('signal'), 'signal');
 });
 
+test('serviceLabel prefers the helper\'s own name when it names the service', () => {
+  const known = [{ id: 'telegram', name: 'Telegram (beta)' }];
+
+  assert.strictEqual(Rail.serviceLabel('telegram', known), 'Telegram (beta)');
+  assert.strictEqual(Rail.serviceLabel('whatsapp', known), 'WhatsApp');
+  assert.strictEqual(Rail.serviceLabel('telegram', []), 'Telegram');
+  assert.strictEqual(Rail.serviceLabel('telegram', null), 'Telegram');
+});
+
 test('accountLabel says which service an account belongs to', () => {
   assert.strictEqual(Rail.accountLabel({ service: 'telegram', name: 'Work' }), 'Telegram · Work');
+});
+
+test('accountLabel uses the helper\'s own service name when given', () => {
+  const known = [{ id: 'telegram', name: 'Telegram (beta)' }];
+
+  assert.strictEqual(Rail.accountLabel({ service: 'telegram', name: 'Work' }, known), 'Telegram (beta) · Work');
 });
 
 test('items: an account waiting for sign-in ranks worst', () => {
@@ -316,6 +340,12 @@ test('multiAccountServices lists the services the rail split by account', () => 
 test('accountDescription names an account by who is signed in when known', () => {
   assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Telegram', detail: 'Signed in as Tim' }), 'Telegram · Signed in as Tim');
   assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Work', detail: '' }), 'Telegram · Work');
+});
+
+test('accountDescription uses the helper\'s own service name when given', () => {
+  const known = [{ id: 'telegram', name: 'Telegram (beta)' }];
+
+  assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Work', detail: '' }, known), 'Telegram (beta) · Work');
 });
 
 test('recent keeps chats active within a month, unread ones and the open one', () => {

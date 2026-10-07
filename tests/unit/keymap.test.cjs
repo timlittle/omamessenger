@@ -105,7 +105,7 @@ test('bindingsFor puts the context hints before the global ones', () => {
 test('the palette offers commands that have no key, with none shown', () => {
   const add = Keymap.commands().find((c) => c.action === 'account.add');
 
-  assert.deepEqual(add, { action: 'account.add', label: 'Add a Telegram account', keys: '' });
+  assert.deepEqual(add, { action: 'account.add', label: 'Add an account', keys: '' });
   assert.ok(Keymap.commands().some((c) => c.action === 'account.addOwnKeys'));
   assert.ok(Keymap.commands().some((c) => c.action === 'account.remove'));
   assert.ok(Keymap.commands().some((c) => c.action === 'list.olderChats'));

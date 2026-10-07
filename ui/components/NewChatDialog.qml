@@ -22,6 +22,9 @@ Item {
   property var contacts: []
   // currentIndex is the highlighted row in contacts.
   property int currentIndex: 0
+  // knownServices: the helper's own services, from hello, for each
+  // account button's label; falls back to the built-in labels when empty.
+  property var knownServices: []
 
   // searchField exposes the search input so a key router can intercept
   // navigation keys before the field types them, the same way Composer
@@ -98,7 +101,7 @@ Item {
           Ui.Button {
             required property var modelData
 
-            text: Rail.accountLabel(modelData)
+            text: Rail.accountLabel(modelData, root.knownServices)
             selected: modelData.id === root.accountId
             focusable: true
             onClicked: root.accountChanged(modelData.id)

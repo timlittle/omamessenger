@@ -15,6 +15,9 @@ Item {
   property var entry: ({})
   // selected is true when the conversation list shows this entry.
   property bool selected: false
+  // knownServices: the helper's own services, from hello, for the account
+  // tooltip's service name; falls back to the built-in labels when empty.
+  property var knownServices: []
 
   readonly property bool account: root.entry.kind === "account"
   readonly property string statusWord: Rail.statusLabel(root.entry.status)
@@ -25,7 +28,7 @@ Item {
   objectName: "entry-" + root.entry.key
   implicitHeight: layout.implicitHeight + Theme.spacing.sm * 2
   ToolTip.visible: hover.containsMouse
-  ToolTip.text: (root.account ? Rail.accountLabel({ service: root.entry.service, name: root.entry.label }) : root.entry.label)
+  ToolTip.text: (root.account ? Rail.accountLabel({ service: root.entry.service, name: root.entry.label }, root.knownServices) : root.entry.label)
     + (root.statusWord ? " · " + root.statusWord : "")
   ToolTip.delay: 500
 

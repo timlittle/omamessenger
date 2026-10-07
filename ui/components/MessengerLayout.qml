@@ -144,6 +144,7 @@ Item {
 
       items: root.listController.railItems
       selectedKey: root.listController.railKey
+      knownServices: root.service ? root.service.services : []
 
       onSelected: key => root.listController.setRail(key)
       onNewChat: root.dialogController.run("chat.new")
@@ -186,7 +187,7 @@ Item {
 
         Text {
           Layout.fillWidth: true
-          text: "No accounts yet. Add your Telegram account to see your chats here."
+          text: "No accounts yet. Add an account to see your chats here."
           wrapMode: Text.WordWrap
           color: Util.alpha(Color.foreground, 0.7)
           font { family: Theme.font.family; pixelSize: Theme.font.body }
@@ -194,7 +195,7 @@ Item {
 
         Ui.Button {
           objectName: "addAccountButton"
-          text: "Add Telegram account"
+          text: "Add an account"
           focusable: true
           onClicked: root.accountController.begin()
         }
@@ -292,12 +293,15 @@ Item {
     visible: root.accountController?.open ?? false
 
     stage: root.accountController?.stage ?? "credentials"
+    services: root.service ? root.service.services : []
+    serviceName: root.accountController?.serviceName ?? "Telegram"
     qr: root.accountController?.qr ?? ""
     hint: root.accountController?.hint ?? ""
     error: root.accountController?.lastError ?? ""
     busy: root.accountController?.busy ?? false
     routeKey: root.routeKey
 
+    onServiceChosen: serviceId => root.accountController.chooseService(serviceId)
     onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)
     onPhoneRequested: root.accountController.usePhone()
     onAnswered: value => root.accountController.answer(value)
@@ -311,6 +315,7 @@ Item {
     open: root.accountController?.removing ?? false
     accounts: root.service ? root.service.accounts : []
     error: root.accountController?.lastError ?? ""
+    knownServices: root.service ? root.service.services : []
 
     onChosen: accountId => root.accountController.remove(accountId)
     onCancelled: {
@@ -327,6 +332,7 @@ Item {
 
     accounts: root.service ? root.service.accounts : []
     accountId: root.dialogController.accountId
+    knownServices: root.service ? root.service.services : []
     query: root.dialogController.query
     contacts: root.dialogController.contacts
     currentIndex: root.dialogController.currentIndex

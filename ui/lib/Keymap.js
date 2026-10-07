@@ -36,7 +36,7 @@ var BINDINGS = [
   { action: 'unread.prev', keys: ['Alt+Shift+Up'], contexts: ['global'], label: 'Previous unread conversation', command: true },
   { action: 'chat.next', keys: ['Alt+Down'], contexts: ['global'], label: 'Next conversation', command: true },
   { action: 'chat.prev', keys: ['Alt+Up'], contexts: ['global'], label: 'Previous conversation', command: true },
-  { action: 'account.add', keys: [], contexts: ['global'], label: 'Add a Telegram account', command: true },
+  { action: 'account.add', keys: [], contexts: ['global'], label: 'Add an account', command: true },
   { action: 'account.remove', keys: [], contexts: ['global'], label: 'Remove an account', command: true },
   { action: 'account.addOwnKeys', keys: [], contexts: ['global'], label: 'Add a Telegram account with your own API keys', command: true },
   { action: 'rail.all', keys: ['Ctrl+0'], contexts: ['global'], label: 'Show all services', command: true },

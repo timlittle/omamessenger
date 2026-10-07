@@ -23,7 +23,8 @@ Item {
   readonly property alias model: listModel
 
   // railItems is the rail's entries, from Rail.items.
-  readonly property var railItems: Rail.items(root.service ? root.service.accounts : [], root._all)
+  readonly property var railItems: Rail.items(root.service ? root.service.accounts : [], root._all,
+    root.service ? root.service.services : [])
 
   // all is every conversation the helper reported, for the palette's
   // jump-to-conversation list.

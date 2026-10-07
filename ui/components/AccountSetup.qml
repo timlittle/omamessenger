@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
@@ -5,14 +6,22 @@ import qs.Ui as Ui
 import "../theme"
 import "../lib/Setup.js" as Setup
 
-// Adds a Telegram account and signs it in: optionally the user's own API
-// id and hash from my.telegram.org, then a QR code to scan, or a phone number, login code
-// and two-step password. Enter continues, Escape cancels.
+// Adds an account and signs it in: a chooser first when the helper offers
+// more than one service, then optionally the user's own API id and hash
+// from my.telegram.org for Telegram, then a QR code to scan, or a phone
+// number, login code and two-step password. Enter continues, Escape
+// cancels.
 Item {
   id: root
 
-  // stage is the step shown: credentials, waiting, qr, phone, code or password.
+  // stage is the step shown: chooseService, credentials, waiting, qr,
+  // phone, code or password.
   property string stage: "credentials"
+  // services lists the services to pick from at the chooseService step.
+  property var services: []
+  // serviceName names the service being set up, for every step after the
+  // chooser.
+  property string serviceName: "Telegram"
   // qr is the QR code to scan, as a base64 PNG.
   property string qr: ""
   // hint explains the current step.
@@ -24,6 +33,8 @@ Item {
   // routeKey intercepts key presses in the fields first; see Composer.qml.
   property var routeKey: null
 
+  // serviceChosen reports the service picked at the chooseService step.
+  signal serviceChosen(string serviceId)
   // credentialsSubmitted reports the API id and hash typed in.
   signal credentialsSubmitted(string apiId, string apiHash)
   // phoneRequested asks to sign in by phone number instead of QR code.
@@ -45,7 +56,8 @@ Item {
 
   // _focusStep focuses the stage's first control once it is visible.
   function _focusStep(): void {
-    if (root.stage === "credentials") idField.forceActiveFocus();
+    if (root.stage === "chooseService") { if (serviceRepeater.count > 0) serviceRepeater.itemAt(0).forceActiveFocus(); }
+    else if (root.stage === "credentials") idField.forceActiveFocus();
     else if (root.stage === "qr") usePhoneButton.forceActiveFocus();
     else if (root._field) { answerField.text = ""; answerField.forceActiveFocus(); }
   }
@@ -67,7 +79,9 @@ Item {
       spacing: Theme.spacing.md
 
       Text {
-        text: root.stage === "credentials" ? "Add a Telegram account" : "Sign in to Telegram"
+        text: root.stage === "chooseService" ? "Add an account"
+          : root.stage === "credentials" ? "Add a " + root.serviceName + " account"
+          : "Sign in to " + root.serviceName
         color: Color.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.subtitle; weight: Font.DemiBold }
       }
@@ -75,9 +89,10 @@ Item {
       Text {
         objectName: "stepHint"
         Layout.fillWidth: true
-        text: root.stage === "credentials"
+        text: root.stage === "chooseService" ? "Choose which service to add an account for."
+          : root.stage === "credentials"
           ? "To use your own Telegram app instead of OmaMessenger's, sign in at <a href=\"https://my.telegram.org/apps\">my.telegram.org</a>, open API development tools, and copy the app's api_id and api_hash here. They stay on this computer."
-          : root.stage === "waiting" ? "Connecting to Telegram…" : root.hint
+          : root.stage === "waiting" ? "Connecting to " + root.serviceName + "…" : root.hint
         visible: text !== ""
         textFormat: Text.StyledText
         wrapMode: Text.WordWrap
@@ -85,6 +100,29 @@ Item {
         color: Util.alpha(Color.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.body }
         onLinkActivated: link => Qt.openUrlExternally(link)
+      }
+
+      ColumnLayout {
+        id: serviceChoices
+        Layout.fillWidth: true
+        visible: root.stage === "chooseService"
+        spacing: Theme.spacing.controlGap
+
+        Repeater {
+          id: serviceRepeater
+          model: root.services
+
+          Ui.Button {
+            required property var modelData
+
+            objectName: "serviceButton-" + modelData.id
+            Layout.fillWidth: true
+            leftAlign: true
+            text: modelData.name
+            focusable: true
+            onClicked: root.serviceChosen(modelData.id)
+          }
+        }
       }
 
       Ui.TextField {

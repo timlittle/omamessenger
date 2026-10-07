@@ -21,6 +21,10 @@ QtObject {
   // version is the helper's protocol version, from hello.
   property int version: 0
 
+  // services are the messaging services the helper can add an account
+  // for, from hello. Empty for a helper too old to report them.
+  property var services: []
+
   // uiState is what the panel restores after Omarchy destroys and
   // recreates it: the rail filter, selection, open pane, search text and
   // unsent drafts keyed by conversation id.
@@ -37,6 +41,7 @@ QtObject {
   function applyHello(result: var): void {
     root.version = result.protocol || 0;
     root.unreadTotal = result.unreadTotal || 0;
+    root.services = result.services || [];
   }
 
   // applyAccountUpdated replaces one account in the list, or appends it

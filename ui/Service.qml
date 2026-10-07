@@ -31,6 +31,10 @@ Item {
   // accounts is the signed-in accounts the helper reported.
   readonly property var accounts: appState.accounts
 
+  // services are the messaging services the helper can add an account
+  // for, from hello. Empty for a helper too old to report them.
+  readonly property var services: appState.services
+
   // pendingAuth is the sign-in step an account is waiting on, or null.
   readonly property var pendingAuth: appState.pendingAuth
 

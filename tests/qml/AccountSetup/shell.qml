@@ -27,6 +27,7 @@ ShellRoot {
     property var accounts: []
     property var pendingAuth: null
     property var requests: []
+    property var services: []
 
     signal event(string name, var data)
 
@@ -56,11 +57,14 @@ ShellRoot {
       id: view
       visible: controller.open
       stage: controller.stage
+      services: service.services
+      serviceName: controller.serviceName
       qr: controller.qr
       hint: controller.hint
       error: controller.lastError
       busy: controller.busy
 
+      onServiceChosen: serviceId => controller.chooseService(serviceId)
       onCredentialsSubmitted: (apiId, apiHash) => controller.submitCredentials(apiId, apiHash)
       onPhoneRequested: controller.usePhone()
       onAnswered: value => controller.answer(value)
@@ -82,6 +86,7 @@ ShellRoot {
     if (!root.checkCancelRemoves()) return;
     if (!root.checkResumesPendingStep()) return;
     if (!root.checkRemovesAnAccount()) return;
+    if (!root.checkChoosesAServiceWhenThereAreSeveral()) return;
 
     console.log("PASS AccountSetup");
     Qt.exit(0);
@@ -188,6 +193,31 @@ ShellRoot {
 
     service.event("account.removed", { accountId: "tg-9" });
     if (controller.removing) return Check.fail("removal still showing after the account was removed");
+    return true;
+  }
+
+  // checkChoosesAServiceWhenThereAreSeveral shows a chooser when the
+  // helper offers more than one service, and adds the account for
+  // whichever is picked, naming it in setup's wording.
+  function checkChoosesAServiceWhenThereAreSeveral(): bool {
+    service.services = [{ id: "telegram", name: "Telegram" }, { id: "whatsapp", name: "WhatsApp" }];
+    service.requests = [];
+
+    controller.run("account.add");
+    if (controller.stage !== "chooseService" || service.requests.length !== 0) {
+      return Check.fail("account.add did not show a chooser: " + controller.stage);
+    }
+
+    const button = Check.find(view, "serviceButton-whatsapp");
+    if (!button) return Check.fail("no chooser button for whatsapp");
+
+    button.clicked();
+    const sent = root.last();
+    if (sent.method !== "accounts.add" || sent.params.service !== "whatsapp") return Check.fail("chooseService sent " + JSON.stringify(sent));
+    if (controller.serviceName !== "WhatsApp" || controller.stage !== "waiting") return Check.fail("not waiting for whatsapp");
+
+    controller.cancel();
+    service.services = [];
     return true;
   }
 }

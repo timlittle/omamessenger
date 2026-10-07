@@ -52,7 +52,7 @@ QtObject {
 
   // paletteItems are paletteResults as rows to show: {label, detail, keys}.
   readonly property var paletteItems: root.paletteMode === "conversations"
-    ? root.paletteResults.map((c) => ({ label: c.title, detail: Rail.serviceLabel(c.service), keys: "" }))
+    ? root.paletteResults.map((c) => ({ label: c.title, detail: Rail.serviceLabel(c.service, root.service ? root.service.services : []), keys: "" }))
     : root.paletteResults
 
   // confirmingClose shows the question asking what closing should do.

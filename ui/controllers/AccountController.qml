@@ -1,13 +1,16 @@
 import QtQuick
 import "../lib/Actions.js" as Actions
+import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
 import "../lib/Setup.js" as Setup
 
-// Owns account setup: adding a Telegram account, with OmaMessenger's own
-// app keys or the user's from my.telegram.org, then answering the sign-in steps its connector asks for until it
-// connects. The only controller that calls accounts.add, accounts.remove
-// and auth.submit. A sign-in step for a saved account whose session ran
-// out opens setup too, at that step. It also removes accounts.
+// Owns account setup: choosing a service when the helper offers more than
+// one, adding an account with OmaMessenger's own app keys (or, for
+// Telegram, the user's own from my.telegram.org), then answering the
+// sign-in steps its connector asks for until it connects. The only
+// controller that calls accounts.add, accounts.remove and auth.submit. A
+// sign-in step for a saved account whose session ran out opens setup too,
+// at that step. It also removes accounts.
 //
 // Item rather than QtObject: it holds a Connections child.
 Item {
@@ -19,9 +22,13 @@ Item {
   // open shows account setup.
   property bool open: false
 
-  // stage is what setup shows: credentials, waiting, qr, phone, code or
-  // password.
+  // stage is what setup shows: chooseService, credentials, waiting, qr,
+  // phone, code or password.
   property string stage: "credentials"
+
+  // chosenService is the service the account being set up belongs to,
+  // "telegram" until the user picks another from the chooser.
+  property string chosenService: "telegram"
 
   // accountId is the account being signed in, once the helper has added it.
   property string accountId: ""
@@ -45,6 +52,9 @@ Item {
   // remove it. A saved account asking to sign in again is never removed.
   property bool _added: false
 
+  // serviceName names the account's service, for AccountSetup's wording.
+  readonly property string serviceName: Rail.serviceLabel(root.chosenService, root.service ? root.service.services : [])
+
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
     return Actions.owner(action) === "account";
@@ -63,19 +73,43 @@ Item {
     root._call("accounts.remove", { accountId: accountId }, () => {});
   }
 
-  // begin adds an account with OmaMessenger's keys and waits for its first
-  // sign-in step.
+  // begin starts adding an account: straight to its own setup when the
+  // helper offers only one service, or a chooser when it offers several.
+  // A helper too old to report its services defaults to Telegram, as
+  // before that list existed.
   function begin(): void {
+    const services = root.service && root.service.services ? root.service.services : [];
+    if (services.length > 1) {
+      root._reset();
+      root.open = true;
+      root.stage = "chooseService";
+      return;
+    }
+
+    root._beginService(services.length === 1 ? services[0].id : "telegram");
+  }
+
+  // chooseService adds an account for the service picked at the chooser.
+  function chooseService(serviceId: string): void {
+    root._beginService(serviceId);
+  }
+
+  // _beginService adds an account for serviceId with OmaMessenger's own
+  // keys and waits for its first sign-in step.
+  function _beginService(serviceId: string): void {
     root._reset();
+    root.chosenService = serviceId;
     root.open = true;
     root.stage = "waiting";
-    root._add({ service: "telegram" });
+    root._add({ service: serviceId });
   }
 
   // beginWithOwnKeys opens setup at the credentials step, for someone who
-  // would rather use their own Telegram app.
+  // would rather use their own Telegram app. Telegram only: it is the
+  // only service whose own API keys OmaMessenger's helper accepts.
   function beginWithOwnKeys(): void {
     root._reset();
+    root.chosenService = "telegram";
     root.open = true;
   }
 

@@ -17,6 +17,9 @@ Item {
   property var items: []
   // selectedKey: the entry currently shown in the conversation list.
   property string selectedKey: ""
+  // knownServices: the helper's own services, from hello, for an entry's
+  // tooltip; falls back to the built-in labels when empty.
+  property var knownServices: []
 
   // selected fires when an entry is clicked.
   signal selected(string key)
@@ -46,6 +49,7 @@ Item {
         width: list.width
         entry: modelData
         selected: modelData.key === root.selectedKey
+        knownServices: root.knownServices
         onClicked: root.selected(modelData.key)
       }
     }

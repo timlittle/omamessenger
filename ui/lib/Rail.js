@@ -22,7 +22,9 @@ var STATUS_RANK = { 'needs-auth': -1, error: 0, connecting: 1, offline: 2, conne
 var STATUS_LABELS = { 'needs-auth': 'Sign-in needed' };
 
 // items builds the rail entries for the accounts and conversations.
-function items(accounts, conversations) {
+// knownServices, when given, is the helper's own list of services (from
+// hello), whose names take over from the labels below.
+function items(accounts, conversations, knownServices) {
   if (!accounts || !conversations) {
     return [];
   }
@@ -34,7 +36,7 @@ function items(accounts, conversations) {
       continue;
     }
 
-    const serviceEntry = entry(`service:${service.id}`, 'service', serviceLabel(service.id), own, conversations);
+    const serviceEntry = entry(`service:${service.id}`, 'service', serviceLabel(service.id, knownServices), own, conversations);
     result.push(Object.assign(serviceEntry, { service: service.id }));
 
     if (own.length > 1) {
@@ -91,23 +93,30 @@ function next(items, key, delta) {
   return items[(((current + delta) % count) + count) % count].key;
 }
 
-// serviceLabel returns a service's display name, or its id when unknown.
-function serviceLabel(service) {
-  const known = SERVICES.find((s) => s.id === service);
+// serviceLabel returns a service's display name: from knownServices (the
+// helper's own hello list) when it names the service, else the built-in
+// label, else the service id itself.
+function serviceLabel(service, knownServices) {
+  const known = (knownServices ?? []).find((s) => s.id === service);
+  if (known) {
+    return known.name;
+  }
 
-  return known ? known.label : service;
+  const fallback = SERVICES.find((s) => s.id === service);
+
+  return fallback ? fallback.label : service;
 }
 
 // accountLabel names an account together with its service, because
 // account names such as "Personal" repeat across services.
-function accountLabel(account) {
-  return `${serviceLabel(account.service)} · ${account.name}`;
+function accountLabel(account, knownServices) {
+  return `${serviceLabel(account.service, knownServices)} · ${account.name}`;
 }
 
 // accountDescription names an account by who is signed in to it when the
 // helper says so, since its name is often just the service's.
-function accountDescription(account) {
-  return `${serviceLabel(account.service)} · ${account.detail || account.name}`;
+function accountDescription(account, knownServices) {
+  return `${serviceLabel(account.service, knownServices)} · ${account.detail || account.name}`;
 }
 
 // unreadTotal sums the unread counts of conversations that are not muted.

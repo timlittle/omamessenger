@@ -18,6 +18,9 @@ Item {
   property var accounts: []
   // error is the last failure, shown under the choices.
   property string error: ""
+  // knownServices: the helper's own services, from hello, for each
+  // account's label; falls back to the built-in labels when empty.
+  property var knownServices: []
 
   // chosen reports the account to remove.
   signal chosen(string accountId)
@@ -62,7 +65,7 @@ Item {
 
           Layout.fillWidth: true
           leftAlign: true
-          text: "Remove " + Rail.accountDescription(modelData)
+          text: "Remove " + Rail.accountDescription(modelData, root.knownServices)
           focusable: true
           onClicked: root.chosen(modelData.id)
         }
