@@ -7,15 +7,16 @@ import "github.com/timlittle/omamessenger/backend/internal/domain"
 
 // Input describes one arriving message and the state it arrives into.
 type Input struct {
-	Notifications bool // the user's notification setting
-	Preview       bool // show message text in notifications
-	Muted         bool // the conversation is muted
-	Focused       bool // the conversation is the one open in the window
-	WindowActive  bool // the window has focus
-	Kind          string
-	Sender        string
-	Title         string
-	Text          string
+	Notifications  bool // the user's notification setting
+	Preview        bool // show message text in notifications
+	Muted          bool // the conversation is muted
+	Focused        bool // the conversation is the one open in the window
+	WindowActive   bool // the window has focus
+	Kind           string
+	Sender         string
+	Title          string
+	Text           string
+	ConversationID string // carried in the notification, so a click can reopen it
 }
 
 // MarkReadOnArrival reports whether the user is looking at the conversation,
@@ -29,9 +30,11 @@ func ShouldNotify(in Input) bool {
 	return in.Notifications && !in.Muted && !MarkReadOnArrival(in)
 }
 
-// Notification returns the title and body for a desktop notification. Groups
-// name the conversation; the body hides the text unless previews are on.
-func Notification(in Input) (title, body string) {
+// Notification returns the title, body and conversation id for a desktop
+// notification. Groups name the conversation; the body hides the text
+// unless previews are on; the conversation id passes straight through, so
+// a click on the notification can reopen it.
+func Notification(in Input) (title, body, conversationID string) {
 	title = in.Sender
 	if in.Kind == domain.KindGroup {
 		title += " · " + in.Title
@@ -40,5 +43,5 @@ func Notification(in Input) (title, body string) {
 	if in.Preview {
 		body = in.Text
 	}
-	return title, body
+	return title, body, in.ConversationID
 }

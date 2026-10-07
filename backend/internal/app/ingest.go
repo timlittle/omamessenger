@@ -153,14 +153,15 @@ func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Inp
 	settings, focused, windowActive := in.ui.snapshot()
 
 	return policy.Input{
-		Notifications: settings.Notifications,
-		Preview:       settings.NotificationPreview,
-		Muted:         conv.Muted,
-		Focused:       focused == conv.ID,
-		WindowActive:  windowActive,
-		Kind:          conv.Kind,
-		Sender:        m.SenderName,
-		Title:         conv.Title,
-		Text:          m.Text,
+		Notifications:  settings.Notifications,
+		Preview:        settings.NotificationPreview,
+		Muted:          conv.Muted,
+		Focused:        focused == conv.ID,
+		WindowActive:   windowActive,
+		Kind:           conv.Kind,
+		Sender:         m.SenderName,
+		Title:          conv.Title,
+		Text:           m.Text,
+		ConversationID: conv.ID,
 	}
 }

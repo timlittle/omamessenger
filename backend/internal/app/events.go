@@ -16,6 +16,7 @@ const (
 	EventTyping              = "typing"
 	EventAccountRemoved      = "account.removed"
 	EventAuthStep            = "auth.step"
+	EventNotificationClicked = "notification.clicked"
 )
 
 // UnreadChanged is the data of an unread.changed event.
@@ -42,6 +43,13 @@ type AuthStep struct {
 	Kind      string `json:"kind"`
 	QR        string `json:"qr,omitempty"`
 	Hint      string `json:"hint,omitempty"`
+}
+
+// NotificationClicked is the data of a notification.clicked event: the
+// conversation a desktop notification carried, which clicking it should
+// open.
+type NotificationClicked struct {
+	ConversationID string `json:"conversationId"`
 }
 
 // events publishes UI events, including the derived ones: a conversation's

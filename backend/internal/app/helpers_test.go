@@ -119,17 +119,20 @@ func (d *fakeDispatcher) MarkRead(_ context.Context, conv domain.Conversation) e
 	return nil
 }
 
-// fakeNotifier records notifications as "title: body".
+// fakeNotifier records notifications as "title: body" and the conversation
+// id each one carried.
 type fakeNotifier struct {
 	mu    sync.Mutex
 	shown []string
+	convs []string
 }
 
-func (n *fakeNotifier) Notify(title, body string) {
+func (n *fakeNotifier) Notify(title, body, conversationID string) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	n.shown = append(n.shown, title+": "+body)
+	n.convs = append(n.convs, conversationID)
 }
 
 // all returns the notifications shown so far.
@@ -138,6 +141,15 @@ func (n *fakeNotifier) all() []string {
 	defer n.mu.Unlock()
 
 	return slices.Clone(n.shown)
+}
+
+// conversations returns the conversation id carried by each notification
+// shown so far, in order.
+func (n *fakeNotifier) conversations() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	return slices.Clone(n.convs)
 }
 
 // fakePublisher records published event names and data.

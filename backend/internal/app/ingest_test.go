@@ -33,6 +33,20 @@ func TestIncoming_StoresPublishesAndNotifies(t *testing.T) {
 	}
 }
 
+func TestIncoming_NotifiesWithTheConversationID(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "First"))
+
+	if got := f.notifier.conversations(); !slices.Equal(got, []string{chat.ID}) {
+		t.Errorf("notified conversations = %v, want [%s]", got, chat.ID)
+	}
+}
+
 func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 	t.Parallel()
 
