@@ -27,10 +27,12 @@ jobs:
           make tools
           build/tools/golangci-lint run ./...
           go run ./tools/nologcontent ./backend/...
+      - name: Dependency licenses
+        run: make license-check
       - name: Shell scripts
         run: shellcheck scripts/*.sh bin/oma-messenger-service
       - name: Release build
-        run: ./scripts/build-release.sh
+        run: make build-all
 
   # The QML tests and Qt 6 lint need Quickshell and Omarchy's shell, so they
   # run in Arch with Omarchy's source checked out at the version the UI is

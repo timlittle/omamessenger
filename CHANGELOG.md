@@ -7,6 +7,7 @@ The first tagged release: a keyboard-first unified messaging client for Omarchy,
 ### Features
 
 - **Telegram sign-in and sync** — add an account by QR code or phone number and code, with two-step verification support; recent chats sync on connect, and live messages, sends and read receipts stay in step with the app
+- **WhatsApp sign-in and sync** — add an account by QR code or phone number and an 8-character code, linking this as a companion device; recent chats sync on connect, and live messages, sends, receipts, media, reactions, replies, pin and archive stay in step with the phone
 - **Media** — send and receive photos, videos and files; photos open in an in-window viewer sized to the window, with a blurred preview while the full image downloads; paste an image from the clipboard straight into the composer
 - **Replies** — reply to any message, with a quote shown in the bubble that scrolls to the original when clicked
 - **Reactions** — react to a message with a short emoji picker; one reaction per person, kept in step with Telegram
@@ -22,6 +23,10 @@ The first tagged release: a keyboard-first unified messaging client for Omarchy,
 
 ### Known limitations
 
-- WhatsApp is not supported yet; only Telegram accounts can be added
+- WhatsApp's older history does not load further back as you scroll; only what syncs when you link the device is available
 - The helper does not yet catch up on everything that happened while it was offline; a long gap between runs may miss updates until the next full sync
 - Files attached to outgoing messages are kept in `media/outgoing/` for retries but are not cleaned up once the message is safely delivered
+
+### Licensing
+
+- Release helper binaries link go.mau.fi/libsignal (GPL-3.0) for WhatsApp's encryption, so release binaries are distributed under GPL-3.0; this repository's own source stays MIT. See the README's License section and `THIRD_PARTY_NOTICES` in each release

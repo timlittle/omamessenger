@@ -1,6 +1,6 @@
 # OmaMessenger
 
-A keyboard-first messaging client for [Omarchy](https://omarchy.org). Telegram today, WhatsApp planned.
+A keyboard-first messaging client for [Omarchy](https://omarchy.org), for Telegram and WhatsApp accounts.
 
 ![OmaMessenger](docs/demo.gif)
 
@@ -37,6 +37,10 @@ o.bind("SUPER + ALT + M", "OmaMessenger", "omarchy-shell shell summon io.github.
 Choose **Add an account** in the window or the command palette. Scan the QR code shown with Telegram (**Settings → Devices → Link Desktop Device**), or choose **Use phone number instead** for a code, and a password if the account has two-step verification. Recent chats sync once it connects.
 
 To sign in with your own Telegram API keys instead of OmaMessenger's, see [docs/telegram.md](docs/telegram.md).
+
+## Sign in to WhatsApp
+
+Choose **Add an account** in the window or the command palette. Scan the QR code shown with WhatsApp (**Settings → Linked devices → Link a device**), or choose **Use phone number instead** and type the 8-character code it shows into WhatsApp. Recent chats sync once it connects; older history beyond what syncs at pairing does not load further back as you scroll, unlike Telegram.
 
 ## Keyboard shortcuts
 
@@ -83,4 +87,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and contributio
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+OmaMessenger's own source is MIT, see [LICENSE](LICENSE). The helper binary built for releases also includes GPL-3.0 code (libsignal, used for WhatsApp's encryption), so release binaries are distributed under GPL-3.0, see [LICENSE-GPL-3.0](LICENSE-GPL-3.0). Third-party notices for everything the helper links are in `THIRD_PARTY_NOTICES`, next to the binary in each release.

@@ -16,23 +16,39 @@ COVERAGE_FILE := build/cover.out
 # Third-party tools, pinned and built with the local Go into build/tools/.
 GOLANGCI_LINT_VERSION := v2.14.0
 GO_TEST_COVERAGE_VERSION := v2.20.0
+GO_LICENSES_VERSION := v2.0.1
 TOOLS := $(CURDIR)/build/tools
 GOLANGCI_LINT := $(TOOLS)/golangci-lint
 GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
+GO_LICENSES := $(TOOLS)/go-licenses
 
 FAKE_HELPER := build/fake/oma-messenger-service
+THIRD_PARTY_NOTICES := build/THIRD_PARTY_NOTICES
+
+# Licenses the helper's dependencies may use. go.mau.fi/libsignal (GPL-3.0,
+# pulled in by WhatsApp support) is why release binaries are GPL-3.0 even
+# though this repository's own source stays MIT; see docs/decisions.md.
+ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC,MPL-2.0,GPL-3.0
+
+# github.com/segmentio/asm (a Telegram dependency) is MIT ("MIT No
+# Attribution"); go-licenses' classifier does not recognise that exact
+# license text and reports it unclassified rather than guessing, so it is
+# excluded from the automated check and license report and covered by hand
+# in scripts/third-party-notices.tmpl instead. Everything else the helper
+# links goes through go-licenses unmodified.
+LICENSE_IGNORE := --ignore github.com/segmentio/asm
 
 # Tests run the helper with fake accounts that send messages. Pointing the
 # session bus nowhere makes their notify-send calls fail quietly, so no
 # test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo lint tools validate install-local release-check clean
+.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo lint license-check third-party-notices tools validate install-local release-check clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-check: build test test-qml lint ## Run every gate: build, tests with coverage, QML tests, lint
+check: build test test-qml lint license-check ## Run every gate: build, tests with coverage, QML tests, lint, dependency licenses
 
 build: ## Build the helper for this machine into bin/dev/, which the launcher prefers
 	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/dev/oma-messenger-service ./backend
@@ -40,7 +56,7 @@ build: ## Build the helper for this machine into bin/dev/, which the launcher pr
 build-fake: ## Build the test helper, which runs scripted fake accounts, into build/fake/
 	CGO_ENABLED=0 $(GO) build -tags fake -trimpath -buildvcs=false -o $(FAKE_HELPER) ./backend
 
-build-all: ## Build the release helpers and SHA256SUMS into build/release/
+build-all: third-party-notices ## Build the release helpers, SHA256SUMS and license notices into build/release/
 	./scripts/build-release.sh
 
 # Cross-compiles both release binaries, so it is too slow for `make check`;
@@ -152,13 +168,24 @@ lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QM
 	$(QMLLINT) -I build/qml --max-warnings 0 $$(find ui -name '*.qml')
 	git --no-pager diff --check
 
-tools: $(GOLANGCI_LINT) $(GO_TEST_COVERAGE) ## Build the pinned golangci-lint and go-test-coverage
+license-check: $(GO_LICENSES) ## Fail if a helper dependency's license is not on the allow-list
+	$(GO_LICENSES) check ./backend --allowed_licenses=$(ALLOWED_LICENSES) $(LICENSE_IGNORE)
+
+third-party-notices: $(GO_LICENSES) ## Generate build/THIRD_PARTY_NOTICES, published with each release
+	@mkdir -p $(dir $(THIRD_PARTY_NOTICES))
+	$(GO_LICENSES) report ./backend $(LICENSE_IGNORE) --ignore github.com/timlittle/omamessenger \
+		--template scripts/third-party-notices.tmpl > $(THIRD_PARTY_NOTICES)
+
+tools: $(GOLANGCI_LINT) $(GO_TEST_COVERAGE) $(GO_LICENSES) ## Build the pinned golangci-lint, go-test-coverage and go-licenses
 
 $(GOLANGCI_LINT):
 	GOBIN=$(TOOLS) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 $(GO_TEST_COVERAGE):
 	GOBIN=$(TOOLS) $(GO) install github.com/vladopajic/go-test-coverage/v2@$(GO_TEST_COVERAGE_VERSION)
+
+$(GO_LICENSES):
+	GOBIN=$(TOOLS) $(GO) install github.com/google/go-licenses/v2@$(GO_LICENSES_VERSION)
 
 validate: ## Validate the plugin files, as staged for install, with Omarchy
 	OMARCHY="$(OMARCHY)" ./scripts/install-local.sh --check

@@ -1,8 +1,10 @@
 name: Release helper
 
-# Publishes the helper for a version tag. Binaries are attached to the GitHub
-# Release, never committed: the plugin installs the release pinned in
-# helper-version with scripts/install-helper.sh, which verifies SHA256SUMS.
+# Publishes the helper for a version tag. Binaries, LICENSE-GPL-3.0 and
+# THIRD_PARTY_NOTICES are attached to the GitHub Release, never committed:
+# the plugin installs the binary pinned in helper-version with
+# scripts/install-helper.sh, which verifies SHA256SUMS (covering all four
+# files; see docs/decisions.md for why a release binary ships GPL-3.0 text).
 on:
   push:
     tags: ["v*"]
@@ -28,8 +30,8 @@ jobs:
       - name: Test
         run: go test -race ./...
 
-      - name: Build helpers and SHA256SUMS
-        run: ./scripts/build-release.sh
+      - name: Build helpers, SHA256SUMS and license notices
+        run: make build-all
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
