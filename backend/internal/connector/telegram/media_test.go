@@ -56,6 +56,62 @@ func TestMedia_Photo(t *testing.T) {
 	}
 }
 
+func TestMedia_VideoFileAndVoice(t *testing.T) {
+	t.Parallel()
+
+	video := &tg.Document{Size: 1000, Thumbs: []tg.PhotoSizeClass{stripped}, Attributes: []tg.DocumentAttributeClass{
+		&tg.DocumentAttributeVideo{Duration: 65.4, W: 1280, H: 720},
+		&tg.DocumentAttributeFilename{FileName: "clip.mp4"},
+	}}
+	file := &tg.Document{Size: 2048, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeFilename{FileName: "report.pdf"}}}
+	voice := &tg.Document{Size: 300, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeAudio{Voice: true, Duration: 5}}}
+
+	tests := map[string]struct {
+		doc  *tg.Document
+		want domain.Media
+	}{
+		"video": {video, domain.Media{Kind: domain.MediaVideo, Width: 1280, Height: 720, Duration: 65, FileName: "clip.mp4", Size: 1000}},
+		"file":  {file, domain.Media{Kind: domain.MediaFile, FileName: "report.pdf", Size: 2048}},
+		"voice": {voice, domain.Media{Kind: domain.MediaFile, FileName: "voice-message.ogg", Size: 300, Duration: 5}},
+	}
+
+	for name, tt := range tests {
+		got := media(&tg.MessageMediaDocument{Document: tt.doc})
+		if got == nil {
+			t.Errorf("%s: no media", name)
+			continue
+		}
+
+		thumb := got.Thumb
+		got.Thumb = ""
+		if *got != tt.want {
+			t.Errorf("%s: media = %+v, want %+v", name, *got, tt.want)
+		}
+
+		if (name == "video") != (thumb != "") {
+			t.Errorf("%s: thumb %q", name, thumb)
+		}
+	}
+}
+
+func TestMessageText_LabelsDocumentsByWhatTheyAre(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]tg.DocumentAttributeClass{
+		"[Video]":         &tg.DocumentAttributeVideo{},
+		"[Voice message]": &tg.DocumentAttributeAudio{Voice: true},
+		"[Sticker]":       &tg.DocumentAttributeSticker{},
+		"[File]":          &tg.DocumentAttributeFilename{FileName: "a.pdf"},
+	}
+
+	for want, attr := range tests {
+		doc := &tg.MessageMediaDocument{Document: &tg.Document{Attributes: []tg.DocumentAttributeClass{attr}}}
+		if got := messageText(&tg.Message{Media: doc}); got != want {
+			t.Errorf("messageText(%T) = %q, want %q", attr, got, want)
+		}
+	}
+}
+
 func TestMedia_NothingToShow(t *testing.T) {
 	t.Parallel()
 
@@ -131,5 +187,15 @@ func TestFetchMedia_Fails(t *testing.T) {
 		if err == nil {
 			t.Errorf("FetchMedia %s succeeded, want an error", name)
 		}
+	}
+}
+
+func TestFileLocation_ForADocument(t *testing.T) {
+	t.Parallel()
+
+	got, err := fileLocation(&tg.MessageMediaDocument{Document: &tg.Document{ID: 9, AccessHash: 10, FileReference: []byte("ref")}})
+	doc, ok := got.(*tg.InputDocumentFileLocation)
+	if err != nil || !ok || doc.ID != 9 || doc.AccessHash != 10 || string(doc.FileReference) != "ref" {
+		t.Errorf("fileLocation = %+v, %v; want document 9", got, err)
 	}
 }

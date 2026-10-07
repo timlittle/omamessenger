@@ -6,7 +6,7 @@ import "../lib/Timeline.js" as Timeline
 
 // One message row in a conversation: an optional day separator, the sender
 // name for a grouped incoming message, the bubble with its text and any
-// link preview or photo, and a time/status row.
+// link preview, photo, video or file, and a time/status row.
 // A failed outgoing message shows a retry line instead of a status glyph.
 Item {
   id: root
@@ -32,8 +32,8 @@ Item {
   signal retry(string id)
   // mediaWanted asks for this message's photo to be downloaded.
   signal mediaWanted(string id)
-  // mediaOpened asks for downloaded media to be opened.
-  signal mediaOpened(string path)
+  // mediaOpen asks for this message's photo, video or file to be opened.
+  signal mediaOpen(string id)
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
@@ -134,11 +134,19 @@ Item {
             maxWidth: bubble.maxTextWidth
             width: implicitWidth
             height: implicitHeight
-            visible: root.media !== null && root.media.kind === "photo"
+            visible: root.media !== null && (root.media.kind === "photo" || root.media.kind === "video")
             photo: root.media ?? ({})
             path: root.message.mediaPath ?? ""
             onWanted: root.mediaWanted(root.message.id)
-            onOpened: path => root.mediaOpened(path)
+            onOpened: root.mediaOpen(root.message.id)
+          }
+
+          FileView {
+            objectName: "fileView"
+            width: Math.min(implicitWidth, bubble.maxTextWidth)
+            visible: root.media !== null && root.media.kind === "file"
+            file: root.media ?? ({})
+            onOpened: root.mediaOpen(root.message.id)
           }
         }
 

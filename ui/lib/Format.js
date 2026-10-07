@@ -169,3 +169,33 @@ var MEDIA_LABELS = { photo: '[Photo]', video: '[Video]', file: '[File]' };
 function caption(text, media) {
   return media && MEDIA_LABELS[media.kind] === text ? '' : text;
 }
+
+// fileSize shows a size in bytes as a file manager would, or "" for none.
+function fileSize(bytes) {
+  if (!bytes) {
+    return '';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit++;
+  }
+
+  return unit === 0 ? `${size} B` : `${size.toFixed(1)} ${units[unit]}`;
+}
+
+// duration shows a length in seconds as m:ss, or h:mm:ss, or "" for none.
+function duration(seconds) {
+  if (!seconds) {
+    return '';
+  }
+
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}

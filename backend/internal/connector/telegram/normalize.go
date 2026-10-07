@@ -133,11 +133,11 @@ func messageText(m *tg.Message) string {
 		return m.Message
 	}
 
-	switch m.Media.(type) {
+	switch media := m.Media.(type) {
 	case *tg.MessageMediaPhoto:
 		return "[Photo]"
 	case *tg.MessageMediaDocument:
-		return "[File]"
+		return documentLabel(media.Document)
 	case *tg.MessageMediaGeo, *tg.MessageMediaGeoLive, *tg.MessageMediaVenue:
 		return "[Location]"
 	case *tg.MessageMediaContact:

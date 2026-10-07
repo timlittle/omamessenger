@@ -17,6 +17,8 @@ func media(m tg.MessageMediaClass) *domain.Media {
 		return linkPreview(m.Webpage)
 	case *tg.MessageMediaPhoto:
 		return photoMedia(m.Photo)
+	case *tg.MessageMediaDocument:
+		return documentMedia(m.Document)
 	default:
 		return nil
 	}
@@ -39,7 +41,9 @@ func linkPreview(w tg.WebPageClass) *domain.Media {
 	site, _ := page.GetSiteName()
 	out := &domain.Media{Kind: domain.MediaLink, URL: page.URL, SiteName: site, Title: title, Description: description}
 	if photo, ok := page.GetPhoto(); ok {
-		out.Thumb = strippedThumb(photo)
+		if p, ok := photo.(*tg.Photo); ok {
+			out.Thumb = strippedThumb(p.Sizes)
+		}
 	}
 
 	return out
@@ -55,7 +59,7 @@ func photoMedia(p tg.PhotoClass) *domain.Media {
 
 	_, w, h := largest(photo.Sizes)
 
-	return &domain.Media{Kind: domain.MediaPhoto, Width: w, Height: h, Thumb: strippedThumb(photo)}
+	return &domain.Media{Kind: domain.MediaPhoto, Width: w, Height: h, Thumb: strippedThumb(photo.Sizes)}
 }
 
 // largest finds a photo's largest size: its type, which names it for
@@ -80,15 +84,82 @@ func largest(sizes []tg.PhotoSizeClass) (kind string, w, h int) {
 	return kind, w, h
 }
 
-// strippedThumb is a photo's tiny blurred preview as a base64 JPEG, or ""
-// when Telegram sent none.
-func strippedThumb(p tg.PhotoClass) string {
-	photo, ok := p.(*tg.Photo)
-	if !ok {
-		return ""
+// document is what a document's attributes say it is.
+type document struct {
+	name                       string
+	video, voice, sticker      bool
+	width, height, durationSec int
+}
+
+// describe reads a document's attributes.
+func describe(doc *tg.Document) document {
+	var d document
+	for _, attr := range doc.Attributes {
+		switch a := attr.(type) {
+		case *tg.DocumentAttributeVideo:
+			d.video, d.width, d.height, d.durationSec = true, a.W, a.H, int(a.Duration)
+		case *tg.DocumentAttributeAudio:
+			d.voice, d.durationSec = a.Voice, a.Duration
+		case *tg.DocumentAttributeFilename:
+			d.name = a.FileName
+		case *tg.DocumentAttributeSticker:
+			d.sticker = true
+		}
 	}
 
-	for _, size := range photo.Sizes {
+	return d
+}
+
+// documentMedia is a video, or any other document as a file to open. A
+// sticker is left as its text label, and a document since deleted as
+// nothing.
+func documentMedia(dc tg.DocumentClass) *domain.Media {
+	doc, ok := dc.(*tg.Document)
+	if !ok {
+		return nil
+	}
+
+	d := describe(doc)
+	switch {
+	case d.sticker:
+		return nil
+	case d.video:
+		return &domain.Media{
+			Kind: domain.MediaVideo, Width: d.width, Height: d.height, Duration: d.durationSec,
+			FileName: d.name, Size: doc.Size, Thumb: strippedThumb(doc.Thumbs),
+		}
+	case d.voice:
+		return &domain.Media{Kind: domain.MediaFile, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}
+	case d.name == "":
+		return &domain.Media{Kind: domain.MediaFile, FileName: "file", Size: doc.Size}
+	default:
+		return &domain.Media{Kind: domain.MediaFile, FileName: d.name, Size: doc.Size}
+	}
+}
+
+// documentLabel names a document sent without a caption.
+func documentLabel(dc tg.DocumentClass) string {
+	doc, ok := dc.(*tg.Document)
+	if !ok {
+		return "[File]"
+	}
+
+	switch d := describe(doc); {
+	case d.sticker:
+		return "[Sticker]"
+	case d.video:
+		return "[Video]"
+	case d.voice:
+		return "[Voice message]"
+	default:
+		return "[File]"
+	}
+}
+
+// strippedThumb is the tiny blurred preview among a photo's or document's
+// sizes as a base64 JPEG, or "" when Telegram sent none.
+func strippedThumb(sizes []tg.PhotoSizeClass) string {
+	for _, size := range sizes {
 		s, ok := size.(*tg.PhotoStrippedSize)
 		if !ok {
 			continue

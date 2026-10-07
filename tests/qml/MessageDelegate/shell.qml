@@ -13,6 +13,8 @@ ShellRoot {
 
   property var retried: []
   // wanted records the ids of messages whose photo was asked for.
+  // opened records the ids of messages whose media was asked to open.
+  property var opened: []
   property var wanted: []
   property real now: Date.now()
 
@@ -36,6 +38,7 @@ ShellRoot {
       nowMs: root.now
       onRetry: id => root.retried.push(id)
       onMediaWanted: id => root.wanted.push(id)
+      onMediaOpen: id => root.opened.push(id)
     }
   }
 
@@ -63,6 +66,7 @@ ShellRoot {
     if (!root.checkLineBreaks()) return;
     if (!root.checkLinkPreview()) return;
     if (!root.checkPhoto()) return;
+    if (!root.checkVideoAndFile()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -167,6 +171,36 @@ ShellRoot {
 
     delegate.message = Object.assign({}, delegate.message, { mediaPath: "/tmp/m8.jpg" });
     if (String(Check.find(delegate, "photoImage").source) !== "file:///tmp/m8.jpg") return Check.fail("the downloaded photo is not shown");
+    return true;
+  }
+
+  // checkVideoAndFile verifies a video shows a play mark and its length
+  // without downloading itself, a file shows its name and size, and a
+  // click on either asks to open it.
+  function checkVideoAndFile(): bool {
+    root.wanted = [];
+    const video = { kind: "video", width: 1280, height: 720, duration: 65 };
+    delegate.message = { id: "m9", senderId: "s1", senderName: "Alex", text: "[Video]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(video), mediaPath: "" };
+
+    const view = Check.find(delegate, "photoView");
+    if (!view.visible || !Check.find(delegate, "playMark").visible) return Check.fail("video shown without its play mark");
+    if (!Check.texts(view).some((item) => item.text === "1:05" && item.visible)) return Check.fail("video length not shown");
+    if (root.wanted.length !== 0) return Check.fail("a video started downloading by itself");
+    t.wait(50); // let the layout catch up with the new message before clicking
+    t.mouseClick(view);
+    if (root.opened.indexOf("m9") < 0) return Check.fail("clicking a video did not ask to open it");
+
+    const file = { kind: "file", fileName: "report.pdf", size: 2048 };
+    delegate.message = { id: "m10", senderId: "s1", senderName: "Alex", text: "[File]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(file), mediaPath: "" };
+
+    const fileView = Check.find(delegate, "fileView");
+    const shown = Check.texts(fileView).map((item) => item.text);
+    if (!fileView.visible || !shown.includes("report.pdf") || !shown.includes("2.0 KB") || !shown.includes("PDF")) {
+      return Check.fail("file not shown with its name, size and type: " + shown);
+    }
+    t.wait(50);
+    t.mouseClick(fileView);
+    if (root.opened.indexOf("m10") < 0) return Check.fail("clicking a file did not ask to open it");
     return true;
   }
 }

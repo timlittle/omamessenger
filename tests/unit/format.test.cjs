@@ -340,3 +340,18 @@ test('caption drops the label a photo, video or file stands in for', () => {
   assert.strictEqual(Format.caption('[Photo]', null), '[Photo]');
   assert.strictEqual(Format.caption('see x.io', { kind: 'link' }), 'see x.io');
 });
+
+test('fileSize reads like a file manager', () => {
+  assert.strictEqual(Format.fileSize(0), '');
+  assert.strictEqual(Format.fileSize(512), '512 B');
+  assert.strictEqual(Format.fileSize(2048), '2.0 KB');
+  assert.strictEqual(Format.fileSize(5 * 1024 * 1024), '5.0 MB');
+  assert.strictEqual(Format.fileSize(3 * 1024 * 1024 * 1024), '3.0 GB');
+});
+
+test('duration shows minutes and seconds, and hours when there are some', () => {
+  assert.strictEqual(Format.duration(0), '');
+  assert.strictEqual(Format.duration(5), '0:05');
+  assert.strictEqual(Format.duration(65), '1:05');
+  assert.strictEqual(Format.duration(3725), '1:02:05');
+});

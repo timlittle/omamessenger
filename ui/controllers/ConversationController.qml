@@ -157,12 +157,33 @@ Item {
   // A photo asks each time its row is shown, so one already on its way is
   // not asked for twice; if the download fails the preview stays.
   function fetchMedia(id: string): void {
+    root._download(id, false, () => {});
+  }
+
+  // openMedia opens a message's photo, video or file in the user's
+  // application, downloading it first if it is not here yet.
+  function openMedia(id: string): void {
+    const path = timeline.mediaPath(id);
+    if (path) Qt.openUrlExternally("file://" + path);
+    else root._download(id, true, (downloaded) => Qt.openUrlExternally("file://" + downloaded));
+  }
+
+  // _download asks the helper for a message's media once, records where
+  // it is, then runs done with the path. A failure is reported only when
+  // the user asked for the media, rather than a photo fetching itself.
+  function _download(id: string, report: bool, done: var): void {
     if (root._fetching[id]) return;
 
     root._fetching[id] = true;
     root.service.request("media.fetch", { messageId: id }, function(error, result) {
       delete root._fetching[id];
-      if (!error) timeline.setMediaPath(id, result.path);
+      if (error) {
+        if (report) timeline.lastError = Rpc.errorText(error);
+        return;
+      }
+
+      timeline.setMediaPath(id, result.path);
+      done(result.path);
     });
   }
 

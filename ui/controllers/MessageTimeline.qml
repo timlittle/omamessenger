@@ -77,6 +77,12 @@ Item {
     root._recomputeAnnotations(isGroup);
   }
 
+  // mediaPath returns where a message's downloaded media is, or "".
+  function mediaPath(id: string): string {
+    const row = root._snapshot().find((m) => m.id === id);
+    return row ? row.mediaPath : "";
+  }
+
   // setMediaPath records where a message's downloaded media is.
   function setMediaPath(id: string, path: string): void {
     const at = root._snapshot().findIndex((m) => m.id === id);

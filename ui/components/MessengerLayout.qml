@@ -259,6 +259,7 @@ Item {
       onLoadOlder: root.conversationController.loadOlder()
       onRetry: id => root.conversationController.retryMessage(id)
       onMediaWanted: id => root.conversationController.fetchMedia(id)
+      onMediaOpen: id => root.conversationController.openMedia(id)
       onSend: text => root.conversationController.send(text)
       onDraftEdited: text => root.conversationController.setDraft(text)
     }
