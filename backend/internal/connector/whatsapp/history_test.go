@@ -214,7 +214,7 @@ func TestHandleHistorySync_PersistsAMessagesMediaReference(t *testing.T) {
 	if !ok {
 		t.Fatal("media reference was not saved")
 	}
-	want := mediaRef{DirectPath: "/v/abc", MediaKey: []byte{1}, FileSHA256: []byte{2}, FileEncSHA256: []byte{3}, FileLength: 99, Mimetype: "image/jpeg"}
+	want := mediaRef{Kind: mediaKindImage, DirectPath: "/v/abc", MediaKey: []byte{1}, FileSHA256: []byte{2}, FileEncSHA256: []byte{3}, FileLength: 99, Mimetype: "image/jpeg"}
 	if !reflect.DeepEqual(ref, want) {
 		t.Errorf("media reference = %+v, want %+v", ref, want)
 	}

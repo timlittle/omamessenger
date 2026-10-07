@@ -63,12 +63,32 @@ type fakeDevice struct {
 	groupErr   error
 	groupCalls []types.JID
 
+	// downloadData, downloadErr and downloadBlocks script downloadMedia,
+	// and downloadCalls records what it was asked to fetch; fetch_test.go
+	// drives these.
+	downloadData   []byte
+	downloadErr    error
+	downloadBlocks bool
+	downloadCalls  []mediaRef
+
+	// uploadResp and uploadErr script uploadMedia, and uploadCalls
+	// records what it was asked to upload; upload_test.go drives these.
+	uploadResp  whatsmeow.UploadResponse
+	uploadErr   error
+	uploadCalls []uploadCall
+
 	// appStateErr and appStateBlocks script sendAppState, which
 	// organize_test.go drives to check pin and archive changes without
 	// reaching WhatsApp's servers; appStatePatches records what was sent.
 	appStateErr     error
 	appStateBlocks  bool
 	appStatePatches []appstate.PatchInfo
+}
+
+// uploadCall records one call to uploadMedia.
+type uploadCall struct {
+	data []byte
+	kind mediaKind
 }
 
 // sentCall records one call to sendMessage.
@@ -278,6 +298,40 @@ func (d *fakeDevice) groupName(_ context.Context, jid types.JID) (string, error)
 	return d.groupNames[jid.String()], nil
 }
 
+// downloadMedia records ref and reports the scripted bytes or error, or
+// blocks on ctx when downloadBlocks is set, as a real download that
+// never hears back from WhatsApp's media servers does.
+func (d *fakeDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error) {
+	d.mu.Lock()
+	d.downloadCalls = append(d.downloadCalls, ref)
+	blocks, data, err := d.downloadBlocks, d.downloadData, d.downloadErr
+	d.mu.Unlock()
+
+	if blocks {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+// uploadMedia records the call and reports the scripted response or
+// error.
+func (d *fakeDevice) uploadMedia(_ context.Context, data []byte, kind mediaKind) (whatsmeow.UploadResponse, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.uploadCalls = append(d.uploadCalls, uploadCall{data: data, kind: kind})
+	if d.uploadErr != nil {
+		return whatsmeow.UploadResponse{}, d.uploadErr
+	}
+
+	return d.uploadResp, nil
+}
+
 // sendAppState records patch and reports appStateErr, or blocks on ctx
 // when appStateBlocks is set, as a real patch that never hears back from
 // the server does.
@@ -307,8 +361,11 @@ func connectedTo(dev device, sink connector.Sink) *Connector {
 }
 
 // connectedToWithMedia is connectedTo with an in-memory media store
-// wired in too, for a test that reacts to or replies to a message and
-// so needs somewhere to save and look up message keys.
+// wired in too, for a test that reacts to, replies to or fetches a
+// message's attachment and so needs somewhere to save and look up
+// message keys or media references; fetch it back with c.mediaFor() to
+// seed a reference before calling FetchMedia, or to read one back after
+// Send.
 func connectedToWithMedia(t *testing.T, dev device, sink connector.Sink) *Connector {
 	t.Helper()
 
@@ -316,6 +373,7 @@ func connectedToWithMedia(t *testing.T, dev device, sink connector.Sink) *Connec
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = media.close() }) // a synctest caller that must close it sooner does so itself
 
 	c := &Connector{account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp}, answers: make(chan answer, 1)}
 	c.connected(dev, sink, media)

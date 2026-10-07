@@ -27,6 +27,7 @@ type mediaStore struct {
 const mediaStoreSchema = `CREATE TABLE IF NOT EXISTS media_refs (
 	conversation_id TEXT NOT NULL,
 	message_id      TEXT NOT NULL,
+	kind            TEXT NOT NULL DEFAULT '',
 	direct_path     TEXT NOT NULL,
 	media_key       BLOB NOT NULL,
 	file_sha256     BLOB NOT NULL,
@@ -75,14 +76,14 @@ func openMediaStoreDSN(ctx context.Context, dsn string) (*mediaStore, error) {
 // replacing whatever was saved for it before.
 func (m *mediaStore) put(ctx context.Context, conversationRemoteID, messageRemoteID string, ref mediaRef) error {
 	const q = `INSERT INTO media_refs
-		(conversation_id, message_id, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		(conversation_id, message_id, kind, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (conversation_id, message_id) DO UPDATE SET
-			direct_path = excluded.direct_path, media_key = excluded.media_key,
+			kind = excluded.kind, direct_path = excluded.direct_path, media_key = excluded.media_key,
 			file_sha256 = excluded.file_sha256, file_enc_sha256 = excluded.file_enc_sha256,
 			file_length = excluded.file_length, mimetype = excluded.mimetype`
 
-	_, err := m.db.ExecContext(ctx, q, conversationRemoteID, messageRemoteID,
+	_, err := m.db.ExecContext(ctx, q, conversationRemoteID, messageRemoteID, string(ref.Kind),
 		ref.DirectPath, ref.MediaKey, ref.FileSHA256, ref.FileEncSHA256, ref.FileLength, ref.Mimetype)
 	if err != nil {
 		return fmt.Errorf("whatsapp: save media reference: %w", err)
@@ -94,18 +95,21 @@ func (m *mediaStore) put(ctx context.Context, conversationRemoteID, messageRemot
 // get returns the media reference saved for a message, or false when none
 // was saved for it.
 func (m *mediaStore) get(ctx context.Context, conversationRemoteID, messageRemoteID string) (mediaRef, bool, error) {
-	const q = `SELECT direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype
+	const q = `SELECT kind, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype
 		FROM media_refs WHERE conversation_id = ? AND message_id = ?`
 
 	var ref mediaRef
+	var kind string
 	row := m.db.QueryRowContext(ctx, q, conversationRemoteID, messageRemoteID)
-	err := row.Scan(&ref.DirectPath, &ref.MediaKey, &ref.FileSHA256, &ref.FileEncSHA256, &ref.FileLength, &ref.Mimetype)
+	err := row.Scan(&kind, &ref.DirectPath, &ref.MediaKey, &ref.FileSHA256, &ref.FileEncSHA256, &ref.FileLength, &ref.Mimetype)
 	if errors.Is(err, sql.ErrNoRows) {
 		return mediaRef{}, false, nil
 	}
 	if err != nil {
 		return mediaRef{}, false, fmt.Errorf("whatsapp: load media reference: %w", err)
 	}
+
+	ref.Kind = mediaKind(kind)
 
 	return ref, true, nil
 }

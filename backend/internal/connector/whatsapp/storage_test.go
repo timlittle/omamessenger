@@ -45,7 +45,7 @@ func TestMediaStore_PutThenGetRoundTrips(t *testing.T) {
 
 	store := newTestMediaStore(t)
 	ref := mediaRef{
-		DirectPath: "/v/abc", MediaKey: []byte{1, 2, 3}, FileSHA256: []byte{4, 5},
+		Kind: mediaKindImage, DirectPath: "/v/abc", MediaKey: []byte{1, 2, 3}, FileSHA256: []byte{4, 5},
 		FileEncSHA256: []byte{6, 7}, FileLength: 42, Mimetype: "image/jpeg",
 	}
 
@@ -83,8 +83,8 @@ func TestMediaStore_PutReplacesAnEarlierReferenceForTheSameMessage(t *testing.T)
 	t.Parallel()
 
 	store := newTestMediaStore(t)
-	first := mediaRef{DirectPath: "/v/old", MediaKey: []byte{1}, FileSHA256: []byte{1}, FileEncSHA256: []byte{1}, FileLength: 1, Mimetype: "image/jpeg"}
-	second := mediaRef{DirectPath: "/v/new", MediaKey: []byte{2}, FileSHA256: []byte{2}, FileEncSHA256: []byte{2}, FileLength: 2, Mimetype: "image/jpeg"}
+	first := mediaRef{Kind: mediaKindImage, DirectPath: "/v/old", MediaKey: []byte{1}, FileSHA256: []byte{1}, FileEncSHA256: []byte{1}, FileLength: 1, Mimetype: "image/jpeg"}
+	second := mediaRef{Kind: mediaKindVideo, DirectPath: "/v/new", MediaKey: []byte{2}, FileSHA256: []byte{2}, FileEncSHA256: []byte{2}, FileLength: 2, Mimetype: "image/jpeg"}
 
 	if err := store.put(t.Context(), "conv-1", "msg-1", first); err != nil {
 		t.Fatal(err)

@@ -1,10 +1,9 @@
 // Package whatsapp connects a WhatsApp account through whatsmeow: it
 // pairs by QR code or a phone number's link code, syncs history, follows
-// live messages, receipts, typing and organizing changes, sends outgoing
-// text and reports delivery and read progress, and normalizes
-// whatsmeow's JIDs, messages and sync data into the domain types the
-// rest of the helper uses. A later wave adds sending and downloading
-// media.
+// live messages, receipts, typing and organizing changes, sends and
+// downloads photos, videos and files alongside outgoing text, reports
+// delivery and read progress, and normalizes whatsmeow's JIDs, messages
+// and sync data into the domain types the rest of the helper uses.
 package whatsapp
 
 import (
@@ -66,6 +65,7 @@ var (
 	_ connector.Connector      = (*Connector)(nil)
 	_ connector.Authenticator  = (*Connector)(nil)
 	_ connector.LogoutOnRemove = (*Connector)(nil)
+	_ connector.MediaFetcher   = (*Connector)(nil)
 	_ connector.Organizer      = (*Connector)(nil)
 )
 

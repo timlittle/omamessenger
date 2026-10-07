@@ -22,13 +22,15 @@ import (
 
 // device is the whatsmeow client surface the connector and its pairing
 // sequence drive: connecting, pairing by QR code or a phone's link code,
-// telling whether a session already exists, logging out, and watching
-// for status changes. It is defined here, the consumer, so tests carry
-// an account through connecting and pairing with a fake instead of ever
-// reaching WhatsApp's servers. The methods stay together because Run and
-// pairing use all of them to get one account connected, whichever way it
-// signs in; splitting them would only scatter that one sequence across
-// more interfaces.
+// telling whether a session already exists, logging out, watching for
+// status changes, and sending and fetching messages and their media. It
+// is defined here, the consumer, so tests carry an account through
+// connecting, pairing and exchanging messages with a fake instead of
+// ever reaching WhatsApp's servers. The methods stay together because
+// Run, pairing and sending all use this one client to get one account
+// connected and keep it talking, whichever way it signs in; splitting
+// them would only scatter that one client's surface across more
+// interfaces.
 type device interface {
 	// connect opens the WhatsApp connection.
 	connect(ctx context.Context) error
@@ -79,6 +81,15 @@ type device interface {
 	// groupName is a group's current name, for a history sync or a live
 	// message whose own data left it blank.
 	groupName(ctx context.Context, jid types.JID) (string, error)
+
+	// downloadMedia downloads and decrypts a message's attachment, using
+	// the reference it was saved with (see normalize_media.go).
+	downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error)
+
+	// uploadMedia encrypts and uploads data to WhatsApp's media servers
+	// for an attachment of kind, returning what a message proto needs to
+	// point at the result.
+	uploadMedia(ctx context.Context, data []byte, kind mediaKind) (whatsmeow.UploadResponse, error)
 
 	// sendAppState sends an app-state patch, such as a pin or archive
 	// change, so WhatsApp's own record of the chat agrees with it.
@@ -221,6 +232,21 @@ func (d *waDevice) groupName(ctx context.Context, jid types.JID) (string, error)
 	}
 
 	return info.Name, nil
+}
+
+// downloadMedia downloads and decrypts a message's attachment. Passing
+// "" for the mms-type lets whatsmeow choose it from the app-info key
+// alone, which is all DownloadMediaWithPath needs.
+func (d *waDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error) {
+	return d.cli.DownloadMediaWithPath(
+		ctx, ref.DirectPath, ref.FileEncSHA256, ref.FileSHA256, ref.MediaKey, appInfo(ref.Kind), "", false,
+	)
+}
+
+// uploadMedia encrypts and uploads data to WhatsApp's media servers for
+// an attachment of kind.
+func (d *waDevice) uploadMedia(ctx context.Context, data []byte, kind mediaKind) (whatsmeow.UploadResponse, error) {
+	return d.cli.Upload(ctx, data, appInfo(kind))
 }
 
 // sendAppState sends patch with WhatsApp.
