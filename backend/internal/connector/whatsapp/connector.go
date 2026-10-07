@@ -57,6 +57,7 @@ type Connector struct {
 	unread map[string]map[string][]string
 
 	organize      map[string]organizeState     // conversation remote id to its last known pinned/archived state
+	localOrganize map[string]bool              // conversation remote id whose organize state was set locally (SetPinned/SetArchived) more recently than any live echo, so a history sync must not overwrite it (see history.go's syncConversation)
 	names         map[string]namedEntry        // contact, push and group names resolved so far, by remote id
 	groupMembers  map[string]int               // a group's last known member count, by remote id
 	chatKinds     map[string]string            // every conversation remote id this connector has reported, to its kind
@@ -452,6 +453,46 @@ func (c *Connector) setOrganized(remoteID string, pinned, archived *bool) organi
 	c.organize[remoteID] = state
 
 	return state
+}
+
+// markLocalOrganize records that remoteID's pinned or archived state was
+// just set locally, by SetPinned or SetArchived, so a history sync's own
+// snapshot of it (see history.go's syncConversation) must not overwrite
+// that choice until a live echo confirms WhatsApp's own current state
+// (see clearLocalOrganize): WhatsApp's app-state patches are eventually
+// consistent, so a resync arriving moments after a local pin can still
+// carry the value from before the patch reached its servers.
+func (c *Connector) markLocalOrganize(remoteID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.localOrganize == nil {
+		c.localOrganize = map[string]bool{}
+	}
+	c.localOrganize[remoteID] = true
+}
+
+// clearLocalOrganize forgets that remoteID's organize state was set
+// locally, once a live pin or archive echo (see live.go's handlePin and
+// handleArchive) reports WhatsApp's own current view of it: that is a
+// real-time update, unlike a resync's snapshot, so it is trusted either
+// way, and a later resync may again freely report this remote id until
+// another local change marks it once more.
+func (c *Connector) clearLocalOrganize(remoteID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.localOrganize, remoteID)
+}
+
+// isLocalOrganize reports whether remoteID's pinned or archived state was
+// set locally more recently than any live echo has confirmed (see
+// markLocalOrganize).
+func (c *Connector) isLocalOrganize(remoteID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.localOrganize[remoteID]
 }
 
 // reactTo records sender's reaction to a message as emoji, or clears it

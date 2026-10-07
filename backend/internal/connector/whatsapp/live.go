@@ -185,6 +185,7 @@ func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev devi
 	remote := chatID(ctx, dev, e.JID)
 	pinned := e.Action.GetPinned()
 
+	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
 	state := c.setOrganized(remote, &pinned, nil)
 	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
 }
@@ -196,6 +197,7 @@ func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev 
 	remote := chatID(ctx, dev, e.JID)
 	archived := e.Action.GetArchived()
 
+	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
 	state := c.setOrganized(remote, nil, &archived)
 	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
 }

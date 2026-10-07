@@ -107,9 +107,7 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 
 	conv.Title, conv.Members = c.resolveConversation(ctx, src.dev, jid, conv)
 	c.reportConversation(ctx, sink, conv)
-
-	state := c.setOrganized(conv.RemoteID, &conv.Pinned, &conv.Archived)
-	sink.Organized(ctx, c.account.ID, conv.RemoteID, state.pinned, state.archived)
+	c.reportSyncedOrganize(ctx, sink, conv)
 
 	target := syncTarget{syncSource: src, chat: jid, convRemoteID: conv.RemoteID}
 	var incoming []domain.Message
@@ -121,6 +119,24 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	c.noteUnreadTail(conv.RemoteID, incoming, conv.Unread)
 
 	sink.Unread(ctx, c.account.ID, conv.RemoteID, conv.Unread)
+}
+
+// reportSyncedOrganize reports conv's pinned and archived state from
+// this sync, unless this process has pinned or archived it more
+// recently than any live echo has confirmed (see isLocalOrganize): a
+// sync's own snapshot can lag a patch this process just sent (see
+// organize.go's SetPinned and SetArchived), and reporting it anyway
+// would revert a local change WhatsApp has not caught up with yet. A
+// live pin or archive echo (see handlePin and handleArchive) clears
+// that and is trusted unconditionally, since it is a real-time update,
+// not a stale snapshot.
+func (c *Connector) reportSyncedOrganize(ctx context.Context, sink connector.Sink, conv domain.Conversation) {
+	if c.isLocalOrganize(conv.RemoteID) {
+		return
+	}
+
+	state := c.setOrganized(conv.RemoteID, &conv.Pinned, &conv.Archived)
+	sink.Organized(ctx, c.account.ID, conv.RemoteID, state.pinned, state.archived)
 }
 
 // hasRealContent reports whether at least one of a conversation's
