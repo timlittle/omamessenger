@@ -38,6 +38,8 @@ Item {
   signal loadOlder()
   // retry asks the caller to resend a failed outgoing message.
   signal retry(string id)
+  // mediaWanted asks for a message's photo to be downloaded.
+  signal mediaWanted(string id)
   // send reports a message the user submitted.
   signal send(string text)
   // draftEdited reports the composer's text as the user types it.
@@ -156,6 +158,8 @@ Item {
         isGroup: root.isGroup
         nowMs: root.nowMs
         onRetry: id => root.retry(id)
+        onMediaWanted: id => root.mediaWanted(id)
+        onMediaOpened: path => Qt.openUrlExternally("file://" + path)
       }
 
       onContentYChanged: root._checkLoadOlder()

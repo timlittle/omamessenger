@@ -3,6 +3,7 @@ package fake
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,7 +31,10 @@ type Connector struct {
 	olderOut map[string]bool // conversations whose older history was delivered
 }
 
-var _ connector.HistoryLoader = (*Connector)(nil)
+var (
+	_ connector.HistoryLoader = (*Connector)(nil)
+	_ connector.MediaFetcher  = (*Connector)(nil)
+)
 
 // run is one Run call: where updates go and how work is scheduled.
 type run struct {
@@ -223,6 +227,15 @@ func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, _ s
 	}
 
 	return len(older), nil
+}
+
+// FetchMedia writes a stand-in for a scripted photo to path.
+func (c *Connector) FetchMedia(_ context.Context, _ domain.Conversation, _, path string) error {
+	if _, err := c.current(); err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, []byte("fake photo"), 0o600)
 }
 
 // firstOlderLoad records that a conversation's older history was asked

@@ -34,6 +34,9 @@ type conversationScript struct {
 	// flaky fails the first send attempt of every message.
 	flaky bool
 
+	// lastPhoto makes the newest seeded message a photo without a caption.
+	lastPhoto bool
+
 	// older incoming messages from before the seeded history load when
 	// the user scrolls back past it, as from a real service.
 	older int
@@ -49,7 +52,7 @@ var scripts = []accountScript{
 		connectDelay: 600 * time.Millisecond,
 		conversations: []conversationScript{
 			{
-				remoteID: "wa:mum", title: "Mum", kind: domain.KindDirect, count: 14, older: 40,
+				remoteID: "wa:mum", title: "Mum", kind: domain.KindDirect, count: 14, older: 40, lastPhoto: true,
 				texts: []string{"Call me when you're on your way.", "I made some soup for tomorrow", "Did you see the weather?"},
 			},
 			{

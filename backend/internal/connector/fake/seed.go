@@ -38,6 +38,12 @@ func (s conversationScript) history(now time.Time) []domain.Message {
 		}
 	}
 
+	if s.lastPhoto && s.count > 0 {
+		newest := &messages[s.count-1]
+		newest.Text = "[Photo]"
+		newest.Media = &domain.Media{Kind: domain.MediaPhoto, Width: 400, Height: 300}
+	}
+
 	return messages
 }
 

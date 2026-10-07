@@ -159,3 +159,13 @@ function previewLine(conv) {
 
   return conv.previewSender ? `${conv.previewSender}: ${conv.preview}` : conv.preview;
 }
+
+// MEDIA_LABELS are the texts the helper gives a photo, video or file sent
+// without a caption, so lists and notifications have something to show.
+var MEDIA_LABELS = { photo: '[Photo]', video: '[Video]', file: '[File]' };
+
+// caption is the text to show beside media: none when the text is only
+// the label standing in for the media the bubble already shows.
+function caption(text, media) {
+  return media && MEDIA_LABELS[media.kind] === text ? '' : text;
+}

@@ -7,7 +7,8 @@
 // - a message arriving in Sam's chat while the window is hidden stays unread
 // - Ctrl+N, cycling every account, "Ben", Enter opens a new chat with Ben
 // - Ctrl+K to Mum, whose short stored history makes the helper fetch older
-//   messages: her newest stays at the bottom and the unread total holds
+//   messages: her newest stays at the bottom and the unread total holds,
+//   and her newest, a photo, is downloaded into the media cache
 // Each step polls until its condition holds, because every answer comes
 // back from the helper asynchronously.
 import QtQuick
@@ -43,7 +44,8 @@ ShellRoot {
     root.newChatWithBen,
     root.waitForBen,
     root.openMum,
-    root.waitForMumWithOlderHistory
+    root.waitForMumWithOlderHistory,
+    root.waitForMumsPhoto
   ]
 
   // fail stops the test with a reason on stderr.
@@ -267,6 +269,13 @@ ShellRoot {
     }
     return true;
   }
+  // waitForMumsPhoto holds until her newest message, a photo, has been
+  // downloaded through the helper into its media cache.
+  function waitForMumsPhoto(): var {
+    const newest = Check.find(root.panel(), "messageListView").model.get(0);
+    return newest.mediaPath !== "" && newest.mediaPath.indexOf("/omamessenger/media/") >= 0;
+  }
+
 
 
   // runStep runs the current step and advances, retries or fails.

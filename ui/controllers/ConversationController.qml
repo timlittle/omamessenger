@@ -17,6 +17,9 @@ import "../lib/Rpc.js" as Rpc
 Item {
   id: root
 
+  // _fetching holds the ids of messages whose media is downloading.
+  property var _fetching: ({})
+
   // service is the Service instance that owns the helper connection.
   property var service: null
 
@@ -147,6 +150,19 @@ Item {
     root.service.request("messages.send", { conversationId: root.activeId, text: text }, function(error, result) {
       if (error) { timeline.lastError = Rpc.errorText(error); return; }
       root._upsertMessage(result);
+    });
+  }
+
+  // fetchMedia downloads a message's photo and shows it once it is here.
+  // A photo asks each time its row is shown, so one already on its way is
+  // not asked for twice; if the download fails the preview stays.
+  function fetchMedia(id: string): void {
+    if (root._fetching[id]) return;
+
+    root._fetching[id] = true;
+    root.service.request("media.fetch", { messageId: id }, function(error, result) {
+      delete root._fetching[id];
+      if (!error) timeline.setMediaPath(id, result.path);
     });
   }
 

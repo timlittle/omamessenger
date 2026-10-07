@@ -71,10 +71,16 @@ Item {
   function upsert(message: var, isGroup: bool): void {
     const loaded = root._snapshot();
     const at = loaded.findIndex((m) => m.id === message.id);
-    if (at !== -1) messagesModel.set(at, Timeline.row(message));
+    if (at !== -1) messagesModel.set(at, Timeline.row(Object.assign({ mediaPath: loaded[at].mediaPath }, message)));
     else messagesModel.insert(Timeline.insertIndex(loaded, message), Timeline.row(message));
 
     root._recomputeAnnotations(isGroup);
+  }
+
+  // setMediaPath records where a message's downloaded media is.
+  function setMediaPath(id: string, path: string): void {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    if (at !== -1) messagesModel.setProperty(at, "mediaPath", path);
   }
 
   // newestFailedId returns the newest failed outgoing message's id, or ""

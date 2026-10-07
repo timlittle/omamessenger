@@ -3,6 +3,8 @@ package fake_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"testing/synctest"
@@ -223,6 +225,36 @@ func TestLoadOlder_DeliversScriptedOlderHistoryOnce(t *testing.T) {
 		alex := conversation("wa-personal", "wa:alex-chen", domain.KindDirect)
 		if n, err := wa.LoadOlder(t.Context(), alex, "", 50); err != nil || n != 0 {
 			t.Errorf("LoadOlder for a chat with no older history = %d, %v", n, err)
+		}
+	})
+}
+
+func TestFetchMedia_WritesTheScriptedPhoto(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
+		defer stop()
+
+		waitConnected(sink)
+		seeded := sink.Messages()["wa:mum"]
+		newest := seeded[len(seeded)-1]
+		if newest.Media == nil || newest.Media.Kind != domain.MediaPhoto {
+			t.Fatalf("Mum's newest message = %+v, want a photo", newest)
+		}
+
+		wa, ok := suite.Connectors()[0].(connector.MediaFetcher)
+		if !ok {
+			t.Fatal("fake connector does not download media")
+		}
+
+		path := filepath.Join(t.TempDir(), "photo.jpg")
+		if err := wa.FetchMedia(t.Context(), conversation("wa-personal", "wa:mum", domain.KindDirect), newest.RemoteID, path); err != nil {
+			t.Fatal(err)
+		}
+
+		if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+			t.Errorf("downloaded %v, %v; want a file", info, err)
 		}
 	})
 }

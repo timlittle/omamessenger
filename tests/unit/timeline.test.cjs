@@ -279,3 +279,8 @@ test('media reads a row\'s media back, or null', () => {
   assert.strictEqual(Timeline.media({ media: '' }), null);
   assert.deepEqual(Timeline.media({ media: { kind: 'photo' } }), { kind: 'photo' });
 });
+
+test('row keeps a downloaded media path, and starts without one', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).mediaPath, '');
+  assert.strictEqual(Timeline.row({ id: 'a', mediaPath: '/m/a.jpg' }).mediaPath, '/m/a.jpg');
+});

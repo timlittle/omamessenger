@@ -5,8 +5,8 @@ import "../lib/Format.js" as Format
 import "../lib/Timeline.js" as Timeline
 
 // One message row in a conversation: an optional day separator, the sender
-// name for a grouped incoming message, the bubble with any link preview,
-// and a time/status row.
+// name for a grouped incoming message, the bubble with its text and any
+// link preview or photo, and a time/status row.
 // A failed outgoing message shows a retry line instead of a status glyph.
 Item {
   id: root
@@ -30,6 +30,10 @@ Item {
 
   // retry asks the caller to resend this message after a send failure.
   signal retry(string id)
+  // mediaWanted asks for this message's photo to be downloaded.
+  signal mediaWanted(string id)
+  // mediaOpened asks for downloaded media to be opened.
+  signal mediaOpened(string path)
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
@@ -73,7 +77,7 @@ Item {
         readonly property real maxTextWidth: root.width * 0.72 - padding * 2
 
         objectName: "bubble"
-        width: Math.max(body.width, meta.implicitWidth, linkPreview.visible ? linkPreview.width : 0) + padding * 2
+        width: Math.max(content.width, meta.implicitWidth) + padding * 2
         height: meta.y + meta.implicitHeight + padding
         radius: Style.cornerRadius
         color: root.message.outgoing ? Util.alpha(Color.accent, 0.22) : Util.alpha(Color.foreground, 0.06)
@@ -86,44 +90,62 @@ Item {
           id: natural
 
           font: body.font
-          text: Format.longestLine(root.message.text)
+          text: Format.longestLine(body.caption)
         }
 
-        TextEdit {
-          id: body
-
-          objectName: "body"
+        // The text, then any link preview or photo; parts a message lacks
+        // take no space.
+        Column {
+          id: content
 
           x: bubble.padding
           y: bubble.padding
-          width: Math.min(Math.ceil(natural.advanceWidth) + 1, bubble.maxTextWidth)
-          readOnly: true
-          selectByMouse: true
-          wrapMode: TextEdit.Wrap
-          textFormat: TextEdit.RichText
-          text: Format.messageHtml(root.message.text, Color.accent)
-          color: Color.foreground
-          font { family: Theme.font.family; pixelSize: Theme.font.body }
-          onLinkActivated: link => Qt.openUrlExternally(link)
-        }
+          spacing: Theme.spacing.xs
 
-        LinkPreview {
-          id: linkPreview
+          TextEdit {
+            id: body
 
-          objectName: "linkPreview"
-          x: bubble.padding
-          y: body.y + body.height + Theme.spacing.xs
-          width: Math.min(linkPreview.implicitWidth, bubble.maxTextWidth)
-          height: linkPreview.visible ? linkPreview.implicitHeight : 0
-          visible: root.media !== null && root.media.kind === "link"
-          preview: root.media ?? ({})
-          onOpened: url => Qt.openUrlExternally(url)
+            // caption leaves out the label a photo stands in for.
+            readonly property string caption: Format.caption(root.message.text, root.media)
+
+            objectName: "body"
+            visible: body.caption !== ""
+            width: Math.min(Math.ceil(natural.advanceWidth) + 1, bubble.maxTextWidth)
+            readOnly: true
+            selectByMouse: true
+            wrapMode: TextEdit.Wrap
+            textFormat: TextEdit.RichText
+            text: Format.messageHtml(body.caption, Color.accent)
+            color: Color.foreground
+            font { family: Theme.font.family; pixelSize: Theme.font.body }
+            onLinkActivated: link => Qt.openUrlExternally(link)
+          }
+
+          LinkPreview {
+            objectName: "linkPreview"
+            width: Math.min(implicitWidth, bubble.maxTextWidth)
+            visible: root.media !== null && root.media.kind === "link"
+            preview: root.media ?? ({})
+            onOpened: url => Qt.openUrlExternally(url)
+          }
+
+          PhotoView {
+            objectName: "photoView"
+            maxWidth: bubble.maxTextWidth
+            width: implicitWidth
+            height: implicitHeight
+            visible: root.media !== null && root.media.kind === "photo"
+            photo: root.media ?? ({})
+            path: root.message.mediaPath ?? ""
+            onWanted: root.mediaWanted(root.message.id)
+            onOpened: path => root.mediaOpened(path)
+          }
         }
 
         Row {
           id: meta
 
-          y: (linkPreview.visible ? linkPreview.y + linkPreview.height : body.y + body.height) + Theme.spacing.xxs
+          y: content.y + content.height + Theme.spacing.xxs
           spacing: Theme.spacing.xs
           layoutDirection: root.message.outgoing ? Qt.RightToLeft : Qt.LeftToRight
           anchors.right: root.message.outgoing ? parent.right : undefined

@@ -12,6 +12,8 @@ ShellRoot {
   id: root
 
   property var retried: []
+  // wanted records the ids of messages whose photo was asked for.
+  property var wanted: []
   property real now: Date.now()
 
   // findText returns the first collected node whose text matches exactly.
@@ -33,6 +35,7 @@ ShellRoot {
       isGroup: true
       nowMs: root.now
       onRetry: id => root.retried.push(id)
+      onMediaWanted: id => root.wanted.push(id)
     }
   }
 
@@ -59,6 +62,7 @@ ShellRoot {
     if (!root.checkRichText()) return;
     if (!root.checkLineBreaks()) return;
     if (!root.checkLinkPreview()) return;
+    if (!root.checkPhoto()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -146,6 +150,23 @@ ShellRoot {
 
     delegate.message = { id: "m7", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "received", created: root.now, media: "" };
     if (card.visible) return Check.fail("link preview shown for a message without one");
+    return true;
+  }
+
+  // checkPhoto verifies a photo without a caption shows only the photo, at
+  // its shape, asks to be downloaded, and shows the download once it is in.
+  function checkPhoto(): bool {
+    const photo = { kind: "photo", width: 400, height: 200, thumb: "" };
+    delegate.message = { id: "m8", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
+
+    const view = Check.find(delegate, "photoView");
+    if (!view || !view.visible) return Check.fail("photo not shown");
+    if (Check.find(delegate, "body").visible) return Check.fail("the [Photo] label is shown beside the photo");
+    if (Math.abs(view.height - view.width / 2) > 1) return Check.fail(`photo is ${view.width}x${view.height}, not at its 2:1 shape`);
+    if (root.wanted.indexOf("m8") < 0) return Check.fail("the photo did not ask to be downloaded");
+
+    delegate.message = Object.assign({}, delegate.message, { mediaPath: "/tmp/m8.jpg" });
+    if (String(Check.find(delegate, "photoImage").source) !== "file:///tmp/m8.jpg") return Check.fail("the downloaded photo is not shown");
     return true;
   }
 }

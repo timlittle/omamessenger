@@ -49,9 +49,13 @@ function insertIndex(newestFirst, message) {
 }
 
 // row is a message as a timeline model row. A ListModel needs every row to
-// share a shape, so media, an object or absent, is kept as a JSON string.
+// share a shape, so media, an object or absent, is kept as a JSON string,
+// and mediaPath, where its download is, starts empty.
 function row(message) {
-  return Object.assign({}, message, { media: message.media ? JSON.stringify(message.media) : '' });
+  return Object.assign({}, message, {
+    media: message.media ? JSON.stringify(message.media) : '',
+    mediaPath: message.mediaPath ?? ''
+  });
 }
 
 // media reads a row's media, or null when it has none. It also accepts a

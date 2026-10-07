@@ -331,3 +331,12 @@ test('messageHtml colours links so they read on the theme', () => {
   assert.equal(Format.messageHtml('see https://x.io', '#89b4fa'),
     'see <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');
 });
+
+test('caption drops the label a photo, video or file stands in for', () => {
+  assert.strictEqual(Format.caption('[Photo]', { kind: 'photo' }), '');
+  assert.strictEqual(Format.caption('[Video]', { kind: 'video' }), '');
+  assert.strictEqual(Format.caption('[File]', { kind: 'file' }), '');
+  assert.strictEqual(Format.caption('Sunset', { kind: 'photo' }), 'Sunset');
+  assert.strictEqual(Format.caption('[Photo]', null), '[Photo]');
+  assert.strictEqual(Format.caption('see x.io', { kind: 'link' }), 'see x.io');
+});
