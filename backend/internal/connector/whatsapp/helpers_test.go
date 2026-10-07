@@ -296,10 +296,29 @@ func (d *fakeDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo)
 }
 
 // connectedTo returns a connector whose Send, MarkRead and event
-// handling act on dev, as if Run had already connected it.
+// handling act on dev, as if Run had already connected it. It carries
+// no media store: a test that needs React or a reply quoted with more
+// than a stanza id uses connectedToWithMedia instead.
 func connectedTo(dev device, sink connector.Sink) *Connector {
 	c := &Connector{account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp}, answers: make(chan answer, 1)}
-	c.connected(dev, sink)
+	c.connected(dev, sink, nil)
+
+	return c
+}
+
+// connectedToWithMedia is connectedTo with an in-memory media store
+// wired in too, for a test that reacts to or replies to a message and
+// so needs somewhere to save and look up message keys.
+func connectedToWithMedia(t *testing.T, dev device, sink connector.Sink) *Connector {
+	t.Helper()
+
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Connector{account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp}, answers: make(chan answer, 1)}
+	c.connected(dev, sink, media)
 
 	return c
 }

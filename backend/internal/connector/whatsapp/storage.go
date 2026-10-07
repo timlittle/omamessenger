@@ -63,6 +63,11 @@ func openMediaStoreDSN(ctx context.Context, dsn string) (*mediaStore, error) {
 		return nil, fmt.Errorf("whatsapp: prepare media store: %w", err)
 	}
 
+	if err := ensureMessageKeysTable(ctx, db); err != nil {
+		_ = db.Close() // same as above
+		return nil, err
+	}
+
 	return &mediaStore{db: db}, nil
 }
 

@@ -48,6 +48,7 @@ type Connector struct {
 	waiting bool
 	dev     device
 	sink    connector.Sink
+	media   *mediaStore
 
 	// sent and unread are read and written by send.go and receipts.go:
 	// sent matches a receipt's chat and WhatsApp id back to the local
@@ -126,7 +127,7 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	}
 	defer dev.disconnect()
 
-	c.connected(dev, sink)
+	c.connected(dev, sink, media)
 	defer c.disconnected()
 
 	select {
@@ -206,22 +207,23 @@ func (c *Connector) Logout(ctx context.Context) error {
 	return dev.logOut(ctx)
 }
 
-// connected records the device and sink of a signed-in run, so Send,
-// MarkRead and incoming events have something to act on.
-func (c *Connector) connected(dev device, sink connector.Sink) {
+// connected records the device, sink and media store of a signed-in
+// run, so Send, MarkRead, React and incoming events have something to
+// act on.
+func (c *Connector) connected(dev device, sink connector.Sink, media *mediaStore) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.dev, c.sink = dev, sink
+	c.dev, c.sink, c.media = dev, sink, media
 }
 
-// disconnected forgets the run's device and sink, so Send and MarkRead
-// fail until the account reconnects.
+// disconnected forgets the run's device, sink and media store, so Send
+// and MarkRead fail until the account reconnects.
 func (c *Connector) disconnected() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.dev, c.sink = nil, nil
+	c.dev, c.sink, c.media = nil, nil, nil
 }
 
 // session returns the device and sink of the current run, or
@@ -235,6 +237,17 @@ func (c *Connector) session() (device, connector.Sink, error) {
 	}
 
 	return c.dev, c.sink, nil
+}
+
+// mediaFor returns the media store of the current run, or nil when this
+// connector was never given one, such as a test built without one; a
+// nil result means a reply or reaction can still be sent, just without
+// anything saved locally to improve on the plain stanza-id fallback.
+func (c *Connector) mediaFor() *mediaStore {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.media
 }
 
 // startRun records that this connector is running, refusing a second

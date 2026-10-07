@@ -50,6 +50,7 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 
 	m := message(e.Info, e.Message)
 	saveMediaRef(ctx, media, remote, m.RemoteID, e.Message)
+	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe})
 
 	if e.Info.IsFromMe {
 		sink.History(ctx, c.account.ID, remote, m)

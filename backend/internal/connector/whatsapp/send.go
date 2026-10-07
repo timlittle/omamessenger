@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.mau.fi/whatsmeow/proto/waE2E"
-
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -46,11 +44,14 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 
+	media := c.mediaFor()
 	id := dev.generateMessageID()
-	if _, err := dev.sendMessage(sendCtx, jid, outgoingMessage(m), id); err != nil {
+	msg := outgoingMessage(sendCtx, media, conv.RemoteID, jid, m)
+	if _, err := dev.sendMessage(sendCtx, jid, msg, id); err != nil {
 		return fmt.Errorf("whatsapp: send: %w", err)
 	}
 
+	saveMessageKey(sendCtx, media, conv.RemoteID, string(id), messageKey{fromMe: true})
 	c.trackSent(sentKey(conv.RemoteID, string(id)), m.ID, expectedRecipients(conv))
 	sink.OutgoingStatus(ctx, m.ID, string(id), domain.StatusSent)
 
@@ -74,27 +75,6 @@ func expectedRecipients(conv domain.Conversation) int {
 	}
 
 	return 1
-}
-
-// outgoingMessage builds the WhatsApp message proto for m: its text
-// alone, or, when it replies to another message, an extended text
-// message quoting that message's stanza id. The stored Reply keeps only
-// the quoted message's remote id and a display name (see domain.Reply),
-// not its sender's JID or its own WhatsApp content, so this cannot fill
-// in ContextInfo's Participant or QuotedMessage. WhatsApp still renders
-// the quote correctly from the id alone, since the recipient's own
-// client already holds a copy of the quoted message.
-func outgoingMessage(m domain.Message) *waE2E.Message {
-	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" {
-		return &waE2E.Message{Conversation: strp(m.Text)}
-	}
-
-	return &waE2E.Message{
-		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text:        strp(m.Text),
-			ContextInfo: &waE2E.ContextInfo{StanzaID: strp(m.ReplyTo.RemoteID)},
-		},
-	}
 }
 
 // strp takes the address of a string, for the generated protobuf structs
