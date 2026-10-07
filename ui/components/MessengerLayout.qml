@@ -1,18 +1,18 @@
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
-import qs.Ui as Ui
 import "../theme"
 import "../lib/Rail.js" as Rail
 
-// The three columns and the overlays that make up the OmaMessenger window:
-// the service rail, the search field and conversation list, and the open
-// conversation, plus the shortcut help sheet and the new-chat dialog. This
-// is Panel.qml's own body, split out only to keep that file within the
-// size guideline: unlike the views under ui/components it is allowed to
-// call the controllers directly, binding their data into the views below
-// and their functions to the views' signals. Panel.qml keeps every
-// service.request call and the keyboard router; this file only wires.
+// The three columns that make up the OmaMessenger window: the service
+// rail, the search field and conversation list, and the open
+// conversation. This is Panel.qml's own body, split out only to keep that
+// file within the size guideline: unlike the views under ui/components it
+// is allowed to call the controllers directly, binding their data into
+// the views below and their functions to the views' signals. Panel.qml
+// keeps every service.request call and the keyboard router; the floating
+// overlays (the palette, the dialogs, the photo viewer) live in
+// Overlays.qml, this file's sibling.
 Item {
   id: root
 
@@ -22,6 +22,13 @@ Item {
   property var listController: null
   // conversationController is bound into the open conversation.
   property var conversationController: null
+  // composerController is bound into the composer.
+  property var composerController: null
+  // photoViewerController is bound into the overlays' photo viewer.
+  property var photoViewerController: null
+  // reactionsController is bound into the message list and the overlays'
+  // emoji picker.
+  property var reactionsController: null
   // dialogController is bound into the new-chat dialog.
   property var dialogController: null
   // accountController is bound into account setup and the empty state.
@@ -75,15 +82,21 @@ Item {
     else if (direction === "oldest") conversationView.scrollToOldest()
   }
 
-  // Composer focus mirrors ConversationController.composeFocused both
-  // ways: a request from the controller moves real focus, and real focus
-  // changes (a click, or leaving) are read back into the controller.
   Connections {
     target: root.conversationController
 
     function onActiveIdChanged() {
       if (root.conversationController.activeId) conversationView.focusComposer()
     }
+    function onScroll(direction) { root._scrollConversation(direction) }
+    function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
+  }
+
+  // Composer focus mirrors ComposerController.composeFocused both ways: a
+  // request from the controller moves real focus, and real focus changes
+  // (a click, or leaving) are read back into the controller.
+  Connections {
+    target: root.composerController
 
     function onComposeFocusRequested() { conversationView.focusComposer() }
     function onSubmitRequested() { conversationView.composer.submit() }
@@ -91,8 +104,6 @@ Item {
       conversationView.composer.input.focus = false
       if (root.focusDefault) root.focusDefault()
     }
-    function onScroll(direction) { root._scrollConversation(direction) }
-    function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
     function onAttachFileRequested() { conversationView.composer.openFilePicker() }
     function onPasteFallbackRequested() { conversationView.composer.input.paste() }
   }
@@ -100,7 +111,7 @@ Item {
   Connections {
     target: conversationView.composer.input
     function onActiveFocusChanged() {
-      root.conversationController.composeFocused = conversationView.composer.input.activeFocus
+      root.composerController.composeFocused = conversationView.composer.input.activeFocus
     }
   }
 
@@ -111,26 +122,18 @@ Item {
   Connections {
     target: root.listController
 
-    function onFocusRequested() { searchField.forceActiveFocus() }
+    function onFocusRequested() { listColumn.searchField.forceActiveFocus() }
     function onSearchFocusedChanged() {
-      if (root.listController.searchFocused || !searchField.activeFocus) return
-      searchField.focus = false
+      if (root.listController.searchFocused || !listColumn.searchField.activeFocus) return
+      listColumn.searchField.focus = false
       if (root.focusDefault) root.focusDefault()
     }
   }
 
   Connections {
-    target: searchField
+    target: listColumn.searchField
     function onActiveFocusChanged() {
-      root.listController.searchFocused = searchField.activeFocus
-    }
-  }
-
-  // Opening the new-chat dialog focuses its search field.
-  Connections {
-    target: root.dialogController
-    function onOpenChanged() {
-      if (root.dialogController.open) dialog.focusSearch()
+      root.listController.searchFocused = listColumn.searchField.activeFocus
     }
   }
 
@@ -157,7 +160,8 @@ Item {
     // Pinned to its width: a layout whose children fill would otherwise
     // fill the row too and squeeze the conversation off the edge. In a
     // narrow window it is the only column, so it fills.
-    ColumnLayout {
+    ListColumn {
+      id: listColumn
       objectName: "listColumn"
       visible: root._showList
       Layout.fillWidth: root.narrow
@@ -165,83 +169,22 @@ Item {
       Layout.maximumWidth: root.narrow ? Number.POSITIVE_INFINITY : root._listWidth
       Layout.preferredWidth: root._listWidth
       Layout.fillHeight: true
-      spacing: Theme.spacing.sm
 
-      Ui.TextField {
-        id: searchField
-        Layout.fillWidth: true
-        placeholderText: "Search"
-        text: root.listController.query
+      query: root.listController.query
+      model: root.listController.model
+      selectedId: root.listController.selectedId
+      nowMs: root.nowMs
+      accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
+      multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
+      showEmptyState: root.service !== null && root.service.status === "ready" && root.service.accounts.length === 0
+      showOlder: root.listController.showOlder
+      hiddenCount: root.listController.hiddenCount
+      routeKey: root.routeKey
 
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: event => {
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
-        }
-
-        onTextChanged: root.listController.setQuery(text)
-      }
-
-      // With no accounts yet, the list says how to add one.
-      ColumnLayout {
-        objectName: "noAccounts"
-        Layout.fillWidth: true
-        visible: root.service !== null && root.service.status === "ready" && root.service.accounts.length === 0
-        spacing: Theme.spacing.sm
-
-        Text {
-          Layout.fillWidth: true
-          text: "No accounts yet. Add an account to see your chats here."
-          wrapMode: Text.WordWrap
-          color: Util.alpha(Color.foreground, 0.7)
-          font { family: Theme.font.family; pixelSize: Theme.font.body }
-        }
-
-        Ui.Button {
-          objectName: "addAccountButton"
-          text: "Add an account"
-          focusable: true
-          onClicked: root.accountController.begin()
-        }
-      }
-
-      ConversationList {
-        id: list
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-
-        model: root.listController.model
-        selectedId: root.listController.selectedId
-        query: root.listController.query
-        nowMs: root.nowMs
-        accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
-        multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
-
-        onActivated: id => root._openRow(id)
-      }
-
-      // Chats older than a month are hidden until asked for.
-      RowLayout {
-        objectName: "olderChats"
-        Layout.fillWidth: true
-        visible: root.listController.hiddenCount > 0 || (root.listController.showOlder && root.listController.query === "")
-        spacing: Theme.spacing.sm
-
-        Text {
-          Layout.fillWidth: true
-          text: root.listController.showOlder ? "Showing chats older than a month"
-            : root.listController.hiddenCount + (root.listController.hiddenCount === 1 ? " older chat hidden" : " older chats hidden")
-          elide: Text.ElideRight
-          color: Util.alpha(Color.foreground, 0.7)
-          font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
-        }
-
-        Ui.Button {
-          objectName: "olderChatsButton"
-          text: root.listController.showOlder ? "Hide" : "Show"
-          focusable: true
-          onClicked: root.listController.setShowOlder(!root.listController.showOlder)
-        }
-      }
+      onQueryEdited: text => root.listController.setQuery(text)
+      onActivated: id => root._openRow(id)
+      onAddAccountRequested: root.accountController.begin()
+      onShowOlderToggled: root.listController.setShowOlder(!root.listController.showOlder)
     }
 
     ConversationView {
@@ -256,9 +199,9 @@ Item {
       messages: root.conversationController.messages
       annotations: root.conversationController.annotations
       nowMs: root.nowMs
-      draft: root.conversationController.draft
-      replyTarget: root.conversationController.replyTarget
-      attachmentPath: root.conversationController.attachmentPath
+      draft: root.composerController.draft
+      replyTarget: root.composerController.replyTarget
+      attachmentPath: root.composerController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
       routeKey: root.routeKey
 
@@ -266,115 +209,27 @@ Item {
       onRetry: id => root.conversationController.retryMessage(id)
       onMediaWanted: id => root.conversationController.fetchMedia(id)
       onMediaOpen: id => root.conversationController.openMedia(id)
-      onReact: (id, emoji) => root.conversationController.react(id, emoji)
-      onReactPickerRequested: id => root.conversationController.openReactionPicker(id)
+      onReact: (id, emoji) => root.reactionsController.react(id, emoji)
+      onReactPickerRequested: id => root.reactionsController.openPicker(id)
       onSend: (text, replyToId) => root.conversationController.send(text, replyToId)
-      onDraftEdited: text => root.conversationController.setDraft(text)
-      onReplyRequested: id => root.conversationController.startReply(id)
-      onReplyCanceled: root.conversationController.cancelReply()
+      onDraftEdited: text => root.composerController.setDraft(text)
+      onReplyRequested: id => root.composerController.startReply(id)
+      onReplyCanceled: root.composerController.cancelReply()
       onQuoteOpened: remoteId => root.conversationController.scrollToReply(remoteId)
-      onFileAttached: path => root.conversationController.attachFile(path)
-      onAttachmentRemoveRequested: root.conversationController.removeAttachment()
+      onFileAttached: path => root.composerController.attachFile(path)
+      onAttachmentRemoveRequested: root.composerController.removeAttachment()
     }
   }
 
-  ReactionPicker {
-    open: root.conversationController.reactionPickerOpen
-    emojis: root.conversationController.reactionPickerEmojis
-    currentIndex: root.conversationController.reactionPickerIndex
-    routeKey: root.routeKey
-    onPicked: index => root.conversationController.pickReactionAt(index)
-    onCancelled: root.conversationController.closeReactionPicker()
-    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
-  }
-
-  CommandPalette {
-    open: root.windowController.paletteOpen
-    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation" : "Type a command"
-    items: root.windowController.paletteItems
-    currentIndex: root.windowController.paletteIndex
-    routeKey: root.routeKey
-    onQueryEdited: text => root.windowController.setPaletteQuery(text)
-    onAccepted: index => root.windowController.acceptPalette(index)
-    onCancelled: root.windowController.closePalette()
-    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
-  }
-
-  PhotoViewer {
-    objectName: "photoViewer"
+  Overlays {
     anchors.fill: parent
-    open: root.conversationController.viewerOpen
-    photo: root.conversationController.viewerPhoto
-    path: root.conversationController.viewerPath
+    service: root.service
+    windowController: root.windowController
+    dialogController: root.dialogController
+    accountController: root.accountController
+    photoViewerController: root.photoViewerController
+    reactionsController: root.reactionsController
     routeKey: root.routeKey
-
-    onClosed: root.conversationController.closeViewer()
-    onOpenExternally: root.conversationController.openViewerExternally()
-  }
-
-  CloseConfirm {
-    open: root.windowController.confirmingClose
-    onKeep: root.windowController.keepInBackground()
-    onQuit: root.windowController.quit()
-    onCancelled: {
-      root.windowController.cancelClose();
-      if (root.focusDefault) root.focusDefault();
-    }
-  }
-
-  // Tests may build the layout without an account controller.
-  AccountSetup {
-    visible: root.accountController?.open ?? false
-
-    stage: root.accountController?.stage ?? "credentials"
-    services: root.service ? root.service.services : []
-    serviceName: root.accountController?.serviceName ?? "Telegram"
-    qr: root.accountController?.qr ?? ""
-    hint: root.accountController?.hint ?? ""
-    error: root.accountController?.lastError ?? ""
-    busy: root.accountController?.busy ?? false
-    routeKey: root.routeKey
-
-    onServiceChosen: serviceId => root.accountController.chooseService(serviceId)
-    onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)
-    onPhoneRequested: root.accountController.usePhone()
-    onAnswered: value => root.accountController.answer(value)
-    onCancelled: {
-      root.accountController.cancel();
-      if (root.focusDefault) root.focusDefault();
-    }
-  }
-
-  RemoveAccount {
-    open: root.accountController?.removing ?? false
-    accounts: root.service ? root.service.accounts : []
-    error: root.accountController?.lastError ?? ""
-    knownServices: root.service ? root.service.services : []
-
-    onChosen: accountId => root.accountController.remove(accountId)
-    onCancelled: {
-      root.accountController.cancel();
-      if (root.focusDefault) root.focusDefault();
-    }
-  }
-
-  NewChatDialog {
-    objectName: "newChatDialog"
-    id: dialog
-    anchors.fill: parent
-    visible: root.dialogController.open
-
-    accounts: root.service ? root.service.accounts : []
-    accountId: root.dialogController.accountId
-    knownServices: root.service ? root.service.services : []
-    query: root.dialogController.query
-    contacts: root.dialogController.contacts
-    currentIndex: root.dialogController.currentIndex
-    routeKey: root.routeKey
-
-    onAccountChanged: id => root.dialogController.setAccount(id)
-    onQueryEdited: text => root.dialogController.setQuery(text)
-    onAccepted: (accountId, contactId) => root.dialogController.openConversation(accountId, contactId)
-    onCancelled: root.dialogController.close()
+    focusDefault: root.focusDefault
   }
 }
