@@ -293,6 +293,7 @@ Item {
 
     Item {
       id: keyArea
+      objectName: "keyArea"
       anchors.fill: parent
       focus: true
 

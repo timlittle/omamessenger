@@ -8,6 +8,7 @@ OMARCHY ?= omarchy
 OMARCHY_SHELL ?= omarchy-shell
 RSYNC ?= rsync
 QMLLINT ?= /usr/lib/qt6/bin/qmllint
+FFMPEG ?= ffmpeg
 PLUGIN_ID := io.github.omamessenger
 PLUGIN_DIR ?= $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
 COVERAGE_FILE := build/cover.out
@@ -26,7 +27,7 @@ FAKE_HELPER := build/fake/oma-messenger-service
 # test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml lint tools validate install-local release-check clean
+.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo lint tools validate install-local release-check clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -99,6 +100,37 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 	if [ -n "$$warnings" ]; then status=1; echo "FAIL unexpected warnings:"; \
 		grep -Ei "TypeError|ReferenceError|binding loop" $$warnings; fi; \
 	exit $$status
+
+# Prepares tests/demo/shell.qml's root the same isolated way test-qml
+# prepares each of its roots (see above), then plays the recorded script
+# offscreen, saving a PNG per frame into the root's frames/ directory:
+# Quickshell resolves a path outside its own -p root to a blackhole, so
+# the frames have to land inside it. QS_DISABLE_FILE_WATCHER=1 stops it
+# treating its own frames as plugin source changing underfoot. ffmpeg then
+# builds a palette from the frames for a small, sharp GIF and reuses it,
+# and a held frame from the opening list becomes the still. Re-run this
+# after a UI change to refresh docs/demo.gif and docs/demo.png.
+demo: build-fake ## Record the offscreen demo and rebuild docs/demo.gif and docs/demo.png
+	@command -v $(FFMPEG) >/dev/null || { echo "demo: $(FFMPEG) is not installed" >&2; exit 1; }
+	@./scripts/qml-imports.sh >/dev/null
+	root=build/demo-root; \
+	rm -rf "$$root"; mkdir -p "$$root/bin" "$$root/frames"; cp -R tests/demo/. "$$root/"; \
+	for link in ui scripts helper-version tests/qml/Check.js; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
+	ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
+	ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
+	ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; \
+	env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 \
+		XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
+		OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 90 quickshell -p "$$root" >"$$root/log" 2>&1; \
+	if [ $$? -ne 0 ]; then \
+		echo "FAIL demo recording:"; grep -v "qt.qpa" "$$root/log" | tail -20; exit 1; \
+	fi; \
+	$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" \
+		-vf "fps=10,scale=960:-1:flags=lanczos,palettegen" -update 1 -frames:v 1 build/demo-palette.png; \
+	$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" -i build/demo-palette.png \
+		-lavfi "fps=10,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse" -loop 0 docs/demo.gif; \
+	cp "$$root/frames/frame-00010.png" docs/demo.png; \
+	ls -lh docs/demo.gif docs/demo.png
 
 lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QML
 	$(GOLANGCI_LINT) run ./...
