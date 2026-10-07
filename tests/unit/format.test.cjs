@@ -326,3 +326,8 @@ test('longestLine picks the widest line to size a bubble by', () => {
   assert.equal(Format.longestLine('short\na much longer line\nmid'), 'a much longer line');
   assert.equal(Format.longestLine(''), '');
 });
+
+test('messageHtml colours links so they read on the theme', () => {
+  assert.equal(Format.messageHtml('see https://x.io', '#89b4fa'),
+    'see <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');
+});

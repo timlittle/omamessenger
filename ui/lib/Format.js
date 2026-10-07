@@ -19,20 +19,22 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// linkify turns http(s) URLs in escaped text into links. Punctuation that
-// ends a sentence stays outside the link.
-function linkify(escaped) {
+// linkify turns http(s) URLs in escaped text into links, in color when
+// given. Punctuation that ends a sentence stays outside the link.
+function linkify(escaped, color) {
+  const style = color ? ` style="color:${color}"` : '';
   return escaped.replace(URL_PATTERN, (match) => {
     const [, url, trailing] = match.match(/^(.*?)([.,;:!?)]*)$/);
-    return `<a href="${url}">${url}</a>${trailing}`;
+    return `<a href="${url}"${style}>${url}</a>${trailing}`;
   });
 }
 
 // messageHtml shows a message's text as rich text, which would otherwise
 // run every line together: it escapes it, links URLs, and keeps line
 // breaks and runs of spaces, so lists and paragraphs keep their shape.
-function messageHtml(text) {
-  return linkify(escapeHtml(text)).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
+// Links take linkColor, since a TextEdit has no link color of its own.
+function messageHtml(text, linkColor) {
+  return linkify(escapeHtml(text), linkColor).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
 }
 
 // longestLine returns a text's widest line, which sets a bubble's width.

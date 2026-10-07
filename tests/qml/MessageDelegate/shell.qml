@@ -115,6 +115,7 @@ ShellRoot {
     if (!body) return Check.fail("message body not found");
     if (body.text.indexOf("&lt;b&gt;") < 0) return Check.fail("markup was not escaped: " + body.text);
     if (body.text.indexOf("<a href=") < 0) return Check.fail("URL was not linkified: " + body.text);
+    if (body.text.indexOf("color:" + String(Color.accent)) < 0) return Check.fail("link is not in the accent color: " + body.text);
     return true;
   }
 

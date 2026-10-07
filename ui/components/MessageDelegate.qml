@@ -97,7 +97,7 @@ Item {
           selectByMouse: true
           wrapMode: TextEdit.Wrap
           textFormat: TextEdit.RichText
-          text: Format.messageHtml(root.message.text)
+          text: Format.messageHtml(root.message.text, Color.accent)
           color: Color.foreground
           font { family: Theme.font.family; pixelSize: Theme.font.body }
           onLinkActivated: link => Qt.openUrlExternally(link)
