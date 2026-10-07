@@ -45,7 +45,20 @@ OmaMessenger signs in as its own Telegram app, whose API id and hash are in the 
 
 ## Data and privacy
 
-The helper keeps its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you: `messages.db`; in `telegram/` each Telegram account's session and the API keys it signs in with; and in `media/` photos and files you have opened, up to 1 GB, the least recently used dropped first. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
+The helper keeps its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you:
+
+- `messages.db` — your accounts, chats and messages
+- `telegram/` — each Telegram account's login session and the API keys it signs in with
+- `media/` — photos and files you have opened, cached up to 1 GB with the least recently used dropped first, plus `media/outgoing/`, where a file you attach to an outgoing message is kept so a retry can resend it
+- `~/.local/share/applications/io.github.omamessenger.desktop` — the apps-menu entry `scripts/install-helper.sh` creates; removing the plugin does not remove this file
+
+Nothing here ever leaves this machine except the message text and files you actually send, which go to Telegram (or WhatsApp, once supported) as any client's would. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
+
+Removing an account (**Remove an account** in the command palette) signs it out and deletes its session, credentials and messages from this computer, but it does not delete anything from your phone or the messaging service: your chat history there is unaffected, and other devices stay linked until you unlink them yourself (in Telegram, **Settings → Devices**).
+
+## Risks
+
+OmaMessenger is an unofficial Telegram client, not something Telegram publishes or endorses. It signs in with its own API id and hash, committed in the source like any open-source client's (`backend/internal/connector/telegram/credentials.go`): anyone can read and reuse them, since they are not a secret, only an identifier. Telegram can rate-limit, restrict or ban an account it decides is misusing an unofficial client, independent of anything OmaMessenger itself does wrong. Using OmaMessenger with your Telegram account is a risk you take on for that account; register your own API keys at [my.telegram.org](https://my.telegram.org/apps) (see above) if you would rather Telegram's limits apply to an app you control instead.
 
 ## Keyboard shortcuts
 

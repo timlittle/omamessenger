@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestResolveConfig(t *testing.T) {
 	t.Parallel()
@@ -58,4 +63,28 @@ func TestResolveConfig(t *testing.T) {
 // lookup returns an environment lookup over values.
 func lookup(values map[string]string) func(string) string {
 	return func(key string) string { return values[key] }
+}
+
+// TestHelperVersion_MatchesManifest checks that manifest.json's plugin
+// version has not drifted from the helper's own version: a release ships
+// both together, and a mismatch would mean the plugin and the helper it
+// installs disagree about what version this is.
+func TestHelperVersion_MatchesManifest(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile(filepath.Join("..", "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var manifest struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	if manifest.Version != helperVersion {
+		t.Fatalf("manifest.json version is %q but the helper reports %q; change both together", manifest.Version, helperVersion)
+	}
 }

@@ -26,7 +26,7 @@ FAKE_HELPER := build/fake/oma-messenger-service
 # test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml lint tools validate install-local clean
+.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml lint tools validate install-local release-check clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -41,6 +41,22 @@ build-fake: ## Build the test helper, which runs scripted fake accounts, into bu
 
 build-all: ## Build the release helpers and SHA256SUMS into build/release/
 	./scripts/build-release.sh
+
+# Cross-compiles both release binaries, so it is too slow for `make check`;
+# run it by hand before a release, or in CI only for a tag push. It installs
+# into a throwaway HOME, never the real one, and cleans up after itself.
+release-check: build-all ## Install a real cross-compiled release into a throwaway HOME, end to end
+	@tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	mkdir -p "$$tmp/home" "$$tmp/data"; \
+	base="file://$(CURDIR)/build/release"; \
+	run() { HOME="$$tmp/home" XDG_DATA_HOME="$$tmp/data" OMA_RELEASE_BASE="$$base" ./scripts/install-helper.sh "$$@"; }; \
+	if run --status; then echo "release-check: expected --status to fail before install" >&2; exit 1; fi; \
+	run; \
+	run | grep -q "already installed" || { echo "release-check: second install was not a no-op" >&2; exit 1; }; \
+	run --status; \
+	test -f "$$tmp/data/applications/io.github.omamessenger.desktop" || { echo "release-check: apps-menu entry missing" >&2; exit 1; }; \
+	echo "release-check: installed and verified a real release build, twice, cleanly"
 
 install-helper: ## Download and verify the helper release named in helper-version
 	./scripts/install-helper.sh
