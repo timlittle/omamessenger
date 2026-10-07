@@ -1,17 +1,22 @@
 // Records the README demo GIF: drives the real Panel, offscreen, against
-// the fake helper's scripted accounts, and saves a steady stream of PNG
-// frames while it goes. `make demo` runs this the same isolated way
+// the fake helper's small demo seed (OMA_FAKE_DEMO=1; see
+// backend/internal/connector/fake/demo.go), and saves a steady stream of
+// PNG frames while it goes. `make demo` runs this the same isolated way
 // `make test-qml` runs tests/qml/, then assembles the frames into
 // docs/demo.gif and docs/demo.png with ffmpeg. It is not under tests/qml/
 // so `make test-qml` never runs it, and it is not a pass/fail test: it
 // logs PASS or FAIL the same way so a broken run is easy to spot, but its
 // job is the recording, not an assertion.
 //
-// Each step below performs one user-visible action — a shortcut, typing a
-// query, a click — or holds the picture for a while so a viewer can read
-// it, the same polling step engine tests/qml/Flows/shell.qml uses. A
-// small on-screen label names the key or click each action step took,
-// for the recording only: nothing like it exists in the product.
+// The whole thing has to read in well under ten seconds, so it shows only
+// a few strong moments: the list with unread badges, a chat with a real
+// loaded photo and a link preview, replying (showing the composer's
+// writing-mode border) and sending, then reacting. Each step below
+// performs one user-visible action — a shortcut, typing a query, a click
+// — or holds the picture briefly so a viewer can read it, the same
+// polling step engine tests/qml/Flows/shell.qml uses. A small on-screen
+// label names each action, for the recording only: nothing like it exists
+// in the product.
 import QtQuick
 import QtTest
 import Quickshell
@@ -40,56 +45,22 @@ ShellRoot {
   property var steps: [
     root.waitForReady,
     root.startCapturing,
-    root.holdFor(18),
-    root.openAlex,
-    root.waitForAlexLinkPreview,
-    root.holdFor(16),
-    root.openMum,
-    root.waitForMumPhoto,
-    root.holdFor(10),
-    root.scrollToOlderPhoto,
-    root.clickOlderPhoto,
-    root.waitForViewerReady,
-    root.holdFor(10),
-    root.stepToNewerPhoto,
-    root.waitForViewerReady,
-    root.holdFor(12),
-    root.closeViewer,
-    root.waitForViewerClosed,
-    root.replyToPhoto,
-    root.waitForReplyBanner,
     root.holdFor(8),
+    root.openPriya,
+    root.waitForChatReady,
+    root.holdFor(10),
     root.focusComposer,
     root.waitForComposerFocused,
     root.sendReply,
+    root.holdFor(6),
+    root.submitReply,
     root.waitForReplyDelivered,
-    root.holdFor(10),
+    root.holdFor(8),
     root.openReactCommand,
     root.waitForReactionPicker,
-    root.holdFor(6),
-    root.pickHeartReaction,
+    root.pickReaction,
     root.waitForReactionApplied,
-    root.holdFor(14),
-    root.searchForTicket,
-    root.waitForTicketSearch,
-    root.holdFor(14),
-    root.leaveSearch,
-    root.searchForDentist,
-    root.waitForDentistSearch,
-    root.openDentist,
-    root.waitForDentistOpen,
-    root.holdFor(8),
-    root.hideDentistChat,
-    root.holdFor(6),
-    root.closeAndClearSearch,
-    root.waitForListWithoutDentist,
-    root.showAllChats,
-    root.waitForDentistDimmed,
-    root.holdFor(16),
-    root.openCommandPalette,
-    root.holdFor(18),
-    root.closePalette,
-    root.holdFor(8)
+    root.holdFor(10)
   ]
 
   // fail stops the recording with a reason on stderr, the same way a
@@ -103,20 +74,6 @@ ShellRoot {
   // panel is the live Panel instance.
   function panel(): var {
     return panelLoader.item;
-  }
-
-  // listModel is the conversation list the window shows.
-  function listModel(): var {
-    return Check.find(root.panel(), "conversationListView").model;
-  }
-
-  // rowIndex returns the visible list row with the given title, or -1.
-  function rowIndex(title: string): int {
-    const model = root.listModel();
-    for (let i = 0; i < model.count; i++) {
-      if (model.get(i).title === title) return i;
-    }
-    return -1;
   }
 
   // title is the open conversation's header title, or "" when none is.
@@ -135,34 +92,14 @@ ShellRoot {
     return "";
   }
 
-  // photoMessageIds returns the ids of every loaded photo message in the
-  // open conversation, newest first.
-  function photoMessageIds(): var {
-    const model = Check.find(root.panel(), "messageListView").model;
-    const ids = [];
-    for (let i = 0; i < model.count; i++) {
-      if (model.get(i).text === "[Photo]") ids.push(model.get(i).id);
-    }
-    return ids;
-  }
-
-  // photoImageFor returns the "photoImage" inside the loaded delegate for
-  // messageId, or null while that delegate is not built, because the row
-  // is not on screen yet.
-  function photoImageFor(messageId: string): var {
+  // delegateFor returns the loaded message delegate for messageId, or
+  // null while it is not built, because the row is not on screen yet.
+  function delegateFor(messageId: string): var {
     const items = Check.find(root.panel(), "messageListView").contentItem.children;
     for (let i = 0; i < items.length; i++) {
-      if (items[i].modelData && items[i].modelData.id === messageId) return Check.find(items[i], "photoImage");
+      if (items[i].modelData && items[i].modelData.id === messageId) return items[i];
     }
     return null;
-  }
-
-  // viewerImage returns the in-app photo viewer's own image, scoped to
-  // the viewer itself: the bubble behind it carries an image with the
-  // same object name.
-  function viewerImage(): var {
-    const viewer = Check.find(root.panel(), "photoViewer");
-    return viewer ? Check.find(viewer, "photoImage") : null;
   }
 
   // showLabel puts text in the on-screen keystroke label, for the frames
@@ -188,11 +125,12 @@ ShellRoot {
     };
   }
 
-  // waitForReady holds until the fake helper has seeded every account and
-  // the list has loaded all of its chats.
+  // waitForReady holds until the fake helper's demo seed has connected
+  // and the list has loaded its handful of chats.
   function waitForReady(): var {
     const accounts = helperService.accounts;
-    return root.listModel().count === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
+    const model = Check.find(root.panel(), "conversationListView").model;
+    return model.count === 4 && accounts.length === 1 && accounts.every((a) => a.status === "connected");
   }
 
   // startCapturing begins saving frames; everything before this point was
@@ -202,111 +140,52 @@ ShellRoot {
     return true;
   }
 
-  // openAlex jumps to Alex Chen with Ctrl+K, the conversation switcher.
-  function openAlex(): var {
-    root.showLabel("Ctrl+K  →  Alex");
+  // openPriya jumps to Priya Patel with Ctrl+K, the conversation switcher:
+  // her chat carries both the photo and the link preview this records.
+  function openPriya(): var {
+    root.showLabel("Ctrl+K  →  Priya");
     t.keyClick(Qt.Key_K, Qt.ControlModifier);
-    root.typeText("alex");
+    root.typeText("priya");
     t.keyClick(Qt.Key_Return);
     return true;
   }
 
-  // waitForAlexLinkPreview holds until Alex Chen is open and showing the
-  // link preview on her tickets message.
-  function waitForAlexLinkPreview(): var {
-    if (root.title() !== "Alex Chen") return false;
-    const preview = Check.find(root.panel(), "linkPreview");
+  // waitForChatReady holds until Priya's chat is open, her newest photo
+  // has actually downloaded and decoded (not the blurred placeholder,
+  // not a broken image), and her link preview card shows.
+  function waitForChatReady(): var {
+    if (root.title() !== "Priya Patel") return false;
+
+    const model = Check.find(root.panel(), "messageListView").model;
+    let photoId = "", linkId = "";
+    for (let i = 0; i < model.count; i++) {
+      if (model.get(i).text === "[Photo]") photoId = model.get(i).id;
+      if (model.get(i).text.indexOf("venue") >= 0) linkId = model.get(i).id;
+    }
+    if (!photoId || !linkId) return false;
+
+    // Every message delegate carries its own LinkPreview and photoImage,
+    // visible or not, so each lookup is scoped to the one message it
+    // belongs to rather than taking whichever Check.find meets first.
+    const photoDelegate = root.delegateFor(photoId);
+    if (!photoDelegate) return false;
+    const image = Check.find(photoDelegate, "photoImage");
+    if (!image) return false;
+    if (image.status === Image.Error) return Check.fail("the chat's photo failed to load");
+    if (image.status !== Image.Ready) return false;
+    if (String(image.source).indexOf("file://") !== 0) return false;
+
+    const linkDelegate = root.delegateFor(linkId);
+    if (!linkDelegate) return false;
+    const preview = Check.find(linkDelegate, "linkPreview");
     return !!preview && preview.visible;
   }
 
-  // openMum jumps to Mum, whose newest message is a photo.
-  function openMum(): var {
-    root.showLabel("Ctrl+K  →  Mum");
-    t.keyClick(Qt.Key_K, Qt.ControlModifier);
-    root.typeText("mum");
-    t.keyClick(Qt.Key_Return);
-    return true;
-  }
-
-  // waitForMumPhoto holds until Mum is open and her newest photo has
-  // downloaded into the media cache, so its bubble shows the real image.
-  function waitForMumPhoto(): var {
-    if (root.title() !== "Mum") return false;
-    const model = Check.find(root.panel(), "messageListView").model;
-    if (model.count === 0 || model.get(0).text !== "[Photo]") return false;
-    return model.get(0).mediaPath !== "";
-  }
-
-  // scrollToOlderPhoto pages up so Mum's older photo, further back in her
-  // history, is on screen.
-  function scrollToOlderPhoto(): var {
-    root.showLabel("Ctrl+U  (scroll up)");
-    t.keyClick(Qt.Key_U, Qt.ControlModifier);
-    return true;
-  }
-
-  // clickOlderPhoto clicks Mum's older photo once its delegate has been
-  // built, opening it in the in-app viewer.
-  function clickOlderPhoto(): var {
-    const ids = root.photoMessageIds();
-    if (ids.length < 2) return Check.fail("Mum has only " + ids.length + " loaded photo(s), want 2");
-
-    const image = root.photoImageFor(ids[1]);
-    if (!image) return false;
-
-    root.showLabel("click  (open photo)");
-    t.mouseClick(image, image.width / 2, image.height / 2);
-    return true;
-  }
-
-  // waitForViewerReady holds until the in-app viewer shows a fully loaded
-  // image, not a spinner or a broken one.
-  function waitForViewerReady(): var {
-    const image = root.viewerImage();
-    if (!image) return false;
-    if (image.status === Image.Error) return Check.fail("the photo viewer's image failed to load");
-    return image.status === Image.Ready && String(image.source) !== "";
-  }
-
-  // stepToNewerPhoto presses → to move the in-app viewer to Mum's newer
-  // photo.
-  function stepToNewerPhoto(): var {
-    root.showLabel("→  (next photo)");
-    t.keyClick(Qt.Key_Right);
-    return true;
-  }
-
-  // closeViewer presses Escape to leave the in-app photo viewer.
-  function closeViewer(): var {
-    root.showLabel("Esc  (close viewer)");
-    t.keyClick(Qt.Key_Escape);
-    return true;
-  }
-
-  // waitForViewerClosed holds until the viewer has closed.
-  function waitForViewerClosed(): var {
-    const viewer = Check.find(root.panel(), "photoViewer");
-    return !viewer || !viewer.visible;
-  }
-
-  // replyToPhoto presses Shift+R to reply to the newest message, Mum's
-  // photo.
-  function replyToPhoto(): var {
-    root.showLabel("Shift+R  (reply)");
-    t.keyClick(Qt.Key_R, Qt.ShiftModifier);
-    return true;
-  }
-
-  // waitForReplyBanner holds until the composer shows the reply banner.
-  function waitForReplyBanner(): var {
-    const banner = Check.find(root.panel(), "replyBanner");
-    return !!banner && banner.visible;
-  }
-
-  // focusComposer presses i to move keyboard focus into the composer:
-  // starting a reply fills in who it answers but leaves the list or
-  // conversation pane focused, the same as the real UI.
+  // focusComposer presses i to move keyboard focus into the composer.
   function focusComposer(): var {
+    const input = Check.find(root.panel(), "composerInput");
+    if (input && input.activeFocus) return true;
+
     root.showLabel("i  (write)");
     t.keyClick(Qt.Key_I);
     return true;
@@ -320,23 +199,29 @@ ShellRoot {
     return !!input && input.activeFocus;
   }
 
-  // sendReply types a reply to the photo and sends it with Enter.
+  // sendReply types a short reply, showing the composer's writing-mode
+  // border before it is sent.
   function sendReply(): var {
-    root.showLabel("\"What a lovely photo!\"  ⏎");
-    root.typeText("What a lovely photo!");
+    root.showLabel("\"Count me in!\"");
+    root.typeText("Count me in!");
+    return true;
+  }
+
+  // submitReply presses Enter to send the typed reply.
+  function submitReply(): var {
+    root.showLabel("\"Count me in!\"  ⏎");
     t.keyClick(Qt.Key_Return);
     return true;
   }
 
   // waitForReplyDelivered holds until the reply has sent.
   function waitForReplyDelivered(): var {
-    const status = root.messageStatus("What a lovely photo!");
+    const status = root.messageStatus("Count me in!");
     return status === "sent" || status === "delivered";
   }
 
   // openReactCommand opens the command palette and runs "react to the
-  // newest message" through it, rather than the "+" chip, to show that
-  // path too.
+  // newest message" through it, rather than the hover toolbar's "+".
   function openReactCommand(): var {
     root.showLabel("Ctrl+/  →  react");
     t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
@@ -351,11 +236,9 @@ ShellRoot {
     return !!picker && picker.visible;
   }
 
-  // pickHeartReaction moves the picker's highlight once, to the heart,
-  // and accepts it.
-  function pickHeartReaction(): var {
-    root.showLabel("→  ⏎  (❤️)");
-    t.keyClick(Qt.Key_Right);
+  // pickReaction accepts the picker's first emoji.
+  function pickReaction(): var {
+    root.showLabel("⏎  (👍)");
     t.keyClick(Qt.Key_Return);
     return true;
   }
@@ -366,116 +249,6 @@ ShellRoot {
     const model = Check.find(root.panel(), "messageListView").model;
     if (model.count === 0) return false;
     return Timeline.reactions(model.get(0)).length > 0;
-  }
-
-  // searchForTicket focuses search with Ctrl+G and types a query that
-  // only Alex Chen's tickets message matches.
-  function searchForTicket(): var {
-    root.showLabel("Ctrl+G  →  \"ticket\"");
-    t.keyClick(Qt.Key_G, Qt.ControlModifier);
-    root.typeText("ticket");
-    return true;
-  }
-
-  // waitForTicketSearch holds until only Alex Chen matches.
-  function waitForTicketSearch(): var {
-    const model = root.listModel();
-    return model.count === 1 && model.get(0).title === "Alex Chen";
-  }
-
-  // leaveSearch clears the query and leaves the search field with two
-  // Escapes, back to the full list.
-  function leaveSearch(): var {
-    root.showLabel("Esc  Esc  (clear search)");
-    t.keyClick(Qt.Key_Escape);
-    t.keyClick(Qt.Key_Escape);
-    return true;
-  }
-
-  // searchForDentist searches for the dentist conversation, the one this
-  // recording hides and then reveals again with show-all.
-  function searchForDentist(): var {
-    root.showLabel("Ctrl+G  →  \"dentist\"");
-    t.keyClick(Qt.Key_G, Qt.ControlModifier);
-    root.typeText("dentist");
-    return true;
-  }
-
-  // waitForDentistSearch holds until only the dentist matches.
-  function waitForDentistSearch(): var {
-    const model = root.listModel();
-    return model.count === 1 && model.get(0).title.indexOf("Dentist") >= 0;
-  }
-
-  // openDentist opens the matched conversation with Enter.
-  function openDentist(): var {
-    root.showLabel("⏎  (open)");
-    t.keyClick(Qt.Key_Return);
-    return true;
-  }
-
-  // waitForDentistOpen holds until the dentist conversation is open.
-  function waitForDentistOpen(): var {
-    return root.title().indexOf("Dentist") >= 0;
-  }
-
-  // hideDentistChat runs the local "hide or unhide chat" command on the
-  // open conversation through the command palette.
-  function hideDentistChat(): var {
-    root.showLabel("Ctrl+/  →  unhide chat");
-    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
-    root.typeText("unhide chat");
-    t.keyClick(Qt.Key_Return);
-    return true;
-  }
-
-  // closeAndClearSearch leaves the dentist conversation and clears the
-  // search query, with two Escapes, back to the plain list.
-  function closeAndClearSearch(): var {
-    root.showLabel("Esc  Esc  (back to list)");
-    t.keyClick(Qt.Key_Escape);
-    t.keyClick(Qt.Key_Escape);
-    return true;
-  }
-
-  // waitForListWithoutDentist holds until the standard list no longer
-  // shows the now-hidden dentist conversation.
-  function waitForListWithoutDentist(): var {
-    return root.title() === "" && root.rowIndex("Dr. Bartholomew Featherstonehaugh-Wainwright (Dentist)") === -1;
-  }
-
-  // showAllChats runs "show or hide all chats" through the command
-  // palette, so the hidden dentist chat reappears, dimmed.
-  function showAllChats(): var {
-    root.showLabel("Ctrl+/  →  hide all chats");
-    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
-    root.typeText("hide all chats");
-    t.keyClick(Qt.Key_Return);
-    return true;
-  }
-
-  // waitForDentistDimmed holds until the dentist row is back, marked
-  // dimmed and labelled "Hidden".
-  function waitForDentistDimmed(): var {
-    const i = root.rowIndex("Dr. Bartholomew Featherstonehaugh-Wainwright (Dentist)");
-    if (i === -1) return false;
-    const row = root.listModel().get(i);
-    return row.dimmed === true && row.dimLabel === "Hidden";
-  }
-
-  // openCommandPalette opens the full command list with Ctrl+/, to show
-  // what it offers.
-  function openCommandPalette(): var {
-    root.showLabel("Ctrl+/  (command palette)");
-    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
-    return true;
-  }
-
-  // closePalette leaves the command palette with Escape.
-  function closePalette(): var {
-    root.showLabel("Esc");
-    t.keyClick(Qt.Key_Escape);
-    return true;
   }
 
   // _OVERLAY_NAMES are every full-window overlay's object name: whichever

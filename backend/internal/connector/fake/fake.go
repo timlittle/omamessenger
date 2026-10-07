@@ -27,8 +27,19 @@ type Suite struct {
 
 // New creates the fake accounts.
 func New() *Suite {
+	return newSuite(scripts)
+}
+
+// NewDemo creates the small, curated set of fake accounts the README demo
+// recording uses, instead of the fuller fixture New gives every test.
+func NewDemo() *Suite {
+	return newSuite(demoScripts)
+}
+
+// newSuite builds a Suite from a list of account scripts.
+func newSuite(accounts []accountScript) *Suite {
 	s := &Suite{}
-	for _, script := range scripts {
+	for _, script := range accounts {
 		s.connectors = append(s.connectors, newConnector(script))
 	}
 

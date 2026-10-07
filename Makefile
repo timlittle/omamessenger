@@ -106,10 +106,18 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 # offscreen, saving a PNG per frame into the root's frames/ directory:
 # Quickshell resolves a path outside its own -p root to a blackhole, so
 # the frames have to land inside it. QS_DISABLE_FILE_WATCHER=1 stops it
-# treating its own frames as plugin source changing underfoot. ffmpeg then
-# builds a palette from the frames for a small, sharp GIF and reuses it,
-# and a held frame from the opening list becomes the still. Re-run this
-# after a UI change to refresh docs/demo.gif and docs/demo.png.
+# treating its own frames as plugin source changing underfoot.
+# OMA_FAKE_DEMO=1 switches the fake helper to its small, curated demo seed
+# (backend/internal/connector/fake/demo.go), not the fuller fixture every
+# other test uses, so the list stays short and the names stay neutral.
+# grabToImage occasionally hands back one frame as RGBA instead of RGB
+# (seen on the frame right after an overlay's backdrop first covers the
+# columns this hides, still mid-blend); ffmpeg's palette filter cannot
+# cope with the pixel format changing mid-stream, so every frame is
+# normalized to RGB first. ffmpeg then builds a palette from the frames
+# for a small, sharp GIF and reuses it, and a held frame from the opening
+# list becomes the still. Re-run this after a UI change to refresh
+# docs/demo.gif and docs/demo.png.
 demo: build-fake ## Record the offscreen demo and rebuild docs/demo.gif and docs/demo.png
 	@command -v $(FFMPEG) >/dev/null || { echo "demo: $(FFMPEG) is not installed" >&2; exit 1; }
 	@./scripts/qml-imports.sh >/dev/null
@@ -119,17 +127,20 @@ demo: build-fake ## Record the offscreen demo and rebuild docs/demo.gif and docs
 	ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 	ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 	ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; \
-	env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 \
+	env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 OMA_FAKE_DEMO=1 \
 		XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 		OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 90 quickshell -p "$$root" >"$$root/log" 2>&1; \
 	if [ $$? -ne 0 ]; then \
 		echo "FAIL demo recording:"; grep -v "qt.qpa" "$$root/log" | tail -20; exit 1; \
 	fi; \
+	for f in "$$root"/frames/*.png; do \
+		$(FFMPEG) -y -loglevel error -i "$$f" -pix_fmt rgb24 "$$f.rgb.png" && mv "$$f.rgb.png" "$$f"; \
+	done; \
 	$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" \
 		-vf "fps=10,scale=960:-1:flags=lanczos,palettegen" -update 1 -frames:v 1 build/demo-palette.png; \
 	$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" -i build/demo-palette.png \
 		-lavfi "fps=10,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse" -loop 0 docs/demo.gif; \
-	cp "$$root/frames/frame-00010.png" docs/demo.png; \
+	cp "$$root/frames/frame-00005.png" docs/demo.png; \
 	ls -lh docs/demo.gif docs/demo.png
 
 lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QML
