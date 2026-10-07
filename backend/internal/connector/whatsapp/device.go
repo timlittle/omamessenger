@@ -7,9 +7,12 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 
@@ -53,6 +56,24 @@ type device interface {
 	// onStatus reports "connected", "disconnected" or "loggedout"
 	// whenever WhatsApp says so, until the returned func unregisters it.
 	onStatus(handler func(status string)) (unregister func())
+
+	// sendMessage sends msg to jid using the client-chosen id, returning
+	// WhatsApp's response once its server has accepted it.
+	sendMessage(ctx context.Context, jid types.JID, msg *waE2E.Message, id types.MessageID) (whatsmeow.SendResponse, error)
+
+	// generateMessageID returns a fresh id for an outgoing message.
+	generateMessageID() types.MessageID
+
+	// markRead tells WhatsApp the messages named by ids, all sent by
+	// sender in chat, have been read.
+	markRead(ctx context.Context, ids []types.MessageID, chat, sender types.JID) error
+
+	// onEvent reports every event whatsmeow fires for this device, until
+	// the returned func unregisters it. Unlike onStatus, which filters
+	// to connection status alone, this is the seam the event dispatcher
+	// (see events.go) switches on by concrete type, so later waves can
+	// add their own cases without widening this interface again.
+	onEvent(handler func(evt any)) (unregister func())
 }
 
 // pairClientType and pairDisplayName name this companion to WhatsApp when
@@ -157,6 +178,28 @@ func (d *waDevice) onStatus(handler func(status string)) (unregister func()) {
 		}
 	})
 
+	return func() { d.cli.RemoveEventHandler(id) }
+}
+
+// sendMessage sends msg to jid with WhatsApp, under the client-chosen id.
+func (d *waDevice) sendMessage(ctx context.Context, jid types.JID, msg *waE2E.Message, id types.MessageID) (whatsmeow.SendResponse, error) {
+	return d.cli.SendMessage(ctx, jid, msg, whatsmeow.SendRequestExtra{ID: id})
+}
+
+// generateMessageID returns a fresh id for an outgoing message.
+func (d *waDevice) generateMessageID() types.MessageID {
+	return d.cli.GenerateMessageID()
+}
+
+// markRead tells WhatsApp the messages named by ids, all sent by sender
+// in chat, have been read as of now.
+func (d *waDevice) markRead(ctx context.Context, ids []types.MessageID, chat, sender types.JID) error {
+	return d.cli.MarkRead(ctx, ids, time.Now(), chat, sender)
+}
+
+// onEvent reports every event whatsmeow fires for this device.
+func (d *waDevice) onEvent(handler func(evt any)) (unregister func()) {
+	id := d.cli.AddEventHandler(handler)
 	return func() { d.cli.RemoveEventHandler(id) }
 }
 

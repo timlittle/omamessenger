@@ -1,8 +1,9 @@
 // Package whatsapp connects a WhatsApp account through whatsmeow: it
 // pairs by QR code or a phone number's link code, reports the account's
 // connection status to a Sink, and normalizes whatsmeow's JIDs, messages
-// and sync data into the domain types the rest of the helper uses. Later
-// waves add history, live messages and sending.
+// and sync data into the domain types the rest of the helper uses. It
+// sends outgoing text and reports delivery and read progress; a later
+// wave adds sending media.
 package whatsapp
 
 import (
@@ -21,8 +22,9 @@ var ErrAlreadyRunning = errors.New("whatsapp: already running")
 // errNotPairing reports sign-in input when no pairing is waiting for it.
 var errNotPairing = errors.New("whatsapp: not waiting to pair")
 
-// errSendNotSupported reports Send and MarkRead, which a later wave adds.
-var errSendNotSupported = errors.New("whatsapp: sending is not supported yet")
+// errNotConnected reports Send or MarkRead asked of an account whose Run
+// is not currently connected.
+var errNotConnected = errors.New("whatsapp: not connected")
 
 // Connector is one WhatsApp account.
 type Connector struct {
@@ -33,6 +35,15 @@ type Connector struct {
 	mu      sync.Mutex
 	running bool
 	waiting bool
+	dev     device
+	sink    connector.Sink
+
+	// sent and unread are read and written by send.go and receipts.go:
+	// sent matches a receipt's chat and WhatsApp id back to the local
+	// message it reports progress for, and unread tracks incoming
+	// message ids MarkRead has not yet told WhatsApp about.
+	sent   map[string]*sentMessage
+	unread map[string]map[string][]string
 }
 
 var (
@@ -79,6 +90,12 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 		return err
 	}
 	defer dev.disconnect()
+
+	c.connected(dev, sink)
+	defer c.disconnected()
+
+	unregisterEvents := c.handleEvents(ctx, dev, sink)
+	defer unregisterEvents()
 
 	select {
 	case <-ctx.Done():
@@ -144,14 +161,35 @@ func (c *Connector) SubmitAuth(ctx context.Context, step, value string) error {
 	}
 }
 
-// Send is not supported yet; a later wave adds it.
-func (*Connector) Send(_ context.Context, _ domain.Conversation, _ domain.Message) error {
-	return errSendNotSupported
+// connected records the device and sink of a signed-in run, so Send,
+// MarkRead and incoming events have something to act on.
+func (c *Connector) connected(dev device, sink connector.Sink) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.dev, c.sink = dev, sink
 }
 
-// MarkRead is not supported yet; a later wave adds it.
-func (*Connector) MarkRead(_ context.Context, _ domain.Conversation) error {
-	return errSendNotSupported
+// disconnected forgets the run's device and sink, so Send and MarkRead
+// fail until the account reconnects.
+func (c *Connector) disconnected() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.dev, c.sink = nil, nil
+}
+
+// session returns the device and sink of the current run, or
+// errNotConnected when no run is connected.
+func (c *Connector) session() (device, connector.Sink, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.dev == nil {
+		return nil, nil, errNotConnected
+	}
+
+	return c.dev, c.sink, nil
 }
 
 // startRun records that this connector is running, refusing a second

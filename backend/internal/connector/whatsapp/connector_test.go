@@ -223,15 +223,15 @@ func TestSubmitAuth_RejectsAnAnswerWhenNotWaiting(t *testing.T) {
 	}
 }
 
-func TestSend_IsNotSupportedYet(t *testing.T) {
+func TestSend_FailsBeforeConnecting(t *testing.T) {
 	t.Parallel()
 
 	c := newTestConnector(newFakeDevice())
-	if err := c.Send(t.Context(), domain.Conversation{}, domain.Message{}); !errors.Is(err, errSendNotSupported) {
-		t.Errorf("Send = %v, want errSendNotSupported", err)
+	if err := c.Send(t.Context(), domain.Conversation{}, domain.Message{}); !errors.Is(err, errNotConnected) {
+		t.Errorf("Send = %v, want errNotConnected", err)
 	}
-	if err := c.MarkRead(t.Context(), domain.Conversation{}); !errors.Is(err, errSendNotSupported) {
-		t.Errorf("MarkRead = %v, want errSendNotSupported", err)
+	if err := c.MarkRead(t.Context(), domain.Conversation{}); !errors.Is(err, errNotConnected) {
+		t.Errorf("MarkRead = %v, want errNotConnected", err)
 	}
 }
 
