@@ -231,10 +231,13 @@ Item {
   }
 
   // downloadMedia asks the helper for a message's media once, records
-  // where it is, then runs done with the path. A failure is reported only
-  // when the user asked for the media, rather than a photo fetching
-  // itself. The photo viewer reuses this rather than asking the helper
-  // itself, so there is one place that tracks an in-flight download.
+  // where it is, then runs done with the path. A failure is reported to
+  // the user only when they asked for the media, rather than a photo
+  // fetching itself, but is always recorded on the message, so a photo
+  // with no preview shows "Photo unavailable" instead of an empty box
+  // that a failed, silent auto-fetch would otherwise leave forever. The
+  // photo viewer reuses this rather than asking the helper itself, so
+  // there is one place that tracks an in-flight download.
   function downloadMedia(id: string, report: bool, done: var): void {
     if (root._fetching[id]) return;
 
@@ -242,10 +245,12 @@ Item {
     root.service.request("media.fetch", { messageId: id }, function(error, result) {
       delete root._fetching[id];
       if (error) {
+        timeline.setMediaFailed(id, true);
         if (report) timeline.lastError = Rpc.errorText(error);
         return;
       }
 
+      timeline.setMediaFailed(id, false);
       timeline.setMediaPath(id, result.path);
       done(result.path);
     });

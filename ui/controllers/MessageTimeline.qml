@@ -77,8 +77,12 @@ Item {
   function upsert(message: var, isGroup: bool): void {
     const loaded = root._snapshot();
     const at = loaded.findIndex((m) => m.id === message.id);
-    if (at !== -1) messagesModel.set(at, Timeline.row(Object.assign({ mediaPath: loaded[at].mediaPath }, message)));
-    else messagesModel.insert(Timeline.insertIndex(loaded, message), Timeline.row(message));
+    if (at !== -1) {
+      const kept = { mediaPath: loaded[at].mediaPath, mediaFailed: loaded[at].mediaFailed };
+      messagesModel.set(at, Timeline.row(Object.assign(kept, message)));
+    } else {
+      messagesModel.insert(Timeline.insertIndex(loaded, message), Timeline.row(message));
+    }
 
     root._recomputeAnnotations(isGroup);
   }
@@ -144,6 +148,14 @@ Item {
   function setMediaPath(id: string, path: string): void {
     const at = root._snapshot().findIndex((m) => m.id === id);
     if (at !== -1) messagesModel.setProperty(at, "mediaPath", path);
+  }
+
+  // setMediaFailed records whether a message's last media fetch failed,
+  // so a photo with no preview shows "Photo unavailable" instead of
+  // staying an empty box forever.
+  function setMediaFailed(id: string, failed: bool): void {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    if (at !== -1) messagesModel.setProperty(at, "mediaFailed", failed);
   }
 
   // ids returns every loaded message's id, newest first, for moving the

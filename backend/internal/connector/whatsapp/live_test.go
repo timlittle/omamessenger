@@ -119,6 +119,7 @@ func TestHandleMessage_ResolvesAGroupChatItHasNotSeenBefore(t *testing.T) {
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	dev := newFakeDevice()
 	dev.groupNames = map[string]string{"12345-1600000000@g.us": "Climbing Crew"}
+	dev.groupMembers = map[string]int{"12345-1600000000@g.us": 5}
 	media := newTestMediaStore(t)
 	var sink connectortest.Sink
 
@@ -131,6 +132,116 @@ func TestHandleMessage_ResolvesAGroupChatItHasNotSeenBefore(t *testing.T) {
 
 	if !sink.Has("conversation 12345-1600000000@g.us Climbing Crew") {
 		t.Errorf("events = %q, want the group's resolved name", sink.Lines())
+	}
+	if conv, ok := sink.ConversationFor("12345-1600000000@g.us"); !ok || conv.Members != 5 {
+		t.Errorf("conversation = %+v, ok=%t, want 5 members resolved alongside the name", conv, ok)
+	}
+}
+
+func TestHandleMessage_NamesAGroupSenderFromTheirResolvedContact(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	dev.groupNames = map[string]string{"12345-1600000000@g.us": "Climbing Crew"}
+	dev.contactNames = map[string]string{"987654@lid": "Priya Nair"}
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	group := types.NewJID("12345-1600000000", types.GroupServer)
+	sender := types.NewJID("987654", types.HiddenUserServer)
+	e := &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: group, Sender: sender, IsGroup: true}, ID: "M2", Timestamp: time.Unix(1, 0)},
+		Message: &waE2E.Message{Conversation: strPtr("hi all")},
+	}
+	c.handleMessage(t.Context(), &sink, dev, media, e)
+
+	messages := sink.LiveMessages()["12345-1600000000@g.us"]
+	if len(messages) != 1 || messages[0].SenderName != "Priya Nair" {
+		t.Errorf("live messages = %+v, want the sender named from their resolved contact", messages)
+	}
+}
+
+func TestHandleMessage_TitlesALIDDirectChatFromItsContact(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	dev.contactNames = map[string]string{"987654@lid": "Priya Nair"}
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	chat := types.NewJID("987654", types.HiddenUserServer)
+	e := &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: chat, Sender: chat}, ID: "M2", PushName: "a stray push name", Timestamp: time.Unix(1, 0)},
+		Message: &waE2E.Message{Conversation: strPtr("hi")},
+	}
+	c.handleMessage(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("conversation 987654@lid Priya Nair") {
+		t.Errorf("events = %q, want the LID chat titled from its resolved contact, not the push name", sink.Lines())
+	}
+}
+
+func TestHandleMessage_SkipsAProtocolNoticeWithNoContent(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	e := &events.Message{
+		Info:    liveInfo(),
+		Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_EPHEMERAL_SETTING.Enum()}},
+	}
+	c.handleMessage(t.Context(), &sink, dev, media, e)
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want a protocol notice with no content to report nothing at all", sink.Lines())
+	}
+}
+
+func TestHandleMessage_SkipsAMessageInASystemChat(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	e := &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: types.StatusBroadcastJID}, ID: "M9", Timestamp: time.Unix(1, 0)},
+		Message: &waE2E.Message{Conversation: strPtr("someone's status")},
+	}
+	c.handleMessage(t.Context(), &sink, dev, media, e)
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want nothing reported for a system JID such as the status broadcast", sink.Lines())
+	}
+}
+
+func TestHandleMessage_CreatesAndFillsTheSelfChatFromAnOutgoingMessage(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	self := types.NewJID("15551234567", types.DefaultUserServer)
+	dev.selfJID = self
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	e := &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: self, Sender: self, IsFromMe: true}, ID: "M1", Timestamp: time.Unix(1, 0)},
+		Message: &waE2E.Message{Conversation: strPtr("note to self")},
+	}
+	c.handleMessage(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("conversation 15551234567@s.whatsapp.net Message yourself") {
+		t.Errorf("events = %q, want the self-chat created and titled \"Message yourself\"", sink.Lines())
+	}
+	if !sink.Has("history 15551234567@s.whatsapp.net M1") {
+		t.Errorf("events = %q, want the self-sent message reported as history, never as unread", sink.Lines())
 	}
 }
 
@@ -224,7 +335,7 @@ func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	t.Parallel()
 
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	c.setName("15551234567@s.whatsapp.net", "Nadia")
+	c.rememberName("15551234567@s.whatsapp.net", "Nadia", nameRankPushName)
 	var sink connectortest.Sink
 
 	direct := types.NewJID("15551234567", types.DefaultUserServer)

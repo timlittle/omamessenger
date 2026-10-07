@@ -1,6 +1,7 @@
 package whatsapp
 
 import (
+	"context"
 	"slices"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -49,12 +50,32 @@ func isEdit(msg *waE2E.Message) bool {
 // replaces, with its new text, media and reply: WhatsApp resends the
 // whole message rather than a diff, so Sink.Edited's "replace
 // unconditionally" contract fits exactly.
-func edit(info types.MessageInfo, msg *waE2E.Message) domain.Message {
+func edit(ctx context.Context, dev device, info types.MessageInfo, msg *waE2E.Message) domain.Message {
 	pm := msg.GetProtocolMessage()
-	out := message(info, pm.GetEditedMessage())
+	out := message(ctx, dev, info, pm.GetEditedMessage())
 	out.RemoteID, out.Edited = pm.GetKey().GetID(), true
 
 	return out
+}
+
+// isContentless reports whether msg is one of WhatsApp's own protocol
+// or system notices rather than something a person sent: every
+// ProtocolMessage kind other than a revoke or an edit (handled
+// separately; see isRevoke and isEdit), a poll vote, or a message
+// pinned or kept in a chat, none of which carry anything to show.
+func isContentless(msg *waE2E.Message) bool {
+	if pm := msg.GetProtocolMessage(); pm != nil {
+		return !isRevoke(msg) && !isEdit(msg)
+	}
+
+	switch {
+	case msg.GetPollUpdateMessage() != nil,
+		msg.GetPinInChatMessage() != nil,
+		msg.GetKeepInChatMessage() != nil:
+		return true
+	default:
+		return false
+	}
 }
 
 // receiptStatus maps a WhatsApp receipt type to a domain delivery

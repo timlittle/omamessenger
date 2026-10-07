@@ -219,14 +219,80 @@ func FuzzConversationFromSync(f *testing.F) {
 	})
 }
 
-func TestDirectConversation_TitlesItAfterTheSender(t *testing.T) {
+func TestTitleFallback_PhoneNumberOrNeutralLabel(t *testing.T) {
 	t.Parallel()
 
-	info := types.MessageInfo{MessageSource: types.MessageSource{Chat: types.NewJID("1", types.DefaultUserServer)}, PushName: "Nadia"}
-	want := domain.Conversation{AccountID: "wa", RemoteID: "1@s.whatsapp.net", Kind: domain.KindDirect, Title: "Nadia"}
+	tests := []struct {
+		name string
+		jid  types.JID
+		want string
+	}{
+		{"phone JID", types.NewJID("15551234567", types.DefaultUserServer), "+15551234567"},
+		{"LID", types.NewJID("987654", types.HiddenUserServer), "Unknown contact"},
+	}
 
-	if got := directConversation("wa", info); got != want {
-		t.Errorf("directConversation = %+v, want %+v", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := titleFallback(tt.jid); got != tt.want {
+				t.Errorf("titleFallback(%s) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsSystemJID_RecognisesNonConversationJIDs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		jid  types.JID
+		want bool
+	}{
+		{"status broadcast", types.StatusBroadcastJID, true},
+		{"the 0 system account", types.PSAJID, true},
+		{"a broadcast list", types.NewJID("123456", types.BroadcastServer), true},
+		{"a newsletter", types.NewJID("1", types.NewsletterServer), true},
+		{"a direct chat", types.NewJID("15551234567", types.DefaultUserServer), false},
+		{"a group", types.NewJID("1-2", types.GroupServer), false},
+		{"a LID", types.NewJID("987654", types.HiddenUserServer), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := isSystemJID(tt.jid); got != tt.want {
+				t.Errorf("isSystemJID(%s) = %t, want %t", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestContactDisplayName_PrefersSavedNamesOverAPushName(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		info types.ContactInfo
+		want string
+	}{
+		{"full name wins", types.ContactInfo{Found: true, FullName: "Nadia Rahman", PushName: "nads"}, "Nadia Rahman"},
+		{"first name beats business and push", types.ContactInfo{Found: true, FirstName: "Nadia", BusinessName: "Acme", PushName: "nads"}, "Nadia"},
+		{"business name beats push", types.ContactInfo{Found: true, BusinessName: "Acme Support", PushName: "nads"}, "Acme Support"},
+		{"push name is the last resort", types.ContactInfo{Found: true, PushName: "nads"}, "nads"},
+		{"nothing known", types.ContactInfo{Found: true}, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := contactDisplayName(tt.info); got != tt.want {
+				t.Errorf("contactDisplayName(%s) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
 	}
 }
 

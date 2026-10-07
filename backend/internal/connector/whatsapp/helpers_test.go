@@ -57,11 +57,22 @@ type fakeDevice struct {
 	// session connects.
 	duringConnect []any
 
-	// groupNames, groupErr and groupCalls script and record groupName,
-	// which history.go and live.go call to resolve a group's name.
-	groupNames map[string]string
-	groupErr   error
-	groupCalls []types.JID
+	// groupNames, groupMembers, groupErr and groupCalls script and record
+	// groupInfo, which history.go and live.go call to resolve a group's
+	// name and member count.
+	groupNames   map[string]string
+	groupMembers map[string]int
+	groupErr     error
+	groupCalls   []types.JID
+
+	// contactNames scripts contactName, keyed by the string form of
+	// whichever JID (a phone JID or a LID) the lookup should resolve.
+	contactNames map[string]string
+
+	// selfJID scripts isSelfChat: a JID whose bare form matches it, or
+	// its LID equivalent, is this account's own self-chat. The zero
+	// value matches nothing.
+	selfJID types.JID
 
 	// downloadData, downloadErr and downloadBlocks script downloadMedia,
 	// and downloadCalls records what it was asked to fetch; fetch_test.go
@@ -285,17 +296,37 @@ func (d *fakeDevice) fireEvent(evt any) {
 	}
 }
 
-// groupName records the call and reports the scripted name or error.
-func (d *fakeDevice) groupName(_ context.Context, jid types.JID) (string, error) {
+// groupInfo records the call and reports the scripted name, member
+// count or error.
+func (d *fakeDevice) groupInfo(_ context.Context, jid types.JID) (string, int, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	d.groupCalls = append(d.groupCalls, jid)
 	if d.groupErr != nil {
-		return "", d.groupErr
+		return "", 0, d.groupErr
 	}
 
-	return d.groupNames[jid.String()], nil
+	return d.groupNames[jid.String()], d.groupMembers[jid.String()], nil
+}
+
+// contactName reports the scripted name for jid, or "" when the test did
+// not script one, the way a real lookup with nothing known yet would.
+func (d *fakeDevice) contactName(_ context.Context, jid types.JID) string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return d.contactNames[jid.String()]
+}
+
+// isSelfChat reports whether jid's bare form matches the scripted
+// selfJID, the way the real device compares against the account's own
+// phone JID or LID.
+func (d *fakeDevice) isSelfChat(jid types.JID) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return !d.selfJID.IsEmpty() && jid.ToNonAD() == d.selfJID.ToNonAD()
 }
 
 // downloadMedia records ref and reports the scripted bytes or error, or

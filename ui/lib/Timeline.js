@@ -54,12 +54,14 @@ function insertIndex(newestFirst, message) {
 // to an array of objects, rather than at the row's first insert, silently
 // leaves the role empty, and reacting to a message is exactly that case,
 // an update rather than an insert. mediaPath, where its download is,
-// starts empty.
+// starts empty; mediaFailed, whether the last download attempt failed,
+// starts false.
 function row(message) {
   return Object.assign({}, message, {
     media: message.media ? JSON.stringify(message.media) : '',
     replyTo: message.replyTo ? JSON.stringify(message.replyTo) : '',
     mediaPath: message.mediaPath ?? '',
+    mediaFailed: message.mediaFailed ?? false,
     reactions: JSON.stringify(message.reactions ?? [])
   });
 }

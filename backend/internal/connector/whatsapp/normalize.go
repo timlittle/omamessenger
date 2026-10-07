@@ -12,6 +12,12 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+// selfChatTitle is the fixed title for the account's own chat with
+// itself, WhatsApp's "Message yourself": it carries no useful contact
+// or push name of its own (nobody has themselves saved as a contact),
+// so a resolved name is never attempted for it.
+const selfChatTitle = "Message yourself"
+
 // errBadRemoteID reports a conversation or contact id this connector did
 // not make: not a canonical WhatsApp JID string.
 var errBadRemoteID = errors.New("whatsapp: not a canonical id")
@@ -113,26 +119,55 @@ func conversationName(c *waHistorySync.Conversation) string {
 	}
 }
 
-// directConversation describes a one-to-one chat from a live message's
-// own sender, for when it starts a chat the account has not synced yet.
-// Its title is the sender's push name, the only name a live message
-// carries.
-func directConversation(accountID string, info types.MessageInfo) domain.Conversation {
-	return domain.Conversation{
-		AccountID: accountID,
-		RemoteID:  remoteID(info.Chat),
-		Kind:      domain.KindDirect,
-		Title:     senderName(info),
+// titleFallback is a direct chat's title when nothing else names it
+// yet: the contact's phone number, the way WhatsApp's own clients title
+// an unsaved contact, for a JID on WhatsApp's default server. A JID
+// addressed only by its hidden id (a LID) carries no phone number to
+// show, and its digits are not one, so formatting it the same way would
+// show a meaningless number instead of a name; it gets a neutral label
+// instead.
+func titleFallback(jid types.JID) string {
+	if jid.Server == types.DefaultUserServer {
+		return "+" + jid.User
+	}
+
+	return "Unknown contact"
+}
+
+// isSystemJID reports whether jid names something history sync or a
+// live event can deliver that is not a conversation with a person or a
+// group: the status broadcast, an old-style broadcast list, a
+// newsletter channel, or WhatsApp's own "0" system account. None of
+// these are worth showing as a chat, and "0" in particular would
+// otherwise title as the meaningless "+0".
+func isSystemJID(jid types.JID) bool {
+	switch {
+	case jid == types.StatusBroadcastJID, jid == types.PSAJID:
+		return true
+	case jid.IsBroadcastList():
+		return true
+	case jid.Server == types.NewsletterServer:
+		return true
+	default:
+		return false
 	}
 }
 
-// phoneTitle is the fallback title for a direct chat with no name known
-// yet: the contact's phone number, the way WhatsApp's own clients title
-// an unsaved contact. It is not meaningful for a JID addressed by its
-// hidden id rather than a phone number, but it is still a better title
-// than none.
-func phoneTitle(jid types.JID) string {
-	return "+" + jid.User
+// contactDisplayName is WhatsApp's own name for a resolved contact, in
+// its own priority order: the name saved for them, their first name
+// alone, their verified business name, or their self-chosen push name.
+// It returns "" when info names no one, or holds none of these.
+func contactDisplayName(info types.ContactInfo) string {
+	switch {
+	case info.FullName != "":
+		return info.FullName
+	case info.FirstName != "":
+		return info.FirstName
+	case info.BusinessName != "":
+		return info.BusinessName
+	default:
+		return info.PushName
+	}
 }
 
 // contactFromPushName turns one push name of a history sync into a

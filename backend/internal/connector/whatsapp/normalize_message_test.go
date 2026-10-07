@@ -81,10 +81,22 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := message(tt.info, tt.msg); !reflect.DeepEqual(got, tt.want) {
+			if got := message(t.Context(), newFakeDevice(), tt.info, tt.msg); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("message = %+v\nwant     %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMessage_PrefersAResolvedContactNameOverThePushName(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.contactNames = map[string]string{"15551234567@s.whatsapp.net": "Nadia Khan"}
+
+	got := message(t.Context(), dev, testInfo(), &waE2E.Message{Conversation: strPtr("hi")})
+	if got.SenderName != "Nadia Khan" {
+		t.Errorf("message.SenderName = %q, want the resolved contact name", got.SenderName)
 	}
 }
 
@@ -121,7 +133,7 @@ func TestMessage_UnwrapsEphemeralAndViewOnce(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := message(testInfo(), tt.msg); got.Text != "secret" {
+			if got := message(t.Context(), newFakeDevice(), testInfo(), tt.msg); got.Text != "secret" {
 				t.Errorf("message(%s).Text = %q, want %q", tt.name, got.Text, "secret")
 			}
 		})
@@ -138,7 +150,7 @@ func TestMessage_UnwrapGivesUpAfterTheDepthLimit(t *testing.T) {
 		msg = &waE2E.Message{EphemeralMessage: &waE2E.FutureProofMessage{Message: msg}}
 	}
 
-	got := message(testInfo(), msg)
+	got := message(t.Context(), newFakeDevice(), testInfo(), msg)
 	if got.Text == "secret" {
 		t.Error("message unwrapped past its depth limit")
 	}
@@ -169,14 +181,14 @@ func TestSenderName_FallsBackSensibly(t *testing.T) {
 func TestReplyTo_ReportsTheQuotedStanzaOrNil(t *testing.T) {
 	t.Parallel()
 
-	withReply := message(testInfo(), &waE2E.Message{
+	withReply := message(t.Context(), newFakeDevice(), testInfo(), &waE2E.Message{
 		ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strPtr("sure"), ContextInfo: &waE2E.ContextInfo{StanzaID: strPtr("Q1")}},
 	})
 	if withReply.ReplyTo == nil || withReply.ReplyTo.RemoteID != "Q1" {
 		t.Fatalf("message.ReplyTo = %+v, want it to quote remote id Q1", withReply.ReplyTo)
 	}
 
-	plain := message(testInfo(), &waE2E.Message{Conversation: strPtr("hi")})
+	plain := message(t.Context(), newFakeDevice(), testInfo(), &waE2E.Message{Conversation: strPtr("hi")})
 	if plain.ReplyTo != nil {
 		t.Errorf("message.ReplyTo = %+v, want nil for a message that answers nothing", plain.ReplyTo)
 	}
@@ -197,7 +209,10 @@ func TestMessageText_LabelsMediaWithoutACaption(t *testing.T) {
 		{&waE2E.Message{AudioMessage: &waE2E.AudioMessage{PTT: boolPtr(true)}}, "[Voice message]"},
 		{&waE2E.Message{AudioMessage: &waE2E.AudioMessage{PTT: boolPtr(false)}}, "[Audio]"},
 		{&waE2E.Message{ContactMessage: &waE2E.ContactMessage{}}, "[Contact]"},
+		{&waE2E.Message{ContactMessage: &waE2E.ContactMessage{DisplayName: strPtr("Alex")}}, "[Contact: Alex]"},
 		{&waE2E.Message{LocationMessage: &waE2E.LocationMessage{}}, "[Location]"},
+		{&waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{}}, "[Poll]"},
+		{&waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{Name: strPtr("Pizza tonight?")}}, "[Poll: Pizza tonight?]"},
 		{&waE2E.Message{}, "[Message]"},
 	}
 
@@ -292,7 +307,7 @@ func TestHistoryMessage_DirectAndGroup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok := historyMessage(tt.chat, tt.hm)
+			got, ok := historyMessage(t.Context(), newFakeDevice(), tt.chat, tt.hm)
 			if !ok || !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("historyMessage = %+v, %t; want %+v, true", got, ok, tt.want)
 			}
@@ -316,6 +331,13 @@ func TestHistoryMessage_DropsReactionEditAndRevoke(t *testing.T) {
 				Type: waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(), EditedMessage: &waE2E.Message{Conversation: strPtr("new text")},
 			}},
 		},
+		{
+			"ephemeral setting change",
+			&waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_EPHEMERAL_SETTING.Enum()}},
+		},
+		{"poll vote", &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{}}},
+		{"pin in chat", &waE2E.Message{PinInChatMessage: &waE2E.PinInChatMessage{}}},
+		{"keep in chat", &waE2E.Message{KeepInChatMessage: &waE2E.KeepInChatMessage{}}},
 	}
 
 	for _, tt := range tests {
@@ -325,8 +347,8 @@ func TestHistoryMessage_DropsReactionEditAndRevoke(t *testing.T) {
 			hm := &waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
 				Key: &waCommon.MessageKey{ID: strPtr("H1")}, Message: tt.msg,
 			}}
-			if _, ok := historyMessage(chat, hm); ok {
-				t.Error("historyMessage reported a protocol message as content")
+			if _, ok := historyMessage(t.Context(), newFakeDevice(), chat, hm); ok {
+				t.Error("historyMessage reported a protocol or system message as content")
 			}
 		})
 	}
@@ -349,7 +371,7 @@ func FuzzHistoryMessage(f *testing.F) {
 			return
 		}
 
-		historyMessage(chat, &hm)
+		historyMessage(t.Context(), newFakeDevice(), chat, &hm)
 	})
 }
 
@@ -367,7 +389,7 @@ func FuzzMessage(f *testing.F) {
 			return
 		}
 
-		got := message(testInfo(), &msg)
+		got := message(t.Context(), newFakeDevice(), testInfo(), &msg)
 		if got.Text == "" {
 			t.Errorf("message produced no text for %+v", &msg)
 		}

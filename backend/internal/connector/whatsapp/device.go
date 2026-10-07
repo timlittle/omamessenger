@@ -78,9 +78,21 @@ type device interface {
 	// add their own cases without widening this interface again.
 	onEvent(handler func(evt any)) (unregister func())
 
-	// groupName is a group's current name, for a history sync or a live
-	// message whose own data left it blank.
-	groupName(ctx context.Context, jid types.JID) (string, error)
+	// groupInfo is a group's current name and member count, for a
+	// history sync or a live message whose own data left either blank.
+	groupInfo(ctx context.Context, jid types.JID) (name string, members int, err error)
+
+	// contactName is WhatsApp's own name for jid: a LID is mapped to its
+	// phone JID first, then whichever name the local contact store holds
+	// for it, in WhatsApp's own priority order, or "" when nothing is
+	// known yet. It never does network I/O: everything it reads was
+	// already saved locally by an earlier sync.
+	contactName(ctx context.Context, jid types.JID) string
+
+	// isSelfChat reports whether jid is this account's own chat with
+	// itself: its phone JID or its LID, whichever the chat was addressed
+	// by.
+	isSelfChat(jid types.JID) bool
 
 	// downloadMedia downloads and decrypts a message's attachment, using
 	// the reference it was saved with (see normalize_media.go).
@@ -224,14 +236,63 @@ func (d *waDevice) onEvent(handler func(evt any)) (unregister func()) {
 	return func() { d.cli.RemoveEventHandler(id) }
 }
 
-// groupName asks WhatsApp for a group's current name.
-func (d *waDevice) groupName(ctx context.Context, jid types.JID) (string, error) {
+// groupInfo asks WhatsApp for a group's current name and member count.
+func (d *waDevice) groupInfo(ctx context.Context, jid types.JID) (string, int, error) {
 	info, err := d.cli.GetGroupInfo(ctx, jid)
 	if err != nil {
-		return "", fmt.Errorf("whatsapp: group info: %w", err)
+		return "", 0, fmt.Errorf("whatsapp: group info: %w", err)
 	}
 
-	return info.Name, nil
+	return info.Name, info.ParticipantCount, nil
+}
+
+// contactName resolves jid to WhatsApp's own name for that person. A LID
+// carries no contact record of its own on most accounts, so it is
+// mapped to its phone JID through whatsmeow's own LID store first; if
+// that fails, or the phone JID itself has no contact saved, jid is
+// looked up as given, which covers the few contacts whatsmeow already
+// keyed by LID.
+func (d *waDevice) contactName(ctx context.Context, jid types.JID) string {
+	if name := d.lookupContactName(ctx, jid); name != "" {
+		return name
+	}
+
+	if jid.Server != types.HiddenUserServer {
+		return ""
+	}
+
+	phone, err := d.cli.Store.LIDs.GetPNForLID(ctx, jid)
+	if err != nil || phone.IsEmpty() {
+		return ""
+	}
+
+	return d.lookupContactName(ctx, phone)
+}
+
+// lookupContactName is contactName's single contact-store lookup, tried
+// against both a LID and its mapped phone JID.
+func (d *waDevice) lookupContactName(ctx context.Context, jid types.JID) string {
+	info, err := d.cli.Store.Contacts.GetContact(ctx, jid)
+	if err != nil || !info.Found {
+		return ""
+	}
+
+	return contactDisplayName(info)
+}
+
+// isSelfChat reports whether jid is this account's own self-chat: its
+// phone JID or its LID, either of which WhatsApp may use to address a
+// message the account sent itself.
+func (d *waDevice) isSelfChat(jid types.JID) bool {
+	target := jid.ToNonAD()
+
+	if own := d.cli.Store.GetJID(); !own.IsEmpty() && target == own.ToNonAD() {
+		return true
+	}
+
+	lid := d.cli.Store.GetLID()
+
+	return !lid.IsEmpty() && target == lid.ToNonAD()
 }
 
 // downloadMedia downloads and decrypts a message's attachment. Passing

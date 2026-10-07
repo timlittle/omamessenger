@@ -5,11 +5,14 @@ import "../lib/Format.js" as Format
 
 // A photo or video in a message, at its shape. A photo shows its blurred
 // preview until the full image is downloaded, which it asks for as soon as
-// it is shown; if the full image then fails to load, it falls back to the
-// preview, or a quiet message naming the file when there is no preview
-// either. A video shows its preview with a play mark and its length, and
-// downloads only when clicked, since videos can be large. A click opens
-// either in the user's viewer.
+// it is shown; if the full image then fails to load, or its fetch is known
+// to have failed outright, it falls back to the preview, or a quiet
+// message naming the file when there is no preview either. Without that
+// second check a photo with neither a preview nor a successful download
+// would stay an empty box forever, since nothing ever attempts to load an
+// empty image source. A video shows its preview with a play mark and its
+// length, and downloads only when clicked, since videos can be large. A
+// click opens either in the user's viewer.
 Item {
   id: root
 
@@ -18,6 +21,9 @@ Item {
   required property var photo
   // path is where the full image was downloaded, or "" until then.
   property string path: ""
+  // failed is true once a fetch for this photo's full image has
+  // definitely failed, as opposed to simply not having happened yet.
+  property bool failed: false
   // maxWidth is the widest the photo may be drawn.
   property real maxWidth: Style.space(320)
 
@@ -39,10 +45,11 @@ Item {
   // showing the broken file the next time this delegate is reused.
   property bool _loadFailed: false
 
-  // _unavailable is true once the full image has failed and there is no
+  // _unavailable is true once the full image is known not to be coming
+  // (it failed to load, or its fetch itself failed) and there is no
   // thumb to fall back to either, so the bubble shows a quiet message
   // instead of staying blank.
-  readonly property bool _unavailable: root._loadFailed && !root.photo.thumb
+  readonly property bool _unavailable: !root.photo.thumb && (root._loadFailed || root.failed)
 
   implicitWidth: Math.min(root.maxWidth, Style.space(320))
   implicitHeight: Math.min(root.implicitWidth * root._aspect, Style.space(400))

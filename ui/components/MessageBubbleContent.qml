@@ -86,6 +86,7 @@ Column {
     visible: root.media && (root.media.kind === "photo" || root.media.kind === "video")
     photo: root.media ? root.media : ({})
     path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
+    failed: !!(root.message && root.message.mediaFailed)
     onWanted: root.mediaWanted()
     onOpened: root.mediaOpen()
   }

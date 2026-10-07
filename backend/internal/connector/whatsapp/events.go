@@ -21,7 +21,9 @@ import (
 
 // handleEvents registers dev's one event handler for this run and
 // returns a func that unregisters it, mirroring dev.onStatus's shape for
-// connection status.
+// connection status. Events this connector only ever re-titles a chat
+// from, or deliberately ignores, are left to handleNameEvent, so this
+// switch's own complexity does not grow with every later addition there.
 func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaStore, sink connector.Sink) (unregister func()) {
 	return dev.onEvent(func(evt any) {
 		switch e := evt.(type) {
@@ -37,10 +39,27 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 			c.handlePin(ctx, sink, e)
 		case *events.Archive:
 			c.handleArchive(ctx, sink, e)
-		case *events.Mute:
-			// Deliberately not propagated: see the decision on WhatsApp's
-			// mute sync in docs/decisions.md. Listed here so the switch
-			// stays the map of every event this connector has considered.
+		default:
+			c.handleNameEvent(ctx, sink, dev, evt)
 		}
 	})
+}
+
+// handleNameEvent dispatches the events that can only retitle an
+// already-known chat (see contacts.go), plus the mute changes this
+// connector deliberately does not propagate.
+func (c *Connector) handleNameEvent(ctx context.Context, sink connector.Sink, dev device, evt any) {
+	switch e := evt.(type) {
+	case *events.Contact:
+		c.handleContactUpdate(ctx, sink, e)
+	case *events.PushName:
+		c.handlePushNameUpdate(ctx, sink, e)
+	case *events.AppStateSyncComplete:
+		c.handleAppStateSyncComplete(ctx, sink, dev, e)
+	case *events.Mute:
+		// Deliberately not propagated: see the decision on WhatsApp's
+		// mute sync in docs/decisions.md. Listed here so this switch
+		// stays the map of every such event this connector has
+		// considered.
+	}
 }

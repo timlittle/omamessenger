@@ -28,7 +28,10 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 	case isRevoke(e.Message):
 		c.handleRevoke(ctx, sink, e)
 	case isEdit(e.Message):
-		c.handleEdit(ctx, sink, e)
+		c.handleEdit(ctx, sink, dev, e)
+	case isContentless(e.Message):
+		// WhatsApp's own protocol and system notices carry nothing a
+		// person sent; see isContentless. Nothing is reported for one.
 	default:
 		c.handleContent(ctx, sink, dev, media, e)
 	}
@@ -40,15 +43,24 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 // tells WhatsApp about it; an outgoing one WhatsApp reports from another
 // of this account's devices skips both, since it carries no reliable
 // name for an already-known chat and would otherwise overwrite a good
-// title with a generic one, and it was never unread to begin with. Such
-// a message is history: it never notifies.
+// title with a generic one, and it was never unread to begin with. The
+// account's own self-chat is the one exception: every message in it is
+// "from me", since there is no one else to send it, so it is the only
+// outgoing chat this still ensures exists. System JIDs history sync or
+// a live event can still deliver, such as the status broadcast, carry
+// nothing worth showing and are dropped outright (see isSystemJID).
+// Such a message is history: it never notifies.
 func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
+	if isSystemJID(e.Info.Chat) {
+		return
+	}
+
 	remote := remoteID(e.Info.Chat)
-	if !e.Info.IsFromMe {
+	if !e.Info.IsFromMe || dev.isSelfChat(e.Info.Chat) {
 		c.ensureChat(ctx, sink, dev, e.Info)
 	}
 
-	m := message(e.Info, e.Message)
+	m := message(ctx, dev, e.Info, e.Message)
 	saveMediaRef(ctx, media, remote, m.RemoteID, e.Message)
 	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe})
 
@@ -61,20 +73,34 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 	sink.Incoming(ctx, c.account.ID, remote, m)
 }
 
-// ensureChat reports info's chat as a conversation, resolving a group's
-// name when this connector has not seen it yet, so a message in a chat
-// that history sync has not reached still gets somewhere to live.
+// ensureChat reports info's chat as a conversation: the account's own
+// self-chat, a group, resolving its name when this connector has not
+// seen it yet, or a direct chat, so a message in a chat that history
+// sync has not reached still gets somewhere to live.
 func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev device, info types.MessageInfo) {
-	if kindFor(info.Chat) == domain.KindGroup {
-		name := c.resolveGroupName(ctx, dev, info.Chat)
-		sink.Conversation(ctx, domain.Conversation{
-			AccountID: c.account.ID, RemoteID: remoteID(info.Chat), Kind: domain.KindGroup, Title: name,
+	remote := remoteID(info.Chat)
+
+	if dev.isSelfChat(info.Chat) {
+		c.reportConversation(ctx, sink, domain.Conversation{
+			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: selfChatTitle,
 		})
 
 		return
 	}
 
-	sink.Conversation(ctx, directConversation(c.account.ID, info))
+	if kindFor(info.Chat) == domain.KindGroup {
+		name, members := c.resolveGroupName(ctx, dev, info.Chat, "", 0)
+		c.reportConversation(ctx, sink, domain.Conversation{
+			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindGroup, Title: name, Members: members,
+		})
+
+		return
+	}
+
+	title := c.resolveDirectTitle(ctx, dev, info.Chat, info.PushName)
+	c.reportConversation(ctx, sink, domain.Conversation{
+		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title,
+	})
 }
 
 // handleReaction folds a live reaction change into its message's full
@@ -105,8 +131,8 @@ func (c *Connector) handleRevoke(ctx context.Context, sink connector.Sink, e *ev
 }
 
 // handleEdit reports a message changed after it was sent.
-func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, e *events.Message) {
-	sink.Edited(ctx, c.account.ID, remoteID(e.Info.Chat), edit(e.Info, e.Message))
+func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev device, e *events.Message) {
+	sink.Edited(ctx, c.account.ID, remoteID(e.Info.Chat), edit(ctx, dev, e.Info, e.Message))
 }
 
 // handleChatPresence reports someone typing or stopping, naming them

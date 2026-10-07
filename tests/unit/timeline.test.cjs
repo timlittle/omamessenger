@@ -285,6 +285,11 @@ test('row keeps a downloaded media path, and starts without one', () => {
   assert.strictEqual(Timeline.row({ id: 'a', mediaPath: '/m/a.jpg' }).mediaPath, '/m/a.jpg');
 });
 
+test('row keeps whether a media fetch failed, and starts not failed', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).mediaFailed, false);
+  assert.strictEqual(Timeline.row({ id: 'a', mediaFailed: true }).mediaFailed, true);
+});
+
 test('row keeps replyTo as a string, so every model row has the same shape', () => {
   const reply = { remoteId: '1', senderName: 'Alex', text: 'original' };
 

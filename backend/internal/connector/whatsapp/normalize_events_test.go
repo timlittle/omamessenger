@@ -75,7 +75,7 @@ func TestIsEdit_AndEdit_ReplaceTheOriginalMessage(t *testing.T) {
 		t.Fatal("isEdit(an edit) = false, want true")
 	}
 
-	got := edit(testInfo(), msg)
+	got := edit(t.Context(), newFakeDevice(), testInfo(), msg)
 	want := domain.Message{
 		RemoteID: "M3", SenderID: "15551234567@s.whatsapp.net", SenderName: "Nadia Rahman",
 		Text: "corrected", Status: domain.StatusReceived, Created: 1_800_000_000_000, Edited: true,
@@ -176,7 +176,7 @@ func FuzzReactionRevokeEdit(f *testing.F) {
 		}
 
 		if isEdit(&msg) {
-			edit(testInfo(), &msg)
+			edit(t.Context(), newFakeDevice(), testInfo(), &msg)
 		}
 	})
 }

@@ -56,9 +56,30 @@ type Connector struct {
 	sent   map[string]*sentMessage
 	unread map[string]map[string][]string
 
-	organize  map[string]organizeState     // conversation remote id to its last known pinned/archived state
-	names     map[string]string            // contact, push and group names resolved so far, by remote id
-	reactions map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji
+	organize     map[string]organizeState     // conversation remote id to its last known pinned/archived state
+	names        map[string]namedEntry        // contact, push and group names resolved so far, by remote id
+	groupMembers map[string]int               // a group's last known member count, by remote id
+	chatKinds    map[string]string            // every conversation remote id this connector has reported, to its kind
+	reactions    map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji
+}
+
+// nameRank orders how much a resolved name can be trusted, so
+// rememberName never lets a later, weaker report replace a name already
+// known to be better: a contact's saved name, a verified business name
+// or a group's own name (WhatsApp's own best answer) always wins over a
+// bare push name, which is self-chosen and unverified.
+type nameRank int
+
+const (
+	nameRankPushName nameRank = iota + 1
+	nameRankContact
+)
+
+// namedEntry is the best name resolved so far for one remote id, and how
+// much it can be trusted.
+type namedEntry struct {
+	name string
+	rank nameRank
 }
 
 var (
@@ -287,20 +308,89 @@ func (c *Connector) nameFor(remoteID string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return c.names[remoteID]
+	return c.names[remoteID].name
 }
 
-// setName records the resolved name for remoteID, so later messages,
-// conversations and presence updates for it do not have to resolve it
-// again.
-func (c *Connector) setName(remoteID, name string) {
+// rememberName records name for remoteID if rank is at least as
+// trustworthy as whatever is already cached for it, so a later, weaker
+// report, such as a push name arriving after a saved contact name
+// already resolved one, can never replace a good name with a worse one.
+// It returns whichever name ends up cached: the one just given, or the
+// better one already there.
+func (c *Connector) rememberName(remoteID, name string, rank nameRank) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.names == nil {
-		c.names = map[string]string{}
+	if existing, ok := c.names[remoteID]; ok && existing.rank > rank {
+		return existing.name
 	}
-	c.names[remoteID] = name
+
+	if c.names == nil {
+		c.names = map[string]namedEntry{}
+	}
+	c.names[remoteID] = namedEntry{name: name, rank: rank}
+
+	return name
+}
+
+// groupMembersFor returns the member count last resolved for a group's
+// remote id, and whether one has been resolved yet.
+func (c *Connector) groupMembersFor(remoteID string) (int, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	n, ok := c.groupMembers[remoteID]
+
+	return n, ok
+}
+
+// setGroupMembers records a group's resolved member count, so a later
+// sync or message for it does not have to ask WhatsApp again.
+func (c *Connector) setGroupMembers(remoteID string, members int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.groupMembers == nil {
+		c.groupMembers = map[string]int{}
+	}
+	c.groupMembers[remoteID] = members
+}
+
+// reportConversation reports conv and remembers its remote id and kind,
+// so a later app-state sync (see contacts.go) knows which of this
+// connector's known conversations are direct chats worth rechecking for
+// a better name.
+func (c *Connector) reportConversation(ctx context.Context, sink connector.Sink, conv domain.Conversation) {
+	c.noteChat(conv.RemoteID, conv.Kind)
+	sink.Conversation(ctx, conv)
+}
+
+// noteChat records remoteID's kind, for knownDirectChats.
+func (c *Connector) noteChat(remoteID, kind string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.chatKinds == nil {
+		c.chatKinds = map[string]string{}
+	}
+	c.chatKinds[remoteID] = kind
+}
+
+// knownDirectChats lists the remote id of every direct chat this
+// connector has reported so far, for handleAppStateSyncComplete's
+// rescan.
+func (c *Connector) knownDirectChats() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var out []string
+	for remote, kind := range c.chatKinds {
+		if kind == domain.KindDirect {
+			out = append(out, remote)
+		}
+	}
+
+	return out
 }
 
 // setOrganized merges a change into remoteID's last known pinned and

@@ -17,12 +17,13 @@ import (
 // "status tg connected" or "incoming user:42:99 7", and keeps earlier
 // messages by conversation.
 type Sink struct {
-	mu        sync.Mutex
-	lines     []string
-	history   map[string][]domain.Message
-	live      map[string][]domain.Message
-	outgoing  map[string][]OutgoingUpdate
-	authSteps []connector.AuthStep
+	mu            sync.Mutex
+	lines         []string
+	history       map[string][]domain.Message
+	live          map[string][]domain.Message
+	outgoing      map[string][]OutgoingUpdate
+	authSteps     []connector.AuthStep
+	conversations map[string]domain.Conversation
 }
 
 // OutgoingUpdate is one delivery status reported for a message the local
@@ -92,9 +93,30 @@ func (s *Sink) Contact(_ context.Context, c domain.Contact) {
 	s.record("contact %s %s", c.RemoteID, c.Name)
 }
 
-// Conversation records a conversation.
+// Conversation records a conversation and keeps its full data, so a
+// test can inspect fields the short line leaves out, such as a group's
+// member count.
 func (s *Sink) Conversation(_ context.Context, c domain.Conversation) {
 	s.record("conversation %s %s", c.RemoteID, c.Title)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.conversations == nil {
+		s.conversations = map[string]domain.Conversation{}
+	}
+	s.conversations[c.RemoteID] = c
+}
+
+// ConversationFor returns the last conversation reported for remoteID,
+// and whether one was reported at all.
+func (s *Sink) ConversationFor(remoteID string) (domain.Conversation, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	c, ok := s.conversations[remoteID]
+
+	return c, ok
 }
 
 // Incoming records a new message and keeps it, like History does for

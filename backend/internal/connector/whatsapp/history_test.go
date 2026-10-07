@@ -15,6 +15,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWeb"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
@@ -165,6 +166,141 @@ func TestHandleHistorySync_FallsBackToAGenericNameWhenTheGroupCannotBeResolved(t
 
 	if !sink.Has("conversation 12345-1600000000@g.us Group") {
 		t.Errorf("events = %q, want a generic group title", sink.Lines())
+	}
+}
+
+func TestHandleHistorySync_ResolvesAGroupsMemberCountWhenFetchingItsName(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	dev.groupNames = map[string]string{"12345-1600000000@g.us": "Climbing Crew"}
+	dev.groupMembers = map[string]int{"12345-1600000000@g.us": 12}
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	// The sync itself carries neither a name nor any participants, so
+	// resolving the name must ask WhatsApp, and that single request's
+	// member count is kept rather than discarded.
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{ID: strPtr("12345-1600000000@g.us")}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	conv, ok := sink.ConversationFor("12345-1600000000@g.us")
+	if !ok || conv.Members != 12 {
+		t.Errorf("conversation = %+v, ok=%t, want 12 members resolved alongside the name", conv, ok)
+	}
+}
+
+func TestHandleHistorySync_KeepsTheSyncsOwnMemberCountWithoutAskingAgain(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	// The sync already lists every participant, so neither the name nor
+	// the member count needs a network lookup at all.
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID: strPtr("12345-1600000000@g.us"), DisplayName: strPtr("Climbing Crew"),
+			Participant: []*waHistorySync.GroupParticipant{{UserJID: strPtr("1@s.whatsapp.net")}, {UserJID: strPtr("2@s.whatsapp.net")}},
+		}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	conv, ok := sink.ConversationFor("12345-1600000000@g.us")
+	if !ok || conv.Members != 2 {
+		t.Errorf("conversation = %+v, ok=%t, want the synced member count", conv, ok)
+	}
+	if len(dev.groupCalls) != 0 {
+		t.Errorf("group info was requested %d times, want 0: the sync already carried everything", len(dev.groupCalls))
+	}
+}
+
+func TestHandleHistorySync_ResolvesALIDChatToItsContactsSavedName(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	dev.contactNames = map[string]string{"987654@lid": "Priya Nair"}
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{ID: strPtr("987654@lid")}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("conversation 987654@lid Priya Nair") {
+		t.Errorf("events = %q, want the LID chat titled with its contact's name", sink.Lines())
+	}
+}
+
+func TestHandleHistorySync_FallsBackToANeutralLabelForAnUnresolvedLID(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{ID: strPtr("987654@lid")}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("conversation 987654@lid Unknown contact") {
+		t.Errorf("events = %q, want a neutral label rather than the hidden id formatted as a phone number", sink.Lines())
+	}
+}
+
+func TestHandleHistorySync_SkipsSystemConversations(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{
+			{ID: strPtr("status@broadcast")},
+			{ID: strPtr("0@s.whatsapp.net")},
+			{ID: strPtr("1@newsletter")},
+		},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want none of these system JIDs reported as a conversation", sink.Lines())
+	}
+}
+
+func TestHandleHistorySync_TitlesTheSelfChat(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	dev.selfJID = types.NewJID("15551234567", types.DefaultUserServer)
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID:       strPtr("15551234567@s.whatsapp.net"),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "note to self", true)},
+		}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("conversation 15551234567@s.whatsapp.net Message yourself") {
+		t.Errorf("events = %q, want the self-chat titled \"Message yourself\"", sink.Lines())
+	}
+	if !sink.Has("history 15551234567@s.whatsapp.net H1") {
+		t.Errorf("events = %q, want the self-chat's own message reported", sink.Lines())
 	}
 }
 
