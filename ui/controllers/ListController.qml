@@ -205,6 +205,18 @@ Item {
     root._syncModel();
   }
 
+  // _start restores the saved list state and loads the conversations once
+  // the service is there.
+  function _start(): void {
+    if (!root.service) return;
+
+    const state = root.service.uiState ?? {}; // a service still starting has none yet
+    root.railKey = state.railKey || "all";
+    root.selectedId = state.selectedId || "";
+    root.query = state.query || "";
+    if (root.service.status === "ready") root._loadAll();
+  }
+
   // _dropAccount removes a removed account's conversations from the list.
   function _dropAccount(accountId: string): void {
     root._all = root._all.filter((c) => c.accountId !== accountId);
@@ -244,15 +256,10 @@ Item {
     root.service.uiState = Object.assign({}, root.service.uiState, patch);
   }
 
-  Component.onCompleted: {
-    if (!root.service) return;
-
-    const state = root.service.uiState;
-    root.railKey = state.railKey || "all";
-    root.selectedId = state.selectedId || "";
-    root.query = state.query || "";
-    if (root.service.status === "ready") root._loadAll();
-  }
+  // Omarchy may hand over the service after the panel is created, or
+  // replace it, so start-up runs whenever it arrives.
+  onServiceChanged: root._start()
+  Component.onCompleted: root._start()
 
   ListModel { id: listModel }
 

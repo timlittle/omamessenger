@@ -1,6 +1,7 @@
-// Checks ListController against a scripted service that answers searches
-// out of order, as the helper may: a late reply for an earlier query must
-// not replace the results for the query the user typed last.
+// Checks ListController against scripted services: it loads the list when
+// Omarchy hands it a ready service after it was created, and a late reply
+// for an earlier search does not replace the results for the query typed
+// last, since the helper may answer out of order.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -30,6 +31,26 @@ ShellRoot {
     service: service
   }
 
+  // readyService is already running when it reaches a controller that was
+  // created without one, as happens when Omarchy recreates the service.
+  QtObject {
+    id: readyService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", query: "", drafts: {} })
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") callback(null, [{ id: "c1", title: "Alex Chen", lastActivity: 2 }]);
+    }
+  }
+
+  ListController {
+    id: late
+  }
+
   Timer {
     running: true
     interval: 0
@@ -39,6 +60,12 @@ ShellRoot {
   // run types two searches, answers the later one first, and checks the
   // earlier reply is ignored when it arrives last.
   function run(): void {
+    late.service = readyService;
+    if (late.model.count !== 1) {
+      Check.fail("a service handed over after creation did not load the list");
+      return;
+    }
+
     controller.setQuery("t");
     controller.setQuery("ticket");
 

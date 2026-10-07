@@ -171,9 +171,10 @@ Item {
     root.lastError = "";
   }
 
-  Component.onCompleted: {
-    if (root.service) root._showStep(root.service.pendingAuth);
-  }
+  // A sign-in waiting for the user is shown again once the service is
+  // there, which may be after the panel is created.
+  onServiceChanged: if (root.service) root._showStep(root.service.pendingAuth)
+  Component.onCompleted: if (root.service) root._showStep(root.service.pendingAuth)
 
   Connections {
     target: root.service

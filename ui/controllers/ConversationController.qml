@@ -299,12 +299,20 @@ Item {
     root.service.uiState = Object.assign({}, root.service.uiState, patch);
   }
 
-  onServiceChanged: root._reportFocus()
+  // Omarchy may hand over the service after the panel is created, or
+  // replace it, so start-up runs whenever it arrives.
+  onServiceChanged: {
+    root._restore();
+    root._reportFocus();
+  }
+  Component.onCompleted: root._restore()
 
-  Component.onCompleted: {
+  // _restore reopens the conversation that was open when the panel was
+  // last destroyed, once the service is there.
+  function _restore(): void {
     if (!root.service) return;
 
-    const state = root.service.uiState;
+    const state = root.service.uiState ?? {}; // a service still starting has none yet
     root.pane = state.pane || "list";
     if (state.activeId) {
       root.activeId = state.activeId;
