@@ -3,6 +3,7 @@ import qs.Commons
 import "../theme"
 import "../lib/Timeline.js" as Timeline
 import "../lib/Highlight.js" as Highlight
+import "../lib/SenderColor.js" as SenderColor
 
 // One message row in a conversation: an optional day separator, the sender
 // name for a grouped incoming message, the bubble with its text and any
@@ -41,6 +42,24 @@ Item {
   readonly property var quote: Timeline.replyTo(root.message)
   // reactions are this message's reaction chips, or an empty list.
   readonly property var reactions: Timeline.reactions(root.message)
+  // nameColor is this message's sender's colour in a group chat, stable
+  // for the same sender across every message; direct chats keep the
+  // plain foreground colour the name used before group colouring existed.
+  readonly property color nameColor: root.isGroup
+    ? Theme.senderColor(SenderColor.colorIndex(root.message.senderId, Theme.senderPaletteSize))
+    : Color.foreground
+  // showAvatar is true only for the first message of a run from one
+  // sender in a group chat: the message the avatar and name sit beside.
+  readonly property bool showAvatar: root.isGroup && !root.message.outgoing && root.annotation.showSender
+  // groupIndent is true for every incoming message in a group chat, so a
+  // run's later bubbles reserve the same left margin as the first one
+  // even though only the first shows an avatar there.
+  readonly property bool groupIndent: root.isGroup && !root.message.outgoing
+  // avatarSize and avatarGap size the reserved column; indentWidth is the
+  // total space it takes out of the row, zero outside a group chat.
+  readonly property real avatarSize: Style.space(28)
+  readonly property real avatarGap: Theme.spacing.sm
+  readonly property real indentWidth: root.groupIndent ? root.avatarSize + root.avatarGap : 0
 
   // retry asks the caller to resend this message after a send failure.
   signal retry(string id)
@@ -78,10 +97,11 @@ Item {
     }
 
     Text {
-      x: Theme.spacing.md
+      objectName: "senderName"
+      x: Theme.spacing.md + root.indentWidth
       visible: root.annotation.showSender
       text: root.message.senderName
-      color: Color.accent
+      color: root.nameColor
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption
       font.weight: Font.DemiBold
@@ -99,13 +119,29 @@ Item {
         id: rowHover
       }
 
+      // The run's first incoming message in a group chat gets an avatar
+      // in its sender's colour, vertically centred on the bubble; later
+      // messages in the run show none, but still reserve the same space
+      // through the bubble's own left margin below, so every bubble in
+      // the run lines up under the first one.
+      Avatar {
+        objectName: "senderAvatar"
+        visible: root.showAvatar
+        name: root.message.senderName
+        size: root.avatarSize
+        tint: root.nameColor
+        tinted: true
+        anchors.left: parent.left
+        anchors.verticalCenter: bubble.verticalCenter
+      }
+
       // The bubble wraps its text: as wide as the text needs, up to 72% of
       // the row, after which the text wraps.
       Rectangle {
         id: bubble
 
         readonly property real padding: Theme.spacing.sm
-        readonly property real maxTextWidth: root.width * 0.72 - padding * 2
+        readonly property real maxTextWidth: (root.width - root.indentWidth) * 0.72 - padding * 2
 
         objectName: "bubble"
         width: Math.max(content.width, meta.implicitWidth) + padding * 2
@@ -114,6 +150,7 @@ Item {
         color: root.message.outgoing ? Util.alpha(Color.accent, 0.22) : Util.alpha(Color.foreground, 0.06)
         anchors.right: root.message.outgoing ? parent.right : undefined
         anchors.left: root.message.outgoing ? undefined : parent.left
+        anchors.leftMargin: root.message.outgoing ? 0 : root.indentWidth
         // The highlighted message's own cue: a thin accent outline, no
         // wider than the bubble itself, so nothing beyond it ever tints.
         border.width: root.highlighted ? Style.space(1) : 0
@@ -188,8 +225,10 @@ Item {
           // 28% of the row, since the bubble's own width is capped at
           // 72% of it, which is enough in practice for the toolbar even
           // at the window's minimum size. fitsBeside guards the rare
-          // case it is not.
-          readonly property real besideSpace: bubbleRow.width - bubble.width
+          // case it is not. The group-chat indent eats into this space on
+          // an incoming bubble's right side exactly as much as it shifts
+          // the bubble's left edge, so it has to come off the total too.
+          readonly property real besideSpace: bubbleRow.width - bubble.width - root.indentWidth
           readonly property bool fitsBeside: hoverToolbar.besideSpace >= hoverToolbar.width + Theme.spacing.xs
 
           objectName: "hoverToolbar"

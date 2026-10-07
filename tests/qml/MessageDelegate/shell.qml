@@ -8,9 +8,12 @@
 // left the bubble underneath, that the toolbar sits beside the bubble
 // without ever overlapping a neighbouring message for both an incoming
 // and an outgoing bubble, that it falls back inside the bubble's own
-// corner when there is no room beside it, and that a highlighted message
+// corner when there is no room beside it, that a highlighted message
 // shows its accent outline and accent bar confined to the bubble itself
-// (nothing wider ever tints) and its key-hint text, never clipped.
+// (nothing wider ever tints) and its key-hint text, never clipped, that
+// each group chat sender gets a distinct, stable name and avatar colour
+// with an avatar only on the first bubble of their run and later bubbles
+// indented to match, and that a direct chat shows neither.
 import QtQuick
 import QtTest
 import Quickshell
@@ -79,7 +82,7 @@ ShellRoot {
   FloatingWindow {
     id: win
     implicitWidth: 400
-    implicitHeight: 1100
+    implicitHeight: 1450
     visible: true
 
     MessageDelegate {
@@ -153,6 +156,48 @@ ShellRoot {
       annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
       nowMs: root.now
     }
+
+    Column {
+      id: groupStack
+      y: 1060
+      width: 360
+
+      MessageDelegate {
+        id: groupA1
+        width: 360
+        message: ({ id: "g1", senderId: "sender-a", senderName: "Priya Patel", text: "Morning! Ready for the stand-up?", outgoing: false, status: "received", created: root.now })
+        annotation: ({ showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false })
+        isGroup: true
+        nowMs: root.now
+      }
+
+      MessageDelegate {
+        id: groupA2
+        width: 360
+        message: ({ id: "g2", senderId: "sender-a", senderName: "Priya Patel", text: "I'll share the notes after.", outgoing: false, status: "received", created: root.now })
+        annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: true })
+        isGroup: true
+        nowMs: root.now
+      }
+
+      MessageDelegate {
+        id: groupB1
+        width: 360
+        message: ({ id: "g3", senderId: "sender-b", senderName: "Noah Kim", text: "Yep, see you there.", outgoing: false, status: "received", created: root.now })
+        annotation: ({ showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false })
+        isGroup: true
+        nowMs: root.now
+      }
+
+      MessageDelegate {
+        id: groupB2
+        width: 360
+        message: ({ id: "g4", senderId: "sender-b", senderName: "Noah Kim", text: "Can we push it 10 minutes?", outgoing: false, status: "received", created: root.now })
+        annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: true })
+        isGroup: true
+        nowMs: root.now
+      }
+    }
   }
 
   TestCase {
@@ -192,6 +237,8 @@ ShellRoot {
     if (!root.checkHoverToolbarFallbackInsideBubble()) return;
     if (!root.checkHighlightVisuals()) return;
     if (!root.checkHighlightNeverShiftsLayout()) return;
+    if (!root.checkGroupSenderColors()) return;
+    if (!root.checkDirectChatNoAvatar()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -688,7 +735,12 @@ ShellRoot {
     delegate.grabToImage((result) => result.saveToFile(root.testRoot + "/highlight.png"));
     t.wait(200); // give the async grab time to save before anything else runs
 
-    const wide = root.collectWideTints(delegate, bubble.width, []);
+    // A group chat's incoming bubble reserves its avatar column through
+    // its own left margin, so the row's full-width elements (the day
+    // separator, the hint row) are still exactly as wide as this
+    // message's own slot: bubble width plus that reserved margin, not
+    // the bubble alone.
+    const wide = root.collectWideTints(delegate, bubble.width + delegate.indentWidth, []);
     if (wide.length > 0) return Check.fail(`${wide.length} element(s) wider than the bubble are tinted while highlighted`);
 
     const barInBubble = Check.rect(bar, bubble);
@@ -753,6 +805,64 @@ ShellRoot {
     }
 
     rowD.highlighted = false;
+    return true;
+  }
+
+  // checkGroupSenderColors verifies each sender in a group chat gets a
+  // distinct, stable name colour, that the avatar beside it carries the
+  // same colour, that only the first message of a run shows an avatar,
+  // and that a run's later bubbles still line up under its first one
+  // even without an avatar of their own.
+  function checkGroupSenderColors(): bool {
+    t.waitForRendering(groupA1);
+
+    const nameA = Check.find(groupA1, "senderName");
+    const nameB = Check.find(groupB1, "senderName");
+    if (!nameA.visible) return Check.fail("sender name not shown at the start of a run");
+    if (!nameB.visible) return Check.fail("second sender's name not shown at the start of its run");
+    if (Qt.colorEqual(nameA.color, nameB.color)) return Check.fail("two different senders got the same name colour");
+
+    const avatarA1 = Check.find(groupA1, "senderAvatar");
+    const avatarA2 = Check.find(groupA2, "senderAvatar");
+    const avatarB1 = Check.find(groupB1, "senderAvatar");
+    if (!avatarA1.visible) return Check.fail("avatar not shown for the first message of a run");
+    if (avatarA2.visible) return Check.fail("avatar shown for a message continuing a run");
+    if (!avatarB1.visible) return Check.fail("avatar not shown for the second sender's run");
+    // Compared as rendered 8-bit colour, not Qt.colorEqual's exact floats:
+    // the avatar's tint and the name's colour both come from the same
+    // HSL-derived expression, and an HSL round trip through two separate
+    // bindings can leave a sub-pixel float difference neither eye nor
+    // screen can ever show.
+    if (String(avatarA1.tint) !== String(nameA.color)) return Check.fail("avatar tint does not match its sender's name colour");
+    if (String(avatarB1.tint) !== String(nameB.color)) return Check.fail("second sender's avatar tint does not match their name colour");
+
+    // The same sender's colour stays the same wherever it is read from.
+    if (!Qt.colorEqual(Check.find(groupA1, "senderName").color, nameA.color)) {
+      return Check.fail("the same sender's name colour changed between reads");
+    }
+
+    const bubbleA1 = Check.find(groupA1, "bubble");
+    const bubbleA2 = Check.find(groupA2, "bubble");
+    if (bubbleA1.x <= 0) return Check.fail("a group chat's incoming bubble is not indented for its avatar column");
+    if (Math.abs(bubbleA1.x - bubbleA2.x) > 0.5) {
+      return Check.fail(`a run's second bubble does not line up with its first: first x=${bubbleA1.x}, second x=${bubbleA2.x}`);
+    }
+
+    // Saved for a human to look at: two senders in a row, each with a
+    // distinct name colour and an avatar only on the first bubble of
+    // their own run.
+    groupStack.grabToImage((result) => result.saveToFile(root.testRoot + "/group-senders.png"));
+    t.wait(200); // give the async grab time to save before anything else runs
+    return true;
+  }
+
+  // checkDirectChatNoAvatar verifies a direct chat (isGroup false) never
+  // shows an avatar beside a message and never indents its bubble, even
+  // though the message is grouped the same way a group chat's would be.
+  function checkDirectChatNoAvatar(): bool {
+    if (Check.find(rowA, "senderAvatar").visible) return Check.fail("avatar shown in a direct chat");
+    const bubble = Check.find(rowA, "bubble");
+    if (bubble.x !== 0) return Check.fail(`direct chat bubble is indented: x=${bubble.x}`);
     return true;
   }
 }

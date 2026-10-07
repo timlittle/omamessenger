@@ -101,6 +101,33 @@ QtObject {
     readonly property color selectedBorder: Color.menu.selectedBorder
   }
 
+  // senderPaletteSize is how many distinct colours senderColor() cycles
+  // through before a group chat's sender colours repeat.
+  readonly property int senderPaletteSize: 8
+
+  // senderColor returns one of senderPaletteSize colours for naming a
+  // group chat's senders, derived by rotating the theme's own accent hue:
+  // every index lands on a different hue than the accent itself, so a
+  // sender's name is never mistaken for the outgoing-bubble colour, and
+  // lightness is nudged away from the background when the accent would
+  // otherwise read too close to it to stay legible.
+  function senderColor(index: int): color {
+    const accent = Color.accent
+    const steps = ((index % senderPaletteSize) + senderPaletteSize) % senderPaletteSize
+    const hueStep = 1 / (senderPaletteSize + 1)
+    const hue = (accent.hslHue + hueStep * (steps + 1)) % 1
+
+    const saturation = Math.max(accent.hslSaturation, 0.35)
+    const bgLightness = Color.background.hslLightness
+    let lightness = accent.hslLightness
+    if (Math.abs(lightness - bgLightness) < 0.18) {
+      lightness = bgLightness < 0.5 ? Math.min(0.78, bgLightness + 0.32) : Math.max(0.22, bgLightness - 0.32)
+    }
+    lightness = Math.max(0.3, Math.min(0.78, lightness))
+
+    return Qt.hsla(hue, saturation, lightness, 1)
+  }
+
   readonly property Fonts font: Fonts {}
   readonly property Spacing spacing: Spacing {}
   readonly property BarSizes bar: BarSizes {}
