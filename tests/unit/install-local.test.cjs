@@ -20,7 +20,8 @@ function stub(dir, name) {
 }
 
 // sandbox builds a temporary HOME, XDG_DATA_HOME and a PATH that resolves
-// `omarchy` and `rsync` to stubs ahead of any real ones, and returns the
+// `omarchy`, `rsync`, `omarchy-restart-shell` and `omarchy-shell` to stubs
+// ahead of any real ones, and returns the
 // env to run install-local.sh with plus where the desktop entry lands.
 function sandbox(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-install-local-'));
@@ -33,11 +34,17 @@ function sandbox(t) {
   fs.mkdirSync(stubBin, { recursive: true });
   stub(stubBin, 'omarchy');
   stub(stubBin, 'rsync');
+  // The script restarts the shell: these must never reach the real desktop.
+  stub(stubBin, 'omarchy-restart-shell');
+  stub(stubBin, 'omarchy-shell');
   const env = {
     ...process.env,
     HOME: home,
     XDG_DATA_HOME: data,
     PATH: `${stubBin}:${process.env.PATH}`,
+    OMARCHY_RESTART_SHELL: path.join(stubBin, 'omarchy-restart-shell'),
+    OMARCHY_SHELL: path.join(stubBin, 'omarchy-shell'),
+    OMA_RELOAD_SETTLE: '0',
   };
   return { env, desktopFile: path.join(data, 'applications', 'io.github.omamessenger.desktop') };
 }

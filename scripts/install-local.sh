@@ -4,13 +4,13 @@
 #
 # It stages only the files the plugin needs, validates that staged copy
 # (the repository itself holds build symlinks the validator rejects),
-# copies it into the plugin directory and enables it. Omarchy watches the
-# plugin directory and reloads a plugin whose files change, clearing Qt's
-# QML cache, so the running shell picks up the new code by itself. Do not
-# also restart the shell: a restart on top of that reload destroys and
-# recreates the plugin's service at once, which has crashed Quickshell.
-# With --check it stops after validating and installs nothing; with
-# --restart it restarts the shell anyway, for when a reload did not take.
+# copies it into the plugin directory, enables it, and restarts the shell.
+# Copying makes Omarchy reload the plugin by itself, but that reload keeps
+# Quickshell's already-loaded QML, so only a restart runs the new code. The
+# restart waits for that reload to finish first: a restart on top of a
+# running reload destroys and recreates the plugin's service at once, which
+# has crashed Quickshell. With --check it stops after validating and
+# installs nothing.
 set -Eeuo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -19,12 +19,11 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 plugin_id=io.github.omamessenger
 expected_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
 check_only=false
-restart=false
 
-case "${1:-}" in
-    --check) check_only=true; shift ;;
-    --restart) restart=true; shift ;;
-esac
+if [[ "${1:-}" == "--check" ]]; then
+    check_only=true
+    shift
+fi
 
 target_dir=${1:-$expected_dir}
 if [[ "$target_dir" != "$expected_dir" ]]; then
@@ -56,11 +55,10 @@ mkdir -p "$target_dir"
 "${RSYNC:-rsync}" -a --delete "$staging_dir/" "$target_dir/"
 "${OMARCHY:-omarchy}" plugin enable "$plugin_id"
 install_desktop_entry
-if [[ "$restart" == false ]]; then
-    printf 'Installed %s from %s; Omarchy reloads it in a moment\n' "$plugin_id" "$repo_root"
-    exit 0
-fi
 
+# Omarchy starts its reload 150 ms after the last file change and rescans
+# in the background; give it time to finish before restarting.
+sleep "${OMA_RELOAD_SETTLE:-3}"
 "${OMARCHY_RESTART_SHELL:-omarchy-restart-shell}"
 
 # Wait for the restarted shell to answer, so a summon right after this
