@@ -51,3 +51,11 @@ Omarchy declares nested token groups (`Style.font`, `Color.popups`, …) as plai
 ## Fake accounts only in test builds
 
 The scripted fake connectors that tests run against are compiled in only with the `fake` build tag (`make build-fake`). Release builds cannot show seeded data, so it can never mix with real messages, and the product has no demo mode to explain.
+
+## Providers behind one interface
+
+Adding an account used to mean `backend/accounts.go` and `app.AddAccount` both knowing Telegram's rules: its credential shape, its app keys, its id prefix. `connector.Provider` moves all of that behind one interface (`Service`, `Name`, `Prepare`, `Connect`, `Forget`) that each service's own package implements. The registry becomes a map of providers, keyed by service id, and `app.AddAccount` only maps a provider's `ErrInvalidSetup` or an unknown service to invalid input; it no longer validates API keys itself.
+
+Prepare takes a plain `map[string]string` rather than a typed options struct, because each service's setup is different (Telegram's API id and hash today, something else tomorrow) and the protocol already carries them as JSON strings. The cost is that a provider must parse its own options and return `ErrInvalidSetup` with a safe message when they are wrong; that cost sits in the one package that knows what valid means for that service, which is the same trade `Provider` makes everywhere else.
+
+`accounts.add`'s `apiId`/`apiHash` fields stay as they were, merged into `options` by the server before they reach `app.NewAccount`, so no existing UI build and no saved Telegram account's `tg-` id prefix breaks. New accounts get an id prefixed with their service name instead, since the registry no longer special-cases Telegram's.

@@ -31,7 +31,7 @@ Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. R
 
 ## Add your Telegram account
 
-Choose **Add Telegram account** in the window (or **Add a Telegram account** in the command palette), then scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**). Or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password. Your recent chats appear once it connects, and the session stays on this computer. To remove an account, choose **Remove an account** in the command palette: it signs the account out and deletes its chats from this computer.
+Choose **Add an account** in the window (or in the command palette), then scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**). With more than one messaging service available, a small chooser asks which one first. Or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password. Your recent chats appear once it connects, and the session stays on this computer. To remove an account, choose **Remove an account** in the command palette: it signs the account out and deletes its chats from this computer.
 
 OmaMessenger signs in as its own Telegram app, whose API id and hash are in the source like any Telegram client's. To use an app of your own instead, register one at [my.telegram.org](https://my.telegram.org/apps) and choose **Add a Telegram account with your own API keys** in the command palette.
 
@@ -73,9 +73,9 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 
 | Method | Params | Result |
 | --- | --- | --- |
-| `hello` | | `{protocol, version, unreadTotal}` |
+| `hello` | | `{protocol, version, unreadTotal, services}`; `services` is `[{id, name}]`, the messaging services available to add an account for |
 | `accounts.list` | | `[Account]` |
-| `accounts.add` | `{service, apiId, apiHash}` | `Account`; Telegram only. `apiId` and `apiHash` are optional: without them the account uses OmaMessenger's own Telegram app |
+| `accounts.add` | `{service, apiId, apiHash, options}` | `Account`. `apiId` and `apiHash` are Telegram's own API keys, kept for compatibility; `options` is the general form, a map of a provider's own setup values (Telegram reads the same two keys from it as `apiId`/`apiHash` strings). Without either, the account uses OmaMessenger's own keys |
 | `accounts.remove` | `{accountId}` | `{}`; signs out and deletes the account's session, credentials and messages |
 | `auth.submit` | `{accountId, step, value}` | `{}`; answers an `auth.step`: `phone`, `code` or `password` |
 | `contacts.list` | `{accountId, query}` | `[Contact]` |
@@ -134,6 +134,17 @@ go run -tags fake ./backend --data-dir "$(mktemp -d)"   # the test build, with f
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute and [AGENTS.md](AGENTS.md) for the project rules.
+
+### Adding a messaging service
+
+Every service plugs into the same boundary, so adding one means:
+
+1. A connector package under `backend/internal/connector/<service>/` implementing `connector.Connector` (and whichever optional capabilities it supports: `Authenticator`, `HistoryLoader`, `MediaFetcher`, `MessageRefresher`).
+2. A `Provider` in that package implementing `connector.Provider`, so the registry can prepare, connect and forget its accounts.
+3. Registering it in `backend/main.go`'s `providers()`.
+4. A glyph for it in `ui/components/ServiceGlyph.qml`.
+5. A depguard rule for the new package in `.golangci.yml`.
+6. Once it exists, the conformance suite in `backend/internal/connector/connectortest` run against the new connector.
 
 ### Releasing
 
