@@ -8,7 +8,7 @@ The QML UI talks to the Go helper over the helper's stdin/stdout using JSON-RPC 
 - Params and results are named objects, never positional arrays; field names are lowerCamelCase
 - Handlers are thin: decode params, call one `app` method, encode the result. No business logic in the `server` package
 - Errors use the codes in `server/errors.go`: the standard JSON-RPC codes plus `-32001` for not found. Only invalid-input messages are written for the user and cross the protocol; anything unexpected becomes a fixed "internal error"
-- Adding or changing a method: update `server/methods.go`, its test and the README API section in the same change. Bump `server.Protocol` when an older UI would break
+- Adding or changing a method: update `server/methods.go`, its test and `docs/api.md` in the same change. Bump `server.Protocol` when an older UI would break
 - Never break an existing method's params or result shape; add an optional field or a new method instead
 - stdout is reserved for protocol traffic. Diagnostics go to stderr
 - The UI side lives in `ui/lib/Rpc.js` (encode, parse, error text) and `ui/service/`; components never build protocol messages

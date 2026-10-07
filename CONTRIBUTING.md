@@ -5,7 +5,7 @@ OmaMessenger is an Omarchy plugin first and a messaging client second. Keep it n
 ## Before changing code
 
 - Read [AGENTS.md](AGENTS.md) for the project rules, [.claude/rules/](.claude/rules/) for the coding standards and [FORGE_SPEC.md](FORGE_SPEC.md) for product scope.
-- The UI uses only the helper's API (see the README). It never speaks WhatsApp or Telegram protocol details.
+- The UI uses only the helper's API (see [docs/api.md](docs/api.md)). It never speaks WhatsApp or Telegram protocol details.
 - A service-specific capability belongs in its connector. Do not show a control for something a service cannot do.
 - Keep credentials and message content out of logs, configuration and test output. Tests use temporary directories and fake data.
 

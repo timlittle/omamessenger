@@ -18,7 +18,7 @@ OmaMessenger is an Omarchy plugin: a QML UI inside `omarchy-shell`, backed by a 
 - Account sessions and messages stay on this machine. Never log credentials, QR tokens, message text or session keys.
 - Keep installation user-scoped: no `sudo`, no writes to `/usr`, no changes to system Omarchy configuration.
 - Never test against the developer's running Hyprland session.
-- Update the README when setup, authentication, installation, the helper API or shortcuts change.
+- Update the README when setup, authentication, installation or shortcuts change, and `docs/api.md` when the helper API changes.
 
 ## Interface
 
