@@ -96,6 +96,14 @@ type MessageRefresher interface {
 	RefreshMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string) error
 }
 
+// Reactor is a Connector that can add or remove the signed-in user's own
+// reaction to a message.
+type Reactor interface {
+	// React sets the user's reaction to the message the service knows as
+	// messageRemoteID to emoji, or clears it when emoji is "".
+	React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error
+}
+
 // Organizer is a Connector that keeps a conversation pinned or archived in
 // step with the service, so a change made here, or made on another
 // device and synced back, agrees everywhere. The two methods are kept
@@ -142,9 +150,14 @@ type Sink interface {
 	// History reports an earlier message, which never notifies.
 	History(ctx context.Context, accountID, conversationRemoteID string, m domain.Message)
 
-	// Edited reports a message changed after it was sent: its new text
-	// and media. It never notifies.
+	// Edited reports a message changed after it was sent: its new text,
+	// media and reactions. It never notifies.
 	Edited(ctx context.Context, accountID, conversationRemoteID string, m domain.Message)
+
+	// Reacted reports a message's reaction chips changing on their own,
+	// without a full edit, such as someone reacting live. It never
+	// notifies.
+	Reacted(ctx context.Context, accountID, conversationRemoteID, messageRemoteID string, reactions []domain.Reaction)
 
 	// Deleted reports messages removed from the service, named by the
 	// ids it gave them. conversationRemoteIDs lists every conversation

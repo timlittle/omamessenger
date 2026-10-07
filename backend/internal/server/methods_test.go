@@ -53,6 +53,14 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Error("messages.retry of a pending message succeeded")
 	}
 
+	if err := s.store.SetMessageRemoteID(ctx, sent.ID, "r1"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := call[domain.Message](t, s, "messages.react", map[string]string{"messageId": sent.ID, "emoji": "👍"}); err != nil {
+		t.Errorf("messages.react = %v", err)
+	}
+
 	muted, err := call[domain.Conversation](t, s, "conversations.setMuted", map[string]any{"conversationId": "chat", "muted": true})
 	if err != nil || !muted.Muted {
 		t.Errorf("conversations.setMuted = %+v, %v", muted, err)

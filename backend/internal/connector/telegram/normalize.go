@@ -106,12 +106,13 @@ func peerConversation(accountID string, peer tg.PeerClass, e entities) (domain.C
 // history count as sent; whether they were read is not known here.
 func message(m *tg.Message, e entities) domain.Message {
 	out := domain.Message{
-		RemoteID: strconv.Itoa(m.ID),
-		Text:     messageText(m),
-		Outgoing: m.Out,
-		Status:   domain.StatusReceived,
-		Created:  int64(m.Date) * 1000,
-		Media:    media(m.Media),
+		RemoteID:  strconv.Itoa(m.ID),
+		Text:      messageText(m),
+		Outgoing:  m.Out,
+		Status:    domain.StatusReceived,
+		Created:   int64(m.Date) * 1000,
+		Media:     media(m.Media),
+		Reactions: reactions(m.Reactions),
 	}
 
 	if m.Out {
@@ -154,6 +155,25 @@ func messageText(m *tg.Message) string {
 	default:
 		return "[Message]"
 	}
+}
+
+// reactions turns Telegram's reaction counts into ours, skipping custom
+// emoji reactions: Telegram shows the actual custom sticker for those,
+// which this UI has no way to draw, so a message with only custom
+// reactions is reported with none rather than a misleading placeholder.
+func reactions(mr tg.MessageReactions) []domain.Reaction {
+	var out []domain.Reaction
+	for _, rc := range mr.Results {
+		emoji, ok := rc.Reaction.(*tg.ReactionEmoji)
+		if !ok {
+			continue
+		}
+
+		_, mine := rc.GetChosenOrder()
+		out = append(out, domain.Reaction{Emoji: emoji.Emoticon, Count: rc.Count, Mine: mine})
+	}
+
+	return out
 }
 
 // userName names a user the way Telegram's chat list does: the chat with

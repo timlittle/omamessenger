@@ -176,6 +176,67 @@ func TestSetArchived_Fails(t *testing.T) {
 	}
 }
 
+func TestReact_SendsTheEmojiAndReportsTheEchoedChips(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesSendReactionRequest{}, &tg.Updates{Updates: []tg.UpdateClass{
+		&tg.UpdateMessageReactions{Peer: &tg.PeerUser{UserID: 42}, MsgID: 7, Reactions: tg.MessageReactions{Results: []tg.ReactionCount{
+			{Reaction: &tg.ReactionEmoji{Emoticon: "👍"}, Count: 1, Flags: 1, ChosenOrder: 1},
+		}}},
+	}})
+
+	var sink connectortest.Sink
+	c := connectedTo(f, &sink)
+	c.learn(chatWithNadia.RemoteID)
+	if err := c.React(t.Context(), chatWithNadia, "7", "👍"); err != nil {
+		t.Fatal(err)
+	}
+
+	req, ok := f.sent()[0].(*tg.MessagesSendReactionRequest)
+	if !ok || req.MsgID != 7 || len(req.Reaction) != 1 {
+		t.Errorf("request = %+v, want message 7 with one reaction", f.sent()[0])
+	}
+
+	want := []string{"reacted user:42:99 7 1"}
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q", got, want)
+	}
+}
+
+func TestReact_ClearingSendsNoReaction(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesSendReactionRequest{}, &tg.Updates{})
+
+	c := connectedTo(f, &connectortest.Sink{})
+	c.learn(chatWithNadia.RemoteID)
+	if err := c.React(t.Context(), chatWithNadia, "7", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	req, ok := f.sent()[0].(*tg.MessagesSendReactionRequest)
+	if !ok || len(req.Reaction) != 0 {
+		t.Errorf("request = %+v, want no reaction", f.sent()[0])
+	}
+}
+
+func TestReact_Fails(t *testing.T) {
+	t.Parallel()
+
+	connected := connectedTo(newFakeTelegram(), &connectortest.Sink{})
+	for name, err := range map[string]error{
+		"before signing in":      New(domain.Account{ID: "tg"}, "").React(t.Context(), chatWithNadia, "7", "👍"),
+		"a malformed peer":       connected.React(t.Context(), domain.Conversation{RemoteID: "bad"}, "7", "👍"),
+		"a malformed message id": connected.React(t.Context(), chatWithNadia, "not-a-number", "👍"),
+	} {
+		if err == nil {
+			t.Errorf("React %s succeeded, want an error", name)
+		}
+	}
+}
+
 func TestSubmitAuth_OnlyWhileSigningIn(t *testing.T) {
 	t.Parallel()
 

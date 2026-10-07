@@ -45,7 +45,7 @@ func connect(t *testing.T, faked bool) *session {
 	accounts := &storeAccounts{db: db}
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
-		SignIn: acceptAll{}, Organizer: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{},
 	}
 	if faked {
 		deps.Fake = unreachableFake{}
@@ -145,6 +145,9 @@ func (acceptAll) SubmitAuth(context.Context, string, string, string) error { ret
 // SetPinned and SetArchived accept any pin or archive change.
 func (acceptAll) SetPinned(context.Context, domain.Conversation, bool) error   { return nil }
 func (acceptAll) SetArchived(context.Context, domain.Conversation, bool) error { return nil }
+
+// React accepts any reaction change.
+func (acceptAll) React(context.Context, domain.Conversation, string, string) error { return nil }
 
 // storeAccounts adds and removes accounts straight in the store,
 // recording the options of the last Add call so tests can check what

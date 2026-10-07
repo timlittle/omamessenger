@@ -31,6 +31,7 @@ type fixture struct {
 	media      *fakeMedia
 	refresher  *fakeRefresher
 	organizer  *fakeOrganizer
+	reactor    *fakeReactor
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -53,14 +54,14 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
-		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{},
+		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{},
 	}
 
 	deps := app.Deps{
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher, Organizer: f.organizer,
+		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor,
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -352,6 +353,23 @@ func (o *fakeOrganizer) SetArchived(_ context.Context, conv domain.Conversation,
 	o.archived = append(o.archived, fmt.Sprintf("%s %t", conv.ID, archived))
 
 	return o.err
+}
+
+// fakeReactor records the reactions it is asked for, as
+// "<messageRemoteId> <emoji>", failing with err when it is set.
+type fakeReactor struct {
+	mu      sync.Mutex
+	reacted []string
+	err     error
+}
+
+func (r *fakeReactor) React(_ context.Context, _ domain.Conversation, messageRemoteID, emoji string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.reacted = append(r.reacted, messageRemoteID+" "+emoji)
+
+	return r.err
 }
 
 // fakeSignIn records the sign-in answers it is given.

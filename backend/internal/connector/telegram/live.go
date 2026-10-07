@@ -59,6 +59,11 @@ func (c *Connector) handleMessageUpdates(d tg.UpdateDispatcher, sink connector.S
 		c.deleteMessages(ctx, sink, []string{remote}, u.Messages)
 		return nil
 	})
+
+	d.OnMessageReactions(func(ctx context.Context, _ tg.Entities, u *tg.UpdateMessageReactions) error {
+		c.reactionsChanged(ctx, sink, u)
+		return nil
+	})
 }
 
 // handleReceiptUpdates reports read receipts, typing and unread counts.
@@ -103,6 +108,19 @@ func (c *Connector) editMessage(ctx context.Context, sink connector.Sink, m tg.M
 	}
 
 	sink.Edited(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+}
+
+// reactionsChanged reports a message's reaction chips changing on their
+// own, dropping the update when its conversation is not known to us: it
+// names a peer without entities, so it can only be resolved from what a
+// message or dialog has already taught c.learn.
+func (c *Connector) reactionsChanged(ctx context.Context, sink connector.Sink, u *tg.UpdateMessageReactions) {
+	remote, ok := c.lookup(shortKey(u.Peer))
+	if !ok {
+		return
+	}
+
+	sink.Reacted(ctx, c.account.ID, remote, strconv.Itoa(u.MsgID), reactions(u.Reactions))
 }
 
 // deleteMessages reports messages removed from the service, named by

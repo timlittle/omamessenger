@@ -183,6 +183,43 @@ func TestEdited_IgnoresUnknownConversationsAndMessages(t *testing.T) {
 	}
 }
 
+func TestReacted_UpdatesTheStoredMessageAndPublishes(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "hi"))
+	f.published.take()
+
+	reactions := []domain.Reaction{{Emoji: "👍", Count: 1, Mine: true}}
+	f.ingest.Reacted(ctx, "wa", chat.RemoteID, "e1", reactions)
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventMessageUpdated}) {
+		t.Errorf("events = %v, want %v", got, []string{app.EventMessageUpdated})
+	}
+
+	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
+	if err != nil || len(messages) != 1 || !slices.Equal(messages[0].Reactions, reactions) || messages[0].Text != "hi" {
+		t.Fatalf("messages = %+v, %v; want the reactions set and the text untouched", messages, err)
+	}
+}
+
+func TestReacted_IgnoresUnknownConversationsAndMessages(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+	f.ingest.Reacted(ctx, "wa", "nowhere", "e1", []domain.Reaction{{Emoji: "👍", Count: 1}})
+	f.ingest.Reacted(ctx, "wa", chat.RemoteID, "missing", []domain.Reaction{{Emoji: "👍", Count: 1}})
+
+	if len(f.published.take()) != 0 {
+		t.Error("an unknown reaction change published an event")
+	}
+}
+
 func TestDeleted_RemovesMessagesAndPublishes(t *testing.T) {
 	t.Parallel()
 

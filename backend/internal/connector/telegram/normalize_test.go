@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -116,10 +117,37 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := message(tt.msg, testEntities()); got != tt.want {
+			if got := message(tt.msg, testEntities()); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("message = %+v\nwant      %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestReactions_SkipsCustomEmojiAndMarksMine(t *testing.T) {
+	t.Parallel()
+
+	mr := tg.MessageReactions{Results: []tg.ReactionCount{
+		{Reaction: &tg.ReactionEmoji{Emoticon: "👍"}, Count: 3},
+		{Reaction: &tg.ReactionEmoji{Emoticon: "❤️"}, Count: 1, Flags: 1, ChosenOrder: 1},
+		{Reaction: &tg.ReactionCustomEmoji{DocumentID: 7}, Count: 1},
+	}}
+
+	want := []domain.Reaction{
+		{Emoji: "👍", Count: 3},
+		{Emoji: "❤️", Count: 1, Mine: true},
+	}
+
+	if got := reactions(mr); !reflect.DeepEqual(got, want) {
+		t.Errorf("reactions = %+v, want %+v", got, want)
+	}
+}
+
+func TestReactions_NoneGivesNoReactions(t *testing.T) {
+	t.Parallel()
+
+	if got := reactions(tg.MessageReactions{}); got != nil {
+		t.Errorf("reactions(none) = %+v, want nil", got)
 	}
 }
 

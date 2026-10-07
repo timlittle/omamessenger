@@ -114,6 +114,19 @@ func (c *withOrganizer) SetArchived(_ context.Context, _ domain.Conversation, ar
 	return nil
 }
 
+// withReactor is a connector that reacts to messages, recording what it
+// was asked to set.
+type withReactor struct {
+	fakeConnector
+	reacted []string
+}
+
+func (c *withReactor) React(_ context.Context, _ domain.Conversation, messageRemoteID, emoji string) error {
+	c.reacted = append(c.reacted, messageRemoteID+" "+emoji)
+
+	return nil
+}
+
 // accountList records upserted account ids, failing when err is set.
 type accountList struct {
 	ids []string

@@ -479,7 +479,7 @@ func TestConversations_SearchFollowsEditsAndDeletes(t *testing.T) {
 	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "lunch on friday", Created: 1})
 
-	if _, found, err := s.EditMessage(ctx, "chat", "1", "dinner on saturday", nil); err != nil || !found {
+	if _, found, err := s.EditMessage(ctx, "chat", "1", store.MessageEdit{Text: "dinner on saturday"}); err != nil || !found {
 		t.Fatalf("EditMessage = %t, %v", found, err)
 	}
 

@@ -102,6 +102,8 @@ func TestServer_MapsErrorsToCodes(t *testing.T) {
 		{"fake.inject", map[string]any{"conversationId": "chat"}, server.CodeNotFound},
 		{"media.fetch", map[string]any{"messageId": " "}, server.CodeInvalidParams},
 		{"media.fetch", map[string]any{"messageId": "missing"}, server.CodeNotFound},
+		{"messages.react", map[string]any{"messageId": " ", "emoji": "👍"}, server.CodeInvalidParams},
+		{"messages.react", map[string]any{"messageId": "missing", "emoji": "👍"}, server.CodeNotFound},
 	}
 
 	for _, tt := range tests {

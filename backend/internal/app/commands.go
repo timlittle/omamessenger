@@ -20,6 +20,7 @@ type Commands struct {
 	cache      MediaCache
 	refresher  MessageRefresher
 	organizer  Organizer
+	reactor    Reactor
 	fake       Injector
 	events     *events
 	ui         *uiState

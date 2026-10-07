@@ -99,6 +99,18 @@ type Message struct {
 	// Edited is true once the service reports this message changed after
 	// it was first sent.
 	Edited bool `json:"edited,omitempty"`
+
+	// Reactions are the emoji chips shown under the message, as the
+	// service currently reports them.
+	Reactions []Reaction `json:"reactions,omitempty"`
+}
+
+// Reaction is one emoji reaction to a message: how many people picked
+// it, and whether the signed-in user is one of them.
+type Reaction struct {
+	Emoji string `json:"emoji"`
+	Count int    `json:"count"`
+	Mine  bool   `json:"mine"`
 }
 
 // Media is what a message carries besides its text: a link preview, a

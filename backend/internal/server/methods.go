@@ -46,6 +46,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"messages.list":             bind(messagesList(c)),
 		"messages.send":             bind(messagesSend(c)),
 		"messages.retry":            bind(messagesRetry(c)),
+		"messages.react":            bind(messagesReact(c)),
 		"media.fetch":               bind(mediaFetch(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
 		"settings.apply":            bind(settingsApply(c)),
@@ -285,6 +286,20 @@ type retryParams struct {
 func messagesRetry(c *app.Commands) func(context.Context, retryParams) (any, error) {
 	return func(ctx context.Context, p retryParams) (any, error) {
 		return c.Retry(ctx, p.MessageID)
+	}
+}
+
+// reactParams sets or clears the user's reaction to a message; emoji ""
+// clears it.
+type reactParams struct {
+	MessageID string `json:"messageId"`
+	Emoji     string `json:"emoji"`
+}
+
+// messagesReact sets or clears the user's reaction to a message.
+func messagesReact(c *app.Commands) func(context.Context, reactParams) (any, error) {
+	return func(ctx context.Context, p reactParams) (any, error) {
+		return c.React(ctx, p.MessageID, p.Emoji)
 	}
 }
 

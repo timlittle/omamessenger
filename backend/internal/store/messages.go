@@ -13,7 +13,7 @@ import (
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reactions`
 
 // Page sizes for Messages.
 const (
@@ -118,8 +118,13 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message) error {
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited)
+	reactions, err := encodeReactions(m.Reactions)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, reactions)
 	if err != nil {
 		return err
 	}
@@ -193,10 +198,20 @@ func (s *Store) UpdateMessageStatus(ctx context.Context, id, status string) (_ d
 	return m, true, nil
 }
 
-// EditMessage updates a stored message's text and media after the service
-// reports it changed, found by its conversation and the service's id for
-// it. A message that is not stored is ignored, not an error.
-func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID, text string, media *domain.Media) (_ domain.Message, found bool, _ error) {
+// MessageEdit is what EditMessage applies to a stored message: its new
+// text, media and reactions, bundled into one argument to keep the
+// function's signature short.
+type MessageEdit struct {
+	Text      string
+	Media     *domain.Media
+	Reactions []domain.Reaction
+}
+
+// EditMessage updates a stored message's text, media and reactions after
+// the service reports it changed, found by its conversation and the
+// service's id for it. A message that is not stored is ignored, not an
+// error.
+func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID string, edit MessageEdit) (_ domain.Message, found bool, _ error) {
 	m, err := s.MessageByRemote(ctx, conversationID, remoteID)
 	if errors.Is(err, domain.ErrNotFound) {
 		return domain.Message{}, false, nil
@@ -205,16 +220,50 @@ func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID, text 
 		return m, false, err
 	}
 
-	encoded, err := encodeMedia(media)
+	encodedMedia, err := encodeMedia(edit.Media)
 	if err != nil {
 		return m, false, wrap("edit message", err)
 	}
 
-	if _, err := s.db.ExecContext(ctx, `UPDATE messages SET text=?,media=?,edited=1 WHERE id=?`, text, encoded, m.ID); err != nil {
+	encodedReactions, err := encodeReactions(edit.Reactions)
+	if err != nil {
 		return m, false, wrap("edit message", err)
 	}
 
-	m.Text, m.Media, m.Edited = text, media, true
+	_, err = s.db.ExecContext(ctx, `UPDATE messages SET text=?,media=?,edited=1,reactions=? WHERE id=?`,
+		edit.Text, encodedMedia, encodedReactions, m.ID)
+	if err != nil {
+		return m, false, wrap("edit message", err)
+	}
+
+	m.Text, m.Media, m.Edited, m.Reactions = edit.Text, edit.Media, true, edit.Reactions
+
+	return m, true, nil
+}
+
+// SetReactions updates a stored message's reaction chips after the
+// service reports they changed on their own, without a full edit, found
+// by its conversation and the service's id for it. A message that is not
+// stored is ignored, not an error.
+func (s *Store) SetReactions(ctx context.Context, conversationID, remoteID string, reactions []domain.Reaction) (_ domain.Message, found bool, _ error) {
+	m, err := s.MessageByRemote(ctx, conversationID, remoteID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.Message{}, false, nil
+	}
+	if err != nil {
+		return m, false, err
+	}
+
+	encoded, err := encodeReactions(reactions)
+	if err != nil {
+		return m, false, wrap("set reactions", err)
+	}
+
+	if _, err := s.db.ExecContext(ctx, `UPDATE messages SET reactions=? WHERE id=?`, encoded, m.ID); err != nil {
+		return m, false, wrap("set reactions", err)
+	}
+
+	m.Reactions = reactions
 
 	return m, true, nil
 }
@@ -429,19 +478,26 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 // scanMessage reads one row selected with messageColumns.
 func scanMessage(row scanner) (domain.Message, error) {
 	var m domain.Message
-	var media string
+	var media, reactions string
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
-		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited); err != nil {
+		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &reactions); err != nil {
 		return m, err
 	}
 
-	if media == "" {
-		return m, nil
+	if media != "" {
+		m.Media = &domain.Media{}
+		if err := json.Unmarshal([]byte(media), m.Media); err != nil {
+			return m, err
+		}
 	}
 
-	m.Media = &domain.Media{}
+	if reactions != "" {
+		if err := json.Unmarshal([]byte(reactions), &m.Reactions); err != nil {
+			return m, err
+		}
+	}
 
-	return m, json.Unmarshal([]byte(media), m.Media)
+	return m, nil
 }
 
 // encodeMedia stores media as JSON, or "" for none.
@@ -451,6 +507,17 @@ func encodeMedia(media *domain.Media) (string, error) {
 	}
 
 	b, err := json.Marshal(media)
+
+	return string(b), err
+}
+
+// encodeReactions stores reaction chips as JSON, or "" for none.
+func encodeReactions(reactions []domain.Reaction) (string, error) {
+	if len(reactions) == 0 {
+		return "", nil
+	}
+
+	b, err := json.Marshal(reactions)
 
 	return string(b), err
 }

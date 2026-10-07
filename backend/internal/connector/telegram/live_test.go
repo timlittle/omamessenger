@@ -199,6 +199,29 @@ func TestTyping_ReportsStartAndStopInKnownChats(t *testing.T) {
 	}
 }
 
+func TestReactionsChanged_ReportsChipsForAKnownChatOnly(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	update := &tg.UpdateMessageReactions{Peer: &tg.PeerUser{UserID: 42}, MsgID: 7, Reactions: tg.MessageReactions{
+		Results: []tg.ReactionCount{{Reaction: &tg.ReactionEmoji{Emoticon: "👍"}, Count: 1}},
+	}}
+
+	c.reactionsChanged(t.Context(), &sink, update)
+	if got := sink.Lines(); len(got) != 0 {
+		t.Errorf("events = %q, want none for an unknown chat", got)
+	}
+
+	c.learn("user:42:99")
+	c.reactionsChanged(t.Context(), &sink, update)
+
+	want := []string{"reacted user:42:99 7 1"}
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q", got, want)
+	}
+}
+
 func TestShortKey_NamesEachKindOfPeer(t *testing.T) {
 	t.Parallel()
 
@@ -235,6 +258,9 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 			&tg.UpdateDeleteMessages{Messages: []int{8, 9}},
 			&tg.UpdateDeleteChannelMessages{ChannelID: 5, Messages: []int{3}},
 			&tg.UpdateDeleteChannelMessages{ChannelID: 6, Messages: []int{1}},
+			&tg.UpdateMessageReactions{Peer: &tg.PeerUser{UserID: 42}, MsgID: 7, Reactions: tg.MessageReactions{
+				Results: []tg.ReactionCount{{Reaction: &tg.ReactionEmoji{Emoticon: "👍"}, Count: 1}},
+			}},
 		},
 		Users: []tg.UserClass{nadia()},
 	})
@@ -253,6 +279,7 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 		"edited channel:5:3 3",
 		"deleted user:42:99 8,9",
 		"deleted channel:5:3 3",
+		"reacted user:42:99 7 1",
 	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)

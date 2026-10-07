@@ -141,6 +141,11 @@ func (s *Sink) Edited(_ context.Context, _, remote string, m domain.Message) {
 	s.record("edited %s %s", remote, m.RemoteID)
 }
 
+// Reacted records a message's reaction chips changing on their own.
+func (s *Sink) Reacted(_ context.Context, _, remote, messageRemoteID string, reactions []domain.Reaction) {
+	s.record("reacted %s %s %d", remote, messageRemoteID, len(reactions))
+}
+
 // Deleted records messages removed from the service.
 func (s *Sink) Deleted(_ context.Context, _ string, conversationRemoteIDs, remoteIDs []string) {
 	s.record("deleted %s %s", strings.Join(conversationRemoteIDs, ","), strings.Join(remoteIDs, ","))

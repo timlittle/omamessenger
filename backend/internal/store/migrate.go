@@ -74,6 +74,8 @@ var migrations = []string{
 	// service's archive, as Telegram's dialogs report it.
 	`ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE conversations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;`,
+	// A message's emoji reaction chips, as JSON.
+	`ALTER TABLE messages ADD COLUMN reactions TEXT NOT NULL DEFAULT '';`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

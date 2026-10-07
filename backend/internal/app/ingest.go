@@ -82,16 +82,33 @@ func (in *Ingest) History(ctx context.Context, accountID, conversationRemoteID s
 	in.events.conversationChanged(ctx, conv.ID, before)
 }
 
-// Edited updates a stored message's text and media after the service
-// reports it changed. It never notifies; the open conversation refreshes
-// the message in place.
+// Edited updates a stored message's text, media and reactions after the
+// service reports it changed. It never notifies; the open conversation
+// refreshes the message in place.
 func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID string, m domain.Message) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
 	if err != nil {
 		return
 	}
 
-	updated, found, err := in.store.EditMessage(ctx, conv.ID, m.RemoteID, m.Text, m.Media)
+	updated, found, err := in.store.EditMessage(ctx, conv.ID, m.RemoteID, store.MessageEdit{Text: m.Text, Media: m.Media, Reactions: m.Reactions})
+	if err != nil || !found {
+		return
+	}
+
+	in.events.publish(ctx, EventMessageUpdated, updated)
+}
+
+// Reacted updates a stored message's reaction chips after the service
+// reports they changed on their own, without a full edit. It never
+// notifies; the open conversation refreshes the message in place.
+func (in *Ingest) Reacted(ctx context.Context, accountID, conversationRemoteID, messageRemoteID string, reactions []domain.Reaction) {
+	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
+	if err != nil {
+		return
+	}
+
+	updated, found, err := in.store.SetReactions(ctx, conv.ID, messageRemoteID, reactions)
 	if err != nil || !found {
 		return
 	}

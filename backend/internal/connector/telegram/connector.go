@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/gotd/td/session"
@@ -47,6 +48,7 @@ var (
 	_ connector.MediaFetcher     = (*Connector)(nil)
 	_ connector.MessageRefresher = (*Connector)(nil)
 	_ connector.Organizer        = (*Connector)(nil)
+	_ connector.Reactor          = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose credentials and session
@@ -194,6 +196,66 @@ func (c *Connector) MarkRead(ctx context.Context, conv domain.Conversation) erro
 	}
 
 	return nil
+}
+
+// React sets or clears the user's reaction to a message. Telegram's
+// response echoes the message's new reaction chips, which are reported
+// at once rather than waiting for the matching live update.
+func (c *Connector) React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error {
+	api, sink, err := c.session()
+	if err != nil {
+		return err
+	}
+
+	peer, err := inputPeer(conv.RemoteID)
+	if err != nil {
+		return err
+	}
+
+	msgID, err := strconv.Atoi(messageRemoteID)
+	if err != nil {
+		return fmt.Errorf("telegram: react: %w", err)
+	}
+
+	result, err := api.MessagesSendReaction(ctx, &tg.MessagesSendReactionRequest{
+		Peer: peer, MsgID: msgID, Reaction: reactionList(emoji),
+	})
+	if err != nil {
+		return fmt.Errorf("telegram: react: %w", err)
+	}
+
+	if rs, ok := reactionsFromUpdates(result); ok {
+		sink.Reacted(ctx, c.account.ID, conv.RemoteID, messageRemoteID, rs)
+	}
+
+	return nil
+}
+
+// reactionList is the single reaction messages.sendReaction takes, or
+// none to clear the user's reaction.
+func reactionList(emoji string) []tg.ReactionClass {
+	if emoji == "" {
+		return nil
+	}
+
+	return []tg.ReactionClass{&tg.ReactionEmoji{Emoticon: emoji}}
+}
+
+// reactionsFromUpdates finds the reaction chips Telegram reported in its
+// response to sendReaction, which echoes the message's new state.
+func reactionsFromUpdates(result tg.UpdatesClass) ([]domain.Reaction, bool) {
+	updates, ok := result.(*tg.Updates)
+	if !ok {
+		return nil, false
+	}
+
+	for _, u := range updates.Updates {
+		if r, ok := u.(*tg.UpdateMessageReactions); ok {
+			return reactions(r.Reactions), true
+		}
+	}
+
+	return nil, false
 }
 
 // SetPinned pins or unpins the dialog with Telegram.

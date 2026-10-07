@@ -374,6 +374,33 @@ func TestSetArchived_AsksConnectorsThatOrganize(t *testing.T) {
 	})
 }
 
+func TestReact_AsksConnectorsThatSupportReactions(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withReactor{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+
+		if err := m.React(ctx, domain.Conversation{AccountID: "tg"}, "40", "👍"); err != nil {
+			t.Fatal(err)
+		}
+
+		if !slices.Equal(tg.reacted, []string{"40 👍"}) {
+			t.Errorf("reacted %v, want [40 👍]", tg.reacted)
+		}
+
+		if err := m.React(ctx, domain.Conversation{AccountID: "plain"}, "40", "👍"); !errors.Is(err, connector.ErrNoReactions) {
+			t.Errorf("React on a connector without reactions = %v, want ErrNoReactions", err)
+		}
+
+		if err := m.React(ctx, domain.Conversation{AccountID: "nobody"}, "40", "👍"); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("React for an unknown account = %v", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
 func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

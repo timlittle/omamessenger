@@ -52,6 +52,12 @@ type Organizer interface {
 	SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error
 }
 
+// Reactor sets or clears the signed-in user's own reaction to a message,
+// through its service.
+type Reactor interface {
+	React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error
+}
+
 // MediaCache keeps downloaded media, filling a file the first time it is
 // asked for.
 type MediaCache interface {
@@ -115,6 +121,7 @@ type Deps struct {
 	Cache      MediaCache
 	Refresher  MessageRefresher
 	Organizer  Organizer
+	Reactor    Reactor
 	Fake       Injector
 }
 
@@ -125,7 +132,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, fake: d.Fake,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}

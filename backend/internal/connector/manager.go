@@ -33,6 +33,10 @@ var ErrNoMedia = errors.New("connector does not download media")
 // sign in.
 var ErrNoAuthentication = errors.New("connector does not sign in")
 
+// ErrNoReactions reports a reaction asked of a connector that does not
+// support them.
+var ErrNoReactions = errors.New("connector does not support reactions")
+
 // AccountUpserter records the accounts the Manager serves.
 type AccountUpserter interface {
 	UpsertAccount(ctx context.Context, a domain.Account) error
@@ -264,6 +268,23 @@ func (m *Manager) SetArchived(ctx context.Context, conv domain.Conversation, arc
 	}
 
 	return organizer.SetArchived(ctx, conv, archived)
+}
+
+// React asks the conversation's connector to set or clear the user's
+// reaction to a message, failing with ErrNoReactions when it does not
+// support them.
+func (m *Manager) React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	reactor, ok := c.(Reactor)
+	if !ok {
+		return fmt.Errorf("connector: %w: %q", ErrNoReactions, conv.AccountID)
+	}
+
+	return reactor.React(ctx, conv, messageRemoteID, emoji)
 }
 
 // SubmitAuth hands sign-in input, such as a code, to the connector for
