@@ -45,6 +45,43 @@ func TestAddMessage_UpdatesPreviewAndUnread(t *testing.T) {
 	}
 }
 
+func TestAddHistoryMessage_NeverCountsTowardsUnread(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	// Status received, same as a connector reports a message it does not
+	// know was ever read: AddMessage would count this one, AddHistoryMessage
+	// must not, since loading history is backfill, not something new.
+	older, _, err := s.AddHistoryMessage(ctx, domain.Message{
+		ID: "h1", ConversationID: "chat", RemoteID: "r1", Text: "hello", SenderName: "Alex", Created: 100,
+	})
+	if err != nil || older.Status != domain.StatusReceived {
+		t.Fatalf("older = %+v, %v", older, err)
+	}
+
+	chat, err := s.Conversation(ctx, "chat")
+	if err != nil || chat.Unread != 0 || chat.Preview != "hello" || chat.LastActivity != 100 {
+		t.Fatalf("conversation after AddHistoryMessage = %+v, %v; want unread 0 but the preview still set", chat, err)
+	}
+
+	// A newer history message still becomes the preview: only the unread
+	// count is special-cased, not the rest of bumpConversation's work.
+	if _, _, err := s.AddHistoryMessage(ctx, domain.Message{
+		ID: "h2", ConversationID: "chat", RemoteID: "r2", Text: "later", Created: 200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	chat, err = s.Conversation(ctx, "chat")
+	if err != nil || chat.Unread != 0 || chat.Preview != "later" || chat.LastActivity != 200 {
+		t.Errorf("conversation after a newer AddHistoryMessage = %+v, %v", chat, err)
+	}
+}
+
 func TestAddMessage_IgnoresDuplicateRemoteID(t *testing.T) {
 	t.Parallel()
 

@@ -133,15 +133,18 @@ func TestHistory_NeverNotifiesOrReadsOnArrival(t *testing.T) {
 	f.ingest.History(ctx, "wa", chat.RemoteID, m)
 	f.ingest.History(ctx, "wa", "nowhere", m)
 
-	if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 1 {
-		t.Errorf("unread = %d, want 1", got.Unread)
+	// History never counts towards unread, even for a message that looks
+	// unread on its own fields: the service's own count, synced
+	// separately through Unread, is authoritative.
+	if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 0 {
+		t.Errorf("unread = %d, want 0", got.Unread)
 	}
 
 	if len(f.notifier.all()) != 0 {
 		t.Error("history notified")
 	}
 
-	want := []string{app.EventMessageAdded, app.EventConversationUpdated, app.EventUnreadChanged}
+	want := []string{app.EventMessageAdded, app.EventConversationUpdated}
 	if got := f.published.take(); !slices.Equal(got, want) {
 		t.Errorf("events = %v, want %v", got, want)
 	}
@@ -265,9 +268,7 @@ func TestUnread_TakesTheServicesCount(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
-	for _, id := range []string{"h-1", "h-2"} {
-		f.ingest.History(ctx, "wa", chat.RemoteID, incoming(id, "old"))
-	}
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 2)
 	f.published.take()
 
 	f.ingest.Unread(ctx, "wa", chat.RemoteID, 0)

@@ -93,15 +93,14 @@ func needsRefresh(m domain.Message) bool {
 
 // olderFromService fetches history the store does not have yet from the
 // conversation's service, then pages again. Older history is not new, so
-// the conversation keeps the unread count it had: each message History
-// stores may bump it, so that bump is undone by exactly the number
-// loaded. The undo is relative, not a restore to a count read before the
-// fetch started, because conversations.markRead for the same chat runs
-// concurrently with this one (the UI sends both when a chat opens) and
-// may finish while the fetch is still in flight; a restore to a stale
-// snapshot would overwrite that mark-read back to unread. If the service
-// cannot be reached, the page already loaded stands: scrolling back is
-// not worth an error.
+// the conversation keeps the unread count it had: it stores through
+// Ingest.History, which never counts a message towards unread, so there
+// is nothing here to restore or correct, and nothing for a
+// conversations.markRead running concurrently for the same chat (the UI
+// sends both when a chat opens) to race against. Ingest.History already
+// announces the conversation's current preview and activity as each
+// message lands. If the service cannot be reached, the page already
+// loaded stands: scrolling back is not worth an error.
 func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) ([]domain.Message, bool, error) {
 	oldest, err := c.store.OldestRemoteID(ctx, conv.ID)
 	if err != nil {
@@ -111,12 +110,6 @@ func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversatio
 	loaded, err := c.history.LoadOlder(ctx, conv, oldest, max(limit, store.DefaultPageSize))
 	if err != nil || loaded == 0 {
 		return page, false, nil
-	}
-
-	// Storing the older messages announced rising totals; announce the
-	// corrected one even though it matches the total before the load.
-	if _, err := c.store.AdjustUnread(ctx, conv.ID, -loaded); err == nil { // a failure leaves a count the next sync corrects
-		c.events.conversationChanged(ctx, conv.ID, -1)
 	}
 
 	page, _, err = c.store.Messages(ctx, conv.ID, beforeID, limit)

@@ -397,10 +397,40 @@ func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
 		t.Errorf("unread = %d after loading older history, want 0", got.Unread)
 	}
 
-	// Storing the older messages announced higher totals on the way; the
-	// window must hear the corrected one last.
-	if got, ok := f.published.lastOf(app.EventUnreadChanged).(app.UnreadChanged); !ok || got.Total != 0 {
-		t.Errorf("last unread total published = %+v, want 0", got)
+	// History never bumps unread, so nothing changed for an unread event
+	// to correct.
+	if got := f.published.lastOf(app.EventUnreadChanged); got != nil {
+		t.Errorf("published an unread total of %+v for history that never counted", got)
+	}
+}
+
+// TestMessages_OlderHistoryLeavesRealUnreadAloneRegardlessOfMessageMix
+// proves the fix does not depend on how many of the backfilled messages
+// would, on their own fields, have looked unread: a page mixing an
+// outgoing and an already-read message must leave a conversation's
+// real, service-reported unread count exactly as it was. An earlier
+// version of this fix undid a fixed count per message loaded, which
+// over-corrected whenever the page was not all unread-looking incoming
+// messages.
+func TestMessages_OlderHistoryLeavesRealUnreadAloneRegardlessOfMessageMix(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 5)
+	f.published.take()
+	f.history.older = []domain.Message{
+		{ID: "m30", RemoteID: "30", Text: "sent", Created: 30, Outgoing: true, Status: domain.StatusSent},
+		{ID: "m20", RemoteID: "20", Text: "already read", Created: 20, Status: domain.StatusRead},
+	}
+
+	if _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 5 {
+		t.Errorf("unread = %d after loading history that was never unread itself, want the original 5 untouched", got.Unread)
 	}
 }
 
@@ -410,9 +440,9 @@ func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
 // on the service's initial sync page: the UI sends messages.list and
 // conversations.markRead together, and the JSON-RPC server runs requests
 // concurrently, so markRead can finish while the history fetch triggered
-// by messages.list is still running. A fetch that restores the unread
-// count it read before it started, rather than undoing only what it
-// itself added, would overwrite that mark-read back to unread.
+// by messages.list is still running. History never bumps unread, so
+// there is nothing left for that race to clobber; this guards against a
+// fix that corrects a bump after the fact instead of never bumping.
 func TestMessages_OlderHistorySurvivesAMarkReadThatLandsWhileItIsInFlight(t *testing.T) {
 	t.Parallel()
 

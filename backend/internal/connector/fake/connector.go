@@ -131,8 +131,11 @@ func (c *Connector) after(delay time.Duration, report func(context.Context, conn
 	}
 }
 
-// seed reports the account's contacts, conversations and history. Remote
-// ids are stable, so seeding again after a reconnect changes nothing.
+// seed reports the account's contacts, conversations, history and each
+// conversation's unread count, the way the real Telegram connector's
+// sync does: History never counts towards unread on its own, so the
+// script's scripted count is reported afterwards, through Unread, to
+// establish it.
 func (c *Connector) seed(ctx context.Context, sink connector.Sink) {
 	id := c.script.account.ID
 	for _, contact := range c.script.contacts {
@@ -147,6 +150,8 @@ func (c *Connector) seed(ctx context.Context, sink connector.Sink) {
 		for _, m := range conv.history(now) {
 			sink.History(ctx, id, conv.remoteID, m)
 		}
+
+		sink.Unread(ctx, id, conv.remoteID, conv.unread)
 	}
 }
 

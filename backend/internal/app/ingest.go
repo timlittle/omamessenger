@@ -49,10 +49,11 @@ func (in *Ingest) Conversation(ctx context.Context, c domain.Conversation) {
 	in.events.publish(ctx, EventConversationUpdated, conv)
 }
 
-// Incoming records a live message. If the user is looking at its
-// conversation it is read at once; otherwise it may notify.
+// Incoming records a live message, counting it towards the conversation's
+// unread total. If the user is looking at its conversation it is read at
+// once; otherwise it may notify.
 func (in *Ingest) Incoming(ctx context.Context, accountID, conversationRemoteID string, m domain.Message) {
-	conv, m, before, ok := in.save(ctx, accountID, conversationRemoteID, m)
+	conv, m, before, ok := in.save(ctx, accountID, conversationRemoteID, m, true)
 	if !ok {
 		return
 	}
@@ -70,10 +71,15 @@ func (in *Ingest) Incoming(ctx context.Context, accountID, conversationRemoteID 
 	}
 }
 
-// History records an earlier message. It never notifies and is never read
-// on arrival.
+// History records an earlier message: the first open of a conversation
+// whose history was not yet paged locally, or scrolling further back in
+// one already open. It never notifies, is never read on arrival, and
+// never counts towards the unread total, which the service's own count
+// (synced separately through Unread) already covers; otherwise a chat
+// opened for the first time would have every backfilled message bump it,
+// racing whatever marked it read at the same time.
 func (in *Ingest) History(ctx context.Context, accountID, conversationRemoteID string, m domain.Message) {
-	conv, m, before, ok := in.save(ctx, accountID, conversationRemoteID, m)
+	conv, m, before, ok := in.save(ctx, accountID, conversationRemoteID, m, false)
 	if !ok {
 		return
 	}
@@ -221,10 +227,11 @@ func (in *Ingest) AuthStep(ctx context.Context, accountID string, step connector
 	in.events.publish(ctx, EventAuthStep, AuthStep{AccountID: accountID, Kind: step.Kind, QR: step.QR, Hint: step.Hint})
 }
 
-// save stores a message in a known conversation. ok is false when the
+// save stores a message in a known conversation, counting it towards the
+// unread total only when countUnread is set. ok is false when the
 // conversation is unknown, storing fails or the message is a duplicate.
 // before is the unread total before the message was stored.
-func (in *Ingest) save(ctx context.Context, accountID, remoteID string, m domain.Message) (_ domain.Conversation, _ domain.Message, before int, ok bool) {
+func (in *Ingest) save(ctx context.Context, accountID, remoteID string, m domain.Message, countUnread bool) (_ domain.Conversation, _ domain.Message, before int, ok bool) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, remoteID)
 	if err != nil {
 		return conv, m, 0, false
@@ -236,7 +243,11 @@ func (in *Ingest) save(ctx context.Context, accountID, remoteID string, m domain
 	}
 
 	before = in.events.unreadTotal(ctx)
-	m, inserted, err := in.store.AddMessage(ctx, m)
+	add := in.store.AddMessage
+	if !countUnread {
+		add = in.store.AddHistoryMessage
+	}
+	m, inserted, err := add(ctx, m)
 
 	return conv, m, before, err == nil && inserted
 }

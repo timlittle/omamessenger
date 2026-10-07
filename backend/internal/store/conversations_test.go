@@ -80,43 +80,6 @@ func TestMarkRead_ReportsChange(t *testing.T) {
 	}
 }
 
-func TestAdjustUnread_ChangesByDeltaAndClampsAtZero(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
-	addMessages(t, s, domain.Message{ID: "in", ConversationID: "chat", Text: "one", Created: 1})
-
-	if _, err := s.SetUnread(ctx, "chat", 3); err != nil {
-		t.Fatal(err)
-	}
-
-	if changed, err := s.AdjustUnread(ctx, "chat", -2); err != nil || !changed {
-		t.Fatalf("AdjustUnread(-2) = %t, %v; want a change", changed, err)
-	}
-
-	if c, _ := s.Conversation(ctx, "chat"); c.Unread != 1 {
-		t.Errorf("unread = %d, want 1", c.Unread)
-	}
-
-	// A delta larger than the current count clamps at zero rather than
-	// going negative: an older-history fetch may ask to undo more than a
-	// concurrent MarkRead left behind.
-	if changed, err := s.AdjustUnread(ctx, "chat", -5); err != nil || !changed {
-		t.Fatalf("AdjustUnread(-5) = %t, %v; want a change", changed, err)
-	}
-
-	if c, _ := s.Conversation(ctx, "chat"); c.Unread != 0 {
-		t.Errorf("unread = %d, want 0", c.Unread)
-	}
-
-	if _, err := s.AdjustUnread(ctx, "missing", -1); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("AdjustUnread(missing) = %v, want ErrNotFound", err)
-	}
-}
-
 func TestSetUnread_TakesTheServicesCount(t *testing.T) {
 	t.Parallel()
 

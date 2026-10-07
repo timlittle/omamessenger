@@ -98,7 +98,7 @@ func TestRemoveAccount_DeletesItsChatsAndUpdatesUnread(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	f.ingest.History(ctx, "wa", chat.RemoteID, incoming("in-1", "hi"))
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 1)
 	f.published.take()
 
 	if err := f.commands.RemoveAccount(ctx, "wa"); err != nil {

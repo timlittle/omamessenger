@@ -29,6 +29,23 @@ var ErrInvalidMessage = errors.New("message needs conversationId and text")
 // in the conversation is returned unchanged with inserted false, so a
 // connector replaying history never double-counts unread messages.
 func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Message, inserted bool, _ error) {
+	return s.addMessage(ctx, m, true)
+}
+
+// AddHistoryMessage stores a message the same way AddMessage does, but
+// never counts it towards the conversation's unread total. Older history
+// is not new: the service's own unread count, synced separately through
+// Unread, is authoritative, so a backfilled message (the first open of a
+// conversation whose history was not yet paged locally, or scrolling
+// further back) must never raise or lower it.
+func (s *Store) AddHistoryMessage(ctx context.Context, m domain.Message) (_ domain.Message, inserted bool, _ error) {
+	return s.addMessage(ctx, m, false)
+}
+
+// addMessage is AddMessage and AddHistoryMessage's shared implementation.
+// countUnread decides whether an unread, incoming message bumps its
+// conversation's unread count.
+func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread bool) (_ domain.Message, inserted bool, _ error) {
 	if m.ConversationID == "" || m.Text == "" {
 		return m, false, fmt.Errorf("store: add message: %w", ErrInvalidMessage)
 	}
@@ -43,7 +60,7 @@ func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Mess
 
 	m = withMessageDefaults(m)
 	m = s.resolveReply(ctx, m)
-	if err := s.insertMessage(ctx, m); err != nil {
+	if err := s.insertMessage(ctx, m, countUnread); err != nil {
 		return m, false, wrap("add message", err)
 	}
 
@@ -125,7 +142,8 @@ func withMessageDefaults(m domain.Message) domain.Message {
 }
 
 // insertMessage writes m and updates its conversation in one transaction.
-func (s *Store) insertMessage(ctx context.Context, m domain.Message) error {
+// countUnread is passed straight through to bumpConversation.
+func (s *Store) insertMessage(ctx context.Context, m domain.Message, countUnread bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -135,7 +153,7 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message) error {
 	// sql.ErrTxDone, so its error carries no information.
 	defer func() { _ = tx.Rollback() }()
 
-	if err := bumpConversation(ctx, tx, m); err != nil {
+	if err := bumpConversation(ctx, tx, m, countUnread); err != nil {
 		return err
 	}
 
@@ -163,11 +181,11 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message) error {
 	return tx.Commit()
 }
 
-// bumpConversation counts m as unread when it is incoming and not yet read,
-// and makes it the preview when it is the newest message. Older history
-// arriving later leaves the preview alone.
-func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message) error {
-	unread := boolInt(!m.Outgoing && m.Status != domain.StatusRead)
+// bumpConversation counts m as unread when countUnread is set and it is
+// incoming and not yet read, and makes it the preview when it is the
+// newest message. Older history arriving later leaves the preview alone.
+func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message, countUnread bool) error {
+	unread := boolInt(countUnread && !m.Outgoing && m.Status != domain.StatusRead)
 	res, err := tx.ExecContext(ctx, `UPDATE conversations SET
 			unread=unread+?,
 			preview=CASE WHEN ?>=last_activity THEN ? ELSE preview END,

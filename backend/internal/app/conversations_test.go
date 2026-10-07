@@ -67,7 +67,7 @@ func TestMarkRead_ClearsUnreadAndTellsTheService(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	f.ingest.History(ctx, "wa", chat.RemoteID, incoming("in-1", "hi"))
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 1)
 	f.published.take()
 
 	if err := f.commands.MarkRead(ctx, chat.ID); err != nil {
@@ -99,7 +99,7 @@ func TestSetMuted_UpdatesUnreadTotal(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	f.ingest.History(ctx, "wa", chat.RemoteID, incoming("in-1", "hi"))
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 1)
 	f.published.take()
 
 	got, err := f.commands.SetMuted(ctx, chat.ID, true)
