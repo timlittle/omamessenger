@@ -68,12 +68,13 @@ func (e entities) peer(p tg.PeerClass) (tg.InputPeerClass, bool) {
 const archiveFolderID = 1
 
 // conversation turns a dialog into a conversation, or reports false when
-// the response did not include the dialog's peer.
+// the response did not include the dialog's peer. Pinned and archived are
+// not part of this: they reach the store only through Sink.Organized, so
+// a later bare report of the same conversation can never clear them; see
+// listDialogs.
 func conversation(accountID string, d *tg.Dialog, e entities, now time.Time) (domain.Conversation, bool) {
 	c, ok := peerConversation(accountID, d.Peer, e)
 	c.Muted = int64(d.NotifySettings.MuteUntil) > now.Unix()
-	c.Pinned = d.Pinned
-	c.Archived = d.FolderID == archiveFolderID
 
 	return c, ok
 }

@@ -116,6 +116,7 @@ func storeCalls(t *testing.T, s *store.Store) map[string]func() error {
 		"SetMuted":             func() error { return s.SetMuted(ctx, "c", true) },
 		"SetPinned":            func() error { return s.SetPinned(ctx, "c", true) },
 		"SetArchived":          func() error { return s.SetArchived(ctx, "c", true) },
+		"SetOrganized":         func() error { _, err := s.SetOrganized(ctx, "c", true, true); return err },
 		"UnreadTotal":          func() error { _, err := s.UnreadTotal(ctx); return err },
 		"AddMessage":           func() error { _, _, err := s.AddMessage(ctx, message); return err },
 		"AddMessage remote":    func() error { _, _, err := s.AddMessage(ctx, remote); return err },

@@ -59,39 +59,18 @@ func TestConversation_FromEachKindOfDialog(t *testing.T) {
 	}
 }
 
-func TestConversation_ReadsPinnedAndArchived(t *testing.T) {
+func TestConversation_NeverSetsPinnedOrArchived(t *testing.T) {
 	t.Parallel()
 
+	// Pinned and archived reach the store only through Sink.Organized
+	// (see listDialogs), never through the conversation a dialog
+	// otherwise reports, so a later bare report can never clear them.
 	now := time.Now()
-	tests := []struct {
-		name   string
-		dialog *tg.Dialog
-		want   domain.Conversation
-	}{
-		{
-			"pinned", &tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, Pinned: true},
-			domain.Conversation{Pinned: true, Archived: false},
-		},
-		{
-			"archived", &tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, FolderID: archiveFolderID},
-			domain.Conversation{Pinned: false, Archived: true},
-		},
-		{
-			"neither", &tg.Dialog{Peer: &tg.PeerUser{UserID: 42}},
-			domain.Conversation{Pinned: false, Archived: false},
-		},
-	}
+	dialog := &tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, Pinned: true, FolderID: archiveFolderID}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, ok := conversation("tg", tt.dialog, testEntities(), now)
-			if !ok || got.Pinned != tt.want.Pinned || got.Archived != tt.want.Archived {
-				t.Errorf("conversation pinned=%t archived=%t, want pinned=%t archived=%t",
-					got.Pinned, got.Archived, tt.want.Pinned, tt.want.Archived)
-			}
-		})
+	got, ok := conversation("tg", dialog, testEntities(), now)
+	if !ok || got.Pinned || got.Archived {
+		t.Errorf("conversation = %+v, %t; want neither Pinned nor Archived set", got, ok)
 	}
 }
 

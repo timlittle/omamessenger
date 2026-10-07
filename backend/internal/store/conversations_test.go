@@ -381,23 +381,65 @@ func TestConversations_OrdersPinnedFirst(t *testing.T) {
 	}
 }
 
-func TestEnsureConversation_UpdatesPinnedAndArchived(t *testing.T) {
+func TestEnsureConversation_NeverTouchesPinnedOrArchived(t *testing.T) {
 	t.Parallel()
 
 	s := openStore(t)
 	ctx := t.Context()
 	addAccount(t, s, "wa")
 
-	first := domain.Conversation{AccountID: "wa", RemoteID: "remote", Title: "Chat"}
+	// A fresh conversation starts neither pinned nor archived, even when a
+	// report carries those fields set: only Organized, from a dialog
+	// sync, may set them. Most reports, such as a live message's own
+	// conversation, carry neither.
+	first := domain.Conversation{AccountID: "wa", RemoteID: "remote", Title: "Chat", Pinned: true, Archived: true}
 	created, _, err := s.EnsureConversation(ctx, first)
 	if err != nil || created.Pinned || created.Archived {
 		t.Fatalf("first EnsureConversation = %+v, %v; want neither pinned nor archived", created, err)
 	}
 
-	second := domain.Conversation{AccountID: "wa", RemoteID: "remote", Title: "Chat", Pinned: true, Archived: true}
+	if err := s.SetPinned(ctx, created.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetArchived(ctx, created.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// A later bare report, such as the title and member count a dialog or
+	// a live message always carries, must not unpin or unarchive it.
+	second := domain.Conversation{AccountID: "wa", RemoteID: "remote", Title: "Renamed", Members: 3}
 	updated, _, err := s.EnsureConversation(ctx, second)
-	if err != nil || !updated.Pinned || !updated.Archived {
-		t.Fatalf("second EnsureConversation = %+v, %v; want pinned and archived", updated, err)
+	if err != nil || !updated.Pinned || !updated.Archived || updated.Title != "Renamed" {
+		t.Fatalf("second EnsureConversation = %+v, %v; want pinned and archived to stand, title updated", updated, err)
+	}
+}
+
+func TestSetOrganized_SetsBothOrReportsNoChange(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	if changed, err := s.SetOrganized(ctx, "chat", true, true); err != nil || !changed {
+		t.Fatalf("SetOrganized(true, true) = %t, %v; want a change", changed, err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || !c.Pinned || !c.Archived {
+		t.Fatalf("Conversation after SetOrganized = %+v, %v; want both set", c, err)
+	}
+
+	if changed, err := s.SetOrganized(ctx, "chat", true, true); err != nil || changed {
+		t.Errorf("SetOrganized with the same values = %t, %v; want no change", changed, err)
+	}
+
+	if changed, err := s.SetOrganized(ctx, "chat", false, false); err != nil || !changed {
+		t.Errorf("SetOrganized(false, false) = %t, %v; want a change", changed, err)
+	}
+
+	if _, err := s.SetOrganized(ctx, "missing", true, true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetOrganized(missing) = %v, want ErrNotFound", err)
 	}
 }
 

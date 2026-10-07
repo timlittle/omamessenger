@@ -33,6 +33,31 @@ func TestIncoming_StoresPublishesAndNotifies(t *testing.T) {
 	}
 }
 
+func TestIncoming_KeepsAPinnedChatPinned(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+	if _, err := f.commands.SetPinned(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// A connector reports the conversation again before an incoming
+	// message, as Telegram's live update handling does; the report
+	// carries neither field set, the way one built fresh from a peer
+	// always does.
+	f.ingest.Conversation(ctx, domain.Conversation{
+		AccountID: "wa", RemoteID: chat.RemoteID, Kind: domain.KindDirect, Title: "Alex",
+	})
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "First"))
+
+	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || !got.Pinned {
+		t.Errorf("Conversation after Incoming = %+v, %v; want Pinned true", got, err)
+	}
+}
+
 func TestIncoming_NotifiesWithTheConversationID(t *testing.T) {
 	t.Parallel()
 

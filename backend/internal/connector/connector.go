@@ -166,6 +166,12 @@ type Sink interface {
 	// read it on another device.
 	Unread(ctx context.Context, accountID, conversationRemoteID string, count int)
 
+	// Organized reports a conversation's pinned and archived state, as a
+	// dialog sync knows it. Only a full sync of the service's chat list
+	// carries this; a conversation reported some other way, such as one
+	// a live message just started, is left as it was.
+	Organized(ctx context.Context, accountID, conversationRemoteID string, pinned, archived bool)
+
 	// AuthStep reports what a signing-in connector needs from the user.
 	AuthStep(ctx context.Context, accountID string, step AuthStep)
 }

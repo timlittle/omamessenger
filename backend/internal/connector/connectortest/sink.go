@@ -179,6 +179,11 @@ func (s *Sink) Unread(_ context.Context, _, remote string, count int) {
 	s.record("unread %s %d", remote, count)
 }
 
+// Organized records a conversation's pinned and archived state.
+func (s *Sink) Organized(_ context.Context, _, remote string, pinned, archived bool) {
+	s.record("organized %s %t %t", remote, pinned, archived)
+}
+
 // AuthStep records a sign-in step.
 func (s *Sink) AuthStep(_ context.Context, accountID string, step connector.AuthStep) {
 	s.record("auth %s %s", accountID, step.Kind)

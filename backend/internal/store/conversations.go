@@ -50,11 +50,14 @@ func (s *Store) EnsureConversation(ctx context.Context, c domain.Conversation) (
 	return inserted, err == nil, err
 }
 
-// refreshConversation copies the remote service's title, kind, member
-// count, pinned and archived state onto a stored conversation.
+// refreshConversation copies the remote service's title, kind and member
+// count onto a stored conversation. It never touches pinned or archived:
+// most reports, such as a live message's own conversation, carry neither
+// field meaningfully, so only SetOrganized, from a dialog sync, may set
+// them.
 func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Conversation) (domain.Conversation, error) {
-	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=?,pinned=?,archived=? WHERE id=?`,
-		c.Title, c.Kind, c.Members, boolInt(c.Pinned), boolInt(c.Archived), id)
+	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=? WHERE id=?`,
+		c.Title, c.Kind, c.Members, id)
 	if err != nil {
 		return c, wrap("update conversation", err)
 	}
@@ -63,14 +66,15 @@ func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Con
 }
 
 // insertConversation stores a new conversation, assigning an id if needed.
+// It always starts unpinned and unarchived; see refreshConversation.
 func (s *Store) insertConversation(ctx context.Context, c domain.Conversation) (domain.Conversation, error) {
 	if c.ID == "" {
 		c.ID = newID("c")
 	}
 
 	_, err := s.db.ExecContext(ctx, `INSERT INTO conversations
-		(id,account_id,remote_id,kind,title,members,muted,pinned,archived,last_activity) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), boolInt(c.Pinned), boolInt(c.Archived), c.LastActivity)
+		(id,account_id,remote_id,kind,title,members,muted,last_activity) VALUES(?,?,?,?,?,?,?,?)`,
+		c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), c.LastActivity)
 	if err != nil {
 		return c, wrap("insert conversation", err)
 	}
@@ -240,6 +244,27 @@ func (s *Store) SetArchived(ctx context.Context, id string, archived bool) error
 	}
 
 	return requireRow("set archived", res)
+}
+
+// SetOrganized sets a conversation's pinned and archived state, as a
+// dialog sync reports it. changed is false when both already matched.
+func (s *Store) SetOrganized(ctx context.Context, id string, pinned, archived bool) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE conversations SET pinned=?,archived=? WHERE id=? AND (pinned<>? OR archived<>?)`,
+		boolInt(pinned), boolInt(archived), id, boolInt(pinned), boolInt(archived))
+	if err != nil {
+		return false, wrap("set organized", err)
+	}
+
+	changed, err := rowsChanged("set organized", res)
+	if changed || err != nil {
+		return changed, err
+	}
+
+	// No row changed: either it already matched or it does not exist.
+	_, err = s.Conversation(ctx, id)
+
+	return false, err
 }
 
 // UnreadTotal counts unread messages in conversations that are not muted.
