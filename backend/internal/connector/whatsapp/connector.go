@@ -114,6 +114,12 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	unregister := dev.onStatus(func(status string) { c.reportStatus(ctx, sink, status, stopped) })
 	defer unregister()
 
+	// WhatsApp sends history and missed messages as soon as a session
+	// connects, and right after pairing, before connectOrPair returns, so
+	// the handlers listen first or those events are lost for good.
+	unregisterEvents := c.handleEvents(ctx, dev, media, sink)
+	defer unregisterEvents()
+
 	if err := c.connectOrPair(ctx, dev, sink); err != nil {
 		return err
 	}
@@ -121,9 +127,6 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 
 	c.connected(dev, sink)
 	defer c.disconnected()
-
-	unregisterEvents := c.handleEvents(ctx, dev, media, sink)
-	defer unregisterEvents()
 
 	select {
 	case <-ctx.Done():

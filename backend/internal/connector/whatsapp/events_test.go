@@ -124,6 +124,31 @@ func TestHandleEvents_DropsAMuteChangeWithoutReportingAnything(t *testing.T) {
 	}
 }
 
+func TestRun_HandlesEventsThatArriveWhileConnecting(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dev := newFakeDevice()
+		dev.paired = true
+		dev.duringConnect = []any{&events.HistorySync{Data: &waHistorySync.HistorySync{
+			Conversations: []*waHistorySync.Conversation{{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia")}},
+		}}}
+		c := newTestConnector(dev)
+		var sink connectortest.Sink
+
+		done := make(chan error, 1)
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() { done <- c.Run(ctx, &sink) }()
+		synctest.Wait()
+
+		if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
+			t.Errorf("events = %q, want the history sent while connecting", sink.Lines())
+		}
+
+		cancel()
+		synctest.Wait()
+		drain(t, done)
+	})
+}
+
 func TestRun_RoutesEventsToTheirHandlers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev := newFakeDevice()

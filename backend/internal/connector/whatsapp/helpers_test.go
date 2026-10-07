@@ -51,6 +51,11 @@ type fakeDevice struct {
 	markReadCalls []markReadCall
 	eventHandler  func(evt any)
 
+	// duringConnect holds events connect delivers before it returns, the
+	// way WhatsApp sends history and offline messages as soon as a
+	// session connects.
+	duringConnect []any
+
 	// groupNames, groupErr and groupCalls script and record groupName,
 	// which history.go and live.go call to resolve a group's name.
 	groupNames map[string]string
@@ -85,11 +90,14 @@ func newFakeDevice() *fakeDevice {
 func (d *fakeDevice) connect(context.Context) error {
 	d.mu.Lock()
 	d.connects++
-	err, handler, paired := d.connectErr, d.handler, d.paired
+	err, handler, paired, during := d.connectErr, d.handler, d.paired, d.duringConnect
 	d.mu.Unlock()
 
 	if err == nil && paired && handler != nil {
 		handler(statusConnected)
+	}
+	for _, evt := range during {
+		d.fireEvent(evt)
 	}
 
 	return err
