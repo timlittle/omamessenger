@@ -348,7 +348,7 @@ test('accountDescription uses the helper\'s own service name when given', () => 
   assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Work', detail: '' }, known), 'Telegram (beta) · Work');
 });
 
-test('standard keeps chats active within a month, unread ones and the open one', () => {
+test('standard keeps chats active within a month and the open one, folding an old chat even when it is unread', () => {
   const day = 24 * 60 * 60 * 1000;
   const now = 100 * day;
   const conversations = [
@@ -359,7 +359,7 @@ test('standard keeps chats active within a month, unread ones and the open one',
     { id: 'never', lastActivity: 0, unread: 0, archived: false, hidden: false }
   ];
 
-  assert.deepEqual(Rail.standard(conversations, now, 'old-open').map((c) => c.id), ['new', 'old-unread', 'old-open']);
+  assert.deepEqual(Rail.standard(conversations, now, 'old-open').map((c) => c.id), ['new', 'old-open']);
 });
 
 test('standard drops an archived conversation at once, even the open one', () => {
@@ -409,6 +409,14 @@ test('isDimmed: true for anything the standard list would not show; the open cha
   assert.strictEqual(Rail.isDimmed(hidden, now, ''), true);
   assert.strictEqual(Rail.isDimmed(hidden, now, 'hidden'), true);
   assert.strictEqual(Rail.isDimmed({ id: 'plain', archived: false, hidden: false, lastActivity: now, unread: 0 }, now, ''), false);
+});
+
+test('isDimmed: an old chat is dimmed even while unread, and carries no label since it is merely old', () => {
+  const now = Date.now();
+  const oldUnread = { id: 'old-unread', archived: false, hidden: false, lastActivity: 0, unread: 5 };
+
+  assert.strictEqual(Rail.isDimmed(oldUnread, now, ''), true);
+  assert.strictEqual(Rail.dimLabel(oldUnread, now, ''), '');
 });
 
 test('dimLabel names hidden or archived even for the open chat, and is blank for a merely older or non-dimmed chat', () => {

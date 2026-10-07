@@ -158,16 +158,19 @@ function multiAccountServices(items) {
 }
 
 // showsStandard reports whether one conversation would appear in the
-// standard list: not archived, not hidden, and either recently active or
-// unread. The one open as keepId is exempt only from the recency rule, so
-// replying in an old chat never makes it vanish from under the user; an
-// explicit hide or archive still drops it at once, even while it is open,
-// since that is the point of hiding or archiving it.
+// standard list: not archived, not hidden, and active within the last
+// month. Unread messages do not keep an old chat visible on their own;
+// the rail's own unread total still counts them (see unreadTotal), and
+// show-all still shows the chat, dimmed. The one open as keepId is exempt
+// only from the recency rule, so replying in an old chat never makes it
+// vanish from under the user; an explicit hide or archive still drops it
+// at once, even while it is open, since that is the point of hiding or
+// archiving it.
 function showsStandard(c, nowMs, keepId) {
   if (c.archived || c.hidden) return false;
   if (c.id === keepId) return true;
 
-  return nowMs - c.lastActivity <= RECENT_MS || c.unread > 0;
+  return nowMs - c.lastActivity <= RECENT_MS;
 }
 
 // standard keeps the conversations the standard list shows; see
