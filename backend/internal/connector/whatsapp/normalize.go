@@ -1,8 +1,3 @@
-// Package whatsapp connects a WhatsApp account through whatsmeow: it
-// normalizes whatsmeow's JIDs, messages and sync data into the domain
-// types the rest of the helper uses. This file carries the package doc
-// comment only until the connector itself (provider, client wrapper,
-// pairing) lands in this directory; it belongs there once it does.
 package whatsapp
 
 import (

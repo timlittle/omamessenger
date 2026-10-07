@@ -30,7 +30,7 @@ test('field describes what each answered step asks for', () => {
 });
 
 test('field is null for stages without a typed answer', () => {
-  for (const stage of ['credentials', 'waiting', 'qr', '']) {
+  for (const stage of ['credentials', 'waiting', 'qr', 'linkcode', '']) {
     assert.strictEqual(Setup.field(stage), null, stage);
   }
 });

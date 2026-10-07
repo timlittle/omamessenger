@@ -1,7 +1,8 @@
 // Package whatsapp connects a WhatsApp account through whatsmeow: it
-// pairs by QR code or a phone number's link code, and reports the
-// account's connection status to a Sink. Later waves add history, live
-// messages and sending.
+// pairs by QR code or a phone number's link code, reports the account's
+// connection status to a Sink, and normalizes whatsmeow's JIDs, messages
+// and sync data into the domain types the rest of the helper uses. Later
+// waves add history, live messages and sending.
 package whatsapp
 
 import (
@@ -144,12 +145,12 @@ func (c *Connector) SubmitAuth(ctx context.Context, step, value string) error {
 }
 
 // Send is not supported yet; a later wave adds it.
-func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain.Message) error {
+func (*Connector) Send(_ context.Context, _ domain.Conversation, _ domain.Message) error {
 	return errSendNotSupported
 }
 
 // MarkRead is not supported yet; a later wave adds it.
-func (c *Connector) MarkRead(ctx context.Context, conv domain.Conversation) error {
+func (*Connector) MarkRead(_ context.Context, _ domain.Conversation) error {
 	return errSendNotSupported
 }
 
