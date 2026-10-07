@@ -10,13 +10,13 @@
 //
 // The whole thing has to read in well under ten seconds, so it shows only
 // a few strong moments: the list with unread badges, a chat with a real
-// loaded photo and a link preview, replying (showing the composer's
-// writing-mode border) and sending, then reacting. Each step below
-// performs one user-visible action — a shortcut, typing a query, a click
-// — or holds the picture briefly so a viewer can read it, the same
-// polling step engine tests/qml/Flows/shell.qml uses. A small on-screen
-// label names each action, for the recording only: nothing like it exists
-// in the product.
+// loaded photo and a link preview, replying (showing the composer come
+// to full contrast once it has focus) and sending, then reacting. Each
+// step below performs one user-visible action — a shortcut, typing a
+// query, a click — or holds the picture briefly so a viewer can read it,
+// the same polling step engine tests/qml/Flows/shell.qml uses. A small
+// on-screen label names each action, for the recording only: nothing
+// like it exists in the product.
 import QtQuick
 import QtTest
 import Quickshell
@@ -200,8 +200,8 @@ ShellRoot {
     return !!input && input.activeFocus;
   }
 
-  // sendReply types a short reply, showing the composer's writing-mode
-  // border before it is sent.
+  // sendReply types a short reply, showing the composer at full
+  // contrast before it is sent.
   function sendReply(): var {
     root.showLabel("\"Count me in!\"");
     root.typeText("Count me in!");

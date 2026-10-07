@@ -129,18 +129,22 @@ ShellRoot {
     root.retry(root.waitForConversationOpen);
   }
 
-  // checkWritingMode checks the composer shows its accent-bordered
-  // "writing" state and names it in words as soon as it gets focus,
-  // before the rest of the test types into it. The report this exists
-  // for: scrolling and writing looked identical except for the blinking
-  // text cursor.
+  // checkWritingMode checks the composer names its "writing" state in
+  // words and shows the input and Send at full contrast as soon as it
+  // gets focus, before the rest of the test types into it. The report
+  // this exists for: scrolling and writing looked identical except for
+  // the blinking text cursor.
   function checkWritingMode(composer: var): void {
     const hint = Check.find(panel, "composerModeHint");
-    const frame = Check.find(panel, "composerFrame");
+    const send = Check.find(panel, "sendButton");
     if (!hint || hint.text !== "Writing · Esc to stop")
       return Check.fail("writing hint is \"" + (hint ? hint.text : "?") + "\", want \"Writing · Esc to stop\"");
-    if (!frame || !Qt.colorEqual(frame.border.color, Color.accent))
-      return Check.fail("composer frame is not accent-bordered while writing");
+    if (Check.find(panel, "composerFrame"))
+      return Check.fail("the composer still has a frame object");
+    if (composer.opacity !== 1.0)
+      return Check.fail("composer input opacity is " + composer.opacity + " while writing, want 1.0");
+    if (!send || send.opacity !== 1.0)
+      return Check.fail("Send opacity is " + (send ? send.opacity : "?") + " while writing, want 1.0");
 
     root.checkMultilineNewlines(composer);
   }
@@ -296,11 +300,16 @@ ShellRoot {
   // to hide the window.
   function checkNotWritingMode(): void {
     const hint = Check.find(panel, "composerModeHint");
-    const frame = Check.find(panel, "composerFrame");
+    const composer = Check.find(panel, "composerInput");
+    const send = Check.find(panel, "sendButton");
     if (!hint || hint.text !== "i to write")
       return Check.fail("not-writing hint is \"" + (hint ? hint.text : "?") + "\", want \"i to write\"");
-    if (!frame || Qt.colorEqual(frame.border.color, Color.accent))
-      return Check.fail("composer frame still shows the accent border after leaving the composer");
+    if (Check.find(panel, "composerFrame"))
+      return Check.fail("the composer still has a frame object");
+    if (!composer || composer.opacity === 1.0)
+      return Check.fail("composer input is still at full opacity while not writing");
+    if (!send || send.opacity === 1.0)
+      return Check.fail("Send is still at full opacity while not writing");
 
     t.keyClick(Qt.Key_Escape);
     t.keyClick(Qt.Key_Escape);

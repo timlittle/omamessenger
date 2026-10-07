@@ -54,9 +54,13 @@ Item {
 
   // writing is true while the text input holds keyboard focus: typing
   // and scrolling the conversation look identical otherwise, bar the
-  // blinking text cursor, so the frame below and the mode hint both
-  // read this to show which one is active.
+  // blinking text cursor, so the mode hint, the input and Send all read
+  // this to show which one is active.
   readonly property bool writing: area.activeFocus
+  // dimmedOpacity is how faded the input and Send look while scrolling,
+  // not writing. It is visual only: both stay enabled and clickable, so
+  // clicking the input starts writing and Send still works by mouse.
+  readonly property real dimmedOpacity: 0.5
   // modeHint names the current mode in words, so it is not shown by
   // colour alone: Keymap.composeHint derives it from the same bindings
   // the key router already matches, rather than naming a key twice.
@@ -119,21 +123,6 @@ Item {
     id: fileDialog
     title: "Attach a file"
     onAccepted: root.fileAttached(String(fileDialog.selectedFile).replace(/^file:\/\//, ""))
-  }
-
-  // frame outlines the whole composer, not just the text input, so the
-  // writing/not-writing state is visible at a glance. It goes to
-  // Color.accent while writing rather than the generic focus-border
-  // token, which is quiet by default on this theme: this one case is
-  // meant to stand out, not blend in.
-  Rectangle {
-    id: frame
-    objectName: "composerFrame"
-    anchors.fill: parent
-    color: "transparent"
-    radius: Style.cornerRadius
-    border.width: root.writing ? Style.focusBorderWidth : Style.normalBorderWidth
-    border.color: root.writing ? Color.accent : Style.normalBorderColor
   }
 
   ColumnLayout {
@@ -263,6 +252,11 @@ Item {
           id: area
           objectName: "composerInput"
           enabled: root.enabled
+          // Dimmed while scrolling rather than writing, so the mode is
+          // visible at a glance without relying on the hint text alone.
+          // The input stays enabled: clicking it while dimmed still
+          // starts writing.
+          opacity: root.writing ? 1.0 : root.dimmedOpacity
           wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
           selectByMouse: true
           placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
@@ -298,10 +292,14 @@ Item {
 
       Ui.Button {
         id: sendButton
+        objectName: "sendButton"
         Layout.alignment: Qt.AlignBottom
         text: "Send"
         focusable: true
         enabled: root.enabled && root._canSend
+        // Dimmed while scrolling rather than writing; stays clickable,
+        // so Send still works by mouse even before the input has focus.
+        opacity: root.writing ? 1.0 : root.dimmedOpacity
         onClicked: root.submit()
       }
     }

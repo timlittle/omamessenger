@@ -38,7 +38,7 @@ Pin, archive and hide are in the command palette, and are local to this computer
 | r | Retry a failed message |
 | R | Reply to the newest message |
 
-The composer shows which mode it is in: a quiet border with an "i to write" hint while scrolling, an accent border with a "Writing · Esc to stop" hint once it has focus.
+The composer shows which mode it is in: dimmed, with an "i to write" hint, while scrolling; full contrast, with a "Writing · Esc to stop" hint, once it has focus.
 
 | Keys | Does |
 | --- | --- |
