@@ -16,7 +16,7 @@ OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and H
 - Desktop notifications; click one to open its conversation
 - Paste or attach an image to a message
 - Keyboard-first, with a command palette (**Ctrl+/**) listing every action and its shortcut
-- Light on memory: about 100 MB in use, against about 1 GB for Telegram Desktop and WhatsApp web running side by side (measured on one machine with a busy chat open)
+- Light on memory: about 100 MB in use, against about 1 GB for Telegram Desktop and WhatsApp web running side by side
 
 ## Install
 
