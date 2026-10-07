@@ -74,6 +74,9 @@ var migrations = []string{
 	// service's archive, as Telegram's dialogs report it.
 	`ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE conversations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;`,
+	// The message a reply answers: its remote id, sender and a short
+	// excerpt, as JSON, the same way media is stored.
+	`ALTER TABLE messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT '';`,
 	// A message's emoji reaction chips, as JSON.
 	`ALTER TABLE messages ADD COLUMN reactions TEXT NOT NULL DEFAULT '';`,
 }

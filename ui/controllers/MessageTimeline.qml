@@ -88,10 +88,50 @@ Item {
     root._recomputeAnnotations(isGroup);
   }
 
+  // messageById returns a loaded message's full data, or null when it is
+  // not loaded.
+  function messageById(id: string): var {
+    return root._snapshot().find((m) => m.id === id) ?? null;
+  }
+
+  // localIdForRemote returns the loaded message id whose remote id is
+  // remoteId, or "" when it is not loaded: the user has not scrolled to
+  // it, or the service has not assigned it one yet.
+  function localIdForRemote(remoteId: string): string {
+    const row = root._snapshot().find((m) => m.remoteId === remoteId);
+    return row ? row.id : "";
+  }
+
   // mediaPath returns where a message's downloaded media is, or "".
   function mediaPath(id: string): string {
     const row = root._snapshot().find((m) => m.id === id);
     return row ? row.mediaPath : "";
+  }
+
+  // media returns a message's parsed photo or video media (kind, width,
+  // height, duration, thumb), or null when it has none or is not loaded.
+  function media(id: string): var {
+    const row = root._snapshot().find((m) => m.id === id);
+    return row ? Timeline.media(row) : null;
+  }
+
+  // photoNeighbor returns the id of the nearest other loaded message with
+  // a photo, relative to id: delta > 0 looks toward newer messages, delta
+  // < 0 toward older ones. It returns "" when id is not loaded or there is
+  // no such neighbour.
+  function photoNeighbor(id: string, delta: int): string {
+    const loaded = root._snapshot();
+    const at = loaded.findIndex((m) => m.id === id);
+    if (at === -1) return "";
+
+    // The array is newest-first, so moving toward newer messages steps
+    // backward through it.
+    const step = delta > 0 ? -1 : 1;
+    for (let i = at + step; i >= 0 && i < loaded.length; i += step) {
+      const candidate = Timeline.media(loaded[i]);
+      if (candidate && candidate.kind === "photo") return loaded[i].id;
+    }
+    return "";
   }
 
   // setMediaPath records where a message's downloaded media is.
@@ -110,9 +150,9 @@ Item {
     return "";
   }
 
-  // newestMessageId returns the newest loaded message's id, or "" when
-  // none is loaded, for the "react to the newest message" command.
-  function newestMessageId(): string {
+  // newestId returns the newest loaded message's id, or "" when none is
+  // loaded, for the "reply to" and "react to" the newest message commands.
+  function newestId(): string {
     return messagesModel.count > 0 ? messagesModel.get(0).id : "";
   }
 

@@ -1,6 +1,7 @@
 // Checks MessageDelegate: sender names in groups, the read glyph, the
-// retry line on a failed message, and that rich text escapes markup
-// while linkifying URLs.
+// retry line on a failed message, that rich text escapes markup while
+// linkifying URLs, a reply's quote, the hover reply button, and
+// reaction chips.
 import QtQuick
 import QtTest
 import Quickshell
@@ -16,6 +17,10 @@ ShellRoot {
   // opened records the ids of messages whose media was asked to open.
   property var opened: []
   property var wanted: []
+  // replied records the ids a reply was requested for.
+  // quoted records the remote ids a quote was clicked to open.
+  property var replied: []
+  property var quoted: []
   property var reacted: []
   property var pickerRequests: []
   property real now: Date.now()
@@ -41,6 +46,8 @@ ShellRoot {
       onRetry: id => root.retried.push(id)
       onMediaWanted: id => root.wanted.push(id)
       onMediaOpen: id => root.opened.push(id)
+      onReplyRequested: id => root.replied.push(id)
+      onQuoteOpened: remoteId => root.quoted.push(remoteId)
       onReact: (id, emoji) => root.reacted.push(id + " " + emoji)
       onReactPickerRequested: id => root.pickerRequests.push(id)
     }
@@ -72,6 +79,8 @@ ShellRoot {
     if (!root.checkLinkPreview()) return;
     if (!root.checkPhoto()) return;
     if (!root.checkVideoAndFile()) return;
+    if (!root.checkReplyQuote()) return;
+    if (!root.checkHoverReplyButton()) return;
     if (!root.checkReactionChips()) return;
 
     console.log("PASS MessageDelegate");
@@ -225,12 +234,57 @@ ShellRoot {
     return true;
   }
 
+  // checkReplyQuote verifies a reply shows a quote of the sender and text
+  // it answers, that a message without one shows none, and that clicking
+  // the quote asks to scroll to the quoted message.
+  function checkReplyQuote(): bool {
+    const reply = { remoteId: "7", senderName: "Alex", text: "original message" };
+    delegate.message = { id: "m11", senderId: "s1", senderName: "Alex", text: "sure", outgoing: false, status: "received", created: root.now, replyTo: JSON.stringify(reply) };
+
+    const quote = Check.find(delegate, "replyQuote");
+    if (!quote || !quote.visible) return Check.fail("reply quote not shown");
+    if (!Check.texts(quote).some((item) => item.text === "Alex")) return Check.fail("quote does not show the quoted sender");
+    if (!Check.texts(quote).some((item) => item.text === "original message")) return Check.fail("quote does not show the quoted text");
+
+    root.quoted = [];
+    t.wait(50); // let the layout catch up with the new message before clicking
+    t.mouseClick(quote);
+    if (JSON.stringify(root.quoted) !== '["7"]') return Check.fail("quote click reported " + JSON.stringify(root.quoted) + ", want [\"7\"]");
+
+    delegate.message = { id: "m12", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "received", created: root.now };
+    if (Check.find(delegate, "replyQuote").visible) return Check.fail("reply quote shown for a message that answers nothing");
+    return true;
+  }
+
+  // checkHoverReplyButton verifies the reply button is hidden until the
+  // bubble is hovered, and that clicking it asks to reply to the message.
+  function checkHoverReplyButton(): bool {
+    delegate.message = { id: "m13", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "received", created: root.now };
+
+    // Move the pointer away first: an earlier click left it resting on
+    // the bubble, which would otherwise count as an existing hover.
+    t.mouseMove(delegate, 2, 2);
+
+    const button = Check.find(delegate, "replyButton");
+    if (button.visible) return Check.fail("reply button shown without a hover");
+
+    const bubble = Check.find(delegate, "bubble");
+    t.mouseMove(bubble, bubble.width / 2, bubble.height / 2);
+    t.wait(50); // let the hover-driven visibility and anchors settle
+    if (!button.visible) return Check.fail("reply button not shown on hover");
+
+    root.replied = [];
+    t.mouseClick(button);
+    if (JSON.stringify(root.replied) !== '["m13"]') return Check.fail("reply click reported " + JSON.stringify(root.replied) + ", want [\"m13\"]");
+    return true;
+  }
+
   // checkReactionChips verifies a message's reactions show as chips, a
   // message without any shows none while the bubble is not hovered, and
   // clicking a chip reports this message's id and emoji.
   function checkReactionChips(): bool {
     delegate.message = {
-      id: "m11", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "delivered", created: root.now,
+      id: "m14", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "delivered", created: root.now,
       reactions: [{ emoji: "👍", count: 1, mine: true }]
     };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
@@ -240,13 +294,13 @@ ShellRoot {
 
     root.reacted = [];
     t.mouseClick(Check.find(chips, "chipArea-👍"));
-    if (JSON.stringify(root.reacted) !== '["m11 👍"]') return Check.fail("reacted " + JSON.stringify(root.reacted) + ", want [\"m11 \\ud83d\\udc4d\"]");
+    if (JSON.stringify(root.reacted) !== '["m14 👍"]') return Check.fail("reacted " + JSON.stringify(root.reacted) + ", want [\"m14 \\ud83d\\udc4d\"]");
 
     // Move the pointer away from the bubble, so an earlier click near it
     // does not leave it hovered once the layout settles around a shorter
     // message.
     t.mouseMove(delegate, delegate.width - 5, 2);
-    delegate.message = { id: "m12", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "delivered", created: root.now };
+    delegate.message = { id: "m15", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "delivered", created: root.now };
     t.waitForRendering(delegate);
     if (Check.find(delegate, "reactionChips").visible) return Check.fail("reaction chips shown for a message with none, unhovered");
     return true;

@@ -1,7 +1,12 @@
 package server_test
 
 import (
+	"bytes"
+	"image"
+	"image/png"
 	"maps"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -99,6 +104,22 @@ func TestMethods_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestMessagesSend_WithReplyToQuotesTheOriginalMessage(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+
+	original, err := call[domain.Message](t, s, "messages.send", map[string]string{"conversationId": "chat", "text": "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reply, err := call[domain.Message](t, s, "messages.send", map[string]string{"conversationId": "chat", "text": "sure", "replyTo": original.ID})
+	if err != nil || reply.ReplyTo == nil || reply.ReplyTo.Text != "hi" {
+		t.Errorf("messages.send with replyTo = %+v, %v", reply, err)
+	}
+}
+
 func TestAccountsAdd_AcceptsAGeneralOptionsObject(t *testing.T) {
 	t.Parallel()
 
@@ -135,4 +156,93 @@ func TestAccountsAdd_ApiIDAndApiHashOverrideOptions(t *testing.T) {
 	if got := s.accounts.lastOptions(); !maps.Equal(got, want) {
 		t.Errorf("accounts.add options = %v, want %v", got, want)
 	}
+}
+
+func TestMessagesSend_AcceptsAnAttachment(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sent, err := call[domain.Message](t, s, "messages.send", map[string]any{
+		"conversationId": "chat", "text": "see attached",
+		"attachment": map[string]string{"path": path},
+	})
+	if err != nil || sent.Media == nil || sent.Media.Kind != domain.MediaFile || sent.Text != "see attached" {
+		t.Errorf("messages.send with an attachment = %+v, %v", sent, err)
+	}
+}
+
+func TestMessagesSend_WithAttachmentAndReplyToTogether(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	original, err := call[domain.Message](t, s, "messages.send", map[string]string{"conversationId": "chat", "text": "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reply, err := call[domain.Message](t, s, "messages.send", map[string]any{
+		"conversationId": "chat", "text": "see attached",
+		"attachment": map[string]string{"path": path},
+		"replyTo":    original.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reply.Media == nil || reply.Media.Kind != domain.MediaFile {
+		t.Errorf("reply.Media = %+v, want the attachment kept alongside the reply", reply.Media)
+	}
+	if reply.ReplyTo == nil || reply.ReplyTo.Text != "hi" {
+		t.Errorf("reply.ReplyTo = %+v, want it to quote the original message", reply.ReplyTo)
+	}
+}
+
+func TestMediaPaste_ReturnsTheClipboardImage(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+	s.clipboard.types = []string{"image/png"}
+	s.clipboard.data = map[string][]byte{"image/png": pngBytes(t, 2, 2)}
+
+	pasted, err := call[struct {
+		Path   string `json:"path"`
+		Kind   string `json:"kind"`
+		Width  int    `json:"width"`
+		Height int    `json:"height"`
+	}](t, s, "media.paste", nil)
+	if err != nil || pasted.Kind != domain.MediaPhoto || pasted.Width != 2 || pasted.Height != 2 || pasted.Path == "" {
+		t.Errorf("media.paste = %+v, %v", pasted, err)
+	}
+}
+
+func TestMediaPaste_RejectsAnEmptyClipboard(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+	s.clipboard.types = []string{"text/plain"}
+
+	if _, err := call[struct{}](t, s, "media.paste", nil); code(err) != -32602 {
+		t.Errorf("media.paste(no image) code = %d, want invalid params", code(err))
+	}
+}
+
+// pngBytes encodes a solid image of the given size as a PNG.
+func pngBytes(t *testing.T, width, height int) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatal(err)
+	}
+
+	return buf.Bytes()
 }

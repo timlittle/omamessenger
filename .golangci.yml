@@ -88,6 +88,10 @@ linters:
           list-mode: strict
           files: ["**/backend/internal/notify/*.go", "!$test"]
           allow: [$gostd]
+        clipboard:
+          list-mode: strict
+          files: ["**/backend/internal/clipboard/*.go", "!$test"]
+          allow: [$gostd]
     revive:
       rules:
         - name: function-length

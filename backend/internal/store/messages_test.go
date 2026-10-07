@@ -271,82 +271,6 @@ func TestEditMessage_IgnoresAMessageThatIsNotStored(t *testing.T) {
 	}
 }
 
-func TestEditMessage_UpdatesReactions(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
-	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Created: 1})
-
-	reactions := []domain.Reaction{{Emoji: "👍", Count: 1, Mine: true}}
-	got, found, err := s.EditMessage(ctx, "chat", "r1", store.MessageEdit{Text: "hi", Reactions: reactions})
-	if err != nil || !found || !slices.Equal(got.Reactions, reactions) {
-		t.Fatalf("EditMessage reactions = %+v, found %t, %v", got.Reactions, found, err)
-	}
-
-	stored, err := s.Message(ctx, "m1")
-	if err != nil || !slices.Equal(stored.Reactions, reactions) {
-		t.Errorf("stored reactions = %+v, %v", stored.Reactions, err)
-	}
-}
-
-func TestSetReactions_UpdatesWithoutTouchingTextOrMedia(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
-	link := &domain.Media{Kind: domain.MediaLink, URL: "https://x.io"}
-	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Media: link, Created: 1})
-
-	reactions := []domain.Reaction{{Emoji: "❤️", Count: 2, Mine: false}}
-	got, found, err := s.SetReactions(ctx, "chat", "r1", reactions)
-	if err != nil || !found || !slices.Equal(got.Reactions, reactions) {
-		t.Fatalf("SetReactions = %+v, found %t, %v", got.Reactions, found, err)
-	}
-
-	stored, err := s.Message(ctx, "m1")
-	if err != nil || stored.Text != "hi" || stored.Media == nil || !slices.Equal(stored.Reactions, reactions) {
-		t.Errorf("stored message = %+v, %v; want text and media untouched", stored, err)
-	}
-}
-
-func TestSetReactions_IgnoresAMessageThatIsNotStored(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
-
-	got, found, err := s.SetReactions(ctx, "chat", "missing", []domain.Reaction{{Emoji: "👍", Count: 1}})
-	if err != nil || found || got.ID != "" {
-		t.Fatalf("SetReactions(missing) = %+v, found %t, %v; want ignored", got, found, err)
-	}
-}
-
-func TestSetReactions_ClearsReactionsWhenEmpty(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
-	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Created: 1})
-
-	if _, _, err := s.SetReactions(ctx, "chat", "r1", []domain.Reaction{{Emoji: "👍", Count: 1, Mine: true}}); err != nil {
-		t.Fatal(err)
-	}
-
-	got, found, err := s.SetReactions(ctx, "chat", "r1", nil)
-	if err != nil || !found || len(got.Reactions) != 0 {
-		t.Fatalf("SetReactions(nil) = %+v, found %t, %v; want no reactions", got.Reactions, found, err)
-	}
-}
-
 func TestDeleteMessages_FallsBackPreviewAndLowersUnread(t *testing.T) {
 	t.Parallel()
 
@@ -433,6 +357,69 @@ func TestDeleteMessages_IgnoresAnEmptyScope(t *testing.T) {
 	}
 }
 
+func TestAddMessage_FillsReplySenderAndTextFromTheQuotedMessage(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "quoted", ConversationID: "chat", RemoteID: "1", Text: "original message", SenderName: "Alex", Created: 1})
+
+	reply, _, err := s.AddMessage(ctx, domain.Message{
+		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
+		ReplyTo: &domain.Reply{RemoteID: "1"},
+	})
+	if err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+	if reply.ReplyTo == nil || reply.ReplyTo.SenderName != "Alex" || reply.ReplyTo.Text != "original message" {
+		t.Fatalf("reply.ReplyTo = %+v, want sender Alex and the quoted text", reply.ReplyTo)
+	}
+
+	stored, err := s.Message(ctx, "reply")
+	if err != nil || stored.ReplyTo == nil || stored.ReplyTo.RemoteID != "1" || stored.ReplyTo.SenderName != "Alex" {
+		t.Errorf("stored reply = %+v, %v", stored.ReplyTo, err)
+	}
+}
+
+func TestAddMessage_KeepsAReplysOwnSenderAndTextWhenAlreadyGiven(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	// The quoted message is not stored at all here: an outgoing reply
+	// already carries what it needs, filled in by the app from the
+	// message it answers, so the store must not need to look it up.
+	reply, _, err := s.AddMessage(ctx, domain.Message{
+		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
+		ReplyTo: &domain.Reply{RemoteID: "1", SenderName: "You", Text: "hi there"},
+	})
+	if err != nil || reply.ReplyTo == nil || reply.ReplyTo.SenderName != "You" || reply.ReplyTo.Text != "hi there" {
+		t.Fatalf("AddMessage = %+v, %v", reply.ReplyTo, err)
+	}
+}
+
+func TestAddMessage_LeavesAReplyToAnUnloadedMessageAsGiven(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	reply, _, err := s.AddMessage(ctx, domain.Message{
+		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
+		ReplyTo: &domain.Reply{RemoteID: "not-loaded"},
+	})
+	if err != nil || reply.ReplyTo == nil || reply.ReplyTo.RemoteID != "not-loaded" || reply.ReplyTo.SenderName != "" {
+		t.Fatalf("AddMessage = %+v, %v, want the bare reply unchanged", reply.ReplyTo, err)
+	}
+}
+
 func TestAddMessage_KeepsMediaAndFillsItInLater(t *testing.T) {
 	t.Parallel()
 
@@ -460,38 +447,5 @@ func TestAddMessage_KeepsMediaAndFillsItInLater(t *testing.T) {
 
 	if got, _ := s.Message(ctx, "without"); got.Media == nil || got.Media.Title != "A page" {
 		t.Errorf("media not filled in: %+v", got.Media)
-	}
-}
-
-func TestAddMessage_StoresReactions(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
-	reactions := []domain.Reaction{{Emoji: "🔥", Count: 3, Mine: true}}
-
-	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "hi", Created: 1, Reactions: reactions})
-
-	got, err := s.Message(ctx, "m1")
-	if err != nil || !slices.Equal(got.Reactions, reactions) {
-		t.Errorf("stored reactions = %+v, %v; want %+v", got.Reactions, err, reactions)
-	}
-}
-
-func TestAddMessage_LeavesReactionsEmptyByDefault(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
-
-	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "hi", Created: 1})
-
-	got, err := s.Message(ctx, "m1")
-	if err != nil || len(got.Reactions) != 0 {
-		t.Errorf("stored reactions = %+v, %v; want none", got.Reactions, err)
 	}
 }

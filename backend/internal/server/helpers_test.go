@@ -14,6 +14,7 @@ import (
 	"github.com/sourcegraph/jsonrpc2"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -21,12 +22,13 @@ import (
 
 // session is a server connected to a test client over an in-memory pipe.
 type session struct {
-	client   *jsonrpc2.Conn
-	server   *server.Server
-	store    *store.Store
-	events   *notifications
-	ingest   *app.Ingest
-	accounts *storeAccounts
+	client    *jsonrpc2.Conn
+	server    *server.Server
+	store     *store.Store
+	events    *notifications
+	ingest    *app.Ingest
+	accounts  *storeAccounts
+	clipboard *fakeClipboard
 }
 
 // connect serves a fresh application with one account, "wa", and a direct
@@ -43,9 +45,11 @@ func connect(t *testing.T, faked bool) *session {
 
 	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
 	accounts := &storeAccounts{db: db}
+	clipboard := &fakeClipboard{}
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: clipboard,
 	}
 	if faked {
 		deps.Fake = unreachableFake{}
@@ -67,7 +71,7 @@ func connect(t *testing.T, faked bool) *session {
 		_ = db.Close()
 	})
 
-	return &session{client: client, server: srv, store: db, events: events, ingest: ingest, accounts: accounts}
+	return &session{client: client, server: srv, store: db, events: events, ingest: ingest, accounts: accounts, clipboard: clipboard}
 }
 
 // seed stores account "wa" and conversation "chat".
@@ -190,6 +194,24 @@ func (a *storeAccounts) lastOptions() map[string]string {
 type silent struct{}
 
 func (silent) Notify(string, string, string) {}
+
+// fakeClipboard answers a clipboard check from canned data, keyed by MIME
+// type, in place of running wl-paste.
+type fakeClipboard struct {
+	types    []string
+	data     map[string][]byte
+	typesErr error
+}
+
+func (c *fakeClipboard) Types(context.Context) ([]string, error) {
+	return c.types, c.typesErr
+}
+
+func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) error {
+	_, err := w.Write(c.data[mimeType])
+
+	return err
+}
 
 // unreachableFake is an injector whose conversations are never found.
 type unreachableFake struct{}

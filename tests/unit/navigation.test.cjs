@@ -249,6 +249,79 @@ test('escapeAction: leave-compose when composeFocused', () => {
   assert.strictEqual(Navigation.escapeAction(state), 'leave-compose');
 });
 
+test('escapeAction: cancel-reply when composeFocused while replying', () => {
+  const state = {
+    paletteOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: true,
+    replying: true,
+    query: '',
+    activeId: 'c1',
+    pane: 'conversation'
+  };
+  assert.strictEqual(Navigation.escapeAction(state), 'cancel-reply');
+});
+
+test('escapeAction: clear-attachment when composeFocused with a pending attachment', () => {
+  const state = {
+    paletteOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: true,
+    hasAttachment: true,
+    query: '',
+    activeId: 'c1',
+    pane: 'conversation'
+  };
+  assert.strictEqual(Navigation.escapeAction(state), 'clear-attachment');
+});
+
+test('escapeAction: clear-attachment takes precedence over cancel-reply', () => {
+  const state = {
+    paletteOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: true,
+    hasAttachment: true,
+    replying: true,
+    query: '',
+    activeId: 'c1',
+    pane: 'conversation'
+  };
+  assert.strictEqual(Navigation.escapeAction(state), 'clear-attachment');
+});
+
+test('escapeAction: cancel-reply once the attachment is gone', () => {
+  const state = {
+    paletteOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: true,
+    hasAttachment: false,
+    replying: true,
+    query: '',
+    activeId: 'c1',
+    pane: 'conversation'
+  };
+  assert.strictEqual(Navigation.escapeAction(state), 'cancel-reply');
+});
+
+test('escapeAction: leave-compose once the attachment is gone and not replying', () => {
+  const state = {
+    paletteOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: true,
+    hasAttachment: false,
+    replying: false,
+    query: '',
+    activeId: 'c1',
+    pane: 'conversation'
+  };
+  assert.strictEqual(Navigation.escapeAction(state), 'leave-compose');
+});
+
 test('escapeAction: compose takes precedence over conversation, etc', () => {
   const state = {
     paletteOpen: false,
@@ -391,12 +464,25 @@ test('escapeAction closes account setup before anything beneath it', () => {
   assert.strictEqual(Navigation.escapeAction({ setupOpen: true, confirmOpen: true }), 'cancel-close');
 });
 
+test('keyContext puts the photo viewer above the palette but below setup and the close question', () => {
+  assert.strictEqual(Navigation.keyContext({ viewerOpen: true, paletteOpen: true, dialogOpen: true, pane: 'conversation' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ viewerOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ viewerOpen: true, confirmOpen: true, pane: 'list' }), 'confirm');
+});
+
+test('escapeAction closes the photo viewer before anything beneath it, but not before setup or the close question', () => {
+  assert.strictEqual(Navigation.escapeAction({ viewerOpen: true, paletteOpen: true, dialogOpen: true, searchFocused: true }), 'close-viewer');
+  assert.strictEqual(Navigation.escapeAction({ viewerOpen: true, setupOpen: true }), 'close-setup');
+  assert.strictEqual(Navigation.escapeAction({ viewerOpen: true, confirmOpen: true }), 'cancel-close');
+});
+
 test('keyContext returns reactionPicker when open, above dialog, search and compose', () => {
   const state = { reactionPickerOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
   assert.strictEqual(Navigation.keyContext(state), 'reactionPicker');
 });
 
-test('keyContext: palette and setup still win over the reaction picker', () => {
+test('keyContext: the viewer, the palette and setup still win over the reaction picker', () => {
+  assert.strictEqual(Navigation.keyContext({ reactionPickerOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
   assert.strictEqual(Navigation.keyContext({ reactionPickerOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
   assert.strictEqual(Navigation.keyContext({ reactionPickerOpen: true, setupOpen: true, pane: 'list' }), 'setup');
 });

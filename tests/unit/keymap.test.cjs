@@ -50,6 +50,7 @@ const cases = [
   ['conversation', KEY.Return, 0, '\r', 'compose.focus'],
   ['conversation', letter('h'), 0, 'h', 'pane.list'],
   ['conversation', letter('r'), 0, 'r', 'message.retry'],
+  ['conversation', letter('r'), MOD.Shift, 'R', 'message.reply'],
 
   ['compose', KEY.Return, 0, '\r', 'message.send'],
   ['compose', KEY.Return, MOD.Shift, '\r', ''],
@@ -68,7 +69,16 @@ const cases = [
   ['reactionPicker', KEY.Left, 0, '', 'reaction.left'],
   ['reactionPicker', KEY.Right, 0, '', 'reaction.right'],
   ['reactionPicker', KEY.Enter, 0, '\r', 'reaction.accept'],
-  ['reactionPicker', KEY.Escape, 0, '', 'escape']
+  ['reactionPicker', KEY.Escape, 0, '', 'escape'],
+
+  // The viewer and the reaction picker share Left/Right physically, but
+  // never open at once (see Navigation.keyContext); each context only
+  // answers to its own binding.
+  ['viewer', KEY.Right, 0, '', 'viewer.next'],
+  ['viewer', KEY.Left, 0, '', 'viewer.prev'],
+  ['viewer', KEY.Escape, 0, '', 'escape'],
+  ['viewer', KEY.Enter, 0, '\r', ''],
+  ['list', KEY.Right, 0, '', '']
 ];
 
 for (const [context, key, modifiers, text, want] of cases) {
@@ -89,6 +99,16 @@ test('display shows keys the way people read them', () => {
   assert.strictEqual(Keymap.display('Ctrl+Slash'), 'Ctrl+/');
   assert.strictEqual(Keymap.display('Alt+Shift+Down'), 'Alt+Shift+↓');
   assert.strictEqual(Keymap.display('Ctrl+K'), 'Ctrl+K');
+  assert.strictEqual(Keymap.display('Left'), '←');
+  assert.strictEqual(Keymap.display('Right'), '→');
+});
+
+test('bindingsFor hints the photo viewer steps without offering them as commands', () => {
+  const actions = Keymap.bindingsFor('viewer').map((b) => b.action);
+
+  assert.ok(actions.includes('viewer.next'));
+  assert.ok(actions.includes('viewer.prev'));
+  assert.ok(!Keymap.commands().some((c) => c.action === 'viewer.next'));
 });
 
 test('the palette offers commands with their first key', () => {

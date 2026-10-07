@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -32,6 +33,8 @@ type fixture struct {
 	refresher  *fakeRefresher
 	organizer  *fakeOrganizer
 	reactor    *fakeReactor
+	outgoing   *cache.Outgoing
+	clipboard  *fakeClipboard
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -55,6 +58,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{},
+		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), clipboard: &fakeClipboard{},
 	}
 
 	deps := app.Deps{
@@ -62,6 +66,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor,
+		Outgoing: f.outgoing, Clipboard: f.clipboard,
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -93,16 +98,18 @@ func (f *fixture) conversation(t *testing.T, id, title, kind string) domain.Conv
 
 // fakeDispatcher records sends and read receipts, returning err for sends.
 type fakeDispatcher struct {
-	mu    sync.Mutex
-	sent  []string
-	read  []string
-	err   error
-	onRun func(domain.Message) // called during Send, like a fast service
+	mu       sync.Mutex
+	sent     []string
+	messages []domain.Message // the full message of each Send, in order
+	read     []string
+	err      error
+	onRun    func(domain.Message) // called during Send, like a fast service
 }
 
 func (d *fakeDispatcher) Send(_ context.Context, _ domain.Conversation, m domain.Message) error {
 	d.mu.Lock()
 	d.sent = append(d.sent, m.Text)
+	d.messages = append(d.messages, m)
 	onRun, err := d.onRun, d.err
 	d.mu.Unlock()
 
@@ -111,6 +118,27 @@ func (d *fakeDispatcher) Send(_ context.Context, _ domain.Conversation, m domain
 	}
 
 	return err
+}
+
+// last returns the most recent message given to Send.
+func (d *fakeDispatcher) last() domain.Message {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return d.messages[len(d.messages)-1]
+}
+
+// lastMedia returns the media of the most recently dispatched message, or
+// nil if it had none or nothing was dispatched.
+func (d *fakeDispatcher) lastMedia() *domain.Media {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if len(d.messages) == 0 {
+		return nil
+	}
+
+	return d.messages[len(d.messages)-1].Media
 }
 
 func (d *fakeDispatcher) MarkRead(_ context.Context, conv domain.Conversation) error {
@@ -370,6 +398,31 @@ func (r *fakeReactor) React(_ context.Context, _ domain.Conversation, messageRem
 	r.reacted = append(r.reacted, messageRemoteID+" "+emoji)
 
 	return r.err
+}
+
+// fakeClipboard answers a clipboard check from canned data, keyed by MIME
+// type, in place of running wl-paste.
+type fakeClipboard struct {
+	types    []string
+	data     map[string][]byte
+	typesErr error
+	readErr  error
+}
+
+// Types reports the MIME types the test set the clipboard to offer.
+func (c *fakeClipboard) Types(context.Context) ([]string, error) {
+	return c.types, c.typesErr
+}
+
+// Read writes the canned data for mimeType, or fails with readErr.
+func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) error {
+	if c.readErr != nil {
+		return c.readErr
+	}
+
+	_, err := w.Write(c.data[mimeType])
+
+	return err
 }
 
 // fakeSignIn records the sign-in answers it is given.

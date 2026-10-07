@@ -49,12 +49,13 @@ function insertIndex(newestFirst, message) {
 }
 
 // row is a message as a timeline model row. A ListModel needs every row to
-// share a shape, so media, an object or absent, is kept as a JSON string,
-// mediaPath, where its download is, starts empty, and reactions, absent
-// on a message with none, defaults to an empty list.
+// share a shape, so media and replyTo, each an object or absent, are kept
+// as JSON strings, mediaPath, where its download is, starts empty, and
+// reactions, absent on a message with none, defaults to an empty list.
 function row(message) {
   return Object.assign({}, message, {
     media: message.media ? JSON.stringify(message.media) : '',
+    replyTo: message.replyTo ? JSON.stringify(message.replyTo) : '',
     mediaPath: message.mediaPath ?? '',
     reactions: message.reactions ?? []
   });
@@ -68,4 +69,14 @@ function media(item) {
   }
 
   return typeof item.media === 'string' ? JSON.parse(item.media) : item.media;
+}
+
+// replyTo reads a row's quoted message, or null when it answers nothing.
+// It also accepts a message as the helper sends it.
+function replyTo(item) {
+  if (!item.replyTo) {
+    return null;
+  }
+
+  return typeof item.replyTo === 'string' ? JSON.parse(item.replyTo) : item.replyTo;
 }

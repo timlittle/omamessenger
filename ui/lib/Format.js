@@ -37,6 +37,14 @@ function messageHtml(text, linkColor) {
   return linkify(escapeHtml(text), linkColor).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
 }
 
+// singleLine collapses a message's line breaks and runs of whitespace
+// into single spaces, for showing it on one line: the reply banner above
+// the composer, or a quote's preview text. Width-fitting is left to the
+// caller's own eliding.
+function singleLine(text) {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 // longestLine returns a text's widest line, which sets a bubble's width.
 function longestLine(text) {
   return text.split('\n').reduce((longest, line) => (line.length > longest.length ? line : longest), '');
@@ -187,6 +195,34 @@ function fileSize(bytes) {
   return unit === 0 ? `${size} B` : `${size.toFixed(1)} ${units[unit]}`;
 }
 
+// IMAGE_EXTENSIONS and VIDEO_EXTENSIONS back guessMediaKind's preview-only
+// guess, before the helper has sniffed a picked file's real content.
+var IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
+var VIDEO_EXTENSIONS = ['mp4', 'mov', 'webm', 'mkv', 'avi'];
+
+// baseName returns a file path's last segment, so a local path never
+// shows in the composer's attachment chip.
+function baseName(path) {
+  return path.split('/').pop();
+}
+
+// guessMediaKind guesses whether a locally picked file is a photo, a
+// video or, for anything else, a file, from its name alone, so the
+// composer's attachment chip knows whether to show a thumbnail before
+// the message is ever sent. The helper sniffs the real content once it
+// is sent; this is only ever used for that one preview.
+function guessMediaKind(path) {
+  const ext = path.split('.').pop().toLowerCase();
+  if (IMAGE_EXTENSIONS.includes(ext)) {
+    return 'photo';
+  }
+  if (VIDEO_EXTENSIONS.includes(ext)) {
+    return 'video';
+  }
+
+  return 'file';
+}
+
 // unreadLabel is the text an unread badge shows: the count itself, or
 // "99+" once a wider number would start crowding whatever sits beside it.
 function unreadLabel(count) {
@@ -204,4 +240,14 @@ function duration(seconds) {
   const s = seconds % 60;
 
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+// photoSize shows a photo's pixel dimensions as "1920 × 1080", or "" when
+// either dimension is not known yet.
+function photoSize(width, height) {
+  if (!width || !height) {
+    return '';
+  }
+
+  return `${width} × ${height}`;
 }

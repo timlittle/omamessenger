@@ -92,6 +92,9 @@ Item {
       if (root.focusDefault) root.focusDefault()
     }
     function onScroll(direction) { root._scrollConversation(direction) }
+    function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
+    function onAttachFileRequested() { conversationView.composer.openFilePicker() }
+    function onPasteFallbackRequested() { conversationView.composer.input.paste() }
   }
 
   Connections {
@@ -254,6 +257,8 @@ Item {
       annotations: root.conversationController.annotations
       nowMs: root.nowMs
       draft: root.conversationController.draft
+      replyTarget: root.conversationController.replyTarget
+      attachmentPath: root.conversationController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
       routeKey: root.routeKey
 
@@ -263,8 +268,13 @@ Item {
       onMediaOpen: id => root.conversationController.openMedia(id)
       onReact: (id, emoji) => root.conversationController.react(id, emoji)
       onReactPickerRequested: id => root.conversationController.openReactionPicker(id)
-      onSend: text => root.conversationController.send(text)
+      onSend: (text, replyToId) => root.conversationController.send(text, replyToId)
       onDraftEdited: text => root.conversationController.setDraft(text)
+      onReplyRequested: id => root.conversationController.startReply(id)
+      onReplyCanceled: root.conversationController.cancelReply()
+      onQuoteOpened: remoteId => root.conversationController.scrollToReply(remoteId)
+      onFileAttached: path => root.conversationController.attachFile(path)
+      onAttachmentRemoveRequested: root.conversationController.removeAttachment()
     }
   }
 
@@ -288,6 +298,18 @@ Item {
     onAccepted: index => root.windowController.acceptPalette(index)
     onCancelled: root.windowController.closePalette()
     onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+  }
+
+  PhotoViewer {
+    objectName: "photoViewer"
+    anchors.fill: parent
+    open: root.conversationController.viewerOpen
+    photo: root.conversationController.viewerPhoto
+    path: root.conversationController.viewerPath
+    routeKey: root.routeKey
+
+    onClosed: root.conversationController.closeViewer()
+    onOpenExternally: root.conversationController.openViewerExternally()
   }
 
   CloseConfirm {

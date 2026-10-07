@@ -327,6 +327,12 @@ test('longestLine picks the widest line to size a bubble by', () => {
   assert.equal(Format.longestLine(''), '');
 });
 
+test('singleLine collapses line breaks and runs of whitespace', () => {
+  assert.equal(Format.singleLine('line one\nline two'), 'line one line two');
+  assert.equal(Format.singleLine('a   lot   of    space'), 'a lot of space');
+  assert.equal(Format.singleLine('  padded  \n\n  '), 'padded');
+});
+
 test('messageHtml colours links so they read on the theme', () => {
   assert.equal(Format.messageHtml('see https://x.io', '#89b4fa'),
     'see <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');
@@ -365,4 +371,24 @@ test('unreadLabel shows the count below 100', () => {
 test('unreadLabel caps a crowding count at 99+', () => {
   assert.strictEqual(Format.unreadLabel(100), '99+');
   assert.strictEqual(Format.unreadLabel(1234), '99+');
+});
+
+test('photoSize shows pixel dimensions', () => {
+  assert.strictEqual(Format.photoSize(1920, 1080), '1920 × 1080');
+  assert.strictEqual(Format.photoSize(0, 0), '');
+  assert.strictEqual(Format.photoSize(100, 0), '');
+  assert.strictEqual(Format.photoSize(0, 100), '');
+});
+
+test('baseName keeps only the last path segment', () => {
+  assert.strictEqual(Format.baseName('/home/tim/photo.png'), 'photo.png');
+  assert.strictEqual(Format.baseName('report.pdf'), 'report.pdf');
+});
+
+test('guessMediaKind recognizes common image and video extensions', () => {
+  assert.strictEqual(Format.guessMediaKind('/tmp/photo.PNG'), 'photo');
+  assert.strictEqual(Format.guessMediaKind('/tmp/photo.jpg'), 'photo');
+  assert.strictEqual(Format.guessMediaKind('/tmp/clip.mp4'), 'video');
+  assert.strictEqual(Format.guessMediaKind('/tmp/notes.txt'), 'file');
+  assert.strictEqual(Format.guessMediaKind('/tmp/noextension'), 'file');
 });

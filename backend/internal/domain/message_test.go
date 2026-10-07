@@ -42,6 +42,33 @@ func TestStatusAdvances(t *testing.T) {
 	}
 }
 
+func TestExcerpt(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("a", domain.ExcerptLength+10)
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{name: "short text is unchanged", text: "hello", want: "hello"},
+		{name: "keeps only the first line", text: "line one\nline two", want: "line one"},
+		{name: "trims surrounding whitespace", text: "  hi there  \n", want: "hi there"},
+		{name: "cuts long text and marks it", text: long, want: strings.Repeat("a", domain.ExcerptLength) + "…"},
+		{name: "empty text stays empty", text: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := domain.Excerpt(tt.text); got != tt.want {
+				t.Errorf("Excerpt(%q) = %q, want %q", tt.text, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNormalizeOutgoingText(t *testing.T) {
 	t.Parallel()
 
@@ -74,5 +101,25 @@ func TestNormalizeOutgoingText(t *testing.T) {
 				t.Errorf("NormalizeOutgoingText() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMediaPlaceholder(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		kind string
+		want string
+	}{
+		{domain.MediaPhoto, "[Photo]"},
+		{domain.MediaVideo, "[Video]"},
+		{domain.MediaFile, "[File]"},
+		{"unknown", "[File]"},
+	}
+
+	for _, tt := range tests {
+		if got := domain.MediaPlaceholder(tt.kind); got != tt.want {
+			t.Errorf("MediaPlaceholder(%q) = %q, want %q", tt.kind, got, tt.want)
+		}
 	}
 }

@@ -15,6 +15,8 @@
 set -eu
 
 plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# shellcheck source=desktop-entry.sh
+. "$plugin_dir/scripts/desktop-entry.sh"
 version=$(tr -d ' \n' < "$plugin_dir/helper-version")
 case $(uname -m) in
     x86_64|amd64) arch=amd64 ;;
@@ -36,6 +38,7 @@ if [ "${1-}" = "--status" ]; then
 fi
 if installed; then
     printf 'OmaMessenger helper %s is already installed.\n' "$version"
+    install_desktop_entry
     exit 0
 fi
 
@@ -65,4 +68,5 @@ mv -f "$work/$name" "$dest"
 for old in "$bin_dir"/oma-messenger-service-*; do
     [ "$old" = "$dest" ] || rm -f "$old"
 done
+install_desktop_entry
 printf 'Installed OmaMessenger helper %s.\n' "$version"

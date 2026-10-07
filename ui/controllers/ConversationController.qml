@@ -3,6 +3,7 @@ import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
 import "../lib/Reactions.js" as Reactions
 import "../lib/Rpc.js" as Rpc
+import "../lib/Format.js" as Format
 
 // Owns the open conversation: which one is open, sending, retrying,
 // reacting and the emoji picker, drafts and the typing indicator. The
@@ -50,6 +51,21 @@ Item {
   // draft is the open conversation's unsent composer text.
   property string draft: ""
 
+  // replyTarget is the message the composer is about to answer: {id,
+  // senderName, text}, or null when the user is not replying to anything.
+  property var replyTarget: null
+
+  // replying is true while replyTarget names a message, for the Escape
+  // chain: Escape cancels the reply before it leaves the composer.
+  readonly property bool replying: root.replyTarget !== null
+
+  // attachmentPath is the file to send with the next message, or "" for
+  // none: set by attachFile (the composer's own file picker) or
+  // pasteImage (a clipboard image, through the helper), and read by
+  // send(). See Composer.qml for why the caller, not the composer,
+  // owns it.
+  property string attachmentPath: ""
+
   // typing is true while the other side is composing a reply.
   property bool typing: false
 
@@ -64,6 +80,22 @@ Item {
   // composeFocused mirrors whether the composer holds keyboard focus; the
   // caller sets it from the real text field so the Escape chain can read it.
   property bool composeFocused: false
+
+  // viewerId is the message id of the photo shown in the in-app viewer, or
+  // "" when it is closed.
+  property string viewerId: ""
+
+  // viewerOpen is whether the in-app photo viewer is showing, for the
+  // Escape chain.
+  readonly property bool viewerOpen: root.viewerId !== ""
+
+  // viewerPhoto is the open photo's media (kind, width, height, thumb), or
+  // null while the viewer is closed.
+  readonly property var viewerPhoto: root.viewerId ? timeline.media(root.viewerId) : null
+
+  // viewerPath is where the open photo's full image was downloaded, or ""
+  // until that finishes.
+  readonly property string viewerPath: root.viewerId ? timeline.mediaPath(root.viewerId) : ""
 
   // subtitle is the line the header shows under the title: typing, group
   // size, or the account's connection status.
@@ -94,11 +126,24 @@ Item {
   // composeFocusRequested asks the caller to focus the composer.
   signal composeFocusRequested()
 
+  // attachFileRequested asks the caller to open the composer's file
+  // picker, for the command palette's "Attach a file" command.
+  signal attachFileRequested()
+
   // submitRequested asks the caller to submit whatever the composer holds.
   signal submitRequested()
 
+  // pasteFallbackRequested asks the caller to paste the clipboard's text
+  // into the composer, because pasteImage found no image there and
+  // Ctrl+V must still work as a plain text paste.
+  signal pasteFallbackRequested()
+
   // leaveComposeRequested asks the caller to move focus out of the composer.
   signal leaveComposeRequested()
+
+  // scrollToMessageRequested asks the caller to scroll the message view
+  // to a loaded message, by its local id.
+  signal scrollToMessageRequested(string id)
 
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
@@ -122,11 +167,16 @@ Item {
       "chat.next": () => root._step(1),
       "chat.prev": () => root._step(-1),
       "message.retry": () => root.retryMessage(timeline.newestFailedId()),
-      "message.react": () => root.openReactionPicker(timeline.newestMessageId()),
+      "message.reply": () => root.startReply(timeline.newestId()),
+      "message.react": () => root.openReactionPicker(timeline.newestId()),
       "reaction.left": () => root.moveReactionPicker(-1),
       "reaction.right": () => root.moveReactionPicker(1),
       "reaction.accept": () => root.acceptReactionPicker(),
-      "message.send": () => root.submitRequested()
+      "message.send": () => root.submitRequested(),
+      "viewer.next": () => root.stepViewer(1),
+      "viewer.prev": () => root.stepViewer(-1),
+      "compose.attach": () => root.pasteImage(),
+      "compose.attachFile": () => root.attachFileRequested()
     };
 
     const handler = handlers[action];
@@ -151,6 +201,8 @@ Item {
     root.activeId = "";
     root.conversation = null;
     root.pane = "list";
+    root.replyTarget = null;
+    root.viewerId = "";
     root._saveUiState({ activeId: "", pane: "list" });
     root._resetTyping();
   }
@@ -161,13 +213,68 @@ Item {
     timeline.loadOlder(root.service, root.activeId, root.isGroup);
   }
 
-  // send submits text to the open conversation.
-  function send(text: string): void {
-    if (!root.activeId || !text) return;
+  // send submits text, and whatever attachFile or pasteImage already set
+  // as attachmentPath, to the open conversation, answering the message
+  // replyToId names, if any. Sending clears the attachment and the
+  // reply, whether or not it succeeds, the same as it clears the
+  // composer's text.
+  function send(text: string, replyToId: string): void {
+    if (!root.activeId || (!text && !root.attachmentPath)) return;
 
-    root.service.request("messages.send", { conversationId: root.activeId, text: text }, function(error, result) {
+    const params = { conversationId: root.activeId, text: text };
+    if (root.attachmentPath) params.attachment = { path: root.attachmentPath };
+    if (replyToId) params.replyTo = replyToId;
+
+    root.service.request("messages.send", params, function(error, result) {
       if (error) { timeline.lastError = Rpc.errorText(error); return; }
       root._upsertMessage(result);
+    });
+    root.attachmentPath = "";
+    root.replyTarget = null;
+  }
+
+  // startReply makes id, a loaded message, the one the composer answers
+  // next. Nothing changes if it is not loaded.
+  function startReply(id: string): void {
+    const m = timeline.messageById(id);
+    if (!m) return;
+
+    root.replyTarget = { id: m.id, senderName: m.outgoing ? "You" : m.senderName, text: Format.singleLine(m.text) };
+  }
+
+  // cancelReply clears the composer's reply target without sending.
+  function cancelReply(): void {
+    root.replyTarget = null;
+  }
+
+  // scrollToReply asks the caller to scroll to the message a reply
+  // quotes, by the remote id Telegram gave it, when it is loaded.
+  function scrollToReply(remoteId: string): void {
+    const id = timeline.localIdForRemote(remoteId);
+    if (id) root.scrollToMessageRequested(id);
+  }
+
+  // attachFile records a file the composer's own file picker chose, to
+  // send with the next message.
+  function attachFile(path: string): void {
+    root.attachmentPath = path;
+  }
+
+  // removeAttachment clears whatever attachFile or pasteImage set, from
+  // the composer's chip or the Escape chain.
+  function removeAttachment(): void {
+    root.attachmentPath = "";
+  }
+
+  // pasteImage asks the helper whether the clipboard holds an image; if
+  // it does, it is attached to the next message, and otherwise Ctrl+V
+  // still pastes text, same as it always did.
+  function pasteImage(): void {
+    if (!root.service) return;
+
+    root.service.request("media.paste", {}, function(error, result) {
+      if (error) { root.pasteFallbackRequested(); return; }
+      root.attachmentPath = result.path;
     });
   }
 
@@ -178,12 +285,47 @@ Item {
     root._download(id, false, () => {});
   }
 
-  // openMedia opens a message's photo, video or file in the user's
-  // application, downloading it first if it is not here yet.
+  // openMedia opens a message's photo, video or file. A photo opens in the
+  // in-app viewer: Omarchy's window rule floats the external image viewer
+  // small and keeps keyboard focus on this window, so its close keys never
+  // reach it. Video and files still open in the user's own application.
   function openMedia(id: string): void {
+    const media = timeline.media(id);
+    if (media && media.kind === "photo") { root._openViewer(id); return; }
+
     const path = timeline.mediaPath(id);
     if (path) Qt.openUrlExternally("file://" + path);
     else root._download(id, true, (downloaded) => Qt.openUrlExternally("file://" + downloaded));
+  }
+
+  // _openViewer shows id's photo in the in-app viewer, downloading it
+  // first if it is not here yet.
+  function _openViewer(id: string): void {
+    root.viewerId = id;
+    if (!timeline.mediaPath(id)) root._download(id, true, () => {});
+  }
+
+  // closeViewer hides the in-app photo viewer.
+  function closeViewer(): void {
+    root.viewerId = "";
+  }
+
+  // openViewerExternally opens the viewed photo in the user's own image
+  // viewer and closes the in-app view, for anyone who wants that instead.
+  function openViewerExternally(): void {
+    const path = root.viewerPath;
+    root.closeViewer();
+    if (path) Qt.openUrlExternally("file://" + path);
+  }
+
+  // stepViewer moves the in-app viewer to the next photo in the open
+  // conversation: delta > 0 for a newer one, delta < 0 for an older one.
+  // It does nothing when there isn't one.
+  function stepViewer(delta: int): void {
+    if (!root.viewerId) return;
+
+    const next = timeline.photoNeighbor(root.viewerId, delta);
+    if (next) root._openViewer(next);
   }
 
   // _download asks the helper for a message's media once, records where
@@ -339,6 +481,8 @@ Item {
     root.conversation = conversation;
     root.pane = "conversation";
     root.draft = root._draftFor(id);
+    root.replyTarget = null;
+    root.viewerId = "";
     root._resetTyping();
     root._saveUiState({ activeId: id, pane: "conversation" });
     timeline.loadInitial(root.service, id, () => id === root.activeId, root.isGroup);

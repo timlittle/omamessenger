@@ -146,7 +146,8 @@ func (c *Connector) SubmitAuth(ctx context.Context, step, value string) error {
 	}
 }
 
-// Send sends a text message and reports it sent with Telegram's id.
+// Send sends a message, uploading its attachment first when it has one,
+// and reports it sent with Telegram's id.
 func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain.Message) error {
 	api, sink, err := c.session()
 	if err != nil {
@@ -158,7 +159,7 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 		return err
 	}
 
-	result, err := api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{Peer: peer, Message: m.Text, RandomID: randomID()})
+	result, err := sendRequest(ctx, api, peer, m)
 	if err != nil {
 		return fmt.Errorf("telegram: send: %w", err)
 	}
@@ -170,6 +171,26 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 	}
 
 	return nil
+}
+
+// inputReplyTo turns an outgoing message's Reply into what a send
+// request (plain text or media) needs to thread it under the quoted
+// message, or nil when there is no reply or its remote id is not known
+// yet (the quoted message is itself still pending). A plain int, not the
+// interface's typed nil, is returned so the request's "is there a
+// reply" check sees an actual nil, not a non-nil interface over a nil
+// pointer.
+func inputReplyTo(reply *domain.Reply) tg.InputReplyToClass {
+	if reply == nil || reply.RemoteID == "" {
+		return nil
+	}
+
+	id, err := strconv.Atoi(reply.RemoteID)
+	if err != nil {
+		return nil
+	}
+
+	return &tg.InputReplyToMessage{ReplyToMsgID: id}
 }
 
 // MarkRead tells Telegram the conversation has been read.

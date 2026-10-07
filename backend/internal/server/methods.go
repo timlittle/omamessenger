@@ -48,6 +48,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"messages.retry":            bind(messagesRetry(c)),
 		"messages.react":            bind(messagesReact(c)),
 		"media.fetch":               bind(mediaFetch(c)),
+		"media.paste":               bind(mediaPaste(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
 		"settings.apply":            bind(settingsApply(c)),
 	}
@@ -263,17 +264,38 @@ func messagesList(c *app.Commands) func(context.Context, messagesParams) (any, e
 	}
 }
 
-// sendParams is a message to send.
+// sendParams is a message to send. Attachment names a file on this
+// machine to send with text as its caption; it is optional, so an older
+// UI sending just conversationId and text keeps working unchanged.
+// ReplyTo, when set, is the local id of a message in the same
+// conversation this one answers.
 type sendParams struct {
-	ConversationID string `json:"conversationId"`
-	Text           string `json:"text"`
+	ConversationID string            `json:"conversationId"`
+	Text           string            `json:"text"`
+	Attachment     *attachmentParams `json:"attachment,omitempty"`
+	ReplyTo        string            `json:"replyTo,omitempty"`
+}
+
+// attachmentParams names a file to attach to an outgoing message.
+type attachmentParams struct {
+	Path string `json:"path"`
 }
 
 // messagesSend sends a message.
 func messagesSend(c *app.Commands) func(context.Context, sendParams) (any, error) {
 	return func(ctx context.Context, p sendParams) (any, error) {
-		return c.Send(ctx, p.ConversationID, p.Text)
+		return c.Send(ctx, p.ConversationID, p.Text, attachmentPath(p.Attachment), p.ReplyTo)
 	}
+}
+
+// attachmentPath is the file path an attachment names, or "" when a
+// request carries none.
+func attachmentPath(a *attachmentParams) string {
+	if a == nil {
+		return ""
+	}
+
+	return a.Path
 }
 
 // retryParams names one message: a failed one to retry, or one whose
@@ -314,6 +336,26 @@ func mediaFetch(c *app.Commands) func(context.Context, retryParams) (any, error)
 		path, err := c.FetchMedia(ctx, p.MessageID)
 
 		return mediaResult{Path: path}, err
+	}
+}
+
+// pasteResult is the image media.paste found on the clipboard, copied
+// into the outgoing media area.
+type pasteResult struct {
+	Path   string `json:"path"`
+	Kind   string `json:"kind"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+// mediaPaste copies an image off the clipboard, for the composer to
+// attach to the next message sent, or fails with an invalid-input error
+// when the clipboard holds no image.
+func mediaPaste(c *app.Commands) func(context.Context, none) (any, error) {
+	return func(ctx context.Context, _ none) (any, error) {
+		img, err := c.PasteImage(ctx)
+
+		return pasteResult{Path: img.Path, Kind: img.Kind, Width: img.Width, Height: img.Height}, err
 	}
 }
 

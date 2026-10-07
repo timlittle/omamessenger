@@ -57,6 +57,26 @@ func StatusAdvances(from, to string) bool {
 	return okFrom && okTo && t > f
 }
 
+// ExcerptLength bounds the quote Excerpt keeps, in characters.
+const ExcerptLength = 80
+
+// Excerpt is the short, single-line quote shown above a reply: the first
+// line of text, trimmed, cut to ExcerptLength characters with a trailing
+// "…" if it was longer.
+func Excerpt(text string) string {
+	if i := strings.IndexAny(text, "\r\n"); i != -1 {
+		text = text[:i]
+	}
+
+	text = strings.TrimSpace(text)
+	runes := []rune(text)
+	if len(runes) <= ExcerptLength {
+		return text
+	}
+
+	return string(runes[:ExcerptLength]) + "…"
+}
+
 // NormalizeOutgoingText trims surrounding whitespace and checks the length.
 func NormalizeOutgoingText(text string) (string, error) {
 	text = strings.TrimSpace(text)
@@ -69,4 +89,20 @@ func NormalizeOutgoingText(text string) (string, error) {
 	}
 
 	return text, nil
+}
+
+// MediaPlaceholder is the caption a photo, video or file gets when the
+// user sends it without one, since every stored message has text. The UI
+// hides a caption that exactly matches its media's placeholder (see
+// Format.caption in ui/lib), and a connector never sends the placeholder
+// itself as the real caption (see the Telegram connector's Send).
+func MediaPlaceholder(kind string) string {
+	switch kind {
+	case MediaPhoto:
+		return "[Photo]"
+	case MediaVideo:
+		return "[Video]"
+	default:
+		return "[File]"
+	}
 }

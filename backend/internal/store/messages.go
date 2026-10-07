@@ -13,7 +13,7 @@ import (
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reactions`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions`
 
 // Page sizes for Messages.
 const (
@@ -42,11 +42,37 @@ func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Mess
 	}
 
 	m = withMessageDefaults(m)
+	m = s.resolveReply(ctx, m)
 	if err := s.insertMessage(ctx, m); err != nil {
 		return m, false, wrap("add message", err)
 	}
 
 	return m, true, nil
+}
+
+// resolveReply fills a reply's quoted sender name and excerpt from the
+// message it answers, stored earlier in the same conversation, when the
+// caller did not already supply them: a connector reporting an incoming
+// reply often knows only the quoted message's remote id, while an
+// outgoing reply the app builds already carries both. A quoted message
+// not stored here yet, such as one still outside the loaded history,
+// leaves the reply as given.
+func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Message {
+	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" || (m.ReplyTo.SenderName != "" && m.ReplyTo.Text != "") {
+		return m
+	}
+
+	quoted, err := s.MessageByRemote(ctx, m.ConversationID, m.ReplyTo.RemoteID)
+	if err != nil {
+		return m
+	}
+
+	reply := *m.ReplyTo
+	reply.SenderName = quoted.SenderName
+	reply.Text = domain.Excerpt(quoted.Text)
+	m.ReplyTo = &reply
+
+	return m
 }
 
 // fillMedia adds media to a message stored before the service reported
@@ -118,13 +144,18 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message) error {
 		return err
 	}
 
+	replyTo, err := encodeReply(m.ReplyTo)
+	if err != nil {
+		return err
+	}
+
 	reactions, err := encodeReactions(m.Reactions)
 	if err != nil {
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, reactions)
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo, reactions)
 	if err != nil {
 		return err
 	}
@@ -237,33 +268,6 @@ func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID string
 	}
 
 	m.Text, m.Media, m.Edited, m.Reactions = edit.Text, edit.Media, true, edit.Reactions
-
-	return m, true, nil
-}
-
-// SetReactions updates a stored message's reaction chips after the
-// service reports they changed on their own, without a full edit, found
-// by its conversation and the service's id for it. A message that is not
-// stored is ignored, not an error.
-func (s *Store) SetReactions(ctx context.Context, conversationID, remoteID string, reactions []domain.Reaction) (_ domain.Message, found bool, _ error) {
-	m, err := s.MessageByRemote(ctx, conversationID, remoteID)
-	if errors.Is(err, domain.ErrNotFound) {
-		return domain.Message{}, false, nil
-	}
-	if err != nil {
-		return m, false, err
-	}
-
-	encoded, err := encodeReactions(reactions)
-	if err != nil {
-		return m, false, wrap("set reactions", err)
-	}
-
-	if _, err := s.db.ExecContext(ctx, `UPDATE messages SET reactions=? WHERE id=?`, encoded, m.ID); err != nil {
-		return m, false, wrap("set reactions", err)
-	}
-
-	m.Reactions = reactions
 
 	return m, true, nil
 }
@@ -478,15 +482,22 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 // scanMessage reads one row selected with messageColumns.
 func scanMessage(row scanner) (domain.Message, error) {
 	var m domain.Message
-	var media, reactions string
+	var media, replyTo, reactions string
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
-		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &reactions); err != nil {
+		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &replyTo, &reactions); err != nil {
 		return m, err
 	}
 
 	if media != "" {
 		m.Media = &domain.Media{}
 		if err := json.Unmarshal([]byte(media), m.Media); err != nil {
+			return m, err
+		}
+	}
+
+	if replyTo != "" {
+		m.ReplyTo = &domain.Reply{}
+		if err := json.Unmarshal([]byte(replyTo), m.ReplyTo); err != nil {
 			return m, err
 		}
 	}
@@ -511,13 +522,13 @@ func encodeMedia(media *domain.Media) (string, error) {
 	return string(b), err
 }
 
-// encodeReactions stores reaction chips as JSON, or "" for none.
-func encodeReactions(reactions []domain.Reaction) (string, error) {
-	if len(reactions) == 0 {
+// encodeReply stores a reply as JSON, or "" for none.
+func encodeReply(reply *domain.Reply) (string, error) {
+	if reply == nil {
 		return "", nil
 	}
 
-	b, err := json.Marshal(reactions)
+	b, err := json.Marshal(reply)
 
 	return string(b), err
 }

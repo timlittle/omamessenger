@@ -285,6 +285,19 @@ test('row keeps a downloaded media path, and starts without one', () => {
   assert.strictEqual(Timeline.row({ id: 'a', mediaPath: '/m/a.jpg' }).mediaPath, '/m/a.jpg');
 });
 
+test('row keeps replyTo as a string, so every model row has the same shape', () => {
+  const reply = { remoteId: '1', senderName: 'Alex', text: 'original' };
+
+  assert.strictEqual(Timeline.row({ id: 'a', replyTo: reply }).replyTo, JSON.stringify(reply));
+  assert.strictEqual(Timeline.row({ id: 'b' }).replyTo, '');
+});
+
+test('replyTo reads a row\'s quoted message back, or null', () => {
+  assert.deepEqual(Timeline.replyTo({ replyTo: '{"remoteId":"1"}' }), { remoteId: '1' });
+  assert.strictEqual(Timeline.replyTo({ replyTo: '' }), null);
+  assert.deepEqual(Timeline.replyTo({ replyTo: { remoteId: '2' } }), { remoteId: '2' });
+});
+
 test('row defaults reactions to an empty list, so every model row has the same shape', () => {
   const reactions = [{ emoji: '👍', count: 1, mine: true }];
 

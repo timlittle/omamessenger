@@ -170,10 +170,13 @@ QtObject {
       "cancel-close": () => root.cancelClose(),
       "close-setup": () => { if (root.accountController) root.accountController.cancel(); },
       "close-palette": () => root.closePalette(),
+      "close-viewer": () => { if (root.conversationController) root.conversationController.closeViewer(); },
       "close-reaction-picker": () => { if (root.conversationController) root.conversationController.closeReactionPicker(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
+      "clear-attachment": () => { if (root.conversationController) root.conversationController.removeAttachment(); },
+      "cancel-reply": () => { if (root.conversationController) root.conversationController.cancelReply(); },
       "leave-compose": () => { if (root.conversationController) root.conversationController.leaveComposeRequested(); },
       "close-conversation": () => { if (root.conversationController) root.conversationController.close(); },
       "hide-window": () => root.askToClose()
@@ -191,11 +194,14 @@ QtObject {
     return {
       confirmOpen: root.confirmingClose,
       setupOpen: root.accountController ? root.accountController.open || root.accountController.removing : false,
+      viewerOpen: root.conversationController ? root.conversationController.viewerOpen : false,
       paletteOpen: root.paletteOpen,
       reactionPickerOpen: root.conversationController ? root.conversationController.reactionPickerOpen : false,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,
       composeFocused: root.conversationController ? root.conversationController.composeFocused : false,
+      hasAttachment: root.conversationController ? root.conversationController.attachmentPath !== "" : false,
+      replying: root.conversationController ? root.conversationController.replying : false,
       pane: state.pane,
       activeId: state.activeId,
       query: root.listController ? root.listController.query : ""

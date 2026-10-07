@@ -29,8 +29,8 @@ var OWNERS = {
   'chat.archive': 'list',
 
   // ConversationController: the open conversation, paging, send, retry,
-  // reacting, scrolling and composing, and moving between chats while
-  // one is open.
+  // replying, reacting, scrolling and composing, and moving between
+  // chats while one is open.
   'chat.open': 'conversation',
   'search.accept': 'conversation',
   'pane.conversation': 'conversation',
@@ -45,11 +45,16 @@ var OWNERS = {
   'chat.next': 'conversation',
   'chat.prev': 'conversation',
   'message.retry': 'conversation',
+  'message.reply': 'conversation',
   'message.react': 'conversation',
   'reaction.left': 'conversation',
   'reaction.right': 'conversation',
   'reaction.accept': 'conversation',
   'message.send': 'conversation',
+  'viewer.next': 'conversation',
+  'viewer.prev': 'conversation',
+  'compose.attach': 'conversation',
+  'compose.attachFile': 'conversation',
 
   // DialogController: the new-chat dialog.
   'chat.new': 'dialog',

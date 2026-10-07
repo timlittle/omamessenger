@@ -21,6 +21,8 @@ type Commands struct {
 	refresher  MessageRefresher
 	organizer  Organizer
 	reactor    Reactor
+	outgoing   OutgoingMedia
+	clipboard  ClipboardRunner
 	fake       Injector
 	events     *events
 	ui         *uiState

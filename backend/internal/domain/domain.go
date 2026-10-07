@@ -103,6 +103,10 @@ type Message struct {
 	// Reactions are the emoji chips shown under the message, as the
 	// service currently reports them.
 	Reactions []Reaction `json:"reactions,omitempty"`
+
+	// ReplyTo is the message this one answers, or nil when it answers
+	// nothing.
+	ReplyTo *Reply `json:"replyTo,omitempty"`
 }
 
 // Reaction is one emoji reaction to a message: how many people picked
@@ -111,6 +115,17 @@ type Reaction struct {
 	Emoji string `json:"emoji"`
 	Count int    `json:"count"`
 	Mine  bool   `json:"mine"`
+}
+
+// Reply is the message a reply answers: enough to show a quote above the
+// reply's own text, and, for an outgoing reply, enough for a connector to
+// thread it under the original on the service. SenderName and Text are
+// filled in from the quoted message once it is known locally; a
+// connector reporting an incoming reply may have only RemoteID.
+type Reply struct {
+	RemoteID   string `json:"remoteId"`
+	SenderName string `json:"senderName,omitempty"`
+	Text       string `json:"text,omitempty"`
 }
 
 // Media is what a message carries besides its text: a link preview, a
@@ -129,6 +144,15 @@ type Media struct {
 	Duration    int    `json:"duration,omitempty"`
 	FileName    string `json:"fileName,omitempty"`
 	Size        int64  `json:"size,omitempty"`
+
+	// Path is where an outgoing attachment's file sits in the helper's
+	// own outgoing media area, for a connector to read and upload. It is
+	// never the user's original path, which they might move, rename or
+	// delete after picking it, and it never crosses the protocol: the UI
+	// already knows the path it offered, and a remote one holds nothing
+	// meaningful on this machine, so json:"-" keeps it local rather than
+	// adding a field every other message would carry as empty.
+	Path string `json:"-"`
 }
 
 // ValidService reports whether service is a supported provider.
