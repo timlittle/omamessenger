@@ -27,7 +27,6 @@ var errSendNotSupported = errors.New("whatsapp: sending is not supported yet")
 // Connector is one WhatsApp account.
 type Connector struct {
 	account domain.Account
-	dir     string
 	answers chan answer
 	open    func(ctx context.Context) (device, error)
 
@@ -43,10 +42,11 @@ var (
 
 // New returns the connector for an account whose session is kept in dir.
 func New(account domain.Account, dir string) *Connector {
-	c := &Connector{account: account, dir: dir, answers: make(chan answer, 1)}
-	c.open = func(ctx context.Context) (device, error) { return openDevice(ctx, dir, account.ID) }
-
-	return c
+	return &Connector{
+		account: account,
+		answers: make(chan answer, 1),
+		open:    func(ctx context.Context) (device, error) { return openDevice(ctx, dir, account.ID) },
+	}
 }
 
 // Account describes the WhatsApp account.
