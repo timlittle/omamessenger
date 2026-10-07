@@ -10,9 +10,9 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Ctrl+K or Ctrl+T | Jump to a conversation |
 | Ctrl+G | Search messages |
 | Ctrl+N or Ctrl+Shift+K | New message |
-| Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (opens it, even while writing) |
+| Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (works from the list, an open conversation or the unread view, and keeps whichever mode you were in: writing stays writing, scrolling stays scrolling) |
 | Ctrl+Shift+A | Show only unread conversations, across every service and account (Esc or the same shortcut returns to the previous list) |
-| Alt+↓ / ↑ | Next / previous conversation |
+| Alt+↓ / ↑ | Next / previous conversation (same as above: works from any mode and keeps it) |
 | Ctrl+0 / 1 / 2 | All / WhatsApp / Telegram |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
 | Ctrl+W | Close the window (asks whether to keep running) |

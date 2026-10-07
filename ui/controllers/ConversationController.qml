@@ -340,21 +340,21 @@ Item {
   }
 
   // _step opens the next or previous chat in the visible list, relative
-  // to the one currently open.
+  // to whichever chat is "current": the open conversation, or, with none
+  // open, the list's own cursor, so this works the same browsing the
+  // list as it does once a conversation is open.
   function _step(delta: int): void {
     if (!root.listController) return;
 
-    const next = Selection.move(root.listController.visibleIds(), root.activeId, delta);
-    if (next && next !== root.activeId) root._openById(next);
+    const around = root.activeId || root.listController.selectedId;
+    const next = Selection.move(root.listController.visibleIds(), around, delta);
+    if (next && next !== around) root._openPreservingMode(next);
   }
 
   // _stepUnread jumps to the next, or with a negative delta the previous,
-  // unread conversation. It opens the one it finds whenever a
-  // conversation is already open, since this is the global shortcut for
-  // "go to what still needs reading" even while writing a reply, and
-  // opening it never touches keyboard focus, so the composer stays
-  // focused there if it already was. With nothing open yet it only moves
-  // the list cursor, the same as j/k, leaving Enter to open it.
+  // unread conversation and opens it, from any mode: the list, an open
+  // conversation, or the all-unreads view, the same as _step does for
+  // chat.next/prev.
   function _stepUnread(delta: int): void {
     if (!root.listController) return;
 
@@ -363,10 +363,19 @@ Item {
     const ordered = delta > 0 ? conversations : conversations.slice().reverse();
     const around = root.activeId || root.listController.selectedId;
     const next = Selection.nextUnread(ordered, around);
-    if (!next) return;
+    if (next) root._openPreservingMode(next);
+  }
 
-    if (root.activeId) root._openById(next);
-    else root.listController.selectId(next);
+  // _openPreservingMode opens id the way chat.next/prev and
+  // unread.next/prev do: opening a conversation always focuses the
+  // composer by default (see MessengerLayout's onActiveIdChanged), which
+  // would otherwise drag a scrolling user into writing, or move them
+  // away from the keyboard they were already writing on. This keeps
+  // whichever mode they were already in instead.
+  function _openPreservingMode(id: string): void {
+    const wasWriting = root.composer ? root.composer.composeFocused : false;
+    root._openById(id);
+    if (!wasWriting && root.composer) root.composer.leaveComposeRequested();
   }
 
   // _openById looks the conversation up through listController and opens it.
