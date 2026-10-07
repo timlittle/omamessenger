@@ -63,6 +63,22 @@ Item {
   // caller sets it from the real text field so the Escape chain can read it.
   property bool composeFocused: false
 
+  // viewerId is the message id of the photo shown in the in-app viewer, or
+  // "" when it is closed.
+  property string viewerId: ""
+
+  // viewerOpen is whether the in-app photo viewer is showing, for the
+  // Escape chain.
+  readonly property bool viewerOpen: root.viewerId !== ""
+
+  // viewerPhoto is the open photo's media (kind, width, height, thumb), or
+  // null while the viewer is closed.
+  readonly property var viewerPhoto: root.viewerId ? timeline.media(root.viewerId) : null
+
+  // viewerPath is where the open photo's full image was downloaded, or ""
+  // until that finishes.
+  readonly property string viewerPath: root.viewerId ? timeline.mediaPath(root.viewerId) : ""
+
   // subtitle is the line the header shows under the title: typing, group
   // size, or the account's connection status.
   readonly property string subtitle: root._subtitleText()
@@ -108,7 +124,9 @@ Item {
       "chat.next": () => root._step(1),
       "chat.prev": () => root._step(-1),
       "message.retry": () => root.retryMessage(timeline.newestFailedId()),
-      "message.send": () => root.submitRequested()
+      "message.send": () => root.submitRequested(),
+      "viewer.next": () => root.stepViewer(1),
+      "viewer.prev": () => root.stepViewer(-1)
     };
 
     const handler = handlers[action];
@@ -133,6 +151,7 @@ Item {
     root.activeId = "";
     root.conversation = null;
     root.pane = "list";
+    root.viewerId = "";
     root._saveUiState({ activeId: "", pane: "list" });
     root._resetTyping();
   }
@@ -160,12 +179,47 @@ Item {
     root._download(id, false, () => {});
   }
 
-  // openMedia opens a message's photo, video or file in the user's
-  // application, downloading it first if it is not here yet.
+  // openMedia opens a message's photo, video or file. A photo opens in the
+  // in-app viewer: Omarchy's window rule floats the external image viewer
+  // small and keeps keyboard focus on this window, so its close keys never
+  // reach it. Video and files still open in the user's own application.
   function openMedia(id: string): void {
+    const media = timeline.media(id);
+    if (media && media.kind === "photo") { root._openViewer(id); return; }
+
     const path = timeline.mediaPath(id);
     if (path) Qt.openUrlExternally("file://" + path);
     else root._download(id, true, (downloaded) => Qt.openUrlExternally("file://" + downloaded));
+  }
+
+  // _openViewer shows id's photo in the in-app viewer, downloading it
+  // first if it is not here yet.
+  function _openViewer(id: string): void {
+    root.viewerId = id;
+    if (!timeline.mediaPath(id)) root._download(id, true, () => {});
+  }
+
+  // closeViewer hides the in-app photo viewer.
+  function closeViewer(): void {
+    root.viewerId = "";
+  }
+
+  // openViewerExternally opens the viewed photo in the user's own image
+  // viewer and closes the in-app view, for anyone who wants that instead.
+  function openViewerExternally(): void {
+    const path = root.viewerPath;
+    root.closeViewer();
+    if (path) Qt.openUrlExternally("file://" + path);
+  }
+
+  // stepViewer moves the in-app viewer to the next photo in the open
+  // conversation: delta > 0 for a newer one, delta < 0 for an older one.
+  // It does nothing when there isn't one.
+  function stepViewer(delta: int): void {
+    if (!root.viewerId) return;
+
+    const next = timeline.photoNeighbor(root.viewerId, delta);
+    if (next) root._openViewer(next);
   }
 
   // _download asks the helper for a message's media once, records where
@@ -264,6 +318,7 @@ Item {
     root.conversation = conversation;
     root.pane = "conversation";
     root.draft = root._draftFor(id);
+    root.viewerId = "";
     root._resetTyping();
     root._saveUiState({ activeId: id, pane: "conversation" });
     timeline.loadInitial(root.service, id, () => id === root.activeId, root.isGroup);

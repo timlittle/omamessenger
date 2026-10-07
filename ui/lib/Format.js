@@ -205,3 +205,13 @@ function duration(seconds) {
 
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
+
+// photoSize shows a photo's pixel dimensions as "1920 × 1080", or "" when
+// either dimension is not known yet.
+function photoSize(width, height) {
+  if (!width || !height) {
+    return '';
+  }
+
+  return `${width} × ${height}`;
+}

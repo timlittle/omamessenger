@@ -63,11 +63,13 @@ The shortcuts follow Slack's. **Ctrl+/** opens the command palette, which lists 
 | Ctrl+Tab, Ctrl+Shift+Tab | Next / previous account or service |
 | Ctrl+W | Close the window (asks whether to keep running) |
 | Ctrl+Q | Quit |
-| Esc | Step back: close the palette, a dialog or account setup, clear the search, leave the composer or the conversation |
+| Esc | Step back: close the palette, a dialog, account setup or the photo viewer, clear the search, leave the composer or the conversation |
 
 The list shows chats from the last month, plus any with unread messages; the line under it, or **Show or hide chats older than a month** in the command palette, shows the rest. Chats archived with the service are hidden too until you choose **Show archived chats** in the command palette. Search always looks through every chat, including archived ones: it matches a chat's title as substring text, and message bodies word by word as a prefix, ignoring case and accents, so "cafe" finds "café" and "tick" finds "ticket". Pinned chats always lead the list, with a pin mark; an archived chat's unread badge is dimmed like a muted one's, since it is already filed away, though it still counts towards the unread totals in the rail.
 
 In the conversation list, `j` / `k` move, `Enter` opens, and `m` mutes; **Pin or unpin chat** and **Archive or unarchive chat** are in the command palette. In a conversation, `j` / `k` scroll, `i` or `Enter` starts writing, `h` goes back to the list, and `r` retries a failed message.
+
+Clicking a photo opens it inside the window, as large as the window allows, rather than in your system's image viewer: Omarchy floats that viewer too small to reach with the keyboard, and focus stays on OmaMessenger, so a photo opened there would get stuck with no way to close it. While the full photo is still downloading it shows the same blurred preview the message bubble does. Esc, the ✕ button or a click outside the photo closes it; ← / → steps to the previous or next photo in the conversation; and **Open in image viewer** opens it in your own application instead. Videos and files still open externally, as before.
 
 ## Helper API
 

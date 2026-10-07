@@ -366,3 +366,10 @@ test('unreadLabel caps a crowding count at 99+', () => {
   assert.strictEqual(Format.unreadLabel(100), '99+');
   assert.strictEqual(Format.unreadLabel(1234), '99+');
 });
+
+test('photoSize shows pixel dimensions', () => {
+  assert.strictEqual(Format.photoSize(1920, 1080), '1920 × 1080');
+  assert.strictEqual(Format.photoSize(0, 0), '');
+  assert.strictEqual(Format.photoSize(100, 0), '');
+  assert.strictEqual(Format.photoSize(0, 100), '');
+});

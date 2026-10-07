@@ -170,6 +170,7 @@ QtObject {
       "cancel-close": () => root.cancelClose(),
       "close-setup": () => { if (root.accountController) root.accountController.cancel(); },
       "close-palette": () => root.closePalette(),
+      "close-viewer": () => { if (root.conversationController) root.conversationController.closeViewer(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
@@ -190,6 +191,7 @@ QtObject {
     return {
       confirmOpen: root.confirmingClose,
       setupOpen: root.accountController ? root.accountController.open || root.accountController.removing : false,
+      viewerOpen: root.conversationController ? root.conversationController.viewerOpen : false,
       paletteOpen: root.paletteOpen,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,

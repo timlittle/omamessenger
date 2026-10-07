@@ -10,7 +10,7 @@
 var KEY = {
   Escape: 0x01000000, Tab: 0x01000001, Backtab: 0x01000002,
   Return: 0x01000004, Enter: 0x01000005, Home: 0x01000010,
-  End: 0x01000011, Up: 0x01000013, Down: 0x01000015,
+  End: 0x01000011, Left: 0x01000012, Up: 0x01000013, Right: 0x01000014, Down: 0x01000015,
   PageUp: 0x01000016, PageDown: 0x01000017,
   Slash: 0x2f, Question: 0x3f
 };
@@ -19,7 +19,7 @@ var KEY = {
 var MOD = { Shift: 0x02000000, Ctrl: 0x04000000, Alt: 0x08000000 };
 
 // KEY_NAMES shows spec names the way people type them.
-var KEY_NAMES = { Slash: '/', Question: '?', Up: '↑', Down: '↓', Escape: 'Esc' };
+var KEY_NAMES = { Slash: '/', Question: '?', Up: '↑', Down: '↓', Left: '←', Right: '→', Escape: 'Esc' };
 
 // BINDINGS define every key action. Each has an action name, key specs,
 // the contexts it applies in (or "global"), a label, whether the footer
@@ -71,6 +71,9 @@ var BINDINGS = [
 
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
   { action: 'search.accept', keys: ['Enter', 'Down'], contexts: ['search'], label: 'First result', hint: true },
+
+  { action: 'viewer.next', keys: ['Right'], contexts: ['viewer'], label: 'Next photo', hint: true },
+  { action: 'viewer.prev', keys: ['Left'], contexts: ['viewer'], label: 'Previous photo', hint: true },
 
   { action: 'dialog.down', keys: ['Down', 'Ctrl+J'], contexts: ['dialog'], label: 'Next contact' },
   { action: 'dialog.up', keys: ['Up', 'Ctrl+K'], contexts: ['dialog'], label: 'Previous contact' },

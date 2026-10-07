@@ -63,7 +63,12 @@ const cases = [
   ['palette', letter('j'), MOD.Ctrl, '', 'palette.down'],
   ['palette', letter('n'), MOD.Ctrl, '', 'palette.down'],
   ['palette', KEY.Return, 0, '\r', 'palette.accept'],
-  ['palette', letter('j'), 0, 'j', '']
+  ['palette', letter('j'), 0, 'j', ''],
+
+  ['viewer', KEY.Right, 0, '', 'viewer.next'],
+  ['viewer', KEY.Left, 0, '', 'viewer.prev'],
+  ['viewer', KEY.Escape, 0, '', 'escape'],
+  ['list', KEY.Right, 0, '', '']
 ];
 
 for (const [context, key, modifiers, text, want] of cases) {
@@ -84,6 +89,16 @@ test('display shows keys the way people read them', () => {
   assert.strictEqual(Keymap.display('Ctrl+Slash'), 'Ctrl+/');
   assert.strictEqual(Keymap.display('Alt+Shift+Down'), 'Alt+Shift+↓');
   assert.strictEqual(Keymap.display('Ctrl+K'), 'Ctrl+K');
+  assert.strictEqual(Keymap.display('Left'), '←');
+  assert.strictEqual(Keymap.display('Right'), '→');
+});
+
+test('bindingsFor hints the photo viewer steps without offering them as commands', () => {
+  const actions = Keymap.bindingsFor('viewer').map((b) => b.action);
+
+  assert.ok(actions.includes('viewer.next'));
+  assert.ok(actions.includes('viewer.prev'));
+  assert.ok(!Keymap.commands().some((c) => c.action === 'viewer.next'));
 });
 
 test('the palette offers commands with their first key', () => {

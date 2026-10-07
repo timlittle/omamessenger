@@ -390,3 +390,15 @@ test('escapeAction closes account setup before anything beneath it', () => {
   assert.strictEqual(Navigation.escapeAction({ setupOpen: true, dialogOpen: true }), 'close-setup');
   assert.strictEqual(Navigation.escapeAction({ setupOpen: true, confirmOpen: true }), 'cancel-close');
 });
+
+test('keyContext puts the photo viewer above the palette but below setup and the close question', () => {
+  assert.strictEqual(Navigation.keyContext({ viewerOpen: true, paletteOpen: true, dialogOpen: true, pane: 'conversation' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ viewerOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ viewerOpen: true, confirmOpen: true, pane: 'list' }), 'confirm');
+});
+
+test('escapeAction closes the photo viewer before anything beneath it, but not before setup or the close question', () => {
+  assert.strictEqual(Navigation.escapeAction({ viewerOpen: true, paletteOpen: true, dialogOpen: true, searchFocused: true }), 'close-viewer');
+  assert.strictEqual(Navigation.escapeAction({ viewerOpen: true, setupOpen: true }), 'close-setup');
+  assert.strictEqual(Navigation.escapeAction({ viewerOpen: true, confirmOpen: true }), 'cancel-close');
+});

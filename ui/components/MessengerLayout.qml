@@ -278,6 +278,18 @@ Item {
     onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
   }
 
+  PhotoViewer {
+    objectName: "photoViewer"
+    anchors.fill: parent
+    open: root.conversationController.viewerOpen
+    photo: root.conversationController.viewerPhoto
+    path: root.conversationController.viewerPath
+    routeKey: root.routeKey
+
+    onClosed: root.conversationController.closeViewer()
+    onOpenExternally: root.conversationController.openViewerExternally()
+  }
+
   CloseConfirm {
     open: root.windowController.confirmingClose
     onKeep: root.windowController.keepInBackground()
