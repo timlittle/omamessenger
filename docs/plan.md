@@ -182,3 +182,16 @@ Do these after the UI. Connectors never reach real services in tests: use record
    - document the privacy and account risks in the README
    - bump the version and tag
    - confirm `install-helper.sh` installs it on a clean machine
+
+## Later, only if it becomes a problem
+
+Not planned. Build one of these only when the problem it solves is actually seen.
+
+Helper resilience:
+
+- Never give up restarting a crashing helper: after the fast retries, keep trying every minute, and at once when the window opens.
+- Hold requests while the helper restarts and send them when it is back; show an error only if it stays down for more than about 30 seconds.
+- Retry a failed send automatically once after a reconnect before marking it "Not sent".
+- One helper at a time: a lock file in the data directory, so a replacement waits for the old helper to exit instead of sharing its Telegram session.
+- Catch up on what Telegram sent while the helper was down, by saving gotd's update state to disk.
+- Show "Reconnecting…" on the account in the rail instead of an error line across the window.
