@@ -71,8 +71,8 @@ Item {
   function upsert(message: var, isGroup: bool): void {
     const loaded = root._snapshot();
     const at = loaded.findIndex((m) => m.id === message.id);
-    if (at !== -1) messagesModel.set(at, message);
-    else messagesModel.insert(Timeline.insertIndex(loaded, message), message);
+    if (at !== -1) messagesModel.set(at, Timeline.row(message));
+    else messagesModel.insert(Timeline.insertIndex(loaded, message), Timeline.row(message));
 
     root._recomputeAnnotations(isGroup);
   }
@@ -99,7 +99,7 @@ Item {
 
       const at = Timeline.insertIndex(loaded, m);
       loaded.splice(at, 0, m);
-      messagesModel.insert(at, m);
+      messagesModel.insert(at, Timeline.row(m));
     }
     root._recomputeAnnotations(isGroup);
   }

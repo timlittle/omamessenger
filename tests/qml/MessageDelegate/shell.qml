@@ -58,6 +58,7 @@ ShellRoot {
     if (!root.checkFailedRetry()) return;
     if (!root.checkRichText()) return;
     if (!root.checkLineBreaks()) return;
+    if (!root.checkLinkPreview()) return;
 
     console.log("PASS MessageDelegate");
     Qt.exit(0);
@@ -128,6 +129,23 @@ ShellRoot {
     if (!body) return Check.fail("message body not found");
     const breaks = (body.text.match(/<br/g) || []).length;
     if (breaks !== 2) return Check.fail("bulleted message has " + breaks + " line breaks, want 2: " + body.text);
+    return true;
+  }
+
+  // checkLinkPreview verifies a message with a link preview shows its card
+  // inside the bubble, and one without shows none.
+  function checkLinkPreview(): bool {
+    const link = { kind: "link", url: "https://x.io", siteName: "X", title: "A page", description: "About it" };
+    delegate.message = { id: "m6", senderId: "s1", senderName: "Alex", text: "see https://x.io", outgoing: false, status: "received", created: root.now, media: JSON.stringify(link) };
+
+    const card = Check.find(delegate, "linkPreview");
+    const bubble = Check.find(delegate, "bubble");
+    if (!card || !card.visible) return Check.fail("link preview not shown");
+    if (!Check.texts(card).some((item) => item.text === "A page")) return Check.fail("link preview does not show the page title");
+    if (bubble.width < card.width) return Check.fail("bubble is narrower than its link preview");
+
+    delegate.message = { id: "m7", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "received", created: root.now, media: "" };
+    if (card.visible) return Check.fail("link preview shown for a message without one");
     return true;
   }
 }

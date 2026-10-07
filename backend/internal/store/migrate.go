@@ -47,6 +47,8 @@ var migrations = []string{
 		created INTEGER NOT NULL);
 	CREATE UNIQUE INDEX messages_remote ON messages(conversation_id, remote_id) WHERE remote_id != '';
 	CREATE INDEX messages_timeline ON messages(conversation_id, created);`,
+	// A message's link preview, photo, video or file, as JSON.
+	`ALTER TABLE messages ADD COLUMN media TEXT NOT NULL DEFAULT '';`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

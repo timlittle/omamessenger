@@ -2,9 +2,11 @@ import QtQuick
 import qs.Commons
 import "../theme"
 import "../lib/Format.js" as Format
+import "../lib/Timeline.js" as Timeline
 
 // One message row in a conversation: an optional day separator, the sender
-// name for a grouped incoming message, the bubble, and a time/status row.
+// name for a grouped incoming message, the bubble with any link preview,
+// and a time/status row.
 // A failed outgoing message shows a retry line instead of a status glyph.
 Item {
   id: root
@@ -23,6 +25,8 @@ Item {
   readonly property bool failed: root.message.outgoing && root.message.status === "failed"
   // showStatus is true when the delivery glyph should be drawn.
   readonly property bool showStatus: root.message.outgoing && !root.failed
+  // media is what the message carries besides its text, or null.
+  readonly property var media: Timeline.media(root.message)
 
   // retry asks the caller to resend this message after a send failure.
   signal retry(string id)
@@ -69,8 +73,8 @@ Item {
         readonly property real maxTextWidth: root.width * 0.72 - padding * 2
 
         objectName: "bubble"
-        width: Math.max(body.width, meta.implicitWidth) + padding * 2
-        height: body.height + meta.implicitHeight + Theme.spacing.xxs + padding * 2
+        width: Math.max(body.width, meta.implicitWidth, linkPreview.visible ? linkPreview.width : 0) + padding * 2
+        height: meta.y + meta.implicitHeight + padding
         radius: Style.cornerRadius
         color: root.message.outgoing ? Util.alpha(Color.accent, 0.22) : Util.alpha(Color.foreground, 0.06)
         anchors.right: root.message.outgoing ? parent.right : undefined
@@ -103,10 +107,23 @@ Item {
           onLinkActivated: link => Qt.openUrlExternally(link)
         }
 
+        LinkPreview {
+          id: linkPreview
+
+          objectName: "linkPreview"
+          x: bubble.padding
+          y: body.y + body.height + Theme.spacing.xs
+          width: Math.min(linkPreview.implicitWidth, bubble.maxTextWidth)
+          height: linkPreview.visible ? linkPreview.implicitHeight : 0
+          visible: root.media !== null && root.media.kind === "link"
+          preview: root.media ?? ({})
+          onOpened: url => Qt.openUrlExternally(url)
+        }
+
         Row {
           id: meta
 
-          y: body.y + body.height + Theme.spacing.xxs
+          y: (linkPreview.visible ? linkPreview.y + linkPreview.height : body.y + body.height) + Theme.spacing.xxs
           spacing: Theme.spacing.xs
           layoutDirection: root.message.outgoing ? Qt.RightToLeft : Qt.LeftToRight
           anchors.right: root.message.outgoing ? parent.right : undefined

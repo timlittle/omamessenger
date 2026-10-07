@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,7 +12,7 @@ import (
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media`
 
 // Page sizes for Messages.
 const (
@@ -32,7 +33,11 @@ func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Mess
 	}
 
 	if existing, found, err := s.existingByRemote(ctx, m); found || err != nil {
-		return existing, false, err
+		if err != nil || existing.Media != nil || m.Media == nil {
+			return existing, false, err
+		}
+
+		return s.fillMedia(ctx, existing, m.Media)
 	}
 
 	m = withMessageDefaults(m)
@@ -41,6 +46,23 @@ func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Mess
 	}
 
 	return m, true, nil
+}
+
+// fillMedia adds media to a message stored before the service reported
+// it, such as one synced before link previews existed.
+func (s *Store) fillMedia(ctx context.Context, m domain.Message, media *domain.Media) (domain.Message, bool, error) {
+	encoded, err := encodeMedia(media)
+	if err != nil {
+		return m, false, wrap("fill media", err)
+	}
+
+	if _, err := s.db.ExecContext(ctx, `UPDATE messages SET media=? WHERE id=?`, encoded, m.ID); err != nil {
+		return m, false, wrap("fill media", err)
+	}
+
+	m.Media = media
+
+	return m, false, nil
 }
 
 // existingByRemote finds a stored copy of m by its remote id. found is false
@@ -90,8 +112,13 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message) error {
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created)
+	media, err := encodeMedia(m.Media)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media)
 	if err != nil {
 		return err
 	}
@@ -233,8 +260,28 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 // scanMessage reads one row selected with messageColumns.
 func scanMessage(row scanner) (domain.Message, error) {
 	var m domain.Message
-	err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
-		&m.Text, &m.Outgoing, &m.Status, &m.Created)
+	var media string
+	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
+		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media); err != nil {
+		return m, err
+	}
 
-	return m, err
+	if media == "" {
+		return m, nil
+	}
+
+	m.Media = &domain.Media{}
+
+	return m, json.Unmarshal([]byte(media), m.Media)
+}
+
+// encodeMedia stores media as JSON, or "" for none.
+func encodeMedia(media *domain.Media) (string, error) {
+	if media == nil {
+		return "", nil
+	}
+
+	b, err := json.Marshal(media)
+
+	return string(b), err
 }

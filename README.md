@@ -107,6 +107,8 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | `unread.changed` | `{total}` |
 | `typing` | `{conversationId, name, active}` |
 
+A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video` or `file`. `thumb` is a small base64 JPEG preview sent with the message.
+
 ### Errors
 
 | Code | Meaning |

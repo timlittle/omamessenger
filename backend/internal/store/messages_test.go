@@ -235,3 +235,33 @@ func TestSetMessageRemoteID_FindsByRemote(t *testing.T) {
 		t.Errorf("MessageByRemote(empty id) = %v, want ErrNotFound", err)
 	}
 }
+
+func TestAddMessage_KeepsMediaAndFillsItInLater(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	link := &domain.Media{Kind: domain.MediaLink, URL: "https://x.io", SiteName: "X", Title: "A page", Description: "About it"}
+
+	addMessages(t, s,
+		domain.Message{ID: "with", ConversationID: "chat", RemoteID: "1", Text: "see https://x.io", Created: 1, Media: link},
+		domain.Message{ID: "without", ConversationID: "chat", RemoteID: "2", Text: "https://y.io", Created: 2},
+	)
+
+	got, err := s.Message(ctx, "with")
+	if err != nil || got.Media == nil || *got.Media != *link {
+		t.Errorf("stored media = %+v, %v; want %+v", got.Media, err, link)
+	}
+
+	// The service reports the second message again, now with its preview.
+	again, inserted, err := s.AddMessage(ctx, domain.Message{ConversationID: "chat", RemoteID: "2", Text: "https://y.io", Created: 2, Media: link})
+	if err != nil || inserted || again.ID != "without" || again.Media == nil {
+		t.Fatalf("AddMessage again = %+v, inserted %t, %v; want the stored message with its media", again, inserted, err)
+	}
+
+	if got, _ := s.Message(ctx, "without"); got.Media == nil || got.Media.Title != "A page" {
+		t.Errorf("media not filled in: %+v", got.Media)
+	}
+}

@@ -47,3 +47,19 @@ function insertIndex(newestFirst, message) {
   const at = newestFirst.findIndex((m) => m.created <= message.created);
   return at === -1 ? newestFirst.length : at;
 }
+
+// row is a message as a timeline model row. A ListModel needs every row to
+// share a shape, so media, an object or absent, is kept as a JSON string.
+function row(message) {
+  return Object.assign({}, message, { media: message.media ? JSON.stringify(message.media) : '' });
+}
+
+// media reads a row's media, or null when it has none. It also accepts a
+// message as the helper sends it.
+function media(item) {
+  if (!item.media) {
+    return null;
+  }
+
+  return typeof item.media === 'string' ? JSON.parse(item.media) : item.media;
+}

@@ -26,6 +26,14 @@ const (
 	KindGroup  = "group"
 )
 
+// Media kinds a message can carry besides its text.
+const (
+	MediaLink  = "link"
+	MediaPhoto = "photo"
+	MediaVideo = "video"
+	MediaFile  = "file"
+)
+
 // ErrNotFound reports a missing account, contact, conversation or message.
 var ErrNotFound = errors.New("not found")
 
@@ -78,6 +86,25 @@ type Message struct {
 	Outgoing       bool   `json:"outgoing"`
 	Status         string `json:"status"`
 	Created        int64  `json:"created"`
+	Media          *Media `json:"media,omitempty"`
+}
+
+// Media is what a message carries besides its text: a link preview, a
+// photo, a video or a file. Thumb is a small JPEG preview in base64, sent
+// with the message; a full photo, video or file is fetched only when the
+// user wants it. Duration is in seconds and Size in bytes.
+type Media struct {
+	Kind        string `json:"kind"`
+	URL         string `json:"url,omitempty"`
+	SiteName    string `json:"siteName,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Thumb       string `json:"thumb,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	Duration    int    `json:"duration,omitempty"`
+	FileName    string `json:"fileName,omitempty"`
+	Size        int64  `json:"size,omitempty"`
 }
 
 // ValidService reports whether service is a supported provider.

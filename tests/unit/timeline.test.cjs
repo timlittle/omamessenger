@@ -265,3 +265,17 @@ test('insertIndex places a message by time in a newest-first list', () => {
   assert.strictEqual(Timeline.insertIndex(newestFirst, { created: 5 }), 3);
   assert.strictEqual(Timeline.insertIndex([], { created: 5 }), 0);
 });
+
+test('row keeps media as a string, so every model row has the same shape', () => {
+  const link = { kind: 'link', url: 'https://x.io', title: 'X' };
+
+  assert.strictEqual(Timeline.row({ id: 'a', media: link }).media, JSON.stringify(link));
+  assert.strictEqual(Timeline.row({ id: 'b' }).media, '');
+  assert.strictEqual(Timeline.row({ id: 'c', media: link }).id, 'c');
+});
+
+test('media reads a row\'s media back, or null', () => {
+  assert.deepEqual(Timeline.media({ media: '{"kind":"link"}' }), { kind: 'link' });
+  assert.strictEqual(Timeline.media({ media: '' }), null);
+  assert.deepEqual(Timeline.media({ media: { kind: 'photo' } }), { kind: 'photo' });
+});

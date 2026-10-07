@@ -104,6 +104,7 @@ func message(m *tg.Message, e entities) domain.Message {
 		Outgoing: m.Out,
 		Status:   domain.StatusReceived,
 		Created:  int64(m.Date) * 1000,
+		Media:    media(m.Media),
 	}
 
 	if m.Out {
