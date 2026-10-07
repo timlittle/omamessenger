@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"google.golang.org/protobuf/proto"
 
@@ -45,7 +46,7 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 				DirectPath: strPtr("/v/photo"), MediaKey: []byte("key"), FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"),
 			}},
 			&domain.Media{Kind: domain.MediaPhoto, Width: 800, Height: 600, Size: 1024},
-			mediaRef{DirectPath: "/v/photo", MediaKey: []byte("key"), FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 1024, Mimetype: "image/jpeg"},
+			mediaRef{Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"), FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 1024, Mimetype: "image/jpeg"},
 			true,
 		},
 		{
@@ -55,7 +56,7 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 				DirectPath: strPtr("/v/video"), MediaKey: []byte("key"),
 			}},
 			&domain.Media{Kind: domain.MediaVideo, Width: 1280, Height: 720, Duration: 30, Size: 2048},
-			mediaRef{DirectPath: "/v/video", MediaKey: []byte("key"), FileLength: 2048, Mimetype: "video/mp4"},
+			mediaRef{Kind: mediaKindVideo, DirectPath: "/v/video", MediaKey: []byte("key"), FileLength: 2048, Mimetype: "video/mp4"},
 			true,
 		},
 		{
@@ -65,14 +66,14 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 				DirectPath: strPtr("/v/voice"), MediaKey: []byte("key"),
 			}},
 			&domain.Media{Kind: domain.MediaFile, FileName: "voice-message.ogg", Duration: 12, Size: 512},
-			mediaRef{DirectPath: "/v/voice", MediaKey: []byte("key"), FileLength: 512, Mimetype: "audio/ogg"},
+			mediaRef{Kind: mediaKindAudio, DirectPath: "/v/voice", MediaKey: []byte("key"), FileLength: 512, Mimetype: "audio/ogg"},
 			true,
 		},
 		{
 			"ordinary audio",
 			&waE2E.Message{AudioMessage: &waE2E.AudioMessage{FileLength: u64(512)}},
 			&domain.Media{Kind: domain.MediaFile, FileName: "audio-message.ogg", Size: 512},
-			mediaRef{FileLength: 512},
+			mediaRef{Kind: mediaKindAudio, FileLength: 512},
 			true,
 		},
 		{
@@ -82,14 +83,14 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 				DirectPath: strPtr("/v/doc"), MediaKey: []byte("key"),
 			}},
 			&domain.Media{Kind: domain.MediaFile, FileName: "report.pdf", Size: 4096},
-			mediaRef{DirectPath: "/v/doc", MediaKey: []byte("key"), FileLength: 4096, Mimetype: "application/pdf"},
+			mediaRef{Kind: mediaKindDocument, DirectPath: "/v/doc", MediaKey: []byte("key"), FileLength: 4096, Mimetype: "application/pdf"},
 			true,
 		},
 		{
 			"document with no name",
 			&waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{FileLength: u64(100)}},
 			&domain.Media{Kind: domain.MediaFile, FileName: "file", Size: 100},
-			mediaRef{FileLength: 100},
+			mediaRef{Kind: mediaKindDocument, FileLength: 100},
 			true,
 		},
 		{
@@ -143,6 +144,24 @@ func TestThumb_EncodesOrReportsNone(t *testing.T) {
 	jpeg := []byte{0xFF, 0xD8, 0xFF}
 	if got := thumb(jpeg); got != base64.StdEncoding.EncodeToString(jpeg) {
 		t.Errorf("thumb(%v) = %q, want the base64 encoding", jpeg, got)
+	}
+}
+
+func TestAppInfo_MapsEachKindToItsWhatsmeowType(t *testing.T) {
+	t.Parallel()
+
+	tests := map[mediaKind]whatsmeow.MediaType{
+		mediaKindImage:     whatsmeow.MediaImage,
+		mediaKindVideo:     whatsmeow.MediaVideo,
+		mediaKindAudio:     whatsmeow.MediaAudio,
+		mediaKindDocument:  whatsmeow.MediaDocument,
+		mediaKind("bogus"): whatsmeow.MediaDocument,
+	}
+
+	for kind, want := range tests {
+		if got := appInfo(kind); got != want {
+			t.Errorf("appInfo(%q) = %q, want %q", kind, got, want)
+		}
 	}
 }
 

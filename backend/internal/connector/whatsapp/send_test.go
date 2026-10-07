@@ -75,16 +75,16 @@ func TestSend_QuotesAReplyByStanzaIDAlone(t *testing.T) {
 	}
 }
 
-func TestSend_RejectsAnAttachment(t *testing.T) {
+func TestSend_RejectsAnAttachmentKindItCannotSend(t *testing.T) {
 	t.Parallel()
 
 	dev := newFakeDevice()
 	var sink connectortest.Sink
 	c := connectedTo(dev, &sink)
 
-	m := domain.Message{ID: "local-3", Media: &domain.Media{Kind: domain.MediaPhoto}}
-	if err := c.Send(t.Context(), directChat, m); !errors.Is(err, errMediaNotSupported) {
-		t.Errorf("Send = %v, want errMediaNotSupported", err)
+	m := domain.Message{ID: "local-3", Media: &domain.Media{Kind: domain.MediaLink}}
+	if err := c.Send(t.Context(), directChat, m); !errors.Is(err, errUnsupportedAttachment) {
+		t.Errorf("Send = %v, want errUnsupportedAttachment", err)
 	}
 	if len(dev.sent) != 0 {
 		t.Errorf("sent = %+v, want nothing sent for an unsupported attachment", dev.sent)

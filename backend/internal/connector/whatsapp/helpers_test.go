@@ -56,6 +56,26 @@ type fakeDevice struct {
 	groupNames map[string]string
 	groupErr   error
 	groupCalls []types.JID
+
+	// downloadData, downloadErr and downloadBlocks script downloadMedia,
+	// and downloadCalls records what it was asked to fetch; fetch_test.go
+	// drives these.
+	downloadData   []byte
+	downloadErr    error
+	downloadBlocks bool
+	downloadCalls  []mediaRef
+
+	// uploadResp and uploadErr script uploadMedia, and uploadCalls
+	// records what it was asked to upload; upload_test.go drives these.
+	uploadResp  whatsmeow.UploadResponse
+	uploadErr   error
+	uploadCalls []uploadCall
+}
+
+// uploadCall records one call to uploadMedia.
+type uploadCall struct {
+	data []byte
+	kind mediaKind
 }
 
 // sentCall records one call to sendMessage.
@@ -262,11 +282,55 @@ func (d *fakeDevice) groupName(_ context.Context, jid types.JID) (string, error)
 	return d.groupNames[jid.String()], nil
 }
 
+// downloadMedia records ref and reports the scripted bytes or error, or
+// blocks on ctx when downloadBlocks is set, as a real download that
+// never hears back from WhatsApp's media servers does.
+func (d *fakeDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error) {
+	d.mu.Lock()
+	d.downloadCalls = append(d.downloadCalls, ref)
+	blocks, data, err := d.downloadBlocks, d.downloadData, d.downloadErr
+	d.mu.Unlock()
+
+	if blocks {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
+}
+
+// uploadMedia records the call and reports the scripted response or
+// error.
+func (d *fakeDevice) uploadMedia(_ context.Context, data []byte, kind mediaKind) (whatsmeow.UploadResponse, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.uploadCalls = append(d.uploadCalls, uploadCall{data: data, kind: kind})
+	if d.uploadErr != nil {
+		return whatsmeow.UploadResponse{}, d.uploadErr
+	}
+
+	return d.uploadResp, nil
+}
+
 // connectedTo returns a connector whose Send, MarkRead and event
 // handling act on dev, as if Run had already connected it.
 func connectedTo(dev device, sink connector.Sink) *Connector {
 	c := &Connector{account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp}, answers: make(chan answer, 1)}
 	c.connected(dev, sink)
+
+	return c
+}
+
+// connectedToWithMedia returns a connector whose Send, FetchMedia and
+// event handling act on dev and media, as if Run had already connected
+// it and opened its media reference store.
+func connectedToWithMedia(dev device, media *mediaStore, sink connector.Sink) *Connector {
+	c := connectedTo(dev, sink)
+	c.setMedia(media)
 
 	return c
 }

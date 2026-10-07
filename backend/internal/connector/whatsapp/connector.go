@@ -1,10 +1,9 @@
 // Package whatsapp connects a WhatsApp account through whatsmeow: it
 // pairs by QR code or a phone number's link code, syncs history, follows
-// live messages, receipts, typing and organizing changes, sends outgoing
-// text and reports delivery and read progress, and normalizes
-// whatsmeow's JIDs, messages and sync data into the domain types the
-// rest of the helper uses. A later wave adds sending and downloading
-// media.
+// live messages, receipts, typing and organizing changes, sends and
+// downloads photos, videos and files alongside outgoing text, reports
+// delivery and read progress, and normalizes whatsmeow's JIDs, messages
+// and sync data into the domain types the rest of the helper uses.
 package whatsapp
 
 import (
@@ -48,6 +47,7 @@ type Connector struct {
 	waiting bool
 	dev     device
 	sink    connector.Sink
+	media   *mediaStore // this run's media reference store; see setMedia
 
 	// sent and unread are read and written by send.go and receipts.go:
 	// sent matches a receipt's chat and WhatsApp id back to the local
@@ -65,6 +65,7 @@ var (
 	_ connector.Connector      = (*Connector)(nil)
 	_ connector.Authenticator  = (*Connector)(nil)
 	_ connector.LogoutOnRemove = (*Connector)(nil)
+	_ connector.MediaFetcher   = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose session is kept in
@@ -107,6 +108,9 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 		return fmt.Errorf("whatsapp: open media store: %w", err)
 	}
 	defer func() { _ = media.close() }() // same as the session close above
+
+	c.setMedia(media)
+	defer c.clearMedia()
 
 	sink.AccountStatus(ctx, c.account.ID, domain.AccountConnecting, "")
 
@@ -231,6 +235,37 @@ func (c *Connector) session() (device, connector.Sink, error) {
 	}
 
 	return c.dev, c.sink, nil
+}
+
+// setMedia records this run's media reference store, for FetchMedia and
+// outgoing sends to save and look up references in.
+func (c *Connector) setMedia(media *mediaStore) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.media = media
+}
+
+// clearMedia forgets the run's media reference store, so FetchMedia and
+// outgoing sends stop using it once Run ends.
+func (c *Connector) clearMedia() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.media = nil
+}
+
+// currentMedia returns the media reference store of the current run,
+// or errNotConnected when no run has one open.
+func (c *Connector) currentMedia() (*mediaStore, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.media == nil {
+		return nil, errNotConnected
+	}
+
+	return c.media, nil
 }
 
 // startRun records that this connector is running, refusing a second
