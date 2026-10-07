@@ -16,6 +16,9 @@ Item {
 
   // active shows the toolbar, fading it in.
   property bool active: false
+  // hitSize is each button's clickable square: bigger than the glyph
+  // itself, so the react and reply targets are easy to land a mouse on.
+  readonly property real hitSize: Style.space(28)
 
   // react asks the caller to open the emoji picker for this message.
   signal react()
@@ -53,6 +56,7 @@ Item {
         objectName: "reactButton"
         iconText: "+"
         tooltipText: "Add reaction"
+        size: root.hitSize
         onClicked: root.react()
       }
 
@@ -60,6 +64,7 @@ Item {
         objectName: "replyButton"
         iconText: "↩"
         tooltipText: "Reply"
+        size: root.hitSize
         onClicked: root.reply()
       }
     }

@@ -340,8 +340,9 @@ ShellRoot {
   }
 
   // checkHoverToolbar verifies the hover toolbar is hidden until the
-  // bubble is hovered, and that its "+" and "↩" buttons ask to open the
-  // emoji picker and to reply.
+  // bubble is hovered, that its "+" and "↩" buttons ask to open the
+  // emoji picker and to reply, and that each button's hit area is big
+  // enough to find comfortably with a mouse, not just its small glyph.
   function checkHoverToolbar(): bool {
     delegate.message = { id: "m13", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "received", created: root.now };
 
@@ -360,12 +361,22 @@ ShellRoot {
     t.wait(50); // let the hover-driven opacity settle
     if (!toolbar.visible) return Check.fail("hover toolbar not shown on hover");
 
+    const minHit = Style.space(28);
+    const reactButton = Check.find(toolbar, "reactButton");
+    const replyButton = Check.find(toolbar, "replyButton");
+    if (reactButton.width < minHit || reactButton.height < minHit) {
+      return Check.fail(`react button hit area is ${reactButton.width}x${reactButton.height}, want at least ${minHit}x${minHit}`);
+    }
+    if (replyButton.width < minHit || replyButton.height < minHit) {
+      return Check.fail(`reply button hit area is ${replyButton.width}x${replyButton.height}, want at least ${minHit}x${minHit}`);
+    }
+
     root.pickerRequests = [];
-    t.mouseClick(Check.find(toolbar, "reactButton"));
+    t.mouseClick(reactButton);
     if (JSON.stringify(root.pickerRequests) !== '["m13"]') return Check.fail("+ click reported " + JSON.stringify(root.pickerRequests) + ", want [\"m13\"]");
 
     root.replied = [];
-    t.mouseClick(Check.find(toolbar, "replyButton"));
+    t.mouseClick(replyButton);
     if (JSON.stringify(root.replied) !== '["m13"]') return Check.fail("reply click reported " + JSON.stringify(root.replied) + ", want [\"m13\"]");
     return true;
   }
@@ -419,11 +430,11 @@ ShellRoot {
   }
 
   // checkToolbarStaysVisibleOnItself verifies that once hovering the
-  // bubble has revealed the toolbar, moving the pointer on to one of its
-  // own buttons keeps it visible, even though the toolbar floats above
-  // the bubble's own bounds and the pointer has therefore left the area
-  // that first revealed it. It also checks the toolbar hides again once
-  // the pointer leaves both.
+  // bubble has revealed the toolbar, walking the pointer across to one of
+  // its own buttons keeps it visible the whole way, even though the
+  // toolbar floats above the bubble's own bounds and the path therefore
+  // crosses out of the area that first revealed it. It also checks the
+  // toolbar hides again once the pointer leaves both.
   function checkToolbarStaysVisibleOnItself(): bool {
     // Start clean: an earlier check left the pointer resting on rowB's
     // bubble, which would otherwise make the next assertion meaningless.
@@ -441,11 +452,23 @@ ShellRoot {
     t.wait(50);
     if (!toolbar.visible) return Check.fail("toolbar did not appear on hovering the bubble");
 
-    // Move on to the toolbar's own button next; only its own hover area
-    // can be keeping it shown once the pointer has left the bubble.
+    // Walk the pointer from the bubble to the react button in small
+    // steps, the way a real mouse travels, instead of teleporting
+    // straight onto it. active (not just visible) must hold at every
+    // step: visible alone could stay true on the opacity fade's own
+    // inertia even if the underlying hover was briefly lost, masking a
+    // real gap between the bubble and the toolbar.
     const reactButton = Check.find(toolbar, "reactButton");
-    t.mouseMove(reactButton, reactButton.width / 2, reactButton.height / 2);
-    t.wait(150); // long enough that a real fade-out would have finished
+    const target = Check.rect(reactButton, bubble);
+    const startX = bubble.width / 2;
+    const startY = bubble.height / 2;
+    const endX = target.x + target.width / 2;
+    const endY = target.y + target.height / 2;
+    const steps = 40;
+    for (let i = 1; i <= steps; i++) {
+      t.mouseMove(bubble, startX + (endX - startX) * i / steps, startY + (endY - startY) * i / steps);
+      if (!toolbar.active) return Check.fail(`toolbar hover dropped out travelling from the bubble to the react button, at step ${i} of ${steps}`);
+    }
     if (!toolbar.visible) return Check.fail("toolbar hid when the pointer moved from the bubble onto its own button");
 
     root.pickerRequests = [];
