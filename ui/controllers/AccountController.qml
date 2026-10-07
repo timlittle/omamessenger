@@ -135,9 +135,12 @@ Item {
   }
 
   // usePhone switches from the QR code to signing in by phone number.
+  // What happens next differs by service (Telegram texts a login code
+  // back; WhatsApp shows a code to type on the phone instead), so the
+  // hint stays general until that reply names the actual next step.
   function usePhone(): void {
     root.stage = "phone";
-    root.hint = "Telegram will send a login code to this number.";
+    root.hint = "Enter the phone number, with its country code.";
     root.lastError = "";
   }
 

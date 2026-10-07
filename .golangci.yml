@@ -63,6 +63,8 @@ linters:
           allow:
             - $gostd
             - go.mau.fi/whatsmeow
+            - rsc.io/qr
+            - modernc.org/sqlite
             - github.com/timlittle/omamessenger/backend/internal/connector$
             - github.com/timlittle/omamessenger/backend/internal/domain$
         policy:

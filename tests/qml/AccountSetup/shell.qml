@@ -83,6 +83,7 @@ ShellRoot {
     if (!root.checkAddsWithoutKeys()) return;
     if (!root.checkCredentials()) return;
     if (!root.checkSignInByPhone()) return;
+    if (!root.checkSignInToWhatsAppByLinkCode()) return;
     if (!root.checkCancelRemoves()) return;
     if (!root.checkResumesPendingStep()) return;
     if (!root.checkRemovesAnAccount()) return;
@@ -148,6 +149,41 @@ ShellRoot {
 
     service.event("account.updated", { id: "tg-1", status: "connected" });
     if (controller.open) return Check.fail("setup still open after connecting");
+    return true;
+  }
+
+  // checkSignInToWhatsAppByLinkCode shows WhatsApp's own QR code, then
+  // switches to a phone number and shows the 8-character code to type
+  // on the phone instead of asking for a typed answer.
+  function checkSignInToWhatsAppByLinkCode(): bool {
+    service.services = [{ id: "telegram", name: "Telegram" }, { id: "whatsapp", name: "WhatsApp" }];
+    service.requests = [];
+
+    controller.run("account.add");
+    Check.find(view, "serviceButton-whatsapp").clicked();
+    if (controller.stage !== "waiting" || controller.serviceName !== "WhatsApp") {
+      return Check.fail("not waiting for whatsapp: " + controller.stage);
+    }
+
+    const accountId = controller.accountId;
+    service.event("auth.step", { accountId: accountId, kind: "qr", qr: "cG5n", hint: "Scan it" });
+    if (controller.stage !== "qr" || !Check.find(view, "qrImage").visible) return Check.fail("WhatsApp QR code not shown");
+
+    controller.usePhone();
+    Check.find(view, "answerField").text = "+15551234567";
+    view.submit();
+    if (root.last().method !== "auth.submit" || root.last().params.step !== "phone") return Check.fail("phone number not sent");
+
+    service.event("auth.step", { accountId: accountId, kind: "linkcode", hint: "Enter this code on your phone: ABCD-1234" });
+    if (controller.stage !== "linkcode") return Check.fail("linkcode step not shown: " + controller.stage);
+    if (Check.find(view, "continueButton").visible) return Check.fail("Continue shown for a step with nothing to type");
+    if (Check.find(view, "answerField").visible) return Check.fail("a typed answer field shown for the linkcode step");
+    if (Check.find(view, "stepHint").text.indexOf("ABCD-1234") < 0) return Check.fail("link code not shown in the hint");
+
+    service.event("account.updated", { id: accountId, status: "connected" });
+    if (controller.open) return Check.fail("setup still open after connecting");
+
+    service.services = [];
     return true;
   }
 

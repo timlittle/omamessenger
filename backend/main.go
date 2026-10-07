@@ -18,6 +18,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/clipboard"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/telegram"
+	"github.com/timlittle/omamessenger/backend/internal/connector/whatsapp"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -26,7 +27,7 @@ import (
 // providers lists every messaging service this helper can add an account
 // for. Adding a service means adding its Provider here.
 func providers() []connector.Provider {
-	return []connector.Provider{telegram.Provider{}}
+	return []connector.Provider{telegram.Provider{}, whatsapp.Provider{}}
 }
 
 // mediaCacheLimit is how much downloaded media the helper keeps before it

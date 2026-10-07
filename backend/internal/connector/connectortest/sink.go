@@ -17,11 +17,12 @@ import (
 // "status tg connected" or "incoming user:42:99 7", and keeps earlier
 // messages by conversation.
 type Sink struct {
-	mu       sync.Mutex
-	lines    []string
-	history  map[string][]domain.Message
-	live     map[string][]domain.Message
-	outgoing map[string][]OutgoingUpdate
+	mu        sync.Mutex
+	lines     []string
+	history   map[string][]domain.Message
+	live      map[string][]domain.Message
+	outgoing  map[string][]OutgoingUpdate
+	authSteps []connector.AuthStep
 }
 
 // OutgoingUpdate is one delivery status reported for a message the local
@@ -189,7 +190,21 @@ func (s *Sink) Organized(_ context.Context, _, remote string, pinned, archived b
 	s.record("organized %s %t %t", remote, pinned, archived)
 }
 
-// AuthStep records a sign-in step.
+// AuthStep records a sign-in step and keeps it, so a test can inspect
+// its QR image or hint, not just its kind.
 func (s *Sink) AuthStep(_ context.Context, accountID string, step connector.AuthStep) {
 	s.record("auth %s %s", accountID, step.Kind)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.authSteps = append(s.authSteps, step)
+}
+
+// AuthSteps returns the sign-in steps reported so far, in order.
+func (s *Sink) AuthSteps() []connector.AuthStep {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return slices.Clone(s.authSteps)
 }

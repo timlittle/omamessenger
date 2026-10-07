@@ -43,7 +43,7 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | --- | --- |
 | `account.updated` | `Account`; `status` is `connecting`, `connected`, `needs-auth`, `error` or `offline` |
 | `account.removed` | `{accountId}` |
-| `auth.step` | `{accountId, kind, qr, hint}`: `kind` is `qr` (a base64 PNG to scan; reply with a `phone` to sign in by code instead), `code` or `password` |
+| `auth.step` | `{accountId, kind, qr, hint}`: `kind` is `qr` (a base64 PNG to scan; reply with a `phone` to sign in by code instead), `code`, `password` or `linkcode` (WhatsApp's 8-character code, in `hint`, to type on the phone after submitting a `phone` step; no answer needed, it waits for the phone to confirm it) |
 | `conversation.updated` | `Conversation` |
 | `message.added` | `Message` |
 | `message.updated` | `Message`; also sent when the service reports a message edited, or its reactions changed |

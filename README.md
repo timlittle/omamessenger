@@ -55,9 +55,9 @@ Ctrl+/ lists every command and its shortcut. The full reference, including the c
 
 ## Data and privacy
 
-The helper stores its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db` (accounts, chats and messages), `telegram/` (each account's session and API keys) and `media/` (cached photos and files), all `0600`, their directories `0700`.
+The helper stores its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db` (accounts, chats and messages), `telegram/` (each account's session and API keys), `whatsapp/` (each account's session) and `media/` (cached photos and files), all `0600`, their directories `0700`.
 
-OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with your account, and Telegram can rate-limit, restrict or ban an account independent of anything OmaMessenger does. The helper connects only to the messaging services. It does not log credentials, session keys, phone numbers or message text.
+OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with your account, and Telegram can rate-limit, restrict or ban an account independent of anything OmaMessenger does. WhatsApp support uses an unofficial library ([whatsmeow](https://github.com/tulir/whatsmeow)) the same way, and WhatsApp may similarly restrict or ban an account for using an unofficial client. The helper connects only to the messaging services. It does not log credentials, session keys, phone numbers or message text.
 
 Removing an account (**Remove an account** in the command palette) signs it out and deletes its session and messages from this computer. It does not touch your chat history on the service or on other devices.
 
