@@ -189,6 +189,33 @@ func TestSetArchived_StoresThenTellsTheService(t *testing.T) {
 	}
 }
 
+func TestSetHidden_StoresAndPublishesWithNoServiceCall(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	got, err := f.commands.SetHidden(ctx, chat.ID, true)
+	if err != nil || !got.Hidden {
+		t.Fatalf("SetHidden = %+v, %v", got, err)
+	}
+
+	// Hiding is local to OmaMessenger only: it must never reach the
+	// service, unlike pin and archive.
+	if len(f.organizer.pinned) != 0 || len(f.organizer.archived) != 0 {
+		t.Errorf("organizer saw pinned %v, archived %v, want neither called", f.organizer.pinned, f.organizer.archived)
+	}
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events = %v", got)
+	}
+
+	if _, err := f.commands.SetHidden(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetHidden(missing) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestSetArchived_ReportsAServiceFailure(t *testing.T) {
 	t.Parallel()
 

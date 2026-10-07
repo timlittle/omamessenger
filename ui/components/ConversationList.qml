@@ -97,11 +97,14 @@ Item {
       required property bool muted
       required property bool pinned
       required property bool archived
+      required property bool hidden
       required property real lastActivity
       required property string preview
       required property string previewSender
       required property bool previewOutgoing
       required property string match
+      required property bool dimmed
+      required property string dimLabel
 
       width: list.width
       height: row.implicitHeight
@@ -114,6 +117,8 @@ Item {
         showAccount: root.multiAccountServices.includes(wrapper.service)
         accountName: root.accountNames[wrapper.accountId] ?? ""
         nowMs: root.nowMs
+        dimmed: wrapper.dimmed
+        dimLabel: wrapper.dimLabel
         conversation: {
           "id": wrapper.id,
           "title": wrapper.title,
@@ -124,6 +129,7 @@ Item {
           "muted": wrapper.muted,
           "pinned": wrapper.pinned,
           "archived": wrapper.archived,
+          "hidden": wrapper.hidden,
           "lastActivity": wrapper.lastActivity,
           "preview": wrapper.preview,
           "previewSender": wrapper.previewSender,

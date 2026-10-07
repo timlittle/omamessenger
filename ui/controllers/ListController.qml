@@ -7,7 +7,8 @@ import "../lib/Rpc.js" as Rpc
 
 // Owns the rail filter, search and the visible conversation list: the
 // only controller that calls conversations.list, conversations.setMuted,
-// conversations.setPinned and conversations.setArchived.
+// conversations.setPinned, conversations.setArchived and
+// conversations.setHidden.
 // The list itself is a ListModel kept in sync in place with ListSync, so
 // opening or scrolling never resets because of an unrelated event.
 //
@@ -46,15 +47,12 @@ Item {
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
-  // showOlder shows chats older than a month, which are hidden by default
-  // unless they are unread or open.
-  property bool showOlder: false
+  // showAll shows every chat the standard list would otherwise fold away:
+  // older than a month, hidden by the user, or archived with the service,
+  // each dimmed, unless they are unread or open.
+  property bool showAll: false
 
-  // showArchived shows chats archived with the service, which are hidden
-  // by default unless they are the open conversation.
-  property bool showArchived: false
-
-  // hiddenCount is how many chats the month filter hides right now.
+  // hiddenCount is how many chats the standard list hides right now.
   property int hiddenCount: 0
 
   // _all holds every conversation the helper reported, unfiltered by the
@@ -90,9 +88,9 @@ Item {
       "chat.mute": () => root._toggleMute(),
       "chat.pin": () => root._togglePin(),
       "chat.archive": () => root._toggleArchive(),
+      "chat.hide": () => root._toggleHidden(),
       "search.focus": () => { root.searchFocused = true; root.focusRequested(); },
-      "list.olderChats": () => root.setShowOlder(!root.showOlder),
-      "list.showArchived": () => root.setShowArchived(!root.showArchived)
+      "list.showAll": () => root.setShowAll(!root.showAll)
     };
 
     const handler = handlers[action];
@@ -108,18 +106,11 @@ Item {
     root._search();
   }
 
-  // setShowOlder shows or hides chats older than a month, and remembers it.
-  function setShowOlder(show: bool): void {
-    root.showOlder = show;
-    root._saveUiState({ showOlder: show });
-    root._syncModel();
-  }
-
-  // setShowArchived shows or hides chats archived with the service, and
-  // remembers it.
-  function setShowArchived(show: bool): void {
-    root.showArchived = show;
-    root._saveUiState({ showArchived: show });
+  // setShowAll shows or hides every chat the standard list folds away
+  // (older, hidden or archived), and remembers it.
+  function setShowAll(show: bool): void {
+    root.showAll = show;
+    root._saveUiState({ showAll: show });
     root._syncModel();
   }
 
@@ -160,25 +151,21 @@ Item {
   // _visible returns the conversations the rail filter currently covers,
   // from the search results while a query is active, otherwise the full
   // list.
-  // A search looks through every chat; otherwise chats older than a month
-  // or archived with the service are left out unless shown.
+  // A search looks through every chat; otherwise only the standard list
+  // shows, unless show-all is on.
   function _visible(): var {
     if (root.query.length > 0) return Rail.filter(root._searchResults, root.railKey);
 
-    const keepId = root.service ? root.service.uiState.activeId : "";
-    const afterArchive = root._afterArchiveFilter(Rail.filter(root._all, root.railKey));
-    if (root.showOlder) return afterArchive;
+    const filtered = Rail.filter(root._all, root.railKey);
+    if (root.showAll) return filtered;
 
-    return Rail.recent(afterArchive, Date.now(), keepId);
+    return Rail.standard(filtered, Date.now(), root._keepId());
   }
 
-  // _afterArchiveFilter drops archived chats, unless shown, from list. Kept
-  // apart from the month filter so "N older chats hidden" counts only the
-  // month filter's own hiding, not chats already filed away.
-  function _afterArchiveFilter(list: var): var {
-    if (root.showArchived) return list;
-
-    return Rail.unarchived(list, root.service ? root.service.uiState.activeId : "");
+  // _keepId is the open conversation's id, which must never disappear
+  // from the standard list or be dimmed in show-all.
+  function _keepId(): string {
+    return root.service ? root.service.uiState.activeId : "";
   }
 
   // _select moves the list cursor to id and remembers it in uiState.
@@ -212,6 +199,13 @@ Item {
   // contextually current, the same way _toggleMute does.
   function _toggleArchive(): void {
     root._setOnCurrent("conversations.setArchived", "archived");
+  }
+
+  // _toggleHidden hides or unhides whichever conversation is contextually
+  // current, the same way _toggleMute does. Hiding never reaches the
+  // service: it is local to this computer only.
+  function _toggleHidden(): void {
+    root._setOnCurrent("conversations.setHidden", "hidden");
   }
 
   // _setOnCurrent flips boolean field on whichever conversation is
@@ -275,7 +269,9 @@ Item {
   }
 
   // _start restores the saved list state and loads the conversations once
-  // the service is there.
+  // the service is there. showAll replaces the older showOlder and
+  // showArchived keys; a state saved before that change still turns it on
+  // if either was on, so no one's chats resurface unexpectedly.
   function _start(): void {
     if (!root.service) return;
 
@@ -283,8 +279,7 @@ Item {
     root.railKey = state.railKey || "all";
     root.selectedId = state.selectedId || "";
     root.query = state.query || "";
-    root.showOlder = state.showOlder || false;
-    root.showArchived = state.showArchived || false;
+    root.showAll = state.showAll ?? (state.showOlder || state.showArchived || false);
     if (root.service.status === "ready") root._loadAll();
   }
 
@@ -300,8 +295,8 @@ Item {
   // refresh so unread counts and previews stay current.
   function _syncModel(): void {
     const visible = root._visible();
-    const afterArchive = root._afterArchiveFilter(Rail.filter(root._all, root.railKey));
-    root.hiddenCount = root.query.length > 0 || root.showOlder ? 0 : afterArchive.length - visible.length;
+    const filtered = Rail.filter(root._all, root.railKey);
+    root.hiddenCount = root.query.length > 0 || root.showAll ? 0 : filtered.length - visible.length;
     const oldIds = [];
     for (let i = 0; i < listModel.count; i++) oldIds.push(listModel.get(i).id);
 
@@ -311,9 +306,15 @@ Item {
 
   // _row is a conversation as a list row. The helper leaves out match when
   // nothing matched a search, but every row needs every field the view
-  // requires.
+  // requires. dimmed and dimLabel only mean anything in show-all, where
+  // the standard list's own rules decide which rows get drawn muted.
   function _row(conversation: var): var {
-    return Object.assign({}, conversation, { match: conversation.match ?? "" });
+    const keepId = root._keepId();
+    return Object.assign({}, conversation, {
+      match: conversation.match ?? "",
+      dimmed: root.showAll && Rail.isDimmed(conversation, Date.now(), keepId),
+      dimLabel: root.showAll ? Rail.dimLabel(conversation, Date.now(), keepId) : ""
+    });
   }
 
   // _applyOp performs one ListSync operation on the ListModel.

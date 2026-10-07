@@ -4,10 +4,10 @@ import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 
-// The search field, conversation list and its "older chats" fold, plus
-// the empty state shown before any account is added. Takes its data
-// through properties and reports user intent through signals, like any
-// other view; MessengerLayout wires it to the controllers.
+// The search field, conversation list and its show-all fold, plus the
+// empty state shown before any account is added. Takes its data through
+// properties and reports user intent through signals, like any other
+// view; MessengerLayout wires it to the controllers.
 ColumnLayout {
   id: root
 
@@ -26,9 +26,9 @@ ColumnLayout {
   // showEmptyState is true once the helper is ready and has no accounts
   // yet, in place of the list.
   property bool showEmptyState: false
-  // showOlder is true while chats older than a month are shown.
-  property bool showOlder: false
-  // hiddenCount is how many older chats a non-empty search still hides.
+  // showAll is true while every chat the standard list folds away is shown.
+  property bool showAll: false
+  // hiddenCount is how many chats the standard list hides right now.
   property int hiddenCount: 0
   // routeKey is forwarded to the search field; see Composer.qml for why
   // a key router intercepts through a function property, not a signal.
@@ -44,8 +44,9 @@ ColumnLayout {
   // addAccountRequested asks the caller to start adding an account, from
   // the empty state's button.
   signal addAccountRequested()
-  // showOlderToggled asks the caller to flip whether older chats show.
-  signal showOlderToggled()
+  // showAllToggled asks the caller to flip whether every folded-away chat
+  // (older, hidden or archived) shows.
+  signal showAllToggled()
 
   spacing: Theme.spacing.sm
 
@@ -101,27 +102,28 @@ ColumnLayout {
     onActivated: id => root.activated(id)
   }
 
-  // Chats older than a month are hidden until asked for.
+  // Chats the standard list folds away (older than a month, hidden by the
+  // user, or archived with the service) stay out of sight until asked for.
   RowLayout {
-    objectName: "olderChats"
+    objectName: "showAllRow"
     Layout.fillWidth: true
-    visible: root.hiddenCount > 0 || (root.showOlder && root.query === "")
+    visible: root.hiddenCount > 0 || (root.showAll && root.query === "")
     spacing: Theme.spacing.sm
 
     Text {
       Layout.fillWidth: true
-      text: root.showOlder ? "Showing chats older than a month"
-        : root.hiddenCount + (root.hiddenCount === 1 ? " older chat hidden" : " older chats hidden")
+      text: root.showAll ? "Showing all chats"
+        : root.hiddenCount + (root.hiddenCount === 1 ? " chat hidden" : " chats hidden")
       elide: Text.ElideRight
       color: Util.alpha(Color.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
     }
 
     Ui.Button {
-      objectName: "olderChatsButton"
-      text: root.showOlder ? "Hide" : "Show"
+      objectName: "showAllButton"
+      text: root.showAll ? "Show fewer" : "Show all"
       focusable: true
-      onClicked: root.showOlderToggled()
+      onClicked: root.showAllToggled()
     }
   }
 }

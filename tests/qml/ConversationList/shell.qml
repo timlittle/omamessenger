@@ -1,7 +1,8 @@
 // Checks the conversation list: a long title elides within the row, an
 // unread row's title is bold, a pinned row shows a pin mark and an
-// unpinned one does not, both empty states show the right text, and
-// clicking a row emits activated() with its id.
+// unpinned one does not, a dimmed row (shown only because show-all is on)
+// is drawn with reduced opacity and a "Hidden" label, both empty states
+// show the right text, and clicking a row emits activated() with its id.
 import QtQuick
 import QtTest
 import Quickshell
@@ -18,21 +19,26 @@ ShellRoot {
   property var conversations: [
     {
       id: "c1", title: "Short Chat", kind: "direct", service: "whatsapp", accountId: "a1",
-      unread: 2, muted: false, pinned: false, archived: false, lastActivity: root.now, preview: "See you then",
-      previewSender: "", previewOutgoing: false, match: ""
+      unread: 2, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now, preview: "See you then",
+      previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: ""
     },
     {
       id: "c2", title: "Muted Group", kind: "group", service: "telegram", accountId: "a2",
-      unread: 0, muted: true, pinned: false, archived: false, lastActivity: root.now, preview: "ok",
-      previewSender: "Sam", previewOutgoing: false, match: ""
+      unread: 0, muted: true, pinned: false, archived: false, hidden: false, lastActivity: root.now, preview: "ok",
+      previewSender: "Sam", previewOutgoing: false, match: "", dimmed: false, dimLabel: ""
     },
     {
       id: "c3",
       title: "A very long conversation title that will not fit in the narrow list column at all",
       kind: "direct", service: "whatsapp", accountId: "a1",
-      unread: 0, muted: false, pinned: true, archived: false, lastActivity: root.now,
+      unread: 0, muted: false, pinned: true, archived: false, hidden: false, lastActivity: root.now,
       preview: "A long preview that keeps going well past the edge of the narrow column",
-      previewSender: "", previewOutgoing: false, match: ""
+      previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: ""
+    },
+    {
+      id: "c4", title: "Older Chat", kind: "direct", service: "whatsapp", accountId: "a1",
+      unread: 0, muted: false, pinned: false, archived: false, hidden: true, lastActivity: root.now,
+      preview: "see you around", previewSender: "", previewOutgoing: false, match: "", dimmed: true, dimLabel: "Hidden"
     }
   ]
 
@@ -118,6 +124,17 @@ ShellRoot {
     const pinnedMark = pinnedRow ? Check.find(pinnedRow, "pinIcon") : null;
     if (!pinnedMark || !pinnedMark.visible)
       return Check.fail("a pinned row does not show its pin mark");
+
+    const plainRow = Check.find(list, "row-c1");
+    if (!plainRow || plainRow.opacity !== 1)
+      return Check.fail("a row shown in the standard list is dimmed: opacity " + (plainRow ? plainRow.opacity : "missing"));
+
+    const dimmedRow = Check.find(list, "row-c4");
+    if (!dimmedRow || dimmedRow.opacity >= 1)
+      return Check.fail("a dimmed row is not drawn with reduced opacity: opacity " + (dimmedRow ? dimmedRow.opacity : "missing"));
+    const dimLabel = dimmedRow ? Check.find(dimmedRow, "dimLabel") : null;
+    if (!dimLabel || !dimLabel.visible || dimLabel.text !== "Hidden")
+      return Check.fail("a hidden row shown in show-all does not carry a \"Hidden\" label");
 
     const noQueryEmpty = Check.find(emptyList, "emptyState");
     if (!noQueryEmpty || !noQueryEmpty.visible || noQueryEmpty.text.indexOf("Ctrl+N") < 0)

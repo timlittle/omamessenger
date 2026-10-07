@@ -14,7 +14,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.last_activity`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.hidden,c.last_activity`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -51,10 +51,11 @@ func (s *Store) EnsureConversation(ctx context.Context, c domain.Conversation) (
 }
 
 // refreshConversation copies the remote service's title, kind and member
-// count onto a stored conversation. It never touches pinned or archived:
-// most reports, such as a live message's own conversation, carry neither
-// field meaningfully, so only SetOrganized, from a dialog sync, may set
-// them.
+// count onto a stored conversation. It never touches pinned, archived or
+// hidden: most reports, such as a live message's own conversation, carry
+// neither pinned nor archived meaningfully, so only SetOrganized, from a
+// dialog sync, may set them; hidden is local to this computer and no
+// report ever carries it at all.
 func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Conversation) (domain.Conversation, error) {
 	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=? WHERE id=?`,
 		c.Title, c.Kind, c.Members, id)
@@ -246,6 +247,18 @@ func (s *Store) SetArchived(ctx context.Context, id string, archived bool) error
 	return requireRow("set archived", res)
 }
 
+// SetHidden hides or unhides a conversation from the standard list. This
+// is local to this computer only: nothing here is ever reported to or
+// read from the service.
+func (s *Store) SetHidden(ctx context.Context, id string, hidden bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET hidden=? WHERE id=?`, boolInt(hidden), id)
+	if err != nil {
+		return wrap("set hidden", err)
+	}
+
+	return requireRow("set hidden", res)
+}
+
 // SetOrganized sets a conversation's pinned and archived state, as a
 // dialog sync reports it. changed is false when both already matched.
 func (s *Store) SetOrganized(ctx context.Context, id string, pinned, archived bool) (bool, error) {
@@ -295,7 +308,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.LastActivity,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.Hidden, &c.LastActivity,
 	}, extra...)
 	err := row.Scan(dest...)
 

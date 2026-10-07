@@ -177,14 +177,14 @@ Item {
       accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
       multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
       showEmptyState: root.service !== null && root.service.status === "ready" && root.service.accounts.length === 0
-      showOlder: root.listController.showOlder
+      showAll: root.listController.showAll
       hiddenCount: root.listController.hiddenCount
       routeKey: root.routeKey
 
       onQueryEdited: text => root.listController.setQuery(text)
       onActivated: id => root._openRow(id)
       onAddAccountRequested: root.accountController.begin()
-      onShowOlderToggled: root.listController.setShowOlder(!root.listController.showOlder)
+      onShowAllToggled: root.listController.setShowAll(!root.listController.showAll)
     }
 
     ConversationView {

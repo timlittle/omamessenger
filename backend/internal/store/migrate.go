@@ -79,6 +79,9 @@ var migrations = []string{
 	`ALTER TABLE messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT '';`,
 	// A message's emoji reaction chips, as JSON.
 	`ALTER TABLE messages ADD COLUMN reactions TEXT NOT NULL DEFAULT '';`,
+	// A conversation hidden from the standard list by the user, local to
+	// this computer: never reported to or read from the service.
+	`ALTER TABLE conversations ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

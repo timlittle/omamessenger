@@ -76,6 +76,7 @@ type Conversation struct {
 	Muted         bool   `json:"muted"`
 	Pinned        bool   `json:"pinned"`
 	Archived      bool   `json:"archived"`
+	Hidden        bool   `json:"hidden"`
 	LastActivity  int64  `json:"lastActivity"`
 
 	// Match is a snippet of the newest message that matched a search query.

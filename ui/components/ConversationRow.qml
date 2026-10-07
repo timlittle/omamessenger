@@ -10,7 +10,11 @@ import "../lib/Format.js" as Format
 // account shares a service, a pin mark, and a mute or unread indicator. A
 // pinned chat is marked with a glyph and tooltip; an archived chat's
 // unread badge is dimmed like a muted one's, since the chat is already
-// filed away, though its count still adds to the rail's unread total.
+// filed away, though its count still adds to the rail's unread total. A
+// row shown only because show-all is on (older, hidden or archived) is
+// drawn with reduced opacity and a small "Hidden" or "Archived" label, so
+// the chats someone usually looks at still stand out without relying on
+// opacity alone.
 // This is a view only: it reports intent through a signal and never
 // calls the helper.
 Item {
@@ -29,6 +33,13 @@ Item {
   property string accountName: ""
   // nowMs: the current time, for the relative time label.
   property real nowMs: Date.now()
+  // dimmed: true when this row is shown only because show-all is on (it
+  // would not appear in the standard list): drawn with reduced opacity.
+  property bool dimmed: false
+  // dimLabel: why a dimmed row would not normally show, "Hidden" or
+  // "Archived"; "" for a row dimmed only for being older, or one that is
+  // not dimmed at all.
+  property string dimLabel: ""
 
   // clicked fires when the row is clicked.
   signal clicked()
@@ -45,6 +56,8 @@ Item {
   objectName: "row-" + (root._conv.id ?? "")
   implicitWidth: Style.space(260)
   implicitHeight: Style.space(60)
+  opacity: root.dimmed ? 0.6 : 1.0
+  Behavior on opacity { NumberAnimation { duration: 120 } }
 
   Rectangle {
     anchors.fill: parent
@@ -116,6 +129,15 @@ Item {
           ToolTip.visible: pinHover.hovered
           ToolTip.text: "Pinned"
           ToolTip.delay: 500
+        }
+
+        Text {
+          objectName: "dimLabel"
+          visible: root.dimLabel.length > 0
+          text: root.dimLabel
+          color: Util.alpha(Color.foreground, 0.5)
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
         }
 
         Text {

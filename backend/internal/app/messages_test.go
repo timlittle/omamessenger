@@ -62,6 +62,39 @@ func TestSend_StoresPublishesAndDispatches(t *testing.T) {
 	}
 }
 
+func TestSend_UpdatesActivityButKeepsAHiddenChatHidden(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	if _, err := f.commands.SetHidden(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := f.store.Conversation(ctx, chat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.commands.Send(ctx, chat.ID, "hi", "", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := f.store.Conversation(ctx, chat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !after.Hidden {
+		t.Errorf("Conversation after Send = %+v, want Hidden to stand", after)
+	}
+	if after.LastActivity <= before.LastActivity {
+		t.Errorf("LastActivity after Send = %d, want it to advance past %d", after.LastActivity, before.LastActivity)
+	}
+}
+
 func TestSend_WithReplyToFillsTheQuoteAndPassesItToTheConnector(t *testing.T) {
 	t.Parallel()
 

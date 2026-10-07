@@ -1,0 +1,81 @@
+// Checks ConversationRow's dimming: a plain row is drawn at full opacity
+// with no label, a row dimmed only for being older is faded but carries
+// no label (its timestamp already explains it), and a hidden or archived
+// row is faded with a "Hidden" or "Archived" label, so the cue is never
+// colour or opacity alone.
+import QtQuick
+import Quickshell
+import "ui/components"
+import "Check.js" as Check
+
+ShellRoot {
+  id: root
+
+  ConversationRow {
+    id: plainRow
+    width: 260
+    conversation: ({ id: "c1", title: "Plain", lastActivity: Date.now() })
+    dimmed: false
+    dimLabel: ""
+  }
+
+  ConversationRow {
+    id: olderRow
+    width: 260
+    conversation: ({ id: "c2", title: "Older", lastActivity: 0 })
+    dimmed: true
+    dimLabel: ""
+  }
+
+  ConversationRow {
+    id: hiddenRow
+    width: 260
+    conversation: ({ id: "c3", title: "Hidden Chat", lastActivity: Date.now() })
+    dimmed: true
+    dimLabel: "Hidden"
+  }
+
+  ConversationRow {
+    id: archivedRow
+    width: 260
+    conversation: ({ id: "c4", title: "Archived Chat", lastActivity: Date.now() })
+    dimmed: true
+    dimLabel: "Archived"
+  }
+
+  Timer {
+    running: true
+    interval: 0
+    onTriggered: root.run()
+  }
+
+  // run drives the rows and checks the outcome.
+  function run(): void {
+    if (plainRow.opacity !== 1)
+      return Check.fail("a plain row is dimmed: opacity " + plainRow.opacity);
+    const plainLabel = Check.find(plainRow, "dimLabel");
+    if (!plainLabel || plainLabel.visible)
+      return Check.fail("a plain row shows a dim label");
+
+    if (olderRow.opacity >= 1)
+      return Check.fail("an older row is not faded: opacity " + olderRow.opacity);
+    const olderLabel = Check.find(olderRow, "dimLabel");
+    if (!olderLabel || olderLabel.visible)
+      return Check.fail("a merely older row shows a dim label, want none: its timestamp already explains it");
+
+    if (hiddenRow.opacity >= 1)
+      return Check.fail("a hidden row is not faded: opacity " + hiddenRow.opacity);
+    const hiddenLabel = Check.find(hiddenRow, "dimLabel");
+    if (!hiddenLabel || !hiddenLabel.visible || hiddenLabel.text !== "Hidden")
+      return Check.fail("a hidden row does not carry a \"Hidden\" label");
+
+    if (archivedRow.opacity >= 1)
+      return Check.fail("an archived row is not faded: opacity " + archivedRow.opacity);
+    const archivedLabel = Check.find(archivedRow, "dimLabel");
+    if (!archivedLabel || !archivedLabel.visible || archivedLabel.text !== "Archived")
+      return Check.fail("an archived row does not carry an \"Archived\" label");
+
+    console.log("PASS ConversationRow");
+    Qt.exit(0);
+  }
+}

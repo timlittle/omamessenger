@@ -110,3 +110,21 @@ func (c *Commands) SetArchived(ctx context.Context, conversationID string, archi
 
 	return conv, c.organizer.SetArchived(ctx, conv, archived)
 }
+
+// SetHidden hides or unhides a conversation from the standard list. Unlike
+// mute, pin and archive, this is local to OmaMessenger only: it is never
+// reported to the service, so no connector call follows.
+func (c *Commands) SetHidden(ctx context.Context, conversationID string, hidden bool) (domain.Conversation, error) {
+	if err := c.store.SetHidden(ctx, conversationID, hidden); err != nil {
+		return domain.Conversation{}, err
+	}
+
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return conv, err
+	}
+
+	c.events.publish(ctx, EventConversationUpdated, conv)
+
+	return conv, nil
+}

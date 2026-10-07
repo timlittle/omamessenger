@@ -43,6 +43,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"conversations.setMuted":    bind(conversationsSetMuted(c)),
 		"conversations.setPinned":   bind(conversationsSetPinned(c)),
 		"conversations.setArchived": bind(conversationsSetArchived(c)),
+		"conversations.setHidden":   bind(conversationsSetHidden(c)),
 		"messages.list":             bind(messagesList(c)),
 		"messages.send":             bind(messagesSend(c)),
 		"messages.retry":            bind(messagesRetry(c)),
@@ -240,6 +241,20 @@ type archivedParams struct {
 func conversationsSetArchived(c *app.Commands) func(context.Context, archivedParams) (any, error) {
 	return func(ctx context.Context, p archivedParams) (any, error) {
 		return c.SetArchived(ctx, p.ConversationID, p.Archived)
+	}
+}
+
+// hiddenParams hides or unhides a conversation.
+type hiddenParams struct {
+	ConversationID string `json:"conversationId"`
+	Hidden         bool   `json:"hidden"`
+}
+
+// conversationsSetHidden hides or unhides a conversation. Hiding is local
+// to this computer only and is never reported to the service.
+func conversationsSetHidden(c *app.Commands) func(context.Context, hiddenParams) (any, error) {
+	return func(ctx context.Context, p hiddenParams) (any, error) {
+		return c.SetHidden(ctx, p.ConversationID, p.Hidden)
 	}
 }
 

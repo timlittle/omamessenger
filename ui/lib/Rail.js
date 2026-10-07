@@ -157,16 +157,39 @@ function multiAccountServices(items) {
   return [...new Set(items.filter((i) => i.kind === 'account').map((i) => i.service))];
 }
 
-// recent keeps the conversations active within the last month, plus any
-// with unread messages and the one open as keepId, which must never vanish.
-function recent(conversations, nowMs, keepId) {
-  return conversations.filter((c) => nowMs - c.lastActivity <= RECENT_MS || c.unread > 0 || c.id === keepId);
+// showsStandard reports whether one conversation would appear in the
+// standard list: not archived, not hidden, and either recently active or
+// unread, except the one open as keepId, which must never vanish from
+// under the user regardless of any of that.
+function showsStandard(c, nowMs, keepId) {
+  if (c.id === keepId) return true;
+  if (c.archived || c.hidden) return false;
+
+  return nowMs - c.lastActivity <= RECENT_MS || c.unread > 0;
 }
 
-// unarchived drops archived conversations, except the one open as keepId,
-// which must never vanish from under the user.
-function unarchived(conversations, keepId) {
-  return conversations.filter((c) => !c.archived || c.id === keepId);
+// standard keeps the conversations the standard list shows; see
+// showsStandard.
+function standard(conversations, nowMs, keepId) {
+  return conversations.filter((c) => showsStandard(c, nowMs, keepId));
+}
+
+// isDimmed reports whether a conversation should be drawn dimmed in the
+// show-all view: anything the standard list would not show on its own.
+function isDimmed(c, nowMs, keepId) {
+  return !showsStandard(c, nowMs, keepId);
+}
+
+// dimLabel names why a dimmed conversation would not appear in the
+// standard list: "Hidden" or "Archived". A conversation dimmed only for
+// being older carries no label, since its timestamp already explains it;
+// one that is not dimmed at all carries none either.
+function dimLabel(c, nowMs, keepId) {
+  if (!isDimmed(c, nowMs, keepId)) return '';
+  if (c.hidden) return 'Hidden';
+  if (c.archived) return 'Archived';
+
+  return '';
 }
 
 // compareConversations orders conversations the way the list shows them:
