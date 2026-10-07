@@ -71,7 +71,7 @@ func TestSync_ReportsOrganizedForPinnedAndArchivedDialogs(t *testing.T) {
 			&tg.Dialog{Peer: &tg.PeerChat{ChatID: 7}, FolderID: archiveFolderID},
 		},
 		Chats: []tg.ChatClass{&tg.Chat{ID: 7, Title: "Crew", Photo: &tg.ChatPhotoEmpty{}}},
-		Users: []tg.UserClass{nadia},
+		Users: []tg.UserClass{nadia()},
 	})
 	f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(400, "CHANNEL_PRIVATE"))
 	f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(400, "CHANNEL_PRIVATE"))
@@ -101,7 +101,7 @@ func TestNewMessage_NeverReportsOrganized(t *testing.T) {
 	c := New(domain.Account{ID: "tg"}, "")
 	c.newMessage(t.Context(), &sink, &tg.Message{
 		ID: 1, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi",
-	}, tg.Entities{Users: map[int64]*tg.User{42: nadia}})
+	}, tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
 
 	for _, line := range sink.Lines() {
 		if strings.HasPrefix(line, "organized ") {
