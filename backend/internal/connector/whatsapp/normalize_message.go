@@ -35,6 +35,13 @@ func unwrap(msg *waE2E.Message) *waE2E.Message {
 			msg = msg.GetViewOnceMessageV2Extension().GetMessage()
 		case msg.GetDeviceSentMessage().GetMessage() != nil:
 			msg = msg.GetDeviceSentMessage().GetMessage()
+		case msg.GetPollCreationMessageV4().GetMessage() != nil:
+			// Unlike every earlier poll version, V4 wraps its content in
+			// the same forward-compatible envelope as an ephemeral or
+			// view-once message, rather than carrying a PollCreationMessage
+			// field directly; unwrapping it here is what lets the rest of
+			// this file's switches (see pollCreation) still recognise it.
+			msg = msg.GetPollCreationMessageV4().GetMessage()
 		default:
 			return msg
 		}
@@ -135,6 +142,14 @@ func senderDisplayName(ctx context.Context, dev device, info types.MessageInfo) 
 	return senderName(info)
 }
 
+// genericSenderName is senderName's last-resort fallback, for a sender
+// this connector cannot resolve a real name for at all. It is exported
+// as a constant, rather than left as a literal, so a connector method
+// that holds names resolved separately from the message itself (such
+// as a group's history sync; see history.go's syncMessage) can tell
+// this specific fallback apart from any real name worth keeping.
+const genericSenderName = "WhatsApp user"
+
 // senderName names who sent a message: their self-chosen display name,
 // their verified business name, or a generic label when WhatsApp
 // reported neither. It never falls back to the phone number in their
@@ -148,7 +163,7 @@ func senderName(info types.MessageInfo) string {
 		return name
 	}
 
-	return "WhatsApp user"
+	return genericSenderName
 }
 
 // verifiedName is a business account's verified name, or "" when the
@@ -261,10 +276,10 @@ func mediaPlaceholder(msg *waE2E.Message) string {
 	}
 }
 
-// sharedContentPlaceholder labels a poll, a shared contact or a
-// location, or "" for none of these: split out of mediaPlaceholder so
-// neither function's own switch grows past this codebase's complexity
-// limit.
+// sharedContentPlaceholder labels a poll, a shared contact, a
+// location, a shared group invite or a shared sticker pack, or "" for
+// none of these: split out of mediaPlaceholder so neither function's
+// own switch grows past this codebase's complexity limit.
 func sharedContentPlaceholder(msg *waE2E.Message) string {
 	switch {
 	case pollCreation(msg) != nil:
@@ -275,6 +290,10 @@ func sharedContentPlaceholder(msg *waE2E.Message) string {
 		return "[Contact]"
 	case msg.GetLocationMessage() != nil, msg.GetLiveLocationMessage() != nil:
 		return "[Location]"
+	case msg.GetGroupInviteMessage() != nil:
+		return "[Group invite]"
+	case msg.GetStickerPackMessage() != nil:
+		return "[Sticker pack]"
 	default:
 		return ""
 	}
@@ -282,7 +301,9 @@ func sharedContentPlaceholder(msg *waE2E.Message) string {
 
 // pollCreation is the poll a message creates, whichever of WhatsApp's
 // several poll message versions it was sent as, or nil when msg creates
-// no poll.
+// no poll. V4 is not named here: unwrap already peels its
+// forward-compatible wrapper before this is ever called, the same way
+// it peels an ephemeral or view-once message.
 func pollCreation(msg *waE2E.Message) *waE2E.PollCreationMessage {
 	switch {
 	case msg.GetPollCreationMessage() != nil:
@@ -291,6 +312,10 @@ func pollCreation(msg *waE2E.Message) *waE2E.PollCreationMessage {
 		return msg.GetPollCreationMessageV2()
 	case msg.GetPollCreationMessageV3() != nil:
 		return msg.GetPollCreationMessageV3()
+	case msg.GetPollCreationMessageV5() != nil:
+		return msg.GetPollCreationMessageV5()
+	case msg.GetPollCreationMessageV6() != nil:
+		return msg.GetPollCreationMessageV6()
 	default:
 		return nil
 	}

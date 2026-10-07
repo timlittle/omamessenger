@@ -56,11 +56,13 @@ type Connector struct {
 	sent   map[string]*sentMessage
 	unread map[string]map[string][]string
 
-	organize     map[string]organizeState     // conversation remote id to its last known pinned/archived state
-	names        map[string]namedEntry        // contact, push and group names resolved so far, by remote id
-	groupMembers map[string]int               // a group's last known member count, by remote id
-	chatKinds    map[string]string            // every conversation remote id this connector has reported, to its kind
-	reactions    map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji
+	organize      map[string]organizeState     // conversation remote id to its last known pinned/archived state
+	localOrganize map[string]bool              // conversation remote id whose organize state was set locally (SetPinned/SetArchived) more recently than any live echo, so a history sync must not overwrite it (see history.go's syncConversation)
+	names         map[string]namedEntry        // contact, push and group names resolved so far, by remote id
+	groupMembers  map[string]int               // a group's last known member count, by remote id
+	chatKinds     map[string]string            // every conversation remote id this connector has reported, to its kind
+	reactions     map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji
+	undecryptable map[string]bool              // "<conversation remote id>/<message remote id>" still waiting on a placeholder (see live.go's handleUndecryptable)
 }
 
 // nameRank orders how much a resolved name can be trusted, so
@@ -311,6 +313,27 @@ func (c *Connector) nameFor(remoteID string) string {
 	return c.names[remoteID].name
 }
 
+// improvedSenderName replaces m's sender name with this connector's own
+// cached name for the sender (see nameFor and rememberName), but only
+// when message or historyMessage could not resolve one of their own
+// and fell all the way back to genericSenderName: a group's history
+// sync often carries no push name of its own for each individual
+// message, even though the account-wide push name list (see
+// syncPushnames) or a later contact event already named that same
+// sender from somewhere else. A message that already carries a real
+// name, or one that is this account's own, is returned unchanged.
+func (c *Connector) improvedSenderName(m domain.Message) domain.Message {
+	if m.Outgoing || m.SenderName != genericSenderName {
+		return m
+	}
+
+	if cached := c.nameFor(m.SenderID); cached != "" {
+		m.SenderName = cached
+	}
+
+	return m
+}
+
 // rememberName records name for remoteID if rank is at least as
 // trustworthy as whatever is already cached for it, so a later, weaker
 // report, such as a push name arriving after a saved contact name
@@ -376,6 +399,22 @@ func (c *Connector) noteChat(remoteID, kind string) {
 	c.chatKinds[remoteID] = kind
 }
 
+// knownChat reports whether this connector has already reported a
+// conversation for remoteID during this run (see reportConversation
+// and noteChat): once it has, a later history sync that only updates
+// its pinned, archived or unread state, with no new messages of its
+// own in that particular batch, still reaches it, rather than being
+// mistaken for a chat that was never worth creating in the first
+// place.
+func (c *Connector) knownChat(remoteID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, ok := c.chatKinds[remoteID]
+
+	return ok
+}
+
 // knownDirectChats lists the remote id of every direct chat this
 // connector has reported so far, for handleAppStateSyncComplete's
 // rescan.
@@ -416,6 +455,46 @@ func (c *Connector) setOrganized(remoteID string, pinned, archived *bool) organi
 	return state
 }
 
+// markLocalOrganize records that remoteID's pinned or archived state was
+// just set locally, by SetPinned or SetArchived, so a history sync's own
+// snapshot of it (see history.go's syncConversation) must not overwrite
+// that choice until a live echo confirms WhatsApp's own current state
+// (see clearLocalOrganize): WhatsApp's app-state patches are eventually
+// consistent, so a resync arriving moments after a local pin can still
+// carry the value from before the patch reached its servers.
+func (c *Connector) markLocalOrganize(remoteID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.localOrganize == nil {
+		c.localOrganize = map[string]bool{}
+	}
+	c.localOrganize[remoteID] = true
+}
+
+// clearLocalOrganize forgets that remoteID's organize state was set
+// locally, once a live pin or archive echo (see live.go's handlePin and
+// handleArchive) reports WhatsApp's own current view of it: that is a
+// real-time update, unlike a resync's snapshot, so it is trusted either
+// way, and a later resync may again freely report this remote id until
+// another local change marks it once more.
+func (c *Connector) clearLocalOrganize(remoteID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.localOrganize, remoteID)
+}
+
+// isLocalOrganize reports whether remoteID's pinned or archived state was
+// set locally more recently than any live echo has confirmed (see
+// markLocalOrganize).
+func (c *Connector) isLocalOrganize(remoteID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.localOrganize[remoteID]
+}
+
 // reactTo records sender's reaction to a message as emoji, or clears it
 // when emoji is "", and returns the message's full, recomputed tally.
 func (c *Connector) reactTo(conversationRemoteID, messageRemoteID, sender, emoji string) []domain.Reaction {
@@ -440,4 +519,35 @@ func (c *Connector) reactTo(conversationRemoteID, messageRemoteID, sender, emoji
 	}
 
 	return reactionTally(bySender, "self")
+}
+
+// markUndecryptable records that the message named by
+// conversationRemoteID and messageRemoteID was stored only as a
+// placeholder, because whatsmeow could not decrypt it, so a later
+// redelivery of the same id can replace it instead of being silently
+// deduplicated away by the store (see resolveUndecryptable).
+func (c *Connector) markUndecryptable(conversationRemoteID, messageRemoteID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.undecryptable == nil {
+		c.undecryptable = map[string]bool{}
+	}
+	c.undecryptable[conversationRemoteID+"/"+messageRemoteID] = true
+}
+
+// resolveUndecryptable reports whether the message named by
+// conversationRemoteID and messageRemoteID was waiting on a placeholder
+// (see markUndecryptable), forgetting it either way so a later message
+// that happens to reuse the same id is never treated as a replacement
+// again.
+func (c *Connector) resolveUndecryptable(conversationRemoteID, messageRemoteID string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	key := conversationRemoteID + "/" + messageRemoteID
+	found := c.undecryptable[key]
+	delete(c.undecryptable, key)
+
+	return found
 }

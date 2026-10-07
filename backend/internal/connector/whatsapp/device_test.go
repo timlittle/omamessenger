@@ -155,14 +155,53 @@ func TestIsSelfChat_MatchesTheAccountsOwnPhoneJIDOrLID(t *testing.T) {
 
 	other := types.NewJID("15559998888", types.DefaultUserServer)
 
-	if !dev.isSelfChat(own) {
+	if !dev.isSelfChat(t.Context(), own) {
 		t.Error("isSelfChat(own phone JID) = false, want true")
 	}
-	if !dev.isSelfChat(ownLID) {
+	if !dev.isSelfChat(t.Context(), ownLID) {
 		t.Error("isSelfChat(own LID) = false, want true")
 	}
-	if dev.isSelfChat(other) {
+	if dev.isSelfChat(t.Context(), other) {
 		t.Error("isSelfChat(someone else) = true, want false")
+	}
+}
+
+func TestIsSelfChat_MatchesOwnLIDEvenBeforeTheDeviceHasCachedIt(t *testing.T) {
+	own := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := pairedTestDevice(t, own)
+
+	// dev.cli.Store.LID is deliberately left empty, as it can be for a
+	// while after pairing: this still has to recognise the account's
+	// own LID through whatsmeow's separately-synced LID mapping store.
+	ownLID := types.NewJID("111222", types.HiddenUserServer)
+	if err := dev.cli.Store.LIDs.PutLIDMapping(t.Context(), ownLID, own); err != nil {
+		t.Fatal(err)
+	}
+
+	if !dev.isSelfChat(t.Context(), ownLID) {
+		t.Error("isSelfChat(own LID, uncached) = false, want true")
+	}
+}
+
+func TestIsSelfChat_IsFalseWhenNotYetPaired(t *testing.T) {
+	dev, err := openDevice(t.Context(), t.TempDir(), "wa-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dev.close() })
+
+	other := types.NewJID("15559998888", types.DefaultUserServer)
+	if dev.isSelfChat(t.Context(), other) {
+		t.Error("isSelfChat before pairing = true, want false: there is no own JID to compare against")
+	}
+}
+
+func TestSelfChatID_IsTheAccountsOwnPhoneJID(t *testing.T) {
+	own := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := pairedTestDevice(t, own)
+
+	if got, want := dev.selfChatID(), remoteID(own); got != want {
+		t.Errorf("selfChatID() = %q, want %q", got, want)
 	}
 }
 

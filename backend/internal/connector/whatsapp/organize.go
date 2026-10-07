@@ -56,6 +56,7 @@ func (c *Connector) SetPinned(ctx context.Context, conv domain.Conversation, pin
 	}
 
 	state := c.setOrganized(conv.RemoteID, &pinned, nil)
+	c.markLocalOrganize(conv.RemoteID)
 	sink.Organized(ctx, c.account.ID, conv.RemoteID, state.pinned, state.archived)
 
 	return nil
@@ -87,6 +88,7 @@ func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, a
 		unpinned = &no
 	}
 	state := c.setOrganized(conv.RemoteID, unpinned, &archived)
+	c.markLocalOrganize(conv.RemoteID)
 	sink.Organized(ctx, c.account.ID, conv.RemoteID, state.pinned, state.archived)
 
 	return nil

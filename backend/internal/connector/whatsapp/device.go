@@ -90,9 +90,19 @@ type device interface {
 	contactName(ctx context.Context, jid types.JID) string
 
 	// isSelfChat reports whether jid is this account's own chat with
-	// itself: its phone JID or its LID, whichever the chat was addressed
-	// by.
-	isSelfChat(jid types.JID) bool
+	// itself: its phone JID, its LID, or, when this device has not
+	// cached its own LID yet, a LID that whatsmeow's local LID store
+	// already maps to that phone JID. It never does network I/O:
+	// everything it checks was already saved locally by an earlier
+	// sync.
+	isSelfChat(ctx context.Context, jid types.JID) bool
+
+	// selfChatID is the canonical remote id this connector always uses
+	// for the account's own self-chat, so a message, receipt or
+	// organizing change addressed by phone JID or by LID always lands
+	// in the same conversation: this account's own phone JID, which is
+	// always known once paired, unlike its LID.
+	selfChatID() string
 
 	// downloadMedia downloads and decrypts a message's attachment, using
 	// the reference it was saved with (see normalize_media.go).
@@ -281,18 +291,41 @@ func (d *waDevice) lookupContactName(ctx context.Context, jid types.JID) string 
 }
 
 // isSelfChat reports whether jid is this account's own self-chat: its
-// phone JID or its LID, either of which WhatsApp may use to address a
-// message the account sent itself.
-func (d *waDevice) isSelfChat(jid types.JID) bool {
+// phone JID, its LID, or, when this device's own cached LID (set once
+// whatsmeow learns it, which can lag behind pairing) does not match, a
+// LID that whatsmeow's local LID store already maps to this account's
+// phone JID. That last check is what still recognises the self-chat
+// when a message or a history sync addresses it by a LID before this
+// device's own copy of that identifier has caught up.
+func (d *waDevice) isSelfChat(ctx context.Context, jid types.JID) bool {
 	target := jid.ToNonAD()
 
-	if own := d.cli.Store.GetJID(); !own.IsEmpty() && target == own.ToNonAD() {
+	own := d.cli.Store.GetJID()
+	if own.IsEmpty() {
+		return false
+	}
+	if target == own.ToNonAD() {
 		return true
 	}
 
-	lid := d.cli.Store.GetLID()
+	if lid := d.cli.Store.GetLID(); !lid.IsEmpty() && target == lid.ToNonAD() {
+		return true
+	}
 
-	return !lid.IsEmpty() && target == lid.ToNonAD()
+	if target.Server != types.HiddenUserServer {
+		return false
+	}
+
+	phone, err := d.cli.Store.LIDs.GetPNForLID(ctx, target)
+
+	return err == nil && !phone.IsEmpty() && phone.ToNonAD() == own.ToNonAD()
+}
+
+// selfChatID is the canonical remote id for this account's own
+// self-chat: its phone JID, which is always known once paired, unlike
+// its LID (see isSelfChat).
+func (d *waDevice) selfChatID() string {
+	return remoteID(d.cli.Store.GetJID())
 }
 
 // downloadMedia downloads and decrypts a message's attachment. Passing

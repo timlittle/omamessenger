@@ -61,8 +61,11 @@ func edit(ctx context.Context, dev device, info types.MessageInfo, msg *waE2E.Me
 // isContentless reports whether msg is one of WhatsApp's own protocol
 // or system notices rather than something a person sent: every
 // ProtocolMessage kind other than a revoke or an edit (handled
-// separately; see isRevoke and isEdit), a poll vote, or a message
-// pinned or kept in a chat, none of which carry anything to show.
+// separately; see isRevoke and isEdit), a poll vote, a message pinned
+// or kept in a chat, a voice or video call's log entry, or one of the
+// other housekeeping kinds WhatsApp's wire format carries alongside a
+// session (a history-sync bundle or notice, a secret or key-share
+// payload), none of which carry anything a person actually said.
 func isContentless(msg *waE2E.Message) bool {
 	if pm := msg.GetProtocolMessage(); pm != nil {
 		return !isRevoke(msg) && !isEdit(msg)
@@ -71,7 +74,16 @@ func isContentless(msg *waE2E.Message) bool {
 	switch {
 	case msg.GetPollUpdateMessage() != nil,
 		msg.GetPinInChatMessage() != nil,
-		msg.GetKeepInChatMessage() != nil:
+		msg.GetKeepInChatMessage() != nil,
+		msg.GetCall() != nil,
+		msg.GetCallLogMesssage() != nil,
+		msg.GetBcallMessage() != nil,
+		msg.GetMessageHistoryBundle() != nil,
+		msg.GetMessageHistoryNotice() != nil,
+		msg.GetPlaceholderMessage() != nil,
+		msg.GetSecretEncryptedMessage() != nil,
+		msg.GetGroupRootKeyShare() != nil,
+		msg.GetRootSecretDistributeMessage() != nil:
 		return true
 	default:
 		return false

@@ -12,7 +12,10 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
@@ -232,6 +235,64 @@ func TestSetArchived_Fails(t *testing.T) {
 		if err == nil {
 			t.Errorf("SetArchived %s succeeded, want an error", name)
 		}
+	}
+}
+
+func TestSyncConversation_NeverRevertsAPinJustSetLocally(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+
+	if err := c.SetPinned(t.Context(), directChat, true); err != nil {
+		t.Fatal(err)
+	}
+	if !sink.Has("organized " + directChat.RemoteID + " true false") {
+		t.Fatalf("events = %q, want the pin reported right after SetPinned", sink.Lines())
+	}
+	sink.Take()
+
+	// A history resync reports this same chat with WhatsApp's own
+	// snapshot, which has not caught up with the pin just sent: this
+	// must not revert it.
+	media := newTestMediaStore(t)
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID: strPtr(directChat.RemoteID), Name: strPtr("Nadia"),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+		}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if sink.Has("organized " + directChat.RemoteID + " false false") {
+		t.Errorf("events = %q, want the just-set pin kept rather than reverted by a stale resync", sink.Lines())
+	}
+}
+
+func TestHandlePin_LiveEchoStillOverridesALocalPin(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+
+	if err := c.SetPinned(t.Context(), directChat, true); err != nil {
+		t.Fatal(err)
+	}
+	sink.Take()
+
+	// The phone itself unpinned the chat: a live echo is a real,
+	// current update and must always be trusted, even over a pin this
+	// process set a moment ago.
+	jid, err := jidFromRemoteID(directChat.RemoteID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
+
+	if !sink.Has("organized " + directChat.RemoteID + " false false") {
+		t.Errorf("events = %q, want the live unpin to take effect", sink.Lines())
 	}
 }
 

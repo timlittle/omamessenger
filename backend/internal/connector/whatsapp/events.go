@@ -28,17 +28,25 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 	return dev.onEvent(func(evt any) {
 		switch e := evt.(type) {
 		case *events.Receipt:
-			c.receipt(ctx, sink, e)
+			// Lane B (delivery and read progress for a message this
+			// account sent) and lane A (this account's own read, synced
+			// from another of its devices) each act on the field of e
+			// that is theirs and ignore the rest, so both always run:
+			// see receipt's and handleReceipt's own doc comments.
+			c.receipt(ctx, sink, dev, e)
+			c.handleReceipt(ctx, sink, dev, e)
 		case *events.HistorySync:
 			c.handleHistorySync(ctx, sink, dev, media, e)
 		case *events.Message:
 			c.handleMessage(ctx, sink, dev, media, e)
+		case *events.UndecryptableMessage:
+			c.handleUndecryptable(ctx, sink, dev, e)
 		case *events.ChatPresence:
-			c.handleChatPresence(ctx, sink, e)
+			c.handleChatPresence(ctx, sink, dev, e)
 		case *events.Pin:
-			c.handlePin(ctx, sink, e)
+			c.handlePin(ctx, sink, dev, e)
 		case *events.Archive:
-			c.handleArchive(ctx, sink, e)
+			c.handleArchive(ctx, sink, dev, e)
 		default:
 			c.handleNameEvent(ctx, sink, dev, evt)
 		}
@@ -51,9 +59,9 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 func (c *Connector) handleNameEvent(ctx context.Context, sink connector.Sink, dev device, evt any) {
 	switch e := evt.(type) {
 	case *events.Contact:
-		c.handleContactUpdate(ctx, sink, e)
+		c.handleContactUpdate(ctx, sink, dev, e)
 	case *events.PushName:
-		c.handlePushNameUpdate(ctx, sink, e)
+		c.handlePushNameUpdate(ctx, sink, dev, e)
 	case *events.AppStateSyncComplete:
 		c.handleAppStateSyncComplete(ctx, sink, dev, e)
 	case *events.Mute:
