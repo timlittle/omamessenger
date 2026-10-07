@@ -17,9 +17,18 @@ import (
 // "status tg connected" or "incoming user:42:99 7", and keeps earlier
 // messages by conversation.
 type Sink struct {
-	mu      sync.Mutex
-	lines   []string
-	history map[string][]domain.Message
+	mu       sync.Mutex
+	lines    []string
+	history  map[string][]domain.Message
+	live     map[string][]domain.Message
+	outgoing map[string][]OutgoingUpdate
+}
+
+// OutgoingUpdate is one delivery status reported for a message the local
+// side sent, with the service's id for it once known.
+type OutgoingUpdate struct {
+	RemoteID string
+	Status   string
 }
 
 var _ connector.Sink = (*Sink)(nil)
@@ -87,9 +96,31 @@ func (s *Sink) Conversation(_ context.Context, c domain.Conversation) {
 	s.record("conversation %s %s", c.RemoteID, c.Title)
 }
 
-// Incoming records a new message.
+// Incoming records a new message and keeps it, like History does for
+// earlier ones, so a test can inspect what a connector reported live.
 func (s *Sink) Incoming(_ context.Context, _, remote string, m domain.Message) {
 	s.record("incoming %s %s", remote, m.RemoteID)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.live == nil {
+		s.live = map[string][]domain.Message{}
+	}
+	s.live[remote] = append(s.live[remote], m)
+}
+
+// LiveMessages returns the live messages reported, by conversation.
+func (s *Sink) LiveMessages() map[string][]domain.Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := make(map[string][]domain.Message, len(s.live))
+	for remote, messages := range s.live {
+		out[remote] = slices.Clone(messages)
+	}
+
+	return out
 }
 
 // History records an earlier message and keeps it.
@@ -105,9 +136,27 @@ func (s *Sink) History(_ context.Context, _, remote string, m domain.Message) {
 	s.history[remote] = append(s.history[remote], m)
 }
 
-// OutgoingStatus records a change to a sent message.
+// OutgoingStatus records a change to a sent message and keeps the update
+// so a test can check the sequence of statuses for that message.
 func (s *Sink) OutgoingStatus(_ context.Context, localID, remoteID, status string) {
 	s.record("outgoing %s %s %s", localID, remoteID, status)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.outgoing == nil {
+		s.outgoing = map[string][]OutgoingUpdate{}
+	}
+	s.outgoing[localID] = append(s.outgoing[localID], OutgoingUpdate{RemoteID: remoteID, Status: status})
+}
+
+// Outgoing returns the delivery updates recorded for a message we sent, in
+// the order they arrived.
+func (s *Sink) Outgoing(localMessageID string) []OutgoingUpdate {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return slices.Clone(s.outgoing[localMessageID])
 }
 
 // Typing records someone starting or stopping typing.

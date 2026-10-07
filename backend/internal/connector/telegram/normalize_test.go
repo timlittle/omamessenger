@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -131,6 +132,38 @@ func TestOwnName_IsThePersonNotTheirSavedMessages(t *testing.T) {
 	if got := ownName(&tg.User{Self: true, FirstName: "Tim"}); got != "Tim" {
 		t.Errorf("ownName = %q, want Tim", got)
 	}
+}
+
+// FuzzMessage checks that message never panics on a message Telegram
+// sends, whatever its id, date, text or outgoing flag, and always returns
+// some text, since every stored message needs one.
+func FuzzMessage(f *testing.F) {
+	f.Add(10, "hi", false, 1_800_000_000)
+	f.Add(12, "", true, 2)
+	f.Add(13, "  ", false, 3)
+
+	f.Fuzz(func(t *testing.T, id int, text string, out bool, date int) {
+		msg := &tg.Message{ID: id, Date: date, Message: text, Out: out, PeerID: &tg.PeerUser{UserID: 42}}
+		got := message(msg, testEntities())
+		if got.Text == "" {
+			t.Errorf("message(%+v) produced no text", msg)
+		}
+	})
+}
+
+// FuzzMessageText checks that messageText never panics on a message's raw
+// text and passes real text through unchanged.
+func FuzzMessageText(f *testing.F) {
+	for _, text := range []string{"", " ", "hello", "  multi\nline  ", "emoji 👍"} {
+		f.Add(text)
+	}
+
+	f.Fuzz(func(t *testing.T, text string) {
+		got := messageText(&tg.Message{Message: text})
+		if strings.TrimSpace(text) != "" && got != text {
+			t.Errorf("messageText(%q) = %q, want it unchanged", text, got)
+		}
+	})
 }
 
 func TestMessageText_LabelsMediaWithoutACaption(t *testing.T) {

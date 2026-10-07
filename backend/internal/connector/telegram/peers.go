@@ -30,12 +30,17 @@ func remoteID(peer tg.InputPeerClass) string {
 }
 
 // inputPeer reads a remote id back into the peer Telegram's API takes.
+// Each number must be in the exact form remoteID writes it in, such as
+// "0" rather than "00" or "+0": a remote id is compared as a string
+// elsewhere, such as when the store recognises a redelivered message, so
+// a non-canonical id that parses to the same number but round-trips to a
+// different string would break that comparison.
 func inputPeer(id string) (tg.InputPeerClass, error) {
 	parts := strings.Split(id, ":")
 	numbers := make([]int64, 0, 2)
 	for _, part := range parts[1:] {
-		n, err := strconv.ParseInt(part, 10, 64)
-		if err != nil {
+		n, ok := canonicalInt64(part)
+		if !ok {
 			return nil, fmt.Errorf("%w: %q", errBadRemoteID, id)
 		}
 
@@ -52,4 +57,15 @@ func inputPeer(id string) (tg.InputPeerClass, error) {
 	default:
 		return nil, fmt.Errorf("%w: %q", errBadRemoteID, id)
 	}
+}
+
+// canonicalInt64 parses s as a number, reporting false if s is not the
+// exact decimal form strconv.FormatInt would produce for it.
+func canonicalInt64(s string) (int64, bool) {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || strconv.FormatInt(n, 10) != s {
+		return 0, false
+	}
+
+	return n, true
 }
