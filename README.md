@@ -37,7 +37,7 @@ OmaMessenger signs in as its own Telegram app, whose API id and hash are in the 
 
 ## Data and privacy
 
-The helper keeps its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you: `messages.db`, and in `telegram/` each Telegram account's session and the API keys it signs in with. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
+The helper keeps its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you: `messages.db`; in `telegram/` each Telegram account's session and the API keys it signs in with; and in `media/` photos and files you have opened, up to 1 GB, the least recently used dropped first. The helper opens no network port, runs no system service, and never logs message text, contacts or credentials.
 
 ## Keyboard shortcuts
 
@@ -86,6 +86,7 @@ oma-messenger-service [--data-dir DIR] [--db FILE] [--version]
 | `messages.list` | `{conversationId, before, limit}` | `{messages, hasMore}`, oldest first; `limit` 1–200, default 50. Past the oldest stored message it fetches older history from the service, which arrives as `message.added` too |
 | `messages.send` | `{conversationId, text}` | `Message`; status `failed` if the service refused it |
 | `messages.retry` | `{messageId}` | `Message`; only for failed outgoing messages |
+| `media.fetch` | `{messageId}` | `{path}`: the message's photo, video or file, downloaded into the media cache the first time |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
 | `settings.apply` | `{notifications, notificationPreview}` | `{}` |
 | `fake.inject` | `{conversationId}` | `Message`; only in the test build |

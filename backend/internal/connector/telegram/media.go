@@ -15,6 +15,8 @@ func media(m tg.MessageMediaClass) *domain.Media {
 	switch m := m.(type) {
 	case *tg.MessageMediaWebPage:
 		return linkPreview(m.Webpage)
+	case *tg.MessageMediaPhoto:
+		return photoMedia(m.Photo)
 	default:
 		return nil
 	}
@@ -41,6 +43,41 @@ func linkPreview(w tg.WebPageClass) *domain.Media {
 	}
 
 	return out
+}
+
+// photoMedia is a photo at its largest size, with its blurred preview to
+// show until it is downloaded, or nil for a photo since deleted.
+func photoMedia(p tg.PhotoClass) *domain.Media {
+	photo, ok := p.(*tg.Photo)
+	if !ok {
+		return nil
+	}
+
+	_, w, h := largest(photo.Sizes)
+
+	return &domain.Media{Kind: domain.MediaPhoto, Width: w, Height: h, Thumb: strippedThumb(photo)}
+}
+
+// largest finds a photo's largest size: its type, which names it for
+// download, and its width and height.
+func largest(sizes []tg.PhotoSizeClass) (kind string, w, h int) {
+	for _, size := range sizes {
+		var sw, sh int
+		switch s := size.(type) {
+		case *tg.PhotoSize:
+			sw, sh = s.W, s.H
+		case *tg.PhotoSizeProgressive:
+			sw, sh = s.W, s.H
+		default:
+			continue
+		}
+
+		if sw*sh > w*h {
+			kind, w, h = size.GetType(), sw, sh
+		}
+	}
+
+	return kind, w, h
 }
 
 // strippedThumb is a photo's tiny blurred preview as a base64 JPEG, or ""

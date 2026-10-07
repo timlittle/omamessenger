@@ -2,12 +2,14 @@ package app_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"sync"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
@@ -25,6 +27,7 @@ type fixture struct {
 	accounts   *fakeAccounts
 	signIn     *fakeSignIn
 	history    *fakeHistory
+	media      *fakeMedia
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -46,12 +49,13 @@ func newFixture(t *testing.T, faked bool) *fixture {
 	f := &fixture{
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
-		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{},
+		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 	}
 
 	deps := app.Deps{
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
+		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -244,6 +248,22 @@ func (h *fakeHistory) LoadOlder(ctx context.Context, conv domain.Conversation, b
 	h.older = h.older[n:]
 
 	return n, nil
+}
+
+// fakeMedia plays a service's media downloads, writing the message's remote
+// id as the file's content, or failing with err.
+type fakeMedia struct {
+	fetched []string
+	err     error
+}
+
+func (m *fakeMedia) FetchMedia(_ context.Context, _ domain.Conversation, messageRemoteID, path string) error {
+	m.fetched = append(m.fetched, messageRemoteID)
+	if m.err != nil {
+		return m.err
+	}
+
+	return os.WriteFile(path, []byte(messageRemoteID), 0o600)
 }
 
 // fakeSignIn records the sign-in answers it is given.

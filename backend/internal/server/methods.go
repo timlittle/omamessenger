@@ -42,6 +42,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"messages.list":          bind(messagesList(c)),
 		"messages.send":          bind(messagesSend(c)),
 		"messages.retry":         bind(messagesRetry(c)),
+		"media.fetch":            bind(mediaFetch(c)),
 		"ui.setFocus":            bind(uiSetFocus(c)),
 		"settings.apply":         bind(settingsApply(c)),
 	}
@@ -217,7 +218,8 @@ func messagesSend(c *app.Commands) func(context.Context, sendParams) (any, error
 	}
 }
 
-// retryParams names a failed message.
+// retryParams names one message: a failed one to retry, or one whose
+// media to fetch.
 type retryParams struct {
 	MessageID string `json:"messageId"`
 }
@@ -226,6 +228,20 @@ type retryParams struct {
 func messagesRetry(c *app.Commands) func(context.Context, retryParams) (any, error) {
 	return func(ctx context.Context, p retryParams) (any, error) {
 		return c.Retry(ctx, p.MessageID)
+	}
+}
+
+// mediaResult is where a downloaded photo, video or file is on disk.
+type mediaResult struct {
+	Path string `json:"path"`
+}
+
+// mediaFetch downloads a message's media, or finds it already cached.
+func mediaFetch(c *app.Commands) func(context.Context, retryParams) (any, error) {
+	return func(ctx context.Context, p retryParams) (any, error) {
+		path, err := c.FetchMedia(ctx, p.MessageID)
+
+		return mediaResult{Path: path}, err
 	}
 }
 

@@ -15,6 +15,8 @@ type Commands struct {
 	signIn     SignIn
 	accounts   Accounts
 	history    HistoryLoader
+	media      MediaFetcher
+	cache      MediaCache
 	fake       Injector
 	events     *events
 	ui         *uiState

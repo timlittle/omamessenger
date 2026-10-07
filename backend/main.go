@@ -14,11 +14,16 @@ import (
 	"syscall"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
+
+// mediaCacheLimit is how much downloaded media the helper keeps before it
+// drops the least recently used: 1 GiB.
+const mediaCacheLimit = 1 << 30
 
 // main runs the helper until the UI disconnects or it receives SIGTERM.
 func main() { // coverage-ignore: process entry point; run is tested
@@ -70,7 +75,8 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	srv := server.New(helperVersion, logger)
 
 	registry := &accountRegistry{db: db, dir: filepath.Join(cfg.dataDir, "telegram"), connect: telegramConnector}
-	commands, ingest, manager, err := wire(ctx, db, srv, registry)
+	media := cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit)
+	commands, ingest, manager, err := wire(ctx, db, srv, registry, media)
 	if err != nil {
 		return err
 	}
@@ -98,8 +104,8 @@ func serve(ctx context.Context, cfg config, s streams) error {
 // wire builds the application around db and srv, starting with the
 // accounts already saved. Test builds add the fake connectors; see
 // fake.go.
-func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *accountRegistry) (*app.Commands, *app.Ingest, *connector.Manager, error) {
-	deps := app.Deps{Store: db, Notifier: notify.Desktop{}, Publisher: srv, Accounts: registry}
+func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *accountRegistry, media *cache.Cache) (*app.Commands, *app.Ingest, *connector.Manager, error) {
+	deps := app.Deps{Store: db, Notifier: notify.Desktop{}, Publisher: srv, Accounts: registry, Cache: media}
 
 	connectors, injector := fakeConnectors()
 	if injector != nil {
@@ -117,7 +123,7 @@ func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *ac
 	}
 
 	registry.manager = manager
-	deps.Dispatcher, deps.SignIn, deps.History = manager, manager, manager
+	deps.Dispatcher, deps.SignIn, deps.History, deps.Media = manager, manager, manager, manager
 	commands, ingest := app.New(deps)
 
 	return commands, ingest, manager, nil

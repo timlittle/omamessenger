@@ -32,6 +32,18 @@ type HistoryLoader interface {
 	LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error)
 }
 
+// MediaFetcher downloads a message's photo, video or file from its
+// service.
+type MediaFetcher interface {
+	FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error
+}
+
+// MediaCache keeps downloaded media, filling a file the first time it is
+// asked for.
+type MediaCache interface {
+	Fetch(ctx context.Context, name string, fill func(ctx context.Context, path string) error) (string, error)
+}
+
 // SignIn hands sign-in input, such as a code, to an account's connector.
 type SignIn interface {
 	SubmitAuth(ctx context.Context, accountID, step, value string) error
@@ -77,6 +89,8 @@ type Deps struct {
 	SignIn     SignIn
 	Accounts   Accounts
 	History    HistoryLoader
+	Media      MediaFetcher
+	Cache      MediaCache
 	Fake       Injector
 }
 
@@ -87,7 +101,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, fake: d.Fake,
 		events: events, ui: state,
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}

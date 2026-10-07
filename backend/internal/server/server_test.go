@@ -80,6 +80,8 @@ func TestServer_MapsErrorsToCodes(t *testing.T) {
 		{"messages.send", map[string]any{"conversationId": 7}, server.CodeInvalidParams},
 		{"messages.send", map[string]any{"conversationId": "missing", "text": "hi"}, server.CodeNotFound},
 		{"fake.inject", map[string]any{"conversationId": "chat"}, server.CodeNotFound},
+		{"media.fetch", map[string]any{"messageId": " "}, server.CodeInvalidParams},
+		{"media.fetch", map[string]any{"messageId": "missing"}, server.CodeNotFound},
 	}
 
 	for _, tt := range tests {

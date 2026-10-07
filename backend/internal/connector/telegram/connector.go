@@ -44,6 +44,7 @@ var (
 	_ connector.Connector     = (*Connector)(nil)
 	_ connector.Authenticator = (*Connector)(nil)
 	_ connector.HistoryLoader = (*Connector)(nil)
+	_ connector.MediaFetcher  = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose credentials and session

@@ -68,6 +68,19 @@ func (c *withHistory) LoadOlder(_ context.Context, _ domain.Conversation, before
 	return c.count, nil
 }
 
+// withMedia is a connector that downloads media, recording which message
+// and where to.
+type withMedia struct {
+	fakeConnector
+	fetched []string
+}
+
+func (c *withMedia) FetchMedia(_ context.Context, _ domain.Conversation, messageRemoteID, path string) error {
+	c.fetched = append(c.fetched, messageRemoteID+" "+path)
+
+	return nil
+}
+
 // accountList records upserted account ids, failing when err is set.
 type accountList struct {
 	ids []string

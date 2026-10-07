@@ -80,6 +80,10 @@ linters:
             - github.com/sourcegraph/jsonrpc2
             - github.com/timlittle/omamessenger/backend/internal/app$
             - github.com/timlittle/omamessenger/backend/internal/domain$
+        cache:
+          list-mode: strict
+          files: ["**/backend/internal/cache/*.go", "!$test"]
+          allow: [$gostd]
         notify:
           list-mode: strict
           files: ["**/backend/internal/notify/*.go", "!$test"]

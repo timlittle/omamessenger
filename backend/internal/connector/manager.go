@@ -26,6 +26,9 @@ var ErrNoConnector = errors.New("no connector for account")
 // ErrDuplicateAccount reports a connector for an account already served.
 var ErrDuplicateAccount = errors.New("account already has a connector")
 
+// ErrNoMedia reports a media download from a connector that has none.
+var ErrNoMedia = errors.New("connector does not download media")
+
 // ErrNoAuthentication reports sign-in input for a connector that does not
 // sign in.
 var ErrNoAuthentication = errors.New("connector does not sign in")
@@ -194,6 +197,22 @@ func (m *Manager) LoadOlder(ctx context.Context, conv domain.Conversation, befor
 	}
 
 	return loader.LoadOlder(ctx, conv, beforeRemoteID, limit)
+}
+
+// FetchMedia asks the conversation's connector to download a message's
+// media to path.
+func (m *Manager) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	fetcher, ok := c.(MediaFetcher)
+	if !ok {
+		return fmt.Errorf("connector: %w: %q", ErrNoMedia, conv.AccountID)
+	}
+
+	return fetcher.FetchMedia(ctx, conv, messageRemoteID, path)
 }
 
 // SubmitAuth hands sign-in input, such as a code, to the connector for

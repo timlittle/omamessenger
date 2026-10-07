@@ -293,6 +293,33 @@ func TestLoadOlder_AsksConnectorsThatKeepHistory(t *testing.T) {
 	})
 }
 
+func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withMedia{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+
+		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "tg"}, "40", "/tmp/x.part"); err != nil {
+			t.Fatal(err)
+		}
+
+		if !slices.Equal(tg.fetched, []string{"40 /tmp/x.part"}) {
+			t.Errorf("fetched %v", tg.fetched)
+		}
+
+		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "plain"}, "40", "/tmp/x"); !errors.Is(err, connector.ErrNoMedia) {
+			t.Errorf("FetchMedia from a connector without media = %v, want ErrNoMedia", err)
+		}
+
+		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "nobody"}, "40", "/tmp/x"); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("FetchMedia for an unknown account = %v", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
 func TestAdd_GivesUpWhenTheManagerIsNotRunning(t *testing.T) {
 	t.Parallel()
 

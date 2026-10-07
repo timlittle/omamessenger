@@ -44,6 +44,14 @@ type HistoryLoader interface {
 	LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error)
 }
 
+// MediaFetcher is a Connector that can download a message's photo, video
+// or file.
+type MediaFetcher interface {
+	// FetchMedia writes the media of the message the service knows as
+	// messageRemoteID to path.
+	FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error
+}
+
 // AuthStep is what a signing-in connector needs from the user next.
 type AuthStep struct {
 	// Kind is "qr", "phone", "code" or "password".
