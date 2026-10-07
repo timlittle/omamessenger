@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app/policy"
@@ -10,16 +11,30 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
+// markReadDebounce delays telling a conversation's service it was read
+// while the user keeps chatting, so a burst of arriving messages produces
+// one MarkRead call instead of one per message.
+const markReadDebounce = 500 * time.Millisecond
+
+// markReadTimeout bounds the debounced MarkRead call, so a connector that
+// never answers cannot leave the timer's goroutine running forever.
+const markReadTimeout = 10 * time.Second
+
 // Ingest stores updates from connectors and publishes them to the UI.
 // Updates for unknown accounts or conversations are dropped: a connector
 // reports a conversation before its messages. Storage errors are dropped
 // too, because a connector has no way to act on them; the next update
 // brings the UI up to date.
 type Ingest struct {
-	store    *store.Store
-	notifier Notifier
-	events   *events
-	ui       *uiState
+	store      *store.Store
+	notifier   Notifier
+	dispatcher Dispatcher
+	events     *events
+	ui         *uiState
+
+	mu          sync.Mutex
+	pendingRead *time.Timer
+	pendingConv domain.Conversation
 }
 
 var _ connector.Sink = (*Ingest)(nil)
@@ -51,7 +66,9 @@ func (in *Ingest) Conversation(ctx context.Context, c domain.Conversation) {
 
 // Incoming records a live message, counting it towards the conversation's
 // unread total. If the user is looking at its conversation it is read at
-// once; otherwise it may notify.
+// once, locally and, debounced, with the service, so a message read
+// while chatting never leaves the service's own count non-zero to
+// resurrect the badge later; otherwise it may notify.
 func (in *Ingest) Incoming(ctx context.Context, accountID, conversationRemoteID string, m domain.Message) {
 	conv, m, before, ok := in.save(ctx, accountID, conversationRemoteID, m, true)
 	if !ok {
@@ -61,6 +78,7 @@ func (in *Ingest) Incoming(ctx context.Context, accountID, conversationRemoteID 
 	arrival := in.arrival(conv, m)
 	if policy.MarkReadOnArrival(arrival) {
 		_, _ = in.store.MarkRead(ctx, conv.ID) // see the Ingest comment on dropped errors
+		in.scheduleMarkRead(conv)
 	}
 
 	in.events.publish(ctx, EventMessageAdded, m)
@@ -161,10 +179,23 @@ func distinctConversations(messages []domain.Message) []string {
 }
 
 // Unread takes the service's unread count for a conversation, publishing
-// it only when it changed.
+// it only when it changed. A non-zero count for the conversation the user
+// is looking at right now is never shown: it means the service has not
+// caught up with a read reported while its debounce was still pending, or
+// a sync race, so it is marked read again, locally and with the service,
+// rather than left to resurrect the badge.
 func (in *Ingest) Unread(ctx context.Context, accountID, conversationRemoteID string, count int) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
 	if err != nil {
+		return
+	}
+
+	if count > 0 && in.looking(conv.ID) {
+		before := in.events.unreadTotal(ctx)
+		if changed, err := in.store.MarkRead(ctx, conv.ID); err == nil && changed {
+			in.events.conversationChanged(ctx, conv.ID, before)
+		}
+		in.scheduleMarkRead(conv)
 		return
 	}
 
@@ -250,6 +281,45 @@ func (in *Ingest) save(ctx context.Context, accountID, remoteID string, m domain
 	m, inserted, err := add(ctx, m)
 
 	return conv, m, before, err == nil && inserted
+}
+
+// looking reports whether the user is focused on conversationID with the
+// window active right now.
+func (in *Ingest) looking(conversationID string) bool {
+	_, focused, windowActive := in.ui.snapshot()
+
+	return policy.MarkReadOnArrival(policy.Input{WindowActive: windowActive, Focused: focused == conversationID})
+}
+
+// scheduleMarkRead reports conv as read to its service after
+// markReadDebounce, extending the wait if another message arrives first
+// so a burst produces one call rather than one per message.
+func (in *Ingest) scheduleMarkRead(conv domain.Conversation) {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+
+	in.pendingConv = conv
+	if in.pendingRead != nil {
+		in.pendingRead.Reset(markReadDebounce)
+		return
+	}
+
+	in.pendingRead = time.AfterFunc(markReadDebounce, in.flushMarkRead)
+}
+
+// flushMarkRead sends the debounced MarkRead call for the most recently
+// scheduled conversation, on its own background context: nothing in
+// whichever call triggered the schedule survives the wait.
+func (in *Ingest) flushMarkRead() {
+	in.mu.Lock()
+	conv := in.pendingConv
+	in.pendingRead = nil
+	in.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), markReadTimeout)
+	defer cancel()
+
+	_ = in.dispatcher.MarkRead(ctx, conv) // best effort; a later Unread sync corrects any miss
 }
 
 // arrival describes a live message arriving under the current UI state.

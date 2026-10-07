@@ -162,7 +162,7 @@ func New(d Deps) (*Commands, *Ingest) {
 		outgoing: d.Outgoing, clipboard: d.Clipboard,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 	}
-	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}
+	ingest := &Ingest{store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state}
 
 	return commands, ingest
 }

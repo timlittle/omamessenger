@@ -3,6 +3,8 @@ package app_test
 import (
 	"slices"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -105,6 +107,58 @@ func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 	if seen, _ := f.store.Conversation(ctx, chat.ID); seen.Unread != 0 {
 		t.Errorf("focused chat unread = %d, want 0", seen.Unread)
 	}
+}
+
+// TestIncoming_ReportsReadToTheServiceWhenFocused reproduces messages
+// piling up unread in a conversation the user is actively chatting in:
+// marking it read locally is not enough, because the service's own
+// unread count, synced back later through Unread, would otherwise still
+// be non-zero and resurrect the badge. A burst of messages while focused
+// must still produce only one MarkRead call to the service.
+func TestIncoming_ReportsReadToTheServiceWhenFocused(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx := t.Context()
+		chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+		if err := f.commands.SetFocus(ctx, chat.ID, true); err != nil {
+			t.Fatal(err)
+		}
+
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "first"))
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-2", "second"))
+
+		if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 0 {
+			t.Errorf("unread = %d, want 0", got.Unread)
+		}
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		if got := f.dispatcher.read; !slices.Equal(got, []string{chat.ID}) {
+			t.Errorf("read receipts = %v, want one report for %s", got, chat.ID)
+		}
+	})
+}
+
+// TestIncoming_NeverReportsReadWhenNotLookingAtIt checks the service is
+// never told a conversation was read while the user is not looking at
+// it, even after the debounce window a focused read would use has passed.
+func TestIncoming_NeverReportsReadWhenNotLookingAtIt(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx := t.Context()
+		chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "first"))
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		if len(f.dispatcher.read) != 0 {
+			t.Errorf("read receipts = %v, want none", f.dispatcher.read)
+		}
+	})
 }
 
 func TestIncoming_IgnoresUnknownConversations(t *testing.T) {
@@ -283,6 +337,36 @@ func TestUnread_TakesTheServicesCount(t *testing.T) {
 	if got := f.published.take(); !slices.Equal(got, want) {
 		t.Errorf("events = %v, want %v once", got, want)
 	}
+}
+
+// TestUnread_ReMarksReadForTheOpenConversation reproduces the badge
+// reappearing on a conversation the user is still looking at: Telegram's
+// own count can report non-zero for it, for example because our read
+// report is still in flight. That must not be shown, and the service
+// should be told again rather than left out of step.
+func TestUnread_ReMarksReadForTheOpenConversation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx := t.Context()
+		chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+		if err := f.commands.SetFocus(ctx, chat.ID, true); err != nil {
+			t.Fatal(err)
+		}
+
+		f.ingest.Unread(ctx, "wa", chat.RemoteID, 3)
+
+		if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 0 {
+			t.Errorf("unread = %d, want 0", got.Unread)
+		}
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		if got := f.dispatcher.read; !slices.Equal(got, []string{chat.ID}) {
+			t.Errorf("read receipts = %v, want one report for %s", got, chat.ID)
+		}
+	})
 }
 
 func TestAccountStatus_RecordsAndPublishes(t *testing.T) {
