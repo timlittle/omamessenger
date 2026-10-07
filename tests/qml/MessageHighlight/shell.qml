@@ -300,7 +300,7 @@ ShellRoot {
     t.keyClick(Qt.Key_K);
     if (conversationController.highlightedId !== "m3")
       return Check.fail("k did not reach the failed message: got " + conversationController.highlightedId);
-    if (root.hintText("m3") !== "r reply · e react · t retry")
+    if (root.hintText("m3") !== "r reply · e react · d delete · t retry")
       return Check.fail("hint text for the failed message is \"" + root.hintText("m3") + "\"");
 
     t.keyClick(Qt.Key_T);
@@ -316,7 +316,7 @@ ShellRoot {
     t.keyClick(Qt.Key_K);
     if (conversationController.highlightedId !== "m4")
       return Check.fail("k did not reach the message with a photo: got " + conversationController.highlightedId);
-    if (root.hintText("m4") !== "r reply · e react · Enter open")
+    if (root.hintText("m4") !== "r reply · e react · d delete · Enter open")
       return Check.fail("hint text for the photo message is \"" + root.hintText("m4") + "\"");
 
     t.keyClick(Qt.Key_Return);
@@ -400,7 +400,7 @@ ShellRoot {
   // asked for rather than stubbing that call), and that p moves the
   // highlight to the message m5 replies to and scrolls there.
   function checkOpenLinkAndGoToQuote(): void {
-    if (root.hintText("m2") !== "r reply · e react · o open link")
+    if (root.hintText("m2") !== "r reply · e react · d delete · o open link")
       return Check.fail("hint text for the linked message is \"" + root.hintText("m2") + "\"");
 
     root.capturedLinks = null;
@@ -412,7 +412,7 @@ ShellRoot {
     t.keyClick(Qt.Key_K);
     t.keyClick(Qt.Key_K);
     if (conversationController.highlightedId !== "m5") return Check.fail("setup: k,k,k did not reach m5");
-    if (root.hintText("m5") !== "r reply · e react · p go to quote")
+    if (root.hintText("m5") !== "r reply · e react · d delete · p go to quote")
       return Check.fail("hint text for the reply is \"" + root.hintText("m5") + "\"");
 
     t.keyClick(Qt.Key_P);

@@ -3,6 +3,7 @@ package connector_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
@@ -123,6 +124,19 @@ type withReactor struct {
 
 func (c *withReactor) React(_ context.Context, _ domain.Conversation, messageRemoteID, emoji string) error {
 	c.reacted = append(c.reacted, messageRemoteID+" "+emoji)
+
+	return nil
+}
+
+// withDeleter is a connector that deletes messages, recording what it
+// was asked to delete.
+type withDeleter struct {
+	fakeConnector
+	deleted []string
+}
+
+func (c *withDeleter) DeleteMessages(_ context.Context, _ domain.Conversation, ids []string, forEveryone bool) error {
+	c.deleted = append(c.deleted, fmt.Sprintf("%v %t", ids, forEveryone))
 
 	return nil
 }

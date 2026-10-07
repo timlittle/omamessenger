@@ -71,6 +71,15 @@ var OWNERS = {
   'reaction.right': 'reactions',
   'reaction.accept': 'reactions',
 
+  // DeleteController: the delete question and deleting a message.
+  'message.delete': 'delete',
+  'delete.left': 'delete',
+  'delete.right': 'delete',
+  'delete.accept': 'delete',
+  'delete.everyone': 'delete',
+  'delete.forMe': 'delete',
+  'delete.cancel': 'delete',
+
   // DialogController: the new-chat dialog.
   'chat.new': 'dialog',
   'dialog.down': 'dialog',

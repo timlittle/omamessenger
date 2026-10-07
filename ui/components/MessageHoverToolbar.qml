@@ -4,8 +4,8 @@ import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 
-// The small toolbar that floats over a hovered message's top corner: a
-// button to add a reaction and one to reply. The delegate places this
+// The small toolbar that floats over a hovered message's top corner:
+// buttons to add a reaction, reply and delete. The delegate places this
 // item outside its message's own Column and fades it in with opacity, so
 // showing or hiding it never changes any message's size or position.
 // active is driven by the delegate from a hover state that covers both
@@ -24,6 +24,9 @@ Item {
   signal react()
   // reply asks the caller to start replying to this message.
   signal reply()
+  // deleteRequested asks the caller to open the delete question for
+  // this message.
+  signal deleteRequested()
 
   objectName: "hoverToolbar"
   implicitWidth: surface.implicitWidth
@@ -66,6 +69,14 @@ Item {
         tooltipText: "Reply"
         size: root.hitSize
         onClicked: root.reply()
+      }
+
+      Ui.PanelActionButton {
+        objectName: "deleteButton"
+        iconText: "🗑"
+        tooltipText: "Delete"
+        size: root.hitSize
+        onClicked: root.deleteRequested()
       }
     }
   }

@@ -750,8 +750,8 @@ ShellRoot {
     if (Check.rect(bar, delegate).x > bubble.width) return Check.fail("an incoming message's highlight bar is not on the left");
 
     if (hints.opacity <= 0) return Check.fail("highlight hints not shown while highlighted");
-    if (hints.text !== "r reply · e react") {
-      return Check.fail(`hint text is "${hints.text}", want "r reply · e react"`);
+    if (hints.text !== "r reply · e react · d delete") {
+      return Check.fail(`hint text is "${hints.text}", want "r reply · e react · d delete"`);
     }
     const hintsRect = Check.rect(hints, delegate);
     if (hintsRect.x < 1) return Check.fail(`hint row sits flush against the row's own edge and would clip: x=${hintsRect.x}`);
@@ -760,13 +760,13 @@ ShellRoot {
     delegate.message = { id: "h2", senderId: "me", senderName: "Me", text: "oops", outgoing: true, status: "failed", created: root.now };
     t.waitForRendering(delegate);
     if (Check.rect(bar, delegate).x + bar.width < delegate.width - bubble.width) return Check.fail("an outgoing message's highlight bar is not on the right");
-    if (hints.text !== "r reply · e react · t retry") return Check.fail(`hint text is "${hints.text}", want the failed-retry hint`);
+    if (hints.text !== "r reply · e react · d delete · t retry") return Check.fail(`hint text is "${hints.text}", want the failed-retry hint`);
     const outgoingHintsRect = Check.rect(hints, delegate);
     if (outgoingHintsRect.x + outgoingHintsRect.width > delegate.width - 1) return Check.fail(`an outgoing hint row sits flush against the row's own edge and would clip: right edge=${outgoingHintsRect.x + outgoingHintsRect.width}`);
 
     const photo = { kind: "photo", width: 10, height: 10, thumb: "" };
     delegate.message = { id: "h3", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo) };
-    if (hints.text !== "r reply · e react · Enter open") return Check.fail(`hint text is "${hints.text}", want the media-open hint`);
+    if (hints.text !== "r reply · e react · d delete · Enter open") return Check.fail(`hint text is "${hints.text}", want the media-open hint`);
 
     delegate.highlighted = false;
     return true;

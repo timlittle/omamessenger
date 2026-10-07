@@ -167,6 +167,40 @@ func TestContactName_IsEmptyWhenNothingIsKnown(t *testing.T) {
 	}
 }
 
+func TestPNForLID_ResolvesTheMappedPhoneJID(t *testing.T) {
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := pairedTestDevice(t, phone)
+
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	if err := dev.cli.Store.LIDs.PutLIDMapping(t.Context(), lid, phone); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := dev.pnForLID(t.Context(), lid); got != phone {
+		t.Errorf("pnForLID(lid) = %v, want %v", got, phone)
+	}
+}
+
+func TestPNForLID_IsEmptyWhenNothingIsKnown(t *testing.T) {
+	own := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := pairedTestDevice(t, own)
+
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	if got := dev.pnForLID(t.Context(), lid); !got.IsEmpty() {
+		t.Errorf("pnForLID(unmapped lid) = %v, want an empty JID", got)
+	}
+}
+
+func TestPNForLID_IsEmptyForANonLIDJID(t *testing.T) {
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := pairedTestDevice(t, phone)
+
+	other := types.NewJID("15559998888", types.DefaultUserServer)
+	if got := dev.pnForLID(t.Context(), other); !got.IsEmpty() {
+		t.Errorf("pnForLID(phone jid) = %v, want an empty JID", got)
+	}
+}
+
 func TestIsSelfChat_MatchesTheAccountsOwnPhoneJIDOrLID(t *testing.T) {
 	own := types.NewJID("15551234567", types.DefaultUserServer)
 	dev := pairedTestDevice(t, own)

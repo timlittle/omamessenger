@@ -103,6 +103,43 @@ func FuzzJIDFromRemoteID(f *testing.F) {
 	})
 }
 
+func TestChatID_CollapsesTheSelfChatRegardlessOfForm(t *testing.T) {
+	t.Parallel()
+
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	lid := types.NewJID("111222", types.HiddenUserServer)
+	dev := &fakeDevice{selfJID: phone, selfLID: lid}
+
+	for _, jid := range []types.JID{phone, lid} {
+		if got, want := chatID(t.Context(), dev, jid), remoteID(phone); got != want {
+			t.Errorf("chatID(%v) = %q, want %q", jid, got, want)
+		}
+	}
+}
+
+func TestChatID_ResolvesAMappedLIDChatToItsPhoneJID(t *testing.T) {
+	t.Parallel()
+
+	phone := types.NewJID("15557654321", types.DefaultUserServer)
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	dev := &fakeDevice{lidPhones: map[string]types.JID{lid.String(): phone}}
+
+	if got, want := chatID(t.Context(), dev, lid), remoteID(phone); got != want {
+		t.Errorf("chatID(mapped lid) = %q, want %q", got, want)
+	}
+}
+
+func TestChatID_FallsBackToTheBareLIDWhenUnmapped(t *testing.T) {
+	t.Parallel()
+
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	dev := &fakeDevice{}
+
+	if got, want := chatID(t.Context(), dev, lid), remoteID(lid); got != want {
+		t.Errorf("chatID(unmapped lid) = %q, want %q", got, want)
+	}
+}
+
 func TestKindFor_GroupServerIsGroupEverythingElseIsDirect(t *testing.T) {
 	t.Parallel()
 

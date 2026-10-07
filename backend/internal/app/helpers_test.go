@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -33,6 +34,7 @@ type fixture struct {
 	refresher  *fakeRefresher
 	organizer  *fakeOrganizer
 	reactor    *fakeReactor
+	deleter    *fakeDeleter
 	outgoing   *cache.Outgoing
 	clipboard  *fakeClipboard
 }
@@ -57,7 +59,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
-		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{},
+		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, deleter: &fakeDeleter{},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), clipboard: &fakeClipboard{},
 	}
 
@@ -65,7 +67,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor,
+		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter,
 		Outgoing: f.outgoing, Clipboard: f.clipboard,
 	}
 	if faked {
@@ -406,6 +408,24 @@ func (r *fakeReactor) React(_ context.Context, _ domain.Conversation, messageRem
 	r.reacted = append(r.reacted, messageRemoteID+" "+emoji)
 
 	return r.err
+}
+
+// fakeDeleter records the deletes it is asked for, as
+// "<conversationId> <remoteIds> <forEveryone>", failing with err when
+// it is set.
+type fakeDeleter struct {
+	mu      sync.Mutex
+	deleted []string
+	err     error
+}
+
+func (d *fakeDeleter) DeleteMessages(_ context.Context, conv domain.Conversation, remoteIDs []string, forEveryone bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.deleted = append(d.deleted, fmt.Sprintf("%s %s %t", conv.ID, strings.Join(remoteIDs, ","), forEveryone))
+
+	return d.err
 }
 
 // fakeClipboard answers a clipboard check from canned data, keyed by MIME

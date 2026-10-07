@@ -104,6 +104,14 @@ type device interface {
 	// always known once paired, unlike its LID.
 	selfChatID() string
 
+	// pnForLID resolves jid, a WhatsApp "linked id" (LID), to the phone
+	// JID whatsmeow's local LID store already maps it to, so any other
+	// chat addressed by its hidden id also always lands in the same
+	// conversation as one addressed by phone number. It returns an
+	// empty JID when jid is not a LID or nothing is known yet; it never
+	// does network I/O.
+	pnForLID(ctx context.Context, jid types.JID) types.JID
+
 	// downloadMedia downloads and decrypts a message's attachment, using
 	// the reference it was saved with (see normalize_media.go).
 	downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error)
@@ -336,6 +344,22 @@ func (d *waDevice) isSelfChat(ctx context.Context, jid types.JID) bool {
 // its LID (see isSelfChat).
 func (d *waDevice) selfChatID() string {
 	return remoteID(d.cli.Store.GetJID())
+}
+
+// pnForLID resolves jid's phone JID through whatsmeow's local LID
+// store, the same lookup contactName uses, returning an empty JID when
+// jid is not itself a LID or the mapping is not known yet.
+func (d *waDevice) pnForLID(ctx context.Context, jid types.JID) types.JID {
+	if jid.Server != types.HiddenUserServer {
+		return types.JID{}
+	}
+
+	phone, err := d.cli.Store.LIDs.GetPNForLID(ctx, jid)
+	if err != nil || phone.IsEmpty() {
+		return types.JID{}
+	}
+
+	return phone
 }
 
 // downloadMedia downloads and decrypts a message's attachment. Passing

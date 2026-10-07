@@ -42,6 +42,7 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | Enter | Open the highlighted message's photo, video or file, or play/pause its voice note |
 | r | Reply to the highlighted message |
 | e | React to the highlighted message |
+| d | Delete the highlighted message |
 | o | Open the highlighted message's link, if it has one |
 | p | Go to the message it replies to, if it is one |
 | t | Retry the highlighted message, if it failed to send |
@@ -88,6 +89,17 @@ Ctrl+W asks whether to keep OmaMessenger running in the background or quit.
 | h / l, ← / → | Move the highlight between Cancel, Quit and Keep in background |
 | Enter | Choose the highlighted answer (Keep in background by default) |
 | c / q / k | Cancel / Quit / Keep in background, straight away |
+| Esc | Cancel |
+
+## Deleting a message
+
+d, on a highlighted message, asks whether to delete it. Your own messages offer deleting for everyone; any message offers deleting for you only.
+
+| Keys | Does |
+| --- | --- |
+| h / l, ← / → | Move the highlight between the choices on offer |
+| Enter | Choose the highlighted answer (Cancel by default) |
+| e / m / n | Delete for everyone (your own messages only) / delete for me / cancel, straight away |
 | Esc | Cancel |
 
 ## Photo viewer

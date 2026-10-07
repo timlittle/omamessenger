@@ -59,6 +59,9 @@ Item {
   // reactPickerRequested asks the caller to open the emoji picker for a
   // message, from its chips row's "+" button.
   signal reactPickerRequested(string id)
+  // deleteRequested asks the caller to open the delete question for a
+  // message, from its hover toolbar's delete button.
+  signal deleteRequested(string id)
   // send reports a message the user submitted, and the id of the message
   // it answers, or "" when it answers nothing.
   signal send(string text, string replyToId)
@@ -224,6 +227,7 @@ Item {
         onQuoteOpened: remoteId => root.quoteOpened(remoteId)
         onReact: (id, emoji) => root.react(id, emoji)
         onReactPickerRequested: id => root.reactPickerRequested(id)
+        onDeleteRequested: id => root.deleteRequested(id)
       }
 
       onContentYChanged: root._checkLoadOlder()

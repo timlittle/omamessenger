@@ -123,6 +123,21 @@ type Organizer interface {
 	SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error
 }
 
+// ErrDeleteUnsupported reports a delete a Deleter's service refuses: a
+// message too old or not this account's own to revoke, or "for me"
+// asked in a channel that only ever deletes for everyone.
+var ErrDeleteUnsupported = errors.New("connector: message cannot be deleted this way")
+
+// Deleter is a Connector that can delete messages from its service.
+type Deleter interface {
+	// DeleteMessages deletes the messages named by ids from conv: for
+	// everyone, through the service, when forEveryone is true, or only
+	// for this account otherwise. A combination or a message the
+	// service will not let this account delete returns an error
+	// wrapping ErrDeleteUnsupported.
+	DeleteMessages(ctx context.Context, conv domain.Conversation, ids []string, forEveryone bool) error
+}
+
 // LogoutOnRemove is a Connector that can tell its service to unlink this
 // device before Remove deletes its local session, so removing the
 // account here also removes it from the list of devices linked on the

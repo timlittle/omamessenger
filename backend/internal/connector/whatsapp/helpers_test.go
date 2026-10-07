@@ -69,6 +69,11 @@ type fakeDevice struct {
 	// whichever JID (a phone JID or a LID) the lookup should resolve.
 	contactNames map[string]string
 
+	// lidPhones scripts pnForLID, keyed by the string form of the LID
+	// a test wants resolved to a phone JID. A LID with no entry here
+	// resolves to an empty JID, the way an unmapped one really does.
+	lidPhones map[string]types.JID
+
 	// selfJID scripts isSelfChat and selfChatID: a JID whose bare form
 	// matches it, or matches selfLID, is this account's own self-chat,
 	// and selfChatID always returns selfJID's remote id. The zero value
@@ -346,6 +351,15 @@ func (d *fakeDevice) selfChatID() string {
 	defer d.mu.Unlock()
 
 	return remoteID(d.selfJID)
+}
+
+// pnForLID returns the scripted phone JID for jid, the way the real
+// device maps a LID through whatsmeow's local LID store.
+func (d *fakeDevice) pnForLID(_ context.Context, jid types.JID) types.JID {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return d.lidPhones[jid.String()]
 }
 
 // downloadMedia records ref and reports the scripted bytes or error, or

@@ -21,6 +21,7 @@ type Commands struct {
 	refresher  MessageRefresher
 	organizer  Organizer
 	reactor    Reactor
+	deleter    Deleter
 	outgoing   OutgoingMedia
 	clipboard  ClipboardRunner
 	fake       Injector

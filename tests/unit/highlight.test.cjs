@@ -35,32 +35,32 @@ test('atOldest is true only for the last id in the array', () => {
 const message = (fields) => Object.assign({ outgoing: false, status: 'received' }, fields);
 
 test('hints names reply and react for a plain message', () => {
-  assert.strictEqual(Highlight.hints(message({})), 'r reply · e react');
+  assert.strictEqual(Highlight.hints(message({})), 'r reply · e react · d delete');
 });
 
 test('hints adds Enter open for a message carrying media', () => {
   const photo = message({ media: { kind: 'photo', width: 10, height: 10 } });
-  assert.strictEqual(Highlight.hints(photo), 'r reply · e react · Enter open');
+  assert.strictEqual(Highlight.hints(photo), 'r reply · e react · d delete · Enter open');
 });
 
 test('hints adds Enter play, not Enter open, for a voice note', () => {
   const voice = message({ media: { kind: 'voice', duration: 12 } });
-  assert.strictEqual(Highlight.hints(voice), 'r reply · e react · Enter play');
+  assert.strictEqual(Highlight.hints(voice), 'r reply · e react · d delete · Enter play');
 });
 
 test('hints adds t retry only for a failed outgoing message', () => {
   const failed = message({ outgoing: true, status: 'failed' });
-  assert.strictEqual(Highlight.hints(failed), 'r reply · e react · t retry');
+  assert.strictEqual(Highlight.hints(failed), 'r reply · e react · d delete · t retry');
 });
 
 test('hints does not add t retry for an incoming message reported as failed', () => {
   const incoming = message({ outgoing: false, status: 'failed' });
-  assert.strictEqual(Highlight.hints(incoming), 'r reply · e react');
+  assert.strictEqual(Highlight.hints(incoming), 'r reply · e react · d delete');
 });
 
 test('hints combines media and a failed retry', () => {
   const both = message({ outgoing: true, status: 'failed', media: { kind: 'file', fileName: 'a.pdf', size: 1 } });
-  assert.strictEqual(Highlight.hints(both), 'r reply · e react · Enter open · t retry');
+  assert.strictEqual(Highlight.hints(both), 'r reply · e react · d delete · Enter open · t retry');
 });
 
 test('hints adds o open link for a message with a link preview', () => {
@@ -68,21 +68,21 @@ test('hints adds o open link for a message with a link preview', () => {
   // Enter open keeps showing beside it exactly as it already did before
   // o existed; this only adds the new hint, it does not replace that one.
   const linked = message({ media: { kind: 'link', url: 'https://example.com', title: 'Example' } });
-  assert.strictEqual(Highlight.hints(linked), 'r reply · e react · Enter open · o open link');
+  assert.strictEqual(Highlight.hints(linked), 'r reply · e react · d delete · Enter open · o open link');
 });
 
 test('hints adds o open link for a plain message whose text carries a URL', () => {
   const texted = message({ text: 'see https://example.com/path for more' });
-  assert.strictEqual(Highlight.hints(texted), 'r reply · e react · o open link');
+  assert.strictEqual(Highlight.hints(texted), 'r reply · e react · d delete · o open link');
 });
 
 test('hints leaves out o open link for a message with no link', () => {
-  assert.strictEqual(Highlight.hints(message({ text: 'just words' })), 'r reply · e react');
+  assert.strictEqual(Highlight.hints(message({ text: 'just words' })), 'r reply · e react · d delete');
 });
 
 test('hints adds p go to quote for a reply', () => {
   const reply = message({ replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' } });
-  assert.strictEqual(Highlight.hints(reply), 'r reply · e react · p go to quote');
+  assert.strictEqual(Highlight.hints(reply), 'r reply · e react · d delete · p go to quote');
 });
 
 test('hints combines a link, a quote and a failed retry, in order', () => {
@@ -92,7 +92,7 @@ test('hints combines a link, a quote and a failed retry, in order', () => {
     text: 'see https://example.com',
     replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' }
   });
-  assert.strictEqual(Highlight.hints(all), 'r reply · e react · o open link · p go to quote · t retry');
+  assert.strictEqual(Highlight.hints(all), 'r reply · e react · d delete · o open link · p go to quote · t retry');
 });
 
 test('links prefers the link preview\'s own URL over the text', () => {

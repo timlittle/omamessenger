@@ -121,7 +121,7 @@ Item {
     if (!action) return false;
 
     const controllers = [listController, conversationController, composerController, photoViewerController,
-      reactionsController, dialogController, accountController, windowController];
+      reactionsController, deleteController, dialogController, accountController, windowController];
     const owner = controllers.find((c) => c.handles(action));
     if (!owner) return false;
 
@@ -138,6 +138,7 @@ Item {
       viewerOpen: photoViewerController.viewerOpen,
       paletteOpen: windowController.paletteOpen,
       reactionPickerOpen: reactionsController.pickerOpen,
+      deleteConfirmOpen: deleteController.open,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,
       composeFocused: composerController.composeFocused,
@@ -259,6 +260,12 @@ Item {
     conversation: conversationController
   }
 
+  DeleteController {
+    id: deleteController
+    service: root.service
+    conversation: conversationController
+  }
+
   DialogController {
     id: dialogController
     service: root.service
@@ -279,6 +286,7 @@ Item {
     composerController: composerController
     photoViewerController: photoViewerController
     reactionsController: reactionsController
+    deleteController: deleteController
     dialogController: dialogController
     accountController: accountController
 
@@ -354,7 +362,7 @@ Item {
           id: errorLine
           Layout.fillWidth: true
           readonly property string message: conversationController.lastError || reactionsController.lastError
-            || listController.lastError || dialogController.lastError || windowController.lastError
+            || deleteController.lastError || listController.lastError || dialogController.lastError || windowController.lastError
           visible: errorLine.message.length > 0
           text: errorLine.message
           elide: Text.ElideRight
@@ -374,6 +382,7 @@ Item {
           composerController: composerController
           photoViewerController: photoViewerController
           reactionsController: reactionsController
+          deleteController: deleteController
           dialogController: dialogController
           accountController: accountController
           windowController: windowController

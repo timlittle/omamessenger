@@ -59,6 +59,11 @@ type Reactor interface {
 	React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error
 }
 
+// Deleter deletes messages from a conversation, through its service.
+type Deleter interface {
+	DeleteMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string, forEveryone bool) error
+}
+
 // MediaCache keeps downloaded media, filling a file the first time it is
 // asked for.
 type MediaCache interface {
@@ -146,6 +151,7 @@ type Deps struct {
 	Refresher  MessageRefresher
 	Organizer  Organizer
 	Reactor    Reactor
+	Deleter    Deleter
 	Outgoing   OutgoingMedia
 	Clipboard  ClipboardRunner
 	Fake       Injector
@@ -158,7 +164,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, deleter: d.Deleter, fake: d.Fake,
 		outgoing: d.Outgoing, clipboard: d.Clipboard,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 	}

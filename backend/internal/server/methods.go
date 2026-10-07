@@ -48,6 +48,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"messages.send":             bind(messagesSend(c)),
 		"messages.retry":            bind(messagesRetry(c)),
 		"messages.react":            bind(messagesReact(c)),
+		"messages.delete":           bind(messagesDelete(c)),
 		"media.fetch":               bind(mediaFetch(c)),
 		"media.paste":               bind(mediaPaste(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
@@ -337,6 +338,22 @@ type reactParams struct {
 func messagesReact(c *app.Commands) func(context.Context, reactParams) (any, error) {
 	return func(ctx context.Context, p reactParams) (any, error) {
 		return c.React(ctx, p.MessageID, p.Emoji)
+	}
+}
+
+// deleteParams names the messages to delete from a conversation: for
+// everyone, through the service, when forEveryone is true, or only for
+// this account otherwise.
+type deleteParams struct {
+	ConversationID string   `json:"conversationId"`
+	MessageIDs     []string `json:"messageIds"`
+	ForEveryone    bool     `json:"forEveryone"`
+}
+
+// messagesDelete deletes messages from a conversation.
+func messagesDelete(c *app.Commands) func(context.Context, deleteParams) (any, error) {
+	return func(ctx context.Context, p deleteParams) (any, error) {
+		return none{}, c.DeleteMessages(ctx, p.ConversationID, p.MessageIDs, p.ForEveryone)
 	}
 }
 

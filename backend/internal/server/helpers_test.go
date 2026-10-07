@@ -48,7 +48,7 @@ func connect(t *testing.T, faked bool) *session {
 	clipboard := &fakeClipboard{}
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: clipboard,
 	}
 	if faked {
@@ -152,6 +152,11 @@ func (acceptAll) SetArchived(context.Context, domain.Conversation, bool) error {
 
 // React accepts any reaction change.
 func (acceptAll) React(context.Context, domain.Conversation, string, string) error { return nil }
+
+// DeleteMessages accepts any delete.
+func (acceptAll) DeleteMessages(context.Context, domain.Conversation, []string, bool) error {
+	return nil
+}
 
 // storeAccounts adds and removes accounts straight in the store,
 // recording the options of the last Add call so tests can check what

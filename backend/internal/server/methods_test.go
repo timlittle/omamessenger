@@ -66,6 +66,15 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("messages.react = %v", err)
 	}
 
+	if _, err := call[struct{}](t, s, "messages.delete", map[string]any{
+		"conversationId": "chat", "messageIds": []string{sent.ID}, "forEveryone": true,
+	}); err != nil {
+		t.Errorf("messages.delete = %v", err)
+	}
+	if _, err := s.store.Message(ctx, sent.ID); err == nil {
+		t.Error("message still stored after messages.delete")
+	}
+
 	muted, err := call[domain.Conversation](t, s, "conversations.setMuted", map[string]any{"conversationId": "chat", "muted": true})
 	if err != nil || !muted.Muted {
 		t.Errorf("conversations.setMuted = %+v, %v", muted, err)

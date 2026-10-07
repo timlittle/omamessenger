@@ -496,3 +496,20 @@ test('keyContext: the viewer, the palette and setup still win over the reaction 
 test('escapeAction closes the reaction picker before the dialog beneath it', () => {
   assert.strictEqual(Navigation.escapeAction({ reactionPickerOpen: true, dialogOpen: true }), 'close-reaction-picker');
 });
+
+test('keyContext returns deleteConfirm when open, above dialog, search and compose', () => {
+  const state = { deleteConfirmOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
+  assert.strictEqual(Navigation.keyContext(state), 'deleteConfirm');
+});
+
+test('keyContext: the viewer, the palette, setup and the reaction picker still win over the delete question', () => {
+  assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
+  assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, reactionPickerOpen: true, pane: 'list' }), 'reactionPicker');
+});
+
+test('escapeAction closes the delete question before the dialog beneath it, but not before the reaction picker', () => {
+  assert.strictEqual(Navigation.escapeAction({ deleteConfirmOpen: true, dialogOpen: true }), 'close-delete-confirm');
+  assert.strictEqual(Navigation.escapeAction({ deleteConfirmOpen: true, reactionPickerOpen: true }), 'close-reaction-picker');
+});

@@ -76,6 +76,9 @@ Item {
   // reactPickerRequested asks the caller to open the emoji picker for
   // this message, from the hover toolbar's "+" button.
   signal reactPickerRequested(string id)
+  // deleteRequested asks the caller to open the delete question for
+  // this message, from the hover toolbar's delete button.
+  signal deleteRequested(string id)
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
@@ -242,6 +245,7 @@ Item {
             : Theme.spacing.xs
           onReact: root.reactPickerRequested(root.message.id)
           onReply: root.replyRequested(root.message.id)
+          onDeleteRequested: root.deleteRequested(root.message.id)
 
           HoverHandler { id: toolbarHover }
         }

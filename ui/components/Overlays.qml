@@ -23,6 +23,8 @@ Item {
   property var photoViewerController: null
   // reactionsController is bound into the emoji picker.
   property var reactionsController: null
+  // deleteController is bound into the delete question.
+  property var deleteController: null
   // routeKey is forwarded to every overlay with its own key handling; see
   // Panel.qml for why it is a function property rather than a signal.
   property var routeKey: null
@@ -92,6 +94,18 @@ Item {
     onKeep: root.windowController.keepInBackground()
     onQuit: root.windowController.quit()
     onCancelled: root.windowController.cancelClose()
+  }
+
+  // Tests may build this layout without a delete controller.
+  DeleteConfirm {
+    open: root.deleteController?.open ?? false
+    targetIsOwn: root.deleteController?.targetIsOwn ?? false
+    highlightIndex: root.deleteController?.highlightIndex ?? 0
+    routeKey: root.routeKey
+    onEveryone: root.deleteController.run("delete.everyone")
+    onForMe: root.deleteController.run("delete.forMe")
+    onCancelled: root.deleteController.close()
+    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
   }
 
   // Escape cancels the close question straight through WindowController,

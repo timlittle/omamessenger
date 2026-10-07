@@ -37,6 +37,10 @@ QtObject {
   // the command palette's "react to the highlighted message" command.
   property var reactionsController: null
 
+  // deleteController is read and closed by the Escape chain, and runs
+  // the command palette's "delete the highlighted message" command.
+  property var deleteController: null
+
   // dialogController is read and closed by the Escape chain.
   property var dialogController: null
 
@@ -175,7 +179,7 @@ QtObject {
   // runCommand runs action through the controller that owns it.
   function runCommand(action: string): void {
     const controllers = [root.listController, root.conversationController, root.composerController,
-      root.photoViewerController, root.reactionsController, root.dialogController, root.accountController, root];
+      root.photoViewerController, root.reactionsController, root.deleteController, root.dialogController, root.accountController, root];
     const owner = controllers.find((c) => c && c.handles(action));
     if (owner) owner.run(action);
   }
@@ -238,6 +242,7 @@ QtObject {
       "close-palette": () => root.closePalette(),
       "close-viewer": () => { if (root.photoViewerController) root.photoViewerController.close(); },
       "close-reaction-picker": () => { if (root.reactionsController) root.reactionsController.closePicker(); },
+      "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
@@ -264,6 +269,7 @@ QtObject {
       viewerOpen: root.photoViewerController ? root.photoViewerController.viewerOpen : false,
       paletteOpen: root.paletteOpen,
       reactionPickerOpen: root.reactionsController ? root.reactionsController.pickerOpen : false,
+      deleteConfirmOpen: root.deleteController ? root.deleteController.open : false,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,
       composeFocused: root.composerController ? root.composerController.composeFocused : false,

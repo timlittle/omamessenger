@@ -5,8 +5,9 @@ package whatsapp
 // Run itself does not need to know about every event type whatsmeow can
 // report: receipts (delivery and read progress for messages this
 // account sent, see receipts.go), history sync and live messages (see
-// history.go and live.go), typing, and the pin, archive and mute changes
-// a phone makes to its own chat list. Keeping every case a single call
+// history.go and live.go), typing, the pin, archive and mute changes a
+// phone makes to its own chat list, and a message deleted "for me" on
+// another linked device (see delete.go). Keeping every case a single call
 // into another file is what keeps this switch easy to extend without
 // conflict: a new kind of event is a new case, never a change to how
 // Run wires this up.
@@ -47,6 +48,8 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 			c.handlePin(ctx, sink, dev, e)
 		case *events.Archive:
 			c.handleArchive(ctx, sink, dev, e)
+		case *events.DeleteForMe:
+			c.handleDeleteForMe(ctx, sink, dev, e)
 		default:
 			c.handleNameEvent(ctx, sink, dev, evt)
 		}

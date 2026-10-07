@@ -265,6 +265,16 @@ func (c *Connector) React(ctx context.Context, conv domain.Conversation, message
 	return nil
 }
 
+// DeleteMessages accepts any delete while the connector is running.
+// app.Commands.DeleteMessages removes the stored rows and publishes
+// their removal itself once this returns, so there is nothing further
+// to do here.
+func (c *Connector) DeleteMessages(_ context.Context, _ domain.Conversation, _ []string, _ bool) error {
+	_, err := c.current()
+
+	return err
+}
+
 // firstOlderLoad records that a conversation's older history was asked
 // for, reporting whether this is the first time.
 func (c *Connector) firstOlderLoad(remoteID string) bool {

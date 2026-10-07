@@ -4,11 +4,12 @@
 // overlay's own Escape handling can leave the window's key router stuck on
 // whatever context the overlay used, which silently breaks every shortcut
 // until the window is reopened. The overlays: the command palette, the
-// reaction picker, the in-app photo viewer, account setup (opened from the
-// palette, since there is no "?" shortcut of its own: the rail's "?"
-// button runs the same palette.commands action), account removal, and the
-// close question. Each step polls until its condition holds, because
-// several of the paths it drives answer through the helper asynchronously.
+// reaction picker, the delete question, the in-app photo viewer, account
+// setup (opened from the palette, since there is no "?" shortcut of its
+// own: the rail's "?" button runs the same palette.commands action),
+// account removal, and the close question. Each step polls until its
+// condition holds, because several of the paths it drives answer through
+// the helper asynchronously.
 import QtQuick
 import QtTest
 import Quickshell
@@ -21,6 +22,10 @@ ShellRoot {
   property int step: 0
   property int attempts: 0
   property string expected: ""
+  // _messagesBeforeDelete is the loaded message count checkDeleteConfirm
+  // records just before deleting one, for waitForMessageDeleted to
+  // compare against.
+  property int _messagesBeforeDelete: 0
 
   property var steps: [
     root.waitForList,
@@ -30,6 +35,10 @@ ShellRoot {
     root.leaveCompose,
     root.waitForHighlightAfterAlex,
     root.checkReactionPicker,
+    root.cancelDeleteConfirm,
+    root.checkDeleteConfirm,
+    root.waitForMessageDeleted,
+    root.checkShortcutAfterDelete,
     root.openMum,
     root.waitForMumOpen,
     root.leaveCompose,
@@ -141,6 +150,55 @@ ShellRoot {
     if (picker.visible) return Check.fail("Escape did not close the reaction picker");
 
     return root.checkShortcutStillWorks("closing the reaction picker");
+  }
+
+  // cancelDeleteConfirm presses "d" to open the delete question for the
+  // highlighted message, then "n" to cancel, and checks nothing was
+  // removed: the default answer must never delete a message by accident.
+  function cancelDeleteConfirm(): var {
+    const before = Check.find(root.panel(), "messageListView").count;
+
+    t.keyClick(Qt.Key_D);
+    const confirm = Check.find(root.panel(), "deleteConfirm");
+    if (!confirm || !confirm.visible) return Check.fail("d did not open the delete question");
+
+    t.keyClick(Qt.Key_N);
+    if (confirm.visible) return Check.fail("n did not cancel the delete question");
+    if (Check.find(root.panel(), "messageListView").count !== before) {
+      return Check.fail("cancelling the delete question removed a message");
+    }
+
+    return true;
+  }
+
+  // checkDeleteConfirm reopens the delete question with "d" and answers
+  // "m" (delete for me), which is always on offer regardless of who sent
+  // the highlighted message, recording the loaded count beforehand for
+  // waitForMessageDeleted to compare against once the helper answers.
+  function checkDeleteConfirm(): var {
+    root._messagesBeforeDelete = Check.find(root.panel(), "messageListView").count;
+
+    t.keyClick(Qt.Key_D);
+    const confirm = Check.find(root.panel(), "deleteConfirm");
+    if (!confirm || !confirm.visible) return Check.fail("d did not reopen the delete question");
+
+    t.keyClick(Qt.Key_M);
+    if (confirm.visible) return Check.fail("m did not close the delete question");
+
+    return true;
+  }
+
+  // waitForMessageDeleted holds until the deleted message's row is gone
+  // from the loaded timeline, the same message.removed path a deletion
+  // reported by the service on its own takes.
+  function waitForMessageDeleted(): var {
+    return Check.find(root.panel(), "messageListView").count === root._messagesBeforeDelete - 1;
+  }
+
+  // checkShortcutAfterDelete is checkShortcutStillWorks under the name
+  // this flow's own step reads better with.
+  function checkShortcutAfterDelete(): var {
+    return root.checkShortcutStillWorks("deleting the highlighted message");
   }
 
   // openMum jumps to Mum, whose newest loaded message is a photo (see

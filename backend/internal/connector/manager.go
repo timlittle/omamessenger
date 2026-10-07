@@ -37,6 +37,10 @@ var ErrNoAuthentication = errors.New("connector does not sign in")
 // support them.
 var ErrNoReactions = errors.New("connector does not support reactions")
 
+// ErrNoDeleter reports a delete asked of a connector that cannot delete
+// messages from its service.
+var ErrNoDeleter = errors.New("connector does not support deleting messages")
+
 // AccountUpserter records the accounts the Manager serves.
 type AccountUpserter interface {
 	UpsertAccount(ctx context.Context, a domain.Account) error
@@ -308,6 +312,23 @@ func (m *Manager) React(ctx context.Context, conv domain.Conversation, messageRe
 	}
 
 	return reactor.React(ctx, conv, messageRemoteID, emoji)
+}
+
+// DeleteMessages asks the conversation's connector to delete messages
+// from its service, failing with ErrNoDeleter when it cannot delete
+// messages at all.
+func (m *Manager) DeleteMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string, forEveryone bool) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	deleter, ok := c.(Deleter)
+	if !ok {
+		return fmt.Errorf("connector: %w: %q", ErrNoDeleter, conv.AccountID)
+	}
+
+	return deleter.DeleteMessages(ctx, conv, remoteIDs, forEveryone)
 }
 
 // SubmitAuth hands sign-in input, such as a code, to the connector for

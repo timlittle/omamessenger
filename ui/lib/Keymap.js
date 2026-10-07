@@ -71,6 +71,7 @@ var BINDINGS = [
   { action: 'message.open', keys: ['Enter'], contexts: ['conversation'], label: 'Open the highlighted message' },
   { action: 'message.reply', keys: ['r'], contexts: ['conversation'], label: 'Reply to the highlighted message', command: true },
   { action: 'message.react', keys: ['e'], contexts: ['conversation'], label: 'React to the highlighted message', command: true },
+  { action: 'message.delete', keys: ['d'], contexts: ['conversation'], label: 'Delete the highlighted message', command: true },
   { action: 'message.retry', keys: ['t'], contexts: ['conversation'], label: 'Retry the highlighted message', command: true },
   { action: 'message.openLink', keys: ['o'], contexts: ['conversation'], label: "Open the highlighted message's link", command: true },
   { action: 'message.goToQuote', keys: ['p'], contexts: ['conversation'], label: 'Go to the replied-to message', command: true },
@@ -143,7 +144,19 @@ var BINDINGS = [
   { action: 'close.accept', keys: ['Enter'], contexts: ['confirm'], label: 'Choose the highlighted answer', hint: true },
   { action: 'close.cancel', keys: ['c'], contexts: ['confirm'], label: 'Cancel', hint: true },
   { action: 'close.quit', keys: ['q'], contexts: ['confirm'], label: 'Quit', hint: true },
-  { action: 'close.keep', keys: ['k'], contexts: ['confirm'], label: 'Keep in background', hint: true }
+  { action: 'close.keep', keys: ['k'], contexts: ['confirm'], label: 'Keep in background', hint: true },
+
+  // The delete question: h/l move the highlight across whichever choices
+  // apply (Cancel, and, for a message this account sent, Delete for
+  // everyone, always Delete for me), Enter chooses it, and a mnemonic
+  // letter jumps straight to one. Cancel is the default highlight, so a
+  // stray Enter never deletes anything.
+  { action: 'delete.left', keys: ['h', 'Left'], contexts: ['deleteConfirm'], label: 'Previous choice' },
+  { action: 'delete.right', keys: ['l', 'Right'], contexts: ['deleteConfirm'], label: 'Next choice' },
+  { action: 'delete.accept', keys: ['Enter'], contexts: ['deleteConfirm'], label: 'Choose the highlighted answer', hint: true },
+  { action: 'delete.everyone', keys: ['e'], contexts: ['deleteConfirm'], label: 'Delete for everyone', hint: true },
+  { action: 'delete.forMe', keys: ['m'], contexts: ['deleteConfirm'], label: 'Delete for me', hint: true },
+  { action: 'delete.cancel', keys: ['n'], contexts: ['deleteConfirm'], label: 'Cancel', hint: true }
 ];
 
 // match returns the action for a key press in a context, or "". Bindings

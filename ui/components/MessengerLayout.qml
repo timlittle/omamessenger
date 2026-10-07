@@ -29,6 +29,9 @@ Item {
   // reactionsController is bound into the message list and the overlays'
   // emoji picker.
   property var reactionsController: null
+  // deleteController is bound into the message list and the overlays'
+  // delete question.
+  property var deleteController: null
   // dialogController is bound into the new-chat dialog.
   property var dialogController: null
   // accountController is bound into account setup and the empty state.
@@ -221,6 +224,7 @@ Item {
       onMediaOpen: id => root.conversationController.openMedia(id)
       onReact: (id, emoji) => root.reactionsController.react(id, emoji)
       onReactPickerRequested: id => root.reactionsController.openPicker(id)
+      onDeleteRequested: id => { if (root.deleteController) root.deleteController.openConfirm(id) }
       onSend: (text, replyToId) => root.conversationController.send(text, replyToId)
       onDraftEdited: text => root.composerController.setDraft(text)
       onReplyRequested: id => root.composerController.startReply(id)
@@ -239,6 +243,7 @@ Item {
     accountController: root.accountController
     photoViewerController: root.photoViewerController
     reactionsController: root.reactionsController
+    deleteController: root.deleteController
     routeKey: root.routeKey
     focusDefault: root.focusDefault
   }

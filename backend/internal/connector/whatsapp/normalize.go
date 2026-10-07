@@ -38,15 +38,25 @@ func remoteID(jid types.JID) string {
 }
 
 // chatID is the canonical remote id for the conversation a message, a
-// history sync entry, a receipt or an organizing change addresses: the
-// account's own self-chat always collapses to one id, dev.selfChatID(),
-// no matter whether this particular report named it by phone JID or by
-// LID, so every linked device's messages, receipts, reactions and pin
-// or archive changes land in the one "Message yourself" conversation.
-// Any other chat keeps its own JID's plain remote id.
+// history sync entry, a receipt, a revoke or delete, or an organizing
+// change addresses: the account's own self-chat always collapses to one
+// id, dev.selfChatID(), no matter whether this particular report named
+// it by phone JID or by LID, so every linked device's messages,
+// receipts, reactions and pin or archive changes land in the one
+// "Message yourself" conversation. Any other chat addressed by a LID is
+// resolved to its mapped phone JID too, when whatsmeow already knows
+// the mapping: WhatsApp's own servers address the same chat by either
+// form interchangeably, including in a revoke's own chat field, and a
+// conversation already stored under one form must not split into a
+// second under the other. A LID with no known mapping yet keeps its
+// own remote id, the only identifier available for it.
 func chatID(ctx context.Context, dev device, jid types.JID) string {
 	if dev.isSelfChat(ctx, jid) {
 		return dev.selfChatID()
+	}
+
+	if phone := dev.pnForLID(ctx, jid); !phone.IsEmpty() {
+		return remoteID(phone)
 	}
 
 	return remoteID(jid)

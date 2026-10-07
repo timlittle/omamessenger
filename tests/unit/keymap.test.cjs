@@ -53,6 +53,7 @@ const cases = [
   ['conversation', letter('h'), 0, 'h', 'pane.list'],
   ['conversation', letter('r'), 0, 'r', 'message.reply'],
   ['conversation', letter('e'), 0, 'e', 'message.react'],
+  ['conversation', letter('d'), 0, 'd', 'message.delete'],
   ['conversation', letter('t'), 0, 't', 'message.retry'],
   ['conversation', letter('r'), MOD.Shift, 'R', ''],
   ['conversation', letter('o'), 0, 'o', 'message.openLink'],
@@ -122,7 +123,16 @@ const cases = [
   ['confirm', KEY.Return, 0, '\r', 'close.accept'],
   ['confirm', letter('c'), 0, 'c', 'close.cancel'],
   ['confirm', letter('q'), 0, 'q', 'close.quit'],
-  ['confirm', letter('k'), 0, 'k', 'close.keep']
+  ['confirm', letter('k'), 0, 'k', 'close.keep'],
+
+  ['deleteConfirm', letter('h'), 0, 'h', 'delete.left'],
+  ['deleteConfirm', KEY.Left, 0, '', 'delete.left'],
+  ['deleteConfirm', letter('l'), 0, 'l', 'delete.right'],
+  ['deleteConfirm', KEY.Return, 0, '\r', 'delete.accept'],
+  ['deleteConfirm', letter('e'), 0, 'e', 'delete.everyone'],
+  ['deleteConfirm', letter('m'), 0, 'm', 'delete.forMe'],
+  ['deleteConfirm', letter('n'), 0, 'n', 'delete.cancel'],
+  ['deleteConfirm', KEY.Escape, 0, '', 'escape']
 ];
 
 for (const [context, key, modifiers, text, want] of cases) {
