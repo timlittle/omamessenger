@@ -38,6 +38,13 @@ type MediaFetcher interface {
 	FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error
 }
 
+// MessageRefresher re-reports messages already stored, so the store can
+// fill in media or a link preview a message had none of when it was
+// first synced.
+type MessageRefresher interface {
+	RefreshMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string) error
+}
+
 // MediaCache keeps downloaded media, filling a file the first time it is
 // asked for.
 type MediaCache interface {
@@ -91,6 +98,7 @@ type Deps struct {
 	History    HistoryLoader
 	Media      MediaFetcher
 	Cache      MediaCache
+	Refresher  MessageRefresher
 	Fake       Injector
 }
 
@@ -101,8 +109,8 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, fake: d.Fake,
-		events: events, ui: state,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, fake: d.Fake,
+		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, events: events, ui: state}
 

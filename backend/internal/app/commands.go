@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -17,9 +18,38 @@ type Commands struct {
 	history    HistoryLoader
 	media      MediaFetcher
 	cache      MediaCache
+	refresher  MessageRefresher
 	fake       Injector
 	events     *events
 	ui         *uiState
+	refreshed  *attemptedRefresh
+}
+
+// attemptedRefresh is the set of message ids this helper run has already
+// asked the service to refresh, so scrolling back to the same page does
+// not ask again.
+type attemptedRefresh struct {
+	mu   sync.Mutex
+	done map[string]bool
+}
+
+// take marks each of ids as attempted and returns the ones that were not
+// already, in the same order.
+func (a *attemptedRefresh) take(ids []string) []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	fresh := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if a.done[id] {
+			continue
+		}
+
+		a.done[id] = true
+		fresh = append(fresh, id)
+	}
+
+	return fresh
 }
 
 // Faked reports whether the helper runs the fake connectors of a test

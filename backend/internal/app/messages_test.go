@@ -195,6 +195,77 @@ func TestMessages_KeepsWhatItHasWhenTheServiceFails(t *testing.T) {
 	}
 }
 
+func TestMessages_FillsInMediaTheServiceReportedTooLateToStore(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	for _, m := range []domain.Message{
+		{ID: "m1", ConversationID: "chat", RemoteID: "40", Text: "[Photo]", Created: 1},
+		{ID: "m2", ConversationID: "chat", RemoteID: "41", Text: "see https://x.io/a", Created: 2},
+		{ID: "m3", ConversationID: "chat", RemoteID: "42", Text: "already has media", Created: 3, Media: &domain.Media{Kind: domain.MediaPhoto}},
+	} {
+		if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	photo := domain.Media{Kind: domain.MediaPhoto, Width: 10, Height: 10}
+	link := domain.Media{Kind: domain.MediaLink, URL: "https://x.io/a"}
+	f.refresher.toSend = map[string]domain.Message{
+		"40": {RemoteID: "40", Text: "[Photo]", Created: 1, Media: &photo},
+		"41": {RemoteID: "41", Text: "see https://x.io/a", Created: 2, Media: &link},
+	}
+
+	page, _, err := f.commands.Messages(ctx, chat.ID, "", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byID := map[string]domain.Message{}
+	for _, m := range page {
+		byID[m.ID] = m
+	}
+
+	if m := byID["m1"]; m.Media == nil || m.Media.Kind != domain.MediaPhoto {
+		t.Errorf("m1 media = %+v, want the photo filled in", m.Media)
+	}
+	if m := byID["m2"]; m.Media == nil || m.Media.Kind != domain.MediaLink {
+		t.Errorf("m2 media = %+v, want the link preview filled in", m.Media)
+	}
+
+	if want := [][]string{{"40", "41"}}; !slices.EqualFunc(f.refresher.asked, want, slices.Equal) {
+		t.Errorf("asked to refresh %v, want [[40 41]]", f.refresher.asked)
+	}
+
+	// Looking at the same page again must not ask the service a second
+	// time for messages already attempted.
+	if _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.refresher.asked) != 1 {
+		t.Errorf("asked to refresh again: %v, want only the first attempt", f.refresher.asked)
+	}
+}
+
+func TestMessages_KeepsTheStoredPageWhenRefreshingFails(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "40", Text: "[Photo]", Created: 1}); err != nil {
+		t.Fatal(err)
+	}
+	f.refresher.err = errors.New("offline")
+
+	page, more, err := f.commands.Messages(ctx, chat.ID, "", 10)
+	if err != nil || more || len(page) != 1 || page[0].ID != "m1" || page[0].Media != nil {
+		t.Fatalf("Messages with the refresher offline = %v, %t, %v; want the stored page unchanged", page, more, err)
+	}
+}
+
 func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
 	t.Parallel()
 

@@ -215,6 +215,23 @@ func (m *Manager) FetchMedia(ctx context.Context, conv domain.Conversation, mess
 	return fetcher.FetchMedia(ctx, conv, messageRemoteID, path)
 }
 
+// RefreshMessages asks the conversation's connector to re-report the
+// messages named by remoteIDs, if it keeps any; one that does not does
+// nothing.
+func (m *Manager) RefreshMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	refresher, ok := c.(MessageRefresher)
+	if !ok {
+		return nil
+	}
+
+	return refresher.RefreshMessages(ctx, conv, remoteIDs)
+}
+
 // SubmitAuth hands sign-in input, such as a code, to the connector for
 // its account.
 func (m *Manager) SubmitAuth(ctx context.Context, accountID, step, value string) error {

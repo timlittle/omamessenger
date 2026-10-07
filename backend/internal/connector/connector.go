@@ -52,6 +52,16 @@ type MediaFetcher interface {
 	FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error
 }
 
+// MessageRefresher is a Connector that can re-report messages already
+// stored, for when they were saved before the connector could report
+// their media or a link preview.
+type MessageRefresher interface {
+	// RefreshMessages re-reports the messages the service knows by
+	// remoteIDs, through the Sink's History, so the store can fill in
+	// what they were missing.
+	RefreshMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string) error
+}
+
 // AuthStep is what a signing-in connector needs from the user next.
 type AuthStep struct {
 	// Kind is "qr", "phone", "code" or "password".

@@ -50,15 +50,7 @@ func reread(ctx context.Context, api *tg.Client, conv domain.Conversation, id in
 		return nil, err
 	}
 
-	want := []tg.InputMessageClass{&tg.InputMessageID{ID: id}}
-	var result tg.MessagesMessagesClass
-	if ch, ok := peer.(*tg.InputPeerChannel); ok {
-		channel := &tg.InputChannel{ChannelID: ch.ChannelID, AccessHash: ch.AccessHash}
-		result, err = api.ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{Channel: channel, ID: want})
-	} else {
-		result, err = api.MessagesGetMessages(ctx, want)
-	}
-
+	result, err := fetchMessages(ctx, api, peer, []tg.InputMessageClass{&tg.InputMessageID{ID: id}})
 	if err != nil {
 		return nil, fmt.Errorf("telegram: fetch media: %w", err)
 	}
@@ -72,6 +64,17 @@ func reread(ctx context.Context, api *tg.Client, conv domain.Conversation, id in
 	}
 
 	return nil, fmt.Errorf("telegram: fetch media: %w", domain.ErrNotFound)
+}
+
+// fetchMessages asks Telegram for the messages named by want, from a
+// channel or an ordinary chat or user.
+func fetchMessages(ctx context.Context, api *tg.Client, peer tg.InputPeerClass, want []tg.InputMessageClass) (tg.MessagesMessagesClass, error) {
+	if ch, ok := peer.(*tg.InputPeerChannel); ok {
+		channel := &tg.InputChannel{ChannelID: ch.ChannelID, AccessHash: ch.AccessHash}
+		return api.ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{Channel: channel, ID: want})
+	}
+
+	return api.MessagesGetMessages(ctx, want)
 }
 
 // fileLocation is where Telegram keeps a message's photo, at its largest

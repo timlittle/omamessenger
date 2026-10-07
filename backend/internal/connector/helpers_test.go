@@ -81,6 +81,19 @@ func (c *withMedia) FetchMedia(_ context.Context, _ domain.Conversation, message
 	return nil
 }
 
+// withRefresh is a connector that re-reports messages, recording which
+// ones it was asked for.
+type withRefresh struct {
+	fakeConnector
+	asked [][]string
+}
+
+func (c *withRefresh) RefreshMessages(_ context.Context, _ domain.Conversation, remoteIDs []string) error {
+	c.asked = append(c.asked, remoteIDs)
+
+	return nil
+}
+
 // accountList records upserted account ids, failing when err is set.
 type accountList struct {
 	ids []string

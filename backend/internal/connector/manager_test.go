@@ -293,6 +293,33 @@ func TestLoadOlder_AsksConnectorsThatKeepHistory(t *testing.T) {
 	})
 }
 
+func TestRefreshMessages_AsksConnectorsThatKeepHistory(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withRefresh{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+
+		if err := m.RefreshMessages(ctx, domain.Conversation{AccountID: "tg"}, []string{"1", "2"}); err != nil {
+			t.Fatal(err)
+		}
+
+		if want := [][]string{{"1", "2"}}; !slices.EqualFunc(tg.asked, want, slices.Equal) {
+			t.Errorf("asked %v, want %v", tg.asked, want)
+		}
+
+		if err := m.RefreshMessages(ctx, domain.Conversation{AccountID: "plain"}, []string{"1"}); err != nil {
+			t.Errorf("RefreshMessages on a connector without it = %v, want nothing", err)
+		}
+
+		if err := m.RefreshMessages(ctx, domain.Conversation{AccountID: "nobody"}, []string{"1"}); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("RefreshMessages for an unknown account = %v", err)
+		}
+
+		cancel()
+		m.Wait()
+	})
+}
+
 func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

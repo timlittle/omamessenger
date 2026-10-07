@@ -28,6 +28,7 @@ type fixture struct {
 	signIn     *fakeSignIn
 	history    *fakeHistory
 	media      *fakeMedia
+	refresher  *fakeRefresher
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -50,12 +51,14 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
+		refresher: &fakeRefresher{},
 	}
 
 	deps := app.Deps{
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
+		Refresher: f.refresher,
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -63,6 +66,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 
 	f.commands, f.ingest = app.New(deps)
 	f.history.ingest = f.ingest
+	f.refresher.ingest = f.ingest
 
 	return f
 }
@@ -264,6 +268,32 @@ func (m *fakeMedia) FetchMedia(_ context.Context, _ domain.Conversation, message
 	}
 
 	return os.WriteFile(path, []byte(messageRemoteID), 0o600)
+}
+
+// fakeRefresher plays a service's response to being asked to re-report
+// messages: for each remote id it is given a message to report, it reports
+// that message through the ingest, as a connector does through its Sink.
+// It records every batch it was asked to refresh.
+type fakeRefresher struct {
+	ingest *app.Ingest
+	toSend map[string]domain.Message
+	asked  [][]string
+	err    error
+}
+
+func (r *fakeRefresher) RefreshMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string) error {
+	r.asked = append(r.asked, remoteIDs)
+	if r.err != nil {
+		return r.err
+	}
+
+	for _, id := range remoteIDs {
+		if m, ok := r.toSend[id]; ok {
+			r.ingest.History(ctx, conv.AccountID, conv.RemoteID, m)
+		}
+	}
+
+	return nil
 }
 
 // fakeSignIn records the sign-in answers it is given.

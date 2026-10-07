@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,6 +13,10 @@ import (
 
 // MaxPageSize is the most messages one Messages call returns.
 const MaxPageSize = 200
+
+// mediaLabels are the placeholder texts a connector gives a message whose
+// media it could not describe when it was first synced.
+var mediaLabels = []string{"[Photo]", "[Video]", "[File]", "[Voice message]"}
 
 // Messages returns up to limit messages before beforeID, oldest first, and
 // whether older ones remain. A zero limit means the default page size.
@@ -30,11 +35,59 @@ func (c *Commands) Messages(ctx context.Context, conversationID, beforeID string
 	}
 
 	page, more, err := c.store.Messages(ctx, conversationID, beforeID, limit)
-	if err != nil || more || c.history == nil {
+	if err == nil && !more && c.history != nil {
+		page, more, err = c.olderFromService(ctx, conv, beforeID, limit, page)
+	}
+	if err != nil {
 		return page, more, err
 	}
 
-	return c.olderFromService(ctx, conv, beforeID, limit, page)
+	return c.refreshStaleMedia(ctx, conv, beforeID, limit, page), more, nil
+}
+
+// refreshStaleMedia asks the service to re-report any messages in page
+// that were stored before it reported their media or a link preview, then
+// rereads the page so the caller sees what came back. Each message id is
+// asked for once per helper run; if the service fails, the stored page
+// stands, the same as a failed older-history fetch.
+func (c *Commands) refreshStaleMedia(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) []domain.Message {
+	if c.refresher == nil {
+		return page
+	}
+
+	var stale []string
+	for _, m := range page {
+		if needsRefresh(m) {
+			stale = append(stale, m.RemoteID)
+		}
+	}
+
+	fresh := c.refreshed.take(stale)
+	if len(fresh) == 0 {
+		return page
+	}
+
+	if err := c.refresher.RefreshMessages(ctx, conv, fresh); err != nil {
+		return page
+	}
+
+	reloaded, _, err := c.store.Messages(ctx, conv.ID, beforeID, limit)
+	if err != nil {
+		return page
+	}
+
+	return reloaded
+}
+
+// needsRefresh reports whether a stored message is missing media it
+// likely has: a connector's placeholder text for media, or a link worth
+// a preview.
+func needsRefresh(m domain.Message) bool {
+	if m.Media != nil || m.RemoteID == "" {
+		return false
+	}
+
+	return slices.Contains(mediaLabels, m.Text) || strings.Contains(m.Text, "://")
 }
 
 // olderFromService fetches history the store does not have yet from the
