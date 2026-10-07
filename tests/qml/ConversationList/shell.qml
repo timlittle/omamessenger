@@ -2,12 +2,18 @@
 // unread row's title is bold, a pinned row shows a pin mark and an
 // unpinned one does not, a dimmed row (shown only because show-all is on)
 // is drawn with reduced opacity and a "Hidden" label, both empty states
-// show the right text, and clicking a row emits activated() with its id.
+// show the right text, clicking a row emits activated() with its id, and
+// a row ListController keeps in place across a conversation.updated event
+// (reordering it, rather than tearing the row down and redrawing it) still
+// shows its pin and mute marks as soon as they change, not just on first
+// draw. This drives a real ListController against a scripted service, the
+// same path a pin from the command palette or from the phone takes.
 import QtQuick
 import QtTest
 import Quickshell
 import qs.Commons
 import "ui/components"
+import "ui/controllers"
 import "Check.js" as Check
 
 ShellRoot {
@@ -42,10 +48,43 @@ ShellRoot {
     }
   ]
 
+  // liveService backs the live update scenario: two chats, the older one
+  // already pinned, matching the order the real helper's conversations.list
+  // already returns them in (pinned first).
+  QtObject {
+    id: liveService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", query: "", drafts: {} })
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") callback(null, [
+        {
+          id: "p1", title: "Already Pinned", kind: "direct", service: "whatsapp", accountId: "a1",
+          unread: 0, muted: false, pinned: true, archived: false, hidden: false, lastActivity: root.now - 5000,
+          preview: "", previewSender: "", previewOutgoing: false
+        },
+        {
+          id: "p2", title: "Freshly Pinned", kind: "direct", service: "whatsapp", accountId: "a1",
+          unread: 0, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now,
+          preview: "", previewSender: "", previewOutgoing: false
+        }
+      ]);
+    }
+  }
+
+  ListController {
+    id: liveController
+    service: liveService
+  }
+
   FloatingWindow {
     id: win
     implicitWidth: Style.space(300)
-    implicitHeight: Style.space(500)
+    implicitHeight: Style.space(720)
     visible: true
 
     ConversationList {
@@ -82,6 +121,40 @@ ShellRoot {
       model: []
       query: "ticket"
     }
+
+    ConversationList {
+      id: liveList
+      x: 0
+      y: Style.space(490)
+      width: Style.space(300)
+      height: Style.space(210)
+      model: liveController.model
+      selectedId: ""
+      query: ""
+      nowMs: root.now
+    }
+  }
+
+  // settle lets ListView create and lay out delegates for a model change
+  // made just now before the next check reads them, the way the real
+  // window's own render loop would before the user sees the row.
+  Timer {
+    id: settle
+    interval: 20
+    property var callback: null
+    onTriggered: root.settled(callback)
+  }
+
+  // wait schedules fn to run once ListView has caught up with the latest
+  // model change.
+  function wait(fn: var): void {
+    settle.callback = fn;
+    settle.restart();
+  }
+
+  // settled runs fn, the body of a wait() call.
+  function settled(fn: var): void {
+    fn();
   }
 
   TestCase {
@@ -154,7 +227,96 @@ ShellRoot {
     if (JSON.stringify(root.activated) !== '["c2"]')
       return Check.fail("activated " + JSON.stringify(root.activated) + ", want [\"c2\"]");
 
-    console.log("PASS ConversationList");
-    Qt.exit(0);
+    root.checkLiveUpdates();
+  }
+
+  // checkLiveUpdates exercises ListController's in-place update path
+  // against a real ConversationList: a brand new chat arriving already
+  // pinned (an insert), an existing chat being pinned (a move above the
+  // one already pinned), the chat it displaced keeping its own mark, a
+  // mute with no reorder at all, and a chat dropping out of the standard
+  // list at the same moment a new one is inserted (so, with delegate reuse
+  // on, a stale binding would show here). Each step waits a tick for
+  // ListView to create or move the delegate before the next check reads
+  // it.
+  function checkLiveUpdates(): void {
+    liveService.event("conversation.updated", {
+      id: "p3", title: "Brand New And Pinned", kind: "direct", service: "whatsapp", accountId: "a1",
+      unread: 0, muted: false, pinned: true, archived: false, hidden: false, lastActivity: root.now + 1000,
+      preview: "", previewSender: "", previewOutgoing: false
+    });
+
+    root.wait(() => {
+      const newPin = Check.find(liveList, "row-p3") ? Check.find(Check.find(liveList, "row-p3"), "pinIcon") : null;
+      if (!newPin || !newPin.visible)
+        return Check.fail("a brand new conversation inserted already pinned does not show the pin mark");
+
+      const freshRow = Check.find(liveList, "row-p2");
+      const freshPin = freshRow ? Check.find(freshRow, "pinIcon") : null;
+      if (!freshPin || freshPin.visible)
+        return Check.fail("a chat not yet pinned already shows a pin mark");
+
+      // SetPinned on the helper both publishes a conversation.updated event
+      // and returns the same conversation as the RPC result, so the UI
+      // sees this twice back to back with no event-loop tick in between,
+      // the way a pin from the command palette actually arrives.
+      const p2Pinned = {
+        id: "p2", title: "Freshly Pinned", kind: "direct", service: "whatsapp", accountId: "a1",
+        unread: 0, muted: false, pinned: true, archived: false, hidden: false, lastActivity: root.now,
+        preview: "", previewSender: "", previewOutgoing: false
+      };
+      liveService.event("conversation.updated", p2Pinned);
+      liveService.event("conversation.updated", p2Pinned);
+
+      root.wait(() => {
+        const movedRow = Check.find(liveList, "row-p2");
+        const movedPin = movedRow ? Check.find(movedRow, "pinIcon") : null;
+        if (!movedPin || !movedPin.visible)
+          return Check.fail("pinning a chat moved it up but its row does not show the pin mark");
+
+        const displacedRow = Check.find(liveList, "row-p1");
+        const displacedPin = displacedRow ? Check.find(displacedRow, "pinIcon") : null;
+        if (!displacedPin || !displacedPin.visible)
+          return Check.fail("the chat displaced by a new pin lost its own pin mark");
+
+        liveService.event("conversation.updated", {
+          id: "p1", title: "Already Pinned", kind: "direct", service: "whatsapp", accountId: "a1",
+          unread: 0, muted: true, pinned: true, archived: false, hidden: false, lastActivity: root.now - 5000,
+          preview: "", previewSender: "", previewOutgoing: false
+        });
+
+        root.wait(() => {
+          const mutedRow = Check.find(liveList, "row-p1");
+          const muteIcon = mutedRow ? Check.find(mutedRow, "muteIcon") : null;
+          if (!muteIcon || !muteIcon.visible)
+            return Check.fail("muting a chat in place did not show its mute mark");
+
+          // Archiving p1 drops its row from the standard list (a remove)
+          // in the same moment a brand new, already-pinned chat arrives
+          // (an insert): if the list view reused p1's dropped row for the
+          // new one, a stale binding would show here.
+          liveService.event("conversation.updated", {
+            id: "p1", title: "Already Pinned", kind: "direct", service: "whatsapp", accountId: "a1",
+            unread: 0, muted: true, pinned: true, archived: true, hidden: false, lastActivity: root.now - 5000,
+            preview: "", previewSender: "", previewOutgoing: false
+          });
+          liveService.event("conversation.updated", {
+            id: "p4", title: "Also Brand New And Pinned", kind: "direct", service: "whatsapp", accountId: "a1",
+            unread: 0, muted: false, pinned: true, archived: false, hidden: false, lastActivity: root.now + 2000,
+            preview: "", previewSender: "", previewOutgoing: false
+          });
+
+          root.wait(() => {
+            const reusedRow = Check.find(liveList, "row-p4");
+            const reusedPin = reusedRow ? Check.find(reusedRow, "pinIcon") : null;
+            if (!reusedPin || !reusedPin.visible)
+              return Check.fail("a new pinned chat taking over a dropped row does not show the pin mark");
+
+            console.log("PASS ConversationList");
+            Qt.exit(0);
+          });
+        });
+      });
+    });
   }
 }
