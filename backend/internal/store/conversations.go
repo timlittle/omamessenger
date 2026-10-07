@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -94,20 +95,62 @@ func (s *Store) ConversationByRemote(ctx context.Context, accountID, remoteID st
 	return c, wrap("conversation by remote", err)
 }
 
-// Conversations lists conversations, newest activity first. A non-empty
-// query keeps those whose title or any message contains it, ignoring case,
-// and fills Match with the newest matching message.
+// conversationsByTitle lists conversations whose title matches pattern (or
+// all of them when query is empty), newest activity first. It is the whole
+// of Conversations' search when query has no word characters to look up in
+// messages_fts: an empty FTS5 MATCH argument is invalid, so a query such as
+// "_" or "%" can only match a title, the way LIKE always has.
+const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match
+	` + conversationFrom + `
+	WHERE :query = '' OR c.title LIKE :pattern ESCAPE '\'
+	ORDER BY c.last_activity DESC, c.id`
+
+// conversationsByTitleOrMessage lists conversations whose title matches
+// pattern or that have a message matching fts. A title match ranks above
+// any message match; among message matches, the most recently matching
+// conversation comes first, and bm25 relevance only breaks a tie between
+// two matches with the same timestamp. matched finds every message hit;
+// hits picks the newest one per conversation, which becomes both the
+// ranking signal and the Match snippet, read through an external-content
+// FTS5 table kept in step with messages by triggers (see migrate.go).
+const conversationsByTitleOrMessage = `WITH matched AS (
+		SELECT m.conversation_id AS conversation_id, m.text AS snippet,
+			bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
+		FROM messages_fts
+		JOIN messages m ON m.rowid = messages_fts.rowid
+		WHERE messages_fts MATCH :fts
+	), hits AS (
+		SELECT *, ROW_NUMBER() OVER (
+			PARTITION BY conversation_id ORDER BY created DESC, rowid DESC
+		) AS rn
+		FROM matched
+	)
+	SELECT ` + conversationColumns + `, hits.snippet AS match
+	` + conversationFrom + `
+	LEFT JOIN hits ON hits.conversation_id = c.id AND hits.rn = 1
+	WHERE c.title LIKE :pattern ESCAPE '\' OR hits.conversation_id IS NOT NULL
+	ORDER BY
+		CASE WHEN c.title LIKE :pattern ESCAPE '\' THEN 0 ELSE 1 END,
+		COALESCE(hits.created, -1) DESC,
+		hits.rank,
+		c.last_activity DESC, c.id`
+
+// Conversations lists conversations, newest or best match first. A
+// non-empty query keeps those whose title contains it, or that have a
+// message matching it word by word as a prefix, case and accent
+// insensitively; Match holds the newest matching message, or "" when only
+// the title matched.
 func (s *Store) Conversations(ctx context.Context, query string) ([]domain.Conversation, error) {
 	query = strings.TrimSpace(query)
 	pattern := likePattern(query)
-	rows, err := s.db.QueryContext(ctx, `SELECT * FROM (
-		SELECT `+conversationColumns+`,
-			CASE WHEN ?='' THEN NULL ELSE (SELECT m.text FROM messages m
-				WHERE m.conversation_id=c.id AND m.text LIKE ? ESCAPE '\'
-				ORDER BY m.created DESC, m.rowid DESC LIMIT 1) END AS match
-		`+conversationFrom+`)
-		WHERE ?='' OR title LIKE ? ESCAPE '\' OR match IS NOT NULL
-		ORDER BY last_activity DESC, id`, query, pattern, query, pattern)
+	fts := ftsQuery(query)
+
+	stmt, args := conversationsByTitle, []any{sql.Named("query", query), sql.Named("pattern", pattern)}
+	if fts != "" {
+		stmt, args = conversationsByTitleOrMessage, []any{sql.Named("fts", fts), sql.Named("pattern", pattern)}
+	}
+
+	rows, err := s.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, wrap("conversations", err)
 	}
@@ -115,6 +158,31 @@ func (s *Store) Conversations(ctx context.Context, query string) ([]domain.Conve
 	conversations, err := scanAll(rows, scanConversationMatch)
 
 	return conversations, wrap("conversations", err)
+}
+
+// queryWord matches a run of letters or digits in any script, the unit
+// ftsQuery turns into one FTS5 search term.
+var queryWord = regexp.MustCompile(`[\p{L}\p{N}]+`)
+
+// ftsQuery turns free-text input into an FTS5 query that matches a message
+// containing every word of query as a prefix, case and accent
+// insensitively. Each word is quoted, which FTS5 always treats as a
+// literal token rather than syntax, so quotes, "*", "-" and operator
+// keywords such as AND or NEAR in the input can never make the query
+// invalid or change its meaning. It returns "" when query has no words,
+// since an empty MATCH argument is itself invalid.
+func ftsQuery(query string) string {
+	words := queryWord.FindAllString(query, -1)
+	if len(words) == 0 {
+		return ""
+	}
+
+	terms := make([]string, len(words))
+	for i, w := range words {
+		terms[i] = `"` + w + `"*`
+	}
+
+	return strings.Join(terms, " ")
 }
 
 // MarkRead clears a conversation's unread count. changed is false when it
