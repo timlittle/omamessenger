@@ -14,6 +14,8 @@
 set -Eeuo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck source=desktop-entry.sh
+. "$repo_root/scripts/desktop-entry.sh"
 plugin_id=io.github.omamessenger
 expected_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"
 check_only=false
@@ -39,7 +41,7 @@ mkdir -p "$staging_dir/bin/dev" "$staging_dir/scripts"
 cp "$repo_root/manifest.json" "$repo_root/LICENSE" "$repo_root/helper-version" "$staging_dir/"
 cp -r "$repo_root/ui" "$staging_dir/ui"
 cp "$repo_root/bin/oma-messenger-service" "$staging_dir/bin/"
-cp "$repo_root/scripts/install-helper.sh" "$staging_dir/scripts/"
+cp "$repo_root/scripts/install-helper.sh" "$repo_root/scripts/desktop-entry.sh" "$staging_dir/scripts/"
 if [[ -x "$repo_root/bin/dev/oma-messenger-service" ]]; then
     cp "$repo_root/bin/dev/oma-messenger-service" "$staging_dir/bin/dev/"
 fi
@@ -53,6 +55,7 @@ fi
 mkdir -p "$target_dir"
 "${RSYNC:-rsync}" -a --delete "$staging_dir/" "$target_dir/"
 "${OMARCHY:-omarchy}" plugin enable "$plugin_id"
+install_desktop_entry
 if [[ "$restart" == false ]]; then
     printf 'Installed %s from %s; Omarchy reloads it in a moment\n' "$plugin_id" "$repo_root"
     exit 0

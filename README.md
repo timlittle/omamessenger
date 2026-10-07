@@ -29,6 +29,14 @@ The second command installs the helper:
 
 Open the window with `omarchy-shell shell summon io.github.omamessenger '{}'`. Remove the plugin with `omarchy plugin remove io.github.omamessenger`.
 
+Installing the helper also adds OmaMessenger to Omarchy's apps menu (**SUPER+ALT+SPACE**), so you can launch it from there like any other app. To bind it to a key instead, add a line to `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + ALT + M", "OmaMessenger", "omarchy-shell shell summon io.github.omamessenger '{}'")
+```
+
+The apps-menu entry is `~/.local/share/applications/io.github.omamessenger.desktop`; removing the plugin does not remove it, so delete that file yourself if you want it gone.
+
 ## Add your Telegram account
 
 Choose **Add an account** in the window (or in the command palette), then scan the QR code from Telegram on your phone (**Settings → Devices → Link Desktop Device**). With more than one messaging service available, a small chooser asks which one first. Or choose **Use phone number instead** and enter the code Telegram sends you. If the account has two-step verification, enter its password. Your recent chats appear once it connects, and the session stays on this computer. To remove an account, choose **Remove an account** in the command palette: it signs the account out and deletes its chats from this computer.
