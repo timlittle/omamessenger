@@ -38,18 +38,24 @@ func (c *Commands) Messages(ctx context.Context, conversationID, beforeID string
 }
 
 // olderFromService fetches history the store does not have yet from the
-// conversation's service, then pages again. If the service cannot be
-// reached, the page already loaded stands: scrolling back is not worth an
-// error.
+// conversation's service, then pages again. Older history is not new, so
+// the conversation keeps the unread count it had. If the service cannot
+// be reached, the page already loaded stands: scrolling back is not worth
+// an error.
 func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) ([]domain.Message, bool, error) {
 	oldest, err := c.store.OldestRemoteID(ctx, conv.ID)
 	if err != nil {
 		return page, false, nil
 	}
 
+	totalBefore := c.events.unreadTotal(ctx)
 	loaded, err := c.history.LoadOlder(ctx, conv, oldest, max(limit, store.DefaultPageSize))
 	if err != nil || loaded == 0 {
 		return page, false, nil
+	}
+
+	if changed, _ := c.store.SetUnread(ctx, conv.ID, conv.Unread); changed { // a failure leaves a count the next sync corrects
+		c.events.conversationChanged(ctx, conv.ID, totalBefore)
 	}
 
 	page, _, err = c.store.Messages(ctx, conv.ID, beforeID, limit)

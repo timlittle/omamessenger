@@ -1,7 +1,8 @@
 // Checks MessageTimeline against a scripted service: a message that
 // arrives as an event takes its place by time, older history at the bottom
-// and new messages at the top, and a page of older history that repeats a
-// message already shown does not show it twice.
+// and new messages at the top; a page that arrives after older history
+// already came in as events still puts its newer messages at the top; and
+// a page that repeats a message already shown does not show it twice.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -13,10 +14,13 @@ ShellRoot {
   QtObject {
     id: service
 
-    // request answers the first page, then the older page.
+    property var firstPage: null
+
+    // request holds the first page until the test answers it, and answers
+    // the older page at once.
     function request(method: string, params: var, callback: var): void {
       if (!params.before) {
-        callback(null, { hasMore: true, messages: [root.message("m50", 50), root.message("m60", 60)] });
+        service.firstPage = callback;
         return;
       }
       callback(null, { hasMore: false, messages: [root.message("m10", 10), root.message("m20", 20)] });
@@ -49,6 +53,7 @@ ShellRoot {
   function run(): void {
     timeline.loadInitial(service, "chat", () => true, false);
     timeline.upsert(root.message("m20", 20), false);
+    service.firstPage(null, { hasMore: true, messages: [root.message("m50", 50), root.message("m60", 60)] });
     timeline.upsert(root.message("m70", 70), false);
     if (root.ids() !== "m70,m60,m50,m20") {
       Check.fail("messages not placed by time: " + root.ids());

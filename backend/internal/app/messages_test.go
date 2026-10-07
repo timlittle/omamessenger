@@ -194,3 +194,23 @@ func TestMessages_KeepsWhatItHasWhenTheServiceFails(t *testing.T) {
 		t.Errorf("Messages with the service offline = %v, %t, %v; want the local page and no error", page, more, err)
 	}
 }
+
+func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.history.older = []domain.Message{
+		{ID: "m30", RemoteID: "30", Text: "c", Created: 30, Status: domain.StatusReceived},
+		{ID: "m20", RemoteID: "20", Text: "b", Created: 20, Status: domain.StatusReceived},
+	}
+
+	if _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 0 {
+		t.Errorf("unread = %d after loading older history, want 0", got.Unread)
+	}
+}

@@ -87,13 +87,19 @@ Item {
     return "";
   }
 
-  // _appendOlder adds a messages.list page, oldest-first as the helper
-  // sends it, to the end of the newest-first model. Messages already shown,
-  // which arrive as events while older history loads, are skipped.
+  // _appendOlder adds a messages.list page to the newest-first model,
+  // each message where its time puts it: older history the helper fetched
+  // for this page may already have arrived as events, so the page is not
+  // always older than what is shown. Messages already shown are skipped.
   function _appendOlder(page: var, isGroup: bool): void {
-    const shown = new Set(root._snapshot().map((m) => m.id));
+    const loaded = root._snapshot();
+    const shown = new Set(loaded.map((m) => m.id));
     for (const m of page.slice().reverse()) {
-      if (!shown.has(m.id)) messagesModel.append(m);
+      if (shown.has(m.id)) continue;
+
+      const at = Timeline.insertIndex(loaded, m);
+      loaded.splice(at, 0, m);
+      messagesModel.insert(at, m);
     }
     root._recomputeAnnotations(isGroup);
   }
