@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -235,16 +237,37 @@ func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, _ s
 	return len(older), nil
 }
 
-// FetchMedia writes a stand-in for a scripted photo to path: a small,
-// solid-colour JPEG that decodes like a real downloaded photo, so the UI
-// has something real to show rather than falling back to its "photo
-// unavailable" label.
+// FetchMedia writes a stand-in for a scripted photo or voice note to
+// path: a small, solid-colour JPEG for a photo, or a short silent Opus
+// clip for a voice note, each decoding like the real download would, so
+// the UI has something real to show or play rather than falling back to
+// its "unavailable" label. app.mediaFileName, the only place that
+// names path, always gives a voice note's own file extension, so
+// telling the two apart by path alone is enough: this connector never
+// sees the message's media kind directly.
 func (c *Connector) FetchMedia(_ context.Context, _ domain.Conversation, _, path string) error {
 	if _, err := c.current(); err != nil {
 		return err
 	}
 
-	return os.WriteFile(path, placeholderPhoto(), 0o600)
+	data := placeholderPhoto()
+	if isVoiceNotePath(path) {
+		data = placeholderVoiceNote()
+	}
+
+	return os.WriteFile(path, data, 0o600)
+}
+
+// isVoiceNotePath reports whether path names a voice note rather than a
+// photo, by its own file extension. The cache package fills a file
+// through a temporary one, suffixed ".part", before renaming it into
+// place, so that suffix is trimmed first: without it, every voice note
+// would be mistaken for a plain file and get the photo placeholder
+// instead, with the right ".ogg" name but the wrong bytes inside.
+func isVoiceNotePath(path string) bool {
+	path = strings.TrimSuffix(path, ".part")
+
+	return strings.EqualFold(filepath.Ext(path), ".ogg")
 }
 
 // React sets or clears the user's own reaction and reports it back

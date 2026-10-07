@@ -2,10 +2,12 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -153,5 +155,97 @@ func TestFetchMedia_ReportsADownloadFailure(t *testing.T) {
 	f.media.err = errors.New("offline")
 	if _, err := f.commands.FetchMedia(ctx, "m1"); !errors.Is(err, f.media.err) {
 		t.Errorf("FetchMedia = %v, want the download's error", err)
+	}
+}
+
+// TestFetchMedia_LogsAndCategorizesEveryFailureReason confirms a failed
+// download is never silent: it is logged with one of the safe reason
+// categories docs/decisions.md promises, and returned as a
+// *app.MediaFetchError carrying the same category, for the UI's
+// "Unavailable" tooltip to show.
+func TestFetchMedia_LogsAndCategorizesEveryFailureReason(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		connectorErr error
+		wantReason   app.MediaFetchReason
+	}{
+		"a reference the service never saved":      {domain.ErrNotFound, app.MediaNotFound},
+		"a downloaded file that failed to decrypt": {domain.ErrMediaDecryptFailed, app.MediaDecryptFailed},
+		"a fetch that ran out of time":             {context.DeadlineExceeded, app.MediaTimedOut},
+		"a fetch cancelled with the request":       {context.Canceled, app.MediaTimedOut},
+		"a plain network or server failure":        {errors.New("offline"), app.MediaDownloadFailed},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newFixture(t, false)
+			ctx := t.Context()
+			chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+			if _, _, err := f.store.AddMessage(ctx, domain.Message{
+				ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Voice message]",
+				Created: 1, Media: &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			f.media.err = tt.connectorErr
+			_, err := f.commands.FetchMedia(ctx, "m1")
+
+			var mediaErr *app.MediaFetchError
+			if !errors.As(err, &mediaErr) || mediaErr.Reason != tt.wantReason {
+				t.Fatalf("FetchMedia = %v, want a *MediaFetchError with reason %q", err, tt.wantReason)
+			}
+
+			lines := f.logger.take()
+			if len(lines) != 1 {
+				t.Fatalf("logged %d lines, want exactly 1", len(lines))
+			}
+
+			want := "reason=" + string(tt.wantReason)
+			if !strings.Contains(lines[0], want) || !strings.Contains(lines[0], "kind=voice") || !strings.Contains(lines[0], "service=whatsapp") {
+				t.Errorf("logged %q, want it to mention %q, kind=voice and service=whatsapp", lines[0], want)
+			}
+		})
+	}
+}
+
+// TestFetchMedia_ReportsACacheFailureWithoutCallingTheConnector confirms
+// a cache failure that never even reaches the connector, such as a full
+// disk, is still reported with its own reason, rather than being
+// mistaken for a download failure.
+func TestFetchMedia_ReportsACacheFailureWithoutCallingTheConnector(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Voice message]",
+		Created: 1, Media: &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	logger := &fakeLogger{}
+	commands, _ := app.New(app.Deps{
+		Store: f.store, Media: f.media, Cache: &fakeCache{err: errors.New("cache: disk full")}, Logger: logger,
+	})
+
+	_, err := commands.FetchMedia(ctx, "m1")
+
+	var mediaErr *app.MediaFetchError
+	if !errors.As(err, &mediaErr) || mediaErr.Reason != app.MediaCacheFailed {
+		t.Fatalf("FetchMedia = %v, want a *MediaFetchError with reason %q", err, app.MediaCacheFailed)
+	}
+	if len(f.media.fetched) != 0 {
+		t.Errorf("fetched = %v, want the connector never called for a cache failure", f.media.fetched)
+	}
+
+	lines := logger.take()
+	if len(lines) != 1 || !strings.Contains(lines[0], "reason=cache") {
+		t.Errorf("logged %v, want one line mentioning reason=cache", lines)
 	}
 }

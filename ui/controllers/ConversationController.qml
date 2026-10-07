@@ -273,9 +273,12 @@ Item {
   // the user only when they asked for the media, rather than a photo
   // fetching itself, but is always recorded on the message, so a photo
   // with no preview shows "Photo unavailable" instead of an empty box
-  // that a failed, silent auto-fetch would otherwise leave forever. The
-  // photo viewer reuses this rather than asking the helper itself, so
-  // there is one place that tracks an in-flight download.
+  // that a failed, silent auto-fetch would otherwise leave forever, and
+  // always logged to the console with its code and safe reason
+  // category, so a failed fetch is never silent even when nothing asked
+  // to see its error text. The photo viewer reuses this rather than
+  // asking the helper itself, so there is one place that tracks an
+  // in-flight download.
   function downloadMedia(id: string, report: bool, done: var): void {
     if (root._fetching[id]) return;
 
@@ -283,12 +286,14 @@ Item {
     root.service.request("media.fetch", { messageId: id }, function(error, result) {
       delete root._fetching[id];
       if (error) {
-        timeline.setMediaFailed(id, true);
+        const reason = Rpc.errorReason(error);
+        console.warn("media.fetch failed for " + id + ": code=" + error.code + " reason=" + (reason || "unknown"));
+        timeline.setMediaFailed(id, true, reason);
         if (report) timeline.lastError = Rpc.errorText(error);
         return;
       }
 
-      timeline.setMediaFailed(id, false);
+      timeline.setMediaFailed(id, false, "");
       timeline.setMediaPath(id, result.path);
       done(result.path);
     });

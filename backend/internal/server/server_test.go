@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 )
@@ -110,6 +111,35 @@ func TestServer_MapsErrorsToCodes(t *testing.T) {
 		if _, err := call[any](t, s, tt.method, tt.params); code(err) != tt.want {
 			t.Errorf("%s(%v) = %v, want code %d", tt.method, tt.params, err, tt.want)
 		}
+	}
+}
+
+// TestMediaFetch_ReportsTheSafeReasonInItsErrorData confirms a failed
+// media.fetch still answers with the fixed "internal error" message
+// (see protocol.md), but carries its safe reason category in the
+// error's data field, for the UI's "Unavailable" tooltip to read.
+func TestMediaFetch_ReportsTheSafeReasonInItsErrorData(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithMedia(t, fakeMediaFetcher{err: domain.ErrMediaDecryptFailed}, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Voice message]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg"},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := call[any](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+	if code(err) != server.CodeInternal {
+		t.Fatalf("media.fetch = %v, want internal error", err)
+	}
+
+	data, ok := errorData[struct {
+		Reason string `json:"reason"`
+	}](err)
+	if !ok || data.Reason != "decrypt" {
+		t.Errorf("error data = %+v, ok=%v, want reason \"decrypt\"", data, ok)
 	}
 }
 

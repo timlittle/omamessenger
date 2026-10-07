@@ -77,3 +77,14 @@ test('errorText uses fixed sentences for everything else', () => {
     assert.strictEqual(Rpc.errorText(error), want);
   }
 });
+
+test('errorReason reads the safe category from an error\'s data field', () => {
+  const error = { code: Rpc.CODES.internal, message: 'internal error', data: { reason: 'decrypt' } };
+
+  assert.strictEqual(Rpc.errorReason(error), 'decrypt');
+});
+
+test('errorReason is empty for an error with no data, or none at all', () => {
+  assert.strictEqual(Rpc.errorReason({ code: Rpc.CODES.internal, message: 'internal error' }), '');
+  assert.strictEqual(Rpc.errorReason(null), '');
+});

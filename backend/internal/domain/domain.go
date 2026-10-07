@@ -41,6 +41,14 @@ const (
 // ErrNotFound reports a missing account, contact, conversation or message.
 var ErrNotFound = errors.New("not found")
 
+// ErrMediaDecryptFailed reports a downloaded attachment that failed to
+// verify or decrypt: the service answered, but the bytes it sent no
+// longer match the key or hash the message arrived with, for example
+// because the reference has expired. A connector wraps its own
+// library's decrypt error with this sentinel so the app layer can tell
+// the category apart from an outright download failure.
+var ErrMediaDecryptFailed = errors.New("media decrypt failed")
+
 // Service is a messaging service the helper can add an account for.
 type Service struct {
 	ID   string `json:"id"`

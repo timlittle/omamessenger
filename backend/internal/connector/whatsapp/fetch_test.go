@@ -15,6 +15,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"go.mau.fi/whatsmeow"
+
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -50,6 +52,69 @@ func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 
 	if len(dev.downloadCalls) != 1 || !reflect.DeepEqual(dev.downloadCalls[0], ref) {
 		t.Errorf("downloadCalls = %+v, want the stored reference", dev.downloadCalls)
+	}
+}
+
+// TestFetchMedia_DownloadsAnAudioReference confirms a voice note or other
+// audio message, saved with mediaKindAudio, downloads the same way a
+// photo does: the fake device sees the exact reference saved, with no
+// kind-based rejection anywhere between the store and the device call.
+func TestFetchMedia_DownloadsAnAudioReference(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.downloadData = []byte("decrypted voice note")
+	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
+	ref := mediaRef{
+		Kind: mediaKindAudio, DirectPath: "/v/voice", MediaKey: []byte("key"),
+		FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 9, Mimetype: "audio/ogg; codecs=opus",
+	}
+	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-voice", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "out.ogg")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-voice", path); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "decrypted voice note" {
+		t.Errorf("downloaded %q, %v, want the decrypted bytes written", got, err)
+	}
+
+	if len(dev.downloadCalls) != 1 || !reflect.DeepEqual(dev.downloadCalls[0], ref) {
+		t.Errorf("downloadCalls = %+v, want the stored audio reference", dev.downloadCalls)
+	}
+}
+
+// TestFetchMedia_ReportsDecryptFailureForAWornOutReference confirms
+// whatsmeow's own hash and HMAC errors, which mean a downloaded file no
+// longer matches the key or hash the message carried, are reported as
+// domain.ErrMediaDecryptFailed rather than left as a plain download
+// failure, so the helper's log and the UI's tooltip can say which one it
+// was.
+func TestFetchMedia_ReportsDecryptFailureForAWornOutReference(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []error{
+		whatsmeow.ErrInvalidMediaHMAC, whatsmeow.ErrInvalidMediaEncSHA256,
+		whatsmeow.ErrInvalidMediaSHA256, whatsmeow.ErrInvalidUnencryptedMediaSHA256,
+	} {
+		dev := newFakeDevice()
+		dev.downloadErr = want
+		c := connectedToWithMedia(t, dev, &connectortest.Sink{})
+		if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+			t.Fatal(err)
+		}
+
+		err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"))
+		if !errors.Is(err, domain.ErrMediaDecryptFailed) {
+			t.Errorf("FetchMedia with %v = %v, want it to also report domain.ErrMediaDecryptFailed", want, err)
+		}
+		if !errors.Is(err, want) {
+			t.Errorf("FetchMedia with %v = %v, want whatsmeow's own error kept in the chain", want, err)
+		}
 	}
 }
 

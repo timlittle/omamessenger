@@ -122,6 +122,28 @@ func TestSeed_MumHasTwoPhotosToStepBetween(t *testing.T) {
 	})
 }
 
+// TestSeed_DentistHasAVoiceMessage confirms the dentist's newest seeded
+// message carries a voice note, with the duration and file name a real
+// WhatsApp push-to-talk message would, so the real Panel has one to
+// download and play through the fake connector's own helper process.
+func TestSeed_DentistHasAVoiceMessage(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		stop := runFake(t, fake.New(), sink)
+		synctest.Wait()
+		stop()
+
+		messages := sink.Messages()["wa:dentist"]
+		newest := messages[len(messages)-1]
+		if newest.Media == nil || newest.Media.Kind != domain.MediaVoice {
+			t.Fatalf("dentist's newest message = %+v, want a voice note", newest)
+		}
+		if newest.Media.FileName != "voice-message.ogg" || newest.Media.Duration <= 0 {
+			t.Errorf("dentist's voice note = %+v, want a .ogg file name and a positive duration", newest.Media)
+		}
+	})
+}
+
 // unread counts the messages still marked received.
 func unread(messages []domain.Message) int {
 	n := 0

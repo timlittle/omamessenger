@@ -290,6 +290,11 @@ test('row keeps whether a media fetch failed, and starts not failed', () => {
   assert.strictEqual(Timeline.row({ id: 'a', mediaFailed: true }).mediaFailed, true);
 });
 
+test('row keeps a failed fetch\'s safe reason category, and starts without one', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).mediaFailedReason, '');
+  assert.strictEqual(Timeline.row({ id: 'a', mediaFailedReason: 'decrypt' }).mediaFailedReason, 'decrypt');
+});
+
 test('row keeps replyTo as a string, so every model row has the same shape', () => {
   const reply = { remoteId: '1', senderName: 'Alex', text: 'original' };
 

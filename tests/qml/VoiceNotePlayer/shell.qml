@@ -74,18 +74,25 @@ ShellRoot {
 
   // checkUnplayable verifies a note with a known failed fetch and no
   // downloaded copy disables its button and says so, rather than
-  // offering to play nothing.
+  // offering to play nothing, and that the button's tooltip names the
+  // failure's safe reason category once one is known.
   function checkUnplayable(): bool {
     player.failed = true;
     player.path = "";
 
     const button = Check.find(player, "voicePlayButton");
     if (button.enabled) return Check.fail("play button stays enabled for a note known to have failed");
+    if (button.tooltipText !== "Unavailable") return Check.fail("tooltip is \"" + button.tooltipText + "\", want plain \"Unavailable\" with no reason known");
 
     const time = Check.find(player, "voiceTimeLabel");
     if (time.text !== "Unavailable") return Check.fail("time label is \"" + time.text + "\", want \"Unavailable\"");
 
+    player.failedReason = "decrypt";
+    if (button.tooltipText !== "Unavailable — could not be verified")
+      return Check.fail("tooltip is \"" + button.tooltipText + "\", want the reason named safely");
+
     player.failed = false;
+    player.failedReason = "";
     return true;
   }
 

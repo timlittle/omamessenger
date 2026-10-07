@@ -78,7 +78,7 @@ Item {
     const loaded = root._snapshot();
     const at = loaded.findIndex((m) => m.id === message.id);
     if (at !== -1) {
-      const kept = { mediaPath: loaded[at].mediaPath, mediaFailed: loaded[at].mediaFailed };
+      const kept = { mediaPath: loaded[at].mediaPath, mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason };
       messagesModel.set(at, Timeline.row(Object.assign(kept, message)));
     } else {
       messagesModel.insert(Timeline.insertIndex(loaded, message), Timeline.row(message));
@@ -151,11 +151,17 @@ Item {
   }
 
   // setMediaFailed records whether a message's last media fetch failed,
-  // so a photo with no preview shows "Photo unavailable" instead of
-  // staying an empty box forever.
-  function setMediaFailed(id: string, failed: bool): void {
+  // so a photo with no preview shows "Photo unavailable", or a voice
+  // note shows "Unavailable", instead of staying an empty box forever.
+  // reason is the failure's safe category (see server/errors.go), kept
+  // alongside failed so the voice note player can name it; it is
+  // ignored, and left as whatever it was, when failed is false.
+  function setMediaFailed(id: string, failed: bool, reason: string): void {
     const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at !== -1) messagesModel.setProperty(at, "mediaFailed", failed);
+    if (at === -1) return;
+
+    messagesModel.setProperty(at, "mediaFailed", failed);
+    messagesModel.setProperty(at, "mediaFailedReason", failed ? reason : "");
   }
 
   // ids returns every loaded message's id, newest first, for moving the

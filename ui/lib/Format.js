@@ -282,3 +282,22 @@ function photoSize(width, height) {
 
   return `${width} × ${height}`;
 }
+
+// MEDIA_FAILURE_REASONS are the safe category words the helper's
+// media.fetch error can carry (see server/errors.go), each turned into a
+// short phrase a person can actually read in a tooltip.
+var MEDIA_FAILURE_REASONS = {
+  'not-found': 'no longer available',
+  download: 'connection problem',
+  decrypt: 'could not be verified',
+  cache: 'storage problem',
+  timeout: 'took too long'
+};
+
+// mediaFailureReason turns a media.fetch error's safe reason category
+// into a short phrase for the "Unavailable" tooltip, or "" for an
+// unrecognised or missing reason, so an older helper or a fetch that
+// failed for some other tracked reason still shows plain "Unavailable".
+function mediaFailureReason(reason) {
+  return MEDIA_FAILURE_REASONS[reason] ?? '';
+}

@@ -25,6 +25,7 @@ type Commands struct {
 	outgoing   OutgoingMedia
 	clipboard  ClipboardRunner
 	fake       Injector
+	logger     Logger
 	events     *events
 	ui         *uiState
 	refreshed  *attemptedRefresh

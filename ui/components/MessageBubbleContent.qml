@@ -125,6 +125,7 @@ Column {
     media: root.media ? root.media : ({})
     path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
     failed: visible && !!(root.message && root.message.mediaFailed)
+    failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
     available: root.voiceNotes.available
     playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id
     positionMs: playing ? root.voiceNotes.positionMs : 0

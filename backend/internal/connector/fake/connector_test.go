@@ -1,6 +1,7 @@
 package fake_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"image/color"
@@ -12,6 +13,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/connector/fake"
@@ -292,6 +294,87 @@ func TestFetchMedia_WritesTheScriptedPhoto(t *testing.T) {
 		}
 		if len(colors) < 2 {
 			t.Errorf("downloaded photo is a single flat colour, reads as a placeholder: %v", colors)
+		}
+	})
+}
+
+// TestFetchMedia_WritesTheScriptedVoiceNote confirms a voice note
+// downloads as real Ogg audio, not the photo placeholder: the bug this
+// guards against had every fetch write a JPEG regardless of the
+// message's own media kind, so a voice note's player had nothing it
+// could actually decode even though the download itself "succeeded".
+func TestFetchMedia_WritesTheScriptedVoiceNote(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
+		defer stop()
+
+		waitConnected(sink)
+		seeded := sink.Messages()["wa:dentist"]
+		newest := seeded[len(seeded)-1]
+		if newest.Media == nil || newest.Media.Kind != domain.MediaVoice {
+			t.Fatalf("dentist's newest message = %+v, want a voice note", newest)
+		}
+
+		wa, ok := suite.Connectors()[0].(connector.MediaFetcher)
+		if !ok {
+			t.Fatal("fake connector does not download media")
+		}
+
+		path := filepath.Join(t.TempDir(), "voice.ogg")
+		if err := wa.FetchMedia(t.Context(), conversation("wa-personal", "wa:dentist", domain.KindDirect), newest.RemoteID, path); err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil || len(got) == 0 {
+			t.Fatalf("downloaded %q, %v; want a file", got, err)
+		}
+
+		// "OggS" is the capture pattern every page of a real Ogg stream
+		// starts with; a JPEG's own magic bytes would never match it.
+		if !bytes.HasPrefix(got, []byte("OggS")) {
+			t.Errorf("downloaded voice note does not start with Ogg's own signature: %x", got[:min(4, len(got))])
+		}
+	})
+}
+
+// TestFetchMedia_WritesRealOggThroughTheCachesTemporaryFile confirms the
+// voice note placeholder still lands correctly when FetchMedia is driven
+// the way app.Commands.FetchMedia actually calls it: through the cache
+// package's own Fetch, which fills every download at a temporary path
+// suffixed ".part" before renaming it into place. The bug this guards
+// against told a voice note apart from a photo by a plain ".ogg" suffix,
+// which that temporary name never has, so the cache's real call shape
+// still wrote the photo placeholder under the right file name.
+func TestFetchMedia_WritesRealOggThroughTheCachesTemporaryFile(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
+		defer stop()
+
+		waitConnected(sink)
+		seeded := sink.Messages()["wa:dentist"]
+		newest := seeded[len(seeded)-1]
+
+		wa, ok := suite.Connectors()[0].(connector.MediaFetcher)
+		if !ok {
+			t.Fatal("fake connector does not download media")
+		}
+
+		fill := cache.New(t.TempDir(), 1<<20)
+		path, err := fill.Fetch(t.Context(), "voice-message.ogg", func(ctx context.Context, fillPath string) error {
+			return wa.FetchMedia(ctx, conversation("wa-personal", "wa:dentist", domain.KindDirect), newest.RemoteID, fillPath)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil || !bytes.HasPrefix(got, []byte("OggS")) {
+			t.Errorf("cached voice note = %x, %v; want it to start with Ogg's own signature", got[:min(4, len(got))], err)
 		}
 	})
 }

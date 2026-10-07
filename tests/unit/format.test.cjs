@@ -439,3 +439,17 @@ test('guessMediaKind recognizes common image and video extensions', () => {
   assert.strictEqual(Format.guessMediaKind('/tmp/notes.txt'), 'file');
   assert.strictEqual(Format.guessMediaKind('/tmp/noextension'), 'file');
 });
+
+test('mediaFailureReason turns a safe reason category into a short phrase', () => {
+  assert.strictEqual(Format.mediaFailureReason('not-found'), 'no longer available');
+  assert.strictEqual(Format.mediaFailureReason('download'), 'connection problem');
+  assert.strictEqual(Format.mediaFailureReason('decrypt'), 'could not be verified');
+  assert.strictEqual(Format.mediaFailureReason('cache'), 'storage problem');
+  assert.strictEqual(Format.mediaFailureReason('timeout'), 'took too long');
+});
+
+test('mediaFailureReason is empty for an unrecognised or missing reason', () => {
+  assert.strictEqual(Format.mediaFailureReason('bogus'), '');
+  assert.strictEqual(Format.mediaFailureReason(''), '');
+  assert.strictEqual(Format.mediaFailureReason(undefined), '');
+});

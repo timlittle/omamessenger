@@ -38,6 +38,17 @@ func (s conversationScript) history(now time.Time) []domain.Message {
 		}
 	}
 
+	s.applyScriptedMedia(messages)
+
+	return messages
+}
+
+// applyScriptedMedia turns the newest message into a photo or a voice
+// note when the script asks for one, and attaches a link preview to
+// whichever seeded text names it, mutating messages in place. Split out
+// of history to keep that function's own branching within the house
+// style's complexity limit.
+func (s conversationScript) applyScriptedMedia(messages []domain.Message) {
 	if s.lastPhoto && s.count > 0 {
 		newest := &messages[s.count-1]
 		newest.Text = "[Photo]"
@@ -49,6 +60,12 @@ func (s conversationScript) history(now time.Time) []domain.Message {
 		}
 	}
 
+	if s.lastVoice && s.count > 0 {
+		newest := &messages[s.count-1]
+		newest.Text = "[Voice message]"
+		newest.Media = &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Duration: 5}
+	}
+
 	if s.linkPreviewText != "" {
 		for i := range messages {
 			if messages[i].Text == s.linkPreviewText {
@@ -56,8 +73,6 @@ func (s conversationScript) history(now time.Time) []domain.Message {
 			}
 		}
 	}
-
-	return messages
 }
 
 // linkPreviewMedia is the stand-in link preview a real service would have

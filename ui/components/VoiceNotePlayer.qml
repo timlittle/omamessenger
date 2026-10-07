@@ -24,6 +24,9 @@ Item {
   property string path: ""
   // failed is true once a fetch for this voice note has failed outright.
   property bool failed: false
+  // failedReason is that fetch's safe reason category (see
+  // server/errors.go), "" when failed is false or the helper gave none.
+  property string failedReason: ""
   // available is false when in-window playback cannot work at all.
   property bool available: true
   // playing is true while this particular voice note is the one making
@@ -50,6 +53,11 @@ Item {
   // still no downloaded copy to play, so the button and label say so
   // instead of offering to play nothing.
   readonly property bool _unplayable: root.failed && !root.path
+  // _unavailableHint is a short, safe phrase for failedReason's category
+  // ("connection problem", "took too long", …), or "" when there is none
+  // to show, so the play button's tooltip can say why without ever
+  // showing the error itself.
+  readonly property string _unavailableHint: Format.mediaFailureReason(root.failedReason)
 
   implicitWidth: Style.space(280)
   implicitHeight: available ? playerRow.implicitHeight : fallbackRow.implicitHeight
@@ -70,7 +78,9 @@ Item {
     Ui.Button {
       objectName: "voicePlayButton"
       text: root.playing ? "⏸" : "▶"
-      tooltipText: root.playing ? "Pause voice message" : "Play voice message"
+      tooltipText: root._unplayable
+        ? ("Unavailable" + (root._unavailableHint ? " — " + root._unavailableHint : ""))
+        : (root.playing ? "Pause voice message" : "Play voice message")
       enabled: !root._unplayable
       focusable: true
       onClicked: root.opened()

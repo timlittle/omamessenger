@@ -126,6 +126,13 @@ type Notifier interface {
 	Notify(title, body, conversationID string)
 }
 
+// Logger writes one diagnostic line to the helper's stderr. *log.Logger
+// already satisfies it, so main.go wires the same logger the server
+// uses, with nothing special to construct.
+type Logger interface {
+	Printf(format string, v ...any)
+}
+
 // Publisher sends an event to the UI.
 type Publisher interface {
 	Publish(ctx context.Context, event string, data any)
@@ -155,6 +162,7 @@ type Deps struct {
 	Outgoing   OutgoingMedia
 	Clipboard  ClipboardRunner
 	Fake       Injector
+	Logger     Logger
 }
 
 // New builds the two halves of the application, which share the event
@@ -165,7 +173,7 @@ func New(d Deps) (*Commands, *Ingest) {
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, deleter: d.Deleter, fake: d.Fake,
-		outgoing: d.Outgoing, clipboard: d.Clipboard,
+		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state}

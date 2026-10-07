@@ -42,6 +42,11 @@ type conversationScript struct {
 	// older photo to step to from the newest one.
 	extraPhotoOffset int
 
+	// lastVoice makes the newest seeded message a voice note, so the UI
+	// has one to drive through the real helper and connector, rather
+	// than only through a fake controller's own data.
+	lastVoice bool
+
 	// linkPreviewText, when set, marks which seeded text carries a link
 	// preview, the way a messaging service would have fetched one from
 	// the page it links to.
@@ -87,7 +92,8 @@ var scripts = []accountScript{
 			},
 			{
 				remoteID: "wa:dentist", title: "Dr. Bartholomew Featherstonehaugh-Wainwright (Dentist)", kind: domain.KindDirect, count: 2,
-				texts: []string{"Your appointment is confirmed", "Please arrive ten minutes early"},
+				lastVoice: true,
+				texts:     []string{"Your appointment is confirmed", "Please arrive ten minutes early"},
 			},
 		},
 		contacts: []domain.Contact{

@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -74,6 +75,48 @@ func connect(t *testing.T, faked bool) *session {
 	return &session{client: client, server: srv, store: db, events: events, ingest: ingest, accounts: accounts, clipboard: clipboard}
 }
 
+// connectWithMedia serves an application like connect, but wired with a
+// MediaFetcher and MediaCache, for the one test that drives media.fetch's
+// download path all the way through the server. The other sixteen
+// connect callers need neither, so this stays a separate constructor
+// rather than growing connect's own signature.
+func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.MediaCache) *session {
+	t.Helper()
+
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seed(t, db)
+
+	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
+	deps := app.Deps{
+		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: &storeAccounts{db: db},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: &fakeClipboard{},
+		Media: media, Cache: mediaCache,
+	}
+
+	commands, ingest := app.New(deps)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	serverSide, clientSide := net.Pipe()
+	srv.Start(ctx, serverSide, commands)
+
+	events := &notifications{arrived: make(chan string, 100)}
+	client := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(clientSide), events)
+
+	t.Cleanup(func() {
+		cancel()
+		srv.Wait()
+		_ = client.Close()
+		_ = db.Close()
+	})
+
+	return &session{client: client, server: srv, store: db, events: events, ingest: ingest}
+}
+
 // seed stores account "wa" and conversation "chat".
 func seed(t *testing.T, db *store.Store) {
 	t.Helper()
@@ -107,6 +150,29 @@ func code(err error) int64 {
 	}
 
 	return rpcErr.Code
+}
+
+// errorData decodes the JSON-RPC error's data field into a new T,
+// reporting false when err carries none, the same way a real UI would
+// read whatever safe detail, such as media.fetch's reason category,
+// an error's data field carries.
+func errorData[T any](err error) (T, bool) {
+	var out T
+
+	var rpcErr *jsonrpc2.Error
+	if !errors.As(err, &rpcErr) || rpcErr.Data == nil {
+		return out, false
+	}
+
+	return out, json.Unmarshal(*rpcErr.Data, &out) == nil
+}
+
+// fakeMediaFetcher answers FetchMedia with err, for a test that only
+// cares how the server reports that failure to the UI.
+type fakeMediaFetcher struct{ err error }
+
+func (m fakeMediaFetcher) FetchMedia(context.Context, domain.Conversation, string, string) error {
+	return m.err
 }
 
 // notifications passes the method of each notification the client

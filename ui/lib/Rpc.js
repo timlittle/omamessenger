@@ -65,3 +65,10 @@ function errorText(error) {
 
   return MESSAGES[error.code] ?? 'Unexpected error from the helper.';
 }
+
+// errorReason reads the safe category a failed media.fetch's error
+// carries in its data field (see server/errors.go), or "" when there is
+// none: an older helper, or an error that is not about media at all.
+function errorReason(error) {
+  return (error && error.data && error.data.reason) || '';
+}

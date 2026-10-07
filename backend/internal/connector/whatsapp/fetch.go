@@ -8,9 +8,12 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
+
+	"go.mau.fi/whatsmeow"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -49,7 +52,7 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 
 	data, err := dev.downloadMedia(fetchCtx, ref)
 	if err != nil {
-		return fmt.Errorf("whatsapp: fetch media: %w", err)
+		return fmt.Errorf("whatsapp: fetch media: %w", classifyDownloadErr(err))
 	}
 
 	if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -57,4 +60,31 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 	}
 
 	return nil
+}
+
+// decryptErrs are whatsmeow's own errors for a downloaded file that does
+// not verify against the key or hash the message carried: a worn-out or
+// tampered-with reference, as opposed to the server simply being
+// unreachable. classifyDownloadErr tells the two apart so the app
+// layer's "decrypt" reason is only ever reported for these.
+var decryptErrs = []error{
+	whatsmeow.ErrInvalidMediaHMAC,
+	whatsmeow.ErrInvalidMediaEncSHA256,
+	whatsmeow.ErrInvalidMediaSHA256,
+	whatsmeow.ErrInvalidUnencryptedMediaSHA256,
+}
+
+// classifyDownloadErr joins domain.ErrMediaDecryptFailed into err when
+// whatsmeow reports one of decryptErrs, so errors.Is(err,
+// domain.ErrMediaDecryptFailed) finds it further up the call chain; any
+// other error, including a plain network or server failure, is returned
+// unchanged.
+func classifyDownloadErr(err error) error {
+	for _, want := range decryptErrs {
+		if errors.Is(err, want) {
+			return errors.Join(domain.ErrMediaDecryptFailed, err)
+		}
+	}
+
+	return err
 }

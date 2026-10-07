@@ -92,7 +92,7 @@ func serve(ctx context.Context, cfg config, s streams) error {
 		downloaded: cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit),
 		outgoing:   cache.NewOutgoing(filepath.Join(cfg.dataDir, "media", "outgoing")),
 	}
-	commands, ingest, manager, err := wire(ctx, db, srv, registry, caches)
+	commands, ingest, manager, err := wire(ctx, wireDeps{db: db, srv: srv, registry: registry, caches: caches, logger: logger})
 	if err != nil {
 		return err
 	}
@@ -125,16 +125,27 @@ type mediaCaches struct {
 	outgoing   *cache.Outgoing
 }
 
-// wire builds the application around db and srv, starting with the
-// accounts already saved. Test builds add the fake connectors; see
-// fake.go.
-func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *accountRegistry, caches mediaCaches) (*app.Commands, *app.Ingest, *connector.Manager, error) {
+// wireDeps are wire's own inputs, grouped into one struct so adding one,
+// such as the logger diagnostics needed, does not keep growing wire's
+// own argument list.
+type wireDeps struct {
+	db       *store.Store
+	srv      *server.Server
+	registry *accountRegistry
+	caches   mediaCaches
+	logger   *log.Logger
+}
+
+// wire builds the application around d's database and server, starting
+// with the accounts already saved. Test builds add the fake connectors;
+// see fake.go.
+func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connector.Manager, error) {
 	notifier := notify.Desktop{Click: func(conversationID string) {
-		srv.Publish(ctx, app.EventNotificationClicked, app.NotificationClicked{ConversationID: conversationID})
+		d.srv.Publish(ctx, app.EventNotificationClicked, app.NotificationClicked{ConversationID: conversationID})
 	}}
 	deps := app.Deps{
-		Store: db, Notifier: notifier, Publisher: srv, Accounts: registry, Cache: caches.downloaded,
-		Outgoing: caches.outgoing, Clipboard: clipboard.Wayland{},
+		Store: d.db, Notifier: notifier, Publisher: d.srv, Accounts: d.registry, Cache: d.caches.downloaded,
+		Outgoing: d.caches.outgoing, Clipboard: clipboard.Wayland{}, Logger: d.logger,
 	}
 
 	connectors, injector := fakeConnectors()
@@ -142,7 +153,7 @@ func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *ac
 		deps.Fake = injector
 	}
 
-	saved, err := registry.saved(ctx)
+	saved, err := d.registry.saved(ctx)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -152,7 +163,7 @@ func wire(ctx context.Context, db *store.Store, srv *server.Server, registry *ac
 		return nil, nil, nil, err
 	}
 
-	registry.manager = manager
+	d.registry.manager = manager
 	deps.Dispatcher, deps.SignIn, deps.History, deps.Media, deps.Refresher, deps.Organizer, deps.Reactor, deps.Deleter = manager, manager, manager, manager, manager, manager, manager, manager
 	commands, ingest := app.New(deps)
 

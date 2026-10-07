@@ -37,6 +37,7 @@ type fixture struct {
 	deleter    *fakeDeleter
 	outgoing   *cache.Outgoing
 	clipboard  *fakeClipboard
+	logger     *fakeLogger
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -61,6 +62,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, deleter: &fakeDeleter{},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), clipboard: &fakeClipboard{},
+		logger: &fakeLogger{},
 	}
 
 	deps := app.Deps{
@@ -68,7 +70,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter,
-		Outgoing: f.outgoing, Clipboard: f.clipboard,
+		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger,
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -338,6 +340,41 @@ func (m *fakeMedia) FetchMedia(_ context.Context, _ domain.Conversation, message
 	}
 
 	return os.WriteFile(path, []byte(messageRemoteID), 0o600)
+}
+
+// fakeCache fails every Fetch with err, without ever calling fill, for
+// testing how FetchMedia reports a failure the cache itself caused
+// rather than one the connector reported.
+type fakeCache struct{ err error }
+
+func (c *fakeCache) Fetch(context.Context, string, func(context.Context, string) error) (string, error) {
+	return "", c.err
+}
+
+// fakeLogger records every diagnostic line FetchMedia writes, so a test
+// can check the safe reason category reached it without a real
+// *log.Logger and its own writer to parse.
+type fakeLogger struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+func (l *fakeLogger) Printf(format string, v ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.lines = append(l.lines, fmt.Sprintf(format, v...))
+}
+
+// take returns the logged lines so far and forgets them.
+func (l *fakeLogger) take() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	lines := l.lines
+	l.lines = nil
+
+	return lines
 }
 
 // fakeRefresher plays a service's response to being asked to re-report
