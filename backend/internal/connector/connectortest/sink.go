@@ -136,6 +136,16 @@ func (s *Sink) History(_ context.Context, _, remote string, m domain.Message) {
 	s.history[remote] = append(s.history[remote], m)
 }
 
+// Edited records a message changed after it was sent.
+func (s *Sink) Edited(_ context.Context, _, remote string, m domain.Message) {
+	s.record("edited %s %s", remote, m.RemoteID)
+}
+
+// Deleted records messages removed from the service.
+func (s *Sink) Deleted(_ context.Context, _, remote string, remoteIDs []string) {
+	s.record("deleted %s %s", remote, strings.Join(remoteIDs, ","))
+}
+
 // OutgoingStatus records a change to a sent message and keeps the update
 // so a test can check the sequence of statuses for that message.
 func (s *Sink) OutgoingStatus(_ context.Context, localID, remoteID, status string) {

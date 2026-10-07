@@ -104,12 +104,13 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | `auth.step` | `{accountId, kind, qr, hint}`: `kind` is `qr` (a base64 PNG to scan; reply with a `phone` to sign in by code instead), `code` or `password` |
 | `conversation.updated` | `Conversation` |
 | `message.added` | `Message` |
-| `message.updated` | `Message` |
+| `message.updated` | `Message`; also sent when the service reports a message edited |
+| `message.removed` | `{conversationId, messageId}`; sent when the service reports a message deleted |
 | `unread.changed` | `{total}` |
 | `typing` | `{conversationId, name, active}` |
 | `notification.clicked` | `{conversationId}`: the user clicked a desktop notification; the UI opens that conversation |
 
-A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video` or `file`. `thumb` is a small base64 JPEG preview sent with the message.
+A `Message` may carry `media`: `{kind, …}` where `kind` is `link` (with `url`, `siteName`, `title`, `description`), `photo`, `video` or `file`. `thumb` is a small base64 JPEG preview sent with the message. `edited` is `true` once the service reports the message changed since it was first sent.
 
 ### Errors
 

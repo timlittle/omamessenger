@@ -61,6 +61,7 @@ ShellRoot {
   function run(): void {
     if (!root.checkGroupSender()) return;
     if (!root.checkOutgoingReadGlyph()) return;
+    if (!root.checkEditedLabel()) return;
     if (!root.checkFailedRetry()) return;
     if (!root.checkRichText()) return;
     if (!root.checkLineBreaks()) return;
@@ -93,6 +94,21 @@ ShellRoot {
     const glyph = root.findText(nodes, "✓✓");
     if (!glyph || !glyph.visible) return Check.fail("read glyph not shown for an outgoing read message");
     if (!Qt.colorEqual(glyph.color, Color.accent)) return Check.fail("read glyph is not drawn in the accent colour");
+    return true;
+  }
+
+  // checkEditedLabel verifies the "edited" label shows only for a message
+  // the service reported changed.
+  function checkEditedLabel(): bool {
+    delegate.message = { id: "me1", senderId: "s1", senderName: "Alex", text: "fixed", outgoing: false, status: "delivered", created: root.now, edited: true };
+    delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
+
+    let label = root.findText(Check.texts(delegate), "edited");
+    if (!label || !label.visible) return Check.fail("edited label not shown for an edited message");
+
+    delegate.message = { id: "me2", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "delivered", created: root.now };
+    label = root.findText(Check.texts(delegate), "edited");
+    if (label && label.visible) return Check.fail("edited label shown for a message that was not edited");
     return true;
   }
 

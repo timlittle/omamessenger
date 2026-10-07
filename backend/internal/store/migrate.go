@@ -68,6 +68,8 @@ var migrations = []string{
 			INSERT INTO messages_fts(rowid, text) VALUES (new.rowid, new.text);
 		END;
 		INSERT INTO messages_fts(messages_fts) VALUES ('rebuild');`,
+	// Whether a message has been edited since it was first stored.
+	`ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

@@ -64,6 +64,70 @@ func TestNewMessage_UsesAKnownPeerWhenTheUpdateOmitsIt(t *testing.T) {
 	}
 }
 
+func TestEditMessage_ReportsAnEditedMessageInAKnownConversation(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	edit := &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "fixed"}
+
+	// Not in entities and never learned: dropped.
+	c.editMessage(t.Context(), &sink, edit, tg.Entities{})
+	if got := sink.Lines(); len(got) != 0 {
+		t.Errorf("events = %q, want none for an unknown peer", got)
+	}
+
+	c.editMessage(t.Context(), &sink, edit, tg.Entities{Users: map[int64]*tg.User{42: nadia}})
+	want := []string{"edited user:42:99 7"}
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q", got, want)
+	}
+
+	sink = connectortest.Sink{}
+	c.learn("user:42:99")
+	c.editMessage(t.Context(), &sink, edit, tg.Entities{})
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q for a known peer", got, want)
+	}
+}
+
+func TestEditMessage_IgnoresAnUpdateThatIsNotAMessage(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	c.editMessage(t.Context(), &sink, &tg.MessageEmpty{ID: 9}, tg.Entities{})
+
+	if got := sink.Lines(); len(got) != 0 {
+		t.Errorf("events = %q, want none", got)
+	}
+}
+
+func TestDeleteMessages_ReportsIDsWithNoConversation(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	c.deleteMessages(t.Context(), &sink, "", []int{7, 8})
+
+	want := []string{"deleted  7,8"}
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q", got, want)
+	}
+}
+
+func TestDeleteMessages_IgnoresAnEmptyBatch(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	c.deleteMessages(t.Context(), &sink, "chat:1", nil)
+
+	if got := sink.Lines(); len(got) != 0 {
+		t.Errorf("events = %q, want none", got)
+	}
+}
+
 func TestReadUpTo_MarksOurMessagesRead(t *testing.T) {
 	t.Parallel()
 
@@ -131,6 +195,11 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 			&tg.UpdateReadHistoryInbox{Peer: &tg.PeerUser{UserID: 42}, StillUnreadCount: 2},
 			&tg.UpdateReadChannelInbox{ChannelID: 5, StillUnreadCount: 0},
 			&tg.UpdateReadChannelInbox{ChannelID: 6, StillUnreadCount: 0},
+			&tg.UpdateEditMessage{Message: &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi edited"}},
+			&tg.UpdateEditChannelMessage{Message: &tg.Message{ID: 3, PeerID: &tg.PeerChannel{ChannelID: 5}, Message: "news edited"}},
+			&tg.UpdateDeleteMessages{Messages: []int{8, 9}},
+			&tg.UpdateDeleteChannelMessages{ChannelID: 5, Messages: []int{3}},
+			&tg.UpdateDeleteChannelMessages{ChannelID: 6, Messages: []int{1}},
 		},
 		Users: []tg.UserClass{nadia},
 	})
@@ -145,6 +214,10 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 		"typing user:42:99 true",
 		"unread user:42:99 2",
 		"unread channel:5:3 0",
+		"edited user:42:99 7",
+		"edited channel:5:3 3",
+		"deleted  8,9",
+		"deleted channel:5:3 3",
 	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)

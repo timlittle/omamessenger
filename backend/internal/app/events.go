@@ -12,6 +12,7 @@ const (
 	EventConversationUpdated = "conversation.updated"
 	EventMessageAdded        = "message.added"
 	EventMessageUpdated      = "message.updated"
+	EventMessageRemoved      = "message.removed"
 	EventUnreadChanged       = "unread.changed"
 	EventTyping              = "typing"
 	EventAccountRemoved      = "account.removed"
@@ -22,6 +23,12 @@ const (
 // UnreadChanged is the data of an unread.changed event.
 type UnreadChanged struct {
 	Total int `json:"total"`
+}
+
+// MessageRemoved is the data of a message.removed event.
+type MessageRemoved struct {
+	ConversationID string `json:"conversationId"`
+	MessageID      string `json:"messageId"`
 }
 
 // Typing is the data of a typing event.
