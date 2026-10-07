@@ -19,7 +19,7 @@ func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 	// Loading Nadia's history fails, as it does for a chat the user has
 	// left; the group after her must still be listed and loaded.
 	f := newFakeTelegram()
-	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContacts{Users: []tg.UserClass{nadia}})
+	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContacts{Users: []tg.UserClass{nadia()}})
 	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
 		Dialogs: []tg.DialogClass{
 			&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, TopMessage: 9, UnreadCount: 1},
@@ -31,7 +31,7 @@ func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 			&tg.Message{ID: 4, PeerID: &tg.PeerChat{ChatID: 7}, Message: "top"},
 		},
 		Chats: []tg.ChatClass{&tg.Chat{ID: 7, Title: "Crew", Photo: &tg.ChatPhotoEmpty{}}},
-		Users: []tg.UserClass{nadia},
+		Users: []tg.UserClass{nadia()},
 	})
 	f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(400, "CHANNEL_PRIVATE"))
 	f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessages{
@@ -67,7 +67,7 @@ func TestSync_WaitsOutRateLimits(t *testing.T) {
 		f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
 		f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
 			Dialogs: []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}}},
-			Users:   []tg.UserClass{nadia},
+			Users:   []tg.UserClass{nadia()},
 		})
 		f.failNext(&tg.MessagesGetHistoryRequest{}, tgerr.New(420, "FLOOD_WAIT_3"))
 		f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessages{

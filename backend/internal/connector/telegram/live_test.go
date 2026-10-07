@@ -10,8 +10,12 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// nadia is a user the tests receive messages from.
-var nadia = &tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia"}
+// nadia is a user the tests receive messages from. It returns a fresh
+// value each time: gotd's encoder mutates a message's flags fields while
+// encoding, so sharing one pointer across parallel tests would race.
+func nadia() *tg.User {
+	return &tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia"}
+}
 
 func TestNewMessage_ReportsConversationThenMessage(t *testing.T) {
 	t.Parallel()
@@ -38,7 +42,7 @@ func TestNewMessage_ReportsConversationThenMessage(t *testing.T) {
 
 			var sink connectortest.Sink
 			c := New(domain.Account{ID: "tg"}, "")
-			c.newMessage(t.Context(), &sink, tt.message, tg.Entities{Users: map[int64]*tg.User{42: nadia}})
+			c.newMessage(t.Context(), &sink, tt.message, tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
 
 			if got := sink.Lines(); !slices.Equal(got, tt.want) {
 				t.Errorf("events = %q, want %q", got, tt.want)
@@ -77,7 +81,7 @@ func TestEditMessage_ReportsAnEditedMessageInAKnownConversation(t *testing.T) {
 		t.Errorf("events = %q, want none for an unknown peer", got)
 	}
 
-	c.editMessage(t.Context(), &sink, edit, tg.Entities{Users: map[int64]*tg.User{42: nadia}})
+	c.editMessage(t.Context(), &sink, edit, tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
 	want := []string{"edited user:42:99 7"}
 	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
@@ -232,7 +236,7 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 			&tg.UpdateDeleteChannelMessages{ChannelID: 5, Messages: []int{3}},
 			&tg.UpdateDeleteChannelMessages{ChannelID: 6, Messages: []int{1}},
 		},
-		Users: []tg.UserClass{nadia},
+		Users: []tg.UserClass{nadia()},
 	})
 	if err != nil {
 		t.Fatal(err)

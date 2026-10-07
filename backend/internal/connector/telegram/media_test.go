@@ -16,7 +16,12 @@ import (
 
 // stripped is a stripped thumbnail as Telegram sends it: a version byte,
 // the height and width, then the JPEG body without its standard header.
-var stripped = &tg.PhotoStrippedSize{Type: "i", Bytes: []byte{1, 40, 30, 0xAB, 0xCD}}
+// It returns a fresh value each time: gotd's encoder mutates a struct's
+// flags fields while encoding, so sharing one pointer across parallel
+// tests would race.
+func stripped() *tg.PhotoStrippedSize {
+	return &tg.PhotoStrippedSize{Type: "i", Bytes: []byte{1, 40, 30, 0xAB, 0xCD}}
+}
 
 func TestMedia_LinkPreview(t *testing.T) {
 	t.Parallel()
@@ -25,7 +30,7 @@ func TestMedia_LinkPreview(t *testing.T) {
 	page.SetSiteName("X")
 	page.SetTitle("A page")
 	page.SetDescription("About it")
-	page.SetPhoto(&tg.Photo{Sizes: []tg.PhotoSizeClass{stripped}})
+	page.SetPhoto(&tg.Photo{Sizes: []tg.PhotoSizeClass{stripped()}})
 
 	got := media(&tg.MessageMediaWebPage{Webpage: page})
 	if got == nil || got.Kind != domain.MediaLink || got.URL != "https://x.io/a" || got.SiteName != "X" ||
@@ -40,17 +45,20 @@ func TestMedia_LinkPreview(t *testing.T) {
 }
 
 // photo is a photo with a stripped preview and two sizes, the larger
-// progressive.
-var photo = &tg.Photo{ID: 7, AccessHash: 8, FileReference: []byte("ref"), Sizes: []tg.PhotoSizeClass{
-	stripped,
-	&tg.PhotoSize{Type: "m", W: 320, H: 240},
-	&tg.PhotoSizeProgressive{Type: "y", W: 1280, H: 960},
-}}
+// progressive. It returns a fresh value each time, for the same reason
+// as stripped.
+func photo() *tg.Photo {
+	return &tg.Photo{ID: 7, AccessHash: 8, FileReference: []byte("ref"), Sizes: []tg.PhotoSizeClass{
+		stripped(),
+		&tg.PhotoSize{Type: "m", W: 320, H: 240},
+		&tg.PhotoSizeProgressive{Type: "y", W: 1280, H: 960},
+	}}
+}
 
 func TestMedia_Photo(t *testing.T) {
 	t.Parallel()
 
-	got := media(&tg.MessageMediaPhoto{Photo: photo})
+	got := media(&tg.MessageMediaPhoto{Photo: photo()})
 	if got == nil || got.Kind != domain.MediaPhoto || got.Width != 1280 || got.Height != 960 || got.Thumb == "" {
 		t.Errorf("media = %+v, want the photo at its largest size with a preview", got)
 	}
@@ -59,7 +67,7 @@ func TestMedia_Photo(t *testing.T) {
 func TestMedia_VideoFileAndVoice(t *testing.T) {
 	t.Parallel()
 
-	video := &tg.Document{Size: 1000, Thumbs: []tg.PhotoSizeClass{stripped}, Attributes: []tg.DocumentAttributeClass{
+	video := &tg.Document{Size: 1000, Thumbs: []tg.PhotoSizeClass{stripped()}, Attributes: []tg.DocumentAttributeClass{
 		&tg.DocumentAttributeVideo{Duration: 65.4, W: 1280, H: 720},
 		&tg.DocumentAttributeFilename{FileName: "clip.mp4"},
 	}}
@@ -142,7 +150,7 @@ func TestFetchMedia_DownloadsTheLargestPhotoWithAFreshReference(t *testing.T) {
 			t.Parallel()
 
 			f := newFakeTelegram()
-			f.reply(tt.get, &tg.MessagesMessages{Messages: []tg.MessageClass{&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaPhoto{Photo: photo}}}})
+			f.reply(tt.get, &tg.MessagesMessages{Messages: []tg.MessageClass{&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaPhoto{Photo: photo()}}}})
 			f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFileJpeg{}, Bytes: []byte("jpeg")})
 
 			path := filepath.Join(t.TempDir(), "m1.jpg")

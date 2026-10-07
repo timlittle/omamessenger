@@ -47,7 +47,7 @@ func TestConformance_Incoming(t *testing.T) {
 	var sink connectortest.Sink
 	c := New(domain.Account{ID: "tg"}, "")
 	msg := &tg.Message{ID: 30, Date: 1_800_000_000, PeerID: &tg.PeerUser{UserID: 42}, Message: "checking in"}
-	c.newMessage(t.Context(), &sink, msg, tg.Entities{Users: map[int64]*tg.User{42: nadia}})
+	c.newMessage(t.Context(), &sink, msg, tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
 
 	live := sink.LiveMessages()["user:42:99"]
 	if len(live) != 1 {
@@ -65,7 +65,7 @@ func TestConformance_DuplicateUpdate(t *testing.T) {
 
 	var sink connectortest.Sink
 	c := New(domain.Account{ID: "tg"}, "")
-	entities := tg.Entities{Users: map[int64]*tg.User{42: nadia}}
+	entities := tg.Entities{Users: map[int64]*tg.User{42: nadia()}}
 	msg := &tg.Message{ID: 31, PeerID: &tg.PeerUser{UserID: 42}, Message: "still there?"}
 
 	c.newMessage(t.Context(), &sink, msg, entities)

@@ -16,7 +16,7 @@ func TestRefreshMessages_ReportsEachMessageThroughHistory(t *testing.T) {
 	f := newFakeTelegram()
 	f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{
 		Messages: []tg.MessageClass{
-			&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaPhoto{Photo: photo}},
+			&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaPhoto{Photo: photo()}},
 			&tg.Message{ID: 41, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi"},
 		},
 	})
