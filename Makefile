@@ -43,7 +43,7 @@ LICENSE_IGNORE := --ignore github.com/segmentio/asm
 # test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo keys lint license-check third-party-notices tools validate install-local release-check clean
+.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo keys lint license-check third-party-notices tools validate install-local release-check benchmark clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -195,6 +195,9 @@ validate: ## Validate the plugin files, as staged for install, with Omarchy
 
 install-local: build ## Install this checkout into Omarchy, enable it and restart the shell
 	OMARCHY="$(OMARCHY)" OMARCHY_SHELL="$(OMARCHY_SHELL)" RSYNC="$(RSYNC)" ./scripts/install-local.sh "$(PLUGIN_DIR)"
+
+benchmark: ## Measure OmaMessenger's memory and CPU use against Telegram Desktop and WhatsApp Web; writes docs/BENCHMARK.md (not part of make check: restarts omarchy-shell and opens real apps)
+	./scripts/run-benchmark.sh
 
 clean: ## Remove build output
 	rm -rf build bin/dev
