@@ -404,10 +404,13 @@ func uiSetFocus(c *app.Commands) func(context.Context, focusParams) (any, error)
 	}
 }
 
-// settingsParams are the plugin settings.
+// settingsParams are the plugin settings. NotificationDetail is additive:
+// an older UI that sends only NotificationPreview still works, since
+// app.Settings falls back to it when NotificationDetail is empty.
 type settingsParams struct {
-	Notifications       bool `json:"notifications"`
-	NotificationPreview bool `json:"notificationPreview"`
+	Notifications       bool   `json:"notifications"`
+	NotificationPreview bool   `json:"notificationPreview"`
+	NotificationDetail  string `json:"notificationDetail"`
 }
 
 // settingsApply replaces the user's settings.
