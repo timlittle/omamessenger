@@ -38,18 +38,22 @@ switches() {
     awk '/^(voluntary|nonvoluntary)_ctxt_switches:/ { n += $2 } END { print n + 0 }' "/proc/$1/status"
 }
 
-# totals prints "rss anon swap ticks switches" summed over a pid list.
-totals() {
-    rss=0 anon=0 swap=0 cpu=0 ctx=0
+# readings prints one "pid rss anon swap ticks switches" line for each
+# pid in a comma-separated list that is still running. A browser starts
+# and stops helper processes all the time, so one that has exited is
+# skipped rather than failing the whole run.
+readings() {
     for pid in $(echo "$1" | tr ',' ' '); do
-        [ -r "/proc/$pid/status" ] || { echo "benchmark: pid $pid is not running" >&2; exit 1; }
-        rss=$((rss + $(status_kb "$pid" VmRSS)))
-        anon=$((anon + $(status_kb "$pid" RssAnon)))
-        swap=$((swap + $(status_kb "$pid" VmSwap)))
-        cpu=$((cpu + $(cpu_ticks "$pid")))
-        ctx=$((ctx + $(switches "$pid")))
+        [ -r "/proc/$pid/status" ] || continue
+        echo "$pid $(status_kb "$pid" VmRSS) $(status_kb "$pid" RssAnon) $(status_kb "$pid" VmSwap) $(cpu_ticks "$pid") $(switches "$pid")"
     done
-    echo "$rss $anon $swap $cpu $ctx"
+}
+
+# read_label writes a label's current readings to $work/<label>.now, and
+# fails when none of its processes is running any more.
+read_label() {
+    readings "$2" > "$work/$1.now"
+    [ -s "$work/$1.now" ] || { echo "benchmark: no process of $1 is running" >&2; exit 1; }
 }
 
 # median prints the middle value of the numbers on stdin.
@@ -62,7 +66,8 @@ median() {
 sleep "$settle"
 for arg in "$@"; do
     label="${arg%%=*}"
-    totals "${arg#*=}" > "$work/$label.prev"
+    read_label "$label" "${arg#*=}"
+    mv "$work/$label.now" "$work/$label.prev"
 done
 
 i=0
@@ -70,13 +75,17 @@ while [ "$i" -lt "$samples" ]; do
     sleep "$interval"
     for arg in "$@"; do
         label="${arg%%=*}"
-        now="$(totals "${arg#*=}")"
-        # Memory is read at the sample; CPU and switches are the change
-        # since the previous sample, as a rate.
-        echo "$now" "$(cat "$work/$label.prev")" | awk -v t="$ticks" -v s="$interval" \
-            '{ printf "%d %d %d %.2f %.1f\n", $1, $2, $3, ($4 - $9) * 100 / t / s, ($5 - $10) / s }' \
-            >> "$work/$label.samples"
-        echo "$now" > "$work/$label.prev"
+        read_label "$label" "${arg#*=}"
+        # Memory is summed over the processes running now; CPU and
+        # switches are the change since the previous sample, as a rate,
+        # over the processes present at both.
+        awk -v t="$ticks" -v s="$interval" '
+            NR == FNR { cpu[$1] = $5; ctx[$1] = $6; next }
+            { rss += $2; anon += $3; swap += $4 }
+            $1 in cpu { dcpu += $5 - cpu[$1]; dctx += $6 - ctx[$1] }
+            END { printf "%d %d %d %.2f %.1f\n", rss, anon, swap, dcpu * 100 / t / s, dctx / s }
+        ' "$work/$label.prev" "$work/$label.now" >> "$work/$label.samples"
+        mv "$work/$label.now" "$work/$label.prev"
     done
     i=$((i + 1))
 done
