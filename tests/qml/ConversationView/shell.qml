@@ -1,8 +1,9 @@
 // Checks ConversationView: the empty state with no conversation, loadOlder
 // firing once scrolled to the oldest loaded message, a submitted composer
 // message reaching the send signal with its reply id, replyTarget copied
-// into the composer, a delegate's reply signals relayed outward, and j/k
-// and paging clamping at the real newest/oldest ends of the message list.
+// into the composer, a delegate's reply signals relayed outward, j/k and
+// paging clamping at the real newest/oldest ends of the message list, and
+// the "phone offline" note showing only while historyUnavailable is set.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -127,9 +128,32 @@ ShellRoot {
     if (!root.checkScrollClampAtNewest()) return;
     if (!root.checkScrollClampAtOldest()) return;
     if (!root.checkScrollPageClamp()) return;
+    if (!root.checkHistoryUnavailableNote()) return;
 
     console.log("PASS ConversationView");
     Qt.exit(0);
+  }
+
+  // checkHistoryUnavailableNote verifies the "phone offline" note only
+  // shows once historyUnavailable is set, and that it clears again once
+  // it is not: a real page that successfully reaches the service past
+  // the earlier outage must not leave the note stuck showing.
+  function checkHistoryUnavailableNote(): bool {
+    view.historyUnavailable = false;
+    let nodes = Check.texts(view);
+    if (nodes.some(node => node.text.indexOf("Older messages need your phone online") !== -1 && node.visible))
+      return Check.fail("the offline note showed with historyUnavailable false");
+
+    view.historyUnavailable = true;
+    nodes = Check.texts(view);
+    const note = nodes.find(node => node.text.indexOf("Older messages need your phone online") !== -1);
+    if (!note || !note.visible) return Check.fail("the offline note did not show with historyUnavailable true");
+
+    view.historyUnavailable = false;
+    nodes = Check.texts(view);
+    if (nodes.some(node => node.text.indexOf("Older messages need your phone online") !== -1 && node.visible))
+      return Check.fail("the offline note stayed visible after historyUnavailable cleared");
+    return true;
   }
 
   // checkSend verifies a submitted composer message is trimmed and

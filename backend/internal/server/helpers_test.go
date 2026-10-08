@@ -49,7 +49,7 @@ func connect(t *testing.T, faked bool) *session {
 	clipboard := &fakeClipboard{}
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{}, Members: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: clipboard,
 	}
 	if faked {
@@ -96,6 +96,48 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: &fakeClipboard{},
 		Media: media, Cache: mediaCache,
+	}
+
+	commands, ingest := app.New(deps)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	serverSide, clientSide := net.Pipe()
+	srv.Start(ctx, serverSide, commands)
+
+	events := &notifications{arrived: make(chan string, 100)}
+	client := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(clientSide), events)
+
+	t.Cleanup(func() {
+		cancel()
+		srv.Wait()
+		_ = client.Close()
+		_ = db.Close()
+	})
+
+	return &session{client: client, server: srv, store: db, events: events, ingest: ingest}
+}
+
+// connectWithHistory serves an application like connect, but wired with
+// a HistoryLoader, for the one test that drives messages.list's
+// historyUnavailable field. The other connect callers need none, so
+// this stays a separate constructor rather than growing connect's own
+// signature.
+func connectWithHistory(t *testing.T, history app.HistoryLoader) *session {
+	t.Helper()
+
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seed(t, db)
+
+	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
+	deps := app.Deps{
+		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: &storeAccounts{db: db},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: &fakeClipboard{},
+		History: history,
 	}
 
 	commands, ingest := app.New(deps)
@@ -175,6 +217,14 @@ func (m fakeMediaFetcher) FetchMedia(context.Context, domain.Conversation, strin
 	return m.err
 }
 
+// fakeHistory answers every LoadOlder with err, for a test that only
+// cares how the server surfaces a HistoryLoader failure to the UI.
+type fakeHistory struct{ err error }
+
+func (h fakeHistory) LoadOlder(context.Context, domain.Conversation, string, int) (int, error) {
+	return 0, h.err
+}
+
 // notifications passes the method of each notification the client
 // receives to arrived.
 type notifications struct {
@@ -222,6 +272,11 @@ func (acceptAll) React(context.Context, domain.Conversation, string, string) err
 // DeleteMessages accepts any delete.
 func (acceptAll) DeleteMessages(context.Context, domain.Conversation, []string, bool) error {
 	return nil
+}
+
+// Members reports one canned member for any conversation asked about.
+func (acceptAll) Members(context.Context, domain.Conversation) ([]domain.Member, error) {
+	return []domain.Member{{ID: "u1", Name: "Nadia"}}, nil
 }
 
 // storeAccounts adds and removes accounts straight in the store,

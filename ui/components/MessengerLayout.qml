@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import "../theme"
 import "../lib/Rail.js" as Rail
+import "../lib/Keymap.js" as Keymap
 import "../lib/AccountColor.js" as AccountColor
 
 // The three columns that make up the OmaMessenger window: the service
@@ -41,6 +42,9 @@ Item {
   property var windowController: null
   // nowMs is the current time, refreshed by Panel.qml, for relative times.
   property real nowMs: Date.now()
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), passed to the list and conversation.
+  property var bindings: Keymap.BINDINGS
   // routeKey is Panel's router: called with (key, modifiers, text) from
   // the search field, the composer and the dialog's search field, before
   // each handles its own key presses. See Composer.qml for why it is a
@@ -205,6 +209,7 @@ Item {
       model: root.listController.model
       selectedId: root.listController.selectedId
       nowMs: root.nowMs
+      bindings: root.bindings
       accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
       multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
       accountColors: root._accountColors
@@ -235,11 +240,14 @@ Item {
       annotations: root.conversationController.annotations
       highlightedId: root.conversationController.highlightedId
       nowMs: root.nowMs
+      bindings: root.bindings
       draft: root.composerController.draft
       replyTarget: root.composerController.replyTarget
       attachmentPath: root.composerController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
+      historyUnavailable: root.conversationController.historyUnavailable
       voiceNotes: root.conversationController.voiceNotes
+      members: root.conversationController.groupMembers
       routeKey: root.routeKey
 
       onLoadOlder: root.conversationController.loadOlder()
@@ -249,7 +257,7 @@ Item {
       onReact: (id, emoji) => root.reactionsController.react(id, emoji)
       onReactPickerRequested: id => root.reactionsController.openPicker(id)
       onDeleteRequested: id => { if (root.deleteController) root.deleteController.openConfirm(id) }
-      onSend: (text, replyToId) => root.conversationController.send(text, replyToId)
+      onSend: (text, replyToId, mentions) => root.conversationController.send(text, replyToId, mentions)
       onDraftEdited: text => root.composerController.setDraft(text)
       onReplyRequested: id => root.composerController.startReply(id)
       onReplyCanceled: root.composerController.cancelReply()
@@ -262,6 +270,7 @@ Item {
   Overlays {
     anchors.fill: parent
     service: root.service
+    listController: root.listController
     windowController: root.windowController
     dialogController: root.dialogController
     accountController: root.accountController

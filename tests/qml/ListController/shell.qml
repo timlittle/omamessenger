@@ -6,10 +6,13 @@
 // the results for the query typed last, since the helper may answer out
 // of order, hiding the open conversation drops it from the standard list
 // at once, moving the highlight to its neighbour and closing the pane
-// rather than opening the neighbour and marking it read, and the
-// all-unreads view overrides the rail filter with every unread, non-muted
-// chat across every service, keeps the one just read visible while it is
-// still open, and drops it the moment the user moves on to another chat.
+// rather than opening the neighbour and marking it read, the all-unreads
+// view overrides the rail filter with every unread, non-muted chat across
+// every service, keeps the one just read visible while it is still open,
+// and drops it the moment the user moves on to another chat, archiving a
+// chat marks it read first, archiving every read chat asks before doing
+// it and skips pinned or unread ones, and snoozing a chat hides it until
+// its reminder comes due, when it returns to the top marked "Reminder".
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -175,6 +178,84 @@ ShellRoot {
   ListController {
     id: unreadList
     service: unreadService
+  }
+
+  // archiveService backs the archive scenarios: a plain read chat for
+  // the single "archive and mark read" shortcut, a pinned read chat and
+  // an unread chat that "archive all read" must both leave alone, and a
+  // second plain read chat for the bulk question itself.
+  QtObject {
+    id: archiveService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", activeId: "", query: "", drafts: {} })
+    property var conversations: [
+      { id: "a1", title: "Plain Read", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false },
+      { id: "a2", title: "Pinned Read", lastActivity: Date.now(), unread: 0, pinned: true, archived: false, hidden: false },
+      { id: "a3", title: "Unread", lastActivity: Date.now(), unread: 2, pinned: false, archived: false, hidden: false },
+      { id: "a4", title: "Plain Read Two", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false }
+    ]
+    property int markReadCalls: 0
+    property var archivedIds: []
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") {
+        callback(null, archiveService.conversations.map((c) => Object.assign({}, c)));
+        return;
+      }
+      if (method === "conversations.markRead") {
+        archiveService.markReadCalls++;
+        callback(null, {});
+        return;
+      }
+      if (method === "conversations.setArchived") {
+        const index = archiveService.conversations.findIndex((c) => c.id === params.conversationId);
+        archiveService.conversations[index] = Object.assign({}, archiveService.conversations[index], { archived: params.archived });
+        archiveService.archivedIds.push(params.conversationId);
+        callback(null, Object.assign({}, archiveService.conversations[index]));
+      }
+    }
+  }
+
+  ListController {
+    id: archiveList
+    service: archiveService
+  }
+
+  // snoozeService backs the snooze scenario: one chat, snoozed and then
+  // brought back due by a conversation.updated event, the way the
+  // helper's own reminder scheduler reports it.
+  QtObject {
+    id: snoozeService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", activeId: "", query: "", drafts: {} })
+    property var conversations: [
+      { id: "s1", title: "Snooze Me", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, reminderAt: 0 }
+    ]
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") {
+        callback(null, snoozeService.conversations.map((c) => Object.assign({}, c)));
+        return;
+      }
+      if (method === "conversations.setReminder") {
+        const index = snoozeService.conversations.findIndex((c) => c.id === params.conversationId);
+        snoozeService.conversations[index] = Object.assign({}, snoozeService.conversations[index], { reminderAt: params.at ?? 0 });
+        callback(null, Object.assign({}, snoozeService.conversations[index]));
+      }
+    }
+  }
+
+  ListController {
+    id: snoozeList
+    service: snoozeService
   }
 
   Timer {
@@ -358,6 +439,102 @@ ShellRoot {
     for (let i = 0; i < unreadList.model.count; i++) afterToggleOff.push(unreadList.model.get(i).id);
     if (JSON.stringify(afterToggleOff) !== '["u4","u1"]') {
       Check.fail("toggling the unread view off did not return to the previous rail-filtered list: " + JSON.stringify(afterToggleOff));
+      return;
+    }
+
+    root.checkArchive();
+  }
+
+  // checkArchive drives the single "archive and mark read" shortcut on
+  // one chat, then the bulk "archive all read" question, which must
+  // offer only the remaining plain read chat (never the pinned or the
+  // unread one), can be cancelled without archiving anything, and, once
+  // confirmed, archives exactly that one.
+  function checkArchive(): void {
+    archiveList.selectId("a1");
+    archiveList.run("chat.archiveRead");
+
+    if (archiveService.markReadCalls !== 1 || JSON.stringify(archiveService.archivedIds) !== '["a1"]') {
+      Check.fail("chat.archiveRead did not mark read then archive the selected chat: markReadCalls "
+        + archiveService.markReadCalls + ", archivedIds " + JSON.stringify(archiveService.archivedIds));
+      return;
+    }
+
+    const idsAfterSingle = [];
+    for (let i = 0; i < archiveList.model.count; i++) idsAfterSingle.push(archiveList.model.get(i).id);
+    if (idsAfterSingle.includes("a1")) {
+      Check.fail("the archived chat is still in the standard list: " + JSON.stringify(idsAfterSingle));
+      return;
+    }
+
+    archiveList.run("list.archiveAllRead");
+    if (!archiveList.archiveAllOpen || archiveList.archiveAllCount !== 1) {
+      Check.fail("archive-all should offer only the one remaining plain read chat: open "
+        + archiveList.archiveAllOpen + ", count " + archiveList.archiveAllCount);
+      return;
+    }
+
+    archiveList.run("archiveAll.cancel");
+    if (archiveList.archiveAllOpen || archiveService.archivedIds.includes("a4")) {
+      Check.fail("cancelling the archive-all question must not archive anything");
+      return;
+    }
+
+    archiveList.run("list.archiveAllRead");
+    archiveList.run("archiveAll.accept");
+
+    if (archiveList.archiveAllOpen || JSON.stringify(archiveService.archivedIds) !== '["a1","a4"]') {
+      Check.fail("confirming archive-all did not archive exactly the offered chat: archivedIds "
+        + JSON.stringify(archiveService.archivedIds));
+      return;
+    }
+
+    const idsAfterBulk = [];
+    for (let i = 0; i < archiveList.model.count; i++) idsAfterBulk.push(archiveList.model.get(i).id);
+    if (JSON.stringify(idsAfterBulk) !== '["a2","a3"]') {
+      Check.fail("the pinned and unread chats should remain, nothing else: " + JSON.stringify(idsAfterBulk));
+      return;
+    }
+
+    root.checkSnooze();
+  }
+
+  // checkSnooze snoozes a chat (hiding it from the standard list, like
+  // hide), brings it back due the way the helper's own reminder
+  // scheduler does (a conversation.updated event with reminderAt now in
+  // the past), and checks it returns to the top marked "Reminder", then
+  // that unsnoozing clears the mark.
+  function checkSnooze(): void {
+    snoozeList.selectId("s1");
+    snoozeList.run("chat.snoozeLaterToday");
+
+    const idsSnoozed = [];
+    for (let i = 0; i < snoozeList.model.count; i++) idsSnoozed.push(snoozeList.model.get(i).id);
+    if (idsSnoozed.includes("s1")) {
+      Check.fail("snoozing the chat did not hide it from the standard list: " + JSON.stringify(idsSnoozed));
+      return;
+    }
+
+    const snoozed = snoozeService.conversations.find((c) => c.id === "s1");
+    snoozeService.event("conversation.updated", Object.assign({}, snoozed, { reminderAt: Date.now() - 1000 }));
+
+    const idsDue = [];
+    const rowsById = {};
+    for (let i = 0; i < snoozeList.model.count; i++) {
+      const row = snoozeList.model.get(i);
+      idsDue.push(row.id);
+      rowsById[row.id] = row;
+    }
+    if (idsDue[0] !== "s1" || !rowsById.s1.reminderDue) {
+      Check.fail("a due reminder did not return to the top of the list marked: ids "
+        + JSON.stringify(idsDue) + ", row " + JSON.stringify(rowsById.s1));
+      return;
+    }
+
+    snoozeList.selectId("s1"); // it fell off the cursor when it was the only, now-hidden row
+    snoozeList.run("chat.unsnooze");
+    if (snoozeList.model.count !== 1 || snoozeList.model.get(0).reminderDue) {
+      Check.fail("unsnoozing did not clear the reminder mark");
       return;
     }
 

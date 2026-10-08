@@ -37,14 +37,45 @@ function linkify(escaped, color) {
 // GitHub-style pipe table in the text renders as a real HTML table
 // instead, with text before and after it handled as usual. Links take
 // linkColor, and a table's cell borders take tableBorderColor, since a
-// TextEdit has no colors of its own for either.
-function messageHtml(text, linkColor, tableBorderColor) {
+// TextEdit has no colors of its own for either. mentions, when given,
+// are the message's @-mention tokens ({offset, length} in the same
+// UTF-16 units a JavaScript string already indexes by, so no
+// conversion is needed here); each one renders in bold. A message with
+// mentions skips table rendering, since an @-mention is ordinary chat
+// text, never a pipe table.
+function messageHtml(text, linkColor, tableBorderColor, mentions) {
+  if (mentions && mentions.length > 0) {
+    return mentionHtml(text, linkColor, mentions);
+  }
+
   const borderColor = tableBorderColor ?? '#888888';
   return Markdown.splitTables(text)
     .map((part) => (part.kind === 'table'
       ? Markdown.tableHtml(part.table, escapeHtml, (cell) => linkify(cell, linkColor), borderColor)
       : lineHtml(part.text, linkColor)))
     .join('');
+}
+
+// mentionHtml renders text with each mention's span wrapped in <b>,
+// skipping ahead past a mention that no longer fits text (the message
+// was edited to something shorter after it was sent, for instance)
+// rather than mis-rendering around it.
+function mentionHtml(text, linkColor, mentions) {
+  const ordered = [...mentions].sort((a, b) => a.offset - b.offset);
+  let html = '';
+  let pos = 0;
+
+  for (const m of ordered) {
+    if (m.offset < pos || m.offset + m.length > text.length) {
+      continue;
+    }
+
+    html += lineHtml(text.slice(pos, m.offset), linkColor);
+    html += `<b>${lineHtml(text.slice(m.offset, m.offset + m.length), linkColor)}</b>`;
+    pos = m.offset + m.length;
+  }
+
+  return html + lineHtml(text.slice(pos), linkColor);
 }
 
 // lineHtml is messageHtml's handling for a stretch of text that is not a
@@ -161,6 +192,37 @@ function relativeDay(ms, nowMs, month) {
   return sameYear ? `${date.getDate()} ${month}` : `${date.getDate()} ${month} ${date.getFullYear()}`;
 }
 
+// snoozeUntilLabel describes when a snoozed conversation comes back:
+// just the clock time for later today, otherwise the day name or date
+// plus the clock time, so a dimmed row reads "Snoozed until 18:00" or
+// "Snoozed until Tomorrow 09:00" at a glance. Unlike timeLabel and
+// dayLabel, ms is a future time, so days ahead rather than days ago
+// names the day.
+function snoozeUntilLabel(ms, nowMs) {
+  const date = new Date(ms);
+  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const days = -daysAgo(ms, nowMs);
+
+  if (days <= 0) {
+    return clock;
+  }
+
+  if (days === 1) {
+    return `Tomorrow ${clock}`;
+  }
+
+  if (days <= 6) {
+    return `${DAY_NAMES[date.getDay()]} ${clock}`;
+  }
+
+  const sameYear = date.getFullYear() === new Date(nowMs).getFullYear();
+  const datePart = sameYear
+    ? `${date.getDate()} ${MONTHS[date.getMonth()].slice(0, 3)}`
+    : `${date.getDate()} ${MONTHS[date.getMonth()].slice(0, 3)} ${date.getFullYear()}`;
+
+  return `${datePart} ${clock}`;
+}
+
 // pad writes n with at least two digits.
 function pad(n) {
   return String(n).padStart(2, '0');
@@ -185,10 +247,10 @@ function previewLine(conv) {
   return conv.previewSender ? `${conv.previewSender}: ${conv.preview}` : conv.preview;
 }
 
-// MEDIA_LABELS are the texts the helper gives a photo, video, file or
-// voice note sent without a caption, so lists and notifications have
-// something to show.
-var MEDIA_LABELS = { photo: '[Photo]', video: '[Video]', file: '[File]', voice: '[Voice message]' };
+// MEDIA_LABELS are the texts the helper gives a photo, video, file,
+// voice note or sticker sent without a caption, so lists and
+// notifications have something to show.
+var MEDIA_LABELS = { photo: '[Photo]', video: '[Video]', file: '[File]', voice: '[Voice message]', sticker: '[Sticker]' };
 
 // caption is the text to show beside media: none when the text is only
 // the label standing in for the media the bubble already shows.

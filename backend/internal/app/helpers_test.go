@@ -36,6 +36,7 @@ type fixture struct {
 	organizer  *fakeOrganizer
 	reactor    *fakeReactor
 	deleter    *fakeDeleter
+	members    *fakeMemberLister
 	outgoing   *cache.Outgoing
 	clipboard  *fakeClipboard
 	logger     *fakeLogger
@@ -67,6 +68,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, deleter: &fakeDeleter{},
+		members:  &fakeMemberLister{},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{},
 	}
@@ -75,7 +77,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter,
+		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter, Members: f.members,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger,
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 	}
@@ -94,12 +96,13 @@ func newFixture(t *testing.T, faked bool) *fixture {
 // with its own fresh set of fake connectors, for a test that opens the
 // store itself, such as one simulating a helper restart over the same
 // on-disk database.
-func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDispatcher) {
+func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDispatcher, *fakeNotifier) {
 	t.Helper()
 
 	dispatcher := &fakeDispatcher{}
+	notifier := &fakeNotifier{}
 	deps := app.Deps{
-		Store: db, Dispatcher: dispatcher, Notifier: &fakeNotifier{}, Publisher: &fakePublisher{},
+		Store: db, Dispatcher: dispatcher, Notifier: notifier, Publisher: &fakePublisher{},
 		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
 		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
 		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{},
@@ -108,7 +111,7 @@ func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDi
 
 	commands, ingest := app.New(deps)
 
-	return commands, ingest, dispatcher
+	return commands, ingest, dispatcher, notifier
 }
 
 // conversation stores a conversation of the given kind with remote id
@@ -464,6 +467,24 @@ func (o *fakeOrganizer) SetArchived(_ context.Context, conv domain.Conversation,
 	o.archived = append(o.archived, fmt.Sprintf("%s %t", conv.ID, archived))
 
 	return o.err
+}
+
+// fakeMemberLister reports a scripted member list, failing with err
+// when it is set.
+type fakeMemberLister struct {
+	mu      sync.Mutex
+	members []domain.Member
+	err     error
+	asked   []string
+}
+
+func (l *fakeMemberLister) Members(_ context.Context, conv domain.Conversation) ([]domain.Member, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.asked = append(l.asked, conv.ID)
+
+	return l.members, l.err
 }
 
 // fakeReactor records the reactions it is asked for, as

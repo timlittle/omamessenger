@@ -19,6 +19,12 @@ Item {
   // hasMore is true while an older page of messages may still exist.
   property bool hasMore: true
 
+  // historyUnavailable is true once a loadOlder page reported that the
+  // service could not be reached for older history right now, such as a
+  // WhatsApp account whose phone never answered; it resets on the next
+  // successful page, including loadInitial's.
+  property bool historyUnavailable: false
+
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
@@ -34,6 +40,7 @@ Item {
   function reset(): void {
     messagesModel.clear();
     root.hasMore = true;
+    root.historyUnavailable = false;
     root.annotations = [];
     root._loadingMore = false;
   }
@@ -50,6 +57,7 @@ Item {
       if (!guard()) return;
 
       root.hasMore = result.hasMore;
+      root.historyUnavailable = !!result.historyUnavailable;
       root._appendOlder(result.messages, isGroup);
       root.initialLoaded();
     });
@@ -67,6 +75,7 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
 
       root.hasMore = result.hasMore;
+      root.historyUnavailable = !!result.historyUnavailable;
       root._appendOlder(result.messages, isGroup);
     });
   }

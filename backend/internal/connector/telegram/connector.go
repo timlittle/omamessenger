@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"sync"
 
@@ -42,6 +43,7 @@ type Connector struct {
 	api     *tg.Client
 	sink    connector.Sink
 	waiting bool
+	self    int64             // this account's own user id, set once Run signs in
 	remotes map[string]string // "user:42" to the full remote id with its access hash
 	sent    map[string]string // "<remote id>/<message id>" to our message id
 }
@@ -54,6 +56,7 @@ var (
 	_ connector.MessageRefresher = (*Connector)(nil)
 	_ connector.Organizer        = (*Connector)(nil)
 	_ connector.Reactor          = (*Connector)(nil)
+	_ connector.MemberLister     = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose credentials and session
@@ -82,7 +85,10 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	}
 
 	dispatcher := tg.NewUpdateDispatcher()
-	gaps := updates.New(updates.Config{Handler: dispatcher})
+	gaps, err := c.newGapManager(dispatcher)
+	if err != nil {
+		return err
+	}
 	client := gotd.NewClient(creds.APIID, creds.APIHash, gotd.Options{
 		SessionStorage: &session.FileStorage{Path: sessionPath(c.dir, c.account.ID)},
 		UpdateHandler:  gaps,
@@ -102,6 +108,7 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 		}
 
 		c.connected(client.API(), sink)
+		c.setSelf(self.ID)
 		sink.AccountStatus(ctx, c.account.ID, domain.AccountConnected, "Signed in as "+ownName(self))
 		defer c.disconnected()
 
@@ -111,6 +118,33 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 
 		return gaps.Run(ctx, client.API(), self.ID, updates.AuthOptions{})
 	})
+}
+
+// newGapManager builds the update manager for this account, backed by
+// its saved pts, qts, seq, date and access hashes (see updatestate.go),
+// so a restart always resumes updates.getDifference from where an
+// earlier run left off instead of losing whatever happened while the
+// helper was not running.
+func (c *Connector) newGapManager(dispatcher tg.UpdateDispatcher) (*updates.Manager, error) {
+	stateStorage, err := newUpdateStorage(updateStatePath(c.dir, c.account.ID))
+	if err != nil {
+		return nil, err
+	}
+
+	return updates.New(updates.Config{
+		Handler:          dispatcher,
+		Storage:          stateStorage,
+		AccessHasher:     stateStorage,
+		UserAccessHasher: stateStorage,
+		// The gap since this account's saved pts was too large for
+		// Telegram to hand back as a list of updates, so gotd itself
+		// falls back to resuming from the position Telegram gives it
+		// instead, the same loss of history a very long offline gap
+		// always risks. Logged so a real report of missing messages
+		// can be told apart from a connector bug.
+		OnTooLong:        func() { log.Printf("telegram: update gap too long, resyncing") },
+		OnChannelTooLong: func(int64) { log.Printf("telegram: channel update gap too long, resyncing") },
+	}), nil
 }
 
 // authorize signs the account in unless its saved session already is.
@@ -357,6 +391,24 @@ func (c *Connector) session() (*tg.Client, connector.Sink, error) {
 	}
 
 	return c.api, c.sink, nil
+}
+
+// setSelf records this account's own Telegram user id, read by message()
+// to flag a message that mentions it.
+func (c *Connector) setSelf(id int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.self = id
+}
+
+// selfUserID is this account's own Telegram user id, or 0 before Run
+// has signed in.
+func (c *Connector) selfUserID() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.self
 }
 
 // setWaiting records whether sign-in is waiting for the user.

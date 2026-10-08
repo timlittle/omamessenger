@@ -178,18 +178,20 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	}
 
 	// Serve before the connectors start, so the UI sees their first events.
-	// On every return, stop the connectors and finish requests in progress
-	// before the database closes.
+	// On every return, stop the connectors and the reminder scheduler and
+	// finish requests in progress before the database closes.
 	srv.Start(ctx, stdio{s.in, s.out}, commands)
 
-	var sweeper sync.WaitGroup
-	sweeper.Go(func() { caches.outgoing.RunSweeper(ctx, outgoingSweepInterval, logger) })
+	var background sync.WaitGroup
 	defer func() {
 		cancel()
 		srv.Wait()
 		manager.Wait()
-		sweeper.Wait()
+		background.Wait()
 	}()
+
+	background.Go(func() { commands.RunReminders(ctx) })
+	background.Go(func() { caches.outgoing.RunSweeper(ctx, outgoingSweepInterval, logger) })
 
 	if err := manager.Start(ctx, db, ingest); err != nil && ctx.Err() == nil {
 		return fmt.Errorf("start connectors: %w", err)
@@ -251,7 +253,7 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 	}
 
 	d.registry.manager = manager
-	deps.Dispatcher, deps.SignIn, deps.History, deps.Media, deps.Refresher, deps.Organizer, deps.Reactor, deps.Deleter = manager, manager, manager, manager, manager, manager, manager, manager
+	deps.Dispatcher, deps.SignIn, deps.History, deps.Media, deps.Refresher, deps.Organizer, deps.Reactor, deps.Deleter, deps.Members = manager, manager, manager, manager, manager, manager, manager, manager, manager
 	commands, ingest := app.New(deps)
 
 	return commands, ingest, manager, nil

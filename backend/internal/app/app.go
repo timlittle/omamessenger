@@ -65,6 +65,12 @@ type Deleter interface {
 	DeleteMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string, forEveryone bool) error
 }
 
+// MemberLister lists a group conversation's current members, through
+// its service, for the @-mention picker.
+type MemberLister interface {
+	Members(ctx context.Context, conv domain.Conversation) ([]domain.Member, error)
+}
+
 // MediaCache keeps downloaded media, filling a file the first time it is
 // asked for, or taking in one already on disk - a sent attachment, say -
 // so it needs no download at all.
@@ -166,6 +172,7 @@ type Deps struct {
 	Organizer  Organizer
 	Reactor    Reactor
 	Deleter    Deleter
+	Members    MemberLister
 	Outgoing   OutgoingMedia
 	Clipboard  ClipboardRunner
 	Fake       Injector
@@ -187,10 +194,11 @@ func New(d Deps) (*Commands, *Ingest) {
 	state := &uiState{settings: DefaultSettings()}
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, deleter: d.Deleter, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, deleter: d.Deleter, members: d.Members, fake: d.Fake,
 		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},
+		reminders:    newReminders(d.Store, d.Notifier, events, state),
 		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 	}
 	ingest := &Ingest{

@@ -78,6 +78,13 @@ type HistoryLoader interface {
 	LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error)
 }
 
+// ErrHistoryUnavailable reports that a HistoryLoader could not reach its
+// service to answer LoadOlder right now, such as a WhatsApp account
+// whose phone never answered an on-demand history request in time. It
+// is distinct from LoadOlder reporting zero messages, which means the
+// service was reached and answered that there is nothing older left.
+var ErrHistoryUnavailable = errors.New("connector: history unavailable")
+
 // MediaFetcher is a Connector that can download a message's photo, video
 // or file.
 type MediaFetcher interface {
@@ -136,6 +143,14 @@ type Deleter interface {
 	// service will not let this account delete returns an error
 	// wrapping ErrDeleteUnsupported.
 	DeleteMessages(ctx context.Context, conv domain.Conversation, ids []string, forEveryone bool) error
+}
+
+// MemberLister is a Connector that can list a group's members, with
+// display names resolved, so the UI can offer them in an @-mention
+// picker.
+type MemberLister interface {
+	// Members lists conv's current members.
+	Members(ctx context.Context, conv domain.Conversation) ([]domain.Member, error)
 }
 
 // LogoutOnRemove is a Connector that can tell its service to unlink this

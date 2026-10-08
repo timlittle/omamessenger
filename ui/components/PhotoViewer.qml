@@ -27,6 +27,9 @@ Item {
   // keys work while this holds keyboard focus, the same as every other
   // full-window dialog here.
   property var routeKey: null
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the external-open button.
+  property var bindings: Keymap.BINDINGS
 
   // closed asks the caller to leave the viewer: the close button, or a
   // click on the backdrop outside the photo.
@@ -111,7 +114,7 @@ Item {
 
     Ui.Button {
       objectName: "openExternalButton"
-      text: "Open in image viewer (" + Keymap.keyFor("viewer.openExternal") + ")"
+      text: "Open in image viewer (" + Keymap.keyFor("viewer.openExternal", root.bindings) + ")"
       tooltipText: "Open in image viewer"
       focusable: true
       onClicked: root.openExternally()

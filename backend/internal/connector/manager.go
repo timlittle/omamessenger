@@ -214,6 +214,24 @@ func (m *Manager) MarkRead(ctx context.Context, conv domain.Conversation) error 
 	return c.MarkRead(ctx, conv)
 }
 
+// Members asks the conversation's connector for its current members, if
+// it lists any; one that does not finds nothing, so a direct chat or a
+// connector without the capability never needs a special case in the
+// caller.
+func (m *Manager) Members(ctx context.Context, conv domain.Conversation) ([]domain.Member, error) {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return nil, err
+	}
+
+	lister, ok := c.(MemberLister)
+	if !ok {
+		return nil, nil
+	}
+
+	return lister.Members(ctx, conv)
+}
+
 // LoadOlder asks the conversation's connector for older history, if it
 // keeps any; one that does not finds nothing.
 func (m *Manager) LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error) {

@@ -193,6 +193,67 @@ func TestSetHidden_HidesAndUnhides(t *testing.T) {
 	}
 }
 
+func TestSetReminder_SnoozesAndClears(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	if err := s.SetReminder(ctx, "chat", 1000); err != nil {
+		t.Fatal(err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || c.ReminderAt != 1000 {
+		t.Fatalf("Conversation after SetReminder = %+v, %v; want ReminderAt 1000", c, err)
+	}
+
+	if err := s.SetReminder(ctx, "chat", 0); err != nil {
+		t.Fatal(err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || c.ReminderAt != 0 {
+		t.Fatalf("Conversation after clearing = %+v, %v; want ReminderAt 0", c, err)
+	}
+
+	if err := s.SetReminder(ctx, "missing", 1000); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetReminder(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestPendingReminders_ListsOnlyActiveOnesSoonestFirst(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "later", "Later")
+	addConversation(t, s, "wa", "sooner", "Sooner")
+	addConversation(t, s, "wa", "none", "None")
+
+	if err := s.SetReminder(ctx, "later", 2000); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetReminder(ctx, "sooner", 1000); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.PendingReminders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var ids []string
+	for _, c := range got {
+		ids = append(ids, c.ID)
+	}
+
+	if want := []string{"sooner", "later"}; !slices.Equal(ids, want) {
+		t.Errorf("PendingReminders ids = %v, want %v", ids, want)
+	}
+}
+
 func TestConversations_OrdersPinnedFirst(t *testing.T) {
 	t.Parallel()
 

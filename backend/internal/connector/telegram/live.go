@@ -107,7 +107,7 @@ func (c *Connector) editMessage(ctx context.Context, sink connector.Sink, m tg.M
 		conv.RemoteID = remote
 	}
 
-	sink.Edited(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+	sink.Edited(ctx, c.account.ID, conv.RemoteID, message(msg, e, c.selfUserID()))
 }
 
 // reactionsChanged reports a message's reaction chips changing on their
@@ -170,11 +170,11 @@ func (c *Connector) newMessage(ctx context.Context, sink connector.Sink, m tg.Me
 	}
 
 	if msg.Out {
-		sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+		sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, e, c.selfUserID()))
 		return
 	}
 
-	sink.Incoming(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+	sink.Incoming(ctx, c.account.ID, conv.RemoteID, message(msg, e, c.selfUserID()))
 }
 
 // readUpTo marks our messages in a conversation read, up to Telegram's

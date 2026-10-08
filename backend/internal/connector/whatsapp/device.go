@@ -82,6 +82,10 @@ type device interface {
 	// history sync or a live message whose own data left either blank.
 	groupInfo(ctx context.Context, jid types.JID) (name string, members int, err error)
 
+	// groupParticipants is a group's current participants, for the
+	// @-mention picker.
+	groupParticipants(ctx context.Context, jid types.JID) ([]types.GroupParticipant, error)
+
 	// contactName is WhatsApp's own name for jid: a LID is mapped to its
 	// phone JID first, then whichever name the local contact store holds
 	// for it, in WhatsApp's own priority order, or "" when nothing is
@@ -130,6 +134,13 @@ type device interface {
 	// sendAppState sends an app-state patch, such as a pin or archive
 	// change, so WhatsApp's own record of the chat agrees with it.
 	sendAppState(ctx context.Context, patch appstate.PatchInfo) error
+
+	// requestOlderHistory asks WhatsApp's primary phone, through a peer
+	// message only this account's own other devices receive, for count
+	// messages older than anchor in its chat (see history_ondemand.go).
+	// The phone's answer arrives later, asynchronously, as an
+	// events.HistorySync of type ON_DEMAND.
+	requestOlderHistory(ctx context.Context, anchor *types.MessageInfo, count int) error
 }
 
 // pairClientType and pairDisplayName name this companion to WhatsApp when
@@ -280,6 +291,16 @@ func (d *waDevice) groupInfo(ctx context.Context, jid types.JID) (string, int, e
 	return info.Name, info.ParticipantCount, nil
 }
 
+// groupParticipants asks WhatsApp for a group's current participants.
+func (d *waDevice) groupParticipants(ctx context.Context, jid types.JID) ([]types.GroupParticipant, error) {
+	info, err := d.cli.GetGroupInfo(ctx, jid)
+	if err != nil {
+		return nil, fmt.Errorf("whatsapp: group participants: %w", err)
+	}
+
+	return info.Participants, nil
+}
+
 // contactName resolves jid to WhatsApp's own name for that person. A LID
 // carries no contact record of its own on most accounts, so it is
 // mapped to its phone JID through whatsmeow's own LID store first; if
@@ -392,6 +413,14 @@ func (d *waDevice) sendMediaRetryReceipt(ctx context.Context, info *types.Messag
 // sendAppState sends patch with WhatsApp.
 func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
 	return d.cli.SendAppState(ctx, patch)
+}
+
+// requestOlderHistory sends the primary phone an on-demand history
+// request for count messages older than anchor.
+func (d *waDevice) requestOlderHistory(ctx context.Context, anchor *types.MessageInfo, count int) error {
+	_, err := d.cli.SendPeerMessage(ctx, d.cli.BuildHistorySyncRequest(anchor, count))
+
+	return err
 }
 
 // Status values device reports through onStatus. statusStopped covers

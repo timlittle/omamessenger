@@ -66,6 +66,11 @@ type fakeDevice struct {
 	groupErr     error
 	groupCalls   []types.JID
 
+	// participants and participantsErr script groupParticipants, keyed
+	// by the string form of the group JID.
+	participants    map[string][]types.GroupParticipant
+	participantsErr error
+
 	// contactNames scripts contactName, keyed by the string form of
 	// whichever JID (a phone JID or a LID) the lookup should resolve.
 	contactNames map[string]string
@@ -116,6 +121,18 @@ type fakeDevice struct {
 	// records what it was asked to send; retry_test.go drives these.
 	mediaRetryErr   error
 	mediaRetryCalls []mediaRetryCall
+
+	// requestHistoryErr scripts requestOlderHistory, and
+	// requestHistoryCalls records what it was asked to request;
+	// history_ondemand_test.go drives these.
+	requestHistoryErr   error
+	requestHistoryCalls []requestHistoryCall
+}
+
+// requestHistoryCall records one call to requestOlderHistory.
+type requestHistoryCall struct {
+	anchor *types.MessageInfo
+	count  int
 }
 
 // mediaRetryCall records one call to sendMediaRetryReceipt.
@@ -338,6 +355,18 @@ func (d *fakeDevice) groupInfo(_ context.Context, jid types.JID) (string, int, e
 	return d.groupNames[jid.String()], d.groupMembers[jid.String()], nil
 }
 
+// groupParticipants reports the scripted participants or error.
+func (d *fakeDevice) groupParticipants(_ context.Context, jid types.JID) ([]types.GroupParticipant, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.participantsErr != nil {
+		return nil, d.participantsErr
+	}
+
+	return d.participants[jid.String()], nil
+}
+
 // contactName reports the scripted name for jid, mapping a LID to its
 // scripted phone JID first when jid itself has no name of its own, the
 // same priority order the real device's contactName documents; it
@@ -442,6 +471,16 @@ func (d *fakeDevice) sendMediaRetryReceipt(_ context.Context, info *types.Messag
 	d.mediaRetryCalls = append(d.mediaRetryCalls, mediaRetryCall{info: info, mediaKey: mediaKey})
 
 	return d.mediaRetryErr
+}
+
+// requestOlderHistory records the call and reports requestHistoryErr.
+func (d *fakeDevice) requestOlderHistory(_ context.Context, anchor *types.MessageInfo, count int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.requestHistoryCalls = append(d.requestHistoryCalls, requestHistoryCall{anchor: anchor, count: count})
+
+	return d.requestHistoryErr
 }
 
 // sendAppState records patch and reports appStateErr, or blocks on ctx

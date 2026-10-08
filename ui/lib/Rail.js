@@ -157,18 +157,34 @@ function multiAccountServices(items) {
   return [...new Set(items.filter((i) => i.kind === 'account').map((i) => i.service))];
 }
 
+// isSnoozed reports whether a conversation is hidden from the standard
+// list by a reminder that has not come due yet.
+function isSnoozed(c, nowMs) {
+  return (c.reminderAt ?? 0) > 0 && nowMs < c.reminderAt;
+}
+
+// isDueReminder reports whether a conversation's reminder has arrived:
+// it stays snoozed by the user's own choice (see docs/decisions.md)
+// until they clear or act on it, but from this moment it is surfaced in
+// the standard list again, marked "Reminder", instead of staying hidden.
+function isDueReminder(c, nowMs) {
+  return (c.reminderAt ?? 0) > 0 && nowMs >= c.reminderAt;
+}
+
 // showsStandard reports whether one conversation would appear in the
-// standard list: not archived, not hidden, and active within the last
-// month. Unread messages do not keep an old chat visible on their own;
-// the rail's own unread total still counts them (see unreadTotal), and
-// show-all still shows the chat, dimmed. The one open as keepId is exempt
-// only from the recency rule, so replying in an old chat never makes it
-// vanish from under the user; an explicit hide or archive still drops it
-// at once, even while it is open, since that is the point of hiding or
-// archiving it.
+// standard list: not archived, not hidden, not still snoozed, and
+// active within the last month. Unread messages do not keep an old chat
+// visible on their own; the rail's own unread total still counts them
+// (see unreadTotal), and show-all still shows the chat, dimmed. The one
+// open as keepId is exempt only from the recency rule, so replying in an
+// old chat never makes it vanish from under the user; an explicit hide,
+// archive or snooze still drops it at once, even while it is open,
+// since that is the point of hiding, archiving or snoozing it. A due
+// reminder always shows, however old the conversation, since surfacing
+// it again is the whole point.
 function showsStandard(c, nowMs, keepId) {
-  if (c.archived || c.hidden) return false;
-  if (c.id === keepId) return true;
+  if (c.archived || c.hidden || isSnoozed(c, nowMs)) return false;
+  if (c.id === keepId || isDueReminder(c, nowMs)) return true;
 
   return nowMs - c.lastActivity <= RECENT_MS;
 }
@@ -186,15 +202,28 @@ function isDimmed(c, nowMs, keepId) {
 }
 
 // dimLabel names why a dimmed conversation would not appear in the
-// standard list: "Hidden" or "Archived". A conversation dimmed only for
-// being older carries no label, since its timestamp already explains it;
-// one that is not dimmed at all carries none either.
+// standard list: "Hidden", "Archived" or "Snoozed". A conversation
+// dimmed only for being older carries no label, since its timestamp
+// already explains it; one that is not dimmed at all carries none
+// either. The caller appends the actual wake time to "Snoozed" (see
+// Format.snoozeUntilLabel); this only names which reason it is.
 function dimLabel(c, nowMs, keepId) {
   if (!isDimmed(c, nowMs, keepId)) return '';
   if (c.hidden) return 'Hidden';
   if (c.archived) return 'Archived';
+  if (isSnoozed(c, nowMs)) return 'Snoozed';
 
   return '';
+}
+
+// dueFirst sorts conversations whose reminder has come due ahead of
+// everything else, keeping each group's own relative order, so a
+// snoozed chat returns to the top of the list the moment it wakes.
+function dueFirst(conversations, nowMs) {
+  const due = conversations.filter((c) => isDueReminder(c, nowMs));
+  const rest = conversations.filter((c) => !isDueReminder(c, nowMs));
+
+  return due.concat(rest);
 }
 
 // isUnreadVisible reports whether a conversation belongs in the all-unreads

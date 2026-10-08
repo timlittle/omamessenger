@@ -13,7 +13,7 @@ import (
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me`
 
 // Page sizes for Messages.
 const (
@@ -172,8 +172,13 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message, countUnread
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo, reactions)
+	mentions, err := encodeMentions(m.Mentions)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo, reactions, mentions, m.MentionsMe)
 	if err != nil {
 		return err
 	}
@@ -248,12 +253,14 @@ func (s *Store) UpdateMessageStatus(ctx context.Context, id, status string) (_ d
 }
 
 // MessageEdit is what EditMessage applies to a stored message: its new
-// text, media and reactions, bundled into one argument to keep the
-// function's signature short.
+// text, media, reactions and mentions, bundled into one argument to
+// keep the function's signature short.
 type MessageEdit struct {
-	Text      string
-	Media     *domain.Media
-	Reactions []domain.Reaction
+	Text       string
+	Media      *domain.Media
+	Reactions  []domain.Reaction
+	Mentions   []domain.Mention
+	MentionsMe bool
 }
 
 // EditMessage updates a stored message's text, media and reactions after
@@ -279,13 +286,19 @@ func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID string
 		return m, false, wrap("edit message", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, `UPDATE messages SET text=?,media=?,edited=1,reactions=? WHERE id=?`,
-		edit.Text, encodedMedia, encodedReactions, m.ID)
+	encodedMentions, err := encodeMentions(edit.Mentions)
+	if err != nil {
+		return m, false, wrap("edit message", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `UPDATE messages SET text=?,media=?,edited=1,reactions=?,mentions=?,mentions_me=? WHERE id=?`,
+		edit.Text, encodedMedia, encodedReactions, encodedMentions, edit.MentionsMe, m.ID)
 	if err != nil {
 		return m, false, wrap("edit message", err)
 	}
 
 	m.Text, m.Media, m.Edited, m.Reactions = edit.Text, edit.Media, true, edit.Reactions
+	m.Mentions, m.MentionsMe = edit.Mentions, edit.MentionsMe
 
 	return m, true, nil
 }
@@ -500,9 +513,10 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 // scanMessage reads one row selected with messageColumns.
 func scanMessage(row scanner) (domain.Message, error) {
 	var m domain.Message
-	var media, replyTo, reactions string
+	var media, replyTo, reactions, mentions string
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
-		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &replyTo, &reactions); err != nil {
+		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &replyTo, &reactions,
+		&mentions, &m.MentionsMe); err != nil {
 		return m, err
 	}
 
@@ -526,7 +540,10 @@ func scanMessage(row scanner) (domain.Message, error) {
 		}
 	}
 
-	return m, nil
+	var err error
+	m.Mentions, err = decodeMentions(mentions)
+
+	return m, err
 }
 
 // encodeMedia stores media as JSON, or "" for none.

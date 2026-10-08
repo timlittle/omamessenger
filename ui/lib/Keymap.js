@@ -54,6 +54,10 @@ var BINDINGS = [
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
   { action: 'helper.retryInstall', keys: ['Ctrl+R'], contexts: ['global'], label: 'Retry installing the helper', command: true },
   { action: 'helper.doctor', keys: [], contexts: ['global'], label: 'Run health check', command: true },
+  // keys.conf lets a person remap these bindings; these two commands
+  // manage that file rather than any key of their own, like account.add.
+  { action: 'keys.openConfig', keys: [], contexts: ['global'], label: 'Open key bindings file', command: true },
+  { action: 'keys.showBindings', keys: [], contexts: ['global'], label: 'Show key bindings', command: true },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
@@ -66,6 +70,19 @@ var BINDINGS = [
   { action: 'chat.pin', keys: [], contexts: ['list', 'conversation'], label: 'Pin or unpin chat', command: true },
   { action: 'chat.archive', keys: [], contexts: ['list', 'conversation'], label: 'Archive or unarchive chat', command: true },
   { action: 'chat.hide', keys: [], contexts: ['list', 'conversation'], label: 'Hide or unhide chat', command: true },
+  // "a" is free in the list context (the conversation context already
+  // uses it for compose.focus), so the key works for the selected chat
+  // and the command palette reaches the open one too, since a palette
+  // command runs through its owning controller regardless of context.
+  { action: 'chat.archiveRead', keys: ['a'], contexts: ['list'], label: 'Archive and mark read', command: true },
+  // Archiving every read chat at once is bulk, so it is palette-only and
+  // asks for confirmation first (see the archiveConfirm bindings below).
+  { action: 'list.archiveAllRead', keys: [], contexts: ['global'], label: 'Archive all read conversations', command: true },
+  { action: 'chat.snoozeLaterToday', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until later today', command: true },
+  { action: 'chat.snoozeTomorrow', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until tomorrow', command: true },
+  { action: 'chat.snoozeNextWeek', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until next week', command: true },
+  { action: 'chat.snoozeCustom', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until…', command: true },
+  { action: 'chat.unsnooze', keys: [], contexts: ['list', 'conversation'], label: 'Remove snooze', command: true },
 
   { action: 'message.highlightNewer', keys: ['j', 'Down'], contexts: ['conversation'], label: 'Highlight the next message' },
   { action: 'message.highlightOlder', keys: ['k', 'Up'], contexts: ['conversation'], label: 'Highlight the previous message' },
@@ -108,6 +125,17 @@ var BINDINGS = [
   { action: 'reaction.left', keys: ['Left'], contexts: ['reactionPicker'], label: 'Previous emoji' },
   { action: 'reaction.right', keys: ['Right'], contexts: ['reactionPicker'], label: 'Next emoji' },
   { action: 'reaction.accept', keys: ['Enter'], contexts: ['reactionPicker'], label: 'React', hint: true },
+
+  // The @-mention picker, open while typing a group member's name after
+  // "@" in the composer. Up/Down move the highlight rather than j/k,
+  // which would just be typed as text; Tab or Enter inserts the
+  // highlighted member, and Escape closes the picker without leaving
+  // the composer (it does not fall through to the global "escape"
+  // action, since this context never includes it).
+  { action: 'mention.down', keys: ['Down'], contexts: ['mentionPicker'], label: 'Next member' },
+  { action: 'mention.up', keys: ['Up'], contexts: ['mentionPicker'], label: 'Previous member' },
+  { action: 'mention.accept', keys: ['Tab', 'Enter'], contexts: ['mentionPicker'], label: 'Insert mention', hint: true },
+  { action: 'mention.cancel', keys: ['Escape'], contexts: ['mentionPicker'], label: 'Close without inserting', hint: true },
 
   // The service chooser, at the first step of adding an account: j/k and
   // Up/Down move the highlight, Enter chooses it, and t/w jump straight
@@ -163,14 +191,23 @@ var BINDINGS = [
   { action: 'delete.accept', keys: ['Enter'], contexts: ['deleteConfirm'], label: 'Choose the highlighted answer', hint: true },
   { action: 'delete.everyone', keys: ['e'], contexts: ['deleteConfirm'], label: 'Delete for everyone', hint: true },
   { action: 'delete.forMe', keys: ['m'], contexts: ['deleteConfirm'], label: 'Delete for me', hint: true },
-  { action: 'delete.cancel', keys: ['n'], contexts: ['deleteConfirm'], label: 'Cancel', hint: true }
+  { action: 'delete.cancel', keys: ['n'], contexts: ['deleteConfirm'], label: 'Cancel', hint: true },
+
+  // Archiving every read chat at once: the same y/n idiom
+  // RemoveAccount's own confirmation uses, since Cancel is the only
+  // other choice and needs no highlight to move between.
+  { action: 'archiveAll.accept', keys: ['Enter', 'y'], contexts: ['archiveConfirm'], label: 'Archive the read conversations', hint: true },
+  { action: 'archiveAll.cancel', keys: ['n'], contexts: ['archiveConfirm'], label: 'Cancel', hint: true }
 ];
 
 // match returns the action for a key press in a context, or "". Bindings
-// for the context win over global ones.
-function match(context, key, modifiers, text) {
-  const candidates = BINDINGS.filter((b) => b.contexts.includes(context))
-    .concat(BINDINGS.filter((b) => b.contexts.includes('global')));
+// for the context win over global ones. list defaults to BINDINGS; a
+// caller with a keys.conf override merged in (see KeyBindings.js) passes
+// its own effective list instead.
+function match(context, key, modifiers, text, list) {
+  const bindings = list || BINDINGS;
+  const candidates = bindings.filter((b) => b.contexts.includes(context))
+    .concat(bindings.filter((b) => b.contexts.includes('global')));
   const hit = candidates.find((b) => b.keys.some((spec) => specMatches(parseSpec(spec), key, modifiers, text)));
 
   return hit ? hit.action : '';
@@ -230,12 +267,14 @@ function specMatches(spec, key, modifiers, text) {
 }
 
 // bindingsFor returns the bindings worth hinting in a context's footer:
-// the context's own first, then global ones.
-function bindingsFor(context) {
+// the context's own first, then global ones. list defaults to BINDINGS,
+// same as match.
+function bindingsFor(context, list) {
+  const bindings = list || BINDINGS;
   const hinted = (b) => b.hint;
 
-  return BINDINGS.filter((b) => b.contexts.includes(context) && hinted(b))
-    .concat(BINDINGS.filter((b) => b.contexts.includes('global') && hinted(b)));
+  return bindings.filter((b) => b.contexts.includes(context) && hinted(b))
+    .concat(bindings.filter((b) => b.contexts.includes('global') && hinted(b)));
 }
 
 // display shows a key spec the way people read it: "Ctrl+Slash" as
@@ -246,16 +285,20 @@ function display(spec) {
 
 // keyFor returns the display text for action's primary key, or "" when
 // it has none, for a button label that wants to show its own shortcut
-// beside it rather than naming the key a second time by hand.
-function keyFor(action) {
-  const binding = BINDINGS.find((b) => b.action === action);
+// beside it rather than naming the key a second time by hand. list
+// defaults to BINDINGS, same as match.
+function keyFor(action, list) {
+  const bindings = list || BINDINGS;
+  const binding = bindings.find((b) => b.action === action);
   return binding && binding.keys.length > 0 ? display(binding.keys[0]) : '';
 }
 
 // commands returns what the command palette offers: every command
 // binding, with its first key shown so people learn it, if it has one.
-function commands() {
-  return BINDINGS
+// list defaults to BINDINGS, same as match.
+function commands(list) {
+  const bindings = list || BINDINGS;
+  return bindings
     .filter((b) => b.command)
     .map((b) => ({ action: b.action, label: b.label, keys: b.keys.length > 0 ? display(b.keys[0]) : '' }));
 }
@@ -264,10 +307,11 @@ function commands() {
 // writing, or what stops it once the input already has focus. It reads
 // its wording off the real compose.focus and escape bindings, the same
 // ones the key router already matches, rather than naming a key a
-// second time by hand.
-function composeHint(writing) {
+// second time by hand. list defaults to BINDINGS, same as match.
+function composeHint(writing, list) {
+  const bindings = list || BINDINGS;
   const action = writing ? 'escape' : 'compose.focus';
-  const key = display(BINDINGS.find((b) => b.action === action).keys[0]);
+  const key = display(bindings.find((b) => b.action === action).keys[0]);
 
   return writing ? `Writing · ${key} to stop` : `${key} to write`;
 }

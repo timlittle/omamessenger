@@ -17,8 +17,11 @@ import (
 // names, if any.
 func sendRequest(ctx context.Context, api *tg.Client, peer tg.InputPeerClass, m domain.Message) (tg.UpdatesClass, error) {
 	replyTo := inputReplyTo(m.ReplyTo)
+	entities := outgoingEntities(m.Mentions)
 	if m.Media == nil || m.Media.Kind == domain.MediaLink {
-		return api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{Peer: peer, Message: m.Text, RandomID: randomID(), ReplyTo: replyTo})
+		return api.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+			Peer: peer, Message: m.Text, RandomID: randomID(), ReplyTo: replyTo, Entities: entities,
+		})
 	}
 
 	media, err := uploadMedia(ctx, api, m.Media)
@@ -27,7 +30,7 @@ func sendRequest(ctx context.Context, api *tg.Client, peer tg.InputPeerClass, m 
 	}
 
 	return api.MessagesSendMedia(ctx, &tg.MessagesSendMediaRequest{
-		Peer: peer, Media: media, Message: wireCaption(m), RandomID: randomID(), ReplyTo: replyTo,
+		Peer: peer, Media: media, Message: wireCaption(m), RandomID: randomID(), ReplyTo: replyTo, Entities: entities,
 	})
 }
 

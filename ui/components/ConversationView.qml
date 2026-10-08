@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
+import "../lib/Keymap.js" as Keymap
 
 // The open conversation: header, message list and composer. Shows an empty
 // state instead when no conversation is open.
@@ -23,6 +24,10 @@ Item {
   property string highlightedId: ""
   // nowMs is the current time, passed to each message delegate.
   property real nowMs: 0
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), passed to each message delegate's
+  // hint row and to the composer's mode hint.
+  property var bindings: Keymap.BINDINGS
   // voiceNotes is the playback state each message delegate reads for its
   // voice note player; see MessageBubbleContent for its shape.
   property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
@@ -36,6 +41,11 @@ Item {
   property string attachmentPath: ""
   // composeEnabled is false while the conversation can't accept input.
   property bool composeEnabled: true
+  // historyUnavailable is true once scrolling back asked the service for
+  // older history and it could not be reached right now; shown as a
+  // small note above the oldest loaded message rather than silently
+  // stopping, so the user knows to try again once their phone is online.
+  property bool historyUnavailable: false
   // composer exposes the Composer instance so a key router can focus it.
   property alias composer: composer
   // routeKey is forwarded straight to the composer; see Composer.qml for
@@ -43,6 +53,9 @@ Item {
   property var routeKey: null
   // isGroup is true when the open conversation is a group chat.
   readonly property bool isGroup: root.conversation ? root.conversation.kind === "group" : false
+  // members are the open group's members, for the composer's @-mention
+  // picker; an empty list for a direct chat.
+  property var members: []
 
   // loadOlder asks the caller to fetch messages before the oldest loaded
   // one. It fires on every scroll near the top, so the caller ignores it
@@ -62,9 +75,9 @@ Item {
   // deleteRequested asks the caller to open the delete question for a
   // message, from its hover toolbar's delete button.
   signal deleteRequested(string id)
-  // send reports a message the user submitted, and the id of the message
-  // it answers, or "" when it answers nothing.
-  signal send(string text, string replyToId)
+  // send reports a message the user submitted, the id of the message it
+  // answers (or "" when it answers nothing), and its resolved @-mentions.
+  signal send(string text, string replyToId, var mentions)
   // draftEdited reports the composer's text as the user types it.
   signal draftEdited(string text)
   // replyRequested asks the caller to start replying to a loaded message.
@@ -214,6 +227,7 @@ Item {
         annotation: root.annotations[index] ?? ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         isGroup: root.isGroup
         nowMs: root.nowMs
+        bindings: root.bindings
         voiceNotes: root.voiceNotes
         // The highlight and its hint row only make sense in scroll
         // mode: while the composer has focus, j/k do not move it and
@@ -232,6 +246,22 @@ Item {
 
       onContentYChanged: root._checkLoadOlder()
       onContentHeightChanged: root._checkLoadOlder()
+
+      // A BottomToTop ListView's footer sits at the layout's end, which
+      // for this direction is the visual top: right above the oldest
+      // loaded message, where scrolling back stopped.
+      footer: Text {
+        width: messageList.width
+        visible: root.historyUnavailable
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        topPadding: Theme.spacing.sm
+        bottomPadding: Theme.spacing.sm
+        text: "Older messages need your phone online — try again later"
+        color: Util.alpha(Color.foreground, 0.6)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
+      }
     }
 
     Composer {
@@ -241,8 +271,10 @@ Item {
       title: root.conversation ? root.conversation.title : ""
       enabled: root.composeEnabled
       attachmentPath: root.attachmentPath
+      bindings: root.bindings
       routeKey: root.routeKey
-      onSubmitted: (text, replyToId) => root.send(text, replyToId)
+      members: root.members
+      onSubmitted: (text, replyToId, mentions) => root.send(text, replyToId, mentions)
       onTextChanged: root.draftEdited(composer.text)
       onReplyCanceled: root.replyCanceled()
       onFileAttached: path => root.fileAttached(path)

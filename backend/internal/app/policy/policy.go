@@ -64,3 +64,15 @@ func Notification(in Input) (title, body, conversationID string) {
 
 	return title, body, in.ConversationID
 }
+
+// ReminderNotification returns the title, body and conversation id for a
+// snoozed conversation's reminder, once it comes due. DetailNone hides
+// which chat it is, the same as an arriving message does; the other two
+// levels name it, since a reminder carries no message text to hide.
+func ReminderNotification(detail Detail, title, conversationID string) (notifTitle, body, convID string) {
+	if detail == DetailNone {
+		return "OmaMessenger", "Reminder", conversationID
+	}
+
+	return "Reminder: " + title, "Snoozed conversation", conversationID
+}

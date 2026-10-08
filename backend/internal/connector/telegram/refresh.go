@@ -35,7 +35,7 @@ func (c *Connector) RefreshMessages(ctx context.Context, conv domain.Conversatio
 		return err
 	}
 
-	r := messageRefresh{api: api, sink: sink, conv: conv, peer: peer}
+	r := messageRefresh{api: api, sink: sink, conv: conv, peer: peer, self: c.selfUserID()}
 	for chunk := range slices.Chunk(ids, refreshBatch) {
 		if err := r.chunk(ctx, chunk); err != nil {
 			return err
@@ -52,6 +52,7 @@ type messageRefresh struct {
 	sink connector.Sink
 	conv domain.Conversation
 	peer tg.InputPeerClass
+	self int64
 }
 
 // chunk fetches one batch of messages by id and reports each.
@@ -74,7 +75,7 @@ func (r messageRefresh) chunk(ctx context.Context, ids []int) error {
 	e := newEntities(messages.GetUsers(), messages.GetChats())
 	for _, m := range messages.GetMessages() {
 		if msg, ok := m.(*tg.Message); ok {
-			r.sink.History(ctx, r.conv.AccountID, r.conv.RemoteID, message(msg, e))
+			r.sink.History(ctx, r.conv.AccountID, r.conv.RemoteID, message(msg, e, r.self))
 		}
 	}
 

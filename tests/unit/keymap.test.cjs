@@ -88,6 +88,14 @@ const cases = [
   ['reactionPicker', KEY.Enter, 0, '\r', 'reaction.accept'],
   ['reactionPicker', KEY.Escape, 0, '', 'escape'],
 
+  ['mentionPicker', KEY.Down, 0, '', 'mention.down'],
+  ['mentionPicker', KEY.Up, 0, '', 'mention.up'],
+  ['mentionPicker', KEY.Tab, 0, '\t', 'mention.accept'],
+  ['mentionPicker', KEY.Enter, 0, '\r', 'mention.accept'],
+  // Escape closes the picker without leaving the composer: it must never
+  // fall through to the global "escape" action while the picker is open.
+  ['mentionPicker', KEY.Escape, 0, '', 'mention.cancel'],
+
   // The viewer and the reaction picker share Left/Right physically, but
   // never open at once (see Navigation.keyContext); each context only
   // answers to its own binding.

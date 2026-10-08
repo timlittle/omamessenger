@@ -39,7 +39,7 @@ func TestIngest_SurvivesAHelperRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		commands1, ingest1, _ := appOver(t, db1)
+		commands1, ingest1, _, _ := appOver(t, db1)
 		ingest1.Conversation(ctx, domain.Conversation{AccountID: "wa", RemoteID: "r-chat", Title: "Alex", Kind: domain.KindDirect})
 		ingest1.Incoming(ctx, "wa", "r-chat", incoming("in-1", "first"))
 		ingest1.Incoming(ctx, "wa", "r-chat", incoming("in-2", "second"))
@@ -65,7 +65,7 @@ func TestIngest_SurvivesAHelperRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = db2.Close() })
-		commands2, ingest2, dispatcher2 := appOver(t, db2)
+		commands2, ingest2, dispatcher2, _ := appOver(t, db2)
 
 		after, err := commands2.Conversations(ctx, "")
 		if err != nil || len(after) != 1 {
@@ -79,7 +79,7 @@ func TestIngest_SurvivesAHelperRestart(t *testing.T) {
 			t.Errorf("unread after restart = %d, want 2", got.Unread)
 		}
 
-		messages, _, err := commands2.Messages(ctx, got.ID, "", 10)
+		messages, _, _, err := commands2.Messages(ctx, got.ID, "", 10)
 		if err != nil || len(messages) != 2 {
 			t.Fatalf("messages after restart = %+v, %v, want the 2 messages from before it", messages, err)
 		}

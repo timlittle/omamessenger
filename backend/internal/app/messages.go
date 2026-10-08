@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
@@ -20,31 +22,36 @@ const MaxPageSize = 200
 // media it could not describe when it was first synced.
 var mediaLabels = []string{"[Photo]", "[Video]", "[File]", "[Voice message]"}
 
-// Messages returns up to limit messages before beforeID, oldest first, and
-// whether older ones remain. A zero limit means the default page size.
-func (c *Commands) Messages(ctx context.Context, conversationID, beforeID string, limit int) ([]domain.Message, bool, error) {
+// Messages returns up to limit messages before beforeID, oldest first,
+// whether older ones remain, and whether older history could not be
+// fetched from the service right now: the page already loaded still
+// stands either way (see olderFromService), and the UI shows this as a
+// small note rather than silently stopping. A zero limit means the
+// default page size.
+func (c *Commands) Messages(ctx context.Context, conversationID, beforeID string, limit int) (messages []domain.Message, hasMore, historyUnavailable bool, err error) {
 	if strings.TrimSpace(conversationID) == "" {
-		return nil, false, fmt.Errorf("%w: conversationId is required", ErrInvalidInput)
+		return nil, false, false, fmt.Errorf("%w: conversationId is required", ErrInvalidInput)
 	}
 
 	if limit < 0 || limit > MaxPageSize {
-		return nil, false, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidInput, MaxPageSize)
+		return nil, false, false, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidInput, MaxPageSize)
 	}
 
 	conv, err := c.store.Conversation(ctx, conversationID)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 
 	page, more, err := c.store.Messages(ctx, conversationID, beforeID, limit)
+	unavailable := false
 	if err == nil && !more && c.history != nil {
-		page, more, err = c.olderFromService(ctx, conv, beforeID, limit, page)
+		page, more, unavailable, err = c.olderFromService(ctx, conv, beforeID, limit, page)
 	}
 	if err != nil {
-		return page, more, err
+		return page, more, unavailable, err
 	}
 
-	return c.refreshStaleMedia(ctx, conv, beforeID, limit, page), more, nil
+	return c.refreshStaleMedia(ctx, conv, beforeID, limit, page), more, unavailable, nil
 }
 
 // refreshStaleMedia asks the service to re-report any messages in page
@@ -101,37 +108,54 @@ func needsRefresh(m domain.Message) bool {
 // sends both when a chat opens) to race against. Ingest.History already
 // announces the conversation's current preview and activity as each
 // message lands. If the service cannot be reached, the page already
-// loaded stands: scrolling back is not worth an error.
-func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) ([]domain.Message, bool, error) {
+// loaded stands: scrolling back is not worth an error. A failure
+// wrapping connector.ErrHistoryUnavailable, such as WhatsApp's phone
+// never answering an on-demand request, is reported back as the third
+// return value instead of silently swallowed like any other failure, so
+// Messages can tell the UI the difference between "try again later" and
+// "there is nothing more".
+func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) ([]domain.Message, bool, bool, error) {
 	oldest, err := c.store.OldestRemoteID(ctx, conv.ID)
 	if err != nil {
-		return page, false, nil
+		return page, false, false, nil
 	}
 
 	loaded, err := c.history.LoadOlder(ctx, conv, oldest, max(limit, store.DefaultPageSize))
-	if err != nil || loaded == 0 {
-		return page, false, nil
+	if err != nil {
+		return page, false, errors.Is(err, connector.ErrHistoryUnavailable), nil
+	}
+	if loaded == 0 {
+		return page, false, false, nil
 	}
 
 	page, _, err = c.store.Messages(ctx, conv.ID, beforeID, limit)
 
 	// The service may hold more still; the next page asks it again.
-	return page, true, err
+	return page, true, false, err
+}
+
+// SendOptions are a message's optional extras, bundled into one
+// argument to keep Send's own argument count within this codebase's
+// limit: an attachment to send with text as its caption, the local id
+// of a message in the same conversation this one answers, and the
+// "@name" tokens the composer inserted into text. Each is "" or nil
+// when the message has none.
+type SendOptions struct {
+	AttachmentPath string
+	ReplyToID      string
+	Mentions       []domain.Mention
 }
 
 // Send stores a message as pending, publishes it and hands it to the
-// service. attachmentPath names a file on this machine to send along
-// with text as its caption, or "" for a plain text message. replyToID,
-// when not "", is the local id of a message in the same conversation
-// this one answers. If the service refuses it, the message is returned
-// as failed, ready to retry; that is not an error.
-func (c *Commands) Send(ctx context.Context, conversationID, text, attachmentPath, replyToID string) (domain.Message, error) {
+// service. If the service refuses it, the message is returned as
+// failed, ready to retry; that is not an error.
+func (c *Commands) Send(ctx context.Context, conversationID, text string, opts SendOptions) (domain.Message, error) {
 	id := ""
-	if attachmentPath != "" {
+	if opts.AttachmentPath != "" {
 		id = newAttachmentID()
 	}
 
-	media, err := c.prepareAttachment(ctx, id, attachmentPath)
+	media, err := c.prepareAttachment(ctx, id, opts.AttachmentPath)
 	if err != nil {
 		return domain.Message{}, err
 	}
@@ -146,7 +170,7 @@ func (c *Commands) Send(ctx context.Context, conversationID, text, attachmentPat
 		return domain.Message{}, err
 	}
 
-	replyTo, err := c.resolveReplyTo(ctx, conv.ID, replyToID)
+	replyTo, err := c.resolveReplyTo(ctx, conv.ID, opts.ReplyToID)
 	if err != nil {
 		return domain.Message{}, err
 	}
@@ -154,7 +178,7 @@ func (c *Commands) Send(ctx context.Context, conversationID, text, attachmentPat
 	before := c.events.unreadTotal(ctx)
 	m, _, err := c.store.AddMessage(ctx, domain.Message{
 		ID: id, ConversationID: conv.ID, SenderName: "You", Text: text, Outgoing: true,
-		Status: domain.StatusPending, Created: time.Now().UnixMilli(), Media: media, ReplyTo: replyTo,
+		Status: domain.StatusPending, Created: time.Now().UnixMilli(), Media: media, ReplyTo: replyTo, Mentions: opts.Mentions,
 	})
 	if err != nil {
 		return domain.Message{}, err

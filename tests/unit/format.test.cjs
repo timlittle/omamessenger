@@ -322,6 +322,41 @@ test('messageHtml escapes and links before breaking lines', () => {
   assert.equal(Format.messageHtml('<b>\nhttps://x.io'), '&lt;b&gt;<br><a href="https://x.io">https://x.io</a>');
 });
 
+test('messageHtml bolds a mention at its offset', () => {
+  const html = Format.messageHtml('hi @Nadia how are you', null, null, [{ offset: 3, length: 6 }]);
+  assert.equal(html, 'hi <b>@Nadia</b> how are you');
+});
+
+test('messageHtml bolds more than one mention, in any order given', () => {
+  const html = Format.messageHtml('@Bob and @Alice', null, null, [
+    { offset: 9, length: 6 },
+    { offset: 0, length: 4 }
+  ]);
+  assert.equal(html, '<b>@Bob</b> and <b>@Alice</b>');
+});
+
+test('messageHtml escapes and links around a mention', () => {
+  const html = Format.messageHtml('<b> @Nadia https://x.io', '#89b4fa', null, [{ offset: 4, length: 6 }]);
+  assert.equal(html, '&lt;b&gt; <b>@Nadia</b> <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');
+});
+
+test('messageHtml skips a mention that no longer fits the text', () => {
+  const html = Format.messageHtml('hi', null, null, [{ offset: 3, length: 6 }]);
+  assert.equal(html, 'hi');
+});
+
+test('messageHtml ignores overlapping mentions, keeping the earlier one', () => {
+  const html = Format.messageHtml('@Alice', null, null, [
+    { offset: 0, length: 6 },
+    { offset: 2, length: 4 }
+  ]);
+  assert.equal(html, '<b>@Alice</b>');
+});
+
+test('messageHtml with no mentions renders exactly as before', () => {
+  assert.equal(Format.messageHtml('plain text', null, null, []), 'plain text');
+});
+
 test('longestLine picks the widest line to size a bubble by', () => {
   assert.equal(Format.longestLine('short\na much longer line\nmid'), 'a much longer line');
   assert.equal(Format.longestLine(''), '');
@@ -453,4 +488,29 @@ test('mediaFailureReason is empty for an unrecognised or missing reason', () => 
   assert.strictEqual(Format.mediaFailureReason('bogus'), '');
   assert.strictEqual(Format.mediaFailureReason(''), '');
   assert.strictEqual(Format.mediaFailureReason(undefined), '');
+});
+
+test('snoozeUntilLabel shows just the clock time for later today', () => {
+  const later = new Date(2026, 9, 6, 18, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(later.getTime(), nowMs), '18:00');
+});
+
+test('snoozeUntilLabel names tomorrow', () => {
+  const tomorrow = new Date(2026, 9, 7, 9, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(tomorrow.getTime(), nowMs), 'Tomorrow 09:00');
+});
+
+test('snoozeUntilLabel names a weekday within six days', () => {
+  const inFourDays = new Date(2026, 9, 10, 9, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(inFourDays.getTime(), nowMs), 'Saturday 09:00');
+});
+
+test('snoozeUntilLabel shows day and month for further-out dates this year', () => {
+  const inThreeWeeks = new Date(2026, 9, 27, 9, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(inThreeWeeks.getTime(), nowMs), '27 Oct 09:00');
+});
+
+test('snoozeUntilLabel includes the year for a date in another year', () => {
+  const nextYear = new Date(2027, 1, 3, 9, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(nextYear.getTime(), nowMs), '3 Feb 2027 09:00');
 });

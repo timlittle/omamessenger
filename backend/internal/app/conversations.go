@@ -130,6 +130,27 @@ func (c *Commands) SetArchived(ctx context.Context, conversationID string, archi
 	return conv, c.organizer.SetArchived(ctx, conv, archived)
 }
 
+// SetReminder snoozes a conversation until at (Unix milliseconds), or
+// clears its reminder when at is 0, then wakes the reminder scheduler so
+// it recomputes when to wake next, instead of only noticing on whatever
+// schedule it already had. Like hidden, this is local to OmaMessenger
+// only: it is never reported to the service.
+func (c *Commands) SetReminder(ctx context.Context, conversationID string, at int64) (domain.Conversation, error) {
+	if err := c.store.SetReminder(ctx, conversationID, at); err != nil {
+		return domain.Conversation{}, err
+	}
+
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return conv, err
+	}
+
+	c.events.publish(ctx, EventConversationUpdated, conv)
+	c.reminders.notifyChanged()
+
+	return conv, nil
+}
+
 // SetHidden hides or unhides a conversation from the standard list. Unlike
 // mute, pin and archive, this is local to OmaMessenger only: it is never
 // reported to the service, so no connector call follows.

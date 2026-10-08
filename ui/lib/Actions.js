@@ -27,6 +27,14 @@ var OWNERS = {
   'chat.pin': 'list',
   'chat.archive': 'list',
   'chat.hide': 'list',
+  'chat.archiveRead': 'list',
+  'list.archiveAllRead': 'list',
+  'archiveAll.accept': 'list',
+  'archiveAll.cancel': 'list',
+  'chat.snoozeLaterToday': 'list',
+  'chat.snoozeTomorrow': 'list',
+  'chat.snoozeNextWeek': 'list',
+  'chat.unsnooze': 'list',
 
   // ConversationController: the open conversation itself, paging,
   // send, retry, scrolling, and moving between chats while one is open.
@@ -60,6 +68,12 @@ var OWNERS = {
   'compose.newline': 'composer',
   'compose.attach': 'composer',
   'compose.attachFile': 'composer',
+  // The @-mention picker is part of composing: it opens over the
+  // composer's own text field and never leaves it.
+  'mention.down': 'composer',
+  'mention.up': 'composer',
+  'mention.accept': 'composer',
+  'mention.cancel': 'composer',
 
   // PhotoViewerController: stepping through the in-app photo viewer.
   'viewer.next': 'photoViewer',
@@ -119,6 +133,11 @@ var OWNERS = {
   // close question's own navigation, and the Escape chain.
   'palette.commands': 'window',
   'palette.conversations': 'window',
+  // chat.snoozeCustom opens the palette's custom-snooze prompt, which
+  // WindowController owns along with every other palette mode; it is the
+  // one chat.* action not owned by ListController, since the chat it
+  // applies to is resolved only once the prompt is accepted.
+  'chat.snoozeCustom': 'window',
   'palette.down': 'window',
   'palette.up': 'window',
   'palette.accept': 'window',
@@ -126,6 +145,8 @@ var OWNERS = {
   'app.quit': 'window',
   'helper.retryInstall': 'window',
   'helper.doctor': 'window',
+  'keys.openConfig': 'window',
+  'keys.showBindings': 'window',
   'close.left': 'window',
   'close.right': 'window',
   'close.accept': 'window',

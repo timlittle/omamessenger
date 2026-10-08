@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -19,7 +20,7 @@ func TestOutgoingStatus_KeepsTheCopyUntilConfirmed(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestPNG(t, "photo.png", 1, 1)
 
-	pending, err := f.commands.Send(ctx, "chat", "hi", path, "")
+	pending, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path})
 	if err != nil || pending.Status != domain.StatusPending {
 		t.Fatalf("Send() = %+v, %v", pending, err)
 	}
@@ -40,7 +41,7 @@ func TestOutgoingStatus_KeepsTheCopyWhenDeliveryFails(t *testing.T) {
 	path := writeTestPNG(t, "photo.png", 1, 1)
 	f.dispatcher.err = errors.New("offline")
 
-	failed, err := f.commands.Send(ctx, "chat", "hi", path, "")
+	failed, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path})
 	if err != nil || failed.Status != domain.StatusFailed {
 		t.Fatalf("Send() = %+v, %v", failed, err)
 	}
@@ -61,7 +62,7 @@ func TestOutgoingStatus_RemovesTheOutgoingCopyOnceConfirmedSent(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestFile(t, "notes.txt", []byte("plain text file"))
 
-	sent, err := f.commands.Send(ctx, "chat", "", path, "")
+	sent, err := f.commands.Send(ctx, "chat", "", app.SendOptions{AttachmentPath: path})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -90,7 +91,7 @@ func TestOutgoingStatus_MovesASentPhotoIntoTheCacheSoItStillDisplays(t *testing.
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestPNG(t, "photo.png", 2, 2)
 
-	sent, err := f.commands.Send(ctx, "chat", "look", path, "")
+	sent, err := f.commands.Send(ctx, "chat", "look", app.SendOptions{AttachmentPath: path})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}

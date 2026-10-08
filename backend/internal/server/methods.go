@@ -44,6 +44,8 @@ func methods(c *app.Commands, version string) map[string]method {
 		"conversations.setPinned":   bind(conversationsSetPinned(c)),
 		"conversations.setArchived": bind(conversationsSetArchived(c)),
 		"conversations.setHidden":   bind(conversationsSetHidden(c)),
+		"conversations.setReminder": bind(conversationsSetReminder(c)),
+		"conversations.members":     bind(conversationsMembers(c)),
 		"messages.list":             bind(messagesList(c)),
 		"messages.send":             bind(messagesSend(c)),
 		"messages.retry":            bind(messagesRetry(c)),
@@ -260,6 +262,42 @@ func conversationsSetHidden(c *app.Commands) func(context.Context, hiddenParams)
 	}
 }
 
+// reminderParams snoozes or unsnoozes a conversation. At is milliseconds
+// since the Unix epoch to snooze until, or nil to clear it, matching the
+// protocol's {conversationId, at | null} shape.
+type reminderParams struct {
+	ConversationID string `json:"conversationId"`
+	At             *int64 `json:"at"`
+}
+
+// conversationsSetReminder snoozes a conversation until At, or clears its
+// reminder when At is nil. Snoozing is local to this computer only and is
+// never reported to the service.
+func conversationsSetReminder(c *app.Commands) func(context.Context, reminderParams) (any, error) {
+	return func(ctx context.Context, p reminderParams) (any, error) {
+		var at int64
+		if p.At != nil {
+			at = *p.At
+		}
+
+		return c.SetReminder(ctx, p.ConversationID, at)
+	}
+}
+
+// membersResult is a group's current members, for the @-mention picker.
+type membersResult struct {
+	Members []domain.Member `json:"members"`
+}
+
+// conversationsMembers lists a conversation's current members.
+func conversationsMembers(c *app.Commands) func(context.Context, conversationParams) (any, error) {
+	return func(ctx context.Context, p conversationParams) (any, error) {
+		members, err := c.Members(ctx, p.ConversationID)
+
+		return membersResult{Members: members}, err
+	}
+}
+
 // messagesParams selects a page of messages.
 type messagesParams struct {
 	ConversationID string `json:"conversationId"`
@@ -267,17 +305,21 @@ type messagesParams struct {
 	Limit          int    `json:"limit"`
 }
 
-// messagesResult is a page of messages, oldest first.
+// messagesResult is a page of messages, oldest first. HistoryUnavailable
+// is set when paging past the oldest stored message asked the service for
+// more and could not reach it right now (see app.Commands.Messages); an
+// older UI that does not read this field keeps working unchanged.
 type messagesResult struct {
-	Messages []domain.Message `json:"messages"`
-	HasMore  bool             `json:"hasMore"`
+	Messages           []domain.Message `json:"messages"`
+	HasMore            bool             `json:"hasMore"`
+	HistoryUnavailable bool             `json:"historyUnavailable,omitempty"`
 }
 
 // messagesList returns a page of a conversation's messages.
 func messagesList(c *app.Commands) func(context.Context, messagesParams) (any, error) {
 	return func(ctx context.Context, p messagesParams) (any, error) {
-		page, more, err := c.Messages(ctx, p.ConversationID, p.Before, p.Limit)
-		return messagesResult{Messages: page, HasMore: more}, err
+		page, more, unavailable, err := c.Messages(ctx, p.ConversationID, p.Before, p.Limit)
+		return messagesResult{Messages: page, HasMore: more, HistoryUnavailable: unavailable}, err
 	}
 }
 
@@ -285,12 +327,14 @@ func messagesList(c *app.Commands) func(context.Context, messagesParams) (any, e
 // machine to send with text as its caption; it is optional, so an older
 // UI sending just conversationId and text keeps working unchanged.
 // ReplyTo, when set, is the local id of a message in the same
-// conversation this one answers.
+// conversation this one answers. Mentions, also optional, are the
+// "@name" tokens the composer inserted into text.
 type sendParams struct {
 	ConversationID string            `json:"conversationId"`
 	Text           string            `json:"text"`
 	Attachment     *attachmentParams `json:"attachment,omitempty"`
 	ReplyTo        string            `json:"replyTo,omitempty"`
+	Mentions       []domain.Mention  `json:"mentions,omitempty"`
 }
 
 // attachmentParams names a file to attach to an outgoing message.
@@ -301,7 +345,9 @@ type attachmentParams struct {
 // messagesSend sends a message.
 func messagesSend(c *app.Commands) func(context.Context, sendParams) (any, error) {
 	return func(ctx context.Context, p sendParams) (any, error) {
-		return c.Send(ctx, p.ConversationID, p.Text, attachmentPath(p.Attachment), p.ReplyTo)
+		return c.Send(ctx, p.ConversationID, p.Text, app.SendOptions{
+			AttachmentPath: attachmentPath(p.Attachment), ReplyToID: p.ReplyTo, Mentions: p.Mentions,
+		})
 	}
 }
 
