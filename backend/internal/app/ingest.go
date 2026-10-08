@@ -238,12 +238,9 @@ func (in *Ingest) Organized(ctx context.Context, accountID, conversationRemoteID
 		return
 	}
 
-	updated, err := in.store.Conversation(ctx, conv.ID)
-	if err != nil {
+	if _, err := in.events.publishConversation(ctx, conv.ID); err != nil {
 		return
 	}
-
-	in.events.publish(ctx, EventConversationUpdated, updated)
 }
 
 // OutgoingStatus records the service's id for a sent message and
@@ -288,12 +285,9 @@ func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, nam
 	}
 
 	for _, id := range changed {
-		conv, err := in.store.Conversation(ctx, id)
-		if err != nil {
+		if _, err := in.events.publishConversation(ctx, id); err != nil {
 			continue
 		}
-
-		in.events.publish(ctx, EventConversationUpdated, conv)
 	}
 }
 

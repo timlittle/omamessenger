@@ -99,12 +99,10 @@ func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned 
 		return domain.Conversation{}, err
 	}
 
-	conv, err := c.store.Conversation(ctx, conversationID)
+	conv, err := c.events.publishConversation(ctx, conversationID)
 	if err != nil {
 		return conv, err
 	}
-
-	c.events.publish(ctx, EventConversationUpdated, conv)
 
 	return conv, pinError(c.organizer.SetPinned(ctx, conv, pinned))
 }
@@ -128,12 +126,10 @@ func (c *Commands) SetArchived(ctx context.Context, conversationID string, archi
 		return domain.Conversation{}, err
 	}
 
-	conv, err := c.store.Conversation(ctx, conversationID)
+	conv, err := c.events.publishConversation(ctx, conversationID)
 	if err != nil {
 		return conv, err
 	}
-
-	c.events.publish(ctx, EventConversationUpdated, conv)
 
 	return conv, c.organizer.SetArchived(ctx, conv, archived)
 }
@@ -148,12 +144,11 @@ func (c *Commands) SetReminder(ctx context.Context, conversationID string, at in
 		return domain.Conversation{}, err
 	}
 
-	conv, err := c.store.Conversation(ctx, conversationID)
+	conv, err := c.events.publishConversation(ctx, conversationID)
 	if err != nil {
 		return conv, err
 	}
 
-	c.events.publish(ctx, EventConversationUpdated, conv)
 	c.reminders.notifyChanged()
 
 	return conv, nil
@@ -167,12 +162,5 @@ func (c *Commands) SetHidden(ctx context.Context, conversationID string, hidden 
 		return domain.Conversation{}, err
 	}
 
-	conv, err := c.store.Conversation(ctx, conversationID)
-	if err != nil {
-		return conv, err
-	}
-
-	c.events.publish(ctx, EventConversationUpdated, conv)
-
-	return conv, nil
+	return c.events.publishConversation(ctx, conversationID)
 }

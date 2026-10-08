@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 
+	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -95,4 +96,19 @@ func (e *events) conversationChanged(ctx context.Context, id string, unreadBefor
 	if after := e.unreadTotal(ctx); after != unreadBefore {
 		e.publish(ctx, EventUnreadChanged, UnreadChanged{Total: after})
 	}
+}
+
+// publishConversation re-reads a conversation after a change to it and
+// publishes its current summary, returning that summary so a caller that
+// needs it, such as to hand it to a connector, does not have to read it
+// again itself.
+func (e *events) publishConversation(ctx context.Context, id string) (domain.Conversation, error) {
+	conv, err := e.store.Conversation(ctx, id)
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+
+	e.publish(ctx, EventConversationUpdated, conv)
+
+	return conv, nil
 }
