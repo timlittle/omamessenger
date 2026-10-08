@@ -7,445 +7,77 @@ const { load } = require('./load.cjs');
 
 const Navigation = load('lib/Navigation.js');
 
-// keyContext precedence tests: help > dialog > search > compose > conversation > list
+// Shared defaults for the keyContext/escapeAction cases below; each case
+// overrides only the fields its scenario cares about.
+const base = {
+  paletteOpen: false,
+  dialogOpen: false,
+  searchFocused: false,
+  composeFocused: false,
+  replying: false,
+  hasAttachment: false,
+  query: '',
+  activeId: 'c1',
+  pane: 'list'
+};
 
-test('keyContext returns list when nothing is open', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'list');
-});
+// keyContext precedence, palette down to list (the busier layers above
+// palette are covered by the compact precedence-ladder tests below).
+const keyContextCases = [
+  { name: 'returns list when nothing is open', overrides: {}, expected: 'list' },
+  { name: 'returns conversation when pane is conversation', overrides: { pane: 'conversation' }, expected: 'conversation' },
+  { name: 'returns compose when composeFocused is true', overrides: { composeFocused: true, pane: 'conversation' }, expected: 'compose' },
+  { name: 'returns search when searchFocused is true', overrides: { searchFocused: true }, expected: 'search' },
+  { name: 'returns dialog when dialogOpen is true', overrides: { dialogOpen: true }, expected: 'dialog' },
+  { name: 'returns palette when paletteOpen is true', overrides: { paletteOpen: true }, expected: 'palette' },
+  { name: 'palette wins over all other contexts', overrides: { paletteOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' }, expected: 'palette' },
+  { name: 'dialog wins over search, compose, conversation, list', overrides: { dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' }, expected: 'dialog' },
+  { name: 'search wins over compose, conversation, list', overrides: { searchFocused: true, composeFocused: true, pane: 'conversation' }, expected: 'search' },
+  { name: 'compose wins over conversation, list', overrides: { composeFocused: true, pane: 'conversation' }, expected: 'compose' },
+  { name: 'conversation wins over list', overrides: { pane: 'conversation' }, expected: 'conversation' }
+];
 
-test('keyContext returns conversation when pane is conversation', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'conversation');
-});
+for (const c of keyContextCases) {
+  test(`keyContext: ${c.name}`, () => {
+    assert.strictEqual(Navigation.keyContext({ ...base, ...c.overrides }), c.expected);
+  });
+}
 
-test('keyContext returns compose when composeFocused is true', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'compose');
-});
+// escapeAction's Escape chain: undo the innermost thing first, hide the
+// window only once there is nothing left to undo.
+const escapeActionCases = [
+  { name: 'close-palette when paletteOpen', overrides: { paletteOpen: true }, expected: 'close-palette' },
+  { name: 'palette takes precedence over all', overrides: { paletteOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, query: 'test', pane: 'conversation' }, expected: 'close-palette' },
+  { name: 'close-dialog when dialogOpen', overrides: { dialogOpen: true }, expected: 'close-dialog' },
+  { name: 'dialog takes precedence over search, compose, etc', overrides: { dialogOpen: true, searchFocused: true, composeFocused: true, query: 'test', pane: 'conversation' }, expected: 'close-dialog' },
+  { name: 'clear-search when searchFocused with non-empty query', overrides: { searchFocused: true, query: 'test' }, expected: 'clear-search' },
+  { name: 'leave-search when searchFocused with empty query', overrides: { searchFocused: true }, expected: 'leave-search' },
+  { name: 'leave-search when searchFocused with null query', overrides: { searchFocused: true, query: null }, expected: 'leave-search' },
+  { name: 'search takes precedence over compose, conversation, etc', overrides: { searchFocused: true, composeFocused: true, query: 'test', pane: 'conversation' }, expected: 'clear-search' },
+  { name: 'leave-compose when composeFocused', overrides: { composeFocused: true, pane: 'conversation' }, expected: 'leave-compose' },
+  { name: 'cancel-reply when composeFocused while replying', overrides: { composeFocused: true, replying: true, pane: 'conversation' }, expected: 'cancel-reply' },
+  { name: 'clear-attachment when composeFocused with a pending attachment', overrides: { composeFocused: true, hasAttachment: true, pane: 'conversation' }, expected: 'clear-attachment' },
+  { name: 'clear-attachment takes precedence over cancel-reply', overrides: { composeFocused: true, hasAttachment: true, replying: true, pane: 'conversation' }, expected: 'clear-attachment' },
+  { name: 'cancel-reply once the attachment is gone', overrides: { composeFocused: true, replying: true, pane: 'conversation' }, expected: 'cancel-reply' },
+  { name: 'leave-compose once the attachment is gone and not replying', overrides: { composeFocused: true, pane: 'conversation' }, expected: 'leave-compose' },
+  { name: 'compose takes precedence over conversation, etc', overrides: { composeFocused: true, query: 'test', pane: 'conversation' }, expected: 'leave-compose' },
+  { name: 'close-conversation when pane is conversation with activeId', overrides: { pane: 'conversation' }, expected: 'close-conversation' },
+  { name: 'close-conversation only when activeId exists', overrides: { activeId: '', pane: 'conversation' }, expected: 'hide-window' },
+  { name: 'clear-search when pane is list with non-empty query', overrides: { query: 'test', activeId: '' }, expected: 'clear-search' },
+  { name: 'hide-window when nothing else applies', overrides: { activeId: '' }, expected: 'hide-window' },
+  { name: 'hide-window when pane is list with empty query', overrides: { activeId: '' }, expected: 'hide-window' },
+  { name: 'close-conversation wins over clear-search query', overrides: { query: 'test', pane: 'conversation' }, expected: 'close-conversation' },
+  { name: 'clear-search when searchFocused and has query', overrides: { searchFocused: true, query: 'search term', pane: 'conversation' }, expected: 'clear-search' },
+  { name: 'leave-search when searchFocused and no query, even with activeId', overrides: { searchFocused: true, pane: 'conversation' }, expected: 'leave-search' },
+  { name: 'closes a conversation still open behind the list', overrides: { query: 'abc' }, expected: 'close-conversation' }
+];
 
-test('keyContext returns search when searchFocused is true', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: true,
-    composeFocused: false,
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'search');
-});
+for (const c of escapeActionCases) {
+  test(`escapeAction: ${c.name}`, () => {
+    assert.strictEqual(Navigation.escapeAction({ ...base, ...c.overrides }), c.expected);
+  });
+}
 
-test('keyContext returns dialog when dialogOpen is true', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: true,
-    searchFocused: false,
-    composeFocused: false,
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'dialog');
-});
-
-test('keyContext returns palette when paletteOpen is true', () => {
-  const state = {
-    paletteOpen: true,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'palette');
-});
-
-test('keyContext: palette wins over all other contexts', () => {
-  const state = {
-    paletteOpen: true,
-    dialogOpen: true,
-    searchFocused: true,
-    composeFocused: true,
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'palette');
-});
-
-test('keyContext: dialog wins over search, compose, conversation, list', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: true,
-    searchFocused: true,
-    composeFocused: true,
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'dialog');
-});
-
-test('keyContext: search wins over compose, conversation, list', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: true,
-    composeFocused: true,
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'search');
-});
-
-test('keyContext: compose wins over conversation, list', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'compose');
-});
-
-test('keyContext: conversation wins over list', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.keyContext(state), 'conversation');
-});
-
-// escapeAction: Escape chain
-
-test('escapeAction: close-palette when paletteOpen', () => {
-  const state = {
-    paletteOpen: true,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    query: '',
-    activeId: 'c1',
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'close-palette');
-});
-
-test('escapeAction: palette takes precedence over all', () => {
-  const state = {
-    paletteOpen: true,
-    dialogOpen: true,
-    searchFocused: true,
-    composeFocused: true,
-    query: 'test',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'close-palette');
-});
-
-test('escapeAction: close-dialog when dialogOpen', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: true,
-    searchFocused: false,
-    composeFocused: false,
-    query: '',
-    activeId: 'c1',
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'close-dialog');
-});
-
-test('escapeAction: dialog takes precedence over search, compose, etc', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: true,
-    searchFocused: true,
-    composeFocused: true,
-    query: 'test',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'close-dialog');
-});
-
-test('escapeAction: clear-search when searchFocused with non-empty query', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: true,
-    composeFocused: false,
-    query: 'test',
-    activeId: 'c1',
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'clear-search');
-});
-
-test('escapeAction: leave-search when searchFocused with empty query', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: true,
-    composeFocused: false,
-    query: '',
-    activeId: 'c1',
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'leave-search');
-});
-
-test('escapeAction: leave-search when searchFocused with null query', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: true,
-    composeFocused: false,
-    query: null,
-    activeId: 'c1',
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'leave-search');
-});
-
-test('escapeAction: search takes precedence over compose, conversation, etc', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: true,
-    composeFocused: true,
-    query: 'test',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'clear-search');
-});
-
-test('escapeAction: leave-compose when composeFocused', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    query: '',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'leave-compose');
-});
-
-test('escapeAction: cancel-reply when composeFocused while replying', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    replying: true,
-    query: '',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'cancel-reply');
-});
-
-test('escapeAction: clear-attachment when composeFocused with a pending attachment', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    hasAttachment: true,
-    query: '',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'clear-attachment');
-});
-
-test('escapeAction: clear-attachment takes precedence over cancel-reply', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    hasAttachment: true,
-    replying: true,
-    query: '',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'clear-attachment');
-});
-
-test('escapeAction: cancel-reply once the attachment is gone', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    hasAttachment: false,
-    replying: true,
-    query: '',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'cancel-reply');
-});
-
-test('escapeAction: leave-compose once the attachment is gone and not replying', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    hasAttachment: false,
-    replying: false,
-    query: '',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'leave-compose');
-});
-
-test('escapeAction: compose takes precedence over conversation, etc', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: true,
-    query: 'test',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'leave-compose');
-});
-
-test('escapeAction: close-conversation when pane is conversation with activeId', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    query: '',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'close-conversation');
-});
-
-test('escapeAction: close-conversation only when activeId exists', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    query: '',
-    activeId: '',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'hide-window');
-});
-
-
-test('escapeAction: clear-search when pane is list with non-empty query', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    query: 'test',
-    activeId: '',
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'clear-search');
-});
-
-test('escapeAction: hide-window when nothing else applies', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    query: '',
-    activeId: '',
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'hide-window');
-});
-
-test('escapeAction: hide-window when pane is list with empty query', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    query: '',
-    activeId: '',
-    pane: 'list'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'hide-window');
-});
-
-// Edge cases
-test('escapeAction: close-conversation wins over clear-search query', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: false,
-    composeFocused: false,
-    query: 'test',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'close-conversation');
-});
-
-test('escapeAction: clear-search when searchFocused and has query', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: true,
-    composeFocused: false,
-    query: 'search term',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'clear-search');
-});
-
-test('escapeAction: leave-search when searchFocused and no query, even with activeId', () => {
-  const state = {
-    paletteOpen: false,
-    dialogOpen: false,
-    searchFocused: true,
-    composeFocused: false,
-    query: '',
-    activeId: 'c1',
-    pane: 'conversation'
-  };
-  assert.strictEqual(Navigation.escapeAction(state), 'leave-search');
-});
-
-test('escapeAction closes a conversation still open behind the list', () => {
-  const state = { pane: 'list', activeId: 'c1', query: 'abc' };
-
-  assert.strictEqual(Navigation.escapeAction(state), 'close-conversation');
-});
 
 test('the close question takes keys before anything else', () => {
   const state = { confirmOpen: true, paletteOpen: true, dialogOpen: true, pane: 'conversation', activeId: 'c1' };

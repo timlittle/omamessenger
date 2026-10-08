@@ -34,76 +34,61 @@ test('atOldest is true only for the last id in the array', () => {
 
 const message = (fields) => Object.assign({ outgoing: false, status: 'received' }, fields);
 
-test('hints names reply and react for a plain message', () => {
-  assert.strictEqual(Highlight.hints(message({})), 'r reply · e react · d delete');
-});
-
-test('hints adds Enter open for a message carrying media', () => {
-  const photo = message({ media: { kind: 'photo', width: 10, height: 10 } });
-  assert.strictEqual(Highlight.hints(photo), 'r reply · e react · d delete · Enter open');
-});
-
-test('hints adds Enter play, not Enter open, for a voice note', () => {
-  const voice = message({ media: { kind: 'voice', duration: 12 } });
-  assert.strictEqual(Highlight.hints(voice), 'r reply · e react · d delete · Enter play');
-});
-
-test('hints adds v vote, not Enter open, for an open poll', () => {
-  const poll = message({ media: { kind: 'poll', poll: { question: 'Lunch?', options: [], totalVoters: 0 } } });
-  assert.strictEqual(Highlight.hints(poll), 'r reply · e react · d delete · v vote');
-});
-
-test('hints adds no vote key for a closed poll', () => {
-  const closed = message({ media: { kind: 'poll', poll: { question: 'Lunch?', options: [], totalVoters: 0, closed: true } } });
-  assert.strictEqual(Highlight.hints(closed), 'r reply · e react · d delete');
-});
-
-test('hints adds t retry only for a failed outgoing message', () => {
-  const failed = message({ outgoing: true, status: 'failed' });
-  assert.strictEqual(Highlight.hints(failed), 'r reply · e react · d delete · t retry');
-});
-
-test('hints does not add t retry for an incoming message reported as failed', () => {
-  const incoming = message({ outgoing: false, status: 'failed' });
-  assert.strictEqual(Highlight.hints(incoming), 'r reply · e react · d delete');
-});
-
-test('hints combines media and a failed retry', () => {
-  const both = message({ outgoing: true, status: 'failed', media: { kind: 'file', fileName: 'a.pdf', size: 1 } });
-  assert.strictEqual(Highlight.hints(both), 'r reply · e react · d delete · Enter open · t retry');
-});
-
-test('hints adds o open link for a message with a link preview', () => {
+const hintsCases = [
+  ['names reply and react for a plain message',
+    message({}),
+    'r reply · e react · d delete'],
+  ['adds Enter open for a message carrying media',
+    message({ media: { kind: 'photo', width: 10, height: 10 } }),
+    'r reply · e react · d delete · Enter open'],
+  ['adds Enter play, not Enter open, for a voice note',
+    message({ media: { kind: 'voice', duration: 12 } }),
+    'r reply · e react · d delete · Enter play'],
+  ['adds v vote, not Enter open, for an open poll',
+    message({ media: { kind: 'poll', poll: { question: 'Lunch?', options: [], totalVoters: 0 } } }),
+    'r reply · e react · d delete · v vote'],
+  ['adds no vote key for a closed poll',
+    message({ media: { kind: 'poll', poll: { question: 'Lunch?', options: [], totalVoters: 0, closed: true } } }),
+    'r reply · e react · d delete'],
+  ['adds t retry only for a failed outgoing message',
+    message({ outgoing: true, status: 'failed' }),
+    'r reply · e react · d delete · t retry'],
+  ['does not add t retry for an incoming message reported as failed',
+    message({ outgoing: false, status: 'failed' }),
+    'r reply · e react · d delete'],
+  ['combines media and a failed retry',
+    message({ outgoing: true, status: 'failed', media: { kind: 'file', fileName: 'a.pdf', size: 1 } }),
+    'r reply · e react · d delete · Enter open · t retry'],
   // A link preview is still "media" by Timeline.media's own test, so
   // Enter open keeps showing beside it exactly as it already did before
   // o existed; this only adds the new hint, it does not replace that one.
-  const linked = message({ media: { kind: 'link', url: 'https://example.com', title: 'Example' } });
-  assert.strictEqual(Highlight.hints(linked), 'r reply · e react · d delete · Enter open · o open link');
-});
+  ['adds o open link for a message with a link preview',
+    message({ media: { kind: 'link', url: 'https://example.com', title: 'Example' } }),
+    'r reply · e react · d delete · Enter open · o open link'],
+  ['adds o open link for a plain message whose text carries a URL',
+    message({ text: 'see https://example.com/path for more' }),
+    'r reply · e react · d delete · o open link'],
+  ['leaves out o open link for a message with no link',
+    message({ text: 'just words' }),
+    'r reply · e react · d delete'],
+  ['adds p go to quote for a reply',
+    message({ replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' } }),
+    'r reply · e react · d delete · p go to quote'],
+  ['combines a link, a quote and a failed retry, in order',
+    message({
+      outgoing: true,
+      status: 'failed',
+      text: 'see https://example.com',
+      replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' }
+    }),
+    'r reply · e react · d delete · o open link · p go to quote · t retry']
+];
 
-test('hints adds o open link for a plain message whose text carries a URL', () => {
-  const texted = message({ text: 'see https://example.com/path for more' });
-  assert.strictEqual(Highlight.hints(texted), 'r reply · e react · d delete · o open link');
-});
-
-test('hints leaves out o open link for a message with no link', () => {
-  assert.strictEqual(Highlight.hints(message({ text: 'just words' })), 'r reply · e react · d delete');
-});
-
-test('hints adds p go to quote for a reply', () => {
-  const reply = message({ replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' } });
-  assert.strictEqual(Highlight.hints(reply), 'r reply · e react · d delete · p go to quote');
-});
-
-test('hints combines a link, a quote and a failed retry, in order', () => {
-  const all = message({
-    outgoing: true,
-    status: 'failed',
-    text: 'see https://example.com',
-    replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' }
+for (const [name, msg, want] of hintsCases) {
+  test(`hints ${name}`, () => {
+    assert.strictEqual(Highlight.hints(msg), want);
   });
-  assert.strictEqual(Highlight.hints(all), 'r reply · e react · d delete · o open link · p go to quote · t retry');
-});
+}
 
 test('links prefers the link preview\'s own URL over the text', () => {
   const linked = message({ text: 'https://text.example/one', media: { kind: 'link', url: 'https://preview.example/two' } });

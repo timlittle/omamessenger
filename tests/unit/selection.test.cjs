@@ -6,98 +6,58 @@ const { load } = require('./load.cjs');
 
 const Selection = load('lib/Selection.js');
 
-test('move: moves forward by delta', () => {
-  const ids = ['c1', 'c2', 'c3'];
+// Shared id list for the move/edge cases below; a handful of rows use
+// their own list to cover the empty, null and single-element cases.
+const ids3 = ['c1', 'c2', 'c3'];
 
-  assert.strictEqual(Selection.move(ids, 'c1', 1), 'c2');
-  assert.strictEqual(Selection.move(ids, 'c1', 2), 'c3');
-  assert.strictEqual(Selection.move(ids, 'c2', 1), 'c3');
-});
+const moveCases = [
+  ['moves forward by one', ids3, 'c1', 1, 'c2'],
+  ['moves forward by two', ids3, 'c1', 2, 'c3'],
+  ['moves forward from the middle', ids3, 'c2', 1, 'c3'],
+  ['moves backward by one', ids3, 'c3', -1, 'c2'],
+  ['moves backward by two', ids3, 'c3', -2, 'c1'],
+  ['moves backward from the middle', ids3, 'c2', -1, 'c1'],
+  ['clamps forward at the end', ids3, 'c3', 1, 'c3'],
+  ['clamps forward past the end', ids3, 'c2', 5, 'c3'],
+  ['clamps backward at the start', ids3, 'c1', -1, 'c1'],
+  ['clamps backward past the start', ids3, 'c2', -5, 'c1'],
+  ['defaults to first id, staying put, when selection is unknown', ids3, 'unknown', 0, 'c1'],
+  ['defaults to first id, then moves, when selection is unknown', ids3, 'unknown', 1, 'c2'],
+  ['defaults to first id and clamps when selection is unknown', ids3, 'unknown', -1, 'c1'],
+  ['defaults to first id when selection is null', ids3, null, 0, 'c1'],
+  ['defaults to first id when selection is undefined', ids3, undefined, 1, 'c2'],
+  ['defaults to first id when selection is an empty string', ids3, '', 2, 'c3'],
+  ['returns empty string for empty ids', [], 'any', 1, ''],
+  ['returns empty string for empty ids with no selection', [], null, 0, ''],
+  ['returns empty string for null ids', null, 'any', 1, ''],
+  ['returns empty string for undefined ids', undefined, 'any', 0, ''],
+  ['single element clamps forward', ['c1'], 'c1', 1, 'c1'],
+  ['single element clamps backward', ['c1'], 'c1', -1, 'c1'],
+  ['single element ignores an unknown selection', ['c1'], 'unknown', 5, 'c1']
+];
 
-test('move: moves backward by negative delta', () => {
-  const ids = ['c1', 'c2', 'c3'];
+for (const [name, ids, from, delta, want] of moveCases) {
+  test(`move: ${name}`, () => {
+    assert.strictEqual(Selection.move(ids, from, delta), want);
+  });
+}
 
-  assert.strictEqual(Selection.move(ids, 'c3', -1), 'c2');
-  assert.strictEqual(Selection.move(ids, 'c3', -2), 'c1');
-  assert.strictEqual(Selection.move(ids, 'c2', -1), 'c1');
-});
+const edgeCases = [
+  ['returns first id for "top"', ids3, 'top', 'c1'],
+  ['returns last id for "bottom"', ids3, 'bottom', 'c3'],
+  ['returns empty string for empty ids ("top")', [], 'top', ''],
+  ['returns empty string for empty ids ("bottom")', [], 'bottom', ''],
+  ['returns empty string for null ids', null, 'top', ''],
+  ['returns empty string for undefined ids', undefined, 'bottom', ''],
+  ['single element is top', ['c1'], 'top', 'c1'],
+  ['single element is bottom', ['c1'], 'bottom', 'c1']
+];
 
-test('move: clamps forward at the end', () => {
-  const ids = ['c1', 'c2', 'c3'];
-
-  assert.strictEqual(Selection.move(ids, 'c3', 1), 'c3');
-  assert.strictEqual(Selection.move(ids, 'c2', 5), 'c3');
-});
-
-test('move: clamps backward at the start', () => {
-  const ids = ['c1', 'c2', 'c3'];
-
-  assert.strictEqual(Selection.move(ids, 'c1', -1), 'c1');
-  assert.strictEqual(Selection.move(ids, 'c2', -5), 'c1');
-});
-
-test('move: defaults to first id when selection is unknown', () => {
-  const ids = ['c1', 'c2', 'c3'];
-
-  assert.strictEqual(Selection.move(ids, 'unknown', 0), 'c1');
-  assert.strictEqual(Selection.move(ids, 'unknown', 1), 'c2');
-  assert.strictEqual(Selection.move(ids, 'unknown', -1), 'c1');
-});
-
-test('move: defaults to first id when selection is missing', () => {
-  const ids = ['c1', 'c2', 'c3'];
-
-  assert.strictEqual(Selection.move(ids, null, 0), 'c1');
-  assert.strictEqual(Selection.move(ids, undefined, 1), 'c2');
-  assert.strictEqual(Selection.move(ids, '', 2), 'c3');
-});
-
-test('move: returns empty string for empty ids', () => {
-  assert.strictEqual(Selection.move([], 'any', 1), '');
-  assert.strictEqual(Selection.move([], null, 0), '');
-});
-
-test('move: returns empty string for null or undefined ids', () => {
-  assert.strictEqual(Selection.move(null, 'any', 1), '');
-  assert.strictEqual(Selection.move(undefined, 'any', 0), '');
-});
-
-test('move: single element clamps at same position', () => {
-  const ids = ['c1'];
-
-  assert.strictEqual(Selection.move(ids, 'c1', 1), 'c1');
-  assert.strictEqual(Selection.move(ids, 'c1', -1), 'c1');
-  assert.strictEqual(Selection.move(ids, 'unknown', 5), 'c1');
-});
-
-test('edge: returns first id for "top"', () => {
-  const ids = ['c1', 'c2', 'c3'];
-
-  assert.strictEqual(Selection.edge(ids, 'top'), 'c1');
-});
-
-test('edge: returns last id for "bottom"', () => {
-  const ids = ['c1', 'c2', 'c3'];
-
-  assert.strictEqual(Selection.edge(ids, 'bottom'), 'c3');
-});
-
-test('edge: returns empty string for empty ids', () => {
-  assert.strictEqual(Selection.edge([], 'top'), '');
-  assert.strictEqual(Selection.edge([], 'bottom'), '');
-});
-
-test('edge: returns empty string for null or undefined ids', () => {
-  assert.strictEqual(Selection.edge(null, 'top'), '');
-  assert.strictEqual(Selection.edge(undefined, 'bottom'), '');
-});
-
-test('edge: single element is both top and bottom', () => {
-  const ids = ['c1'];
-
-  assert.strictEqual(Selection.edge(ids, 'top'), 'c1');
-  assert.strictEqual(Selection.edge(ids, 'bottom'), 'c1');
-});
+for (const [name, ids, edge, want] of edgeCases) {
+  test(`edge: ${name}`, () => {
+    assert.strictEqual(Selection.edge(ids, edge), want);
+  });
+}
 
 test('nextUnread: finds next unread conversation forward', () => {
   const conversations = [
@@ -242,28 +202,18 @@ test('nextUnread: the only unread conversation is found again from itself', () =
   assert.strictEqual(Selection.nextUnread(conversations, 'c1'), 'c1');
 });
 
-test('afterRemoval: selects the next id when the removed one was not last', () => {
-  const ids = ['c1', 'c2', 'c3'];
+const afterRemovalCases = [
+  ['selects the next id when the removed one was not last (first)', ['c1', 'c2', 'c3'], 'c1', 'c2'],
+  ['selects the next id when the removed one was not last (middle)', ['c1', 'c2', 'c3'], 'c2', 'c3'],
+  ['selects the previous id when the removed one was last', ['c1', 'c2', 'c3'], 'c3', 'c2'],
+  ['returns empty string when the removed id was the only one', ['c1'], 'c1', ''],
+  ['returns empty string when the id is not in the list', ['c1', 'c2'], 'unknown', ''],
+  ['returns empty string for null ids', null, 'c1', ''],
+  ['returns empty string for undefined ids', undefined, 'c1', '']
+];
 
-  assert.strictEqual(Selection.afterRemoval(ids, 'c1'), 'c2');
-  assert.strictEqual(Selection.afterRemoval(ids, 'c2'), 'c3');
-});
-
-test('afterRemoval: selects the previous id when the removed one was last', () => {
-  const ids = ['c1', 'c2', 'c3'];
-
-  assert.strictEqual(Selection.afterRemoval(ids, 'c3'), 'c2');
-});
-
-test('afterRemoval: returns empty string when the removed id was the only one', () => {
-  assert.strictEqual(Selection.afterRemoval(['c1'], 'c1'), '');
-});
-
-test('afterRemoval: returns empty string when the id is not in the list', () => {
-  assert.strictEqual(Selection.afterRemoval(['c1', 'c2'], 'unknown'), '');
-});
-
-test('afterRemoval: returns empty string for null or undefined ids', () => {
-  assert.strictEqual(Selection.afterRemoval(null, 'c1'), '');
-  assert.strictEqual(Selection.afterRemoval(undefined, 'c1'), '');
-});
+for (const [name, ids, removedId, want] of afterRemovalCases) {
+  test(`afterRemoval: ${name}`, () => {
+    assert.strictEqual(Selection.afterRemoval(ids, removedId), want);
+  });
+}

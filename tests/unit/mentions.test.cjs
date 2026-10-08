@@ -7,26 +7,20 @@ const { load } = require('./load.cjs');
 
 const Mentions = load('lib/Mentions.js');
 
-test('activeQuery finds the @query the caret sits in', () => {
-  assert.deepEqual(Mentions.activeQuery('hi @na', 6), { start: 3, query: 'na' });
-  assert.deepEqual(Mentions.activeQuery('@', 1), { start: 0, query: '' });
-});
+const activeQueryCases = [
+  ['finds the @query the caret sits in', 'hi @na', 6, { start: 3, query: 'na' }],
+  ['finds an empty query right after a bare @', '@', 1, { start: 0, query: '' }],
+  ['is null with no @ before the caret', 'hi there', 8, null],
+  ['is null once whitespace ends the query', 'hi @nadia see', 13, null],
+  ['ignores an @ in the middle of a word, like an email address', 'user@host', 9, null],
+  ['still finds the query when the caret sits before the end of the text', 'hi @nad there', 7, { start: 3, query: 'nad' }]
+];
 
-test('activeQuery is null with no @ before the caret', () => {
-  assert.strictEqual(Mentions.activeQuery('hi there', 8), null);
-});
-
-test('activeQuery is null once whitespace ends the query', () => {
-  assert.strictEqual(Mentions.activeQuery('hi @nadia see', 13), null);
-});
-
-test('activeQuery ignores an @ in the middle of a word, like an email address', () => {
-  assert.strictEqual(Mentions.activeQuery('user@host', 9), null);
-});
-
-test('activeQuery still finds the query when the caret sits before the end of the text', () => {
-  assert.deepEqual(Mentions.activeQuery('hi @nad there', 7), { start: 3, query: 'nad' });
-});
+for (const [name, text, caret, want] of activeQueryCases) {
+  test(`activeQuery ${name}`, () => {
+    assert.deepEqual(Mentions.activeQuery(text, caret), want);
+  });
+}
 
 test('filterMembers matches case-insensitively, substring anywhere in the name', () => {
   const members = [{ id: '1', name: 'Nadia Rahman' }, { id: '2', name: 'Ben Carter' }];

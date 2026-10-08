@@ -11,41 +11,38 @@ const Format = load('lib/Format.js');
 // 2026-10-06 12:00:00 UTC (but we use local time in Date constructor)
 const nowMs = new Date(2026, 9, 6, 12, 0).getTime();
 
-test('escapeHtml escapes ampersand', () => {
-  assert.equal(Format.escapeHtml('a&b'), 'a&amp;b');
-});
+const escapeHtmlCases = [
+  ['escapes ampersand', 'a&b', 'a&amp;b'],
+  ['escapes less-than', 'a<b', 'a&lt;b'],
+  ['escapes double-quote', 'a"b', 'a&quot;b'],
+  ['escapes multiple characters', '<div class="test">', '&lt;div class=&quot;test&quot;&gt;']
+];
 
-test('escapeHtml escapes less-than', () => {
-  assert.equal(Format.escapeHtml('a<b'), 'a&lt;b');
-});
+for (const [name, input, want] of escapeHtmlCases) {
+  test(`escapeHtml ${name}`, () => {
+    assert.equal(Format.escapeHtml(input), want);
+  });
+}
 
-test('escapeHtml escapes double-quote', () => {
-  assert.equal(Format.escapeHtml('a"b'), 'a&quot;b');
-});
+// linkify turns a bare URL into a clickable link; these cases share the
+// same regex-match shape across several URL contexts.
+const linkifyCases = [
+  ['turns http URLs into links', 'Visit http://example.com for more', /<a href="http:\/\/example\.com">http:\/\/example\.com<\/a>/],
+  ['turns https URLs into links', 'Visit https://example.com for more', /<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>/],
+  ['handles URL with &amp; entity inside', 'https://example.com?a=1&amp;b=2', /<a href="https:\/\/example\.com\?a=1&amp;b=2">/],
+  ['strips trailing period from URL', 'see https://example.com/tickets.', /<a href="https:\/\/example\.com\/tickets">https:\/\/example\.com\/tickets<\/a>\./],
+  ['strips trailing comma from URL', 'visit https://example.com,', /<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>,/],
+  ['strips trailing parenthesis from URL', 'check (https://example.com)', /check \(<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>\)/]
+];
 
-test('escapeHtml escapes multiple characters', () => {
-  assert.equal(Format.escapeHtml('<div class="test">'), '&lt;div class=&quot;test&quot;&gt;');
-});
-
-test('linkify turns http URLs into links', () => {
-  var result = Format.linkify('Visit http://example.com for more');
-  assert.match(result, /<a href="http:\/\/example\.com">http:\/\/example\.com<\/a>/);
-});
-
-test('linkify turns https URLs into links', () => {
-  var result = Format.linkify('Visit https://example.com for more');
-  assert.match(result, /<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>/);
-});
+for (const [name, input, want] of linkifyCases) {
+  test(`linkify ${name}`, () => {
+    assert.match(Format.linkify(input), want);
+  });
+}
 
 test('linkify does not link plain text without http(s)', () => {
-  var result = Format.linkify('Visit example.com for more');
-  assert.equal(result, 'Visit example.com for more');
-});
-
-test('linkify handles URL with &amp; entity inside', () => {
-  var escaped = 'https://example.com?a=1&amp;b=2';
-  var result = Format.linkify(escaped);
-  assert.match(result, /<a href="https:\/\/example\.com\?a=1&amp;b=2">/);
+  assert.equal(Format.linkify('Visit example.com for more'), 'Visit example.com for more');
 });
 
 test('linkify handles multiple URLs', () => {
@@ -54,30 +51,19 @@ test('linkify handles multiple URLs', () => {
   assert.equal(oneCount, 2);
 });
 
-test('linkify strips trailing period from URL', () => {
-  var result = Format.linkify('see https://example.com/tickets.');
-  assert.match(result, /<a href="https:\/\/example\.com\/tickets">https:\/\/example\.com\/tickets<\/a>\./);
-});
+const highlightUnchangedCases = [
+  ['does not match inside entities', 'test &amp; demo', 'amp', 'test &amp; demo'],
+  ['with empty query returns unchanged', 'Hello World', '', 'Hello World']
+];
 
-test('linkify strips trailing comma from URL', () => {
-  var result = Format.linkify('visit https://example.com,');
-  assert.match(result, /<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>,/);
-});
-
-test('linkify strips trailing parenthesis from URL', () => {
-  var result = Format.linkify('check (https://example.com)');
-  assert.match(result, /check \(<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>\)/);
-});
+for (const [name, text, query, want] of highlightUnchangedCases) {
+  test(`highlight ${name}`, () => {
+    assert.equal(Format.highlight(text, query), want);
+  });
+}
 
 test('highlight wraps case-insensitive matches in <b>', () => {
-  var result = Format.highlight('Hello WORLD', 'world');
-  assert.match(result, /<b>WORLD<\/b>/);
-});
-
-test('highlight does not match inside entities', () => {
-  var escaped = 'test &amp; demo';
-  var result = Format.highlight(escaped, 'amp');
-  assert.equal(result, 'test &amp; demo');
+  assert.match(Format.highlight('Hello WORLD', 'world'), /<b>WORLD<\/b>/);
 });
 
 test('highlight handles multiple matches', () => {
@@ -86,66 +72,48 @@ test('highlight handles multiple matches', () => {
   assert.equal(matches, 2);
 });
 
-test('highlight with empty query returns unchanged', () => {
-  var text = 'Hello World';
-  assert.equal(Format.highlight(text, ''), text);
-});
+// initials picks the letters a conversation's avatar shows; these cases
+// cover plain names, edge cases and names with bracketed text or punctuation.
+const initialsCases = [
+  ['returns first two letters uppercase', 'Alice Bob', 'AB'],
+  ['handles single letter names', 'Alice', 'A'],
+  ['handles empty string', '', '?'],
+  ['handles only whitespace', '   ', '?'],
+  ['handles multi-byte characters', 'José Maria', 'JM'],
+  ['ignores bracketed text', 'Sam (spotty signal)', 'S'],
+  ['ignores a trailing role in brackets', 'Jordan (Manager)', 'J'],
+  ['still finds two initials past a long bracketed suffix', 'Dr. Bartholomew Featherstonehaugh-Wainwright (Dentist)', 'DB'],
+  ['keeps a flat number as a second initial', 'Flat 4B', 'F4'],
+  ['falls back to the bracketed word when nothing precedes it', '(Notes)', 'N'],
+  ['falls back to ? when there is no letter at all', '!!', '?']
+];
 
-test('initials returns first two letters uppercase', () => {
-  assert.equal(Format.initials('Alice Bob'), 'AB');
-});
-
-test('initials handles single letter names', () => {
-  assert.equal(Format.initials('Alice'), 'A');
-});
-
-test('initials handles empty string', () => {
-  assert.equal(Format.initials(''), '?');
-});
-
-test('initials handles only whitespace', () => {
-  assert.equal(Format.initials('   '), '?');
-});
+for (const [name, input, want] of initialsCases) {
+  test(`initials ${name}`, () => {
+    assert.strictEqual(Format.initials(input), want);
+  });
+}
 
 test('initials handles emoji safely', () => {
   var result = Format.initials('😀😁');
   assert.equal(result.length, 2);
 });
 
-test('initials handles multi-byte characters', () => {
-  var result = Format.initials('José Maria');
-  assert.equal(result, 'JM');
-});
+const timeLabelCases = [
+  ['returns HH:mm for today', new Date(2026, 9, 6, 14, 30), '14:30'],
+  ['returns Yesterday for yesterday', new Date(2026, 9, 5, 14, 30), 'Yesterday'],
+  ['returns weekday for dates within 6 days', new Date(2026, 9, 4, 14, 30), /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/],
+  ['returns d MMM for older dates this year', new Date(2026, 4, 15, 14, 30), /^15 May$/],
+  ['returns d MMM yyyy for another year', new Date(2025, 4, 15, 14, 30), /^15 May 2025$/]
+];
 
-test('timeLabel returns HH:mm for today', () => {
-  var today = new Date(2026, 9, 6, 14, 30);
-  var result = Format.timeLabel(today.getTime(), nowMs);
-  assert.equal(result, '14:30');
-});
-
-test('timeLabel returns Yesterday for yesterday', () => {
-  var yesterday = new Date(2026, 9, 5, 14, 30);
-  var result = Format.timeLabel(yesterday.getTime(), nowMs);
-  assert.equal(result, 'Yesterday');
-});
-
-test('timeLabel returns weekday for dates within 6 days', () => {
-  var twoDaysAgo = new Date(2026, 9, 4, 14, 30);  // Monday
-  var result = Format.timeLabel(twoDaysAgo.getTime(), nowMs);
-  assert.match(result, /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/);
-});
-
-test('timeLabel returns d MMM for older dates this year', () => {
-  var inMay = new Date(2026, 4, 15, 14, 30);
-  var result = Format.timeLabel(inMay.getTime(), nowMs);
-  assert.match(result, /^15 May$/);
-});
-
-test('timeLabel returns d MMM yyyy for another year', () => {
-  var lastYear = new Date(2025, 4, 15, 14, 30);
-  var result = Format.timeLabel(lastYear.getTime(), nowMs);
-  assert.match(result, /^15 May 2025$/);
-});
+for (const [name, date, want] of timeLabelCases) {
+  test(`timeLabel ${name}`, () => {
+    const result = Format.timeLabel(date.getTime(), nowMs);
+    if (want instanceof RegExp) assert.match(result, want);
+    else assert.equal(result, want);
+  });
+}
 
 test('timeLabel handles DST boundary correctly (regression)', () => {
   // Europe spring forward: 2026-03-29 01:00 GMT becomes 02:00 BST.
@@ -170,138 +138,66 @@ test('timeLabel handles DST boundary correctly (regression)', () => {
   }
 });
 
-test('dayLabel returns Today for today', () => {
-  var today = new Date(2026, 9, 6, 14, 30);
-  var result = Format.dayLabel(today.getTime(), nowMs);
-  assert.equal(result, 'Today');
-});
+const dayLabelCases = [
+  ['returns Today for today', new Date(2026, 9, 6, 14, 30), 'Today'],
+  ['returns Yesterday for yesterday', new Date(2026, 9, 5, 14, 30), 'Yesterday'],
+  ['returns weekday name within 6 days', new Date(2026, 9, 4, 14, 30), /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/],
+  ['returns d MMMM for older dates this year', new Date(2026, 4, 15, 14, 30), /^15 May$/],
+  ['returns d MMMM yyyy for another year', new Date(2025, 4, 15, 14, 30), /^15 May 2025$/]
+];
 
-test('dayLabel returns Yesterday for yesterday', () => {
-  var yesterday = new Date(2026, 9, 5, 14, 30);
-  var result = Format.dayLabel(yesterday.getTime(), nowMs);
-  assert.equal(result, 'Yesterday');
-});
+for (const [name, date, want] of dayLabelCases) {
+  test(`dayLabel ${name}`, () => {
+    const result = Format.dayLabel(date.getTime(), nowMs);
+    if (want instanceof RegExp) assert.match(result, want);
+    else assert.equal(result, want);
+  });
+}
 
-test('dayLabel returns weekday name within 6 days', () => {
-  var twoDaysAgo = new Date(2026, 9, 4, 14, 30);
-  var result = Format.dayLabel(twoDaysAgo.getTime(), nowMs);
-  assert.match(result, /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/);
-});
+const statusGlyphCases = [
+  ['pending', '○'],
+  ['sent', '✓'],
+  ['delivered', '✓✓'],
+  ['read', '✓✓'],
+  ['failed', '!'],
+  ['unknown', '']
+];
 
-test('dayLabel returns d MMMM for older dates this year', () => {
-  var inMay = new Date(2026, 4, 15, 14, 30);
-  var result = Format.dayLabel(inMay.getTime(), nowMs);
-  assert.match(result, /^15 May$/);
-});
+for (const [status, want] of statusGlyphCases) {
+  test(`statusGlyph returns ${want || 'empty string'} for ${status}`, () => {
+    assert.equal(Format.statusGlyph(status), want);
+  });
+}
 
-test('dayLabel returns d MMMM yyyy for another year', () => {
-  var lastYear = new Date(2025, 4, 15, 14, 30);
-  var result = Format.dayLabel(lastYear.getTime(), nowMs);
-  assert.match(result, /^15 May 2025$/);
-});
+const previewLineCases = [
+  ['returns text for direct message',
+    { kind: 'direct', preview: 'Hello there', previewSender: 'Alice', previewOutgoing: false },
+    'Hello there'],
+  ['returns sender: text for group incoming',
+    { kind: 'group', preview: 'Hello team', previewSender: 'Alice', previewOutgoing: false },
+    'Alice: Hello team'],
+  ['returns You: text for group outgoing',
+    { kind: 'group', preview: 'I agree', previewSender: 'Me', previewOutgoing: true },
+    'You: I agree'],
+  ['returns empty string when preview is empty',
+    { kind: 'direct', preview: '', previewSender: 'Alice', previewOutgoing: false },
+    ''],
+  ['returns empty string when preview is null',
+    { kind: 'group', preview: null, previewSender: 'Alice', previewOutgoing: false },
+    ''],
+  ['returns preview text when group has no previewSender',
+    { kind: 'group', preview: 'Hello team', previewSender: '', previewOutgoing: false },
+    'Hello team'],
+  ['returns preview text when group has null previewSender',
+    { kind: 'group', preview: 'Hello team', previewSender: null, previewOutgoing: false },
+    'Hello team']
+];
 
-test('statusGlyph returns ○ for pending', () => {
-  assert.equal(Format.statusGlyph('pending'), '○');
-});
-
-test('statusGlyph returns ✓ for sent', () => {
-  assert.equal(Format.statusGlyph('sent'), '✓');
-});
-
-test('statusGlyph returns ✓✓ for delivered', () => {
-  assert.equal(Format.statusGlyph('delivered'), '✓✓');
-});
-
-test('statusGlyph returns ✓✓ for read', () => {
-  assert.equal(Format.statusGlyph('read'), '✓✓');
-});
-
-test('statusGlyph returns ! for failed', () => {
-  assert.equal(Format.statusGlyph('failed'), '!');
-});
-
-test('statusGlyph returns empty string for unknown status', () => {
-  assert.equal(Format.statusGlyph('unknown'), '');
-});
-
-test('previewLine returns text for direct message', () => {
-  var conv = {
-    kind: 'direct',
-    preview: 'Hello there',
-    previewSender: 'Alice',
-    previewOutgoing: false
-  };
-  assert.equal(Format.previewLine(conv), 'Hello there');
-});
-
-test('previewLine returns sender: text for group incoming', () => {
-  var conv = {
-    kind: 'group',
-    preview: 'Hello team',
-    previewSender: 'Alice',
-    previewOutgoing: false
-  };
-  assert.equal(Format.previewLine(conv), 'Alice: Hello team');
-});
-
-test('previewLine returns You: text for group outgoing', () => {
-  var conv = {
-    kind: 'group',
-    preview: 'I agree',
-    previewSender: 'Me',
-    previewOutgoing: true
-  };
-  assert.equal(Format.previewLine(conv), 'You: I agree');
-});
-
-test('previewLine returns empty string when preview is empty', () => {
-  var conv = {
-    kind: 'direct',
-    preview: '',
-    previewSender: 'Alice',
-    previewOutgoing: false
-  };
-  assert.equal(Format.previewLine(conv), '');
-});
-
-test('previewLine returns empty string when preview is null', () => {
-  var conv = {
-    kind: 'group',
-    preview: null,
-    previewSender: 'Alice',
-    previewOutgoing: false
-  };
-  assert.equal(Format.previewLine(conv), '');
-});
-
-test('previewLine returns preview text when group has no previewSender', () => {
-  var conv = {
-    kind: 'group',
-    preview: 'Hello team',
-    previewSender: '',
-    previewOutgoing: false
-  };
-  assert.equal(Format.previewLine(conv), 'Hello team');
-});
-
-test('previewLine returns preview text when group has null previewSender', () => {
-  var conv = {
-    kind: 'group',
-    preview: 'Hello team',
-    previewSender: null,
-    previewOutgoing: false
-  };
-  assert.equal(Format.previewLine(conv), 'Hello team');
-});
-
-test('initials ignore bracketed text and punctuation', () => {
-  assert.strictEqual(Format.initials('Sam (spotty signal)'), 'S');
-  assert.strictEqual(Format.initials('Jordan (Manager)'), 'J');
-  assert.strictEqual(Format.initials('Dr. Bartholomew Featherstonehaugh-Wainwright (Dentist)'), 'DB');
-  assert.strictEqual(Format.initials('Flat 4B'), 'F4');
-  assert.strictEqual(Format.initials('(Notes)'), 'N');
-  assert.strictEqual(Format.initials('!!'), '?');
-});
+for (const [name, conv, want] of previewLineCases) {
+  test(`previewLine ${name}`, () => {
+    assert.equal(Format.previewLine(conv), want);
+  });
+}
 
 test('a conversation with no activity yet has no time label', () => {
   const now = new Date(2026, 9, 6, 12, 0).getTime();
@@ -421,117 +317,143 @@ test('caption drops the label a photo, video, file or voice note stands in for',
   assert.strictEqual(Format.caption('see x.io', { kind: 'link' }), 'see x.io');
 });
 
-test('fileSize reads like a file manager', () => {
-  assert.strictEqual(Format.fileSize(0), '');
-  assert.strictEqual(Format.fileSize(512), '512 B');
-  assert.strictEqual(Format.fileSize(2048), '2.0 KB');
-  assert.strictEqual(Format.fileSize(5 * 1024 * 1024), '5.0 MB');
-  assert.strictEqual(Format.fileSize(3 * 1024 * 1024 * 1024), '3.0 GB');
-});
+const fileSizeCases = [
+  [0, ''],
+  [512, '512 B'],
+  [2048, '2.0 KB'],
+  [5 * 1024 * 1024, '5.0 MB'],
+  [3 * 1024 * 1024 * 1024, '3.0 GB']
+];
 
-test('duration shows minutes and seconds, and hours when there are some', () => {
-  assert.strictEqual(Format.duration(0), '');
-  assert.strictEqual(Format.duration(5), '0:05');
-  assert.strictEqual(Format.duration(65), '1:05');
-  assert.strictEqual(Format.duration(3725), '1:02:05');
-});
+for (const [bytes, want] of fileSizeCases) {
+  test(`fileSize reads ${want || 'nothing'} for ${bytes} bytes`, () => {
+    assert.strictEqual(Format.fileSize(bytes), want);
+  });
+}
 
-test('elapsed shows the same clock as duration, but never blank at zero', () => {
-  assert.strictEqual(Format.elapsed(0), '0:00');
-  assert.strictEqual(Format.elapsed(5), '0:05');
-  assert.strictEqual(Format.elapsed(65), '1:05');
-  assert.strictEqual(Format.elapsed(3725), '1:02:05');
-  assert.strictEqual(Format.elapsed(-3), '0:00');
-});
+const durationCases = [
+  [0, ''],
+  [5, '0:05'],
+  [65, '1:05'],
+  [3725, '1:02:05']
+];
 
-test('unreadLabel shows the count below 100', () => {
-  assert.strictEqual(Format.unreadLabel(0), '0');
-  assert.strictEqual(Format.unreadLabel(7), '7');
-  assert.strictEqual(Format.unreadLabel(99), '99');
-});
+for (const [secs, want] of durationCases) {
+  test(`duration shows ${want || 'nothing'} for ${secs}s`, () => {
+    assert.strictEqual(Format.duration(secs), want);
+  });
+}
 
-test('unreadLabel caps a crowding count at 99+', () => {
-  assert.strictEqual(Format.unreadLabel(100), '99+');
-  assert.strictEqual(Format.unreadLabel(1234), '99+');
-});
+// elapsed shows the same clock as duration, but never blank at zero.
+const elapsedCases = [
+  [0, '0:00'],
+  [5, '0:05'],
+  [65, '1:05'],
+  [3725, '1:02:05'],
+  [-3, '0:00']
+];
 
-test('photoSize shows pixel dimensions', () => {
-  assert.strictEqual(Format.photoSize(1920, 1080), '1920 × 1080');
-  assert.strictEqual(Format.photoSize(0, 0), '');
-  assert.strictEqual(Format.photoSize(100, 0), '');
-  assert.strictEqual(Format.photoSize(0, 100), '');
-});
+for (const [secs, want] of elapsedCases) {
+  test(`elapsed shows ${want} for ${secs}s`, () => {
+    assert.strictEqual(Format.elapsed(secs), want);
+  });
+}
 
-test('baseName keeps only the last path segment', () => {
-  assert.strictEqual(Format.baseName('/home/tim/photo.png'), 'photo.png');
-  assert.strictEqual(Format.baseName('report.pdf'), 'report.pdf');
-});
+const unreadLabelCases = [
+  [0, '0'],
+  [7, '7'],
+  [99, '99'],
+  [100, '99+'],
+  [1234, '99+']
+];
 
-test('guessMediaKind recognizes common image and video extensions', () => {
-  assert.strictEqual(Format.guessMediaKind('/tmp/photo.PNG'), 'photo');
-  assert.strictEqual(Format.guessMediaKind('/tmp/photo.jpg'), 'photo');
-  assert.strictEqual(Format.guessMediaKind('/tmp/clip.mp4'), 'video');
-  assert.strictEqual(Format.guessMediaKind('/tmp/notes.txt'), 'file');
-  assert.strictEqual(Format.guessMediaKind('/tmp/noextension'), 'file');
-});
+for (const [count, want] of unreadLabelCases) {
+  test(`unreadLabel shows ${want} for ${count}`, () => {
+    assert.strictEqual(Format.unreadLabel(count), want);
+  });
+}
 
-test('mediaFailureReason turns a safe reason category into a short phrase', () => {
-  assert.strictEqual(Format.mediaFailureReason('not-found'), 'no longer available');
-  assert.strictEqual(Format.mediaFailureReason('expired'), 'no longer on the phone');
-  assert.strictEqual(Format.mediaFailureReason('download'), 'connection problem');
-  assert.strictEqual(Format.mediaFailureReason('decrypt'), 'could not be verified');
-  assert.strictEqual(Format.mediaFailureReason('cache'), 'storage problem');
-  assert.strictEqual(Format.mediaFailureReason('timeout'), 'took too long');
-});
+const photoSizeCases = [
+  [1920, 1080, '1920 × 1080'],
+  [0, 0, ''],
+  [100, 0, ''],
+  [0, 100, '']
+];
 
-test('mediaFailureReason is empty for an unrecognised or missing reason', () => {
-  assert.strictEqual(Format.mediaFailureReason('bogus'), '');
-  assert.strictEqual(Format.mediaFailureReason(''), '');
-  assert.strictEqual(Format.mediaFailureReason(undefined), '');
-});
+for (const [w, h, want] of photoSizeCases) {
+  test(`photoSize shows ${want || 'nothing'} for ${w}x${h}`, () => {
+    assert.strictEqual(Format.photoSize(w, h), want);
+  });
+}
 
-test('snoozeUntilLabel shows just the clock time for later today', () => {
-  const later = new Date(2026, 9, 6, 18, 0);
-  assert.strictEqual(Format.snoozeUntilLabel(later.getTime(), nowMs), '18:00');
-});
+const baseNameCases = [
+  ['/home/tim/photo.png', 'photo.png'],
+  ['report.pdf', 'report.pdf']
+];
 
-test('snoozeUntilLabel names tomorrow', () => {
-  const tomorrow = new Date(2026, 9, 7, 9, 0);
-  assert.strictEqual(Format.snoozeUntilLabel(tomorrow.getTime(), nowMs), 'Tomorrow 09:00');
-});
+for (const [path, want] of baseNameCases) {
+  test(`baseName keeps ${want} from ${path}`, () => {
+    assert.strictEqual(Format.baseName(path), want);
+  });
+}
 
-test('snoozeUntilLabel names a weekday within six days', () => {
-  const inFourDays = new Date(2026, 9, 10, 9, 0);
-  assert.strictEqual(Format.snoozeUntilLabel(inFourDays.getTime(), nowMs), 'Saturday 09:00');
-});
+const guessMediaKindCases = [
+  ['/tmp/photo.PNG', 'photo'],
+  ['/tmp/photo.jpg', 'photo'],
+  ['/tmp/clip.mp4', 'video'],
+  ['/tmp/notes.txt', 'file'],
+  ['/tmp/noextension', 'file']
+];
 
-test('snoozeUntilLabel shows day and month for further-out dates this year', () => {
-  const inThreeWeeks = new Date(2026, 9, 27, 9, 0);
-  assert.strictEqual(Format.snoozeUntilLabel(inThreeWeeks.getTime(), nowMs), '27 Oct 09:00');
-});
+for (const [path, want] of guessMediaKindCases) {
+  test(`guessMediaKind returns ${want} for ${path}`, () => {
+    assert.strictEqual(Format.guessMediaKind(path), want);
+  });
+}
 
-test('snoozeUntilLabel includes the year for a date in another year', () => {
-  const nextYear = new Date(2027, 1, 3, 9, 0);
-  assert.strictEqual(Format.snoozeUntilLabel(nextYear.getTime(), nowMs), '3 Feb 2027 09:00');
-});
+const mediaFailureReasonCases = [
+  ['not-found', 'no longer available'],
+  ['expired', 'no longer on the phone'],
+  ['download', 'connection problem'],
+  ['decrypt', 'could not be verified'],
+  ['cache', 'storage problem'],
+  ['timeout', 'took too long'],
+  ['bogus', ''],
+  ['', ''],
+  [undefined, '']
+];
 
-test('retryingLabel counts minutes under an hour away', () => {
-  assert.strictEqual(Format.retryingLabel(nowMs + 2 * 60 * 1000, nowMs), 'Retrying in 2 min');
-});
+for (const [reason, want] of mediaFailureReasonCases) {
+  const label = reason === undefined ? 'a missing reason' : JSON.stringify(reason);
+  test(`mediaFailureReason turns ${label} into ${want || 'nothing'}`, () => {
+    assert.strictEqual(Format.mediaFailureReason(reason), want);
+  });
+}
 
-test('retryingLabel rounds a sub-minute wait up to one minute', () => {
-  assert.strictEqual(Format.retryingLabel(nowMs + 30 * 1000, nowMs), 'Retrying in 1 min');
-});
+const snoozeUntilLabelCases = [
+  ['shows just the clock time for later today', new Date(2026, 9, 6, 18, 0), '18:00'],
+  ['names tomorrow', new Date(2026, 9, 7, 9, 0), 'Tomorrow 09:00'],
+  ['names a weekday within six days', new Date(2026, 9, 10, 9, 0), 'Saturday 09:00'],
+  ['shows day and month for further-out dates this year', new Date(2026, 9, 27, 9, 0), '27 Oct 09:00'],
+  ['includes the year for a date in another year', new Date(2027, 1, 3, 9, 0), '3 Feb 2027 09:00']
+];
 
-test('retryingLabel shows the clock time an hour or more away', () => {
-  const at = new Date(2026, 9, 6, 14, 5);
-  assert.strictEqual(Format.retryingLabel(at.getTime(), nowMs), 'Retrying at 14:05');
-});
+for (const [name, date, want] of snoozeUntilLabelCases) {
+  test(`snoozeUntilLabel ${name}`, () => {
+    assert.strictEqual(Format.snoozeUntilLabel(date.getTime(), nowMs), want);
+  });
+}
 
-test('retryingLabel shows an ellipsis once the retry is due now', () => {
-  assert.strictEqual(Format.retryingLabel(nowMs, nowMs), 'Retrying…');
-});
+const retryingLabelCases = [
+  ['counts minutes under an hour away', nowMs + 2 * 60 * 1000, 'Retrying in 2 min'],
+  ['rounds a sub-minute wait up to one minute', nowMs + 30 * 1000, 'Retrying in 1 min'],
+  ['shows the clock time an hour or more away', new Date(2026, 9, 6, 14, 5).getTime(), 'Retrying at 14:05'],
+  ['shows an ellipsis once the retry is due now', nowMs, 'Retrying…'],
+  ['shows an ellipsis once the retry is overdue', nowMs - 5000, 'Retrying…']
+];
 
-test('retryingLabel shows an ellipsis once the retry is overdue', () => {
-  assert.strictEqual(Format.retryingLabel(nowMs - 5000, nowMs), 'Retrying…');
-});
+for (const [name, at, want] of retryingLabelCases) {
+  test(`retryingLabel ${name}`, () => {
+    assert.strictEqual(Format.retryingLabel(at, nowMs), want);
+  });
+}

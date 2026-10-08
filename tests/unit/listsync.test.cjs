@@ -7,109 +7,58 @@ const { load } = require('./load.cjs');
 
 const ListSync = load('lib/ListSync.js');
 
-test('planSync returns empty array for identical lists', () => {
-  const oldIds = ['a', 'b', 'c'];
-  const newIds = ['a', 'b', 'c'];
-  const ops = ListSync.planSync(oldIds, newIds);
-  assert.deepEqual(ops, []);
-});
+const planSyncOpsCases = [
+  ['returns empty array for identical lists', ['a', 'b', 'c'], ['a', 'b', 'c'], []],
+  ['returns empty array for empty lists', [], [], []],
+  ['single insert when converting empty to one item', [], ['a'], [{ op: 'insert', index: 0, id: 'a' }]],
+  ['single remove when converting one item to empty', ['a'], [], [{ op: 'remove', index: 0 }]]
+];
 
-test('planSync returns empty array for empty lists', () => {
-  const oldIds = [];
-  const newIds = [];
-  const ops = ListSync.planSync(oldIds, newIds);
-  assert.deepEqual(ops, []);
-});
+for (const [name, oldIds, newIds, want] of planSyncOpsCases) {
+  test(`planSync ${name}`, () => {
+    assert.deepEqual(ListSync.planSync(oldIds, newIds), want);
+  });
+}
 
-test('planSync single insert when converting empty to one item', () => {
-  const oldIds = [];
-  const newIds = ['a'];
-  const ops = ListSync.planSync(oldIds, newIds);
-  assert.deepEqual(ops, [{ op: 'insert', index: 0, id: 'a' }]);
-});
+// These two only pin down the net effect (apply(ops) reaches newIds), not
+// the exact ops planSync chooses to get there.
+const planSyncRoundtripCases = [
+  ['full reversal', ['a', 'b', 'c'], ['c', 'b', 'a']],
+  ['disjoint lists', ['a', 'b', 'c'], ['x', 'y', 'z']]
+];
 
-test('planSync single remove when converting one item to empty', () => {
-  const oldIds = ['a'];
-  const newIds = [];
-  const ops = ListSync.planSync(oldIds, newIds);
-  assert.deepEqual(ops, [{ op: 'remove', index: 0 }]);
-});
+for (const [name, oldIds, newIds] of planSyncRoundtripCases) {
+  test(`planSync ${name}`, () => {
+    const ops = ListSync.planSync(oldIds, newIds);
+    assert.deepEqual(ListSync.apply(oldIds, ops), newIds);
+  });
+}
 
-test('planSync full reversal', () => {
-  const oldIds = ['a', 'b', 'c'];
-  const newIds = ['c', 'b', 'a'];
-  const ops = ListSync.planSync(oldIds, newIds);
-  const result = ListSync.apply(oldIds, ops);
-  assert.deepEqual(result, newIds);
-});
-
-test('planSync disjoint lists', () => {
-  const oldIds = ['a', 'b', 'c'];
-  const newIds = ['x', 'y', 'z'];
-  const ops = ListSync.planSync(oldIds, newIds);
-  const result = ListSync.apply(oldIds, ops);
-  assert.deepEqual(result, newIds);
-});
-
-test('apply returns same array when no ops', () => {
-  const ids = ['a', 'b', 'c'];
-  const ops = [];
-  const result = ListSync.apply(ids, ops);
-  assert.deepEqual(result, ids);
-  assert.notEqual(result, ids);
-});
-
-test('apply insert at start', () => {
-  const ids = ['b', 'c'];
-  const ops = [{ op: 'insert', index: 0, id: 'a' }];
-  const result = ListSync.apply(ids, ops);
-  assert.deepEqual(result, ['a', 'b', 'c']);
-});
-
-test('apply insert at end', () => {
-  const ids = ['a', 'b'];
-  const ops = [{ op: 'insert', index: 2, id: 'c' }];
-  const result = ListSync.apply(ids, ops);
-  assert.deepEqual(result, ['a', 'b', 'c']);
-});
-
-test('apply remove from start', () => {
-  const ids = ['a', 'b', 'c'];
-  const ops = [{ op: 'remove', index: 0 }];
-  const result = ListSync.apply(ids, ops);
-  assert.deepEqual(result, ['b', 'c']);
-});
-
-test('apply remove from end', () => {
-  const ids = ['a', 'b', 'c'];
-  const ops = [{ op: 'remove', index: 2 }];
-  const result = ListSync.apply(ids, ops);
-  assert.deepEqual(result, ['a', 'b']);
-});
-
-test('apply move forward', () => {
-  const ids = ['a', 'b', 'c'];
-  const ops = [{ op: 'move', from: 0, to: 2 }];
-  const result = ListSync.apply(ids, ops);
-  assert.deepEqual(result, ['b', 'c', 'a']);
-});
-
-test('apply move backward', () => {
-  const ids = ['a', 'b', 'c'];
-  const ops = [{ op: 'move', from: 2, to: 0 }];
-  const result = ListSync.apply(ids, ops);
-  assert.deepEqual(result, ['c', 'a', 'b']);
-});
-
-test('apply sequence of operations', () => {
-  const ids = ['a', 'b'];
-  const ops = [
+const applyCases = [
+  ['insert at start', ['b', 'c'], [{ op: 'insert', index: 0, id: 'a' }], ['a', 'b', 'c']],
+  ['insert at end', ['a', 'b'], [{ op: 'insert', index: 2, id: 'c' }], ['a', 'b', 'c']],
+  ['remove from start', ['a', 'b', 'c'], [{ op: 'remove', index: 0 }], ['b', 'c']],
+  ['remove from end', ['a', 'b', 'c'], [{ op: 'remove', index: 2 }], ['a', 'b']],
+  ['move forward', ['a', 'b', 'c'], [{ op: 'move', from: 0, to: 2 }], ['b', 'c', 'a']],
+  ['move backward', ['a', 'b', 'c'], [{ op: 'move', from: 2, to: 0 }], ['c', 'a', 'b']],
+  ['a sequence of operations', ['a', 'b'], [
     { op: 'insert', index: 1, id: 'x' },
     { op: 'remove', index: 0 },
     { op: 'move', from: 1, to: 0 }
-  ];
-  const result = ListSync.apply(ids, ops);
-  assert.deepEqual(result, ['b', 'x']);
+  ], ['b', 'x']]
+];
+
+for (const [name, ids, ops, want] of applyCases) {
+  test(`apply ${name}`, () => {
+    assert.deepEqual(ListSync.apply(ids, ops), want);
+  });
+}
+
+test('apply returns same array when no ops', () => {
+  const ids = ['a', 'b', 'c'];
+  const result = ListSync.apply(ids, []);
+  assert.deepEqual(result, ids);
+  assert.notEqual(result, ids);
 });
 
 test('upsertById replaces existing item', () => {
