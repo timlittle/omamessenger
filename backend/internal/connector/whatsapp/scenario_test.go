@@ -65,7 +65,6 @@ func (d *whatsappDriver) Connector(t *testing.T) connector.Connector {
 		answers:   make(chan answer, 1),
 		open:      func(context.Context) (device, error) { return d.dev, nil },
 		openMedia: func(context.Context) (*mediaStore, error) { return d.media, nil },
-		organize:  map[string]organizeState{},
 		names:     map[string]namedEntry{},
 		reactions: map[string]map[string]string{},
 	}
@@ -165,14 +164,37 @@ func (d *whatsappDriver) deliverMessage(ctx context.Context, chat types.JID, e c
 }
 
 // deliverOrganize reports a pin or an archive change, each field
-// independently, the way WhatsApp's own live events do.
+// independently, the way WhatsApp's own live events do. The fake
+// device's chat settings are seeded first, field by field, standing
+// in for whatsmeow's own store already having applied the matching
+// app-state mutation by the time a real Pin or Archive event fires
+// (see docs/decisions.md); handlePin and handleArchive read it back
+// rather than trusting the event's own carried value.
 func (d *whatsappDriver) deliverOrganize(ctx context.Context, jid types.JID, e connectortest.Event) {
 	if e.Pinned != nil {
+		d.seedLiveOrganize(ctx, jid, e.Pinned, nil)
 		d.current.handlePin(ctx, d.sink, d.dev, d.media, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(*e.Pinned)}})
 	}
 	if e.Archived != nil {
+		d.seedLiveOrganize(ctx, jid, nil, e.Archived)
 		d.current.handleArchive(ctx, d.sink, d.dev, d.media, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(*e.Archived)}})
 	}
+}
+
+// seedLiveOrganize updates the fake device's chat settings for jid,
+// merging pinned and archived into whichever of the two was already
+// there: each is left alone when its argument is nil, the way
+// whatsmeow's own store only ever updates the one column a mutation
+// actually named.
+func (d *whatsappDriver) seedLiveOrganize(ctx context.Context, jid types.JID, pinned, archived *bool) {
+	p, a, _ := d.dev.chatSettings(ctx, jid)
+	if pinned != nil {
+		p = *pinned
+	}
+	if archived != nil {
+		a = *archived
+	}
+	d.dev.setChatSettings(jid.String(), p, a)
 }
 
 // scenarioEvents is a representative set of updates for one direct
@@ -368,7 +390,6 @@ func newConnectorOverDevAndMedia(dev device, media *mediaStore) *Connector {
 		answers:   make(chan answer, 1),
 		open:      func(context.Context) (device, error) { return dev, nil },
 		openMedia: func(context.Context) (*mediaStore, error) { return media, nil },
-		organize:  map[string]organizeState{},
 		names:     map[string]namedEntry{},
 		reactions: map[string]map[string]string{},
 	}
@@ -434,6 +455,10 @@ func TestScenario_IdentityAliases(t *testing.T) {
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: phone, Sender: phone}, ID: "M1", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("hi")},
 	})
+	// Standing in for whatsmeow's own chat settings store already
+	// having the pin applied, keyed by the LID the mutation actually
+	// named, by the time this live echo fires (see docs/decisions.md).
+	dev.setChatSettings(lid.String(), true, false)
 	c.handlePin(t.Context(), &sink, dev, media, &events.Pin{JID: lid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
 	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: lid, Sender: lid}, ID: "M2", Timestamp: time.Unix(2, 0)},

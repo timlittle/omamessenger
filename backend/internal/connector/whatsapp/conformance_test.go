@@ -40,7 +40,6 @@ func TestConformance_Lifecycle(t *testing.T) {
 			answers:   make(chan answer, 1),
 			open:      func(context.Context) (device, error) { return dev, nil },
 			openMedia: func(context.Context) (*mediaStore, error) { return media, nil },
-			organize:  map[string]organizeState{},
 			names:     map[string]namedEntry{},
 			reactions: map[string]map[string]string{},
 		}

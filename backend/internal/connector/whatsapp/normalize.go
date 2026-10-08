@@ -164,8 +164,12 @@ func muted(endTime uint64, now time.Time) bool {
 }
 
 // conversationFromSync turns one conversation of a history sync into
-// ours, with its unread count, pinned and archived state, mute and
-// name, or reports false when it carries no parseable id.
+// ours, with its unread count, mute and name, or reports false when it
+// carries no parseable id. Pinned and archived are deliberately not
+// read from here at all: this sync's own snapshot of either can lag
+// behind WhatsApp's own chat settings store, which is the only place
+// syncConversation reads them from (see history.go's
+// reportSyncedOrganize and docs/decisions.md).
 func conversationFromSync(accountID string, c *waHistorySync.Conversation, now time.Time) (domain.Conversation, bool) {
 	jid, err := types.ParseJID(c.GetID())
 	if err != nil || jid.IsEmpty() {
@@ -178,8 +182,6 @@ func conversationFromSync(accountID string, c *waHistorySync.Conversation, now t
 		Kind:      kindFor(jid),
 		Title:     conversationName(c),
 		Unread:    int(c.GetUnreadCount()),
-		Pinned:    c.GetPinned() > 0,
-		Archived:  c.GetArchived(),
 		Muted:     muted(c.GetMuteEndTime(), now),
 	}
 

@@ -1,15 +1,32 @@
 package whatsapp
 
-// organize.go keeps a conversation's pinned, archived and read state in
-// step with WhatsApp in both directions: Connector.SetPinned and
-// SetArchived (MarkRead's own chat-level patch lives in markread.go
-// instead, next to the per-message receipts it sends alongside it) each
-// send an app-state patch for the change, the same way WhatsApp's own
-// app would, then update the state this connector caches for the
-// conversation (see connector.go's organizeState) so a later echo of
-// the same change arriving from the phone (handlePin and handleArchive,
-// below) confirms it rather than reverting it. handleMarkChatAsRead is
-// that same echo for MarkRead's own patch, arriving the other way.
+// organize.go keeps a conversation's pinned and archived state in step
+// with WhatsApp, treating whatsmeow's own chat settings store (see
+// device.chatSettings) as the single source of truth: this connector
+// never caches pinned or archived itself, so there is nothing of its
+// own that a stale sync could ever revert.
+//
+// SetPinned and SetArchived send an app-state patch for the change,
+// the same way WhatsApp's own app would, then read the chat settings
+// straight back and report those. That read-back already sees the
+// change: whatsmeow's SendAppState fetches and applies the server's
+// own patches to its local store synchronously, before it returns, so
+// by the time the patch send succeeds here, the store already agrees
+// (see docs/decisions.md). Only the events whatsmeow fires for other
+// listeners are dispatched afterwards, in the background, which is why
+// handlePin and handleArchive, below, do exactly the same read-and-report
+// rather than trusting the one field their own event names: a live
+// Pin or Archive is just WhatsApp's own notice that something changed,
+// never the new value itself. handleMarkChatAsRead is the equivalent
+// notice for MarkRead's own patch (see markread.go), which carries no
+// state of its own to read back.
+//
+// A history sync's own, separate snapshot of pinned and archived (see
+// history.go) is likewise never consulted: syncConversation reads the
+// same chat settings store instead, which is what stops a resync from
+// ever reverting a pin or archive this process, or the phone, just
+// made, and lets a pin that arrived before a conversation existed
+// apply itself the moment that conversation is finally reported.
 
 import (
 	"context"
@@ -17,6 +34,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
@@ -31,7 +49,7 @@ const organizeTimeout = 30 * time.Second
 // pinLimit is the most conversations WhatsApp's own app lets stay
 // pinned at once. WhatsApp enforces this itself rather than returning a
 // distinct, structured error from the server, so this connector matches
-// that behaviour using the pinned state it already caches, instead of
+// that behaviour by counting whatsmeow's own chat settings, instead of
 // trying to tell the refusal apart from any other rejected app-state
 // patch by its text.
 const pinLimit = 3
@@ -49,7 +67,7 @@ func (c *Connector) SetPinned(ctx context.Context, conv domain.Conversation, pin
 	if err != nil {
 		return fmt.Errorf("whatsapp: set pinned: %w", err)
 	}
-	if pinned && c.pinnedCount(conv.RemoteID) >= pinLimit {
+	if pinned && c.pinnedCount(ctx, dev, conv.RemoteID) >= pinLimit {
 		return fmt.Errorf("whatsapp: set pinned: %w", connector.ErrPinLimit)
 	}
 
@@ -59,16 +77,14 @@ func (c *Connector) SetPinned(ctx context.Context, conv domain.Conversation, pin
 		return fmt.Errorf("whatsapp: set pinned: %w", err)
 	}
 
-	state := c.setOrganized(conv.RemoteID, &pinned, nil)
-	c.markLocalOrganize(conv.RemoteID)
-	sink.Organized(ctx, c.account.ID, conv.RemoteID, state.pinned, state.archived)
-
-	return nil
+	return c.reportOrganized(ctx, sink, dev, jid, conv.RemoteID)
 }
 
 // SetArchived files conv away, or brings it back, with WhatsApp.
-// Archiving a chat also unpins it there, so a successful archive clears
-// the cached pin too, matching WhatsApp's own behaviour.
+// Archiving a chat also unpins it there: appstate.BuildArchive already
+// bundles the matching unpin mutation into the same patch, so the
+// settings this reads back afterwards already reflect that, with
+// nothing for this connector to compute itself.
 func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error {
 	dev, sink, err := c.session()
 	if err != nil {
@@ -86,28 +102,44 @@ func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, a
 		return fmt.Errorf("whatsapp: set archived: %w", err)
 	}
 
-	var unpinned *bool
-	if archived {
-		no := false
-		unpinned = &no
+	return c.reportOrganized(ctx, sink, dev, jid, conv.RemoteID)
+}
+
+// reportOrganized reports remoteID's current pinned and archived
+// state, read straight from whatsmeow's own chat settings store for
+// jid (see device.chatSettings): a read failure here should not arise,
+// since the patch that led here already succeeded, but is still
+// reported rather than silently guessed at.
+func (c *Connector) reportOrganized(ctx context.Context, sink connector.Sink, dev device, jid types.JID, remoteID string) error {
+	pinned, archived, err := dev.chatSettings(ctx, jid)
+	if err != nil {
+		return fmt.Errorf("whatsapp: chat settings: %w", err)
 	}
-	state := c.setOrganized(conv.RemoteID, unpinned, &archived)
-	c.markLocalOrganize(conv.RemoteID)
-	sink.Organized(ctx, c.account.ID, conv.RemoteID, state.pinned, state.archived)
+
+	sink.Organized(ctx, c.account.ID, remoteID, pinned, archived)
 
 	return nil
 }
 
-// pinnedCount returns how many conversations other than excludeRemoteID
-// this connector last knew to be pinned, so re-pinning one already
-// pinned never counts against the limit.
-func (c *Connector) pinnedCount(excludeRemoteID string) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+// pinnedCount is how many conversations other than excludeRemoteID,
+// among the ones this connector has ever reported (see
+// Connector.chatKinds), WhatsApp's own chat settings currently have
+// pinned. A chat WhatsApp already has pinned before this connector has
+// ever reported it is not countable yet, the same limit an in-memory
+// cache of this connector's own would have had too; a later sync or
+// message naturally brings it into chatKinds and so into this count.
+func (c *Connector) pinnedCount(ctx context.Context, dev device, excludeRemoteID string) int {
 	n := 0
-	for remote, state := range c.organize {
-		if remote != excludeRemoteID && state.pinned {
+	for _, remote := range c.knownChatIDs() {
+		if remote == excludeRemoteID {
+			continue
+		}
+
+		jid, err := jidFromRemoteID(remote)
+		if err != nil {
+			continue
+		}
+		if pinned, _, err := dev.chatSettings(ctx, jid); err == nil && pinned {
 			n++
 		}
 	}
@@ -115,30 +147,30 @@ func (c *Connector) pinnedCount(excludeRemoteID string) int {
 	return n
 }
 
-// handlePin reports a chat pinned or unpinned from the phone, merging it
-// with whichever archived state this connector last knew for it, and
-// marks pinned as confirmed by app state so a later history sync's own
-// snapshot can never revert it (see setOrganizedFromAppState).
-func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Pin) {
-	remote := chatID(ctx, dev, media, e.JID)
-	pinned := e.Action.GetPinned()
+// reportLiveOrganize reports jid's chat pinned and archived exactly as
+// WhatsApp's own chat settings store currently has it, the state a
+// live Pin or Archive event's own arrival already means was applied
+// there (see this file's own doc comment); handlePin and handleArchive
+// share this, since a read failure here logs the same way and neither
+// has anything else of its own to do with one.
+func (c *Connector) reportLiveOrganize(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, jid types.JID) {
+	pinned, archived, err := dev.chatSettings(ctx, jid)
+	if err != nil {
+		logOrganizeReadFailed(err)
+		return
+	}
 
-	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
-	state := c.setOrganizedFromAppState(remote, &pinned, nil)
-	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
+	sink.Organized(ctx, c.account.ID, chatID(ctx, dev, media, jid), pinned, archived)
 }
 
-// handleArchive reports a chat archived or unarchived from the phone,
-// merging it with whichever pinned state this connector last knew for
-// it, and marks archived as confirmed by app state so a later history
-// sync's own snapshot can never revert it (see setOrganizedFromAppState).
-func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Archive) {
-	remote := chatID(ctx, dev, media, e.JID)
-	archived := e.Action.GetArchived()
+// handlePin reports a chat pinned or unpinned from the phone.
+func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Pin) {
+	c.reportLiveOrganize(ctx, sink, dev, media, e.JID)
+}
 
-	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
-	state := c.setOrganizedFromAppState(remote, nil, &archived)
-	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
+// handleArchive reports a chat archived or unarchived from the phone.
+func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Archive) {
+	c.reportLiveOrganize(ctx, sink, dev, media, e.JID)
 }
 
 // handleMarkChatAsRead reports a chat WhatsApp's own app-state sync says

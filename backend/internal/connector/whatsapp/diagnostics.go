@@ -79,6 +79,17 @@ func logUnknownKind(field string) {
 	log.Printf("whatsapp: unknown message kind (field=%s)", field)
 }
 
+// logOrganizeReadFailed reports that reading a chat's pinned and
+// archived state back out of whatsmeow's own chat settings store
+// failed (see device.chatSettings), so a pin or archive change went
+// unreported this one time rather than being guessed at; a later sync
+// or live echo gets another chance to report it correctly. The error
+// itself is never logged: whatsmeow's own store errors are not
+// guaranteed free of a JID or similar detail.
+func logOrganizeReadFailed(_ error) {
+	log.Print("whatsapp: chat settings read failed")
+}
+
 // logPollVoteDecryptFailed reports a poll vote whatsmeow could not
 // decrypt, most often one that arrived before this connector ever saw
 // the poll it votes in, so its secret was never saved.

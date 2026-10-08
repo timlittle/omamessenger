@@ -117,10 +117,21 @@ type fakeDevice struct {
 
 	// appStateErr and appStateBlocks script sendAppState, which
 	// organize_test.go drives to check pin and archive changes without
-	// reaching WhatsApp's servers; appStatePatches records what was sent.
+	// reaching WhatsApp's servers; appStatePatches records what was
+	// sent. settings is this fake's chat settings store, mirroring
+	// whatsmeow's own (store.ChatSettingsStore): a successful
+	// sendAppState applies its patch's mutations to it synchronously,
+	// exactly as a real SendAppState updates its store before
+	// returning (see device.go and docs/decisions.md), and a test may
+	// also seed it directly to stand in for a chat WhatsApp already
+	// had pinned or archived from before this connector ever saw it.
+	// sendAppState itself, along with applyAppState, chatSettings and
+	// setChatSettings, is defined in organize_test.go, beside the pin
+	// and archive tests that are the reason all four exist at all.
 	appStateErr     error
 	appStateBlocks  bool
 	appStatePatches []appstate.PatchInfo
+	settings        map[string]chatSettingsEntry
 
 	// mediaRetryErr scripts sendMediaRetryReceipt, and mediaRetryCalls
 	// records what it was asked to send; retry_test.go drives these.
@@ -518,23 +529,6 @@ func (d *fakeDevice) requestOlderHistory(_ context.Context, anchor *types.Messag
 	d.requestHistoryCalls = append(d.requestHistoryCalls, requestHistoryCall{anchor: anchor, count: count})
 
 	return d.requestHistoryErr
-}
-
-// sendAppState records patch and reports appStateErr, or blocks on ctx
-// when appStateBlocks is set, as a real patch that never hears back from
-// the server does.
-func (d *fakeDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
-	d.mu.Lock()
-	d.appStatePatches = append(d.appStatePatches, patch)
-	blocks, err := d.appStateBlocks, d.appStateErr
-	d.mu.Unlock()
-
-	if blocks {
-		<-ctx.Done()
-		return ctx.Err()
-	}
-
-	return err
 }
 
 // decryptPollVote reports the scripted vote or error.

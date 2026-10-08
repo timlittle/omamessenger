@@ -43,15 +43,22 @@ func TestHandleHistorySync_ReportsContactsConversationsAndMessages(t *testing.T)
 
 	c, dev, sink, media := handlerMediaFixture(t)
 
+	// Pinned and archived are read from whatsmeow's own chat settings
+	// store, never from the sync blob itself (see docs/decisions.md),
+	// so they are seeded there instead of on the synced conversations
+	// below.
+	dev.setChatSettings("15551234567@s.whatsapp.net", true, false)
+	dev.setChatSettings("12345-1600000000@g.us", false, true)
+
 	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
 		Pushnames: []*waHistorySync.Pushname{{ID: strPtr("15551234567@s.whatsapp.net"), Pushname: strPtr("Nadia")}},
 		Conversations: []*waHistorySync.Conversation{
 			{
-				ID: strPtr("15551234567@s.whatsapp.net"), UnreadCount: u32(1), Pinned: u32(1),
+				ID: strPtr("15551234567@s.whatsapp.net"), UnreadCount: u32(1),
 				Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
 			},
 			{
-				ID: strPtr("12345-1600000000@g.us"), DisplayName: strPtr("Climbing Crew"), Archived: boolPtr(true),
+				ID: strPtr("12345-1600000000@g.us"), DisplayName: strPtr("Climbing Crew"),
 				Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H2", "see you there", false)},
 			},
 		},
@@ -250,11 +257,13 @@ func TestHandleHistorySync_StillUpdatesAConversationAlreadyKnownWithoutNewMessag
 	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 	sink.Take()
 
-	// A later, smaller sync of the same chat carries an updated pinned
-	// state but no messages of its own: since this connector already
-	// reported the chat for real, that update must still land.
-	pinned := &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), Pinned: u32(1)}
-	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(pinned))
+	// A later, smaller sync of the same chat carries no messages of its
+	// own, after WhatsApp's own chat settings record a pin made since:
+	// since this connector already reported the chat for real, that
+	// update must still land.
+	dev.setChatSettings("15551234567@s.whatsapp.net", true, false)
+	again := &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia")}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(again))
 
 	if !sink.Has("organized 15551234567@s.whatsapp.net true false") {
 		t.Errorf("events = %q, want the already-known chat's pin update to still land", sink.Lines())

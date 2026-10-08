@@ -279,6 +279,12 @@ func TestMuted_ComparesTheEndTimeToNow(t *testing.T) {
 	}
 }
 
+// TestConversationFromSync_DirectAndGroup also doubles as proof that a
+// synced conversation's own Pinned and Archived fields are ignored: the
+// first two cases set them on the input but expect them unset on the
+// result, since pinned and archived are only ever read from
+// whatsmeow's own chat settings store (see history.go's
+// reportSyncedOrganize and docs/decisions.md).
 func TestConversationFromSync_DirectAndGroup(t *testing.T) {
 	t.Parallel()
 
@@ -297,7 +303,7 @@ func TestConversationFromSync_DirectAndGroup(t *testing.T) {
 			},
 			domain.Conversation{
 				AccountID: "wa", RemoteID: "15551234567@s.whatsapp.net", Kind: domain.KindDirect,
-				Title: "Nadia", Unread: 3, Pinned: true,
+				Title: "Nadia", Unread: 3,
 			},
 		},
 		{
@@ -311,7 +317,7 @@ func TestConversationFromSync_DirectAndGroup(t *testing.T) {
 			},
 			domain.Conversation{
 				AccountID: "wa", RemoteID: "12345-1600000000@g.us", Kind: domain.KindGroup,
-				Title: "Climbing Crew", Members: 2, Archived: true,
+				Title: "Climbing Crew", Members: 2,
 			},
 		},
 		{

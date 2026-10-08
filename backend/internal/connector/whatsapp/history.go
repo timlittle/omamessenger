@@ -124,7 +124,7 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 
 	conv.Title, conv.Members = c.resolveConversation(ctx, src.dev, jid, conv, sc)
 	c.reportConversation(ctx, sink, conv)
-	c.reportSyncedOrganize(ctx, sink, conv)
+	c.reportSyncedOrganize(ctx, sink, src.dev, jid, conv.RemoteID)
 
 	target := syncTarget{syncSource: src, chat: jid, convRemoteID: conv.RemoteID}
 	reported := 0
@@ -139,41 +139,29 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	return conv.RemoteID, reported
 }
 
-// reportSyncedOrganize reports conv's pinned and archived state from
-// this sync, unless this process has pinned or archived it more
-// recently than any live echo has confirmed (see isLocalOrganize): a
-// sync's own snapshot can lag a patch this process just sent (see
-// organize.go's SetPinned and SetArchived), and reporting it anyway
-// would revert a local change WhatsApp has not caught up with yet.
-//
-// A field a live Pin or Archive event has already confirmed from app
-// state (see setOrganizedFromAppState) is left out of the merge
-// entirely, field by field, rather than only skipped while a local
-// change is pending: pinned and archived live mostly in app state, not
-// in this sync's own Conversation fields (a chat pinned purely through
-// app state carries no pin timestamp here), so once a live echo has
-// confirmed one, a sync's own snapshot of it must never be trusted
-// again for the rest of this run. This still reports the conversation's
-// up to date, merged state either way, so an app-state pin or archive
-// that arrived before this conversation ever existed, and so could not
-// be applied at the time (see connector.go's setOrganized), is applied
-// now that it does.
-func (c *Connector) reportSyncedOrganize(ctx context.Context, sink connector.Sink, conv domain.Conversation) {
-	if c.isLocalOrganize(conv.RemoteID) {
+// reportSyncedOrganize reports the conversation jid names pinned and
+// archived exactly as WhatsApp's own chat settings store currently has
+// it (see device.chatSettings), rather than anything this sync's own
+// Conversation entry carries: that snapshot can lag behind a patch
+// this process or the phone already made (a resync is eventually
+// consistent, and a chat pinned purely through app state carries no
+// pin timestamp here at all), which is what used to let a resync
+// revert a pin moments after it was set. Reading the settings fresh
+// here, every time, also means a pin or archive that arrived live
+// before this conversation ever existed to report it to (see
+// organize.go's handlePin and handleArchive) applies itself correctly
+// the moment this sync finally creates it, with nothing for this
+// connector to have remembered in the meantime. A read failure is
+// logged and skipped, leaving organizing for this chat to the next
+// sync or live echo, rather than reporting a guess.
+func (c *Connector) reportSyncedOrganize(ctx context.Context, sink connector.Sink, dev device, jid types.JID, remoteID string) {
+	pinned, archived, err := dev.chatSettings(ctx, jid)
+	if err != nil {
+		logOrganizeReadFailed(err)
 		return
 	}
 
-	pinnedKnown, archivedKnown := c.organizeAppStateKnown(conv.RemoteID)
-	pinned, archived := &conv.Pinned, &conv.Archived
-	if pinnedKnown {
-		pinned = nil
-	}
-	if archivedKnown {
-		archived = nil
-	}
-
-	state := c.setOrganized(conv.RemoteID, pinned, archived)
-	sink.Organized(ctx, c.account.ID, conv.RemoteID, state.pinned, state.archived)
+	sink.Organized(ctx, c.account.ID, remoteID, pinned, archived)
 }
 
 // hasRealContent reports whether at least one of a conversation's

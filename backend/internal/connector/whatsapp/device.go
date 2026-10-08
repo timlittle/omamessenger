@@ -135,6 +135,13 @@ type device interface {
 	// change, so WhatsApp's own record of the chat agrees with it.
 	sendAppState(ctx context.Context, patch appstate.PatchInfo) error
 
+	// chatSettings is jid's pinned and archived state exactly as
+	// whatsmeow has it cached locally (store.ChatSettingsStore),
+	// synced from WhatsApp's own app state: the single source of truth
+	// organize.go reports from, instead of a shadow copy of its own
+	// (see docs/decisions.md).
+	chatSettings(ctx context.Context, jid types.JID) (pinned, archived bool, err error)
+
 	// decryptPollVote decrypts a poll vote event, using the poll
 	// creation message's own secret whatsmeow already stored when it
 	// first arrived (see msgsecret.go in the whatsmeow module).
@@ -417,9 +424,26 @@ func (d *waDevice) sendMediaRetryReceipt(ctx context.Context, info *types.Messag
 	return d.cli.SendMediaRetryReceipt(ctx, info, mediaKey)
 }
 
-// sendAppState sends patch with WhatsApp.
+// sendAppState sends patch with WhatsApp. By the time this returns
+// without error, whatsmeow has already fetched and applied the
+// server's own view of the patch to its local chat settings store
+// (see store.ChatSettingsStore and docs/decisions.md): only the
+// events it fires for other listeners, such as this connector's own
+// handlePin and handleArchive, are dispatched afterwards, in the
+// background.
 func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
 	return d.cli.SendAppState(ctx, patch)
+}
+
+// chatSettings reads jid's pinned and archived state out of
+// whatsmeow's own chat settings store.
+func (d *waDevice) chatSettings(ctx context.Context, jid types.JID) (pinned, archived bool, err error) {
+	settings, err := d.cli.Store.ChatSettings.GetChatSettings(ctx, jid)
+	if err != nil {
+		return false, false, fmt.Errorf("whatsapp: chat settings: %w", err)
+	}
+
+	return settings.Pinned, settings.Archived, nil
 }
 
 // decryptPollVote decrypts a poll vote event with whatsmeow's own

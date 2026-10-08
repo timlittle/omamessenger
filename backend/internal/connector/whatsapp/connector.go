@@ -28,24 +28,6 @@ var errNotPairing = errors.New("whatsapp: not waiting to pair")
 // is not currently connected.
 var errNotConnected = errors.New("whatsapp: not connected")
 
-// organizeState is the pinned and archived flags this connector last
-// knew for one conversation, kept so a live Pin or Archive event, which
-// each report only one of the two, can still call Sink.Organized with
-// both: it is seeded from history sync and updated by those events for
-// as long as this process runs.
-//
-// pinnedFromAppState and archivedFromAppState record whether a live Pin
-// or Archive event has ever confirmed that field from WhatsApp's own
-// app state, as opposed to a history sync's own snapshot of it: once
-// true, history.go's reportSyncedOrganize never lets a sync's snapshot
-// of that field overwrite it again, since app state is pin and archive's
-// real source of truth and a sync can lag behind it, or never carry a
-// pin timestamp for a chat pinned only through app state.
-type organizeState struct {
-	pinned, archived                         bool
-	pinnedFromAppState, archivedFromAppState bool
-}
-
 // Connector is one WhatsApp account.
 type Connector struct {
 	account   domain.Account
@@ -67,8 +49,6 @@ type Connector struct {
 	// from the message_keys this connector persists instead.
 	sent map[string]*sentMessage
 
-	organize      map[string]organizeState     // conversation remote id to its last known pinned/archived state
-	localOrganize map[string]bool              // conversation remote id whose organize state was set locally (SetPinned/SetArchived) more recently than any live echo, so a history sync must not overwrite it (see history.go's syncConversation)
 	names         map[string]namedEntry        // contact, push and group names resolved so far, by remote id
 	groupMembers  map[string]int               // a group's last known member count, by remote id
 	chatKinds     map[string]string            // every conversation remote id this connector has reported, to its kind
@@ -464,109 +444,20 @@ func (c *Connector) knownDirectChats() []string {
 	return out
 }
 
-// setOrganized merges a change into remoteID's last known pinned and
-// archived state, leaving whichever of the two is nil as it was, and
-// returns the merged result.
-func (c *Connector) setOrganized(remoteID string, pinned, archived *bool) organizeState {
+// knownChatIDs lists the remote id of every conversation this
+// connector has reported so far, for organize.go's pinnedCount: it can
+// only count a chat WhatsApp's own chat settings have pinned once this
+// connector knows that chat exists.
+func (c *Connector) knownChatIDs() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.organize == nil {
-		c.organize = map[string]organizeState{}
+	out := make([]string, 0, len(c.chatKinds))
+	for remote := range c.chatKinds {
+		out = append(out, remote)
 	}
 
-	state := c.organize[remoteID]
-	if pinned != nil {
-		state.pinned = *pinned
-	}
-	if archived != nil {
-		state.archived = *archived
-	}
-	c.organize[remoteID] = state
-
-	return state
-}
-
-// setOrganizedFromAppState merges a change into remoteID's last known
-// pinned and archived state exactly like setOrganized, and additionally
-// marks whichever of pinned and archived it set as confirmed by
-// WhatsApp's own app state (see organizeState), so a history sync's own
-// snapshot of that field can never downgrade it again (see history.go's
-// reportSyncedOrganize). live.go's handlePin and handleArchive call this
-// instead of setOrganized, since each reports a real-time echo of
-// WhatsApp's own app state, not a sync's snapshot.
-func (c *Connector) setOrganizedFromAppState(remoteID string, pinned, archived *bool) organizeState {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.organize == nil {
-		c.organize = map[string]organizeState{}
-	}
-
-	state := c.organize[remoteID]
-	if pinned != nil {
-		state.pinned, state.pinnedFromAppState = *pinned, true
-	}
-	if archived != nil {
-		state.archived, state.archivedFromAppState = *archived, true
-	}
-	c.organize[remoteID] = state
-
-	return state
-}
-
-// organizeAppStateKnown reports whether remoteID's pinned and archived
-// state has already been confirmed by a live app-state echo (see
-// setOrganizedFromAppState), field by field, so history.go's
-// reportSyncedOrganize knows which of a sync's own fields it may still
-// trust.
-func (c *Connector) organizeAppStateKnown(remoteID string) (pinnedKnown, archivedKnown bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	state := c.organize[remoteID]
-
-	return state.pinnedFromAppState, state.archivedFromAppState
-}
-
-// markLocalOrganize records that remoteID's pinned or archived state was
-// just set locally, by SetPinned or SetArchived, so a history sync's own
-// snapshot of it (see history.go's syncConversation) must not overwrite
-// that choice until a live echo confirms WhatsApp's own current state
-// (see clearLocalOrganize): WhatsApp's app-state patches are eventually
-// consistent, so a resync arriving moments after a local pin can still
-// carry the value from before the patch reached its servers.
-func (c *Connector) markLocalOrganize(remoteID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.localOrganize == nil {
-		c.localOrganize = map[string]bool{}
-	}
-	c.localOrganize[remoteID] = true
-}
-
-// clearLocalOrganize forgets that remoteID's organize state was set
-// locally, once a live pin or archive echo (see organize.go's handlePin
-// and handleArchive) reports WhatsApp's own current view of it: that is a
-// real-time update, unlike a resync's snapshot, so it is trusted either
-// way, and a later resync may again freely report this remote id until
-// another local change marks it once more.
-func (c *Connector) clearLocalOrganize(remoteID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	delete(c.localOrganize, remoteID)
-}
-
-// isLocalOrganize reports whether remoteID's pinned or archived state was
-// set locally more recently than any live echo has confirmed (see
-// markLocalOrganize).
-func (c *Connector) isLocalOrganize(remoteID string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	return c.localOrganize[remoteID]
+	return out
 }
 
 // reactTo records sender's reaction to a message as emoji, or clears it
