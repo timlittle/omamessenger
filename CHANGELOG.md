@@ -30,7 +30,6 @@ The first tagged release: a keyboard-first unified messaging client for Omarchy,
 
 ### Known limitations
 
-- The helper does not yet catch up on everything that happened while it was offline; a long gap between runs may miss updates until the next full sync
 - Files attached to outgoing messages are kept in `media/outgoing/` for retries but are not cleaned up once the message is safely delivered
 
 ### Licensing

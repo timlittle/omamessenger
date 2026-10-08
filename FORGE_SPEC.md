@@ -39,5 +39,4 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 
 ## Known limitations
 
-- The helper does not yet catch up on everything that happened while it was offline; a long gap between runs may miss updates until the next full sync.
 - Files attached to outgoing messages are kept in `media/outgoing/` for retries and are not yet cleaned up after delivery.
