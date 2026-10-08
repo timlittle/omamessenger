@@ -44,18 +44,11 @@ type session struct {
 func connect(t *testing.T, faked bool) *session {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	seed(t, db)
-
-	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
+	db := openSeeded(t)
 	accounts := &storeAccounts{db: db}
 	clipboard := &fakeClipboard{}
 	deps := app.Deps{
-		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
+		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: accounts,
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Members: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
 	}
@@ -63,23 +56,11 @@ func connect(t *testing.T, faked bool) *session {
 		deps.Fake = unreachableFake{}
 	}
 
-	commands, ingest := app.New(deps)
+	s := newSession(t, db, deps)
+	s.accounts = accounts
+	s.clipboard = clipboard
 
-	ctx, cancel := context.WithCancel(t.Context())
-	serverSide, clientSide := net.Pipe()
-	srv.Start(ctx, serverSide, commands)
-
-	events := &notifications{arrived: make(chan string, 100)}
-	client := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(clientSide), events)
-
-	t.Cleanup(func() {
-		cancel()
-		srv.Wait()
-		_ = client.Close()
-		_ = db.Close()
-	})
-
-	return &session{client: client, server: srv, store: db, events: events, ingest: ingest, accounts: accounts, clipboard: clipboard}
+	return s
 }
 
 // connectWithMedia serves an application like connect, but wired with a
@@ -90,38 +71,15 @@ func connect(t *testing.T, faked bool) *session {
 func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.MediaCache) *session {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	seed(t, db)
-
-	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
+	db := openSeeded(t)
 	deps := app.Deps{
-		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: &storeAccounts{db: db},
+		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
 		Media: media, Cache: mediaCache,
 	}
 
-	commands, ingest := app.New(deps)
-
-	ctx, cancel := context.WithCancel(t.Context())
-	serverSide, clientSide := net.Pipe()
-	srv.Start(ctx, serverSide, commands)
-
-	events := &notifications{arrived: make(chan string, 100)}
-	client := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(clientSide), events)
-
-	t.Cleanup(func() {
-		cancel()
-		srv.Wait()
-		_ = client.Close()
-		_ = db.Close()
-	})
-
-	return &session{client: client, server: srv, store: db, events: events, ingest: ingest}
+	return newSession(t, db, deps)
 }
 
 // connectWithHistory serves an application like connect, but wired with
@@ -132,6 +90,23 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 func connectWithHistory(t *testing.T, history app.HistoryLoader) *session {
 	t.Helper()
 
+	db := openSeeded(t)
+	deps := app.Deps{
+		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
+		History: history,
+	}
+
+	return newSession(t, db, deps)
+}
+
+// openSeeded opens a fresh store in a temporary directory and seeds it
+// with account "wa" and conversation "chat", the starting point every
+// connect variant needs before building its own app.Deps.
+func openSeeded(t *testing.T) *store.Store {
+	t.Helper()
+
 	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -139,13 +114,20 @@ func connectWithHistory(t *testing.T, history app.HistoryLoader) *session {
 
 	seed(t, db)
 
+	return db
+}
+
+// newSession fills in deps.Store and deps.Publisher, builds commands and
+// a server over them, connects a test client to that server over an
+// in-memory pipe, and arranges for everything to close, in order, when
+// the test ends. The three connect variants share this: they differ only
+// in which other deps fields they populate.
+func newSession(t *testing.T, db *store.Store, deps app.Deps) *session {
+	t.Helper()
+
 	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
-	deps := app.Deps{
-		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: &storeAccounts{db: db},
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
-		History: history,
-	}
+	deps.Store = db
+	deps.Publisher = srv
 
 	commands, ingest := app.New(deps)
 
@@ -334,13 +316,13 @@ func (silent) Notify(string, string, string) {}
 // fakeClipboard answers a clipboard check from canned data, keyed by MIME
 // type, in place of running wl-paste.
 type fakeClipboard struct {
-	types    []string
-	data     map[string][]byte
-	typesErr error
+	types []string
+	data  map[string][]byte
 }
 
+// Types reports the MIME types the test set the clipboard to offer.
 func (c *fakeClipboard) Types(context.Context) ([]string, error) {
-	return c.types, c.typesErr
+	return c.types, nil
 }
 
 func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) error {
