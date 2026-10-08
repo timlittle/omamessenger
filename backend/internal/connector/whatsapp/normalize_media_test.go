@@ -94,11 +94,14 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 			true,
 		},
 		{
-			"sticker is not offered as media",
-			&waE2E.Message{StickerMessage: &waE2E.StickerMessage{}},
-			nil,
-			mediaRef{},
-			false,
+			"sticker",
+			&waE2E.Message{StickerMessage: &waE2E.StickerMessage{
+				Width: u32(512), Height: u32(512), FileLength: u64(2048), Mimetype: strPtr("image/webp"), Emojis: strPtr("😀"),
+				DirectPath: strPtr("/v/sticker"), MediaKey: []byte("key"),
+			}},
+			&domain.Media{Kind: domain.MediaSticker, Width: 512, Height: 512, Size: 2048, FileName: "sticker.webp", Emoji: "😀"},
+			mediaRef{Kind: mediaKindSticker, DirectPath: "/v/sticker", MediaKey: []byte("key"), FileLength: 2048, Mimetype: "image/webp"},
+			true,
 		},
 		{
 			"plain text carries no media",

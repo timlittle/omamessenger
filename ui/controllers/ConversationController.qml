@@ -100,6 +100,11 @@ Item {
   // isGroup is true when the open conversation is a group chat.
   readonly property bool isGroup: root.conversation ? root.conversation.kind === "group" : false
 
+  // groupMembers are the open group's members, for the composer's
+  // @-mention picker; an empty list for a direct chat or while a
+  // group's members are still loading.
+  property var groupMembers: []
+
   // lastError is the safe text of the most recent request failure.
   property string lastError: timeline.lastError
 
@@ -193,6 +198,7 @@ Item {
     root.service.request("ui.setFocus", { conversationId: "", windowActive: false }, function() {});
     root.activeId = "";
     root.conversation = null;
+    root.groupMembers = [];
     root.pane = "list";
     root.highlightedId = "";
     if (root.composer) root.composer.cancelReply();
@@ -209,15 +215,17 @@ Item {
 
   // send submits text, and whatever the composer holds as its attachment,
   // to the open conversation, answering the message replyToId names, if
-  // any. Sending clears the attachment and the reply, whether or not it
-  // succeeds, the same as it clears the composer's text.
-  function send(text: string, replyToId: string): void {
+  // any, and carrying mentions, its resolved @-mention tokens. Sending
+  // clears the attachment and the reply, whether or not it succeeds, the
+  // same as it clears the composer's text.
+  function send(text: string, replyToId: string, mentions: var): void {
     const attachment = root.composer ? root.composer.attachmentPath : "";
     if (!root.activeId || (!text && !attachment)) return;
 
     const params = { conversationId: root.activeId, text: text };
     if (attachment) params.attachment = { path: attachment };
     if (replyToId) params.replyTo = replyToId;
+    if (mentions && mentions.length > 0) params.mentions = mentions;
 
     root.service.request("messages.send", params, function(error, result) {
       if (error) { timeline.lastError = Rpc.errorText(error); return; }
@@ -401,6 +409,7 @@ Item {
   function _setActive(id: string, conversation: var): void {
     root.activeId = id;
     root.conversation = conversation;
+    root.groupMembers = [];
     root.pane = "conversation";
     root.highlightedId = "";
     if (root.composer) root.composer.restore(id);
@@ -410,6 +419,21 @@ Item {
     timeline.loadInitial(root.service, id, () => id === root.activeId, root.isGroup);
     root.service.request("conversations.markRead", { conversationId: id }, function() {});
     root.service.request("ui.setFocus", { conversationId: id, windowActive: root.windowActive }, function() {});
+    root._loadMembers(id);
+  }
+
+  // _loadMembers fetches a group's members for the @-mention picker,
+  // applying the result only if id is still the open conversation by
+  // the time the helper answers. A direct chat, or a service that lists
+  // no members, simply gets an empty list back; neither is an error
+  // worth showing.
+  function _loadMembers(id: string): void {
+    if (!root.isGroup) return;
+
+    root.service.request("conversations.members", { conversationId: id }, function(error, result) {
+      if (error || id !== root.activeId) return;
+      root.groupMembers = result.members || [];
+    });
   }
 
   // _showPane brings the conversation column forward without reopening

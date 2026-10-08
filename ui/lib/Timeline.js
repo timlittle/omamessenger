@@ -49,14 +49,16 @@ function insertIndex(newestFirst, message) {
 }
 
 // row is a message as a timeline model row. A ListModel needs every row to
-// share a shape, so media, replyTo and reactions, each an object, a list
-// or absent, are kept as JSON strings: setting a ListModel role straight
-// to an array of objects, rather than at the row's first insert, silently
-// leaves the role empty, and reacting to a message is exactly that case,
-// an update rather than an insert. mediaPath, where its download is,
-// starts empty; mediaFailed, whether the last download attempt failed,
-// starts false; mediaFailedReason, the safe category of that failure
-// (see server/errors.go), starts empty too.
+// share a shape, so media, replyTo, reactions and mentions, each an
+// object, a list or absent, are kept as JSON strings: setting a
+// ListModel role straight to an array of objects, rather than at the
+// row's first insert, silently leaves the role empty, and reacting to a
+// message is exactly that case, an update rather than an insert.
+// mediaPath, where its download is, starts empty; mediaFailed, whether
+// the last download attempt failed, starts false; mediaFailedReason,
+// the safe category of that failure (see server/errors.go), starts
+// empty too. mentionsMe is a plain boolean, which a ListModel role
+// already handles directly, so it needs no such encoding.
 function row(message) {
   return Object.assign({}, message, {
     media: message.media ? JSON.stringify(message.media) : '',
@@ -64,7 +66,9 @@ function row(message) {
     mediaPath: message.mediaPath ?? '',
     mediaFailed: message.mediaFailed ?? false,
     mediaFailedReason: message.mediaFailedReason ?? '',
-    reactions: JSON.stringify(message.reactions ?? [])
+    reactions: JSON.stringify(message.reactions ?? []),
+    mentions: JSON.stringify(message.mentions ?? []),
+    mentionsMe: message.mentionsMe ?? false
   });
 }
 
@@ -96,4 +100,14 @@ function reactions(item) {
   }
 
   return typeof item.reactions === 'string' ? JSON.parse(item.reactions) : item.reactions;
+}
+
+// mentions reads a row's @-mention tokens, or an empty list when it has
+// none. It also accepts a message as the helper sends it.
+function mentions(item) {
+  if (!item.mentions) {
+    return [];
+  }
+
+  return typeof item.mentions === 'string' ? JSON.parse(item.mentions) : item.mentions;
 }

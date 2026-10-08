@@ -50,7 +50,7 @@ func TestSend_WithAttachment_StoresMediaAndCopiesTheFile(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestPNG(t, "photo.png", 3, 2)
 
-	m, err := f.commands.Send(ctx, "chat", "look at this", path, "")
+	m, err := f.commands.Send(ctx, "chat", "look at this", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -85,7 +85,7 @@ func TestSend_WithAttachment_GivesAPhotoASmallThumbAtOnce(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestPNG(t, "photo.png", 400, 300)
 
-	m, err := f.commands.Send(ctx, "chat", "look at this", path, "")
+	m, err := f.commands.Send(ctx, "chat", "look at this", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -116,7 +116,7 @@ func TestSend_WithAttachment_FileGetsNoThumb(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestFile(t, "notes.txt", []byte("plain text file"))
 
-	m, err := f.commands.Send(ctx, "chat", "", path, "")
+	m, err := f.commands.Send(ctx, "chat", "", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -133,7 +133,7 @@ func TestSend_WithAttachment_PlaceholderCaptionNeverSentAsRealText(t *testing.T)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestFile(t, "notes.txt", []byte("plain text file"))
 
-	m, err := f.commands.Send(ctx, "chat", "", path, "")
+	m, err := f.commands.Send(ctx, "chat", "", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
@@ -153,7 +153,7 @@ func TestSend_RejectsAnUnreadableAttachment(t *testing.T) {
 	ctx := t.Context()
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 
-	if _, err := f.commands.Send(ctx, "chat", "hi", filepath.Join(t.TempDir(), "missing"), ""); !errors.Is(err, app.ErrInvalidInput) {
+	if _, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: filepath.Join(t.TempDir(), "missing"), ReplyToID: "", Mentions: nil}); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("Send(missing attachment) = %v, want ErrInvalidInput", err)
 	}
 }
@@ -177,7 +177,7 @@ func TestSend_RejectsAnAttachmentOverTheSizeLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.commands.Send(ctx, "chat", "hi", path, "")
+	_, err = f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
 	if !errors.Is(err, app.ErrInvalidInput) {
 		t.Fatalf("Send(huge attachment) = %v, want ErrInvalidInput", err)
 	}
@@ -195,7 +195,7 @@ func TestRetry_ResendsTheSameAttachment(t *testing.T) {
 	path := writeTestPNG(t, "photo.png", 1, 1)
 	f.dispatcher.err = errors.New("offline")
 
-	failed, err := f.commands.Send(ctx, "chat", "hi", path, "")
+	failed, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
 	if err != nil || failed.Status != domain.StatusFailed {
 		t.Fatalf("Send() = %+v, %v", failed, err)
 	}

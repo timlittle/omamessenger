@@ -1,4 +1,5 @@
 import QtQuick
+import "../lib/Keymap.js" as Keymap
 
 // The windows that float over the three columns: the reaction picker, the
 // command palette, the health check report, the in-app photo viewer, the
@@ -12,6 +13,9 @@ Item {
   // service is the Service instance, read for the lists of known and
   // signed-in services the account and new-chat overlays show.
   property var service: null
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the photo viewer's own label.
+  readonly property var bindings: (root.service && root.service.effectiveBindings) || Keymap.BINDINGS
   // windowController is bound into the command palette and the close
   // question.
   property var windowController: null
@@ -89,6 +93,7 @@ Item {
     photo: root.photoViewerController.viewerPhoto
     path: root.photoViewerController.viewerPath
     routeKey: root.routeKey
+    bindings: root.bindings
 
     onClosed: root.photoViewerController.close()
     onOpenExternally: root.photoViewerController.openExternally()

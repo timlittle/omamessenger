@@ -62,14 +62,17 @@ func unwrap(msg *waE2E.Message) *waE2E.Message {
 // reported as already sent.
 func message(ctx context.Context, dev device, info types.MessageInfo, raw *waE2E.Message) domain.Message {
 	content := unwrap(raw)
+	text, mentions, mentionsMe := rewriteMentions(ctx, dev, messageText(content), contextInfo(content).GetMentionedJID())
 	out := domain.Message{
-		RemoteID: info.ID,
-		Text:     messageText(content),
-		Outgoing: info.IsFromMe,
-		Status:   domain.StatusReceived,
-		Created:  info.Timestamp.UnixMilli(),
-		Media:    media(content),
-		ReplyTo:  replyTo(contextInfo(content)),
+		RemoteID:   info.ID,
+		Text:       text,
+		Outgoing:   info.IsFromMe,
+		Status:     domain.StatusReceived,
+		Created:    info.Timestamp.UnixMilli(),
+		Media:      media(content),
+		ReplyTo:    replyTo(contextInfo(content)),
+		Mentions:   mentions,
+		MentionsMe: mentionsMe,
 	}
 
 	if info.IsFromMe {

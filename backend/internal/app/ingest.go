@@ -119,7 +119,9 @@ func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID st
 		return
 	}
 
-	updated, found, err := in.store.EditMessage(ctx, conv.ID, m.RemoteID, store.MessageEdit{Text: m.Text, Media: m.Media, Reactions: m.Reactions})
+	updated, found, err := in.store.EditMessage(ctx, conv.ID, m.RemoteID, store.MessageEdit{
+		Text: m.Text, Media: m.Media, Reactions: m.Reactions, Mentions: m.Mentions, MentionsMe: m.MentionsMe,
+	})
 	if err != nil || !found {
 		return
 	}

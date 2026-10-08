@@ -82,6 +82,10 @@ type device interface {
 	// history sync or a live message whose own data left either blank.
 	groupInfo(ctx context.Context, jid types.JID) (name string, members int, err error)
 
+	// groupParticipants is a group's current participants, for the
+	// @-mention picker.
+	groupParticipants(ctx context.Context, jid types.JID) ([]types.GroupParticipant, error)
+
 	// contactName is WhatsApp's own name for jid: a LID is mapped to its
 	// phone JID first, then whichever name the local contact store holds
 	// for it, in WhatsApp's own priority order, or "" when nothing is
@@ -285,6 +289,16 @@ func (d *waDevice) groupInfo(ctx context.Context, jid types.JID) (string, int, e
 	}
 
 	return info.Name, info.ParticipantCount, nil
+}
+
+// groupParticipants asks WhatsApp for a group's current participants.
+func (d *waDevice) groupParticipants(ctx context.Context, jid types.JID) ([]types.GroupParticipant, error) {
+	info, err := d.cli.GetGroupInfo(ctx, jid)
+	if err != nil {
+		return nil, fmt.Errorf("whatsapp: group participants: %w", err)
+	}
+
+	return info.Participants, nil
 }
 
 // contactName resolves jid to WhatsApp's own name for that person. A LID

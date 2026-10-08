@@ -88,6 +88,7 @@ func largest(sizes []tg.PhotoSizeClass) (kind string, w, h int) {
 type document struct {
 	name                       string
 	video, voice, sticker      bool
+	emoji                      string
 	width, height, durationSec int
 }
 
@@ -103,16 +104,15 @@ func describe(doc *tg.Document) document {
 		case *tg.DocumentAttributeFilename:
 			d.name = a.FileName
 		case *tg.DocumentAttributeSticker:
-			d.sticker = true
+			d.sticker, d.emoji = true, a.Alt
 		}
 	}
 
 	return d
 }
 
-// documentMedia is a video, or any other document as a file to open. A
-// sticker is left as its text label, and a document since deleted as
-// nothing.
+// documentMedia is a video, a sticker, or any other document as a file
+// to open, or nil for a document since deleted.
 func documentMedia(dc tg.DocumentClass) *domain.Media {
 	doc, ok := dc.(*tg.Document)
 	if !ok {
@@ -122,7 +122,7 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 	d := describe(doc)
 	switch {
 	case d.sticker:
-		return nil
+		return stickerMedia(doc, d)
 	case d.video:
 		return &domain.Media{
 			Kind: domain.MediaVideo, Width: d.width, Height: d.height, Duration: d.durationSec,
@@ -135,6 +135,25 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 	default:
 		return &domain.Media{Kind: domain.MediaFile, FileName: d.name, Size: doc.Size}
 	}
+}
+
+// stickerMedia normalizes a sticker document: a static WebP is
+// fetchable the same way a photo is, with FileName set for
+// Connector.FetchMedia to download; a Lottie animation
+// ("application/x-tgsticker") or a WebM video sticker is never fetched,
+// since this UI has nothing that can show either as a static image, so
+// FileName stays empty and the UI falls back to the thumbnail or the
+// sticker's own emoji.
+func stickerMedia(doc *tg.Document, d document) *domain.Media {
+	m := &domain.Media{
+		Kind: domain.MediaSticker, Width: d.width, Height: d.height,
+		Size: doc.Size, Thumb: strippedThumb(doc.Thumbs), Emoji: d.emoji,
+	}
+	if doc.MimeType == "image/webp" {
+		m.FileName = "sticker.webp"
+	}
+
+	return m
 }
 
 // documentLabel names a document sent without a caption.

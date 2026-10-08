@@ -29,13 +29,19 @@ const (
 // Media kinds a message can carry besides its text. MediaVoice is a voice
 // note (WhatsApp's push-to-talk audio, Telegram's voice message), kept
 // apart from MediaFile so the UI can offer an inline player instead of a
-// plain "open externally" file row.
+// plain "open externally" file row. MediaSticker is a static image shown
+// borderless and unbubbled; an animated sticker (WhatsApp's animated
+// WebP, Telegram's Lottie or video stickers) still normalizes to this
+// kind, but a connector that cannot show one as a still image leaves
+// FileName empty so the UI never tries to fetch and decode it, falling
+// back to Thumb or Emoji instead (see Media's own doc comment).
 const (
-	MediaLink  = "link"
-	MediaPhoto = "photo"
-	MediaVideo = "video"
-	MediaFile  = "file"
-	MediaVoice = "voice"
+	MediaLink    = "link"
+	MediaPhoto   = "photo"
+	MediaVideo   = "video"
+	MediaFile    = "file"
+	MediaVoice   = "voice"
+	MediaSticker = "sticker"
 )
 
 // ErrNotFound reports a missing account, contact, conversation or message.
@@ -129,6 +135,17 @@ type Message struct {
 	// ReplyTo is the message this one answers, or nil when it answers
 	// nothing.
 	ReplyTo *Reply `json:"replyTo,omitempty"`
+
+	// Mentions are the "@name" tokens in Text, each naming a group
+	// member. An outgoing message carries whatever the composer sent;
+	// an incoming one carries whatever the connector found in the
+	// service's own mention metadata.
+	Mentions []Mention `json:"mentions,omitempty"`
+
+	// MentionsMe is true when this message's Mentions name the
+	// signed-in account itself, precomputed by the connector, which
+	// already knows its own identity, the same way Reaction.Mine is.
+	MentionsMe bool `json:"mentionsMe,omitempty"`
 }
 
 // Reaction is one emoji reaction to a message: how many people picked
@@ -151,11 +168,15 @@ type Reply struct {
 }
 
 // Media is what a message carries besides its text: a link preview, a
-// photo, a video, a file or a voice note. Thumb is a small JPEG preview in
-// base64, sent with the message; a full photo, video, file or voice note
-// is fetched only when the user wants it. Duration is in seconds and Size
-// in bytes; a voice note always carries Duration, for its player's elapsed
-// time label before playback has started.
+// photo, a video, a file, a voice note or a sticker. Thumb is a small
+// preview image in base64 (JPEG for every kind but a sticker, which
+// carries whatever format its service's own thumbnail used), sent with
+// the message; a full photo, video, file or voice note is fetched only
+// when the user wants it. Duration is in seconds and Size in bytes; a
+// voice note always carries Duration, for its player's elapsed time
+// label before playback has started. Emoji is a sticker's associated
+// emoji, shown when neither Thumb nor a fetchable FileName can: a
+// Lottie or video sticker this UI will never try to decode.
 type Media struct {
 	Kind        string `json:"kind"`
 	URL         string `json:"url,omitempty"`
@@ -168,6 +189,7 @@ type Media struct {
 	Duration    int    `json:"duration,omitempty"`
 	FileName    string `json:"fileName,omitempty"`
 	Size        int64  `json:"size,omitempty"`
+	Emoji       string `json:"emoji,omitempty"`
 
 	// Path is where an outgoing attachment's file sits in the helper's
 	// own outgoing media area, for a connector to read and upload. It is

@@ -49,7 +49,7 @@ func connect(t *testing.T, faked bool) *session {
 	clipboard := &fakeClipboard{}
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{}, Members: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: clipboard,
 	}
 	if faked {
@@ -272,6 +272,11 @@ func (acceptAll) React(context.Context, domain.Conversation, string, string) err
 // DeleteMessages accepts any delete.
 func (acceptAll) DeleteMessages(context.Context, domain.Conversation, []string, bool) error {
 	return nil
+}
+
+// Members reports one canned member for any conversation asked about.
+func (acceptAll) Members(context.Context, domain.Conversation) ([]domain.Member, error) {
+	return []domain.Member{{ID: "u1", Name: "Nadia"}}, nil
 }
 
 // storeAccounts adds and removes accounts straight in the store,

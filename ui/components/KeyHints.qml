@@ -10,9 +10,12 @@ Text {
 
   // context is the active key context, e.g. "list" or "conversation".
   property string context: ""
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides); null uses Keymap's own defaults.
+  property var bindings: Keymap.BINDINGS
 
   // hintsText joins each hinted binding's primary key and label.
-  readonly property string hintsText: Keymap.bindingsFor(root.context)
+  readonly property string hintsText: Keymap.bindingsFor(root.context, root.bindings)
     .map(b => `${Keymap.display(b.keys[0])} ${b.label}`)
     .join("   ")
 

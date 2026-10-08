@@ -87,7 +87,7 @@ func TestFetchMedia_OutgoingPhotoUsesTheLocalCopyWhileStillPending(t *testing.T)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestPNG(t, "photo.png", 2, 2)
 
-	sent, err := f.commands.Send(ctx, "chat", "look", path, "")
+	sent, err := f.commands.Send(ctx, "chat", "look", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
 	if err != nil || sent.Status != domain.StatusPending || sent.RemoteID != "" {
 		t.Fatalf("Send() = %+v, %v; want it still pending with no remote id", sent, err)
 	}
@@ -119,7 +119,7 @@ func TestFetchMedia_OutgoingPhotoFallsBackToDownloadIfTheLocalCopyIsGone(t *test
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestPNG(t, "photo.png", 2, 2)
 
-	sent, err := f.commands.Send(ctx, "chat", "look", path, "")
+	sent, err := f.commands.Send(ctx, "chat", "look", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
 	if err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}

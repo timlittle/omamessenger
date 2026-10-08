@@ -145,6 +145,14 @@ type Deleter interface {
 	DeleteMessages(ctx context.Context, conv domain.Conversation, ids []string, forEveryone bool) error
 }
 
+// MemberLister is a Connector that can list a group's members, with
+// display names resolved, so the UI can offer them in an @-mention
+// picker.
+type MemberLister interface {
+	// Members lists conv's current members.
+	Members(ctx context.Context, conv domain.Conversation) ([]domain.Member, error)
+}
+
 // LogoutOnRemove is a Connector that can tell its service to unlink this
 // device before Remove deletes its local session, so removing the
 // account here also removes it from the list of devices linked on the

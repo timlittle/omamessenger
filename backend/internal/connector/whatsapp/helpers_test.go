@@ -66,6 +66,11 @@ type fakeDevice struct {
 	groupErr     error
 	groupCalls   []types.JID
 
+	// participants and participantsErr script groupParticipants, keyed
+	// by the string form of the group JID.
+	participants    map[string][]types.GroupParticipant
+	participantsErr error
+
 	// contactNames scripts contactName, keyed by the string form of
 	// whichever JID (a phone JID or a LID) the lookup should resolve.
 	contactNames map[string]string
@@ -348,6 +353,18 @@ func (d *fakeDevice) groupInfo(_ context.Context, jid types.JID) (string, int, e
 	}
 
 	return d.groupNames[jid.String()], d.groupMembers[jid.String()], nil
+}
+
+// groupParticipants reports the scripted participants or error.
+func (d *fakeDevice) groupParticipants(_ context.Context, jid types.JID) ([]types.GroupParticipant, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.participantsErr != nil {
+		return nil, d.participantsErr
+	}
+
+	return d.participants[jid.String()], nil
 }
 
 // contactName reports the scripted name for jid, mapping a LID to its
