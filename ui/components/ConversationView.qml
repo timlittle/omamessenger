@@ -43,6 +43,9 @@ Item {
   property var routeKey: null
   // isGroup is true when the open conversation is a group chat.
   readonly property bool isGroup: root.conversation ? root.conversation.kind === "group" : false
+  // members are the open group's members, for the composer's @-mention
+  // picker; an empty list for a direct chat.
+  property var members: []
 
   // loadOlder asks the caller to fetch messages before the oldest loaded
   // one. It fires on every scroll near the top, so the caller ignores it
@@ -62,9 +65,9 @@ Item {
   // deleteRequested asks the caller to open the delete question for a
   // message, from its hover toolbar's delete button.
   signal deleteRequested(string id)
-  // send reports a message the user submitted, and the id of the message
-  // it answers, or "" when it answers nothing.
-  signal send(string text, string replyToId)
+  // send reports a message the user submitted, the id of the message it
+  // answers (or "" when it answers nothing), and its resolved @-mentions.
+  signal send(string text, string replyToId, var mentions)
   // draftEdited reports the composer's text as the user types it.
   signal draftEdited(string text)
   // replyRequested asks the caller to start replying to a loaded message.
@@ -242,7 +245,8 @@ Item {
       enabled: root.composeEnabled
       attachmentPath: root.attachmentPath
       routeKey: root.routeKey
-      onSubmitted: (text, replyToId) => root.send(text, replyToId)
+      members: root.members
+      onSubmitted: (text, replyToId, mentions) => root.send(text, replyToId, mentions)
       onTextChanged: root.draftEdited(composer.text)
       onReplyCanceled: root.replyCanceled()
       onFileAttached: path => root.fileAttached(path)

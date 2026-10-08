@@ -13,11 +13,12 @@ test('kindFor returns null for no media', () => {
   assert.strictEqual(Media.kindFor({}), null);
 });
 
-test('kindFor passes through photo, video, link and voice unchanged', () => {
+test('kindFor passes through photo, video, link, voice and sticker unchanged', () => {
   assert.strictEqual(Media.kindFor({ kind: 'photo' }), 'photo');
   assert.strictEqual(Media.kindFor({ kind: 'video' }), 'video');
   assert.strictEqual(Media.kindFor({ kind: 'link' }), 'link');
   assert.strictEqual(Media.kindFor({ kind: 'voice' }), 'voice');
+  assert.strictEqual(Media.kindFor({ kind: 'sticker' }), 'sticker');
 });
 
 test('kindFor treats a legacy voice note stored as a file as voice', () => {

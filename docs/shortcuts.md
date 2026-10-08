@@ -61,6 +61,18 @@ The highlight starts on the newest message when the conversation opens or when y
 
 Ctrl+J always jumps to the next unread conversation instead, even while writing (see Global); it lands there in writing mode too.
 
+### @-mention picker
+
+Typing "@" in a group conversation opens a picker of the group's members, filtered as you keep typing their name. It closes on its own once the query no longer matches an "@name" in progress.
+
+| Keys | Does |
+| --- | --- |
+| ↓ / ↑ | Move the highlighted member |
+| Tab or Enter | Insert the highlighted member's name as a mention |
+| Esc | Close the picker without inserting, staying in the composer |
+
+A message that mentions you is shown with a subtle highlight and an "@" mark.
+
 ## Adding an account
 
 The service chooser, shown when more than one service is offered, and the QR and phone steps all work without the mouse or Tab.

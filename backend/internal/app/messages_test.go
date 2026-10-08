@@ -47,7 +47,7 @@ func TestSend_StoresPublishesAndDispatches(t *testing.T) {
 	f := newFixture(t, false)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 
-	m, err := f.commands.Send(t.Context(), "chat", "  send this  ", "", "")
+	m, err := f.commands.Send(t.Context(), "chat", "  send this  ", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
 	if err != nil || m.Text != "send this" || !m.Outgoing || m.Status != domain.StatusPending {
 		t.Fatalf("Send = %+v, %v", m, err)
 	}
@@ -59,6 +59,27 @@ func TestSend_StoresPublishesAndDispatches(t *testing.T) {
 	want := []string{app.EventMessageAdded, app.EventConversationUpdated}
 	if got := f.published.take(); !slices.Equal(got, want) {
 		t.Errorf("events = %v, want %v", got, want)
+	}
+}
+
+func TestSend_StoresMentions(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.conversation(t, "chat", "Chat", domain.KindGroup)
+
+	mentions := []domain.Mention{{UserID: "u1", Name: "Nadia", Offset: 3, Length: 6}}
+	m, err := f.commands.Send(t.Context(), "chat", "hi @Nadia", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: mentions})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(m.Mentions, mentions) {
+		t.Errorf("Mentions = %+v, want %+v", m.Mentions, mentions)
+	}
+
+	reloaded, _, err := f.commands.Messages(t.Context(), "chat", "", 0)
+	if err != nil || len(reloaded) != 1 || !slices.Equal(reloaded[0].Mentions, mentions) {
+		t.Errorf("reloaded mentions = %+v, %v, want %+v", reloaded, err, mentions)
 	}
 }
 
@@ -79,7 +100,7 @@ func TestSend_ReturnsTheConfirmedMessageWhenTheDispatcherIsFast(t *testing.T) {
 		f.ingest.OutgoingStatus(ctx, m.ID, "remote-1", domain.StatusSent)
 	}
 
-	m, err := f.commands.Send(ctx, "chat", "send this", "", "")
+	m, err := f.commands.Send(ctx, "chat", "send this", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
 	if err != nil || m.Status != domain.StatusSent || m.RemoteID != "remote-1" {
 		t.Fatalf("Send = %+v, %v; want the confirmed, sent copy", m, err)
 	}
@@ -101,7 +122,7 @@ func TestSend_UpdatesActivityButKeepsAHiddenChatHidden(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := f.commands.Send(ctx, chat.ID, "hi", "", ""); err != nil {
+	if _, err := f.commands.Send(ctx, chat.ID, "hi", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,12 +145,12 @@ func TestSend_WithReplyToFillsTheQuoteAndPassesItToTheConnector(t *testing.T) {
 	f := newFixture(t, false)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 
-	quoted, err := f.commands.Send(t.Context(), "chat", "original", "", "")
+	quoted, err := f.commands.Send(t.Context(), "chat", "original", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	reply, err := f.commands.Send(t.Context(), "chat", "sure", "", quoted.ID)
+	reply, err := f.commands.Send(t.Context(), "chat", "sure", app.SendOptions{AttachmentPath: "", ReplyToID: quoted.ID, Mentions: nil})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -149,12 +170,12 @@ func TestSend_RejectsReplyToAMessageInAnotherConversation(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.conversation(t, "other", "Other", domain.KindDirect)
 
-	elsewhere, err := f.commands.Send(t.Context(), "other", "hi", "", "")
+	elsewhere, err := f.commands.Send(t.Context(), "other", "hi", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := f.commands.Send(t.Context(), "chat", "sure", "", elsewhere.ID); !errors.Is(err, app.ErrInvalidInput) {
+	if _, err := f.commands.Send(t.Context(), "chat", "sure", app.SendOptions{AttachmentPath: "", ReplyToID: elsewhere.ID, Mentions: nil}); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("Send with a reply from another conversation = %v, want ErrInvalidInput", err)
 	}
 }
@@ -165,7 +186,7 @@ func TestSend_RejectsReplyToAnUnknownMessage(t *testing.T) {
 	f := newFixture(t, false)
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 
-	if _, err := f.commands.Send(t.Context(), "chat", "sure", "", "missing"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := f.commands.Send(t.Context(), "chat", "sure", app.SendOptions{AttachmentPath: "", ReplyToID: "missing", Mentions: nil}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("Send with an unknown reply target = %v, want ErrNotFound", err)
 	}
 }
@@ -177,7 +198,7 @@ func TestSend_RefusedMessageIsFailedNotAnError(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.dispatcher.err = errors.New("offline")
 
-	m, err := f.commands.Send(t.Context(), "chat", "hello", "", "")
+	m, err := f.commands.Send(t.Context(), "chat", "hello", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
 	if err != nil || m.Status != domain.StatusFailed {
 		t.Fatalf("Send = %+v, %v; want a failed message", m, err)
 	}
@@ -210,7 +231,7 @@ func TestSend_RejectsInvalidInput(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if _, err := f.commands.Send(ctx, tt.conversationID, tt.text, "", ""); !errors.Is(err, tt.want) {
+		if _, err := f.commands.Send(ctx, tt.conversationID, tt.text, app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil}); !errors.Is(err, tt.want) {
 			t.Errorf("%s: Send = %v, want %v", tt.name, err, tt.want)
 		}
 	}
@@ -224,7 +245,7 @@ func TestRetry_SendsAFailedMessageAgain(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.dispatcher.err = errors.New("offline")
 
-	failed, _ := f.commands.Send(ctx, "chat", "hello", "", "")
+	failed, _ := f.commands.Send(ctx, "chat", "hello", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
 	f.published.take()
 
 	f.dispatcher.err = nil

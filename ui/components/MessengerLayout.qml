@@ -218,6 +218,7 @@ Item {
       attachmentPath: root.composerController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
       voiceNotes: root.conversationController.voiceNotes
+      members: root.conversationController.groupMembers
       routeKey: root.routeKey
 
       onLoadOlder: root.conversationController.loadOlder()
@@ -227,7 +228,7 @@ Item {
       onReact: (id, emoji) => root.reactionsController.react(id, emoji)
       onReactPickerRequested: id => root.reactionsController.openPicker(id)
       onDeleteRequested: id => { if (root.deleteController) root.deleteController.openConfirm(id) }
-      onSend: (text, replyToId) => root.conversationController.send(text, replyToId)
+      onSend: (text, replyToId, mentions) => root.conversationController.send(text, replyToId, mentions)
       onDraftEdited: text => root.composerController.setDraft(text)
       onReplyRequested: id => root.composerController.startReply(id)
       onReplyCanceled: root.composerController.cancelReply()

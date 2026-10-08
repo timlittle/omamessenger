@@ -415,7 +415,7 @@ func TestOutgoingStatus_PublishesForwardProgressOnly(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
-	m, _ := f.commands.Send(ctx, "chat", "hi", "", "")
+	m, _ := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
 	f.published.take()
 
 	f.ingest.OutgoingStatus(ctx, m.ID, "remote-1", domain.StatusRead)

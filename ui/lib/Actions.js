@@ -60,6 +60,12 @@ var OWNERS = {
   'compose.newline': 'composer',
   'compose.attach': 'composer',
   'compose.attachFile': 'composer',
+  // The @-mention picker is part of composing: it opens over the
+  // composer's own text field and never leaves it.
+  'mention.down': 'composer',
+  'mention.up': 'composer',
+  'mention.accept': 'composer',
+  'mention.cancel': 'composer',
 
   // PhotoViewerController: stepping through the in-app photo viewer.
   'viewer.next': 'photoViewer',

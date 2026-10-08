@@ -44,6 +44,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"conversations.setPinned":   bind(conversationsSetPinned(c)),
 		"conversations.setArchived": bind(conversationsSetArchived(c)),
 		"conversations.setHidden":   bind(conversationsSetHidden(c)),
+		"conversations.members":     bind(conversationsMembers(c)),
 		"messages.list":             bind(messagesList(c)),
 		"messages.send":             bind(messagesSend(c)),
 		"messages.retry":            bind(messagesRetry(c)),
@@ -259,6 +260,20 @@ func conversationsSetHidden(c *app.Commands) func(context.Context, hiddenParams)
 	}
 }
 
+// membersResult is a group's current members, for the @-mention picker.
+type membersResult struct {
+	Members []domain.Member `json:"members"`
+}
+
+// conversationsMembers lists a conversation's current members.
+func conversationsMembers(c *app.Commands) func(context.Context, conversationParams) (any, error) {
+	return func(ctx context.Context, p conversationParams) (any, error) {
+		members, err := c.Members(ctx, p.ConversationID)
+
+		return membersResult{Members: members}, err
+	}
+}
+
 // messagesParams selects a page of messages.
 type messagesParams struct {
 	ConversationID string `json:"conversationId"`
@@ -284,12 +299,14 @@ func messagesList(c *app.Commands) func(context.Context, messagesParams) (any, e
 // machine to send with text as its caption; it is optional, so an older
 // UI sending just conversationId and text keeps working unchanged.
 // ReplyTo, when set, is the local id of a message in the same
-// conversation this one answers.
+// conversation this one answers. Mentions, also optional, are the
+// "@name" tokens the composer inserted into text.
 type sendParams struct {
 	ConversationID string            `json:"conversationId"`
 	Text           string            `json:"text"`
 	Attachment     *attachmentParams `json:"attachment,omitempty"`
 	ReplyTo        string            `json:"replyTo,omitempty"`
+	Mentions       []domain.Mention  `json:"mentions,omitempty"`
 }
 
 // attachmentParams names a file to attach to an outgoing message.
@@ -300,7 +317,9 @@ type attachmentParams struct {
 // messagesSend sends a message.
 func messagesSend(c *app.Commands) func(context.Context, sendParams) (any, error) {
 	return func(ctx context.Context, p sendParams) (any, error) {
-		return c.Send(ctx, p.ConversationID, p.Text, attachmentPath(p.Attachment), p.ReplyTo)
+		return c.Send(ctx, p.ConversationID, p.Text, app.SendOptions{
+			AttachmentPath: attachmentPath(p.Attachment), ReplyToID: p.ReplyTo, Mentions: p.Mentions,
+		})
 	}
 }
 

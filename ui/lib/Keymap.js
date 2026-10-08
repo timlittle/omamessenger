@@ -108,6 +108,17 @@ var BINDINGS = [
   { action: 'reaction.right', keys: ['Right'], contexts: ['reactionPicker'], label: 'Next emoji' },
   { action: 'reaction.accept', keys: ['Enter'], contexts: ['reactionPicker'], label: 'React', hint: true },
 
+  // The @-mention picker, open while typing a group member's name after
+  // "@" in the composer. Up/Down move the highlight rather than j/k,
+  // which would just be typed as text; Tab or Enter inserts the
+  // highlighted member, and Escape closes the picker without leaving
+  // the composer (it does not fall through to the global "escape"
+  // action, since this context never includes it).
+  { action: 'mention.down', keys: ['Down'], contexts: ['mentionPicker'], label: 'Next member' },
+  { action: 'mention.up', keys: ['Up'], contexts: ['mentionPicker'], label: 'Previous member' },
+  { action: 'mention.accept', keys: ['Tab', 'Enter'], contexts: ['mentionPicker'], label: 'Insert mention', hint: true },
+  { action: 'mention.cancel', keys: ['Escape'], contexts: ['mentionPicker'], label: 'Close without inserting', hint: true },
+
   // The service chooser, at the first step of adding an account: j/k and
   // Up/Down move the highlight, Enter chooses it, and t/w jump straight
   // to a known service without needing to navigate there first.
