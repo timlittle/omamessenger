@@ -25,8 +25,7 @@ ShellRoot {
     if (!root.checkUnavailableFallback()) return;
     if (!root.checkOpenMediaDownloadsAndToggles()) return;
 
-    console.log("PASS VoiceNoteController");
-    Qt.exit(0);
+    root.checkPlaybackErrorResetsState();
   }
 
   // checkAvailable verifies the real controller, loading its real
@@ -80,7 +79,11 @@ ShellRoot {
   // own voice branch: opening a voice note with no path yet downloads it
   // through the service, then starts it playing; opening the same note
   // again pauses it, without asking the service for its media a second
-  // time.
+  // time. It also verifies the summary ConversationController hands the
+  // message list (voiceNotes) carries the real playing flag, not just
+  // which note is loaded: a bubble that only read playingId would show
+  // its pause glyph forever once a note had played once, even after it
+  // was paused, which is the bug this guards against.
   function checkOpenMediaDownloadsAndToggles(): bool {
     conversationController.open({ id: "c1", title: "Voice chat" });
 
@@ -88,11 +91,41 @@ ShellRoot {
     if (fakeService.fetchRequests.length !== 1) return Check.fail("opening an undownloaded voice note fetched it " + fakeService.fetchRequests.length + " times, want 1");
     if (controller.playingId !== "vm1") return Check.fail("opening a voice note through openMedia did not start it");
     if (!controller.playing) return Check.fail("opening a voice note through openMedia did not set playing");
+    if (!conversationController.voiceNotes.playing) return Check.fail("voiceNotes.playing is false while the note is playing");
 
     conversationController.openMedia("vm1");
     if (fakeService.fetchRequests.length !== 1) return Check.fail("opening an already-downloaded voice note fetched it again");
     if (controller.playing) return Check.fail("opening a playing voice note a second time did not pause it");
+    if (conversationController.voiceNotes.playingId !== "vm1")
+      return Check.fail("pausing a note forgot which one it was in voiceNotes");
+    if (conversationController.voiceNotes.playing)
+      return Check.fail("voiceNotes.playing is still true after pausing, which is what leaves a bubble's button stuck on pause");
     return true;
+  }
+
+  // checkPlaybackErrorResetsState verifies that a file the player cannot
+  // decode at all resets playback state instead of leaving playing true
+  // forever with nothing able to flip the button back: the bug this
+  // guards against showed a stuck pause glyph with no sound and no way
+  // to recover short of restarting the whole UI. Decoding runs on the
+  // event loop, so this polls rather than checking synchronously.
+  function checkPlaybackErrorResetsState(): void {
+    controller.toggle("broken", testRoot + "/broken.ogg", 1000);
+    if (controller.playingId !== "broken") return Check.fail("toggling a broken file did not even start loading it");
+
+    root.waitForPlaybackErrorReset();
+  }
+
+  // waitForPlaybackErrorReset polls until the controller notices the
+  // decode failure and resets, since that runs on the event loop rather
+  // than within toggle() itself.
+  function waitForPlaybackErrorReset(): void {
+    if (!controller.playing && controller.playingId === "") return stepper.pass();
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
+      return Check.fail("the player never recovered from a file it cannot decode: playing=" + controller.playing + " playingId=\"" + controller.playingId + "\"");
+    stepper.retry(root.waitForPlaybackErrorReset);
   }
 
   // testRoot is this test's own directory, so a path passed to toggle()
@@ -136,6 +169,11 @@ ShellRoot {
     id: conversationController
     service: fakeService
     voiceController: controller
+  }
+
+  Stepper {
+    id: stepper
+    name: "VoiceNoteController"
   }
 
   Timer {

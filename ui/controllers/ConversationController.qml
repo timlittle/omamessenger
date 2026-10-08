@@ -105,16 +105,22 @@ Item {
   property string lastError: timeline.lastError
 
   // voiceNotes is the playback state the message list reads for each
-  // bubble's voice note player: which message, if any, is playing, how
-  // far into it, and whether in-window playback is available at all. A
-  // plain summary rather than voiceController itself, so a (recycled)
-  // bubble only ever reads data, never calls into a controller.
+  // bubble's voice note player: which message, if any, is loaded,
+  // whether it is actually playing right now (as opposed to loaded but
+  // paused), how far into it, and whether in-window playback is
+  // available at all. A plain summary rather than voiceController
+  // itself, so a (recycled) bubble only ever reads data, never calls
+  // into a controller. playing is its own field, separate from
+  // playingId: a note stays "loaded" (playingId set) while paused, so a
+  // bubble that only read playingId would show its pause glyph forever
+  // once a note had played once.
   readonly property var voiceNotes: root.voiceController ? {
     available: root.voiceController.available,
     playingId: root.voiceController.playingId,
+    playing: root.voiceController.playing,
     positionMs: root.voiceController.positionMs,
     durationMs: root.voiceController.durationMs
-  } : ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
+  } : ({ available: false, playingId: "", playing: false, positionMs: 0, durationMs: 0 })
 
   // scroll asks the caller to move the message view: "down", "up",
   // "pageDown", "pageUp", "newest" or "oldest".
