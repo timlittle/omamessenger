@@ -78,7 +78,7 @@ func TestSend_StoresMentions(t *testing.T) {
 		t.Errorf("Mentions = %+v, want %+v", m.Mentions, mentions)
 	}
 
-	reloaded, _, err := f.commands.Messages(t.Context(), "chat", "", 0)
+	reloaded, _, _, err := f.commands.Messages(t.Context(), "chat", "", 0)
 	if err != nil || len(reloaded) != 1 || !slices.Equal(reloaded[0].Mentions, mentions) {
 		t.Errorf("reloaded mentions = %+v, %v, want %+v", reloaded, err, mentions)
 	}
