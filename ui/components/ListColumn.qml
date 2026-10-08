@@ -33,6 +33,9 @@ ColumnLayout {
   property bool showEmptyState: false
   // showAll is true while every chat the standard list folds away is shown.
   property bool showAll: false
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the "Leave" button's label.
+  property var bindings: Keymap.BINDINGS
   // hiddenCount is how many chats the standard list hides right now.
   property int hiddenCount: 0
   // unreadView is true while the all-unreads view is showing, overriding
@@ -117,7 +120,7 @@ ColumnLayout {
 
     Ui.Button {
       objectName: "leaveUnreadViewButton"
-      text: "Leave (" + Keymap.keyFor("list.unread") + ")"
+      text: "Leave (" + Keymap.keyFor("list.unread", root.bindings) + ")"
       focusable: true
       onClicked: root.unreadViewLeft()
     }

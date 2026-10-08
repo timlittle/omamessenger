@@ -4,6 +4,7 @@ import "../theme"
 import "../lib/Timeline.js" as Timeline
 import "../lib/Highlight.js" as Highlight
 import "../lib/SenderColor.js" as SenderColor
+import "../lib/Keymap.js" as Keymap
 
 // One message row in a conversation: an optional day separator, the sender
 // name for a grouped incoming message, the bubble with its text and any
@@ -20,6 +21,9 @@ Item {
   required property var annotation
   // isGroup is true for a group chat, where incoming messages show a name.
   property bool isGroup: false
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the key-hint row below.
+  property var bindings: Keymap.BINDINGS
   // nowMs is the current time, passed through to time formatting.
   property real nowMs: 0
   // voiceNotes is the playback state the voice note player reads; see
@@ -297,7 +301,7 @@ Item {
       anchors.left: root.message.outgoing ? undefined : parent.left
       anchors.rightMargin: root.message.outgoing ? Theme.spacing.xxs : 0
       anchors.leftMargin: root.message.outgoing ? 0 : Theme.spacing.xxs
-      text: Highlight.hints(root.message)
+      text: Highlight.hints(root.message, root.bindings)
       color: Util.alpha(Color.foreground, 0.5)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.bodySmall

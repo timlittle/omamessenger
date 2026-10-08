@@ -1,5 +1,9 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
 import "lib/Settings.js" as Settings
+import "lib/Keymap.js" as Keymap
+import "lib/KeyBindings.js" as KeyBindings
 import "service"
 
 // Owns the helper process and everything that must survive the panel
@@ -50,6 +54,27 @@ Item {
   // it survive the panel being destroyed on hide.
   property alias uiState: appState.uiState
 
+  // effectiveBindings are Keymap.BINDINGS with ~/.config/omamessenger/
+  // keys.conf's overrides merged in; every key-aware view reads this
+  // instead of the defaults directly. Starts as the plain defaults and
+  // updates once the file's first read, or any later change, finishes.
+  property var effectiveBindings: Keymap.BINDINGS
+
+  // keyBindingConflicts/keyBindingErrors are keys.conf's own report: a
+  // conflict is two actions that ended up wanting the same key, where
+  // the default won; an error is a line that named an unknown action or
+  // gave no valid key. Both are empty with no file, or while it is
+  // still loading.
+  property var keyBindingConflicts: []
+  property var keyBindingErrors: []
+
+  // _keyConfigPath is where keys.conf lives, following XDG_CONFIG_HOME.
+  readonly property string _keyConfigPath: KeyBindings.configPath(Quickshell.env("HOME"), Quickshell.env("XDG_CONFIG_HOME"))
+
+  // _keyConfigMissing is true once the first read has confirmed the
+  // file does not exist yet, so openKeyConfigFile knows to seed it.
+  property bool _keyConfigMissing: false
+
   // event is emitted for every notification the helper sends, after it
   // has been applied to the state above.
   signal event(string name, var data)
@@ -81,6 +106,28 @@ Item {
   // applySettings forwards the plugin's settings to the helper.
   function applySettings(settings: var): void {
     root.request("settings.apply", Settings.withDefaults(settings), function() {});
+  }
+
+  // openKeyConfigFile is the palette's "Open key bindings file" command:
+  // it seeds keys.conf with a commented template the first time it is
+  // asked for (never overwriting one that already exists), then opens
+  // it in the user's own editor through xdg-open, the same way every
+  // other externally-opened file in this UI does.
+  function openKeyConfigFile(): void {
+    if (root._keyConfigMissing) keysFile.setText(KeyBindings.template(Keymap.BINDINGS));
+
+    Qt.openUrlExternally("file://" + root._keyConfigPath);
+  }
+
+  // _applyKeyConfig re-merges keys.conf's text into effectiveBindings,
+  // called on every load, whether the first one or a later reload.
+  function _applyKeyConfig(text: string): void {
+    const parsed = KeyBindings.parseConfig(text);
+    const merged = KeyBindings.merge(Keymap.BINDINGS, parsed.overrides);
+
+    root.effectiveBindings = merged.bindings;
+    root.keyBindingConflicts = merged.conflicts;
+    root.keyBindingErrors = parsed.errors;
   }
 
   // _sayHello greets the helper once it is ready and loads the accounts.
@@ -137,5 +184,29 @@ Item {
     transport: helperProcess
 
     onEvent: function(name, data) { root._handleEvent(name, data); }
+  }
+
+  // keysFile holds ~/.config/omamessenger/keys.conf's overrides. Watched
+  // so editing it takes effect live, the same way Omarchy's own shell
+  // watches a user config file; QS_DISABLE_FILE_WATCHER (set when
+  // Omarchy launches the shell) only turns off reloading this plugin's
+  // own QML on a source change, not a FileView's own file watch.
+  FileView {
+    id: keysFile
+    path: root._keyConfigPath
+    watchChanges: true
+    printErrors: false
+
+    onLoaded: {
+      root._keyConfigMissing = false;
+      root._applyKeyConfig(text());
+    }
+    onLoadFailed: function(error) {
+      root._keyConfigMissing = error === FileViewError.FileNotFound;
+      root._applyKeyConfig("");
+    }
+    // text() is stale inside fileChanged itself; reload() re-reads the
+    // file fresh and reports back through onLoaded/onLoadFailed.
+    onFileChanged: reload()
   }
 }

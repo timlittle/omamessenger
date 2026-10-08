@@ -54,6 +54,10 @@ var BINDINGS = [
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
   { action: 'helper.retryInstall', keys: ['Ctrl+R'], contexts: ['global'], label: 'Retry installing the helper', command: true },
   { action: 'helper.doctor', keys: [], contexts: ['global'], label: 'Run health check', command: true },
+  // keys.conf lets a person remap these bindings; these two commands
+  // manage that file rather than any key of their own, like account.add.
+  { action: 'keys.openConfig', keys: [], contexts: ['global'], label: 'Open key bindings file', command: true },
+  { action: 'keys.showBindings', keys: [], contexts: ['global'], label: 'Show key bindings', command: true },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
@@ -178,10 +182,13 @@ var BINDINGS = [
 ];
 
 // match returns the action for a key press in a context, or "". Bindings
-// for the context win over global ones.
-function match(context, key, modifiers, text) {
-  const candidates = BINDINGS.filter((b) => b.contexts.includes(context))
-    .concat(BINDINGS.filter((b) => b.contexts.includes('global')));
+// for the context win over global ones. list defaults to BINDINGS; a
+// caller with a keys.conf override merged in (see KeyBindings.js) passes
+// its own effective list instead.
+function match(context, key, modifiers, text, list) {
+  const bindings = list || BINDINGS;
+  const candidates = bindings.filter((b) => b.contexts.includes(context))
+    .concat(bindings.filter((b) => b.contexts.includes('global')));
   const hit = candidates.find((b) => b.keys.some((spec) => specMatches(parseSpec(spec), key, modifiers, text)));
 
   return hit ? hit.action : '';
@@ -241,12 +248,14 @@ function specMatches(spec, key, modifiers, text) {
 }
 
 // bindingsFor returns the bindings worth hinting in a context's footer:
-// the context's own first, then global ones.
-function bindingsFor(context) {
+// the context's own first, then global ones. list defaults to BINDINGS,
+// same as match.
+function bindingsFor(context, list) {
+  const bindings = list || BINDINGS;
   const hinted = (b) => b.hint;
 
-  return BINDINGS.filter((b) => b.contexts.includes(context) && hinted(b))
-    .concat(BINDINGS.filter((b) => b.contexts.includes('global') && hinted(b)));
+  return bindings.filter((b) => b.contexts.includes(context) && hinted(b))
+    .concat(bindings.filter((b) => b.contexts.includes('global') && hinted(b)));
 }
 
 // display shows a key spec the way people read it: "Ctrl+Slash" as
@@ -257,16 +266,20 @@ function display(spec) {
 
 // keyFor returns the display text for action's primary key, or "" when
 // it has none, for a button label that wants to show its own shortcut
-// beside it rather than naming the key a second time by hand.
-function keyFor(action) {
-  const binding = BINDINGS.find((b) => b.action === action);
+// beside it rather than naming the key a second time by hand. list
+// defaults to BINDINGS, same as match.
+function keyFor(action, list) {
+  const bindings = list || BINDINGS;
+  const binding = bindings.find((b) => b.action === action);
   return binding && binding.keys.length > 0 ? display(binding.keys[0]) : '';
 }
 
 // commands returns what the command palette offers: every command
 // binding, with its first key shown so people learn it, if it has one.
-function commands() {
-  return BINDINGS
+// list defaults to BINDINGS, same as match.
+function commands(list) {
+  const bindings = list || BINDINGS;
+  return bindings
     .filter((b) => b.command)
     .map((b) => ({ action: b.action, label: b.label, keys: b.keys.length > 0 ? display(b.keys[0]) : '' }));
 }
@@ -275,10 +288,11 @@ function commands() {
 // writing, or what stops it once the input already has focus. It reads
 // its wording off the real compose.focus and escape bindings, the same
 // ones the key router already matches, rather than naming a key a
-// second time by hand.
-function composeHint(writing) {
+// second time by hand. list defaults to BINDINGS, same as match.
+function composeHint(writing, list) {
+  const bindings = list || BINDINGS;
   const action = writing ? 'escape' : 'compose.focus';
-  const key = display(BINDINGS.find((b) => b.action === action).keys[0]);
+  const key = display(bindings.find((b) => b.action === action).keys[0]);
 
   return writing ? `Writing · ${key} to stop` : `${key} to write`;
 }

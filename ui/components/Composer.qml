@@ -72,6 +72,9 @@ Item {
   property int _mentionIndex: 0
   // pickerOpen is true while the @-mention picker should show.
   readonly property bool pickerOpen: root._activeQuery !== null && root._mentionMatches.length > 0
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the mode hint below.
+  property var bindings: Keymap.BINDINGS
 
   // writing is true while the text input holds keyboard focus: typing
   // and scrolling the conversation look identical otherwise, bar the
@@ -85,7 +88,7 @@ Item {
   // modeHint names the current mode in words, so it is not shown by
   // colour alone: Keymap.composeHint derives it from the same bindings
   // the key router already matches, rather than naming a key twice.
-  readonly property string modeHint: Keymap.composeHint(root.writing)
+  readonly property string modeHint: Keymap.composeHint(root.writing, root.bindings)
 
   // submitted reports the trimmed text a caller should send, alongside
   // whatever attachmentPath already holds, the id of the message it
@@ -339,7 +342,7 @@ Item {
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: event => {
             if (root.pickerOpen) {
-              const action = Keymap.match("mentionPicker", event.key, event.modifiers, event.text)
+              const action = Keymap.match("mentionPicker", event.key, event.modifiers, event.text, root.bindings)
               if (action) {
                 root._runMentionAction(action)
                 event.accepted = true
