@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -337,13 +338,23 @@ func (d *fakeDevice) groupInfo(_ context.Context, jid types.JID) (string, int, e
 	return d.groupNames[jid.String()], d.groupMembers[jid.String()], nil
 }
 
-// contactName reports the scripted name for jid, or "" when the test did
-// not script one, the way a real lookup with nothing known yet would.
+// contactName reports the scripted name for jid, mapping a LID to its
+// scripted phone JID first when jid itself has no name of its own, the
+// same priority order the real device's contactName documents; it
+// reports "" when the test did not script either.
 func (d *fakeDevice) contactName(_ context.Context, jid types.JID) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	return d.contactNames[jid.String()]
+	if name := d.contactNames[jid.String()]; name != "" {
+		return name
+	}
+
+	if phone, ok := d.lidPhones[jid.String()]; ok {
+		return d.contactNames[phone.String()]
+	}
+
+	return ""
 }
 
 // isSelfChat reports whether jid's bare form matches the scripted
@@ -525,6 +536,27 @@ func u32(n uint32) *uint32 { return &n }
 
 // u64 takes the address of a uint64 literal, for the same reason.
 func u64(n uint64) *uint64 { return &n }
+
+// senderNameCall records one call to recordingSink.SenderName.
+type senderNameCall struct {
+	accountID, senderRemoteID, name string
+}
+
+// recordingSink wraps connectortest.Sink, additionally implementing
+// connector.SenderNamer, so a test can confirm a resolved name also
+// corrects already-stored messages (see contacts.go's
+// retitleDirectChat), which connectortest.Sink alone has no need to
+// support since most of this package's tests check only what was
+// reported, not what a real Ingest would do with it.
+type recordingSink struct {
+	*connectortest.Sink
+	senderNames []senderNameCall
+}
+
+// SenderName records the call.
+func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string) {
+	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name})
+}
 
 // contains reports whether s holds substr, without pulling in strings
 // just for one assertion that an error message leaked nothing.

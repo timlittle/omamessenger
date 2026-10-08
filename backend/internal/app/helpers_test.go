@@ -89,6 +89,27 @@ func newFixture(t *testing.T, faked bool) *fixture {
 	return f
 }
 
+// appOver builds a Commands and Ingest pair over an already-open store,
+// with its own fresh set of fake connectors, for a test that opens the
+// store itself, such as one simulating a helper restart over the same
+// on-disk database.
+func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDispatcher) {
+	t.Helper()
+
+	dispatcher := &fakeDispatcher{}
+	deps := app.Deps{
+		Store: db, Dispatcher: dispatcher, Notifier: &fakeNotifier{}, Publisher: &fakePublisher{},
+		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
+		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
+		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
+	}
+
+	commands, ingest := app.New(deps)
+
+	return commands, ingest, dispatcher
+}
+
 // conversation stores a conversation of the given kind with remote id
 // "r-" + id, and forgets the events so far.
 func (f *fixture) conversation(t *testing.T, id, title, kind string) domain.Conversation {
