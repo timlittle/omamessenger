@@ -48,8 +48,13 @@ Rectangle {
         objectName: "mentionRow-" + row.index
         width: list.width
         height: label.implicitHeight + Theme.spacing.xs * 2
-        color: row.current ? Util.alpha(Color.accent, Style.selectedFillAlpha)
-          : hover.containsMouse ? Style.hoverFill : "transparent"
+        color: fill.color
+
+        HighlightFill {
+          id: fill
+          selected: row.current
+          hovered: hover.containsMouse
+        }
 
         Text {
           id: label

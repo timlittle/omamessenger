@@ -38,10 +38,15 @@ Item {
       + (root.statusWord ? " · " + root.statusWord : "")
   }
 
+  HighlightFill {
+    id: fill
+    selected: root.selected
+    hovered: hover.containsMouse
+  }
+
   Rectangle {
     anchors.fill: parent
-    color: root.selected ? Util.alpha(Color.accent, Style.selectedFillAlpha)
-      : hover.containsMouse ? Style.hoverFill : "transparent"
+    color: fill.color
   }
 
   // The selection bar matches the conversation list's.

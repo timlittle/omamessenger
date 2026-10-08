@@ -4,8 +4,9 @@ import qs.Commons
 import "../theme"
 
 // One contact row in the new-chat dialog: avatar and name, highlighted
-// when it is the keyboard-selected row. A helper split out of
-// NewChatDialog to keep that file within the component size guideline.
+// when it is the keyboard-selected row or under the pointer. A helper
+// split out of NewChatDialog to keep that file within the component size
+// guideline.
 Rectangle {
   id: root
 
@@ -19,7 +20,13 @@ Rectangle {
 
   height: Theme.spacing.popupRowHeight * 1.5
   radius: Style.cornerRadius
-  color: root.current ? Util.alpha(Color.accent, Style.selectedFillAlpha) : "transparent"
+  color: fill.color
+
+  HighlightFill {
+    id: fill
+    selected: root.current
+    hovered: hover.containsMouse
+  }
 
   RowLayout {
     anchors.fill: parent
@@ -42,7 +49,10 @@ Rectangle {
   }
 
   MouseArea {
+    id: hover
+
     anchors.fill: parent
+    hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onClicked: root.chosen()
   }

@@ -18,11 +18,16 @@ Item {
 
   implicitHeight: row.implicitHeight + Theme.spacing.sm * 2
 
+  HighlightFill {
+    id: fill
+    selected: root.current
+    hovered: hover.containsMouse
+  }
+
   Rectangle {
     anchors.fill: parent
     radius: Style.cornerRadius
-    color: root.current ? Util.alpha(Color.accent, Style.selectedFillAlpha)
-      : hover.containsMouse ? Style.hoverFill : "transparent"
+    color: fill.color
   }
 
   RowLayout {
