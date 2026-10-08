@@ -7,8 +7,8 @@ import QtQuick
 // links this file into every test's root, the same way it links
 // Check.js.
 //
-// tests/qml/Panel and tests/qml/BarWidget each need their own, slightly
-// different fake shell (Panel's records every hide call; BarWidget has
+// tests/qml/Flows and tests/qml/BarWidget each need their own, slightly
+// different fake shell (Flows' own records every hide call; BarWidget has
 // no panel to drive at all), so they keep their own rather than using
 // this one.
 QtObject {

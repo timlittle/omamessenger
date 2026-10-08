@@ -357,7 +357,7 @@ ShellRoot {
   // and checks a global shortcut still works. A real removal is not
   // exercised here: that path, and that a shortcut still works right
   // after an account is actually removed, is covered in
-  // tests/qml/Panel's own checkRemoveAccountKeyboard.
+  // tests/qml/Flows' own checkRemoveAccountKeyboard.
   function checkRemoveAccount(): var {
     t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
     for (const ch of "remove an account") t.keyClick(ch);

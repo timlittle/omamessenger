@@ -31,6 +31,9 @@ Write the failing test first; a bug fix starts with a test that reproduces it. P
 | Change | Where the test goes |
 | --- | --- |
 | Pure UI logic in `ui/lib` | `tests/unit/<file>.test.cjs`, run with node |
+| A QML component's rendering or user intent, given fixed input | `tests/qml/<Component>/shell.qml`, offscreen (see `.claude/rules/ui-testing.md`'s "Which layer owns a test") |
+| A controller wiring a `ui/lib` decision or a helper round trip into QML state | `tests/qml/<Controller>/shell.qml`, checking the wiring reached the right call with the right arguments, not the decision's own outcome in detail |
+| A user journey end to end, keyboard included | `tests/qml/Flows/shell.qml`, the one smoke suite — only for a journey no lower layer can reach at all (a real key, a real window, a real helper process) |
 | Storage | `backend/internal/store/<file>_test.go`, on a real SQLite database in a temporary directory |
 | What the client does | `backend/internal/app/<file>_test.go`, with a real store and fake connectors |
 | Notification decisions | `backend/internal/app/policy`, every combination |
