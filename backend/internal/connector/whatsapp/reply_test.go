@@ -11,17 +11,13 @@ import (
 
 	"go.mau.fi/whatsmeow/types"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestSend_QuotesWithParticipantAndTextInAGroup(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, _, c, media := connectedMediaFixture(t)
 
 	sender := types.NewJID("15557654321", types.DefaultUserServer)
 	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "quoted-1", messageKey{senderID: remoteID(sender), fromMe: false, timestamp: 1000}); err != nil {
@@ -48,10 +44,7 @@ func TestSend_QuotesWithParticipantAndTextInAGroup(t *testing.T) {
 func TestSend_QuotesInADirectChatWithoutAParticipant(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, _, c, media := connectedMediaFixture(t)
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "quoted-2", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -74,9 +67,7 @@ func TestSend_QuotesInADirectChatWithoutAParticipant(t *testing.T) {
 func TestSend_QuotesByStanzaIDAloneWhenTheQuoteIsNotRecorded(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
+	dev, _, c, _ := connectedMediaFixture(t)
 
 	m := domain.Message{ID: "local-3", Text: "sure", ReplyTo: &domain.Reply{RemoteID: "quoted-3", Text: "lunch?"}}
 	if err := c.Send(t.Context(), directChat, m); err != nil {
@@ -95,11 +86,8 @@ func TestSend_QuotesByStanzaIDAloneWhenTheQuoteIsNotRecorded(t *testing.T) {
 func TestSend_RecordsItsOwnMessageKeyAsFromMe(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, media := connectedMediaFixture(t)
 	dev.nextMessageID = "wire-1"
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
 
 	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-4", Text: "hi"}); err != nil {
 		t.Fatal(err)

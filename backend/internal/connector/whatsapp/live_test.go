@@ -14,7 +14,6 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -32,13 +31,10 @@ func liveInfo() types.MessageInfo {
 func TestHandleMessage_ReportsIncomingContentAndItsConversation(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	e := &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
 		t.Errorf("events = %q, want the new conversation reported", sink.Lines())
@@ -51,15 +47,12 @@ func TestHandleMessage_ReportsIncomingContentAndItsConversation(t *testing.T) {
 func TestHandleMessage_ReportsTheOfficialWhatsAppAccountAsAConversation(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	info := liveInfo()
 	info.Chat, info.Sender, info.ID, info.PushName = types.PSAJID, types.PSAJID, "M1", ""
 	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("your security code changed")}}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if !sink.Has("conversation 0@s.whatsapp.net WhatsApp") {
 		t.Errorf("events = %q, want the \"0\" system account shown as a conversation titled WhatsApp", sink.Lines())
@@ -72,13 +65,10 @@ func TestHandleMessage_ReportsTheOfficialWhatsAppAccountAsAConversation(t *testi
 func TestHandleMessage_SavesTheMessageKeyMarkReadLaterNeeds(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, sink, c, media := connectedMediaFixture(t)
 
 	e := &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	conv := domain.Conversation{RemoteID: "15551234567@s.whatsapp.net", Unread: 1}
 	if err := c.MarkRead(t.Context(), conv); err != nil {
@@ -93,15 +83,12 @@ func TestHandleMessage_SavesTheMessageKeyMarkReadLaterNeeds(t *testing.T) {
 func TestHandleMessage_NeverNotesOurOwnMessageFromAnotherDeviceForMarkRead(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, sink, c, media := connectedMediaFixture(t)
 
 	info := liveInfo()
 	info.IsFromMe = true
 	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("sent from my phone")}}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	// Unread is set as if the service still thought one message was
 	// unread here, so this proves the fromMe message's own saved key is
@@ -120,15 +107,12 @@ func TestHandleMessage_NeverNotesOurOwnMessageFromAnotherDeviceForMarkRead(t *te
 func TestHandleMessage_ReportsOurOwnMessageFromAnotherDeviceAsHistory(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	info := liveInfo()
 	info.IsFromMe = true
 	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("sent from my phone")}}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if !sink.Has("history 15551234567@s.whatsapp.net M1") {
 		t.Errorf("events = %q, want the message reported as history", sink.Lines())
@@ -141,19 +125,16 @@ func TestHandleMessage_ReportsOurOwnMessageFromAnotherDeviceAsHistory(t *testing
 func TestHandleMessage_ResolvesAGroupChatItHasNotSeenBefore(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink, media := handlerMediaFixture(t)
 	dev.groupNames = map[string]string{"12345-1600000000@g.us": "Climbing Crew"}
 	dev.groupMembers = map[string]int{"12345-1600000000@g.us": 5}
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
 	group := types.NewJID("12345-1600000000", types.GroupServer)
 	e := &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: group, Sender: liveInfo().Sender, IsGroup: true}, ID: "M2", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("hi all")},
 	}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if !sink.Has("conversation 12345-1600000000@g.us Climbing Crew") {
 		t.Errorf("events = %q, want the group's resolved name", sink.Lines())
@@ -166,12 +147,9 @@ func TestHandleMessage_ResolvesAGroupChatItHasNotSeenBefore(t *testing.T) {
 func TestHandleMessage_NamesAGroupSenderFromTheirResolvedContact(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink, media := handlerMediaFixture(t)
 	dev.groupNames = map[string]string{"12345-1600000000@g.us": "Climbing Crew"}
 	dev.contactNames = map[string]string{"987654@lid": "Priya Nair"}
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
 	group := types.NewJID("12345-1600000000", types.GroupServer)
 	sender := types.NewJID("987654", types.HiddenUserServer)
@@ -179,7 +157,7 @@ func TestHandleMessage_NamesAGroupSenderFromTheirResolvedContact(t *testing.T) {
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: group, Sender: sender, IsGroup: true}, ID: "M2", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("hi all")},
 	}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	messages := sink.LiveMessages()["12345-1600000000@g.us"]
 	if len(messages) != 1 || messages[0].SenderName != "Priya Nair" {
@@ -190,18 +168,15 @@ func TestHandleMessage_NamesAGroupSenderFromTheirResolvedContact(t *testing.T) {
 func TestHandleMessage_TitlesALIDDirectChatFromItsContact(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink, media := handlerMediaFixture(t)
 	dev.contactNames = map[string]string{"987654@lid": "Priya Nair"}
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
 	chat := types.NewJID("987654", types.HiddenUserServer)
 	e := &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: chat, Sender: chat}, ID: "M2", PushName: "a stray push name", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("hi")},
 	}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if !sink.Has("conversation 987654@lid Priya Nair") {
 		t.Errorf("events = %q, want the LID chat titled from its resolved contact, not the push name", sink.Lines())
@@ -211,16 +186,13 @@ func TestHandleMessage_TitlesALIDDirectChatFromItsContact(t *testing.T) {
 func TestHandleMessage_SkipsAProtocolNoticeWithNoContent(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	e := &events.Message{
 		Info:    liveInfo(),
 		Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_EPHEMERAL_SETTING.Enum()}},
 	}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want a protocol notice with no content to report nothing at all", sink.Lines())
@@ -230,16 +202,13 @@ func TestHandleMessage_SkipsAProtocolNoticeWithNoContent(t *testing.T) {
 func TestHandleMessage_SkipsAMessageInASystemChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	e := &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: types.StatusBroadcastJID}, ID: "M9", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("someone's status")},
 	}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want nothing reported for a system JID such as the status broadcast", sink.Lines())
@@ -249,18 +218,15 @@ func TestHandleMessage_SkipsAMessageInASystemChat(t *testing.T) {
 func TestHandleMessage_CreatesAndFillsTheSelfChatFromAnOutgoingMessage(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink, media := handlerMediaFixture(t)
 	self := types.NewJID("15551234567", types.DefaultUserServer)
 	dev.selfJID = self
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
 	e := &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: self, Sender: self, IsFromMe: true}, ID: "M1", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("note to self")},
 	}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Message yourself") {
 		t.Errorf("events = %q, want the self-chat created and titled \"Message yourself\"", sink.Lines())
@@ -273,22 +239,19 @@ func TestHandleMessage_CreatesAndFillsTheSelfChatFromAnOutgoingMessage(t *testin
 func TestHandleMessage_CollapsesTheSelfChatsLIDAndPhoneJIDIntoOneConversation(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink, media := handlerMediaFixture(t)
 	phone, lid := types.NewJID("15551234567", types.DefaultUserServer), types.NewJID("111222", types.HiddenUserServer)
 	dev.selfJID, dev.selfLID = phone, lid
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
 	// The user's own message, sent and addressed by phone JID.
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: phone, Sender: phone, IsFromMe: true}, ID: "M1", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("note to self")},
 	})
 
 	// A bot's reply, posted from another of this account's own linked
 	// devices, addressed by the account's LID instead.
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: lid, Sender: lid, IsFromMe: true}, ID: "M2", Timestamp: time.Unix(2, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("reply from the bot")},
 	})
@@ -307,16 +270,13 @@ func TestHandleMessage_CollapsesTheSelfChatsLIDAndPhoneJIDIntoOneConversation(t 
 func TestHandleMessage_PersistsAMediaReference(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	e := &events.Message{Info: liveInfo(), Message: &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
 		DirectPath: strPtr("/v/x"), MediaKey: []byte{1}, FileSHA256: []byte{2}, FileEncSHA256: []byte{3},
 		FileLength: u64(1), Mimetype: strPtr("image/jpeg"),
 	}}}
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if _, ok, err := media.get(t.Context(), "15551234567@s.whatsapp.net", "M1"); err != nil || !ok {
 		t.Errorf("media.get = ok=%v err=%v, want the reference saved", ok, err)
@@ -334,11 +294,8 @@ func TestHandleMessage_ReportsEachReactionChangeAsTheFullTally(t *testing.T) {
 	nadia := types.NewJID("15551234567", types.DefaultUserServer)
 	nadiaLID := types.NewJID("987654", types.HiddenUserServer)
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink, media := handlerMediaFixture(t)
 	dev.lidPhones = map[string]types.JID{nadiaLID.String(): nadia}
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
 	react := func(sender types.JID, fromMe bool, emoji string) *events.Message {
 		return &events.Message{
@@ -354,38 +311,35 @@ func TestHandleMessage_ReportsEachReactionChangeAsTheFullTally(t *testing.T) {
 		}
 	}
 
-	c.handleMessage(t.Context(), &sink, dev, media, react(nadia, false, "👍"))
+	c.handleMessage(t.Context(), sink, dev, media, react(nadia, false, "👍"))
 	assertTally(1)
 
 	// We react too, with a different emoji: now two chips.
-	c.handleMessage(t.Context(), &sink, dev, media, react(types.JID{}, true, "❤️"))
+	c.handleMessage(t.Context(), sink, dev, media, react(types.JID{}, true, "❤️"))
 	assertTally(2)
 
 	// Nadia reacts again, this time addressed by her LID: still two
 	// chips, not three, since this must update her existing one (see
 	// normalize.go's personID, which fixed this double count).
-	c.handleMessage(t.Context(), &sink, dev, media, react(nadiaLID, false, "😂"))
+	c.handleMessage(t.Context(), sink, dev, media, react(nadiaLID, false, "😂"))
 	assertTally(2)
 
 	// Nadia clears her reaction, by her phone JID this time; back down
 	// to one chip, confirming both of her forms shared one reactor key.
-	c.handleMessage(t.Context(), &sink, dev, media, react(nadia, false, ""))
+	c.handleMessage(t.Context(), sink, dev, media, react(nadia, false, ""))
 	assertTally(1)
 }
 
 func TestHandleMessage_RevokeAndEdit(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	revokeMsg := &events.Message{
 		Info:    liveInfo(),
 		Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REVOKE.Enum(), Key: &waCommon.MessageKey{ID: strPtr("M0")}}},
 	}
-	c.handleMessage(t.Context(), &sink, dev, media, revokeMsg)
+	c.handleMessage(t.Context(), sink, dev, media, revokeMsg)
 	if !sink.Has("deleted 15551234567@s.whatsapp.net M0") {
 		t.Errorf("events = %q, want the revoked message reported deleted", sink.Lines())
 	}
@@ -397,7 +351,7 @@ func TestHandleMessage_RevokeAndEdit(t *testing.T) {
 			EditedMessage: &waE2E.Message{Conversation: strPtr("corrected")},
 		}},
 	}
-	c.handleMessage(t.Context(), &sink, dev, media, editMsg)
+	c.handleMessage(t.Context(), sink, dev, media, editMsg)
 	if !sink.Has("edited 15551234567@s.whatsapp.net M0") {
 		t.Errorf("events = %q, want the edit reported", sink.Lines())
 	}
@@ -406,13 +360,11 @@ func TestHandleMessage_RevokeAndEdit(t *testing.T) {
 func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	c.rememberName("15551234567@s.whatsapp.net", "Nadia", nameRankPushName)
-	dev := newFakeDevice()
-	var sink connectortest.Sink
 
 	direct := types.NewJID("15551234567", types.DefaultUserServer)
-	c.handleChatPresence(t.Context(), &sink, dev, nil, &events.ChatPresence{
+	c.handleChatPresence(t.Context(), sink, dev, nil, &events.ChatPresence{
 		MessageSource: types.MessageSource{Chat: direct, Sender: direct}, State: types.ChatPresenceComposing,
 	})
 	if !sink.Has("typing 15551234567@s.whatsapp.net true") {
@@ -420,7 +372,7 @@ func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	}
 
 	group := types.NewJID("12345-1600000000", types.GroupServer)
-	c.handleChatPresence(t.Context(), &sink, dev, nil, &events.ChatPresence{
+	c.handleChatPresence(t.Context(), sink, dev, nil, &events.ChatPresence{
 		MessageSource: types.MessageSource{Chat: group, Sender: direct, IsGroup: true}, State: types.ChatPresencePaused,
 	})
 	if !sink.Has("typing 12345-1600000000@g.us false") {
@@ -448,10 +400,8 @@ func TestHandleReceipt_OnlyActsOnOurOwnReadReceipts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			c := New(domain.Account{ID: "wa"}, t.TempDir())
-			dev := newFakeDevice()
-			var sink connectortest.Sink
-			c.handleReceipt(t.Context(), &sink, dev, nil, tt.evt)
+			c, dev, sink := handlerFixture(t)
+			c.handleReceipt(t.Context(), sink, dev, nil, tt.evt)
 
 			got := sink.Has("unread 15551234567@s.whatsapp.net 0")
 			if got != tt.want {
@@ -464,10 +414,8 @@ func TestHandleReceipt_OnlyActsOnOurOwnReadReceipts(t *testing.T) {
 func TestHandleUndecryptable_ReportsAPlaceholderForAnIncomingMessage(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c.handleUndecryptable(t.Context(), &sink, dev, nil, &events.UndecryptableMessage{Info: liveInfo()})
+	c, dev, sink := handlerFixture(t)
+	c.handleUndecryptable(t.Context(), sink, dev, nil, &events.UndecryptableMessage{Info: liveInfo()})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
 		t.Errorf("events = %q, want the chat ensured so the placeholder has somewhere to live", sink.Lines())
@@ -481,10 +429,8 @@ func TestHandleUndecryptable_ReportsAPlaceholderForAnIncomingMessage(t *testing.
 func TestHandleUndecryptable_SkipsASystemChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c.handleUndecryptable(t.Context(), &sink, dev, nil, &events.UndecryptableMessage{
+	c, dev, sink := handlerFixture(t)
+	c.handleUndecryptable(t.Context(), sink, dev, nil, &events.UndecryptableMessage{
 		Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: types.StatusBroadcastJID}, ID: "M9"},
 	})
 
@@ -503,11 +449,10 @@ func TestHandleContent_ReplacesAnUndecryptablePlaceholderOnRedelivery(t *testing
 	t.Parallel()
 
 	for _, reqID := range []string{"", "REQ1"} {
-		c, dev, media := New(domain.Account{ID: "wa"}, t.TempDir()), newFakeDevice(), newTestMediaStore(t)
-		var sink connectortest.Sink
-		c.handleUndecryptable(t.Context(), &sink, dev, media, &events.UndecryptableMessage{Info: liveInfo()})
+		c, dev, sink, media := handlerMediaFixture(t)
+		c.handleUndecryptable(t.Context(), sink, dev, media, &events.UndecryptableMessage{Info: liveInfo()})
 		msg := &waE2E.Message{Conversation: strPtr("hi")}
-		c.handleMessage(t.Context(), &sink, dev, media, &events.Message{Info: liveInfo(), Message: msg, UnavailableRequestID: reqID})
+		c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: liveInfo(), Message: msg, UnavailableRequestID: reqID})
 		if !sink.Has("edited 15551234567@s.whatsapp.net M1") {
 			t.Errorf("events = %q, want the redelivered message to replace the placeholder", sink.Lines())
 		}

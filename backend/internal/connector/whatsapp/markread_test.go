@@ -14,7 +14,6 @@ import (
 
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
-	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -139,9 +138,7 @@ func TestMarkRead_IgnoresAFailedAppStatePatch(t *testing.T) {
 func TestMarkRead_NoopWithNothingUnread(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
+	dev, _, c, _ := connectedMediaFixture(t)
 
 	if err := c.MarkRead(t.Context(), directChat); err != nil { // directChat.Unread is 0
 		t.Fatal(err)
@@ -157,9 +154,7 @@ func TestMarkRead_NoopWithNothingUnread(t *testing.T) {
 func TestMarkRead_NoopWithoutAMediaStore(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink) // built with no media store
+	dev, _, c := connectedFixture(t) // built with no media store
 
 	conv := directChat
 	conv.Unread = 5
@@ -187,18 +182,13 @@ func TestMarkRead_FailsBeforeConnecting(t *testing.T) {
 func TestMarkRead_PicksTheNewestOfAHistorySyncedConversationsMessages(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, sink, c, media := connectedMediaFixture(t)
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), UnreadCount: u32(1),
-			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "older", false), historyMsg("H2", "newest", false)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	synced := &waHistorySync.Conversation{
+		ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), UnreadCount: u32(1),
+		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "older", false), historyMsg("H2", "newest", false)},
+	}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(synced))
 
 	// The service's own unread count for the conversation, 1 here, is
 	// what tells MarkRead how many of its newest saved messages to

@@ -167,55 +167,42 @@ func TestContactName_IsEmptyWhenNothingIsKnown(t *testing.T) {
 	}
 }
 
-func TestAltJID_ResolvesALIDToItsMappedPhoneJID(t *testing.T) {
+// TestAltJID_ResolvesTheOtherAddressForm covers altJID's one mapping
+// resolving both directions (a LID to its phone JID and the reverse,
+// the way a chat or a sender first seen by one form can still be
+// recognised once a later report names it by the other; see
+// normalize.go's chatID), plus the two cases it must leave empty: a
+// JID with no mapping at all, and a group JID, which never has one.
+func TestAltJID_ResolvesTheOtherAddressForm(t *testing.T) {
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
-	dev := pairedTestDevice(t, phone)
-
 	lid := types.NewJID("987654", types.HiddenUserServer)
-	if err := dev.cli.Store.LIDs.PutLIDMapping(t.Context(), lid, phone); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := dev.altJID(t.Context(), lid); got != phone {
-		t.Errorf("altJID(lid) = %v, want %v", got, phone)
-	}
-}
-
-// TestAltJID_ResolvesAPhoneJIDToItsMappedLID confirms the reverse
-// direction also works from the same mapping, the way a chat or a
-// sender first seen by phone JID can still be recognised once a later
-// report names it by its LID instead (see normalize.go's chatID).
-func TestAltJID_ResolvesAPhoneJIDToItsMappedLID(t *testing.T) {
-	phone := types.NewJID("15551234567", types.DefaultUserServer)
-	dev := pairedTestDevice(t, phone)
-
-	lid := types.NewJID("987654", types.HiddenUserServer)
-	if err := dev.cli.Store.LIDs.PutLIDMapping(t.Context(), lid, phone); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := dev.altJID(t.Context(), phone); got != lid {
-		t.Errorf("altJID(phone) = %v, want %v", got, lid)
-	}
-}
-
-func TestAltJID_IsEmptyWhenNothingIsKnown(t *testing.T) {
-	own := types.NewJID("15551234567", types.DefaultUserServer)
-	dev := pairedTestDevice(t, own)
-
-	lid := types.NewJID("987654", types.HiddenUserServer)
-	if got := dev.altJID(t.Context(), lid); !got.IsEmpty() {
-		t.Errorf("altJID(unmapped lid) = %v, want an empty JID", got)
-	}
-}
-
-func TestAltJID_IsEmptyForAGroupJID(t *testing.T) {
-	phone := types.NewJID("15551234567", types.DefaultUserServer)
-	dev := pairedTestDevice(t, phone)
-
 	group := types.NewJID("12345-1600000000", types.GroupServer)
-	if got := dev.altJID(t.Context(), group); !got.IsEmpty() {
-		t.Errorf("altJID(group jid) = %v, want an empty JID", got)
+
+	tests := []struct {
+		name   string
+		mapLID bool
+		query  types.JID
+		want   types.JID
+	}{
+		{"a LID resolves to its mapped phone JID", true, lid, phone},
+		{"a phone JID resolves to its mapped LID", true, phone, lid},
+		{"an unmapped LID resolves to nothing", false, lid, types.JID{}},
+		{"a group JID always resolves to nothing", true, group, types.JID{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dev := pairedTestDevice(t, phone)
+			if tt.mapLID {
+				if err := dev.cli.Store.LIDs.PutLIDMapping(t.Context(), lid, phone); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if got := dev.altJID(t.Context(), tt.query); got != tt.want {
+				t.Errorf("altJID(%v) = %v, want %v", tt.query, got, tt.want)
+			}
+		})
 	}
 }
 

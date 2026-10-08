@@ -18,13 +18,11 @@ import (
 func TestHandleContactUpdate_RetitlesAnAlreadyKnownDirectChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
 	c.rememberName(remoteID(jid), "+15551234567", nameRankPushName) // the chat's current, weak fallback
-	dev := newFakeDevice()
-	var sink connectortest.Sink
 
-	c.handleContactUpdate(t.Context(), &sink, dev, nil, &events.Contact{
+	c.handleContactUpdate(t.Context(), sink, dev, nil, &events.Contact{
 		JID: jid, Action: &waSyncAction.ContactAction{FullName: strPtr("Nadia Rahman")},
 	})
 
@@ -36,12 +34,10 @@ func TestHandleContactUpdate_RetitlesAnAlreadyKnownDirectChat(t *testing.T) {
 func TestHandleContactUpdate_IgnoresAnActionThatNamesNoOne(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
-	dev := newFakeDevice()
-	var sink connectortest.Sink
 
-	c.handleContactUpdate(t.Context(), &sink, dev, nil, &events.Contact{JID: jid, Action: &waSyncAction.ContactAction{}})
+	c.handleContactUpdate(t.Context(), sink, dev, nil, &events.Contact{JID: jid, Action: &waSyncAction.ContactAction{}})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want nothing reported for a contact action with no name", sink.Lines())
@@ -51,13 +47,11 @@ func TestHandleContactUpdate_IgnoresAnActionThatNamesNoOne(t *testing.T) {
 func TestHandleContactUpdate_NeverRetitlesTheSelfChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	own := types.NewJID("15551234567", types.DefaultUserServer)
-	dev := newFakeDevice()
 	dev.selfJID = own
-	var sink connectortest.Sink
 
-	c.handleContactUpdate(t.Context(), &sink, dev, nil, &events.Contact{
+	c.handleContactUpdate(t.Context(), sink, dev, nil, &events.Contact{
 		JID: own, Action: &waSyncAction.ContactAction{FullName: strPtr("Tim Little")},
 	})
 
@@ -101,13 +95,11 @@ func TestHandleContactUpdate_RetitlesAPNKnownChatEvenWhenNamedByItsLID(t *testin
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	lid := types.NewJID("987654", types.HiddenUserServer)
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	c.rememberName(remoteID(phone), "+15551234567", nameRankPushName) // the chat's current, weak fallback, keyed by phone JID
-	dev := newFakeDevice()
 	dev.lidPhones = map[string]types.JID{lid.String(): phone}
-	var sink connectortest.Sink
 
-	c.handleContactUpdate(t.Context(), &sink, dev, nil, &events.Contact{
+	c.handleContactUpdate(t.Context(), sink, dev, nil, &events.Contact{
 		JID: lid, Action: &waSyncAction.ContactAction{FullName: strPtr("Nadia Rahman")},
 	})
 
@@ -124,12 +116,10 @@ func TestHandlePushNameUpdate_RetitlesAPNKnownChatEvenWhenNamedByItsLID(t *testi
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	lid := types.NewJID("987654", types.HiddenUserServer)
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink := handlerFixture(t)
 	dev.lidPhones = map[string]types.JID{lid.String(): phone}
-	var sink connectortest.Sink
 
-	c.handlePushNameUpdate(t.Context(), &sink, dev, nil, &events.PushName{JID: lid, NewPushName: "Nadia"})
+	c.handlePushNameUpdate(t.Context(), sink, dev, nil, &events.PushName{JID: lid, NewPushName: "Nadia"})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
 		t.Errorf("events = %q, want the already-known phone-JID chat retitled, not a new LID-keyed one", sink.Lines())
@@ -142,12 +132,10 @@ func TestHandlePushNameUpdate_RetitlesAPNKnownChatEvenWhenNamedByItsLID(t *testi
 func TestHandleBusinessNameUpdate_RetitlesAFallbackTitledChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
-	dev := newFakeDevice()
-	var sink connectortest.Sink
 
-	c.handleBusinessNameUpdate(t.Context(), &sink, dev, nil, &events.BusinessName{JID: jid, NewBusinessName: "Acme Support"})
+	c.handleBusinessNameUpdate(t.Context(), sink, dev, nil, &events.BusinessName{JID: jid, NewBusinessName: "Acme Support"})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Acme Support") {
 		t.Errorf("events = %q, want the conversation re-titled with the new business name", sink.Lines())
@@ -163,12 +151,10 @@ func TestHandleBusinessNameUpdate_RetitlesAPNKnownChatEvenWhenNamedByItsLID(t *t
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	lid := types.NewJID("987654", types.HiddenUserServer)
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink := handlerFixture(t)
 	dev.lidPhones = map[string]types.JID{lid.String(): phone}
-	var sink connectortest.Sink
 
-	c.handleBusinessNameUpdate(t.Context(), &sink, dev, nil, &events.BusinessName{JID: lid, NewBusinessName: "Acme Support"})
+	c.handleBusinessNameUpdate(t.Context(), sink, dev, nil, &events.BusinessName{JID: lid, NewBusinessName: "Acme Support"})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Acme Support") {
 		t.Errorf("events = %q, want the already-known phone-JID chat retitled, not a new LID-keyed one", sink.Lines())
@@ -178,12 +164,10 @@ func TestHandleBusinessNameUpdate_RetitlesAPNKnownChatEvenWhenNamedByItsLID(t *t
 func TestHandlePushNameUpdate_RetitlesAFallbackTitledChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
-	dev := newFakeDevice()
-	var sink connectortest.Sink
 
-	c.handlePushNameUpdate(t.Context(), &sink, dev, nil, &events.PushName{JID: jid, NewPushName: "Nadia"})
+	c.handlePushNameUpdate(t.Context(), sink, dev, nil, &events.PushName{JID: jid, NewPushName: "Nadia"})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
 		t.Errorf("events = %q, want the conversation re-titled with the new push name", sink.Lines())
@@ -193,13 +177,11 @@ func TestHandlePushNameUpdate_RetitlesAFallbackTitledChat(t *testing.T) {
 func TestHandlePushNameUpdate_NeverDowngradesAResolvedContactName(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
 	c.rememberName(remoteID(jid), "Nadia Rahman", nameRankContact)
-	dev := newFakeDevice()
-	var sink connectortest.Sink
 
-	c.handlePushNameUpdate(t.Context(), &sink, dev, nil, &events.PushName{JID: jid, NewPushName: "nads99"})
+	c.handlePushNameUpdate(t.Context(), sink, dev, nil, &events.PushName{JID: jid, NewPushName: "nads99"})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want a push name never to replace an already-resolved contact name", sink.Lines())
@@ -209,16 +191,14 @@ func TestHandlePushNameUpdate_NeverDowngradesAResolvedContactName(t *testing.T) 
 func TestHandleAppStateSyncComplete_NeverRetitlesTheSelfChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	own := types.NewJID("15551234567", types.DefaultUserServer)
 	c.noteChat(remoteID(own), domain.KindDirect)
 
-	dev := newFakeDevice()
 	dev.selfJID = own
 	dev.contactNames = map[string]string{"15551234567@s.whatsapp.net": "Tim Little"}
-	var sink connectortest.Sink
 
-	c.handleAppStateSyncComplete(t.Context(), &sink, dev, nil, &events.AppStateSyncComplete{})
+	c.handleAppStateSyncComplete(t.Context(), sink, dev, nil, &events.AppStateSyncComplete{})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want the self-chat's rescan to report nothing rather than a resolved contact name", sink.Lines())
@@ -228,16 +208,14 @@ func TestHandleAppStateSyncComplete_NeverRetitlesTheSelfChat(t *testing.T) {
 func TestHandleAppStateSyncComplete_RechecksEveryKnownDirectChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	jid := types.NewJID("987654", types.HiddenUserServer)
 	c.noteChat(remoteID(jid), domain.KindDirect)
 	c.rememberName(remoteID(jid), "Unknown contact", nameRankPushName)
 
-	dev := newFakeDevice()
 	dev.contactNames = map[string]string{"987654@lid": "Priya Nair"}
-	var sink connectortest.Sink
 
-	c.handleAppStateSyncComplete(t.Context(), &sink, dev, nil, &events.AppStateSyncComplete{})
+	c.handleAppStateSyncComplete(t.Context(), sink, dev, nil, &events.AppStateSyncComplete{})
 
 	if !sink.Has("conversation 987654@lid Priya Nair") {
 		t.Errorf("events = %q, want the LID chat re-titled once its contact resolves", sink.Lines())
@@ -247,15 +225,13 @@ func TestHandleAppStateSyncComplete_RechecksEveryKnownDirectChat(t *testing.T) {
 func TestHandleAppStateSyncComplete_NeverTouchesAGroup(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	group := types.NewJID("12345-1600000000", types.GroupServer)
 	c.noteChat(remoteID(group), domain.KindGroup)
 
-	dev := newFakeDevice()
 	dev.contactNames = map[string]string{"12345-1600000000@g.us": "should never be used"}
-	var sink connectortest.Sink
 
-	c.handleAppStateSyncComplete(t.Context(), &sink, dev, nil, &events.AppStateSyncComplete{})
+	c.handleAppStateSyncComplete(t.Context(), sink, dev, nil, &events.AppStateSyncComplete{})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want the rescan to skip known groups entirely", sink.Lines())

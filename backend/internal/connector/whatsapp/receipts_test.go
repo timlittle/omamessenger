@@ -12,7 +12,6 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -27,9 +26,7 @@ var (
 func TestReceipt_DirectChatReportsOnTheOnlyRecipient(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	dev, sink, c := connectedFixture(t)
 
 	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-1"}); err != nil {
 		t.Fatal(err)
@@ -50,13 +47,11 @@ func TestReceipt_DirectChatReportsOnTheOnlyRecipient(t *testing.T) {
 func TestReceipt_CanonicalizesTheSelfChatsLIDToMatchTheSentMessage(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, sink, c := connectedFixture(t)
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	lid := types.NewJID("111222", types.HiddenUserServer)
 	dev.selfJID = phone
 	dev.selfLID = lid
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
 
 	selfChat := domain.Conversation{RemoteID: remoteID(phone), Kind: domain.KindDirect}
 	if err := c.Send(t.Context(), selfChat, domain.Message{ID: "local-self"}); err != nil {
@@ -76,9 +71,7 @@ func TestReceipt_CanonicalizesTheSelfChatsLIDToMatchTheSentMessage(t *testing.T)
 func TestReceipt_GroupWaitsForEveryMemberBeforeAdvancing(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	dev, sink, c := connectedFixture(t)
 
 	if err := c.Send(t.Context(), groupChat, domain.Message{ID: "local-2"}); err != nil {
 		t.Fatal(err)
@@ -116,10 +109,8 @@ func TestReceipt_GroupDoesNotDoubleCountTheSameMemberUnderTwoAddressForms(t *tes
 	t.Parallel()
 
 	lidForA := types.NewJID("999888", types.HiddenUserServer)
-	dev := newFakeDevice()
+	dev, sink, c := connectedFixture(t)
 	dev.lidPhones = map[string]types.JID{lidForA.String(): groupMemberA}
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
 
 	if err := c.Send(t.Context(), groupChat, domain.Message{ID: "local-4"}); err != nil {
 		t.Fatal(err)
@@ -143,9 +134,7 @@ func TestReceipt_GroupDoesNotDoubleCountTheSameMemberUnderTwoAddressForms(t *tes
 func TestReceipt_IgnoresAMessageThisAccountDidNotSend(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	_, sink, c := connectedFixture(t)
 
 	c.fireReceipt(t.Context(), directPeer, directPeer, "unknown-wire-id", types.ReceiptTypeRead)
 
@@ -157,9 +146,7 @@ func TestReceipt_IgnoresAMessageThisAccountDidNotSend(t *testing.T) {
 func TestReceipt_IgnoresAReceiptKindItDoesNotTrack(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	dev, sink, c := connectedFixture(t)
 
 	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-3"}); err != nil {
 		t.Fatal(err)

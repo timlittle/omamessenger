@@ -17,7 +17,6 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -36,11 +35,8 @@ func onDemandSync(chatID string, msgs ...*waHistorySync.HistorySyncMsg) *events.
 // anchor message, and asks for exactly the given limit.
 func TestLoadOlder_SendsTheRequestWithTheRightAnchorAndCount(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		dev, sink, c, media := connectedMediaFixture(t)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{fromMe: false, timestamp: 1000}); err != nil {
@@ -83,11 +79,8 @@ func TestLoadOlder_SendsTheRequestWithTheRightAnchorAndCount(t *testing.T) {
 // LoadOlder's count matches how many actually were.
 func TestLoadOlder_AMatchingOnDemandHistorySyncResolvesItAndStoresHistory(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		dev, sink, c, media := connectedMediaFixture(t)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m2", messageKey{timestamp: 2000}); err != nil {
@@ -122,11 +115,8 @@ func TestLoadOlder_AMatchingOnDemandHistorySyncResolvesItAndStoresHistory(t *tes
 // call waiting on another one.
 func TestLoadOlder_IgnoresAnOnDemandSyncForADifferentChat(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		dev, sink, c, media := connectedMediaFixture(t)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{timestamp: 1000}); err != nil {
@@ -164,11 +154,8 @@ func TestLoadOlder_IgnoresAnOnDemandSyncForADifferentChat(t *testing.T) {
 // request behind it, and that the first call still resolves normally.
 func TestLoadOlder_RejectsASecondRequestForTheSameChatWhileOneIsInFlight(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		dev, sink, c, media := connectedMediaFixture(t)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{timestamp: 1000}); err != nil {
@@ -201,10 +188,7 @@ func TestLoadOlder_RejectsASecondRequestForTheSameChatWhileOneIsInFlight(t *test
 // rather than waiting forever.
 func TestLoadOlder_TimesOutAsHistoryUnavailableWhenThePhoneNeverAnswers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
+		_, _, c, media := connectedMediaFixture(t)
 		if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{timestamp: 1000}); err != nil {
 			t.Fatal(err)
 		}
@@ -236,8 +220,7 @@ func TestLoadOlder_TimesOutAsHistoryUnavailableWhenThePhoneNeverAnswers(t *testi
 func TestLoadOlder_WithNoAnchorDoesNothing(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
+	dev, _, c, _ := connectedMediaFixture(t)
 
 	n, err := c.LoadOlder(t.Context(), directChat, "", 50)
 	if err != nil || n != 0 {

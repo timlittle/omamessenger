@@ -17,7 +17,6 @@ import (
 
 	"go.mau.fi/whatsmeow"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -51,13 +50,11 @@ func testPNG(t *testing.T) []byte {
 func TestSend_UploadsAPhotoWithItsCaptionAndThumbnail(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, sink, c, _ := connectedMediaFixture(t)
 	dev.nextMessageID = "wire-1"
 	dev.uploadResp = whatsmeow.UploadResponse{
 		DirectPath: "/v/new", MediaKey: []byte("key"), FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 20,
 	}
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
 
 	path := writeAttachment(t, "photo.png", testPNG(t))
 	m := domain.Message{ID: "local-1", Text: "look", Media: &domain.Media{Kind: domain.MediaPhoto, Path: path, FileName: "photo.png"}}
@@ -94,11 +91,9 @@ func TestSend_UploadsAPhotoWithItsCaptionAndThumbnail(t *testing.T) {
 func TestSend_UploadsAVideoWithItsCaption(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, _ := connectedMediaFixture(t)
 	dev.nextMessageID = "wire-2"
 	dev.uploadResp = whatsmeow.UploadResponse{DirectPath: "/v/video", FileLength: 99}
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
 
 	path := writeAttachment(t, "clip.mp4", []byte("fake mp4 bytes"))
 	m := domain.Message{
@@ -126,11 +121,9 @@ func TestSend_UploadsAVideoWithItsCaption(t *testing.T) {
 func TestSend_UploadsADocumentWithItsFileName(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, _ := connectedMediaFixture(t)
 	dev.nextMessageID = "wire-3"
 	dev.uploadResp = whatsmeow.UploadResponse{DirectPath: "/v/doc"}
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
 
 	path := writeAttachment(t, "report.pdf", []byte("%PDF-1.4 fake"))
 	m := domain.Message{ID: "local-3", Text: "see attached", Media: &domain.Media{Kind: domain.MediaFile, Path: path, FileName: "report.pdf"}}
@@ -151,9 +144,7 @@ func TestSend_UploadsADocumentWithItsFileName(t *testing.T) {
 func TestSend_QuotesAReplyWhenSendingAnAttachment(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
+	dev, _, c, _ := connectedMediaFixture(t)
 
 	path := writeAttachment(t, "report.pdf", []byte("fake"))
 	m := domain.Message{
@@ -174,9 +165,7 @@ func TestSend_QuotesAReplyWhenSendingAnAttachment(t *testing.T) {
 func TestSend_FailsForAnUnreadableAttachment(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	dev, _, c := connectedFixture(t)
 
 	m := domain.Message{ID: "local-5", Media: &domain.Media{Kind: domain.MediaPhoto, Path: filepath.Join(t.TempDir(), "missing.jpg")}}
 	if err := c.Send(t.Context(), directChat, m); err == nil {
@@ -250,10 +239,8 @@ func TestScaledThumbSize_NeverGoesBelowOnePixel(t *testing.T) {
 func TestSend_ReportsFailureWhenUploadFails(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, sink, c := connectedFixture(t)
 	dev.uploadErr = errors.New("server rejected upload")
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
 
 	path := writeAttachment(t, "photo.png", testPNG(t))
 	m := domain.Message{ID: "local-6", Media: &domain.Media{Kind: domain.MediaPhoto, Path: path, FileName: "photo.png"}}

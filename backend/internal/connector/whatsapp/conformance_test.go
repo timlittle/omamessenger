@@ -52,9 +52,7 @@ func TestConformance_Lifecycle(t *testing.T) {
 func TestConformance_SendProgress(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	dev, sink, c := connectedFixture(t)
 
 	peer := types.NewJID("15559998888", types.DefaultUserServer)
 	conv := domain.Conversation{RemoteID: remoteID(peer), Kind: domain.KindDirect}
@@ -64,5 +62,5 @@ func TestConformance_SendProgress(t *testing.T) {
 
 	c.fireReceipt(t.Context(), peer, peer, dev.sent[0].id, types.ReceiptTypeRead)
 
-	connectortest.CheckSendProgress(t, &sink, "progress")
+	connectortest.CheckSendProgress(t, sink, "progress")
 }

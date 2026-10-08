@@ -18,7 +18,6 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -32,13 +31,17 @@ func historyMsg(id, text string, fromMe bool) *waHistorySync.HistorySyncMsg {
 	}}
 }
 
+// historySyncEvent wraps convs in the event envelope handleHistorySync
+// expects, the way a real history-sync blob arrives with one or more
+// conversations.
+func historySyncEvent(convs ...*waHistorySync.Conversation) *events.HistorySync {
+	return &events.HistorySync{Data: &waHistorySync.HistorySync{Conversations: convs}}
+}
+
 func TestHandleHistorySync_ReportsContactsConversationsAndMessages(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
 		Pushnames: []*waHistorySync.Pushname{{ID: strPtr("15551234567@s.whatsapp.net"), Pushname: strPtr("Nadia")}},
@@ -54,7 +57,7 @@ func TestHandleHistorySync_ReportsContactsConversationsAndMessages(t *testing.T)
 		},
 	}}
 
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	c.handleHistorySync(t.Context(), sink, dev, media, e)
 
 	want := []string{
 		"contact 15551234567@s.whatsapp.net Nadia",
@@ -150,11 +153,9 @@ func TestResolveGroupName_CachesAfterItsFirstResolve(t *testing.T) {
 func TestHandleHistorySync_NamesAGroupSenderFromAnAlreadyCachedPushName(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink, media := handlerMediaFixture(t)
 	laura := types.NewJID("15559990000", types.DefaultUserServer)
 	c.rememberName(remoteID(laura), "Laura", nameRankPushName) // seeded the way syncPushnames does, before this conversation's own messages are processed
-	dev, media := newFakeDevice(), newTestMediaStore(t)
-	var sink connectortest.Sink
 
 	// The message itself carries no push name of its own, which is
 	// common for a group's history sync, so naming its sender has to
@@ -165,13 +166,11 @@ func TestHandleHistorySync_NamesAGroupSenderFromAnAlreadyCachedPushName(t *testi
 		Message:          &waE2E.Message{Conversation: strPtr("see you there")},
 		MessageTimestamp: u64(1),
 	}}
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID: strPtr("12345-1600000000@g.us"), DisplayName: strPtr("Tim and Laura"),
-			Messages: []*waHistorySync.HistorySyncMsg{msg},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{
+		ID: strPtr("12345-1600000000@g.us"), DisplayName: strPtr("Tim and Laura"),
+		Messages: []*waHistorySync.HistorySyncMsg{msg},
+	}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	live := sink.Messages()["12345-1600000000@g.us"]
 	if len(live) != 1 || live[0].SenderName != "Laura" {
@@ -182,17 +181,11 @@ func TestHandleHistorySync_NamesAGroupSenderFromAnAlreadyCachedPushName(t *testi
 func TestHandleHistorySync_ResolvesALIDChatToItsContactsSavedName(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev, media := newFakeDevice(), newTestMediaStore(t)
+	c, dev, sink, media := handlerMediaFixture(t)
 	dev.contactNames = map[string]string{"987654@lid": "Priya Nair"}
-	var sink connectortest.Sink
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID: strPtr("987654@lid"), Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{ID: strPtr("987654@lid"), Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)}}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	if !sink.Has("conversation 987654@lid Priya Nair") {
 		t.Errorf("events = %q, want the LID chat titled with its contact's name", sink.Lines())
@@ -202,17 +195,10 @@ func TestHandleHistorySync_ResolvesALIDChatToItsContactsSavedName(t *testing.T) 
 func TestHandleHistorySync_FallsBackToANeutralLabelForAnUnresolvedLID(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID: strPtr("987654@lid"), Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{ID: strPtr("987654@lid"), Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)}}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	if !sink.Has("conversation 987654@lid Unknown contact") {
 		t.Errorf("events = %q, want a neutral label rather than the hidden id formatted as a phone number", sink.Lines())
@@ -242,13 +228,8 @@ func TestHandleHistorySync_NeverCreatesAConversationWithNoRealMessage(t *testing
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			c := New(domain.Account{ID: "wa"}, t.TempDir())
-			dev := newFakeDevice()
-			media := newTestMediaStore(t)
-			var sink connectortest.Sink
-
-			e := &events.HistorySync{Data: &waHistorySync.HistorySync{Conversations: []*waHistorySync.Conversation{tt.conv}}}
-			c.handleHistorySync(t.Context(), &sink, dev, media, e)
+			c, dev, sink, media := handlerMediaFixture(t)
+			c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(tt.conv))
 
 			if len(sink.Lines()) != 0 {
 				t.Errorf("events = %q, want nothing reported with no real message", sink.Lines())
@@ -260,26 +241,20 @@ func TestHandleHistorySync_NeverCreatesAConversationWithNoRealMessage(t *testing
 func TestHandleHistorySync_StillUpdatesAConversationAlreadyKnownWithoutNewMessages(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev, media := newFakeDevice(), newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
-			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{
+		ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
+		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+	}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 	sink.Take()
 
 	// A later, smaller sync of the same chat carries an updated pinned
 	// state but no messages of its own: since this connector already
 	// reported the chat for real, that update must still land.
-	pinned := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), Pinned: u32(1)}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, pinned)
+	pinned := &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), Pinned: u32(1)}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(pinned))
 
 	if !sink.Has("organized 15551234567@s.whatsapp.net true false") {
 		t.Errorf("events = %q, want the already-known chat's pin update to still land", sink.Lines())
@@ -289,18 +264,13 @@ func TestHandleHistorySync_StillUpdatesAConversationAlreadyKnownWithoutNewMessag
 func TestHandleHistorySync_SkipsSystemConversations(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{
-			{ID: strPtr("status@broadcast")},
-			{ID: strPtr("1@newsletter")},
-		},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	e := historySyncEvent(
+		&waHistorySync.Conversation{ID: strPtr("status@broadcast")},
+		&waHistorySync.Conversation{ID: strPtr("1@newsletter")},
+	)
+	c.handleHistorySync(t.Context(), sink, dev, media, e)
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want none of these system JIDs reported as a conversation", sink.Lines())
@@ -310,18 +280,13 @@ func TestHandleHistorySync_SkipsSystemConversations(t *testing.T) {
 func TestHandleHistorySync_ShowsTheOfficialWhatsAppAccountWhenItHasAMessage(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID:       strPtr("0@s.whatsapp.net"),
-			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "your security code changed", false)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{
+		ID:       strPtr("0@s.whatsapp.net"),
+		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "your security code changed", false)},
+	}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	if !sink.Has("conversation 0@s.whatsapp.net WhatsApp") {
 		t.Errorf("events = %q, want the \"0\" system account shown as a conversation titled WhatsApp", sink.Lines())
@@ -334,19 +299,14 @@ func TestHandleHistorySync_ShowsTheOfficialWhatsAppAccountWhenItHasAMessage(t *t
 func TestHandleHistorySync_TitlesTheSelfChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink, media := handlerMediaFixture(t)
 	dev.selfJID = types.NewJID("15551234567", types.DefaultUserServer)
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID:       strPtr("15551234567@s.whatsapp.net"),
-			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "note to self", true)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{
+		ID:       strPtr("15551234567@s.whatsapp.net"),
+		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "note to self", true)},
+	}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Message yourself") {
 		t.Errorf("events = %q, want the self-chat titled \"Message yourself\"", sink.Lines())
@@ -359,18 +319,14 @@ func TestHandleHistorySync_TitlesTheSelfChat(t *testing.T) {
 func TestHandleHistorySync_CollapsesTheSelfChatsLIDFormIntoThePhoneJID(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev, media := newFakeDevice(), newTestMediaStore(t)
+	c, dev, sink, media := handlerMediaFixture(t)
 	dev.selfJID, dev.selfLID = types.NewJID("15551234567", types.DefaultUserServer), types.NewJID("111222", types.HiddenUserServer)
-	var sink connectortest.Sink
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID:       strPtr("111222@lid"),
-			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "reply from the bot", true)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{
+		ID:       strPtr("111222@lid"),
+		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "reply from the bot", true)},
+	}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Message yourself") {
 		t.Errorf("events = %q, want the LID-addressed self-chat filed under the phone JID", sink.Lines())
@@ -386,17 +342,10 @@ func TestHandleHistorySync_CollapsesTheSelfChatsLIDFormIntoThePhoneJID(t *testin
 func TestHandleHistorySync_FallsBackToAPhoneNumberForAnUnnamedDirectChat(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID: strPtr("15551234567@s.whatsapp.net"), Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)}}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net +15551234567") {
 		t.Errorf("events = %q, want the phone number as a fallback title", sink.Lines())
@@ -406,10 +355,7 @@ func TestHandleHistorySync_FallsBackToAPhoneNumberForAnUnnamedDirectChat(t *test
 func TestHandleHistorySync_PersistsAMessagesMediaReference(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	hm := &waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
 		Key: &waCommon.MessageKey{ID: strPtr("H1")},
@@ -419,10 +365,8 @@ func TestHandleHistorySync_PersistsAMessagesMediaReference(t *testing.T) {
 		}},
 		MessageTimestamp: u64(1),
 	}}
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), Messages: []*waHistorySync.HistorySyncMsg{hm}}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), Messages: []*waHistorySync.HistorySyncMsg{hm}}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	ref, ok, err := media.get(t.Context(), "15551234567@s.whatsapp.net", "H1")
 	if err != nil {
@@ -440,20 +384,15 @@ func TestHandleHistorySync_PersistsAMessagesMediaReference(t *testing.T) {
 func TestHandleHistorySync_DropsAReactionFromHistory(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	hm := &waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
 		Key:              &waCommon.MessageKey{ID: strPtr("H1")},
 		Message:          &waE2E.Message{ReactionMessage: &waE2E.ReactionMessage{Key: &waCommon.MessageKey{ID: strPtr("H0")}, Text: strPtr("👍")}},
 		MessageTimestamp: u64(1),
 	}}
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), Messages: []*waHistorySync.HistorySyncMsg{hm}}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), Messages: []*waHistorySync.HistorySyncMsg{hm}}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	if sink.Has("history 15551234567@s.whatsapp.net H1") {
 		t.Error("a reaction protocol message was reported as history")
@@ -463,15 +402,10 @@ func TestHandleHistorySync_DropsAReactionFromHistory(t *testing.T) {
 func TestHandleHistorySync_DropsAConversationWithAnUnparseableID(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{Name: strPtr("Nameless")}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	conv := &waHistorySync.Conversation{Name: strPtr("Nameless")}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want none for an unparseable id", sink.Lines())

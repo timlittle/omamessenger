@@ -7,6 +7,7 @@ package whatsapp
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -606,6 +607,48 @@ func newConnectorWithMedia(dev device, sink connector.Sink, media *mediaStore) *
 	return c
 }
 
+// connectedFixture returns a fake device, a recording sink and a
+// connector wired to them exactly as connectedTo does, for the common
+// case of a test that drives Connector's exported methods, or an
+// unexported event handler, without needing a media store.
+func connectedFixture(t *testing.T) (*fakeDevice, *connectortest.Sink, *Connector) {
+	t.Helper()
+	dev, sink := newFakeDevice(), &connectortest.Sink{}
+
+	return dev, sink, connectedTo(dev, sink)
+}
+
+// connectedMediaFixture is connectedFixture with an in-memory media
+// store wired in too, exactly as connectedToWithMedia does, returning
+// the store so a test can seed or read back a message key or media
+// reference with c.mediaFor().
+func connectedMediaFixture(t *testing.T) (*fakeDevice, *connectortest.Sink, *Connector, *mediaStore) {
+	t.Helper()
+	dev, sink := newFakeDevice(), &connectortest.Sink{}
+	c := connectedToWithMedia(t, dev, sink)
+
+	return dev, sink, c, c.mediaFor()
+}
+
+// handlerFixture returns a connector, a fake device and a recording sink
+// for a test that calls one of the package's unexported event handlers
+// directly, the way history_test.go drives handleHistorySync and
+// live_test.go drives live.go's handlers, without a media store.
+func handlerFixture(t *testing.T) (*Connector, *fakeDevice, *connectortest.Sink) {
+	t.Helper()
+
+	return New(domain.Account{ID: "wa"}, t.TempDir()), newFakeDevice(), &connectortest.Sink{}
+}
+
+// handlerMediaFixture is handlerFixture with a temporary on-disk media
+// store wired in too, for a handler test that saves or looks up a
+// message key or media reference.
+func handlerMediaFixture(t *testing.T) (*Connector, *fakeDevice, *connectortest.Sink, *mediaStore) {
+	t.Helper()
+
+	return New(domain.Account{ID: "wa"}, t.TempDir()), newFakeDevice(), &connectortest.Sink{}, newTestMediaStore(t)
+}
+
 // newTestMediaStore opens a media store in a fresh temporary directory,
 // closing it when the test ends.
 func newTestMediaStore(t *testing.T) *mediaStore {
@@ -662,14 +705,7 @@ func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID,
 	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name})
 }
 
-// contains reports whether s holds substr, without pulling in strings
-// just for one assertion that an error message leaked nothing.
+// contains reports whether s holds substr.
 func contains(s, substr string) bool {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-
-	return false
+	return strings.Contains(s, substr)
 }

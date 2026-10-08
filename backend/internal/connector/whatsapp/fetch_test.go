@@ -17,21 +17,19 @@ import (
 
 	"go.mau.fi/whatsmeow"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, media := connectedMediaFixture(t)
 	dev.downloadData = []byte("decrypted bytes")
-	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
 	ref := mediaRef{
 		Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"),
 		FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 16, Mimetype: "image/jpeg",
 	}
-	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
 		t.Fatal(err)
 	}
 
@@ -62,14 +60,13 @@ func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 func TestFetchMedia_DownloadsAnAudioReference(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, media := connectedMediaFixture(t)
 	dev.downloadData = []byte("decrypted voice note")
-	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
 	ref := mediaRef{
 		Kind: mediaKindAudio, DirectPath: "/v/voice", MediaKey: []byte("key"),
 		FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 9, Mimetype: "audio/ogg; codecs=opus",
 	}
-	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-voice", ref); err != nil {
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-voice", ref); err != nil {
 		t.Fatal(err)
 	}
 
@@ -101,10 +98,9 @@ func TestFetchMedia_ReportsDecryptFailureForAWornOutReference(t *testing.T) {
 		whatsmeow.ErrInvalidMediaHMAC, whatsmeow.ErrInvalidMediaEncSHA256,
 		whatsmeow.ErrInvalidMediaSHA256, whatsmeow.ErrInvalidUnencryptedMediaSHA256,
 	} {
-		dev := newFakeDevice()
+		dev, _, c, media := connectedMediaFixture(t)
 		dev.downloadErr = want
-		c := connectedToWithMedia(t, dev, &connectortest.Sink{})
-		if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+		if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
 			t.Fatal(err)
 		}
 
@@ -127,11 +123,10 @@ func TestFetchMedia_ReportsDecryptFailureForAWornOutReference(t *testing.T) {
 func TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, media := connectedMediaFixture(t)
 	dev.downloadData = []byte("decrypted anyway")
 	dev.downloadErr = whatsmeow.ErrInvalidMediaSHA256
-	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
-	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -149,8 +144,7 @@ func TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest(t *testing.T) {
 func TestFetchMedia_ReportsNotFoundForAnUnsavedMessage(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
+	dev, _, c, _ := connectedMediaFixture(t)
 
 	err := c.FetchMedia(t.Context(), directChat, "missing", filepath.Join(t.TempDir(), "x"))
 	if !errors.Is(err, domain.ErrNotFound) {
@@ -175,10 +169,9 @@ func TestFetchMedia_FailsWhenNotConnected(t *testing.T) {
 func TestFetchMedia_WrapsADownloadError(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, media := connectedMediaFixture(t)
 	dev.downloadErr = errors.New("media server unavailable")
-	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
-	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -190,11 +183,10 @@ func TestFetchMedia_WrapsADownloadError(t *testing.T) {
 
 func TestFetchMedia_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
+		dev, _, c, media := connectedMediaFixture(t)
 		dev.downloadBlocks = true
-		c := connectedToWithMedia(t, dev, &connectortest.Sink{})
-		defer func() { _ = c.mediaFor().close() }() // stop its connection-opener goroutine before the bubble ends
-		if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+		defer func() { _ = media.close() }() // stop its connection-opener goroutine before the bubble ends
+		if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
 			t.Fatal(err)
 		}
 

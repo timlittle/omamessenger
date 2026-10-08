@@ -6,7 +6,6 @@ import (
 
 	"go.mau.fi/whatsmeow/types"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -15,14 +14,11 @@ func TestMembers_NamesEachParticipant(t *testing.T) {
 
 	alice := types.NewJID("1111", types.DefaultUserServer)
 	bob := types.NewJID("2222", types.DefaultUserServer)
-	dev := newFakeDevice()
+	dev, _, c := connectedFixture(t)
 	dev.contactNames = map[string]string{alice.String(): "Alice"}
 	dev.participants = map[string][]types.GroupParticipant{
 		"120363000000000000@g.us": {{JID: alice}, {JID: bob, DisplayName: "Participant"}},
 	}
-
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
 
 	got, err := c.Members(t.Context(), domain.Conversation{RemoteID: "120363000000000000@g.us"})
 	if err != nil {
@@ -42,11 +38,8 @@ func TestMembers_FallsBackToTheGenericName(t *testing.T) {
 	t.Parallel()
 
 	ghost := types.NewJID("3333", types.DefaultUserServer)
-	dev := newFakeDevice()
+	dev, _, c := connectedFixture(t)
 	dev.participants = map[string][]types.GroupParticipant{"120363000000000001@g.us": {{JID: ghost}}}
-
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
 
 	got, err := c.Members(t.Context(), domain.Conversation{RemoteID: "120363000000000001@g.us"})
 	if err != nil {
@@ -60,8 +53,7 @@ func TestMembers_FallsBackToTheGenericName(t *testing.T) {
 func TestMembers_RejectsAnInvalidRemoteID(t *testing.T) {
 	t.Parallel()
 
-	var sink connectortest.Sink
-	c := connectedTo(newFakeDevice(), &sink)
+	_, _, c := connectedFixture(t)
 
 	if _, err := c.Members(t.Context(), domain.Conversation{RemoteID: "not-a-jid"}); err == nil {
 		t.Error("Members: want an error for a bad remote id")

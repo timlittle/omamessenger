@@ -16,7 +16,6 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -47,11 +46,8 @@ func lunchPoll() domain.Poll {
 func TestVote_SendsTheEncryptedMessageAndReportsTheTally(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, sink, c, media := connectedMediaFixture(t)
 	dev.buildVoteResp = &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{}}
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -85,9 +81,7 @@ func TestVote_SendsTheEncryptedMessageAndReportsTheTally(t *testing.T) {
 func TestVote_UnknownTargetFailsSafely(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
+	dev, _, c, _ := connectedMediaFixture(t)
 
 	err := c.Vote(t.Context(), directChat, "never-seen", []string{"a"})
 	if !errors.Is(err, errUnknownVoteTarget) {
@@ -101,10 +95,7 @@ func TestVote_UnknownTargetFailsSafely(t *testing.T) {
 func TestVote_UnknownPollFailsSafely(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	_, _, c, media := connectedMediaFixture(t)
 
 	// The message key is known, as it would be for any ordinary
 	// message, but no poll was ever saved for it, as a plain text
@@ -121,10 +112,7 @@ func TestVote_UnknownPollFailsSafely(t *testing.T) {
 func TestVote_UnknownOptionFailsSafely(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	_, _, c, media := connectedMediaFixture(t)
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -141,9 +129,7 @@ func TestVote_UnknownOptionFailsSafely(t *testing.T) {
 func TestVote_FailsWithoutAMediaStore(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	_, _, c := connectedFixture(t)
 
 	if err := c.Vote(t.Context(), directChat, "M1", []string{"a"}); !errors.Is(err, errNotConnected) {
 		t.Errorf("Vote = %v, want errNotConnected without a media store", err)
@@ -153,12 +139,9 @@ func TestVote_FailsWithoutAMediaStore(t *testing.T) {
 func TestVote_WrapsADeviceError(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, sink, c, media := connectedMediaFixture(t)
 	dev.sendErr = errors.New("server unavailable")
 	dev.buildVoteResp = &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{}}
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -178,10 +161,7 @@ func TestVote_WrapsADeviceError(t *testing.T) {
 func TestHandlePollVote_TalliesAVoteFromSomeoneElse(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	if err := media.putPoll(t.Context(), directChat.RemoteID, "poll1", lunchPoll()); err != nil {
 		t.Fatal(err)
@@ -195,7 +175,7 @@ func TestHandlePollVote_TalliesAVoteFromSomeoneElse(t *testing.T) {
 		PollCreationMessageKey: pollCreationKey("poll1"),
 	}}}
 
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	poll, ok := sink.PollFor(directChat.RemoteID, "poll1")
 	if !ok || poll.TotalVoters != 1 || poll.Options[0].Votes != 1 || poll.Options[0].Chosen {
@@ -206,10 +186,7 @@ func TestHandlePollVote_TalliesAVoteFromSomeoneElse(t *testing.T) {
 func TestHandlePollVote_TalliesOurOwnVoteEchoedBack(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	if err := media.putPoll(t.Context(), directChat.RemoteID, "poll1", lunchPoll()); err != nil {
 		t.Fatal(err)
@@ -222,7 +199,7 @@ func TestHandlePollVote_TalliesOurOwnVoteEchoedBack(t *testing.T) {
 		PollCreationMessageKey: pollCreationKey("poll1"),
 	}}}
 
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	poll, ok := sink.PollFor(directChat.RemoteID, "poll1")
 	if !ok || !poll.Options[0].Chosen {
@@ -243,11 +220,8 @@ func TestHandlePollVote_RevoteUnderTheOtherAddressFormReplacesNotAdds(t *testing
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	lid := types.NewJID("987654", types.HiddenUserServer)
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
+	c, dev, sink, media := handlerMediaFixture(t)
 	dev.lidPhones = map[string]types.JID{lid.String(): phone}
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
 	if err := media.putPoll(t.Context(), directChat.RemoteID, "poll1", lunchPoll()); err != nil {
 		t.Fatal(err)
@@ -256,13 +230,13 @@ func TestHandlePollVote_RevoteUnderTheOtherAddressFormReplacesNotAdds(t *testing
 	info := liveInfo()
 	info.Sender = lid
 	dev.decryptVoteResp = &waE2E.PollVoteMessage{SelectedOptions: [][]byte{mustHash(t, "Pizza")}}
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
 		Info: info, Message: &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{PollCreationMessageKey: pollCreationKey("poll1")}},
 	})
 
 	info.Sender = phone
 	dev.decryptVoteResp = &waE2E.PollVoteMessage{SelectedOptions: [][]byte{mustHash(t, "Salad")}}
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
 		Info: info, Message: &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{PollCreationMessageKey: pollCreationKey("poll1")}},
 	})
 
@@ -281,10 +255,7 @@ func TestHandlePollVote_RevoteUnderTheOtherAddressFormReplacesNotAdds(t *testing
 func TestHandlePollVote_DropsOnDecryptFailure(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
+	c, dev, sink, media := handlerMediaFixture(t)
 
 	if err := media.putPoll(t.Context(), directChat.RemoteID, "poll1", lunchPoll()); err != nil {
 		t.Fatal(err)
@@ -295,7 +266,7 @@ func TestHandlePollVote_DropsOnDecryptFailure(t *testing.T) {
 		PollCreationMessageKey: pollCreationKey("poll1"),
 	}}}
 
-	c.handleMessage(t.Context(), &sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, e)
 
 	if _, ok := sink.PollFor(directChat.RemoteID, "poll1"); ok {
 		t.Error("a poll was tallied despite the vote failing to decrypt")
@@ -305,9 +276,7 @@ func TestHandlePollVote_DropsOnDecryptFailure(t *testing.T) {
 func TestHandlePollVote_DropsWithoutAMediaStore(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	var sink connectortest.Sink
+	c, dev, sink := handlerFixture(t)
 
 	e := &events.Message{Info: liveInfo(), Message: &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{
 		PollCreationMessageKey: pollCreationKey("poll1"),
@@ -315,5 +284,5 @@ func TestHandlePollVote_DropsWithoutAMediaStore(t *testing.T) {
 
 	// Must not panic with a nil media store, the same as every other
 	// handler that only saves a message key or reference best effort.
-	c.handleMessage(t.Context(), &sink, dev, nil, e)
+	c.handleMessage(t.Context(), sink, dev, nil, e)
 }

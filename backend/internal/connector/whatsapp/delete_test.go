@@ -17,18 +17,15 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestHandleDeleteForMe_ReportsTheMessageDeleted(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	var sink connectortest.Sink
+	c, dev, sink := handlerFixture(t)
 
-	c.handleDeleteForMe(t.Context(), &sink, dev, nil, &events.DeleteForMe{
+	c.handleDeleteForMe(t.Context(), sink, dev, nil, &events.DeleteForMe{
 		ChatJID: types.NewJID("15551234567", types.DefaultUserServer), MessageID: "M1",
 	})
 
@@ -45,14 +42,12 @@ func TestHandleDeleteForMe_ReportsTheMessageDeleted(t *testing.T) {
 func TestHandleDeleteForMe_ResolvesALIDChatToItsPhoneJID(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink := handlerFixture(t)
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	lid := types.NewJID("987654", types.HiddenUserServer)
-	dev := newFakeDevice()
 	dev.lidPhones = map[string]types.JID{lid.String(): phone}
-	var sink connectortest.Sink
 
-	c.handleDeleteForMe(t.Context(), &sink, dev, nil, &events.DeleteForMe{ChatJID: lid, MessageID: "M1"})
+	c.handleDeleteForMe(t.Context(), sink, dev, nil, &events.DeleteForMe{ChatJID: lid, MessageID: "M1"})
 
 	if !sink.Has("deleted 15551234567@s.whatsapp.net M1") {
 		t.Errorf("events = %q, want the LID-addressed delete resolved to the phone JID", sink.Lines())
@@ -69,20 +64,17 @@ func TestHandleDeleteForMe_ResolvesALIDChatToItsPhoneJID(t *testing.T) {
 func TestHandleMessage_RevokeAddressedByLIDMatchesAMessageStoredUnderItsPhoneJID(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink, media := handlerMediaFixture(t)
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	lid := types.NewJID("987654", types.HiddenUserServer)
-	dev := newFakeDevice()
 	dev.lidPhones = map[string]types.JID{lid.String(): phone}
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: phone, Sender: phone}, ID: "M1", PushName: "Nadia", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("hello")},
 	})
 
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: lid, Sender: lid}, Timestamp: time.Unix(2, 0)},
 		Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REVOKE.Enum(), Key: &waCommon.MessageKey{ID: strPtr("M1")}}},
 	})
@@ -99,19 +91,16 @@ func TestHandleMessage_RevokeAddressedByLIDMatchesAMessageStoredUnderItsPhoneJID
 func TestHandleMessage_RevokeInTheSelfChatMatchesRegardlessOfWhichFormSentIt(t *testing.T) {
 	t.Parallel()
 
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c, dev, sink, media := handlerMediaFixture(t)
 	phone, lid := types.NewJID("15551234567", types.DefaultUserServer), types.NewJID("111222", types.HiddenUserServer)
-	dev := newFakeDevice()
 	dev.selfJID, dev.selfLID = phone, lid
-	media := newTestMediaStore(t)
-	var sink connectortest.Sink
 
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: phone, Sender: phone, IsFromMe: true}, ID: "M1", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("note to self")},
 	})
 
-	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: lid, Sender: lid, IsFromMe: true}, Timestamp: time.Unix(2, 0)},
 		Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REVOKE.Enum(), Key: &waCommon.MessageKey{ID: strPtr("M1")}}},
 	})
@@ -124,10 +113,7 @@ func TestHandleMessage_RevokeInTheSelfChatMatchesRegardlessOfWhichFormSentIt(t *
 func TestDeleteMessages_RevokesOurOwnMessageForEveryone(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, _, c, media := connectedMediaFixture(t)
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: "", fromMe: true, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -149,10 +135,7 @@ func TestDeleteMessages_RevokesOurOwnMessageForEveryone(t *testing.T) {
 func TestDeleteMessages_RefusesToRevokeSomeoneElsesMessage(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, _, c, media := connectedMediaFixture(t)
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -170,9 +153,7 @@ func TestDeleteMessages_RefusesToRevokeSomeoneElsesMessage(t *testing.T) {
 func TestDeleteMessages_RefusesToRevokeAnUnknownMessage(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
+	_, _, c, _ := connectedMediaFixture(t)
 
 	err := c.DeleteMessages(t.Context(), directChat, []string{"never-seen"}, true)
 	if !errors.Is(err, connector.ErrDeleteUnsupported) {
@@ -183,10 +164,7 @@ func TestDeleteMessages_RefusesToRevokeAnUnknownMessage(t *testing.T) {
 func TestDeleteMessages_DeletesForMeWithAnAppStatePatch(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, _, c, media := connectedMediaFixture(t)
 
 	// Someone else's message: "for me" works regardless of who sent it.
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
@@ -215,9 +193,7 @@ func TestDeleteMessages_DeletesForMeWithAnAppStatePatch(t *testing.T) {
 func TestDeleteMessages_DeletesForMeWithoutAMediaStore(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	dev, _, c := connectedFixture(t)
 
 	if err := c.DeleteMessages(t.Context(), directChat, []string{"M1"}, false); err != nil {
 		t.Fatal(err)
@@ -230,9 +206,7 @@ func TestDeleteMessages_DeletesForMeWithoutAMediaStore(t *testing.T) {
 func TestDeleteMessages_FailsForABadConversationID(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
+	_, _, c, _ := connectedMediaFixture(t)
 
 	err := c.DeleteMessages(t.Context(), domain.Conversation{RemoteID: "not-a-jid"}, []string{"M1"}, true)
 	if !errors.Is(err, errBadRemoteID) {
@@ -243,10 +217,8 @@ func TestDeleteMessages_FailsForABadConversationID(t *testing.T) {
 func TestDeleteMessages_WrapsAWhatsAppError(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, _ := connectedMediaFixture(t)
 	dev.appStateErr = errors.New("server unavailable")
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
 
 	if err := c.DeleteMessages(t.Context(), directChat, []string{"M1"}, false); !errors.Is(err, dev.appStateErr) {
 		t.Errorf("DeleteMessages = %v, want it to wrap the device's error", err)

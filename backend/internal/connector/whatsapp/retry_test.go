@@ -89,15 +89,11 @@ func seedRetryMessage(t *testing.T, media *mediaStore, messageRemoteID string, k
 // the stored reference being updated to that path.
 func TestFetchMedia_RetriesAnExpiredLinkThroughThePhone(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
 		key := testMediaKey(1)
+		dev, sink, c, media := connectedMediaFixture(t)
 		dev.downloadErrPaths = map[string]error{"/old": whatsmeow.ErrMediaDownloadFailedWith410}
 		dev.downloadData = []byte("fresh bytes")
-
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		seedRetryMessage(t, media, "msg-1", key, "/old")
@@ -141,18 +137,14 @@ func TestFetchMedia_RetriesAnExpiredLinkThroughThePhone(t *testing.T) {
 // HMAC already authenticated the file before that specific check ran.
 func TestFetchMedia_AcceptsAReuploadThatOnlyFailsThePlaintextDigest(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
 		key := testMediaKey(7)
+		dev, sink, c, media := connectedMediaFixture(t)
 		dev.downloadErrPaths = map[string]error{
 			"/old": whatsmeow.ErrMediaDownloadFailedWith410,
 			"/new": whatsmeow.ErrInvalidMediaSHA256,
 		}
 		dev.downloadData = []byte("re-encoded bytes")
-
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		seedRetryMessage(t, media, "msg-1", key, "/old")
@@ -183,14 +175,10 @@ func TestFetchMedia_AcceptsAReuploadThatOnlyFailsThePlaintextDigest(t *testing.T
 // category the UI shows as "no longer on the phone".
 func TestFetchMedia_ReportsExpiredWhenThePhoneSaysTheMediaIsGone(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
 		key := testMediaKey(2)
+		dev, sink, c, media := connectedMediaFixture(t)
 		dev.downloadErr = whatsmeow.ErrMediaDownloadFailedWith404
-
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		seedRetryMessage(t, media, "msg-1", key, "/old")
@@ -216,12 +204,8 @@ func TestFetchMedia_ReportsExpiredWhenThePhoneSaysTheMediaIsGone(t *testing.T) {
 // once mediaRetryTimeout elapses, rather than waiting forever.
 func TestFetchMedia_ReportsExpiredWhenThePhoneNeverAnswers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
+		dev, _, c, media := connectedMediaFixture(t)
 		dev.downloadErr = whatsmeow.ErrMediaDownloadFailedWith410
-
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
 		seedRetryMessage(t, media, "msg-1", testMediaKey(3), "/old")
 
 		path := filepath.Join(t.TempDir(), "x")
@@ -261,11 +245,10 @@ func TestFetchMedia_ConcurrentRetriesEachResolveTheirOwnMessage(t *testing.T) {
 		}
 		dev.downloadData = []byte("ok")
 
-		var sink connectortest.Sink
+		sink := &connectortest.Sink{}
 		media := newTestMediaStore(t)
-		c := &Connector{account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp}, answers: make(chan answer, 1)}
-		c.connected(dev, &sink, media)
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		c := newConnectorWithMedia(dev, sink, media)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		seedRetryMessage(t, media, "msg-1", key1, "/old-1")
@@ -327,8 +310,7 @@ func TestFetchMedia_ConcurrentRetriesEachResolveTheirOwnMessage(t *testing.T) {
 func TestRegisterRetryWaiter_CleanupStopsFurtherDelivery(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	c := connectedTo(dev, &connectortest.Sink{})
+	_, _, c := connectedFixture(t)
 
 	ch, cleanup := c.registerRetryWaiter("msg-1")
 	cleanup()
@@ -349,8 +331,7 @@ func TestRegisterRetryWaiter_CleanupStopsFurtherDelivery(t *testing.T) {
 func TestDeliverRetry_DropsAnAnswerNobodyIsWaitingFor(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	c := connectedTo(dev, &connectortest.Sink{})
+	_, _, c := connectedFixture(t)
 
 	c.deliverRetry(&events.MediaRetry{MessageID: "ghost"})
 }
@@ -362,11 +343,9 @@ func TestDeliverRetry_DropsAnAnswerNobodyIsWaitingFor(t *testing.T) {
 func TestFetchMedia_DoesNotRetryAGenericHTTPFailure(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, _, c, media := connectedMediaFixture(t)
 	dev.downloadErr = whatsmeow.DownloadHTTPError{Response: &http.Response{StatusCode: 500}}
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -385,15 +364,11 @@ func TestFetchMedia_DoesNotRetryAGenericHTTPFailure(t *testing.T) {
 // the request.
 func TestFetchMedia_Retries403ThroughThePhone(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
 		key := testMediaKey(6)
+		dev, sink, c, media := connectedMediaFixture(t)
 		dev.downloadErrPaths = map[string]error{"/old": whatsmeow.ErrMediaDownloadFailedWith403}
 		dev.downloadData = []byte("fresh bytes")
-
-		var sink connectortest.Sink
-		c := connectedToWithMedia(t, dev, &sink)
-		media := c.mediaFor()
-		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
 		defer unregister()
 
 		seedRetryMessage(t, media, "msg-1", key, "/old")

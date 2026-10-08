@@ -13,7 +13,6 @@ import (
 
 	"go.mau.fi/whatsmeow/types"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -35,11 +34,9 @@ var (
 func TestSend_SendsPlainTextAndReportsItSent(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, sink, c := connectedFixture(t)
 	dev.nextMessageID = "wire-1"
-	var sink connectortest.Sink
 
-	c := connectedTo(dev, &sink)
 	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-1", Text: "hi"}); err != nil {
 		t.Fatal(err)
 	}
@@ -56,10 +53,7 @@ func TestSend_SendsPlainTextAndReportsItSent(t *testing.T) {
 func TestSend_QuotesAReplyByStanzaIDAlone(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-
-	c := connectedTo(dev, &sink)
+	dev, _, c := connectedFixture(t)
 	m := domain.Message{ID: "local-2", Text: "sure", ReplyTo: &domain.Reply{RemoteID: "quoted-1", SenderName: "Nadia"}}
 	if err := c.Send(t.Context(), directChat, m); err != nil {
 		t.Fatal(err)
@@ -78,9 +72,7 @@ func TestSend_QuotesAReplyByStanzaIDAlone(t *testing.T) {
 func TestSend_RejectsAnAttachmentKindItCannotSend(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	dev, _, c := connectedFixture(t)
 
 	m := domain.Message{ID: "local-3", Media: &domain.Media{Kind: domain.MediaLink}}
 	if err := c.Send(t.Context(), directChat, m); !errors.Is(err, errUnsupportedAttachment) {
@@ -94,9 +86,7 @@ func TestSend_RejectsAnAttachmentKindItCannotSend(t *testing.T) {
 func TestSend_FailsForABadConversationID(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	_, _, c := connectedFixture(t)
 
 	err := c.Send(t.Context(), domain.Conversation{RemoteID: "not-a-jid"}, domain.Message{ID: "local-4"})
 	if !errors.Is(err, errBadRemoteID) {
@@ -107,10 +97,8 @@ func TestSend_FailsForABadConversationID(t *testing.T) {
 func TestSend_WrapsAWhatsAppError(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, sink, c := connectedFixture(t)
 	dev.sendErr = errors.New("server unavailable")
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
 
 	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-5"}); !errors.Is(err, dev.sendErr) {
 		t.Errorf("Send = %v, want it to wrap the device's error", err)
@@ -122,10 +110,8 @@ func TestSend_WrapsAWhatsAppError(t *testing.T) {
 
 func TestSend_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		dev := newFakeDevice()
+		dev, _, c := connectedFixture(t)
 		dev.sendBlocks = true
-		var sink connectortest.Sink
-		c := connectedTo(dev, &sink)
 
 		done := make(chan error, 1)
 		go func() { done <- c.Send(t.Context(), directChat, domain.Message{ID: "local-6"}) }()

@@ -11,17 +11,13 @@ import (
 
 	"go.mau.fi/whatsmeow/types"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestReact_SendsAndTalliesADirectReaction(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, sink, c, media := connectedMediaFixture(t)
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -51,10 +47,7 @@ func TestReact_SendsAndTalliesADirectReaction(t *testing.T) {
 func TestReact_SetsTheParticipantInAGroup(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, _, c, media := connectedMediaFixture(t)
 
 	sender := types.NewJID("15557654321", types.DefaultUserServer)
 	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "M2", messageKey{senderID: remoteID(sender), fromMe: false, timestamp: 1000}); err != nil {
@@ -74,10 +67,7 @@ func TestReact_SetsTheParticipantInAGroup(t *testing.T) {
 func TestReact_ToOurOwnMessageSetsNoParticipant(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, _, c, media := connectedMediaFixture(t)
 
 	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "M3", messageKey{senderID: "", fromMe: true, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -96,10 +86,7 @@ func TestReact_ToOurOwnMessageSetsNoParticipant(t *testing.T) {
 func TestReact_ClearingSendsAnEmptyReactionAndLowersTheTally(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
+	dev, sink, c, media := connectedMediaFixture(t)
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -124,9 +111,7 @@ func TestReact_ClearingSendsAnEmptyReactionAndLowersTheTally(t *testing.T) {
 func TestReact_UnknownTargetFailsSafely(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
+	dev, _, c, _ := connectedMediaFixture(t)
 
 	err := c.React(t.Context(), directChat, "never-seen", "👍")
 	if !errors.Is(err, errUnknownReactionTarget) {
@@ -140,9 +125,7 @@ func TestReact_UnknownTargetFailsSafely(t *testing.T) {
 func TestReact_FailsWithoutAMediaStore(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
+	_, _, c := connectedFixture(t)
 
 	if err := c.React(t.Context(), directChat, "M1", "👍"); !errors.Is(err, errNotConnected) {
 		t.Errorf("React = %v, want errNotConnected without a media store", err)
@@ -152,11 +135,8 @@ func TestReact_FailsWithoutAMediaStore(t *testing.T) {
 func TestReact_WrapsAWhatsAppError(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
+	dev, sink, c, media := connectedMediaFixture(t)
 	dev.sendErr = errors.New("server unavailable")
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
-	media := c.mediaFor()
 
 	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
@@ -173,9 +153,7 @@ func TestReact_WrapsAWhatsAppError(t *testing.T) {
 func TestReact_FailsForABadConversationID(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedToWithMedia(t, dev, &sink)
+	_, _, c, _ := connectedMediaFixture(t)
 
 	err := c.React(t.Context(), domain.Conversation{RemoteID: "not-a-jid"}, "M1", "👍")
 	if !errors.Is(err, errBadRemoteID) {

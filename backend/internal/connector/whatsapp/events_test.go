@@ -24,18 +24,23 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+// wireEvents returns a fake device, a recording sink, a connector and
+// the unregister func for a handleEvents dispatch already wired to dev
+// over an in-memory media store, the way Run wires it for a real
+// session.
+func wireEvents(t *testing.T) (*fakeDevice, *connectortest.Sink, *Connector, func()) {
+	t.Helper()
+
+	dev, sink, c, media := connectedMediaFixture(t)
+	unregister := c.handleEvents(t.Context(), dev, media, sink)
+
+	return dev, sink, c, unregister
+}
+
 func TestHandleEvents_DispatchesReceiptsToSink(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media, err := newInMemoryMediaStore(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	dev, sink, c, unregister := wireEvents(t)
 	defer unregister()
 
 	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-7"}); err != nil {
@@ -56,15 +61,7 @@ func TestHandleEvents_DispatchesReceiptsToSink(t *testing.T) {
 func TestHandleEvents_DispatchesSelfReadReceiptsToSink(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media, err := newInMemoryMediaStore(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	dev, sink, _, unregister := wireEvents(t)
 	defer unregister()
 
 	dev.fireEvent(&events.Receipt{
@@ -80,15 +77,7 @@ func TestHandleEvents_DispatchesSelfReadReceiptsToSink(t *testing.T) {
 func TestHandleEvents_DispatchesMarkChatAsReadToSink(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media, err := newInMemoryMediaStore(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	dev, sink, _, unregister := wireEvents(t)
 	defer unregister()
 
 	dev.fireEvent(&events.MarkChatAsRead{
@@ -104,15 +93,7 @@ func TestHandleEvents_DispatchesMarkChatAsReadToSink(t *testing.T) {
 func TestHandleEvents_DispatchesUndecryptableMessagesToSink(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media, err := newInMemoryMediaStore(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	dev, sink, _, unregister := wireEvents(t)
 	defer unregister()
 
 	dev.fireEvent(&events.UndecryptableMessage{Info: liveInfo()})
@@ -125,15 +106,7 @@ func TestHandleEvents_DispatchesUndecryptableMessagesToSink(t *testing.T) {
 func TestHandleEvents_IgnoresAnEventKindItDoesNotSwitchOn(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media, err := newInMemoryMediaStore(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	dev, sink, c, unregister := wireEvents(t)
 	defer unregister()
 
 	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-8"}); err != nil {
@@ -150,15 +123,7 @@ func TestHandleEvents_IgnoresAnEventKindItDoesNotSwitchOn(t *testing.T) {
 func TestHandleEvents_UnregisterStopsFurtherDispatch(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media, err := newInMemoryMediaStore(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	dev, sink, c, unregister := wireEvents(t)
 
 	if err := c.Send(t.Context(), directChat, domain.Message{ID: "local-9"}); err != nil {
 		t.Fatal(err)
@@ -183,15 +148,7 @@ func TestHandleEvents_UnregisterStopsFurtherDispatch(t *testing.T) {
 func TestHandleEvents_RoutesAMediaRetryAnswerToItsWaiter(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media, err := newInMemoryMediaStore(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	dev, _, c, unregister := wireEvents(t)
 	defer unregister()
 
 	ch, cleanup := c.registerRetryWaiter("msg-1")
@@ -213,15 +170,7 @@ func TestHandleEvents_RoutesAMediaRetryAnswerToItsWaiter(t *testing.T) {
 func TestHandleEvents_DropsAMuteChangeWithoutReportingAnything(t *testing.T) {
 	t.Parallel()
 
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media, err := newInMemoryMediaStore(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	dev, sink, _, unregister := wireEvents(t)
 	defer unregister()
 
 	dev.fireEvent(&events.Mute{JID: types.NewJID("15551234567", types.DefaultUserServer)})
@@ -235,12 +184,10 @@ func TestRun_HandlesEventsThatArriveWhileConnecting(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev := newFakeDevice()
 		dev.paired = true
-		dev.duringConnect = []any{&events.HistorySync{Data: &waHistorySync.HistorySync{
-			Conversations: []*waHistorySync.Conversation{{
-				ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
-				Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-			}},
-		}}}
+		dev.duringConnect = []any{historySyncEvent(&waHistorySync.Conversation{
+			ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+		})}
 		c := newTestConnector(dev)
 		var sink connectortest.Sink
 
@@ -344,12 +291,10 @@ func TestRun_RoutesEventsToTheirHandlers(t *testing.T) {
 		go func() { done <- c.Run(ctx, &sink) }()
 		synctest.Wait()
 
-		dev.fireEvent(&events.HistorySync{Data: &waHistorySync.HistorySync{
-			Conversations: []*waHistorySync.Conversation{{
-				ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
-				Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-			}},
-		}})
+		dev.fireEvent(historySyncEvent(&waHistorySync.Conversation{
+			ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+		}))
 		synctest.Wait()
 
 		if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {

@@ -132,7 +132,7 @@ func (d *whatsappDriver) syncConversation(ctx context.Context, e connectortest.E
 		Messages: []*waHistorySync.HistorySyncMsg{historyMsg(e.ConversationRemoteID+"-seed", "hello", false)},
 	}
 	d.current.handleHistorySync(ctx, d.sink, d.dev, d.media,
-		&events.HistorySync{Data: &waHistorySync.HistorySync{Conversations: []*waHistorySync.Conversation{sc}}})
+		historySyncEvent(sc))
 }
 
 // deliverMessage reports a message, live or from history.
@@ -161,7 +161,7 @@ func (d *whatsappDriver) deliverMessage(ctx context.Context, chat types.JID, e c
 		Messages: []*waHistorySync.HistorySyncMsg{historyMsg(e.MessageRemoteID, e.Text, false)},
 	}
 	d.current.handleHistorySync(ctx, d.sink, d.dev, d.media,
-		&events.HistorySync{Data: &waHistorySync.HistorySync{Conversations: []*waHistorySync.Conversation{sc}}})
+		historySyncEvent(sc))
 }
 
 // deliverOrganize reports a pin or an archive change, each field
