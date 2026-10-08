@@ -29,6 +29,9 @@ type Ingest struct {
 	store      *store.Store
 	notifier   Notifier
 	dispatcher Dispatcher
+	outgoing   OutgoingMedia
+	cache      MediaCache
+	logger     Logger
 	events     *events
 	ui         *uiState
 
@@ -235,8 +238,11 @@ func (in *Ingest) Organized(ctx context.Context, accountID, conversationRemoteID
 	in.events.publish(ctx, EventConversationUpdated, updated)
 }
 
-// OutgoingStatus records the service's id for a sent message and publishes
-// its delivery progress. Late or out-of-order receipts are ignored.
+// OutgoingStatus records the service's id for a sent message and
+// publishes its delivery progress. Late or out-of-order receipts are
+// ignored. Once delivery is confirmed (sent, delivered or read), the
+// message will never be retried, so its outgoing attachment, if any, is
+// dropped (see retireOutgoingAttachment).
 func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, status string) {
 	if remoteID != "" {
 		_ = in.store.SetMessageRemoteID(ctx, localMessageID, remoteID) // see the Ingest comment on dropped errors
@@ -248,6 +254,7 @@ func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, 
 	}
 
 	in.events.publish(ctx, EventMessageUpdated, m)
+	in.retireOutgoingAttachment(ctx, m)
 }
 
 // Typing publishes a typing indicator for a known conversation.
@@ -344,7 +351,9 @@ func (in *Ingest) scheduleMarkRead(conv domain.Conversation, unread int) {
 
 // flushMarkRead sends the debounced MarkRead call for the most recently
 // scheduled conversation, on its own background context: nothing in
-// whichever call triggered the schedule survives the wait.
+// whichever call triggered the schedule survives the wait. With read
+// receipts off, the local clear this debounce followed already stands on
+// its own, so the service is never told; see Settings.ReadReceipts.
 func (in *Ingest) flushMarkRead() {
 	in.mu.Lock()
 	conv := in.pendingConv
@@ -352,6 +361,11 @@ func (in *Ingest) flushMarkRead() {
 	in.pendingRead = nil
 	in.pendingUnread = 0
 	in.mu.Unlock()
+
+	settings, _, _ := in.ui.snapshot()
+	if !settings.ReadReceipts {
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), markReadTimeout)
 	defer cancel()

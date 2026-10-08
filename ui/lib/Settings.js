@@ -6,7 +6,7 @@
 // the helper's settings.apply expects.
 
 // DEFAULTS mirror the defaultValue of each setting in manifest.json.
-var DEFAULTS = { notifications: true, notificationDetail: 'nameAndMessage' };
+var DEFAULTS = { notifications: true, notificationDetail: 'nameAndMessage', readReceipts: true };
 
 // DETAIL_LABELS maps manifest.json's notificationDetail option labels,
 // which Omarchy shows the user as is, to the helper's own values.
@@ -23,12 +23,20 @@ var DETAIL_VALUES = ['nameAndMessage', 'nameOnly', 'none'];
 
 // withDefaults returns every known setting, taking the user's value where
 // there is one and the default otherwise. Unknown keys are dropped.
-function withDefaults(settings) {
+// currentReadReceipts, when given, replaces the manifest default as the
+// fallback for readReceipts: Service.qml passes its own current value so
+// that re-forwarding the bar widget's settings (which normally carries
+// no readReceipts key at all, since Omarchy only sends what the user
+// changed there) never undoes the palette's own "Toggle read receipts"
+// command.
+function withDefaults(settings, currentReadReceipts) {
   var given = settings ?? {};
+  var readReceiptsFallback = typeof currentReadReceipts === 'boolean' ? currentReadReceipts : DEFAULTS.readReceipts;
 
   return {
     notifications: typeof given.notifications === 'boolean' ? given.notifications : DEFAULTS.notifications,
     notificationDetail: resolveDetail(given),
+    readReceipts: typeof given.readReceipts === 'boolean' ? given.readReceipts : readReceiptsFallback,
   };
 }
 

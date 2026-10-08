@@ -32,6 +32,7 @@ type Commands struct {
 	ui           *uiState
 	refreshed    *attemptedRefresh
 	recentErrors *errorHistory
+	reminders    *reminders
 
 	// dataDir, dbPath, execName and helperVersion are read only by
 	// Doctor; see Deps.
@@ -77,6 +78,13 @@ func (c *Commands) Faked() bool {
 // UnreadTotal counts unread messages outside muted conversations.
 func (c *Commands) UnreadTotal(ctx context.Context) int {
 	return c.events.unreadTotal(ctx)
+}
+
+// RunReminders fires every snoozed conversation's reminder at its due
+// time, until ctx is cancelled. main.go starts it as its own goroutine
+// once, alongside the connectors.
+func (c *Commands) RunReminders(ctx context.Context) {
+	c.reminders.run(ctx)
 }
 
 // Accounts lists the signed-in accounts.

@@ -1,4 +1,5 @@
 import QtQuick
+import "../lib/Keymap.js" as Keymap
 
 // The windows that float over the three columns: the reaction picker, the
 // command palette, the health check report, the in-app photo viewer, the
@@ -12,6 +13,11 @@ Item {
   // service is the Service instance, read for the lists of known and
   // signed-in services the account and new-chat overlays show.
   property var service: null
+  // listController is bound into the archive-all question.
+  property var listController: null
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the photo viewer's own label.
+  readonly property var bindings: (root.service && root.service.effectiveBindings) || Keymap.BINDINGS
   // windowController is bound into the command palette and the close
   // question.
   property var windowController: null
@@ -63,10 +69,12 @@ Item {
 
   CommandPalette {
     open: root.windowController.paletteOpen
-    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation"
+    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation or search messages"
       : root.windowController.paletteMode === "links" ? "Open which link?"
+      : root.windowController.paletteMode === "snoozeCustom" ? "e.g. 2h, 18:00, mon 9:00"
       : "Type a command"
     items: root.windowController.paletteItems
+    sectioned: root.windowController.paletteMode === "conversations"
     currentIndex: root.windowController.paletteIndex
     routeKey: root.routeKey
     onQueryEdited: text => root.windowController.setPaletteQuery(text)
@@ -89,6 +97,7 @@ Item {
     photo: root.photoViewerController.viewerPhoto
     path: root.photoViewerController.viewerPath
     routeKey: root.routeKey
+    bindings: root.bindings
 
     onClosed: root.photoViewerController.close()
     onOpenExternally: root.photoViewerController.openExternally()
@@ -112,6 +121,16 @@ Item {
     onEveryone: root.deleteController.run("delete.everyone")
     onForMe: root.deleteController.run("delete.forMe")
     onCancelled: root.deleteController.close()
+    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+  }
+
+  // Tests may build this layout without a list controller.
+  ArchiveAllConfirm {
+    open: root.listController?.archiveAllOpen ?? false
+    count: root.listController?.archiveAllCount ?? 0
+    routeKey: root.routeKey
+    onConfirmed: root.listController.confirmArchiveAllRead()
+    onCancelled: root.listController.cancelArchiveAllRead()
     onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
   }
 

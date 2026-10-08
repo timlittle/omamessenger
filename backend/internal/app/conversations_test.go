@@ -119,6 +119,33 @@ func TestMarkRead_TellsTheServiceHowManyWereUnread(t *testing.T) {
 	}
 }
 
+// TestMarkRead_SkipsTheServiceWithReadReceiptsOff checks incognito read
+// receipts: the local unread count still clears, but the service is never
+// told, so the phone and any other device keep showing the chat unread.
+func TestMarkRead_SkipsTheServiceWithReadReceiptsOff(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 1)
+	f.published.take()
+
+	f.commands.ApplySettings(app.Settings{ReadReceipts: false})
+
+	if err := f.commands.MarkRead(ctx, chat.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || got.Unread != 0 {
+		t.Errorf("unread = %d, %v, want 0 even with read receipts off", got.Unread, err)
+	}
+
+	if len(f.dispatcher.read) != 0 {
+		t.Errorf("read receipts = %v, want none reaching the service", f.dispatcher.read)
+	}
+}
+
 func TestSetMuted_UpdatesUnreadTotal(t *testing.T) {
 	t.Parallel()
 
@@ -252,6 +279,38 @@ func TestSetHidden_StoresAndPublishesWithNoServiceCall(t *testing.T) {
 
 	if _, err := f.commands.SetHidden(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("SetHidden(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSetReminder_StoresAndPublishesWithNoServiceCall(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	got, err := f.commands.SetReminder(ctx, chat.ID, 5000)
+	if err != nil || got.ReminderAt != 5000 {
+		t.Fatalf("SetReminder = %+v, %v", got, err)
+	}
+
+	// Snoozing is local to OmaMessenger only: it must never reach the
+	// service, unlike pin and archive.
+	if len(f.organizer.pinned) != 0 || len(f.organizer.archived) != 0 {
+		t.Errorf("organizer saw pinned %v, archived %v, want neither called", f.organizer.pinned, f.organizer.archived)
+	}
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events = %v", got)
+	}
+
+	cleared, err := f.commands.SetReminder(ctx, chat.ID, 0)
+	if err != nil || cleared.ReminderAt != 0 {
+		t.Fatalf("SetReminder(clear) = %+v, %v", cleared, err)
+	}
+
+	if _, err := f.commands.SetReminder(ctx, "missing", 5000); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetReminder(missing) = %v, want ErrNotFound", err)
 	}
 }
 

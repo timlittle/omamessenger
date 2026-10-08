@@ -23,7 +23,8 @@
     "allowMultiple": false,
     "defaults": {
       "notifications": true,
-      "notificationDetail": "Name and message"
+      "notificationDetail": "Name and message",
+      "readReceipts": true
     },
     "schema": [
       {
@@ -40,6 +41,13 @@
         "options": ["Name and message", "Name only", "Nothing"],
         "defaultValue": "Name and message",
         "description": "How much a notification reveals: the sender and message text, just who it is from, or a generic notice with neither."
+      },
+      {
+        "key": "readReceipts",
+        "type": "boolean",
+        "label": "Read receipts",
+        "defaultValue": true,
+        "description": "Off means incognito mode: OmaMessenger never tells a service a chat here was read, so the phone and any other device signed into the same account keep showing it unread. Also reachable from the command palette's \"Toggle read receipts\"."
       }
     ]
   }

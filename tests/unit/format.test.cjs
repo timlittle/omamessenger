@@ -489,3 +489,28 @@ test('mediaFailureReason is empty for an unrecognised or missing reason', () => 
   assert.strictEqual(Format.mediaFailureReason(''), '');
   assert.strictEqual(Format.mediaFailureReason(undefined), '');
 });
+
+test('snoozeUntilLabel shows just the clock time for later today', () => {
+  const later = new Date(2026, 9, 6, 18, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(later.getTime(), nowMs), '18:00');
+});
+
+test('snoozeUntilLabel names tomorrow', () => {
+  const tomorrow = new Date(2026, 9, 7, 9, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(tomorrow.getTime(), nowMs), 'Tomorrow 09:00');
+});
+
+test('snoozeUntilLabel names a weekday within six days', () => {
+  const inFourDays = new Date(2026, 9, 10, 9, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(inFourDays.getTime(), nowMs), 'Saturday 09:00');
+});
+
+test('snoozeUntilLabel shows day and month for further-out dates this year', () => {
+  const inThreeWeeks = new Date(2026, 9, 27, 9, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(inThreeWeeks.getTime(), nowMs), '27 Oct 09:00');
+});
+
+test('snoozeUntilLabel includes the year for a date in another year', () => {
+  const nextYear = new Date(2027, 1, 3, 9, 0);
+  assert.strictEqual(Format.snoozeUntilLabel(nextYear.getTime(), nowMs), '3 Feb 2027 09:00');
+});

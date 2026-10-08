@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -102,6 +103,75 @@ func (c *Cache) fill(ctx context.Context, path string, fill func(ctx context.Con
 	}
 
 	return nil
+}
+
+// Adopt places the file at path into the cache under name, so a file
+// this helper already created elsewhere - an attachment just sent, say -
+// is served and governed by this cache's own limit from here on,
+// without being downloaded again. A path that no longer exists is not
+// an error: by the time Adopt runs, the file may already be gone.
+func (c *Cache) Adopt(ctx context.Context, name, path string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if name == "" || name == "." || name == ".." || name != filepath.Base(name) || strings.HasSuffix(name, partSuffix) {
+		return fmt.Errorf("%w: %q", ErrInvalidName, name)
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+
+	if err := os.MkdirAll(c.dir, 0o700); err != nil {
+		return fmt.Errorf("cache: adopt: %w", err)
+	}
+
+	dst := filepath.Join(c.dir, name)
+	if err := adoptFile(path, dst); err != nil {
+		return fmt.Errorf("cache: adopt: %w", err)
+	}
+
+	return c.prune(name)
+}
+
+// adoptFile places the file at src at dst: a rename when the two paths
+// share a filesystem, the usual case here since both media areas live
+// under the same data directory, or a copy across filesystems otherwise.
+func adoptFile(src, dst string) error {
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+
+	return copyAcrossDevices(src, dst)
+}
+
+// copyAcrossDevices copies src to dst through a temporary file, so a
+// failed or interrupted copy never leaves a partial file at dst, then
+// removes src. adoptFile falls back to this only when the outgoing and
+// cache areas turn out not to share a filesystem; in every real
+// deployment they both live under the same data directory, so this has
+// no practical way to exercise without actually mounting two
+// filesystems.
+func copyAcrossDevices(src, dst string) error { // coverage-ignore: needs two real filesystems to exercise; see the doc comment
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close() // reading only; nothing to flush
+
+	if err := copyToFile(dst, in); err != nil {
+		return err
+	}
+
+	return removeIfPresent(src)
 }
 
 // prune drops the least recently used files until the cache fits its

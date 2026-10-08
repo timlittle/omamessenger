@@ -49,14 +49,22 @@ type syncTarget struct {
 }
 
 // handleHistorySync reports a history sync's contacts, then its
-// conversations and their messages.
+// conversations and their messages. A sync of type ON_DEMAND is WhatsApp's
+// primary phone answering a LoadOlder request (see history_ondemand.go):
+// once this sync has reported that chat's messages the normal way below,
+// the answer also wakes whichever LoadOlder call is waiting for it, with
+// how many of them were actually reported.
 func (c *Connector) handleHistorySync(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.HistorySync) {
 	data := e.Data
 	src := syncSource{dev: dev, media: media}
+	onDemand := data.GetSyncType() == waHistorySync.HistorySync_ON_DEMAND
 
 	c.syncPushnames(ctx, sink, data.GetPushnames())
 	for _, sc := range data.GetConversations() {
-		c.syncConversation(ctx, sink, src, sc)
+		chatRemote, reported := c.syncConversation(ctx, sink, src, sc)
+		if onDemand && chatRemote != "" {
+			c.deliverOnDemandHistory(chatRemote, reported)
+		}
 	}
 }
 
@@ -88,21 +96,30 @@ func (c *Connector) syncPushnames(ctx context.Context, sink connector.Sink, name
 // this connector has reported a conversation for real, a later sync
 // that only updates its pinned, archived or unread state still reaches
 // it, even with no new messages of its own.
-func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, src syncSource, sc *waHistorySync.Conversation) {
+//
+// It returns the conversation's canonical remote id, or "" when the
+// entry was dropped before anything could be resolved, and how many of
+// its synced messages were actually reported through the Sink (fewer
+// than len(sc.GetMessages()) whenever some were a reaction, an edit, a
+// revoke or other housekeeping content, see syncMessage). A bulk sync's
+// own caller has no use for either value; handleHistorySync reads them
+// to resolve a LoadOlder call waiting on this exact chat (see
+// history_ondemand.go).
+func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, src syncSource, sc *waHistorySync.Conversation) (string, int) {
 	jid, err := types.ParseJID(sc.GetID())
 	if err != nil || jid.IsEmpty() || isSystemJID(jid) {
-		return
+		return "", 0
 	}
 
 	conv, ok := conversationFromSync(c.account.ID, sc, time.Now())
 	if !ok {
-		return
+		return "", 0
 	}
 	conv.RemoteID = chatID(ctx, src.dev, jid)
 
 	if !c.knownChat(conv.RemoteID) && !hasRealContent(sc.GetMessages()) {
 		logSyncedConversationDropped(jid, sc)
-		return
+		return conv.RemoteID, 0
 	}
 
 	conv.Title, conv.Members = c.resolveConversation(ctx, src.dev, jid, conv, sc)
@@ -110,11 +127,16 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	c.reportSyncedOrganize(ctx, sink, conv)
 
 	target := syncTarget{syncSource: src, chat: jid, convRemoteID: conv.RemoteID}
+	reported := 0
 	for _, hm := range sc.GetMessages() {
-		c.syncMessage(ctx, sink, target, hm)
+		if c.syncMessage(ctx, sink, target, hm) {
+			reported++
+		}
 	}
 
 	sink.Unread(ctx, c.account.ID, conv.RemoteID, conv.Unread)
+
+	return conv.RemoteID, reported
 }
 
 // reportSyncedOrganize reports conv's pinned and archived state from
@@ -214,8 +236,10 @@ func syncedContentFields(sc *waHistorySync.Conversation) string {
 // message out of the conversation's newest ones, even after a restart
 // (see markread.go): history sync carries each conversation's unread
 // count but not which of its messages are unread, so MarkRead chooses
-// for itself once it knows that count.
-func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target syncTarget, hm *waHistorySync.HistorySyncMsg) {
+// for itself once it knows that count. It returns whether hm was
+// actually reported, for syncConversation's own count of how many of a
+// synced chat's messages that was true for (see history_ondemand.go).
+func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target syncTarget, hm *waHistorySync.HistorySyncMsg) bool {
 	content := hm.GetMessage().GetMessage()
 	if content != nil {
 		if field, ok := unknownContentKind(content); ok {
@@ -229,7 +253,7 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 			logContentlessDrop(target.chat, content)
 		}
 
-		return
+		return false
 	}
 	m = c.improvedSenderName(m)
 
@@ -238,6 +262,8 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	saveMessageKey(ctx, target.media, target.convRemoteID, m.RemoteID, messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing, timestamp: m.Created})
 	savePoll(ctx, target.media, target.convRemoteID, m.RemoteID, content)
 	sink.History(ctx, c.account.ID, target.convRemoteID, m)
+
+	return true
 }
 
 // resolveConversation is conv's best title and, for a group, its member

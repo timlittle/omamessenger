@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
+import "../lib/Keymap.js" as Keymap
 
 // The open conversation: header, message list and composer. Shows an empty
 // state instead when no conversation is open.
@@ -23,6 +24,10 @@ Item {
   property string highlightedId: ""
   // nowMs is the current time, passed to each message delegate.
   property real nowMs: 0
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), passed to each message delegate's
+  // hint row and to the composer's mode hint.
+  property var bindings: Keymap.BINDINGS
   // voiceNotes is the playback state each message delegate reads for its
   // voice note player; see MessageBubbleContent for its shape.
   property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
@@ -39,6 +44,11 @@ Item {
   property string attachmentPath: ""
   // composeEnabled is false while the conversation can't accept input.
   property bool composeEnabled: true
+  // historyUnavailable is true once scrolling back asked the service for
+  // older history and it could not be reached right now; shown as a
+  // small note above the oldest loaded message rather than silently
+  // stopping, so the user knows to try again once their phone is online.
+  property bool historyUnavailable: false
   // composer exposes the Composer instance so a key router can focus it.
   property alias composer: composer
   // routeKey is forwarded straight to the composer; see Composer.qml for
@@ -223,6 +233,7 @@ Item {
         annotation: root.annotations[index] ?? ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         isGroup: root.isGroup
         nowMs: root.nowMs
+        bindings: root.bindings
         voiceNotes: root.voiceNotes
         pollVote: ({
           voting: root.voteState.target !== "" && root.voteState.target === modelData.id,
@@ -247,6 +258,22 @@ Item {
 
       onContentYChanged: root._checkLoadOlder()
       onContentHeightChanged: root._checkLoadOlder()
+
+      // A BottomToTop ListView's footer sits at the layout's end, which
+      // for this direction is the visual top: right above the oldest
+      // loaded message, where scrolling back stopped.
+      footer: Text {
+        width: messageList.width
+        visible: root.historyUnavailable
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        topPadding: Theme.spacing.sm
+        bottomPadding: Theme.spacing.sm
+        text: "Older messages need your phone online — try again later"
+        color: Util.alpha(Color.foreground, 0.6)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
+      }
     }
 
     Composer {
@@ -256,6 +283,7 @@ Item {
       title: root.conversation ? root.conversation.title : ""
       enabled: root.composeEnabled
       attachmentPath: root.attachmentPath
+      bindings: root.bindings
       routeKey: root.routeKey
       members: root.members
       onSubmitted: (text, replyToId, mentions) => root.send(text, replyToId, mentions)

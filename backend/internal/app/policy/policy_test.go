@@ -1,6 +1,7 @@
 package policy_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app/policy"
@@ -35,6 +36,28 @@ func everyInput() []policy.Input {
 	}
 
 	return inputs
+}
+
+func TestReminderNotification_NamesTheChatUnlessDetailIsNone(t *testing.T) {
+	t.Parallel()
+
+	title, body, convID := policy.ReminderNotification(policy.DetailNameAndMessage, "Climbing Crew", "chat-1")
+	if title != "Reminder: Climbing Crew" || body == "" || convID != "chat-1" {
+		t.Errorf("ReminderNotification(nameAndMessage) = %q, %q, %q", title, body, convID)
+	}
+
+	title, _, convID = policy.ReminderNotification(policy.DetailNameOnly, "Climbing Crew", "chat-1")
+	if title != "Reminder: Climbing Crew" || convID != "chat-1" {
+		t.Errorf("ReminderNotification(nameOnly) = %q, _, %q", title, convID)
+	}
+
+	title, body, convID = policy.ReminderNotification(policy.DetailNone, "Climbing Crew", "chat-1")
+	if strings.Contains(title, "Climbing Crew") || strings.Contains(body, "Climbing Crew") {
+		t.Errorf("ReminderNotification(none) = %q, %q; must not name the chat", title, body)
+	}
+	if convID != "chat-1" {
+		t.Errorf("ReminderNotification(none) conversation id = %q, want chat-1", convID)
+	}
 }
 
 func TestMarkReadOnArrival_OnlyWhenLookingAtIt(t *testing.T) {

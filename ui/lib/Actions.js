@@ -9,9 +9,9 @@
 // "list" and "conversation") still has one owner, since the owning
 // controller reads whatever extra state it needs itself.
 var OWNERS = {
-  // ListController: rail filter, search, the visible conversations,
-  // selection and unread jump, mute.
-  'search.focus': 'list',
+  // ListController: rail filter, the visible conversations, selection,
+  // unread jump, mute. search.focus (Ctrl+G) now opens the command
+  // palette instead (see WindowController), so it is owned there.
   'list.showAll': 'list',
   'list.unread': 'list',
   'rail.all': 'list',
@@ -27,6 +27,14 @@ var OWNERS = {
   'chat.pin': 'list',
   'chat.archive': 'list',
   'chat.hide': 'list',
+  'chat.archiveRead': 'list',
+  'list.archiveAllRead': 'list',
+  'archiveAll.accept': 'list',
+  'archiveAll.cancel': 'list',
+  'chat.snoozeLaterToday': 'list',
+  'chat.snoozeTomorrow': 'list',
+  'chat.snoozeNextWeek': 'list',
+  'chat.unsnooze': 'list',
 
   // ConversationController: the open conversation itself, paging,
   // send, retry, scrolling, and moving between chats while one is open.
@@ -133,6 +141,12 @@ var OWNERS = {
   // close question's own navigation, and the Escape chain.
   'palette.commands': 'window',
   'palette.conversations': 'window',
+  'search.focus': 'window',
+  // chat.snoozeCustom opens the palette's custom-snooze prompt, which
+  // WindowController owns along with every other palette mode; it is the
+  // one chat.* action not owned by ListController, since the chat it
+  // applies to is resolved only once the prompt is accepted.
+  'chat.snoozeCustom': 'window',
   'palette.down': 'window',
   'palette.up': 'window',
   'palette.accept': 'window',
@@ -140,6 +154,9 @@ var OWNERS = {
   'app.quit': 'window',
   'helper.retryInstall': 'window',
   'helper.doctor': 'window',
+  'keys.openConfig': 'window',
+  'keys.showBindings': 'window',
+  'settings.toggleReadReceipts': 'window',
   'close.left': 'window',
   'close.right': 'window',
   'close.accept': 'window',

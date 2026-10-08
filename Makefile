@@ -43,7 +43,7 @@ LICENSE_IGNORE := --ignore github.com/segmentio/asm
 # test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo lint license-check third-party-notices tools validate install-local release-check clean
+.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo keys lint license-check third-party-notices tools validate install-local release-check clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -89,6 +89,9 @@ test-js: ## Run the JavaScript tests with their coverage gate
 	$(NODE) --test --experimental-test-coverage --test-coverage-include='ui/lib/**' \
 		--test-coverage-lines=95 --test-coverage-branches=90 'tests/unit/**/*.test.cjs'
 
+keys: ## Print the effective key bindings (defaults plus keys.conf overrides), for a bug report
+	$(NODE) scripts/print-key-bindings.cjs
+
 # Each tests/qml/<Name>/shell.qml runs offscreen in its own root, which holds
 # the test, the shared tests/qml/Check.js, the ui/ tree, Omarchy's Commons
 # and Ui, and as its helper the test build with fake accounts.
@@ -108,7 +111,7 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 		if [ -e "$$dir/no-dev-build" ]; then ln -s "$(CURDIR)/bin/oma-messenger-service" "$$root/bin/"; \
 		else ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; fi; \
 		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen \
-			XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
+			XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
 		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
 	done; \
@@ -144,7 +147,7 @@ demo: build-fake ## Record the offscreen demo and rebuild docs/demo.gif and docs
 	ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 	ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; \
 	env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 OMA_FAKE_DEMO=1 \
-		XDG_DATA_HOME="$(CURDIR)/$$root/data" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
+		XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 		OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 90 quickshell -p "$$root" >"$$root/log" 2>&1; \
 	if [ $$? -ne 0 ]; then \
 		echo "FAIL demo recording:"; grep -v "qt.qpa" "$$root/log" | tail -20; exit 1; \

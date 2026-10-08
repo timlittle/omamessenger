@@ -59,10 +59,11 @@ func loadCredentials(dir, accountID string) (Credentials, error) {
 	return c, nil
 }
 
-// Forget deletes an account's credentials and session from dir.
+// Forget deletes an account's credentials, session and saved update
+// state from dir.
 func Forget(dir, accountID string) error {
 	var errs []error
-	for _, path := range []string{credentialsPath(dir, accountID), sessionPath(dir, accountID)} {
+	for _, path := range []string{credentialsPath(dir, accountID), sessionPath(dir, accountID), updateStatePath(dir, accountID)} {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			errs = append(errs, err)
 		}

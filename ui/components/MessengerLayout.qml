@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import "../theme"
 import "../lib/Rail.js" as Rail
+import "../lib/Keymap.js" as Keymap
 import "../lib/AccountColor.js" as AccountColor
 
 // The three columns that make up the OmaMessenger window: the service
@@ -43,6 +44,9 @@ Item {
   property var windowController: null
   // nowMs is the current time, refreshed by Panel.qml, for relative times.
   property real nowMs: Date.now()
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), passed to the list and conversation.
+  property var bindings: Keymap.BINDINGS
   // routeKey is Panel's router: called with (key, modifiers, text) from
   // the search field, the composer and the dialog's search field, before
   // each handles its own key presses. See Composer.qml for why it is a
@@ -147,14 +151,16 @@ Item {
     }
   }
 
-  // Search focus mirrors ListController.searchFocused the same way: a
-  // request focuses the field, a field focus change is read back, and the
-  // field is blurred if the controller leaves search while it still holds
-  // real focus (the Escape chain only updates the controller's flag).
+  // Search focus mirrors ListController.searchFocused: a field focus
+  // change (a click) is read back, and the field is blurred if the
+  // controller leaves search while it still holds real focus (the
+  // Escape chain only updates the controller's flag). Ctrl+G used to
+  // request this field's focus directly; it opens the command palette
+  // now instead (see WindowController), so this only ever mirrors a
+  // mouse click into the field.
   Connections {
     target: root.listController
 
-    function onFocusRequested() { listColumn.searchField.forceActiveFocus() }
     function onSearchFocusedChanged() {
       if (root.listController.searchFocused || !listColumn.searchField.activeFocus) return
       listColumn.searchField.focus = false
@@ -207,6 +213,7 @@ Item {
       model: root.listController.model
       selectedId: root.listController.selectedId
       nowMs: root.nowMs
+      bindings: root.bindings
       accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
       multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
       accountColors: root._accountColors
@@ -237,10 +244,12 @@ Item {
       annotations: root.conversationController.annotations
       highlightedId: root.conversationController.highlightedId
       nowMs: root.nowMs
+      bindings: root.bindings
       draft: root.composerController.draft
       replyTarget: root.composerController.replyTarget
       attachmentPath: root.composerController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
+      historyUnavailable: root.conversationController.historyUnavailable
       voiceNotes: root.conversationController.voiceNotes
       voteState: root.pollsController ? ({
         target: root.pollsController.voteTarget,
@@ -271,6 +280,7 @@ Item {
   Overlays {
     anchors.fill: parent
     service: root.service
+    listController: root.listController
     windowController: root.windowController
     dialogController: root.dialogController
     accountController: root.accountController

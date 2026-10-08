@@ -2,7 +2,10 @@
 // with no label, a row dimmed only for being older is faded but carries
 // no label (its timestamp already explains it), and a hidden or archived
 // row is faded with a "Hidden" or "Archived" label, so the cue is never
-// colour or opacity alone. Also checks the pin and mute markers: a pinned
+// colour or opacity alone. A snoozed row is faded with a "Snoozed until
+// …" label naming the actual wake time, and a row whose reminder has come
+// due carries a bold "Reminder" label instead of being dimmed at all.
+// Also checks the pin and mute markers: a pinned
 // or muted row's glyph actually renders (non-zero width, not just an
 // empty or unmapped-codepoint string), and a pinned row also carries a
 // "Pinned" tag, so a chat sorted to the top of the list is not left with
@@ -63,6 +66,21 @@ ShellRoot {
   }
 
   ConversationRow {
+    id: snoozedRow
+    width: 260
+    conversation: ({ id: "c8", title: "Snoozed Chat", lastActivity: Date.now(), reminderAt: Date.now() + 3600000 })
+    dimmed: true
+    dimLabel: "Snoozed"
+  }
+
+  ConversationRow {
+    id: dueRow
+    width: 260
+    conversation: ({ id: "c9", title: "Due Chat", lastActivity: Date.now() })
+    reminderDue: true
+  }
+
+  ConversationRow {
     id: taggedRow
     width: 260
     conversation: ({ id: "c7", title: "Tagged Chat", lastActivity: Date.now() })
@@ -102,6 +120,21 @@ ShellRoot {
     const archivedLabel = Check.find(archivedRow, "dimLabel");
     if (!archivedLabel || !archivedLabel.visible || archivedLabel.text !== "Archived")
       return Check.fail("an archived row does not carry an \"Archived\" label");
+
+    if (snoozedRow.opacity >= 1)
+      return Check.fail("a snoozed row is not faded: opacity " + snoozedRow.opacity);
+    const snoozedLabel = Check.find(snoozedRow, "dimLabel");
+    if (!snoozedLabel || !snoozedLabel.visible || snoozedLabel.text.indexOf("Snoozed until") !== 0)
+      return Check.fail("a snoozed row does not carry a \"Snoozed until …\" label: " + (snoozedLabel ? snoozedLabel.text : "missing"));
+
+    if (dueRow.opacity !== 1)
+      return Check.fail("a row whose reminder is due should not be dimmed: opacity " + dueRow.opacity);
+    const reminderLabel = Check.find(dueRow, "reminderLabel");
+    if (!reminderLabel || !reminderLabel.visible || reminderLabel.text !== "Reminder")
+      return Check.fail("a row whose reminder is due does not carry a \"Reminder\" label");
+    const plainReminderLabel = Check.find(plainRow, "reminderLabel");
+    if (!plainReminderLabel || plainReminderLabel.visible)
+      return Check.fail("a plain row shows a \"Reminder\" label");
 
     const plainPin = Check.find(plainRow, "pinIcon");
     if (!plainPin || plainPin.visible)

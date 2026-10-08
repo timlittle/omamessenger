@@ -14,7 +14,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.hidden,c.last_activity`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.hidden,c.last_activity,c.reminder_at`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -105,7 +105,7 @@ func (s *Store) ConversationByRemote(ctx context.Context, accountID, remoteID st
 // of Conversations' search when query has no word characters to look up in
 // messages_fts: an empty FTS5 MATCH argument is invalid, so a query such as
 // "_" or "%" can only match a title, the way LIKE always has.
-const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match
+const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match, NULL AS match_message_id, NULL AS match_sender
 	` + conversationFrom + `
 	WHERE :query = '' OR c.title LIKE :pattern ESCAPE '\'
 	ORDER BY c.pinned DESC, c.last_activity DESC, c.id`
@@ -115,12 +115,13 @@ const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match
 // any message match; among message matches, the most recently matching
 // conversation comes first, and bm25 relevance only breaks a tie between
 // two matches with the same timestamp. matched finds every message hit;
-// hits picks the newest one per conversation, which becomes both the
-// ranking signal and the Match snippet, read through an external-content
-// FTS5 table kept in step with messages by triggers (see migrate.go).
+// hits picks the newest one per conversation, which becomes the ranking
+// signal and the Match snippet, MatchMessageID and MatchSender, read
+// through an external-content FTS5 table kept in step with messages by
+// triggers (see migrate.go).
 const conversationsByTitleOrMessage = `WITH matched AS (
-		SELECT m.conversation_id AS conversation_id, m.text AS snippet,
-			bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
+		SELECT m.conversation_id AS conversation_id, m.id AS message_id, m.sender_name AS sender_name,
+			m.text AS snippet, bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
 		FROM messages_fts
 		JOIN messages m ON m.rowid = messages_fts.rowid
 		WHERE messages_fts MATCH :fts
@@ -130,7 +131,7 @@ const conversationsByTitleOrMessage = `WITH matched AS (
 		) AS rn
 		FROM matched
 	)
-	SELECT ` + conversationColumns + `, hits.snippet AS match
+	SELECT ` + conversationColumns + `, hits.snippet AS match, hits.message_id AS match_message_id, hits.sender_name AS match_sender
 	` + conversationFrom + `
 	LEFT JOIN hits ON hits.conversation_id = c.id AND hits.rn = 1
 	WHERE c.title LIKE :pattern ESCAPE '\' OR hits.conversation_id IS NOT NULL
@@ -259,6 +260,32 @@ func (s *Store) SetHidden(ctx context.Context, id string, hidden bool) error {
 	return requireRow("set hidden", res)
 }
 
+// SetReminder snoozes a conversation until at, in Unix milliseconds, or
+// clears its reminder when at is 0. This is local to this computer only:
+// like hidden, it is never reported to or read from the service.
+func (s *Store) SetReminder(ctx context.Context, id string, at int64) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET reminder_at=? WHERE id=?`, at, id)
+	if err != nil {
+		return wrap("set reminder", err)
+	}
+
+	return requireRow("set reminder", res)
+}
+
+// PendingReminders lists every conversation with an active reminder,
+// soonest due first, for the reminder scheduler to fire or wait on.
+func (s *Store) PendingReminders(ctx context.Context) ([]domain.Conversation, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+conversationColumns+conversationFrom+`
+		WHERE c.reminder_at>0 ORDER BY c.reminder_at ASC, c.id`)
+	if err != nil {
+		return nil, wrap("pending reminders", err)
+	}
+
+	conversations, err := scanAll(rows, scanConversation)
+
+	return conversations, wrap("pending reminders", err)
+}
+
 // SetOrganized sets a conversation's pinned and archived state, as a
 // dialog sync reports it. changed is false when both already matched.
 func (s *Store) SetOrganized(ctx context.Context, id string, pinned, archived bool) (bool, error) {
@@ -294,11 +321,13 @@ func scanConversation(row scanner) (domain.Conversation, error) {
 }
 
 // scanConversationMatch reads conversationColumns followed by the search
-// match column.
+// match, matched message id and matched sender columns.
 func scanConversationMatch(row scanner) (domain.Conversation, error) {
-	var match sql.NullString
-	c, err := scanConversationWith(row, &match)
+	var match, messageID, sender sql.NullString
+	c, err := scanConversationWith(row, &match, &messageID, &sender)
 	c.Match = match.String
+	c.MatchMessageID = messageID.String
+	c.MatchSender = sender.String
 
 	return c, err
 }
@@ -308,7 +337,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.Hidden, &c.LastActivity,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt,
 	}, extra...)
 	err := row.Scan(dest...)
 

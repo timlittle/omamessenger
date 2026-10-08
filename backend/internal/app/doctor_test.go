@@ -3,9 +3,12 @@ package app_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -120,6 +123,39 @@ func TestDoctor_ChecksTheCacheAgainstItsLimitAndTheDatabaseOpened(t *testing.T) 
 	}
 	if got := checkNamed(t, report, "Database"); !got.OK {
 		t.Errorf("a working store = %+v, want open and up to date", got)
+	}
+	if got := checkNamed(t, report, "Outgoing attachments"); !got.OK {
+		t.Errorf("an empty outgoing area = %+v, want within its limit", got)
+	}
+}
+
+// TestDoctor_FlagsOutgoingAttachmentsOverTheirLimit confirms Doctor
+// reports the outgoing area's own check as a problem once it holds more
+// than the limit it was given, independent of the downloaded media
+// cache's own check.
+func TestDoctor_FlagsOutgoingAttachmentsOverTheirLimit(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "x.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	outgoing := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 10)
+	if _, err := outgoing.Store(ctx, "m1", "file.bin", strings.NewReader("this is over ten bytes")); err != nil {
+		t.Fatal(err)
+	}
+
+	commands, _ := app.New(app.Deps{Store: db, Outgoing: outgoing})
+	report, err := commands.Doctor(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := checkNamed(t, report, "Outgoing attachments"); got.OK {
+		t.Errorf("an oversized outgoing area = %+v, want a problem", got)
 	}
 }
 

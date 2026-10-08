@@ -77,21 +77,27 @@ type MemberLister interface {
 }
 
 // MediaCache keeps downloaded media, filling a file the first time it is
-// asked for.
+// asked for, or taking in one already on disk - a sent attachment, say -
+// so it needs no download at all.
 type MediaCache interface {
 	Fetch(ctx context.Context, name string, fill func(ctx context.Context, path string) error) (string, error)
+	Adopt(ctx context.Context, name, path string) error
 }
 
 // OutgoingMedia stores the bytes of a file the user is sending into the
 // outgoing media area, named by the message's id, so a retry can resend
-// it even after the user moves, renames or deletes the original. Path is
-// pure and needs no context; keeping it alongside Store, rather than
-// splitting it into its own one-method interface, keeps the one thing a
-// caller needs for an attachment, store it and find it again, in one
-// place.
+// it even after the user moves, renames or deletes the original. Every
+// consumer of that area needs to find, guard or drop one of its files by
+// that same id and file name - Path for a retry, Reserve so a background
+// sweep never removes a file mid-upload, Remove once delivery is
+// confirmed and the copy is no longer needed - so they are kept in this
+// one interface rather than split into several that would each mirror
+// the same two arguments.
 type OutgoingMedia interface {
 	Store(ctx context.Context, id, fileName string, r io.Reader) (string, error)
 	Path(id, fileName string) string
+	Reserve(id string) func()
+	Remove(ctx context.Context, id, fileName string) error
 }
 
 // ClipboardRunner reads the Wayland clipboard. Quickshell's QML cannot
@@ -198,9 +204,13 @@ func New(d Deps) (*Commands, *Ingest) {
 		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},
+		reminders:    newReminders(d.Store, d.Notifier, events, state),
 		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 	}
-	ingest := &Ingest{store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state}
+	ingest := &Ingest{
+		store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state,
+		outgoing: d.Outgoing, cache: d.Cache, logger: d.Logger,
+	}
 
 	return commands, ingest
 }
@@ -213,11 +223,21 @@ type Settings struct {
 	Notifications       bool
 	NotificationPreview bool
 	NotificationDetail  string
+
+	// ReadReceipts is false for incognito mode: MarkRead still clears the
+	// local unread count, but neither Commands.MarkRead nor Ingest's
+	// debounced read receipt ever reaches the dispatcher, so the
+	// service, and any other device signed into the same account, keep
+	// showing the chat unread.
+	ReadReceipts bool
 }
 
 // DefaultSettings apply until the UI sends the user's settings.
 func DefaultSettings() Settings {
-	return Settings{Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage)}
+	return Settings{
+		Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage),
+		ReadReceipts: true,
+	}
 }
 
 // detail resolves the notification detail level these settings ask for:

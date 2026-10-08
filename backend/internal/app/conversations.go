@@ -42,11 +42,14 @@ func (c *Commands) OpenConversation(ctx context.Context, accountID, contactID st
 }
 
 // MarkRead clears a conversation's unread count, then tells the
-// service. The service hears the count this conversation actually had
-// before clearing it: a connector such as WhatsApp's needs that number
-// to know how many of a conversation's newest incoming messages to send
-// a read receipt for, and asking the store only after the local clear
-// would always report zero, turning every such call into a silent
+// service, unless the user has turned read receipts off: incognito mode
+// clears the badge locally but never reports it read, so the service,
+// and any other device signed into the same account, keep showing the
+// chat unread. The service hears the count this conversation actually
+// had before clearing it: a connector such as WhatsApp's needs that
+// number to know how many of a conversation's newest incoming messages
+// to send a read receipt for, and asking the store only after the local
+// clear would always report zero, turning every such call into a silent
 // no-op for that service.
 func (c *Commands) MarkRead(ctx context.Context, conversationID string) error {
 	before := c.events.unreadTotal(ctx)
@@ -63,6 +66,11 @@ func (c *Commands) MarkRead(ctx context.Context, conversationID string) error {
 
 	if changed {
 		c.events.conversationChanged(ctx, conversationID, before)
+	}
+
+	settings, _, _ := c.ui.snapshot()
+	if !settings.ReadReceipts {
+		return nil
 	}
 
 	return c.dispatcher.MarkRead(ctx, conv)
@@ -128,6 +136,27 @@ func (c *Commands) SetArchived(ctx context.Context, conversationID string, archi
 	c.events.publish(ctx, EventConversationUpdated, conv)
 
 	return conv, c.organizer.SetArchived(ctx, conv, archived)
+}
+
+// SetReminder snoozes a conversation until at (Unix milliseconds), or
+// clears its reminder when at is 0, then wakes the reminder scheduler so
+// it recomputes when to wake next, instead of only noticing on whatever
+// schedule it already had. Like hidden, this is local to OmaMessenger
+// only: it is never reported to the service.
+func (c *Commands) SetReminder(ctx context.Context, conversationID string, at int64) (domain.Conversation, error) {
+	if err := c.store.SetReminder(ctx, conversationID, at); err != nil {
+		return domain.Conversation{}, err
+	}
+
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return conv, err
+	}
+
+	c.events.publish(ctx, EventConversationUpdated, conv)
+	c.reminders.notifyChanged()
+
+	return conv, nil
 }
 
 // SetHidden hides or unhides a conversation from the standard list. Unlike
