@@ -126,7 +126,13 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 		return
 	}
 
-	title := c.resolveDirectTitle(ctx, dev, info.Chat, info.PushName, verifiedName(info))
+	pushName, businessName := info.PushName, verifiedName(info)
+	if info.IsFromMe {
+		// The sender is this account, so its names describe us, not the chat.
+		pushName, businessName = "", ""
+	}
+
+	title := c.resolveDirectTitle(ctx, dev, info.Chat, pushName, businessName)
 	c.reportConversation(ctx, sink, domain.Conversation{
 		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title,
 	})

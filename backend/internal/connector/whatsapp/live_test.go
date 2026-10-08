@@ -148,6 +148,23 @@ func TestHandleMessage_CreatesAChatFromAnOutgoingMessageWhenNoIncomingCameFirst(
 	}
 }
 
+// TestHandleMessage_NeverTitlesAChatWithTheAccountsOwnName confirms a
+// chat first seen through an outgoing message is not named after its
+// sender: that is this account's own push name, not the other person's.
+func TestHandleMessage_NeverTitlesAChatWithTheAccountsOwnName(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+
+	info := liveInfo()
+	info.IsFromMe, info.PushName = true, "Me Myself"
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("hi")}})
+
+	if !sink.Has("conversation 15551234567@s.whatsapp.net +15551234567") {
+		t.Errorf("events = %q, want the chat titled from its own fallback, not this account's name", sink.Lines())
+	}
+}
+
 // TestHandleMessage_NeverRecreatesAnAlreadyKnownChatFromAnOutgoingMessage
 // confirms the fix above only covers a chat's first sighting this run:
 // once incoming traffic has already reported it, a later outgoing echo
