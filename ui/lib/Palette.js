@@ -66,14 +66,6 @@ function messageRows(conversations) {
     }));
 }
 
-// staleMessageSearch reports whether a debounced message search reply for
-// query should be dropped: the palette may have moved on to a different
-// query, or closed, by the time the helper answers. The same pattern
-// ListController's own search already uses for conversations.list.
-function staleMessageSearch(query, currentQuery) {
-  return query !== currentQuery;
-}
-
 // score rates how well text matches wanted, or returns 0 when the letters
 // do not all appear in order. Each matched letter scores 1, plus 3 at the
 // start of a word and 2 when it follows the previous match directly. Text

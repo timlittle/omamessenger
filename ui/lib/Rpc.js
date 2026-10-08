@@ -72,3 +72,13 @@ function errorText(error) {
 function errorReason(error) {
   return (error && error.data && error.data.reason) || '';
 }
+
+// guard returns a predicate for the stale-reply idiom: a caller captures
+// expected before firing an async request, then calls the returned
+// predicate once the reply arrives. It reports true while getCurrent()
+// still reports expected, so the caller knows the reply is still current
+// and false once the thing it names has moved on, so the caller knows to
+// drop the reply instead of applying it.
+function guard(getCurrent, expected) {
+  return () => getCurrent() === expected;
+}

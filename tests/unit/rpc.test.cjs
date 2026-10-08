@@ -88,3 +88,13 @@ test('errorReason is empty for an error with no data, or none at all', () => {
   assert.strictEqual(Rpc.errorReason({ code: Rpc.CODES.internal, message: 'internal error' }), '');
   assert.strictEqual(Rpc.errorReason(null), '');
 });
+
+test('guard: reports whether the captured value still matches the current one', () => {
+  let current = 'cafe later';
+  const isCurrent = Rpc.guard(() => current, 'cafe');
+
+  assert.strictEqual(isCurrent(), false);
+
+  current = 'cafe';
+  assert.strictEqual(isCurrent(), true);
+});

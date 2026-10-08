@@ -1,6 +1,7 @@
 import QtQuick
 import "../lib/Actions.js" as Actions
 import "../lib/Format.js" as Format
+import "../lib/Rpc.js" as Rpc
 
 // Owns the composer's state for the open conversation: its draft text,
 // the message it is replying to, a pasted or attached file waiting to be
@@ -131,8 +132,9 @@ QtObject {
     if (!root.service) return;
 
     const conversationId = root.conversation ? root.conversation.activeId : "";
+    const isCurrent = Rpc.guard(() => root.conversation ? root.conversation.activeId : null, conversationId);
     root.service.request("media.paste", {}, function(error, result) {
-      if (!root.conversation || root.conversation.activeId !== conversationId) return;
+      if (!isCurrent()) return;
       if (error) { root.pasteFallbackRequested(); return; }
       root.attachmentPath = result.path;
     });

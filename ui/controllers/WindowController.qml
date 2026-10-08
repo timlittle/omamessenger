@@ -261,8 +261,9 @@ Item {
       return;
     }
 
+    const isCurrent = Rpc.guard(() => root.paletteQuery, query);
     root.service.request("conversations.list", { query: query }, function(error, result) {
-      if (Palette.staleMessageSearch(query, root.paletteQuery) || !root.paletteOpen) return;
+      if (!isCurrent() || !root.paletteOpen) return;
       if (error) { root.lastError = Rpc.errorText(error); return; }
 
       root._messageSearchResults = result ?? [];

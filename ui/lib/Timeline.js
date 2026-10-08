@@ -76,42 +76,39 @@ function row(message) {
   });
 }
 
+// readJsonField reads item's name field, which row() may have encoded as
+// a JSON string for the ListModel role to hold, the object itself when
+// item is a message straight from the helper, or fallback when it
+// carries none.
+function readJsonField(item, name, fallback) {
+  const value = item[name];
+  if (!value) {
+    return fallback;
+  }
+
+  return typeof value === 'string' ? JSON.parse(value) : value;
+}
+
 // media reads a row's media, or null when it has none. It also accepts a
 // message as the helper sends it.
 function media(item) {
-  if (!item.media) {
-    return null;
-  }
-
-  return typeof item.media === 'string' ? JSON.parse(item.media) : item.media;
+  return readJsonField(item, 'media', null);
 }
 
 // replyTo reads a row's quoted message, or null when it answers nothing.
 // It also accepts a message as the helper sends it.
 function replyTo(item) {
-  if (!item.replyTo) {
-    return null;
-  }
-
-  return typeof item.replyTo === 'string' ? JSON.parse(item.replyTo) : item.replyTo;
+  return readJsonField(item, 'replyTo', null);
 }
 
 // reactions reads a row's reaction chips, or an empty list when it has
 // none. It also accepts a message as the helper sends it.
 function reactions(item) {
-  if (!item.reactions) {
-    return [];
-  }
-
-  return typeof item.reactions === 'string' ? JSON.parse(item.reactions) : item.reactions;
+  return readJsonField(item, 'reactions', []);
 }
 
 // mentions reads a row's @-mention tokens, or an empty list when it has
 // none. It also accepts a message as the helper sends it.
 function mentions(item) {
-  if (!item.mentions) {
-    return [];
-  }
-
-  return typeof item.mentions === 'string' ? JSON.parse(item.mentions) : item.mentions;
+  return readJsonField(item, 'mentions', []);
 }

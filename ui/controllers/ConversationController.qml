@@ -225,7 +225,7 @@ Item {
     if (!root.activeId) return;
 
     const id = root.activeId;
-    timeline.loadOlder(root.service, id, () => id === root.activeId, root.isGroup);
+    timeline.loadOlder(root.service, id, Rpc.guard(() => root.activeId, id), root.isGroup);
   }
 
   // send submits text, and whatever the composer holds as its attachment,
@@ -382,7 +382,7 @@ Item {
     if (root.photoViewer) root.photoViewer.close();
     root._resetTyping();
     root.saveUiState({ activeId: id, pane: "conversation" });
-    timeline.loadInitial(root.service, id, () => id === root.activeId, root.isGroup);
+    timeline.loadInitial(root.service, id, Rpc.guard(() => root.activeId, id), root.isGroup);
     root.service.request("conversations.markRead", { conversationId: id }, function() {});
     root.service.request("ui.setFocus", { conversationId: id, windowActive: root.windowActive }, function() {});
     root._loadMembers(id);
@@ -396,8 +396,9 @@ Item {
   function _loadMembers(id: string): void {
     if (!root.isGroup) return;
 
+    const isCurrent = Rpc.guard(() => root.activeId, id);
     root.service.request("conversations.members", { conversationId: id }, function(error, result) {
-      if (error || id !== root.activeId) return;
+      if (error || !isCurrent()) return;
       root.groupMembers = result.members || [];
     });
   }
@@ -527,7 +528,7 @@ Item {
       root.activeId = state.activeId;
       root.conversation = root.listController ? root.listController.findConversation(state.activeId) : null;
       if (root.composer) root.composer.restore(state.activeId);
-      if (root.service.status === "ready") timeline.loadInitial(root.service, state.activeId, () => state.activeId === root.activeId, root.isGroup);
+      if (root.service.status === "ready") timeline.loadInitial(root.service, state.activeId, Rpc.guard(() => root.activeId, state.activeId), root.isGroup);
     }
   }
 

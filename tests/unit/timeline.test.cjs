@@ -274,6 +274,13 @@ test('row keeps media as a string, so every model row has the same shape', () =>
   assert.strictEqual(Timeline.row({ id: 'c', media: link }).id, 'c');
 });
 
+test('readJsonField reads a string field as JSON, an object field as-is, and falls back when absent', () => {
+  assert.deepEqual(Timeline.readJsonField({ media: '{"kind":"link"}' }, 'media', null), { kind: 'link' });
+  assert.deepEqual(Timeline.readJsonField({ media: { kind: 'photo' } }, 'media', null), { kind: 'photo' });
+  assert.strictEqual(Timeline.readJsonField({ media: '' }, 'media', null), null);
+  assert.deepEqual(Timeline.readJsonField({}, 'reactions', []), []);
+});
+
 test('media reads a row\'s media back, or null', () => {
   assert.deepEqual(Timeline.media({ media: '{"kind":"link"}' }), { kind: 'link' });
   assert.strictEqual(Timeline.media({ media: '' }), null);

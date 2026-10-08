@@ -109,11 +109,6 @@ test('messageRows: falls back to an empty sender or snippet', () => {
   ]);
 });
 
-test('staleMessageSearch: a reply for a query the palette has moved on from is stale', () => {
-  assert.strictEqual(Palette.staleMessageSearch('cafe', 'cafe later'), true);
-  assert.strictEqual(Palette.staleMessageSearch('cafe', 'cafe'), false);
-});
-
 test('results/items: "conversations" mode matches the list and appends the "Messages" section', () => {
   const conversations = [
     { id: 'a', title: 'Alex Chen', service: 'whatsapp', unread: 2, lastActivity: 200 },

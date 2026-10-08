@@ -354,8 +354,9 @@ Item {
     // The helper answers requests concurrently, so a reply for an earlier
     // query can arrive after the latest one; only the latest counts.
     const query = root.query;
+    const isCurrent = Rpc.guard(() => root.query, query);
     root.service.request("conversations.list", { query: query }, function(error, result) {
-      if (query !== root.query) return;
+      if (!isCurrent()) return;
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root._searchResults = result ?? [];
       root._syncModel();
