@@ -1,16 +1,15 @@
 import QtQuick
 import "../lib/Selection.js" as Selection
-import "../lib/Highlight.js" as Highlight
-import "../lib/Timeline.js" as Timeline
 import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
-import "../lib/Media.js" as Media
 
 // Owns the open conversation itself: which one is open, paging through
 // its messages, sending, retrying, scrolling and the typing indicator.
 // The only controller that calls messages.send, messages.retry,
 // conversations.markRead and ui.setFocus; paging through messages.list
-// is delegated to the timeline child below.
+// is delegated to the timeline child below, moving the highlighted
+// message to the highlight child, and media downloads and playback to
+// the media child, to keep this file within the size guideline.
 //
 // composer and photoViewer are set once, from whoever wires the
 // controllers together, and are read through null-safe calls so this
@@ -19,12 +18,10 @@ import "../lib/Media.js" as Media
 // chat.open, chat.next/prev and search.accept need.
 //
 // Item rather than QtObject: only a type with a default property can hold
-// the timeline, Timer and Connections children below without naming them.
+// the timeline, highlight, media, Timer and Connections children below
+// without naming them.
 Item {
   id: root
-
-  // _fetching holds the ids of messages whose media is downloading.
-  property var _fetching: ({})
 
   // service is the Service instance that owns the helper connection.
   property var service: null
@@ -58,17 +55,9 @@ Item {
 
   // highlightedId is the message id j/k move through, by id rather than
   // index, so loading older history or a new message arriving never
-  // moves it to a different message. It starts on the newest message
-  // each time a conversation (re)loads, and r, e, t and Enter all act on
-  // whichever message this names.
-  property string highlightedId: ""
-
-  // _pendingHighlightId is a message openMessage was asked to land on,
-  // applied once the conversation's initial page has loaded (see
-  // _applyInitialHighlight): the message is not in timeline yet at the
-  // moment openMessage runs, since loading it is what loadInitial below
-  // is about to do.
-  property string _pendingHighlightId: ""
+  // moves it to a different message; see MessageHighlight, which owns
+  // it, for the rest of the story.
+  readonly property alias highlightedId: highlight.highlightedId
 
   // messages is the loaded timeline, newest first.
   readonly property alias messages: timeline.model
@@ -159,11 +148,11 @@ Item {
       "search.accept": () => root._openFirstVisible(),
       "pane.conversation": () => root._showPane(),
       "pane.list": () => root._hidePane(),
-      "message.highlightOlder": () => root._moveHighlight(true),
-      "message.highlightNewer": () => root._moveHighlight(false),
+      "message.highlightOlder": () => root._highlightOlder(),
+      "message.highlightNewer": () => highlight.moveNewer(timeline),
       "message.open": () => root._openHighlighted(),
-      "message.openLink": () => root._openHighlightedLink(),
-      "message.goToQuote": () => root._goToHighlightedQuote(),
+      "message.openLink": () => highlight.openLink(timeline),
+      "message.goToQuote": () => highlight.goToQuote(timeline),
       "scroll.pageDown": () => root.scroll("pageDown"),
       "scroll.pageUp": () => root.scroll("pageUp"),
       "scroll.newest": () => root.scroll("newest"),
@@ -198,26 +187,9 @@ Item {
   function openMessage(conversation: var, messageId: string): void {
     if (!conversation || !conversation.id) return;
 
-    root._pendingHighlightId = messageId;
+    highlight.requestInitial(messageId);
     root._setActive(conversation.id, conversation);
     if (root.listController) root.listController.selectId(conversation.id);
-  }
-
-  // _applyInitialHighlight runs once a conversation's initial page has
-  // loaded: it lands on whatever openMessage asked for, if that message
-  // turned out to be in the page, otherwise the newest message, same as
-  // resetHighlight on its own.
-  function _applyInitialHighlight(): void {
-    const pending = root._pendingHighlightId;
-    root._pendingHighlightId = "";
-
-    if (pending && timeline.find(pending)) {
-      root.highlightedId = pending;
-      root.scrollToMessageRequested(pending);
-      return;
-    }
-
-    root.resetHighlight();
   }
 
   // closeIfOpen closes the open conversation if it is id: used when the
@@ -239,7 +211,7 @@ Item {
     root.conversation = null;
     root.groupMembers = [];
     root.pane = "list";
-    root.highlightedId = "";
+    highlight.clear();
     if (root.composer) root.composer.cancelReply();
     if (root.photoViewer) root.photoViewer.close();
     root.saveUiState({ activeId: "", pane: "list" });
@@ -283,73 +255,24 @@ Item {
     if (id) root.scrollToMessageRequested(id);
   }
 
-  // fetchMedia downloads a message's photo and shows it once it is here.
-  // A photo asks each time its row is shown, so one already on its way is
-  // not asked for twice; if the download fails the preview stays.
+  // fetchMedia downloads a message's photo and shows it once it is here,
+  // through media (see MediaController).
   function fetchMedia(id: string): void {
-    root.downloadMedia(id, false, () => {});
+    media.fetchMedia(timeline, id);
   }
 
-  // openMedia opens a message's photo, video, file or voice note. A photo
-  // opens in the in-app viewer: Omarchy's window rule floats the external
-  // image viewer small and keeps keyboard focus on this window, so its
-  // close keys never reach it. A voice note plays or pauses in place
-  // through voiceController, when it is there and QtMultimedia loaded;
-  // otherwise it falls through to the same "open in your own application"
-  // path a video or file already gets. Media.kindFor also catches a
-  // voice note stored before the helper's "voice" media kind existed,
-  // which still carries kind "file" forever (see Media.js), so it plays
-  // in place too rather than opening externally.
+  // openMedia opens a message's photo, video, file or voice note, through
+  // media (see MediaController).
   function openMedia(id: string): void {
-    const media = timeline.media(id);
-    const kind = Media.kindFor(media);
-    if (kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
-    if (kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(id, media); return; }
-
-    const path = timeline.mediaPath(id);
-    if (path) Qt.openUrlExternally("file://" + path);
-    else root.downloadMedia(id, true, (downloaded) => Qt.openUrlExternally("file://" + downloaded));
+    media.openMedia(timeline, id);
   }
 
-  // _toggleVoice plays or pauses a voice note, downloading it first if it
-  // has not been fetched yet; voice notes are small, so this is quick and
-  // happens the same way a photo's own missing full image would.
-  function _toggleVoice(id: string, media: var): void {
-    const path = timeline.mediaPath(id);
-    if (path) { root.voiceController.toggle(id, path, (media.duration || 0) * 1000); return; }
-
-    root.downloadMedia(id, true, (downloaded) => root.voiceController.toggle(id, downloaded, (media.duration || 0) * 1000));
-  }
-
-  // downloadMedia asks the helper for a message's media once, records
-  // where it is, then runs done with the path. A failure is reported to
-  // the user only when they asked for the media, rather than a photo
-  // fetching itself, but is always recorded on the message, so a photo
-  // with no preview shows "Photo unavailable" instead of an empty box
-  // that a failed, silent auto-fetch would otherwise leave forever, and
-  // always logged to the console with its code and safe reason
-  // category, so a failed fetch is never silent even when nothing asked
-  // to see its error text. The photo viewer reuses this rather than
-  // asking the helper itself, so there is one place that tracks an
+  // downloadMedia asks the helper for a message's media once, through
+  // media (see MediaController): the photo viewer reuses this rather
+  // than asking the helper itself, so there is one place that tracks an
   // in-flight download.
   function downloadMedia(id: string, report: bool, done: var): void {
-    if (root._fetching[id]) return;
-
-    root._fetching[id] = true;
-    root.service.request("media.fetch", { messageId: id }, function(error, result) {
-      delete root._fetching[id];
-      if (error) {
-        const reason = Rpc.errorReason(error);
-        console.warn("media.fetch failed for " + id + ": code=" + error.code + " reason=" + (reason || "unknown"));
-        timeline.setMediaFailed(id, true, reason);
-        if (report) timeline.lastError = Rpc.errorText(error);
-        return;
-      }
-
-      timeline.setMediaFailed(id, false, "");
-      timeline.setMediaPath(id, result.path);
-      done(result.path);
-    });
+    media.downloadMedia(timeline, id, report, done);
   }
 
   // retryMessage resends one failed outgoing message by id.
@@ -450,7 +373,7 @@ Item {
     root.conversation = conversation;
     root.groupMembers = [];
     root.pane = "conversation";
-    root.highlightedId = "";
+    highlight.clear();
     if (root.composer) root.composer.restore(id);
     if (root.photoViewer) root.photoViewer.close();
     root._resetTyping();
@@ -502,64 +425,29 @@ Item {
   // Called when a conversation (re)loads and when the user leaves
   // writing mode with Escape.
   function resetHighlight(): void {
-    root.highlightedId = timeline.newestId();
+    highlight.reset(timeline);
   }
 
-  // _moveHighlight moves the highlight one message toward older or newer,
-  // stopping at either end rather than overscrolling; at the oldest
-  // loaded message, moving further asks for more history instead,
-  // leaving the highlight where it is until that page arrives.
-  function _moveHighlight(older: bool): void {
-    const ids = timeline.ids();
-    if (ids.length === 0) return;
-
-    if (older && Highlight.atOldest(ids, root.highlightedId)) { root.loadOlder(); return; }
-
-    root.highlightedId = older ? Highlight.older(ids, root.highlightedId) : Highlight.newer(ids, root.highlightedId);
-    root.scrollToMessageRequested(root.highlightedId);
+  // _highlightOlder moves the highlight one message toward older, or, at
+  // the oldest loaded message, asks for more history instead of
+  // overscrolling, leaving the highlight where it is until that page
+  // arrives.
+  function _highlightOlder(): void {
+    if (highlight.moveOlder(timeline)) root.loadOlder();
   }
 
   // _openHighlighted opens the highlighted message's photo, video or
   // file; Enter does nothing when it carries none, rather than guessing
   // at some other action.
   function _openHighlighted(): void {
-    if (root.highlightedId && timeline.media(root.highlightedId)) root.openMedia(root.highlightedId);
+    if (highlight.highlightedId && timeline.media(highlight.highlightedId)) root.openMedia(highlight.highlightedId);
   }
 
   // _retryHighlighted resends the highlighted message, only when it is
   // itself a failed outgoing one.
   function _retryHighlighted(): void {
-    const m = timeline.find(root.highlightedId);
+    const m = timeline.find(highlight.highlightedId);
     if (m && m.outgoing && m.status === "failed") root.retryMessage(m.id);
-  }
-
-  // _openHighlightedLink finds the highlighted message's link or links
-  // (the link preview's own URL, or every link in its text when it has
-  // no preview) and asks the caller to open them: nothing happens when
-  // it carries none.
-  function _openHighlightedLink(): void {
-    const message = timeline.find(root.highlightedId);
-    if (!message) return;
-
-    const found = Highlight.links(message);
-    if (found.length > 0) root.linksRequested(found);
-  }
-
-  // _goToHighlightedQuote moves the highlight to the message the
-  // highlighted one replies to, and scrolls to it, the same lookup by
-  // remote id the quote's own click already uses. Nothing happens when
-  // it answers nothing, or the quoted message is not loaded, the same as
-  // that click.
-  function _goToHighlightedQuote(): void {
-    const message = timeline.find(root.highlightedId);
-    const quote = message ? Timeline.replyTo(message) : null;
-    if (!quote || !quote.remoteId) return;
-
-    const id = timeline.localIdForRemote(quote.remoteId);
-    if (!id) return;
-
-    root.highlightedId = id;
-    root.scrollToMessageRequested(id);
   }
 
   // applyMessage applies a sent, retried or pushed message to the
@@ -641,7 +529,20 @@ Item {
 
   MessageTimeline {
     id: timeline
-    onInitialLoaded: root._applyInitialHighlight()
+    onInitialLoaded: highlight.applyInitial(timeline)
+  }
+
+  MessageHighlight {
+    id: highlight
+    onScrollRequested: (id) => root.scrollToMessageRequested(id)
+    onLinksRequested: (urls) => root.linksRequested(urls)
+  }
+
+  MediaController {
+    id: media
+    service: root.service
+    photoViewer: root.photoViewer
+    voiceController: root.voiceController
   }
 
   Timer {
