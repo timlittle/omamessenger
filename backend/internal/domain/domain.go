@@ -49,6 +49,15 @@ var ErrNotFound = errors.New("not found")
 // the category apart from an outright download failure.
 var ErrMediaDecryptFailed = errors.New("media decrypt failed")
 
+// ErrMediaExpired reports that a message's media can no longer be
+// fetched at all: the service's own copy has aged out and the device
+// that could still have one, such as WhatsApp's primary phone, either
+// confirmed it is gone or never answered a request to check. A
+// connector wraps this sentinel once it has tried everything it can; the
+// app layer reports it as its own reason category, distinct from a
+// plain download failure that might still succeed on a later attempt.
+var ErrMediaExpired = errors.New("media no longer available")
+
 // Service is a messaging service the helper can add an account for.
 type Service struct {
 	ID   string `json:"id"`

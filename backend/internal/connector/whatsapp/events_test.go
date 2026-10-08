@@ -148,6 +148,40 @@ func TestHandleEvents_UnregisterStopsFurtherDispatch(t *testing.T) {
 	}
 }
 
+// TestHandleEvents_RoutesAMediaRetryAnswerToItsWaiter confirms
+// handleEvents' default case reaches deliverRetry (retry.go), which is
+// what lets FetchMedia's own retry wait (retry_test.go) ever see the
+// phone's answer at all.
+func TestHandleEvents_RoutesAMediaRetryAnswerToItsWaiter(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	defer unregister()
+
+	ch, cleanup := c.registerRetryWaiter("msg-1")
+	defer cleanup()
+
+	want := &events.MediaRetry{MessageID: "msg-1"}
+	dev.fireEvent(want)
+
+	select {
+	case got := <-ch:
+		if got != want {
+			t.Errorf("delivered %v, want the exact event fired", got)
+		}
+	default:
+		t.Fatal("handleEvents did not route the media retry answer to its waiter")
+	}
+}
+
 func TestHandleEvents_DropsAMuteChangeWithoutReportingAnything(t *testing.T) {
 	t.Parallel()
 

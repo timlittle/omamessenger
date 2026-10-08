@@ -1,8 +1,10 @@
 package whatsapp
 
 import (
+	"errors"
 	"testing"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 )
 
@@ -38,6 +40,35 @@ func TestUnknownContentKind_RecognisesEveryKindThisConnectorHandles(t *testing.T
 
 			if field, ok := unknownContentKind(tt.msg); ok {
 				t.Errorf("unknownContentKind(%s) = %q, true; want it recognised", tt.name, field)
+			}
+		})
+	}
+}
+
+// TestDownloadFailureClass_SortsEveryDownloadErrorIntoItsSafeCategory
+// confirms the class logDownloadFailed reports never reflects anything
+// beyond the four safe categories, and that WhatsApp's own 404/410 are
+// told apart from any other HTTP status it might answer with.
+func TestDownloadFailureClass_SortsEveryDownloadErrorIntoItsSafeCategory(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		err  error
+		want string
+	}{
+		"a worn-out hash":       {whatsmeow.ErrInvalidMediaHMAC, "decrypt"},
+		"an expired link (404)": {whatsmeow.ErrMediaDownloadFailedWith404, "expired"},
+		"an expired link (410)": {whatsmeow.ErrMediaDownloadFailedWith410, "expired"},
+		"another HTTP status":   {whatsmeow.ErrMediaDownloadFailedWith403, "http"},
+		"a plain network error": {errors.New("dial tcp: connection refused"), "network"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := downloadFailureClass(tt.err); got != tt.want {
+				t.Errorf("downloadFailureClass(%v) = %q, want %q", tt.err, got, tt.want)
 			}
 		})
 	}

@@ -57,8 +57,11 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 }
 
 // handleNameEvent dispatches the events that can only retitle an
-// already-known chat (see contacts.go), plus the mute changes this
-// connector deliberately does not propagate.
+// already-known chat (see contacts.go), the mute changes this
+// connector deliberately does not propagate, and the primary phone's
+// answer to a media retry request (see retry.go): none of these need
+// their own case in handleEvents' own switch, which already sits at
+// this linter's complexity limit.
 func (c *Connector) handleNameEvent(ctx context.Context, sink connector.Sink, dev device, evt any) {
 	switch e := evt.(type) {
 	case *events.Contact:
@@ -67,6 +70,8 @@ func (c *Connector) handleNameEvent(ctx context.Context, sink connector.Sink, de
 		c.handlePushNameUpdate(ctx, sink, dev, e)
 	case *events.AppStateSyncComplete:
 		c.handleAppStateSyncComplete(ctx, sink, dev, e)
+	case *events.MediaRetry:
+		c.deliverRetry(e)
 	case *events.Mute:
 		// Deliberately not propagated: see the decision on WhatsApp's
 		// mute sync in docs/decisions.md. Listed here so this switch

@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"sync"
 
+	"go.mau.fi/whatsmeow/types/events"
+
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -72,6 +74,14 @@ type Connector struct {
 	chatKinds     map[string]string            // every conversation remote id this connector has reported, to its kind
 	reactions     map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji
 	undecryptable map[string]bool              // "<conversation remote id>/<message remote id>" still waiting on a placeholder (see live.go's handleUndecryptable)
+
+	// retryWaiters holds one channel per message remote id currently
+	// waiting on the primary phone's answer to a media retry request
+	// (see retry.go), so the event dispatcher (events.go) has somewhere
+	// to deliver events.MediaRetry once it arrives. A concurrent fetch
+	// for a different message gets its own entry and so its own
+	// channel, never the other's.
+	retryWaiters map[string]chan *events.MediaRetry
 }
 
 // nameRank orders how much a resolved name can be trusted, so

@@ -171,6 +171,7 @@ func TestFetchMedia_LogsAndCategorizesEveryFailureReason(t *testing.T) {
 		wantReason   app.MediaFetchReason
 	}{
 		"a reference the service never saved":      {domain.ErrNotFound, app.MediaNotFound},
+		"media the phone no longer has":            {domain.ErrMediaExpired, app.MediaExpired},
 		"a downloaded file that failed to decrypt": {domain.ErrMediaDecryptFailed, app.MediaDecryptFailed},
 		"a fetch that ran out of time":             {context.DeadlineExceeded, app.MediaTimedOut},
 		"a fetch cancelled with the request":       {context.Canceled, app.MediaTimedOut},

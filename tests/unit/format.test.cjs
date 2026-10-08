@@ -442,6 +442,7 @@ test('guessMediaKind recognizes common image and video extensions', () => {
 
 test('mediaFailureReason turns a safe reason category into a short phrase', () => {
   assert.strictEqual(Format.mediaFailureReason('not-found'), 'no longer available');
+  assert.strictEqual(Format.mediaFailureReason('expired'), 'no longer on the phone');
   assert.strictEqual(Format.mediaFailureReason('download'), 'connection problem');
   assert.strictEqual(Format.mediaFailureReason('decrypt'), 'could not be verified');
   assert.strictEqual(Format.mediaFailureReason('cache'), 'storage problem');

@@ -116,6 +116,12 @@ type device interface {
 	// the reference it was saved with (see normalize_media.go).
 	downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error)
 
+	// sendMediaRetryReceipt asks WhatsApp's primary phone to re-upload
+	// the media of the message info identifies, because its CDN link has
+	// aged out (see retry.go). The phone's answer arrives later as an
+	// events.MediaRetry, decrypted with the same mediaKey.
+	sendMediaRetryReceipt(ctx context.Context, info *types.MessageInfo, mediaKey []byte) error
+
 	// uploadMedia encrypts and uploads data to WhatsApp's media servers
 	// for an attachment of kind, returning what a message proto needs to
 	// point at the result.
@@ -375,6 +381,12 @@ func (d *waDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, err
 // an attachment of kind.
 func (d *waDevice) uploadMedia(ctx context.Context, data []byte, kind mediaKind) (whatsmeow.UploadResponse, error) {
 	return d.cli.Upload(ctx, data, appInfo(kind))
+}
+
+// sendMediaRetryReceipt asks WhatsApp's primary phone to re-upload a
+// message's media.
+func (d *waDevice) sendMediaRetryReceipt(ctx context.Context, info *types.MessageInfo, mediaKey []byte) error {
+	return d.cli.SendMediaRetryReceipt(ctx, info, mediaKey)
 }
 
 // sendAppState sends patch with WhatsApp.

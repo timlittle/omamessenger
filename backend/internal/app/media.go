@@ -24,6 +24,7 @@ type MediaFetchReason string
 // no longer recognises.
 const (
 	MediaNotFound       MediaFetchReason = "not-found"
+	MediaExpired        MediaFetchReason = "expired"
 	MediaDecryptFailed  MediaFetchReason = "decrypt"
 	MediaCacheFailed    MediaFetchReason = "cache"
 	MediaTimedOut       MediaFetchReason = "timeout"
@@ -118,6 +119,8 @@ func fetchFailureReason(connectorErr error) MediaFetchReason {
 		return MediaCacheFailed
 	case errors.Is(connectorErr, domain.ErrNotFound):
 		return MediaNotFound
+	case errors.Is(connectorErr, domain.ErrMediaExpired):
+		return MediaExpired
 	case errors.Is(connectorErr, domain.ErrMediaDecryptFailed):
 		return MediaDecryptFailed
 	case errors.Is(connectorErr, context.DeadlineExceeded), errors.Is(connectorErr, context.Canceled):

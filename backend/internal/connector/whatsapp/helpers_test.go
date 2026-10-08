@@ -88,11 +88,15 @@ type fakeDevice struct {
 
 	// downloadData, downloadErr and downloadBlocks script downloadMedia,
 	// and downloadCalls records what it was asked to fetch; fetch_test.go
-	// drives these.
-	downloadData   []byte
-	downloadErr    error
-	downloadBlocks bool
-	downloadCalls  []mediaRef
+	// drives these. downloadErrPaths, keyed by a reference's DirectPath,
+	// fails only the attempt for that one path rather than every
+	// attempt, the way a real stale link fails while a fresh one from a
+	// media retry succeeds; retry_test.go drives this one.
+	downloadData     []byte
+	downloadErr      error
+	downloadErrPaths map[string]error
+	downloadBlocks   bool
+	downloadCalls    []mediaRef
 
 	// uploadResp and uploadErr script uploadMedia, and uploadCalls
 	// records what it was asked to upload; upload_test.go drives these.
@@ -106,6 +110,17 @@ type fakeDevice struct {
 	appStateErr     error
 	appStateBlocks  bool
 	appStatePatches []appstate.PatchInfo
+
+	// mediaRetryErr scripts sendMediaRetryReceipt, and mediaRetryCalls
+	// records what it was asked to send; retry_test.go drives these.
+	mediaRetryErr   error
+	mediaRetryCalls []mediaRetryCall
+}
+
+// mediaRetryCall records one call to sendMediaRetryReceipt.
+type mediaRetryCall struct {
+	info     *types.MessageInfo
+	mediaKey []byte
 }
 
 // uploadCall records one call to uploadMedia.
@@ -364,11 +379,16 @@ func (d *fakeDevice) pnForLID(_ context.Context, jid types.JID) types.JID {
 
 // downloadMedia records ref and reports the scripted bytes or error, or
 // blocks on ctx when downloadBlocks is set, as a real download that
-// never hears back from WhatsApp's media servers does.
+// never hears back from WhatsApp's media servers does. A path-specific
+// error in downloadErrPaths overrides the plain downloadErr for that
+// one reference only.
 func (d *fakeDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error) {
 	d.mu.Lock()
 	d.downloadCalls = append(d.downloadCalls, ref)
 	blocks, data, err := d.downloadBlocks, d.downloadData, d.downloadErr
+	if pathErr, ok := d.downloadErrPaths[ref.DirectPath]; ok {
+		err = pathErr
+	}
 	d.mu.Unlock()
 
 	if blocks {
@@ -394,6 +414,16 @@ func (d *fakeDevice) uploadMedia(_ context.Context, data []byte, kind mediaKind)
 	}
 
 	return d.uploadResp, nil
+}
+
+// sendMediaRetryReceipt records the call and reports mediaRetryErr.
+func (d *fakeDevice) sendMediaRetryReceipt(_ context.Context, info *types.MessageInfo, mediaKey []byte) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.mediaRetryCalls = append(d.mediaRetryCalls, mediaRetryCall{info: info, mediaKey: mediaKey})
+
+	return d.mediaRetryErr
 }
 
 // sendAppState records patch and reports appStateErr, or blocks on ctx

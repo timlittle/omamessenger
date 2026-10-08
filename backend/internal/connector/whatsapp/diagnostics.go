@@ -13,8 +13,10 @@ package whatsapp
 // other diagnostic in this helper already uses (see docs/decisions.md).
 
 import (
+	"errors"
 	"log"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -48,6 +50,54 @@ func logUndecryptable(unavailable bool, mode events.DecryptFailMode) {
 // not recognise yet, by its proto field name alone.
 func logUnknownKind(field string) {
 	log.Printf("whatsapp: unknown message kind (field=%s)", field)
+}
+
+// expiredDownloadErrs are the whatsmeow download errors WhatsApp's CDN
+// returns once a message's media link has aged out: the case retry.go
+// asks the primary phone to fix by re-uploading, rather than one this
+// connector can do anything else about on its own.
+var expiredDownloadErrs = []error{
+	whatsmeow.ErrMediaDownloadFailedWith404,
+	whatsmeow.ErrMediaDownloadFailedWith410,
+}
+
+// isExpiredDownload reports whether err is one of expiredDownloadErrs.
+func isExpiredDownload(err error) bool {
+	for _, want := range expiredDownloadErrs {
+		if errors.Is(err, want) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// downloadFailureClass is the safe category logDownloadFailed reports
+// for one failed download attempt: "decrypt" for a hash or HMAC
+// mismatch, "expired" for the 404 or 410 that sends retry.go to the
+// primary phone, "http" for any other status WhatsApp's server
+// answered with, and "network" for a failure that never reached it at
+// all.
+func downloadFailureClass(err error) string {
+	var httpErr whatsmeow.DownloadHTTPError
+
+	switch {
+	case isDecryptFailure(err):
+		return "decrypt"
+	case isExpiredDownload(err):
+		return "expired"
+	case errors.As(err, &httpErr):
+		return "http"
+	default:
+		return "network"
+	}
+}
+
+// logDownloadFailed reports a failed media download attempt by its
+// safe class alone (see downloadFailureClass), never the path, JID or
+// key the attempt carried.
+func logDownloadFailed(class string) {
+	log.Printf("whatsapp: media download failed (class=%s)", class)
 }
 
 // logPhoneResend reports a message the primary phone resent after

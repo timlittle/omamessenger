@@ -288,6 +288,7 @@ function photoSize(width, height) {
 // short phrase a person can actually read in a tooltip.
 var MEDIA_FAILURE_REASONS = {
   'not-found': 'no longer available',
+  expired: 'no longer on the phone',
   download: 'connection problem',
   decrypt: 'could not be verified',
   cache: 'storage problem',
