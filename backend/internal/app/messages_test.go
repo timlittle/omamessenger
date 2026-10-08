@@ -164,34 +164,6 @@ func TestSend_WithReplyToFillsTheQuoteAndPassesItToTheConnector(t *testing.T) {
 	}
 }
 
-func TestSend_RejectsReplyToAMessageInAnotherConversation(t *testing.T) {
-	t.Parallel()
-
-	f := newFixture(t, false)
-	f.conversation(t, "chat", "Chat", domain.KindDirect)
-	f.conversation(t, "other", "Other", domain.KindDirect)
-
-	elsewhere, err := f.commands.Send(t.Context(), "other", "hi", app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := f.commands.Send(t.Context(), "chat", "sure", app.SendOptions{AttachmentPath: "", ReplyToID: elsewhere.ID, Mentions: nil}); !errors.Is(err, app.ErrInvalidInput) {
-		t.Errorf("Send with a reply from another conversation = %v, want ErrInvalidInput", err)
-	}
-}
-
-func TestSend_RejectsReplyToAnUnknownMessage(t *testing.T) {
-	t.Parallel()
-
-	f := newFixture(t, false)
-	f.conversation(t, "chat", "Chat", domain.KindDirect)
-
-	if _, err := f.commands.Send(t.Context(), "chat", "sure", app.SendOptions{AttachmentPath: "", ReplyToID: "missing", Mentions: nil}); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("Send with an unknown reply target = %v, want ErrNotFound", err)
-	}
-}
-
 func TestSend_RefusedMessageIsFailedNotAnError(t *testing.T) {
 	t.Parallel()
 
@@ -215,26 +187,42 @@ func TestSend_RefusedMessageIsFailedNotAnError(t *testing.T) {
 	}
 }
 
+// TestSend_RejectsInvalidInput confirms Send refuses blank or oversize
+// text, an unknown conversation, and a reply to a message that is
+// unknown or belongs to a different conversation.
 func TestSend_RejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
 	ctx := t.Context()
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.conversation(t, "other", "Other", domain.KindDirect)
+
+	elsewhere, err := f.commands.Send(ctx, "other", "hi", app.SendOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	tests := []struct {
-		name, conversationID, text string
-		want                       error
+		name, conversationID, text, replyToID string
+		want                                  error
 	}{
-		{"blank text", "chat", "  ", app.ErrInvalidInput},
-		{"text too long", "chat", strings.Repeat("a", domain.MaxTextLength+1), app.ErrInvalidInput},
-		{"unknown conversation", "missing", "text", domain.ErrNotFound},
+		{"blank text", "chat", "  ", "", app.ErrInvalidInput},
+		{"text too long", "chat", strings.Repeat("a", domain.MaxTextLength+1), "", app.ErrInvalidInput},
+		{"unknown conversation", "missing", "text", "", domain.ErrNotFound},
+		{"reply from another conversation", "chat", "sure", elsewhere.ID, app.ErrInvalidInput},
+		{"unknown reply target", "chat", "sure", "missing", domain.ErrNotFound},
 	}
 
 	for _, tt := range tests {
-		if _, err := f.commands.Send(ctx, tt.conversationID, tt.text, app.SendOptions{AttachmentPath: "", ReplyToID: "", Mentions: nil}); !errors.Is(err, tt.want) {
-			t.Errorf("%s: Send = %v, want %v", tt.name, err, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := app.SendOptions{ReplyToID: tt.replyToID}
+			if _, err := f.commands.Send(ctx, tt.conversationID, tt.text, opts); !errors.Is(err, tt.want) {
+				t.Errorf("Send = %v, want %v", err, tt.want)
+			}
+		})
 	}
 }
 

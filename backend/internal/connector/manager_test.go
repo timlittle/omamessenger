@@ -54,6 +54,18 @@ func TestStart_RecordsAccountsBeforeRunning(t *testing.T) {
 	}
 }
 
+// stopManager registers a cleanup that cancels ctx and waits for m to
+// stop, for a test whose only remaining step once its assertions pass
+// is to shut the manager down.
+func stopManager(t *testing.T, cancel context.CancelFunc, m *connector.Manager) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		cancel()
+		m.Wait()
+	})
+}
+
 func TestStart_FailsWhenAccountCannotBeRecorded(t *testing.T) {
 	t.Parallel()
 
@@ -148,10 +160,7 @@ func TestSend_RoutesByAccount(t *testing.T) {
 	a, b := &fakeConnector{id: "a"}, &fakeConnector{id: "b"}
 	ctx, cancel := context.WithCancel(t.Context())
 	m, _ := startManager(t, ctx, a, b)
-	defer func() {
-		cancel()
-		m.Wait()
-	}()
+	stopManager(t, cancel, m)
 
 	if err := m.Send(ctx, domain.Conversation{AccountID: "b"}, domain.Message{ID: "m1"}); err != nil {
 		t.Fatal(err)
@@ -179,6 +188,7 @@ func TestAdd_RunsAConnectorWhileTheManagerRuns(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		m, _ := startManager(t, ctx)
+		stopManager(t, cancel, m)
 
 		started := make(chan struct{})
 		added := &fakeConnector{id: "b", run: func(ctx context.Context) error {
@@ -198,9 +208,6 @@ func TestAdd_RunsAConnectorWhileTheManagerRuns(t *testing.T) {
 		if err := m.Add(ctx, &fakeConnector{id: "b"}); !errors.Is(err, connector.ErrDuplicateAccount) {
 			t.Errorf("adding the same account again = %v, want ErrDuplicateAccount", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -216,6 +223,7 @@ func TestRemove_StopsOnlyThatConnector(t *testing.T) {
 			}}
 		}
 		m, _ := startManager(t, ctx, connectorFor("a"), connectorFor("b"))
+		stopManager(t, cancel, m)
 		synctest.Wait()
 
 		if err := m.Remove(ctx, "a"); err != nil {
@@ -233,9 +241,6 @@ func TestRemove_StopsOnlyThatConnector(t *testing.T) {
 		if err := m.Remove(ctx, "a"); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("removing it twice = %v, want ErrNoConnector", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -244,6 +249,7 @@ func TestRemove_LogsOutAConnectorThatSupportsItBeforeStopping(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &withLogout{fakeConnector: fakeConnector{id: "tg"}}
 		m, _ := startManager(t, ctx, tg)
+		stopManager(t, cancel, m)
 		synctest.Wait()
 
 		if err := m.Remove(ctx, "tg"); err != nil {
@@ -253,9 +259,6 @@ func TestRemove_LogsOutAConnectorThatSupportsItBeforeStopping(t *testing.T) {
 		if !tg.loggedOut {
 			t.Error("Remove did not call Logout on a connector that supports it")
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -264,14 +267,12 @@ func TestRemove_IgnoresALogoutFailureAndStillStops(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &withLogout{fakeConnector: fakeConnector{id: "tg"}, logoutErr: errors.New("offline")}
 		m, _ := startManager(t, ctx, tg)
+		stopManager(t, cancel, m)
 		synctest.Wait()
 
 		if err := m.Remove(ctx, "tg"); err != nil {
 			t.Fatalf("Remove = %v, want nil even when Logout fails", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -280,6 +281,7 @@ func TestSubmitAuth_ReachesConnectorsThatSignIn(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &signingIn{fakeConnector: fakeConnector{id: "tg"}}
 		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
 
 		if err := m.SubmitAuth(ctx, "tg", "code", "12345"); err != nil {
 			t.Fatal(err)
@@ -296,9 +298,6 @@ func TestSubmitAuth_ReachesConnectorsThatSignIn(t *testing.T) {
 		if err := m.SubmitAuth(ctx, "nobody", "code", "1"); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("SubmitAuth to an unknown account = %v", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -307,6 +306,7 @@ func TestLoadOlder_AsksConnectorsThatKeepHistory(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &withHistory{fakeConnector: fakeConnector{id: "tg"}, count: 3}
 		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
 
 		if n, err := m.LoadOlder(ctx, domain.Conversation{AccountID: "tg"}, "40", 30); err != nil || n != 3 {
 			t.Errorf("LoadOlder = %d, %v; want 3", n, err)
@@ -323,9 +323,6 @@ func TestLoadOlder_AsksConnectorsThatKeepHistory(t *testing.T) {
 		if _, err := m.LoadOlder(ctx, domain.Conversation{AccountID: "nobody"}, "40", 30); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("LoadOlder for an unknown account = %v", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -334,6 +331,7 @@ func TestRefreshMessages_AsksConnectorsThatKeepHistory(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &withRefresh{fakeConnector: fakeConnector{id: "tg"}}
 		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
 
 		if err := m.RefreshMessages(ctx, domain.Conversation{AccountID: "tg"}, []string{"1", "2"}); err != nil {
 			t.Fatal(err)
@@ -350,9 +348,6 @@ func TestRefreshMessages_AsksConnectorsThatKeepHistory(t *testing.T) {
 		if err := m.RefreshMessages(ctx, domain.Conversation{AccountID: "nobody"}, []string{"1"}); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("RefreshMessages for an unknown account = %v", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -361,6 +356,7 @@ func TestSetPinned_AsksConnectorsThatOrganize(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &withOrganizer{fakeConnector: fakeConnector{id: "tg"}}
 		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
 
 		if err := m.SetPinned(ctx, domain.Conversation{AccountID: "tg"}, true); err != nil {
 			t.Fatal(err)
@@ -377,9 +373,6 @@ func TestSetPinned_AsksConnectorsThatOrganize(t *testing.T) {
 		if err := m.SetPinned(ctx, domain.Conversation{AccountID: "nobody"}, true); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("SetPinned for an unknown account = %v", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -388,6 +381,7 @@ func TestSetArchived_AsksConnectorsThatOrganize(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &withOrganizer{fakeConnector: fakeConnector{id: "tg"}}
 		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
 
 		if err := m.SetArchived(ctx, domain.Conversation{AccountID: "tg"}, true); err != nil {
 			t.Fatal(err)
@@ -404,9 +398,6 @@ func TestSetArchived_AsksConnectorsThatOrganize(t *testing.T) {
 		if err := m.SetArchived(ctx, domain.Conversation{AccountID: "nobody"}, true); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("SetArchived for an unknown account = %v", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -415,6 +406,7 @@ func TestReact_AsksConnectorsThatSupportReactions(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &withReactor{fakeConnector: fakeConnector{id: "tg"}}
 		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
 
 		if err := m.React(ctx, domain.Conversation{AccountID: "tg"}, "40", "👍"); err != nil {
 			t.Fatal(err)
@@ -431,9 +423,6 @@ func TestReact_AsksConnectorsThatSupportReactions(t *testing.T) {
 		if err := m.React(ctx, domain.Conversation{AccountID: "nobody"}, "40", "👍"); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("React for an unknown account = %v", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 
@@ -442,6 +431,7 @@ func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		tg := &withMedia{fakeConnector: fakeConnector{id: "tg"}}
 		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
 
 		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "tg"}, "40", "/tmp/x.part"); err != nil {
 			t.Fatal(err)
@@ -458,9 +448,6 @@ func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
 		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "nobody"}, "40", "/tmp/x"); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("FetchMedia for an unknown account = %v", err)
 		}
-
-		cancel()
-		m.Wait()
 	})
 }
 

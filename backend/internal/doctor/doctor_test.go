@@ -79,9 +79,10 @@ func TestBuild_DatabaseReflectsWhetherItOpened(t *testing.T) {
 	}
 }
 
-// TestBuild_CacheFlagsOverLimit confirms the media cache check follows
-// Facts.CacheSize, treating an unchecked cache as fine.
-func TestBuild_CacheFlagsOverLimit(t *testing.T) {
+// TestBuild_SizeLimitsFlagOverLimit confirms the media cache and
+// outgoing attachments checks both follow their own Facts field the
+// same way, treating an unchecked area as fine.
+func TestBuild_SizeLimitsFlagOverLimit(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -94,43 +95,25 @@ func TestBuild_CacheFlagsOverLimit(t *testing.T) {
 		{"not checked", doctor.StateUnknown, true},
 	}
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := checkNamed(t, doctor.Build(doctor.Facts{CacheSize: c.state}), "Media cache")
-			if got.OK != c.wantOK {
-				t.Errorf("OK = %t, want %t (detail %q)", got.OK, c.wantOK, got.Detail)
-			}
-		})
-	}
-}
-
-// TestBuild_OutgoingSizeFlagsOverLimit confirms the outgoing attachments
-// check follows Facts.OutgoingSize, treating an unchecked area as fine,
-// the same as the downloaded media cache.
-func TestBuild_OutgoingSizeFlagsOverLimit(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name   string
-		state  doctor.State
-		wantOK bool
+	areas := []struct {
+		checkName string
+		facts     func(doctor.State) doctor.Facts
 	}{
-		{"within its limit", doctor.StateGood, true},
-		{"over its limit", doctor.StateBad, false},
-		{"not checked", doctor.StateUnknown, true},
+		{"Media cache", func(s doctor.State) doctor.Facts { return doctor.Facts{CacheSize: s} }},
+		{"Outgoing attachments", func(s doctor.State) doctor.Facts { return doctor.Facts{OutgoingSize: s} }},
 	}
 
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
+	for _, area := range areas {
+		for _, c := range cases {
+			t.Run(area.checkName+"/"+c.name, func(t *testing.T) {
+				t.Parallel()
 
-			got := checkNamed(t, doctor.Build(doctor.Facts{OutgoingSize: c.state}), "Outgoing attachments")
-			if got.OK != c.wantOK {
-				t.Errorf("OK = %t, want %t (detail %q)", got.OK, c.wantOK, got.Detail)
-			}
-		})
+				got := checkNamed(t, doctor.Build(area.facts(c.state)), area.checkName)
+				if got.OK != c.wantOK {
+					t.Errorf("OK = %t, want %t (detail %q)", got.OK, c.wantOK, got.Detail)
+				}
+			})
+		}
 	}
 }
 

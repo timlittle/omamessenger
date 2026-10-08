@@ -1,7 +1,6 @@
 package cache_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -19,10 +18,7 @@ func TestOutgoingStore_CopiesAndFindsAgain(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "outgoing")
 	o := cache.NewOutgoing(dir, 24*time.Hour, 1<<30, alwaysExists)
 
-	path, err := o.Store(t.Context(), "m1", "photo.jpg", bytes.NewReader([]byte("image bytes")))
-	if err != nil {
-		t.Fatalf("Store() error = %v", err)
-	}
+	path := mustStore(t, o, "m1", "photo.jpg", "image bytes")
 
 	if want := o.Path("m1", "photo.jpg"); path != want {
 		t.Errorf("Store() = %q, want %q", path, want)
@@ -118,10 +114,7 @@ func TestOutgoingRemove_DeletesAStoredCopy(t *testing.T) {
 	t.Parallel()
 
 	o := newOutgoing(t)
-	path, err := o.Store(t.Context(), "m1", "file.bin", strings.NewReader("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	path := mustStore(t, o, "m1", "file.bin", "x")
 
 	if err := o.Remove(t.Context(), "m1", "file.bin"); err != nil {
 		t.Fatalf("Remove() error = %v", err)
@@ -190,9 +183,7 @@ func TestOutgoingStats_ReportsBytesHeldAndTheLimit(t *testing.T) {
 		t.Fatalf("Stats before any store = %d, %d, %v; want 0, 100, nil", bytes, limit, err)
 	}
 
-	if _, err := o.Store(t.Context(), "m1", "file.bin", strings.NewReader("0123456789")); err != nil {
-		t.Fatal(err)
-	}
+	mustStore(t, o, "m1", "file.bin", "0123456789")
 
 	if bytes, limit, err := o.Stats(); err != nil || bytes != 10 || limit != 100 {
 		t.Errorf("Stats after one store = %d, %d, %v; want 10, 100, nil", bytes, limit, err)

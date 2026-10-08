@@ -16,10 +16,7 @@ func TestReact_TellsTheServiceAndReturnsTheUpdatedMessage(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	m, _, err := f.store.AddMessage(ctx, domain.Message{ConversationID: chat.ID, RemoteID: "40", Text: "hi", Created: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := sentMessage(t, f, chat)
 
 	got, err := f.commands.React(ctx, m.ID, "👍")
 	if err != nil || got.ID != m.ID {
@@ -59,36 +56,35 @@ func TestReact_RejectsAMessageNeverSentToTheService(t *testing.T) {
 	}
 }
 
-func TestReact_MapsAnUnsupportedConnectorToInvalidInput(t *testing.T) {
+// TestReact_MapsConnectorFailures confirms React maps an unsupported
+// connector to ErrInvalidInput but passes an otherwise unexpected
+// failure through unchanged, the same as DeleteMessages and Vote.
+func TestReact_MapsConnectorFailures(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
-	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	m, _, err := f.store.AddMessage(ctx, domain.Message{ConversationID: chat.ID, RemoteID: "40", Text: "hi", Created: 1})
-	if err != nil {
-		t.Fatal(err)
+	offline := errors.New("offline")
+	cases := []struct {
+		name       string
+		reactorErr error
+		want       error
+	}{
+		{"an unsupported connector maps to invalid input", connector.ErrNoReactions, app.ErrInvalidInput},
+		{"an otherwise unexpected failure is unchanged", offline, offline},
 	}
 
-	f.reactor.err = connector.ErrNoReactions
-	if _, err := f.commands.React(ctx, m.ID, "👍"); !errors.Is(err, app.ErrInvalidInput) {
-		t.Errorf("React with an unsupported connector = %v, want ErrInvalidInput", err)
-	}
-}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestReact_ReturnsAnOtherwiseUnexpectedFailureUnchanged(t *testing.T) {
-	t.Parallel()
+			f := newFixture(t, false)
+			ctx := t.Context()
+			chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+			m := sentMessage(t, f, chat)
 
-	f := newFixture(t, false)
-	ctx := t.Context()
-	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	m, _, err := f.store.AddMessage(ctx, domain.Message{ConversationID: chat.ID, RemoteID: "40", Text: "hi", Created: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	f.reactor.err = errors.New("offline")
-	if _, err := f.commands.React(ctx, m.ID, "👍"); !errors.Is(err, f.reactor.err) {
-		t.Errorf("React with a failing service = %v, want %v", err, f.reactor.err)
+			f.reactor.err = c.reactorErr
+			if _, err := f.commands.React(ctx, m.ID, "👍"); !errors.Is(err, c.want) {
+				t.Errorf("React = %v, want %v", err, c.want)
+			}
+		})
 	}
 }

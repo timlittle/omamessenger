@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -81,6 +82,20 @@ func (l *recordingLogger) count() int {
 	defer l.mu.Unlock()
 
 	return l.n
+}
+
+// mustStore stores content in o under id and fileName and fails the
+// test if Store returns an error, for a test that just needs a file in
+// place to exercise something else, such as Sweep.
+func mustStore(t *testing.T, o *cache.Outgoing, id, fileName, content string) string {
+	t.Helper()
+
+	path, err := o.Store(t.Context(), id, fileName, strings.NewReader(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return path
 }
 
 // backdate sets path's modification time back by d, so a sweep sees it

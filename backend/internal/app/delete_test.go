@@ -18,10 +18,7 @@ func TestDeleteMessages_TellsTheServiceAndRemovesTheMessageLocally(t *testing.T)
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	m, _, err := f.store.AddMessage(ctx, domain.Message{ConversationID: chat.ID, RemoteID: "40", Text: "hi", Created: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := sentMessage(t, f, chat)
 
 	if err := f.commands.DeleteMessages(ctx, chat.ID, []string{m.ID}, true); err != nil {
 		t.Fatal(err)
@@ -162,50 +159,50 @@ func TestDeleteMessages_RejectsAMessageFromAnotherConversation(t *testing.T) {
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	other := f.conversation(t, "other", "Other", domain.KindDirect)
-	m, _, err := f.store.AddMessage(ctx, domain.Message{ConversationID: other.ID, RemoteID: "40", Text: "hi", Created: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := sentMessage(t, f, other)
 
 	if err := f.commands.DeleteMessages(ctx, chat.ID, []string{m.ID}, true); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("DeleteMessages(wrong conversation) = %v, want ErrInvalidInput", err)
 	}
 }
 
-func TestDeleteMessages_MapsAnUnsupportedConnectorToInvalidInput(t *testing.T) {
+// TestDeleteMessages_MapsConnectorFailures confirms DeleteMessages maps
+// an unsupported connector to ErrInvalidInput, leaving the message
+// stored since it was never told to delete it, but passes an otherwise
+// unexpected failure through unchanged, the same as React and Vote.
+func TestDeleteMessages_MapsConnectorFailures(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
-	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	m, _, err := f.store.AddMessage(ctx, domain.Message{ConversationID: chat.ID, RemoteID: "40", Text: "hi", Created: 1})
-	if err != nil {
-		t.Fatal(err)
+	offline := errors.New("offline")
+	cases := []struct {
+		name             string
+		deleterErr       error
+		want             error
+		checkStillStored bool
+	}{
+		{"an unsupported connector maps to invalid input", connector.ErrNoDeleter, app.ErrInvalidInput, true},
+		{"an otherwise unexpected failure is unchanged", offline, offline, false},
 	}
 
-	f.deleter.err = connector.ErrNoDeleter
-	if err := f.commands.DeleteMessages(ctx, chat.ID, []string{m.ID}, true); !errors.Is(err, app.ErrInvalidInput) {
-		t.Errorf("DeleteMessages with an unsupported connector = %v, want ErrInvalidInput", err)
-	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 
-	if _, err := f.store.Message(ctx, m.ID); err != nil {
-		t.Errorf("Message after a refused delete = %v, want it still stored", err)
-	}
-}
+			f := newFixture(t, false)
+			ctx := t.Context()
+			chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+			m := sentMessage(t, f, chat)
 
-func TestDeleteMessages_ReturnsAnOtherwiseUnexpectedFailureUnchanged(t *testing.T) {
-	t.Parallel()
+			f.deleter.err = c.deleterErr
+			if err := f.commands.DeleteMessages(ctx, chat.ID, []string{m.ID}, true); !errors.Is(err, c.want) {
+				t.Errorf("DeleteMessages = %v, want %v", err, c.want)
+			}
 
-	f := newFixture(t, false)
-	ctx := t.Context()
-	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	m, _, err := f.store.AddMessage(ctx, domain.Message{ConversationID: chat.ID, RemoteID: "40", Text: "hi", Created: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	f.deleter.err = errors.New("offline")
-	if err := f.commands.DeleteMessages(ctx, chat.ID, []string{m.ID}, true); !errors.Is(err, f.deleter.err) {
-		t.Errorf("DeleteMessages with a failing service = %v, want %v", err, f.deleter.err)
+			if c.checkStillStored {
+				if _, err := f.store.Message(ctx, m.ID); err != nil {
+					t.Errorf("Message after a refused delete = %v, want it still stored", err)
+				}
+			}
+		})
 	}
 }

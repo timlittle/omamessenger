@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -53,14 +52,8 @@ func TestSweep_RemovesAnOrphanOlderThanItsGracePeriod(t *testing.T) {
 
 	o := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1<<30, neverExists)
 
-	old, err := o.Store(t.Context(), "old", "file.bin", strings.NewReader("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	fresh, err := o.Store(t.Context(), "fresh", "file.bin", strings.NewReader("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	old := mustStore(t, o, "old", "file.bin", "x")
+	fresh := mustStore(t, o, "fresh", "file.bin", "x")
 
 	backdate(t, old, 2*time.Hour)
 
@@ -85,10 +78,7 @@ func TestSweep_NeverRemovesAPendingOrFailedMessagesCopy(t *testing.T) {
 
 	o := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1, alwaysExists)
 
-	path, err := o.Store(t.Context(), "m1", "file.bin", strings.NewReader("0123456789"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	path := mustStore(t, o, "m1", "file.bin", "0123456789")
 	backdate(t, path, 2*time.Hour)
 
 	if err := o.Sweep(t.Context()); err != nil {
@@ -110,10 +100,7 @@ func TestSweep_RemovesACopyOnceItsMessageIsGone(t *testing.T) {
 	messages := newFakeMessages("m1")
 	o := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1<<30, messages.exists)
 
-	path, err := o.Store(t.Context(), "m1", "file.bin", strings.NewReader("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	path := mustStore(t, o, "m1", "file.bin", "x")
 	backdate(t, path, 2*time.Hour)
 
 	messages.forget("m1")
@@ -137,10 +124,7 @@ func TestSweep_PropagatesAnExistsFailure(t *testing.T) {
 	o := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1<<30,
 		func(context.Context, string) (bool, error) { return false, failing })
 
-	path, err := o.Store(t.Context(), "m1", "file.bin", strings.NewReader("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	path := mustStore(t, o, "m1", "file.bin", "x")
 	backdate(t, path, 2*time.Hour)
 
 	if err := o.Sweep(t.Context()); !errors.Is(err, failing) {
@@ -159,10 +143,7 @@ func TestSweep_NeverRemovesAFileReserved(t *testing.T) {
 
 	o := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1<<30, neverExists)
 
-	path, err := o.Store(t.Context(), "sending", "file.bin", strings.NewReader("0123456789"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	path := mustStore(t, o, "sending", "file.bin", "0123456789")
 	backdate(t, path, 2*time.Hour)
 
 	release := o.Reserve("sending")
@@ -185,10 +166,7 @@ func TestSweep_ReleasedReservationCanStillBeSwept(t *testing.T) {
 
 	o := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1<<30, neverExists)
 
-	path, err := o.Store(t.Context(), "sent", "file.bin", strings.NewReader("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	path := mustStore(t, o, "sent", "file.bin", "x")
 	backdate(t, path, 2*time.Hour)
 
 	release := o.Reserve("sent")
@@ -251,10 +229,7 @@ func TestRunSweeper_SweepsOnStartupAndOnEveryTick(t *testing.T) {
 		o := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1<<30, neverExists)
 		ctx, cancel := context.WithCancel(t.Context())
 
-		path, err := o.Store(t.Context(), "old", "file.bin", strings.NewReader("x"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		path := mustStore(t, o, "old", "file.bin", "x")
 		backdate(t, path, 2*time.Hour)
 
 		done := make(chan struct{})
@@ -268,10 +243,7 @@ func TestRunSweeper_SweepsOnStartupAndOnEveryTick(t *testing.T) {
 			t.Fatalf("the startup sweep did not remove an orphan: %v", err)
 		}
 
-		second, err := o.Store(t.Context(), "second", "file.bin", strings.NewReader("x"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		second := mustStore(t, o, "second", "file.bin", "x")
 		backdate(t, second, 2*time.Hour)
 
 		time.Sleep(time.Minute)

@@ -189,19 +189,32 @@ func TestSend_RejectsAnAttachmentOverTheSizeLimit(t *testing.T) {
 	}
 }
 
-func TestRetry_ResendsTheSameAttachment(t *testing.T) {
-	t.Parallel()
+// sentFailedAttachment builds a fixture, attaches a 1x1 PNG to a new
+// message in a chat called "chat" and makes the dispatcher fail so the
+// send ends up Failed, for a retry test that goes on to recover it or
+// fail it further.
+func sentFailedAttachment(t *testing.T) (f *fixture, ctx context.Context, path string, failed domain.Message) {
+	t.Helper()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
+	f = newFixture(t, false)
+	ctx = t.Context()
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
-	path := writeTestPNG(t, "photo.png", 1, 1)
+	path = writeTestPNG(t, "photo.png", 1, 1)
 	f.dispatcher.err = errors.New("offline")
 
-	failed, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil})
+	var err error
+	failed, err = f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path})
 	if err != nil || failed.Status != domain.StatusFailed {
 		t.Fatalf("Send() = %+v, %v", failed, err)
 	}
+
+	return f, ctx, path, failed
+}
+
+func TestRetry_ResendsTheSameAttachment(t *testing.T) {
+	t.Parallel()
+
+	f, ctx, _, failed := sentFailedAttachment(t)
 
 	f.dispatcher.err = nil
 	retried, err := f.commands.Retry(ctx, failed.ID)
@@ -226,16 +239,7 @@ func TestRetry_ResendsTheSameAttachment(t *testing.T) {
 func TestRetry_RecopiesFromTheOriginalWhenTheOutgoingCopyIsMissing(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
-	f.conversation(t, "chat", "Chat", domain.KindDirect)
-	path := writeTestPNG(t, "photo.png", 1, 1)
-	f.dispatcher.err = errors.New("offline")
-
-	failed, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path})
-	if err != nil || failed.Status != domain.StatusFailed {
-		t.Fatalf("Send() = %+v, %v", failed, err)
-	}
+	f, ctx, _, failed := sentFailedAttachment(t)
 
 	if err := f.outgoing.Remove(ctx, failed.ID, failed.Media.FileName); err != nil {
 		t.Fatal(err)
@@ -259,16 +263,7 @@ func TestRetry_RecopiesFromTheOriginalWhenTheOutgoingCopyIsMissing(t *testing.T)
 func TestRetry_FailsClearlyWhenNeitherCopyIsAvailable(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
-	f.conversation(t, "chat", "Chat", domain.KindDirect)
-	path := writeTestPNG(t, "photo.png", 1, 1)
-	f.dispatcher.err = errors.New("offline")
-
-	failed, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path})
-	if err != nil || failed.Status != domain.StatusFailed {
-		t.Fatalf("Send() = %+v, %v", failed, err)
-	}
+	f, ctx, path, failed := sentFailedAttachment(t)
 
 	if err := f.outgoing.Remove(ctx, failed.ID, failed.Media.FileName); err != nil {
 		t.Fatal(err)
@@ -297,16 +292,7 @@ func TestRetry_FailsClearlyWhenNeitherCopyIsAvailable(t *testing.T) {
 func TestRetry_FailsClearlyWhenTheOriginalHasChanged(t *testing.T) {
 	t.Parallel()
 
-	f := newFixture(t, false)
-	ctx := t.Context()
-	f.conversation(t, "chat", "Chat", domain.KindDirect)
-	path := writeTestPNG(t, "photo.png", 1, 1)
-	f.dispatcher.err = errors.New("offline")
-
-	failed, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path})
-	if err != nil || failed.Status != domain.StatusFailed {
-		t.Fatalf("Send() = %+v, %v", failed, err)
-	}
+	f, ctx, path, failed := sentFailedAttachment(t)
 
 	if err := f.outgoing.Remove(ctx, failed.ID, failed.Media.FileName); err != nil {
 		t.Fatal(err)
