@@ -255,6 +255,38 @@ func TestSetHidden_StoresAndPublishesWithNoServiceCall(t *testing.T) {
 	}
 }
 
+func TestSetReminder_StoresAndPublishesWithNoServiceCall(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	got, err := f.commands.SetReminder(ctx, chat.ID, 5000)
+	if err != nil || got.ReminderAt != 5000 {
+		t.Fatalf("SetReminder = %+v, %v", got, err)
+	}
+
+	// Snoozing is local to OmaMessenger only: it must never reach the
+	// service, unlike pin and archive.
+	if len(f.organizer.pinned) != 0 || len(f.organizer.archived) != 0 {
+		t.Errorf("organizer saw pinned %v, archived %v, want neither called", f.organizer.pinned, f.organizer.archived)
+	}
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events = %v", got)
+	}
+
+	cleared, err := f.commands.SetReminder(ctx, chat.ID, 0)
+	if err != nil || cleared.ReminderAt != 0 {
+		t.Fatalf("SetReminder(clear) = %+v, %v", cleared, err)
+	}
+
+	if _, err := f.commands.SetReminder(ctx, "missing", 5000); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetReminder(missing) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestSetArchived_ReportsAServiceFailure(t *testing.T) {
 	t.Parallel()
 

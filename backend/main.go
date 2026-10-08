@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -157,14 +158,18 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	}
 
 	// Serve before the connectors start, so the UI sees their first events.
-	// On every return, stop the connectors and finish requests in progress
-	// before the database closes.
+	// On every return, stop the connectors and the reminder scheduler and
+	// finish requests in progress before the database closes.
 	srv.Start(ctx, stdio{s.in, s.out}, commands)
+	var background sync.WaitGroup
 	defer func() {
 		cancel()
 		srv.Wait()
 		manager.Wait()
+		background.Wait()
 	}()
+
+	background.Go(func() { commands.RunReminders(ctx) })
 
 	if err := manager.Start(ctx, db, ingest); err != nil && ctx.Err() == nil {
 		return fmt.Errorf("start connectors: %w", err)

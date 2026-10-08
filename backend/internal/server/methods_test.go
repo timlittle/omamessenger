@@ -96,6 +96,16 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("conversations.setHidden = %+v, %v", hidden, err)
 	}
 
+	snoozed, err := call[domain.Conversation](t, s, "conversations.setReminder", map[string]any{"conversationId": "chat", "at": 5000})
+	if err != nil || snoozed.ReminderAt != 5000 {
+		t.Errorf("conversations.setReminder = %+v, %v", snoozed, err)
+	}
+
+	unsnoozed, err := call[domain.Conversation](t, s, "conversations.setReminder", map[string]any{"conversationId": "chat", "at": nil})
+	if err != nil || unsnoozed.ReminderAt != 0 {
+		t.Errorf("conversations.setReminder(null) = %+v, %v", unsnoozed, err)
+	}
+
 	added, err := call[domain.Account](t, s, "accounts.add", map[string]any{"service": "telegram", "apiId": 1, "apiHash": "abc"})
 	if err != nil || added.ID != "tg-new" {
 		t.Errorf("accounts.add = %+v, %v", added, err)

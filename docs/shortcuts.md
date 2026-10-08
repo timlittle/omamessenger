@@ -27,8 +27,13 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | j / k | Move the selection down / up |
 | Enter, i, l or o | Open the selected conversation |
 | m | Mute / unmute |
+| a | Archive and mark read |
 
-Pin, archive and hide are in the command palette, and are local to this computer only.
+Pin, hide and snooze are in the command palette, and are local to this computer only. Archiving syncs to the service, like mute and pin.
+
+**Archive all read conversations** (command palette only) archives every conversation in the current list with no unread messages, except pinned ones, after asking "Archive N read conversations?" since it is a bulk action: Enter or y confirms, n or Esc cancels.
+
+**Snooze**: the command palette offers "Snooze until later today" (+3 hours), "tomorrow" (09:00), "next week" (Monday 09:00) and "Snooze until…" for a custom time, typed as a duration (`2h`, `30m`), a clock time (`18:00`) or a weekday and clock time (`mon 9:00`). A snoozed conversation is hidden from the standard list, like hide, until its time arrives, when it returns to the top of the list marked "Reminder" and triggers a desktop notification. "Show all" shows a still-snoozed conversation dimmed, labelled "Snoozed until …". **Remove snooze** (command palette) clears it early.
 
 Ctrl+Shift+A shows the "Unread" view in place of the usual list: every unread conversation across every service and account, overriding whichever rail filter was active rather than narrowing it, the way Slack's own all-unreads view does. Opening a chat from it and reading it keeps that chat visible until you leave it or open another, so it never disappears from under the cursor. With nothing unread, it says "No unread conversations · Esc to leave".
 

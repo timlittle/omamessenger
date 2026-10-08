@@ -93,12 +93,13 @@ func newFixture(t *testing.T, faked bool) *fixture {
 // with its own fresh set of fake connectors, for a test that opens the
 // store itself, such as one simulating a helper restart over the same
 // on-disk database.
-func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDispatcher) {
+func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDispatcher, *fakeNotifier) {
 	t.Helper()
 
 	dispatcher := &fakeDispatcher{}
+	notifier := &fakeNotifier{}
 	deps := app.Deps{
-		Store: db, Dispatcher: dispatcher, Notifier: &fakeNotifier{}, Publisher: &fakePublisher{},
+		Store: db, Dispatcher: dispatcher, Notifier: notifier, Publisher: &fakePublisher{},
 		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
 		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
 		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{},
@@ -107,7 +108,7 @@ func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDi
 
 	commands, ingest := app.New(deps)
 
-	return commands, ingest, dispatcher
+	return commands, ingest, dispatcher, notifier
 }
 
 // conversation stores a conversation of the given kind with remote id
