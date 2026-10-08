@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
@@ -17,14 +18,15 @@ import (
 
 	"github.com/sourcegraph/jsonrpc2"
 
+	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 func TestRun_ServesTheDemoAndStopsAtEndOfInput(t *testing.T) {
 	t.Parallel()
 
-	in, client, stderr, done := startInProcess(t, t.Context())
-	exercise(t, client)
+	in, client, stderr, done, updates := startInProcess(t, t.Context())
+	exercise(t, client, updates)
 	_ = in.Close()
 
 	if err := await(t, done); err != nil {
@@ -41,7 +43,7 @@ func TestRun_StopsWhenCancelled(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(t.Context())
-	_, client, _, done := startInProcess(t, ctx)
+	_, client, _, done, _ := startInProcess(t, ctx)
 	call(t, client, "hello", nil, nil)
 	cancel()
 
@@ -150,8 +152,8 @@ func TestHelperVersion_MatchesThePin(t *testing.T) {
 func TestBinary_ServesAndExitsAtEndOfInput(t *testing.T) {
 	t.Parallel()
 
-	cmd, stdin, client, stderr := startBinary(t)
-	exercise(t, client)
+	cmd, stdin, client, stderr, updates := startBinary(t)
+	exercise(t, client, updates)
 	_ = stdin.Close()
 
 	waitExit(t, cmd, stderr)
@@ -161,7 +163,7 @@ func TestBinary_ServesAndExitsAtEndOfInput(t *testing.T) {
 func TestBinary_ExitsCleanlyOnSIGTERM(t *testing.T) {
 	t.Parallel()
 
-	cmd, _, client, stderr := startBinary(t)
+	cmd, _, client, stderr, _ := startBinary(t)
 	call(t, client, "hello", nil, nil)
 
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
@@ -172,8 +174,10 @@ func TestBinary_ExitsCleanlyOnSIGTERM(t *testing.T) {
 }
 
 // exercise runs a short session through the protocol: the full stack of
-// server, application, store and fake connectors.
-func exercise(t *testing.T, client *jsonrpc2.Conn) {
+// server, application, store and fake connectors. updates carries the
+// account.updated notifications the helper sends as it connects each
+// fake account.
+func exercise(t *testing.T, client *jsonrpc2.Conn, updates chan domain.Account) {
 	t.Helper()
 
 	var hello struct {
@@ -184,7 +188,13 @@ func exercise(t *testing.T, client *jsonrpc2.Conn) {
 		t.Fatalf("hello = %+v", hello)
 	}
 
-	sam := waitForConversation(t, client, "Sam (spotty signal)")
+	// "Sam (spotty signal)" belongs to wa-personal. The fake connector
+	// seeds all of an account's conversations synchronously before it
+	// reports that account connected, so waiting for this one
+	// notification is the signal the conversation is in the store —
+	// not a fixed delay or a conversations.list poll.
+	awaitAccountStatus(t, updates, "wa-personal", domain.AccountConnected)
+	sam := findConversation(t, client, "Sam (spotty signal)")
 
 	var sent domain.Message
 	call(t, client, "messages.send", map[string]string{"conversationId": sam.ID, "text": "hello from the test"}, &sent)
@@ -192,25 +202,39 @@ func exercise(t *testing.T, client *jsonrpc2.Conn) {
 	call(t, client, "settings.apply", map[string]bool{"notifications": false}, nil)
 }
 
-// waitForConversation polls until the fakes have seeded the conversation.
-func waitForConversation(t *testing.T, client *jsonrpc2.Conn, title string) domain.Conversation {
+// findConversation looks up a conversation by title, failing the test if
+// it is not there.
+func findConversation(t *testing.T, client *jsonrpc2.Conn, title string) domain.Conversation {
 	t.Helper()
 
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		var list []domain.Conversation
-		call(t, client, "conversations.list", map[string]string{"query": title}, &list)
-
-		if len(list) > 0 {
-			return list[0]
-		}
-
-		time.Sleep(10 * time.Millisecond)
+	var list []domain.Conversation
+	call(t, client, "conversations.list", map[string]string{"query": title}, &list)
+	if len(list) == 0 {
+		t.Fatalf("conversation %q not found", title)
 	}
 
-	t.Fatalf("conversation %q never appeared", title)
+	return list[0]
+}
 
-	return domain.Conversation{}
+// awaitAccountStatus waits for an account.updated notification reporting
+// accountID at status, failing the test after five seconds. A notification
+// for a different account or an earlier status is skipped rather than
+// treated as a failure: an account reports connecting before connected,
+// and the helper runs several fake accounts at once.
+func awaitAccountStatus(t *testing.T, updates chan domain.Account, accountID, status string) {
+	t.Helper()
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case account := <-updates:
+			if account.ID == accountID && account.Status == status {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("account %q never reported %q", accountID, status)
+		}
+	}
 }
 
 // call makes a request, failing the test on an error.
@@ -241,8 +265,9 @@ func assertNoContent(t *testing.T, log string) {
 }
 
 // startInProcess runs the helper on pipes, so the wiring counts towards
-// coverage. done receives run's result.
-func startInProcess(t *testing.T, ctx context.Context) (io.Closer, *jsonrpc2.Conn, *lockedBuffer, chan error) {
+// coverage. done receives run's result; updates receives every
+// account.updated notification the helper sends.
+func startInProcess(t *testing.T, ctx context.Context) (io.Closer, *jsonrpc2.Conn, *lockedBuffer, chan error, chan domain.Account) {
 	t.Helper()
 
 	inR, inW := io.Pipe()
@@ -256,10 +281,11 @@ func startInProcess(t *testing.T, ctx context.Context) (io.Closer, *jsonrpc2.Con
 		_ = outW.Close()
 	}()
 
-	client := jsonrpc2.NewConn(t.Context(), jsonrpc2.NewPlainObjectStream(pipe{outR, inW}), noEvents{})
+	updates := make(chan domain.Account, 32)
+	client := jsonrpc2.NewConn(t.Context(), jsonrpc2.NewPlainObjectStream(pipe{outR, inW}), &accountUpdates{updates: updates})
 	t.Cleanup(func() { _ = client.Close() })
 
-	return inW, client, stderr, done
+	return inW, client, stderr, done, updates
 }
 
 // await returns run's result, failing if it takes over five seconds.
@@ -275,8 +301,10 @@ func await(t *testing.T, done chan error) error {
 	}
 }
 
-// startBinary builds the test helper, with its fake connectors, and runs it.
-func startBinary(t *testing.T) (*exec.Cmd, io.Closer, *jsonrpc2.Conn, *lockedBuffer) {
+// startBinary builds the test helper, with its fake connectors, and runs
+// it. updates receives every account.updated notification the helper
+// sends.
+func startBinary(t *testing.T) (*exec.Cmd, io.Closer, *jsonrpc2.Conn, *lockedBuffer, chan domain.Account) {
 	t.Helper()
 
 	binary := filepath.Join(t.TempDir(), "oma-messenger-service")
@@ -302,10 +330,11 @@ func startBinary(t *testing.T) (*exec.Cmd, io.Closer, *jsonrpc2.Conn, *lockedBuf
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 
-	client := jsonrpc2.NewConn(t.Context(), jsonrpc2.NewPlainObjectStream(pipe{stdout, stdin}), noEvents{})
+	updates := make(chan domain.Account, 32)
+	client := jsonrpc2.NewConn(t.Context(), jsonrpc2.NewPlainObjectStream(pipe{stdout, stdin}), &accountUpdates{updates: updates})
 	t.Cleanup(func() { _ = client.Close() })
 
-	return cmd, stdin, client, stderr
+	return cmd, stdin, client, stderr, updates
 }
 
 // waitExit fails unless the helper exits cleanly within five seconds.
@@ -331,10 +360,29 @@ type pipe struct {
 	io.WriteCloser
 }
 
-// noEvents ignores the helper's notifications.
-type noEvents struct{}
+// accountUpdates forwards every account.updated notification's account to
+// updates, so a test can wait for a specific account's status instead of
+// polling the store for data that status change already guarantees is
+// there. Any other notification is dropped.
+type accountUpdates struct {
+	updates chan domain.Account
+}
 
-func (noEvents) Handle(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request) {}
+// Handle decodes an account.updated notification's params and forwards
+// the account; a notification this test does not care about, or one
+// whose params do not decode, is dropped rather than failing the test.
+func (a *accountUpdates) Handle(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	if req.Method != app.EventAccountUpdated || req.Params == nil {
+		return
+	}
+
+	var account domain.Account
+	if err := json.Unmarshal(*req.Params, &account); err != nil {
+		return
+	}
+
+	a.updates <- account
+}
 
 // lockedBuffer is a bytes.Buffer safe for the helper and test to share.
 type lockedBuffer struct {

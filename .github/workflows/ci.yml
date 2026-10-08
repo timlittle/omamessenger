@@ -48,7 +48,24 @@ jobs:
       OMARCHY_SHELL_DIR: /tmp/omarchy/shell
     steps:
       - name: Install Quickshell, Qt 6, Go and Node
-        run: pacman -Syu --noconfirm --needed git go nodejs quickshell qt6-declarative
+        # Arch's rolling repos move ahead of Omarchy's own shell: Qt 6.12
+        # added a global QML "Color" type that shadows Omarchy's own
+        # Color singleton, and Quickshell follows Qt's release. Pin Qt
+        # and Quickshell to the versions .claude/rules/omarchy.md verifies
+        # the shell against (install the rest from the live repos, then
+        # downgrade just these in place), rather than chase whatever
+        # pacman -Syu happens to pull on the day CI runs. qt6-multimedia
+        # (with its FFmpeg backend) is pinned alongside them since it
+        # links against the same Qt minor version.
+        run: |
+          pacman -Syu --noconfirm --needed git go nodejs quickshell qt6-declarative qt6-multimedia qt6-multimedia-ffmpeg
+          cd /tmp
+          for spec in "qt6-base 6.11.2-3" "qt6-declarative 6.11.2-1" "qt6-multimedia 6.11.2-1" "qt6-multimedia-ffmpeg 6.11.2-1" "quickshell 0.3.1-1"; do
+            name=${spec% *}
+            version=${spec#* }
+            curl -fsSLO "https://archive.archlinux.org/packages/${name:0:1}/$name/$name-$version-x86_64.pkg.tar.zst"
+          done
+          pacman -U --noconfirm ./*.pkg.tar.zst
       - uses: actions/checkout@v4
       - name: Check out Omarchy 4.0.4
         run: git clone --depth 1 --branch v4.0.4 https://github.com/basecamp/omarchy /tmp/omarchy

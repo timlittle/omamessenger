@@ -262,17 +262,25 @@ ShellRoot {
     return true;
   }
 
-  // checkResumesPendingStep opens a new controller at a waiting step.
+  // checkResumesPendingStep opens a new controller at a waiting step. The
+  // controller it creates has no parent, so it is destroyed explicitly
+  // once the check is done with it: left to the JS garbage collector, its
+  // Connections to the shared fake service could still fire mid-teardown
+  // during a later check, reading its own id as null.
   function checkResumesPendingStep(): bool {
     service.pendingAuth = { accountId: "tg-2", kind: "code", hint: "Check your app" };
     const resumed = controllerComponent.createObject(null, { service: service });
     if (!resumed.open || resumed.stage !== "code" || resumed.accountId !== "tg-2") {
-      return Check.fail("pending step not resumed: " + resumed.stage);
+      const failure = "pending step not resumed: " + resumed.stage;
+      resumed.destroy();
+      return Check.fail(failure);
     }
 
     const before = service.requests.length;
     resumed.cancel();
-    if (service.requests.length !== before) return Check.fail("cancelling a saved account's sign-in removed it");
+    const removedIt = service.requests.length !== before;
+    resumed.destroy();
+    if (removedIt) return Check.fail("cancelling a saved account's sign-in removed it");
     return true;
   }
 
