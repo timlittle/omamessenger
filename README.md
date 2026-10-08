@@ -8,11 +8,12 @@ OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and H
 
 ## Features
 
-- A unified conversation list across every connected account, with a rail to filter by service
+- A unified conversation list across every connected account, with a rail to filter by service; once more than one account is connected, each gets a stable colour tag in the list and rail so their chats are easy to tell apart
 - Unread badges, search across every conversation (including archived ones), and older history that loads as you scroll back
 - Photos, video and files, with an in-window photo viewer and link previews
 - Voice notes play inline, with a scrubber and elapsed/total time; in-window playback needs `qt6-multimedia` (not installed by every Omarchy setup), otherwise a voice message opens in your default player instead
 - Replies and reactions; edits sync from the service, and you can delete a message yourself (**d**), for everyone or just for you, as well as have a deletion made elsewhere sync in
+- A message that fails to send retries itself automatically once the account reconnects, and otherwise on a backoff for up to a day, showing "Retrying in…" beside it; **t** retries it sooner
 - @-mention a group member by typing "@" in the composer; a message that mentions you is highlighted
 - Stickers show as static images; sending one is not yet supported
 - Polls: vote with the mouse or the keyboard (**v**); creating a poll is not yet supported
