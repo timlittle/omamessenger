@@ -1,10 +1,12 @@
 // Checks the composer: trimmed submit, whitespace ignored, cleared input,
 // a placeholder naming the conversation, the reply banner and sending the
 // id it answers, cancelling a reply, the attachment chip, both the
-// banner and the chip showing together, and the @-mention picker (shown
+// banner and the chip showing together, the @-mention picker (shown
 // while typing "@" in a group, keyboard and mouse insertion, Escape
 // closing it without inserting, and the resolved mention reaching
-// submitted()).
+// submitted()), and that a key the picker does not own (such as the
+// command palette's Ctrl+/) still reaches routeKey while the picker is
+// open, rather than being silently swallowed.
 import QtQuick
 import QtTest
 import Quickshell
@@ -17,6 +19,7 @@ ShellRoot {
   property var sent: []
   property var sentReplyIds: []
   property var sentMentions: []
+  property var routeKeyCalls: []
   property int cancelCount: 0
   property var attached: []
   property int removeRequests: 0
@@ -196,6 +199,25 @@ ShellRoot {
     const names = Check.texts(picker).map((item) => item.text);
     if (!names.includes("Nadia")) { Check.fail("picker did not show Nadia: " + names); return; }
     if (names.includes("Ben")) { Check.fail("picker showed Ben, which does not match \"nad\": " + names); return; }
+
+    // A key the mention picker does not own, such as the command
+    // palette's Ctrl+/, must still reach routeKey while the picker is
+    // open: Keymap.match("mentionPicker", …) also matches every global
+    // binding, so without checking the action is actually one of the
+    // picker's own, it would be swallowed here and never reach the key
+    // router at all.
+    // keyClick synthesizes the Control press itself as its own key event
+    // too, which also reaches routeKey regardless of this fix (nothing
+    // in Keymap.BINDINGS matches a bare Control press), so only a call
+    // for the Slash key itself counts as reaching routeKey.
+    root.routeKeyCalls = [];
+    composer.routeKey = (key, modifiers, text) => { root.routeKeyCalls.push(key); return true; };
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    if (!root.routeKeyCalls.includes(Qt.Key_Slash)) {
+      Check.fail("Ctrl+/ while the mention picker was open did not reach routeKey: " + JSON.stringify(root.routeKeyCalls));
+      return;
+    }
+    composer.routeKey = null;
 
     t.keyClick(Qt.Key_Escape);
     if (composer.pickerOpen) { Check.fail("Escape did not close the picker"); return; }

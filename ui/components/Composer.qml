@@ -342,8 +342,13 @@ Item {
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: event => {
             if (root.pickerOpen) {
+              // Keymap.match also matches every global binding in this
+              // context, not just the picker's own, so only a mention.*
+              // action is handled here; anything else (Ctrl+N, Ctrl+/,
+              // a rail switch, …) falls through to routeKey below
+              // instead of being silently swallowed.
               const action = Keymap.match("mentionPicker", event.key, event.modifiers, event.text, root.bindings)
-              if (action) {
+              if (action.startsWith("mention.")) {
                 root._runMentionAction(action)
                 event.accepted = true
                 return
