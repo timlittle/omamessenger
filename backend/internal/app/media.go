@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -133,13 +135,48 @@ func fetchFailureReason(connectorErr error) MediaFetchReason {
 // logFetchFailure writes one diagnostic line for a failed media
 // download: the service and the message's media kind, which are never
 // private, and the safe reason category, never the error itself, which
-// could otherwise echo a server detail or a file path into the log.
+// could otherwise echo a server detail or a file path into the log. It
+// also records the category for Doctor to report, alongside the log line
+// that already carries it.
 func (c *Commands) logFetchFailure(service, kind string, reason MediaFetchReason) {
+	c.recentErrors.record(string(reason))
+
 	if c.logger == nil {
 		return
 	}
 
 	c.logger.Printf("media: fetch failed (service=%s, kind=%s, reason=%s)", service, kind, reason)
+}
+
+// errorHistoryLimit bounds how many categories errorHistory keeps,
+// oldest dropped first.
+const errorHistoryLimit = 5
+
+// errorHistory keeps the last few safe error categories recorded during
+// this run, for Doctor to report. It holds only the same category words
+// already safe to log, never a path, a name or a token.
+type errorHistory struct {
+	mu    sync.Mutex
+	items []string
+}
+
+// record appends category, dropping the oldest once past errorHistoryLimit.
+func (h *errorHistory) record(category string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.items = append(h.items, category)
+	if len(h.items) > errorHistoryLimit {
+		h.items = h.items[len(h.items)-errorHistoryLimit:]
+	}
+}
+
+// snapshot returns a copy of the categories recorded so far, oldest first.
+func (h *errorHistory) snapshot() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	return slices.Clone(h.items)
 }
 
 // localAttachment returns the path of an outgoing message's own

@@ -482,6 +482,20 @@ test('escapeAction closes the photo viewer before anything beneath it, but not b
   assert.strictEqual(Navigation.escapeAction({ viewerOpen: true, confirmOpen: true }), 'cancel-close');
 });
 
+test('keyContext puts the health check report above the palette but below the photo viewer, setup and the close question', () => {
+  assert.strictEqual(Navigation.keyContext({ doctorOpen: true, paletteOpen: true, dialogOpen: true, pane: 'conversation' }), 'doctor');
+  assert.strictEqual(Navigation.keyContext({ doctorOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ doctorOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ doctorOpen: true, confirmOpen: true, pane: 'list' }), 'confirm');
+});
+
+test('escapeAction closes the health check report before anything beneath it, but not before the photo viewer, setup or the close question', () => {
+  assert.strictEqual(Navigation.escapeAction({ doctorOpen: true, paletteOpen: true, dialogOpen: true, searchFocused: true }), 'close-doctor');
+  assert.strictEqual(Navigation.escapeAction({ doctorOpen: true, viewerOpen: true }), 'close-viewer');
+  assert.strictEqual(Navigation.escapeAction({ doctorOpen: true, setupOpen: true }), 'close-setup');
+  assert.strictEqual(Navigation.escapeAction({ doctorOpen: true, confirmOpen: true }), 'cancel-close');
+});
+
 test('keyContext returns reactionPicker when open, above dialog, search and compose', () => {
   const state = { reactionPickerOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
   assert.strictEqual(Navigation.keyContext(state), 'reactionPicker');

@@ -42,6 +42,30 @@ func TestFetch_FillsOnceAndKeepsFilesPrivate(t *testing.T) {
 	}
 }
 
+// TestStats_ReportsBytesHeldAndTheLimit confirms Stats counts the bytes
+// actually cached so far against the limit the cache was given, and that
+// a cache directory never created yet is simply empty rather than an
+// error.
+func TestStats_ReportsBytesHeldAndTheLimit(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "media")
+	c := cache.New(dir, 1<<20)
+	calls := 0
+
+	if bytes, limit, err := c.Stats(); err != nil || bytes != 0 || limit != 1<<20 {
+		t.Fatalf("Stats before any fetch = %d, %d, %v; want 0, %d, nil", bytes, limit, err, int64(1<<20))
+	}
+
+	if _, err := c.Fetch(t.Context(), "m1.jpg", writeBytes(10, &calls)); err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes, limit, err := c.Stats(); err != nil || bytes != 10 || limit != 1<<20 {
+		t.Errorf("Stats after one fetch = %d, %d, %v; want 10, %d, nil", bytes, limit, err, int64(1<<20))
+	}
+}
+
 func TestFetch_LeavesNothingWhenFillFails(t *testing.T) {
 	t.Parallel()
 

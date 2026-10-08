@@ -128,6 +128,35 @@ QtObject {
     return Qt.hsla(hue, saturation, lightness, 1)
   }
 
+  // accountPaletteSize is how many distinct colours accountColor() cycles
+  // through before accounts' colour tags repeat.
+  readonly property int accountPaletteSize: 6
+
+  // accountColor returns one of accountPaletteSize colours for tagging an
+  // account in the conversation list and the rail. It rotates the same
+  // accent hue senderColor does, but out of phase with it and at a lower
+  // saturation, so an account's colour tag never reads as one of a
+  // group's sender colours on the rare row where both would show: the
+  // hues fall between senderColor's own slots rather than on them, and
+  // the muted saturation keeps the tag quieter than a sender name needs
+  // to be.
+  function accountColor(index: int): color {
+    const accent = Color.accent
+    const steps = ((index % accountPaletteSize) + accountPaletteSize) % accountPaletteSize
+    const hueStep = 1 / (accountPaletteSize + 1)
+    const hue = (accent.hslHue + hueStep * (steps + 1) + hueStep / 2) % 1
+
+    const saturation = Math.max(accent.hslSaturation * 0.6, 0.2)
+    const bgLightness = Color.background.hslLightness
+    let lightness = accent.hslLightness
+    if (Math.abs(lightness - bgLightness) < 0.18) {
+      lightness = bgLightness < 0.5 ? Math.min(0.78, bgLightness + 0.32) : Math.max(0.22, bgLightness - 0.32)
+    }
+    lightness = Math.max(0.3, Math.min(0.78, lightness))
+
+    return Qt.hsla(hue, saturation, lightness, 1)
+  }
+
   readonly property Fonts font: Fonts {}
   readonly property Spacing spacing: Spacing {}
   readonly property BarSizes bar: BarSizes {}

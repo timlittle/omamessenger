@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -217,6 +218,30 @@ func TestMessagesSend_WithAttachmentAndReplyToTogether(t *testing.T) {
 	}
 	if reply.ReplyTo == nil || reply.ReplyTo.Text != "hi" {
 		t.Errorf("reply.ReplyTo = %+v, want it to quote the original message", reply.ReplyTo)
+	}
+}
+
+// TestHelperDoctor_ReturnsOneCheckPerConcernIncludingTheSignedInAccount
+// confirms the method reaches app.Commands.Doctor and decodes back into
+// the same shape the UI's command palette would read.
+func TestHelperDoctor_ReturnsOneCheckPerConcernIncludingTheSignedInAccount(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+
+	report, err := call[doctor.Report](t, s, "helper.doctor", nil)
+	if err != nil || len(report.Checks) == 0 {
+		t.Fatalf("helper.doctor = %+v, %v", report, err)
+	}
+
+	found := false
+	for _, c := range report.Checks {
+		if c.Name == "Account (whatsapp)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("checks = %+v, want one for the signed-in whatsapp account", report.Checks)
 	}
 }
 

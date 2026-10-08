@@ -362,7 +362,7 @@ func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Inp
 
 	return policy.Input{
 		Notifications:  settings.Notifications,
-		Preview:        settings.NotificationPreview,
+		Detail:         settings.detail(),
 		Muted:          conv.Muted,
 		Focused:        focused == conv.ID,
 		WindowActive:   windowActive,

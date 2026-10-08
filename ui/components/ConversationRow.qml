@@ -20,7 +20,9 @@ import "../lib/Format.js" as Format
 // because show-all is on (older, hidden or archived) is drawn with
 // reduced opacity and a small "Hidden" or "Archived" label, so the chats
 // someone usually looks at still stand out without relying on opacity
-// alone.
+// alone. Once more than one account exists, a thin colour stripe tags
+// the row with its owning account, paired with a tooltip naming it, so
+// the colour is never the only cue.
 // This is a view only: it reports intent through a signal and never
 // calls the helper.
 Item {
@@ -46,6 +48,12 @@ Item {
   // "Archived"; "" for a row dimmed only for being older, or one that is
   // not dimmed at all.
   property string dimLabel: ""
+  // showAccountColor: true once more than one account exists, the only
+  // time the owning account's colour tag is worth showing.
+  property bool showAccountColor: false
+  // accountColor: the owning account's colour tag, shown as a stripe when
+  // showAccountColor is true; ignored otherwise.
+  property color accountColor: "transparent"
 
   // clicked fires when the row is clicked.
   signal clicked()
@@ -82,6 +90,28 @@ Item {
     color: Color.accent
   }
 
+  // Account colour stripe: sits just inside the selection bar, so the two
+  // never overlap, whether or not this row happens to be selected.
+  Rectangle {
+    objectName: "accountColorStripe"
+    visible: root.showAccountColor
+    anchors.left: parent.left
+    anchors.leftMargin: Style.space(2)
+    anchors.top: parent.top
+    anchors.bottom: parent.bottom
+    width: Style.space(3)
+    color: root.accountColor
+
+    HoverHandler {
+      id: accountColorHover
+    }
+    Ui.PanelToolTip {
+      objectName: "accountColorTooltip"
+      visible: accountColorHover.hovered && root.accountName.length > 0
+      text: root.accountName
+    }
+  }
+
   MouseArea {
     id: hover
     anchors.fill: parent
@@ -91,7 +121,7 @@ Item {
 
   RowLayout {
     anchors.fill: parent
-    anchors.leftMargin: Theme.spacing.md
+    anchors.leftMargin: Theme.spacing.md + (root.showAccountColor ? Theme.spacing.xs : 0)
     anchors.rightMargin: Theme.spacing.md
     spacing: Theme.spacing.sm
 

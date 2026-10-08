@@ -121,7 +121,7 @@ func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	group := f.conversation(t, "group", "Climbing Crew", domain.KindGroup)
 
-	f.commands.ApplySettings(app.Settings{Notifications: true, NotificationPreview: false})
+	f.commands.ApplySettings(app.Settings{Notifications: true, NotificationDetail: "nameOnly"})
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("hidden", "secret"))
 	f.ingest.Incoming(ctx, "wa", group.RemoteID, domain.Message{RemoteID: "g", SenderName: "Priya", Text: "hi", Created: 1})
 
@@ -145,6 +145,44 @@ func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 
 	if seen, _ := f.store.Conversation(ctx, chat.ID); seen.Unread != 0 {
 		t.Errorf("focused chat unread = %d, want 0", seen.Unread)
+	}
+}
+
+// TestIncoming_NotificationDetailControlsHowMuchANotificationShows checks
+// the three detail levels directly, and that a Settings value carrying
+// only the older NotificationPreview boolean (no NotificationDetail at
+// all) still resolves to the matching level, so a UI built before the
+// three-level setting existed keeps working.
+func TestIncoming_NotificationDetailControlsHowMuchANotificationShows(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		settings app.Settings
+		want     string
+	}{
+		{"name and message", app.Settings{Notifications: true, NotificationDetail: "nameAndMessage"}, "Alex: secret"},
+		{"name only", app.Settings{Notifications: true, NotificationDetail: "nameOnly"}, "Alex: New message"},
+		{"nothing", app.Settings{Notifications: true, NotificationDetail: "none"}, "OmaMessenger: New message"},
+		{"migrated from preview true", app.Settings{Notifications: true, NotificationPreview: true}, "Alex: secret"},
+		{"migrated from preview false", app.Settings{Notifications: true, NotificationPreview: false}, "Alex: New message"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newFixture(t, false)
+			ctx := t.Context()
+			chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+			f.commands.ApplySettings(c.settings)
+			f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "secret"))
+
+			if got := f.notifier.all(); !slices.Equal(got, []string{c.want}) {
+				t.Errorf("notifications = %v, want [%s]", got, c.want)
+			}
+		})
 	}
 }
 
