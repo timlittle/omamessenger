@@ -14,6 +14,7 @@ import (
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
@@ -121,6 +122,22 @@ type fakeDevice struct {
 	// records what it was asked to send; retry_test.go drives these.
 	mediaRetryErr   error
 	mediaRetryCalls []mediaRetryCall
+
+	// decryptVoteResp and decryptVoteErr script decryptPollVote;
+	// buildVoteResp and buildVoteErr script buildPollVote, and
+	// buildVoteCalls records what it was asked to build; vote_test.go
+	// drives these.
+	decryptVoteResp *waE2E.PollVoteMessage
+	decryptVoteErr  error
+	buildVoteResp   *waE2E.Message
+	buildVoteErr    error
+	buildVoteCalls  []buildVoteCall
+}
+
+// buildVoteCall records one call to buildPollVote.
+type buildVoteCall struct {
+	pollInfo    *types.MessageInfo
+	optionNames []string
 }
 
 // mediaRetryCall records one call to sendMediaRetryReceipt.
@@ -476,6 +493,28 @@ func (d *fakeDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo)
 	}
 
 	return err
+}
+
+// decryptPollVote reports the scripted vote or error.
+func (d *fakeDevice) decryptPollVote(_ context.Context, _ *events.Message) (*waE2E.PollVoteMessage, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return d.decryptVoteResp, d.decryptVoteErr
+}
+
+// buildPollVote records the call and reports the scripted message or
+// error.
+func (d *fakeDevice) buildPollVote(_ context.Context, pollInfo *types.MessageInfo, optionNames []string) (*waE2E.Message, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.buildVoteCalls = append(d.buildVoteCalls, buildVoteCall{pollInfo: pollInfo, optionNames: optionNames})
+	if d.buildVoteErr != nil {
+		return nil, d.buildVoteErr
+	}
+
+	return d.buildVoteResp, nil
 }
 
 // connectedTo returns a connector whose Send, MarkRead and event

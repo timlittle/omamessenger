@@ -33,6 +33,8 @@ Item {
   // deleteController is bound into the message list and the overlays'
   // delete question.
   property var deleteController: null
+  // pollsController is bound into the message list's poll bubbles.
+  property var pollsController: null
   // dialogController is bound into the new-chat dialog.
   property var dialogController: null
   // accountController is bound into account setup and the empty state.
@@ -240,6 +242,11 @@ Item {
       attachmentPath: root.composerController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
       voiceNotes: root.conversationController.voiceNotes
+      voteState: root.pollsController ? ({
+        target: root.pollsController.voteTarget,
+        highlightedIndex: root.pollsController.voteIndex,
+        selectedIds: root.pollsController.selected
+      }) : ({ target: "", highlightedIndex: -1, selectedIds: [] })
       members: root.conversationController.groupMembers
       routeKey: root.routeKey
 
@@ -250,6 +257,7 @@ Item {
       onReact: (id, emoji) => root.reactionsController.react(id, emoji)
       onReactPickerRequested: id => root.reactionsController.openPicker(id)
       onDeleteRequested: id => { if (root.deleteController) root.deleteController.openConfirm(id) }
+      onVoted: (id, optionIds) => { if (root.pollsController) root.pollsController.castVote(id, optionIds) }
       onSend: (text, replyToId, mentions) => root.conversationController.send(text, replyToId, mentions)
       onDraftEdited: text => root.composerController.setDraft(text)
       onReplyRequested: id => root.composerController.startReply(id)

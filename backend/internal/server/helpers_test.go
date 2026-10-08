@@ -49,7 +49,7 @@ func connect(t *testing.T, faked bool) *session {
 	clipboard := &fakeClipboard{}
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{}, Members: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Members: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: clipboard,
 	}
 	if faked {
@@ -93,7 +93,7 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 	srv := server.New("1.2.3", log.New(io.Discard, "", 0))
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: &storeAccounts{db: db},
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: &fakeClipboard{},
 		Media: media, Cache: mediaCache,
 	}
@@ -218,6 +218,9 @@ func (acceptAll) SetArchived(context.Context, domain.Conversation, bool) error {
 
 // React accepts any reaction change.
 func (acceptAll) React(context.Context, domain.Conversation, string, string) error { return nil }
+
+// Vote accepts any poll vote.
+func (acceptAll) Vote(context.Context, domain.Conversation, string, []string) error { return nil }
 
 // DeleteMessages accepts any delete.
 func (acceptAll) DeleteMessages(context.Context, domain.Conversation, []string, bool) error {

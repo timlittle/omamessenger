@@ -51,14 +51,18 @@ function newer(ids, currentId) {
 //   "r reply · e react · d delete · o open link"    (carries a link)
 //   "r reply · e react · d delete · p go to quote"  (is a reply)
 //   "r reply · e react · d delete · t retry"        (failed to send)
+//   "r reply · e react · d delete · v vote"         (carries an open poll)
 function hints(message) {
   const parts = ['r reply', 'e react', 'd delete'];
   const media = Timeline.media(message);
+  // A poll has nothing for Enter to open: voting is its own key, added
+  // below, only while it is still open.
   if (media && media.kind === 'voice') parts.push('Enter play');
-  else if (media) parts.push('Enter open');
+  else if (media && media.kind !== 'poll') parts.push('Enter open');
   if (links(message).length > 0) parts.push('o open link');
   if (Timeline.replyTo(message)) parts.push('p go to quote');
   if (message.outgoing && message.status === 'failed') parts.push('t retry');
+  if (media && media.kind === 'poll' && media.poll && !media.poll.closed) parts.push('v vote');
   return parts.join(' · ');
 }
 

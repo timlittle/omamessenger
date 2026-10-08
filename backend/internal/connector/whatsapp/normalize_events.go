@@ -61,14 +61,16 @@ func edit(ctx context.Context, dev device, info types.MessageInfo, msg *waE2E.Me
 // isContentless reports whether msg is one of WhatsApp's own protocol
 // or system notices rather than something a person sent: every
 // ProtocolMessage kind other than a revoke or an edit (handled
-// separately; see isRevoke and isEdit), a poll vote, a message pinned
-// or kept in a chat, a voice or video call's log entry, an album's own
-// header (its photos and videos arrive as their own messages, each
-// wrapped in an associatedChildMessage that unwrap peels away; see
+// separately; see isRevoke and isEdit), a message pinned or kept in a
+// chat, a voice or video call's log entry, an album's own header (its
+// photos and videos arrive as their own messages, each wrapped in an
+// associatedChildMessage that unwrap peels away; see
 // normalize_message.go), or one of the other housekeeping kinds
 // WhatsApp's wire format carries alongside a session (a history-sync
 // bundle or notice, a secret or key-share payload), none of which carry
-// anything a person actually said.
+// anything a person actually said. A poll vote is handled separately
+// too (see handlePollVote in vote.go), never replayed from a bulk sync
+// the same way a reaction is not.
 func isContentless(msg *waE2E.Message) bool {
 	if pm := msg.GetProtocolMessage(); pm != nil {
 		return !isRevoke(msg) && !isEdit(msg)

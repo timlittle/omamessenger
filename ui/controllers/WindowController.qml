@@ -38,6 +38,12 @@ QtObject {
   // the command palette's "react to the highlighted message" command.
   property var reactionsController: null
 
+  // pollsController runs the command palette's "vote in the highlighted
+  // poll" command. Vote mode's own Escape is bound directly in the
+  // pollVote key context, not through this controller's Escape chain,
+  // so it needs no entry in _navState or the "close-…" handlers below.
+  property var pollsController: null
+
   // deleteController is read and closed by the Escape chain, and runs
   // the command palette's "delete the highlighted message" command.
   property var deleteController: null
@@ -209,7 +215,7 @@ QtObject {
   // runCommand runs action through the controller that owns it.
   function runCommand(action: string): void {
     const controllers = [root.listController, root.conversationController, root.composerController,
-      root.photoViewerController, root.reactionsController, root.deleteController, root.dialogController, root.accountController, root];
+      root.photoViewerController, root.reactionsController, root.pollsController, root.deleteController, root.dialogController, root.accountController, root];
     const owner = controllers.find((c) => c && c.handles(action));
     if (owner) owner.run(action);
   }

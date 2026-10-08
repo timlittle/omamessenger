@@ -32,6 +32,11 @@ Column {
   // A plain summary rather than the controller itself, so this view only
   // ever reads data, never calls into a controller.
   property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
+  // pollVote is this message's vote-mode state, read from
+  // PollsController: {voting, highlightedIndex, selectedIds}. A plain
+  // summary rather than the controller itself, for the same reason
+  // voiceNotes is.
+  property var pollVote: ({ voting: false, highlightedIndex: -1, selectedIds: [] })
 
   // mediaWanted asks for this message's photo or voice note to be downloaded.
   signal mediaWanted()
@@ -40,6 +45,9 @@ Column {
   signal mediaOpen()
   // quoteOpened asks the caller to scroll to the message this one quotes.
   signal quoteOpened(string remoteId)
+  // voted asks the caller to cast optionIds as the user's vote in this
+  // message's poll.
+  signal voted(var optionIds)
 
   // _mediaKind is which view media belongs in: "link", "photo", "video",
   // "voice", "file", or "" for no media. It is also an audio file the
@@ -126,6 +134,17 @@ Column {
     sticker: root.media ? root.media : ({})
     path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
     onWanted: root.mediaWanted()
+  }
+
+  PollView {
+    objectName: "pollView"
+    width: Math.min(implicitWidth, root.maxTextWidth)
+    visible: root._mediaKind === "poll"
+    poll: root.media && root.media.poll ? root.media.poll : ({ options: [] })
+    voting: root.pollVote.voting
+    highlightedIndex: root.pollVote.highlightedIndex
+    selectedIds: root.pollVote.selectedIds
+    onVoted: optionIds => root.voted(optionIds)
   }
 
   VoiceNotePlayer {

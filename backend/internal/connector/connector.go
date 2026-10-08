@@ -104,6 +104,14 @@ type Reactor interface {
 	React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error
 }
 
+// Voter is a Connector that can cast the signed-in user's vote in a
+// poll.
+type Voter interface {
+	// Vote sets the user's chosen options in the poll the service knows
+	// as messageRemoteID, replacing any previous vote.
+	Vote(ctx context.Context, conv domain.Conversation, messageRemoteID string, optionIDs []string) error
+}
+
 // ErrPinLimit reports a pin an Organizer's service refuses because the
 // account already has as many conversations pinned as that service
 // allows.
@@ -241,4 +249,16 @@ type SenderNamer interface {
 	// SenderName corrects senderRemoteID's name, within account, on
 	// every message already stored under a different one.
 	SenderName(ctx context.Context, accountID, senderRemoteID, name string)
+}
+
+// PollUpdater is a Sink that can also report a poll's options and
+// tallies changing without a full edit to the message's text, such as
+// someone else voting live or this account's own vote being accepted.
+// It is optional the same way SenderNamer is: a connector that reports
+// polls this way type-asserts the Sink it was given for this, and skips
+// the report when it is not implemented, such as by a test fake.
+type PollUpdater interface {
+	// PollUpdated reports messageRemoteID's poll changing, within
+	// account and conversationRemoteID.
+	PollUpdated(ctx context.Context, accountID, conversationRemoteID, messageRemoteID string, poll domain.Poll)
 }

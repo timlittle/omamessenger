@@ -49,6 +49,7 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | o | Open the highlighted message's link, if it has one |
 | p | Go to the message it replies to, if it is one |
 | t | Retry the highlighted message, if it failed to send |
+| v | Vote in the highlighted message's poll, if it carries an open one |
 | h | Back to the list |
 
 The highlight starts on the newest message when the conversation opens or when you leave the composer with Esc. The composer shows which mode it is in: dimmed, with an "i to write" hint, while scrolling; full contrast, with a "Writing · Esc to stop" hint, once it has focus.
@@ -60,6 +61,19 @@ The highlight starts on the newest message when the conversation opens or when y
 | Ctrl+V | Paste a clipboard image as an attachment |
 
 Ctrl+J always jumps to the next unread conversation instead, even while writing (see Global); it lands there in writing mode too.
+
+### Voting in a poll
+
+v, on a highlighted message with an open poll, moves the highlight into its options instead of the message list.
+
+| Keys | Does |
+| --- | --- |
+| j / k, ↓ / ↑ | Move the highlighted option |
+| Space | Check or uncheck the highlighted option (a multiple-choice poll only) |
+| Enter | Cast the vote: whatever is checked, or the highlighted option alone if nothing was |
+| Esc | Cancel without voting |
+
+Clicking an option votes for it directly, without opening vote mode first. A closed poll shows its results but takes no clicks and has no vote mode.
 
 ### @-mention picker
 

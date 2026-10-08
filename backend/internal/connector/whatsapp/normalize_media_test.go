@@ -168,6 +168,40 @@ func TestAppInfo_MapsEachKindToItsWhatsmeowType(t *testing.T) {
 	}
 }
 
+// TestMedia_PollCreation checks that a poll normalizes with its
+// question, options and no download reference: its tally arrives later,
+// through a separate PollUpdateMessage (see vote_test.go).
+func TestMedia_PollCreation(t *testing.T) {
+	t.Parallel()
+
+	msg := &waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{
+		Name: strPtr("Lunch?"),
+		Options: []*waE2E.PollCreationMessage_Option{
+			{OptionName: strPtr("Pizza")}, {OptionName: strPtr("Salad")},
+		},
+		SelectableOptionsCount: u32(1),
+	}}
+
+	got := media(msg)
+	if got == nil || got.Kind != domain.MediaPoll || got.Poll == nil {
+		t.Fatalf("media = %+v, want a poll", got)
+	}
+	if got.Poll.Question != "Lunch?" || got.Poll.MultipleChoice {
+		t.Errorf("poll = %+v, want Lunch? single-choice", got.Poll)
+	}
+	want := []domain.PollOption{
+		{ID: pollOptionID("Pizza"), Text: "Pizza"},
+		{ID: pollOptionID("Salad"), Text: "Salad"},
+	}
+	if !reflect.DeepEqual(got.Poll.Options, want) {
+		t.Errorf("options = %+v, want %+v", got.Poll.Options, want)
+	}
+
+	if _, ok := downloadRef(msg); ok {
+		t.Error("downloadRef(poll) = true, want a poll to carry no fetchable reference")
+	}
+}
+
 // FuzzMedia checks that media and downloadRef never panic on a message
 // decoded from arbitrary bytes.
 func FuzzMedia(f *testing.F) {

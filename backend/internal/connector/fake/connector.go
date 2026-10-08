@@ -37,6 +37,7 @@ var (
 	_ connector.HistoryLoader = (*Connector)(nil)
 	_ connector.MediaFetcher  = (*Connector)(nil)
 	_ connector.Reactor       = (*Connector)(nil)
+	_ connector.Voter         = (*Connector)(nil)
 )
 
 // run is one Run call: where updates go and how work is scheduled.
@@ -285,6 +286,31 @@ func (c *Connector) React(ctx context.Context, conv domain.Conversation, message
 	}
 
 	r.sink.Reacted(ctx, c.script.account.ID, conv.RemoteID, messageRemoteID, reactions)
+	return nil
+}
+
+// Vote records the user's choice and reports the poll's new tally back
+// through the sink at once, the way React does for a reaction: every
+// chosen option gets one vote, as the only voter a fake account ever
+// has.
+func (c *Connector) Vote(ctx context.Context, conv domain.Conversation, messageRemoteID string, optionIDs []string) error {
+	r, err := c.current()
+	if err != nil {
+		return err
+	}
+
+	updater, ok := r.sink.(connector.PollUpdater)
+	if !ok {
+		return nil
+	}
+
+	options := make([]domain.PollOption, len(optionIDs))
+	for i, id := range optionIDs {
+		options[i] = domain.PollOption{ID: id, Votes: 1, Chosen: true}
+	}
+
+	updater.PollUpdated(ctx, c.script.account.ID, conv.RemoteID, messageRemoteID, domain.Poll{Options: options, TotalVoters: 1})
+
 	return nil
 }
 

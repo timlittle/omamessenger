@@ -64,6 +64,11 @@ func (c *Connector) handleMessageUpdates(d tg.UpdateDispatcher, sink connector.S
 		c.reactionsChanged(ctx, sink, u)
 		return nil
 	})
+
+	d.OnMessagePoll(func(ctx context.Context, _ tg.Entities, u *tg.UpdateMessagePoll) error {
+		c.pollChanged(ctx, sink, u)
+		return nil
+	})
 }
 
 // handleReceiptUpdates reports read receipts, typing and unread counts.
@@ -121,6 +126,29 @@ func (c *Connector) reactionsChanged(ctx context.Context, sink connector.Sink, u
 	}
 
 	sink.Reacted(ctx, c.account.ID, remote, strconv.Itoa(u.MsgID), reactions(u.Reactions))
+}
+
+// pollChanged reports a poll's options or tallies changing live, such
+// as someone else voting, dropping the update when either its
+// conversation is not known to us or the sink given to this run does
+// not keep polls (see connector.PollUpdater).
+func (c *Connector) pollChanged(ctx context.Context, sink connector.Sink, u *tg.UpdateMessagePoll) {
+	updater, ok := sink.(connector.PollUpdater)
+	if !ok {
+		return
+	}
+
+	peer, ok := u.GetPeer()
+	if !ok {
+		return
+	}
+
+	remote, ok := c.lookup(shortKey(peer))
+	if !ok {
+		return
+	}
+
+	updater.PollUpdated(ctx, c.account.ID, remote, strconv.Itoa(u.MsgID), pollUpdate(u))
 }
 
 // deleteMessages reports messages removed from the service, named by

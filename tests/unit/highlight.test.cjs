@@ -48,6 +48,16 @@ test('hints adds Enter play, not Enter open, for a voice note', () => {
   assert.strictEqual(Highlight.hints(voice), 'r reply · e react · d delete · Enter play');
 });
 
+test('hints adds v vote, not Enter open, for an open poll', () => {
+  const poll = message({ media: { kind: 'poll', poll: { question: 'Lunch?', options: [], totalVoters: 0 } } });
+  assert.strictEqual(Highlight.hints(poll), 'r reply · e react · d delete · v vote');
+});
+
+test('hints adds no vote key for a closed poll', () => {
+  const closed = message({ media: { kind: 'poll', poll: { question: 'Lunch?', options: [], totalVoters: 0, closed: true } } });
+  assert.strictEqual(Highlight.hints(closed), 'r reply · e react · d delete');
+});
+
 test('hints adds t retry only for a failed outgoing message', () => {
   const failed = message({ outgoing: true, status: 'failed' });
   assert.strictEqual(Highlight.hints(failed), 'r reply · e react · d delete · t retry');

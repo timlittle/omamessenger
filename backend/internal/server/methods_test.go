@@ -135,6 +135,40 @@ func TestMessagesSend_WithReplyToQuotesTheOriginalMessage(t *testing.T) {
 	}
 }
 
+func TestMessagesVote_CastsAVoteAndReturnsTheUpdatedPoll(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+	ctx := t.Context()
+	poll := &domain.Media{Kind: domain.MediaPoll, Poll: &domain.Poll{
+		Question: "Lunch?", Options: []domain.PollOption{{ID: "a", Text: "Pizza"}},
+	}}
+	m, _, err := s.store.AddMessage(ctx, domain.Message{ConversationID: "chat", RemoteID: "r1", Text: "[Poll: Lunch?]", Media: poll, Created: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := call[domain.Message](t, s, "messages.vote", map[string]any{"messageId": m.ID, "optionIds": []string{"a"}})
+	if err != nil || got.ID != m.ID {
+		t.Errorf("messages.vote = %+v, %v", got, err)
+	}
+}
+
+func TestMessagesVote_RejectsAMessageWithNoPoll(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+
+	sent, err := call[domain.Message](t, s, "messages.send", map[string]string{"conversationId": "chat", "text": "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := call[domain.Message](t, s, "messages.vote", map[string]any{"messageId": sent.ID, "optionIds": []string{"a"}}); code(err) == 0 {
+		t.Error("messages.vote on a message with no poll succeeded")
+	}
+}
+
 func TestConversationsMembers_ListsAGroupsMembers(t *testing.T) {
 	t.Parallel()
 

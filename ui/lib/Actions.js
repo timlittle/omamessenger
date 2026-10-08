@@ -78,6 +78,14 @@ var OWNERS = {
   'reaction.right': 'reactions',
   'reaction.accept': 'reactions',
 
+  // PollsController: vote mode and casting a vote in a poll.
+  'message.vote': 'polls',
+  'pollVote.down': 'polls',
+  'pollVote.up': 'polls',
+  'pollVote.toggle': 'polls',
+  'pollVote.accept': 'polls',
+  'pollVote.cancel': 'polls',
+
   // DeleteController: the delete question and deleting a message.
   'message.delete': 'delete',
   'delete.left': 'delete',

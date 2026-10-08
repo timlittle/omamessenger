@@ -29,6 +29,8 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 		c.handleRevoke(ctx, sink, dev, e)
 	case isEdit(e.Message):
 		c.handleEdit(ctx, sink, dev, e)
+	case e.Message.GetPollUpdateMessage() != nil:
+		c.handlePollVote(ctx, sink, dev, media, e)
 	case isContentless(e.Message):
 		// WhatsApp's own protocol and system notices carry nothing a
 		// person sent; see isContentless. Nothing is reported for one.
@@ -69,6 +71,7 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 	m := c.improvedSenderName(message(ctx, dev, e.Info, e.Message))
 	saveMediaRef(ctx, media, remote, m.RemoteID, e.Message)
 	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe, timestamp: m.Created})
+	savePoll(ctx, media, remote, m.RemoteID, e.Message)
 
 	// A redelivery of a message first seen as an UndecryptableMessage
 	// (see handleUndecryptable) carries the same id: replace its

@@ -19,7 +19,7 @@ var AUDIO_EXTENSIONS = ['ogg', 'oga', 'opus', 'mp3', 'm4a', 'wav', 'aac', 'amr',
 // names explicitly, each with its own view. A kind in this list is
 // never re-guessed from its file name, so a future kind (such as a
 // poll) only needs adding here, not touching the fallback logic below.
-var KNOWN_KINDS = ['photo', 'video', 'link', 'voice', 'sticker'];
+var KNOWN_KINDS = ['photo', 'video', 'link', 'voice', 'sticker', 'poll'];
 
 // kindFor says which view should render a message's media: one of
 // KNOWN_KINDS, "file", or null for no media at all. It never answers

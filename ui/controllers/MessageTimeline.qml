@@ -194,6 +194,14 @@ Item {
     if (at !== -1) messagesModel.setProperty(at, "reactions", JSON.stringify(reactions));
   }
 
+  // setMedia replaces a message's media in place, the same way
+  // setReactions does for its own role, for a poll's instant local vote
+  // feedback before the server's message.updated event confirms it.
+  function setMedia(id: string, media: var): void {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    if (at !== -1) messagesModel.setProperty(at, "media", JSON.stringify(media));
+  }
+
   // _appendOlder adds a messages.list page to the newest-first model,
   // each message where its time puts it: older history the helper fetched
   // for this page may already have arrived as events, so the page is not

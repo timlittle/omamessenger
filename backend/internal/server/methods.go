@@ -49,6 +49,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"messages.send":             bind(messagesSend(c)),
 		"messages.retry":            bind(messagesRetry(c)),
 		"messages.react":            bind(messagesReact(c)),
+		"messages.vote":             bind(messagesVote(c)),
 		"messages.delete":           bind(messagesDelete(c)),
 		"media.fetch":               bind(mediaFetch(c)),
 		"media.paste":               bind(mediaPaste(c)),
@@ -358,6 +359,20 @@ type reactParams struct {
 func messagesReact(c *app.Commands) func(context.Context, reactParams) (any, error) {
 	return func(ctx context.Context, p reactParams) (any, error) {
 		return c.React(ctx, p.MessageID, p.Emoji)
+	}
+}
+
+// voteParams casts the user's vote in a message's poll: the option ids
+// as domain.PollOption.ID named them, replacing any previous vote.
+type voteParams struct {
+	MessageID string   `json:"messageId"`
+	OptionIDs []string `json:"optionIds"`
+}
+
+// messagesVote casts the user's vote in a message's poll.
+func messagesVote(c *app.Commands) func(context.Context, voteParams) (any, error) {
+	return func(ctx context.Context, p voteParams) (any, error) {
+		return c.Vote(ctx, p.MessageID, p.OptionIDs)
 	}
 }
 

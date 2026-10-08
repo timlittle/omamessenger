@@ -511,16 +511,29 @@ test('escapeAction closes the reaction picker before the dialog beneath it', () 
   assert.strictEqual(Navigation.escapeAction({ reactionPickerOpen: true, dialogOpen: true }), 'close-reaction-picker');
 });
 
+test('keyContext returns pollVote when open, above dialog, search and compose', () => {
+  const state = { pollVoteOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
+  assert.strictEqual(Navigation.keyContext(state), 'pollVote');
+});
+
+test('keyContext: the viewer, the palette, setup and the reaction picker still win over poll vote mode', () => {
+  assert.strictEqual(Navigation.keyContext({ pollVoteOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ pollVoteOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
+  assert.strictEqual(Navigation.keyContext({ pollVoteOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ pollVoteOpen: true, reactionPickerOpen: true, pane: 'list' }), 'reactionPicker');
+});
+
 test('keyContext returns deleteConfirm when open, above dialog, search and compose', () => {
   const state = { deleteConfirmOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
   assert.strictEqual(Navigation.keyContext(state), 'deleteConfirm');
 });
 
-test('keyContext: the viewer, the palette, setup and the reaction picker still win over the delete question', () => {
+test('keyContext: the viewer, the palette, setup, the reaction picker and poll vote mode still win over the delete question', () => {
   assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
   assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
   assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, setupOpen: true, pane: 'list' }), 'setup');
   assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, reactionPickerOpen: true, pane: 'list' }), 'reactionPicker');
+  assert.strictEqual(Navigation.keyContext({ deleteConfirmOpen: true, pollVoteOpen: true, pane: 'list' }), 'pollVote');
 });
 
 test('escapeAction closes the delete question before the dialog beneath it, but not before the reaction picker', () => {

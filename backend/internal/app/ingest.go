@@ -41,6 +41,7 @@ type Ingest struct {
 var (
 	_ connector.Sink        = (*Ingest)(nil)
 	_ connector.SenderNamer = (*Ingest)(nil)
+	_ connector.PollUpdater = (*Ingest)(nil)
 )
 
 // AccountStatus records and publishes an account's connection state.

@@ -79,6 +79,13 @@ func logUnknownKind(field string) {
 	log.Printf("whatsapp: unknown message kind (field=%s)", field)
 }
 
+// logPollVoteDecryptFailed reports a poll vote whatsmeow could not
+// decrypt, most often one that arrived before this connector ever saw
+// the poll it votes in, so its secret was never saved.
+func logPollVoteDecryptFailed() {
+	log.Print("whatsapp: poll vote decrypt failed")
+}
+
 // expiredDownloadErrs are the whatsmeow download errors WhatsApp's CDN
 // returns once a message's media link has aged out: the case retry.go
 // asks the primary phone to fix by re-uploading, rather than one this
