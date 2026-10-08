@@ -337,13 +337,23 @@ func (d *fakeDevice) groupInfo(_ context.Context, jid types.JID) (string, int, e
 	return d.groupNames[jid.String()], d.groupMembers[jid.String()], nil
 }
 
-// contactName reports the scripted name for jid, or "" when the test did
-// not script one, the way a real lookup with nothing known yet would.
+// contactName reports the scripted name for jid, mapping a LID to its
+// scripted phone JID first when jid itself has no name of its own, the
+// same priority order the real device's contactName documents; it
+// reports "" when the test did not script either.
 func (d *fakeDevice) contactName(_ context.Context, jid types.JID) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	return d.contactNames[jid.String()]
+	if name := d.contactNames[jid.String()]; name != "" {
+		return name
+	}
+
+	if phone, ok := d.lidPhones[jid.String()]; ok {
+		return d.contactNames[phone.String()]
+	}
+
+	return ""
 }
 
 // isSelfChat reports whether jid's bare form matches the scripted
