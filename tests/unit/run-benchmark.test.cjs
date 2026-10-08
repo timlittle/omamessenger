@@ -254,6 +254,16 @@ test('refuses to start when Bambu Studio is already running', (t) => {
   assert.equal(fs.readFileSync(s.callLog, 'utf8'), '');
 });
 
+test('refuses to start when Telegram Desktop is already running', (t) => {
+  const s = sandbox(t);
+  s.seedFixture('x_Telegram', '424244');
+  const result = s.run();
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Telegram Desktop/);
+  assert.equal(fs.readFileSync(s.callLog, 'utf8'), '');
+});
+
 test('refuses to start when the plugin is not installed', (t) => {
   const s = sandbox(t, { pluginInstalled: false });
   const result = s.run();

@@ -140,8 +140,9 @@ process_tree() {
     printf '%s\n' "$all"
 }
 
-# preflight refuses to start while a heavy application is running, since
-# it would distort every measurement, or a prerequisite is missing.
+# preflight refuses to start while a heavy application or Telegram Desktop
+# is running, since either would distort the measurements, or a
+# prerequisite is missing.
 preflight() {
     log "Checking for heavy applications and prerequisites"
     heavy=""
@@ -150,6 +151,11 @@ preflight() {
     fi
     if pgrep -x bambustu_main >/dev/null 2>&1; then
         heavy="${heavy}  - Bambu Studio (bambustu_main)\n"
+    fi
+    # A second Telegram Desktop hands over to the running one and exits,
+    # leaving nothing of this run's own to measure.
+    if pgrep -x "$(basename "$telegram_bin")" >/dev/null 2>&1; then
+        heavy="${heavy}  - Telegram Desktop ($(basename "$telegram_bin"))\n"
     fi
     if [ -n "$heavy" ]; then
         printf 'run-benchmark: close these first, then run again:\n' >&2
