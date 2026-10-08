@@ -23,7 +23,7 @@ OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and H
 - Paste or attach an image to a message
 - Incognito read receipts (**Toggle read receipts** in the command palette): off means the service is never told a chat here was read, so the phone and any other device signed into the same account keep showing it unread
 - Keyboard-first, with a command palette (**Ctrl+/**) listing every action and its shortcut
-- Light on memory: about 100 MB in use, against about 1 GB for Telegram Desktop and WhatsApp web running side by side
+- Light on memory: about 120 MB in use, against about 2 GB for Telegram Desktop and WhatsApp Web running side by side ([benchmark](docs/BENCHMARK.md))
 
 ## Install
 

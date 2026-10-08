@@ -33,7 +33,7 @@ The first tagged release: a keyboard-first unified messaging client for Omarchy,
 - **Keyboard and command palette** — every action reachable from the keyboard, Slack-style shortcuts, and a command palette (**Ctrl+/**) that lists every command with its shortcut
 - **Key remapping** — override any default shortcut in `keys.conf`, created and opened from the command palette's "Open key bindings file"; `make keys` prints the effective bindings outside the running shell, for a bug report
 - **Health check** — `oma-messenger-service doctor`, or "Run health check" in the command palette, reports the data directory's permissions, the database, the media cache, each account's connection and notify-send availability, without exposing any of their contents
-- **Light on memory** — about 100 MB in use, against about 1 GB for Telegram Desktop and WhatsApp web running side by side
+- **Light on memory** — about 120 MB in use, against about 2 GB for Telegram Desktop and WhatsApp Web running side by side (see `docs/BENCHMARK.md`)
 - **Install** — opening the window downloads and verifies the matching helper release the first time it is missing or out of date, with no download at plugin load time and no click needed, and **Ctrl+R** retries a failed install; installing it also adds OmaMessenger to Omarchy's apps menu
 
 ### Licensing
