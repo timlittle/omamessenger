@@ -14,7 +14,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.hidden,c.last_activity,c.reminder_at`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -262,14 +262,30 @@ func (s *Store) SetHidden(ctx context.Context, id string, hidden bool) error {
 
 // SetReminder snoozes a conversation until at, in Unix milliseconds, or
 // clears its reminder when at is 0. This is local to this computer only:
-// like hidden, it is never reported to or read from the service.
+// like hidden, it is never reported to or read from the service. It
+// also clears any earlier MarkReminderNotified record, so a freshly set
+// reminder is always eligible to notify, even one set to a due time
+// that happens to match a previous reminder's.
 func (s *Store) SetReminder(ctx context.Context, id string, at int64) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET reminder_at=? WHERE id=?`, at, id)
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET reminder_at=?,reminder_notified_at=0 WHERE id=?`, at, id)
 	if err != nil {
 		return wrap("set reminder", err)
 	}
 
 	return requireRow("set reminder", res)
+}
+
+// MarkReminderNotified records that the reminder due at "at" for
+// conversation id has already been announced, so a restart does not
+// announce it again while it stays due: a reminder is never cleared
+// automatically once it fires (see docs/decisions.md).
+func (s *Store) MarkReminderNotified(ctx context.Context, id string, at int64) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET reminder_notified_at=? WHERE id=?`, at, id)
+	if err != nil {
+		return wrap("mark reminder notified", err)
+	}
+
+	return requireRow("mark reminder notified", res)
 }
 
 // PendingReminders lists every conversation with an active reminder,
@@ -337,7 +353,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt,
 	}, extra...)
 	err := row.Scan(dest...)
 

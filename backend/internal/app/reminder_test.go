@@ -165,6 +165,52 @@ func TestRunReminders_ReArmsAfterARestart(t *testing.T) {
 	})
 }
 
+// TestRunReminders_DoesNotRefireAfterARestartOnceAlreadyFired
+// reproduces a reminder that already fired, then survives a helper
+// restart while still due: docs/decisions.md says a reminder is never
+// cleared automatically once it fires, so on its own that would make
+// the restarted scheduler see it as still due and notify all over
+// again. It must not: the dedupe has to survive the restart along with
+// the reminder itself.
+func TestRunReminders_DoesNotRefireAfterARestartOnceAlreadyFired(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx, cancel := context.WithCancel(t.Context())
+		chat := f.conversation(t, "chat", "Already Fired Chat", domain.KindDirect)
+
+		due := time.Now().Add(30 * time.Minute)
+		if _, err := f.commands.SetReminder(ctx, chat.ID, due.UnixMilli()); err != nil {
+			t.Fatal(err)
+		}
+
+		stop := runReminders(t, ctx, cancel, f)
+		synctest.Wait()
+
+		time.Sleep(30 * time.Minute)
+		synctest.Wait()
+
+		if got := f.notifier.conversations(); !slices.Equal(got, []string{chat.ID}) {
+			t.Fatalf("notification conversation ids before restart = %v, want [%s]", got, chat.ID)
+		}
+
+		stop() // the first helper run stops only after the reminder already fired once
+
+		// A second Commands and Ingest over the same database, as main.go
+		// builds after an actual process restart.
+		commands2, _, _, notifier2 := appOver(t, f.store)
+		ctx2, cancel2 := context.WithCancel(t.Context())
+
+		var wg sync.WaitGroup
+		wg.Go(func() { commands2.RunReminders(ctx2) })
+		t.Cleanup(func() { cancel2(); wg.Wait() })
+		synctest.Wait()
+
+		if got := notifier2.all(); len(got) != 0 {
+			t.Errorf("notified again after a restart = %v, want none: it already fired for this due time", got)
+		}
+	})
+}
+
 func TestRunReminders_StopsWhenContextIsCancelled(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, false)
