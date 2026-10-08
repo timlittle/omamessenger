@@ -255,11 +255,13 @@ func TestHandleHistorySync_TitlesALIDChatFromAMessagesPushName(t *testing.T) {
 	}
 }
 
-func TestHandleHistorySync_NeverCreatesAConversationWithNoRealMessage(t *testing.T) {
+// TestHandleHistorySync_CreatesEveryListedConversation confirms every
+// chat the phone lists in history sync appears, even one whose synced
+// messages carry nothing to show: it is still a chat on the phone, and
+// a later message needs it to exist.
+func TestHandleHistorySync_CreatesEveryListedConversation(t *testing.T) {
 	t.Parallel()
 
-	// A reaction protocol message: WhatsApp still lists the chat in
-	// history sync, but nothing was ever really said in it.
 	reaction := &waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
 		Key:              &waCommon.MessageKey{ID: strPtr("H1")},
 		Message:          &waE2E.Message{ReactionMessage: &waE2E.ReactionMessage{Key: &waCommon.MessageKey{ID: strPtr("H0")}, Text: strPtr("👍")}},
@@ -269,9 +271,11 @@ func TestHandleHistorySync_NeverCreatesAConversationWithNoRealMessage(t *testing
 	tests := []struct {
 		name string
 		conv *waHistorySync.Conversation
+		want string
 	}{
-		{"no messages at all", &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia")}},
-		{"only a reaction", &waHistorySync.Conversation{ID: strPtr("987654@lid"), Messages: []*waHistorySync.HistorySyncMsg{reaction}}},
+		{"no messages at all", &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia")}, "conversation 15551234567@s.whatsapp.net Nadia"},
+		{"only a reaction", &waHistorySync.Conversation{ID: strPtr("987654@lid"), Messages: []*waHistorySync.HistorySyncMsg{reaction}}, "conversation 987654@lid Unknown contact"},
+		{"WhatsApp's own system chat", &waHistorySync.Conversation{ID: strPtr("0@s.whatsapp.net"), Messages: []*waHistorySync.HistorySyncMsg{reaction}}, "conversation 0@s.whatsapp.net WhatsApp"},
 	}
 
 	for _, tt := range tests {
@@ -281,35 +285,10 @@ func TestHandleHistorySync_NeverCreatesAConversationWithNoRealMessage(t *testing
 			c, dev, sink, media := handlerMediaFixture(t)
 			c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(tt.conv))
 
-			if len(sink.Lines()) != 0 {
-				t.Errorf("events = %q, want nothing reported with no real message", sink.Lines())
+			if !sink.Has(tt.want) {
+				t.Errorf("events = %q, want %q", sink.Lines(), tt.want)
 			}
 		})
-	}
-}
-
-func TestHandleHistorySync_StillUpdatesAConversationAlreadyKnownWithoutNewMessages(t *testing.T) {
-	t.Parallel()
-
-	c, dev, sink, media := handlerMediaFixture(t)
-
-	conv := &waHistorySync.Conversation{
-		ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
-		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-	}
-	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
-	sink.Take()
-
-	// A later, smaller sync of the same chat carries no messages of its
-	// own, after WhatsApp's own chat settings record a pin made since:
-	// since this connector already reported the chat for real, that
-	// update must still land.
-	dev.setChatSettings("15551234567@s.whatsapp.net", true, false)
-	again := &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia")}
-	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(again))
-
-	if !sink.Has("organized 15551234567@s.whatsapp.net true false") {
-		t.Errorf("events = %q, want the already-known chat's pin update to still land", sink.Lines())
 	}
 }
 

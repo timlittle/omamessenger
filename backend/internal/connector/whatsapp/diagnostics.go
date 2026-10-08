@@ -28,12 +28,6 @@ import (
 // WhatsApp's own protocol or system notices (see isContentless).
 const reasonContentless = "contentless"
 
-// reasonNoRealContent is logDropped's reason for a history-synced
-// conversation this connector has never reported before, dropped
-// because its synced messages carry nothing a person actually sent
-// (see hasRealContent in history.go).
-const reasonNoRealContent = "no-real-content"
-
 // logDropped reports a message this connector deliberately did not
 // store, and why, so a report of "messages missing" can be checked
 // against what was dropped on purpose.

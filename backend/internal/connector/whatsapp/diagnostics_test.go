@@ -10,15 +10,8 @@ import (
 	"testing"
 
 	"go.mau.fi/whatsmeow"
-	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
-	"go.mau.fi/whatsmeow/proto/waHistorySync"
-	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
-
-	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
-	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // captureLog redirects the standard logger to a buffer for the rest of
@@ -241,37 +234,5 @@ func TestLogContentlessDrop_IsAnOrdinaryDropForAnyoneElse(t *testing.T) {
 	}
 	if strings.Contains(got, "system chat") {
 		t.Errorf("log output = %q, want no mention of the system chat for an ordinary contact", got)
-	}
-}
-
-// TestHandleHistorySync_LogsTheSystemChatsOwnReasonWhenDropped confirms
-// that if WhatsApp's own "0" system account's history sync ever
-// carries nothing but contentless messages (one hypothesis for the
-// conversation never appearing at all), this connector logs its own
-// diagnostic line for it, rather than the plain line any other empty
-// chat gets; this is not run with t.Parallel so capturing the log
-// output stays reliable.
-func TestHandleHistorySync_LogsTheSystemChatsOwnReasonWhenDropped(t *testing.T) {
-	buf := captureLog(t)
-
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev, media := newFakeDevice(), newTestMediaStore(t)
-	var sink connectortest.Sink
-
-	notice := &waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
-		Key:              &waCommon.MessageKey{ID: strPtr("H1")},
-		Message:          &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{}},
-		MessageTimestamp: u64(1),
-	}}
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{ID: strPtr("0@s.whatsapp.net"), Messages: []*waHistorySync.HistorySyncMsg{notice}}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
-
-	if len(sink.Lines()) != 0 {
-		t.Errorf("events = %q, want nothing reported with no real message", sink.Lines())
-	}
-	if got := buf.String(); !strings.Contains(got, "whatsapp: system chat message dropped (reason=no-real-content, fields=protocolMessage)") {
-		t.Errorf("log output = %q, want the system chat's own diagnostic line", got)
 	}
 }

@@ -85,17 +85,11 @@ func (c *Connector) syncPushnames(ctx context.Context, sink connector.Sink, name
 
 // syncConversation reports one synced conversation, its pinned and
 // archived state, its recent messages and WhatsApp's own unread count
-// for it, dropping it when its id does not parse or it names something
-// that is not a real conversation (see isSystemJID). A conversation
-// this connector has never reported before, in a sync batch with
-// nothing but contentless messages (or none at all), is dropped too:
-// WhatsApp's history sync carries entries for chats with no content
-// worth showing (a group's invite link that was never opened, a LID
-// shadow of a chat already known by its phone JID), which otherwise
-// littered the list with an unresolved name and no real preview. Once
-// this connector has reported a conversation for real, a later sync
-// that only updates its pinned, archived or unread state still reaches
-// it, even with no new messages of its own.
+// for it, dropping it only when its id does not parse or it names
+// something that is not a real conversation (see isSystemJID). Every
+// other chat the phone lists is shown, even when none of its synced
+// messages has anything to display: it is still a chat on the phone,
+// and a later message needs it to exist.
 //
 // It returns the conversation's canonical remote id, or "" when the
 // entry was dropped before anything could be resolved, and how many of
@@ -116,11 +110,6 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 		return "", 0
 	}
 	conv.RemoteID = chatID(ctx, src.dev, src.media, jid)
-
-	if !c.knownChat(conv.RemoteID) && !hasRealContent(sc.GetMessages()) {
-		logSyncedConversationDropped(jid, sc)
-		return conv.RemoteID, 0
-	}
 
 	conv.Title, conv.Members = c.resolveConversation(ctx, src, jid, conv, sc)
 	c.reportConversation(ctx, sink, conv)
@@ -162,53 +151,6 @@ func (c *Connector) reportSyncedOrganize(ctx context.Context, sink connector.Sin
 	}
 
 	sink.Organized(ctx, c.account.ID, remoteID, pinned, archived)
-}
-
-// hasRealContent reports whether at least one of a conversation's
-// synced messages carries something a person actually sent, as
-// opposed to every one of them being one of WhatsApp's own protocol
-// notices, a reaction, an edit or a revoke (see isContentless and
-// isReaction/isRevoke/isEdit in normalize_events.go), none of which
-// ever become a stored message of their own.
-func hasRealContent(hms []*waHistorySync.HistorySyncMsg) bool {
-	for _, hm := range hms {
-		content := hm.GetMessage().GetMessage()
-		if content != nil && !isReaction(content) && !isRevoke(content) && !isEdit(content) && !isContentless(content) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// logSyncedConversationDropped reports a conversation history sync
-// never reported before, dropped because none of its synced messages
-// carried anything a person actually sent (see hasRealContent): as
-// logSystemChatDropped, with the first contentless message's own
-// field names, when jid is WhatsApp's own "0" system account, so a
-// report that its announcements and security notices never appear can
-// be checked against this specific reason, or as an ordinary
-// logDropped otherwise.
-func logSyncedConversationDropped(jid types.JID, sc *waHistorySync.Conversation) {
-	if jid != types.PSAJID {
-		logDropped(reasonNoRealContent)
-		return
-	}
-
-	logSystemChatDropped(reasonNoRealContent, syncedContentFields(sc))
-}
-
-// syncedContentFields is the field-name paths (see fieldPaths) of the
-// first of sc's synced messages that carries any content at all, or ""
-// when sc has no messages, for logSyncedConversationDropped.
-func syncedContentFields(sc *waHistorySync.Conversation) string {
-	for _, hm := range sc.GetMessages() {
-		if content := hm.GetMessage().GetMessage(); content != nil {
-			return fieldPaths(content)
-		}
-	}
-
-	return ""
 }
 
 // syncMessage reports one of a conversation's synced messages and
