@@ -5,9 +5,10 @@
 
 // keyContext determines the highest-priority context for key bindings based on
 // the current UI state. Precedence: the close question > account setup > the
-// photo viewer > palette > reaction picker > the delete question > dialog >
-// search > compose > conversation > list. The viewer and the reaction picker
-// are never open together, so their relative order only matters in theory.
+// photo viewer > the health check report > palette > reaction picker > the
+// delete question > dialog > search > compose > conversation > list. The
+// viewer and the reaction picker are never open together, so their relative
+// order only matters in theory.
 function keyContext(state) {
   if (state.confirmOpen) return 'confirm';
   // setupContext names the exact step showing (chooseService, qr, phone,
@@ -15,6 +16,7 @@ function keyContext(state) {
   // is the fallback for a caller that only knows setup is open.
   if (state.setupOpen) return state.setupContext || 'setup';
   if (state.viewerOpen) return 'viewer';
+  if (state.doctorOpen) return 'doctor';
   if (state.paletteOpen) return 'palette';
   if (state.reactionPickerOpen) return 'reactionPicker';
   if (state.deleteConfirmOpen) return 'deleteConfirm';
@@ -26,15 +28,17 @@ function keyContext(state) {
 }
 
 // escapeAction returns what Escape does: it undoes the innermost thing
-// first (account setup, the photo viewer, palette, the reaction picker, the
-// delete question, dialog, search, composer, open conversation, query, the
-// all-unreads view) and hides the window only when there is nothing left to
-// undo. Inside the composer itself the order is: remove a pending
-// attachment, then cancel a reply in progress, then leave the composer.
+// first (account setup, the photo viewer, the health check report, palette,
+// the reaction picker, the delete question, dialog, search, composer, open
+// conversation, query, the all-unreads view) and hides the window only when
+// there is nothing left to undo. Inside the composer itself the order is:
+// remove a pending attachment, then cancel a reply in progress, then leave
+// the composer.
 function escapeAction(state) {
   if (state.confirmOpen) return 'cancel-close';
   if (state.setupOpen) return 'close-setup';
   if (state.viewerOpen) return 'close-viewer';
+  if (state.doctorOpen) return 'close-doctor';
   if (state.paletteOpen) return 'close-palette';
   if (state.reactionPickerOpen) return 'close-reaction-picker';
   if (state.deleteConfirmOpen) return 'close-delete-confirm';

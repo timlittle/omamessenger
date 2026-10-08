@@ -164,6 +164,14 @@ type Deps struct {
 	Clipboard  ClipboardRunner
 	Fake       Injector
 	Logger     Logger
+
+	// DataDir, DBPath, ExecutableName and HelperVersion are read only by
+	// Doctor, to stat the data directory's and database's permissions
+	// and recover which version the running binary was installed as.
+	DataDir        string
+	DBPath         string
+	ExecutableName string
+	HelperVersion  string
 }
 
 // New builds the two halves of the application, which share the event
@@ -176,6 +184,8 @@ func New(d Deps) (*Commands, *Ingest) {
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, deleter: d.Deleter, fake: d.Fake,
 		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
+		recentErrors: &errorHistory{},
+		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state}
 

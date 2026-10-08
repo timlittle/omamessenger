@@ -45,7 +45,12 @@ type fixture struct {
 func newFixture(t *testing.T, faked bool) *fixture {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	dataDir := t.TempDir()
+	if err := os.Chmod(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dataDir, "messages.db")
+	db, err := store.Open(t.Context(), dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +76,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger,
+		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 	}
 	if faked {
 		deps.Fake = f.injector
