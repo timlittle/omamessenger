@@ -37,7 +37,10 @@ type Ingest struct {
 	pendingConv domain.Conversation
 }
 
-var _ connector.Sink = (*Ingest)(nil)
+var (
+	_ connector.Sink        = (*Ingest)(nil)
+	_ connector.SenderNamer = (*Ingest)(nil)
+)
 
 // AccountStatus records and publishes an account's connection state.
 func (in *Ingest) AccountStatus(ctx context.Context, accountID, status, detail string) {
@@ -251,6 +254,28 @@ func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, n
 	}
 
 	in.events.publish(ctx, EventTyping, Typing{ConversationID: conv.ID, Name: name, Active: active})
+}
+
+// SenderName corrects senderRemoteID's name on every message already
+// stored under a different one, and re-publishes every conversation
+// whose preview this changes, so a group whose preview still names
+// its newest message's sender by a stale, generic label picks up a
+// contact, push or business name that only resolved afterwards (see
+// connector.SenderNamer).
+func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, name string) {
+	changed, err := in.store.RefreshSenderName(ctx, accountID, senderRemoteID, name)
+	if err != nil {
+		return
+	}
+
+	for _, id := range changed {
+		conv, err := in.store.Conversation(ctx, id)
+		if err != nil {
+			continue
+		}
+
+		in.events.publish(ctx, EventConversationUpdated, conv)
+	}
 }
 
 // AuthStep publishes what an account's sign-in needs from the user.

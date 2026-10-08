@@ -218,3 +218,19 @@ type Sink interface {
 	// AuthStep reports what a signing-in connector needs from the user.
 	AuthStep(ctx context.Context, accountID string, step AuthStep)
 }
+
+// SenderNamer is a Sink that can also correct a sender's name on
+// messages already stored under a weaker one, once a contact, push or
+// business name resolves after the fact: a connector often reports a
+// message with whatever name it can resolve at the time, and a better
+// one may only become known afterwards, long after that message's own
+// conversation preview was already set. It is optional, the same way
+// Organizer and MediaFetcher are for a Connector: a connector that
+// tracks resolved names type-asserts the Sink it was given for this,
+// and skips the correction when it is not implemented, such as by a
+// test fake.
+type SenderNamer interface {
+	// SenderName corrects senderRemoteID's name, within account, on
+	// every message already stored under a different one.
+	SenderName(ctx context.Context, accountID, senderRemoteID, name string)
+}
