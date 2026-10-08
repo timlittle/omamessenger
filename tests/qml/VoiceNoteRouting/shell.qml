@@ -76,6 +76,7 @@ ShellRoot {
     if (!root.checkDelegate(photoDelegate, "photoView", "a real photo")) return;
     if (!root.checkDelegate(fileDelegate, "fileView", "a plain, non-audio file")) return;
     if (!root.checkControllerPlaysLegacyVoiceNote()) return;
+    if (!root.checkPausedNoteShowsPlayGlyph()) return;
 
     console.log("PASS VoiceNoteRouting");
     Qt.exit(0);
@@ -114,6 +115,27 @@ ShellRoot {
       return Check.fail("opening a legacy voice note did not play it through the voice controller");
     if (fakeVoiceController.calls[0].path !== "/tmp/voice-message.ogg")
       return Check.fail("voice controller got path \"" + fakeVoiceController.calls[0].path + "\", want \"/tmp/voice-message.ogg\"");
+    return true;
+  }
+
+  // checkPausedNoteShowsPlayGlyph verifies a message bubble reads the
+  // real playing flag from voiceNotes, not just whether this note is
+  // the one loaded (playingId): the bug this guards against showed the
+  // pause glyph forever once a note had played once, because the
+  // bubble treated "loaded" and "playing" as the same thing, so pausing
+  // a note never visibly flipped its button back.
+  function checkPausedNoteShowsPlayGlyph(): bool {
+    legacyVoiceDelegate.voiceNotes = { available: true, playingId: "legacy-voice", playing: false, positionMs: 0, durationMs: 0 };
+
+    let button = Check.find(legacyVoiceDelegate, "voicePlayButton");
+    if (button.text !== "▶")
+      return Check.fail("a loaded but paused note shows \"" + button.text + "\", want the play glyph");
+
+    legacyVoiceDelegate.voiceNotes = { available: true, playingId: "legacy-voice", playing: true, positionMs: 0, durationMs: 0 };
+
+    button = Check.find(legacyVoiceDelegate, "voicePlayButton");
+    if (button.text !== "⏸")
+      return Check.fail("a loaded, playing note shows \"" + button.text + "\", want the pause glyph");
     return true;
   }
 }

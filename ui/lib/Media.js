@@ -25,7 +25,7 @@ var KNOWN_KINDS = ['photo', 'video', 'link', 'voice', 'sticker', 'poll'];
 // VoiceNoteController's playback state falls back to before a real one
 // is wired in: nothing playing, nothing available. A shared constant
 // instead of each view writing out the same object literal.
-var NO_VOICE_NOTE = { available: false, playingId: '', positionMs: 0, durationMs: 0 };
+var NO_VOICE_NOTE = { available: false, playingId: '', playing: false, positionMs: 0, durationMs: 0 };
 
 // kindFor says which view should render a message's media: one of
 // KNOWN_KINDS, "file", or null for no media at all. It never answers

@@ -24,6 +24,11 @@ Item {
 
   // ended fires once playback reaches the end of source.
   signal ended()
+  // failed fires once the player reports it cannot play source at all,
+  // carrying MediaPlayer's own numeric error code, never its
+  // errorString: that text can echo the file's own path, which must
+  // stay out of logs (see privacy.md).
+  signal failed(int code)
 
   onSourceChanged: player.source = root.source ? "file://" + root.source : ""
   onPlayingChanged: root.playing ? player.play() : player.pause()
@@ -34,5 +39,6 @@ Item {
 
     audioOutput: AudioOutput {}
     onMediaStatusChanged: if (player.mediaStatus === MediaPlayer.EndOfMedia) root.ended()
+    onErrorOccurred: (error, errorString) => root.failed(error)
   }
 }
