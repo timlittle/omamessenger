@@ -6,6 +6,7 @@ import "../lib/Highlight.js" as Highlight
 import "../lib/SenderColor.js" as SenderColor
 import "../lib/Keymap.js" as Keymap
 import "../lib/Format.js" as Format
+import "../lib/Media.js" as Media
 
 // One message row in a conversation: an optional day separator, the sender
 // name for a grouped incoming message, the bubble with its text and any
@@ -25,12 +26,14 @@ Item {
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides), read for the key-hint row below.
   property var bindings: Keymap.BINDINGS
-  // nowMs is the current time, passed through to time formatting.
-  property real nowMs: 0
+  // nowMs is the current time, read for the failed-send retry line below.
+  // Defaults to the shared clock; a test overrides it to pick an
+  // arbitrary time.
+  property real nowMs: Clock.nowMs
   // voiceNotes is the playback state the voice note player reads; see
   // MessageBubbleContent for its shape. Recycled delegates only ever
   // read this, never own it, so scrolling never interrupts playback.
-  property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
+  property var voiceNotes: Media.NO_VOICE_NOTE
   // pollVote is this message's vote-mode state, read from
   // PollsController, or the default while it is not the message voting:
   // {voting, highlightedIndex, selectedIds}. Recycled delegates only
@@ -256,7 +259,6 @@ Item {
           anchors.leftMargin: bubble.padding
           anchors.rightMargin: bubble.padding
           message: root.message
-          nowMs: root.nowMs
           showStatus: root.showStatus
         }
 

@@ -18,8 +18,6 @@ ColumnLayout {
   property var model: null
   // selectedId is the cursor's current row, by id.
   property string selectedId: ""
-  // nowMs is the current time, for relative timestamps.
-  property real nowMs: 0
   // accountNames names each row's account, for a multi-account service.
   property var accountNames: ({})
   // multiAccountServices lists which services have more than one account.
@@ -134,7 +132,6 @@ ColumnLayout {
     model: root.model
     selectedId: root.selectedId
     query: root.query
-    nowMs: root.nowMs
     accountNames: root.accountNames
     multiAccountServices: root.multiAccountServices
     accountColors: root.accountColors

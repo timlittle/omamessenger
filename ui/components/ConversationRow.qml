@@ -39,8 +39,9 @@ Item {
   property bool showAccount: false
   // accountName: the owning account's name, shown when showAccount is true.
   property string accountName: ""
-  // nowMs: the current time, for the relative time label.
-  property real nowMs: Date.now()
+  // nowMs: the current time, for the relative time label. Defaults to
+  // the shared clock; a test overrides it to pick an arbitrary time.
+  property real nowMs: Clock.nowMs
   // dimmed: true when this row is shown only because show-all is on (it
   // would not appear in the standard list): drawn with reduced opacity.
   property bool dimmed: false

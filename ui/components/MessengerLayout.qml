@@ -42,8 +42,6 @@ Item {
   property var accountController: null
   // windowController is bound into the shortcut help sheet.
   property var windowController: null
-  // nowMs is the current time, refreshed by Panel.qml, for relative times.
-  property real nowMs: Date.now()
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides), passed to the list and conversation.
   property var bindings: Keymap.BINDINGS
@@ -212,7 +210,6 @@ Item {
       query: root.listController.query
       model: root.listController.model
       selectedId: root.listController.selectedId
-      nowMs: root.nowMs
       bindings: root.bindings
       accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
       multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
@@ -243,7 +240,6 @@ Item {
       messages: root.conversationController.messages
       annotations: root.conversationController.annotations
       highlightedId: root.conversationController.highlightedId
-      nowMs: root.nowMs
       bindings: root.bindings
       draft: root.composerController.draft
       replyTarget: root.composerController.replyTarget

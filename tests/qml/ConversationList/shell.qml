@@ -101,7 +101,6 @@ ShellRoot {
       model: root.conversations
       selectedId: ""
       query: ""
-      nowMs: root.now
       accountNames: ({ a1: "Personal", a2: "Team" })
       multiAccountServices: []
       onActivated: id => root.activated.push(id)
@@ -147,7 +146,6 @@ ShellRoot {
       model: liveController.model
       selectedId: ""
       query: ""
-      nowMs: root.now
     }
   }
 

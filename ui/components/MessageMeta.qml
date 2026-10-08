@@ -17,8 +17,10 @@ Row {
   // below guards it with "&&" rather than trusting required to mean
   // non-null for the binding's whole lifetime.
   required property var message
-  // nowMs is the current time, passed through to time formatting.
-  required property real nowMs
+  // nowMs is the current time, read for the sent-time label below.
+  // Defaults to the shared clock; a test overrides it to pick an
+  // arbitrary time.
+  property real nowMs: Clock.nowMs
   // showStatus is true when the delivery glyph should be drawn.
   required property bool showStatus
 

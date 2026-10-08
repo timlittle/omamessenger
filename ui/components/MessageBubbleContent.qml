@@ -31,7 +31,7 @@ Column {
   // VoiceNoteController: {available, playingId, positionMs, durationMs}.
   // A plain summary rather than the controller itself, so this view only
   // ever reads data, never calls into a controller.
-  property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
+  property var voiceNotes: Media.NO_VOICE_NOTE
   // pollVote is this message's vote-mode state, read from
   // PollsController: {voting, highlightedIndex, selectedIds}. A plain
   // summary rather than the controller itself, for the same reason

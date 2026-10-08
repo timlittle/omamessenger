@@ -19,8 +19,6 @@ Item {
   property string selectedId: ""
   // query: the active search text.
   property string query: ""
-  // nowMs: the current time, for each row's relative time label.
-  property real nowMs: Date.now()
   // accountNames: accountId -> account name, for rows that show it.
   property var accountNames: ({})
   // multiAccountServices: services with more than one account.
@@ -130,7 +128,6 @@ Item {
         accountName: root.accountNames[wrapper.accountId] ?? ""
         showAccountColor: root.showAccountColors
         accountColor: root.accountColors[wrapper.accountId] ?? "transparent"
-        nowMs: root.nowMs
         dimmed: wrapper.dimmed
         dimLabel: wrapper.dimLabel
         reminderDue: wrapper.reminderDue

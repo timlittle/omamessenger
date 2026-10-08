@@ -58,10 +58,6 @@ Item {
   // user answered the close question.
   property bool hidingByChoice: false
 
-  // nowMs refreshes every 30 seconds so the list and conversation can
-  // recompute their relative time labels.
-  property real nowMs: Date.now()
-
   // _pendingConversationId is a conversation open() was asked to open
   // before the list had loaded it, retried until it appears or this
   // gives up.
@@ -308,13 +304,6 @@ Item {
   }
 
   Timer {
-    interval: 30000
-    running: true
-    repeat: true
-    onTriggered: root.nowMs = Date.now()
-  }
-
-  Timer {
     id: pendingOpenTimer
     interval: 150
     onTriggered: root._tryOpenPending()
@@ -401,7 +390,6 @@ Item {
           dialogController: dialogController
           accountController: accountController
           windowController: windowController
-          nowMs: root.nowMs
           bindings: root.bindings
           routeKey: root.routeKey
           focusDefault: () => keyArea.forceActiveFocus()

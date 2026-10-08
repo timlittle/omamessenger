@@ -85,7 +85,6 @@ ShellRoot {
     view.conversation = { id: "c1", accountId: "a1", service: "whatsapp", remoteId: "r1", kind: "direct", title: "Alex", members: 0, preview: "", muted: false, unread: 0, lastActivity: now };
     view.messages = messages;
     view.annotations = Timeline.annotate(messages, false, now);
-    view.nowMs = now;
 
     root.loadOlderCount = 0;
     root.pollAttempts = 0;

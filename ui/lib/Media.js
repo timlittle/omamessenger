@@ -21,6 +21,12 @@ var AUDIO_EXTENSIONS = ['ogg', 'oga', 'opus', 'mp3', 'm4a', 'wav', 'aac', 'amr',
 // poll) only needs adding here, not touching the fallback logic below.
 var KNOWN_KINDS = ['photo', 'video', 'link', 'voice', 'sticker', 'poll'];
 
+// NO_VOICE_NOTE is the voiceNotes default every view that reads
+// VoiceNoteController's playback state falls back to before a real one
+// is wired in: nothing playing, nothing available. A shared constant
+// instead of each view writing out the same object literal.
+var NO_VOICE_NOTE = { available: false, playingId: '', positionMs: 0, durationMs: 0 };
+
 // kindFor says which view should render a message's media: one of
 // KNOWN_KINDS, "file", or null for no media at all. It never answers
 // "photo" or "video" for anything but those exact kinds, so a misnamed
