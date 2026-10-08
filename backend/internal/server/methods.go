@@ -44,6 +44,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"conversations.setPinned":   bind(conversationsSetPinned(c)),
 		"conversations.setArchived": bind(conversationsSetArchived(c)),
 		"conversations.setHidden":   bind(conversationsSetHidden(c)),
+		"conversations.setReminder": bind(conversationsSetReminder(c)),
 		"conversations.members":     bind(conversationsMembers(c)),
 		"messages.list":             bind(messagesList(c)),
 		"messages.send":             bind(messagesSend(c)),
@@ -258,6 +259,28 @@ type hiddenParams struct {
 func conversationsSetHidden(c *app.Commands) func(context.Context, hiddenParams) (any, error) {
 	return func(ctx context.Context, p hiddenParams) (any, error) {
 		return c.SetHidden(ctx, p.ConversationID, p.Hidden)
+	}
+}
+
+// reminderParams snoozes or unsnoozes a conversation. At is milliseconds
+// since the Unix epoch to snooze until, or nil to clear it, matching the
+// protocol's {conversationId, at | null} shape.
+type reminderParams struct {
+	ConversationID string `json:"conversationId"`
+	At             *int64 `json:"at"`
+}
+
+// conversationsSetReminder snoozes a conversation until At, or clears its
+// reminder when At is nil. Snoozing is local to this computer only and is
+// never reported to the service.
+func conversationsSetReminder(c *app.Commands) func(context.Context, reminderParams) (any, error) {
+	return func(ctx context.Context, p reminderParams) (any, error) {
+		var at int64
+		if p.At != nil {
+			at = *p.At
+		}
+
+		return c.SetReminder(ctx, p.ConversationID, at)
 	}
 }
 

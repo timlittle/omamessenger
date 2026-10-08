@@ -192,6 +192,37 @@ function relativeDay(ms, nowMs, month) {
   return sameYear ? `${date.getDate()} ${month}` : `${date.getDate()} ${month} ${date.getFullYear()}`;
 }
 
+// snoozeUntilLabel describes when a snoozed conversation comes back:
+// just the clock time for later today, otherwise the day name or date
+// plus the clock time, so a dimmed row reads "Snoozed until 18:00" or
+// "Snoozed until Tomorrow 09:00" at a glance. Unlike timeLabel and
+// dayLabel, ms is a future time, so days ahead rather than days ago
+// names the day.
+function snoozeUntilLabel(ms, nowMs) {
+  const date = new Date(ms);
+  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const days = -daysAgo(ms, nowMs);
+
+  if (days <= 0) {
+    return clock;
+  }
+
+  if (days === 1) {
+    return `Tomorrow ${clock}`;
+  }
+
+  if (days <= 6) {
+    return `${DAY_NAMES[date.getDay()]} ${clock}`;
+  }
+
+  const sameYear = date.getFullYear() === new Date(nowMs).getFullYear();
+  const datePart = sameYear
+    ? `${date.getDate()} ${MONTHS[date.getMonth()].slice(0, 3)}`
+    : `${date.getDate()} ${MONTHS[date.getMonth()].slice(0, 3)} ${date.getFullYear()}`;
+
+  return `${datePart} ${clock}`;
+}
+
 // pad writes n with at least two digits.
 function pad(n) {
   return String(n).padStart(2, '0');

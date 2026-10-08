@@ -115,6 +115,8 @@ Item {
       required property string match
       required property bool dimmed
       required property string dimLabel
+      required property real reminderAt
+      required property bool reminderDue
 
       width: list.width
       height: row.implicitHeight
@@ -131,6 +133,7 @@ Item {
         nowMs: root.nowMs
         dimmed: wrapper.dimmed
         dimLabel: wrapper.dimLabel
+        reminderDue: wrapper.reminderDue
         conversation: {
           "id": wrapper.id,
           "title": wrapper.title,
@@ -146,7 +149,8 @@ Item {
           "preview": wrapper.preview,
           "previewSender": wrapper.previewSender,
           "previewOutgoing": wrapper.previewOutgoing,
-          "match": wrapper.match
+          "match": wrapper.match,
+          "reminderAt": wrapper.reminderAt
         }
 
         onClicked: root.activated(wrapper.id)

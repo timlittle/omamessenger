@@ -6,6 +6,7 @@ import "../lib/KeyBindings.js" as KeyBindings
 import "../lib/Palette.js" as Palette
 import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
+import "../lib/Snooze.js" as Snooze
 
 // Owns the command palette, closing and quitting (which ask first), and
 // the Escape chain. The palette runs commands through whichever
@@ -72,12 +73,15 @@ QtObject {
   // mode: the highlighted message's own links, set by openLinkChooser.
   property var linkChoices: []
 
-  // paletteResults are the matching commands, conversations or links,
-  // best first.
+  // paletteResults are the matching commands, conversations, links, or,
+  // in "snoozeCustom" mode, the one row previewing the typed time, best
+  // first (or the only candidate, for snoozeCustom).
   readonly property var paletteResults: root.paletteMode === "conversations"
     ? Palette.search(root.listController ? Palette.conversationOrder(root.listController.all) : [], root.paletteQuery, (c) => c.title)
     : root.paletteMode === "links"
     ? Palette.search(root.linkChoices.map((url) => ({ url })), root.paletteQuery, (c) => c.url)
+    : root.paletteMode === "snoozeCustom"
+    ? Snooze.preview(root.paletteQuery, Date.now())
     : root.paletteMode === "keyBindings"
     ? Palette.search(KeyBindings.rows(root.bindings, root._keyBindingConflicts, root._keyBindingErrors), root.paletteQuery, (r) => r.label)
     : Palette.search(Keymap.commands(root.bindings), root.paletteQuery, (c) => c.label)
@@ -94,6 +98,8 @@ QtObject {
     ? root.paletteResults.map((c) => ({ label: c.title, detail: Rail.serviceLabel(c.service, root.service ? root.service.services : []), keys: "", unread: c.unread ?? 0 }))
     : root.paletteMode === "links"
     ? root.paletteResults.map((c) => ({ label: "Open link: " + c.url, detail: "", keys: "" }))
+    : root.paletteMode === "snoozeCustom"
+    ? root.paletteResults.map((r) => ({ label: r.label, detail: "", keys: "" }))
     : root.paletteResults
 
   // confirmingClose shows the question asking what closing should do.
@@ -127,6 +133,7 @@ QtObject {
     const handlers = {
       "palette.commands": () => root.openPalette("commands"),
       "palette.conversations": () => root.openPalette("conversations"),
+      "chat.snoozeCustom": () => root.openPalette("snoozeCustom"),
       "palette.down": () => root.movePalette(1),
       "palette.up": () => root.movePalette(-1),
       "palette.accept": () => root.acceptPalette(root.paletteIndex),
@@ -210,9 +217,10 @@ QtObject {
     root.paletteIndex = ((root.paletteIndex + delta) % count + count) % count;
   }
 
-  // acceptPalette runs the command, opens the conversation, or opens the
-  // link, at index. "keyBindings" rows are informational only: Enter on
-  // one just closes the palette, same as clicking outside it would.
+  // acceptPalette runs the command, opens the conversation, opens the
+  // link, or applies the previewed custom snooze time, at index.
+  // "keyBindings" rows are informational only: Enter on one just closes
+  // the palette, same as clicking outside it would.
   function acceptPalette(index: int): void {
     const chosen = root.paletteResults[index];
     if (!chosen) return;
@@ -220,6 +228,7 @@ QtObject {
     root.closePalette();
     if (root.paletteMode === "conversations") root._openConversation(chosen);
     else if (root.paletteMode === "links") Qt.openUrlExternally(chosen.url);
+    else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
     else if (root.paletteMode === "keyBindings") { /* informational only */ }
     else root.runCommand(chosen.action);
   }
@@ -292,6 +301,7 @@ QtObject {
       "close-doctor": () => root.closeDoctor(),
       "close-reaction-picker": () => { if (root.reactionsController) root.reactionsController.closePicker(); },
       "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
+      "cancel-archive-all": () => { if (root.listController) root.listController.cancelArchiveAllRead(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
@@ -321,6 +331,7 @@ QtObject {
       paletteOpen: root.paletteOpen,
       reactionPickerOpen: root.reactionsController ? root.reactionsController.pickerOpen : false,
       deleteConfirmOpen: root.deleteController ? root.deleteController.open : false,
+      archiveConfirmOpen: root.listController ? root.listController.archiveAllOpen : false,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,
       composeFocused: root.composerController ? root.composerController.composeFocused : false,

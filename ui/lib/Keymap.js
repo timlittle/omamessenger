@@ -70,6 +70,19 @@ var BINDINGS = [
   { action: 'chat.pin', keys: [], contexts: ['list', 'conversation'], label: 'Pin or unpin chat', command: true },
   { action: 'chat.archive', keys: [], contexts: ['list', 'conversation'], label: 'Archive or unarchive chat', command: true },
   { action: 'chat.hide', keys: [], contexts: ['list', 'conversation'], label: 'Hide or unhide chat', command: true },
+  // "a" is free in the list context (the conversation context already
+  // uses it for compose.focus), so the key works for the selected chat
+  // and the command palette reaches the open one too, since a palette
+  // command runs through its owning controller regardless of context.
+  { action: 'chat.archiveRead', keys: ['a'], contexts: ['list'], label: 'Archive and mark read', command: true },
+  // Archiving every read chat at once is bulk, so it is palette-only and
+  // asks for confirmation first (see the archiveConfirm bindings below).
+  { action: 'list.archiveAllRead', keys: [], contexts: ['global'], label: 'Archive all read conversations', command: true },
+  { action: 'chat.snoozeLaterToday', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until later today', command: true },
+  { action: 'chat.snoozeTomorrow', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until tomorrow', command: true },
+  { action: 'chat.snoozeNextWeek', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until next week', command: true },
+  { action: 'chat.snoozeCustom', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until…', command: true },
+  { action: 'chat.unsnooze', keys: [], contexts: ['list', 'conversation'], label: 'Remove snooze', command: true },
 
   { action: 'message.highlightNewer', keys: ['j', 'Down'], contexts: ['conversation'], label: 'Highlight the next message' },
   { action: 'message.highlightOlder', keys: ['k', 'Up'], contexts: ['conversation'], label: 'Highlight the previous message' },
@@ -178,7 +191,13 @@ var BINDINGS = [
   { action: 'delete.accept', keys: ['Enter'], contexts: ['deleteConfirm'], label: 'Choose the highlighted answer', hint: true },
   { action: 'delete.everyone', keys: ['e'], contexts: ['deleteConfirm'], label: 'Delete for everyone', hint: true },
   { action: 'delete.forMe', keys: ['m'], contexts: ['deleteConfirm'], label: 'Delete for me', hint: true },
-  { action: 'delete.cancel', keys: ['n'], contexts: ['deleteConfirm'], label: 'Cancel', hint: true }
+  { action: 'delete.cancel', keys: ['n'], contexts: ['deleteConfirm'], label: 'Cancel', hint: true },
+
+  // Archiving every read chat at once: the same y/n idiom
+  // RemoveAccount's own confirmation uses, since Cancel is the only
+  // other choice and needs no highlight to move between.
+  { action: 'archiveAll.accept', keys: ['Enter', 'y'], contexts: ['archiveConfirm'], label: 'Archive the read conversations', hint: true },
+  { action: 'archiveAll.cancel', keys: ['n'], contexts: ['archiveConfirm'], label: 'Cancel', hint: true }
 ];
 
 // match returns the action for a key press in a context, or "". Bindings

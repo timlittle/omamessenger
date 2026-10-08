@@ -39,7 +39,7 @@ func TestIngest_SurvivesAHelperRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		commands1, ingest1, _ := appOver(t, db1)
+		commands1, ingest1, _, _ := appOver(t, db1)
 		ingest1.Conversation(ctx, domain.Conversation{AccountID: "wa", RemoteID: "r-chat", Title: "Alex", Kind: domain.KindDirect})
 		ingest1.Incoming(ctx, "wa", "r-chat", incoming("in-1", "first"))
 		ingest1.Incoming(ctx, "wa", "r-chat", incoming("in-2", "second"))
@@ -65,7 +65,7 @@ func TestIngest_SurvivesAHelperRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = db2.Close() })
-		commands2, ingest2, dispatcher2 := appOver(t, db2)
+		commands2, ingest2, dispatcher2, _ := appOver(t, db2)
 
 		after, err := commands2.Conversations(ctx, "")
 		if err != nil || len(after) != 1 {

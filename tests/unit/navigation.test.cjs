@@ -528,6 +528,24 @@ test('escapeAction closes the delete question before the dialog beneath it, but 
   assert.strictEqual(Navigation.escapeAction({ deleteConfirmOpen: true, reactionPickerOpen: true }), 'close-reaction-picker');
 });
 
+test('keyContext returns archiveConfirm when open, above dialog, search and compose', () => {
+  const state = { archiveConfirmOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
+  assert.strictEqual(Navigation.keyContext(state), 'archiveConfirm');
+});
+
+test('keyContext: the viewer, the palette, setup, the reaction picker and the delete question still win over the archive-all question', () => {
+  assert.strictEqual(Navigation.keyContext({ archiveConfirmOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ archiveConfirmOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
+  assert.strictEqual(Navigation.keyContext({ archiveConfirmOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ archiveConfirmOpen: true, reactionPickerOpen: true, pane: 'list' }), 'reactionPicker');
+  assert.strictEqual(Navigation.keyContext({ archiveConfirmOpen: true, deleteConfirmOpen: true, pane: 'list' }), 'deleteConfirm');
+});
+
+test('escapeAction closes the archive-all question before the dialog beneath it, but not before the delete question', () => {
+  assert.strictEqual(Navigation.escapeAction({ archiveConfirmOpen: true, dialogOpen: true }), 'cancel-archive-all');
+  assert.strictEqual(Navigation.escapeAction({ archiveConfirmOpen: true, deleteConfirmOpen: true }), 'close-delete-confirm');
+});
+
 test('escapeAction: leave-unread-view when nothing else is open', () => {
   const state = { pane: 'list', activeId: '', query: '', unreadView: true };
 

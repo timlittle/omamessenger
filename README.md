@@ -15,7 +15,8 @@ OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and H
 - Replies and reactions; edits sync from the service, and you can delete a message yourself (**d**), for everyone or just for you, as well as have a deletion made elsewhere sync in
 - @-mention a group member by typing "@" in the composer; a message that mentions you is highlighted
 - Stickers show as static images; sending one is not yet supported
-- Pin, archive and a local-only hide, with a one-month recency filter and a "show all" to see everything
+- Pin, archive (including a one-key "archive and mark read", **a**, and a confirmed "archive all read conversations") and a local-only hide, with a one-month recency filter and a "show all" to see everything
+- Local-only reminders: snooze a conversation until later today, tomorrow, next week or a custom time, then get it back at the top of the list, marked "Reminder", with a desktop notification
 - Desktop notifications; click one to open its conversation
 - Paste or attach an image to a message
 - Keyboard-first, with a command palette (**Ctrl+/**) listing every action and its shortcut

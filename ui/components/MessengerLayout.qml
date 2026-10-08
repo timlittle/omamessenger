@@ -270,6 +270,7 @@ Item {
   Overlays {
     anchors.fill: parent
     service: root.service
+    listController: root.listController
     windowController: root.windowController
     dialogController: root.dialogController
     accountController: root.accountController

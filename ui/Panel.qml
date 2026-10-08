@@ -144,6 +144,7 @@ Item {
       paletteOpen: windowController.paletteOpen,
       reactionPickerOpen: reactionsController.pickerOpen,
       deleteConfirmOpen: deleteController.open,
+      archiveConfirmOpen: listController.archiveAllOpen,
       dialogOpen: dialogController.open,
       searchFocused: listController.searchFocused,
       composeFocused: composerController.composeFocused,
