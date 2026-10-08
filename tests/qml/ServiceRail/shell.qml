@@ -1,7 +1,9 @@
 // Checks the service rail: it has one entry per Rail.items() result,
-// clicking an entry emits selected() with its key, and a busy rail (long
+// clicking an entry emits selected() with its key, a busy rail (long
 // account names, four-digit unread counts, every status dot) never
-// squashes an entry's unread badge into its glyph.
+// squashes an entry's unread badge into its glyph, and an account entry
+// (but not a service entry covering just one account) shows its own
+// account colour dot.
 import QtQuick
 import QtTest
 import Quickshell
@@ -22,6 +24,7 @@ ShellRoot {
   ]
   property var conversations: []
   property var railItems: Rail.items(root.accounts, root.conversations)
+  property var accountColors: ({ a1: "#ff00ff00", a2: "#ff0000ff" })
 
   // busyAccounts: several Telegram accounts with long names and a service
   // other than Telegram, to reproduce the rail "busy" with many entries.
@@ -52,6 +55,7 @@ ShellRoot {
       anchors.fill: parent
       items: root.railItems
       selectedKey: "all"
+      accountColors: root.accountColors
       onSelected: key => root.selectedKeys.push(key)
     }
   }
@@ -100,6 +104,19 @@ ShellRoot {
     for (const item of root.busyItems) {
       if (!root.checkBusyEntry(item.key)) return;
     }
+
+    const accountEntry = Check.find(rail, "entry-account:a1");
+    if (!accountEntry) return Check.fail("entry-account:a1 not found");
+    const accountDot = Check.find(accountEntry, "accountColorDot");
+    if (!accountDot || !accountDot.visible)
+      return Check.fail("account entry a1 does not show its account colour dot");
+    if (String(accountDot.color) !== "#00ff00")
+      return Check.fail("account entry a1's dot is not tinted with its account colour: " + accountDot.color);
+
+    const serviceEntry = Check.find(rail, "entry-service:whatsapp");
+    const serviceDot = Check.find(serviceEntry, "accountColorDot");
+    if (!serviceDot || serviceDot.visible)
+      return Check.fail("a service entry covering one account still shows an account colour dot");
 
     console.log("PASS ServiceRail");
     Qt.exit(0);

@@ -25,6 +25,11 @@ Item {
   property var accountNames: ({})
   // multiAccountServices: services with more than one account.
   property var multiAccountServices: []
+  // accountColors: accountId -> colour tag, for the account colour stripe.
+  property var accountColors: ({})
+  // showAccountColors: true once more than one account exists, the only
+  // time a row's account colour stripe is worth showing.
+  property bool showAccountColors: false
   // unreadView: true while the all-unreads view is showing, for the empty
   // state's own wording.
   property bool unreadView: false
@@ -121,6 +126,8 @@ Item {
         query: root.query
         showAccount: root.multiAccountServices.includes(wrapper.service)
         accountName: root.accountNames[wrapper.accountId] ?? ""
+        showAccountColor: root.showAccountColors
+        accountColor: root.accountColors[wrapper.accountId] ?? "transparent"
         nowMs: root.nowMs
         dimmed: wrapper.dimmed
         dimLabel: wrapper.dimLabel

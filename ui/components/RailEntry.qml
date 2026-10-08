@@ -7,7 +7,8 @@ import "../lib/Rail.js" as Rail
 
 // One entry in the service rail: glyph, label, unread badge and a status
 // dot, with a tooltip naming the entry and its status. Account entries are
-// smaller and indented under their service.
+// smaller and indented under their service, and carry a small colour dot
+// tagging which account they are, paired with the same tooltip.
 Item {
   id: root
 
@@ -18,6 +19,9 @@ Item {
   // knownServices: the helper's own services, from hello, for the account
   // tooltip's service name; falls back to the built-in labels when empty.
   property var knownServices: []
+  // accountColor: this entry's account colour tag; ignored for an entry
+  // that is not kind "account".
+  property color accountColor: "transparent"
 
   readonly property bool account: root.entry.kind === "account"
   readonly property string statusWord: Rail.statusLabel(root.entry.status)
@@ -82,6 +86,19 @@ Item {
         color: root.entry.status === "error" || root.entry.status === "needs-auth" ? Color.urgent : "transparent"
         border { width: root.entry.status === "connecting" ? Theme.spacing.hairline : 0; color: Color.foreground }
         anchors { right: glyph.right; bottom: glyph.bottom }
+      }
+
+      // This account's colour tag: a small dot at the glyph's opposite
+      // corner from the status dot, paired with the entry's own tooltip
+      // (which already names the account) so colour is never the only cue.
+      Rectangle {
+        objectName: "accountColorDot"
+        visible: root.account
+        width: Style.space(8)
+        height: Style.space(8)
+        radius: width / 2
+        color: root.accountColor
+        anchors { left: glyph.left; bottom: glyph.bottom }
       }
 
       UnreadBadge {
