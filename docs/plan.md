@@ -188,6 +188,7 @@ Do these after the UI. Connectors never reach real services in tests: use record
 Ideas from comparing other Omarchy messaging plugins, not yet scheduled.
 
 - Reply from the desktop notification without opening the window, as omarchy-signal does.
+- Send later: a message queued in the helper and sent at a chosen time while the helper runs, as Beeper offers.
 
 ## Later, only if it becomes a problem
 
