@@ -146,6 +146,13 @@ func (r *retrier) nextDue(ctx context.Context) (next time.Time, ok bool, err err
 // RetryAttempts and RetrySince decide whether this continues an
 // existing backoff or starts a fresh one; Retry resets both to zero
 // first so asking for a retry always starts the streak over.
+//
+// The automatic scheduler's own pass and a user's manual Retry can both
+// reach here for the same message at once - a reconnect firing the
+// moment the user clicks retry, say. setStatus's compare-and-swap means
+// only one of them actually claims the move to pending; the other sees
+// claimed false and stops here rather than sending the message a
+// second time.
 func (c *Commands) retryAttempt(ctx context.Context, conv domain.Conversation, m domain.Message) (domain.Message, error) {
 	if err := c.restoreAttachment(ctx, &m); err != nil {
 		if c.logger != nil {
@@ -155,9 +162,12 @@ func (c *Commands) retryAttempt(ctx context.Context, conv domain.Conversation, m
 		return m, err
 	}
 
-	pending, err := c.setStatus(ctx, m, domain.StatusPending)
+	pending, claimed, err := c.setStatus(ctx, m, domain.StatusPending)
 	if err != nil {
 		return pending, err
+	}
+	if !claimed {
+		return pending, nil
 	}
 	if m.Media != nil && pending.Media != nil {
 		pending.Media.Path = m.Media.Path

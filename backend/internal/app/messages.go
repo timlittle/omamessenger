@@ -274,7 +274,7 @@ func (c *Commands) send(ctx context.Context, conv domain.Conversation, m domain.
 	defer release()
 
 	if sendErr = c.dispatcher.Send(ctx, conv, m); sendErr != nil {
-		updated, err := c.setStatus(ctx, m, domain.StatusFailed)
+		updated, _, err := c.setStatus(ctx, m, domain.StatusFailed)
 		return updated, sendErr, err
 	}
 
@@ -304,16 +304,19 @@ func (c *Commands) reserveAttachment(m domain.Message) func() {
 	return c.outgoing.Reserve(m.ID)
 }
 
-// setStatus records a delivery status and publishes the change.
-func (c *Commands) setStatus(ctx context.Context, m domain.Message, status string) (domain.Message, error) {
+// setStatus records a delivery status and publishes the change. changed
+// reports whether this call actually moved the status, as opposed to
+// losing a race to another concurrent call already doing so: retryAttempt
+// relies on this to stop a retry it was beaten to claiming.
+func (c *Commands) setStatus(ctx context.Context, m domain.Message, status string) (_ domain.Message, changed bool, _ error) {
 	updated, changed, err := c.store.UpdateMessageStatus(ctx, m.ID, status)
 	if err != nil {
-		return m, err
+		return m, false, err
 	}
 
 	if changed {
 		c.events.publish(ctx, EventMessageUpdated, updated)
 	}
 
-	return updated, nil
+	return updated, changed, nil
 }
