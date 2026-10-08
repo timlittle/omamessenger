@@ -11,7 +11,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
@@ -34,6 +36,25 @@ func providers() []connector.Provider {
 // mediaCacheLimit is how much downloaded media the helper keeps before it
 // drops the least recently used: 1 GiB.
 const mediaCacheLimit = 1 << 30
+
+// outgoingRetention is how long a pending or failed message's outgoing
+// attachment is kept for a retry before it is swept regardless of the
+// area's size: long enough to retry after being offline for a few days,
+// short enough that an attachment nobody ever retries does not sit
+// there forever.
+const outgoingRetention = 7 * 24 * time.Hour
+
+// outgoingSizeLimit is how much the outgoing media area may hold before
+// the least recently used pending or failed attachments are swept to
+// make room: generous for a handful of large attachments awaiting
+// retry, far below the 1 GiB downloaded media is allowed, since nothing
+// here should ever need to hold as much.
+const outgoingSizeLimit = 256 << 20
+
+// outgoingSweepInterval is how often the outgoing media area is swept
+// for expired or oversized copies while the helper runs, on top of once
+// at startup.
+const outgoingSweepInterval = time.Hour
 
 // notify.Desktop is the only Notifier the helper wires; app can't import
 // notify (see .golangci.yml), so the pairing is checked here instead.
@@ -146,7 +167,7 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	registry := newAccountRegistry(db, cfg.dataDir, providers())
 	caches := mediaCaches{
 		downloaded: cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit),
-		outgoing:   cache.NewOutgoing(filepath.Join(cfg.dataDir, "media", "outgoing")),
+		outgoing:   cache.NewOutgoing(filepath.Join(cfg.dataDir, "media", "outgoing"), outgoingRetention, outgoingSizeLimit),
 	}
 	commands, ingest, manager, err := wire(ctx, wireDeps{
 		db: db, srv: srv, registry: registry, caches: caches, logger: logger,
@@ -160,10 +181,14 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	// On every return, stop the connectors and finish requests in progress
 	// before the database closes.
 	srv.Start(ctx, stdio{s.in, s.out}, commands)
+
+	var sweeper sync.WaitGroup
+	sweeper.Go(func() { caches.outgoing.RunSweeper(ctx, outgoingSweepInterval, logger) })
 	defer func() {
 		cancel()
 		srv.Wait()
 		manager.Wait()
+		sweeper.Wait()
 	}()
 
 	if err := manager.Start(ctx, db, ingest); err != nil && ctx.Err() == nil {

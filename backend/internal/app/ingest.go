@@ -29,6 +29,9 @@ type Ingest struct {
 	store      *store.Store
 	notifier   Notifier
 	dispatcher Dispatcher
+	outgoing   OutgoingMedia
+	cache      MediaCache
+	logger     Logger
 	events     *events
 	ui         *uiState
 
@@ -232,8 +235,11 @@ func (in *Ingest) Organized(ctx context.Context, accountID, conversationRemoteID
 	in.events.publish(ctx, EventConversationUpdated, updated)
 }
 
-// OutgoingStatus records the service's id for a sent message and publishes
-// its delivery progress. Late or out-of-order receipts are ignored.
+// OutgoingStatus records the service's id for a sent message and
+// publishes its delivery progress. Late or out-of-order receipts are
+// ignored. Once delivery is confirmed (sent, delivered or read), the
+// message will never be retried, so its outgoing attachment, if any, is
+// dropped (see retireOutgoingAttachment).
 func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, status string) {
 	if remoteID != "" {
 		_ = in.store.SetMessageRemoteID(ctx, localMessageID, remoteID) // see the Ingest comment on dropped errors
@@ -245,6 +251,7 @@ func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, 
 	}
 
 	in.events.publish(ctx, EventMessageUpdated, m)
+	in.retireOutgoingAttachment(ctx, m)
 }
 
 // Typing publishes a typing indicator for a known conversation.

@@ -49,6 +49,11 @@ type Facts struct {
 	// CacheSize reports whether the media cache is within its limit.
 	CacheSize State
 
+	// OutgoingSize reports whether the outgoing media area - attachments
+	// kept for a retry until their message is confirmed sent - is within
+	// its own limit.
+	OutgoingSize State
+
 	// Accounts are every configured account's service and last known
 	// connection status.
 	Accounts []AccountFact
@@ -104,6 +109,7 @@ func Build(f Facts) Report {
 		permissionsCheck(f),
 		databaseCheck(f),
 		cacheCheck(f),
+		outgoingSizeCheck(f),
 		notifyCheck(f),
 		recentErrorsCheck(f),
 	}
@@ -160,6 +166,16 @@ func cacheCheck(f Facts) Check {
 	}
 
 	return Check{Name: "Media cache", OK: true, Detail: "within its limit"}
+}
+
+// outgoingSizeCheck flags an outgoing media area that has grown past its
+// limit; one never checked is not a problem.
+func outgoingSizeCheck(f Facts) Check {
+	if f.OutgoingSize == StateBad {
+		return Check{Name: "Outgoing attachments", OK: false, Detail: "over its limit"}
+	}
+
+	return Check{Name: "Outgoing attachments", OK: true, Detail: "within its limit"}
 }
 
 // notifyCheck flags a missing notify-send, since without it no

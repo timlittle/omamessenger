@@ -11,9 +11,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
 // writeTestFile writes data to a new file under the test's temp
@@ -212,5 +215,96 @@ func TestRetry_ResendsTheSameAttachment(t *testing.T) {
 	}
 	if _, err := os.Stat(sentWith.Path); err != nil {
 		t.Errorf("attachment on retry: %v", err)
+	}
+}
+
+// TestRetry_FailsClearlyWhenTheAttachmentWasSwept confirms a retry for a
+// message whose outgoing copy was already removed - the outgoing area's
+// retention sweep dropping it while it waited, say - reports a plain,
+// safe error naming what to do, rather than failing deep inside the
+// dispatch with nothing useful to say.
+func TestRetry_FailsClearlyWhenTheAttachmentWasSwept(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	path := writeTestPNG(t, "photo.png", 1, 1)
+	f.dispatcher.err = errors.New("offline")
+
+	failed, err := f.commands.Send(ctx, "chat", "hi", path, "")
+	if err != nil || failed.Status != domain.StatusFailed {
+		t.Fatalf("Send() = %+v, %v", failed, err)
+	}
+
+	if err := f.outgoing.Remove(ctx, failed.ID, failed.Media.FileName); err != nil {
+		t.Fatal(err)
+	}
+
+	f.dispatcher.err = nil
+	if _, err := f.commands.Retry(ctx, failed.ID); !errors.Is(err, app.ErrInvalidInput) ||
+		!strings.Contains(err.Error(), "attach it again") {
+		t.Fatalf("Retry() error = %v, want an invalid-input error about attaching it again", err)
+	}
+
+	stored, err := f.store.Message(ctx, failed.ID)
+	if err != nil || stored.Status != domain.StatusFailed {
+		t.Errorf("stored = %+v, %v; want it still failed, never dispatched", stored, err)
+	}
+}
+
+// TestDispatch_ReservesTheAttachmentForTheDurationOfTheSend confirms a
+// message's attachment survives a sweep that runs while its send is
+// still in progress, however small the outgoing area's own size limit,
+// and becomes eligible for eviction again only once the send has ended.
+func TestDispatch_ReservesTheAttachmentForTheDurationOfTheSend(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "messages.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.UpsertAccount(ctx, domain.Account{ID: "wa", Service: domain.ServiceWhatsApp, Name: "Personal"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.EnsureConversation(ctx, domain.Conversation{
+		ID: "chat", AccountID: "wa", RemoteID: "r-chat", Title: "Chat", Kind: domain.KindDirect,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A size limit of one byte means any unreserved file is evicted the
+	// instant Sweep runs.
+	outgoing := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1)
+	dispatcher := &fakeDispatcher{}
+	commands, _ := app.New(app.Deps{
+		Store: db, Dispatcher: dispatcher, Notifier: &fakeNotifier{}, Publisher: &fakePublisher{},
+		Outgoing: outgoing, Clipboard: &fakeClipboard{},
+	})
+
+	var reservedDuringSend bool
+	dispatcher.onRun = func(m domain.Message) {
+		_ = outgoing.Sweep(ctx)
+		_, statErr := os.Stat(outgoing.Path(m.ID, m.Media.FileName))
+		reservedDuringSend = statErr == nil
+	}
+
+	path := writeTestPNG(t, "photo.png", 1, 1)
+	sent, err := commands.Send(ctx, "chat", "hi", path, "")
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+
+	if !reservedDuringSend {
+		t.Error("a sweep mid-send evicted the attachment its own send was still using")
+	}
+
+	if err := outgoing.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(outgoing.Path(sent.ID, sent.Media.FileName)); !os.IsNotExist(err) {
+		t.Error("the attachment was not evicted once its send had ended")
 	}
 }

@@ -50,7 +50,7 @@ func connect(t *testing.T, faked bool) *session {
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: clipboard,
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: clipboard,
 	}
 	if faked {
 		deps.Fake = unreachableFake{}
@@ -94,7 +94,7 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: &storeAccounts{db: db},
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: &fakeClipboard{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: &fakeClipboard{},
 		Media: media, Cache: mediaCache,
 	}
 

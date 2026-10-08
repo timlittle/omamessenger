@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
@@ -66,7 +67,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, deleter: &fakeDeleter{},
-		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), clipboard: &fakeClipboard{},
+		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{},
 	}
 
@@ -102,7 +103,7 @@ func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDi
 		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
 		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
 		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
 	}
 
 	commands, ingest := app.New(deps)
@@ -378,6 +379,12 @@ type fakeCache struct{ err error }
 
 func (c *fakeCache) Fetch(context.Context, string, func(context.Context, string) error) (string, error) {
 	return "", c.err
+}
+
+// Adopt is never exercised by a test using fakeCache; it only ever fails
+// Fetch.
+func (c *fakeCache) Adopt(context.Context, string, string) error {
+	return c.err
 }
 
 // fakeLogger records every diagnostic line FetchMedia writes, so a test

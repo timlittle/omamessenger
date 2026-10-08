@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -219,6 +220,10 @@ func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message,
 		return m, fmt.Errorf("%w: only failed outgoing messages can be retried", ErrInvalidInput)
 	}
 
+	if err := c.checkAttachmentAvailable(m); err != nil {
+		return m, err
+	}
+
 	conv, err := c.store.Conversation(ctx, m.ConversationID)
 	if err != nil {
 		return m, err
@@ -239,6 +244,22 @@ func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message,
 	return c.dispatch(ctx, conv, m)
 }
 
+// checkAttachmentAvailable reports a clear, safe error when m's
+// attachment has been swept from the outgoing area (see cache.Outgoing's
+// retention and size limit) before it could be retried.
+func (c *Commands) checkAttachmentAvailable(m domain.Message) error {
+	if m.Media == nil || c.outgoing == nil {
+		return nil
+	}
+
+	path := c.outgoing.Path(m.ID, m.Media.FileName)
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("%w: the attachment is no longer available; attach it again", ErrInvalidInput)
+	}
+
+	return nil
+}
+
 // dispatch hands a pending message to the service, marking it failed if
 // the service refuses it. A fast connector can confirm delivery, and
 // update the stored message, before Send returns; the reply must carry
@@ -247,6 +268,9 @@ func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message,
 // otherwise arrive after the sent notification and regress the bubble
 // back to pending with nothing left to correct it.
 func (c *Commands) dispatch(ctx context.Context, conv domain.Conversation, m domain.Message) (domain.Message, error) {
+	release := c.reserveAttachment(m)
+	defer release()
+
 	if err := c.dispatcher.Send(ctx, conv, m); err != nil {
 		return c.setStatus(ctx, m, domain.StatusFailed)
 	}
@@ -264,6 +288,17 @@ func (c *Commands) dispatch(ctx context.Context, conv domain.Conversation, m dom
 	}
 
 	return current, nil
+}
+
+// reserveAttachment marks m's attachment, if it has one, as being sent
+// right now, so the outgoing area's background sweep never removes it
+// mid-upload; the returned func releases the mark once the send ends.
+func (c *Commands) reserveAttachment(m domain.Message) func() {
+	if m.Media == nil || c.outgoing == nil {
+		return func() {}
+	}
+
+	return c.outgoing.Reserve(m.ID)
 }
 
 // setStatus records a delivery status and publishes the change.

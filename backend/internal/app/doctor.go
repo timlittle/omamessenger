@@ -32,6 +32,7 @@ func (c *Commands) Doctor(ctx context.Context) (doctor.Report, error) {
 		DBFileSecure:          permissionState(c.dbPath, 0o600),
 		DatabaseOK:            err == nil,
 		CacheSize:             cacheSizeState(c.cache),
+		OutgoingSize:          outgoingSizeState(c.outgoing),
 		NotifySendAvailable:   notifySendOnPath(),
 		RecentErrorCategories: c.recentErrors.snapshot(),
 		Accounts:              accountFacts(accounts),
@@ -71,6 +72,27 @@ func permissionState(path string, want os.FileMode) doctor.State {
 // unknown when cache does not implement CacheStats.
 func cacheSizeState(c MediaCache) doctor.State {
 	stats, ok := c.(CacheStats)
+	if !ok {
+		return doctor.StateUnknown
+	}
+
+	bytes, limit, err := stats.Stats()
+	if err != nil {
+		return doctor.StateUnknown
+	}
+
+	if bytes > limit {
+		return doctor.StateBad
+	}
+
+	return doctor.StateGood
+}
+
+// outgoingSizeState reports whether the outgoing media area holds no
+// more than its limit, or unknown when outgoing does not implement
+// CacheStats.
+func outgoingSizeState(outgoing OutgoingMedia) doctor.State {
+	stats, ok := outgoing.(CacheStats)
 	if !ok {
 		return doctor.StateUnknown
 	}
