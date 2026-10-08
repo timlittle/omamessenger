@@ -484,6 +484,60 @@ test('unreadConversations: handles null or undefined input', () => {
   assert.deepEqual(Rail.unreadConversations(undefined, ''), []);
 });
 
+test('isSnoozed: true only while a reminder has not come due yet', () => {
+  const now = Date.now();
+  assert.strictEqual(Rail.isSnoozed({ reminderAt: now + 1000 }, now), true);
+  assert.strictEqual(Rail.isSnoozed({ reminderAt: now - 1000 }, now), false);
+  assert.strictEqual(Rail.isSnoozed({ reminderAt: 0 }, now), false);
+  assert.strictEqual(Rail.isSnoozed({}, now), false);
+});
+
+test('isDueReminder: true once a reminder\'s time has arrived', () => {
+  const now = Date.now();
+  assert.strictEqual(Rail.isDueReminder({ reminderAt: now - 1000 }, now), true);
+  assert.strictEqual(Rail.isDueReminder({ reminderAt: now }, now), true);
+  assert.strictEqual(Rail.isDueReminder({ reminderAt: now + 1000 }, now), false);
+  assert.strictEqual(Rail.isDueReminder({ reminderAt: 0 }, now), false);
+});
+
+test('standard drops a still-snoozed conversation at once, even the open one', () => {
+  const now = Date.now();
+  const conversations = [
+    { id: 'plain', archived: false, hidden: false, lastActivity: now, unread: 0 },
+    { id: 'snoozed', archived: false, hidden: false, lastActivity: now, unread: 0, reminderAt: now + 60000 },
+    { id: 'snoozed-open', archived: false, hidden: false, lastActivity: now, unread: 0, reminderAt: now + 60000 }
+  ];
+
+  assert.deepEqual(Rail.standard(conversations, now, 'snoozed-open').map((c) => c.id), ['plain']);
+});
+
+test('standard keeps a due reminder visible however old the conversation', () => {
+  const day = 24 * 60 * 60 * 1000;
+  const now = 100 * day;
+  const due = { id: 'due', archived: false, hidden: false, lastActivity: now - 400 * day, unread: 0, reminderAt: now - 1000 };
+
+  assert.deepEqual(Rail.standard([due], now, '').map((c) => c.id), ['due']);
+});
+
+test('dimLabel names a still-snoozed conversation "Snoozed" in show-all, but not once it is due', () => {
+  const now = Date.now();
+  const snoozed = { id: 's', archived: false, hidden: false, lastActivity: now, unread: 0, reminderAt: now + 60000 };
+  const due = { id: 'd', archived: false, hidden: false, lastActivity: now, unread: 0, reminderAt: now - 1000 };
+
+  assert.strictEqual(Rail.dimLabel(snoozed, now, ''), 'Snoozed');
+  assert.strictEqual(Rail.dimLabel(due, now, ''), '');
+});
+
+test('dueFirst moves due reminders to the front, keeping relative order otherwise', () => {
+  const now = Date.now();
+  const a = { id: 'a', reminderAt: 0 };
+  const b = { id: 'b', reminderAt: now - 1000 };
+  const c = { id: 'c', reminderAt: 0 };
+  const d = { id: 'd', reminderAt: now - 500 };
+
+  assert.deepEqual(Rail.dueFirst([a, b, c, d], now).map((x) => x.id), ['b', 'd', 'a', 'c']);
+});
+
 test('compareConversations puts pinned conversations first, then newest activity', () => {
   const a = { id: 'a', pinned: false, lastActivity: 200 };
   const b = { id: 'b', pinned: true, lastActivity: 100 };

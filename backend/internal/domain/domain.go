@@ -106,6 +106,11 @@ type Conversation struct {
 	Hidden        bool   `json:"hidden"`
 	LastActivity  int64  `json:"lastActivity"`
 
+	// ReminderAt is when a snoozed conversation comes back, in Unix
+	// milliseconds, or 0 for none. It is local to this computer only:
+	// never reported to or read from the service.
+	ReminderAt int64 `json:"reminderAt"`
+
 	// Match is a snippet of the newest message that matched a search query.
 	Match string `json:"match,omitempty"`
 

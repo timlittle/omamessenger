@@ -106,6 +106,34 @@ func TestBuild_CacheFlagsOverLimit(t *testing.T) {
 	}
 }
 
+// TestBuild_OutgoingSizeFlagsOverLimit confirms the outgoing attachments
+// check follows Facts.OutgoingSize, treating an unchecked area as fine,
+// the same as the downloaded media cache.
+func TestBuild_OutgoingSizeFlagsOverLimit(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		state  doctor.State
+		wantOK bool
+	}{
+		{"within its limit", doctor.StateGood, true},
+		{"over its limit", doctor.StateBad, false},
+		{"not checked", doctor.StateUnknown, true},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := checkNamed(t, doctor.Build(doctor.Facts{OutgoingSize: c.state}), "Outgoing attachments")
+			if got.OK != c.wantOK {
+				t.Errorf("OK = %t, want %t (detail %q)", got.OK, c.wantOK, got.Detail)
+			}
+		})
+	}
+}
+
 // TestBuild_NotifySendAvailability confirms the desktop notification
 // check follows Facts.NotifySendAvailable.
 func TestBuild_NotifySendAvailability(t *testing.T) {

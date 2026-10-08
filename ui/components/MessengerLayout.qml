@@ -247,6 +247,7 @@ Item {
       replyTarget: root.composerController.replyTarget
       attachmentPath: root.composerController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
+      historyUnavailable: root.conversationController.historyUnavailable
       voiceNotes: root.conversationController.voiceNotes
       members: root.conversationController.groupMembers
       routeKey: root.routeKey
@@ -271,6 +272,7 @@ Item {
   Overlays {
     anchors.fill: parent
     service: root.service
+    listController: root.listController
     windowController: root.windowController
     dialogController: root.dialogController
     accountController: root.accountController

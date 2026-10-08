@@ -15,7 +15,8 @@ OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and H
 - Replies and reactions; edits sync from the service, and you can delete a message yourself (**d**), for everyone or just for you, as well as have a deletion made elsewhere sync in
 - @-mention a group member by typing "@" in the composer; a message that mentions you is highlighted
 - Stickers show as static images; sending one is not yet supported
-- Pin, archive and a local-only hide, with a one-month recency filter and a "show all" to see everything
+- Pin, archive (including a one-key "archive and mark read", **a**, and a confirmed "archive all read conversations") and a local-only hide, with a one-month recency filter and a "show all" to see everything
+- Local-only reminders: snooze a conversation until later today, tomorrow, next week or a custom time, then get it back at the top of the list, marked "Reminder", with a desktop notification
 - Desktop notifications; click one to open its conversation
 - Paste or attach an image to a message
 - Incognito read receipts (**Toggle read receipts** in the command palette): off means the service is never told a chat here was read, so the phone and any other device signed into the same account keep showing it unread
@@ -44,7 +45,7 @@ To sign in with your own Telegram API keys instead of OmaMessenger's, see [docs/
 
 ## Sign in to WhatsApp
 
-Choose **Add an account** in the window or the command palette. Scan the QR code shown with WhatsApp (**Settings → Linked devices → Link a device**), or choose **Use phone number instead** and type the 8-character code it shows into WhatsApp. Recent chats sync once it connects; older history beyond what syncs at pairing does not load further back as you scroll, unlike Telegram.
+Choose **Add an account** in the window or the command palette. Scan the QR code shown with WhatsApp (**Settings → Linked devices → Link a device**), or choose **Use phone number instead** and type the 8-character code it shows into WhatsApp. Recent chats sync once it connects; scrolling back further asks your phone for more, so it needs to be online and reachable. If it is not, a note says so at the top of the conversation — try again once it is.
 
 ## Keyboard shortcuts
 

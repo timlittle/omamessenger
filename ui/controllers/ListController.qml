@@ -4,11 +4,12 @@ import "../lib/Selection.js" as Selection
 import "../lib/ListSync.js" as ListSync
 import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
+import "../lib/Snooze.js" as Snooze
 
 // Owns the rail filter, search and the visible conversation list: the
 // only controller that calls conversations.list, conversations.setMuted,
-// conversations.setPinned, conversations.setArchived and
-// conversations.setHidden.
+// conversations.setPinned, conversations.setArchived,
+// conversations.setHidden and conversations.setReminder.
 // The list itself is a ListModel kept in sync in place with ListSync, so
 // opening or scrolling never resets because of an unrelated event.
 //
@@ -62,6 +63,19 @@ Item {
   // hiddenCount is how many chats the standard list hides right now.
   property int hiddenCount: 0
 
+  // archiveAllOpen shows the question asking whether to archive every
+  // read, unpinned conversation in the current list.
+  property bool archiveAllOpen: false
+
+  // archiveAllCount is how many conversations that question would
+  // archive, named in it so the user knows the scope before confirming.
+  property int archiveAllCount: 0
+
+  // _archiveAllIds are the conversations archiveAllOpen's question would
+  // archive, captured when it was asked so a list change in the
+  // meantime cannot alter what Enter actually does.
+  property var _archiveAllIds: []
+
   // _all holds every conversation the helper reported, unfiltered by the
   // rail or a search.
   property var _all: []
@@ -96,6 +110,14 @@ Item {
       "chat.pin": () => root._togglePin(),
       "chat.archive": () => root._toggleArchive(),
       "chat.hide": () => root._toggleHidden(),
+      "chat.archiveRead": () => root._archiveAndMarkRead(),
+      "list.archiveAllRead": () => root._askArchiveAllRead(),
+      "archiveAll.accept": () => root.confirmArchiveAllRead(),
+      "archiveAll.cancel": () => root.cancelArchiveAllRead(),
+      "chat.snoozeLaterToday": () => root.setReminderOnCurrent(Snooze.laterToday(Date.now())),
+      "chat.snoozeTomorrow": () => root.setReminderOnCurrent(Snooze.tomorrow(Date.now())),
+      "chat.snoozeNextWeek": () => root.setReminderOnCurrent(Snooze.nextWeek(Date.now())),
+      "chat.unsnooze": () => root.setReminderOnCurrent(0),
       "list.showAll": () => root.setShowAll(!root.showAll),
       "list.unread": () => root.setUnreadView(!root.unreadView)
     };
@@ -164,19 +186,21 @@ Item {
 
   // _visible returns the conversations the rail filter currently covers,
   // from the search results while a query is active, otherwise the full
-  // list.
+  // list, with any due reminder moved to the top (see Rail.dueFirst).
   // A search looks through every chat regardless of any other view;
   // otherwise the all-unreads view, when on, overrides the rail filter
   // rather than narrowing it; otherwise only the standard list shows,
   // unless show-all is on.
   function _visible(): var {
-    if (root.query.length > 0) return Rail.filter(root._searchResults, root.railKey);
-    if (root.unreadView) return Rail.unreadConversations(root._all, root._keepId());
+    const now = Date.now();
+
+    if (root.query.length > 0) return Rail.dueFirst(Rail.filter(root._searchResults, root.railKey), now);
+    if (root.unreadView) return Rail.dueFirst(Rail.unreadConversations(root._all, root._keepId()), now);
 
     const filtered = Rail.filter(root._all, root.railKey);
-    if (root.showAll) return filtered;
+    if (root.showAll) return Rail.dueFirst(filtered, now);
 
-    return Rail.standard(filtered, Date.now(), root._keepId());
+    return Rail.dueFirst(Rail.standard(filtered, now, root._keepId()), now);
   }
 
   // _keepId is the open conversation's id, which must never disappear
@@ -225,12 +249,88 @@ Item {
     root._setOnCurrent("conversations.setHidden", "hidden");
   }
 
+  // _archiveAndMarkRead marks whichever conversation is contextually
+  // current read, then archives it, reusing the same two methods the
+  // separate mark-read and archive commands already call. Marking read
+  // first, and waiting for it, means the archive call's own conversation
+  // snapshot (which this applies to the model) already reflects it,
+  // rather than racing a markRead reply that could land after it.
+  function _archiveAndMarkRead(): void {
+    const id = root._currentId();
+    if (!id || !root.findConversation(id)) return;
+
+    root.service.request("conversations.markRead", { conversationId: id }, function(error) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+
+      root.service.request("conversations.setArchived", { conversationId: id, archived: true }, function(error2, result) {
+        if (error2) { root.lastError = Rpc.errorText(error2); return; }
+        root._applyConversationUpdated(result);
+      });
+    });
+  }
+
+  // _askArchiveAllRead shows the confirmation for archiving every read,
+  // unpinned, not-already-archived conversation in the current list, or
+  // does nothing when there is none.
+  function _askArchiveAllRead(): void {
+    const candidates = root._visible().filter((c) => !c.pinned && !c.archived && (c.unread ?? 0) === 0);
+    if (candidates.length === 0) return;
+
+    root._archiveAllIds = candidates.map((c) => c.id);
+    root.archiveAllCount = candidates.length;
+    root.archiveAllOpen = true;
+  }
+
+  // confirmArchiveAllRead archives every conversation the question
+  // named, then closes it.
+  function confirmArchiveAllRead(): void {
+    const ids = root._archiveAllIds;
+    root.archiveAllOpen = false;
+    root._archiveAllIds = [];
+
+    for (const id of ids) {
+      root.service.request("conversations.setArchived", { conversationId: id, archived: true }, function(error, result) {
+        if (error) { root.lastError = Rpc.errorText(error); return; }
+        root._applyConversationUpdated(result);
+      });
+    }
+  }
+
+  // cancelArchiveAllRead leaves every conversation as it is.
+  function cancelArchiveAllRead(): void {
+    root.archiveAllOpen = false;
+    root._archiveAllIds = [];
+  }
+
+  // setReminderOnCurrent snoozes or unsnoozes whichever conversation is
+  // contextually current, the same way the other chat.* actions choose
+  // one. at is the time to snooze until, in milliseconds, or 0 to clear.
+  // Public, unlike the other toggles, because the palette's own
+  // custom-snooze prompt (owned by WindowController, since it opens the
+  // palette) also calls it once the user picks a time.
+  function setReminderOnCurrent(at: real): void {
+    const id = root._currentId();
+    if (!id) return;
+
+    root.service.request("conversations.setReminder", { conversationId: id, at: at || null }, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root._applyConversationUpdated(result);
+    });
+  }
+
+  // _currentId is whichever conversation is contextually current: the
+  // open conversation if one is showing, else the list cursor. Shared by
+  // every chat.* action that applies to "the selected or open chat".
+  function _currentId(): string {
+    const state = root.service.uiState;
+    return (state.pane === "conversation" && state.activeId) ? state.activeId : root.selectedId;
+  }
+
   // _setOnCurrent flips boolean field on whichever conversation is
   // contextually current: the open conversation if one is showing, else
   // the list cursor, by calling method with {conversationId, <field>}.
   function _setOnCurrent(method: string, field: string): void {
-    const state = root.service.uiState;
-    const id = (state.pane === "conversation" && state.activeId) ? state.activeId : root.selectedId;
+    const id = root._currentId();
     const conversation = id ? root.findConversation(id) : null;
     if (!conversation) return;
 
@@ -362,12 +462,17 @@ Item {
   // nothing matched a search, but every row needs every field the view
   // requires. dimmed and dimLabel only mean anything in show-all, where
   // the standard list's own rules decide which rows get drawn muted.
+  // reminderDue marks a row "Reminder" whenever its snooze has come due,
+  // in every view, not only show-all.
   function _row(conversation: var): var {
+    const now = Date.now();
     const keepId = root._keepId();
     return Object.assign({}, conversation, {
       match: conversation.match ?? "",
-      dimmed: root.showAll && Rail.isDimmed(conversation, Date.now(), keepId),
-      dimLabel: root.showAll ? Rail.dimLabel(conversation, Date.now(), keepId) : ""
+      reminderAt: conversation.reminderAt ?? 0,
+      dimmed: root.showAll && Rail.isDimmed(conversation, now, keepId),
+      dimLabel: root.showAll ? Rail.dimLabel(conversation, now, keepId) : "",
+      reminderDue: Rail.isDueReminder(conversation, now)
     });
   }
 

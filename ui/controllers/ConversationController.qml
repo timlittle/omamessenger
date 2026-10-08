@@ -79,6 +79,12 @@ Item {
   // hasMore is true while an older page of messages may still exist.
   readonly property alias hasMore: timeline.hasMore
 
+  // historyUnavailable is true once scrolling back asked the service for
+  // older history and it could not be reached right now, such as a
+  // WhatsApp account whose phone never answered; the UI shows this as a
+  // note rather than treating it the same as genuinely having no more.
+  readonly property alias historyUnavailable: timeline.historyUnavailable
+
   // timeline exposes the loaded messages to the sibling controllers that
   // read or change them: the composer, the photo viewer and reactions.
   readonly property alias timeline: timeline

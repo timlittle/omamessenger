@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -94,6 +95,16 @@ func TestMethods_RoundTrip(t *testing.T) {
 	hidden, err := call[domain.Conversation](t, s, "conversations.setHidden", map[string]any{"conversationId": "chat", "hidden": true})
 	if err != nil || !hidden.Hidden {
 		t.Errorf("conversations.setHidden = %+v, %v", hidden, err)
+	}
+
+	snoozed, err := call[domain.Conversation](t, s, "conversations.setReminder", map[string]any{"conversationId": "chat", "at": 5000})
+	if err != nil || snoozed.ReminderAt != 5000 {
+		t.Errorf("conversations.setReminder = %+v, %v", snoozed, err)
+	}
+
+	unsnoozed, err := call[domain.Conversation](t, s, "conversations.setReminder", map[string]any{"conversationId": "chat", "at": nil})
+	if err != nil || unsnoozed.ReminderAt != 0 {
+		t.Errorf("conversations.setReminder(null) = %+v, %v", unsnoozed, err)
 	}
 
 	added, err := call[domain.Account](t, s, "accounts.add", map[string]any{"service": "telegram", "apiId": 1, "apiHash": "abc"})
@@ -318,6 +329,31 @@ func TestMediaPaste_RejectsAnEmptyClipboard(t *testing.T) {
 
 	if _, err := call[struct{}](t, s, "media.paste", nil); code(err) != -32602 {
 		t.Errorf("media.paste(no image) code = %d, want invalid params", code(err))
+	}
+}
+
+// TestMessagesList_ReportsHistoryUnavailableWhenThePhoneCannotBeReached
+// confirms messages.list's additive historyUnavailable field is set,
+// alongside the page already stored, when paging past the oldest stored
+// message asks the service for more and gets back
+// connector.ErrHistoryUnavailable: a WhatsApp account whose phone never
+// answers an on-demand request, say.
+func TestMessagesList_ReportsHistoryUnavailableWhenThePhoneCannotBeReached(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithHistory(t, fakeHistory{err: connector.ErrHistoryUnavailable})
+	ctx := t.Context()
+	if _, _, err := s.store.AddMessage(ctx, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Created: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := call[struct {
+		Messages           []domain.Message `json:"messages"`
+		HasMore            bool             `json:"hasMore"`
+		HistoryUnavailable bool             `json:"historyUnavailable"`
+	}](t, s, "messages.list", map[string]string{"conversationId": "chat"})
+	if err != nil || len(page.Messages) != 1 || page.HasMore || !page.HistoryUnavailable {
+		t.Errorf("messages.list with the phone unreachable = %+v, %v, want the stored page kept and historyUnavailable set", page, err)
 	}
 }
 

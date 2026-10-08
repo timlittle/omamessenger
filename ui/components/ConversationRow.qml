@@ -44,10 +44,13 @@ Item {
   // dimmed: true when this row is shown only because show-all is on (it
   // would not appear in the standard list): drawn with reduced opacity.
   property bool dimmed: false
-  // dimLabel: why a dimmed row would not normally show, "Hidden" or
-  // "Archived"; "" for a row dimmed only for being older, or one that is
-  // not dimmed at all.
+  // dimLabel: why a dimmed row would not normally show, "Hidden",
+  // "Archived" or "Snoozed"; "" for a row dimmed only for being older, or
+  // one that is not dimmed at all.
   property string dimLabel: ""
+  // reminderDue: true once this conversation's reminder has come due, so
+  // it is marked "Reminder" instead of showing as a plain row.
+  property bool reminderDue: false
   // showAccountColor: true once more than one account exists, the only
   // time the owning account's colour tag is worth showing.
   property bool showAccountColor: false
@@ -66,6 +69,11 @@ Item {
   readonly property string _previewHtml: root.query.length > 0 && root._conv.match
     ? Format.highlight(Format.escapeHtml(root._conv.match), root.query)
     : Format.escapeHtml(Format.previewLine(root._conv))
+  // _dimText appends the actual wake time to a "Snoozed" dimLabel, since
+  // Rail.dimLabel only names the reason, not the when.
+  readonly property string _dimText: root.dimLabel === "Snoozed"
+    ? "Snoozed until " + Format.snoozeUntilLabel(root._conv.reminderAt ?? 0, root.nowMs)
+    : root.dimLabel
 
   objectName: "row-" + (root._conv.id ?? "")
   implicitWidth: Style.space(260)
@@ -180,10 +188,20 @@ Item {
         Text {
           objectName: "dimLabel"
           visible: root.dimLabel.length > 0
-          text: root.dimLabel
+          text: root._dimText
           color: Util.alpha(Color.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
+        }
+
+        Text {
+          objectName: "reminderLabel"
+          visible: root.reminderDue
+          text: "Reminder"
+          color: Color.accent
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+          font.bold: true
         }
 
         Text {

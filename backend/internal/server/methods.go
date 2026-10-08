@@ -44,6 +44,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"conversations.setPinned":   bind(conversationsSetPinned(c)),
 		"conversations.setArchived": bind(conversationsSetArchived(c)),
 		"conversations.setHidden":   bind(conversationsSetHidden(c)),
+		"conversations.setReminder": bind(conversationsSetReminder(c)),
 		"conversations.members":     bind(conversationsMembers(c)),
 		"messages.list":             bind(messagesList(c)),
 		"messages.send":             bind(messagesSend(c)),
@@ -261,6 +262,28 @@ func conversationsSetHidden(c *app.Commands) func(context.Context, hiddenParams)
 	}
 }
 
+// reminderParams snoozes or unsnoozes a conversation. At is milliseconds
+// since the Unix epoch to snooze until, or nil to clear it, matching the
+// protocol's {conversationId, at | null} shape.
+type reminderParams struct {
+	ConversationID string `json:"conversationId"`
+	At             *int64 `json:"at"`
+}
+
+// conversationsSetReminder snoozes a conversation until At, or clears its
+// reminder when At is nil. Snoozing is local to this computer only and is
+// never reported to the service.
+func conversationsSetReminder(c *app.Commands) func(context.Context, reminderParams) (any, error) {
+	return func(ctx context.Context, p reminderParams) (any, error) {
+		var at int64
+		if p.At != nil {
+			at = *p.At
+		}
+
+		return c.SetReminder(ctx, p.ConversationID, at)
+	}
+}
+
 // membersResult is a group's current members, for the @-mention picker.
 type membersResult struct {
 	Members []domain.Member `json:"members"`
@@ -282,17 +305,21 @@ type messagesParams struct {
 	Limit          int    `json:"limit"`
 }
 
-// messagesResult is a page of messages, oldest first.
+// messagesResult is a page of messages, oldest first. HistoryUnavailable
+// is set when paging past the oldest stored message asked the service for
+// more and could not reach it right now (see app.Commands.Messages); an
+// older UI that does not read this field keeps working unchanged.
 type messagesResult struct {
-	Messages []domain.Message `json:"messages"`
-	HasMore  bool             `json:"hasMore"`
+	Messages           []domain.Message `json:"messages"`
+	HasMore            bool             `json:"hasMore"`
+	HistoryUnavailable bool             `json:"historyUnavailable,omitempty"`
 }
 
 // messagesList returns a page of a conversation's messages.
 func messagesList(c *app.Commands) func(context.Context, messagesParams) (any, error) {
 	return func(ctx context.Context, p messagesParams) (any, error) {
-		page, more, err := c.Messages(ctx, p.ConversationID, p.Before, p.Limit)
-		return messagesResult{Messages: page, HasMore: more}, err
+		page, more, unavailable, err := c.Messages(ctx, p.ConversationID, p.Before, p.Limit)
+		return messagesResult{Messages: page, HasMore: more, HistoryUnavailable: unavailable}, err
 	}
 }
 

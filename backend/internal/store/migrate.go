@@ -82,6 +82,10 @@ var migrations = []string{
 	// A conversation hidden from the standard list by the user, local to
 	// this computer: never reported to or read from the service.
 	`ALTER TABLE conversations ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;`,
+	// A conversation snoozed by the user until a chosen time (Unix
+	// milliseconds), or 0 for none: local to this computer only, like
+	// hidden.
+	`ALTER TABLE conversations ADD COLUMN reminder_at INTEGER NOT NULL DEFAULT 0;`,
 	// A message's @-mention tokens, as JSON, the same way reactions are
 	// stored, and whether any of them names the signed-in account.
 	`ALTER TABLE messages ADD COLUMN mentions TEXT NOT NULL DEFAULT '';

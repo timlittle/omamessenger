@@ -6,9 +6,9 @@
 // keyContext determines the highest-priority context for key bindings based on
 // the current UI state. Precedence: the close question > account setup > the
 // photo viewer > the health check report > palette > reaction picker > the
-// delete question > dialog > search > compose > conversation > list. The
-// viewer and the reaction picker are never open together, so their relative
-// order only matters in theory.
+// delete question > the archive-all question > dialog > search > compose >
+// conversation > list. The viewer and the reaction picker are never open
+// together, so their relative order only matters in theory.
 function keyContext(state) {
   if (state.confirmOpen) return 'confirm';
   // setupContext names the exact step showing (chooseService, qr, phone,
@@ -20,6 +20,7 @@ function keyContext(state) {
   if (state.paletteOpen) return 'palette';
   if (state.reactionPickerOpen) return 'reactionPicker';
   if (state.deleteConfirmOpen) return 'deleteConfirm';
+  if (state.archiveConfirmOpen) return 'archiveConfirm';
   if (state.dialogOpen) return 'dialog';
   if (state.searchFocused) return 'search';
   if (state.composeFocused) return 'compose';
@@ -42,6 +43,7 @@ function escapeAction(state) {
   if (state.paletteOpen) return 'close-palette';
   if (state.reactionPickerOpen) return 'close-reaction-picker';
   if (state.deleteConfirmOpen) return 'close-delete-confirm';
+  if (state.archiveConfirmOpen) return 'cancel-archive-all';
   if (state.dialogOpen) return 'close-dialog';
 
   if (state.searchFocused) {

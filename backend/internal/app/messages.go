@@ -2,12 +2,15 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
@@ -19,31 +22,36 @@ const MaxPageSize = 200
 // media it could not describe when it was first synced.
 var mediaLabels = []string{"[Photo]", "[Video]", "[File]", "[Voice message]"}
 
-// Messages returns up to limit messages before beforeID, oldest first, and
-// whether older ones remain. A zero limit means the default page size.
-func (c *Commands) Messages(ctx context.Context, conversationID, beforeID string, limit int) ([]domain.Message, bool, error) {
+// Messages returns up to limit messages before beforeID, oldest first,
+// whether older ones remain, and whether older history could not be
+// fetched from the service right now: the page already loaded still
+// stands either way (see olderFromService), and the UI shows this as a
+// small note rather than silently stopping. A zero limit means the
+// default page size.
+func (c *Commands) Messages(ctx context.Context, conversationID, beforeID string, limit int) (messages []domain.Message, hasMore, historyUnavailable bool, err error) {
 	if strings.TrimSpace(conversationID) == "" {
-		return nil, false, fmt.Errorf("%w: conversationId is required", ErrInvalidInput)
+		return nil, false, false, fmt.Errorf("%w: conversationId is required", ErrInvalidInput)
 	}
 
 	if limit < 0 || limit > MaxPageSize {
-		return nil, false, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidInput, MaxPageSize)
+		return nil, false, false, fmt.Errorf("%w: limit must be between 1 and %d", ErrInvalidInput, MaxPageSize)
 	}
 
 	conv, err := c.store.Conversation(ctx, conversationID)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 
 	page, more, err := c.store.Messages(ctx, conversationID, beforeID, limit)
+	unavailable := false
 	if err == nil && !more && c.history != nil {
-		page, more, err = c.olderFromService(ctx, conv, beforeID, limit, page)
+		page, more, unavailable, err = c.olderFromService(ctx, conv, beforeID, limit, page)
 	}
 	if err != nil {
-		return page, more, err
+		return page, more, unavailable, err
 	}
 
-	return c.refreshStaleMedia(ctx, conv, beforeID, limit, page), more, nil
+	return c.refreshStaleMedia(ctx, conv, beforeID, limit, page), more, unavailable, nil
 }
 
 // refreshStaleMedia asks the service to re-report any messages in page
@@ -100,22 +108,30 @@ func needsRefresh(m domain.Message) bool {
 // sends both when a chat opens) to race against. Ingest.History already
 // announces the conversation's current preview and activity as each
 // message lands. If the service cannot be reached, the page already
-// loaded stands: scrolling back is not worth an error.
-func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) ([]domain.Message, bool, error) {
+// loaded stands: scrolling back is not worth an error. A failure
+// wrapping connector.ErrHistoryUnavailable, such as WhatsApp's phone
+// never answering an on-demand request, is reported back as the third
+// return value instead of silently swallowed like any other failure, so
+// Messages can tell the UI the difference between "try again later" and
+// "there is nothing more".
+func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) ([]domain.Message, bool, bool, error) {
 	oldest, err := c.store.OldestRemoteID(ctx, conv.ID)
 	if err != nil {
-		return page, false, nil
+		return page, false, false, nil
 	}
 
 	loaded, err := c.history.LoadOlder(ctx, conv, oldest, max(limit, store.DefaultPageSize))
-	if err != nil || loaded == 0 {
-		return page, false, nil
+	if err != nil {
+		return page, false, errors.Is(err, connector.ErrHistoryUnavailable), nil
+	}
+	if loaded == 0 {
+		return page, false, false, nil
 	}
 
 	page, _, err = c.store.Messages(ctx, conv.ID, beforeID, limit)
 
 	// The service may hold more still; the next page asks it again.
-	return page, true, err
+	return page, true, false, err
 }
 
 // SendOptions are a message's optional extras, bundled into one
@@ -228,6 +244,10 @@ func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message,
 		return m, fmt.Errorf("%w: only failed outgoing messages can be retried", ErrInvalidInput)
 	}
 
+	if err := c.checkAttachmentAvailable(m); err != nil {
+		return m, err
+	}
+
 	conv, err := c.store.Conversation(ctx, m.ConversationID)
 	if err != nil {
 		return m, err
@@ -248,6 +268,22 @@ func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message,
 	return c.dispatch(ctx, conv, m)
 }
 
+// checkAttachmentAvailable reports a clear, safe error when m's
+// attachment has been swept from the outgoing area (see cache.Outgoing's
+// retention and size limit) before it could be retried.
+func (c *Commands) checkAttachmentAvailable(m domain.Message) error {
+	if m.Media == nil || c.outgoing == nil {
+		return nil
+	}
+
+	path := c.outgoing.Path(m.ID, m.Media.FileName)
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("%w: the attachment is no longer available; attach it again", ErrInvalidInput)
+	}
+
+	return nil
+}
+
 // dispatch hands a pending message to the service, marking it failed if
 // the service refuses it. A fast connector can confirm delivery, and
 // update the stored message, before Send returns; the reply must carry
@@ -256,6 +292,9 @@ func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message,
 // otherwise arrive after the sent notification and regress the bubble
 // back to pending with nothing left to correct it.
 func (c *Commands) dispatch(ctx context.Context, conv domain.Conversation, m domain.Message) (domain.Message, error) {
+	release := c.reserveAttachment(m)
+	defer release()
+
 	if err := c.dispatcher.Send(ctx, conv, m); err != nil {
 		return c.setStatus(ctx, m, domain.StatusFailed)
 	}
@@ -273,6 +312,17 @@ func (c *Commands) dispatch(ctx context.Context, conv domain.Conversation, m dom
 	}
 
 	return current, nil
+}
+
+// reserveAttachment marks m's attachment, if it has one, as being sent
+// right now, so the outgoing area's background sweep never removes it
+// mid-upload; the returned func releases the mark once the send ends.
+func (c *Commands) reserveAttachment(m domain.Message) func() {
+	if m.Media == nil || c.outgoing == nil {
+		return func() {}
+	}
+
+	return c.outgoing.Reserve(m.ID)
 }
 
 // setStatus records a delivery status and publishes the change.

@@ -41,6 +41,11 @@ Item {
   property string attachmentPath: ""
   // composeEnabled is false while the conversation can't accept input.
   property bool composeEnabled: true
+  // historyUnavailable is true once scrolling back asked the service for
+  // older history and it could not be reached right now; shown as a
+  // small note above the oldest loaded message rather than silently
+  // stopping, so the user knows to try again once their phone is online.
+  property bool historyUnavailable: false
   // composer exposes the Composer instance so a key router can focus it.
   property alias composer: composer
   // routeKey is forwarded straight to the composer; see Composer.qml for
@@ -241,6 +246,22 @@ Item {
 
       onContentYChanged: root._checkLoadOlder()
       onContentHeightChanged: root._checkLoadOlder()
+
+      // A BottomToTop ListView's footer sits at the layout's end, which
+      // for this direction is the visual top: right above the oldest
+      // loaded message, where scrolling back stopped.
+      footer: Text {
+        width: messageList.width
+        visible: root.historyUnavailable
+        horizontalAlignment: Text.AlignHCenter
+        wrapMode: Text.WordWrap
+        topPadding: Theme.spacing.sm
+        bottomPadding: Theme.spacing.sm
+        text: "Older messages need your phone online — try again later"
+        color: Util.alpha(Color.foreground, 0.6)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
+      }
     }
 
     Composer {

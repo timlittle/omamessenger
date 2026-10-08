@@ -6,6 +6,7 @@ import "../lib/KeyBindings.js" as KeyBindings
 import "../lib/Palette.js" as Palette
 import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
+import "../lib/Snooze.js" as Snooze
 
 // Owns the command palette, closing and quitting (which ask first), and
 // the Escape chain. The palette runs commands through whichever
@@ -81,15 +82,19 @@ Item {
   // before it became an alias for this palette (see _searchMessages).
   property var _messageSearchResults: []
 
-  // paletteResults are the matching commands, conversations or links,
-  // best first. In "conversations" mode this is the palette's
-  // "Conversations" section alone, filtered and ordered locally from
-  // whatever the list has already loaded; paletteMessageResults is the
-  // separate "Messages" section, from the server.
+  // paletteResults are the matching commands, conversations, links, or,
+  // in "snoozeCustom" mode, the one row previewing the typed time, best
+  // first (or the only candidate, for snoozeCustom). In "conversations"
+  // mode this is the palette's "Conversations" section alone, filtered
+  // and ordered locally from whatever the list has already loaded;
+  // paletteMessageResults is the separate "Messages" section, from the
+  // server.
   readonly property var paletteResults: root.paletteMode === "conversations"
     ? Palette.search(root.listController ? Palette.conversationOrder(root.listController.all) : [], root.paletteQuery, (c) => c.title)
     : root.paletteMode === "links"
     ? Palette.search(root.linkChoices.map((url) => ({ url })), root.paletteQuery, (c) => c.url)
+    : root.paletteMode === "snoozeCustom"
+    ? Snooze.preview(root.paletteQuery, Date.now())
     : root.paletteMode === "keyBindings"
     ? Palette.search(KeyBindings.rows(root.bindings, root._keyBindingConflicts, root._keyBindingErrors), root.paletteQuery, (r) => r.label)
     : Palette.search(Keymap.commands(root.bindings), root.paletteQuery, (c) => c.label)
@@ -121,6 +126,8 @@ Item {
       })))
     : root.paletteMode === "links"
     ? root.paletteResults.map((c) => ({ label: "Open link: " + c.url, detail: "", keys: "" }))
+    : root.paletteMode === "snoozeCustom"
+    ? root.paletteResults.map((r) => ({ label: r.label, detail: "", keys: "" }))
     : root.paletteResults
 
   // confirmingClose shows the question asking what closing should do.
@@ -158,6 +165,7 @@ Item {
       // opens this same palette, so there is one search to reach for
       // instead of two. See docs/shortcuts.md.
       "search.focus": () => root.openPalette("conversations"),
+      "chat.snoozeCustom": () => root.openPalette("snoozeCustom"),
       "palette.down": () => root.movePalette(1),
       "palette.up": () => root.movePalette(-1),
       "palette.accept": () => root.acceptPalette(root.paletteIndex),
@@ -271,9 +279,10 @@ Item {
   }
 
   // acceptPalette runs the command, opens the conversation or the
-  // matched message, or opens the link, at index. "keyBindings" rows are
-  // informational only: Enter on one just closes the palette, same as
-  // clicking outside it would.
+  // matched message, opens the link, or applies the previewed custom
+  // snooze time, at index. "keyBindings" rows are informational only:
+  // Enter on one just closes the palette, same as clicking outside it
+  // would.
   function acceptPalette(index: int): void {
     if (root.paletteMode === "conversations" && index >= root.paletteResults.length) {
       const message = root.paletteMessageResults[index - root.paletteResults.length];
@@ -290,6 +299,7 @@ Item {
     root.closePalette();
     if (root.paletteMode === "conversations") root._openConversation(chosen);
     else if (root.paletteMode === "links") Qt.openUrlExternally(chosen.url);
+    else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
     else if (root.paletteMode === "keyBindings") { /* informational only */ }
     else root.runCommand(chosen.action);
   }
@@ -372,6 +382,7 @@ Item {
       "close-doctor": () => root.closeDoctor(),
       "close-reaction-picker": () => { if (root.reactionsController) root.reactionsController.closePicker(); },
       "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
+      "cancel-archive-all": () => { if (root.listController) root.listController.cancelArchiveAllRead(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
@@ -401,6 +412,7 @@ Item {
       paletteOpen: root.paletteOpen,
       reactionPickerOpen: root.reactionsController ? root.reactionsController.pickerOpen : false,
       deleteConfirmOpen: root.deleteController ? root.deleteController.open : false,
+      archiveConfirmOpen: root.listController ? root.listController.archiveAllOpen : false,
       dialogOpen: root.dialogController ? root.dialogController.open : false,
       searchFocused: root.listController ? root.listController.searchFocused : false,
       composeFocused: root.composerController ? root.composerController.composeFocused : false,
