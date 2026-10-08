@@ -32,6 +32,7 @@ test('owner: returns the mapped controller for a known action', () => {
   assert.strictEqual(Actions.owner('message.goToQuote'), 'conversation');
   assert.strictEqual(Actions.owner('viewer.openExternal'), 'photoViewer');
   assert.strictEqual(Actions.owner('helper.retryInstall'), 'window');
+  assert.strictEqual(Actions.owner('helper.doctor'), 'window');
   assert.strictEqual(Actions.owner('message.delete'), 'delete');
   assert.strictEqual(Actions.owner('delete.everyone'), 'delete');
 });

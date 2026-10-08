@@ -23,7 +23,7 @@
     "allowMultiple": false,
     "defaults": {
       "notifications": true,
-      "notificationPreview": true
+      "notificationDetail": "Name and message"
     },
     "schema": [
       {
@@ -34,11 +34,12 @@
         "defaultValue": true
       },
       {
-        "key": "notificationPreview",
-        "type": "boolean",
-        "label": "Notification preview",
-        "description": "Include the message text in the notification, instead of just who it is from.",
-        "defaultValue": true
+        "key": "notificationDetail",
+        "type": "enum",
+        "label": "Notification detail",
+        "options": ["Name and message", "Name only", "Nothing"],
+        "defaultValue": "Name and message",
+        "description": "How much a notification reveals: the sender and message text, just who it is from, or a generic notice with neither."
       }
     ]
   }

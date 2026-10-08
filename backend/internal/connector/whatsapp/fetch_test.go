@@ -118,6 +118,34 @@ func TestFetchMedia_ReportsDecryptFailureForAWornOutReference(t *testing.T) {
 	}
 }
 
+// TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest confirms a
+// download that decrypted successfully, but no longer matches the
+// plaintext hash its message declared, is still written out: whatsmeow
+// already authenticated it with the media-key HMAC before running that
+// specific check (see recoverStaleDigest in fetch.go), and WhatsApp's
+// own apps accept a stale digest the same way.
+func TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.downloadData = []byte("decrypted anyway")
+	dev.downloadErr = whatsmeow.ErrInvalidMediaSHA256
+	c := connectedToWithMedia(t, dev, &connectortest.Sink{})
+	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "x")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err != nil {
+		t.Fatalf("FetchMedia = %v, want a stale plaintext digest to be accepted", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "decrypted anyway" {
+		t.Errorf("downloaded %q, %v, want the decrypted bytes written despite the stale digest", got, err)
+	}
+}
+
 func TestFetchMedia_ReportsNotFoundForAnUnsavedMessage(t *testing.T) {
 	t.Parallel()
 

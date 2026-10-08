@@ -75,6 +75,8 @@ Escape does the first that applies: close help; close the dialog; clear a non-em
 
 ### U1 · Walking skeleton
 
+Status: built.
+
 The installed plugin works on demo data, end to end.
 
 - `ui/service/HelperProcess.qml`: runs `bin/oma-messenger-service --demo` with `Process` (`stdinEnabled: true`, stdout through `SplitParser`). Exposes `status` (`starting`, `ready`, `stopped`, `error`, `missing`) and `detail`. It restarts after 1 s, 3 s and 10 s, and gives up with `error` after five exits in 60 s. Exit status 3 from the launcher means no helper is installed: `missing`, no restart. `install()` runs `scripts/install-helper.sh` and starts the helper when it succeeds.
@@ -87,12 +89,16 @@ The installed plugin works on demo data, end to end.
 
 ### U2 · Keymap
 
+Status: built.
+
 - `ui/lib/Keymap.js` holds the key table above as data: `{action, keys, contexts, label, hint, demoOnly}`. `match(context, key, modifiers, text, demo)` returns the action or `""`. `bindingsFor(context)` serves the footer hints and `helpSections()` the help sheet.
 - `ui/lib/Navigation.js`: `keyContext(state)` and `escapeAction(state)` as specified above.
 - Replaces `keyboard.js`.
 - **Accept:** a test per table row and per Escape step; `j` does nothing in compose or search; a test checks that no global binding is a plain printable key.
 
 ### U3 · List and timeline logic
+
+Status: built.
 
 Pure functions in `ui/lib`, one file each, with node tests:
 
@@ -103,6 +109,8 @@ Pure functions in `ui/lib`, one file each, with node tests:
 - **Accept:** `planSync` is checked on 500 random pairs (applying the operations to the old list gives the new one); the JS coverage gate holds.
 
 ### U4 · Views
+
+Status: built.
 
 Each view takes data through properties and reports intent through signals; none calls the helper.
 
@@ -116,6 +124,8 @@ Each view takes data through properties and reports intent through signals; none
 
 ### U5 · Controllers
 
+Status: built.
+
 Non-visual objects in `ui/controllers/`. They are the only UI code that calls `service.request`, and they keep durable state in `service.uiState`.
 
 - `ListController`: rail key, search, the visible conversations, selection, unread jump, mute.
@@ -126,15 +136,21 @@ Non-visual objects in `ui/controllers/`. They are the only UI code that calls `s
 
 ### U6 · Panel
 
+Status: built.
+
 `ui/Panel.qml` replaces the skeleton. It composes the views and controllers. A single `routeKey(event)` matches the key in the current context and runs the owning controller's action; it accepts the event only if an action ran. No helper calls or business logic. Implements `open(payloadJson)` and `close()`.
 
 ### U7 · Bar widget and settings
+
+Status: built.
 
 - `ui/BarWidget.qml`: icon with an unread count, dimmed unless the helper is ready; tooltip `OmaMessenger · N unread`; click toggles the window; forwards the plugin settings with `service.applySettings`.
 - `manifest.json`: add the `bar-widget` kind and the settings schema (`notifications`, `notificationPreview`, `demoChatter`, all on by default).
 - Delete the scaffold: `Panel.qml`, `Service.qml`, `keyboard.js` and their tests in the repository root.
 
 ### U8 · QML tests
+
+Status: built.
 
 `tests/qml/`: run the real Service and Panel offscreen (`QT_QPA_PLATFORM=offscreen quickshell -p <root>`) against the demo helper, driving them with real key events. Cover:
 
@@ -154,6 +170,8 @@ Non-visual objects in `ui/controllers/`. They are the only UI code that calls `s
 
 ## Real services
 
+Status: items 1–7 are built; item 8, the release, is in progress.
+
 Do these after the UI. Connectors never reach real services in tests: use recorded or constructed library data with golden files, and fuzz every normalizer.
 
 1. **Connector conformance suite:** one shared test that every connector passes. It covers connect, cancel, send progress, incoming fields, duplicate deliveries and goroutine cleanup. The demo connector passes it first.
@@ -161,7 +179,7 @@ Do these after the UI. Connectors never reach real services in tests: use record
    - methods `accounts.add`, `auth.submit` (phone, code, password), `accounts.logout`, `accounts.remove`
    - events `auth.qr`, `auth.step`, `auth.done`, `auth.failed`
    - an optional `Authenticator` connector interface
-3. **Account setup UI:** add an account from the rail; QR with countdown; phone, code and password steps.
+3. **Account setup UI:** add an account from the rail; QR with countdown; phone, code and password steps. Built, except the QR countdown.
 4. **WhatsApp connector** with whatsmeow, in four steps:
    - pairing, with its session in `<data-dir>/whatsapp/<account>.db`
    - history sync
@@ -172,15 +190,15 @@ Do these after the UI. Connectors never reach real services in tests: use record
    - dialog sync, loading history on demand
    - updates with gap recovery
    - send and read
-6. **Richer messages:** edits and deletes, replies, reactions, media in and out.
+6. **Richer messages:** edits and deletes, replies, reactions, media in and out. Built, with voice notes, and deleting from OmaMessenger as well.
 7. **Finishing:**
    - full-text search (SQLite FTS5)
    - pin and archive
    - clicking a notification opens its chat
-   - demo off once a real account exists
+   - demo off once a real account exists (the demo mode was removed instead; fake accounts exist only in test builds)
 8. **Release:**
    - document the privacy and account risks in the README
-   - bump the version and tag
+   - bump the version and tag (version bumped to 0.3.0; not tagged yet)
    - confirm `install-helper.sh` installs it on a clean machine
 
 ## After 0.3.0

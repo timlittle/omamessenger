@@ -1,6 +1,6 @@
 # OmaMessenger implementation spec
 
-Status: helper and plugin UI complete; Telegram connector in progress. Build plan: `docs/plan.md`.
+Status: Telegram and WhatsApp connectors and the plugin UI are built; the 0.3.0 release is being prepared. Build plan: `docs/plan.md`.
 
 ## Objective
 
@@ -37,6 +37,8 @@ Build an Omarchy-native, keyboard-first messaging client with a decoupled Go ser
 - Do not include message content or secrets in logs.
 - Keep adapters behind a generic connector interface and avoid service-specific shapes in QML.
 
-## Current gap
+## Known limitations
 
-The Go helper, its JSON-RPC interface, persistence and the plugin UI are complete and tested against scripted fake accounts that only test builds contain. Real account authentication, synchronization, delivery and incoming updates are not implemented yet. Do not describe this project as a usable WhatsApp/Telegram replacement until those acceptance items work end-to-end.
+- WhatsApp's older history does not load further back as you scroll; only what syncs when the device is linked is available.
+- The helper does not yet catch up on everything that happened while it was offline; a long gap between runs may miss updates until the next full sync.
+- Files attached to outgoing messages are kept in `media/outgoing/` for retries and are not yet cleaned up after delivery.

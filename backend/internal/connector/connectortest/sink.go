@@ -24,6 +24,15 @@ type Sink struct {
 	outgoing      map[string][]OutgoingUpdate
 	authSteps     []connector.AuthStep
 	conversations map[string]domain.Conversation
+	unread        map[string]int
+	organized     map[string]organizedFlags
+	deleted       map[string]map[string]bool
+}
+
+// organizedFlags is a conversation's last reported pinned and archived
+// state, for Snapshot.
+type organizedFlags struct {
+	pinned, archived bool
 }
 
 // OutgoingUpdate is one delivery status reported for a message the local
@@ -169,9 +178,26 @@ func (s *Sink) Reacted(_ context.Context, _, remote, messageRemoteID string, rea
 	s.record("reacted %s %s %d", remote, messageRemoteID, len(reactions))
 }
 
-// Deleted records messages removed from the service.
+// Deleted records messages removed from the service, and marks each of
+// remoteIDs removed from every conversation named in
+// conversationRemoteIDs, for Snapshot.
 func (s *Sink) Deleted(_ context.Context, _ string, conversationRemoteIDs, remoteIDs []string) {
 	s.record("deleted %s %s", strings.Join(conversationRemoteIDs, ","), strings.Join(remoteIDs, ","))
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.deleted == nil {
+		s.deleted = map[string]map[string]bool{}
+	}
+	for _, conv := range conversationRemoteIDs {
+		if s.deleted[conv] == nil {
+			s.deleted[conv] = map[string]bool{}
+		}
+		for _, id := range remoteIDs {
+			s.deleted[conv][id] = true
+		}
+	}
 }
 
 // OutgoingStatus records a change to a sent message and keeps the update
@@ -202,14 +228,32 @@ func (s *Sink) Typing(_ context.Context, _, remote, _ string, active bool) {
 	s.record("typing %s %t", remote, active)
 }
 
-// Unread records the service's unread count for a conversation.
+// Unread records the service's unread count for a conversation, and
+// keeps it for Snapshot.
 func (s *Sink) Unread(_ context.Context, _, remote string, count int) {
 	s.record("unread %s %d", remote, count)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.unread == nil {
+		s.unread = map[string]int{}
+	}
+	s.unread[remote] = count
 }
 
-// Organized records a conversation's pinned and archived state.
+// Organized records a conversation's pinned and archived state, and
+// keeps it for Snapshot.
 func (s *Sink) Organized(_ context.Context, _, remote string, pinned, archived bool) {
 	s.record("organized %s %t %t", remote, pinned, archived)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.organized == nil {
+		s.organized = map[string]organizedFlags{}
+	}
+	s.organized[remote] = organizedFlags{pinned: pinned, archived: archived}
 }
 
 // AuthStep records a sign-in step and keeps it, so a test can inspect
@@ -229,4 +273,69 @@ func (s *Sink) AuthSteps() []connector.AuthStep {
 	defer s.mu.Unlock()
 
 	return slices.Clone(s.authSteps)
+}
+
+// ConversationSnapshot is a conversation's state after every update a
+// sink has seen, independent of how many arrived or in what order:
+// title, pinned and archived flags, the service's own unread count, and
+// which message remote ids are still present once deletes are applied.
+// Scenario's Reorder and DuplicateDelivery checks compare these across
+// differently ordered or repeated deliveries of the same events.
+type ConversationSnapshot struct {
+	Title            string
+	Pinned, Archived bool
+	Unread           int
+	MessageRemoteIDs []string
+}
+
+// Snapshot returns the final state of every conversation this sink has
+// seen, keyed by remote id.
+func (s *Sink) Snapshot() map[string]ConversationSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	remotes := map[string]bool{}
+	for remote := range s.conversations {
+		remotes[remote] = true
+	}
+	for remote := range s.history {
+		remotes[remote] = true
+	}
+	for remote := range s.live {
+		remotes[remote] = true
+	}
+
+	out := make(map[string]ConversationSnapshot, len(remotes))
+	for remote := range remotes {
+		out[remote] = s.snapshotOf(remote)
+	}
+
+	return out
+}
+
+// snapshotOf builds remote's snapshot; the caller holds s.mu.
+func (s *Sink) snapshotOf(remote string) ConversationSnapshot {
+	present := map[string]bool{}
+	for _, m := range s.history[remote] {
+		present[m.RemoteID] = true
+	}
+	for _, m := range s.live[remote] {
+		present[m.RemoteID] = true
+	}
+	for id := range s.deleted[remote] {
+		delete(present, id)
+	}
+
+	ids := make([]string, 0, len(present))
+	for id := range present {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	flags := s.organized[remote]
+
+	return ConversationSnapshot{
+		Title: s.conversations[remote].Title, Pinned: flags.pinned, Archived: flags.archived,
+		Unread: s.unread[remote], MessageRemoteIDs: ids,
+	}
 }

@@ -53,6 +53,7 @@ var BINDINGS = [
   { action: 'window.hide', keys: ['Ctrl+W'], contexts: ['global'], label: 'Close window', command: true },
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
   { action: 'helper.retryInstall', keys: ['Ctrl+R'], contexts: ['global'], label: 'Retry installing the helper', command: true },
+  { action: 'helper.doctor', keys: [], contexts: ['global'], label: 'Run health check', command: true },
   // keys.conf lets a person remap these bindings; these two commands
   // manage that file rather than any key of their own, like account.add.
   { action: 'keys.openConfig', keys: [], contexts: ['global'], label: 'Open key bindings file', command: true },

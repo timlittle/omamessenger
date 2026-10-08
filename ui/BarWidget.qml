@@ -16,8 +16,8 @@ Item {
   // widget: bar.shell exposes serviceFor, summon, hide and toggle, each
   // already scoped to this plugin's own id.
   property var bar: null
-  // settings holds this widget's bar-editor overrides: notifications,
-  // and notificationPreview, read from shell.json.
+  // settings holds this widget's bar-editor overrides: notifications and
+  // notificationDetail, read from shell.json.
   property var settings: ({})
 
   // pluginId names this plugin to bar.shell, matching manifest.json.

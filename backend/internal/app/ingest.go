@@ -32,12 +32,16 @@ type Ingest struct {
 	events     *events
 	ui         *uiState
 
-	mu          sync.Mutex
-	pendingRead *time.Timer
-	pendingConv domain.Conversation
+	mu            sync.Mutex
+	pendingRead   *time.Timer
+	pendingConv   domain.Conversation
+	pendingUnread int
 }
 
-var _ connector.Sink = (*Ingest)(nil)
+var (
+	_ connector.Sink        = (*Ingest)(nil)
+	_ connector.SenderNamer = (*Ingest)(nil)
+)
 
 // AccountStatus records and publishes an account's connection state.
 func (in *Ingest) AccountStatus(ctx context.Context, accountID, status, detail string) {
@@ -78,7 +82,7 @@ func (in *Ingest) Incoming(ctx context.Context, accountID, conversationRemoteID 
 	arrival := in.arrival(conv, m)
 	if policy.MarkReadOnArrival(arrival) {
 		_, _ = in.store.MarkRead(ctx, conv.ID) // see the Ingest comment on dropped errors
-		in.scheduleMarkRead(conv)
+		in.scheduleMarkRead(conv, 1)
 	}
 
 	in.events.publish(ctx, EventMessageAdded, m)
@@ -195,7 +199,7 @@ func (in *Ingest) Unread(ctx context.Context, accountID, conversationRemoteID st
 		if changed, err := in.store.MarkRead(ctx, conv.ID); err == nil && changed {
 			in.events.conversationChanged(ctx, conv.ID, before)
 		}
-		in.scheduleMarkRead(conv)
+		in.scheduleMarkRead(conv, count)
 		return
 	}
 
@@ -253,6 +257,28 @@ func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, n
 	in.events.publish(ctx, EventTyping, Typing{ConversationID: conv.ID, Name: name, Active: active})
 }
 
+// SenderName corrects senderRemoteID's name on every message already
+// stored under a different one, and re-publishes every conversation
+// whose preview this changes, so a group whose preview still names
+// its newest message's sender by a stale, generic label picks up a
+// contact, push or business name that only resolved afterwards (see
+// connector.SenderNamer).
+func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, name string) {
+	changed, err := in.store.RefreshSenderName(ctx, accountID, senderRemoteID, name)
+	if err != nil {
+		return
+	}
+
+	for _, id := range changed {
+		conv, err := in.store.Conversation(ctx, id)
+		if err != nil {
+			continue
+		}
+
+		in.events.publish(ctx, EventConversationUpdated, conv)
+	}
+}
+
 // AuthStep publishes what an account's sign-in needs from the user.
 func (in *Ingest) AuthStep(ctx context.Context, accountID string, step connector.AuthStep) {
 	in.events.publish(ctx, EventAuthStep, AuthStep{AccountID: accountID, Kind: step.Kind, QR: step.QR, Hint: step.Hint})
@@ -293,12 +319,18 @@ func (in *Ingest) looking(conversationID string) bool {
 
 // scheduleMarkRead reports conv as read to its service after
 // markReadDebounce, extending the wait if another message arrives first
-// so a burst produces one call rather than one per message.
-func (in *Ingest) scheduleMarkRead(conv domain.Conversation) {
+// so a burst produces one call rather than one per message. unread adds
+// to the count flushMarkRead finally reports: conv's own Unread field is
+// stale by the time this runs, already cleared locally by the MarkRead
+// call that precedes it, so accumulating here is the only way the
+// service ends up told how many messages the whole burst actually left
+// it to send a read receipt for.
+func (in *Ingest) scheduleMarkRead(conv domain.Conversation, unread int) {
 	in.mu.Lock()
 	defer in.mu.Unlock()
 
 	in.pendingConv = conv
+	in.pendingUnread += unread
 	if in.pendingRead != nil {
 		in.pendingRead.Reset(markReadDebounce)
 		return
@@ -313,7 +345,9 @@ func (in *Ingest) scheduleMarkRead(conv domain.Conversation) {
 func (in *Ingest) flushMarkRead() {
 	in.mu.Lock()
 	conv := in.pendingConv
+	conv.Unread = in.pendingUnread
 	in.pendingRead = nil
+	in.pendingUnread = 0
 	in.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), markReadTimeout)
@@ -328,7 +362,7 @@ func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Inp
 
 	return policy.Input{
 		Notifications:  settings.Notifications,
-		Preview:        settings.NotificationPreview,
+		Detail:         settings.detail(),
 		Muted:          conv.Muted,
 		Focused:        focused == conv.ID,
 		WindowActive:   windowActive,

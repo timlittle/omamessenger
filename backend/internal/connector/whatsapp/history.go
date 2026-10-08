@@ -101,11 +101,11 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	conv.RemoteID = chatID(ctx, src.dev, jid)
 
 	if !c.knownChat(conv.RemoteID) && !hasRealContent(sc.GetMessages()) {
-		logDropped(reasonNoRealContent)
+		logSyncedConversationDropped(jid, sc)
 		return
 	}
 
-	conv.Title, conv.Members = c.resolveConversation(ctx, src.dev, jid, conv)
+	conv.Title, conv.Members = c.resolveConversation(ctx, src.dev, jid, conv, sc)
 	c.reportConversation(ctx, sink, conv)
 	c.reportSyncedOrganize(ctx, sink, conv)
 
@@ -171,11 +171,46 @@ func hasRealContent(hms []*waHistorySync.HistorySyncMsg) bool {
 	return false
 }
 
+// logSyncedConversationDropped reports a conversation history sync
+// never reported before, dropped because none of its synced messages
+// carried anything a person actually sent (see hasRealContent): as
+// logSystemChatDropped, with the first contentless message's own
+// field names, when jid is WhatsApp's own "0" system account, so a
+// report that its announcements and security notices never appear can
+// be checked against this specific reason, or as an ordinary
+// logDropped otherwise.
+func logSyncedConversationDropped(jid types.JID, sc *waHistorySync.Conversation) {
+	if jid != types.PSAJID {
+		logDropped(reasonNoRealContent)
+		return
+	}
+
+	logSystemChatDropped(reasonNoRealContent, syncedContentFields(sc))
+}
+
+// syncedContentFields is the field-name paths (see fieldPaths) of the
+// first of sc's synced messages that carries any content at all, or ""
+// when sc has no messages, for logSyncedConversationDropped.
+func syncedContentFields(sc *waHistorySync.Conversation) string {
+	for _, hm := range sc.GetMessages() {
+		if content := hm.GetMessage().GetMessage(); content != nil {
+			return fieldPaths(content)
+		}
+	}
+
+	return ""
+}
+
 // syncMessage reports one of a conversation's synced messages and
 // remembers its media reference, if it has one, for a later download,
 // doing nothing for a message with no content of its own to show (see
-// isContentless). Its message_keys row (see keys.go), saved the same
-// way a live message's is, is what later lets MarkRead pick this
+// isContentless), which it logs the same way a live message's drop
+// is (see logContentlessDrop); a reaction, edit or revoke is dropped
+// here too, but silently, since those are not really missing: the
+// live events that cover them already reported them when this
+// account was connected to receive them, and a bulk sync never
+// replays them again. Its message_keys row (see keys.go), saved the
+// same way a live message's is, is what later lets MarkRead pick this
 // message out of the conversation's newest ones, even after a restart
 // (see markread.go): history sync carries each conversation's unread
 // count but not which of its messages are unread, so MarkRead chooses
@@ -190,6 +225,10 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 
 	m, ok := historyMessage(ctx, target.dev, target.chat, hm)
 	if !ok {
+		if content != nil && isContentless(content) {
+			logContentlessDrop(target.chat, content)
+		}
+
 		return
 	}
 	m = c.improvedSenderName(m)
@@ -204,10 +243,11 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 // count: the account's own self-chat label, the name and participants
 // the sync itself carried, a group's name and member count fetched and
 // cached when the sync left both blank, a direct chat's already-known
-// contact or push name, or, with nothing else known yet, a fallback
-// title. A conversation with no title at all would be dropped rather
-// than shown, so this never returns "".
-func (c *Connector) resolveConversation(ctx context.Context, dev device, jid types.JID, conv domain.Conversation) (title string, members int) {
+// contact or push name, a business's own verified name carried by one
+// of sc's own synced messages, or, with nothing else known yet, a
+// fallback title. A conversation with no title at all would be
+// dropped rather than shown, so this never returns "".
+func (c *Connector) resolveConversation(ctx context.Context, dev device, jid types.JID, conv domain.Conversation, sc *waHistorySync.Conversation) (title string, members int) {
 	if dev.isSelfChat(ctx, jid) {
 		return selfChatTitle, 0
 	}
@@ -220,21 +260,28 @@ func (c *Connector) resolveConversation(ctx context.Context, dev device, jid typ
 		return c.rememberName(conv.RemoteID, conv.Title, nameRankContact), 0
 	}
 
-	return c.resolveDirectTitle(ctx, dev, jid, ""), 0
+	return c.resolveDirectTitle(ctx, dev, jid, "", syncedBusinessName(sc)), 0
 }
 
 // resolveDirectTitle is a direct chat's best title: its contact's
 // resolved name (mapping a LID to its phone JID first, see
-// device.contactName), the best name already cached for it, the push
-// name this report itself carries, or, with nothing else known, a
-// fallback title. It never formats a LID as if it were a phone number.
-func (c *Connector) resolveDirectTitle(ctx context.Context, dev device, jid types.JID, pushName string) string {
+// device.contactName; this already covers a business whose verified
+// name is saved in the contact store, see contactDisplayName), the
+// best name already cached for it, the business's own verified name
+// this particular report carries, the push name it carries, or, with
+// nothing else known, a fallback title. It never formats a LID as if
+// it were a phone number.
+func (c *Connector) resolveDirectTitle(ctx context.Context, dev device, jid types.JID, pushName, businessName string) string {
 	if name := dev.contactName(ctx, jid); name != "" {
 		return c.rememberName(remoteID(jid), name, nameRankContact)
 	}
 
 	if name := c.nameFor(remoteID(jid)); name != "" {
 		return name
+	}
+
+	if businessName != "" {
+		return c.rememberName(remoteID(jid), businessName, nameRankBusiness)
 	}
 
 	if pushName != "" {

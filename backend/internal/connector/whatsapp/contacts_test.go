@@ -66,6 +66,29 @@ func TestHandleContactUpdate_NeverRetitlesTheSelfChat(t *testing.T) {
 	}
 }
 
+// TestHandleContactUpdate_CorrectsTheSendersNameOnAlreadyStoredMessages
+// confirms a resolved contact name also reaches Sink.SenderName (see
+// connector.SenderNamer), which is what lets a group's preview catch
+// up when one of its members is who just resolved, not only this
+// person's own direct chat title.
+func TestHandleContactUpdate_CorrectsTheSendersNameOnAlreadyStoredMessages(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	jid := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := newFakeDevice()
+	sink := &recordingSink{Sink: &connectortest.Sink{}}
+
+	c.handleContactUpdate(t.Context(), sink, dev, &events.Contact{
+		JID: jid, Action: &waSyncAction.ContactAction{FullName: strPtr("Nadia Rahman")},
+	})
+
+	want := senderNameCall{accountID: "wa", senderRemoteID: "15551234567@s.whatsapp.net", name: "Nadia Rahman"}
+	if len(sink.senderNames) != 1 || sink.senderNames[0] != want {
+		t.Errorf("SenderName calls = %+v, want exactly [%+v]", sink.senderNames, want)
+	}
+}
+
 func TestHandlePushNameUpdate_RetitlesAFallbackTitledChat(t *testing.T) {
 	t.Parallel()
 

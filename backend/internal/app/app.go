@@ -9,6 +9,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/timlittle/omamessenger/backend/internal/app/policy"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
@@ -163,6 +164,14 @@ type Deps struct {
 	Clipboard  ClipboardRunner
 	Fake       Injector
 	Logger     Logger
+
+	// DataDir, DBPath, ExecutableName and HelperVersion are read only by
+	// Doctor, to stat the data directory's and database's permissions
+	// and recover which version the running binary was installed as.
+	DataDir        string
+	DBPath         string
+	ExecutableName string
+	HelperVersion  string
 }
 
 // New builds the two halves of the application, which share the event
@@ -175,6 +184,8 @@ func New(d Deps) (*Commands, *Ingest) {
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, deleter: d.Deleter, fake: d.Fake,
 		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
+		recentErrors: &errorHistory{},
+		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 	}
 	ingest := &Ingest{store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state}
 
@@ -182,14 +193,35 @@ func New(d Deps) (*Commands, *Ingest) {
 }
 
 // Settings are the user's preferences from the Omarchy plugin settings.
+// NotificationDetail holds one of policy.Detail's values; an older UI that
+// still sends only NotificationPreview is handled by detail below, so the
+// setting stays additive rather than breaking that UI.
 type Settings struct {
 	Notifications       bool
 	NotificationPreview bool
+	NotificationDetail  string
 }
 
 // DefaultSettings apply until the UI sends the user's settings.
 func DefaultSettings() Settings {
-	return Settings{Notifications: true, NotificationPreview: true}
+	return Settings{Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage)}
+}
+
+// detail resolves the notification detail level these settings ask for:
+// NotificationDetail when it names one of the three levels, otherwise the
+// older NotificationPreview boolean, so a UI built before the three-level
+// setting existed still gets the detail it asked for.
+func (s Settings) detail() policy.Detail {
+	switch d := policy.Detail(s.NotificationDetail); d {
+	case policy.DetailNameAndMessage, policy.DetailNameOnly, policy.DetailNone:
+		return d
+	}
+
+	if s.NotificationPreview {
+		return policy.DetailNameAndMessage
+	}
+
+	return policy.DetailNameOnly
 }
 
 // uiState is what the user is doing in the UI: their settings and which

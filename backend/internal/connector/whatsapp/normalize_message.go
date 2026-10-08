@@ -217,7 +217,11 @@ func replyTo(ctx *waE2E.ContextInfo) *domain.Reply {
 }
 
 // messageText is a message's text, its caption, or a label for media
-// without one, since every stored message has text.
+// without one, since every stored message has text. A message that
+// still falls all the way back to the generic placeholder is logged,
+// by its populated field names alone (see logPlaceholderMessage), so a
+// business message kind this connector cannot yet show real text for
+// can be found and taught one.
 func messageText(msg *waE2E.Message) string {
 	if text := plainText(msg); text != "" {
 		return text
@@ -227,7 +231,12 @@ func messageText(msg *waE2E.Message) string {
 		return caption
 	}
 
-	return mediaPlaceholder(msg)
+	placeholder := mediaPlaceholder(msg)
+	if placeholder == genericMessagePlaceholder {
+		logPlaceholderMessage(fieldPaths(msg))
+	}
+
+	return placeholder
 }
 
 // plainText is a message's literal text: the body of an ordinary
@@ -245,36 +254,48 @@ func plainText(msg *waE2E.Message) string {
 }
 
 // businessText is the visible text of one of WhatsApp Business's own
-// message kinds: an interactive message's body, header or footer, a
-// buttons message's own content text, a template's hydrated text, or
-// the option a person picked replying to a template's buttons. It is
-// "" for anything else, including a business kind that carries no
-// text of its own, which falls back to mediaPlaceholder's generic
-// label like any other message would.
+// message kinds: an interactive message's own text (see
+// interactiveText), a buttons message's content text or the button a
+// person picked replying to one, a template's hydrated text or the
+// option picked replying to it, or one of a handful of commerce kinds
+// (see commerceText). It is "" for anything else, including a
+// business kind that carries no text of its own, which falls back to
+// mediaPlaceholder's generic label like any other message would.
 func businessText(msg *waE2E.Message) string {
 	switch {
 	case msg.GetInteractiveMessage() != nil:
 		return interactiveText(msg.GetInteractiveMessage())
 	case msg.GetButtonsMessage() != nil:
 		return msg.GetButtonsMessage().GetContentText()
+	case msg.GetButtonsResponseMessage() != nil:
+		return buttonsResponseText(msg.GetButtonsResponseMessage())
+	case msg.GetInteractiveResponseMessage() != nil:
+		return interactiveResponseText(msg.GetInteractiveResponseMessage())
 	case msg.GetTemplateMessage() != nil:
 		return templateText(msg.GetTemplateMessage())
 	case msg.GetTemplateButtonReplyMessage() != nil:
 		return msg.GetTemplateButtonReplyMessage().GetSelectedDisplayText()
 	default:
-		return ""
+		return commerceText(msg)
 	}
 }
 
 // interactiveText is an interactive message's own visible text: its
-// body, falling back to its header's title or its footer's text, since
-// WhatsApp lets a business send any mix of the three.
+// body, falling back to its header's title, a caption on whichever
+// media the header carries, a carousel's own cards, or its footer,
+// since WhatsApp lets a business send any mix of these.
 func interactiveText(m *waE2E.InteractiveMessage) string {
 	if text := m.GetBody().GetText(); text != "" {
 		return text
 	}
 	if title := m.GetHeader().GetTitle(); title != "" {
 		return title
+	}
+	if caption := headerMediaCaption(m.GetHeader()); caption != "" {
+		return caption
+	}
+	if text := carouselText(m.GetCarouselMessage()); text != "" {
+		return text
 	}
 
 	return m.GetFooter().GetText()
@@ -283,14 +304,32 @@ func interactiveText(m *waE2E.InteractiveMessage) string {
 // templateText is a template message's hydrated text, read from
 // whichever of the two fields WhatsApp populated: the dedicated
 // hydrated-template field, or, on an older message, the same content
-// carried inside the format union.
+// carried inside the format union; its content text, falling back to
+// its title or footer, or, for the newer interactive-message format,
+// the same text an ordinary interactive message would show.
 func templateText(m *waE2E.TemplateMessage) string {
 	hydrated := m.GetHydratedTemplate()
 	if hydrated == nil {
 		hydrated = m.GetHydratedFourRowTemplate()
 	}
+	if text := hydratedTemplateText(hydrated); text != "" {
+		return text
+	}
 
-	return hydrated.GetHydratedContentText()
+	return interactiveText(m.GetInteractiveMessageTemplate())
+}
+
+// hydratedTemplateText is a hydrated template's own visible text: its
+// content, falling back to its title or its footer.
+func hydratedTemplateText(h *waE2E.TemplateMessage_HydratedFourRowTemplate) string {
+	if text := h.GetHydratedContentText(); text != "" {
+		return text
+	}
+	if title := h.GetHydratedTitleText(); title != "" {
+		return title
+	}
+
+	return h.GetHydratedFooterText()
 }
 
 // mediaCaption is the caption on a photo, video or file, or "" when the
@@ -307,6 +346,14 @@ func mediaCaption(msg *waE2E.Message) string {
 		return ""
 	}
 }
+
+// genericMessagePlaceholder is mediaPlaceholder's last resort, for a
+// message whose content this connector has never been taught to show
+// real text or a specific label for. It is named, rather than left as
+// a literal, so messageText can tell this one placeholder apart from
+// every other and log a diagnostic for it alone (see
+// logPlaceholderMessage).
+const genericMessagePlaceholder = "[Message]"
 
 // mediaPlaceholder labels a message that has neither plain text nor a
 // caption, so every stored message still shows something.
@@ -327,7 +374,7 @@ func mediaPlaceholder(msg *waE2E.Message) string {
 			return placeholder
 		}
 
-		return "[Message]"
+		return genericMessagePlaceholder
 	}
 }
 

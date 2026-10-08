@@ -19,6 +19,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/telegram"
 	"github.com/timlittle/omamessenger/backend/internal/connector/whatsapp"
+	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -58,8 +59,13 @@ type streams struct {
 }
 
 // run reads the configuration and serves the UI until it disconnects or ctx
-// is cancelled; both are a clean exit.
+// is cancelled; both are a clean exit. "doctor" as the first argument
+// runs the health checks instead (see runDoctor).
 func run(ctx context.Context, s streams, args []string, env func(string) string) error {
+	if len(args) > 0 && args[0] == "doctor" {
+		return runDoctor(ctx, args[1:], env, s)
+	}
+
 	cfg, err := resolveConfig(args, env)
 	if err != nil {
 		return err
@@ -71,6 +77,56 @@ func run(ctx context.Context, s streams, args []string, env func(string) string)
 	}
 
 	return serve(ctx, cfg, s)
+}
+
+// runDoctor runs the helper's own health checks against the data
+// directory the remaining args or env resolve to, printing one safe line
+// per check to s.out. It returns an error once any check found a
+// problem, so the process exits non-zero; the command palette's "Run
+// health check" instead reaches the same checks in process, through the
+// helper.doctor method, while the helper is already running.
+func runDoctor(ctx context.Context, args []string, env func(string) string, s streams) error {
+	cfg, err := resolveConfig(args, env)
+	if err != nil {
+		return err
+	}
+
+	db, err := store.Open(ctx, cfg.dbPath)
+	if err != nil {
+		return fmt.Errorf("doctor: open database: %w", err)
+	}
+	defer db.Close()
+
+	commands, _ := app.New(app.Deps{
+		Store: db, Cache: cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit),
+		DataDir: cfg.dataDir, DBPath: cfg.dbPath,
+		ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
+	})
+
+	report, err := commands.Doctor(ctx)
+	if err != nil {
+		return fmt.Errorf("doctor: %w", err)
+	}
+
+	printDoctorReport(s.out, report)
+	if problems := report.Problems(); problems > 0 {
+		return fmt.Errorf("doctor: found %d problem(s)", problems)
+	}
+
+	return nil
+}
+
+// printDoctorReport writes one line per check: whether it passed, its
+// name and its safe detail text.
+func printDoctorReport(w io.Writer, report doctor.Report) {
+	for _, c := range report.Checks {
+		mark := "ok  "
+		if !c.OK {
+			mark = "FAIL"
+		}
+
+		fmt.Fprintf(w, "%s %s: %s\n", mark, c.Name, c.Detail)
+	}
 }
 
 // serve opens the database, wires the application and serves the UI.
@@ -92,7 +148,10 @@ func serve(ctx context.Context, cfg config, s streams) error {
 		downloaded: cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit),
 		outgoing:   cache.NewOutgoing(filepath.Join(cfg.dataDir, "media", "outgoing")),
 	}
-	commands, ingest, manager, err := wire(ctx, wireDeps{db: db, srv: srv, registry: registry, caches: caches, logger: logger})
+	commands, ingest, manager, err := wire(ctx, wireDeps{
+		db: db, srv: srv, registry: registry, caches: caches, logger: logger,
+		dataDir: cfg.dataDir, dbPath: cfg.dbPath,
+	})
 	if err != nil {
 		return err
 	}
@@ -134,6 +193,8 @@ type wireDeps struct {
 	registry *accountRegistry
 	caches   mediaCaches
 	logger   *log.Logger
+	dataDir  string
+	dbPath   string
 }
 
 // wire builds the application around d's database and server, starting
@@ -146,6 +207,7 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 	deps := app.Deps{
 		Store: d.db, Notifier: notifier, Publisher: d.srv, Accounts: d.registry, Cache: d.caches.downloaded,
 		Outgoing: d.caches.outgoing, Clipboard: clipboard.Wayland{}, Logger: d.logger,
+		DataDir: d.dataDir, DBPath: d.dbPath, ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
 	}
 
 	connectors, injector := fakeConnectors()

@@ -11,24 +11,32 @@ import (
 
 // Commands are the actions the UI can take.
 type Commands struct {
-	store      *store.Store
-	dispatcher Dispatcher
-	signIn     SignIn
-	accounts   Accounts
-	history    HistoryLoader
-	media      MediaFetcher
-	cache      MediaCache
-	refresher  MessageRefresher
-	organizer  Organizer
-	reactor    Reactor
-	deleter    Deleter
-	outgoing   OutgoingMedia
-	clipboard  ClipboardRunner
-	fake       Injector
-	logger     Logger
-	events     *events
-	ui         *uiState
-	refreshed  *attemptedRefresh
+	store        *store.Store
+	dispatcher   Dispatcher
+	signIn       SignIn
+	accounts     Accounts
+	history      HistoryLoader
+	media        MediaFetcher
+	cache        MediaCache
+	refresher    MessageRefresher
+	organizer    Organizer
+	reactor      Reactor
+	deleter      Deleter
+	outgoing     OutgoingMedia
+	clipboard    ClipboardRunner
+	fake         Injector
+	logger       Logger
+	events       *events
+	ui           *uiState
+	refreshed    *attemptedRefresh
+	recentErrors *errorHistory
+
+	// dataDir, dbPath, execName and helperVersion are read only by
+	// Doctor; see Deps.
+	dataDir       string
+	dbPath        string
+	execName      string
+	helperVersion string
 }
 
 // attemptedRefresh is the set of message ids this helper run has already

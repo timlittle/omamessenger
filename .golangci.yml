@@ -74,6 +74,11 @@ linters:
           allow:
             - $gostd
             - github.com/timlittle/omamessenger/backend/internal/domain$
+        doctor:
+          list-mode: strict
+          files: ["**/backend/internal/doctor/*.go", "!$test"]
+          allow:
+            - $gostd
         app:
           list-mode: strict
           files: ["**/backend/internal/app/*.go", "!$test"]
@@ -81,6 +86,7 @@ linters:
             - $gostd
             - github.com/timlittle/omamessenger/backend/internal/app/policy$
             - github.com/timlittle/omamessenger/backend/internal/connector$
+            - github.com/timlittle/omamessenger/backend/internal/doctor$
             - github.com/timlittle/omamessenger/backend/internal/domain$
             - github.com/timlittle/omamessenger/backend/internal/store$
         server:

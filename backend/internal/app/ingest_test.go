@@ -60,6 +60,45 @@ func TestIncoming_KeepsAPinnedChatPinned(t *testing.T) {
 	}
 }
 
+// TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat
+// confirms a connector correcting a sender's name once it resolves
+// re-publishes the conversation whose preview that changes, and
+// leaves one whose preview already names someone else untouched.
+func TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	group := f.conversation(t, "group", "Weekend plans", domain.KindGroup)
+	other := f.conversation(t, "other", "Different chat", domain.KindDirect)
+
+	f.ingest.Incoming(ctx, "wa", group.RemoteID, incoming("in-1", "Thanks"))
+	f.ingest.Incoming(ctx, "wa", other.RemoteID, domain.Message{RemoteID: "in-2", SenderID: "sam", SenderName: "Sam", Text: "hi", Created: 1})
+	f.published.take()
+
+	f.ingest.SenderName(ctx, "wa", "alex", "Alex Chen")
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events = %v, want exactly one conversation update", got)
+	}
+
+	updated, err := f.store.Conversation(ctx, group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.PreviewSender != "Alex Chen" {
+		t.Errorf("group preview sender = %q, want %q", updated.PreviewSender, "Alex Chen")
+	}
+
+	unchanged, err := f.store.Conversation(ctx, other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.PreviewSender != "Sam" {
+		t.Errorf("other conversation's preview sender = %q, want it left alone", unchanged.PreviewSender)
+	}
+}
+
 func TestIncoming_NotifiesWithTheConversationID(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +121,7 @@ func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 	group := f.conversation(t, "group", "Climbing Crew", domain.KindGroup)
 
-	f.commands.ApplySettings(app.Settings{Notifications: true, NotificationPreview: false})
+	f.commands.ApplySettings(app.Settings{Notifications: true, NotificationDetail: "nameOnly"})
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("hidden", "secret"))
 	f.ingest.Incoming(ctx, "wa", group.RemoteID, domain.Message{RemoteID: "g", SenderName: "Priya", Text: "hi", Created: 1})
 
@@ -106,6 +145,44 @@ func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 
 	if seen, _ := f.store.Conversation(ctx, chat.ID); seen.Unread != 0 {
 		t.Errorf("focused chat unread = %d, want 0", seen.Unread)
+	}
+}
+
+// TestIncoming_NotificationDetailControlsHowMuchANotificationShows checks
+// the three detail levels directly, and that a Settings value carrying
+// only the older NotificationPreview boolean (no NotificationDetail at
+// all) still resolves to the matching level, so a UI built before the
+// three-level setting existed keeps working.
+func TestIncoming_NotificationDetailControlsHowMuchANotificationShows(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		settings app.Settings
+		want     string
+	}{
+		{"name and message", app.Settings{Notifications: true, NotificationDetail: "nameAndMessage"}, "Alex: secret"},
+		{"name only", app.Settings{Notifications: true, NotificationDetail: "nameOnly"}, "Alex: New message"},
+		{"nothing", app.Settings{Notifications: true, NotificationDetail: "none"}, "OmaMessenger: New message"},
+		{"migrated from preview true", app.Settings{Notifications: true, NotificationPreview: true}, "Alex: secret"},
+		{"migrated from preview false", app.Settings{Notifications: true, NotificationPreview: false}, "Alex: New message"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newFixture(t, false)
+			ctx := t.Context()
+			chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+			f.commands.ApplySettings(c.settings)
+			f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "secret"))
+
+			if got := f.notifier.all(); !slices.Equal(got, []string{c.want}) {
+				t.Errorf("notifications = %v, want [%s]", got, c.want)
+			}
+		})
 	}
 }
 
@@ -137,6 +214,34 @@ func TestIncoming_ReportsReadToTheServiceWhenFocused(t *testing.T) {
 
 		if got := f.dispatcher.read; !slices.Equal(got, []string{chat.ID}) {
 			t.Errorf("read receipts = %v, want one report for %s", got, chat.ID)
+		}
+	})
+}
+
+// TestIncoming_ReportsHowManyWereUnreadToTheService confirms the
+// conversation handed to the service's debounced MarkRead carries the
+// number of messages this burst actually left unread for it to report,
+// not a stale count from before any of them arrived: a service such as
+// WhatsApp's connector needs that number to know how many of the
+// conversation's newest messages to send a read receipt for.
+func TestIncoming_ReportsHowManyWereUnreadToTheService(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx := t.Context()
+		chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+		if err := f.commands.SetFocus(ctx, chat.ID, true); err != nil {
+			t.Fatal(err)
+		}
+
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "first"))
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-2", "second"))
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		if len(f.dispatcher.readConv) != 1 || f.dispatcher.readConv[0].Unread != 2 {
+			t.Fatalf("dispatcher saw %+v, want one call with Unread 2", f.dispatcher.readConv)
 		}
 	})
 }

@@ -55,6 +55,20 @@ func (c *Connector) handlePushNameUpdate(ctx context.Context, sink connector.Sin
 	c.retitleDirectChat(ctx, nameUpdate{sink, dev}, e.JID, e.NewPushName, nameRankPushName)
 }
 
+// handleBusinessNameUpdate re-titles e's conversation when WhatsApp
+// reports a business's verified name this connector had not seen for
+// them before: a business account often sends its first messages
+// before whatsmeow has saved its verified name locally (see
+// device.contactName), so the chat may have started out titled by its
+// phone number or "Unknown contact" until this arrives.
+func (c *Connector) handleBusinessNameUpdate(ctx context.Context, sink connector.Sink, dev device, e *events.BusinessName) {
+	if e.NewBusinessName == "" {
+		return
+	}
+
+	c.retitleDirectChat(ctx, nameUpdate{sink, dev}, e.JID, e.NewBusinessName, nameRankBusiness)
+}
+
 // handleAppStateSyncComplete rechecks every known direct chat's title
 // once a category of app-state has finished syncing: contacts and push
 // names often finish moments after history sync already titled those
@@ -76,11 +90,14 @@ func (c *Connector) handleAppStateSyncComplete(ctx context.Context, sink connect
 	}
 }
 
-// retitleDirectChat updates this connector's cached name for jid and, if
-// that improves its conversation's title, reports the conversation
-// again so the UI picks up the better name without a restart.
-// rememberName never lets this replace a good title with a worse one.
-// The self-chat is never retitled this way, however a contact or push
+// retitleDirectChat updates this connector's cached name for jid and,
+// if that improves it, reports jid's own direct chat again, so the UI
+// picks up the better name without a restart, and corrects jid's name
+// on every message already stored under a weaker one, anywhere they
+// sent one, so a group's preview catches up too when one of its
+// members is who resolved (see Sink.SenderName). rememberName never
+// lets either of these replace a good name with a worse one. The
+// self-chat is never retitled this way, however a contact or push
 // name might resolve for the account's own identity: ensureChat is the
 // only place that titles it, always with the fixed "Message yourself"
 // label (see normalize.go's selfChatTitle).
@@ -94,6 +111,10 @@ func (c *Connector) retitleDirectChat(ctx context.Context, upd nameUpdate, jid t
 	after := c.rememberName(remote, name, rank)
 	if after == before {
 		return
+	}
+
+	if namer, ok := upd.sink.(connector.SenderNamer); ok {
+		namer.SenderName(ctx, c.account.ID, remote, after)
 	}
 
 	c.reportConversation(ctx, upd.sink, domain.Conversation{

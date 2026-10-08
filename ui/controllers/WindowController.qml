@@ -5,6 +5,7 @@ import "../lib/Keymap.js" as Keymap
 import "../lib/KeyBindings.js" as KeyBindings
 import "../lib/Palette.js" as Palette
 import "../lib/Rail.js" as Rail
+import "../lib/Rpc.js" as Rpc
 
 // Owns the command palette, closing and quitting (which ask first), and
 // the Escape chain. The palette runs commands through whichever
@@ -105,6 +106,13 @@ QtObject {
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
+  // doctorOpen shows the health check report.
+  property bool doctorOpen: false
+
+  // doctorChecks are the report's checks: [{name, ok, detail}], from the
+  // helper's helper.doctor method.
+  property var doctorChecks: []
+
   // hideRequested asks the caller to hide the window. The panel turns
   // this into shell.hide, since only it holds the shell facade.
   signal hideRequested()
@@ -125,6 +133,7 @@ QtObject {
       "window.hide": () => root.askToClose(),
       "app.quit": () => root.quit(),
       "helper.retryInstall": () => root.retryInstall(),
+      "helper.doctor": () => root.runDoctor(),
       "keys.openConfig": () => { if (root.service) root.service.openKeyConfigFile(); },
       "keys.showBindings": () => root.openPalette("keyBindings"),
       "close.left": () => { root.confirmIndex = Math.max(0, root.confirmIndex - 1); },
@@ -166,6 +175,25 @@ QtObject {
   // closePalette hides the palette.
   function closePalette(): void {
     root.paletteOpen = false;
+  }
+
+  // runDoctor asks the helper for its own health report and shows it once
+  // it answers; a request that fails surfaces the same way any other
+  // one does, through lastError.
+  function runDoctor(): void {
+    if (!root.service) return;
+
+    root.service.request("helper.doctor", {}, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+
+      root.doctorChecks = result.checks ?? [];
+      root.doctorOpen = true;
+    });
+  }
+
+  // closeDoctor hides the health check report.
+  function closeDoctor(): void {
+    root.doctorOpen = false;
   }
 
   // setPaletteQuery filters the palette and highlights the best match.
@@ -261,6 +289,7 @@ QtObject {
       "close-setup": () => { if (root.accountController) root.accountController.cancel(); },
       "close-palette": () => root.closePalette(),
       "close-viewer": () => { if (root.photoViewerController) root.photoViewerController.close(); },
+      "close-doctor": () => root.closeDoctor(),
       "close-reaction-picker": () => { if (root.reactionsController) root.reactionsController.closePicker(); },
       "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
@@ -288,6 +317,7 @@ QtObject {
       setupOpen: root.accountController ? root.accountController.open || root.accountController.removing : false,
       setupContext: root.accountController ? root.accountController.navContext : "",
       viewerOpen: root.photoViewerController ? root.photoViewerController.viewerOpen : false,
+      doctorOpen: root.doctorOpen,
       paletteOpen: root.paletteOpen,
       reactionPickerOpen: root.reactionsController ? root.reactionsController.pickerOpen : false,
       deleteConfirmOpen: root.deleteController ? root.deleteController.open : false,

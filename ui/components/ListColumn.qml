@@ -24,6 +24,10 @@ ColumnLayout {
   property var accountNames: ({})
   // multiAccountServices lists which services have more than one account.
   property var multiAccountServices: []
+  // accountColors: accountId -> colour tag, for each row's account stripe.
+  property var accountColors: ({})
+  // showAccountColors: true once more than one account exists.
+  property bool showAccountColors: false
   // showEmptyState is true once the helper is ready and has no accounts
   // yet, in place of the list.
   property bool showEmptyState: false
@@ -133,6 +137,8 @@ ColumnLayout {
     nowMs: root.nowMs
     accountNames: root.accountNames
     multiAccountServices: root.multiAccountServices
+    accountColors: root.accountColors
+    showAccountColors: root.showAccountColors
     unreadView: root.unreadView
 
     onActivated: id => root.activated(id)

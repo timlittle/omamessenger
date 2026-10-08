@@ -53,6 +53,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"media.paste":               bind(mediaPaste(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
 		"settings.apply":            bind(settingsApply(c)),
+		"helper.doctor":             bind(helperDoctor(c)),
 	}
 
 	if c.Faked() {
@@ -404,10 +405,13 @@ func uiSetFocus(c *app.Commands) func(context.Context, focusParams) (any, error)
 	}
 }
 
-// settingsParams are the plugin settings.
+// settingsParams are the plugin settings. NotificationDetail is additive:
+// an older UI that sends only NotificationPreview still works, since
+// app.Settings falls back to it when NotificationDetail is empty.
 type settingsParams struct {
-	Notifications       bool `json:"notifications"`
-	NotificationPreview bool `json:"notificationPreview"`
+	Notifications       bool   `json:"notifications"`
+	NotificationPreview bool   `json:"notificationPreview"`
+	NotificationDetail  string `json:"notificationDetail"`
 }
 
 // settingsApply replaces the user's settings.
@@ -415,6 +419,14 @@ func settingsApply(c *app.Commands) func(context.Context, settingsParams) (any, 
 	return func(_ context.Context, p settingsParams) (any, error) {
 		c.ApplySettings(app.Settings(p))
 		return none{}, nil
+	}
+}
+
+// helperDoctor returns the helper's own health report: safe states and
+// categories only, nothing that identifies the user or their accounts.
+func helperDoctor(c *app.Commands) func(context.Context, none) (any, error) {
+	return func(ctx context.Context, _ none) (any, error) {
+		return c.Doctor(ctx)
 	}
 }
 

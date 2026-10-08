@@ -45,7 +45,12 @@ type fixture struct {
 func newFixture(t *testing.T, faked bool) *fixture {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	dataDir := t.TempDir()
+	if err := os.Chmod(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dataDir, "messages.db")
+	db, err := store.Open(t.Context(), dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +76,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger,
+		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -81,6 +87,27 @@ func newFixture(t *testing.T, faked bool) *fixture {
 	f.refresher.ingest = f.ingest
 
 	return f
+}
+
+// appOver builds a Commands and Ingest pair over an already-open store,
+// with its own fresh set of fake connectors, for a test that opens the
+// store itself, such as one simulating a helper restart over the same
+// on-disk database.
+func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDispatcher) {
+	t.Helper()
+
+	dispatcher := &fakeDispatcher{}
+	deps := app.Deps{
+		Store: db, Dispatcher: dispatcher, Notifier: &fakeNotifier{}, Publisher: &fakePublisher{},
+		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
+		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
+		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
+	}
+
+	commands, ingest := app.New(deps)
+
+	return commands, ingest, dispatcher
 }
 
 // conversation stores a conversation of the given kind with remote id
@@ -106,6 +133,7 @@ type fakeDispatcher struct {
 	sent     []string
 	messages []domain.Message // the full message of each Send, in order
 	read     []string
+	readConv []domain.Conversation // the full conversation of each MarkRead call, in order
 	err      error
 	onRun    func(domain.Message) // called during Send, like a fast service
 }
@@ -150,6 +178,7 @@ func (d *fakeDispatcher) MarkRead(_ context.Context, conv domain.Conversation) e
 	defer d.mu.Unlock()
 
 	d.read = append(d.read, conv.ID)
+	d.readConv = append(d.readConv, conv)
 
 	return nil
 }

@@ -59,6 +59,28 @@ func (c *Cache) Fetch(ctx context.Context, name string, fill func(ctx context.Co
 	return path, c.prune(name)
 }
 
+// Stats returns how many bytes the cache currently holds and the limit
+// it was given, for a health check to compare. A cache directory not
+// created yet (nothing has been fetched into it) simply holds zero
+// bytes, not an error.
+func (c *Cache) Stats() (bytes, limit int64, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entries, err := os.ReadDir(c.dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, c.limit, nil
+		}
+
+		return 0, c.limit, fmt.Errorf("cache: stats: %w", err)
+	}
+
+	_, total := cached(entries)
+
+	return total, c.limit, nil
+}
+
 // fill writes path through a temporary file, so a failed or interrupted
 // fill never looks cached.
 func (c *Cache) fill(ctx context.Context, path string, fill func(ctx context.Context, path string) error) error {
