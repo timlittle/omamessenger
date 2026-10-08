@@ -424,13 +424,17 @@ func uiSetFocus(c *app.Commands) func(context.Context, focusParams) (any, error)
 	}
 }
 
-// settingsParams are the plugin settings. NotificationDetail is additive:
-// an older UI that sends only NotificationPreview still works, since
-// app.Settings falls back to it when NotificationDetail is empty.
+// settingsParams are the plugin settings. NotificationDetail is
+// additive: an older UI that sends only NotificationPreview still
+// works, since app.Settings falls back to it when NotificationDetail is
+// empty. ReadReceipts is additive too; the UI always sends it alongside
+// every other setting (see ui/lib/Settings.js), so there is no older UI
+// that would otherwise leave it at its zero value, off, by omission.
 type settingsParams struct {
 	Notifications       bool   `json:"notifications"`
 	NotificationPreview bool   `json:"notificationPreview"`
 	NotificationDetail  string `json:"notificationDetail"`
+	ReadReceipts        bool   `json:"readReceipts"`
 }
 
 // settingsApply replaces the user's settings.

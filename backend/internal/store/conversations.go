@@ -105,7 +105,7 @@ func (s *Store) ConversationByRemote(ctx context.Context, accountID, remoteID st
 // of Conversations' search when query has no word characters to look up in
 // messages_fts: an empty FTS5 MATCH argument is invalid, so a query such as
 // "_" or "%" can only match a title, the way LIKE always has.
-const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match
+const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match, NULL AS match_message_id, NULL AS match_sender
 	` + conversationFrom + `
 	WHERE :query = '' OR c.title LIKE :pattern ESCAPE '\'
 	ORDER BY c.pinned DESC, c.last_activity DESC, c.id`
@@ -115,12 +115,13 @@ const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match
 // any message match; among message matches, the most recently matching
 // conversation comes first, and bm25 relevance only breaks a tie between
 // two matches with the same timestamp. matched finds every message hit;
-// hits picks the newest one per conversation, which becomes both the
-// ranking signal and the Match snippet, read through an external-content
-// FTS5 table kept in step with messages by triggers (see migrate.go).
+// hits picks the newest one per conversation, which becomes the ranking
+// signal and the Match snippet, MatchMessageID and MatchSender, read
+// through an external-content FTS5 table kept in step with messages by
+// triggers (see migrate.go).
 const conversationsByTitleOrMessage = `WITH matched AS (
-		SELECT m.conversation_id AS conversation_id, m.text AS snippet,
-			bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
+		SELECT m.conversation_id AS conversation_id, m.id AS message_id, m.sender_name AS sender_name,
+			m.text AS snippet, bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
 		FROM messages_fts
 		JOIN messages m ON m.rowid = messages_fts.rowid
 		WHERE messages_fts MATCH :fts
@@ -130,7 +131,7 @@ const conversationsByTitleOrMessage = `WITH matched AS (
 		) AS rn
 		FROM matched
 	)
-	SELECT ` + conversationColumns + `, hits.snippet AS match
+	SELECT ` + conversationColumns + `, hits.snippet AS match, hits.message_id AS match_message_id, hits.sender_name AS match_sender
 	` + conversationFrom + `
 	LEFT JOIN hits ON hits.conversation_id = c.id AND hits.rn = 1
 	WHERE c.title LIKE :pattern ESCAPE '\' OR hits.conversation_id IS NOT NULL
@@ -294,11 +295,13 @@ func scanConversation(row scanner) (domain.Conversation, error) {
 }
 
 // scanConversationMatch reads conversationColumns followed by the search
-// match column.
+// match, matched message id and matched sender columns.
 func scanConversationMatch(row scanner) (domain.Conversation, error) {
-	var match sql.NullString
-	c, err := scanConversationWith(row, &match)
+	var match, messageID, sender sql.NullString
+	c, err := scanConversationWith(row, &match, &messageID, &sender)
 	c.Match = match.String
+	c.MatchMessageID = messageID.String
+	c.MatchSender = sender.String
 
 	return c, err
 }

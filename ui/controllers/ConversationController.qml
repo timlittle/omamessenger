@@ -63,6 +63,13 @@ Item {
   // whichever message this names.
   property string highlightedId: ""
 
+  // _pendingHighlightId is a message openMessage was asked to land on,
+  // applied once the conversation's initial page has loaded (see
+  // _applyInitialHighlight): the message is not in timeline yet at the
+  // moment openMessage runs, since loading it is what loadInitial below
+  // is about to do.
+  property string _pendingHighlightId: ""
+
   // messages is the loaded timeline, newest first.
   readonly property alias messages: timeline.model
 
@@ -173,6 +180,38 @@ Item {
 
     root._setActive(conversation.id, conversation);
     if (root.listController) root.listController.selectId(conversation.id);
+  }
+
+  // openMessage opens conversation, the same as open(), then highlights
+  // and scrolls to messageId once its initial page has loaded: the
+  // command palette's "Messages" section needs Enter to land on the
+  // exact message that matched, not just open the chat onto whatever
+  // loads as newest. Best effort: a message older than the page that
+  // loads is not found, and the highlight falls back to the newest
+  // message, same as any other open.
+  function openMessage(conversation: var, messageId: string): void {
+    if (!conversation || !conversation.id) return;
+
+    root._pendingHighlightId = messageId;
+    root._setActive(conversation.id, conversation);
+    if (root.listController) root.listController.selectId(conversation.id);
+  }
+
+  // _applyInitialHighlight runs once a conversation's initial page has
+  // loaded: it lands on whatever openMessage asked for, if that message
+  // turned out to be in the page, otherwise the newest message, same as
+  // resetHighlight on its own.
+  function _applyInitialHighlight(): void {
+    const pending = root._pendingHighlightId;
+    root._pendingHighlightId = "";
+
+    if (pending && timeline.find(pending)) {
+      root.highlightedId = pending;
+      root.scrollToMessageRequested(pending);
+      return;
+    }
+
+    root.resetHighlight();
   }
 
   // closeIfOpen closes the open conversation if it is id: used when the
@@ -596,7 +635,7 @@ Item {
 
   MessageTimeline {
     id: timeline
-    onInitialLoaded: root.resetHighlight()
+    onInitialLoaded: root._applyInitialHighlight()
   }
 
   Timer {

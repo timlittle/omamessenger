@@ -42,6 +42,17 @@ Item {
   // pendingAuth is the sign-in step an account is waiting on, or null.
   readonly property var pendingAuth: appState.pendingAuth
 
+  // readReceipts mirrors the last readReceipts value sent to the helper,
+  // true until applySettings or toggleReadReceipts says otherwise: off
+  // means incognito mode, so the footer can show it quietly and the
+  // palette's "Toggle read receipts" command knows which way to flip.
+  property bool readReceipts: true
+
+  // _lastSettings is the plugin settings object last given to
+  // applySettings, kept so toggleReadReceipts can resend every other
+  // setting unchanged alongside the one it flips.
+  property var _lastSettings: ({})
+
   // shell is the host facade Omarchy injects after creating this service,
   // used to summon the panel open on a conversation when a notification is
   // clicked. Never `required`: Quickshell refuses to load a service that
@@ -103,9 +114,24 @@ Item {
     helperProcess.stop();
   }
 
-  // applySettings forwards the plugin's settings to the helper.
+  // applySettings forwards the plugin's settings to the helper. The
+  // fallback passed to Settings.withDefaults is root.readReceipts, its
+  // own current value, not the manifest default: Omarchy only sends a
+  // bar widget the settings the user has changed there, so an unrelated
+  // change (a mute edit, a plugin reload) would otherwise re-forward
+  // {} and silently undo a readReceipts flip the palette's own command
+  // just made. An explicit readReceipts from Omarchy itself still wins.
   function applySettings(settings: var): void {
-    root.request("settings.apply", Settings.withDefaults(settings), function() {});
+    root._lastSettings = settings ?? {};
+    const merged = Settings.withDefaults(settings, root.readReceipts);
+    root.readReceipts = merged.readReceipts;
+    root.request("settings.apply", merged, function() {});
+  }
+
+  // toggleReadReceipts flips incognito read receipts and tells the
+  // helper at once, for the command palette's "Toggle read receipts".
+  function toggleReadReceipts(): void {
+    root.applySettings(Object.assign({}, root._lastSettings, { readReceipts: !root.readReceipts }));
   }
 
   // openKeyConfigFile is the palette's "Open key bindings file" command:

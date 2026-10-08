@@ -45,6 +45,11 @@ var BINDINGS = [
   { action: 'account.add', keys: [], contexts: ['global'], label: 'Add an account', command: true },
   { action: 'account.remove', keys: [], contexts: ['global'], label: 'Remove an account', command: true },
   { action: 'account.addOwnKeys', keys: [], contexts: ['global'], label: 'Add a Telegram account with your own API keys', command: true },
+  // Incognito read receipts: off means MarkRead never reaches the
+  // service, so a chat read here stays unread on the phone and any
+  // other device signed into the same account. No key of its own, like
+  // account.add; reached through the command palette.
+  { action: 'settings.toggleReadReceipts', keys: [], contexts: ['global'], label: 'Toggle read receipts', command: true },
   { action: 'rail.all', keys: ['Ctrl+0'], contexts: ['global'], label: 'Show all services', command: true },
   { action: 'rail.whatsapp', keys: ['Ctrl+1'], contexts: ['global'], label: 'Show WhatsApp', command: true },
   { action: 'rail.telegram', keys: ['Ctrl+2'], contexts: ['global'], label: 'Show Telegram', command: true },

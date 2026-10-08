@@ -207,11 +207,21 @@ type Settings struct {
 	Notifications       bool
 	NotificationPreview bool
 	NotificationDetail  string
+
+	// ReadReceipts is false for incognito mode: MarkRead still clears the
+	// local unread count, but neither Commands.MarkRead nor Ingest's
+	// debounced read receipt ever reaches the dispatcher, so the
+	// service, and any other device signed into the same account, keep
+	// showing the chat unread.
+	ReadReceipts bool
 }
 
 // DefaultSettings apply until the UI sends the user's settings.
 func DefaultSettings() Settings {
-	return Settings{Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage)}
+	return Settings{
+		Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage),
+		ReadReceipts: true,
+	}
 }
 
 // detail resolves the notification detail level these settings ask for:

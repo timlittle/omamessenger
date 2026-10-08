@@ -108,6 +108,12 @@ type Conversation struct {
 
 	// Match is a snippet of the newest message that matched a search query.
 	Match string `json:"match,omitempty"`
+
+	// MatchMessageID and MatchSender identify the message Match is a
+	// snippet of: enough for a caller to open it and highlight it. Both
+	// are "" when only the title matched, or nothing matched at all.
+	MatchMessageID string `json:"matchMessageId,omitempty"`
+	MatchSender    string `json:"matchSender,omitempty"`
 }
 
 // Message is one message in a conversation. Created is in Unix

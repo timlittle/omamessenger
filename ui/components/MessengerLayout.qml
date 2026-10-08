@@ -149,14 +149,16 @@ Item {
     }
   }
 
-  // Search focus mirrors ListController.searchFocused the same way: a
-  // request focuses the field, a field focus change is read back, and the
-  // field is blurred if the controller leaves search while it still holds
-  // real focus (the Escape chain only updates the controller's flag).
+  // Search focus mirrors ListController.searchFocused: a field focus
+  // change (a click) is read back, and the field is blurred if the
+  // controller leaves search while it still holds real focus (the
+  // Escape chain only updates the controller's flag). Ctrl+G used to
+  // request this field's focus directly; it opens the command palette
+  // now instead (see WindowController), so this only ever mirrors a
+  // mouse click into the field.
   Connections {
     target: root.listController
 
-    function onFocusRequested() { listColumn.searchField.forceActiveFocus() }
     function onSearchFocusedChanged() {
       if (root.listController.searchFocused || !listColumn.searchField.activeFocus) return
       listColumn.searchField.focus = false

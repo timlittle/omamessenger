@@ -343,7 +343,9 @@ func (in *Ingest) scheduleMarkRead(conv domain.Conversation, unread int) {
 
 // flushMarkRead sends the debounced MarkRead call for the most recently
 // scheduled conversation, on its own background context: nothing in
-// whichever call triggered the schedule survives the wait.
+// whichever call triggered the schedule survives the wait. With read
+// receipts off, the local clear this debounce followed already stands on
+// its own, so the service is never told; see Settings.ReadReceipts.
 func (in *Ingest) flushMarkRead() {
 	in.mu.Lock()
 	conv := in.pendingConv
@@ -351,6 +353,11 @@ func (in *Ingest) flushMarkRead() {
 	in.pendingRead = nil
 	in.pendingUnread = 0
 	in.mu.Unlock()
+
+	settings, _, _ := in.ui.snapshot()
+	if !settings.ReadReceipts {
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), markReadTimeout)
 	defer cancel()

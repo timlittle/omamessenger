@@ -42,11 +42,14 @@ func (c *Commands) OpenConversation(ctx context.Context, accountID, contactID st
 }
 
 // MarkRead clears a conversation's unread count, then tells the
-// service. The service hears the count this conversation actually had
-// before clearing it: a connector such as WhatsApp's needs that number
-// to know how many of a conversation's newest incoming messages to send
-// a read receipt for, and asking the store only after the local clear
-// would always report zero, turning every such call into a silent
+// service, unless the user has turned read receipts off: incognito mode
+// clears the badge locally but never reports it read, so the service,
+// and any other device signed into the same account, keep showing the
+// chat unread. The service hears the count this conversation actually
+// had before clearing it: a connector such as WhatsApp's needs that
+// number to know how many of a conversation's newest incoming messages
+// to send a read receipt for, and asking the store only after the local
+// clear would always report zero, turning every such call into a silent
 // no-op for that service.
 func (c *Commands) MarkRead(ctx context.Context, conversationID string) error {
 	before := c.events.unreadTotal(ctx)
@@ -63,6 +66,11 @@ func (c *Commands) MarkRead(ctx context.Context, conversationID string) error {
 
 	if changed {
 		c.events.conversationChanged(ctx, conversationID, before)
+	}
+
+	settings, _, _ := c.ui.snapshot()
+	if !settings.ReadReceipts {
+		return nil
 	}
 
 	return c.dispatcher.MarkRead(ctx, conv)

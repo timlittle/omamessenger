@@ -18,6 +18,7 @@ OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and H
 - Pin, archive and a local-only hide, with a one-month recency filter and a "show all" to see everything
 - Desktop notifications; click one to open its conversation
 - Paste or attach an image to a message
+- Incognito read receipts (**Toggle read receipts** in the command palette): off means the service is never told a chat here was read, so the phone and any other device signed into the same account keep showing it unread
 - Keyboard-first, with a command palette (**Ctrl+/**) listing every action and its shortcut
 - Light on memory: about 100 MB in use, against about 1 GB for Telegram Desktop and WhatsApp web running side by side
 
@@ -50,10 +51,9 @@ Choose **Add an account** in the window or the command palette. Scan the QR code
 | Keys | Does |
 | --- | --- |
 | Ctrl+/ | Command palette |
-| Ctrl+K | Jump to a conversation |
+| Ctrl+K, Ctrl+G | Jump to a conversation or search messages, in one palette |
 | Ctrl+Shift+A | Show unread conversations |
 | Ctrl+N | New message |
-| Ctrl+G | Search messages |
 | Enter | Send (while writing) |
 | Esc | Step back |
 | Ctrl+W | Close the window |
@@ -86,6 +86,8 @@ Run `oma-messenger-service doctor`, or **Run health check** in the command palet
 WhatsApp chats show the recent history your phone syncs when you link the device; scrolling back further than that is not currently supported, unlike Telegram, which loads more on demand.
 
 Removing an account (**Remove an account** in the command palette) signs it out and deletes its session and messages from this computer. It does not touch your chat history on the service or on other devices.
+
+Turning off read receipts (**Toggle read receipts** in the command palette, or the plugin's own "Read receipts" setting) only ever affects what this account tells the service: a chat read here still clears its own badge locally, but Telegram's or WhatsApp's read receipt is never sent, so the sender, and this account's own other devices, keep seeing it as unread. A quiet "Read receipts off" label shows in the footer while it is on.
 
 ## Uninstall
 

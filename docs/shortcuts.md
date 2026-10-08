@@ -7,8 +7,7 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Keys | Does |
 | --- | --- |
 | Ctrl+/ or Ctrl+Shift+P | Command palette |
-| Ctrl+K or Ctrl+T | Jump to a conversation |
-| Ctrl+G | Search messages |
+| Ctrl+K, Ctrl+T or Ctrl+G | Jump to a conversation or search messages, in one palette |
 | Ctrl+N or Ctrl+Shift+K | New message |
 | Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (works from the list, an open conversation or the unread view, and keeps whichever mode you were in: writing stays writing, scrolling stays scrolling) |
 | Ctrl+Shift+A | Show only unread conversations, across every service and account (Esc or the same shortcut returns to the previous list) |
@@ -19,6 +18,10 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Ctrl+Q | Quit |
 | Ctrl+R | Retry installing the helper, if it failed to install |
 | Esc | Step back: close the palette, a dialog, account setup or the photo viewer, clear the search, leave the composer or the conversation, or leave the unread view |
+
+Ctrl+K and Ctrl+G both open the same palette, so there is one search to reach for instead of two: typing filters conversations by title at once, unread ones first, and, after a short pause, also searches message text, listing matches in their own "Messages" section below, each showing who sent it, which conversation it is in and a snippet. Up/Down move the highlight across both sections together (j/k are not special here: they are just typed into the search field); Enter on a conversation opens it, and Enter on a message opens its conversation and highlights that exact message.
+
+"Toggle read receipts", in the command palette (Ctrl+/), switches incognito mode: off, OmaMessenger never tells a service a chat here was read, so the sender and this account's own other devices keep showing it unread, even though it still clears locally. The footer shows "Read receipts off" whenever incognito mode is on, so it is never a silent surprise. It is also a plugin setting, under the same name.
 
 ## Conversation list
 
