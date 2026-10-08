@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"sync"
 
@@ -82,7 +83,10 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	}
 
 	dispatcher := tg.NewUpdateDispatcher()
-	gaps := updates.New(updates.Config{Handler: dispatcher})
+	gaps, err := c.newGapManager(dispatcher)
+	if err != nil {
+		return err
+	}
 	client := gotd.NewClient(creds.APIID, creds.APIHash, gotd.Options{
 		SessionStorage: &session.FileStorage{Path: sessionPath(c.dir, c.account.ID)},
 		UpdateHandler:  gaps,
@@ -111,6 +115,33 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 
 		return gaps.Run(ctx, client.API(), self.ID, updates.AuthOptions{})
 	})
+}
+
+// newGapManager builds the update manager for this account, backed by
+// its saved pts, qts, seq, date and access hashes (see updatestate.go),
+// so a restart always resumes updates.getDifference from where an
+// earlier run left off instead of losing whatever happened while the
+// helper was not running.
+func (c *Connector) newGapManager(dispatcher tg.UpdateDispatcher) (*updates.Manager, error) {
+	stateStorage, err := newUpdateStorage(updateStatePath(c.dir, c.account.ID))
+	if err != nil {
+		return nil, err
+	}
+
+	return updates.New(updates.Config{
+		Handler:          dispatcher,
+		Storage:          stateStorage,
+		AccessHasher:     stateStorage,
+		UserAccessHasher: stateStorage,
+		// The gap since this account's saved pts was too large for
+		// Telegram to hand back as a list of updates, so gotd itself
+		// falls back to resuming from the position Telegram gives it
+		// instead, the same loss of history a very long offline gap
+		// always risks. Logged so a real report of missing messages
+		// can be told apart from a connector bug.
+		OnTooLong:        func() { log.Printf("telegram: update gap too long, resyncing") },
+		OnChannelTooLong: func(int64) { log.Printf("telegram: channel update gap too long, resyncing") },
+	}), nil
 }
 
 // authorize signs the account in unless its saved session already is.

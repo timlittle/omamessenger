@@ -15,15 +15,33 @@ import (
 // fakeTelegram answers API requests with canned replies, keyed by the
 // request's Go type, and records the requests it was sent.
 type fakeTelegram struct {
-	mu       sync.Mutex
-	replies  map[string]bin.Encoder
-	failures map[string][]error
-	requests []bin.Encoder
+	mu        sync.Mutex
+	replies   map[string]bin.Encoder
+	sequences map[string][]bin.Encoder
+	failures  map[string][]error
+	requests  []bin.Encoder
 }
 
 // newFakeTelegram returns a fake with no replies; unanswered requests fail.
 func newFakeTelegram() *fakeTelegram {
-	return &fakeTelegram{replies: map[string]bin.Encoder{}, failures: map[string][]error{}}
+	return &fakeTelegram{
+		replies:   map[string]bin.Encoder{},
+		sequences: map[string][]bin.Encoder{},
+		failures:  map[string][]error{},
+	}
+}
+
+// replySequence queues responses to request's type, consumed one per
+// call in order; once exhausted, Invoke falls back to whatever reply
+// was set with reply. Use this where a single request type must answer
+// differently across a few calls, such as Telegram reporting its
+// difference too long once before a normal one completes the resync.
+func (f *fakeTelegram) replySequence(request bin.Encoder, responses ...bin.Encoder) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	key := fmt.Sprintf("%T", request)
+	f.sequences[key] = append(f.sequences[key], responses...)
 }
 
 // failNext makes the next requests of request's type fail with errs, in
@@ -58,6 +76,10 @@ func (f *fakeTelegram) Invoke(_ context.Context, input bin.Encoder, output bin.D
 	}
 
 	response, ok := f.replies[key]
+	if seq := f.sequences[key]; len(seq) > 0 {
+		f.sequences[key] = seq[1:]
+		response, ok = seq[0], true
+	}
 	if !ok {
 		return fmt.Errorf("fake telegram: no reply for %T", input)
 	}
