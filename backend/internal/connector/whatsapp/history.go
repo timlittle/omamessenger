@@ -110,13 +110,9 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	c.reportSyncedOrganize(ctx, sink, conv)
 
 	target := syncTarget{syncSource: src, chat: jid, convRemoteID: conv.RemoteID}
-	var incoming []domain.Message
 	for _, hm := range sc.GetMessages() {
-		if m, ok := c.syncMessage(ctx, sink, target, hm); ok && !m.Outgoing {
-			incoming = append(incoming, m)
-		}
+		c.syncMessage(ctx, sink, target, hm)
 	}
-	c.noteUnreadTail(conv.RemoteID, incoming, conv.Unread)
 
 	sink.Unread(ctx, c.account.ID, conv.RemoteID, conv.Unread)
 }
@@ -177,10 +173,14 @@ func hasRealContent(hms []*waHistorySync.HistorySyncMsg) bool {
 
 // syncMessage reports one of a conversation's synced messages and
 // remembers its media reference, if it has one, for a later download,
-// returning the message so syncConversation can work out which of them
-// are still unread, or false for a message with no content of its own
-// to show (see isContentless).
-func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target syncTarget, hm *waHistorySync.HistorySyncMsg) (domain.Message, bool) {
+// doing nothing for a message with no content of its own to show (see
+// isContentless). Its message_keys row (see keys.go), saved the same
+// way a live message's is, is what later lets MarkRead pick this
+// message out of the conversation's newest ones, even after a restart
+// (see markread.go): history sync carries each conversation's unread
+// count but not which of its messages are unread, so MarkRead chooses
+// for itself once it knows that count.
+func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target syncTarget, hm *waHistorySync.HistorySyncMsg) {
 	content := hm.GetMessage().GetMessage()
 	if content != nil {
 		if field, ok := unknownContentKind(content); ok {
@@ -190,34 +190,14 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 
 	m, ok := historyMessage(ctx, target.dev, target.chat, hm)
 	if !ok {
-		return domain.Message{}, false
+		return
 	}
 	m = c.improvedSenderName(m)
 
 	saveMediaRef(ctx, target.media, target.convRemoteID, m.RemoteID, content)
 	info := historyMessageInfo(target.chat, hm.GetMessage())
-	saveMessageKey(ctx, target.media, target.convRemoteID, m.RemoteID, messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing})
+	saveMessageKey(ctx, target.media, target.convRemoteID, m.RemoteID, messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing, timestamp: m.Created})
 	sink.History(ctx, c.account.ID, target.convRemoteID, m)
-
-	return m, true
-}
-
-// noteUnreadTail marks the newest unread incoming messages of a synced
-// conversation as pending read, so a MarkRead for it, once the user
-// opens it, tells WhatsApp about messages that arrived before this
-// process ever connected live and so were never noted any other way.
-// History sync carries each conversation's unread count but not which
-// of its messages are unread, so the newest unread incoming messages,
-// in the order the sync listed them, are taken as the best information
-// available.
-func (c *Connector) noteUnreadTail(convRemoteID string, incoming []domain.Message, unread int) {
-	if unread > len(incoming) {
-		unread = len(incoming)
-	}
-
-	for _, m := range incoming[len(incoming)-unread:] {
-		c.notePendingRead(convRemoteID, m.SenderID, m.RemoteID)
-	}
 }
 
 // resolveConversation is conv's best title and, for a group, its member

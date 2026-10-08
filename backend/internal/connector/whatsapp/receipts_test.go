@@ -1,12 +1,12 @@
 package whatsapp
 
-// MarkRead and receipt progress are driven through a fake device and,
-// for receipts, by firing the event fakeDevice.onEvent recorded, since
-// neither has any other way to be exercised without reaching WhatsApp.
+// Outgoing receipt progress is driven through a fake device, by firing
+// the event fakeDevice.onEvent recorded, since that is the only way to
+// exercise it without reaching WhatsApp. MarkRead itself is covered in
+// markread_test.go.
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"go.mau.fi/whatsmeow/types"
@@ -23,77 +23,6 @@ var (
 	groupMemberA = types.NewJID("15551111111", types.DefaultUserServer)
 	groupMemberB = types.NewJID("15552222222", types.DefaultUserServer)
 )
-
-func TestMarkRead_SendsOneCallPerSenderThenForgetsThem(t *testing.T) {
-	t.Parallel()
-
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-
-	c.notePendingRead(groupChat.RemoteID, remoteID(groupMemberA), "m1")
-	c.notePendingRead(groupChat.RemoteID, remoteID(groupMemberA), "m2")
-	c.notePendingRead(groupChat.RemoteID, remoteID(groupMemberB), "m3")
-
-	if err := c.MarkRead(t.Context(), groupChat); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(dev.markReadCalls) != 2 {
-		t.Fatalf("markRead calls = %d, want 2, one per sender: %+v", len(dev.markReadCalls), dev.markReadCalls)
-	}
-
-	byChat := groupJID
-	for _, call := range dev.markReadCalls {
-		if call.chat != byChat {
-			t.Errorf("call chat = %v, want the group JID", call.chat)
-		}
-	}
-
-	if err := c.MarkRead(t.Context(), groupChat); err != nil {
-		t.Fatal(err)
-	}
-	if len(dev.markReadCalls) != 2 {
-		t.Errorf("markRead calls after a second MarkRead = %d, want still 2: nothing left pending", len(dev.markReadCalls))
-	}
-}
-
-func TestMarkRead_NoopWithNothingPending(t *testing.T) {
-	t.Parallel()
-
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-
-	if err := c.MarkRead(t.Context(), directChat); err != nil {
-		t.Fatal(err)
-	}
-	if len(dev.markReadCalls) != 0 {
-		t.Errorf("markRead calls = %d, want none", len(dev.markReadCalls))
-	}
-}
-
-func TestMarkRead_FailsBeforeConnecting(t *testing.T) {
-	t.Parallel()
-
-	c := newTestConnector(newFakeDevice())
-	if err := c.MarkRead(t.Context(), directChat); !errors.Is(err, errNotConnected) {
-		t.Errorf("MarkRead = %v, want errNotConnected", err)
-	}
-}
-
-func TestMarkRead_FailsForABadConversationID(t *testing.T) {
-	t.Parallel()
-
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-
-	c.notePendingRead("not-a-jid", remoteID(directPeer), "m1")
-	if err := c.MarkRead(t.Context(), domain.Conversation{RemoteID: "not-a-jid"}); !errors.Is(err, errBadRemoteID) {
-		t.Errorf("MarkRead = %v, want errBadRemoteID", err)
-	}
-}
 
 func TestReceipt_DirectChatReportsOnTheOnlyRecipient(t *testing.T) {
 	t.Parallel()

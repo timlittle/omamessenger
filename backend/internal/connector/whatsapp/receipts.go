@@ -1,8 +1,8 @@
 package whatsapp
 
 // receipts.go reports delivery and read progress for messages this
-// account sent, from the receipts whatsmeow reports for them, and tells
-// WhatsApp when the user has read a conversation.
+// account sent, from the receipts whatsmeow reports for them. Telling
+// WhatsApp when the user has read a conversation is markread.go's job.
 //
 // For a group, WhatsApp's own tick only advances once every member has
 // caught up: the double tick turns up once everyone's device has the
@@ -16,25 +16,12 @@ package whatsapp
 
 import (
 	"context"
-	"fmt"
-	"time"
 
-	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
-
-// maxPendingReadIDsPerSender bounds how many unread message ids this
-// connector remembers for one sender in one conversation, so a chat
-// that is never marked read cannot grow this connector's memory without
-// bound.
-const maxPendingReadIDsPerSender = 500
-
-// readTimeout bounds how long MarkRead waits for WhatsApp to accept a
-// read receipt.
-const readTimeout = 30 * time.Second
 
 // rankOf orders the receipt statuses this connector acts on, so a
 // group's slowest participant can be found by comparing ranks; 0 means a
@@ -151,95 +138,4 @@ func completedStatus(sm *sentMessage) (status string, complete bool) {
 	default:
 		return "", false
 	}
-}
-
-// notePendingRead records an incoming message as unread, so a later
-// MarkRead for its conversation tells WhatsApp it was read. The live
-// message handler calls this for every message it reports through the
-// sink's Incoming, except this account's own messages from another
-// device, which are never unread.
-func (c *Connector) notePendingRead(convRemoteID, senderRemoteID, messageRemoteID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.unread == nil {
-		c.unread = map[string]map[string][]string{}
-	}
-	bySender := c.unread[convRemoteID]
-	if bySender == nil {
-		bySender = map[string][]string{}
-		c.unread[convRemoteID] = bySender
-	}
-
-	ids := bySender[senderRemoteID]
-	if len(ids) >= maxPendingReadIDsPerSender {
-		ids = ids[1:] // drop the oldest so a chat never marked read cannot grow this without bound
-	}
-	bySender[senderRemoteID] = append(ids, messageRemoteID)
-}
-
-// takePendingRead returns and forgets the unread message ids tracked for
-// the conversation named by convRemoteID, by sender, so MarkRead sends
-// each sender's receipt once.
-func (c *Connector) takePendingRead(convRemoteID string) map[string][]string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	pending := c.unread[convRemoteID]
-	delete(c.unread, convRemoteID)
-
-	return pending
-}
-
-// MarkRead tells WhatsApp the unread messages tracked for conv have been
-// read, one call per sender since WhatsApp only accepts message ids from
-// a single sender in one call; in a group, that sender is the
-// participant who sent them.
-func (c *Connector) MarkRead(ctx context.Context, conv domain.Conversation) error {
-	dev, _, err := c.session()
-	if err != nil {
-		return err
-	}
-
-	pending := c.takePendingRead(conv.RemoteID)
-	if len(pending) == 0 {
-		return nil
-	}
-
-	chat, err := jidFromRemoteID(conv.RemoteID)
-	if err != nil {
-		return fmt.Errorf("whatsapp: mark read: %w", err)
-	}
-
-	readCtx, cancel := context.WithTimeout(ctx, readTimeout)
-	defer cancel()
-
-	for senderRemoteID, ids := range pending {
-		if err := markReadFrom(readCtx, dev, chat, senderRemoteID, ids); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// markReadFrom tells WhatsApp the messages ids, all sent by the
-// participant named senderRemoteID, have been read, skipping a sender id
-// this connector did not make rather than failing the whole call.
-func markReadFrom(ctx context.Context, dev device, chat types.JID, senderRemoteID string, ids []string) error {
-	sender, err := jidFromRemoteID(senderRemoteID)
-	if err != nil {
-		return nil
-	}
-
-	messageIDs := make([]types.MessageID, len(ids))
-	for i, id := range ids {
-		messageIDs[i] = types.MessageID(id)
-	}
-
-	if err := dev.markRead(ctx, messageIDs, chat, sender); err != nil {
-		return fmt.Errorf("whatsapp: mark read: %w", err)
-	}
-
-	return nil
 }

@@ -129,7 +129,7 @@ func TestDeleteMessages_RevokesOurOwnMessageForEveryone(t *testing.T) {
 	c := connectedToWithMedia(t, dev, &sink)
 	media := c.mediaFor()
 
-	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", "", true); err != nil {
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: "", fromMe: true, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +154,7 @@ func TestDeleteMessages_RefusesToRevokeSomeoneElsesMessage(t *testing.T) {
 	c := connectedToWithMedia(t, dev, &sink)
 	media := c.mediaFor()
 
-	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", remoteID(directPeer), false); err != nil {
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -189,7 +189,7 @@ func TestDeleteMessages_DeletesForMeWithAnAppStatePatch(t *testing.T) {
 	media := c.mediaFor()
 
 	// Someone else's message: "for me" works regardless of who sent it.
-	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", remoteID(directPeer), false); err != nil {
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 

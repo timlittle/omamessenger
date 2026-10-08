@@ -5,9 +5,9 @@ package whatsapp
 // Run itself does not need to know about every event type whatsmeow can
 // report: receipts (delivery and read progress for messages this
 // account sent, see receipts.go), history sync and live messages (see
-// history.go and live.go), typing, the pin, archive and mute changes a
-// phone makes to its own chat list, and a message deleted "for me" on
-// another linked device (see delete.go). Keeping every case a single call
+// history.go and live.go), typing, the pin, archive, mute and mark-read
+// changes a phone makes to its own chat list, and a message deleted "for
+// me" on another linked device (see delete.go). Keeping every case a single call
 // into another file is what keeps this switch easy to extend without
 // conflict: a new kind of event is a new case, never a change to how
 // Run wires this up.
@@ -22,9 +22,11 @@ import (
 
 // handleEvents registers dev's one event handler for this run and
 // returns a func that unregisters it, mirroring dev.onStatus's shape for
-// connection status. Events this connector only ever re-titles a chat
-// from, or deliberately ignores, are left to handleNameEvent, so this
-// switch's own complexity does not grow with every later addition there.
+// connection status. The chat list changes a phone makes to its own
+// organizing or read state, and the events this connector only ever
+// re-titles a chat from or deliberately ignores, are left to
+// handleChatListEvent, so this switch's own complexity does not grow
+// with every later addition there.
 func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaStore, sink connector.Sink) (unregister func()) {
 	return dev.onEvent(func(evt any) {
 		switch e := evt.(type) {
@@ -41,29 +43,30 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 		case *events.Message:
 			c.handleMessage(ctx, sink, dev, media, e)
 		case *events.UndecryptableMessage:
-			c.handleUndecryptable(ctx, sink, dev, e)
+			c.handleUndecryptable(ctx, sink, dev, media, e)
 		case *events.ChatPresence:
 			c.handleChatPresence(ctx, sink, dev, e)
-		case *events.Pin:
-			c.handlePin(ctx, sink, dev, e)
-		case *events.Archive:
-			c.handleArchive(ctx, sink, dev, e)
 		case *events.DeleteForMe:
 			c.handleDeleteForMe(ctx, sink, dev, e)
 		default:
-			c.handleNameEvent(ctx, sink, dev, evt)
+			c.handleChatListEvent(ctx, sink, dev, evt)
 		}
 	})
 }
 
-// handleNameEvent dispatches the events that can only retitle an
-// already-known chat (see contacts.go), the mute changes this
-// connector deliberately does not propagate, and the primary phone's
-// answer to a media retry request (see retry.go): none of these need
-// their own case in handleEvents' own switch, which already sits at
-// this linter's complexity limit.
-func (c *Connector) handleNameEvent(ctx context.Context, sink connector.Sink, dev device, evt any) {
+// handleChatListEvent dispatches a chat pinned, archived or marked read
+// from the phone, the events that can only retitle an already-known
+// chat (see contacts.go), the primary phone's answer to a media retry
+// request (see retry.go), and the mute changes this connector
+// deliberately does not propagate.
+func (c *Connector) handleChatListEvent(ctx context.Context, sink connector.Sink, dev device, evt any) {
 	switch e := evt.(type) {
+	case *events.Pin:
+		c.handlePin(ctx, sink, dev, e)
+	case *events.Archive:
+		c.handleArchive(ctx, sink, dev, e)
+	case *events.MarkChatAsRead:
+		c.handleMarkChatAsRead(ctx, sink, dev, e)
 	case *events.Contact:
 		c.handleContactUpdate(ctx, sink, dev, e)
 	case *events.PushName:

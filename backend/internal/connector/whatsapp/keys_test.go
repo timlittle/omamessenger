@@ -1,11 +1,15 @@
 package whatsapp
 
-// keys_test.go checks that message_keys round-trips a message's sender
-// and from-me flag, and that senderKeyID and targetKey turn that into
+// keys_test.go checks that message_keys round-trips a message's
+// sender, from-me flag and timestamp, that an older database still
+// missing the timestamp column is migrated to have one, that
+// unreadMessageKeys and latestMessageKey read back what MarkRead needs
+// from it, and that senderKeyID and targetKey turn a saved key into
 // the key WhatsApp needs for a direct chat, a group and a message this
 // account sent itself.
 
 import (
+	"database/sql"
 	"testing"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -21,7 +25,7 @@ func TestMessageKey_RoundTripsWhatItSaved(t *testing.T) {
 	t.Parallel()
 
 	media := newTestMediaStore(t)
-	if err := media.putMessageKey(t.Context(), "chat-1", "M1", "sender-1@s.whatsapp.net", false); err != nil {
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "sender-1@s.whatsapp.net", fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -49,10 +53,10 @@ func TestMessageKey_PutReplacesAnEarlierSave(t *testing.T) {
 	t.Parallel()
 
 	media := newTestMediaStore(t)
-	if err := media.putMessageKey(t.Context(), "chat-1", "M1", "a@s.whatsapp.net", false); err != nil {
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
-	if err := media.putMessageKey(t.Context(), "chat-1", "M1", "", true); err != nil {
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "", fromMe: true, timestamp: 2000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -68,7 +72,130 @@ func TestSaveMessageKey_DoesNothingWithoutAMediaStore(t *testing.T) {
 	// A nil media store means a test connector, or a run that could not
 	// open one, was passed in; saveMessageKey must not panic, it must
 	// just skip the save.
-	saveMessageKey(t.Context(), nil, "chat-1", "M1", messageKey{senderID: "sender-1@s.whatsapp.net"})
+	saveMessageKey(t.Context(), nil, "chat-1", "M1", messageKey{senderID: "sender-1@s.whatsapp.net", timestamp: 1000})
+}
+
+func TestEnsureMessageKeysTable_AddsTimestampToAnOlderSchema(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", "file::memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	const oldSchema = `CREATE TABLE message_keys (
+		conversation_id TEXT NOT NULL,
+		message_id      TEXT NOT NULL,
+		sender_id       TEXT NOT NULL,
+		from_me         INTEGER NOT NULL,
+		PRIMARY KEY (conversation_id, message_id)
+	)`
+	if _, err := db.ExecContext(t.Context(), oldSchema); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ensureMessageKeysTable(t.Context(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &mediaStore{db: db}
+	if err := m.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 1234}); err != nil {
+		t.Fatal(err)
+	}
+
+	key, found, err := m.messageKeyFor(t.Context(), "chat-1", "M1")
+	if err != nil || !found || key.senderID != "a@s.whatsapp.net" {
+		t.Errorf("key = %+v found=%v err=%v, want the row saved after the migration added the missing column", key, found, err)
+	}
+}
+
+func TestUnreadMessageKeys_GroupsTheNewestIncomingIDsBySender(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), "chat-1", "old", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := media.putMessageKey(t.Context(), "chat-1", "new", messageKey{senderID: "b@s.whatsapp.net", fromMe: false, timestamp: 2000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := media.putMessageKey(t.Context(), "chat-1", "sent", messageKey{senderID: "", fromMe: true, timestamp: 3000}); err != nil {
+		t.Fatal(err)
+	}
+
+	bySender, err := media.unreadMessageKeys(t.Context(), "chat-1", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bySender) != 2 || len(bySender["a@s.whatsapp.net"]) != 1 || len(bySender["b@s.whatsapp.net"]) != 1 {
+		t.Errorf("unread keys = %+v, want one incoming id for each of the two senders, never the sent one", bySender)
+	}
+}
+
+func TestUnreadMessageKeys_LimitsToTheNewestOnes(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), "chat-1", "old", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := media.putMessageKey(t.Context(), "chat-1", "new", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 2000}); err != nil {
+		t.Fatal(err)
+	}
+
+	bySender, err := media.unreadMessageKeys(t.Context(), "chat-1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := bySender["a@s.whatsapp.net"]; len(ids) != 1 || ids[0] != "new" {
+		t.Errorf("unread keys = %+v, want only the newest id", bySender)
+	}
+}
+
+func TestUnreadMessageKeys_ZeroLimitReportsNothingWithoutQuerying(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), "chat-1", "m1", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	bySender, err := media.unreadMessageKeys(t.Context(), "chat-1", 0)
+	if err != nil || len(bySender) != 0 {
+		t.Errorf("unread keys = %+v err=%v, want none for a zero limit", bySender, err)
+	}
+}
+
+func TestLatestMessageKey_ReturnsTheNewestMessageOfAnyKind(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), "chat-1", "m1", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := media.putMessageKey(t.Context(), "chat-1", "m2", messageKey{senderID: "", fromMe: true, timestamp: 2000}); err != nil {
+		t.Fatal(err)
+	}
+
+	id, key, found, err := media.latestMessageKey(t.Context(), "chat-1")
+	if err != nil || !found {
+		t.Fatalf("latestMessageKey = found=%v err=%v, want it found", found, err)
+	}
+	if id != "m2" || !key.fromMe || key.timestamp != 2000 {
+		t.Errorf("latest = id=%q key=%+v, want the newer outgoing message", id, key)
+	}
+}
+
+func TestLatestMessageKey_NotFoundForAnUnknownConversation(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+
+	_, _, found, err := media.latestMessageKey(t.Context(), "chat-1")
+	if err != nil || found {
+		t.Errorf("latestMessageKey = found=%v err=%v, want not found", found, err)
+	}
 }
 
 func TestSenderKeyID(t *testing.T) {

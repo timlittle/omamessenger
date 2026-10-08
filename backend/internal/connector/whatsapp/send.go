@@ -47,12 +47,13 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 	}
 
 	id := dev.generateMessageID()
-	if _, err := dev.sendMessage(sendCtx, jid, msg, id); err != nil {
+	resp, err := dev.sendMessage(sendCtx, jid, msg, id)
+	if err != nil {
 		return fmt.Errorf("whatsapp: send: %w", err)
 	}
 
 	saveOutgoingRef(sendCtx, target.media, conv.RemoteID, string(id), msg)
-	saveMessageKey(sendCtx, target.media, conv.RemoteID, string(id), messageKey{fromMe: true})
+	saveMessageKey(sendCtx, target.media, conv.RemoteID, string(id), messageKey{fromMe: true, timestamp: resp.Timestamp.UnixMilli()})
 	c.trackSent(sentKey(conv.RemoteID, string(id)), m.ID, expectedRecipients(conv))
 	sink.OutgoingStatus(ctx, m.ID, string(id), domain.StatusSent)
 

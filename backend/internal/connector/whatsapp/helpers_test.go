@@ -475,6 +475,22 @@ func connectedToWithMedia(t *testing.T, dev device, sink connector.Sink) *Connec
 	return c
 }
 
+// newConnectorWithMedia returns a connector whose Send, MarkRead and
+// event handling act on dev and media, as if Run had already connected
+// it, without creating a media store of its own the way connectedTo and
+// connectedToWithMedia do. A test that wants to simulate a restart —
+// this run's own in-memory state starting empty, but a media store an
+// earlier run already wrote message keys into still on disk — opens
+// that media store once with newTestMediaStore and builds a connector
+// around it with this, for however many simulated "runs" the test
+// needs.
+func newConnectorWithMedia(dev device, sink connector.Sink, media *mediaStore) *Connector {
+	c := &Connector{account: domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp}, answers: make(chan answer, 1)}
+	c.connected(dev, sink, media)
+
+	return c
+}
+
 // newTestMediaStore opens a media store in a fresh temporary directory,
 // closing it when the test ends.
 func newTestMediaStore(t *testing.T) *mediaStore {

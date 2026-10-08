@@ -23,7 +23,7 @@ func TestReact_SendsAndTalliesADirectReaction(t *testing.T) {
 	c := connectedToWithMedia(t, dev, &sink)
 	media := c.mediaFor()
 
-	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", remoteID(directPeer), false); err != nil {
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,7 +57,7 @@ func TestReact_SetsTheParticipantInAGroup(t *testing.T) {
 	media := c.mediaFor()
 
 	sender := types.NewJID("15557654321", types.DefaultUserServer)
-	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "M2", remoteID(sender), false); err != nil {
+	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "M2", messageKey{senderID: remoteID(sender), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,7 +79,7 @@ func TestReact_ToOurOwnMessageSetsNoParticipant(t *testing.T) {
 	c := connectedToWithMedia(t, dev, &sink)
 	media := c.mediaFor()
 
-	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "M3", "", true); err != nil {
+	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "M3", messageKey{senderID: "", fromMe: true, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -101,7 +101,7 @@ func TestReact_ClearingSendsAnEmptyReactionAndLowersTheTally(t *testing.T) {
 	c := connectedToWithMedia(t, dev, &sink)
 	media := c.mediaFor()
 
-	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", remoteID(directPeer), false); err != nil {
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,7 +158,7 @@ func TestReact_WrapsAWhatsAppError(t *testing.T) {
 	c := connectedToWithMedia(t, dev, &sink)
 	media := c.mediaFor()
 
-	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", remoteID(directPeer), false); err != nil {
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 

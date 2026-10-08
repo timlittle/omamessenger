@@ -72,56 +72,6 @@ func TestHandleHistorySync_ReportsContactsConversationsAndMessages(t *testing.T)
 	}
 }
 
-func TestHandleHistorySync_NotesTheNewestUnreadMessagesForMarkRead(t *testing.T) {
-	t.Parallel()
-
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media := newTestMediaStore(t)
-
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), UnreadCount: u32(1),
-			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "older", false), historyMsg("H2", "newest", false)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
-
-	if err := c.MarkRead(t.Context(), domain.Conversation{RemoteID: "15551234567@s.whatsapp.net"}); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(dev.markReadCalls) != 1 || len(dev.markReadCalls[0].ids) != 1 || string(dev.markReadCalls[0].ids[0]) != "H2" {
-		t.Errorf("markRead calls = %+v, want one call for H2, the newest of the one unread message", dev.markReadCalls)
-	}
-}
-
-func TestHandleHistorySync_NotesNothingForMarkReadWhenNothingIsUnread(t *testing.T) {
-	t.Parallel()
-
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media := newTestMediaStore(t)
-
-	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
-		Conversations: []*waHistorySync.Conversation{{
-			ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"),
-			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "older", false)},
-		}},
-	}}
-	c.handleHistorySync(t.Context(), &sink, dev, media, e)
-
-	if err := c.MarkRead(t.Context(), domain.Conversation{RemoteID: "15551234567@s.whatsapp.net"}); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(dev.markReadCalls) != 0 {
-		t.Errorf("markRead calls = %+v, want none when the sync reported nothing unread", dev.markReadCalls)
-	}
-}
-
 // groupJIDForNaming is the group resolveGroupName's tests resolve a
 // name and member count for, directly, without going through a full
 // history sync event.
@@ -347,7 +297,6 @@ func TestHandleHistorySync_SkipsSystemConversations(t *testing.T) {
 	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
 		Conversations: []*waHistorySync.Conversation{
 			{ID: strPtr("status@broadcast")},
-			{ID: strPtr("0@s.whatsapp.net")},
 			{ID: strPtr("1@newsletter")},
 		},
 	}}
@@ -355,6 +304,30 @@ func TestHandleHistorySync_SkipsSystemConversations(t *testing.T) {
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want none of these system JIDs reported as a conversation", sink.Lines())
+	}
+}
+
+func TestHandleHistorySync_ShowsTheOfficialWhatsAppAccountWhenItHasAMessage(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID:       strPtr("0@s.whatsapp.net"),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "your security code changed", false)},
+		}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("conversation 0@s.whatsapp.net WhatsApp") {
+		t.Errorf("events = %q, want the \"0\" system account shown as a conversation titled WhatsApp", sink.Lines())
+	}
+	if !sink.Has("history 0@s.whatsapp.net H1") {
+		t.Errorf("events = %q, want its security notice reported", sink.Lines())
 	}
 }
 

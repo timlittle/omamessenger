@@ -69,7 +69,7 @@ func mediaRetryEvent(t *testing.T, mediaKey []byte, messageRemoteID string, noti
 func seedRetryMessage(t *testing.T, media *mediaStore, messageRemoteID string, key []byte, path string) {
 	t.Helper()
 
-	if err := media.putMessageKey(t.Context(), directChat.RemoteID, messageRemoteID, remoteID(directPeer), false); err != nil {
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, messageRemoteID, messageKey{senderID: remoteID(directPeer)}); err != nil {
 		t.Fatal(err)
 	}
 

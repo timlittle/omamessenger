@@ -24,7 +24,7 @@ func TestSend_QuotesWithParticipantAndTextInAGroup(t *testing.T) {
 	media := c.mediaFor()
 
 	sender := types.NewJID("15557654321", types.DefaultUserServer)
-	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "quoted-1", remoteID(sender), false); err != nil {
+	if err := media.putMessageKey(t.Context(), groupChat.RemoteID, "quoted-1", messageKey{senderID: remoteID(sender), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -53,7 +53,7 @@ func TestSend_QuotesInADirectChatWithoutAParticipant(t *testing.T) {
 	c := connectedToWithMedia(t, dev, &sink)
 	media := c.mediaFor()
 
-	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "quoted-2", remoteID(directPeer), false); err != nil {
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "quoted-2", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
 

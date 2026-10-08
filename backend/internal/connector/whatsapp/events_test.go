@@ -13,6 +13,7 @@ import (
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -70,6 +71,30 @@ func TestHandleEvents_DispatchesSelfReadReceiptsToSink(t *testing.T) {
 
 	if !sink.Has("unread 15551234567@s.whatsapp.net 0") {
 		t.Errorf("events = %q, want this account's own read, synced from another device, dispatched through handleEvents", sink.Lines())
+	}
+}
+
+func TestHandleEvents_DispatchesMarkChatAsReadToSink(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	media, err := newInMemoryMediaStore(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unregister := c.handleEvents(t.Context(), dev, media, &sink)
+	defer unregister()
+
+	dev.fireEvent(&events.MarkChatAsRead{
+		JID:    types.NewJID("15551234567", types.DefaultUserServer),
+		Action: &waSyncAction.MarkChatAsReadAction{Read: boolPtr(true)},
+	})
+
+	if !sink.Has("unread 15551234567@s.whatsapp.net 0") {
+		t.Errorf("events = %q, want the mark-as-read change dispatched through handleEvents", sink.Lines())
 	}
 }
 

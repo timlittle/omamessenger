@@ -146,29 +146,34 @@ func conversationName(c *waHistorySync.Conversation) string {
 }
 
 // titleFallback is a direct chat's title when nothing else names it
-// yet: the contact's phone number, the way WhatsApp's own clients title
-// an unsaved contact, for a JID on WhatsApp's default server. A JID
-// addressed only by its hidden id (a LID) carries no phone number to
-// show, and its digits are not one, so formatting it the same way would
-// show a meaningless number instead of a name; it gets a neutral label
-// instead.
+// yet: WhatsApp's own fixed name for its "0" system account, the
+// contact's phone number for anything else on WhatsApp's default
+// server, the way WhatsApp's own clients title an unsaved contact, or,
+// for a JID addressed only by its hidden id (a LID), which carries no
+// phone number to show and whose digits are not one, a neutral label
+// rather than a meaningless number.
 func titleFallback(jid types.JID) string {
-	if jid.Server == types.DefaultUserServer {
+	switch {
+	case jid == types.PSAJID:
+		return "WhatsApp"
+	case jid.Server == types.DefaultUserServer:
 		return "+" + jid.User
+	default:
+		return "Unknown contact"
 	}
-
-	return "Unknown contact"
 }
 
 // isSystemJID reports whether jid names something history sync or a
-// live event can deliver that is not a conversation with a person or a
-// group: the status broadcast, an old-style broadcast list, a
-// newsletter channel, or WhatsApp's own "0" system account. None of
-// these are worth showing as a chat, and "0" in particular would
-// otherwise title as the meaningless "+0".
+// live event can deliver that is not a conversation with anyone at
+// all: the status broadcast, an old-style broadcast list, or a
+// newsletter channel. None of these are worth showing as a chat. The
+// "0" system account is not one of these: it sends real security
+// notices and announcements, so it is shown as an ordinary, if
+// read-only in practice, conversation titled "WhatsApp" (see
+// titleFallback) rather than dropped.
 func isSystemJID(jid types.JID) bool {
 	switch {
-	case jid == types.StatusBroadcastJID, jid == types.PSAJID:
+	case jid == types.StatusBroadcastJID:
 		return true
 	case jid.IsBroadcastList():
 		return true

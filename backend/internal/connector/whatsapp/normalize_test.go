@@ -266,6 +266,7 @@ func TestTitleFallback_PhoneNumberOrNeutralLabel(t *testing.T) {
 	}{
 		{"phone JID", types.NewJID("15551234567", types.DefaultUserServer), "+15551234567"},
 		{"LID", types.NewJID("987654", types.HiddenUserServer), "Unknown contact"},
+		{"WhatsApp's own system account", types.PSAJID, "WhatsApp"},
 	}
 
 	for _, tt := range tests {
@@ -288,9 +289,9 @@ func TestIsSystemJID_RecognisesNonConversationJIDs(t *testing.T) {
 		want bool
 	}{
 		{"status broadcast", types.StatusBroadcastJID, true},
-		{"the 0 system account", types.PSAJID, true},
 		{"a broadcast list", types.NewJID("123456", types.BroadcastServer), true},
 		{"a newsletter", types.NewJID("1", types.NewsletterServer), true},
+		{"the 0 system account, shown as a conversation titled WhatsApp", types.PSAJID, false},
 		{"a direct chat", types.NewJID("15551234567", types.DefaultUserServer), false},
 		{"a group", types.NewJID("1-2", types.GroupServer), false},
 		{"a LID", types.NewJID("987654", types.HiddenUserServer), false},

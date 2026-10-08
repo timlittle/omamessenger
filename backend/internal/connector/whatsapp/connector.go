@@ -60,12 +60,12 @@ type Connector struct {
 	sink    connector.Sink
 	media   *mediaStore
 
-	// sent and unread are read and written by send.go and receipts.go:
-	// sent matches a receipt's chat and WhatsApp id back to the local
-	// message it reports progress for, and unread tracks incoming
-	// message ids MarkRead has not yet told WhatsApp about.
-	sent   map[string]*sentMessage
-	unread map[string]map[string][]string
+	// sent is read and written by send.go and receipts.go: it matches a
+	// receipt's chat and WhatsApp id back to the local message it
+	// reports progress for. MarkRead (see markread.go) needs no
+	// equivalent field: it reads a conversation's unread messages back
+	// from the message_keys this connector persists instead.
+	sent map[string]*sentMessage
 
 	organize      map[string]organizeState     // conversation remote id to its last known pinned/archived state
 	localOrganize map[string]bool              // conversation remote id whose organize state was set locally (SetPinned/SetArchived) more recently than any live echo, so a history sync must not overwrite it (see history.go's syncConversation)
@@ -534,8 +534,8 @@ func (c *Connector) markLocalOrganize(remoteID string) {
 }
 
 // clearLocalOrganize forgets that remoteID's organize state was set
-// locally, once a live pin or archive echo (see live.go's handlePin and
-// handleArchive) reports WhatsApp's own current view of it: that is a
+// locally, once a live pin or archive echo (see organize.go's handlePin
+// and handleArchive) reports WhatsApp's own current view of it: that is a
 // real-time update, unlike a resync's snapshot, so it is trusted either
 // way, and a later resync may again freely report this remote id until
 // another local change marks it once more.

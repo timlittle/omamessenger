@@ -447,3 +447,61 @@ func TestSetArchived_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
 		}
 	})
 }
+
+func TestHandlePinAndArchive_MergeWithTheOtherKnownFlag(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	jid := types.NewJID("15551234567", types.DefaultUserServer)
+
+	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	if !sink.Has("organized 15551234567@s.whatsapp.net true false") {
+		t.Errorf("events = %q, want pinned true archived false", sink.Lines())
+	}
+
+	c.handleArchive(t.Context(), &sink, dev, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
+	if !sink.Has("organized 15551234567@s.whatsapp.net true true") {
+		t.Errorf("events = %q, want pinned still true, archived now true", sink.Lines())
+	}
+
+	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
+	if !sink.Has("organized 15551234567@s.whatsapp.net false true") {
+		t.Errorf("events = %q, want pinned false, archived still true", sink.Lines())
+	}
+}
+
+func TestHandleMarkChatAsRead_ReportsUnreadZeroWhenMarkedRead(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	jid := types.NewJID("15551234567", types.DefaultUserServer)
+
+	c.handleMarkChatAsRead(t.Context(), &sink, dev, &events.MarkChatAsRead{
+		JID: jid, Action: &waSyncAction.MarkChatAsReadAction{Read: boolPtr(true)},
+	})
+
+	if !sink.Has("unread 15551234567@s.whatsapp.net 0") {
+		t.Errorf("events = %q, want unread reset to 0, the same as the self-read receipt lane", sink.Lines())
+	}
+}
+
+func TestHandleMarkChatAsRead_IgnoresAMarkedUnreadChange(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	jid := types.NewJID("15551234567", types.DefaultUserServer)
+
+	c.handleMarkChatAsRead(t.Context(), &sink, dev, &events.MarkChatAsRead{
+		JID: jid, Action: &waSyncAction.MarkChatAsReadAction{Read: boolPtr(false)},
+	})
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want nothing reported for a chat marked unread", sink.Lines())
+	}
+}

@@ -10,7 +10,6 @@ import (
 
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
-	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
@@ -48,18 +47,39 @@ func TestHandleMessage_ReportsIncomingContentAndItsConversation(t *testing.T) {
 	}
 }
 
-func TestHandleMessage_NotesIncomingContentForMarkRead(t *testing.T) {
+func TestHandleMessage_ReportsTheOfficialWhatsAppAccountAsAConversation(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	info := liveInfo()
+	info.Chat, info.Sender, info.ID, info.PushName = types.PSAJID, types.PSAJID, "M1", ""
+	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("your security code changed")}}
+	c.handleMessage(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("conversation 0@s.whatsapp.net WhatsApp") {
+		t.Errorf("events = %q, want the \"0\" system account shown as a conversation titled WhatsApp", sink.Lines())
+	}
+	if !sink.Has("incoming 0@s.whatsapp.net M1") {
+		t.Errorf("events = %q, want its message reported as incoming", sink.Lines())
+	}
+}
+
+func TestHandleMessage_SavesTheMessageKeyMarkReadLaterNeeds(t *testing.T) {
 	t.Parallel()
 
 	dev := newFakeDevice()
 	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media := newTestMediaStore(t)
+	c := connectedToWithMedia(t, dev, &sink)
+	media := c.mediaFor()
 
 	e := &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}}
 	c.handleMessage(t.Context(), &sink, dev, media, e)
 
-	conv := domain.Conversation{RemoteID: "15551234567@s.whatsapp.net"}
+	conv := domain.Conversation{RemoteID: "15551234567@s.whatsapp.net", Unread: 1}
 	if err := c.MarkRead(t.Context(), conv); err != nil {
 		t.Fatal(err)
 	}
@@ -74,15 +94,19 @@ func TestHandleMessage_NeverNotesOurOwnMessageFromAnotherDeviceForMarkRead(t *te
 
 	dev := newFakeDevice()
 	var sink connectortest.Sink
-	c := connectedTo(dev, &sink)
-	media := newTestMediaStore(t)
+	c := connectedToWithMedia(t, dev, &sink)
+	media := c.mediaFor()
 
 	info := liveInfo()
 	info.IsFromMe = true
 	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("sent from my phone")}}
 	c.handleMessage(t.Context(), &sink, dev, media, e)
 
-	conv := domain.Conversation{RemoteID: "15551234567@s.whatsapp.net"}
+	// Unread is set as if the service still thought one message was
+	// unread here, so this proves the fromMe message's own saved key is
+	// excluded by unreadMessageKeys, not merely that nothing was unread
+	// to begin with.
+	conv := domain.Conversation{RemoteID: "15551234567@s.whatsapp.net", Unread: 1}
 	if err := c.MarkRead(t.Context(), conv); err != nil {
 		t.Fatal(err)
 	}
@@ -423,37 +447,13 @@ func TestHandleReceipt_OnlyActsOnOurOwnReadReceipts(t *testing.T) {
 	}
 }
 
-func TestHandlePinAndArchive_MergeWithTheOtherKnownFlag(t *testing.T) {
-	t.Parallel()
-
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-	dev := newFakeDevice()
-	var sink connectortest.Sink
-	jid := types.NewJID("15551234567", types.DefaultUserServer)
-
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
-	if !sink.Has("organized 15551234567@s.whatsapp.net true false") {
-		t.Errorf("events = %q, want pinned true archived false", sink.Lines())
-	}
-
-	c.handleArchive(t.Context(), &sink, dev, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
-	if !sink.Has("organized 15551234567@s.whatsapp.net true true") {
-		t.Errorf("events = %q, want pinned still true, archived now true", sink.Lines())
-	}
-
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
-	if !sink.Has("organized 15551234567@s.whatsapp.net false true") {
-		t.Errorf("events = %q, want pinned false, archived still true", sink.Lines())
-	}
-}
-
 func TestHandleUndecryptable_ReportsAPlaceholderForAnIncomingMessage(t *testing.T) {
 	t.Parallel()
 
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	dev := newFakeDevice()
 	var sink connectortest.Sink
-	c.handleUndecryptable(t.Context(), &sink, dev, &events.UndecryptableMessage{Info: liveInfo()})
+	c.handleUndecryptable(t.Context(), &sink, dev, nil, &events.UndecryptableMessage{Info: liveInfo()})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
 		t.Errorf("events = %q, want the chat ensured so the placeholder has somewhere to live", sink.Lines())
@@ -470,7 +470,7 @@ func TestHandleUndecryptable_SkipsASystemChat(t *testing.T) {
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	dev := newFakeDevice()
 	var sink connectortest.Sink
-	c.handleUndecryptable(t.Context(), &sink, dev, &events.UndecryptableMessage{
+	c.handleUndecryptable(t.Context(), &sink, dev, nil, &events.UndecryptableMessage{
 		Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: types.StatusBroadcastJID}, ID: "M9"},
 	})
 
@@ -491,7 +491,7 @@ func TestHandleContent_ReplacesAnUndecryptablePlaceholderOnRedelivery(t *testing
 	for _, reqID := range []string{"", "REQ1"} {
 		c, dev, media := New(domain.Account{ID: "wa"}, t.TempDir()), newFakeDevice(), newTestMediaStore(t)
 		var sink connectortest.Sink
-		c.handleUndecryptable(t.Context(), &sink, dev, &events.UndecryptableMessage{Info: liveInfo()})
+		c.handleUndecryptable(t.Context(), &sink, dev, media, &events.UndecryptableMessage{Info: liveInfo()})
 		msg := &waE2E.Message{Conversation: strPtr("hi")}
 		c.handleMessage(t.Context(), &sink, dev, media, &events.Message{Info: liveInfo(), Message: msg, UnavailableRequestID: reqID})
 		if !sink.Has("edited 15551234567@s.whatsapp.net M1") {

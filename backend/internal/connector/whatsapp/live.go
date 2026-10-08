@@ -39,12 +39,13 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 }
 
 // handleContent reports a message's own content. An incoming message's
-// conversation is reported first, so a brand-new chat is never dropped,
-// and it is noted as unread so a later MarkRead for this conversation
-// tells WhatsApp about it; an outgoing one WhatsApp reports from another
-// of this account's devices skips both, since it carries no reliable
-// name for an already-known chat and would otherwise overwrite a good
-// title with a generic one, and it was never unread to begin with. The
+// conversation is reported first, so a brand-new chat is never dropped;
+// an outgoing one WhatsApp reports from another of this account's
+// devices skips that, since it carries no reliable name for an
+// already-known chat and would otherwise overwrite a good title with a
+// generic one. Either way, its message_keys row (saved below) is what
+// lets a later MarkRead for this conversation pick it out of the
+// newest incoming messages, even after a restart (see markread.go). The
 // account's own self-chat is the one exception: every message in it is
 // "from me", since there is no one else to send it, so it is the only
 // outgoing chat this still ensures exists. System JIDs history sync or
@@ -67,7 +68,7 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 
 	m := c.improvedSenderName(message(ctx, dev, e.Info, e.Message))
 	saveMediaRef(ctx, media, remote, m.RemoteID, e.Message)
-	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe})
+	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe, timestamp: m.Created})
 
 	// A redelivery of a message first seen as an UndecryptableMessage
 	// (see handleUndecryptable) carries the same id: replace its
@@ -88,7 +89,6 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 		return
 	}
 
-	c.notePendingRead(remote, m.SenderID, m.RemoteID)
 	sink.Incoming(ctx, c.account.ID, remote, m)
 }
 
@@ -185,32 +185,6 @@ func (c *Connector) handleReceipt(ctx context.Context, sink connector.Sink, dev 
 	sink.Unread(ctx, c.account.ID, chatID(ctx, dev, e.Chat), 0)
 }
 
-// handlePin reports a chat pinned or unpinned from the phone, merging it
-// with whichever archived state this connector last knew for it, and
-// marks pinned as confirmed by app state so a later history sync's own
-// snapshot can never revert it (see setOrganizedFromAppState).
-func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev device, e *events.Pin) {
-	remote := chatID(ctx, dev, e.JID)
-	pinned := e.Action.GetPinned()
-
-	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
-	state := c.setOrganizedFromAppState(remote, &pinned, nil)
-	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
-}
-
-// handleArchive reports a chat archived or unarchived from the phone,
-// merging it with whichever pinned state this connector last knew for
-// it, and marks archived as confirmed by app state so a later history
-// sync's own snapshot can never revert it (see setOrganizedFromAppState).
-func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev device, e *events.Archive) {
-	remote := chatID(ctx, dev, e.JID)
-	archived := e.Action.GetArchived()
-
-	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
-	state := c.setOrganizedFromAppState(remote, nil, &archived)
-	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
-}
-
 // undecryptablePlaceholder stands in for a message whatsmeow could not
 // decrypt, in WhatsApp's own wording style, until either the real
 // content replaces it (see resolveUndecryptable) or it is accepted as
@@ -227,8 +201,11 @@ const undecryptablePlaceholder = "Waiting for this message"
 // successful redelivery arrives as an ordinary events.Message with the
 // same id, which handleContent then uses to replace this placeholder
 // (see markUndecryptable) instead of reporting it twice. Nothing is
-// reported for a system JID, the same as a real message.
-func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink, dev device, e *events.UndecryptableMessage) {
+// reported for a system JID, the same as a real message. Its
+// message_keys row is saved here too, the same as a real message's, so
+// MarkRead can still mark it read later even if it is never resolved
+// into real content.
+func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.UndecryptableMessage) {
 	logUndecryptable(e.IsUnavailable, e.DecryptFailMode)
 
 	if isSystemJID(e.Info.Chat) {
@@ -251,12 +228,13 @@ func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink
 
 	if e.Info.IsFromMe {
 		m.SenderID, m.SenderName, m.Status = "self", "You", domain.StatusSent
+		saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{fromMe: true, timestamp: m.Created})
 		sink.History(ctx, c.account.ID, remote, m)
 		return
 	}
 
 	m.SenderID, m.SenderName = remoteID(e.Info.Sender), senderName(e.Info)
 	m = c.improvedSenderName(m)
-	c.notePendingRead(remote, m.SenderID, m.RemoteID)
+	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: false, timestamp: m.Created})
 	sink.Incoming(ctx, c.account.ID, remote, m)
 }
