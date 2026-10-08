@@ -28,9 +28,9 @@ Column {
   // voice note may grow before wrapping or eliding.
   required property real maxTextWidth
   // voiceNotes is the playback state the caller reads from
-  // VoiceNoteController: {available, playingId, positionMs, durationMs}.
-  // A plain summary rather than the controller itself, so this view only
-  // ever reads data, never calls into a controller.
+  // VoiceNoteController: {available, playingId, playing, positionMs,
+  // durationMs}. A plain summary rather than the controller itself, so
+  // this view only ever reads data, never calls into a controller.
   property var voiceNotes: Media.NO_VOICE_NOTE
   // pollVote is this message's vote-mode state, read from
   // PollsController: {voting, highlightedIndex, selectedIds}. A plain
@@ -156,7 +156,7 @@ Column {
     failed: visible && !!(root.message && root.message.mediaFailed)
     failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
     available: root.voiceNotes.available
-    playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id
+    playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id && root.voiceNotes.playing
     positionMs: playing ? root.voiceNotes.positionMs : 0
     durationMs: playing ? root.voiceNotes.durationMs : 0
     onWanted: root.mediaWanted()

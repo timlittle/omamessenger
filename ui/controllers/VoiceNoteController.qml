@@ -84,6 +84,18 @@ Item {
       root.playing = false;
       root.ended(root.playingId);
     }
+    // A file the engine cannot play at all (a legacy cache entry in the
+    // wrong format, or a codec this machine's Qt build lacks) must not
+    // leave playing stuck true forever with nothing able to flip the
+    // button back: this clears the loaded note entirely, so the bubble
+    // returns to showing its play glyph and a retry starts fresh.
+    function onFailed(code) {
+      console.warn("voice note playback failed: code=" + code);
+      root.playingId = "";
+      root.playing = false;
+      root.positionMs = 0;
+      root.durationMs = 0;
+    }
   }
 
   onPlayingChanged: if (root.available) root._engine.playing = root.playing
