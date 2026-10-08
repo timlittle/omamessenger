@@ -10,10 +10,8 @@ import (
 func TestSetPoll_StoresAFreshPollOnAMessageWithNoMedia(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "[Poll: Lunch?]", Created: 1})
 
 	poll := domain.Poll{Question: "Lunch?", Options: []domain.PollOption{{ID: "a", Text: "Pizza"}}}
@@ -34,10 +32,8 @@ func TestSetPoll_StoresAFreshPollOnAMessageWithNoMedia(t *testing.T) {
 func TestSetPoll_MergesATalliesOnlyUpdateOntoTheStoredPoll(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	first := &domain.Media{Kind: domain.MediaPoll, Poll: &domain.Poll{
 		Question: "Lunch?", Options: []domain.PollOption{{ID: "a", Text: "Pizza"}, {ID: "b", Text: "Salad"}},
 	}}
@@ -64,10 +60,8 @@ func TestSetPoll_MergesATalliesOnlyUpdateOntoTheStoredPoll(t *testing.T) {
 func TestSetPoll_IgnoresAMessageThatIsNotStored(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	got, found, err := s.SetPoll(ctx, "chat", "missing", domain.Poll{Question: "Lunch?"})
 	if err != nil || found || got.ID != "" {

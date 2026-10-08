@@ -61,10 +61,8 @@ func TestConversation_NotFound(t *testing.T) {
 func TestMarkRead_ReportsChange(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "in", ConversationID: "chat", Text: "one", Created: 1})
 
 	if changed, err := s.MarkRead(ctx, "chat"); err != nil || !changed {
@@ -83,10 +81,8 @@ func TestMarkRead_ReportsChange(t *testing.T) {
 func TestSetUnread_TakesTheServicesCount(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "in", ConversationID: "chat", Text: "one", Created: 1})
 
 	if changed, err := s.SetUnread(ctx, "chat", 3); err != nil || !changed {
@@ -109,10 +105,8 @@ func TestSetUnread_TakesTheServicesCount(t *testing.T) {
 func TestSetPinned_PinsAndUnpins(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	if err := s.SetPinned(ctx, "chat", true); err != nil {
 		t.Fatal(err)
@@ -138,10 +132,8 @@ func TestSetPinned_PinsAndUnpins(t *testing.T) {
 func TestSetArchived_ArchivesAndUnarchives(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	if err := s.SetArchived(ctx, "chat", true); err != nil {
 		t.Fatal(err)
@@ -167,10 +159,8 @@ func TestSetArchived_ArchivesAndUnarchives(t *testing.T) {
 func TestSetHidden_HidesAndUnhides(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	if err := s.SetHidden(ctx, "chat", true); err != nil {
 		t.Fatal(err)
@@ -196,10 +186,8 @@ func TestSetHidden_HidesAndUnhides(t *testing.T) {
 func TestSetReminder_SnoozesAndClears(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	if err := s.SetReminder(ctx, "chat", 1000); err != nil {
 		t.Fatal(err)
@@ -229,10 +217,8 @@ func TestSetReminder_SnoozesAndClears(t *testing.T) {
 func TestSetReminder_ResetsAnyEarlierNotification(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	if err := s.SetReminder(ctx, "chat", 1000); err != nil {
 		t.Fatal(err)
@@ -258,10 +244,8 @@ func TestSetReminder_ResetsAnyEarlierNotification(t *testing.T) {
 func TestMarkReminderNotified_RecordsTheDueTimeAlreadyFired(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	if err := s.SetReminder(ctx, "chat", 1000); err != nil {
 		t.Fatal(err)
@@ -394,10 +378,8 @@ func TestEnsureConversation_NeverTouchesPinnedArchivedOrHidden(t *testing.T) {
 func TestSetOrganized_SetsBothOrReportsNoChange(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	if changed, err := s.SetOrganized(ctx, "chat", true, true); err != nil || !changed {
 		t.Fatalf("SetOrganized(true, true) = %t, %v; want a change", changed, err)
@@ -423,10 +405,8 @@ func TestSetOrganized_SetsBothOrReportsNoChange(t *testing.T) {
 func TestUnreadTotal_IgnoresMutedConversations(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "in", ConversationID: "chat", Text: "one", Created: 1})
 
 	for _, step := range []struct {

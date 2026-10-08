@@ -90,11 +90,9 @@ func TestAccounts_ListsAndFinds(t *testing.T) {
 func TestDeleteAccount_RemovesEverythingOfTheAccount(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
 	addAccount(t, s, "keep")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addConversation(t, s, "keep", "other", "Other")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", Text: "hi", Created: 1})
 	if err := s.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "c1", Name: "Ben"}); err != nil {

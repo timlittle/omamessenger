@@ -11,10 +11,8 @@ import (
 func TestDeleteMessages_FallsBackPreviewAndLowersUnread(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s,
 		domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", SenderName: "Alex", Text: "first", Created: 1},
 		domain.Message{ID: "m2", ConversationID: "chat", RemoteID: "2", SenderName: "Alex", Text: "second", Created: 2},
@@ -67,10 +65,8 @@ func TestDeleteMessages_OnlyTouchesConversationsInScope(t *testing.T) {
 func TestDeleteMessages_IgnoresUnknownRemoteIDs(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "a", Created: 1})
 
 	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"missing"})
@@ -82,10 +78,8 @@ func TestDeleteMessages_IgnoresUnknownRemoteIDs(t *testing.T) {
 func TestDeleteMessages_IgnoresAnEmptyScope(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "a", Created: 1})
 
 	deleted, err := s.DeleteMessages(ctx, "wa", nil, []string{"1"})

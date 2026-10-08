@@ -15,10 +15,8 @@ import (
 func TestMessageRetry_SchedulesStopsAndClears(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "out", ConversationID: "chat", Text: "hi", Outgoing: true, Status: domain.StatusFailed, Created: 1})
 
 	if err := s.ScheduleMessageRetry(ctx, "out", 500, 2, 100); err != nil {
@@ -59,10 +57,8 @@ func TestMessageRetry_SchedulesStopsAndClears(t *testing.T) {
 func TestPendingRetries_OrdersBySoonestDueAndIgnoresOthers(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s,
 		domain.Message{ID: "later", ConversationID: "chat", Text: "a", Outgoing: true, Status: domain.StatusFailed, Created: 1},
 		domain.Message{ID: "sooner", ConversationID: "chat", Text: "b", Outgoing: true, Status: domain.StatusFailed, Created: 2},
@@ -97,10 +93,8 @@ func TestPendingRetries_OrdersBySoonestDueAndIgnoresOthers(t *testing.T) {
 func TestMessageExists_ReportsStoredAndMissingMessages(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "out", ConversationID: "chat", Text: "hi", Created: 1})
 
 	if exists, err := s.MessageExists(ctx, "out"); err != nil || !exists {
@@ -118,10 +112,8 @@ func TestMessageExists_ReportsStoredAndMissingMessages(t *testing.T) {
 func TestFailedAttachmentCount_CountsOnlyFailedOutgoingMessagesWithMedia(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	media := &domain.Media{Kind: domain.MediaPhoto, FileName: "photo.png"}
 	addMessages(t, s,
 		domain.Message{ID: "failed-with-media", ConversationID: "chat", Text: "a", Outgoing: true, Status: domain.StatusFailed, Created: 1, Media: media},
@@ -144,10 +136,8 @@ func TestFailedAttachmentCount_CountsOnlyFailedOutgoingMessagesWithMedia(t *test
 func TestDeleteMessagesByID_RemovesMessagesWithNoRemoteID(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "failed", ConversationID: "chat", Text: "hi", Outgoing: true, Status: domain.StatusFailed, Created: 1})
 
 	deleted, err := s.DeleteMessagesByID(ctx, []string{"failed"})

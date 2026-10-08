@@ -58,9 +58,7 @@ func TestConversations_SearchesTitlesAndMessages(t *testing.T) {
 func TestConversations_MatchesWordPrefixes(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
+	s, _ := openChatStore(t)
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", Text: "a ticket arrived", Created: 1})
 
 	for _, query := range []string{"tick", "ticket", "TICK"} {
@@ -82,9 +80,7 @@ func TestConversations_MatchesWordPrefixes(t *testing.T) {
 func TestConversations_MatchesCaseAndAccentInsensitively(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
+	s, _ := openChatStore(t)
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", Text: "let's meet at the café", Created: 1})
 
 	for _, query := range []string{"cafe", "CAFE", "café", "Café"} {
@@ -102,9 +98,7 @@ func TestConversations_MatchesCaseAndAccentInsensitively(t *testing.T) {
 func TestConversations_SearchReportsTheMatchedMessageIDAndSender(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
+	s, _ := openChatStore(t)
 	addMessages(t, s,
 		domain.Message{ID: "m1", ConversationID: "chat", SenderName: "Alex", Text: "ticket opened", Created: 1},
 		domain.Message{ID: "m2", ConversationID: "chat", SenderName: "Priya", Text: "ticket closed", Created: 2},
@@ -167,9 +161,7 @@ func TestConversations_RanksBestOrMostRecentMatchFirst(t *testing.T) {
 func TestConversations_IgnoresHostileQuerySyntax(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
+	s, _ := openChatStore(t)
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", Text: "a ticket about AND OR NOT", Created: 1})
 
 	queries := []string{
@@ -221,10 +213,8 @@ func FuzzConversations(f *testing.F) {
 func TestConversations_SearchFollowsEditsAndDeletes(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "lunch on friday", Created: 1})
 
 	if _, found, err := s.EditMessage(ctx, "chat", "1", store.MessageEdit{Text: "dinner on saturday"}); err != nil || !found {

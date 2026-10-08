@@ -11,10 +11,8 @@ import (
 func TestAddMessage_StoresReactions(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	reactions := []domain.Reaction{{Emoji: "🔥", Count: 3, Mine: true}}
 
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "hi", Created: 1, Reactions: reactions})
@@ -28,10 +26,8 @@ func TestAddMessage_StoresReactions(t *testing.T) {
 func TestAddMessage_LeavesReactionsEmptyByDefault(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "hi", Created: 1})
 
@@ -44,10 +40,8 @@ func TestAddMessage_LeavesReactionsEmptyByDefault(t *testing.T) {
 func TestEditMessage_UpdatesReactions(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Created: 1})
 
 	reactions := []domain.Reaction{{Emoji: "👍", Count: 1, Mine: true}}
@@ -65,10 +59,8 @@ func TestEditMessage_UpdatesReactions(t *testing.T) {
 func TestSetReactions_UpdatesWithoutTouchingTextOrMedia(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	link := &domain.Media{Kind: domain.MediaLink, URL: "https://x.io"}
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Media: link, Created: 1})
 
@@ -87,10 +79,8 @@ func TestSetReactions_UpdatesWithoutTouchingTextOrMedia(t *testing.T) {
 func TestSetReactions_IgnoresAMessageThatIsNotStored(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	got, found, err := s.SetReactions(ctx, "chat", "missing", []domain.Reaction{{Emoji: "👍", Count: 1}})
 	if err != nil || found || got.ID != "" {
@@ -101,10 +91,8 @@ func TestSetReactions_IgnoresAMessageThatIsNotStored(t *testing.T) {
 func TestSetReactions_ClearsReactionsWhenEmpty(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Created: 1})
 
 	if _, _, err := s.SetReactions(ctx, "chat", "r1", []domain.Reaction{{Emoji: "👍", Count: 1, Mine: true}}); err != nil {

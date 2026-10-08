@@ -15,10 +15,8 @@ import (
 func TestAddMessage_UpdatesPreviewAndUnread(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	incoming, _, err := s.AddMessage(ctx, domain.Message{
 		ID: "in", ConversationID: "chat", RemoteID: "r1", Text: "hello", SenderName: "Alex", Created: 200,
@@ -50,10 +48,8 @@ func TestAddMessage_UpdatesPreviewAndUnread(t *testing.T) {
 func TestAddHistoryMessage_NeverCountsTowardsUnread(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	// Status received, same as a connector reports a message it does not
 	// know was ever read: AddMessage would count this one, AddHistoryMessage
@@ -87,10 +83,8 @@ func TestAddHistoryMessage_NeverCountsTowardsUnread(t *testing.T) {
 func TestAddMessage_IgnoresDuplicateRemoteID(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "first", ConversationID: "chat", RemoteID: "r1", Text: "hello", Created: 1})
 
 	dup, inserted, err := s.AddMessage(ctx, domain.Message{ConversationID: "chat", RemoteID: "r1", Text: "again", Created: 2})
@@ -124,9 +118,7 @@ func TestAddMessage_RejectsInvalidMessages(t *testing.T) {
 func TestMessages_KeepsArrivalOrderWithinAMillisecond(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
+	s, _ := openChatStore(t)
 	addMessages(t, s,
 		domain.Message{ID: "a", ConversationID: "chat", Text: "a", Created: 999},
 		domain.Message{ID: "b", ConversationID: "chat", Text: "b", Created: 1000},
@@ -143,10 +135,8 @@ func TestMessages_KeepsArrivalOrderWithinAMillisecond(t *testing.T) {
 func TestMessages_PagesBackwards(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	for i := 1; i <= 120; i++ {
 		addMessages(t, s, domain.Message{ID: fmt.Sprintf("m%03d", i), ConversationID: "chat", Text: "x", Created: int64(i)})
@@ -175,10 +165,8 @@ func TestMessages_PagesBackwards(t *testing.T) {
 func TestOldestRemoteID_SkipsMessagesTheServiceHasNotNumbered(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	if id, err := s.OldestRemoteID(ctx, "chat"); err != nil || id != "" {
 		t.Errorf("OldestRemoteID(empty chat) = %q, %v; want none", id, err)
@@ -198,10 +186,8 @@ func TestOldestRemoteID_SkipsMessagesTheServiceHasNotNumbered(t *testing.T) {
 func TestMessages_LimitsAndCursor(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	for i := range store.DefaultPageSize + 1 {
 		addMessages(t, s, domain.Message{ConversationID: "chat", Text: "x", Created: int64(i)})
@@ -226,10 +212,8 @@ func TestMessages_LimitsAndCursor(t *testing.T) {
 func TestUpdateMessageStatus_OnlyMovesForward(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "out", ConversationID: "chat", Text: "hi", Outgoing: true, Created: 1})
 
 	for _, step := range []struct {
@@ -262,10 +246,8 @@ func TestUpdateMessageStatus_OnlyMovesForward(t *testing.T) {
 func TestUpdateMessageStatus_ConcurrentCallsAdvanceOnlyOnce(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "out", ConversationID: "chat", Text: "hi", Outgoing: true, Status: domain.StatusFailed, Created: 1})
 
 	const racers = 20
@@ -301,10 +283,8 @@ func TestUpdateMessageStatus_ConcurrentCallsAdvanceOnlyOnce(t *testing.T) {
 func TestSetMessageRemoteID_FindsByRemote(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "out", ConversationID: "chat", Text: "hi", Outgoing: true, Created: 1})
 
 	if err := s.SetMessageRemoteID(ctx, "out", "remote-1"); err != nil {
@@ -324,10 +304,8 @@ func TestSetMessageRemoteID_FindsByRemote(t *testing.T) {
 func TestEditMessage_UpdatesTextMediaAndSetsEdited(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "hi", Created: 1})
 
 	link := &domain.Media{Kind: domain.MediaLink, URL: "https://x.io"}
@@ -345,10 +323,8 @@ func TestEditMessage_UpdatesTextMediaAndSetsEdited(t *testing.T) {
 func TestEditMessage_IgnoresAMessageThatIsNotStored(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	got, found, err := s.EditMessage(ctx, "chat", "missing", store.MessageEdit{Text: "edited"})
 	if err != nil || found || got.ID != "" {
@@ -359,10 +335,8 @@ func TestEditMessage_IgnoresAMessageThatIsNotStored(t *testing.T) {
 func TestAddMessage_FillsReplySenderAndTextFromTheQuotedMessage(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "quoted", ConversationID: "chat", RemoteID: "1", Text: "original message", SenderName: "Alex", Created: 1})
 
 	reply, _, err := s.AddMessage(ctx, domain.Message{
@@ -385,10 +359,8 @@ func TestAddMessage_FillsReplySenderAndTextFromTheQuotedMessage(t *testing.T) {
 func TestAddMessage_KeepsAReplysOwnSenderAndTextWhenAlreadyGiven(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	// The quoted message is not stored at all here: an outgoing reply
 	// already carries what it needs, filled in by the app from the
@@ -405,10 +377,8 @@ func TestAddMessage_KeepsAReplysOwnSenderAndTextWhenAlreadyGiven(t *testing.T) {
 func TestAddMessage_LeavesAReplyToAnUnloadedMessageAsGiven(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	reply, _, err := s.AddMessage(ctx, domain.Message{
 		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
@@ -422,10 +392,8 @@ func TestAddMessage_LeavesAReplyToAnUnloadedMessageAsGiven(t *testing.T) {
 func TestAddMessage_KeepsMediaAndFillsItInLater(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 	link := &domain.Media{Kind: domain.MediaLink, URL: "https://x.io", SiteName: "X", Title: "A page", Description: "About it"}
 
 	addMessages(t, s,
@@ -455,10 +423,8 @@ func TestAddMessage_KeepsMediaAndFillsItInLater(t *testing.T) {
 func TestAddMessage_RoundTripsAnAttachmentsOriginalFile(t *testing.T) {
 	t.Parallel()
 
-	s := openStore(t)
+	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "chat", "Chat")
 
 	media := &domain.Media{Kind: domain.MediaPhoto, FileName: "photo.png", Size: 10, OriginalPath: "/home/tim/photo.png", OriginalModTime: 12345}
 	addMessages(t, s, domain.Message{

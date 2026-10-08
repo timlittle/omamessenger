@@ -51,6 +51,19 @@ func addConversation(t *testing.T, s *store.Store, accountID, id, title string) 
 	return c
 }
 
+// openChatStore opens a fresh database with one WhatsApp account, "wa",
+// and one direct conversation in it, "chat", titled "Chat". Most tests
+// need no other account or conversation shape, so this is their usual
+// starting point.
+func openChatStore(t *testing.T) (*store.Store, domain.Conversation) {
+	t.Helper()
+
+	s := openStore(t)
+	addAccount(t, s, "wa")
+
+	return s, addConversation(t, s, "wa", "chat", "Chat")
+}
+
 // addMessages stores each message, failing the test on any error.
 func addMessages(t *testing.T, s *store.Store, messages ...domain.Message) {
 	t.Helper()
