@@ -35,6 +35,7 @@ type fixture struct {
 	organizer  *fakeOrganizer
 	reactor    *fakeReactor
 	deleter    *fakeDeleter
+	members    *fakeMemberLister
 	outgoing   *cache.Outgoing
 	clipboard  *fakeClipboard
 	logger     *fakeLogger
@@ -66,7 +67,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, deleter: &fakeDeleter{},
-		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), clipboard: &fakeClipboard{},
+		members: &fakeMemberLister{}, outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing")), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{},
 	}
 
@@ -74,7 +75,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter,
+		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter, Members: f.members,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger,
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 	}
@@ -457,6 +458,24 @@ func (o *fakeOrganizer) SetArchived(_ context.Context, conv domain.Conversation,
 	o.archived = append(o.archived, fmt.Sprintf("%s %t", conv.ID, archived))
 
 	return o.err
+}
+
+// fakeMemberLister reports a scripted member list, failing with err
+// when it is set.
+type fakeMemberLister struct {
+	mu      sync.Mutex
+	members []domain.Member
+	err     error
+	asked   []string
+}
+
+func (l *fakeMemberLister) Members(_ context.Context, conv domain.Conversation) ([]domain.Member, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.asked = append(l.asked, conv.ID)
+
+	return l.members, l.err
 }
 
 // fakeReactor records the reactions it is asked for, as

@@ -43,6 +43,7 @@ type Connector struct {
 	api     *tg.Client
 	sink    connector.Sink
 	waiting bool
+	self    int64             // this account's own user id, set once Run signs in
 	remotes map[string]string // "user:42" to the full remote id with its access hash
 	sent    map[string]string // "<remote id>/<message id>" to our message id
 }
@@ -55,6 +56,7 @@ var (
 	_ connector.MessageRefresher = (*Connector)(nil)
 	_ connector.Organizer        = (*Connector)(nil)
 	_ connector.Reactor          = (*Connector)(nil)
+	_ connector.MemberLister     = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose credentials and session
@@ -106,6 +108,7 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 		}
 
 		c.connected(client.API(), sink)
+		c.setSelf(self.ID)
 		sink.AccountStatus(ctx, c.account.ID, domain.AccountConnected, "Signed in as "+ownName(self))
 		defer c.disconnected()
 
@@ -388,6 +391,24 @@ func (c *Connector) session() (*tg.Client, connector.Sink, error) {
 	}
 
 	return c.api, c.sink, nil
+}
+
+// setSelf records this account's own Telegram user id, read by message()
+// to flag a message that mentions it.
+func (c *Connector) setSelf(id int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.self = id
+}
+
+// selfUserID is this account's own Telegram user id, or 0 before Run
+// has signed in.
+func (c *Connector) selfUserID() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.self
 }
 
 // setWaiting records whether sign-in is waiting for the user.

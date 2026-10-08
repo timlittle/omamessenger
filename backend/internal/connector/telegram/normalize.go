@@ -104,16 +104,22 @@ func peerConversation(accountID string, peer tg.PeerClass, e entities) (domain.C
 
 // message turns a Telegram message into ours. Outgoing messages from
 // history count as sent; whether they were read is not known here.
-func message(m *tg.Message, e entities) domain.Message {
+// selfID is this account's own user id, for flagging a message that
+// mentions it (see mentions.go); it is 0 before Run has signed in, which
+// never mentions anyone.
+func message(m *tg.Message, e entities, selfID int64) domain.Message {
+	mentions, mentionsMe := mentionsFromEntities(m.Entities, e, selfID)
 	out := domain.Message{
-		RemoteID:  strconv.Itoa(m.ID),
-		Text:      messageText(m),
-		Outgoing:  m.Out,
-		Status:    domain.StatusReceived,
-		Created:   int64(m.Date) * 1000,
-		Media:     media(m.Media),
-		ReplyTo:   replyTo(m.ReplyTo),
-		Reactions: reactions(m.Reactions),
+		RemoteID:   strconv.Itoa(m.ID),
+		Text:       messageText(m),
+		Outgoing:   m.Out,
+		Status:     domain.StatusReceived,
+		Created:    int64(m.Date) * 1000,
+		Media:      media(m.Media),
+		ReplyTo:    replyTo(m.ReplyTo),
+		Reactions:  reactions(m.Reactions),
+		Mentions:   mentions,
+		MentionsMe: mentionsMe,
 	}
 
 	if m.Out {

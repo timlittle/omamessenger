@@ -117,7 +117,7 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := message(tt.msg, testEntities()); !reflect.DeepEqual(got, tt.want) {
+			if got := message(tt.msg, testEntities(), 0); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("message = %+v\nwant      %+v", got, tt.want)
 			}
 		})
@@ -158,12 +158,12 @@ func TestMessage_ReportsTheMessageItReplies(t *testing.T) {
 	header.SetReplyToMsgID(7)
 	withReply := &tg.Message{ID: 20, Date: 1, Message: "sure", PeerID: &tg.PeerUser{UserID: 42}, ReplyTo: header}
 
-	got := message(withReply, testEntities())
+	got := message(withReply, testEntities(), 0)
 	if got.ReplyTo == nil || got.ReplyTo.RemoteID != "7" {
 		t.Fatalf("message.ReplyTo = %+v, want it to quote remote id 7", got.ReplyTo)
 	}
 
-	plain := message(&tg.Message{ID: 21, Date: 1, Message: "hi", PeerID: &tg.PeerUser{UserID: 42}}, testEntities())
+	plain := message(&tg.Message{ID: 21, Date: 1, Message: "hi", PeerID: &tg.PeerUser{UserID: 42}}, testEntities(), 0)
 	if plain.ReplyTo != nil {
 		t.Errorf("message.ReplyTo = %+v, want nil for a message that answers nothing", plain.ReplyTo)
 	}
@@ -205,7 +205,7 @@ func FuzzMessage(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, id int, text string, out bool, date int) {
 		msg := &tg.Message{ID: id, Date: date, Message: text, Out: out, PeerID: &tg.PeerUser{UserID: 42}}
-		got := message(msg, testEntities())
+		got := message(msg, testEntities(), 0)
 		if got.Text == "" {
 			t.Errorf("message(%+v) produced no text", msg)
 		}

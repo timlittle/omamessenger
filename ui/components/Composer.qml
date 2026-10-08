@@ -7,6 +7,7 @@ import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
 import "../lib/Keymap.js" as Keymap
+import "../lib/Mentions.js" as Mentions
 
 // Message composer: an optional "replying to" banner, an attachment
 // chip, a growing text input and a Send button.
@@ -51,6 +52,29 @@ Item {
   // routeKey intercepts a key press before the input handles it; see the
   // file comment above for why this is a function property, not a signal.
   property var routeKey: null
+  // members are the open group's members, for the @-mention picker; an
+  // empty list for a direct chat, where "@" is just a character.
+  property var members: []
+
+  // _mentionTokens are the members chosen through the picker so far, in
+  // the order they were inserted, by id and name: enough for
+  // Mentions.resolveMentions to find each one's final position in the
+  // text once the message is submitted, however the text around it was
+  // edited afterwards.
+  property var _mentionTokens: []
+  // _activeQuery is Mentions.activeQuery's result for the text and
+  // caret right now, or null while the caret is not inside an "@query".
+  property var _activeQuery: null
+  // _mentionMatches are the members _activeQuery's query currently
+  // matches, capped to a short list that fits on screen.
+  property var _mentionMatches: []
+  // _mentionIndex is which match the keyboard currently highlights.
+  property int _mentionIndex: 0
+  // pickerOpen is true while the @-mention picker should show.
+  readonly property bool pickerOpen: root._activeQuery !== null && root._mentionMatches.length > 0
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the mode hint below.
+  property var bindings: Keymap.BINDINGS
 
   // writing is true while the text input holds keyboard focus: typing
   // and scrolling the conversation look identical otherwise, bar the
@@ -64,12 +88,13 @@ Item {
   // modeHint names the current mode in words, so it is not shown by
   // colour alone: Keymap.composeHint derives it from the same bindings
   // the key router already matches, rather than naming a key twice.
-  readonly property string modeHint: Keymap.composeHint(root.writing)
+  readonly property string modeHint: Keymap.composeHint(root.writing, root.bindings)
 
   // submitted reports the trimmed text a caller should send, alongside
-  // whatever attachmentPath already holds, and the id of the message it
-  // answers, or "" when it answers nothing.
-  signal submitted(string text, string replyToId)
+  // whatever attachmentPath already holds, the id of the message it
+  // answers (or "" when it answers nothing), and its resolved @-mentions
+  // (or an empty list).
+  signal submitted(string text, string replyToId, var mentions)
   // replyCanceled reports that the user dismissed the reply banner.
   signal replyCanceled()
   // fileAttached reports a file the attach button's own picker chose.
@@ -83,13 +108,53 @@ Item {
   function submit() {
     var trimmed = area.text.trim()
     if (trimmed.length === 0 && root.attachmentPath === "") return
-    root.submitted(trimmed, root.replyTo ? root.replyTo.id : "")
+    const mentions = Mentions.resolveMentions(trimmed, root._mentionTokens)
+    root.submitted(trimmed, root.replyTo ? root.replyTo.id : "", mentions)
     area.text = ""
+    root._mentionTokens = []
   }
 
   // focusInput moves keyboard focus into the text input.
   function focusInput() {
     area.forceActiveFocus()
+  }
+
+  // _updateMentionQuery recomputes the picker's query and matches from
+  // the input's current text and caret position; called whenever
+  // either changes.
+  function _updateMentionQuery() {
+    const query = root.members.length > 0 ? Mentions.activeQuery(area.text, area.cursorPosition) : null
+    root._activeQuery = query
+    root._mentionMatches = query ? Mentions.filterMembers(root.members, query.query).slice(0, 6) : []
+    root._mentionIndex = 0
+  }
+
+  // _runMentionAction performs one of the mentionPicker context's
+  // actions (see Keymap.js); called only while root.pickerOpen.
+  function _runMentionAction(action) {
+    if (action === "mention.down") {
+      root._mentionIndex = Math.min(root._mentionIndex + 1, root._mentionMatches.length - 1)
+    } else if (action === "mention.up") {
+      root._mentionIndex = Math.max(root._mentionIndex - 1, 0)
+    } else if (action === "mention.accept") {
+      root._acceptMention(root._mentionIndex)
+    } else if (action === "mention.cancel") {
+      root._activeQuery = null
+      root._mentionMatches = []
+    }
+  }
+
+  // _acceptMention inserts the matched member at index as a mention
+  // token at the caret, and remembers it so submit() can resolve its
+  // final position later.
+  function _acceptMention(index) {
+    const member = root._mentionMatches[index]
+    if (!member) return
+
+    const result = Mentions.insertMention(area.text, root._activeQuery.start, area.cursorPosition, member)
+    root._mentionTokens = root._mentionTokens.concat([{ id: member.id, name: member.name }])
+    area.text = result.text
+    area.cursorPosition = result.cursor
   }
 
   // openFilePicker opens the attach button's file dialog, for the
@@ -226,6 +291,16 @@ Item {
       }
     }
 
+    MentionPicker {
+      id: mentionPicker
+      objectName: "mentionPicker"
+      Layout.alignment: Qt.AlignLeft
+      visible: root.pickerOpen
+      members: root._mentionMatches
+      highlightedIndex: root._mentionIndex
+      onAccepted: index => root._acceptMention(index)
+    }
+
     RowLayout {
       Layout.fillWidth: true
       spacing: Theme.spacing.controlGap
@@ -261,8 +336,19 @@ Item {
           selectByMouse: true
           placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
 
+          onTextChanged: root._updateMentionQuery()
+          onCursorPositionChanged: root._updateMentionQuery()
+
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: event => {
+            if (root.pickerOpen) {
+              const action = Keymap.match("mentionPicker", event.key, event.modifiers, event.text, root.bindings)
+              if (action) {
+                root._runMentionAction(action)
+                event.accepted = true
+                return
+              }
+            }
             if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
           }
 

@@ -102,6 +102,52 @@ func TestMedia_VideoFileAndVoice(t *testing.T) {
 	}
 }
 
+func TestMedia_Sticker(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		doc          *tg.Document
+		wantFileName string
+	}{
+		"a static WebP sticker is fetchable": {
+			&tg.Document{
+				Size: 500, MimeType: "image/webp", Thumbs: []tg.PhotoSizeClass{stripped()},
+				Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeSticker{Alt: "😀"}},
+			},
+			"sticker.webp",
+		},
+		"a Lottie animation is never fetched": {
+			&tg.Document{
+				Size: 500, MimeType: "application/x-tgsticker",
+				Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeSticker{Alt: "😀"}},
+			},
+			"",
+		},
+		"a WebM video sticker is never fetched": {
+			&tg.Document{
+				Size: 500, MimeType: "video/webm",
+				Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeSticker{Alt: "😀"}},
+			},
+			"",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := media(&tg.MessageMediaDocument{Document: tt.doc})
+			if got == nil || got.Kind != domain.MediaSticker {
+				t.Fatalf("media = %+v, want a sticker", got)
+			}
+			if got.FileName != tt.wantFileName {
+				t.Errorf("FileName = %q, want %q", got.FileName, tt.wantFileName)
+			}
+			if got.Emoji != "😀" {
+				t.Errorf("Emoji = %q, want the sticker's alt emoji", got.Emoji)
+			}
+		})
+	}
+}
+
 func TestMessageText_LabelsDocumentsByWhatTheyAre(t *testing.T) {
 	t.Parallel()
 

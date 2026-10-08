@@ -20,19 +20,25 @@ import (
 )
 
 // outgoingMessage builds the WhatsApp message proto for m: its text
-// alone, or, when it replies to another message, an extended text
-// message quoting that message.
+// alone, or, when it replies to another message or @-mentions a group
+// member, an extended text message carrying the ContextInfo either
+// needs.
 func outgoingMessage(ctx context.Context, media *mediaStore, conversationRemoteID string, chat types.JID, m domain.Message) *waE2E.Message {
+	text, mentionedJIDs := outgoingMentions(m.Text, m.Mentions)
 	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" {
-		return &waE2E.Message{Conversation: strp(m.Text)}
+		if len(mentionedJIDs) == 0 {
+			return &waE2E.Message{Conversation: strp(text)}
+		}
+
+		return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+			Text: strp(text), ContextInfo: &waE2E.ContextInfo{MentionedJID: mentionedJIDs},
+		}}
 	}
 
-	return &waE2E.Message{
-		ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text:        strp(m.Text),
-			ContextInfo: quoteContext(ctx, media, conversationRemoteID, chat, m.ReplyTo),
-		},
-	}
+	info := quoteContext(ctx, media, conversationRemoteID, chat, m.ReplyTo)
+	info.MentionedJID = mentionedJIDs
+
+	return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strp(text), ContextInfo: info}}
 }
 
 // quoteContext builds the ContextInfo that quotes reply: its stanza id

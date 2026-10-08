@@ -321,3 +321,23 @@ test('reactions reads a row\'s reaction chips back, or an empty list', () => {
   assert.deepEqual(Timeline.reactions({ reactions: [{ emoji: '❤️', count: 2, mine: false }] }), [{ emoji: '❤️', count: 2, mine: false }]);
   assert.deepEqual(Timeline.reactions({}), []);
 });
+
+test('row keeps mentions as a string, so updating them later does not silently drop them', () => {
+  const mentions = [{ userId: 'u1', name: 'Nadia', offset: 3, length: 6 }];
+
+  assert.strictEqual(Timeline.row({ id: 'a' }).mentions, '[]');
+  assert.strictEqual(Timeline.row({ id: 'a', mentions }).mentions, JSON.stringify(mentions));
+});
+
+test('row keeps mentionsMe as a plain boolean, defaulting to false', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).mentionsMe, false);
+  assert.strictEqual(Timeline.row({ id: 'a', mentionsMe: true }).mentionsMe, true);
+});
+
+test('mentions reads a row\'s @-mention tokens back, or an empty list', () => {
+  const mentions = [{ userId: 'u1', name: 'Nadia', offset: 3, length: 6 }];
+  assert.deepEqual(Timeline.mentions({ mentions: JSON.stringify(mentions) }), mentions);
+  assert.deepEqual(Timeline.mentions({ mentions: '' }), []);
+  assert.deepEqual(Timeline.mentions({ mentions }), mentions);
+  assert.deepEqual(Timeline.mentions({}), []);
+});

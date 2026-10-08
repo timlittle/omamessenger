@@ -322,6 +322,41 @@ test('messageHtml escapes and links before breaking lines', () => {
   assert.equal(Format.messageHtml('<b>\nhttps://x.io'), '&lt;b&gt;<br><a href="https://x.io">https://x.io</a>');
 });
 
+test('messageHtml bolds a mention at its offset', () => {
+  const html = Format.messageHtml('hi @Nadia how are you', null, null, [{ offset: 3, length: 6 }]);
+  assert.equal(html, 'hi <b>@Nadia</b> how are you');
+});
+
+test('messageHtml bolds more than one mention, in any order given', () => {
+  const html = Format.messageHtml('@Bob and @Alice', null, null, [
+    { offset: 9, length: 6 },
+    { offset: 0, length: 4 }
+  ]);
+  assert.equal(html, '<b>@Bob</b> and <b>@Alice</b>');
+});
+
+test('messageHtml escapes and links around a mention', () => {
+  const html = Format.messageHtml('<b> @Nadia https://x.io', '#89b4fa', null, [{ offset: 4, length: 6 }]);
+  assert.equal(html, '&lt;b&gt; <b>@Nadia</b> <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');
+});
+
+test('messageHtml skips a mention that no longer fits the text', () => {
+  const html = Format.messageHtml('hi', null, null, [{ offset: 3, length: 6 }]);
+  assert.equal(html, 'hi');
+});
+
+test('messageHtml ignores overlapping mentions, keeping the earlier one', () => {
+  const html = Format.messageHtml('@Alice', null, null, [
+    { offset: 0, length: 6 },
+    { offset: 2, length: 4 }
+  ]);
+  assert.equal(html, '<b>@Alice</b>');
+});
+
+test('messageHtml with no mentions renders exactly as before', () => {
+  assert.equal(Format.messageHtml('plain text', null, null, []), 'plain text');
+});
+
 test('longestLine picks the widest line to size a bubble by', () => {
   assert.equal(Format.longestLine('short\na much longer line\nmid'), 'a much longer line');
   assert.equal(Format.longestLine(''), '');
