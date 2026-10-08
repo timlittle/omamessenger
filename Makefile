@@ -151,6 +151,9 @@ DEMO_SCENARIOS := list-and-send keyboard-nav palette-search media reply-reaction
 # palette instead of banding. A held frame from list-and-send's opening
 # list becomes the repository's preview.png.
 # Re-run this after a UI change to refresh docs/demo/ and preview.png.
+# The demo's HOME holds only tests/demo/theme as Omarchy's current theme
+# (the shell reads it from ~/.local/state, not an XDG variable), so the clips
+# look the same whatever theme the machine recording them has switched to.
 demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and preview.png
 	@command -v $(FFMPEG) >/dev/null || { echo "demo: $(FFMPEG) is not installed" >&2; exit 1; }
 	@./scripts/qml-imports.sh >/dev/null
@@ -160,11 +163,13 @@ demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and pr
 	ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 	ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 	ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; \
+	mkdir -p "$$root/home/.local/state/omarchy/current"; \
+	ln -s "$(CURDIR)/$$root/theme" "$$root/home/.local/state/omarchy/current/theme"; \
 	for name in $(DEMO_SCENARIOS); do \
 		run=$$(mktemp -d); \
 		rm -rf "$$root/frames" "$$root/data" "$$root/config" "$$root/release" "$$root/log"; mkdir -p "$$root/frames"; \
 		env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 \
-			OMA_FAKE_DEMO=1 OMA_DEMO_SCENARIO="$$name" \
+			OMA_FAKE_DEMO=1 OMA_DEMO_SCENARIO="$$name" HOME="$(CURDIR)/$$root/home" \
 			XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" XDG_RUNTIME_DIR="$$run" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 90 quickshell -p "$$root" >"$$root/log" 2>&1; \
 		recorded=$$?; rm -rf "$$run"; \
@@ -178,7 +183,7 @@ demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and pr
 			-vf "fps=10,scale=960:-1:flags=lanczos,palettegen" -update 1 -frames:v 1 build/demo-palette.png; \
 		$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" -i build/demo-palette.png \
 			-lavfi "fps=10,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=sierra2_4a" -loop 0 "docs/demo/$$name.gif"; \
-		if [ "$$name" = "list-and-send" ]; then cp "$$root/frames/frame-00005.png" preview.png; fi; \
+		if [ "$$name" = "list-and-send" ]; then cp "$$(ls "$$root"/frames/*.png | tail -n 1)" preview.png; fi; \
 	done; \
 	ls -lh docs/demo/*.gif preview.png
 

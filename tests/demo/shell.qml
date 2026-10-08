@@ -615,15 +615,28 @@ ShellRoot {
       root.step++;
       root.attempts = 0;
       if (root.step === root.steps.length) {
-        root.capturing = false;
-        console.log("PASS " + root.scenarioName);
-        return Qt.exit(0);
+        root.showLabel("");
+        return finishTimer.start();
       }
     } else if (++root.attempts > 150) {
       return root.fail("condition not met within 15 s");
     }
 
     stepTimer.start();
+  }
+
+  // finishTimer keeps recording briefly once every step has passed, with
+  // the keystroke label cleared, so each clip ends on a clean pause before
+  // it loops and its last frame can serve as the still preview.
+  Timer {
+    id: finishTimer
+
+    interval: 600
+    onTriggered: {
+      root.capturing = false;
+      console.log("PASS " + root.scenarioName);
+      Qt.exit(0);
+    }
   }
 
   Service {
