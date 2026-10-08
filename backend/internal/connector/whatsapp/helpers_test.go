@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -542,6 +543,27 @@ func u32(n uint32) *uint32 { return &n }
 
 // u64 takes the address of a uint64 literal, for the same reason.
 func u64(n uint64) *uint64 { return &n }
+
+// senderNameCall records one call to recordingSink.SenderName.
+type senderNameCall struct {
+	accountID, senderRemoteID, name string
+}
+
+// recordingSink wraps connectortest.Sink, additionally implementing
+// connector.SenderNamer, so a test can confirm a resolved name also
+// corrects already-stored messages (see contacts.go's
+// retitleDirectChat), which connectortest.Sink alone has no need to
+// support since most of this package's tests check only what was
+// reported, not what a real Ingest would do with it.
+type recordingSink struct {
+	*connectortest.Sink
+	senderNames []senderNameCall
+}
+
+// SenderName records the call.
+func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string) {
+	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name})
+}
 
 // contains reports whether s holds substr, without pulling in strings
 // just for one assertion that an error message leaked nothing.

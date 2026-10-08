@@ -15,9 +15,11 @@ package whatsapp
 import (
 	"errors"
 	"log"
+	"strings"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
@@ -37,6 +39,31 @@ const reasonNoRealContent = "no-real-content"
 // against what was dropped on purpose.
 func logDropped(reason string) {
 	log.Printf("whatsapp: dropped message (reason=%s)", reason)
+}
+
+// logSystemChatDropped reports a message in WhatsApp's own "0" system
+// chat (see titleFallback) that was not stored, and why: that chat's
+// only content is WhatsApp's own announcements and security notices,
+// so a report that they never appear is worth telling apart from an
+// everyday dropped message, without ever naming the chat by its JID,
+// which this line has no need for since there is only the one.
+func logSystemChatDropped(reason, fields string) {
+	log.Printf("whatsapp: system chat message dropped (reason=%s, fields=%s)", reason, fields)
+}
+
+// logContentlessDrop reports a message that carried nothing a person
+// sent (see isContentless): as logSystemChatDropped when chat is
+// WhatsApp's own "0" system account, so its announcements and
+// security notices missing from the conversation list is never
+// confused with an everyday contentless drop, or as an ordinary
+// logDropped otherwise.
+func logContentlessDrop(chat types.JID, content *waE2E.Message) {
+	if chat == types.PSAJID {
+		logSystemChatDropped(reasonContentless, fieldPaths(content))
+		return
+	}
+
+	logDropped(reasonContentless)
 }
 
 // logUndecryptable reports a message whatsmeow received but could not
@@ -166,8 +193,11 @@ var recognizedContentFields = map[string]bool{
 	"stickerMessage": true, "contactMessage": true, "contactsArrayMessage": true,
 	"locationMessage": true, "liveLocationMessage": true,
 	"groupInviteMessage": true, "stickerPackMessage": true,
-	"interactiveMessage": true, "buttonsMessage": true,
-	"templateMessage": true, "templateButtonReplyMessage": true,
+	"interactiveMessage": true, "buttonsMessage": true, "buttonsResponseMessage": true,
+	"interactiveResponseMessage": true,
+	"templateMessage":            true, "templateButtonReplyMessage": true,
+	"listMessage": true, "listResponseMessage": true, "orderMessage": true,
+	"productMessage": true, "highlyStructuredMessage": true,
 	"albumMessage": true, "associatedChildMessage": true,
 	"pollCreationMessage": true, "pollCreationMessageV2": true, "pollCreationMessageV3": true,
 	"pollCreationMessageV4": true, "pollCreationMessageV5": true, "pollCreationMessageV6": true,
@@ -182,6 +212,59 @@ var recognizedContentFields = map[string]bool{
 	"messageHistoryBundle": true, "messageHistoryNotice": true,
 	"placeholderMessage": true, "secretEncryptedMessage": true,
 	"groupRootKeyShare": true, "rootSecretDistributeMessage": true,
+}
+
+// fieldPathDepth bounds how many levels populatedFieldPaths descends
+// into a message's own nested fields, so logPlaceholderMessage's line
+// can never grow unbounded chasing a deeply nested proto.
+const fieldPathDepth = 3
+
+// logPlaceholderMessage reports that a message still fell back to the
+// generic "[Message]" placeholder (see messageText), and which proto
+// fields it populated, by name alone, up to fieldPathDepth deep, so a
+// business message kind this connector has not been taught to show
+// real text for yet can be found and fixed. fields never carries a
+// field's own value, only that something at that path is set.
+func logPlaceholderMessage(fields string) {
+	log.Printf("whatsapp: placeholder message (fields=%s)", fields)
+}
+
+// fieldPaths is the comma-separated, depth-bounded field-name paths
+// msg populated, for logPlaceholderMessage and logContentlessDrop.
+func fieldPaths(msg *waE2E.Message) string {
+	return strings.Join(populatedFieldPaths(msg.ProtoReflect(), fieldPathDepth), ",")
+}
+
+// populatedFieldPaths lists the dotted field-name paths msg populated,
+// each read through reflection alone and never a field's own value: a
+// nested message field is expanded into "<field>.<nested field>" up to
+// depth levels deep, so a diagnostic can tell, say, an interactive
+// message's unrecognised card shape apart from its header alone,
+// while a list, map or a nested field with nothing populated inside
+// it is reported by its own field name only.
+func populatedFieldPaths(msg protoreflect.Message, depth int) []string {
+	if depth <= 0 {
+		return nil
+	}
+
+	var paths []string
+	msg.Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
+		name := string(fd.Name())
+		if fd.Kind() == protoreflect.MessageKind && !fd.IsList() && !fd.IsMap() {
+			if nested := populatedFieldPaths(v.Message(), depth-1); len(nested) > 0 {
+				for _, n := range nested {
+					paths = append(paths, name+"."+n)
+				}
+
+				return true
+			}
+		}
+		paths = append(paths, name)
+
+		return true
+	})
+
+	return paths
 }
 
 // unknownContentKind reports the proto field name of the first content

@@ -60,6 +60,45 @@ func TestIncoming_KeepsAPinnedChatPinned(t *testing.T) {
 	}
 }
 
+// TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat
+// confirms a connector correcting a sender's name once it resolves
+// re-publishes the conversation whose preview that changes, and
+// leaves one whose preview already names someone else untouched.
+func TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	group := f.conversation(t, "group", "Weekend plans", domain.KindGroup)
+	other := f.conversation(t, "other", "Different chat", domain.KindDirect)
+
+	f.ingest.Incoming(ctx, "wa", group.RemoteID, incoming("in-1", "Thanks"))
+	f.ingest.Incoming(ctx, "wa", other.RemoteID, domain.Message{RemoteID: "in-2", SenderID: "sam", SenderName: "Sam", Text: "hi", Created: 1})
+	f.published.take()
+
+	f.ingest.SenderName(ctx, "wa", "alex", "Alex Chen")
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events = %v, want exactly one conversation update", got)
+	}
+
+	updated, err := f.store.Conversation(ctx, group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.PreviewSender != "Alex Chen" {
+		t.Errorf("group preview sender = %q, want %q", updated.PreviewSender, "Alex Chen")
+	}
+
+	unchanged, err := f.store.Conversation(ctx, other.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.PreviewSender != "Sam" {
+		t.Errorf("other conversation's preview sender = %q, want it left alone", unchanged.PreviewSender)
+	}
+}
+
 func TestIncoming_NotifiesWithTheConversationID(t *testing.T) {
 	t.Parallel()
 
