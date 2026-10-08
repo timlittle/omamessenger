@@ -86,13 +86,16 @@ type Connector struct {
 
 // nameRank orders how much a resolved name can be trusted, so
 // rememberName never lets a later, weaker report replace a name already
-// known to be better: a contact's saved name, a verified business name
-// or a group's own name (WhatsApp's own best answer) always wins over a
-// bare push name, which is self-chosen and unverified.
+// known to be better: a contact's saved name or a group's own name
+// (WhatsApp's own best answer) always wins over a business's verified
+// name, which in turn always wins over a bare push name, self-chosen
+// and unverified, matching the priority WhatsApp's own apps give these
+// (see contactDisplayName).
 type nameRank int
 
 const (
 	nameRankPushName nameRank = iota + 1
+	nameRankBusiness
 	nameRankContact
 )
 

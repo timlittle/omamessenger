@@ -94,6 +94,31 @@ func TestMarkRead_ClearsUnreadAndTellsTheService(t *testing.T) {
 	}
 }
 
+// TestMarkRead_TellsTheServiceHowManyWereUnread confirms the
+// conversation handed to the dispatcher's MarkRead still carries the
+// unread count it had before this call cleared it locally: a service
+// such as WhatsApp's connector needs that count to know how many of a
+// conversation's newest messages to send a read receipt for, and
+// fetching the conversation only after the local clear would always
+// hand it zero, making every such call a silent no-op.
+func TestMarkRead_TellsTheServiceHowManyWereUnread(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 3)
+	f.published.take()
+
+	if err := f.commands.MarkRead(ctx, chat.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(f.dispatcher.readConv) != 1 || f.dispatcher.readConv[0].Unread != 3 {
+		t.Fatalf("dispatcher saw %+v, want one call with Unread 3", f.dispatcher.readConv)
+	}
+}
+
 func TestSetMuted_UpdatesUnreadTotal(t *testing.T) {
 	t.Parallel()
 

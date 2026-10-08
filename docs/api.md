@@ -34,7 +34,8 @@ The protocol version is `3`.
 | `media.fetch` | `{messageId}` | `{path}`: the message's photo, video, file or voice note. For a message you sent, its own local copy is returned at once; otherwise it is downloaded into the media cache the first time. A download failure answers `-32603` with `data: {reason}`, one of `not-found`, `expired`, `download`, `decrypt`, `cache` or `timeout`, safe to show; the helper also logs the same category to stderr. `expired` is WhatsApp-specific: it means the CDN link had aged out and the primary phone, asked to re-upload it, confirmed the media is gone or never answered |
 | `media.paste` | | `{path, kind, width, height}`: an image copied off the clipboard into the outgoing media area, for the composer to attach to the next message sent; fails with an invalid-input error when the clipboard holds no image |
 | `ui.setFocus` | `{conversationId, windowActive}` | `{}` |
-| `settings.apply` | `{notifications, notificationPreview}` | `{}` |
+| `settings.apply` | `{notifications, notificationPreview, notificationDetail}` | `{}`; `notificationDetail` is `nameAndMessage`, `nameOnly` or `none`, and takes over from the older `notificationPreview` boolean when sent (`true` behaves as `nameAndMessage`, `false` as `nameOnly`) |
+| `helper.doctor` | | `{checks: [{name, ok, detail}]}`: the helper's own health report (version, data permissions, the database, the media cache, each account's connection, notify-send, and any recent error categories). Every field is safe to show: states and categories, never a path, a count, a name or a token |
 | `fake.inject` | `{conversationId}` | `Message`; only in the test build |
 
 ## Events

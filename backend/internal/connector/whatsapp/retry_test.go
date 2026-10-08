@@ -9,6 +9,7 @@ package whatsapp
 
 import (
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -127,6 +128,52 @@ func TestFetchMedia_RetriesAnExpiredLinkThroughThePhone(t *testing.T) {
 		updated, ok, err := media.get(t.Context(), directChat.RemoteID, "msg-1")
 		if err != nil || !ok || updated.DirectPath != "/new" {
 			t.Errorf("stored ref = %+v, %v, %v, want its direct path updated to /new", updated, ok, err)
+		}
+	})
+}
+
+// TestFetchMedia_AcceptsAReuploadThatOnlyFailsThePlaintextDigest
+// confirms a real account's symptom: a 410 sends a retry receipt to the
+// phone, which answers with a fresh path, but the re-upload WhatsApp
+// returned at that path decrypts to a plaintext that no longer matches
+// the hash the original message declared, because the phone re-encoded
+// it when re-uploading. That still counts as success: the media-key
+// HMAC already authenticated the file before that specific check ran.
+func TestFetchMedia_AcceptsAReuploadThatOnlyFailsThePlaintextDigest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dev := newFakeDevice()
+		key := testMediaKey(7)
+		dev.downloadErrPaths = map[string]error{
+			"/old": whatsmeow.ErrMediaDownloadFailedWith410,
+			"/new": whatsmeow.ErrInvalidMediaSHA256,
+		}
+		dev.downloadData = []byte("re-encoded bytes")
+
+		var sink connectortest.Sink
+		c := connectedToWithMedia(t, dev, &sink)
+		media := c.mediaFor()
+		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		defer unregister()
+
+		seedRetryMessage(t, media, "msg-1", key, "/old")
+
+		path := filepath.Join(t.TempDir(), "out")
+		done := make(chan error, 1)
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		synctest.Wait()
+
+		dev.fireEvent(mediaRetryEvent(t, key, "msg-1", &waMmsRetry.MediaRetryNotification{
+			Result: waMmsRetry.MediaRetryNotification_SUCCESS.Enum(), DirectPath: strPtr("/new"),
+		}))
+		synctest.Wait()
+
+		if err := <-done; err != nil {
+			t.Fatalf("FetchMedia = %v, want the re-uploaded bytes accepted despite the stale digest", err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != "re-encoded bytes" {
+			t.Errorf("downloaded %q, %v, want the re-uploaded bytes written", got, err)
 		}
 	})
 }
@@ -308,14 +355,15 @@ func TestDeliverRetry_DropsAnAnswerNobodyIsWaitingFor(t *testing.T) {
 	c.deliverRetry(&events.MediaRetry{MessageID: "ghost"})
 }
 
-// TestFetchMedia_DoesNotRetryANon404Or410Failure confirms any other
-// download failure, such as a different HTTP status, is returned as
-// its plain self, with no retry receipt ever sent.
-func TestFetchMedia_DoesNotRetryANon404Or410Failure(t *testing.T) {
+// TestFetchMedia_DoesNotRetryAGenericHTTPFailure confirms a download
+// failure whose status is not one WhatsApp uses for a stale link (403,
+// 404 or 410) is returned as its plain self, with no retry receipt ever
+// sent: retry.go has no reason to believe the primary phone can fix it.
+func TestFetchMedia_DoesNotRetryAGenericHTTPFailure(t *testing.T) {
 	t.Parallel()
 
 	dev := newFakeDevice()
-	dev.downloadErr = whatsmeow.ErrMediaDownloadFailedWith403
+	dev.downloadErr = whatsmeow.DownloadHTTPError{Response: &http.Response{StatusCode: 500}}
 	var sink connectortest.Sink
 	c := connectedToWithMedia(t, dev, &sink)
 	if err := c.mediaFor().put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
@@ -327,6 +375,45 @@ func TestFetchMedia_DoesNotRetryANon404Or410Failure(t *testing.T) {
 		t.Errorf("FetchMedia = %v, want the plain download error returned unchanged", err)
 	}
 	if len(dev.mediaRetryCalls) != 0 {
-		t.Errorf("mediaRetryCalls = %d, want no retry receipt sent for a non-404/410 failure", len(dev.mediaRetryCalls))
+		t.Errorf("mediaRetryCalls = %d, want no retry receipt sent for a non-stale-link failure", len(dev.mediaRetryCalls))
 	}
+}
+
+// TestFetchMedia_Retries403ThroughThePhone confirms a 403, exactly like
+// a 404 or 410, triggers a retry receipt: WhatsApp answers a stale
+// media link with any of the three depending on which server fields
+// the request.
+func TestFetchMedia_Retries403ThroughThePhone(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dev := newFakeDevice()
+		key := testMediaKey(6)
+		dev.downloadErrPaths = map[string]error{"/old": whatsmeow.ErrMediaDownloadFailedWith403}
+		dev.downloadData = []byte("fresh bytes")
+
+		var sink connectortest.Sink
+		c := connectedToWithMedia(t, dev, &sink)
+		media := c.mediaFor()
+		unregister := c.handleEvents(t.Context(), dev, media, &sink)
+		defer unregister()
+
+		seedRetryMessage(t, media, "msg-1", key, "/old")
+
+		path := filepath.Join(t.TempDir(), "out")
+		done := make(chan error, 1)
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		synctest.Wait()
+
+		if len(dev.mediaRetryCalls) != 1 {
+			t.Fatalf("mediaRetryCalls = %d, want exactly one retry receipt sent for a 403", len(dev.mediaRetryCalls))
+		}
+
+		dev.fireEvent(mediaRetryEvent(t, key, "msg-1", &waMmsRetry.MediaRetryNotification{
+			Result: waMmsRetry.MediaRetryNotification_SUCCESS.Enum(), DirectPath: strPtr("/new"),
+		}))
+		synctest.Wait()
+
+		if err := <-done; err != nil {
+			t.Fatalf("FetchMedia = %v, want it to succeed once the phone answers", err)
+		}
+	})
 }

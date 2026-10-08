@@ -227,6 +227,12 @@ test('the palette offers opening a link and going to a quote, and retrying the h
   assert.deepEqual(retry, { action: 'helper.retryInstall', label: 'Retry installing the helper', keys: 'Ctrl+R' });
 });
 
+test('the palette offers running a health check, with no shortcut of its own', () => {
+  const doctor = Keymap.commands().find((c) => c.action === 'helper.doctor');
+
+  assert.deepEqual(doctor, { action: 'helper.doctor', label: 'Run health check', keys: '' });
+});
+
 test('the palette offers showing unread conversations, with its shortcut', () => {
   const unread = Keymap.commands().find((c) => c.action === 'list.unread');
 

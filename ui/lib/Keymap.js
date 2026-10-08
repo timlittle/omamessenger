@@ -53,6 +53,7 @@ var BINDINGS = [
   { action: 'window.hide', keys: ['Ctrl+W'], contexts: ['global'], label: 'Close window', command: true },
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
   { action: 'helper.retryInstall', keys: ['Ctrl+R'], contexts: ['global'], label: 'Retry installing the helper', command: true },
+  { action: 'helper.doctor', keys: [], contexts: ['global'], label: 'Run health check', command: true },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },

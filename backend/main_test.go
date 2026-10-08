@@ -85,6 +85,55 @@ func TestRun_PrintsVersionWithoutTouchingData(t *testing.T) {
 	}
 }
 
+// TestRun_DoctorReportsOnAFreshInstall confirms the doctor subcommand
+// runs standalone, without starting the server or any connector, and
+// prints a line naming the database check on a data directory it has
+// just created for itself. It does not assert the overall exit status:
+// whether notify-send happens to be on this machine's PATH is outside
+// the test's control, and must not make the test flaky.
+func TestRun_DoctorReportsOnAFreshInstall(t *testing.T) {
+	t.Parallel()
+
+	var out, stderr bytes.Buffer
+	s := streams{in: strings.NewReader(""), out: &out, errOut: &stderr}
+	dir := filepath.Join(t.TempDir(), "data")
+
+	_ = run(t.Context(), s, []string{"doctor", "--data-dir", dir}, lookup(nil))
+
+	if !strings.Contains(out.String(), "Database: open and up to date") {
+		t.Errorf("doctor output = %q, want a passing database check", out.String())
+	}
+	assertNoContent(t, out.String())
+}
+
+// TestRun_DoctorExitsWithAnErrorOnProblems confirms a looser-than-expected
+// database file makes the doctor subcommand fail, with the failing check
+// named in its output.
+func TestRun_DoctorExitsWithAnErrorOnProblems(t *testing.T) {
+	t.Parallel()
+
+	var out, stderr bytes.Buffer
+	s := streams{in: strings.NewReader(""), out: &out, errOut: &stderr}
+	dir := filepath.Join(t.TempDir(), "data")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	dbPath := filepath.Join(dir, "messages.db")
+	if err := os.WriteFile(dbPath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := run(t.Context(), s, []string{"doctor", "--data-dir", dir}, lookup(nil))
+	if err == nil {
+		t.Fatal("doctor over a world-readable database file succeeded")
+	}
+
+	if !strings.Contains(out.String(), "FAIL Data permissions") {
+		t.Errorf("doctor output = %q, want a failing \"Data permissions\" line", out.String())
+	}
+}
+
 func TestHelperVersion_MatchesThePin(t *testing.T) {
 	t.Parallel()
 

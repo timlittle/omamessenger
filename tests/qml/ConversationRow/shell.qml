@@ -6,7 +6,10 @@
 // or muted row's glyph actually renders (non-zero width, not just an
 // empty or unmapped-codepoint string), and a pinned row also carries a
 // "Pinned" tag, so a chat sorted to the top of the list is not left with
-// only a glyph as its only cue.
+// only a glyph as its only cue. Also checks the account colour stripe:
+// hidden for a single-account row, shown and tinted with the row's own
+// account colour otherwise, always paired with a tooltip naming the
+// account.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -57,6 +60,15 @@ ShellRoot {
     id: mutedRow
     width: 260
     conversation: ({ id: "c6", title: "Muted Chat", lastActivity: Date.now(), muted: true })
+  }
+
+  ConversationRow {
+    id: taggedRow
+    width: 260
+    conversation: ({ id: "c7", title: "Tagged Chat", lastActivity: Date.now() })
+    showAccountColor: true
+    accountColor: "#ff00ff"
+    accountName: "Work"
   }
 
   Timer {
@@ -118,6 +130,19 @@ ShellRoot {
     const mutedPinnedLabel = Check.find(mutedRow, "pinnedLabel");
     if (mutedPinnedLabel.visible)
       return Check.fail("a merely muted row shows a \"Pinned\" tag");
+
+    const plainStripe = Check.find(plainRow, "accountColorStripe");
+    if (!plainStripe || plainStripe.visible)
+      return Check.fail("a single-account row shows an account colour stripe");
+
+    const stripe = Check.find(taggedRow, "accountColorStripe");
+    if (!stripe || !stripe.visible)
+      return Check.fail("a multi-account row does not show its account colour stripe");
+    if (String(stripe.color) !== "#ff00ff")
+      return Check.fail("the account colour stripe is not tinted with its account colour: " + stripe.color);
+    const tooltip = Check.find(taggedRow, "accountColorTooltip");
+    if (!tooltip || tooltip.text !== "Work")
+      return Check.fail("the account colour stripe has no tooltip naming its account, colour is not the only cue it must avoid being");
 
     console.log("PASS ConversationRow");
     Qt.exit(0);

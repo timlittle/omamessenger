@@ -52,6 +52,7 @@ func (c *Connector) MarkRead(ctx context.Context, conv domain.Conversation) erro
 		return fmt.Errorf("whatsapp: mark read: %w", err)
 	}
 	if len(pending) == 0 {
+		logMarkRead(0, 0, chatPatchResult{status: chatPatchSkipped})
 		return nil
 	}
 
@@ -63,13 +64,16 @@ func (c *Connector) MarkRead(ctx context.Context, conv domain.Conversation) erro
 	readCtx, cancel := context.WithTimeout(ctx, readTimeout)
 	defer cancel()
 
+	receipts := 0
 	for senderRemoteID, ids := range pending {
 		if err := markReadFrom(readCtx, dev, chat, senderRemoteID, ids); err != nil {
 			return err
 		}
+		receipts += len(ids)
 	}
 
-	sendChatReadState(readCtx, dev, media, chat, conv.RemoteID)
+	patch := sendChatReadState(readCtx, dev, media, chat, conv.RemoteID)
+	logMarkRead(receipts, len(pending), patch)
 
 	return nil
 }
@@ -95,34 +99,62 @@ func markReadFrom(ctx context.Context, dev device, chat types.JID, senderRemoteI
 	return nil
 }
 
+// The chat_patch values logMarkRead reports for sendChatReadState's
+// outcome: sent once WhatsApp accepted the mutation, failed once it
+// did not, and skipped when there was no saved message to name it by
+// at all.
+const (
+	chatPatchSent    = "sent"
+	chatPatchFailed  = "failed"
+	chatPatchSkipped = "skipped"
+)
+
+// chatPatchResult is what sendChatReadState's app-state mutation
+// achieved, for logMarkRead's diagnostic line: its outcome, and whether
+// the message it named had a real timestamp rather than the zero value
+// an account paired before keys.go's timestamp column existed would
+// still carry for a message never seen again since.
+type chatPatchResult struct {
+	status       string
+	hasTimestamp bool
+}
+
 // sendChatReadState sends the app-state mutation that marks chat fully
 // read, naming the newest message this connector has saved for it, so
 // WhatsApp's own servers, the phone and any other linked device agree
 // the chat is read up to that point; this is what actually clears the
 // badge WhatsApp itself shows, which the per-message receipts
 // markReadFrom already sent do not touch on their own. It is best
-// effort: a failure here is logged and ignored rather than failing the
-// whole MarkRead call, the same as Telegram's own read reporting, since
-// the per-message receipts already sent still update WhatsApp's
-// server-side progress either way, and a later resync corrects any
-// miss.
-func sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat types.JID, convRemoteID string) {
+// effort: a failure here is reported through the returned result rather
+// than failing the whole MarkRead call, the same as Telegram's own read
+// reporting, since the per-message receipts already sent still update
+// WhatsApp's server-side progress either way, and a later resync
+// corrects any miss.
+func sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat types.JID, convRemoteID string) chatPatchResult {
 	messageID, key, found, err := media.latestMessageKey(ctx, convRemoteID)
 	if err != nil || !found {
-		return
+		return chatPatchResult{status: chatPatchSkipped}
 	}
+
+	result := chatPatchResult{status: chatPatchSent, hasTimestamp: key.timestamp != 0}
 
 	patch := appstate.BuildMarkChatAsRead(chat, true, time.UnixMilli(key.timestamp), targetKey(chat, key, messageID))
 	if err := dev.sendAppState(ctx, patch); err != nil {
-		logMarkChatReadFailed()
+		result.status = chatPatchFailed
 	}
+
+	return result
 }
 
-// logMarkChatReadFailed reports that the app-state mutation marking a
-// chat fully read did not reach WhatsApp, so a report of "still shows
-// unread on the phone" can be checked against how often this happens;
-// the per-message receipts sendChatReadState's caller already sent
-// still update WhatsApp's own progress either way.
-func logMarkChatReadFailed() {
-	log.Printf("whatsapp: mark chat as read failed")
+// logMarkRead reports one MarkRead call's shape: how many read receipts
+// it sent and across how many senders, whether the app-state mutation
+// marking the whole chat read was sent, failed, or never attempted at
+// all (see chatPatchResult), and whether the message that mutation
+// named carried a real timestamp. A report of "still shows unread on
+// the phone" can be checked against this: receipts and senders both 0
+// means nothing was unread by this connector's own reckoning in the
+// first place, not that sending failed.
+func logMarkRead(receipts, senders int, patch chatPatchResult) {
+	log.Printf("whatsapp: mark read (receipts=%d, senders=%d, chat_patch=%s, has_timestamp=%v)",
+		receipts, senders, patch.status, patch.hasTimestamp)
 }

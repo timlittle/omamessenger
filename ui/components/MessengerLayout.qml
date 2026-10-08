@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import "../theme"
 import "../lib/Rail.js" as Rail
+import "../lib/AccountColor.js" as AccountColor
 
 // The three columns that make up the OmaMessenger window: the service
 // rail, the search field and conversation list, and the open
@@ -67,6 +68,24 @@ Item {
   // _showList and _showConversation pick the columns a narrow window shows.
   readonly property bool _showList: !root.narrow || root.conversationController.pane !== "conversation"
   readonly property bool _showConversation: !root.narrow || root.conversationController.pane === "conversation"
+
+  // _multiAccount is true once more than one account exists, the only
+  // time an account's colour tag is worth showing at all; a single
+  // account user sees nothing new.
+  readonly property bool _multiAccount: root.service !== null && root.service.accounts.length > 1
+
+  // _accountColors maps each account id to its colour tag. Theme.accountColor
+  // keeps this palette distinct from a group's own sender colours (see
+  // AccountColor.js and Theme.qml), so the two never read as the same cue
+  // on the rare row where both would show.
+  readonly property var _accountColors: {
+    const colors = {}
+    const accounts = root.service ? root.service.accounts : []
+    for (const a of accounts) {
+      colors[a.id] = Theme.accountColor(AccountColor.colorIndex(a.id, Theme.accountPaletteSize))
+    }
+    return colors
+  }
 
   // _openRow opens the conversation a list row or a dialog contact chose.
   function _openRow(id: string): void {
@@ -162,6 +181,7 @@ Item {
       items: root.listController.railItems
       selectedKey: root.listController.railKey
       knownServices: root.service ? root.service.services : []
+      accountColors: root._accountColors
 
       onSelected: key => root.listController.setRail(key)
       onNewChat: root.dialogController.run("chat.new")
@@ -187,6 +207,8 @@ Item {
       nowMs: root.nowMs
       accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
       multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
+      accountColors: root._accountColors
+      showAccountColors: root._multiAccount
       showEmptyState: root.service !== null && root.service.status === "ready" && root.service.accounts.length === 0
       showAll: root.listController.showAll
       hiddenCount: root.listController.hiddenCount

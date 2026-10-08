@@ -20,6 +20,8 @@ Item {
   // knownServices: the helper's own services, from hello, for an entry's
   // tooltip; falls back to the built-in labels when empty.
   property var knownServices: []
+  // accountColors: accountId -> colour tag, for an account entry's chip.
+  property var accountColors: ({})
 
   // selected fires when an entry is clicked.
   signal selected(string key)
@@ -50,6 +52,7 @@ Item {
         entry: modelData
         selected: modelData.key === root.selectedKey
         knownServices: root.knownServices
+        accountColor: root.accountColors[modelData.accountId] ?? "transparent"
         onClicked: root.selected(modelData.key)
       }
     }

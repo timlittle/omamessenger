@@ -32,7 +32,7 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 	case isContentless(e.Message):
 		// WhatsApp's own protocol and system notices carry nothing a
 		// person sent; see isContentless. Nothing is reported for one.
-		logDropped(reasonContentless)
+		logContentlessDrop(e.Info.Chat, e.Message)
 	default:
 		c.handleContent(ctx, sink, dev, media, e)
 	}
@@ -116,7 +116,7 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 		return
 	}
 
-	title := c.resolveDirectTitle(ctx, dev, info.Chat, info.PushName)
+	title := c.resolveDirectTitle(ctx, dev, info.Chat, info.PushName, verifiedName(info))
 	c.reportConversation(ctx, sink, domain.Conversation{
 		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title,
 	})

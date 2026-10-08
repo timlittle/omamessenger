@@ -86,7 +86,12 @@ func (c *Connector) downloadOrRetry(ctx context.Context, dev device, media *medi
 		return data, nil
 	}
 
-	logDownloadFailed(downloadFailureClass(err))
+	if recovered, ok := recoverStaleDigest(data, err); ok {
+		logStaleDigestAccepted()
+		return recovered, nil
+	}
+
+	logDownloadFailed(err)
 	if !isExpiredDownload(err) {
 		return nil, classifyDownloadErr(err)
 	}
@@ -136,4 +141,24 @@ func classifyDownloadErr(err error) error {
 	}
 
 	return err
+}
+
+// recoverStaleDigest reports whether a download that failed only
+// because the file no longer matches the plaintext hash its message
+// declared is safe to use anyway: whatsmeow sets data to the decrypted
+// bytes before running that specific check (see its downloadAndDecrypt),
+// so by the time it fails the media-key HMAC has already authenticated
+// the ciphertext against this message's own key. WhatsApp's media retry
+// can answer with a file that was re-encoded when the phone re-uploaded
+// it, so its plaintext legitimately no longer matches the hash the
+// original message declared; WhatsApp's own apps accept the file
+// anyway, so this connector does too (see docs/decisions.md). Any other
+// decrypt failure never reaches this far with data at all: ok is false,
+// and the caller's own classifyDownloadErr still reports it.
+func recoverStaleDigest(data []byte, err error) ([]byte, bool) {
+	if len(data) == 0 || !errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
+		return nil, false
+	}
+
+	return data, true
 }

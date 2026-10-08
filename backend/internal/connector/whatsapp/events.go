@@ -71,6 +71,8 @@ func (c *Connector) handleChatListEvent(ctx context.Context, sink connector.Sink
 		c.handleContactUpdate(ctx, sink, dev, e)
 	case *events.PushName:
 		c.handlePushNameUpdate(ctx, sink, dev, e)
+	case *events.BusinessName:
+		c.handleBusinessNameUpdate(ctx, sink, dev, e)
 	case *events.AppStateSyncComplete:
 		c.handleAppStateSyncComplete(ctx, sink, dev, e)
 	case *events.MediaRetry:

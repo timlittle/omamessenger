@@ -1,8 +1,8 @@
 import QtQuick
 
 // The windows that float over the three columns: the reaction picker, the
-// command palette, the in-app photo viewer, the close question, account
-// setup and removal, and the new-chat dialog. Split out of
+// command palette, the health check report, the in-app photo viewer, the
+// close question, account setup and removal, and the new-chat dialog. Split out of
 // MessengerLayout to keep that file within the size guideline: like it,
 // this is allowed to call the controllers directly, since it is part of
 // Panel.qml's own body rather than a view under ui/components proper.
@@ -72,6 +72,13 @@ Item {
     onQueryEdited: text => root.windowController.setPaletteQuery(text)
     onAccepted: index => root.windowController.acceptPalette(index)
     onCancelled: root.windowController.closePalette()
+    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+  }
+
+  DoctorReport {
+    open: root.windowController.doctorOpen
+    checks: root.windowController.doctorChecks
+    onClosed: root.windowController.closeDoctor()
     onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
   }
 
