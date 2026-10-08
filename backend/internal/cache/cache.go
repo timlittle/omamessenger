@@ -22,18 +22,58 @@ const partSuffix = ".part"
 // ErrInvalidName reports a name that is not a plain file name.
 var ErrInvalidName = errors.New("cache: invalid file name")
 
-// Cache is a size-limited directory of downloaded files. Fetches run one
-// at a time, which keeps two fills of the same file from racing.
+// Cache is a size-limited directory of downloaded files. Two fetches for
+// different names fill concurrently; two fetches for the same name share
+// one lock, so only one of them actually fills it.
 type Cache struct {
 	dir   string
 	limit int64
 
-	mu sync.Mutex
+	keysMu sync.Mutex
+	keys   map[string]*keyLock
+
+	bookMu sync.Mutex // guards reading and pruning the directory, separately from any one file's fill
+}
+
+// keyLock is a per-file-name lock. It is reference counted so its entry
+// in Cache.keys is removed once nobody holds or is waiting for it,
+// rather than growing the map forever.
+type keyLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 // New returns a cache in dir that keeps at most limit bytes.
 func New(dir string, limit int64) *Cache {
-	return &Cache{dir: dir, limit: limit}
+	return &Cache{dir: dir, limit: limit, keys: make(map[string]*keyLock)}
+}
+
+// lockName acquires the lock for name, creating it on first use, and
+// returns a function that releases it. Only one caller at a time holds
+// a given name's lock, so concurrent fills of the same file can never
+// race, while different names never wait on each other.
+func (c *Cache) lockName(name string) func() {
+	c.keysMu.Lock()
+	k, ok := c.keys[name]
+	if !ok {
+		k = &keyLock{}
+		c.keys[name] = k
+	}
+	k.refs++
+	c.keysMu.Unlock()
+
+	k.mu.Lock()
+
+	return func() {
+		k.mu.Unlock()
+
+		c.keysMu.Lock()
+		k.refs--
+		if k.refs == 0 {
+			delete(c.keys, name)
+		}
+		c.keysMu.Unlock()
+	}
 }
 
 // Fetch returns the path of the cached file name, first calling fill to
@@ -43,8 +83,7 @@ func (c *Cache) Fetch(ctx context.Context, name string, fill func(ctx context.Co
 		return "", fmt.Errorf("%w: %q", ErrInvalidName, name)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	defer c.lockName(name)()
 
 	path := filepath.Join(c.dir, name)
 	if _, err := os.Stat(path); err == nil {
@@ -65,8 +104,8 @@ func (c *Cache) Fetch(ctx context.Context, name string, fill func(ctx context.Co
 // created yet (nothing has been fetched into it) simply holds zero
 // bytes, not an error.
 func (c *Cache) Stats() (bytes, limit int64, err error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.bookMu.Lock()
+	defer c.bookMu.Unlock()
 
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {
@@ -119,8 +158,7 @@ func (c *Cache) Adopt(ctx context.Context, name, path string) error {
 		return fmt.Errorf("%w: %q", ErrInvalidName, name)
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	defer c.lockName(name)()
 
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -175,8 +213,13 @@ func copyAcrossDevices(src, dst string) error { // coverage-ignore: needs two re
 }
 
 // prune drops the least recently used files until the cache fits its
-// limit, never the file just fetched.
+// limit, never the file just fetched. It locks the directory bookkeeping
+// separately from any file's per-name fill lock, so it never runs twice
+// at once even while unrelated fills proceed concurrently.
 func (c *Cache) prune(keep string) error {
+	c.bookMu.Lock()
+	defer c.bookMu.Unlock()
+
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {
 		return fmt.Errorf("cache: %w", err)

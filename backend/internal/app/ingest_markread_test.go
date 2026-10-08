@@ -1,6 +1,8 @@
 package app_test
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 	"testing/synctest"
@@ -148,6 +150,69 @@ func TestUnread_ReMarksReadForTheOpenConversation(t *testing.T) {
 
 		if got := f.dispatcher.read; !slices.Equal(got, []string{chat.ID}) {
 			t.Errorf("read receipts = %v, want one report for %s", got, chat.ID)
+		}
+	})
+}
+
+// TestIngestRun_CancellingTheRootContextCancelsAPendingFlush reproduces
+// a debounced flush still in flight - talking to a slow service - right
+// as the helper shuts down. Before Run existed, flushMarkRead ran on its
+// own context.Background(), so a flush already dispatched to the
+// service kept running for up to markReadTimeout regardless of
+// shutdown, and nothing waited for it to finish either. With Run
+// started, cancelling the root context must cancel that call's own
+// context at once, and Run must not return until the call it cancelled
+// has actually finished.
+func TestIngestRun_CancellingTheRootContextCancelsAPendingFlush(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx, cancel := context.WithCancel(t.Context())
+		chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+		if err := f.commands.SetFocus(ctx, chat.ID, true); err != nil {
+			t.Fatal(err)
+		}
+
+		entered := make(chan struct{})
+		result := make(chan error, 1)
+		f.dispatcher.onMarkRead = func(markCtx context.Context, _ domain.Conversation) error {
+			close(entered)
+			<-markCtx.Done()
+			err := markCtx.Err()
+			result <- err
+
+			return err
+		}
+
+		runDone := make(chan struct{})
+		go func() {
+			f.ingest.Run(ctx)
+			close(runDone)
+		}()
+		synctest.Wait()
+
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "hello"))
+
+		time.Sleep(time.Second) // past the debounce: flushMarkRead starts and calls MarkRead
+		synctest.Wait()
+		<-entered // MarkRead is now blocked inside the fake, holding its own ctx
+
+		cancel() // the helper's root context is cancelled, as on shutdown
+		synctest.Wait()
+
+		select {
+		case err := <-result:
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("the flush's own ctx error after cancelling the root context = %v, want context.Canceled", err)
+			}
+		default:
+			t.Fatal("cancelling the root context did not cancel the pending flush's own context")
+		}
+
+		select {
+		case <-runDone:
+		default:
+			t.Fatal("Run returned before the flush it cancelled had actually finished")
 		}
 	})
 }

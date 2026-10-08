@@ -41,7 +41,11 @@ func SaveCredentials(dir, accountID string, c Credentials) error {
 		return fmt.Errorf("telegram: save credentials: %w", err)
 	}
 
-	return os.WriteFile(credentialsPath(dir, accountID), data, 0o600)
+	if err := writeFileAtomically(credentialsPath(dir, accountID), data, 0o600); err != nil {
+		return fmt.Errorf("telegram: save credentials: %w", err)
+	}
+
+	return nil
 }
 
 // loadCredentials reads an account's credentials from dir.

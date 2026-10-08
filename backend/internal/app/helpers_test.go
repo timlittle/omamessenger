@@ -141,6 +141,11 @@ type fakeDispatcher struct {
 	readConv []domain.Conversation // the full conversation of each MarkRead call, in order
 	err      error
 	onRun    func(domain.Message) // called during Send, like a fast service
+
+	// onMarkRead, when set, replaces MarkRead's own recording behaviour,
+	// for a test that needs to inspect or block on the ctx a caller gave
+	// it, such as one proving a debounced flush's ctx is cancelled.
+	onMarkRead func(ctx context.Context, conv domain.Conversation) error
 }
 
 func (d *fakeDispatcher) Send(_ context.Context, _ domain.Conversation, m domain.Message) error {
@@ -178,7 +183,15 @@ func (d *fakeDispatcher) lastMedia() *domain.Media {
 	return d.messages[len(d.messages)-1].Media
 }
 
-func (d *fakeDispatcher) MarkRead(_ context.Context, conv domain.Conversation) error {
+func (d *fakeDispatcher) MarkRead(ctx context.Context, conv domain.Conversation) error {
+	d.mu.Lock()
+	onMarkRead := d.onMarkRead
+	d.mu.Unlock()
+
+	if onMarkRead != nil {
+		return onMarkRead(ctx, conv)
+	}
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 

@@ -95,6 +95,45 @@ func TestRunRetries_ReconnectRetriesAtOnce(t *testing.T) {
 	})
 }
 
+// TestRetry_RacingTheSchedulerSendsOnlyOnce reproduces the automatic
+// retry scheduler's own pass and a user's manual Retry both reaching
+// the same failed, due message at once - an account reconnecting the
+// moment the user clicks retry, say. Only one of them must actually
+// hand the message to the service.
+func TestRetry_RacingTheSchedulerSendsOnlyOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx, cancel := context.WithCancel(t.Context())
+		f.conversation(t, "chat", "Chat", domain.KindDirect)
+		f.dispatcher.setErr(errors.New("offline"))
+
+		failed, err := f.commands.Send(ctx, "chat", "hello", app.SendOptions{})
+		if err != nil || failed.Status != domain.StatusFailed {
+			t.Fatalf("Send() = %+v, %v", failed, err)
+		}
+		f.dispatcher.setErr(nil) // the race's winner should now succeed
+		baseline := f.dispatcher.sendCount()
+
+		stop := runRetries(t, ctx, cancel, f)
+		defer stop()
+
+		var wg sync.WaitGroup
+		wg.Go(func() { _, _ = f.commands.Retry(ctx, failed.ID) })
+		f.ingest.AccountStatus(ctx, "wa", domain.AccountConnected, "") // wakes the scheduler's own pass at once
+		wg.Wait()
+		synctest.Wait()
+
+		if n := f.dispatcher.sendCount() - baseline; n != 1 {
+			t.Fatalf("sends from the racing scheduler pass and manual retry = %d, want exactly 1", n)
+		}
+
+		stored, err := f.store.Message(ctx, failed.ID)
+		if err != nil || stored.Status != domain.StatusPending {
+			t.Errorf("stored after the race = %+v, %v, want pending", stored, err)
+		}
+	})
+}
+
 // TestRunRetries_FollowsTheBackoffSchedule confirms automatic retries
 // follow the documented backoff - 30s, 2m, 10m, then hourly - and stop
 // rescheduling once a retry finally succeeds.

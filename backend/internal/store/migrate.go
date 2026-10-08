@@ -102,6 +102,13 @@ var migrations = []string{
 	ALTER TABLE messages ADD COLUMN retry_since INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE messages ADD COLUMN attachment_original_path TEXT NOT NULL DEFAULT '';
 	ALTER TABLE messages ADD COLUMN attachment_original_modtime INTEGER NOT NULL DEFAULT 0;`,
+	// The due time (Unix milliseconds) a reminder has already been
+	// notified for, or 0 for none yet. A reminder itself is never
+	// cleared automatically once it fires (see docs/decisions.md), so
+	// this is the scheduler's own record of having already announced
+	// it, kept in the database rather than in memory so a restart does
+	// not announce the same still-due reminder a second time.
+	`ALTER TABLE conversations ADD COLUMN reminder_notified_at INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

@@ -40,6 +40,40 @@ type Ingest struct {
 	pendingRead   *time.Timer
 	pendingConv   domain.Conversation
 	pendingUnread int
+
+	// shutdown is the helper's root context's Done channel, set once by
+	// Run. A flush already in flight when the helper shuts down watches
+	// it to cancel its own MarkRead call promptly, rather than running
+	// to the end of markReadTimeout regardless; nil until Run has
+	// started, which flushMarkRead treats as "nothing to watch for".
+	shutdown <-chan struct{}
+
+	// flushes tracks flushMarkRead calls in progress, so Run can wait
+	// for them to actually finish before returning, rather than only
+	// asking them to stop.
+	flushes sync.WaitGroup
+}
+
+// Run ties the debounced read-receipt flush to the helper's root
+// context: once ctx is done, it stops any flush still only pending (not
+// yet fired) and waits for one already in progress to finish, so
+// nothing it started keeps running past shutdown. Call it once, from
+// its own goroutine, for the life of the helper.
+func (in *Ingest) Run(ctx context.Context) {
+	in.mu.Lock()
+	in.shutdown = ctx.Done()
+	in.mu.Unlock()
+
+	<-ctx.Done()
+
+	in.mu.Lock()
+	if in.pendingRead != nil {
+		in.pendingRead.Stop()
+		in.pendingRead = nil
+	}
+	in.mu.Unlock()
+
+	in.flushes.Wait()
 }
 
 var (
@@ -352,16 +386,24 @@ func (in *Ingest) scheduleMarkRead(conv domain.Conversation, unread int) {
 }
 
 // flushMarkRead sends the debounced MarkRead call for the most recently
-// scheduled conversation, on its own background context: nothing in
-// whichever call triggered the schedule survives the wait. With read
-// receipts off, the local clear this debounce followed already stands on
-// its own, so the service is never told; see Settings.ReadReceipts.
+// scheduled conversation, on its own context: nothing in whichever call
+// triggered the schedule survives the wait, so it starts from
+// context.Background() rather than reusing a request's own context.
+// Run's shutdown channel is watched alongside markReadTimeout, so a
+// flush in flight when the helper shuts down cancels its call at once
+// instead of running for up to markReadTimeout past shutdown. With read
+// receipts off, the local clear this debounce followed already stands
+// on its own, so the service is never told; see Settings.ReadReceipts.
 func (in *Ingest) flushMarkRead() {
+	in.flushes.Add(1)
+	defer in.flushes.Done()
+
 	in.mu.Lock()
 	conv := in.pendingConv
 	conv.Unread = in.pendingUnread
 	in.pendingRead = nil
 	in.pendingUnread = 0
+	shutdown := in.shutdown
 	in.mu.Unlock()
 
 	settings, _, _ := in.ui.snapshot()
@@ -371,6 +413,16 @@ func (in *Ingest) flushMarkRead() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), markReadTimeout)
 	defer cancel()
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-shutdown:
+			cancel()
+		case <-done:
+		}
+	}()
 
 	_ = in.dispatcher.MarkRead(ctx, conv) // best effort; a later Unread sync corrects any miss
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -278,6 +280,92 @@ func TestFetch_RejectsNamesOutsideTheCache(t *testing.T) {
 		if _, err := c.Fetch(t.Context(), name, func(context.Context, string) error { return nil }); err == nil {
 			t.Errorf("Fetch(%q) succeeded", name)
 		}
+	}
+}
+
+// TestFetch_DifferentNamesFillConcurrently confirms a slow fill for one
+// file name does not block a fetch for a different name: only two
+// fills of the *same* file need to be serialized, not the whole cache.
+// A fix that still locks cache-wide would deadlock here, since "slow"
+// never releases until "quick" is observed to have finished.
+func TestFetch_DifferentNamesFillConcurrently(t *testing.T) {
+	t.Parallel()
+
+	c := cache.New(t.TempDir(), 1<<20)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+
+	slowDone := make(chan error, 1)
+	go func() {
+		_, err := c.Fetch(t.Context(), "slow", func(_ context.Context, path string) error {
+			close(entered)
+			<-release
+
+			return os.WriteFile(path, []byte("a"), 0o600)
+		})
+		slowDone <- err
+	}()
+	<-entered // the slow fill is now in progress and will not return until release closes
+
+	fastDone := make(chan error, 1)
+	go func() {
+		_, err := c.Fetch(t.Context(), "quick", writeBytes(1, new(int)))
+		fastDone <- err
+	}()
+
+	select {
+	case err := <-fastDone:
+		if err != nil {
+			t.Errorf("Fetch(quick) error = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("fetching a different file name blocked behind another file's in-progress fill")
+	}
+
+	close(release)
+	if err := <-slowDone; err != nil {
+		t.Errorf("Fetch(slow) error = %v", err)
+	}
+}
+
+// TestFetch_SameNameFillsOnceUnderConcurrency confirms two fetches of
+// the same file name, started together, still fill it only once: one
+// of them wins the per-name lock and fills, and the other, once it
+// gets the lock, finds the file already cached. Mutual exclusion makes
+// this true regardless of scheduling, so the test needs no artificial
+// delay to observe it.
+func TestFetch_SameNameFillsOnceUnderConcurrency(t *testing.T) {
+	t.Parallel()
+
+	c := cache.New(t.TempDir(), 1<<20)
+	var calls atomic.Int32
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() {
+			<-start
+			_, err := c.Fetch(t.Context(), "m1.jpg", func(_ context.Context, path string) error {
+				calls.Add(1)
+
+				return os.WriteFile(path, []byte("a"), 0o600)
+			})
+			errs <- err
+		})
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Errorf("Fetch error = %v", err)
+		}
+	}
+	if n := calls.Load(); n != 1 {
+		t.Errorf("fill calls = %d, want 1", n)
 	}
 }
 

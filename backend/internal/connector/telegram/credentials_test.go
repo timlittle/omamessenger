@@ -28,6 +28,31 @@ func TestCredentials_RoundTripPrivately(t *testing.T) {
 	}
 }
 
+// TestSaveCredentials_WriteIsAtomic confirms SaveCredentials never
+// leaves its temporary sibling behind, and overwriting existing
+// credentials still leaves a fully valid file, never a half-written one.
+func TestSaveCredentials_WriteIsAtomic(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := SaveCredentials(dir, "tg-1", Credentials{APIID: 1, APIHash: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveCredentials(dir, "tg-1", Credentials{APIID: 2, APIHash: "second"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(credentialsPath(dir, "tg-1") + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("a temporary file was left behind: %v", err)
+	}
+
+	got, err := loadCredentials(dir, "tg-1")
+	want := Credentials{APIID: 2, APIHash: "second"}
+	if err != nil || got != want {
+		t.Fatalf("loadCredentials after overwriting = %+v, %v, want %+v", got, err, want)
+	}
+}
+
 func TestForget_RemovesCredentialsSessionAndUpdateState(t *testing.T) {
 	t.Parallel()
 

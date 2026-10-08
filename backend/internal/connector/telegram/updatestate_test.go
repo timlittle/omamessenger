@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -186,6 +187,103 @@ func TestUpdateStorage_LoadFillsMissingMapsFromAPartialFile(t *testing.T) {
 
 	if err := s.SetChannelAccessHash(t.Context(), 7, 500, 1); err != nil {
 		t.Errorf("SetChannelAccessHash on a file with no channel-hash map = %v", err)
+	}
+}
+
+// TestUpdateStorage_RecoversFromACorruptFile reproduces the file a
+// crash mid-write could leave behind: truncated, invalid JSON. Loading
+// it must start fresh rather than fail, since failing here would stop
+// this account's Run from ever starting again until someone deletes
+// the file by hand.
+func TestUpdateStorage_RecoversFromACorruptFile(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "tg-corrupt.updates.json")
+	if err := os.WriteFile(path, []byte(`{"states":{"7":{"Pts":1,"Qts"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := newUpdateStorage(path)
+	if err != nil {
+		t.Fatalf("newUpdateStorage on a corrupt file = %v, want nil error so Run can still start", err)
+	}
+
+	if _, ok, err := s.GetState(t.Context(), 7); ok || err != nil {
+		t.Errorf("GetState after recovering from a corrupt file = ok=%v, err=%v, want not found", ok, err)
+	}
+
+	if err := s.SetState(t.Context(), 7, updates.State{Pts: 1}); err != nil {
+		t.Fatalf("SetState after recovering from a corrupt file = %v, want it usable", err)
+	}
+}
+
+// TestUpdateStorage_RecoversFromAnUnreadableFile reproduces a state
+// file this process cannot read at all - permissions changed under it,
+// say - which must be as recoverable as a corrupt one.
+func TestUpdateStorage_RecoversFromAnUnreadableFile(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "tg-unreadable.updates.json")
+	if err := os.WriteFile(path, []byte(`{}`), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) }) // let TempDir's own cleanup remove it
+
+	s, err := newUpdateStorage(path)
+	if err != nil {
+		t.Fatalf("newUpdateStorage on an unreadable file = %v, want nil error so Run can still start", err)
+	}
+
+	if err := s.SetState(t.Context(), 7, updates.State{Pts: 1}); err != nil {
+		t.Fatalf("SetState after recovering from an unreadable file = %v, want it usable", err)
+	}
+}
+
+// TestUpdateStorage_WriteIsAtomic confirms a save never leaves the
+// file's temporary sibling behind, and that the file on disk at every
+// point is either the previous full save or the new one - never a
+// half-written one in between - by reading it back after each save in
+// a sequence.
+func TestUpdateStorage_WriteIsAtomic(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "tg-atomic.updates.json")
+	s, err := newUpdateStorage(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetState(t.Context(), 7, updates.State{Pts: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("a temporary file was left behind: %v", err)
+	}
+
+	reloaded, err := newUpdateStorage(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state, ok, err := reloaded.GetState(t.Context(), 7); err != nil || !ok || state.Pts != 1 {
+		t.Fatalf("GetState after one save = %+v, ok=%v, err=%v, want Pts 1", state, ok, err)
+	}
+
+	if err := s.SetPts(t.Context(), 7, 2); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("a temporary file was left behind after a second save: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var onDisk updateStateFile
+	if err := json.Unmarshal(raw, &onDisk); err != nil {
+		t.Fatalf("file on disk after a second save is not valid JSON: %v", err)
 	}
 }
 

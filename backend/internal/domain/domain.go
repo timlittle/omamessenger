@@ -114,6 +114,12 @@ type Conversation struct {
 	// never reported to or read from the service.
 	ReminderAt int64 `json:"reminderAt"`
 
+	// ReminderNotifiedAt is the due time, in Unix milliseconds, the
+	// reminder scheduler already notified for, or 0 for none. It is
+	// the scheduler's own bookkeeping, the same as Message's
+	// RetryAttempts and RetrySince, so it never crosses the protocol.
+	ReminderNotifiedAt int64 `json:"-"`
+
 	// Match is a snippet of the newest message that matched a search query.
 	Match string `json:"match,omitempty"`
 

@@ -1,6 +1,9 @@
 package store
 
-import "database/sql"
+import (
+	"database/sql"
+	"strings"
+)
 
 // scanner is a single row from either *sql.Row or *sql.Rows.
 type scanner interface {
@@ -23,4 +26,9 @@ func scanAll[T any](rows *sql.Rows, scan func(scanner) (T, error)) ([]T, error) 
 	}
 
 	return out, rows.Err()
+}
+
+// placeholders returns n comma-separated "?" placeholders for an IN clause.
+func placeholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }

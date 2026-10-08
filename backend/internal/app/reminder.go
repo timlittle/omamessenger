@@ -25,19 +25,12 @@ type reminders struct {
 	// changed wakes run's wait loop immediately, instead of leaving it to
 	// its already-armed timer, whenever a reminder is set or cleared.
 	changed wakeable
-
-	// fired remembers the due time already notified for each
-	// conversation, so a reminder that stays set once it comes due (it
-	// is not cleared automatically; see docs/decisions.md) is announced
-	// once, not on every pass of run's loop. Touched only from run's own
-	// goroutine, so it needs no lock.
-	fired map[string]int64
 }
 
 // newReminders prepares a reminders scheduler. Call run once, from its
 // own goroutine, to start it.
 func newReminders(s *store.Store, notifier Notifier, events *events, ui *uiState) *reminders {
-	return &reminders{store: s, notifier: notifier, events: events, ui: ui, changed: newWakeable(), fired: map[string]int64{}}
+	return &reminders{store: s, notifier: notifier, events: events, ui: ui, changed: newWakeable()}
 }
 
 // notifyChanged wakes run's wait loop to recompute when it should next
@@ -78,12 +71,14 @@ func (r *reminders) fireDue(ctx context.Context) (next time.Time, ok bool, err e
 			return due, true, nil // PendingReminders orders soonest first
 		}
 
-		if r.fired[conv.ID] == conv.ReminderAt {
-			continue // already notified for this exact due time
+		if conv.ReminderNotifiedAt == conv.ReminderAt {
+			continue // already notified for this exact due time, even across a restart
 		}
 
 		r.fire(ctx, conv)
-		r.fired[conv.ID] = conv.ReminderAt
+		if err := r.store.MarkReminderNotified(ctx, conv.ID, conv.ReminderAt); err != nil {
+			return time.Time{}, false, err
+		}
 	}
 
 	return time.Time{}, false, nil
