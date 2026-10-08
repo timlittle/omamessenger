@@ -107,3 +107,15 @@ func connectedTo(f *fakeTelegram, sink connector.Sink) *Connector {
 
 	return c
 }
+
+// connectedAndKnown returns a connector already signed in to the fake,
+// with each of remoteIDs already learned, as most tests need before a
+// call that resolves a peer from a remote id.
+func connectedAndKnown(f *fakeTelegram, sink connector.Sink, remoteIDs ...string) *Connector {
+	c := connectedTo(f, sink)
+	for _, id := range remoteIDs {
+		c.learn(id)
+	}
+
+	return c
+}

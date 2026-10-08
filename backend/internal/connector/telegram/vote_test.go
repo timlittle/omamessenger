@@ -23,8 +23,7 @@ func TestVote_SendsTheOptionsAndReportsTheEchoedPoll(t *testing.T) {
 	f.reply(&tg.MessagesSendVoteRequest{}, &tg.Updates{Updates: []tg.UpdateClass{pollUpdate}})
 
 	var sink connectortest.Sink
-	c := connectedTo(f, &sink)
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &sink, chatWithNadia.RemoteID)
 
 	id := pollOptionID([]byte{0})
 	if err := c.Vote(t.Context(), chatWithNadia, "7", []string{id}); err != nil {

@@ -10,59 +10,63 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-func TestMembers_FromAChannel(t *testing.T) {
+// TestMembers checks that Members asks the right Telegram call for each
+// kind of conversation and reports no members for a direct chat, which
+// Telegram has no participant list for.
+func TestMembers(t *testing.T) {
 	t.Parallel()
 
-	f := newFakeTelegram()
-	f.reply(&tg.ChannelsGetParticipantsRequest{}, &tg.ChannelsChannelParticipants{
-		Users: []tg.UserClass{&tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia", LastName: "Rahman"}},
-	})
-
-	var sink connectortest.Sink
-	c := connectedTo(f, &sink)
-
-	got, err := c.Members(t.Context(), domain.Conversation{RemoteID: "channel:5:3"})
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name   string
+		setup  func(f *fakeTelegram)
+		remote string
+		want   []domain.Member
+	}{
+		{
+			name: "from a channel",
+			setup: func(f *fakeTelegram) {
+				f.reply(&tg.ChannelsGetParticipantsRequest{}, &tg.ChannelsChannelParticipants{
+					Users: []tg.UserClass{&tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia", LastName: "Rahman"}},
+				})
+			},
+			remote: "channel:5:3",
+			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia Rahman"}},
+		},
+		{
+			name: "from a basic group",
+			setup: func(f *fakeTelegram) {
+				f.reply(&tg.MessagesGetFullChatRequest{}, &tg.MessagesChatFull{
+					FullChat: &tg.ChatFull{ID: 7, Participants: &tg.ChatParticipants{ChatID: 7}},
+					Users:    []tg.UserClass{&tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia"}},
+				})
+			},
+			remote: "chat:7",
+			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia"}},
+		},
+		{
+			name:   "none for a direct chat",
+			setup:  func(*fakeTelegram) {},
+			remote: "user:42:99",
+			want:   nil,
+		},
 	}
 
-	want := []domain.Member{{ID: "user:42:99", Name: "Nadia Rahman"}}
-	if !slices.Equal(got, want) {
-		t.Errorf("members = %+v, want %+v", got, want)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestMembers_FromABasicGroup(t *testing.T) {
-	t.Parallel()
+			f := newFakeTelegram()
+			tt.setup(f)
+			c := connectedTo(f, &connectortest.Sink{})
 
-	f := newFakeTelegram()
-	f.reply(&tg.MessagesGetFullChatRequest{}, &tg.MessagesChatFull{
-		FullChat: &tg.ChatFull{ID: 7, Participants: &tg.ChatParticipants{ChatID: 7}},
-		Users:    []tg.UserClass{&tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia"}},
-	})
+			got, err := c.Members(t.Context(), domain.Conversation{RemoteID: tt.remote})
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	var sink connectortest.Sink
-	c := connectedTo(f, &sink)
-
-	got, err := c.Members(t.Context(), domain.Conversation{RemoteID: "chat:7"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	want := []domain.Member{{ID: "user:42:99", Name: "Nadia"}}
-	if !slices.Equal(got, want) {
-		t.Errorf("members = %+v, want %+v", got, want)
-	}
-}
-
-func TestMembers_NoneForADirectChat(t *testing.T) {
-	t.Parallel()
-
-	var sink connectortest.Sink
-	c := connectedTo(newFakeTelegram(), &sink)
-
-	got, err := c.Members(t.Context(), domain.Conversation{RemoteID: "user:42:99"})
-	if err != nil || got != nil {
-		t.Errorf("members, err = %+v, %v; want nil, nil", got, err)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("members = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }

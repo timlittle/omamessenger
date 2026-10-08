@@ -28,8 +28,7 @@ func TestConformance_SendProgress(t *testing.T) {
 	f.reply(&tg.MessagesSendMessageRequest{}, &tg.UpdateShortSentMessage{ID: 77})
 
 	var sink connectortest.Sink
-	c := connectedTo(f, &sink)
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &sink, chatWithNadia.RemoteID)
 	if err := c.Send(t.Context(), chatWithNadia, domain.Message{ID: "progress", Text: "hi"}); err != nil {
 		t.Fatal(err)
 	}

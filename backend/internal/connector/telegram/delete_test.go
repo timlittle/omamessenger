@@ -12,39 +12,37 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-func TestDeleteMessages_UsesTheChatCallWithRevoke(t *testing.T) {
+// TestDeleteMessages_UsesTheChatCall checks that a direct chat's delete
+// goes through the plain message call, with Revoke following forMe.
+func TestDeleteMessages_UsesTheChatCall(t *testing.T) {
 	t.Parallel()
 
-	f := newFakeTelegram()
-	f.reply(&tg.MessagesDeleteMessagesRequest{}, &tg.MessagesAffectedMessages{})
-
-	c := connectedTo(f, &connectortest.Sink{})
-	c.learn(chatWithNadia.RemoteID)
-	if err := c.DeleteMessages(t.Context(), chatWithNadia, []string{"7", "8"}, true); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name   string
+		ids    []string
+		revoke bool
+	}{
+		{"with revoke", []string{"7", "8"}, true},
+		{"for me only, which does not revoke", []string{"7"}, false},
 	}
 
-	req, ok := f.sent()[0].(*tg.MessagesDeleteMessagesRequest)
-	if !ok || !req.Revoke || len(req.ID) != 2 || req.ID[0] != 7 || req.ID[1] != 8 {
-		t.Errorf("request = %+v, want revoke of [7 8]", f.sent()[0])
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestDeleteMessages_ForMeOnlyDoesNotRevoke(t *testing.T) {
-	t.Parallel()
+			f := newFakeTelegram()
+			f.reply(&tg.MessagesDeleteMessagesRequest{}, &tg.MessagesAffectedMessages{})
 
-	f := newFakeTelegram()
-	f.reply(&tg.MessagesDeleteMessagesRequest{}, &tg.MessagesAffectedMessages{})
+			c := connectedAndKnown(f, &connectortest.Sink{}, chatWithNadia.RemoteID)
+			if err := c.DeleteMessages(t.Context(), chatWithNadia, tt.ids, tt.revoke); err != nil {
+				t.Fatal(err)
+			}
 
-	c := connectedTo(f, &connectortest.Sink{})
-	c.learn(chatWithNadia.RemoteID)
-	if err := c.DeleteMessages(t.Context(), chatWithNadia, []string{"7"}, false); err != nil {
-		t.Fatal(err)
-	}
-
-	req, ok := f.sent()[0].(*tg.MessagesDeleteMessagesRequest)
-	if !ok || req.Revoke {
-		t.Errorf("request = %+v, want Revoke false", f.sent()[0])
+			req, ok := f.sent()[0].(*tg.MessagesDeleteMessagesRequest)
+			if !ok || req.Revoke != tt.revoke || len(req.ID) != len(tt.ids) {
+				t.Errorf("request = %+v, want revoke %t of %v", f.sent()[0], tt.revoke, tt.ids)
+			}
+		})
 	}
 }
 
@@ -82,8 +80,7 @@ func TestDeleteMessages_MapsARefusalToErrDeleteUnsupported(t *testing.T) {
 	f := newFakeTelegram()
 	f.failNext(&tg.MessagesDeleteMessagesRequest{}, tgerr.New(400, "MESSAGE_DELETE_FORBIDDEN"))
 
-	c := connectedTo(f, &connectortest.Sink{})
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &connectortest.Sink{}, chatWithNadia.RemoteID)
 	err := c.DeleteMessages(t.Context(), chatWithNadia, []string{"7"}, true)
 	if !errors.Is(err, connector.ErrDeleteUnsupported) {
 		t.Errorf("DeleteMessages refused = %v, want ErrDeleteUnsupported", err)

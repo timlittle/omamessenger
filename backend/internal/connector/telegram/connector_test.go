@@ -21,8 +21,7 @@ func TestSend_ReportsSentThenReadWhenTheyReadIt(t *testing.T) {
 	f.reply(&tg.MessagesSendMessageRequest{}, &tg.UpdateShortSentMessage{ID: 77})
 
 	var sink connectortest.Sink
-	c := connectedTo(f, &sink)
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &sink, chatWithNadia.RemoteID)
 	if err := c.Send(t.Context(), chatWithNadia, domain.Message{ID: "m1", Text: "hi"}); err != nil {
 		t.Fatal(err)
 	}
@@ -47,8 +46,7 @@ func TestSend_ThreadsAReplyUnderTheQuotedMessage(t *testing.T) {
 	f.reply(&tg.MessagesSendMessageRequest{}, &tg.UpdateShortSentMessage{ID: 78})
 
 	var sink connectortest.Sink
-	c := connectedTo(f, &sink)
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &sink, chatWithNadia.RemoteID)
 
 	err := c.Send(t.Context(), chatWithNadia, domain.Message{
 		ID: "m2", Text: "sure", ReplyTo: &domain.Reply{RemoteID: "41"},
@@ -75,8 +73,7 @@ func TestSend_WithoutAReplyIDLeavesReplyToUnset(t *testing.T) {
 	f.reply(&tg.MessagesSendMessageRequest{}, &tg.UpdateShortSentMessage{ID: 79})
 
 	var sink connectortest.Sink
-	c := connectedTo(f, &sink)
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &sink, chatWithNadia.RemoteID)
 
 	// A reply whose quoted message has no remote id yet (still pending)
 	// cannot be threaded, so Send must not ask Telegram to reply to id 0.
@@ -159,8 +156,7 @@ func TestSetPinned_TogglesTheDialog(t *testing.T) {
 	f := newFakeTelegram()
 	f.reply(&tg.MessagesToggleDialogPinRequest{}, &tg.BoolTrue{})
 
-	c := connectedTo(f, &connectortest.Sink{})
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &connectortest.Sink{}, chatWithNadia.RemoteID)
 	if err := c.SetPinned(t.Context(), chatWithNadia, true); err != nil {
 		t.Fatal(err)
 	}
@@ -191,8 +187,7 @@ func TestSetArchived_MovesTheDialogToFolder1(t *testing.T) {
 	f := newFakeTelegram()
 	f.reply(&tg.FoldersEditPeerFoldersRequest{}, &tg.Updates{})
 
-	c := connectedTo(f, &connectortest.Sink{})
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &connectortest.Sink{}, chatWithNadia.RemoteID)
 	if err := c.SetArchived(t.Context(), chatWithNadia, true); err != nil {
 		t.Fatal(err)
 	}
@@ -237,8 +232,7 @@ func TestReact_SendsTheEmojiAndReportsTheEchoedChips(t *testing.T) {
 	}})
 
 	var sink connectortest.Sink
-	c := connectedTo(f, &sink)
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &sink, chatWithNadia.RemoteID)
 	if err := c.React(t.Context(), chatWithNadia, "7", "👍"); err != nil {
 		t.Fatal(err)
 	}
@@ -260,8 +254,7 @@ func TestReact_ClearingSendsNoReaction(t *testing.T) {
 	f := newFakeTelegram()
 	f.reply(&tg.MessagesSendReactionRequest{}, &tg.Updates{})
 
-	c := connectedTo(f, &connectortest.Sink{})
-	c.learn(chatWithNadia.RemoteID)
+	c := connectedAndKnown(f, &connectortest.Sink{}, chatWithNadia.RemoteID)
 	if err := c.React(t.Context(), chatWithNadia, "7", ""); err != nil {
 		t.Fatal(err)
 	}
