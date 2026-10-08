@@ -31,8 +31,17 @@ var errNotConnected = errors.New("whatsapp: not connected")
 // each report only one of the two, can still call Sink.Organized with
 // both: it is seeded from history sync and updated by those events for
 // as long as this process runs.
+//
+// pinnedFromAppState and archivedFromAppState record whether a live Pin
+// or Archive event has ever confirmed that field from WhatsApp's own
+// app state, as opposed to a history sync's own snapshot of it: once
+// true, history.go's reportSyncedOrganize never lets a sync's snapshot
+// of that field overwrite it again, since app state is pin and archive's
+// real source of truth and a sync can lag behind it, or never carry a
+// pin timestamp for a chat pinned only through app state.
 type organizeState struct {
-	pinned, archived bool
+	pinned, archived                         bool
+	pinnedFromAppState, archivedFromAppState bool
 }
 
 // Connector is one WhatsApp account.
@@ -453,6 +462,48 @@ func (c *Connector) setOrganized(remoteID string, pinned, archived *bool) organi
 	c.organize[remoteID] = state
 
 	return state
+}
+
+// setOrganizedFromAppState merges a change into remoteID's last known
+// pinned and archived state exactly like setOrganized, and additionally
+// marks whichever of pinned and archived it set as confirmed by
+// WhatsApp's own app state (see organizeState), so a history sync's own
+// snapshot of that field can never downgrade it again (see history.go's
+// reportSyncedOrganize). live.go's handlePin and handleArchive call this
+// instead of setOrganized, since each reports a real-time echo of
+// WhatsApp's own app state, not a sync's snapshot.
+func (c *Connector) setOrganizedFromAppState(remoteID string, pinned, archived *bool) organizeState {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.organize == nil {
+		c.organize = map[string]organizeState{}
+	}
+
+	state := c.organize[remoteID]
+	if pinned != nil {
+		state.pinned, state.pinnedFromAppState = *pinned, true
+	}
+	if archived != nil {
+		state.archived, state.archivedFromAppState = *archived, true
+	}
+	c.organize[remoteID] = state
+
+	return state
+}
+
+// organizeAppStateKnown reports whether remoteID's pinned and archived
+// state has already been confirmed by a live app-state echo (see
+// setOrganizedFromAppState), field by field, so history.go's
+// reportSyncedOrganize knows which of a sync's own fields it may still
+// trust.
+func (c *Connector) organizeAppStateKnown(remoteID string) (pinnedKnown, archivedKnown bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	state := c.organize[remoteID]
+
+	return state.pinnedFromAppState, state.archivedFromAppState
 }
 
 // markLocalOrganize records that remoteID's pinned or archived state was

@@ -126,16 +126,35 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 // recently than any live echo has confirmed (see isLocalOrganize): a
 // sync's own snapshot can lag a patch this process just sent (see
 // organize.go's SetPinned and SetArchived), and reporting it anyway
-// would revert a local change WhatsApp has not caught up with yet. A
-// live pin or archive echo (see handlePin and handleArchive) clears
-// that and is trusted unconditionally, since it is a real-time update,
-// not a stale snapshot.
+// would revert a local change WhatsApp has not caught up with yet.
+//
+// A field a live Pin or Archive event has already confirmed from app
+// state (see setOrganizedFromAppState) is left out of the merge
+// entirely, field by field, rather than only skipped while a local
+// change is pending: pinned and archived live mostly in app state, not
+// in this sync's own Conversation fields (a chat pinned purely through
+// app state carries no pin timestamp here), so once a live echo has
+// confirmed one, a sync's own snapshot of it must never be trusted
+// again for the rest of this run. This still reports the conversation's
+// up to date, merged state either way, so an app-state pin or archive
+// that arrived before this conversation ever existed, and so could not
+// be applied at the time (see connector.go's setOrganized), is applied
+// now that it does.
 func (c *Connector) reportSyncedOrganize(ctx context.Context, sink connector.Sink, conv domain.Conversation) {
 	if c.isLocalOrganize(conv.RemoteID) {
 		return
 	}
 
-	state := c.setOrganized(conv.RemoteID, &conv.Pinned, &conv.Archived)
+	pinnedKnown, archivedKnown := c.organizeAppStateKnown(conv.RemoteID)
+	pinned, archived := &conv.Pinned, &conv.Archived
+	if pinnedKnown {
+		pinned = nil
+	}
+	if archivedKnown {
+		archived = nil
+	}
+
+	state := c.setOrganized(conv.RemoteID, pinned, archived)
 	sink.Organized(ctx, c.account.ID, conv.RemoteID, state.pinned, state.archived)
 }
 

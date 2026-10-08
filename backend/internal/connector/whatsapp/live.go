@@ -186,25 +186,28 @@ func (c *Connector) handleReceipt(ctx context.Context, sink connector.Sink, dev 
 }
 
 // handlePin reports a chat pinned or unpinned from the phone, merging it
-// with whichever archived state this connector last knew for it.
+// with whichever archived state this connector last knew for it, and
+// marks pinned as confirmed by app state so a later history sync's own
+// snapshot can never revert it (see setOrganizedFromAppState).
 func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev device, e *events.Pin) {
 	remote := chatID(ctx, dev, e.JID)
 	pinned := e.Action.GetPinned()
 
 	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
-	state := c.setOrganized(remote, &pinned, nil)
+	state := c.setOrganizedFromAppState(remote, &pinned, nil)
 	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
 }
 
 // handleArchive reports a chat archived or unarchived from the phone,
 // merging it with whichever pinned state this connector last knew for
-// it.
+// it, and marks archived as confirmed by app state so a later history
+// sync's own snapshot can never revert it (see setOrganizedFromAppState).
 func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev device, e *events.Archive) {
 	remote := chatID(ctx, dev, e.JID)
 	archived := e.Action.GetArchived()
 
 	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
-	state := c.setOrganized(remote, nil, &archived)
+	state := c.setOrganizedFromAppState(remote, nil, &archived)
 	sink.Organized(ctx, c.account.ID, remote, state.pinned, state.archived)
 }
 

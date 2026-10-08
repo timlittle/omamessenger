@@ -296,6 +296,134 @@ func TestHandlePin_LiveEchoStillOverridesALocalPin(t *testing.T) {
 	}
 }
 
+func TestSyncConversation_AppliesAPinThatArrivedBeforeTheConversationExisted(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+
+	// The phone's pin arrives as a live app-state echo before history
+	// sync has ever reported this conversation. A real app drops this
+	// first report, since it has no conversation to attach it to yet,
+	// but this connector's own cache still remembers it.
+	jid, err := jidFromRemoteID(directChat.RemoteID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	sink.Take()
+
+	// History sync now creates the conversation. WhatsApp's own synced
+	// snapshot carries no pin timestamp for it, since the pin lives only
+	// in app state, not in this blob: that must not leave it unpinned.
+	media := newTestMediaStore(t)
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID: strPtr(directChat.RemoteID), Name: strPtr("Nadia"),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+		}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("organized " + directChat.RemoteID + " true false") {
+		t.Errorf("events = %q, want the early pin reported once the conversation exists", sink.Lines())
+	}
+}
+
+func TestSyncConversation_NeverRevertsAPinKnownFromAppState(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+
+	jid, err := jidFromRemoteID(directChat.RemoteID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	media := newTestMediaStore(t)
+	syncIt := func() {
+		e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+			Conversations: []*waHistorySync.Conversation{{
+				ID: strPtr(directChat.RemoteID), Name: strPtr("Nadia"),
+				Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+			}},
+		}}
+		c.handleHistorySync(t.Context(), &sink, dev, media, e)
+	}
+
+	// The conversation already exists, from an earlier sync with no pin
+	// of its own, and only afterwards does the phone's pin arrive live.
+	syncIt()
+	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	sink.Take()
+
+	// A later resync still carries WhatsApp's own snapshot with no pin
+	// timestamp: the pin confirmed live a moment ago must survive it.
+	syncIt()
+
+	if sink.Has("organized " + directChat.RemoteID + " false false") {
+		t.Errorf("events = %q, want the app-state pin kept rather than reverted by a later resync", sink.Lines())
+	}
+}
+
+func TestSyncConversation_AppliesAnArchiveThatArrivedBeforeTheConversationExisted(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+
+	jid, err := jidFromRemoteID(directChat.RemoteID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.handleArchive(t.Context(), &sink, dev, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
+	sink.Take()
+
+	// History sync's own Archived field defaults to false unless the
+	// sync carries it, same as Pinned can: this must not undo an
+	// archive already confirmed live.
+	media := newTestMediaStore(t)
+	e := &events.HistorySync{Data: &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID: strPtr(directChat.RemoteID), Name: strPtr("Nadia"),
+			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
+		}},
+	}}
+	c.handleHistorySync(t.Context(), &sink, dev, media, e)
+
+	if !sink.Has("organized " + directChat.RemoteID + " false true") {
+		t.Errorf("events = %q, want the early archive reported once the conversation exists", sink.Lines())
+	}
+}
+
+func TestHandlePinAndArchive_ApplyToAPhoneKeyedConversationAddressedByLID(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	dev.lidPhones = map[string]types.JID{lid.String(): phone}
+
+	// WhatsApp can address the same chat by the phone JID it is already
+	// stored under or by its LID interchangeably; a pin or archive sent
+	// by LID must land on the phone-keyed conversation, not a separate
+	// one.
+	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: lid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	if !sink.Has("organized " + remoteID(phone) + " true false") {
+		t.Errorf("events = %q, want the LID-addressed pin applied to the phone-keyed conversation", sink.Lines())
+	}
+
+	c.handleArchive(t.Context(), &sink, dev, &events.Archive{JID: lid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
+	if !sink.Has("organized " + remoteID(phone) + " true true") {
+		t.Errorf("events = %q, want the LID-addressed archive applied to the phone-keyed conversation", sink.Lines())
+	}
+}
+
 func TestSetArchived_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev := newFakeDevice()
