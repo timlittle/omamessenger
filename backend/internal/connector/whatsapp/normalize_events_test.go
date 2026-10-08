@@ -35,6 +35,17 @@ func TestIsContentless_RecognisesHousekeepingKinds(t *testing.T) {
 		{"root secret distribute", &waE2E.Message{RootSecretDistributeMessage: &waE2E.RootSecretDistributeMessage{}}, true},
 		{"album header", &waE2E.Message{AlbumMessage: &waE2E.AlbumMessage{}}, true},
 		{"a real revoke stays its own kind", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REVOKE.Enum()}}, false},
+		{"ephemeral setting change", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_EPHEMERAL_SETTING.Enum()}}, true},
+		{"app state sync key share", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_APP_STATE_SYNC_KEY_SHARE.Enum()}}, true},
+		// A protocol message type this connector has not enumerated as
+		// known housekeeping is not assumed content-free: WhatsApp keeps
+		// adding new ones (see the proto's own Type enum), and treating
+		// every unrecognised one as safe to drop risks silently losing a
+		// future kind that does carry something worth showing. It falls
+		// through to the generic placeholder instead (see messageText),
+		// the same as any other content this connector does not
+		// recognise yet.
+		{"an unrecognised protocol message type", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REQUEST_WELCOME_MESSAGE.Enum()}}, false},
 	}
 
 	for _, tt := range tests {

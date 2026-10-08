@@ -58,12 +58,38 @@ func edit(ctx context.Context, dev device, info types.MessageInfo, msg *waE2E.Me
 	return out
 }
 
+// housekeepingProtocolTypes are the ProtocolMessage kinds this
+// connector knows for certain carry nothing a person wrote: ephemeral
+// setting changes, app-state and session key exchange, backfill
+// bookkeeping and the account's own LID migration sync. WhatsApp keeps
+// adding new ProtocolMessage types (see the proto's own growing Type
+// enum); a type not listed here is treated as unknown rather than
+// assumed safe to drop, so a future kind that does carry something
+// worth showing falls through to the generic placeholder (see
+// messageText) instead of silently vanishing, the same as any other
+// content this connector does not recognise yet.
+var housekeepingProtocolTypes = map[waE2E.ProtocolMessage_Type]bool{
+	waE2E.ProtocolMessage_EPHEMERAL_SETTING:                            true,
+	waE2E.ProtocolMessage_EPHEMERAL_SYNC_RESPONSE:                      true,
+	waE2E.ProtocolMessage_HISTORY_SYNC_NOTIFICATION:                    true,
+	waE2E.ProtocolMessage_APP_STATE_SYNC_KEY_SHARE:                     true,
+	waE2E.ProtocolMessage_APP_STATE_SYNC_KEY_REQUEST:                   true,
+	waE2E.ProtocolMessage_MSG_FANOUT_BACKFILL_REQUEST:                  true,
+	waE2E.ProtocolMessage_INITIAL_SECURITY_NOTIFICATION_SETTING_SYNC:   true,
+	waE2E.ProtocolMessage_APP_STATE_FATAL_EXCEPTION_NOTIFICATION:       true,
+	waE2E.ProtocolMessage_SHARE_PHONE_NUMBER:                           true,
+	waE2E.ProtocolMessage_PEER_DATA_OPERATION_REQUEST_MESSAGE:          true,
+	waE2E.ProtocolMessage_PEER_DATA_OPERATION_REQUEST_RESPONSE_MESSAGE: true,
+	waE2E.ProtocolMessage_LID_MIGRATION_MAPPING_SYNC:                   true,
+}
+
 // isContentless reports whether msg is one of WhatsApp's own protocol
-// or system notices rather than something a person sent: every
-// ProtocolMessage kind other than a revoke or an edit (handled
-// separately; see isRevoke and isEdit), a message pinned or kept in a
-// chat, a voice or video call's log entry, an album's own header (its
-// photos and videos arrive as their own messages, each wrapped in an
+// or system notices rather than something a person sent: a known
+// housekeeping ProtocolMessage kind other than a revoke or an edit
+// (handled separately; see isRevoke, isEdit and
+// housekeepingProtocolTypes), a message pinned or kept in a chat, a
+// voice or video call's log entry, an album's own header (its photos
+// and videos arrive as their own messages, each wrapped in an
 // associatedChildMessage that unwrap peels away; see
 // normalize_message.go), or one of the other housekeeping kinds
 // WhatsApp's wire format carries alongside a session (a history-sync
@@ -73,7 +99,7 @@ func edit(ctx context.Context, dev device, info types.MessageInfo, msg *waE2E.Me
 // the same way a reaction is not.
 func isContentless(msg *waE2E.Message) bool {
 	if pm := msg.GetProtocolMessage(); pm != nil {
-		return !isRevoke(msg) && !isEdit(msg)
+		return !isRevoke(msg) && !isEdit(msg) && housekeepingProtocolTypes[pm.GetType()]
 	}
 
 	switch {

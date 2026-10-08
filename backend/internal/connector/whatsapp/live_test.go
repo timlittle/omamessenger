@@ -122,6 +122,58 @@ func TestHandleMessage_ReportsOurOwnMessageFromAnotherDeviceAsHistory(t *testing
 	}
 }
 
+// TestHandleMessage_CreatesAChatFromAnOutgoingMessageWhenNoIncomingCameFirst
+// covers a message silently vanishing: Ingest.save (backend/internal/app)
+// refuses a message for a conversation it has never been told exists, so
+// an outgoing-from-another-device message must still ensure its chat the
+// first time this connector run sees it, exactly as an incoming one
+// would, or a reply typed on the phone to a chat this run has not reached
+// yet (a business chat replied to right after a reconnect, say) is
+// reported as history and then dropped with nowhere to land.
+func TestHandleMessage_CreatesAChatFromAnOutgoingMessageWhenNoIncomingCameFirst(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+
+	info := liveInfo()
+	info.IsFromMe, info.PushName = true, ""
+	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("replied from my phone before this chat was ever seen")}}
+	c.handleMessage(t.Context(), sink, dev, media, e)
+
+	if !sink.Has("conversation 15551234567@s.whatsapp.net +15551234567") {
+		t.Errorf("events = %q, want the chat created so the reply has a conversation to be stored under", sink.Lines())
+	}
+	if !sink.Has("history 15551234567@s.whatsapp.net M1") {
+		t.Errorf("events = %q, want the message still reported as history", sink.Lines())
+	}
+}
+
+// TestHandleMessage_NeverRecreatesAnAlreadyKnownChatFromAnOutgoingMessage
+// confirms the fix above only covers a chat's first sighting this run:
+// once incoming traffic has already reported it, a later outgoing echo
+// from another device still skips ensureChat, so it can never overwrite
+// a good title with the generic one an outgoing message's own info
+// carries.
+func TestHandleMessage_NeverRecreatesAnAlreadyKnownChatFromAnOutgoingMessage(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+
+	incoming := &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}}
+	c.handleMessage(t.Context(), sink, dev, media, incoming)
+	sink.Take()
+
+	outgoing := liveInfo()
+	outgoing.IsFromMe, outgoing.ID, outgoing.PushName = true, "M2", ""
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
+		Info: outgoing, Message: &waE2E.Message{Conversation: strPtr("my reply")},
+	})
+
+	if sink.Has("conversation 15551234567@s.whatsapp.net +15551234567") {
+		t.Errorf("events = %q, want the already-known chat's good title left alone", sink.Lines())
+	}
+}
+
 func TestHandleMessage_ResolvesAGroupChatItHasNotSeenBefore(t *testing.T) {
 	t.Parallel()
 
@@ -423,6 +475,28 @@ func TestHandleUndecryptable_ReportsAPlaceholderForAnIncomingMessage(t *testing.
 	live := sink.LiveMessages()["15551234567@s.whatsapp.net"]
 	if len(live) != 1 || live[0].Text != undecryptablePlaceholder {
 		t.Errorf("placeholder text = %+v, want %q", live, undecryptablePlaceholder)
+	}
+}
+
+// TestHandleUndecryptable_CreatesAChatFromAnOutgoingMessageWhenNoIncomingCameFirst
+// is handleContent's own fix (see
+// TestHandleMessage_CreatesAChatFromAnOutgoingMessageWhenNoIncomingCameFirst)
+// for the same gap in the undecryptable path: an own-device message
+// that could not be decrypted yet must still ensure its chat the first
+// time this run sees it, or its placeholder is reported for a
+// conversation Ingest has never been told exists and is silently
+// dropped.
+func TestHandleUndecryptable_CreatesAChatFromAnOutgoingMessageWhenNoIncomingCameFirst(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink := handlerFixture(t)
+
+	info := liveInfo()
+	info.IsFromMe, info.PushName = true, ""
+	c.handleUndecryptable(t.Context(), sink, dev, nil, &events.UndecryptableMessage{Info: info})
+
+	if !sink.Has("conversation 15551234567@s.whatsapp.net +15551234567") {
+		t.Errorf("events = %q, want the chat created so the placeholder has a conversation to be stored under", sink.Lines())
 	}
 }
 

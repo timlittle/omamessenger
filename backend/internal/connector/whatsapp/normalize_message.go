@@ -18,42 +18,78 @@ const unwrapDepth = 8
 
 // unwrap peels the ephemeral, view-once and own-device wrappers
 // WhatsApp puts around a message's real content. whatsmeow's own event
-// dispatch already does this before an events.Message reaches a
-// connector, but normalize does it again so every function here is
-// safe to call on a message straight from the wire, such as one read
-// back out of a history sync.
+// dispatch (events.Message.UnwrapRaw) already peels every one of these
+// before a live events.Message reaches a connector, but a history
+// sync's WebMessageInfo never goes through that: normalize does it
+// again here so every function in this file is safe to call on a
+// message straight from the wire, whichever path delivered it,
+// including one read back out of a history sync.
 func unwrap(msg *waE2E.Message) *waE2E.Message {
 	for range unwrapDepth {
-		switch {
-		case msg.GetEphemeralMessage().GetMessage() != nil:
-			msg = msg.GetEphemeralMessage().GetMessage()
-		case msg.GetViewOnceMessage().GetMessage() != nil:
-			msg = msg.GetViewOnceMessage().GetMessage()
-		case msg.GetViewOnceMessageV2().GetMessage() != nil:
-			msg = msg.GetViewOnceMessageV2().GetMessage()
-		case msg.GetViewOnceMessageV2Extension().GetMessage() != nil:
-			msg = msg.GetViewOnceMessageV2Extension().GetMessage()
-		case msg.GetDeviceSentMessage().GetMessage() != nil:
-			msg = msg.GetDeviceSentMessage().GetMessage()
-		case msg.GetAssociatedChildMessage().GetMessage() != nil:
-			// An album's individual photo or video arrives wrapped this
-			// way; peeling it off here is what lets it show as an
-			// ordinary photo or video message, the same as one sent on
-			// its own.
-			msg = msg.GetAssociatedChildMessage().GetMessage()
-		case msg.GetPollCreationMessageV4().GetMessage() != nil:
-			// Unlike every earlier poll version, V4 wraps its content in
-			// the same forward-compatible envelope as an ephemeral or
-			// view-once message, rather than carrying a PollCreationMessage
-			// field directly; unwrapping it here is what lets the rest of
-			// this file's switches (see pollCreation) still recognise it.
-			msg = msg.GetPollCreationMessageV4().GetMessage()
-		default:
+		inner, peeled := unwrapOnce(msg)
+		if !peeled {
 			return msg
 		}
+
+		msg = inner
 	}
 
 	return msg
+}
+
+// unwrapOnce peels exactly one layer of whichever wrapper msg carries,
+// splitting unwrap's own switch in two so neither grows past this
+// codebase's complexity limit, and reports false when msg carries none
+// of these, which is unwrap's own signal to stop.
+func unwrapOnce(msg *waE2E.Message) (*waE2E.Message, bool) {
+	switch {
+	case msg.GetEphemeralMessage().GetMessage() != nil:
+		return msg.GetEphemeralMessage().GetMessage(), true
+	case msg.GetViewOnceMessage().GetMessage() != nil:
+		return msg.GetViewOnceMessage().GetMessage(), true
+	case msg.GetViewOnceMessageV2().GetMessage() != nil:
+		return msg.GetViewOnceMessageV2().GetMessage(), true
+	case msg.GetViewOnceMessageV2Extension().GetMessage() != nil:
+		return msg.GetViewOnceMessageV2Extension().GetMessage(), true
+	case msg.GetDeviceSentMessage().GetMessage() != nil:
+		return msg.GetDeviceSentMessage().GetMessage(), true
+	case msg.GetAssociatedChildMessage().GetMessage() != nil:
+		// An album's individual photo or video arrives wrapped this
+		// way; peeling it off here is what lets it show as an ordinary
+		// photo or video message, the same as one sent on its own.
+		return msg.GetAssociatedChildMessage().GetMessage(), true
+	case msg.GetPollCreationMessageV4().GetMessage() != nil:
+		// Unlike every earlier poll version, V4 wraps its content in
+		// the same forward-compatible envelope as an ephemeral or
+		// view-once message, rather than carrying a PollCreationMessage
+		// field directly; unwrapping it here is what lets the rest of
+		// this file's switches (see pollCreation) still recognise it.
+		return msg.GetPollCreationMessageV4().GetMessage(), true
+	default:
+		return unwrapBusinessOnce(msg)
+	}
+}
+
+// unwrapBusinessOnce peels the one remaining layer of wrapping
+// unwrapOnce's own switch leaves for a WhatsApp AI bot reply, a
+// document resent with this forward-compatible wrapper (such as one a
+// business account sends), or an animated sticker, so a history-synced
+// message of one of these kinds shows its real content instead of the
+// generic placeholder: whatsmeow's own live event dispatch
+// (events.Message.UnwrapRaw) already peels these before a connector
+// ever sees a live message, but a history sync's WebMessageInfo never
+// goes through that.
+func unwrapBusinessOnce(msg *waE2E.Message) (*waE2E.Message, bool) {
+	switch {
+	case msg.GetBotInvokeMessage().GetMessage() != nil:
+		return msg.GetBotInvokeMessage().GetMessage(), true
+	case msg.GetDocumentWithCaptionMessage().GetMessage() != nil:
+		return msg.GetDocumentWithCaptionMessage().GetMessage(), true
+	case msg.GetLottieStickerMessage().GetMessage() != nil:
+		return msg.GetLottieStickerMessage().GetMessage(), true
+	default:
+		return nil, false
+	}
 }
 
 // message turns a WhatsApp message into ours: its text, media, reply

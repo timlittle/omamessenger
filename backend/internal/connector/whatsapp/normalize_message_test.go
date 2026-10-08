@@ -122,6 +122,17 @@ func TestMessage_UnwrapsEphemeralAndViewOnce(t *testing.T) {
 		{"view once v2 extension", &waE2E.Message{ViewOnceMessageV2Extension: &waE2E.FutureProofMessage{Message: inner}}},
 		{"device sent", &waE2E.Message{DeviceSentMessage: &waE2E.DeviceSentMessage{Message: inner}}},
 		{"album child", &waE2E.Message{AssociatedChildMessage: &waE2E.FutureProofMessage{Message: inner}}},
+		// whatsmeow's own live event dispatch (events.Message.UnwrapRaw)
+		// already peels these three before a connector ever sees them,
+		// but a history-synced WebMessageInfo never goes through that,
+		// so unwrap has to do it here too, or a business bot's reply, a
+		// business document sent with this forward-compatible wrapper,
+		// or an animated sticker degrades to the generic "[Message]"
+		// placeholder once it only ever reaches this connector through
+		// history sync.
+		{"bot invoke", &waE2E.Message{BotInvokeMessage: &waE2E.FutureProofMessage{Message: inner}}},
+		{"document with caption", &waE2E.Message{DocumentWithCaptionMessage: &waE2E.FutureProofMessage{Message: inner}}},
+		{"lottie sticker", &waE2E.Message{LottieStickerMessage: &waE2E.FutureProofMessage{Message: inner}}},
 		{
 			"nested ephemeral view-once",
 			&waE2E.Message{EphemeralMessage: &waE2E.FutureProofMessage{Message: &waE2E.Message{

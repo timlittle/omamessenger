@@ -223,6 +223,7 @@ var recognizedContentFields = map[string]bool{
 	"pinInChatMessage": true, "keepInChatMessage": true,
 	"ephemeralMessage": true, "viewOnceMessage": true, "viewOnceMessageV2": true,
 	"viewOnceMessageV2Extension": true, "deviceSentMessage": true,
+	"botInvokeMessage": true, "documentWithCaptionMessage": true, "lottieStickerMessage": true,
 	"senderKeyDistributionMessage":               true,
 	"fastRatchetKeySenderKeyDistributionMessage": true,
 	"messageContextInfo":                         true,

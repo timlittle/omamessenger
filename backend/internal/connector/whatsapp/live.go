@@ -43,17 +43,24 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 // handleContent reports a message's own content. An incoming message's
 // conversation is reported first, so a brand-new chat is never dropped;
 // an outgoing one WhatsApp reports from another of this account's
-// devices skips that, since it carries no reliable name for an
-// already-known chat and would otherwise overwrite a good title with a
-// generic one. Either way, its message_keys row (saved below) is what
-// lets a later MarkRead for this conversation pick it out of the
-// newest incoming messages, even after a restart (see markread.go). The
-// account's own self-chat is the one exception: every message in it is
-// "from me", since there is no one else to send it, so it is the only
-// outgoing chat this still ensures exists. System JIDs history sync or
-// a live event can still deliver, such as the status broadcast, carry
-// nothing worth showing and are dropped outright (see isSystemJID).
-// Such a message is history: it never notifies.
+// devices skips that only once this connector already knows the chat
+// this run, since it then carries no reliable name for an already-known
+// chat and would otherwise overwrite a good title with a generic one.
+// The very first time this run sees a chat, it is still ensured
+// regardless of direction: Ingest (backend/internal/app) silently
+// refuses a message for a conversation it has never been told exists,
+// so an outgoing-first chat (a reply typed on the phone to a business
+// or similar, before any of their messages reached this run) would
+// otherwise vanish with nowhere to be stored. Either way, its
+// message_keys row (saved below) is what lets a later MarkRead for
+// this conversation pick it out of the newest incoming messages, even
+// after a restart (see markread.go). The account's own self-chat is
+// the one exception that always ensures the chat regardless of
+// knownChat too: every message in it is "from me", since there is no
+// one else to send it. System JIDs history sync or a live event can
+// still deliver, such as the status broadcast, carry nothing worth
+// showing and are dropped outright (see isSystemJID). Such a message
+// is history: it never notifies.
 func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	if isSystemJID(e.Info.Chat) {
 		return
@@ -64,7 +71,7 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 	}
 
 	remote := chatID(ctx, dev, media, e.Info.Chat)
-	if !e.Info.IsFromMe || dev.isSelfChat(ctx, e.Info.Chat) {
+	if !e.Info.IsFromMe || dev.isSelfChat(ctx, e.Info.Chat) || !c.knownChat(remote) {
 		c.ensureChat(ctx, sink, dev, media, e.Info)
 	}
 
@@ -209,7 +216,11 @@ const undecryptablePlaceholder = "Waiting for this message"
 // reported for a system JID, the same as a real message. Its
 // message_keys row is saved here too, the same as a real message's, so
 // MarkRead can still mark it read later even if it is never resolved
-// into real content.
+// into real content. The chat is still ensured the first time this run
+// sees it regardless of direction, the same as handleContent, so an
+// undecryptable outgoing-first message is never reported for a
+// conversation Ingest has never been told exists (see handleContent's
+// own doc comment).
 func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.UndecryptableMessage) {
 	logUndecryptable(e.IsUnavailable, e.DecryptFailMode)
 
@@ -218,7 +229,7 @@ func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink
 	}
 
 	remote := chatID(ctx, dev, media, e.Info.Chat)
-	if !e.Info.IsFromMe || dev.isSelfChat(ctx, e.Info.Chat) {
+	if !e.Info.IsFromMe || dev.isSelfChat(ctx, e.Info.Chat) || !c.knownChat(remote) {
 		c.ensureChat(ctx, sink, dev, media, e.Info)
 	}
 	c.markUndecryptable(remote, e.Info.ID)

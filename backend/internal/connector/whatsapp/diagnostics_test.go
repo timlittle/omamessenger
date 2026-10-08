@@ -65,6 +65,9 @@ func TestUnknownContentKind_RecognisesEveryKindThisConnectorHandles(t *testing.T
 		{"order", &waE2E.Message{OrderMessage: &waE2E.OrderMessage{}}},
 		{"product", &waE2E.Message{ProductMessage: &waE2E.ProductMessage{}}},
 		{"highly structured", &waE2E.Message{HighlyStructuredMessage: &waE2E.HighlyStructuredMessage{}}},
+		{"bot invoke", &waE2E.Message{BotInvokeMessage: &waE2E.FutureProofMessage{}}},
+		{"document with caption", &waE2E.Message{DocumentWithCaptionMessage: &waE2E.FutureProofMessage{}}},
+		{"lottie sticker", &waE2E.Message{LottieStickerMessage: &waE2E.FutureProofMessage{}}},
 		{"nothing at all", &waE2E.Message{}},
 	}
 
