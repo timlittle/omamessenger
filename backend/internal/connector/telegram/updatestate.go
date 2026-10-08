@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -97,7 +98,12 @@ func updateStatePath(dir, accountID string) string {
 
 // newUpdateStorage returns update storage backed by path, loading
 // whatever an earlier run already saved there, or starting empty when
-// nothing has been saved yet.
+// nothing has been saved yet. A file that cannot be read or parsed -
+// left truncated by a crash mid-write, say - is discarded rather than
+// returned as an error: failing here would stop this account's Run from
+// ever starting again, where starting fresh just costs one resync, the
+// same recovery updates.Manager already performs for a gap it cannot
+// otherwise bridge.
 func newUpdateStorage(path string) (*updateStorage, error) {
 	s := &updateStorage{path: path, data: emptyUpdateStateFile()}
 
@@ -106,11 +112,16 @@ func newUpdateStorage(path string) (*updateStorage, error) {
 		return s, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("telegram: load update state: %w", err)
+		log.Printf("telegram: update state unreadable, starting fresh and resyncing")
+
+		return s, nil
 	}
 
 	if err := json.Unmarshal(raw, &s.data); err != nil {
-		return nil, fmt.Errorf("telegram: load update state: %w", err)
+		log.Printf("telegram: update state corrupt, discarding and resyncing")
+		s.data = emptyUpdateStateFile()
+
+		return s, nil
 	}
 	s.data.fillMissingMaps()
 
@@ -315,8 +326,52 @@ func (s *updateStorage) update(mutate func(*updateStateFile) error) error {
 		return fmt.Errorf("telegram: save update state: %w", err)
 	}
 
-	if err := os.WriteFile(s.path, raw, 0o600); err != nil {
+	if err := writeFileAtomically(s.path, raw, 0o600); err != nil {
 		return fmt.Errorf("telegram: save update state: %w", err)
+	}
+
+	return nil
+}
+
+// writeFileAtomically writes data to a temporary file beside path,
+// fsyncs it so its content is actually on disk, and only then renames
+// it over path. This is written on nearly every incoming update, so a
+// crash or power loss mid-write must never leave path holding a
+// truncated or half-written file: the rename either lands in full or
+// not at all, and path keeps whatever it held before until it does.
+func writeFileAtomically(path string, data []byte, perm os.FileMode) error {
+	part := path + ".tmp"
+
+	f, err := os.OpenFile(part, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+
+	if _, err := f.Write(data); err != nil {
+		return errors.Join(err, f.Close(), removeIfPresent(part))
+	}
+
+	if err := f.Sync(); err != nil {
+		return errors.Join(err, f.Close(), removeIfPresent(part))
+	}
+
+	if err := f.Close(); err != nil {
+		return errors.Join(err, removeIfPresent(part))
+	}
+
+	if err := os.Rename(part, path); err != nil {
+		return errors.Join(err, removeIfPresent(part))
+	}
+
+	return nil
+}
+
+// removeIfPresent removes path, treating one already gone as removed:
+// cleanup after a failed atomic write must not mask the write's own
+// error by failing itself just because there was nothing left to clean.
+func removeIfPresent(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 
 	return nil
