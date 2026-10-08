@@ -189,7 +189,7 @@ func serve(ctx context.Context, cfg config, s streams) error {
 		background.Wait()
 	}()
 
-	runBackground(ctx, &background, commands, caches.outgoing, logger)
+	runBackground(ctx, &background, backgroundDeps{commands: commands, ingest: ingest, outgoing: caches.outgoing, logger: logger})
 
 	if err := manager.Start(ctx, db, ingest); err != nil && ctx.Err() == nil {
 		return fmt.Errorf("start connectors: %w", err)
@@ -221,14 +221,26 @@ func newMediaCaches(dir string, db *store.Store) mediaCaches {
 	}
 }
 
+// backgroundDeps groups what runBackground's goroutines need, besides
+// the context and WaitGroup each is wired through, so adding one more
+// does not keep growing runBackground's own argument list.
+type backgroundDeps struct {
+	commands *app.Commands
+	ingest   *app.Ingest
+	outgoing *cache.Outgoing
+	logger   *log.Logger
+}
+
 // runBackground starts the helper's own background work - the reminder
-// and retry schedulers, and the outgoing media area's sweep - each in
-// the given WaitGroup, so serve's own deferred cleanup waits for all of
-// them to stop.
-func runBackground(ctx context.Context, wg *sync.WaitGroup, commands *app.Commands, outgoing *cache.Outgoing, logger *log.Logger) {
-	wg.Go(func() { commands.RunReminders(ctx) })
-	wg.Go(func() { commands.RunRetries(ctx) })
-	wg.Go(func() { outgoing.RunSweeper(ctx, outgoingSweepInterval, logger) })
+// and retry schedulers, the debounced read-receipt flush's shutdown
+// tie-in, and the outgoing media area's sweep - each in the given
+// WaitGroup, so serve's own deferred cleanup waits for all of them to
+// stop.
+func runBackground(ctx context.Context, wg *sync.WaitGroup, d backgroundDeps) {
+	wg.Go(func() { d.commands.RunReminders(ctx) })
+	wg.Go(func() { d.commands.RunRetries(ctx) })
+	wg.Go(func() { d.ingest.Run(ctx) })
+	wg.Go(func() { d.outgoing.RunSweeper(ctx, outgoingSweepInterval, d.logger) })
 }
 
 // wireDeps are wire's own inputs, grouped into one struct so adding one,
