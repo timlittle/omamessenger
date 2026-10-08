@@ -24,7 +24,7 @@ type reminders struct {
 
 	// changed wakes run's wait loop immediately, instead of leaving it to
 	// its already-armed timer, whenever a reminder is set or cleared.
-	changed chan struct{}
+	changed wakeable
 
 	// fired remembers the due time already notified for each
 	// conversation, so a reminder that stays set once it comes due (it
@@ -37,16 +37,13 @@ type reminders struct {
 // newReminders prepares a reminders scheduler. Call run once, from its
 // own goroutine, to start it.
 func newReminders(s *store.Store, notifier Notifier, events *events, ui *uiState) *reminders {
-	return &reminders{store: s, notifier: notifier, events: events, ui: ui, changed: make(chan struct{}, 1), fired: map[string]int64{}}
+	return &reminders{store: s, notifier: notifier, events: events, ui: ui, changed: newWakeable(), fired: map[string]int64{}}
 }
 
 // notifyChanged wakes run's wait loop to recompute when it should next
 // fire, after a reminder is set or cleared.
 func (r *reminders) notifyChanged() {
-	select {
-	case r.changed <- struct{}{}:
-	default: // a wake-up is already pending; one is enough
-	}
+	r.changed.wake()
 }
 
 // run fires every reminder that is due, then waits until the next one
@@ -59,7 +56,7 @@ func (r *reminders) run(ctx context.Context) {
 			return // the store is gone; the helper is shutting down
 		}
 
-		if !r.wait(ctx, next, ok) {
+		if !waitUntil(ctx, r.changed, next, ok) {
 			return
 		}
 	}
@@ -99,25 +96,4 @@ func (r *reminders) fire(ctx context.Context, conv domain.Conversation) {
 	title, body, convID := policy.ReminderNotification(settings.detail(), conv.Title, conv.ID)
 	r.notifier.Notify(title, body, convID)
 	r.events.publish(ctx, EventConversationUpdated, conv)
-}
-
-// wait blocks until next arrives, a reminder changes, or ctx is
-// cancelled, returning false only for the last of those. ok false means
-// there is nothing pending at all, so it waits only for a change.
-func (r *reminders) wait(ctx context.Context, next time.Time, ok bool) bool {
-	var fire <-chan time.Time
-	if ok {
-		timer := time.NewTimer(max(0, time.Until(next)))
-		defer timer.Stop()
-		fire = timer.C
-	}
-
-	select {
-	case <-ctx.Done():
-		return false
-	case <-r.changed:
-		return true
-	case <-fire:
-		return true
-	}
 }

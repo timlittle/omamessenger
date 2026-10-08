@@ -42,7 +42,7 @@ type retrier struct {
 
 	// changed wakes run's wait loop immediately, instead of leaving it
 	// to its already-armed timer, whenever an account reconnects.
-	changed chan struct{}
+	changed wakeable
 
 	mu    sync.Mutex
 	woken map[string]bool // account ids reconnected since the last pass
@@ -51,7 +51,7 @@ type retrier struct {
 // newRetrier prepares the automatic retry scheduler. Call run once,
 // from its own goroutine, to start it.
 func newRetrier(s *store.Store) *retrier {
-	return &retrier{store: s, changed: make(chan struct{}, 1), woken: map[string]bool{}}
+	return &retrier{store: s, changed: newWakeable(), woken: map[string]bool{}}
 }
 
 // accountReconnected tells the scheduler to retry accountID's failed
@@ -61,10 +61,7 @@ func (r *retrier) accountReconnected(accountID string) {
 	r.woken[accountID] = true
 	r.mu.Unlock()
 
-	select {
-	case r.changed <- struct{}{}:
-	default: // a wake-up is already pending; one is enough
-	}
+	r.changed.wake()
 }
 
 // takeWoken returns the accounts reconnected since the last pass and
@@ -90,7 +87,7 @@ func (r *retrier) run(ctx context.Context) {
 			return // the store is gone; the helper is shutting down
 		}
 
-		if !r.wait(ctx, next, ok) {
+		if !waitUntil(ctx, r.changed, next, ok) {
 			return
 		}
 	}
@@ -140,27 +137,6 @@ func (r *retrier) nextDue(ctx context.Context) (next time.Time, ok bool, err err
 	}
 
 	return time.UnixMilli(pending[0].RetryAt), true, nil // PendingRetries orders soonest first
-}
-
-// wait blocks until next arrives, an account reconnects, or ctx is
-// cancelled, returning false only for the last of those. ok false means
-// nothing is scheduled at all, so it waits only for a reconnect.
-func (r *retrier) wait(ctx context.Context, next time.Time, ok bool) bool {
-	var fire <-chan time.Time
-	if ok {
-		timer := time.NewTimer(max(0, time.Until(next)))
-		defer timer.Stop()
-		fire = timer.C
-	}
-
-	select {
-	case <-ctx.Done():
-		return false
-	case <-r.changed:
-		return true
-	case <-fire:
-		return true
-	}
 }
 
 // retryAttempt sends m again, through a retry asked for or the automatic
