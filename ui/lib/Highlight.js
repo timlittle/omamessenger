@@ -110,3 +110,14 @@ function primaryLink(message) {
 function atOldest(ids, currentId) {
   return ids.length > 0 && ids[ids.length - 1] === currentId;
 }
+
+// afterWriting decides what Escape should highlight once it leaves
+// writing mode: jumpId, a message a command-palette jump landed on and
+// nothing has invalidated since, when it is still loaded, so the search
+// that opened the conversation is not lost the moment the user looks
+// around; otherwise the newest loaded message, the same as opening a
+// conversation fresh. ids is newest first, so that is ids[0].
+function afterWriting(ids, jumpId) {
+  if (jumpId && ids.includes(jumpId)) return jumpId;
+  return ids.length > 0 ? ids[0] : '';
+}

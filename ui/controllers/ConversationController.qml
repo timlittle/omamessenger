@@ -238,7 +238,10 @@ Item {
   // to the open conversation, answering the message replyToId names, if
   // any, and carrying mentions, its resolved @-mention tokens. Sending
   // clears the attachment and the reply, whether or not it succeeds, the
-  // same as it clears the composer's text.
+  // same as it clears the composer's text, and drops any remembered
+  // command-palette jump target: once the user has sent a message,
+  // leaving writing mode should show the newest message again, not the
+  // one they searched for earlier.
   function send(text: string, replyToId: string, mentions: var): void {
     const attachment = root.composer ? root.composer.attachmentPath : "";
     if (!root.activeId || (!text && !attachment)) return;
@@ -256,6 +259,7 @@ Item {
       root.composer.attachmentPath = "";
       root.composer.cancelReply();
     }
+    highlight.clearJump();
   }
 
   // scrollToReply asks the caller to scroll to the message a reply
@@ -431,12 +435,14 @@ Item {
     return true;
   }
 
-  // resetHighlight moves the highlight to the newest loaded message.
-  // Idempotent: calling it again while already there changes nothing.
-  // Called when a conversation (re)loads and when the user leaves
-  // writing mode with Escape.
+  // resetHighlight moves the highlight for leaving writing mode with
+  // Escape: back to a command-palette jump target that is still
+  // remembered and still loaded, so searching for a message and then
+  // looking around never loses it, or the newest loaded message
+  // otherwise, the same as it always has. Idempotent: calling it again
+  // while already there changes nothing.
   function resetHighlight(): void {
-    highlight.reset(timeline);
+    highlight.leaveWriting(timeline);
   }
 
   // _highlightOlder moves the highlight one message toward older, or, at

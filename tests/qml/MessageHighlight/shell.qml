@@ -14,9 +14,12 @@
 // photo viewer reaches openExternally (never a real download here, so
 // it only closes the viewer, never calling Qt.openUrlExternally for
 // real); that the highlighted message's own visual cue hides the moment
-// the composer takes focus and shows again once it leaves; and leaving
+// the composer takes focus and shows again once it leaves; that leaving
 // the composer with Escape resets the highlight to the newest message,
-// idempotently.
+// idempotently; that leaving the composer with Escape after
+// openMessage's command-palette jump instead returns to the jumped-to
+// message; and that moving the highlight afterwards drops that memory,
+// so a later Escape goes back to the newest message again.
 import QtQuick
 import QtTest
 import Quickshell
@@ -450,8 +453,9 @@ ShellRoot {
   }
 
   // finish checks Escape reset the highlight to the newest message, that
-  // its cue is visible again now writing has stopped, that resetHighlight
-  // is idempotent, and ends the test.
+  // its cue is visible again now writing has stopped, and that
+  // resetHighlight is idempotent, then moves on to the command-palette
+  // jump scenario.
   function finish(): void {
     if (conversationController.highlightedId !== "m1")
       return Check.fail("leaving the composer with Escape did not reset the highlight to the newest message: got " + conversationController.highlightedId);
@@ -460,6 +464,91 @@ ShellRoot {
     conversationController.resetHighlight();
     if (conversationController.highlightedId !== "m1")
       return Check.fail("resetHighlight is not idempotent");
+
+    root.checkEscapeAfterJumpKeepsHighlight();
+  }
+
+  // checkEscapeAfterJumpKeepsHighlight jumps to an older message the way
+  // the command palette's "Messages" section does (openMessage), then
+  // focuses and leaves the composer with Escape, the same as a jump
+  // that lands on a message before the user ever types a reply. The bug
+  // this guards: Escape used to always reset to the newest message,
+  // throwing away what the palette jump had just found.
+  function checkEscapeAfterJumpKeepsHighlight(): void {
+    conversationController.openMessage({ id: "c1", accountId: "a1", service: "whatsapp", remoteId: "r1",
+      kind: "direct", title: "Alex", members: 0, preview: "", muted: false, unread: 0, lastActivity: Date.now() }, "m4");
+    if (conversationController.highlightedId !== "m4")
+      return Check.fail("openMessage did not land the highlight on the jumped-to message: got " + conversationController.highlightedId);
+
+    t.keyClick(Qt.Key_I);
+    stepper.attempts = 0;
+    root.waitForJumpComposeFocus();
+  }
+
+  // waitForJumpComposeFocus holds until i has focused the composer, then
+  // leaves it with Escape and checks the highlight stayed on the jumped-
+  // to message instead of resetting to the newest one.
+  function waitForJumpComposeFocus(): void {
+    if (!composerController.composeFocused) {
+      stepper.attempts++;
+      if (stepper.attempts >= 100) return Check.fail("i never focused the composer for the jump check");
+      return stepper.retry(root.waitForJumpComposeFocus);
+    }
+
+    t.keyClick(Qt.Key_Escape);
+    stepper.attempts = 0;
+    root.waitForJumpComposeLeft();
+  }
+
+  function waitForJumpComposeLeft(): void {
+    if (composerController.composeFocused) {
+      stepper.attempts++;
+      if (stepper.attempts >= 100) return Check.fail("Escape never left the composer for the jump check");
+      return stepper.retry(root.waitForJumpComposeLeft);
+    }
+
+    if (conversationController.highlightedId !== "m4")
+      return Check.fail("leaving the composer with Escape after a palette jump lost the jumped-to message: got " + conversationController.highlightedId);
+    if (!root.delegateFor("m4")) return Check.fail("the jumped-to message was not scrolled back into view");
+
+    root.checkMovingHighlightDropsJumpMemory();
+  }
+
+  // checkMovingHighlightDropsJumpMemory moves the highlight with k, which
+  // should drop the remembered jump target, then checks a later Escape
+  // goes back to the newest message rather than the old jump, proving
+  // the jump is only remembered until the user actually moves it.
+  function checkMovingHighlightDropsJumpMemory(): void {
+    t.keyClick(Qt.Key_K);
+    if (conversationController.highlightedId !== "m5")
+      return Check.fail("setup: k from m4 did not reach m5: got " + conversationController.highlightedId);
+
+    t.keyClick(Qt.Key_I);
+    stepper.attempts = 0;
+    root.waitForDroppedJumpComposeFocus();
+  }
+
+  function waitForDroppedJumpComposeFocus(): void {
+    if (!composerController.composeFocused) {
+      stepper.attempts++;
+      if (stepper.attempts >= 100) return Check.fail("i never focused the composer after moving the highlight");
+      return stepper.retry(root.waitForDroppedJumpComposeFocus);
+    }
+
+    t.keyClick(Qt.Key_Escape);
+    stepper.attempts = 0;
+    root.waitForDroppedJumpComposeLeft();
+  }
+
+  function waitForDroppedJumpComposeLeft(): void {
+    if (composerController.composeFocused) {
+      stepper.attempts++;
+      if (stepper.attempts >= 100) return Check.fail("Escape never left the composer after moving the highlight");
+      return stepper.retry(root.waitForDroppedJumpComposeLeft);
+    }
+
+    if (conversationController.highlightedId !== "m1")
+      return Check.fail("moving the highlight did not drop the jump memory: Escape landed on " + conversationController.highlightedId + " instead of the newest message");
 
     console.log("PASS MessageHighlight");
     Qt.exit(0);

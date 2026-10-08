@@ -32,6 +32,23 @@ test('atOldest is true only for the last id in the array', () => {
   assert.strictEqual(Highlight.atOldest([], 'm1'), false);
 });
 
+test('afterWriting returns the remembered jump target when it is still loaded', () => {
+  assert.strictEqual(Highlight.afterWriting(ids, 'm2'), 'm2');
+});
+
+test('afterWriting falls back to the newest id when there is no remembered jump', () => {
+  assert.strictEqual(Highlight.afterWriting(ids, ''), 'm1');
+});
+
+test('afterWriting falls back to the newest id when the remembered jump is no longer loaded', () => {
+  assert.strictEqual(Highlight.afterWriting(ids, 'gone'), 'm1');
+});
+
+test('afterWriting returns "" when nothing is loaded, jump or no jump', () => {
+  assert.strictEqual(Highlight.afterWriting([], 'm2'), '');
+  assert.strictEqual(Highlight.afterWriting([], ''), '');
+});
+
 const message = (fields) => Object.assign({ outgoing: false, status: 'received' }, fields);
 
 const hintsCases = [

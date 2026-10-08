@@ -357,9 +357,10 @@ Item {
     root.confirmingClose = false;
   }
 
-  // _leaveCompose blurs the composer and resets the highlighted message
-  // to the newest one, so scroll mode always starts there once writing
-  // stops, the same as opening a conversation does.
+  // _leaveCompose blurs the composer and moves the highlighted message
+  // for scroll mode: back to a command-palette jump target that is still
+  // remembered, or the newest message otherwise, the same as opening a
+  // conversation does (see ConversationController.resetHighlight).
   function _leaveCompose(): void {
     if (root.composerController) root.composerController.leaveComposeRequested();
     if (root.conversationController) root.conversationController.resetHighlight();
