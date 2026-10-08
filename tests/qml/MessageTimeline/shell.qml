@@ -5,8 +5,10 @@
 // page that repeats a message already shown does not show it twice; media()
 // reads a loaded message's photo or video back; photoNeighbor() steps
 // between the photos in the loaded history, skipping messages without one;
-// ids() lists the loaded messages for moving a highlight; and
-// initialLoaded() fires once loadInitial's page has landed.
+// ids() lists the loaded messages for moving a highlight; initialLoaded()
+// fires once loadInitial's page has landed; and loadOlder()'s reply is
+// dropped, not applied, once its guard says the conversation it was for
+// is no longer the one open.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -39,6 +41,28 @@ ShellRoot {
     onInitialLoaded: root.initialLoadedCount++
   }
 
+  // staleService defers every request until the test fires it by hand,
+  // to reproduce a loadOlder reply arriving after its conversation is no
+  // longer the one open: scrolling up in one conversation, then switching
+  // to another before the older page answers.
+  QtObject {
+    id: staleService
+
+    property var pending: []
+
+    function request(method: string, params: var, callback: var): void {
+      staleService.pending.push(callback);
+    }
+  }
+
+  // staleActiveId is whichever conversation is "open" for staleTimeline's
+  // guards to check against, moved by hand to simulate switching.
+  property string staleActiveId: "a"
+
+  MessageTimeline {
+    id: staleTimeline
+  }
+
   Timer {
     running: true
     interval: 0
@@ -57,8 +81,14 @@ ShellRoot {
 
   // ids lists the timeline's message ids, newest first.
   function ids(): string {
+    return root.idsOf(timeline);
+  }
+
+  // idsOf lists tl's message ids, newest first, for a test that needs a
+  // second MessageTimeline of its own.
+  function idsOf(tl: var): string {
     const out = [];
-    for (let i = 0; i < timeline.model.count; i++) out.push(timeline.model.get(i).id);
+    for (let i = 0; i < tl.model.count; i++) out.push(tl.model.get(i).id);
     return out.join(",");
   }
 
@@ -81,7 +111,7 @@ ShellRoot {
       return;
     }
 
-    timeline.loadOlder(service, "chat", false);
+    timeline.loadOlder(service, "chat", () => true, false);
     if (root.ids() !== "m70,m60,m50,m20,m10") {
       Check.fail("older page duplicated or misplaced a message: " + root.ids());
       return;
@@ -169,6 +199,41 @@ ShellRoot {
     const reactions = Timeline.reactions(timeline.find("m60"));
     if (reactions.length !== 1 || reactions[0].emoji !== "👍") {
       Check.fail("setReactions did not stick: " + JSON.stringify(reactions));
+      return;
+    }
+
+    root.checkLoadOlderDropsStaleReply();
+  }
+
+  // checkLoadOlderDropsStaleReply reproduces scrolling up in conversation
+  // "a", switching to conversation "b" before the older page answers, and
+  // then that stale page finally arriving: it must not splice "a"'s
+  // messages into "b"'s timeline, or overwrite hasMore/historyUnavailable
+  // with "a"'s values, the same staleness guard loadInitial already has.
+  function checkLoadOlderDropsStaleReply(): void {
+    staleTimeline.loadInitial(staleService, "a", () => "a" === root.staleActiveId, false);
+    staleService.pending.shift()(null, { hasMore: true, messages: [root.message("a1", 1)] });
+
+    staleTimeline.loadOlder(staleService, "a", () => "a" === root.staleActiveId, false);
+    const staleReply = staleService.pending.shift();
+
+    root.staleActiveId = "b";
+    staleTimeline.loadInitial(staleService, "b", () => "b" === root.staleActiveId, false);
+    staleService.pending.shift()(null, { hasMore: false, messages: [root.message("b1", 1)] });
+
+    const idsBeforeStaleReply = root.idsOf(staleTimeline);
+    staleReply(null, { hasMore: true, historyUnavailable: true, messages: [root.message("a0", 0)] });
+
+    if (root.idsOf(staleTimeline) !== idsBeforeStaleReply) {
+      Check.fail("a stale loadOlder reply for a closed conversation changed the messages of the one now open: " + root.idsOf(staleTimeline));
+      return;
+    }
+    if (staleTimeline.hasMore !== false) {
+      Check.fail("a stale loadOlder reply overwrote hasMore for the conversation actually open");
+      return;
+    }
+    if (staleTimeline.historyUnavailable !== false) {
+      Check.fail("a stale loadOlder reply overwrote historyUnavailable for the conversation actually open");
       return;
     }
 

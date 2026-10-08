@@ -219,9 +219,13 @@ Item {
   }
 
   // loadOlder fetches the page of messages before the oldest one loaded.
+  // The conversation open right now is captured so the reply can be
+  // dropped if the user has since closed it or switched to another one.
   function loadOlder(): void {
     if (!root.activeId) return;
-    timeline.loadOlder(root.service, root.activeId, root.isGroup);
+
+    const id = root.activeId;
+    timeline.loadOlder(root.service, id, () => id === root.activeId, root.isGroup);
   }
 
   // send submits text, and whatever the composer holds as its attachment,

@@ -64,8 +64,12 @@ Item {
   }
 
   // loadOlder fetches the page before the oldest loaded message, guarded
-  // so only one page loads at a time and only while hasMore.
-  function loadOlder(service: var, conversationId: string, isGroup: bool): void {
+  // so only one page loads at a time and only while hasMore. guard is
+  // checked before applying the result, the same as loadInitial's, so a
+  // reply that arrives after the conversation was closed or switched away
+  // from is dropped instead of being spliced into whichever conversation
+  // is open by then.
+  function loadOlder(service: var, conversationId: string, guard: var, isGroup: bool): void {
     if (root._loadingMore || !root.hasMore || messagesModel.count === 0) return;
 
     root._loadingMore = true;
@@ -73,6 +77,7 @@ Item {
     service.request("messages.list", { conversationId: conversationId, before: before, limit: 50 }, function(error, result) {
       root._loadingMore = false;
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      if (!guard()) return;
 
       root.hasMore = result.hasMore;
       root.historyUnavailable = !!result.historyUnavailable;
