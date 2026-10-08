@@ -7,34 +7,41 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
 )
 
+// MessageExists reports whether a message with id is still stored, so
+// Sweep can tell an outgoing copy that belongs to no message at all -
+// an image pasted from the clipboard but never sent, say, or one whose
+// message the user deleted - from a pending or failed message's copy,
+// which Sweep must never remove.
+type MessageExists func(ctx context.Context, id string) (bool, error)
+
 // Outgoing stores the files a user attaches to outgoing messages, named
 // by the message's id, so a retry can resend one even after the user
-// moves, renames or deletes the original. Unlike Cache, which only ever
-// remembers the most recently used files, Outgoing keeps a copy until
-// its message is confirmed delivered (Remove) or, for one still pending
-// or failed, until Sweep's retention window or size limit says it has
-// waited long enough.
+// moves, renames or deletes the original. A copy is kept until its
+// message is confirmed delivered (Remove), deleted (also Remove) or,
+// for one that never became a message at all, until Sweep's grace
+// period has passed; a pending or failed message's copy is never swept.
 type Outgoing struct {
 	dir       string
-	retention time.Duration
+	grace     time.Duration
 	sizeLimit int64
+	exists    MessageExists
 
 	mu       sync.Mutex
 	inflight map[string]int
 }
 
-// NewOutgoing returns an outgoing media area rooted at dir. Sweep removes
-// a copy older than retention, and, when the area still holds more than
-// sizeLimit bytes, the least recently used copies next; neither applies
+// NewOutgoing returns an outgoing media area rooted at dir. Sweep
+// removes a file older than grace whose id matches no message exists
+// reports as stored at all; sizeLimit is reported through Stats for a
+// health check to warn about, never evicted against. Neither applies
 // until Sweep or RunSweeper is actually called.
-func NewOutgoing(dir string, retention time.Duration, sizeLimit int64) *Outgoing {
-	return &Outgoing{dir: dir, retention: retention, sizeLimit: sizeLimit, inflight: map[string]int{}}
+func NewOutgoing(dir string, grace time.Duration, sizeLimit int64, exists MessageExists) *Outgoing {
+	return &Outgoing{dir: dir, grace: grace, sizeLimit: sizeLimit, exists: exists, inflight: map[string]int{}}
 }
 
 // Store copies the bytes of r into the outgoing media area under id and
@@ -64,7 +71,7 @@ func (o *Outgoing) Path(id, fileName string) string {
 }
 
 // Remove deletes id's stored copy of fileName, once its message is
-// confirmed sent, delivered or read and so will never be retried.
+// confirmed sent, delivered or read, or once the user deletes it.
 // Removing one already gone is not an error: a delivery receipt can
 // arrive more than once, or the copy may already have been swept.
 func (o *Outgoing) Remove(ctx context.Context, id, fileName string) error {
@@ -81,8 +88,9 @@ func (o *Outgoing) Remove(ctx context.Context, id, fileName string) error {
 
 // Reserve marks id as having a send in progress right now, so Sweep
 // never removes its file out from under the connector that may still be
-// reading it. Call the returned func exactly once, success or not, to
-// release the mark once the send ends.
+// reading it - or a delete racing the same send, since both go through
+// Remove without checking this themselves. Call the returned func
+// exactly once, success or not, to release the mark once the send ends.
 func (o *Outgoing) Reserve(id string) func() {
 	o.mu.Lock()
 	o.inflight[id]++
@@ -125,11 +133,12 @@ func (o *Outgoing) Stats() (bytes, limit int64, err error) {
 	return total, o.sizeLimit, nil
 }
 
-// Sweep drops outgoing copies that no longer need keeping: first any
-// older than retention, then, if the area still holds more than
-// sizeLimit bytes, the least recently used copies until it fits. A copy
-// whose message Reserve currently marks as being sent is never touched,
-// no matter its age or the area's size.
+// Sweep drops outgoing copies abandoned by anything recognisable as a
+// message: a file older than grace whose id matches no message at all,
+// such as an image pasted from the clipboard but never sent, or one
+// whose message the user deleted. It never removes a pending or failed
+// message's copy - those wait for Remove, once sent or deleted - and
+// never a file Reserve currently marks as being sent.
 func (o *Outgoing) Sweep(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -144,58 +153,43 @@ func (o *Outgoing) Sweep(ctx context.Context) error {
 		return fmt.Errorf("cache: outgoing: sweep: %w", err)
 	}
 
-	files, total := cached(entries)
-	slices.SortFunc(files, func(a, b os.FileInfo) int { return a.ModTime().Compare(b.ModTime()) })
+	cutoff := time.Now().Add(-o.grace)
 
-	kept, removed, total := o.sweepExpired(files, total)
-	removed = append(removed, o.sweepOverLimit(kept, total)...)
-
-	return errors.Join(removed...)
-}
-
-// sweepExpired removes every file in files older than retention, except
-// one Reserve currently marks as being sent, and returns the files it
-// kept, any removal errors, and the total bytes still held.
-func (o *Outgoing) sweepExpired(files []os.FileInfo, total int64) (kept []os.FileInfo, errs []error, _ int64) {
-	cutoff := time.Now().Add(-o.retention)
-
-	for _, f := range files {
-		if o.reserved(attachmentID(f.Name())) || !f.ModTime().Before(cutoff) {
-			kept = append(kept, f)
-			continue
-		}
-
-		errs = append(errs, removeIfPresent(filepath.Join(o.dir, f.Name())))
-		total -= f.Size()
-	}
-
-	return kept, errs, total
-}
-
-// sweepOverLimit removes the least recently used of files, which must
-// already be sorted oldest first, until total is within sizeLimit,
-// skipping any file Reserve currently marks as being sent.
-func (o *Outgoing) sweepOverLimit(files []os.FileInfo, total int64) []error {
 	var errs []error
-	for _, f := range files {
-		if total <= o.sizeLimit {
-			break
+	for _, e := range entries {
+		if err := o.sweepOne(ctx, e, cutoff); err != nil {
+			errs = append(errs, err)
 		}
-
-		if o.reserved(attachmentID(f.Name())) {
-			continue
-		}
-
-		errs = append(errs, removeIfPresent(filepath.Join(o.dir, f.Name())))
-		total -= f.Size()
 	}
 
-	return errs
+	return errors.Join(errs...)
+}
+
+// sweepOne removes e's file when it is a finished, unreserved file older
+// than cutoff whose id matches no message at all; anything else -
+// still being written, reserved, too young to judge yet, or belonging
+// to a real message - is left alone.
+func (o *Outgoing) sweepOne(ctx context.Context, e os.DirEntry, cutoff time.Time) error {
+	info, err := e.Info()
+	if err != nil || !info.Mode().IsRegular() || strings.HasSuffix(e.Name(), partSuffix) {
+		return nil
+	}
+
+	if info.ModTime().After(cutoff) || o.reserved(attachmentID(e.Name())) {
+		return nil
+	}
+
+	exists, err := o.exists(ctx, attachmentID(e.Name()))
+	if err != nil || exists {
+		return err
+	}
+
+	return removeIfPresent(filepath.Join(o.dir, e.Name()))
 }
 
 // RunSweeper calls Sweep once immediately, then again every interval,
 // until ctx is cancelled. A failed sweep is logged, not fatal: it only
-// leaves the area a little larger until the next tick.
+// leaves an orphaned file around until the next tick.
 func (o *Outgoing) RunSweeper(ctx context.Context, interval time.Duration, logger Logger) {
 	if err := o.Sweep(ctx); err != nil && logger != nil {
 		logger.Printf("cache: outgoing sweep failed")

@@ -12,7 +12,8 @@ The first tagged release: a keyboard-first unified messaging client for Omarchy,
 - **Voice notes** — play inline in the message bubble, with a scrubber and elapsed/total time; without `qt6-multimedia` installed, a voice note opens in your default player instead
 - **Replies** — reply to any message, with a quote shown in the bubble that scrolls to the original when clicked
 - **Reactions** — react to a message with a short emoji picker; one reaction per person, kept in step with Telegram and WhatsApp
-- **Deleting a message** — delete a message yourself (**d**), for everyone or just for you; a deletion made elsewhere syncs in too
+- **Deleting a message** — delete a message yourself (**d**), for everyone or just for you, including a failed send that never reached the service; a deletion made elsewhere syncs in too
+- **Failed sends retry themselves** — a message that failed to send retries automatically once its account reconnects, and otherwise on a backoff, re-copying its attachment from the original file if the outgoing copy goes missing; **t** still retries sooner and starts the backoff over
 - **Search** — full-text search across every conversation, including archived ones, matching a chat's title as substring text and message bodies word by word as a prefix, ignoring case and accents
 - **Pin and archive** — pin or unpin, and archive or unarchive, a conversation, kept in step with the service
 - **Unread view** — **Ctrl+Shift+A** shows every unread conversation across every service and account in place of the usual list, and **Ctrl+K**'s jump-to-conversation list sorts unread conversations first

@@ -151,6 +151,22 @@ type Message struct {
 	// signed-in account itself, precomputed by the connector, which
 	// already knows its own identity, the same way Reaction.Mine is.
 	MentionsMe bool `json:"mentionsMe,omitempty"`
+
+	// RetryAt is when a failed outgoing message's next automatic retry
+	// attempt is due, in Unix milliseconds, or 0 when none is scheduled:
+	// the service refused it for a reason retrying will not fix, or the
+	// automatic retry scheduler has tried for as long as it will and
+	// left it for the user's own retry. The UI shows this as a quiet
+	// "retrying…" hint next to "Not sent" while it is set.
+	RetryAt int64 `json:"retryAt,omitempty"`
+
+	// RetryAttempts and RetrySince are the automatic retry scheduler's
+	// own bookkeeping for the current failure streak - how many
+	// attempts it has made, and when the streak began - used to apply
+	// the backoff schedule and its bound (see app's retry scheduler).
+	// Neither crosses the protocol: they mean nothing to the UI.
+	RetryAttempts int   `json:"-"`
+	RetrySince    int64 `json:"-"`
 }
 
 // Reaction is one emoji reaction to a message: how many people picked
@@ -204,6 +220,20 @@ type Media struct {
 	// meaningful on this machine, so json:"-" keeps it local rather than
 	// adding a field every other message would carry as empty.
 	Path string `json:"-"`
+
+	// OriginalPath is the file on disk the user attached this from,
+	// remembered so a retry can re-copy it if the outgoing area's own
+	// copy goes missing before the message is sent. Empty when there is
+	// no file of its own to go back to, such as an image pasted from
+	// the clipboard. Like Path, it is local to this machine and never
+	// crosses the protocol.
+	OriginalPath string `json:"-"`
+
+	// OriginalModTime is OriginalPath's modification time when it was
+	// attached, in Unix milliseconds. Together with Size, it tells a
+	// retry whether the file still at that path is still the one that
+	// was attached, before it is trusted enough to re-copy.
+	OriginalModTime int64 `json:"-"`
 }
 
 // ValidService reports whether service is a supported provider.

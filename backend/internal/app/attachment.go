@@ -32,7 +32,10 @@ const thumbMaxSize = 48
 // area under id and describes it as a domain.Media: a photo or video for
 // a kind the file's own bytes say it is, a file otherwise. An empty path
 // means the message has no attachment, so it returns nil media and no
-// error.
+// error. When path names a real file the user picked from disk, rather
+// than one already inside the outgoing area such as a clipboard paste,
+// its path and modification time are remembered too, so a later retry
+// can re-copy it if the outgoing copy ever goes missing.
 func (c *Commands) prepareAttachment(ctx context.Context, id, path string) (*domain.Media, error) {
 	if path == "" {
 		return nil, nil
@@ -57,7 +60,25 @@ func (c *Commands) prepareAttachment(ctx context.Context, id, path string) (*dom
 		return nil, err
 	}
 
-	return describeAttachment(stored, name, info.Size()), nil
+	media := describeAttachment(stored, name, info.Size())
+	if c.attachedFromDisk(path) {
+		media.OriginalPath, media.OriginalModTime = path, info.ModTime().UnixMilli()
+	}
+
+	return media, nil
+}
+
+// attachedFromDisk reports whether path names a file outside the
+// outgoing media area: one the user picked from disk, worth
+// remembering for a retry to go back to, as opposed to an image
+// PasteImage already copied in from the clipboard, which has no
+// original of its own.
+func (c *Commands) attachedFromDisk(path string) bool {
+	if c.outgoing == nil {
+		return false
+	}
+
+	return filepath.Dir(path) != filepath.Dir(c.outgoing.Path("x", "x"))
 }
 
 // storeAttachment copies the file at path into the outgoing media area,
@@ -199,4 +220,58 @@ func imageDimensions(path string) (width, height int) {
 // names its file in the outgoing media area and finds it again on retry.
 func newAttachmentID() string {
 	return "m_" + rand.Text()
+}
+
+// errAttachmentUnavailable reports a retry whose attachment cannot be
+// found: its outgoing copy is gone, and either it has no original file
+// to go back to, or that file no longer exists, or no longer looks like
+// the one that was attached.
+var errAttachmentUnavailable = fmt.Errorf("%w: the attachment is no longer available; attach it again", ErrInvalidInput)
+
+// restoreAttachment makes sure m's outgoing copy exists on disk before
+// a retry hands it to a connector, re-copying it from the original file
+// it was attached from when the stored copy has gone missing and that
+// file still looks like the one that was attached. It reads no file the
+// user did not attach themselves, and reports errAttachmentUnavailable,
+// a plain and safe message, when neither copy is available any more.
+func (c *Commands) restoreAttachment(ctx context.Context, m *domain.Message) error {
+	if m.Media == nil || c.outgoing == nil {
+		return nil
+	}
+
+	path := c.outgoing.Path(m.ID, m.Media.FileName)
+	if _, err := os.Stat(path); err == nil {
+		m.Media.Path = path
+		return nil
+	}
+
+	if err := c.recopyFromOriginal(ctx, m.ID, m.Media); err != nil {
+		return err
+	}
+
+	m.Media.Path = path
+
+	return nil
+}
+
+// recopyFromOriginal re-copies an attachment into the outgoing area
+// under id from the file media says it was originally attached from,
+// when that file still exists and still looks like the same one: same
+// size and modification time. Anything else - no original to go back
+// to, the file gone, or changed - reports errAttachmentUnavailable.
+func (c *Commands) recopyFromOriginal(ctx context.Context, id string, media *domain.Media) error {
+	if media.OriginalPath == "" {
+		return errAttachmentUnavailable
+	}
+
+	info, err := os.Stat(media.OriginalPath)
+	if err != nil || info.Size() != media.Size || info.ModTime().UnixMilli() != media.OriginalModTime {
+		return errAttachmentUnavailable
+	}
+
+	if _, err := c.storeAttachment(ctx, id, media.FileName, media.OriginalPath); err != nil {
+		return errAttachmentUnavailable
+	}
+
+	return nil
 }

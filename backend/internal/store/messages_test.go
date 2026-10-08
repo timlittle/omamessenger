@@ -486,3 +486,25 @@ func TestAddMessage_KeepsMediaAndFillsItInLater(t *testing.T) {
 		t.Errorf("media not filled in: %+v", got.Media)
 	}
 }
+
+// TestAddMessage_RoundTripsAnAttachmentsOriginalFile confirms a media's
+// original file path and modification time survive being stored and
+// read back, alongside the media itself.
+func TestAddMessage_RoundTripsAnAttachmentsOriginalFile(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+
+	media := &domain.Media{Kind: domain.MediaPhoto, FileName: "photo.png", Size: 10, OriginalPath: "/home/tim/photo.png", OriginalModTime: 12345}
+	addMessages(t, s, domain.Message{
+		ID: "out", ConversationID: "chat", Text: "hi", Outgoing: true, Created: 1, Media: media,
+	})
+
+	got, err := s.Message(ctx, "out")
+	if err != nil || got.Media == nil || got.Media.OriginalPath != media.OriginalPath || got.Media.OriginalModTime != media.OriginalModTime {
+		t.Fatalf("stored media = %+v, %v; want the original path and modtime kept", got.Media, err)
+	}
+}

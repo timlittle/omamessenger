@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"image"
@@ -11,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
@@ -218,12 +218,12 @@ func TestRetry_ResendsTheSameAttachment(t *testing.T) {
 	}
 }
 
-// TestRetry_FailsClearlyWhenTheAttachmentWasSwept confirms a retry for a
-// message whose outgoing copy was already removed - the outgoing area's
-// retention sweep dropping it while it waited, say - reports a plain,
-// safe error naming what to do, rather than failing deep inside the
-// dispatch with nothing useful to say.
-func TestRetry_FailsClearlyWhenTheAttachmentWasSwept(t *testing.T) {
+// TestRetry_RecopiesFromTheOriginalWhenTheOutgoingCopyIsMissing confirms
+// a retry whose outgoing copy has gone missing - some other process
+// removed it, say - falls back to re-copying the file it was attached
+// from, as long as that file still exists and still looks like the same
+// one, rather than failing.
+func TestRetry_RecopiesFromTheOriginalWhenTheOutgoingCopyIsMissing(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
@@ -242,6 +242,42 @@ func TestRetry_FailsClearlyWhenTheAttachmentWasSwept(t *testing.T) {
 	}
 
 	f.dispatcher.err = nil
+	retried, err := f.commands.Retry(ctx, failed.ID)
+	if err != nil || retried.Status != domain.StatusPending {
+		t.Fatalf("Retry() = %+v, %v, want it re-copied and sent", retried, err)
+	}
+
+	if _, err := os.Stat(f.outgoing.Path(failed.ID, failed.Media.FileName)); err != nil {
+		t.Errorf("outgoing copy after retry: %v, want it re-copied from the original", err)
+	}
+}
+
+// TestRetry_FailsClearlyWhenNeitherCopyIsAvailable confirms a retry
+// whose outgoing copy is missing and whose original file is also gone
+// reports a plain, safe error naming what to do, rather than failing
+// deep inside the dispatch with nothing useful to say.
+func TestRetry_FailsClearlyWhenNeitherCopyIsAvailable(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	path := writeTestPNG(t, "photo.png", 1, 1)
+	f.dispatcher.err = errors.New("offline")
+
+	failed, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path})
+	if err != nil || failed.Status != domain.StatusFailed {
+		t.Fatalf("Send() = %+v, %v", failed, err)
+	}
+
+	if err := f.outgoing.Remove(ctx, failed.ID, failed.Media.FileName); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	f.dispatcher.err = nil
 	if _, err := f.commands.Retry(ctx, failed.ID); !errors.Is(err, app.ErrInvalidInput) ||
 		!strings.Contains(err.Error(), "attach it again") {
 		t.Fatalf("Retry() error = %v, want an invalid-input error about attaching it again", err)
@@ -253,10 +289,45 @@ func TestRetry_FailsClearlyWhenTheAttachmentWasSwept(t *testing.T) {
 	}
 }
 
+// TestRetry_FailsClearlyWhenTheOriginalHasChanged confirms a retry
+// whose outgoing copy is missing and whose original file has changed
+// size since it was attached - a different file now sitting at the
+// same path - is treated the same as the original being gone: a plain,
+// safe error, never trusting the changed file enough to send it.
+func TestRetry_FailsClearlyWhenTheOriginalHasChanged(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	path := writeTestPNG(t, "photo.png", 1, 1)
+	f.dispatcher.err = errors.New("offline")
+
+	failed, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path})
+	if err != nil || failed.Status != domain.StatusFailed {
+		t.Fatalf("Send() = %+v, %v", failed, err)
+	}
+
+	if err := f.outgoing.Remove(ctx, failed.ID, failed.Media.FileName); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("a completely different file now"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f.dispatcher.err = nil
+	if _, err := f.commands.Retry(ctx, failed.ID); !errors.Is(err, app.ErrInvalidInput) ||
+		!strings.Contains(err.Error(), "attach it again") {
+		t.Fatalf("Retry() error = %v, want an invalid-input error about attaching it again", err)
+	}
+}
+
 // TestDispatch_ReservesTheAttachmentForTheDurationOfTheSend confirms a
 // message's attachment survives a sweep that runs while its send is
-// still in progress, however small the outgoing area's own size limit,
-// and becomes eligible for eviction again only once the send has ended.
+// still in progress, even though its own message row briefly looks
+// like an orphan to a store that has not committed it yet, and remains
+// after the send ends since it still belongs to a real, pending
+// message.
 func TestDispatch_ReservesTheAttachmentForTheDurationOfTheSend(t *testing.T) {
 	t.Parallel()
 
@@ -275,9 +346,11 @@ func TestDispatch_ReservesTheAttachmentForTheDurationOfTheSend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A size limit of one byte means any unreserved file is evicted the
-	// instant Sweep runs.
-	outgoing := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1)
+	// neverExists always reports the file an orphan, like a message
+	// whose exists check cannot find it yet; only Reserve keeps Sweep
+	// from acting on that during the send.
+	outgoing := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 0, 1<<30,
+		func(context.Context, string) (bool, error) { return false, nil })
 	dispatcher := &fakeDispatcher{}
 	commands, _ := app.New(app.Deps{
 		Store: db, Dispatcher: dispatcher, Notifier: &fakeNotifier{}, Publisher: &fakePublisher{},
@@ -298,13 +371,13 @@ func TestDispatch_ReservesTheAttachmentForTheDurationOfTheSend(t *testing.T) {
 	}
 
 	if !reservedDuringSend {
-		t.Error("a sweep mid-send evicted the attachment its own send was still using")
+		t.Error("a sweep mid-send removed the attachment its own send was still using")
 	}
 
 	if err := outgoing.Sweep(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(outgoing.Path(sent.ID, sent.Media.FileName)); !os.IsNotExist(err) {
-		t.Error("the attachment was not evicted once its send had ended")
+		t.Error("the attachment was not removed once its send had ended and it still looked orphaned")
 	}
 }

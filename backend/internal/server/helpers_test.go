@@ -21,6 +21,13 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
+// storeExists adapts db's MessageExists to cache.MessageExists, for an
+// outgoing media area built in a test to tell a real orphan from a
+// message still stored.
+func storeExists(db *store.Store) cache.MessageExists {
+	return func(ctx context.Context, id string) (bool, error) { return db.MessageExists(ctx, id) }
+}
+
 // session is a server connected to a test client over an in-memory pipe.
 type session struct {
 	client    *jsonrpc2.Conn
@@ -50,7 +57,7 @@ func connect(t *testing.T, faked bool) *session {
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: accounts,
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{}, Members: acceptAll{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: clipboard,
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
 	}
 	if faked {
 		deps.Fake = unreachableFake{}
@@ -94,7 +101,7 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: &storeAccounts{db: db},
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: &fakeClipboard{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
 		Media: media, Cache: mediaCache,
 	}
 
@@ -136,7 +143,7 @@ func connectWithHistory(t *testing.T, history app.HistoryLoader) *session {
 	deps := app.Deps{
 		Store: db, Dispatcher: acceptAll{}, Notifier: silent{}, Publisher: srv, Accounts: &storeAccounts{db: db},
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: &fakeClipboard{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
 		History: history,
 	}
 

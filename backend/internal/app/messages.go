@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -187,7 +186,7 @@ func (c *Commands) Send(ctx context.Context, conversationID, text string, opts S
 	c.events.publish(ctx, EventMessageAdded, m)
 	c.events.conversationChanged(ctx, conv.ID, before)
 
-	return c.dispatch(ctx, conv, m)
+	return c.dispatchAndSchedule(ctx, conv, m)
 }
 
 // resolveReplyTo turns a local message id to reply to into the Reply a
@@ -232,8 +231,10 @@ func captionText(text string, media *domain.Media) (string, error) {
 	return domain.MediaPlaceholder(media.Kind), nil
 }
 
-// Retry sends a failed outgoing message again, re-reading an attachment's
-// stored copy since a stored message does not keep its path.
+// Retry sends a failed outgoing message again, starting its automatic
+// backoff streak over: whatever the scheduler had already tried is
+// forgotten, so a retry the user asks for always begins at the first
+// backoff step if it fails again.
 func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message, error) {
 	m, err := c.store.Message(ctx, messageID)
 	if err != nil {
@@ -244,74 +245,52 @@ func (c *Commands) Retry(ctx context.Context, messageID string) (domain.Message,
 		return m, fmt.Errorf("%w: only failed outgoing messages can be retried", ErrInvalidInput)
 	}
 
-	if err := c.checkAttachmentAvailable(m); err != nil {
-		return m, err
-	}
-
 	conv, err := c.store.Conversation(ctx, m.ConversationID)
 	if err != nil {
 		return m, err
 	}
 
-	m, err = c.setStatus(ctx, m, domain.StatusPending)
-	if err != nil {
+	if err := c.store.ClearMessageRetry(ctx, m.ID); err != nil {
 		return m, err
 	}
+	m.RetryAttempts, m.RetrySince = 0, 0
 
-	// setStatus reloads the message from the store, which never keeps an
-	// attachment's local path (see domain.Media.Path), so it is restored
-	// here, right before the connector needs it.
-	if m.Media != nil && c.outgoing != nil {
-		m.Media.Path = c.outgoing.Path(m.ID, m.Media.FileName)
-	}
-
-	return c.dispatch(ctx, conv, m)
+	return c.retryAttempt(ctx, conv, m)
 }
 
-// checkAttachmentAvailable reports a clear, safe error when m's
-// attachment has been swept from the outgoing area (see cache.Outgoing's
-// retention and size limit) before it could be retried.
-func (c *Commands) checkAttachmentAvailable(m domain.Message) error {
-	if m.Media == nil || c.outgoing == nil {
-		return nil
-	}
-
-	path := c.outgoing.Path(m.ID, m.Media.FileName)
-	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("%w: the attachment is no longer available; attach it again", ErrInvalidInput)
-	}
-
-	return nil
-}
-
-// dispatch hands a pending message to the service, marking it failed if
-// the service refuses it. A fast connector can confirm delivery, and
-// update the stored message, before Send returns; the reply must carry
-// that update rather than the message as it was handed over, because the
-// UI applies whatever this returns to its timeline, and it would
-// otherwise arrive after the sent notification and regress the bubble
-// back to pending with nothing left to correct it.
-func (c *Commands) dispatch(ctx context.Context, conv domain.Conversation, m domain.Message) (domain.Message, error) {
+// send hands m to the service, marking it failed if the service
+// refuses it, and reports the service's own error too (sendErr), even
+// though a failed send is not itself an error at the protocol boundary
+// (see docs/decisions.md): the retry scheduler needs it to classify a
+// failure dispatchAndSchedule and Retry do not have to. A fast
+// connector can confirm delivery, and update the stored message, before
+// Send returns; the reply must carry that update rather than the
+// message as it was handed over, because the UI applies whatever this
+// returns to its timeline, and it would otherwise arrive after the sent
+// notification and regress the bubble back to pending with nothing left
+// to correct it.
+func (c *Commands) send(ctx context.Context, conv domain.Conversation, m domain.Message) (_ domain.Message, sendErr, storeErr error) {
 	release := c.reserveAttachment(m)
 	defer release()
 
-	if err := c.dispatcher.Send(ctx, conv, m); err != nil {
-		return c.setStatus(ctx, m, domain.StatusFailed)
+	if sendErr = c.dispatcher.Send(ctx, conv, m); sendErr != nil {
+		updated, err := c.setStatus(ctx, m, domain.StatusFailed)
+		return updated, sendErr, err
 	}
 
 	current, err := c.store.Message(ctx, m.ID)
 	if err != nil {
-		return m, nil
+		return m, nil, nil
 	}
 
 	// The store never keeps an attachment's local path (see
 	// domain.Media.Path), so it is carried over from the message handed
-	// to the dispatcher, the same as Retry restores it.
+	// to the dispatcher, the same as retryAttempt restores it.
 	if m.Media != nil && current.Media != nil {
 		current.Media.Path = m.Media.Path
 	}
 
-	return current, nil
+	return current, nil, nil
 }
 
 // reserveAttachment marks m's attachment, if it has one, as being sent

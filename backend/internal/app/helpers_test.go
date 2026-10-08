@@ -18,6 +18,13 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
+// storeExists adapts db's MessageExists to cache.MessageExists, for an
+// outgoing media area built in a test to tell a real orphan from a
+// message still stored.
+func storeExists(db *store.Store) cache.MessageExists {
+	return func(ctx context.Context, id string) (bool, error) { return db.MessageExists(ctx, id) }
+}
+
 // fixture is an application over a real database with fake connectors,
 // notifications and UI.
 type fixture struct {
@@ -69,7 +76,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, deleter: &fakeDeleter{},
 		members:  &fakeMemberLister{},
-		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), clipboard: &fakeClipboard{},
+		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{},
 	}
 
@@ -106,7 +113,7 @@ func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDi
 		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
 		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
 		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
 	}
 
 	commands, ingest := app.New(deps)
@@ -154,6 +161,24 @@ func (d *fakeDispatcher) Send(_ context.Context, _ domain.Conversation, m domain
 	}
 
 	return err
+}
+
+// setErr changes the error Send returns, safe to call while another
+// goroutine - the retry scheduler, say - may be calling Send
+// concurrently.
+func (d *fakeDispatcher) setErr(err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.err = err
+}
+
+// sendCount reports how many times Send has been called so far.
+func (d *fakeDispatcher) sendCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return len(d.sent)
 }
 
 // last returns the most recent message given to Send.

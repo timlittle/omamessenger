@@ -32,6 +32,7 @@ type Commands struct {
 	refreshed    *attemptedRefresh
 	recentErrors *errorHistory
 	reminders    *reminders
+	retries      *retrier
 
 	// dataDir, dbPath, execName and helperVersion are read only by
 	// Doctor; see Deps.
@@ -84,6 +85,13 @@ func (c *Commands) UnreadTotal(ctx context.Context) int {
 // once, alongside the connectors.
 func (c *Commands) RunReminders(ctx context.Context) {
 	c.reminders.run(ctx)
+}
+
+// RunRetries retries every failed outgoing message automatically, until
+// ctx is cancelled. main.go starts it as its own goroutine once,
+// alongside RunReminders.
+func (c *Commands) RunRetries(ctx context.Context) {
+	c.retries.run(ctx)
 }
 
 // Accounts lists the signed-in accounts.

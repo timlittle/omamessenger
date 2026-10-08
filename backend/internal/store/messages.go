@@ -13,7 +13,7 @@ import (
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me,retry_at,retry_attempts,retry_since,attachment_original_path,attachment_original_modtime`
 
 // Page sizes for Messages.
 const (
@@ -177,13 +177,26 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message, countUnread
 		return err
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo, reactions, mentions, m.MentionsMe)
+	originalPath, originalModTime := originalAttachment(m.Media)
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo, reactions, mentions, m.MentionsMe,
+		m.RetryAt, m.RetryAttempts, m.RetrySince, originalPath, originalModTime)
 	if err != nil {
 		return err
 	}
 
 	return tx.Commit()
+}
+
+// originalAttachment reports media's original file path and modification
+// time, or "" and 0 when media is nil or has no original to remember.
+func originalAttachment(media *domain.Media) (path string, modTime int64) {
+	if media == nil {
+		return "", 0
+	}
+
+	return media.OriginalPath, media.OriginalModTime
 }
 
 // bumpConversation counts m as unread when countUnread is set and it is
@@ -513,10 +526,12 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 // scanMessage reads one row selected with messageColumns.
 func scanMessage(row scanner) (domain.Message, error) {
 	var m domain.Message
-	var media, replyTo, reactions, mentions string
+	var media, replyTo, reactions, mentions, originalPath string
+	var originalModTime int64
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
 		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &replyTo, &reactions,
-		&mentions, &m.MentionsMe); err != nil {
+		&mentions, &m.MentionsMe, &m.RetryAt, &m.RetryAttempts, &m.RetrySince,
+		&originalPath, &originalModTime); err != nil {
 		return m, err
 	}
 
@@ -525,6 +540,7 @@ func scanMessage(row scanner) (domain.Message, error) {
 		if err := json.Unmarshal([]byte(media), m.Media); err != nil {
 			return m, err
 		}
+		m.Media.OriginalPath, m.Media.OriginalModTime = originalPath, originalModTime
 	}
 
 	if replyTo != "" {

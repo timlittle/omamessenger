@@ -132,7 +132,9 @@ func TestDoctor_ChecksTheCacheAgainstItsLimitAndTheDatabaseOpened(t *testing.T) 
 // TestDoctor_FlagsOutgoingAttachmentsOverTheirLimit confirms Doctor
 // reports the outgoing area's own check as a problem once it holds more
 // than the limit it was given, independent of the downloaded media
-// cache's own check.
+// cache's own check, naming the limit and how many failed messages are
+// waiting with an attachment - what is actually filling it, since
+// nothing here is ever evicted to make room.
 func TestDoctor_FlagsOutgoingAttachmentsOverTheirLimit(t *testing.T) {
 	t.Parallel()
 
@@ -142,8 +144,23 @@ func TestDoctor_FlagsOutgoingAttachmentsOverTheirLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	if err := db.UpsertAccount(ctx, domain.Account{ID: "wa", Service: domain.ServiceWhatsApp, Name: "Personal"}); err != nil {
+		t.Fatal(err)
+	}
+	conv, _, err := db.EnsureConversation(ctx, domain.Conversation{
+		ID: "chat", AccountID: "wa", RemoteID: "r-chat", Title: "Chat", Kind: domain.KindDirect,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: conv.ID, Text: "[Photo]", Outgoing: true, Status: domain.StatusFailed, Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto, FileName: "file.bin"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	outgoing := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 10)
+	outgoing := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 10, storeExists(db))
 	if _, err := outgoing.Store(ctx, "m1", "file.bin", strings.NewReader("this is over ten bytes")); err != nil {
 		t.Fatal(err)
 	}
@@ -154,8 +171,12 @@ func TestDoctor_FlagsOutgoingAttachmentsOverTheirLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := checkNamed(t, report, "Outgoing attachments"); got.OK {
+	got := checkNamed(t, report, "Outgoing attachments")
+	if got.OK {
 		t.Errorf("an oversized outgoing area = %+v, want a problem", got)
+	}
+	if !strings.Contains(got.Detail, "MiB") || !strings.Contains(got.Detail, "1 failed message") {
+		t.Errorf("detail = %q, want it to name the limit and the failed message waiting", got.Detail)
 	}
 }
 

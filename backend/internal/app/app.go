@@ -192,6 +192,7 @@ type Deps struct {
 func New(d Deps) (*Commands, *Ingest) {
 	events := &events{store: d.Store, out: d.Publisher}
 	state := &uiState{settings: DefaultSettings()}
+	retries := newRetrier(d.Store)
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, deleter: d.Deleter, members: d.Members, fake: d.Fake,
@@ -199,11 +200,14 @@ func New(d Deps) (*Commands, *Ingest) {
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},
 		reminders:    newReminders(d.Store, d.Notifier, events, state),
+		retries:      retries,
 		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 	}
+	retries.commands = commands
+
 	ingest := &Ingest{
 		store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state,
-		outgoing: d.Outgoing, cache: d.Cache, logger: d.Logger,
+		outgoing: d.Outgoing, cache: d.Cache, logger: d.Logger, retries: retries,
 	}
 
 	return commands, ingest

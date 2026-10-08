@@ -17,6 +17,7 @@ import (
 	gotd "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -201,7 +202,7 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 
 	result, err := sendRequest(ctx, api, peer, m)
 	if err != nil {
-		return fmt.Errorf("telegram: send: %w", err)
+		return fmt.Errorf("telegram: send: %w", classifySendErr(err))
 	}
 
 	if id, ok := sentID(result); ok {
@@ -211,6 +212,29 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 	}
 
 	return nil
+}
+
+// permanentSendErrors are Telegram's own error codes for a send refusal
+// no amount of retrying will fix: the account is blocked, banned from
+// the chat, or the chat no longer allows it to write.
+var permanentSendErrors = []string{
+	"PEER_ID_INVALID", "USER_IS_BLOCKED", "USER_DEACTIVATED", "USER_DEACTIVATED_BAN",
+	"CHAT_WRITE_FORBIDDEN", "CHANNEL_PRIVATE",
+}
+
+// classifySendErr wraps err so the app layer's retry scheduler can tell
+// a permanent refusal from one worth retrying, and honours Telegram's
+// own flood-wait delay when it gives one instead of guessing its own.
+func classifySendErr(err error) error {
+	if wait, ok := tgerr.AsFloodWait(err); ok {
+		return &connector.SendRetryAfter{Err: err, After: wait}
+	}
+
+	if tgerr.Is(err, permanentSendErrors...) {
+		return fmt.Errorf("%w: %w", connector.ErrSendPermanent, err)
+	}
+
+	return err
 }
 
 // inputReplyTo turns an outgoing message's Reply into what a send

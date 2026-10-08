@@ -3,13 +3,18 @@
 // database, the media cache, each account's last known connection state,
 // whether notify-send is on the path, and any recent error categories
 // recorded in process. Every check's detail text is safe to show as is:
-// a state or a category word, never a path, a count, a name or a token.
-// Gathering the facts is impure (file stats, a database query, a PATH
+// a state or a category word, never a path, a name or a token - except
+// for a plain count where it helps say what a check actually found, such
+// as how many failed messages are waiting in an over-limit outgoing
+// media area. Gathering the facts is impure (file stats, a database query, a PATH
 // lookup); Build itself does none of that, so every combination of
 // outcomes is cheap to test.
 package doctor
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // State is a check's raw outcome before Build turns it into a Check.
 // StateUnknown means the fact was never gathered, or the thing it
@@ -50,9 +55,14 @@ type Facts struct {
 	CacheSize State
 
 	// OutgoingSize reports whether the outgoing media area - attachments
-	// kept for a retry until their message is confirmed sent - is within
-	// its own limit.
-	OutgoingSize State
+	// kept until their message is sent or deleted - is within its own
+	// limit. OutgoingLimitMiB and FailedAttachments fill in the warning
+	// when it is not: the limit itself, and how many failed messages are
+	// currently waiting with an attachment, so it says what is actually
+	// filling the area rather than just that it is full.
+	OutgoingSize      State
+	OutgoingLimitMiB  int64
+	FailedAttachments int
 
 	// Accounts are every configured account's service and last known
 	// connection status.
@@ -169,13 +179,18 @@ func cacheCheck(f Facts) Check {
 }
 
 // outgoingSizeCheck flags an outgoing media area that has grown past its
-// limit; one never checked is not a problem.
+// limit, naming the limit and how many failed messages are waiting with
+// an attachment, since those - never evicted, only sent or deleted away
+// - are what an area over its limit is actually waiting on; one never
+// checked is not a problem.
 func outgoingSizeCheck(f Facts) Check {
-	if f.OutgoingSize == StateBad {
-		return Check{Name: "Outgoing attachments", OK: false, Detail: "over its limit"}
+	if f.OutgoingSize != StateBad {
+		return Check{Name: "Outgoing attachments", OK: true, Detail: "within its limit"}
 	}
 
-	return Check{Name: "Outgoing attachments", OK: true, Detail: "within its limit"}
+	detail := fmt.Sprintf("over %d MiB — %d failed message(s) waiting", f.OutgoingLimitMiB, f.FailedAttachments)
+
+	return Check{Name: "Outgoing attachments", OK: false, Detail: detail}
 }
 
 // notifyCheck flags a missing notify-send, since without it no

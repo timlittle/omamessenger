@@ -82,7 +82,7 @@ OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with y
 | Network requests | Telegram's and WhatsApp's own servers; `github.com/timlittle/omamessenger/releases` only to download the helper the first time the window opens | — | no other network access |
 | Diagnostics | stderr, which `omarchy-shell` sends to the system journal | — | states, counts and safe categories only, never credentials, QR tokens, session keys, phone numbers or message text |
 
-Run `oma-messenger-service doctor`, or **Run health check** in the command palette, to check the data directory's permissions, the database, the media cache, each account's connection and notify-send availability without exposing any of their contents: every line it prints is a state or a category, never a path, a count, a name or a token.
+Run `oma-messenger-service doctor`, or **Run health check** in the command palette, to check the data directory's permissions, the database, the media cache, the outgoing media area, each account's connection and notify-send availability without exposing any of their contents: every line it prints is a state or a category, never a path, a name or a token, except for a plain count where it helps, such as how many failed messages are waiting in an over-limit outgoing media area.
 
 WhatsApp chats show the recent history your phone syncs when you link the device; scrolling back further than that is not currently supported, unlike Telegram, which loads more on demand.
 

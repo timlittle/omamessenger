@@ -24,6 +24,7 @@ type CacheStats interface {
 // has finished starting.
 func (c *Commands) Doctor(ctx context.Context) (doctor.Report, error) {
 	accounts, err := c.store.Accounts(ctx)
+	failedAttachments, _ := c.store.FailedAttachmentCount(ctx) // best effort; 0 if the query fails
 
 	facts := doctor.Facts{
 		CompiledVersion:       c.helperVersion,
@@ -33,6 +34,8 @@ func (c *Commands) Doctor(ctx context.Context) (doctor.Report, error) {
 		DatabaseOK:            err == nil,
 		CacheSize:             cacheSizeState(c.cache),
 		OutgoingSize:          outgoingSizeState(c.outgoing),
+		OutgoingLimitMiB:      outgoingLimitMiB(c.outgoing),
+		FailedAttachments:     failedAttachments,
 		NotifySendAvailable:   notifySendOnPath(),
 		RecentErrorCategories: c.recentErrors.snapshot(),
 		Accounts:              accountFacts(accounts),
@@ -107,6 +110,23 @@ func outgoingSizeState(outgoing OutgoingMedia) doctor.State {
 	}
 
 	return doctor.StateGood
+}
+
+// outgoingLimitMiB reports the outgoing media area's own size limit in
+// mebibytes, for the doctor's warning text, or 0 when outgoing does not
+// implement CacheStats.
+func outgoingLimitMiB(outgoing OutgoingMedia) int64 {
+	stats, ok := outgoing.(CacheStats)
+	if !ok {
+		return 0
+	}
+
+	_, limit, err := stats.Stats()
+	if err != nil {
+		return 0
+	}
+
+	return limit / (1 << 20)
 }
 
 // notifySendOnPath reports whether notify-send is available to run.

@@ -34,6 +34,7 @@ type Ingest struct {
 	logger     Logger
 	events     *events
 	ui         *uiState
+	retries    *retrier
 
 	mu            sync.Mutex
 	pendingRead   *time.Timer
@@ -46,7 +47,10 @@ var (
 	_ connector.SenderNamer = (*Ingest)(nil)
 )
 
-// AccountStatus records and publishes an account's connection state.
+// AccountStatus records and publishes an account's connection state. A
+// transition to connected also wakes the retry scheduler, so a message
+// that failed while the account was offline is retried at once rather
+// than waiting for its own backoff.
 func (in *Ingest) AccountStatus(ctx context.Context, accountID, status, detail string) {
 	account, err := in.store.SetAccountStatus(ctx, accountID, status, detail)
 	if err != nil {
@@ -54,6 +58,10 @@ func (in *Ingest) AccountStatus(ctx context.Context, accountID, status, detail s
 	}
 
 	in.events.publish(ctx, EventAccountUpdated, account)
+
+	if status == domain.AccountConnected {
+		in.retries.accountReconnected(accountID)
+	}
 }
 
 // Contact records a contact.

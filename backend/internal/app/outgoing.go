@@ -38,3 +38,17 @@ func (in *Ingest) retireOutgoingAttachment(ctx context.Context, m domain.Message
 func confirmedDelivery(status string) bool {
 	return status == domain.StatusSent || status == domain.StatusDelivered || status == domain.StatusRead
 }
+
+// removeOutgoingAttachment drops m's outgoing attachment copy once its
+// message is deleted, the same reasoning as retireOutgoingAttachment:
+// a deleted message will never be retried, so its copy, if it still has
+// one, is only needed until now.
+func (c *Commands) removeOutgoingAttachment(ctx context.Context, m domain.Message) {
+	if m.Media == nil || c.outgoing == nil {
+		return
+	}
+
+	if err := c.outgoing.Remove(ctx, m.ID, m.Media.FileName); err != nil && c.logger != nil {
+		c.logger.Printf("media: remove deleted attachment failed")
+	}
+}

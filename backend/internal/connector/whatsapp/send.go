@@ -7,12 +7,15 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -34,7 +37,7 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 
 	jid, err := jidFromRemoteID(conv.RemoteID)
 	if err != nil {
-		return fmt.Errorf("whatsapp: send: %w", err)
+		return fmt.Errorf("whatsapp: send: %w: %w", connector.ErrSendPermanent, err)
 	}
 
 	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
@@ -43,13 +46,13 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 	target := sendTarget{media: c.mediaFor(), conversationRemoteID: conv.RemoteID, chat: jid}
 	msg, err := buildOutgoing(sendCtx, dev, target, m)
 	if err != nil {
-		return err
+		return classifySendErr(err)
 	}
 
 	id := dev.generateMessageID()
 	resp, err := dev.sendMessage(sendCtx, jid, msg, id)
 	if err != nil {
-		return fmt.Errorf("whatsapp: send: %w", err)
+		return classifySendErr(err)
 	}
 
 	saveOutgoingRef(sendCtx, target.media, conv.RemoteID, string(id), msg)
@@ -102,6 +105,17 @@ func saveOutgoingRef(ctx context.Context, media *mediaStore, conversationRemoteI
 	}
 
 	_ = media.put(ctx, conversationRemoteID, messageRemoteID, ref) // best effort; see doc comment above
+}
+
+// classifySendErr wraps err so the app layer's retry scheduler can tell
+// a permanent refusal - such as WhatsApp's broadcast-list restriction,
+// which no amount of retrying lifts - from one worth retrying.
+func classifySendErr(err error) error {
+	if errors.Is(err, whatsmeow.ErrBroadcastListUnsupported) {
+		return fmt.Errorf("whatsapp: send: %w: %w", connector.ErrSendPermanent, err)
+	}
+
+	return fmt.Errorf("whatsapp: send: %w", err)
 }
 
 // expectedRecipients is how many other participants a group message

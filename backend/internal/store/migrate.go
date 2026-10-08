@@ -90,6 +90,18 @@ var migrations = []string{
 	// stored, and whether any of them names the signed-in account.
 	`ALTER TABLE messages ADD COLUMN mentions TEXT NOT NULL DEFAULT '';
 	ALTER TABLE messages ADD COLUMN mentions_me INTEGER NOT NULL DEFAULT 0;`,
+	// Automatic retry for a failed send: when its next attempt is due
+	// (0 for none scheduled), how many automatic attempts the current
+	// failure streak has had, and when that streak began, so the
+	// backoff and its bound survive a restart. The file an attachment
+	// was attached from, with its size and modification time, so a
+	// retry can re-copy it if the outgoing area's own copy goes
+	// missing; empty for a clipboard paste, which has no such file.
+	`ALTER TABLE messages ADD COLUMN retry_at INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE messages ADD COLUMN retry_attempts INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE messages ADD COLUMN retry_since INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE messages ADD COLUMN attachment_original_path TEXT NOT NULL DEFAULT '';
+	ALTER TABLE messages ADD COLUMN attachment_original_modtime INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

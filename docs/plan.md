@@ -216,6 +216,6 @@ Helper resilience:
 
 - Never give up restarting a crashing helper: after the fast retries, keep trying every minute, and at once when the window opens.
 - Hold requests while the helper restarts and send them when it is back; show an error only if it stays down for more than about 30 seconds.
-- Retry a failed send automatically once after a reconnect before marking it "Not sent".
+- Retry a failed send automatically once after a reconnect before marking it "Not sent". (Done: the helper retries automatically on reconnect and on a backoff - 30s, 2m, 10m, 1h, then hourly - for up to 24h, classifying a service's refusal as permanent or worth retrying; see docs/decisions.md.)
 - One helper at a time: a lock file in the data directory, so a replacement waits for the old helper to exit instead of sharing its Telegram session.
 - Show "Reconnecting…" on the account in the rail instead of an error line across the window.

@@ -37,23 +37,25 @@ func providers() []connector.Provider {
 // drops the least recently used: 1 GiB.
 const mediaCacheLimit = 1 << 30
 
-// outgoingRetention is how long a pending or failed message's outgoing
-// attachment is kept for a retry before it is swept regardless of the
-// area's size: long enough to retry after being offline for a few days,
-// short enough that an attachment nobody ever retries does not sit
-// there forever.
-const outgoingRetention = 7 * 24 * time.Hour
+// outgoingOrphanGrace is how long a newly stored outgoing file is left
+// alone before Sweep will consider removing it as an orphan - one whose
+// id matches no message at all, such as an image pasted from the
+// clipboard but never sent - so a file just attached has time to become
+// a real message's copy before the first sweep might otherwise see it
+// as abandoned. A pending or failed message's own copy is never swept
+// regardless of its age; see cache.Outgoing.
+const outgoingOrphanGrace = time.Hour
 
-// outgoingSizeLimit is how much the outgoing media area may hold before
-// the least recently used pending or failed attachments are swept to
-// make room: generous for a handful of large attachments awaiting
-// retry, far below the 1 GiB downloaded media is allowed, since nothing
-// here should ever need to hold as much.
+// outgoingSizeLimit is how much the outgoing media area is expected to
+// hold: generous for a handful of large attachments awaiting a retry,
+// far below the 1 GiB downloaded media is allowed. Nothing is evicted
+// to enforce it; going over it only raises a doctor warning, since a
+// pending or failed message's attachment is kept until it is sent or
+// the user deletes it (see cache.Outgoing and docs/decisions.md).
 const outgoingSizeLimit = 256 << 20
 
 // outgoingSweepInterval is how often the outgoing media area is swept
-// for expired or oversized copies while the helper runs, on top of once
-// at startup.
+// for orphaned copies while the helper runs, on top of once at startup.
 const outgoingSweepInterval = time.Hour
 
 // notify.Desktop is the only Notifier the helper wires; app can't import
@@ -165,10 +167,7 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	srv := server.New(helperVersion, logger)
 
 	registry := newAccountRegistry(db, cfg.dataDir, providers())
-	caches := mediaCaches{
-		downloaded: cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit),
-		outgoing:   cache.NewOutgoing(filepath.Join(cfg.dataDir, "media", "outgoing"), outgoingRetention, outgoingSizeLimit),
-	}
+	caches := newMediaCaches(cfg.dataDir, db)
 	commands, ingest, manager, err := wire(ctx, wireDeps{
 		db: db, srv: srv, registry: registry, caches: caches, logger: logger,
 		dataDir: cfg.dataDir, dbPath: cfg.dbPath,
@@ -178,8 +177,8 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	}
 
 	// Serve before the connectors start, so the UI sees their first events.
-	// On every return, stop the connectors and the reminder scheduler and
-	// finish requests in progress before the database closes.
+	// On every return, stop the connectors and the reminder and retry
+	// schedulers and finish requests in progress before the database closes.
 	srv.Start(ctx, stdio{s.in, s.out}, commands)
 
 	var background sync.WaitGroup
@@ -190,8 +189,7 @@ func serve(ctx context.Context, cfg config, s streams) error {
 		background.Wait()
 	}()
 
-	background.Go(func() { commands.RunReminders(ctx) })
-	background.Go(func() { caches.outgoing.RunSweeper(ctx, outgoingSweepInterval, logger) })
+	runBackground(ctx, &background, commands, caches.outgoing, logger)
 
 	if err := manager.Start(ctx, db, ingest); err != nil && ctx.Err() == nil {
 		return fmt.Errorf("start connectors: %w", err)
@@ -205,10 +203,32 @@ func serve(ctx context.Context, cfg config, s streams) error {
 
 // mediaCaches are the two directories the helper keeps media in:
 // downloaded media, pruned once it grows past a limit, and outgoing
-// attachments, kept until their message is no longer worth retrying.
+// attachments, kept until their message is sent or deleted.
 type mediaCaches struct {
 	downloaded *cache.Cache
 	outgoing   *cache.Outgoing
+}
+
+// newMediaCaches builds both of the helper's media areas under dir,
+// the outgoing one backed by db to tell a real pending or failed
+// message's copy from an orphan Sweep may remove.
+func newMediaCaches(dir string, db *store.Store) mediaCaches {
+	exists := func(ctx context.Context, id string) (bool, error) { return db.MessageExists(ctx, id) }
+
+	return mediaCaches{
+		downloaded: cache.New(filepath.Join(dir, "media"), mediaCacheLimit),
+		outgoing:   cache.NewOutgoing(filepath.Join(dir, "media", "outgoing"), outgoingOrphanGrace, outgoingSizeLimit, exists),
+	}
+}
+
+// runBackground starts the helper's own background work - the reminder
+// and retry schedulers, and the outgoing media area's sweep - each in
+// the given WaitGroup, so serve's own deferred cleanup waits for all of
+// them to stop.
+func runBackground(ctx context.Context, wg *sync.WaitGroup, commands *app.Commands, outgoing *cache.Outgoing, logger *log.Logger) {
+	wg.Go(func() { commands.RunReminders(ctx) })
+	wg.Go(func() { commands.RunRetries(ctx) })
+	wg.Go(func() { outgoing.RunSweeper(ctx, outgoingSweepInterval, logger) })
 }
 
 // wireDeps are wire's own inputs, grouped into one struct so adding one,
