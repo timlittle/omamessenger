@@ -121,11 +121,18 @@ QtObject {
 
   // pasteImage asks the helper whether the clipboard holds an image; if
   // it does, it is attached to the next message, and otherwise Ctrl+V
-  // still pastes text, same as it always did.
+  // still pastes text, same as it always did. media.paste answers
+  // asynchronously, so the open conversation is captured when the paste
+  // starts; if it has since changed by the time the reply lands, the
+  // reply is dropped outright rather than attaching the pasted image, or
+  // falling back to a plain paste, to whichever conversation now happens
+  // to be open (see docs/decisions.md).
   function pasteImage(): void {
     if (!root.service) return;
 
+    const conversationId = root.conversation ? root.conversation.activeId : "";
     root.service.request("media.paste", {}, function(error, result) {
+      if (!root.conversation || root.conversation.activeId !== conversationId) return;
       if (error) { root.pasteFallbackRequested(); return; }
       root.attachmentPath = result.path;
     });
