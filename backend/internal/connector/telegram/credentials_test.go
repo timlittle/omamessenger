@@ -28,7 +28,7 @@ func TestCredentials_RoundTripPrivately(t *testing.T) {
 	}
 }
 
-func TestForget_RemovesCredentialsAndSession(t *testing.T) {
+func TestForget_RemovesCredentialsSessionAndUpdateState(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -37,6 +37,10 @@ func TestForget_RemovesCredentialsAndSession(t *testing.T) {
 	}
 
 	if err := os.WriteFile(sessionPath(dir, "tg-1"), []byte("session"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(updateStatePath(dir, "tg-1"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,6 +54,10 @@ func TestForget_RemovesCredentialsAndSession(t *testing.T) {
 
 	if _, err := os.Stat(sessionPath(dir, "tg-1")); !os.IsNotExist(err) {
 		t.Error("session survived Forget")
+	}
+
+	if _, err := os.Stat(updateStatePath(dir, "tg-1")); !os.IsNotExist(err) {
+		t.Error("update state survived Forget")
 	}
 
 	if err := Forget(dir, "tg-1"); err != nil {

@@ -188,7 +188,7 @@ Do these after the UI. Connectors never reach real services in tests: use record
 5. **Telegram connector** with gotd/td, in four steps:
    - login with phone, code and 2FA, with the API id and hash from settings
    - dialog sync, loading history on demand
-   - updates with gap recovery
+   - updates with gap recovery, including the gap while the helper itself was not running: gotd's update-manager state persists per account, so a restart resumes updates.getDifference from where it left off
    - send and read
 6. **Richer messages:** edits and deletes, replies, reactions, media in and out. Built, with voice notes, and deleting from OmaMessenger as well.
 7. **Finishing:**
@@ -218,5 +218,4 @@ Helper resilience:
 - Hold requests while the helper restarts and send them when it is back; show an error only if it stays down for more than about 30 seconds.
 - Retry a failed send automatically once after a reconnect before marking it "Not sent".
 - One helper at a time: a lock file in the data directory, so a replacement waits for the old helper to exit instead of sharing its Telegram session.
-- Catch up on what Telegram sent while the helper was down, by saving gotd's update state to disk.
 - Show "Reconnecting…" on the account in the rail instead of an error line across the window.
