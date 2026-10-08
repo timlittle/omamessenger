@@ -13,6 +13,8 @@ OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and H
 - Photos, video and files, with an in-window photo viewer and link previews
 - Voice notes play inline, with a scrubber and elapsed/total time; in-window playback needs `qt6-multimedia` (not installed by every Omarchy setup), otherwise a voice message opens in your default player instead
 - Replies and reactions; edits sync from the service, and you can delete a message yourself (**d**), for everyone or just for you, as well as have a deletion made elsewhere sync in
+- @-mention a group member by typing "@" in the composer; a message that mentions you is highlighted
+- Stickers show as static images; sending one is not yet supported
 - Pin, archive (including a one-key "archive and mark read", **a**, and a confirmed "archive all read conversations") and a local-only hide, with a one-month recency filter and a "show all" to see everything
 - Local-only reminders: snooze a conversation until later today, tomorrow, next week or a custom time, then get it back at the top of the list, marked "Reminder", with a desktop notification
 - Desktop notifications; click one to open its conversation
@@ -58,7 +60,7 @@ Choose **Add an account** in the window or the command palette. Scan the QR code
 | Ctrl+W | Close the window |
 | Ctrl+Q | Quit |
 
-Ctrl+/ lists every command and its shortcut. The full reference, including the conversation list, composer and photo viewer, is in [docs/shortcuts.md](docs/shortcuts.md).
+Ctrl+/ lists every command and its shortcut. The full reference, including the conversation list, composer and photo viewer, is in [docs/shortcuts.md](docs/shortcuts.md). To remap a shortcut, see [docs/shortcuts.md](docs/shortcuts.md#remapping-keys) for `~/.config/omamessenger/keys.conf`, or run `make keys` to print the effective bindings for a bug report.
 
 ## Data and privacy
 

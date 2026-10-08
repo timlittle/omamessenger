@@ -85,7 +85,7 @@ func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialog
 		sink.Conversation(ctx, conv)
 		sink.Organized(ctx, c.account.ID, conv.RemoteID, dialog.Pinned, dialog.FolderID == archiveFolderID)
 		if msg, ok := top[shortKey(dialog.Peer)+"/"+strconv.Itoa(dialog.TopMessage)]; ok {
-			sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, e))
+			sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, e, c.selfUserID()))
 		}
 		sink.Unread(ctx, c.account.ID, conv.RemoteID, dialog.UnreadCount)
 		listed = append(listed, listedDialog{conv: conv, dialog: dialog})
@@ -161,7 +161,7 @@ func (c *Connector) history(ctx context.Context, api *tg.Client, sink connector.
 	found := 0
 	for _, m := range messages.GetMessages() {
 		if msg, ok := m.(*tg.Message); ok {
-			sink.History(ctx, c.account.ID, p.conv.RemoteID, message(msg, e))
+			sink.History(ctx, c.account.ID, p.conv.RemoteID, message(msg, e, c.selfUserID()))
 			found++
 		}
 	}

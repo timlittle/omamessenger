@@ -22,6 +22,7 @@ type Commands struct {
 	organizer    Organizer
 	reactor      Reactor
 	deleter      Deleter
+	members      MemberLister
 	outgoing     OutgoingMedia
 	clipboard    ClipboardRunner
 	fake         Injector

@@ -86,6 +86,10 @@ var migrations = []string{
 	// milliseconds), or 0 for none: local to this computer only, like
 	// hidden.
 	`ALTER TABLE conversations ADD COLUMN reminder_at INTEGER NOT NULL DEFAULT 0;`,
+	// A message's @-mention tokens, as JSON, the same way reactions are
+	// stored, and whether any of them names the signed-in account.
+	`ALTER TABLE messages ADD COLUMN mentions TEXT NOT NULL DEFAULT '';
+	ALTER TABLE messages ADD COLUMN mentions_me INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

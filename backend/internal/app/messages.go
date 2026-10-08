@@ -118,19 +118,28 @@ func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversatio
 	return page, true, err
 }
 
+// SendOptions are a message's optional extras, bundled into one
+// argument to keep Send's own argument count within this codebase's
+// limit: an attachment to send with text as its caption, the local id
+// of a message in the same conversation this one answers, and the
+// "@name" tokens the composer inserted into text. Each is "" or nil
+// when the message has none.
+type SendOptions struct {
+	AttachmentPath string
+	ReplyToID      string
+	Mentions       []domain.Mention
+}
+
 // Send stores a message as pending, publishes it and hands it to the
-// service. attachmentPath names a file on this machine to send along
-// with text as its caption, or "" for a plain text message. replyToID,
-// when not "", is the local id of a message in the same conversation
-// this one answers. If the service refuses it, the message is returned
-// as failed, ready to retry; that is not an error.
-func (c *Commands) Send(ctx context.Context, conversationID, text, attachmentPath, replyToID string) (domain.Message, error) {
+// service. If the service refuses it, the message is returned as
+// failed, ready to retry; that is not an error.
+func (c *Commands) Send(ctx context.Context, conversationID, text string, opts SendOptions) (domain.Message, error) {
 	id := ""
-	if attachmentPath != "" {
+	if opts.AttachmentPath != "" {
 		id = newAttachmentID()
 	}
 
-	media, err := c.prepareAttachment(ctx, id, attachmentPath)
+	media, err := c.prepareAttachment(ctx, id, opts.AttachmentPath)
 	if err != nil {
 		return domain.Message{}, err
 	}
@@ -145,7 +154,7 @@ func (c *Commands) Send(ctx context.Context, conversationID, text, attachmentPat
 		return domain.Message{}, err
 	}
 
-	replyTo, err := c.resolveReplyTo(ctx, conv.ID, replyToID)
+	replyTo, err := c.resolveReplyTo(ctx, conv.ID, opts.ReplyToID)
 	if err != nil {
 		return domain.Message{}, err
 	}
@@ -153,7 +162,7 @@ func (c *Commands) Send(ctx context.Context, conversationID, text, attachmentPat
 	before := c.events.unreadTotal(ctx)
 	m, _, err := c.store.AddMessage(ctx, domain.Message{
 		ID: id, ConversationID: conv.ID, SenderName: "You", Text: text, Outgoing: true,
-		Status: domain.StatusPending, Created: time.Now().UnixMilli(), Media: media, ReplyTo: replyTo,
+		Status: domain.StatusPending, Created: time.Now().UnixMilli(), Media: media, ReplyTo: replyTo, Mentions: opts.Mentions,
 	})
 	if err != nil {
 		return domain.Message{}, err

@@ -31,6 +31,11 @@ Item {
   // asked for.
   property bool closingFromHost: false
 
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides, computed in Service.qml), used for key
+  // routing and read by every view that shows a shortcut.
+  readonly property var bindings: (root.service && root.service.effectiveBindings) || Keymap.BINDINGS
+
   // windowFocused is true while the window is shown and has keyboard
   // focus: the only time the user is looking at the open conversation.
   readonly property bool windowFocused: window.visible && keyArea.Window.active
@@ -117,7 +122,7 @@ Item {
   // plain boolean back and sets `accepted` on its own, real event.
   function routeKey(key: int, modifiers: int, text: string): bool {
     const context = Navigation.keyContext(root._navState());
-    const action = Keymap.match(context, key, modifiers, text);
+    const action = Keymap.match(context, key, modifiers, text, root.bindings);
     if (!action) return false;
 
     const controllers = [listController, conversationController, composerController, photoViewerController,
@@ -352,7 +357,7 @@ Item {
           Ui.Button {
             id: retryButton
             objectName: "retryButton"
-            text: "Retry (" + Keymap.keyFor("helper.retryInstall") + ")"
+            text: "Retry (" + Keymap.keyFor("helper.retryInstall", root.bindings) + ")"
             visible: root.service && root.service.status === "installFailed"
             focusable: true
             onClicked: windowController.retryInstall()
@@ -388,14 +393,17 @@ Item {
           accountController: accountController
           windowController: windowController
           nowMs: root.nowMs
+          bindings: root.bindings
           routeKey: root.routeKey
           focusDefault: () => keyArea.forceActiveFocus()
         }
 
         KeyHints {
+          objectName: "keyHints"
           Layout.fillWidth: true
           Layout.preferredHeight: Style.space(24)
           context: Navigation.keyContext(root._navState())
+          bindings: root.bindings
         }
       }
     }

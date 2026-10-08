@@ -66,6 +66,18 @@ The highlight starts on the newest message when the conversation opens or when y
 
 Ctrl+J always jumps to the next unread conversation instead, even while writing (see Global); it lands there in writing mode too.
 
+### @-mention picker
+
+Typing "@" in a group conversation opens a picker of the group's members, filtered as you keep typing their name. It closes on its own once the query no longer matches an "@name" in progress.
+
+| Keys | Does |
+| --- | --- |
+| ↓ / ↑ | Move the highlighted member |
+| Tab or Enter | Insert the highlighted member's name as a mention |
+| Esc | Close the picker without inserting, staying in the composer |
+
+A message that mentions you is shown with a subtle highlight and an "@" mark.
+
 ## Adding an account
 
 The service chooser, shown when more than one service is offered, and the QR and phone steps all work without the mouse or Tab.
@@ -120,3 +132,22 @@ Clicking a photo opens it inside the window, sized to fit.
 | o | Open in your own image viewer |
 
 **Open in image viewer** (o) opens the photo in your own application; videos and files always open externally.
+
+## Remapping keys
+
+Every shortcut above is a default; override one by editing `keys.conf` in `$XDG_CONFIG_HOME/omamessenger` (or `~/.config/omamessenger` when `XDG_CONFIG_HOME` is not set). The command palette's **Open key bindings file** creates it, pre-filled with every action and its default keys as commented-out lines, and opens it in your own editor. It does not exist until you ask for it, and nothing here ever touches `~/.config/omarchy`.
+
+The format is one override per line:
+
+```
+action.name = Key[, Key…]
+```
+
+- `#` starts a whole-line comment; blank lines are ignored
+- a key is written the way this file's own template shows it, such as `Ctrl+J`, `Alt+Shift+Down` or a bare letter like `g`; a bare uppercase letter means Shift
+- several keys for one action are comma-separated: `unread.next = Ctrl+J, Alt+Shift+Down`
+- an override *replaces* that action's default keys; it does not add to them
+
+The file is re-read automatically whenever you save it; no restart needed. An unknown action name or a key OmaMessenger cannot parse is reported, not fatal: that one line is ignored and everything else in the file still applies. If two actions end up wanting the same key in the same context, that is reported too, and the default wins for both, the same as if neither line had been written. The command palette, the footer's key hints and a highlighted message's own key-hint row all show the effective keys, overrides included.
+
+The command palette's **Show key bindings** lists every effective binding by context, marking which are overridden by `keys.conf` and showing any conflicts or errors from the file. For a bug report, or anywhere outside the running shell, `make keys` prints the same listing from a checkout of this repository, reading the same file.

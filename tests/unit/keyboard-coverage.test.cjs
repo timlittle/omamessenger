@@ -73,6 +73,7 @@ const MOUSE_ACTIONS = {
   'AccountSetup "Use phone number instead" button': 'qr.usePhone',
   'AccountSetup "Use QR code instead" button': 'phone.useQr',
   'Panel helper-install "Retry" button': 'helper.retryInstall',
+  'MentionPicker row click (insert mention)': 'mention.accept',
 };
 
 test('every mouse action with a keyboard counterpart stays reachable by key or the palette', () => {

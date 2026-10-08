@@ -2,6 +2,7 @@ import QtQuick
 import "../lib/Navigation.js" as Navigation
 import "../lib/Actions.js" as Actions
 import "../lib/Keymap.js" as Keymap
+import "../lib/KeyBindings.js" as KeyBindings
 import "../lib/Palette.js" as Palette
 import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
@@ -53,8 +54,14 @@ QtObject {
   // paletteOpen shows the command palette.
   property bool paletteOpen: false
 
-  // paletteMode is "commands" or "conversations": what the palette lists.
+  // paletteMode is "commands", "conversations", "links" or
+  // "keyBindings": what the palette lists.
   property string paletteMode: "commands"
+
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the palette's own commands
+  // list and its "Show key bindings" dump.
+  readonly property var bindings: (root.service && root.service.effectiveBindings) || Keymap.BINDINGS
 
   // paletteQuery is the palette's search text.
   property string paletteQuery: ""
@@ -75,7 +82,14 @@ QtObject {
     ? Palette.search(root.linkChoices.map((url) => ({ url })), root.paletteQuery, (c) => c.url)
     : root.paletteMode === "snoozeCustom"
     ? Snooze.preview(root.paletteQuery, Date.now())
-    : Palette.search(Keymap.commands(), root.paletteQuery, (c) => c.label)
+    : root.paletteMode === "keyBindings"
+    ? Palette.search(KeyBindings.rows(root.bindings, root._keyBindingConflicts, root._keyBindingErrors), root.paletteQuery, (r) => r.label)
+    : Palette.search(Keymap.commands(root.bindings), root.paletteQuery, (c) => c.label)
+
+  // _keyBindingConflicts/_keyBindingErrors read Service's report of
+  // keys.conf, or nothing for a service too old to have one.
+  readonly property var _keyBindingConflicts: (root.service && root.service.keyBindingConflicts) || []
+  readonly property var _keyBindingErrors: (root.service && root.service.keyBindingErrors) || []
 
   // paletteItems are paletteResults as rows to show: {label, detail, keys,
   // unread}. Conversations carry their unread count so PaletteRow can show
@@ -127,6 +141,8 @@ QtObject {
       "app.quit": () => root.quit(),
       "helper.retryInstall": () => root.retryInstall(),
       "helper.doctor": () => root.runDoctor(),
+      "keys.openConfig": () => { if (root.service) root.service.openKeyConfigFile(); },
+      "keys.showBindings": () => root.openPalette("keyBindings"),
       "close.left": () => { root.confirmIndex = Math.max(0, root.confirmIndex - 1); },
       "close.right": () => { root.confirmIndex = Math.min(2, root.confirmIndex + 1); },
       "close.accept": () => root._acceptClose(),
@@ -203,6 +219,8 @@ QtObject {
 
   // acceptPalette runs the command, opens the conversation, opens the
   // link, or applies the previewed custom snooze time, at index.
+  // "keyBindings" rows are informational only: Enter on one just closes
+  // the palette, same as clicking outside it would.
   function acceptPalette(index: int): void {
     const chosen = root.paletteResults[index];
     if (!chosen) return;
@@ -211,6 +229,7 @@ QtObject {
     if (root.paletteMode === "conversations") root._openConversation(chosen);
     else if (root.paletteMode === "links") Qt.openUrlExternally(chosen.url);
     else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
+    else if (root.paletteMode === "keyBindings") { /* informational only */ }
     else root.runCommand(chosen.action);
   }
 

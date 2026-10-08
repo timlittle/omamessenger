@@ -145,6 +145,53 @@ func TestMessagesSend_WithReplyToQuotesTheOriginalMessage(t *testing.T) {
 	}
 }
 
+func TestConversationsMembers_ListsAGroupsMembers(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+	group := domain.Conversation{ID: "group", AccountID: "wa", RemoteID: "r-group", Kind: domain.KindGroup, Title: "Group"}
+	if _, _, err := s.store.EnsureConversation(t.Context(), group); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := call[struct {
+		Members []domain.Member `json:"members"`
+	}](t, s, "conversations.members", map[string]string{"conversationId": "group"})
+	if err != nil || len(got.Members) != 1 || got.Members[0].Name != "Nadia" {
+		t.Errorf("conversations.members = %+v, %v", got, err)
+	}
+}
+
+func TestConversationsMembers_EmptyForADirectChat(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+
+	got, err := call[struct {
+		Members []domain.Member `json:"members"`
+	}](t, s, "conversations.members", map[string]string{"conversationId": "chat"})
+	if err != nil || len(got.Members) != 0 {
+		t.Errorf("conversations.members = %+v, %v, want an empty list", got, err)
+	}
+}
+
+func TestMessagesSend_CarriesMentions(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+
+	sent, err := call[domain.Message](t, s, "messages.send", map[string]any{
+		"conversationId": "chat", "text": "hi @Nadia",
+		"mentions": []map[string]any{{"userId": "u1", "name": "Nadia", "offset": 3, "length": 6}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sent.Mentions) != 1 || sent.Mentions[0].Name != "Nadia" {
+		t.Errorf("messages.send mentions = %+v, want one mention of Nadia", sent.Mentions)
+	}
+}
+
 func TestAccountsAdd_AcceptsAGeneralOptionsObject(t *testing.T) {
 	t.Parallel()
 

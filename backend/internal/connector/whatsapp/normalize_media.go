@@ -37,18 +37,22 @@ type mediaKind string
 // The media kinds this connector normalizes a message's attachment
 // into. mediaKindAudio covers both voice notes and ordinary audio
 // files, which only send is unable to produce (see upload.go).
+// mediaKindSticker shares WhatsApp's image app-info key with
+// mediaKindImage: whatsmeow authenticates a sticker's download the same
+// way it does an ordinary photo's.
 const (
 	mediaKindImage    mediaKind = "image"
 	mediaKindVideo    mediaKind = "video"
 	mediaKindAudio    mediaKind = "audio"
 	mediaKindDocument mediaKind = "document"
+	mediaKindSticker  mediaKind = "sticker"
 )
 
 // appInfo is the whatsmeow media type a reference's download or upload
 // must authenticate with.
 func appInfo(kind mediaKind) whatsmeow.MediaType {
 	switch kind {
-	case mediaKindImage:
+	case mediaKindImage, mediaKindSticker:
 		return whatsmeow.MediaImage
 	case mediaKindVideo:
 		return whatsmeow.MediaVideo
@@ -88,9 +92,9 @@ func mediaAndRef(msg *waE2E.Message) (*domain.Media, mediaRef, bool) {
 		return audioMedia(msg.GetAudioMessage())
 	case msg.GetDocumentMessage() != nil:
 		return documentMedia(msg.GetDocumentMessage())
+	case msg.GetStickerMessage() != nil:
+		return stickerMedia(msg.GetStickerMessage())
 	default:
-		// A sticker is left as its "[Sticker]" text label: domain.Media
-		// has no kind for one, and the UI has nothing to draw it with.
 		return nil, mediaRef{}, false
 	}
 }
@@ -173,6 +177,26 @@ func documentMedia(m *waE2E.DocumentMessage) (*domain.Media, mediaRef, bool) {
 	}
 
 	return doc, ref, true
+}
+
+// stickerMedia normalizes a sticker: always a WebP image, animated or
+// not, which FetchMedia downloads the same way it does a photo. A
+// plain, non-animated Image component renders only a WebP's first
+// frame, which is exactly the static display this UI wants, so an
+// animated sticker needs no special case: Emoji still carries its
+// associated emoji, shown instead of the image until it is fetched.
+func stickerMedia(m *waE2E.StickerMessage) (*domain.Media, mediaRef, bool) {
+	sticker := &domain.Media{
+		Kind: domain.MediaSticker, Width: int(m.GetWidth()), Height: int(m.GetHeight()),
+		Size: int64(m.GetFileLength()), FileName: "sticker.webp", Emoji: m.GetEmojis(),
+		Thumb: thumb(m.GetPngThumbnail()),
+	}
+	ref := mediaRef{
+		Kind: mediaKindSticker, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),
+		FileEncSHA256: m.GetFileEncSHA256(), FileLength: m.GetFileLength(), Mimetype: m.GetMimetype(),
+	}
+
+	return sticker, ref, true
 }
 
 // thumb base64-encodes a message's embedded JPEG preview, or "" when it

@@ -15,17 +15,23 @@
 // reason to send the user to an external application for one.
 var AUDIO_EXTENSIONS = ['ogg', 'oga', 'opus', 'mp3', 'm4a', 'wav', 'aac', 'amr', 'weba', 'flac'];
 
-// kindFor says which view should render a message's media: "link",
-// "photo", "video", "voice", "file", or null for no media at all. It
-// never answers "photo" or "video" for anything but those exact kinds,
-// so a misnamed or legacy audio file can never reach the image view and
-// fail to decode there.
+// KNOWN_KINDS are the media kinds the helper itself normalizes to and
+// names explicitly, each with its own view. A kind in this list is
+// never re-guessed from its file name, so a future kind (such as a
+// poll) only needs adding here, not touching the fallback logic below.
+var KNOWN_KINDS = ['photo', 'video', 'link', 'voice', 'sticker'];
+
+// kindFor says which view should render a message's media: one of
+// KNOWN_KINDS, "file", or null for no media at all. It never answers
+// "photo" or "video" for anything but those exact kinds, so a misnamed
+// or legacy audio file can never reach the image view and fail to
+// decode there.
 function kindFor(media) {
   if (!media || !media.kind) {
     return null;
   }
 
-  if (media.kind === 'photo' || media.kind === 'video' || media.kind === 'link' || media.kind === 'voice') {
+  if (KNOWN_KINDS.includes(media.kind)) {
     return media.kind;
   }
 

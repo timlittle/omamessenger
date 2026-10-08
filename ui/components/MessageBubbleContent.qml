@@ -22,6 +22,8 @@ Column {
   required property var media
   // quote is the message this one replies to, or null.
   required property var quote
+  // mentions are message's @-mention tokens, or an empty list.
+  property var mentions: []
   // maxTextWidth caps how wide the text, link preview, photo, file or
   // voice note may grow before wrapping or eliding.
   required property real maxTextWidth
@@ -74,7 +76,7 @@ Column {
     selectByMouse: true
     wrapMode: TextEdit.Wrap
     textFormat: TextEdit.RichText
-    text: Format.messageHtml(body.caption, Color.accent, Color.muted)
+    text: Format.messageHtml(body.caption, Color.accent, Color.muted, root.mentions)
     color: Color.foreground
     font { family: Theme.font.family; pixelSize: Theme.font.body }
     onLinkActivated: link => Qt.openUrlExternally(link)
@@ -116,6 +118,14 @@ Column {
     visible: root._mediaKind === "file"
     file: root.media ? root.media : ({})
     onOpened: root.mediaOpen()
+  }
+
+  StickerView {
+    objectName: "stickerView"
+    visible: root._mediaKind === "sticker"
+    sticker: root.media ? root.media : ({})
+    path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
+    onWanted: root.mediaWanted()
   }
 
   VoiceNotePlayer {

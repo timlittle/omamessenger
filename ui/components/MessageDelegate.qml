@@ -4,6 +4,7 @@ import "../theme"
 import "../lib/Timeline.js" as Timeline
 import "../lib/Highlight.js" as Highlight
 import "../lib/SenderColor.js" as SenderColor
+import "../lib/Keymap.js" as Keymap
 
 // One message row in a conversation: an optional day separator, the sender
 // name for a grouped incoming message, the bubble with its text and any
@@ -20,6 +21,9 @@ Item {
   required property var annotation
   // isGroup is true for a group chat, where incoming messages show a name.
   property bool isGroup: false
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), read for the key-hint row below.
+  property var bindings: Keymap.BINDINGS
   // nowMs is the current time, passed through to time formatting.
   property real nowMs: 0
   // voiceNotes is the playback state the voice note player reads; see
@@ -38,10 +42,15 @@ Item {
   readonly property bool showStatus: root.message.outgoing && !root.failed
   // media is what the message carries besides its text, or null.
   readonly property var media: Timeline.media(root.message)
+  // isSticker is true for a sticker message, shown with no bubble
+  // behind it at all, unlike every other media kind.
+  readonly property bool isSticker: !!root.media && root.media.kind === "sticker"
   // quote is the message this one replies to, or null.
   readonly property var quote: Timeline.replyTo(root.message)
   // reactions are this message's reaction chips, or an empty list.
   readonly property var reactions: Timeline.reactions(root.message)
+  // mentions are this message's @-mention tokens, or an empty list.
+  readonly property var mentions: Timeline.mentions(root.message)
   // nameColor is this message's sender's colour in a group chat, stable
   // for the same sender across every message; direct chats keep the
   // plain foreground colour the name used before group colouring existed.
@@ -143,21 +152,47 @@ Item {
       Rectangle {
         id: bubble
 
-        readonly property real padding: Theme.spacing.sm
+        // A sticker shows with no bubble behind it at all: no padding,
+        // no fill, just the image itself, still keyboard-highlightable
+        // through the same outline every other message gets.
+        readonly property real padding: root.isSticker ? 0 : Theme.spacing.sm
         readonly property real maxTextWidth: (root.width - root.indentWidth) * 0.72 - padding * 2
 
         objectName: "bubble"
         width: Math.max(content.width, meta.implicitWidth) + padding * 2
         height: meta.y + meta.implicitHeight + padding
         radius: Style.cornerRadius
-        color: root.message.outgoing ? Util.alpha(Color.accent, 0.22) : Util.alpha(Color.foreground, 0.06)
+        // mentionsMe tints the bubble a little more strongly than usual,
+        // paired below with an "@" glyph: colour alone must never be the
+        // only cue (see qml.md).
+        color: root.isSticker ? "transparent" : (root.message.outgoing
+          ? Util.alpha(Color.accent, root.message.mentionsMe ? 0.32 : 0.22)
+          : (root.message.mentionsMe ? Util.alpha(Color.accent, 0.16) : Util.alpha(Color.foreground, 0.06)))
         anchors.right: root.message.outgoing ? parent.right : undefined
         anchors.left: root.message.outgoing ? undefined : parent.left
         anchors.leftMargin: root.message.outgoing ? 0 : root.indentWidth
         // The highlighted message's own cue: a thin accent outline, no
         // wider than the bubble itself, so nothing beyond it ever tints.
-        border.width: root.highlighted ? Style.space(1) : 0
-        border.color: root.highlighted ? Color.accent : "transparent"
+        // A message that mentions the signed-in user keeps a fainter
+        // version of the same outline even while not highlighted.
+        border.width: root.highlighted || root.message.mentionsMe ? Style.space(1) : 0
+        border.color: root.highlighted ? Color.accent : (root.message.mentionsMe ? Util.alpha(Color.accent, 0.5) : "transparent")
+
+        // The glyph that pairs with the tint above: an own-identity cue
+        // text alone (colour) would fail someone who cannot see it.
+        Text {
+          objectName: "mentionGlyph"
+          visible: !!root.message.mentionsMe
+          text: "@"
+          color: Color.accent
+          anchors.top: parent.top
+          anchors.right: root.message.outgoing ? parent.right : undefined
+          anchors.left: root.message.outgoing ? undefined : parent.left
+          anchors.margins: Theme.spacing.xxs
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+          font.weight: Font.DemiBold
+        }
 
         // highlightMark pairs the outline with a shape, not colour
         // alone: a short accent bar beside the bubble's own near edge,
@@ -188,6 +223,7 @@ Item {
           message: root.message
           media: root.media
           quote: root.quote
+          mentions: root.mentions
           maxTextWidth: bubble.maxTextWidth
           voiceNotes: root.voiceNotes
           onMediaWanted: root.mediaWanted(root.message.id)
@@ -265,7 +301,7 @@ Item {
       anchors.left: root.message.outgoing ? undefined : parent.left
       anchors.rightMargin: root.message.outgoing ? Theme.spacing.xxs : 0
       anchors.leftMargin: root.message.outgoing ? 0 : Theme.spacing.xxs
-      text: Highlight.hints(root.message)
+      text: Highlight.hints(root.message, root.bindings)
       color: Util.alpha(Color.foreground, 0.5)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.bodySmall
