@@ -10,7 +10,7 @@ Include what you found, how to reproduce it, and the version of the helper and p
 
 In scope:
 
-- The Go helper (`backend/`), including the Telegram connector and its handling of sessions, credentials and message data
+- The Go helper (`backend/`), including the Telegram and WhatsApp connectors and their handling of sessions, credentials and message data
 - The Omarchy plugin (`ui/`, `manifest.json`) and the install and release scripts (`scripts/`)
 
 Out of scope:
