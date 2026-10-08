@@ -38,6 +38,15 @@ Item {
   // overlay that took it closes.
   property var focusDefault: null
 
+  // _refocusIfClosed returns keyboard focus to Panel's own key area once
+  // an overlay that took it has closed: every overlay below whose open
+  // state is a single property shares this one check on its
+  // onOpenChanged, instead of repeating the same two-part condition at
+  // each one.
+  function _refocusIfClosed(open: bool): void {
+    if (!open && root.focusDefault) root.focusDefault();
+  }
+
   // _refocusIfSetupClosed returns keyboard focus to the key area once
   // account setup and its removal question are both closed: whichever
   // button or field had focus is gone by then, cancelling, finishing a
@@ -46,7 +55,7 @@ Item {
   // call scattered over every signal that can close them.
   function _refocusIfSetupClosed(): void {
     if (!root.accountController || root.accountController.open || root.accountController.removing) return;
-    if (root.focusDefault) root.focusDefault();
+    root._refocusIfClosed(false);
   }
 
   // Opening the new-chat dialog focuses its search field.
@@ -64,7 +73,7 @@ Item {
     routeKey: root.routeKey
     onPicked: index => root.reactionsController.pickAt(index)
     onCancelled: root.reactionsController.closePicker()
-    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+    onOpenChanged: root._refocusIfClosed(open)
   }
 
   CommandPalette {
@@ -80,14 +89,14 @@ Item {
     onQueryEdited: text => root.windowController.setPaletteQuery(text)
     onAccepted: index => root.windowController.acceptPalette(index)
     onCancelled: root.windowController.closePalette()
-    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+    onOpenChanged: root._refocusIfClosed(open)
   }
 
   DoctorReport {
     open: root.windowController.doctorOpen
     checks: root.windowController.doctorChecks
     onClosed: root.windowController.closeDoctor()
-    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+    onOpenChanged: root._refocusIfClosed(open)
   }
 
   PhotoViewer {
@@ -121,7 +130,7 @@ Item {
     onEveryone: root.deleteController.run("delete.everyone")
     onForMe: root.deleteController.run("delete.forMe")
     onCancelled: root.deleteController.close()
-    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+    onOpenChanged: root._refocusIfClosed(open)
   }
 
   // Tests may build this layout without a list controller.
@@ -131,7 +140,7 @@ Item {
     routeKey: root.routeKey
     onConfirmed: root.listController.confirmArchiveAllRead()
     onCancelled: root.listController.cancelArchiveAllRead()
-    onOpenChanged: if (!open && root.focusDefault) root.focusDefault()
+    onOpenChanged: root._refocusIfClosed(open)
   }
 
   // Escape cancels the close question straight through WindowController,
@@ -143,7 +152,7 @@ Item {
   Connections {
     target: root.windowController
     function onConfirmingCloseChanged() {
-      if (!root.windowController.confirmingClose && root.focusDefault) root.focusDefault();
+      root._refocusIfClosed(root.windowController.confirmingClose);
     }
   }
 
