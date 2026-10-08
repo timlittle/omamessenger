@@ -13,6 +13,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
@@ -226,6 +227,54 @@ func TestHandlePollVote_TalliesOurOwnVoteEchoedBack(t *testing.T) {
 	poll, ok := sink.PollFor(directChat.RemoteID, "poll1")
 	if !ok || !poll.Options[0].Chosen {
 		t.Errorf("poll = %+v, %t; want Pizza chosen after our own vote echoes back", poll, ok)
+	}
+}
+
+// TestHandlePollVote_RevoteUnderTheOtherAddressFormReplacesNotAdds
+// reproduces the bug fixed by canonicalizing the poll voter id (see
+// reactorKey's use of personID): the same real voter revoting after
+// being addressed by their LID the first time and their mapped phone
+// JID the second must still count as one voter, with the old
+// selection cleared, not a second voter inflating TotalVoters while
+// the first, stale vote lingers on the original option.
+func TestHandlePollVote_RevoteUnderTheOtherAddressFormReplacesNotAdds(t *testing.T) {
+	t.Parallel()
+
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	lid := types.NewJID("987654", types.HiddenUserServer)
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	dev := newFakeDevice()
+	dev.lidPhones = map[string]types.JID{lid.String(): phone}
+	media := newTestMediaStore(t)
+	var sink connectortest.Sink
+
+	if err := media.putPoll(t.Context(), directChat.RemoteID, "poll1", lunchPoll()); err != nil {
+		t.Fatal(err)
+	}
+
+	info := liveInfo()
+	info.Sender = lid
+	dev.decryptVoteResp = &waE2E.PollVoteMessage{SelectedOptions: [][]byte{mustHash(t, "Pizza")}}
+	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+		Info: info, Message: &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{PollCreationMessageKey: pollCreationKey("poll1")}},
+	})
+
+	info.Sender = phone
+	dev.decryptVoteResp = &waE2E.PollVoteMessage{SelectedOptions: [][]byte{mustHash(t, "Salad")}}
+	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
+		Info: info, Message: &waE2E.Message{PollUpdateMessage: &waE2E.PollUpdateMessage{PollCreationMessageKey: pollCreationKey("poll1")}},
+	})
+
+	poll, ok := sink.PollFor(directChat.RemoteID, "poll1")
+	if !ok || poll.TotalVoters != 1 {
+		t.Fatalf("poll = %+v, %t; want exactly one distinct voter", poll, ok)
+	}
+	if poll.Options[0].Votes != 0 {
+		t.Errorf("Pizza votes = %d, want the stale vote cleared once the same voter switched to Salad", poll.Options[0].Votes)
+	}
+	if poll.Options[1].Votes != 1 {
+		t.Errorf("Salad votes = %d, want the revote counted", poll.Options[1].Votes)
 	}
 }
 

@@ -24,11 +24,11 @@ import (
 func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	switch {
 	case isReaction(e.Message):
-		c.handleReaction(ctx, sink, dev, e)
+		c.handleReaction(ctx, sink, dev, media, e)
 	case isRevoke(e.Message):
-		c.handleRevoke(ctx, sink, dev, e)
+		c.handleRevoke(ctx, sink, dev, media, e)
 	case isEdit(e.Message):
-		c.handleEdit(ctx, sink, dev, e)
+		c.handleEdit(ctx, sink, dev, media, e)
 	case e.Message.GetPollUpdateMessage() != nil:
 		c.handlePollVote(ctx, sink, dev, media, e)
 	case isContentless(e.Message):
@@ -63,9 +63,9 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 		logUnknownKind(field)
 	}
 
-	remote := chatID(ctx, dev, e.Info.Chat)
+	remote := chatID(ctx, dev, media, e.Info.Chat)
 	if !e.Info.IsFromMe || dev.isSelfChat(ctx, e.Info.Chat) {
-		c.ensureChat(ctx, sink, dev, e.Info)
+		c.ensureChat(ctx, sink, dev, media, e.Info)
 	}
 
 	m := c.improvedSenderName(message(ctx, dev, e.Info, e.Message))
@@ -99,8 +99,8 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 // self-chat, a group, resolving its name when this connector has not
 // seen it yet, or a direct chat, so a message in a chat that history
 // sync has not reached still gets somewhere to live.
-func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev device, info types.MessageInfo) {
-	remote := chatID(ctx, dev, info.Chat)
+func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, info types.MessageInfo) {
+	remote := chatID(ctx, dev, media, info.Chat)
 
 	if dev.isSelfChat(ctx, info.Chat) {
 		c.reportConversation(ctx, sink, domain.Conversation{
@@ -127,47 +127,49 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 
 // handleReaction folds a live reaction change into its message's full
 // tally and reports the result.
-func (c *Connector) handleReaction(ctx context.Context, sink connector.Sink, dev device, e *events.Message) {
-	remote := chatID(ctx, dev, e.Info.Chat)
+func (c *Connector) handleReaction(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
+	remote := chatID(ctx, dev, media, e.Info.Chat)
 	messageRemoteID, emoji := reaction(e.Message)
 
-	tally := c.reactTo(remote, messageRemoteID, reactorKey(e.Info), emoji)
+	tally := c.reactTo(remote, messageRemoteID, reactorKey(ctx, dev, e.Info), emoji)
 	sink.Reacted(ctx, c.account.ID, remote, messageRemoteID, tally)
 }
 
 // reactorKey identifies who a reaction or receipt belongs to: "self"
 // for this account, from whichever of its devices, or the sender's
-// remote id otherwise.
-func reactorKey(info types.MessageInfo) string {
+// canonical id otherwise (see normalize.go's personID), so the same
+// real person reacting under two address forms is never counted as
+// two different reactors.
+func reactorKey(ctx context.Context, dev device, info types.MessageInfo) string {
 	if info.IsFromMe {
 		return "self"
 	}
 
-	return remoteID(info.Sender)
+	return personID(ctx, dev, info.Sender)
 }
 
 // handleRevoke reports a message deleted from the service.
-func (c *Connector) handleRevoke(ctx context.Context, sink connector.Sink, dev device, e *events.Message) {
-	remote := chatID(ctx, dev, e.Info.Chat)
+func (c *Connector) handleRevoke(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
+	remote := chatID(ctx, dev, media, e.Info.Chat)
 	sink.Deleted(ctx, c.account.ID, []string{remote}, []string{revoke(e.Message)})
 }
 
 // handleEdit reports a message changed after it was sent.
-func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev device, e *events.Message) {
+func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	m := c.improvedSenderName(edit(ctx, dev, e.Info, e.Message))
-	sink.Edited(ctx, c.account.ID, chatID(ctx, dev, e.Info.Chat), m)
+	sink.Edited(ctx, c.account.ID, chatID(ctx, dev, media, e.Info.Chat), m)
 }
 
 // handleChatPresence reports someone typing or stopping, naming them
 // only in a group: a direct chat's single header has no room for a
 // name, matching how this helper's other connector reports it.
-func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink, dev device, e *events.ChatPresence) {
+func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.ChatPresence) {
 	name := ""
 	if e.IsGroup {
 		name = c.nameFor(remoteID(e.Sender))
 	}
 
-	sink.Typing(ctx, c.account.ID, chatID(ctx, dev, e.Chat), name, typingActive(e.State))
+	sink.Typing(ctx, c.account.ID, chatID(ctx, dev, media, e.Chat), name, typingActive(e.State))
 }
 
 // handleReceipt reports the one kind of receipt that is ours to handle
@@ -176,7 +178,7 @@ func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink,
 // marked read. A receipt about a message this account sent (IsFromMe
 // false here, since then the chat partner is the one acknowledging it)
 // is lane B's outgoing delivery and read progress instead.
-func (c *Connector) handleReceipt(ctx context.Context, sink connector.Sink, dev device, e *events.Receipt) {
+func (c *Connector) handleReceipt(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Receipt) {
 	if !e.IsFromMe {
 		return
 	}
@@ -185,7 +187,7 @@ func (c *Connector) handleReceipt(ctx context.Context, sink connector.Sink, dev 
 		return
 	}
 
-	sink.Unread(ctx, c.account.ID, chatID(ctx, dev, e.Chat), 0)
+	sink.Unread(ctx, c.account.ID, chatID(ctx, dev, media, e.Chat), 0)
 }
 
 // undecryptablePlaceholder stands in for a message whatsmeow could not
@@ -215,9 +217,9 @@ func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink
 		return
 	}
 
-	remote := chatID(ctx, dev, e.Info.Chat)
+	remote := chatID(ctx, dev, media, e.Info.Chat)
 	if !e.Info.IsFromMe || dev.isSelfChat(ctx, e.Info.Chat) {
-		c.ensureChat(ctx, sink, dev, e.Info)
+		c.ensureChat(ctx, sink, dev, media, e.Info)
 	}
 	c.markUndecryptable(remote, e.Info.ID)
 

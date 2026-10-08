@@ -42,8 +42,8 @@ var errCannotRevoke = fmt.Errorf("whatsapp: delete: %w: only your own messages c
 // its linked devices: a local deletion WhatsApp's own app-state sync
 // replays to every device, this one included, never telling whoever
 // sent it.
-func (c *Connector) handleDeleteForMe(ctx context.Context, sink connector.Sink, dev device, e *events.DeleteForMe) {
-	remote := chatID(ctx, dev, e.ChatJID)
+func (c *Connector) handleDeleteForMe(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.DeleteForMe) {
+	remote := chatID(ctx, dev, media, e.ChatJID)
 	sink.Deleted(ctx, c.account.ID, []string{remote}, []string{e.MessageID})
 }
 

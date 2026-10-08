@@ -28,7 +28,7 @@ func TestHandleDeleteForMe_ReportsTheMessageDeleted(t *testing.T) {
 	dev := newFakeDevice()
 	var sink connectortest.Sink
 
-	c.handleDeleteForMe(t.Context(), &sink, dev, &events.DeleteForMe{
+	c.handleDeleteForMe(t.Context(), &sink, dev, nil, &events.DeleteForMe{
 		ChatJID: types.NewJID("15551234567", types.DefaultUserServer), MessageID: "M1",
 	})
 
@@ -52,7 +52,7 @@ func TestHandleDeleteForMe_ResolvesALIDChatToItsPhoneJID(t *testing.T) {
 	dev.lidPhones = map[string]types.JID{lid.String(): phone}
 	var sink connectortest.Sink
 
-	c.handleDeleteForMe(t.Context(), &sink, dev, &events.DeleteForMe{ChatJID: lid, MessageID: "M1"})
+	c.handleDeleteForMe(t.Context(), &sink, dev, nil, &events.DeleteForMe{ChatJID: lid, MessageID: "M1"})
 
 	if !sink.Has("deleted 15551234567@s.whatsapp.net M1") {
 		t.Errorf("events = %q, want the LID-addressed delete resolved to the phone JID", sink.Lines())

@@ -111,32 +111,137 @@ func TestChatID_CollapsesTheSelfChatRegardlessOfForm(t *testing.T) {
 	dev := &fakeDevice{selfJID: phone, selfLID: lid}
 
 	for _, jid := range []types.JID{phone, lid} {
-		if got, want := chatID(t.Context(), dev, jid), remoteID(phone); got != want {
+		if got, want := chatID(t.Context(), dev, nil, jid), remoteID(phone); got != want {
 			t.Errorf("chatID(%v) = %q, want %q", jid, got, want)
 		}
 	}
 }
 
-func TestChatID_ResolvesAMappedLIDChatToItsPhoneJID(t *testing.T) {
+// TestChatID_WithNoMediaStoreResolvesAMappedLIDChatToItsPhoneJID
+// confirms chatID's fallback for a connector with no sidecar database
+// (such as a test built without one): a single call still prefers the
+// mapped phone form when whatsmeow already knows it, matching this
+// id's behaviour before it was made stable.
+func TestChatID_WithNoMediaStoreResolvesAMappedLIDChatToItsPhoneJID(t *testing.T) {
 	t.Parallel()
 
 	phone := types.NewJID("15557654321", types.DefaultUserServer)
 	lid := types.NewJID("987654", types.HiddenUserServer)
 	dev := &fakeDevice{lidPhones: map[string]types.JID{lid.String(): phone}}
 
-	if got, want := chatID(t.Context(), dev, lid), remoteID(phone); got != want {
+	if got, want := chatID(t.Context(), dev, nil, lid), remoteID(phone); got != want {
 		t.Errorf("chatID(mapped lid) = %q, want %q", got, want)
 	}
 }
 
-func TestChatID_FallsBackToTheBareLIDWhenUnmapped(t *testing.T) {
+func TestChatID_WithNoMediaStoreFallsBackToTheBareLIDWhenUnmapped(t *testing.T) {
 	t.Parallel()
 
 	lid := types.NewJID("987654", types.HiddenUserServer)
 	dev := &fakeDevice{}
 
-	if got, want := chatID(t.Context(), dev, lid), remoteID(lid); got != want {
+	if got, want := chatID(t.Context(), dev, nil, lid), remoteID(lid); got != want {
 		t.Errorf("chatID(unmapped lid) = %q, want %q", got, want)
+	}
+}
+
+// TestChatID_StaysOnTheFirstFormSeenEvenOnceTheMappingIsLearned covers
+// the bug this id's stability fix closes: a chat first reported by LID,
+// before whatsmeow knows its phone mapping, must keep resolving to that
+// same LID-based id forever, even once the mapping is learned and a
+// later report names the same chat by its phone JID instead. The
+// reverse order (phone JID first, LID later) must be just as stable,
+// collapsing to whichever id was seen first.
+func TestChatID_StaysOnTheFirstFormSeenEvenOnceTheMappingIsLearned(t *testing.T) {
+	t.Parallel()
+
+	phone := types.NewJID("15557654321", types.DefaultUserServer)
+	lid := types.NewJID("987654", types.HiddenUserServer)
+
+	tests := []struct {
+		name       string
+		firstSeen  types.JID
+		secondSeen types.JID
+	}{
+		{"LID first, phone JID later", lid, phone},
+		{"phone JID first, LID later", phone, lid},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			media := newTestMediaStore(t)
+			dev := &fakeDevice{} // the mapping is not known yet when the chat is first seen
+
+			want := chatID(t.Context(), dev, media, tt.firstSeen)
+
+			// The mapping becomes known only now, the way whatsmeow learns
+			// it asynchronously after a contact's messages start arriving.
+			dev.lidPhones = map[string]types.JID{lid.String(): phone}
+
+			if got := chatID(t.Context(), dev, media, tt.firstSeen); got != want {
+				t.Errorf("chatID(first form again) = %q, want the original %q", got, want)
+			}
+			if got := chatID(t.Context(), dev, media, tt.secondSeen); got != want {
+				t.Errorf("chatID(other form) = %q, want it to collapse to the original %q", got, want)
+			}
+		})
+	}
+}
+
+// TestChatID_StaysStableAcrossARestart confirms the chosen id survives
+// a new connector run built around the same sidecar database: nothing
+// of this fix lives only in memory.
+func TestChatID_StaysStableAcrossARestart(t *testing.T) {
+	t.Parallel()
+
+	phone := types.NewJID("15557654321", types.DefaultUserServer)
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	media := newTestMediaStore(t)
+
+	firstRun := &fakeDevice{}
+	want := chatID(t.Context(), firstRun, media, lid)
+
+	secondRun := &fakeDevice{lidPhones: map[string]types.JID{lid.String(): phone}}
+	if got := chatID(t.Context(), secondRun, media, phone); got != want {
+		t.Errorf("chatID after restart = %q, want the id chosen by the first run, %q", got, want)
+	}
+}
+
+// TestPersonID_PrefersTheMappedPhoneFormOverTheLID confirms the same
+// real person is named consistently whether a report addresses them by
+// LID or by their mapped phone JID, once whatsmeow knows the mapping,
+// which is what stops a reaction, a poll vote or a group read from
+// being double-counted under two different ids for one person (see
+// live.go's reactorKey and receipts.go's receipt).
+func TestPersonID_PrefersTheMappedPhoneFormOverTheLID(t *testing.T) {
+	t.Parallel()
+
+	phone := types.NewJID("15557654321", types.DefaultUserServer)
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	dev := &fakeDevice{lidPhones: map[string]types.JID{lid.String(): phone}}
+
+	want := remoteID(phone)
+	if got := personID(t.Context(), dev, lid); got != want {
+		t.Errorf("personID(lid) = %q, want %q", got, want)
+	}
+	if got := personID(t.Context(), dev, phone); got != want {
+		t.Errorf("personID(phone) = %q, want %q", got, want)
+	}
+}
+
+// TestPersonID_FallsBackToTheBareJIDWhenUnmapped confirms a person
+// whose LID has no known phone mapping yet is still named by something,
+// rather than resolving to an empty id.
+func TestPersonID_FallsBackToTheBareJIDWhenUnmapped(t *testing.T) {
+	t.Parallel()
+
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	dev := &fakeDevice{}
+
+	if got, want := personID(t.Context(), dev, lid), remoteID(lid); got != want {
+		t.Errorf("personID(unmapped lid) = %q, want %q", got, want)
 	}
 }
 

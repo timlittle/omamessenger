@@ -110,12 +110,12 @@ func (d *whatsappDriver) Deliver(t *testing.T, e connectortest.Event) {
 	case connectortest.EventOrganize:
 		d.deliverOrganize(ctx, jid, e)
 	case connectortest.EventRead:
-		d.current.handleMarkChatAsRead(ctx, d.sink, d.dev, &events.MarkChatAsRead{
+		d.current.handleMarkChatAsRead(ctx, d.sink, d.dev, d.media, &events.MarkChatAsRead{
 			JID: jid, Action: &waSyncAction.MarkChatAsReadAction{Read: boolPtr(true)},
 		})
 	case connectortest.EventDelete:
 		for _, id := range e.DeleteRemoteIDs {
-			d.current.handleDeleteForMe(ctx, d.sink, d.dev, &events.DeleteForMe{ChatJID: jid, MessageID: id})
+			d.current.handleDeleteForMe(ctx, d.sink, d.dev, d.media, &events.DeleteForMe{ChatJID: jid, MessageID: id})
 		}
 	}
 }
@@ -168,10 +168,10 @@ func (d *whatsappDriver) deliverMessage(ctx context.Context, chat types.JID, e c
 // independently, the way WhatsApp's own live events do.
 func (d *whatsappDriver) deliverOrganize(ctx context.Context, jid types.JID, e connectortest.Event) {
 	if e.Pinned != nil {
-		d.current.handlePin(ctx, d.sink, d.dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(*e.Pinned)}})
+		d.current.handlePin(ctx, d.sink, d.dev, d.media, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(*e.Pinned)}})
 	}
 	if e.Archived != nil {
-		d.current.handleArchive(ctx, d.sink, d.dev, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(*e.Archived)}})
+		d.current.handleArchive(ctx, d.sink, d.dev, d.media, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(*e.Archived)}})
 	}
 }
 
@@ -434,12 +434,12 @@ func TestScenario_IdentityAliases(t *testing.T) {
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: phone, Sender: phone}, ID: "M1", Timestamp: time.Unix(1, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("hi")},
 	})
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: lid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	c.handlePin(t.Context(), &sink, dev, media, &events.Pin{JID: lid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
 	c.handleMessage(t.Context(), &sink, dev, media, &events.Message{
 		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: lid, Sender: lid}, ID: "M2", Timestamp: time.Unix(2, 0)},
 		Message: &waE2E.Message{Conversation: strPtr("there")},
 	})
-	c.handleDeleteForMe(t.Context(), &sink, dev, &events.DeleteForMe{ChatJID: lid, MessageID: "M1"})
+	c.handleDeleteForMe(t.Context(), &sink, dev, media, &events.DeleteForMe{ChatJID: lid, MessageID: "M1"})
 
 	snap := sink.Snapshot()
 	phoneRemote, lidRemote := remoteID(phone), remoteID(lid)

@@ -119,8 +119,8 @@ func (c *Connector) pinnedCount(excludeRemoteID string) int {
 // with whichever archived state this connector last knew for it, and
 // marks pinned as confirmed by app state so a later history sync's own
 // snapshot can never revert it (see setOrganizedFromAppState).
-func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev device, e *events.Pin) {
-	remote := chatID(ctx, dev, e.JID)
+func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Pin) {
+	remote := chatID(ctx, dev, media, e.JID)
 	pinned := e.Action.GetPinned()
 
 	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
@@ -132,8 +132,8 @@ func (c *Connector) handlePin(ctx context.Context, sink connector.Sink, dev devi
 // merging it with whichever pinned state this connector last knew for
 // it, and marks archived as confirmed by app state so a later history
 // sync's own snapshot can never revert it (see setOrganizedFromAppState).
-func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev device, e *events.Archive) {
-	remote := chatID(ctx, dev, e.JID)
+func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Archive) {
+	remote := chatID(ctx, dev, media, e.JID)
 	archived := e.Action.GetArchived()
 
 	c.clearLocalOrganize(remote) // a live echo is WhatsApp's own current state, always trusted over a pending local change
@@ -148,10 +148,10 @@ func (c *Connector) handleArchive(ctx context.Context, sink connector.Sink, dev 
 // nothing in this connector tracks how many messages that would put
 // back, and WhatsApp's own unread count, synced separately, corrects
 // it regardless.
-func (c *Connector) handleMarkChatAsRead(ctx context.Context, sink connector.Sink, dev device, e *events.MarkChatAsRead) {
+func (c *Connector) handleMarkChatAsRead(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.MarkChatAsRead) {
 	if !e.Action.GetRead() {
 		return
 	}
 
-	sink.Unread(ctx, c.account.ID, chatID(ctx, dev, e.JID), 0)
+	sink.Unread(ctx, c.account.ID, chatID(ctx, dev, media, e.JID), 0)
 }

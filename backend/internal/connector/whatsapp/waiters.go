@@ -21,9 +21,10 @@ type waiterTable[V any] struct {
 // register reserves key's slot in the table and returns the channel to
 // wait on. When refuseExisting is true, a second register for a key
 // already waiting fails instead of replacing that first channel; the ok
-// result reports which happened. Call cleanup once the wait ends,
-// successfully or not, so a request nobody is listening for any more
-// cannot accumulate in the table forever.
+// result reports which happened. Call cleanup, passing back the same
+// channel, once the wait ends, successfully or not, so a request
+// nobody is listening for any more cannot accumulate in the table
+// forever.
 func (t *waiterTable[V]) register(key string, refuseExisting bool) (ch <-chan V, ok bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -43,13 +44,20 @@ func (t *waiterTable[V]) register(key string, refuseExisting bool) (ch <-chan V,
 	return c, true
 }
 
-// cleanup removes key's entry, once whichever call registered it has
-// stopped waiting.
-func (t *waiterTable[V]) cleanup(key string) {
+// cleanup removes key's entry, once the call that registered ch has
+// stopped waiting, but only when key's slot still holds that exact
+// channel: register with refuseExisting false lets a second caller for
+// the same key overwrite the first's slot with its own channel, and
+// without this check the first caller's own deferred cleanup would then
+// delete the second caller's still-live entry, dropping whatever answer
+// was meant for it.
+func (t *waiterTable[V]) cleanup(key string, ch <-chan V) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	delete(t.waiters, key)
+	if t.waiters[key] == ch {
+		delete(t.waiters, key)
+	}
 }
 
 // deliver hands value to whichever call is waiting on key, or drops it

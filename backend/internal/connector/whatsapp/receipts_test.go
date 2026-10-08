@@ -106,6 +106,40 @@ func TestReceipt_GroupWaitsForEveryMemberBeforeAdvancing(t *testing.T) {
 	}
 }
 
+// TestReceipt_GroupDoesNotDoubleCountTheSameMemberUnderTwoAddressForms
+// reproduces the bug fixed by canonicalizing receipt's participant key
+// (see personID in normalize.go): the same real group member reporting
+// delivery under their LID and then again under their mapped phone JID
+// must count as one participant, not two, so the group's tick does not
+// advance as "delivered" before the other member has reported at all.
+func TestReceipt_GroupDoesNotDoubleCountTheSameMemberUnderTwoAddressForms(t *testing.T) {
+	t.Parallel()
+
+	lidForA := types.NewJID("999888", types.HiddenUserServer)
+	dev := newFakeDevice()
+	dev.lidPhones = map[string]types.JID{lidForA.String(): groupMemberA}
+	var sink connectortest.Sink
+	c := connectedTo(dev, &sink)
+
+	if err := c.Send(t.Context(), groupChat, domain.Message{ID: "local-4"}); err != nil {
+		t.Fatal(err)
+	}
+	wireID := dev.sent[0].id
+
+	// The same member, A, reports delivery twice, once under each of
+	// their two address forms.
+	c.fireReceipt(t.Context(), groupJID, lidForA, wireID, types.ReceiptTypeDelivered)
+	c.fireReceipt(t.Context(), groupJID, groupMemberA, wireID, types.ReceiptTypeDelivered)
+	if sink.Has("outgoing local-4  " + domain.StatusDelivered) {
+		t.Fatal("local-4 reported delivered after only one real member (counted twice) reported, want it to wait for the other member")
+	}
+
+	c.fireReceipt(t.Context(), groupJID, groupMemberB, wireID, types.ReceiptTypeDelivered)
+	if !sink.Has("outgoing local-4  " + domain.StatusDelivered) {
+		t.Errorf("events = %q, want local-4 delivered once both distinct members have reported", sink.Lines())
+	}
+}
+
 func TestReceipt_IgnoresAMessageThisAccountDidNotSend(t *testing.T) {
 	t.Parallel()
 
@@ -141,7 +175,7 @@ func TestReceipt_IgnoresAReceiptKindItDoesNotTrack(t *testing.T) {
 // for a receipt naming chat, from participant, for the given WhatsApp
 // message id and type.
 func (c *Connector) fireReceipt(ctx context.Context, chat, participant types.JID, id types.MessageID, rt types.ReceiptType) {
-	c.receipt(ctx, c.sink, c.dev, &events.Receipt{
+	c.receipt(ctx, c.sink, c.dev, c.media, &events.Receipt{
 		MessageSource: types.MessageSource{Chat: chat, Sender: participant, IsGroup: chat.Server == types.GroupServer},
 		Type:          rt,
 		MessageIDs:    []types.MessageID{id},

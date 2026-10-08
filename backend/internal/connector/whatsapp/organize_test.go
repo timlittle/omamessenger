@@ -289,7 +289,7 @@ func TestHandlePin_LiveEchoStillOverridesALocalPin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
+	c.handlePin(t.Context(), &sink, dev, nil, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
 
 	if !sink.Has("organized " + directChat.RemoteID + " false false") {
 		t.Errorf("events = %q, want the live unpin to take effect", sink.Lines())
@@ -311,7 +311,7 @@ func TestSyncConversation_AppliesAPinThatArrivedBeforeTheConversationExisted(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	c.handlePin(t.Context(), &sink, dev, nil, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
 	sink.Take()
 
 	// History sync now creates the conversation. WhatsApp's own synced
@@ -356,7 +356,7 @@ func TestSyncConversation_NeverRevertsAPinKnownFromAppState(t *testing.T) {
 	// The conversation already exists, from an earlier sync with no pin
 	// of its own, and only afterwards does the phone's pin arrive live.
 	syncIt()
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	c.handlePin(t.Context(), &sink, dev, nil, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
 	sink.Take()
 
 	// A later resync still carries WhatsApp's own snapshot with no pin
@@ -379,7 +379,7 @@ func TestSyncConversation_AppliesAnArchiveThatArrivedBeforeTheConversationExiste
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.handleArchive(t.Context(), &sink, dev, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
+	c.handleArchive(t.Context(), &sink, dev, nil, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
 	sink.Take()
 
 	// History sync's own Archived field defaults to false unless the
@@ -413,12 +413,12 @@ func TestHandlePinAndArchive_ApplyToAPhoneKeyedConversationAddressedByLID(t *tes
 	// stored under or by its LID interchangeably; a pin or archive sent
 	// by LID must land on the phone-keyed conversation, not a separate
 	// one.
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: lid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	c.handlePin(t.Context(), &sink, dev, nil, &events.Pin{JID: lid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
 	if !sink.Has("organized " + remoteID(phone) + " true false") {
 		t.Errorf("events = %q, want the LID-addressed pin applied to the phone-keyed conversation", sink.Lines())
 	}
 
-	c.handleArchive(t.Context(), &sink, dev, &events.Archive{JID: lid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
+	c.handleArchive(t.Context(), &sink, dev, nil, &events.Archive{JID: lid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
 	if !sink.Has("organized " + remoteID(phone) + " true true") {
 		t.Errorf("events = %q, want the LID-addressed archive applied to the phone-keyed conversation", sink.Lines())
 	}
@@ -456,17 +456,17 @@ func TestHandlePinAndArchive_MergeWithTheOtherKnownFlag(t *testing.T) {
 	var sink connectortest.Sink
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
 
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	c.handlePin(t.Context(), &sink, dev, nil, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
 	if !sink.Has("organized 15551234567@s.whatsapp.net true false") {
 		t.Errorf("events = %q, want pinned true archived false", sink.Lines())
 	}
 
-	c.handleArchive(t.Context(), &sink, dev, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
+	c.handleArchive(t.Context(), &sink, dev, nil, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
 	if !sink.Has("organized 15551234567@s.whatsapp.net true true") {
 		t.Errorf("events = %q, want pinned still true, archived now true", sink.Lines())
 	}
 
-	c.handlePin(t.Context(), &sink, dev, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
+	c.handlePin(t.Context(), &sink, dev, nil, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
 	if !sink.Has("organized 15551234567@s.whatsapp.net false true") {
 		t.Errorf("events = %q, want pinned false, archived still true", sink.Lines())
 	}
@@ -480,7 +480,7 @@ func TestHandleMarkChatAsRead_ReportsUnreadZeroWhenMarkedRead(t *testing.T) {
 	var sink connectortest.Sink
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
 
-	c.handleMarkChatAsRead(t.Context(), &sink, dev, &events.MarkChatAsRead{
+	c.handleMarkChatAsRead(t.Context(), &sink, dev, nil, &events.MarkChatAsRead{
 		JID: jid, Action: &waSyncAction.MarkChatAsReadAction{Read: boolPtr(true)},
 	})
 
@@ -497,7 +497,7 @@ func TestHandleMarkChatAsRead_IgnoresAMarkedUnreadChange(t *testing.T) {
 	var sink connectortest.Sink
 	jid := types.NewJID("15551234567", types.DefaultUserServer)
 
-	c.handleMarkChatAsRead(t.Context(), &sink, dev, &events.MarkChatAsRead{
+	c.handleMarkChatAsRead(t.Context(), &sink, dev, nil, &events.MarkChatAsRead{
 		JID: jid, Action: &waSyncAction.MarkChatAsReadAction{Read: boolPtr(false)},
 	})
 

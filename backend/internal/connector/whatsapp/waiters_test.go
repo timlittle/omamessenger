@@ -102,7 +102,7 @@ func TestWaiterTable_CleanupRemovesTheEntry(t *testing.T) {
 	var tbl waiterTable[int]
 
 	ch, _ := tbl.register("k1", false)
-	tbl.cleanup("k1")
+	tbl.cleanup("k1", ch)
 	tbl.deliver("k1", 1)
 
 	select {
@@ -119,5 +119,41 @@ func TestWaiterTable_CleanupRemovesTheEntry(t *testing.T) {
 	tbl.deliver("k1", 5)
 	if v := <-again; v != 5 {
 		t.Errorf("delivered value = %d, want 5 after re-registering", v)
+	}
+}
+
+// TestWaiterTable_CleanupLeavesAnOverwritingSecondRegistrationAlone
+// confirms that when two concurrent callers register the same key
+// without refusing (as retry.go's media retry waiter does), the first
+// caller's cleanup, running after the second has already overwritten
+// the slot, does not delete the second's still-live entry: a value
+// delivered for the key afterwards must still reach the second
+// caller, not be dropped.
+func TestWaiterTable_CleanupLeavesAnOverwritingSecondRegistrationAlone(t *testing.T) {
+	t.Parallel()
+
+	var tbl waiterTable[int]
+
+	first, ok := tbl.register("k1", false)
+	if !ok {
+		t.Fatal("first register = false, want true")
+	}
+
+	second, ok := tbl.register("k1", false)
+	if !ok {
+		t.Fatal("second register = false, want true")
+	}
+
+	tbl.cleanup("k1", first) // the first caller gives up, unaware it was overwritten
+
+	tbl.deliver("k1", 9)
+
+	select {
+	case v := <-second:
+		if v != 9 {
+			t.Errorf("delivered value = %d, want 9", v)
+		}
+	default:
+		t.Error("second channel received nothing, want the first caller's cleanup to have left it alone")
 	}
 }

@@ -70,13 +70,20 @@ func (c *Connector) trackSent(key, localID string, expected int) {
 // whatsmeow receipt event names, dropping any id this account did not
 // send or whose progress whatsmeow reports in a kind this connector does
 // not track, such as a retry request.
-func (c *Connector) receipt(ctx context.Context, sink connector.Sink, dev device, e *events.Receipt) {
+func (c *Connector) receipt(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Receipt) {
 	rank := rankOf(receiptStatus(e.Type))
 	if rank == 0 {
 		return
 	}
 
-	chat, participant := chatID(ctx, dev, e.Chat), remoteID(e.Sender)
+	// participant is this participant's canonical id (see normalize.go's
+	// personID), not their bare remote id: WhatsApp can report the same
+	// group member's delivery or read progress under either of their two
+	// address forms across different receipts, and counting those as two
+	// different participants would let a group's tick advance, or even
+	// complete, before every real member has actually reported (see
+	// advanceSent and completedStatus).
+	chat, participant := chatID(ctx, dev, media, e.Chat), personID(ctx, dev, e.Sender)
 	for _, id := range e.MessageIDs {
 		if localID, status := c.advanceSent(sentKey(chat, id), participant, rank); status != "" {
 			sink.OutgoingStatus(ctx, localID, "", status)

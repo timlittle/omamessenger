@@ -76,9 +76,12 @@ type fakeDevice struct {
 	// whichever JID (a phone JID or a LID) the lookup should resolve.
 	contactNames map[string]string
 
-	// lidPhones scripts pnForLID, keyed by the string form of the LID
-	// a test wants resolved to a phone JID. A LID with no entry here
-	// resolves to an empty JID, the way an unmapped one really does.
+	// lidPhones scripts altJID, keyed by the string form of the LID a
+	// test wants resolved to a phone JID; altJID also resolves the
+	// reverse direction automatically from the same entry, the way
+	// whatsmeow's own LID store learns both directions from one
+	// mapping. A JID with no entry on either side resolves to an empty
+	// JID, the way an unmapped one really does.
 	lidPhones map[string]types.JID
 
 	// selfJID scripts isSelfChat and selfChatID: a JID whose bare form
@@ -425,13 +428,29 @@ func (d *fakeDevice) selfChatID() string {
 	return remoteID(d.selfJID)
 }
 
-// pnForLID returns the scripted phone JID for jid, the way the real
-// device maps a LID through whatsmeow's local LID store.
-func (d *fakeDevice) pnForLID(_ context.Context, jid types.JID) types.JID {
+// altJID returns the scripted other address form for jid, the way the
+// real device maps a LID to a phone JID, or a phone JID to a LID,
+// through whatsmeow's local LID store: jid's own entry in lidPhones
+// when it is itself a LID, or, when it is a phone JID, whichever LID
+// lidPhones maps to it.
+func (d *fakeDevice) altJID(_ context.Context, jid types.JID) types.JID {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	return d.lidPhones[jid.String()]
+	if jid.Server == types.HiddenUserServer {
+		return d.lidPhones[jid.String()]
+	}
+
+	for lidStr, phone := range d.lidPhones {
+		if phone.String() != jid.String() {
+			continue
+		}
+		if lid, err := types.ParseJID(lidStr); err == nil {
+			return lid
+		}
+	}
+
+	return types.JID{}
 }
 
 // downloadMedia records ref and reports the scripted bytes or error, or

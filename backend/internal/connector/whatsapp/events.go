@@ -36,8 +36,8 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 			// from another of its devices) each act on the field of e
 			// that is theirs and ignore the rest, so both always run:
 			// see receipt's and handleReceipt's own doc comments.
-			c.receipt(ctx, sink, dev, e)
-			c.handleReceipt(ctx, sink, dev, e)
+			c.receipt(ctx, sink, dev, media, e)
+			c.handleReceipt(ctx, sink, dev, media, e)
 		case *events.HistorySync:
 			c.handleHistorySync(ctx, sink, dev, media, e)
 		case *events.Message:
@@ -45,11 +45,11 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 		case *events.UndecryptableMessage:
 			c.handleUndecryptable(ctx, sink, dev, media, e)
 		case *events.ChatPresence:
-			c.handleChatPresence(ctx, sink, dev, e)
+			c.handleChatPresence(ctx, sink, dev, media, e)
 		case *events.DeleteForMe:
-			c.handleDeleteForMe(ctx, sink, dev, e)
+			c.handleDeleteForMe(ctx, sink, dev, media, e)
 		default:
-			c.handleChatListEvent(ctx, sink, dev, evt)
+			c.handleChatListEvent(ctx, sink, dev, media, evt)
 		}
 	})
 }
@@ -59,22 +59,22 @@ func (c *Connector) handleEvents(ctx context.Context, dev device, media *mediaSt
 // chat (see contacts.go), the primary phone's answer to a media retry
 // request (see retry.go), and the mute changes this connector
 // deliberately does not propagate.
-func (c *Connector) handleChatListEvent(ctx context.Context, sink connector.Sink, dev device, evt any) {
+func (c *Connector) handleChatListEvent(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, evt any) {
 	switch e := evt.(type) {
 	case *events.Pin:
-		c.handlePin(ctx, sink, dev, e)
+		c.handlePin(ctx, sink, dev, media, e)
 	case *events.Archive:
-		c.handleArchive(ctx, sink, dev, e)
+		c.handleArchive(ctx, sink, dev, media, e)
 	case *events.MarkChatAsRead:
-		c.handleMarkChatAsRead(ctx, sink, dev, e)
+		c.handleMarkChatAsRead(ctx, sink, dev, media, e)
 	case *events.Contact:
-		c.handleContactUpdate(ctx, sink, dev, e)
+		c.handleContactUpdate(ctx, sink, dev, media, e)
 	case *events.PushName:
-		c.handlePushNameUpdate(ctx, sink, dev, e)
+		c.handlePushNameUpdate(ctx, sink, dev, media, e)
 	case *events.BusinessName:
-		c.handleBusinessNameUpdate(ctx, sink, dev, e)
+		c.handleBusinessNameUpdate(ctx, sink, dev, media, e)
 	case *events.AppStateSyncComplete:
-		c.handleAppStateSyncComplete(ctx, sink, dev, e)
+		c.handleAppStateSyncComplete(ctx, sink, dev, media, e)
 	case *events.MediaRetry:
 		c.deliverRetry(e)
 	case *events.Mute:

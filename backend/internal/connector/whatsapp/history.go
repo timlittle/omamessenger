@@ -115,7 +115,7 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	if !ok {
 		return "", 0
 	}
-	conv.RemoteID = chatID(ctx, src.dev, jid)
+	conv.RemoteID = chatID(ctx, src.dev, src.media, jid)
 
 	if !c.knownChat(conv.RemoteID) && !hasRealContent(sc.GetMessages()) {
 		logSyncedConversationDropped(jid, sc)

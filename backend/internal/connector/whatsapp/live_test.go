@@ -5,6 +5,7 @@ package whatsapp
 // handleHistorySync.
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -322,41 +323,54 @@ func TestHandleMessage_PersistsAMediaReference(t *testing.T) {
 	}
 }
 
+// TestHandleMessage_ReportsEachReactionChangeAsTheFullTally also covers
+// the bug fixed by canonicalizing reactorKey (see personID in
+// normalize.go): Nadia reacting once addressed by her LID and again by
+// her mapped phone JID must update her one chip, never add a second
+// one for what would otherwise look like a different reactor.
 func TestHandleMessage_ReportsEachReactionChangeAsTheFullTally(t *testing.T) {
 	t.Parallel()
 
+	nadia := types.NewJID("15551234567", types.DefaultUserServer)
+	nadiaLID := types.NewJID("987654", types.HiddenUserServer)
+
 	c := New(domain.Account{ID: "wa"}, t.TempDir())
 	dev := newFakeDevice()
+	dev.lidPhones = map[string]types.JID{nadiaLID.String(): nadia}
 	media := newTestMediaStore(t)
 	var sink connectortest.Sink
 
-	chat := types.NewJID("15551234567", types.DefaultUserServer)
 	react := func(sender types.JID, fromMe bool, emoji string) *events.Message {
 		return &events.Message{
-			Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: chat, Sender: sender, IsFromMe: fromMe}},
+			Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: nadia, Sender: sender, IsFromMe: fromMe}},
 			Message: &waE2E.Message{ReactionMessage: &waE2E.ReactionMessage{
 				Key: &waCommon.MessageKey{ID: strPtr("M1")}, Text: strPtr(emoji),
 			}},
 		}
 	}
-
-	nadia := types.NewJID("15551234567", types.DefaultUserServer)
-	c.handleMessage(t.Context(), &sink, dev, media, react(nadia, false, "👍"))
-	if !sink.Has("reacted 15551234567@s.whatsapp.net M1 1") {
-		t.Errorf("events = %q, want one reaction chip", sink.Lines())
+	assertTally := func(want int) {
+		if line := "reacted 15551234567@s.whatsapp.net M1 " + strconv.Itoa(want); !sink.Has(line) {
+			t.Errorf("events = %q, want %q", sink.Lines(), line)
+		}
 	}
+
+	c.handleMessage(t.Context(), &sink, dev, media, react(nadia, false, "👍"))
+	assertTally(1)
 
 	// We react too, with a different emoji: now two chips.
 	c.handleMessage(t.Context(), &sink, dev, media, react(types.JID{}, true, "❤️"))
-	if !sink.Has("reacted 15551234567@s.whatsapp.net M1 2") {
-		t.Errorf("events = %q, want two reaction chips", sink.Lines())
-	}
+	assertTally(2)
 
-	// Nadia clears her reaction; back down to one chip.
+	// Nadia reacts again, this time addressed by her LID: still two
+	// chips, not three, since this must update her existing one (see
+	// normalize.go's personID, which fixed this double count).
+	c.handleMessage(t.Context(), &sink, dev, media, react(nadiaLID, false, "😂"))
+	assertTally(2)
+
+	// Nadia clears her reaction, by her phone JID this time; back down
+	// to one chip, confirming both of her forms shared one reactor key.
 	c.handleMessage(t.Context(), &sink, dev, media, react(nadia, false, ""))
-	if !sink.Has("reacted 15551234567@s.whatsapp.net M1 1") {
-		t.Errorf("events = %q, want one chip left after a reaction is cleared", sink.Lines())
-	}
+	assertTally(1)
 }
 
 func TestHandleMessage_RevokeAndEdit(t *testing.T) {
@@ -398,7 +412,7 @@ func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	var sink connectortest.Sink
 
 	direct := types.NewJID("15551234567", types.DefaultUserServer)
-	c.handleChatPresence(t.Context(), &sink, dev, &events.ChatPresence{
+	c.handleChatPresence(t.Context(), &sink, dev, nil, &events.ChatPresence{
 		MessageSource: types.MessageSource{Chat: direct, Sender: direct}, State: types.ChatPresenceComposing,
 	})
 	if !sink.Has("typing 15551234567@s.whatsapp.net true") {
@@ -406,7 +420,7 @@ func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	}
 
 	group := types.NewJID("12345-1600000000", types.GroupServer)
-	c.handleChatPresence(t.Context(), &sink, dev, &events.ChatPresence{
+	c.handleChatPresence(t.Context(), &sink, dev, nil, &events.ChatPresence{
 		MessageSource: types.MessageSource{Chat: group, Sender: direct, IsGroup: true}, State: types.ChatPresencePaused,
 	})
 	if !sink.Has("typing 12345-1600000000@g.us false") {
@@ -437,7 +451,7 @@ func TestHandleReceipt_OnlyActsOnOurOwnReadReceipts(t *testing.T) {
 			c := New(domain.Account{ID: "wa"}, t.TempDir())
 			dev := newFakeDevice()
 			var sink connectortest.Sink
-			c.handleReceipt(t.Context(), &sink, dev, tt.evt)
+			c.handleReceipt(t.Context(), &sink, dev, nil, tt.evt)
 
 			got := sink.Has("unread 15551234567@s.whatsapp.net 0")
 			if got != tt.want {

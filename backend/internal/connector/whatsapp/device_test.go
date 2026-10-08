@@ -167,7 +167,7 @@ func TestContactName_IsEmptyWhenNothingIsKnown(t *testing.T) {
 	}
 }
 
-func TestPNForLID_ResolvesTheMappedPhoneJID(t *testing.T) {
+func TestAltJID_ResolvesALIDToItsMappedPhoneJID(t *testing.T) {
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	dev := pairedTestDevice(t, phone)
 
@@ -176,28 +176,46 @@ func TestPNForLID_ResolvesTheMappedPhoneJID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := dev.pnForLID(t.Context(), lid); got != phone {
-		t.Errorf("pnForLID(lid) = %v, want %v", got, phone)
+	if got := dev.altJID(t.Context(), lid); got != phone {
+		t.Errorf("altJID(lid) = %v, want %v", got, phone)
 	}
 }
 
-func TestPNForLID_IsEmptyWhenNothingIsKnown(t *testing.T) {
+// TestAltJID_ResolvesAPhoneJIDToItsMappedLID confirms the reverse
+// direction also works from the same mapping, the way a chat or a
+// sender first seen by phone JID can still be recognised once a later
+// report names it by its LID instead (see normalize.go's chatID).
+func TestAltJID_ResolvesAPhoneJIDToItsMappedLID(t *testing.T) {
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := pairedTestDevice(t, phone)
+
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	if err := dev.cli.Store.LIDs.PutLIDMapping(t.Context(), lid, phone); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := dev.altJID(t.Context(), phone); got != lid {
+		t.Errorf("altJID(phone) = %v, want %v", got, lid)
+	}
+}
+
+func TestAltJID_IsEmptyWhenNothingIsKnown(t *testing.T) {
 	own := types.NewJID("15551234567", types.DefaultUserServer)
 	dev := pairedTestDevice(t, own)
 
 	lid := types.NewJID("987654", types.HiddenUserServer)
-	if got := dev.pnForLID(t.Context(), lid); !got.IsEmpty() {
-		t.Errorf("pnForLID(unmapped lid) = %v, want an empty JID", got)
+	if got := dev.altJID(t.Context(), lid); !got.IsEmpty() {
+		t.Errorf("altJID(unmapped lid) = %v, want an empty JID", got)
 	}
 }
 
-func TestPNForLID_IsEmptyForANonLIDJID(t *testing.T) {
+func TestAltJID_IsEmptyForAGroupJID(t *testing.T) {
 	phone := types.NewJID("15551234567", types.DefaultUserServer)
 	dev := pairedTestDevice(t, phone)
 
-	other := types.NewJID("15559998888", types.DefaultUserServer)
-	if got := dev.pnForLID(t.Context(), other); !got.IsEmpty() {
-		t.Errorf("pnForLID(phone jid) = %v, want an empty JID", got)
+	group := types.NewJID("12345-1600000000", types.GroupServer)
+	if got := dev.altJID(t.Context(), group); !got.IsEmpty() {
+		t.Errorf("altJID(group jid) = %v, want an empty JID", got)
 	}
 }
 

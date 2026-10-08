@@ -21,38 +21,39 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// nameUpdate bundles the sink and device retitleDirectChat and its
-// callers need to resolve and report a better name, so adding one more
-// of either never pushes a caller's own argument count over this
-// codebase's limit.
+// nameUpdate bundles the sink, device and media store retitleDirectChat
+// and its callers need to resolve and report a better name, so adding
+// one more of either never pushes a caller's own argument count over
+// this codebase's limit.
 type nameUpdate struct {
-	sink connector.Sink
-	dev  device
+	sink  connector.Sink
+	dev   device
+	media *mediaStore
 }
 
 // handleContactUpdate re-titles e's conversation when WhatsApp's own
 // contact list now names them, so a chat first shown with a phone
 // number or hidden id fixes itself once its contact syncs, with no need
 // to re-pair.
-func (c *Connector) handleContactUpdate(ctx context.Context, sink connector.Sink, dev device, e *events.Contact) {
+func (c *Connector) handleContactUpdate(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Contact) {
 	name := contactActionName(e.Action)
 	if name == "" {
 		return
 	}
 
-	c.retitleDirectChat(ctx, nameUpdate{sink, dev}, e.JID, name, nameRankContact)
+	c.retitleDirectChat(ctx, nameUpdate{sink, dev, media}, e.JID, name, nameRankContact)
 }
 
 // handlePushNameUpdate re-titles e's conversation when a message carries
 // a push name this connector had not seen for them before, the same way
 // a contact update does, just with a lower-trust name that a later
 // contact update can still improve on.
-func (c *Connector) handlePushNameUpdate(ctx context.Context, sink connector.Sink, dev device, e *events.PushName) {
+func (c *Connector) handlePushNameUpdate(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.PushName) {
 	if e.NewPushName == "" {
 		return
 	}
 
-	c.retitleDirectChat(ctx, nameUpdate{sink, dev}, e.JID, e.NewPushName, nameRankPushName)
+	c.retitleDirectChat(ctx, nameUpdate{sink, dev, media}, e.JID, e.NewPushName, nameRankPushName)
 }
 
 // handleBusinessNameUpdate re-titles e's conversation when WhatsApp
@@ -61,12 +62,12 @@ func (c *Connector) handlePushNameUpdate(ctx context.Context, sink connector.Sin
 // before whatsmeow has saved its verified name locally (see
 // device.contactName), so the chat may have started out titled by its
 // phone number or "Unknown contact" until this arrives.
-func (c *Connector) handleBusinessNameUpdate(ctx context.Context, sink connector.Sink, dev device, e *events.BusinessName) {
+func (c *Connector) handleBusinessNameUpdate(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.BusinessName) {
 	if e.NewBusinessName == "" {
 		return
 	}
 
-	c.retitleDirectChat(ctx, nameUpdate{sink, dev}, e.JID, e.NewBusinessName, nameRankBusiness)
+	c.retitleDirectChat(ctx, nameUpdate{sink, dev, media}, e.JID, e.NewBusinessName, nameRankBusiness)
 }
 
 // handleAppStateSyncComplete rechecks every known direct chat's title
@@ -76,8 +77,8 @@ func (c *Connector) handleBusinessNameUpdate(ctx context.Context, sink connector
 // names may now be known, with no particular JID of its own to check.
 // Each lookup is a local read already synced to this device, never a
 // network call, so rechecking every known chat stays cheap.
-func (c *Connector) handleAppStateSyncComplete(ctx context.Context, sink connector.Sink, dev device, _ *events.AppStateSyncComplete) {
-	upd := nameUpdate{sink, dev}
+func (c *Connector) handleAppStateSyncComplete(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, _ *events.AppStateSyncComplete) {
+	upd := nameUpdate{sink, dev, media}
 	for _, remote := range c.knownDirectChats() {
 		jid, err := jidFromRemoteID(remote)
 		if err != nil {
@@ -100,13 +101,18 @@ func (c *Connector) handleAppStateSyncComplete(ctx context.Context, sink connect
 // self-chat is never retitled this way, however a contact or push
 // name might resolve for the account's own identity: ensureChat is the
 // only place that titles it, always with the fixed "Message yourself"
-// label (see normalize.go's selfChatTitle).
+// label (see normalize.go's selfChatTitle). jid is resolved through
+// chatID, not the bare remoteID: a contact, push name or business name
+// update can name someone by a LID even when their chat is already
+// known by its phone JID (or the reverse), and retitling the wrong,
+// unresolved id would create a ghost conversation instead of fixing
+// the real one's name.
 func (c *Connector) retitleDirectChat(ctx context.Context, upd nameUpdate, jid types.JID, name string, rank nameRank) {
 	if upd.dev.isSelfChat(ctx, jid) {
 		return
 	}
 
-	remote := remoteID(jid)
+	remote := chatID(ctx, upd.dev, upd.media, jid)
 	before := c.nameFor(remote)
 	after := c.rememberName(remote, name, rank)
 	if after == before {

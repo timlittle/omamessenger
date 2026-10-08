@@ -169,9 +169,9 @@ func (c *Connector) handlePollVote(ctx context.Context, sink connector.Sink, dev
 		optionIDs[i] = hex.EncodeToString(h)
 	}
 
-	remote := chatID(ctx, dev, e.Info.Chat)
+	remote := chatID(ctx, dev, media, e.Info.Chat)
 	c.reportTally(ctx, media, sink, voteReport{
-		conversationRemoteID: remote, messageRemoteID: pollMessageID, voterID: reactorKey(e.Info), optionIDs: optionIDs,
+		conversationRemoteID: remote, messageRemoteID: pollMessageID, voterID: reactorKey(ctx, dev, e.Info), optionIDs: optionIDs,
 	})
 }
 

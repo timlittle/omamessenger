@@ -147,13 +147,15 @@ func retrySender(dev device, key messageKey) types.JID {
 // connector's table of pending media retries, so deliverRetry has
 // somewhere to hand the phone's answer once it arrives. A second
 // register for the same id overwrites the first's channel rather than
-// refusing, unlike registerOnDemandWaiter (history_ondemand.go). The
-// returned cleanup must run once the caller stops waiting, successfully
-// or not, so a request nobody is listening for any more cannot
-// accumulate in the table forever.
+// refusing, unlike registerOnDemandWaiter (history_ondemand.go); the
+// first caller's own cleanup then finds its channel no longer in the
+// slot and leaves the second caller's entry alone (see
+// waiterTable.cleanup). The returned cleanup must run once the caller
+// stops waiting, successfully or not, so a request nobody is listening
+// for any more cannot accumulate in the table forever.
 func (c *Connector) registerRetryWaiter(messageRemoteID string) (<-chan *events.MediaRetry, func()) {
 	ch, _ := c.retryWaiters.register(messageRemoteID, false)
-	return ch, func() { c.retryWaiters.cleanup(messageRemoteID) }
+	return ch, func() { c.retryWaiters.cleanup(messageRemoteID, ch) }
 }
 
 // deliverRetry hands a media retry notification to whichever

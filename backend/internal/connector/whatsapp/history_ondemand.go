@@ -133,7 +133,7 @@ func (c *Connector) registerOnDemandWaiter(chatRemoteID string) (<-chan int, fun
 		return nil, nil, errHistoryRequestInProgress
 	}
 
-	return ch, func() { c.onDemandWaiters.cleanup(chatRemoteID) }, nil
+	return ch, func() { c.onDemandWaiters.cleanup(chatRemoteID, ch) }, nil
 }
 
 // deliverOnDemandHistory hands an on-demand history sync's reported

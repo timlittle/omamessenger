@@ -37,26 +37,85 @@ func remoteID(jid types.JID) string {
 	return jid.ToNonAD().String()
 }
 
-// chatID is the canonical remote id for the conversation a message, a
-// history sync entry, a receipt, a revoke or delete, or an organizing
-// change addresses: the account's own self-chat always collapses to one
-// id, dev.selfChatID(), no matter whether this particular report named
-// it by phone JID or by LID, so every linked device's messages,
-// receipts, reactions and pin or archive changes land in the one
-// "Message yourself" conversation. Any other chat addressed by a LID is
-// resolved to its mapped phone JID too, when whatsmeow already knows
-// the mapping: WhatsApp's own servers address the same chat by either
-// form interchangeably, including in a revoke's own chat field, and a
-// conversation already stored under one form must not split into a
-// second under the other. A LID with no known mapping yet keeps its
-// own remote id, the only identifier available for it.
-func chatID(ctx context.Context, dev device, jid types.JID) string {
+// chatID is the canonical, stable remote id for the conversation a
+// message, a history sync entry, a receipt, a revoke or delete, or an
+// organizing change addresses. The account's own self-chat always
+// collapses to one id, dev.selfChatID(), no matter whether this
+// particular report named it by phone JID (PN) or by LID, so every
+// linked device's messages, receipts, reactions and pin or archive
+// changes land in the one "Message yourself" conversation (its phone
+// JID is reliably known once paired, unlike its LID, which is why that
+// one case needs no stored choice of its own).
+//
+// Any other chat keeps whichever remote id it was first reported
+// under for the rest of its life. WhatsApp addresses the same 1:1 chat
+// by PN or by LID depending on which of its own internal paths
+// delivered a given report, and whatsmeow only learns the mapping
+// between a contact's two forms at some point after it starts seeing
+// them, not before: a chat first reported by LID, during history sync
+// say, then again later by PN once the mapping arrives (or the other
+// order), must resolve to the same conversation every time, never
+// split into a second one under the form that happened to be known at
+// the moment of a particular report. media's chat_aliases table (see
+// chatalias.go) is what remembers that choice: the first time chatID
+// is ever asked about this chat, under either of its two known forms,
+// it records that form (or both, if the mapping is already known by
+// then) as aliases of whichever one chatID returns, so every later
+// call, by either form, resolves back to the exact same id, including
+// after a restart (see docs/decisions.md).
+//
+// media being nil, such as a connector under test built without one,
+// falls back to a single-call guess with no persisted choice to keep:
+// the mapped phone form when whatsmeow already knows it, the bare id
+// otherwise, same as before this id was made stable.
+func chatID(ctx context.Context, dev device, media *mediaStore, jid types.JID) string {
 	if dev.isSelfChat(ctx, jid) {
 		return dev.selfChatID()
 	}
 
-	if phone := dev.pnForLID(ctx, jid); !phone.IsEmpty() {
-		return remoteID(phone)
+	own := remoteID(jid)
+	if media == nil {
+		if alt := dev.altJID(ctx, jid); alt.Server == types.DefaultUserServer {
+			return remoteID(alt)
+		}
+
+		return own
+	}
+
+	aliases := []string{own}
+	if alt := dev.altJID(ctx, jid); !alt.IsEmpty() {
+		aliases = append(aliases, remoteID(alt))
+	}
+
+	canonical, err := media.resolveChatAlias(ctx, aliases)
+	if err != nil || canonical == "" {
+		canonical = own // first time this chat is seen at all: the form it arrived in becomes its id for good
+	}
+
+	for _, alias := range aliases {
+		_ = media.putChatAlias(ctx, alias, canonical) // best effort: a save failure only means this alias is resolved fresh again next time, not that the chat splits
+	}
+
+	return canonical
+}
+
+// personID is the canonical remote id for the person who sent a
+// reaction, cast a poll vote, or whose receipt is being tracked
+// participant by participant in a group: jid's own mapped phone form
+// when whatsmeow's LID store already knows it, jid's own remote id
+// otherwise. Unlike chatID, this needs no stored choice of its own to
+// stay stable: whatsmeow's LID-to-PN mapping, once learned, never
+// becomes unknown again, so every call from then on agrees on the
+// phone form without anything to persist. It is deliberately not used
+// for message_keys.sender_id (see keys.go's senderKeyID): that value
+// also has to build the exact Participant WhatsApp expects when
+// reacting to, replying to or deleting someone else's message in a
+// group, which whatsmeow builds from the sender address exactly as the
+// message carried it, not a resolved alternative (see
+// docs/decisions.md).
+func personID(ctx context.Context, dev device, jid types.JID) string {
+	if alt := dev.altJID(ctx, jid); alt.Server == types.DefaultUserServer {
+		return remoteID(alt)
 	}
 
 	return remoteID(jid)
