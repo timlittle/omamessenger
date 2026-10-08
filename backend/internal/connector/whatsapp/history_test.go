@@ -212,6 +212,49 @@ func TestHandleHistorySync_FallsBackToANeutralLabelForAnUnresolvedLID(t *testing
 	}
 }
 
+// TestHandleHistorySync_FallsBackToThePhoneNumberForALIDChatWithAKnownMapping
+// covers a chat history sync still only addresses by its LID even
+// though whatsmeow has since learned the mapping to a phone JID: the
+// fallback title must read it from the mapped phone JID, never format
+// the hidden id itself as if it were a phone number.
+func TestHandleHistorySync_FallsBackToThePhoneNumberForALIDChatWithAKnownMapping(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+	dev.lidPhones = map[string]types.JID{"987654@lid": types.NewJID("15551234567", types.DefaultUserServer)}
+
+	conv := &waHistorySync.Conversation{ID: strPtr("987654@lid"), Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)}}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
+
+	if !sink.Has("conversation 987654@lid +15551234567") {
+		t.Errorf("events = %q, want the fallback title read from the mapped phone JID", sink.Lines())
+	}
+}
+
+// TestHandleHistorySync_TitlesALIDChatFromAMessagesPushName covers a
+// business or non-contact account whose chat carries no name of its
+// own in the sync's Conversation entry, but whose individual messages
+// each carry a push name: that name must title the chat, rather than
+// the neutral "Unknown contact" label.
+func TestHandleHistorySync_TitlesALIDChatFromAMessagesPushName(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+
+	msg := &waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
+		Key:              &waCommon.MessageKey{ID: strPtr("H1"), FromMe: boolPtr(false)},
+		Message:          &waE2E.Message{Conversation: strPtr("hi")},
+		MessageTimestamp: u64(1),
+		PushName:         strPtr("Priya's Boutique"),
+	}}
+	conv := &waHistorySync.Conversation{ID: strPtr("987654@lid"), Messages: []*waHistorySync.HistorySyncMsg{msg}}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
+
+	if !sink.Has("conversation 987654@lid Priya's Boutique") {
+		t.Errorf("events = %q, want the chat titled from a synced message's own push name", sink.Lines())
+	}
+}
+
 func TestHandleHistorySync_NeverCreatesAConversationWithNoRealMessage(t *testing.T) {
 	t.Parallel()
 
