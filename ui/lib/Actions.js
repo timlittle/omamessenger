@@ -125,6 +125,8 @@ var OWNERS = {
   'window.hide': 'window',
   'app.quit': 'window',
   'helper.retryInstall': 'window',
+  'keys.openConfig': 'window',
+  'keys.showBindings': 'window',
   'close.left': 'window',
   'close.right': 'window',
   'close.accept': 'window',

@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
+import "../lib/Keymap.js" as Keymap
 
 // The open conversation: header, message list and composer. Shows an empty
 // state instead when no conversation is open.
@@ -23,6 +24,10 @@ Item {
   property string highlightedId: ""
   // nowMs is the current time, passed to each message delegate.
   property real nowMs: 0
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), passed to each message delegate's
+  // hint row and to the composer's mode hint.
+  property var bindings: Keymap.BINDINGS
   // voiceNotes is the playback state each message delegate reads for its
   // voice note player; see MessageBubbleContent for its shape.
   property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
@@ -214,6 +219,7 @@ Item {
         annotation: root.annotations[index] ?? ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         isGroup: root.isGroup
         nowMs: root.nowMs
+        bindings: root.bindings
         voiceNotes: root.voiceNotes
         // The highlight and its hint row only make sense in scroll
         // mode: while the composer has focus, j/k do not move it and
@@ -241,6 +247,7 @@ Item {
       title: root.conversation ? root.conversation.title : ""
       enabled: root.composeEnabled
       attachmentPath: root.attachmentPath
+      bindings: root.bindings
       routeKey: root.routeKey
       onSubmitted: (text, replyToId) => root.send(text, replyToId)
       onTextChanged: root.draftEdited(composer.text)

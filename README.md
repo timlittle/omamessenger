@@ -57,7 +57,7 @@ Choose **Add an account** in the window or the command palette. Scan the QR code
 | Ctrl+W | Close the window |
 | Ctrl+Q | Quit |
 
-Ctrl+/ lists every command and its shortcut. The full reference, including the conversation list, composer and photo viewer, is in [docs/shortcuts.md](docs/shortcuts.md).
+Ctrl+/ lists every command and its shortcut. The full reference, including the conversation list, composer and photo viewer, is in [docs/shortcuts.md](docs/shortcuts.md). To remap a shortcut, see [docs/shortcuts.md](docs/shortcuts.md#remapping-keys) for `~/.config/omamessenger/keys.conf`, or run `make keys` to print the effective bindings for a bug report.
 
 ## Data and privacy
 

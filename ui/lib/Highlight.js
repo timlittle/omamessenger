@@ -15,6 +15,7 @@
 
 .import "Selection.js" as Selection
 .import "Timeline.js" as Timeline
+.import "Keymap.js" as Keymap
 
 // LINK_PATTERN matches http(s) links in a message's raw text, the shape
 // messageHtml's own linkify in Format.js uses on the escaped version. It
@@ -51,14 +52,17 @@ function newer(ids, currentId) {
 //   "r reply · e react · d delete · o open link"    (carries a link)
 //   "r reply · e react · d delete · p go to quote"  (is a reply)
 //   "r reply · e react · d delete · t retry"        (failed to send)
-function hints(message) {
-  const parts = ['r reply', 'e react', 'd delete'];
+// Each key names the action's own effective key (see KeyBindings.js),
+// so a keys.conf override shows up here too, not just its own default.
+function hints(message, bindings) {
+  const key = (action) => Keymap.keyFor(action, bindings);
+  const parts = [`${key('message.reply')} reply`, `${key('message.react')} react`, `${key('message.delete')} delete`];
   const media = Timeline.media(message);
-  if (media && media.kind === 'voice') parts.push('Enter play');
-  else if (media) parts.push('Enter open');
-  if (links(message).length > 0) parts.push('o open link');
-  if (Timeline.replyTo(message)) parts.push('p go to quote');
-  if (message.outgoing && message.status === 'failed') parts.push('t retry');
+  if (media && media.kind === 'voice') parts.push(`${key('message.open')} play`);
+  else if (media) parts.push(`${key('message.open')} open`);
+  if (links(message).length > 0) parts.push(`${key('message.openLink')} open link`);
+  if (Timeline.replyTo(message)) parts.push(`${key('message.goToQuote')} go to quote`);
+  if (message.outgoing && message.status === 'failed') parts.push(`${key('message.retry')} retry`);
   return parts.join(' · ');
 }
 

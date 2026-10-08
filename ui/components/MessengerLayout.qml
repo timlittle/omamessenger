@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import "../theme"
 import "../lib/Rail.js" as Rail
+import "../lib/Keymap.js" as Keymap
 
 // The three columns that make up the OmaMessenger window: the service
 // rail, the search field and conversation list, and the open
@@ -40,6 +41,9 @@ Item {
   property var windowController: null
   // nowMs is the current time, refreshed by Panel.qml, for relative times.
   property real nowMs: Date.now()
+  // bindings are the effective key bindings (defaults merged with the
+  // user's keys.conf overrides), passed to the list and conversation.
+  property var bindings: Keymap.BINDINGS
   // routeKey is Panel's router: called with (key, modifiers, text) from
   // the search field, the composer and the dialog's search field, before
   // each handles its own key presses. See Composer.qml for why it is a
@@ -185,6 +189,7 @@ Item {
       model: root.listController.model
       selectedId: root.listController.selectedId
       nowMs: root.nowMs
+      bindings: root.bindings
       accountNames: Rail.accountNames(root.service ? root.service.accounts : [])
       multiAccountServices: Rail.multiAccountServices(root.listController.railItems)
       showEmptyState: root.service !== null && root.service.status === "ready" && root.service.accounts.length === 0
@@ -213,6 +218,7 @@ Item {
       annotations: root.conversationController.annotations
       highlightedId: root.conversationController.highlightedId
       nowMs: root.nowMs
+      bindings: root.bindings
       draft: root.composerController.draft
       replyTarget: root.composerController.replyTarget
       attachmentPath: root.composerController.attachmentPath
