@@ -79,7 +79,7 @@ func TestIngest_SurvivesAHelperRestart(t *testing.T) {
 			t.Errorf("unread after restart = %d, want 2", got.Unread)
 		}
 
-		messages, _, err := commands2.Messages(ctx, got.ID, "", 10)
+		messages, _, _, err := commands2.Messages(ctx, got.ID, "", 10)
 		if err != nil || len(messages) != 2 {
 			t.Fatalf("messages after restart = %+v, %v, want the 2 messages from before it", messages, err)
 		}

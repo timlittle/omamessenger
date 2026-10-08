@@ -239,6 +239,7 @@ Item {
       replyTarget: root.composerController.replyTarget
       attachmentPath: root.composerController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
+      historyUnavailable: root.conversationController.historyUnavailable
       voiceNotes: root.conversationController.voiceNotes
       routeKey: root.routeKey
 

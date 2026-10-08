@@ -130,6 +130,13 @@ type device interface {
 	// sendAppState sends an app-state patch, such as a pin or archive
 	// change, so WhatsApp's own record of the chat agrees with it.
 	sendAppState(ctx context.Context, patch appstate.PatchInfo) error
+
+	// requestOlderHistory asks WhatsApp's primary phone, through a peer
+	// message only this account's own other devices receive, for count
+	// messages older than anchor in its chat (see history_ondemand.go).
+	// The phone's answer arrives later, asynchronously, as an
+	// events.HistorySync of type ON_DEMAND.
+	requestOlderHistory(ctx context.Context, anchor *types.MessageInfo, count int) error
 }
 
 // pairClientType and pairDisplayName name this companion to WhatsApp when
@@ -392,6 +399,14 @@ func (d *waDevice) sendMediaRetryReceipt(ctx context.Context, info *types.Messag
 // sendAppState sends patch with WhatsApp.
 func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
 	return d.cli.SendAppState(ctx, patch)
+}
+
+// requestOlderHistory sends the primary phone an on-demand history
+// request for count messages older than anchor.
+func (d *waDevice) requestOlderHistory(ctx context.Context, anchor *types.MessageInfo, count int) error {
+	_, err := d.cli.SendPeerMessage(ctx, d.cli.BuildHistorySyncRequest(anchor, count))
+
+	return err
 }
 
 // Status values device reports through onStatus. statusStopped covers

@@ -82,6 +82,13 @@ type Connector struct {
 	// for a different message gets its own entry and so its own
 	// channel, never the other's.
 	retryWaiters map[string]chan *events.MediaRetry
+
+	// onDemandWaiters holds one channel per conversation remote id
+	// currently waiting on the primary phone's answer to an on-demand
+	// history request (see history_ondemand.go), so handleHistorySync
+	// has somewhere to deliver the matching events.HistorySync once it
+	// arrives. Only one entry can exist per chat at a time.
+	onDemandWaiters map[string]chan int
 }
 
 // nameRank orders how much a resolved name can be trusted, so
@@ -112,6 +119,7 @@ var (
 	_ connector.LogoutOnRemove = (*Connector)(nil)
 	_ connector.MediaFetcher   = (*Connector)(nil)
 	_ connector.Organizer      = (*Connector)(nil)
+	_ connector.HistoryLoader  = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose session is kept in

@@ -41,7 +41,7 @@ To sign in with your own Telegram API keys instead of OmaMessenger's, see [docs/
 
 ## Sign in to WhatsApp
 
-Choose **Add an account** in the window or the command palette. Scan the QR code shown with WhatsApp (**Settings → Linked devices → Link a device**), or choose **Use phone number instead** and type the 8-character code it shows into WhatsApp. Recent chats sync once it connects; older history beyond what syncs at pairing does not load further back as you scroll, unlike Telegram.
+Choose **Add an account** in the window or the command palette. Scan the QR code shown with WhatsApp (**Settings → Linked devices → Link a device**), or choose **Use phone number instead** and type the 8-character code it shows into WhatsApp. Recent chats sync once it connects; scrolling back further asks your phone for more, so it needs to be online and reachable. If it is not, a note says so at the top of the conversation — try again once it is.
 
 ## Keyboard shortcuts
 

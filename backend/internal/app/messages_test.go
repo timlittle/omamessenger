@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -17,9 +18,9 @@ func TestMessages_ValidatesInput(t *testing.T) {
 	ctx := t.Context()
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 
-	page, more, err := f.commands.Messages(ctx, "chat", "", 0)
-	if err != nil || len(page) != 0 || more {
-		t.Fatalf("Messages(empty chat) = %v, %t, %v", page, more, err)
+	page, more, unavailable, err := f.commands.Messages(ctx, "chat", "", 0)
+	if err != nil || len(page) != 0 || more || unavailable {
+		t.Fatalf("Messages(empty chat) = %v, %t, %t, %v", page, more, unavailable, err)
 	}
 
 	tests := []struct {
@@ -35,7 +36,7 @@ func TestMessages_ValidatesInput(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if _, _, err := f.commands.Messages(ctx, tt.conversationID, "", tt.limit); !errors.Is(err, tt.want) {
+		if _, _, _, err := f.commands.Messages(ctx, tt.conversationID, "", tt.limit); !errors.Is(err, tt.want) {
 			t.Errorf("%s: Messages = %v, want %v", tt.name, err, tt.want)
 		}
 	}
@@ -279,14 +280,14 @@ func TestMessages_LoadsOlderHistoryFromTheService(t *testing.T) {
 		{ID: "m20", RemoteID: "20", Text: "b", Created: 20},
 	}
 
-	page, more, err := f.commands.Messages(ctx, "chat", "m50", 10)
-	if err != nil || len(page) != 2 || page[0].ID != "m20" || !more {
-		t.Fatalf("Messages before m50 = %v, more %t, %v; want the two older ones, and maybe more", page, more, err)
+	page, more, unavailable, err := f.commands.Messages(ctx, "chat", "m50", 10)
+	if err != nil || len(page) != 2 || page[0].ID != "m20" || !more || unavailable {
+		t.Fatalf("Messages before m50 = %v, more %t, unavailable %t, %v; want the two older ones, and maybe more", page, more, unavailable, err)
 	}
 
-	page, more, err = f.commands.Messages(ctx, "chat", "m20", 10)
-	if err != nil || len(page) != 0 || more {
-		t.Errorf("Messages before m20 = %v, more %t, %v; want the end of history", page, more, err)
+	page, more, unavailable, err = f.commands.Messages(ctx, "chat", "m20", 10)
+	if err != nil || len(page) != 0 || more || unavailable {
+		t.Errorf("Messages before m20 = %v, more %t, unavailable %t, %v; want the end of history", page, more, unavailable, err)
 	}
 
 	if !slices.Equal(f.history.from, []string{"50", "20"}) {
@@ -301,9 +302,28 @@ func TestMessages_KeepsWhatItHasWhenTheServiceFails(t *testing.T) {
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.history.err = errors.New("offline")
 
-	page, more, err := f.commands.Messages(t.Context(), "chat", "", 10)
-	if err != nil || len(page) != 0 || more {
-		t.Errorf("Messages with the service offline = %v, %t, %v; want the local page and no error", page, more, err)
+	page, more, unavailable, err := f.commands.Messages(t.Context(), "chat", "", 10)
+	if err != nil || len(page) != 0 || more || unavailable {
+		t.Errorf("Messages with the service offline = %v, %t, %t, %v; want the local page, no error and no unavailable note for an ordinary failure", page, more, unavailable, err)
+	}
+}
+
+// TestMessages_ReportsHistoryUnavailableWhenTheServiceCannotBeReached
+// confirms LoadOlder failing with connector.ErrHistoryUnavailable, such
+// as WhatsApp's phone never answering an on-demand request, is surfaced
+// as the dedicated flag rather than swallowed like any other failure:
+// the page already loaded still stands, and there is still no error, but
+// the UI can now tell the user older messages need the phone online.
+func TestMessages_ReportsHistoryUnavailableWhenTheServiceCannotBeReached(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.history.err = connector.ErrHistoryUnavailable
+
+	page, more, unavailable, err := f.commands.Messages(t.Context(), "chat", "", 10)
+	if err != nil || len(page) != 0 || more || !unavailable {
+		t.Errorf("Messages with the phone unreachable = %v, %t, %t, %v; want the local page, no error and the unavailable note set", page, more, unavailable, err)
 	}
 }
 
@@ -330,7 +350,7 @@ func TestMessages_FillsInMediaTheServiceReportedTooLateToStore(t *testing.T) {
 		"41": {RemoteID: "41", Text: "see https://x.io/a", Created: 2, Media: &link},
 	}
 
-	page, _, err := f.commands.Messages(ctx, chat.ID, "", 10)
+	page, _, _, err := f.commands.Messages(ctx, chat.ID, "", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +373,7 @@ func TestMessages_FillsInMediaTheServiceReportedTooLateToStore(t *testing.T) {
 
 	// Looking at the same page again must not ask the service a second
 	// time for messages already attempted.
-	if _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
+	if _, _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.refresher.asked) != 1 {
@@ -372,7 +392,7 @@ func TestMessages_KeepsTheStoredPageWhenRefreshingFails(t *testing.T) {
 	}
 	f.refresher.err = errors.New("offline")
 
-	page, more, err := f.commands.Messages(ctx, chat.ID, "", 10)
+	page, more, _, err := f.commands.Messages(ctx, chat.ID, "", 10)
 	if err != nil || more || len(page) != 1 || page[0].ID != "m1" || page[0].Media != nil {
 		t.Fatalf("Messages with the refresher offline = %v, %t, %v; want the stored page unchanged", page, more, err)
 	}
@@ -389,7 +409,7 @@ func TestMessages_OlderHistoryDoesNotCountAsUnread(t *testing.T) {
 		{ID: "m20", RemoteID: "20", Text: "b", Created: 20, Status: domain.StatusReceived},
 	}
 
-	if _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
+	if _, _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
 		t.Fatal(err)
 	}
 
@@ -425,7 +445,7 @@ func TestMessages_OlderHistoryLeavesRealUnreadAloneRegardlessOfMessageMix(t *tes
 		{ID: "m20", RemoteID: "20", Text: "already read", Created: 20, Status: domain.StatusRead},
 	}
 
-	if _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
+	if _, _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
 		t.Fatal(err)
 	}
 
@@ -461,7 +481,7 @@ func TestMessages_OlderHistorySurvivesAMarkReadThatLandsWhileItIsInFlight(t *tes
 		}
 	}
 
-	if _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
+	if _, _, _, err := f.commands.Messages(ctx, chat.ID, "", 10); err != nil {
 		t.Fatal(err)
 	}
 

@@ -307,6 +307,58 @@ func TestScenario_ExpiredMediaSurvivesRestart(t *testing.T) {
 	})
 }
 
+// TestScenario_LoadOlderHistorySurvivesRestart reproduces scrolling back
+// past what history sync already delivered, right after a restart: the
+// anchor LoadOlder needs is message_keys' own row (see keys.go), saved
+// to the on-disk media store by the first connector instance, so a
+// second instance that starts with every in-memory field empty must
+// still be able to ask the phone for history before it and resolve the
+// answer, the same as retry.go's media-retry flow already does.
+func TestScenario_LoadOlderHistorySurvivesRestart(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dev := newFakeDevice()
+		dev.paired = true
+		media := newTestMediaStore(t)
+
+		c1 := newConnectorOverDevAndMedia(dev, media)
+		c1.connected(dev, &connectortest.Sink{}, media)
+		if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{timestamp: 1000}); err != nil {
+			t.Fatal(err)
+		}
+		c1.disconnected()
+
+		c2 := newConnectorOverDevAndMedia(dev, media)
+		var sink connectortest.Sink
+		c2.connected(dev, &sink, media)
+		unregister := c2.handleEvents(t.Context(), dev, media, &sink)
+		defer unregister()
+
+		done := make(chan int, 1)
+		go func() {
+			n, err := c2.LoadOlder(t.Context(), directChat, "m1", 50)
+			if err != nil {
+				t.Error(err)
+			}
+			done <- n
+		}()
+		synctest.Wait()
+
+		if len(dev.requestHistoryCalls) != 1 {
+			t.Fatalf("requestHistoryCalls after restart = %d, want exactly one request", len(dev.requestHistoryCalls))
+		}
+
+		dev.fireEvent(onDemandSync(directPeer.String(), historyMsg("m0", "earlier", false)))
+		synctest.Wait()
+
+		if n := <-done; n != 1 {
+			t.Errorf("LoadOlder after restart = %d, want 1", n)
+		}
+		if !sink.Has("history " + directChat.RemoteID + " m0") {
+			t.Errorf("events = %q, want the backfilled message stored as history", sink.Lines())
+		}
+	})
+}
+
 // newConnectorOverDevAndMedia returns a fresh connector instance over
 // dev and media, with every in-memory field starting empty, standing in
 // for the connector a restart would build.

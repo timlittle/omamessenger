@@ -267,17 +267,21 @@ type messagesParams struct {
 	Limit          int    `json:"limit"`
 }
 
-// messagesResult is a page of messages, oldest first.
+// messagesResult is a page of messages, oldest first. HistoryUnavailable
+// is set when paging past the oldest stored message asked the service for
+// more and could not reach it right now (see app.Commands.Messages); an
+// older UI that does not read this field keeps working unchanged.
 type messagesResult struct {
-	Messages []domain.Message `json:"messages"`
-	HasMore  bool             `json:"hasMore"`
+	Messages           []domain.Message `json:"messages"`
+	HasMore            bool             `json:"hasMore"`
+	HistoryUnavailable bool             `json:"historyUnavailable,omitempty"`
 }
 
 // messagesList returns a page of a conversation's messages.
 func messagesList(c *app.Commands) func(context.Context, messagesParams) (any, error) {
 	return func(ctx context.Context, p messagesParams) (any, error) {
-		page, more, err := c.Messages(ctx, p.ConversationID, p.Before, p.Limit)
-		return messagesResult{Messages: page, HasMore: more}, err
+		page, more, unavailable, err := c.Messages(ctx, p.ConversationID, p.Before, p.Limit)
+		return messagesResult{Messages: page, HasMore: more, HistoryUnavailable: unavailable}, err
 	}
 }
 

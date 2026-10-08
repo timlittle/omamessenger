@@ -116,6 +116,18 @@ type fakeDevice struct {
 	// records what it was asked to send; retry_test.go drives these.
 	mediaRetryErr   error
 	mediaRetryCalls []mediaRetryCall
+
+	// requestHistoryErr scripts requestOlderHistory, and
+	// requestHistoryCalls records what it was asked to request;
+	// history_ondemand_test.go drives these.
+	requestHistoryErr   error
+	requestHistoryCalls []requestHistoryCall
+}
+
+// requestHistoryCall records one call to requestOlderHistory.
+type requestHistoryCall struct {
+	anchor *types.MessageInfo
+	count  int
 }
 
 // mediaRetryCall records one call to sendMediaRetryReceipt.
@@ -442,6 +454,16 @@ func (d *fakeDevice) sendMediaRetryReceipt(_ context.Context, info *types.Messag
 	d.mediaRetryCalls = append(d.mediaRetryCalls, mediaRetryCall{info: info, mediaKey: mediaKey})
 
 	return d.mediaRetryErr
+}
+
+// requestOlderHistory records the call and reports requestHistoryErr.
+func (d *fakeDevice) requestOlderHistory(_ context.Context, anchor *types.MessageInfo, count int) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.requestHistoryCalls = append(d.requestHistoryCalls, requestHistoryCall{anchor: anchor, count: count})
+
+	return d.requestHistoryErr
 }
 
 // sendAppState records patch and reports appStateErr, or blocks on ctx
