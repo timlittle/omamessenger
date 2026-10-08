@@ -6,35 +6,17 @@ A keyboard-first messaging client for [Omarchy](https://omarchy.org), for Telegr
 
 OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and Hyprland manages it like any other app; a Go helper it starts handles the messaging underneath.
 
-## Demo
-
-| | |
-| --- | --- |
-| ![Unified list, open a chat, send](docs/demo/list-and-send.gif) <br> Unified list, open a chat, send a message | ![Keyboard navigation](docs/demo/keyboard-nav.gif) <br> Ctrl+J between unread chats, writing vs scrolling mode |
-| ![Command palette search](docs/demo/palette-search.gif) <br> Ctrl+K search jumping straight to a message | ![Photo and voice note](docs/demo/media.gif) <br> A photo in the full viewer, a voice note playing |
-
-![Reply and react](docs/demo/reply-reaction.gif)
-
-Reply to a message and react to it, keyboard-first
+Short clips of each feature are in [docs/demo.md](docs/demo.md).
 
 ## Features
 
-- A unified conversation list across every connected account, with a rail to filter by service; once more than one account is connected, each gets a stable colour tag in the list and rail so their chats are easy to tell apart
-- Unread badges, search across every conversation (including archived ones), and older history that loads as you scroll back
-- Photos, video and files, with an in-window photo viewer and link previews
-- Voice notes play inline, with a scrubber and elapsed/total time; in-window playback needs `qt6-multimedia` (not installed by every Omarchy setup), otherwise a voice message opens in your default player instead
-- Replies and reactions; edits sync from the service, and you can delete a message yourself (**d**), for everyone or just for you, as well as have a deletion made elsewhere sync in
-- A message that fails to send retries itself automatically once the account reconnects, and otherwise on a backoff for up to a day, showing "Retrying in…" beside it; **t** retries it sooner
-- @-mention a group member by typing "@" in the composer; a message that mentions you is highlighted
-- Stickers show as static images; sending one is not yet supported
-- Polls: vote with the mouse or the keyboard (**v**); creating a poll is not yet supported
-- Pin, archive (including a one-key "archive and mark read", **a**, and a confirmed "archive all read conversations") and a local-only hide, with a one-month recency filter and a "show all" to see everything
-- Local-only reminders: snooze a conversation until later today, tomorrow, next week or a custom time, then get it back at the top of the list, marked "Reminder", with a desktop notification
-- Desktop notifications; click one to open its conversation
-- Paste or attach an image to a message
-- Incognito read receipts (**Toggle read receipts** in the command palette): off means the service is never told a chat here was read, so the phone and any other device signed into the same account keep showing it unread
-- Keyboard-first, with a command palette (**Ctrl+/**) listing every action and its shortcut
-- Light on memory: about 120 MB in use, against about 2 GB for Telegram Desktop and WhatsApp Web running side by side ([benchmark](docs/BENCHMARK.md))
+- One conversation list across every Telegram and WhatsApp account, filtered by service from the rail
+- Keyboard-first: every action has a shortcut, and **Ctrl+/** lists them all
+- Search across every conversation with **Ctrl+K**, and an unread view with **Ctrl+Shift+A**
+- Photos, video, files, voice notes, link previews, replies, reactions, polls and @-mentions
+- Pin, archive, hide and snooze conversations; failed sends retry themselves
+- Desktop notifications, and read receipts you can turn off
+- About 120 MB in use, against about 2 GB for Telegram Desktop and WhatsApp Web together ([benchmark](docs/BENCHMARK.md))
 
 ## Install
 
@@ -43,6 +25,8 @@ omarchy plugin add https://github.com/timlittle/omamessenger --enable
 ```
 
 The first time you open the window, it downloads and verifies the helper release pinned in `helper-version`, then starts it.
+
+Voice notes play in the window when `qt6-multimedia` is installed; without it, they open in your default player.
 
 It also adds OmaMessenger to Omarchy's apps menu (**SUPER+ALT+SPACE**). To bind it to a key instead, add a line to `~/.config/hypr/bindings.lua`:
 
@@ -77,31 +61,7 @@ Ctrl+/ lists every command and its shortcut. The full reference, including the c
 
 ## Data and privacy
 
-The helper stores its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db` (accounts, chats and messages), `telegram/` (each account's session and API keys), `whatsapp/` (each account's session and the media references it needs to download photos and files later) and `media/` (cached photos and files), all `0600`, their directories `0700`.
-
-OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with your account, and Telegram can rate-limit, restrict or ban an account independent of anything OmaMessenger does. WhatsApp support uses an unofficial library ([whatsmeow](https://github.com/tulir/whatsmeow)) the same way, and WhatsApp may similarly restrict or ban an account for using an unofficial client. The helper connects only to the messaging services. It does not log credentials, session keys, phone numbers or message text.
-
-### What OmaMessenger reads, writes and sends
-
-| What | Where | Mode | Why |
-| --- | --- | --- | --- |
-| Accounts, chats and messages | `$XDG_DATA_HOME/omamessenger/messages.db` | file `0600`, directory `0700` | the local message database |
-| Telegram sessions and API keys | `$XDG_DATA_HOME/omamessenger/telegram/` | files `0600`, directory `0700` | signed-in Telegram accounts |
-| WhatsApp sessions and media references | `$XDG_DATA_HOME/omamessenger/whatsapp/` | files `0600`, directory `0700` | signed-in WhatsApp accounts |
-| Cached photos, video and files | `$XDG_DATA_HOME/omamessenger/media/` | files `0600`, directory `0700` | avoids re-downloading media already seen |
-| The installed helper binary | `$XDG_DATA_HOME/omamessenger/bin/` | executable, directory `0700` | the helper release pinned in `helper-version` |
-| Plugin source (this checkout) | `~/.config/omarchy/plugins/io.github.omamessenger/` | as installed, read-only at runtime | the QML UI and manifest Omarchy loads; no session or message data is ever written here |
-| Apps menu entry | `~/.local/share/applications/io.github.omamessenger.desktop` | `0644`, no secrets | lets Omarchy's menu and **SUPER+ALT+SPACE** open OmaMessenger |
-| Network requests | Telegram's and WhatsApp's own servers; `github.com/timlittle/omamessenger/releases` only to download the helper the first time the window opens | — | no other network access |
-| Diagnostics | stderr, which `omarchy-shell` sends to the system journal | — | states, counts and safe categories only, never credentials, QR tokens, session keys, phone numbers or message text |
-
-Run `oma-messenger-service doctor`, or **Run health check** in the command palette, to check the data directory's permissions, the database, the media cache, the outgoing media area, each account's connection and notify-send availability without exposing any of their contents: every line it prints is a state or a category, never a path, a name or a token, except for a plain count where it helps, such as how many failed messages are waiting in an over-limit outgoing media area.
-
-WhatsApp chats show the recent history your phone syncs when you link the device; scrolling back further than that is not currently supported, unlike Telegram, which loads more on demand.
-
-Removing an account (**Remove an account** in the command palette) signs it out and deletes its session and messages from this computer. It does not touch your chat history on the service or on other devices.
-
-Turning off read receipts (**Toggle read receipts** in the command palette, or the plugin's own "Read receipts" setting) only ever affects what this account tells the service: a chat read here still clears its own badge locally, but Telegram's or WhatsApp's read receipt is never sent, so the sender, and this account's own other devices, keep seeing it as unread. A quiet "Read receipts off" label shows in the footer while it is on.
+Accounts, sessions and messages stay on this computer, in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you. The helper talks only to Telegram's and WhatsApp's servers, and to GitHub once to download itself. Both connections are unofficial clients, which the services can restrict. Details, including every file it writes, are in [docs/privacy.md](docs/privacy.md).
 
 ## Uninstall
 
@@ -113,13 +73,9 @@ rm -f ~/.local/share/applications/io.github.omamessenger.desktop
 
 Also remove any `o.bind(...)` line you added to `~/.config/hypr/bindings.lua`.
 
-## Helper API
-
-The window talks to the helper over its stdin and stdout with JSON-RPC 2.0, one JSON object per line. The method and event reference is in [docs/api.md](docs/api.md).
-
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and contribution process, and [AGENTS.md](AGENTS.md) for the project rules.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and contribution process, [AGENTS.md](AGENTS.md) for the project rules, and [docs/api.md](docs/api.md) for the helper's JSON-RPC API.
 
 ## License
 
