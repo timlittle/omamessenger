@@ -183,6 +183,12 @@ Do these after the UI. Connectors never reach real services in tests: use record
    - bump the version and tag
    - confirm `install-helper.sh` installs it on a clean machine
 
+## After 0.3.0
+
+Ideas from comparing other Omarchy messaging plugins, not yet scheduled.
+
+- Reply from the desktop notification without opening the window, as omarchy-signal does.
+
 ## Later, only if it becomes a problem
 
 Not planned. Build one of these only when the problem it solves is actually seen.
