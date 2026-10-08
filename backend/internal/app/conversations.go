@@ -41,9 +41,20 @@ func (c *Commands) OpenConversation(ctx context.Context, accountID, contactID st
 	return conv, nil
 }
 
-// MarkRead clears a conversation's unread count, then tells the service.
+// MarkRead clears a conversation's unread count, then tells the
+// service. The service hears the count this conversation actually had
+// before clearing it: a connector such as WhatsApp's needs that number
+// to know how many of a conversation's newest incoming messages to send
+// a read receipt for, and asking the store only after the local clear
+// would always report zero, turning every such call into a silent
+// no-op for that service.
 func (c *Commands) MarkRead(ctx context.Context, conversationID string) error {
 	before := c.events.unreadTotal(ctx)
+
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return err
+	}
 
 	changed, err := c.store.MarkRead(ctx, conversationID)
 	if err != nil {
@@ -52,11 +63,6 @@ func (c *Commands) MarkRead(ctx context.Context, conversationID string) error {
 
 	if changed {
 		c.events.conversationChanged(ctx, conversationID, before)
-	}
-
-	conv, err := c.store.Conversation(ctx, conversationID)
-	if err != nil {
-		return err
 	}
 
 	return c.dispatcher.MarkRead(ctx, conv)

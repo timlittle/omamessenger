@@ -57,12 +57,17 @@ func (c *Connector) retryDownload(ctx context.Context, dev device, media *mediaS
 	}
 
 	data, err := downloadOnce(ctx, dev, ref)
-	if err != nil {
-		logDownloadFailed(downloadFailureClass(err))
-		return nil, classifyDownloadErr(err)
+	if err == nil {
+		return data, nil
 	}
 
-	return data, nil
+	if recovered, ok := recoverStaleDigest(data, err); ok {
+		logStaleDigestAccepted()
+		return recovered, nil
+	}
+
+	logDownloadFailed(err)
+	return nil, classifyDownloadErr(err)
 }
 
 // requestMediaRetry sends the retry receipt for info and waits for the

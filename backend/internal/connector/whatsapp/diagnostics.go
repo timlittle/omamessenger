@@ -55,8 +55,12 @@ func logUnknownKind(field string) {
 // expiredDownloadErrs are the whatsmeow download errors WhatsApp's CDN
 // returns once a message's media link has aged out: the case retry.go
 // asks the primary phone to fix by re-uploading, rather than one this
-// connector can do anything else about on its own.
+// connector can do anything else about on its own. 403 joins 404 and
+// 410 here because WhatsApp answers a stale link with any of the
+// three depending on the server that happens to field the request, and
+// mautrix-whatsapp's own media-retry trigger treats them identically.
 var expiredDownloadErrs = []error{
+	whatsmeow.ErrMediaDownloadFailedWith403,
 	whatsmeow.ErrMediaDownloadFailedWith404,
 	whatsmeow.ErrMediaDownloadFailedWith410,
 }
@@ -74,30 +78,67 @@ func isExpiredDownload(err error) bool {
 
 // downloadFailureClass is the safe category logDownloadFailed reports
 // for one failed download attempt: "decrypt" for a hash or HMAC
-// mismatch, "expired" for the 404 or 410 that sends retry.go to the
-// primary phone, "http" for any other status WhatsApp's server
+// mismatch, "expired" for the 403, 404 or 410 that sends retry.go to
+// the primary phone, "http" for any other status WhatsApp's server
 // answered with, and "network" for a failure that never reached it at
 // all.
 func downloadFailureClass(err error) string {
-	var httpErr whatsmeow.DownloadHTTPError
-
 	switch {
 	case isDecryptFailure(err):
 		return "decrypt"
 	case isExpiredDownload(err):
 		return "expired"
-	case errors.As(err, &httpErr):
+	case isHTTPDownloadFailure(err):
 		return "http"
 	default:
 		return "network"
 	}
 }
 
+// isHTTPDownloadFailure reports whether err is any status WhatsApp's
+// media server answered a download with, expired or not: isExpiredDownload
+// already claims the handful retry.go knows how to recover from.
+func isHTTPDownloadFailure(err error) bool {
+	var httpErr whatsmeow.DownloadHTTPError
+
+	return errors.As(err, &httpErr)
+}
+
+// downloadFailureStatus is the numeric HTTP status err carried, safe to
+// log since it names nothing about the message or account, and whether
+// err carried one at all: a decrypt mismatch or a plain network error
+// has none.
+func downloadFailureStatus(err error) (int, bool) {
+	var httpErr whatsmeow.DownloadHTTPError
+	if !errors.As(err, &httpErr) {
+		return 0, false
+	}
+
+	return httpErr.StatusCode, true
+}
+
 // logDownloadFailed reports a failed media download attempt by its
-// safe class alone (see downloadFailureClass), never the path, JID or
-// key the attempt carried.
-func logDownloadFailed(class string) {
+// safe class (see downloadFailureClass) and, when it carried one, the
+// numeric HTTP status (see downloadFailureStatus); never the path, JID
+// or key the attempt carried.
+func logDownloadFailed(err error) {
+	class := downloadFailureClass(err)
+
+	if status, ok := downloadFailureStatus(err); ok {
+		log.Printf("whatsapp: media download failed (class=%s status=%d)", class, status)
+		return
+	}
+
 	log.Printf("whatsapp: media download failed (class=%s)", class)
+}
+
+// logStaleDigestAccepted reports that a downloaded file did not match
+// the plaintext hash its message declared, but was used anyway because
+// the media-key HMAC already authenticated it (see recoverStaleDigest
+// in fetch.go), so a report of a voice note or photo that looks wrong
+// can be checked against how often this happens.
+func logStaleDigestAccepted() {
+	log.Printf("whatsapp: media download accepted a stale plaintext hash")
 }
 
 // logPhoneResend reports a message the primary phone resent after

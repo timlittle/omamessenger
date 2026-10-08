@@ -141,6 +141,34 @@ func TestIncoming_ReportsReadToTheServiceWhenFocused(t *testing.T) {
 	})
 }
 
+// TestIncoming_ReportsHowManyWereUnreadToTheService confirms the
+// conversation handed to the service's debounced MarkRead carries the
+// number of messages this burst actually left unread for it to report,
+// not a stale count from before any of them arrived: a service such as
+// WhatsApp's connector needs that number to know how many of the
+// conversation's newest messages to send a read receipt for.
+func TestIncoming_ReportsHowManyWereUnreadToTheService(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx := t.Context()
+		chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+		if err := f.commands.SetFocus(ctx, chat.ID, true); err != nil {
+			t.Fatal(err)
+		}
+
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "first"))
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-2", "second"))
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		if len(f.dispatcher.readConv) != 1 || f.dispatcher.readConv[0].Unread != 2 {
+			t.Fatalf("dispatcher saw %+v, want one call with Unread 2", f.dispatcher.readConv)
+		}
+	})
+}
+
 // TestIncoming_NeverReportsReadWhenNotLookingAtIt checks the service is
 // never told a conversation was read while the user is not looking at
 // it, even after the debounce window a focused read would use has passed.

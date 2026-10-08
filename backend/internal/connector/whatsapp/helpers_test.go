@@ -406,7 +406,14 @@ func (d *fakeDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, e
 		return nil, ctx.Err()
 	}
 	if err != nil {
-		return nil, err
+		// Real whatsmeow still returns the decrypted bytes alongside
+		// whatsmeow.ErrInvalidMediaSHA256: its own downloadAndDecrypt
+		// sets data before running that specific check. A test that
+		// wants to drive recoverStaleDigest sets downloadData as well
+		// as downloadErr to mimic that; every other scripted error
+		// means no data at all, matching every failure that happens
+		// before whatsmeow ever gets to decrypt anything.
+		return data, err
 	}
 
 	return data, nil

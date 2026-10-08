@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"errors"
+	"net/http"
 	"testing"
 
 	"go.mau.fi/whatsmeow"
@@ -47,8 +48,10 @@ func TestUnknownContentKind_RecognisesEveryKindThisConnectorHandles(t *testing.T
 
 // TestDownloadFailureClass_SortsEveryDownloadErrorIntoItsSafeCategory
 // confirms the class logDownloadFailed reports never reflects anything
-// beyond the four safe categories, and that WhatsApp's own 404/410 are
-// told apart from any other HTTP status it might answer with.
+// beyond the four safe categories, and that the statuses WhatsApp's CDN
+// answers with for a stale link (403, 404 and 410) are all told apart
+// from any other HTTP status it might answer with: retry.go only knows
+// how to recover from the former.
 func TestDownloadFailureClass_SortsEveryDownloadErrorIntoItsSafeCategory(t *testing.T) {
 	t.Parallel()
 
@@ -57,9 +60,10 @@ func TestDownloadFailureClass_SortsEveryDownloadErrorIntoItsSafeCategory(t *test
 		want string
 	}{
 		"a worn-out hash":       {whatsmeow.ErrInvalidMediaHMAC, "decrypt"},
+		"an expired link (403)": {whatsmeow.ErrMediaDownloadFailedWith403, "expired"},
 		"an expired link (404)": {whatsmeow.ErrMediaDownloadFailedWith404, "expired"},
 		"an expired link (410)": {whatsmeow.ErrMediaDownloadFailedWith410, "expired"},
-		"another HTTP status":   {whatsmeow.ErrMediaDownloadFailedWith403, "http"},
+		"another HTTP status":   {whatsmeow.DownloadHTTPError{Response: &http.Response{StatusCode: 500}}, "http"},
 		"a plain network error": {errors.New("dial tcp: connection refused"), "network"},
 	}
 
@@ -69,6 +73,38 @@ func TestDownloadFailureClass_SortsEveryDownloadErrorIntoItsSafeCategory(t *test
 
 			if got := downloadFailureClass(tt.err); got != tt.want {
 				t.Errorf("downloadFailureClass(%v) = %q, want %q", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDownloadFailureStatus_ReadsTheNumericStatusFromAnHTTPFailure
+// confirms the status logDownloadFailed is safe to log alongside the
+// class comes straight from whatsmeow's own DownloadHTTPError, and that
+// a failure with no HTTP status at all (a decrypt mismatch or a plain
+// network error) reports none.
+func TestDownloadFailureStatus_ReadsTheNumericStatusFromAnHTTPFailure(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		err        error
+		wantStatus int
+		wantOK     bool
+	}{
+		"an expired link (403)": {whatsmeow.ErrMediaDownloadFailedWith403, 403, true},
+		"an expired link (410)": {whatsmeow.ErrMediaDownloadFailedWith410, 410, true},
+		"another HTTP status":   {whatsmeow.DownloadHTTPError{Response: &http.Response{StatusCode: 500}}, 500, true},
+		"a worn-out hash":       {whatsmeow.ErrInvalidMediaHMAC, 0, false},
+		"a plain network error": {errors.New("dial tcp: connection refused"), 0, false},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			status, ok := downloadFailureStatus(tt.err)
+			if status != tt.wantStatus || ok != tt.wantOK {
+				t.Errorf("downloadFailureStatus(%v) = %d, %v, want %d, %v", tt.err, status, ok, tt.wantStatus, tt.wantOK)
 			}
 		})
 	}

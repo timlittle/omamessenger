@@ -127,6 +127,7 @@ type fakeDispatcher struct {
 	sent     []string
 	messages []domain.Message // the full message of each Send, in order
 	read     []string
+	readConv []domain.Conversation // the full conversation of each MarkRead call, in order
 	err      error
 	onRun    func(domain.Message) // called during Send, like a fast service
 }
@@ -171,6 +172,7 @@ func (d *fakeDispatcher) MarkRead(_ context.Context, conv domain.Conversation) e
 	defer d.mu.Unlock()
 
 	d.read = append(d.read, conv.ID)
+	d.readConv = append(d.readConv, conv)
 
 	return nil
 }

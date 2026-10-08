@@ -214,6 +214,47 @@ func TestMarkRead_PicksTheNewestOfAHistorySyncedConversationsMessages(t *testing
 	}
 }
 
+// TestSendChatReadState_ReportsSkippedWithNoSavedMessage confirms a
+// conversation with nothing saved in message_keys at all is reported as
+// skipped, the diagnostic line's way of telling "nothing to patch" apart
+// from "WhatsApp refused the patch".
+func TestSendChatReadState_ReportsSkippedWithNoSavedMessage(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	dev := newFakeDevice()
+
+	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	if got.status != chatPatchSkipped {
+		t.Errorf("sendChatReadState = %+v, want status %q", got, chatPatchSkipped)
+	}
+	if len(dev.appStatePatches) != 0 {
+		t.Errorf("appStatePatches = %d, want none sent", len(dev.appStatePatches))
+	}
+}
+
+// TestSendChatReadState_ReportsNoTimestampForAPreMigrationRow confirms a
+// message saved before keys.go's timestamp column existed (timestamp 0,
+// its default) still gets a patch sent, but is reported as carrying no
+// real timestamp, so the diagnostic line can tell apart an account that
+// still needs a fresh message before MarkRead's app-state patch truly
+// identifies one.
+func TestSendChatReadState_ReportsNoTimestampForAPreMigrationRow(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{senderID: remoteID(directPeer)}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice()
+
+	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	if got.status != chatPatchSent || got.hasTimestamp {
+		t.Errorf("sendChatReadState = %+v, want it sent with hasTimestamp false", got)
+	}
+}
+
 func TestMarkRead_FailsForABadConversationID(t *testing.T) {
 	t.Parallel()
 
