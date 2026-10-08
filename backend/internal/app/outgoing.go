@@ -42,9 +42,11 @@ func confirmedDelivery(status string) bool {
 // removeOutgoingAttachment drops m's outgoing attachment copy once its
 // message is deleted, the same reasoning as retireOutgoingAttachment:
 // a deleted message will never be retried, so its copy, if it still has
-// one, is only needed until now.
+// one, is only needed until now. Only this account's own sends ever have
+// a copy there, so an incoming message, whose file name its sender
+// chose, never reaches the outgoing area at all.
 func (c *Commands) removeOutgoingAttachment(ctx context.Context, m domain.Message) {
-	if m.Media == nil || c.outgoing == nil {
+	if !m.Outgoing || m.Media == nil || c.outgoing == nil {
 		return
 	}
 

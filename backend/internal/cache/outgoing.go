@@ -65,9 +65,12 @@ func (o *Outgoing) Store(ctx context.Context, id, fileName string, r io.Reader) 
 }
 
 // Path is where an attachment named fileName for message id is stored,
-// found again without re-copying it, such as for a retry.
+// found again without re-copying it, such as for a retry. A message's
+// file name can come from whoever sent it, so only its last element is
+// used: a name holding separators or ".." must never resolve outside
+// this directory, or deleting the message could delete another file.
 func (o *Outgoing) Path(id, fileName string) string {
-	return filepath.Join(o.dir, id+"-"+fileName)
+	return filepath.Join(o.dir, id+"-"+filepath.Base(filepath.Clean("/"+fileName)))
 }
 
 // Remove deletes id's stored copy of fileName, once its message is

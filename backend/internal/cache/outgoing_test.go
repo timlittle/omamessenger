@@ -215,3 +215,28 @@ func TestOutgoingStats_ReportsFilesystemFailures(t *testing.T) {
 		t.Error("Stats() over a blocked path succeeded")
 	}
 }
+
+func TestOutgoing_KeepsACraftedFileNameInsideItsDirectory(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "media", "outgoing")
+	victim := filepath.Join(root, "victim.txt")
+	if err := os.WriteFile(victim, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o := cache.NewOutgoing(dir, time.Hour, 1<<30, alwaysExists)
+
+	for _, name := range []string{"/../../../victim.txt", "../../victim.txt", "a/../../../victim.txt"} {
+		if got := o.Path("m1", name); filepath.Dir(got) != dir {
+			t.Errorf("Path(%q) = %q, want a file directly inside %q", name, got, dir)
+		}
+		if err := o.Remove(t.Context(), "m1", name); err != nil {
+			t.Fatalf("Remove(%q): %v", name, err)
+		}
+	}
+
+	if _, err := os.Stat(victim); err != nil {
+		t.Errorf("a crafted attachment name removed a file outside the outgoing area: %v", err)
+	}
+}

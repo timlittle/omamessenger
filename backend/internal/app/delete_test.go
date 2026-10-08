@@ -3,6 +3,7 @@ package app_test
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -117,6 +118,40 @@ func TestDeleteMessages_DeletesAFailedSendLocallyAndRemovesItsCopy(t *testing.T)
 
 	if _, err := os.Stat(copyPath); !os.IsNotExist(err) {
 		t.Errorf("outgoing copy after delete = %v, want it removed", err)
+	}
+}
+
+// TestDeleteMessages_LeavesTheOutgoingAreaAloneForAnIncomingMessage
+// confirms deleting someone else's message never touches the outgoing
+// attachment area: only this account's own sends ever have a copy there,
+// and an incoming file name is chosen by whoever sent it.
+func TestDeleteMessages_LeavesTheOutgoingAreaAloneForAnIncomingMessage(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m, _, err := f.store.AddMessage(ctx, domain.Message{
+		ConversationID: chat.ID, RemoteID: "41", Text: "report", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile, FileName: "report.pdf"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyPath := f.outgoing.Path(m.ID, "report.pdf")
+	if err := os.MkdirAll(filepath.Dir(copyPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(copyPath, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.commands.DeleteMessages(ctx, chat.ID, []string{m.ID}, false); err != nil {
+		t.Fatalf("DeleteMessages() error = %v", err)
+	}
+
+	if _, err := os.Stat(copyPath); err != nil {
+		t.Errorf("deleting an incoming message removed a file from the outgoing area: %v", err)
 	}
 }
 
