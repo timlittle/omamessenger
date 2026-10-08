@@ -75,11 +75,7 @@ func chatID(ctx context.Context, dev device, media *mediaStore, jid types.JID) s
 
 	own := remoteID(jid)
 	if media == nil {
-		if alt := dev.altJID(ctx, jid); alt.Server == types.DefaultUserServer {
-			return remoteID(alt)
-		}
-
-		return own
+		return remoteID(phoneFormOf(ctx, dev, jid))
 	}
 
 	aliases := []string{own}
@@ -114,11 +110,22 @@ func chatID(ctx context.Context, dev device, media *mediaStore, jid types.JID) s
 // message carried it, not a resolved alternative (see
 // docs/decisions.md).
 func personID(ctx context.Context, dev device, jid types.JID) string {
+	return remoteID(phoneFormOf(ctx, dev, jid))
+}
+
+// phoneFormOf is jid's own phone-JID form when whatsmeow's LID store
+// already maps it to one, or jid unchanged otherwise. personID and
+// titleFallback's caller (see resolveDirectTitle) both need this exact
+// check, for different reasons: one so the same person is never
+// treated as two different senders, the other so a chat's fallback
+// title reads like a phone number the moment that mapping becomes
+// known, rather than staying a meaningless hidden id forever.
+func phoneFormOf(ctx context.Context, dev device, jid types.JID) types.JID {
 	if alt := dev.altJID(ctx, jid); alt.Server == types.DefaultUserServer {
-		return remoteID(alt)
+		return alt
 	}
 
-	return remoteID(jid)
+	return jid
 }
 
 // jidFromRemoteID parses a stored remote id back into the JID whatsmeow

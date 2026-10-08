@@ -33,8 +33,7 @@ func TestHandleMessage_ReportsIncomingContentAndItsConversation(t *testing.T) {
 
 	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia") {
 		t.Errorf("events = %q, want the new conversation reported", sink.Lines())
@@ -51,8 +50,7 @@ func TestHandleMessage_ReportsTheOfficialWhatsAppAccountAsAConversation(t *testi
 
 	info := liveInfo()
 	info.Chat, info.Sender, info.ID, info.PushName = types.PSAJID, types.PSAJID, "M1", ""
-	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("your security code changed")}}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("your security code changed")}})
 
 	if !sink.Has("conversation 0@s.whatsapp.net WhatsApp") {
 		t.Errorf("events = %q, want the \"0\" system account shown as a conversation titled WhatsApp", sink.Lines())
@@ -67,8 +65,7 @@ func TestHandleMessage_SavesTheMessageKeyMarkReadLaterNeeds(t *testing.T) {
 
 	dev, sink, c, media := connectedMediaFixture(t)
 
-	e := &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}})
 
 	conv := domain.Conversation{RemoteID: "15551234567@s.whatsapp.net", Unread: 1}
 	if err := c.MarkRead(t.Context(), conv); err != nil {
@@ -87,8 +84,7 @@ func TestHandleMessage_NeverNotesOurOwnMessageFromAnotherDeviceForMarkRead(t *te
 
 	info := liveInfo()
 	info.IsFromMe = true
-	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("sent from my phone")}}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("sent from my phone")}})
 
 	// Unread is set as if the service still thought one message was
 	// unread here, so this proves the fromMe message's own saved key is
@@ -111,8 +107,7 @@ func TestHandleMessage_ReportsOurOwnMessageFromAnotherDeviceAsHistory(t *testing
 
 	info := liveInfo()
 	info.IsFromMe = true
-	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("sent from my phone")}}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("sent from my phone")}})
 
 	if !sink.Has("history 15551234567@s.whatsapp.net M1") {
 		t.Errorf("events = %q, want the message reported as history", sink.Lines())
@@ -137,8 +132,7 @@ func TestHandleMessage_CreatesAChatFromAnOutgoingMessageWhenNoIncomingCameFirst(
 
 	info := liveInfo()
 	info.IsFromMe, info.PushName = true, ""
-	e := &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("replied from my phone before this chat was ever seen")}}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: info, Message: &waE2E.Message{Conversation: strPtr("replied from my phone before this chat was ever seen")}})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net +15551234567") {
 		t.Errorf("events = %q, want the chat created so the reply has a conversation to be stored under", sink.Lines())
@@ -176,8 +170,7 @@ func TestHandleMessage_NeverRecreatesAnAlreadyKnownChatFromAnOutgoingMessage(t *
 
 	c, dev, sink, media := handlerMediaFixture(t)
 
-	incoming := &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}}
-	c.handleMessage(t.Context(), sink, dev, media, incoming)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{Info: liveInfo(), Message: &waE2E.Message{Conversation: strPtr("hi")}})
 	sink.Take()
 
 	outgoing := liveInfo()
@@ -241,14 +234,42 @@ func TestHandleMessage_TitlesALIDDirectChatFromItsContact(t *testing.T) {
 	dev.contactNames = map[string]string{"987654@lid": "Priya Nair"}
 
 	chat := types.NewJID("987654", types.HiddenUserServer)
-	e := &events.Message{
-		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: chat, Sender: chat}, ID: "M2", PushName: "a stray push name", Timestamp: time.Unix(1, 0)},
-		Message: &waE2E.Message{Conversation: strPtr("hi")},
-	}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, directMessage(chat, "M2", "a stray push name"))
 
 	if !sink.Has("conversation 987654@lid Priya Nair") {
 		t.Errorf("events = %q, want the LID chat titled from its resolved contact, not the push name", sink.Lines())
+	}
+}
+
+// directMessage is an incoming message in a direct chat addressed by
+// chat (its own sender too, as a direct chat's partner always is).
+func directMessage(chat types.JID, id, pushName string) *events.Message {
+	return &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: chat, Sender: chat}, ID: id, PushName: pushName, Timestamp: time.Unix(1, 0)},
+		Message: &waE2E.Message{Conversation: strPtr("hi")},
+	}
+}
+
+// TestHandleMessage_RemembersANameLearnedUnderTheOtherAddressForm
+// covers the actual bug this fix closes: a name learned while a chat
+// was addressed by its phone JID must still title it once WhatsApp
+// reports the exact same chat addressed by its mapped LID instead,
+// rather than losing it to the weaker fallback resolveDirectTitle's
+// own phoneFormOf tests already cover on its own (see history_test.go).
+func TestHandleMessage_RemembersANameLearnedUnderTheOtherAddressForm(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	lid := types.NewJID("987654", types.HiddenUserServer)
+	dev.lidPhones = map[string]types.JID{lid.String(): phone}
+
+	c.handleMessage(t.Context(), sink, dev, media, directMessage(phone, "M1", "Acme Shop"))
+	sink.Take()
+	c.handleMessage(t.Context(), sink, dev, media, directMessage(lid, "M2", ""))
+
+	if !sink.Has("conversation 15551234567@s.whatsapp.net Acme Shop") {
+		t.Errorf("events = %q, want the name learned under the phone JID kept", sink.Lines())
 	}
 }
 
@@ -257,11 +278,9 @@ func TestHandleMessage_SkipsAProtocolNoticeWithNoContent(t *testing.T) {
 
 	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.Message{
-		Info:    liveInfo(),
-		Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_EPHEMERAL_SETTING.Enum()}},
-	}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
+		Info: liveInfo(), Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_EPHEMERAL_SETTING.Enum()}},
+	})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want a protocol notice with no content to report nothing at all", sink.Lines())
@@ -273,11 +292,9 @@ func TestHandleMessage_SkipsAMessageInASystemChat(t *testing.T) {
 
 	c, dev, sink, media := handlerMediaFixture(t)
 
-	e := &events.Message{
-		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: types.StatusBroadcastJID}, ID: "M9", Timestamp: time.Unix(1, 0)},
-		Message: &waE2E.Message{Conversation: strPtr("someone's status")},
-	}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
+		Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: types.StatusBroadcastJID}, ID: "M9", Timestamp: time.Unix(1, 0)}, Message: &waE2E.Message{Conversation: strPtr("someone's status")},
+	})
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want nothing reported for a system JID such as the status broadcast", sink.Lines())
@@ -291,11 +308,9 @@ func TestHandleMessage_CreatesAndFillsTheSelfChatFromAnOutgoingMessage(t *testin
 	self := types.NewJID("15551234567", types.DefaultUserServer)
 	dev.selfJID = self
 
-	e := &events.Message{
-		Info:    types.MessageInfo{MessageSource: types.MessageSource{Chat: self, Sender: self, IsFromMe: true}, ID: "M1", Timestamp: time.Unix(1, 0)},
-		Message: &waE2E.Message{Conversation: strPtr("note to self")},
-	}
-	c.handleMessage(t.Context(), sink, dev, media, e)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
+		Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: self, Sender: self, IsFromMe: true}, ID: "M1", Timestamp: time.Unix(1, 0)}, Message: &waE2E.Message{Conversation: strPtr("note to self")},
+	})
 
 	if !sink.Has("conversation 15551234567@s.whatsapp.net Message yourself") {
 		t.Errorf("events = %q, want the self-chat created and titled \"Message yourself\"", sink.Lines())

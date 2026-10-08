@@ -132,7 +132,7 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 		pushName, businessName = "", ""
 	}
 
-	title := c.resolveDirectTitle(ctx, dev, info.Chat, pushName, businessName)
+	title := c.resolveDirectTitle(ctx, syncSource{dev: dev, media: media}, info.Chat, pushName, businessName)
 	c.reportConversation(ctx, sink, domain.Conversation{
 		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title,
 	})
