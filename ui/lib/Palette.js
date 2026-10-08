@@ -1,8 +1,18 @@
 .pragma library
+.import "Keymap.js" as Keymap
+.import "KeyBindings.js" as KeyBindings
+.import "Rail.js" as Rail
+.import "Snooze.js" as Snooze
 
 // Fuzzy matching for the command palette, in the style of Telescope or
 // Alfred: the letters typed must appear in order, and matches at word
 // starts or in unbroken runs rank first.
+//
+// modeFor's MODES table also says what each of the palette's modes
+// ("commands", "conversations", "links", "snoozeCustom", "keyBindings")
+// matches against and how it turns a match into a row to show, so
+// WindowController.qml never branches on the mode string itself; adding
+// a mode is one entry in that table.
 
 // search returns the items whose text matches query, best first. textOf
 // picks the text to match from an item. An empty query keeps every item
@@ -86,4 +96,64 @@ function score(text, wanted) {
   }
 
   return total;
+}
+
+// MODES says, for every palette mode but the default "commands" one,
+// how to compute its matches (results) and how to turn those matches
+// into rows ({label, detail, keys, unread, section}) for PaletteRow
+// (items). ctx carries whatever a mode needs: query always, and
+// otherwise whichever of listController, messageResults, linkChoices,
+// bindings, keyBindingConflicts, keyBindingErrors, service and now
+// WindowController.qml's _paletteContext fills in.
+var MODES = {
+  conversations: {
+    results: (ctx) => search(ctx.listController ? conversationOrder(ctx.listController.all) : [], ctx.query, (c) => c.title),
+    items: (results, ctx) => results.map((c) => ({
+      label: c.title, detail: Rail.serviceLabel(c.service, ctx.service ? ctx.service.services : []),
+      keys: '', unread: c.unread ?? 0, section: 'conversation'
+    })).concat(ctx.messageResults.map((m) => ({
+      label: (m.sender ? m.sender + ': ' : '') + m.snippet, detail: m.conversationTitle,
+      keys: '', unread: 0, section: 'message'
+    })))
+  },
+  links: {
+    results: (ctx) => search(ctx.linkChoices.map((url) => ({ url })), ctx.query, (c) => c.url),
+    items: (results) => results.map((c) => ({ label: 'Open link: ' + c.url, detail: '', keys: '' }))
+  },
+  snoozeCustom: {
+    results: (ctx) => Snooze.preview(ctx.query, ctx.now),
+    items: (results) => results.map((r) => ({ label: r.label, detail: '', keys: '' }))
+  },
+  keyBindings: {
+    results: (ctx) => search(KeyBindings.rows(ctx.bindings, ctx.keyBindingConflicts, ctx.keyBindingErrors), ctx.query, (r) => r.label),
+    items: (results) => results
+  }
+};
+
+// DEFAULT_MODE is "commands": every command binding, best match first,
+// shown as-is.
+var DEFAULT_MODE = {
+  results: (ctx) => search(Keymap.commands(ctx.bindings), ctx.query, (c) => c.label),
+  items: (results) => results
+};
+
+// modeFor returns mode's MODES entry, or DEFAULT_MODE for "commands" or
+// any mode without one, so results() and items() below never need to
+// branch on the mode string themselves.
+function modeFor(mode) {
+  return MODES[mode] || DEFAULT_MODE;
+}
+
+// results returns paletteResults for mode: the matched commands,
+// conversations, links, key-binding rows, or the one snoozeCustom
+// preview row, best match first.
+function results(mode, ctx) {
+  return modeFor(mode).results(ctx);
+}
+
+// items turns results into the rows PaletteRow shows for mode, folding
+// in anything mode-specific; "conversations" mode appends its separate
+// "Messages" section from ctx.messageResults.
+function items(mode, matches, ctx) {
+  return modeFor(mode).items(matches, ctx);
 }

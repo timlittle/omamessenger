@@ -222,6 +222,15 @@ var BINDINGS = [
   { action: 'archiveAll.cancel', keys: ['n'], contexts: ['archiveConfirm'], label: 'Cancel', hint: true }
 ];
 
+// effectiveBindings returns service's own effective bindings (defaults
+// merged with the user's keys.conf overrides, computed in Service.qml),
+// or the plain defaults for a service that has none yet: missing,
+// still starting, or too old to report them. Every key-aware view reads
+// its bindings through this rather than repeating the same fallback.
+function effectiveBindings(service) {
+  return (service && service.effectiveBindings) || BINDINGS;
+}
+
 // match returns the action for a key press in a context, or "". Bindings
 // for the context win over global ones. list defaults to BINDINGS; a
 // caller with a keys.conf override merged in (see KeyBindings.js) passes

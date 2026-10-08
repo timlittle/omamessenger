@@ -113,3 +113,58 @@ test('staleMessageSearch: a reply for a query the palette has moved on from is s
   assert.strictEqual(Palette.staleMessageSearch('cafe', 'cafe later'), true);
   assert.strictEqual(Palette.staleMessageSearch('cafe', 'cafe'), false);
 });
+
+test('results/items: "conversations" mode matches the list and appends the "Messages" section', () => {
+  const conversations = [
+    { id: 'a', title: 'Alex Chen', service: 'whatsapp', unread: 2, lastActivity: 200 },
+    { id: 'b', title: 'Mum', service: 'telegram', unread: 0, lastActivity: 100 }
+  ];
+  const ctx = {
+    query: 'al',
+    listController: { all: conversations },
+    service: { services: [] },
+    messageResults: Palette.messageRows([{ id: 'c', title: 'Group', matchMessageId: 'm1', matchSender: 'Sam', match: 'see you', service: 'telegram' }])
+  };
+
+  const results = Palette.results('conversations', ctx);
+  assert.deepEqual(results.map((c) => c.id), ['a']);
+
+  const items = Palette.items('conversations', results, ctx);
+  assert.deepEqual(items, [
+    { label: 'Alex Chen', detail: 'WhatsApp', keys: '', unread: 2, section: 'conversation' },
+    { label: 'Sam: see you', detail: 'Group', keys: '', unread: 0, section: 'message' }
+  ]);
+});
+
+test('results/items: "links" mode matches and labels the offered urls', () => {
+  const ctx = { query: 'exam', linkChoices: ['https://example.com', 'https://other.test'] };
+
+  const results = Palette.results('links', ctx);
+  assert.deepEqual(results, [{ url: 'https://example.com' }]);
+  assert.deepEqual(Palette.items('links', results, ctx), [{ label: 'Open link: https://example.com', detail: '', keys: '' }]);
+});
+
+test('results/items: "snoozeCustom" mode previews the typed time', () => {
+  const ctx = { query: '2h', now: Date.parse('2026-01-01T10:00:00Z') };
+
+  const results = Palette.results('snoozeCustom', ctx);
+  assert.strictEqual(results.length, 1);
+  assert.deepEqual(Palette.items('snoozeCustom', results, ctx), [{ label: results[0].label, detail: '', keys: '' }]);
+});
+
+test('results/items: "keyBindings" mode matches the bindings report, shown as-is', () => {
+  const bindings = [{ action: 'chat.open', keys: ['Enter'], contexts: ['list'], label: 'Open chat', overridden: false }];
+  const ctx = { query: 'open', bindings, keyBindingConflicts: [], keyBindingErrors: [] };
+
+  const results = Palette.results('keyBindings', ctx);
+  assert.deepEqual(results.map((r) => r.label), ['Open chat']);
+  assert.strictEqual(Palette.items('keyBindings', results, ctx), results);
+});
+
+test('results/items: the default "commands" mode matches the command palette list, shown as-is', () => {
+  const ctx = { query: 'quit', bindings: [{ action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true }] };
+
+  const results = Palette.results('commands', ctx);
+  assert.deepEqual(results, [{ action: 'app.quit', label: 'Quit OmaMessenger', keys: 'Ctrl+Q' }]);
+  assert.strictEqual(Palette.items('commands', results, ctx), results);
+});

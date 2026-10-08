@@ -2,11 +2,8 @@ import QtQuick
 import "../lib/Navigation.js" as Navigation
 import "../lib/Actions.js" as Actions
 import "../lib/Keymap.js" as Keymap
-import "../lib/KeyBindings.js" as KeyBindings
 import "../lib/Palette.js" as Palette
-import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
-import "../lib/Snooze.js" as Snooze
 
 // Owns the command palette, closing and quitting (which ask first), and
 // the Escape chain. The palette runs commands through whichever
@@ -69,7 +66,7 @@ Item {
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides), read for the palette's own commands
   // list and its "Show key bindings" dump.
-  readonly property var bindings: (root.service && root.service.effectiveBindings) || Keymap.BINDINGS
+  readonly property var bindings: Keymap.effectiveBindings(root.service)
 
   // paletteQuery is the palette's search text.
   property string paletteQuery: ""
@@ -94,16 +91,8 @@ Item {
   // mode this is the palette's "Conversations" section alone, filtered
   // and ordered locally from whatever the list has already loaded;
   // paletteMessageResults is the separate "Messages" section, from the
-  // server.
-  readonly property var paletteResults: root.paletteMode === "conversations"
-    ? Palette.search(root.listController ? Palette.conversationOrder(root.listController.all) : [], root.paletteQuery, (c) => c.title)
-    : root.paletteMode === "links"
-    ? Palette.search(root.linkChoices.map((url) => ({ url })), root.paletteQuery, (c) => c.url)
-    : root.paletteMode === "snoozeCustom"
-    ? Snooze.preview(root.paletteQuery, Date.now())
-    : root.paletteMode === "keyBindings"
-    ? Palette.search(KeyBindings.rows(root.bindings, root._keyBindingConflicts, root._keyBindingErrors), root.paletteQuery, (r) => r.label)
-    : Palette.search(Keymap.commands(root.bindings), root.paletteQuery, (c) => c.label)
+  // server. See Palette.js's MODES table for what each mode matches.
+  readonly property var paletteResults: Palette.results(root.paletteMode, root._paletteContext())
 
   // paletteMessageResults is the palette's "Messages" section: messages
   // whose text matched paletteQuery, newest or best match first, empty
@@ -116,25 +105,13 @@ Item {
   readonly property var _keyBindingConflicts: (root.service && root.service.keyBindingConflicts) || []
   readonly property var _keyBindingErrors: (root.service && root.service.keyBindingErrors) || []
 
-  // paletteItems are paletteResults, and in "conversations" mode
-  // paletteMessageResults after them, as rows to show: {label, detail,
-  // keys, unread, section}. Conversations carry their unread count so
-  // PaletteRow can show the same badge the list does; a message row
-  // shows its sender and snippet as the label and its conversation as
-  // the detail.
-  readonly property var paletteItems: root.paletteMode === "conversations"
-    ? root.paletteResults.map((c) => ({
-        label: c.title, detail: Rail.serviceLabel(c.service, root.service ? root.service.services : []),
-        keys: "", unread: c.unread ?? 0, section: "conversation"
-      })).concat(root.paletteMessageResults.map((m) => ({
-        label: (m.sender ? m.sender + ": " : "") + m.snippet, detail: m.conversationTitle,
-        keys: "", unread: 0, section: "message"
-      })))
-    : root.paletteMode === "links"
-    ? root.paletteResults.map((c) => ({ label: "Open link: " + c.url, detail: "", keys: "" }))
-    : root.paletteMode === "snoozeCustom"
-    ? root.paletteResults.map((r) => ({ label: r.label, detail: "", keys: "" }))
-    : root.paletteResults
+  // paletteItems are paletteResults turned into rows to show ({label,
+  // detail, keys, unread, section}), by whichever mode owns
+  // paletteMode; see Palette.js's MODES table. Conversations carry
+  // their unread count so PaletteRow can show the same badge the list
+  // does; a message row shows its sender and snippet as the label and
+  // its conversation as the detail.
+  readonly property var paletteItems: Palette.items(root.paletteMode, root.paletteResults, root._paletteContext())
 
   // confirmingClose shows the question asking what closing should do.
   property bool confirmingClose: false
@@ -210,6 +187,23 @@ Item {
   function openLinkChooser(urls: var): void {
     root.linkChoices = urls;
     root.openPalette("links");
+  }
+
+  // _paletteContext gathers whatever Palette.js's per-mode table needs
+  // to compute paletteResults and paletteItems for the current mode;
+  // see Palette.js for which fields each mode actually reads.
+  function _paletteContext(): var {
+    return {
+      query: root.paletteQuery,
+      listController: root.listController,
+      linkChoices: root.linkChoices,
+      bindings: root.bindings,
+      keyBindingConflicts: root._keyBindingConflicts,
+      keyBindingErrors: root._keyBindingErrors,
+      service: root.service,
+      messageResults: root.paletteMessageResults,
+      now: Date.now()
+    };
   }
 
   // retryInstall retries installing the helper. Guarded on the status

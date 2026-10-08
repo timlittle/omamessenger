@@ -34,7 +34,7 @@ Item {
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides, computed in Service.qml), used for key
   // routing and read by every view that shows a shortcut.
-  readonly property var bindings: (root.service && root.service.effectiveBindings) || Keymap.BINDINGS
+  readonly property var bindings: Keymap.effectiveBindings(root.service)
 
   // windowFocused is true while the window is shown and has keyboard
   // focus: the only time the user is looking at the open conversation.

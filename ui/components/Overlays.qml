@@ -17,7 +17,7 @@ Item {
   property var listController: null
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides), read for the photo viewer's own label.
-  readonly property var bindings: (root.service && root.service.effectiveBindings) || Keymap.BINDINGS
+  readonly property var bindings: Keymap.effectiveBindings(root.service)
   // windowController is bound into the command palette and the close
   // question.
   property var windowController: null

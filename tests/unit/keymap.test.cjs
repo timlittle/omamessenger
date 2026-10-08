@@ -251,3 +251,14 @@ test('the palette offers showing unread conversations, with its shortcut', () =>
   assert.deepEqual(unread, { action: 'list.unread', label: 'Show unread conversations', keys: 'Ctrl+Shift+A' });
   assert.strictEqual(Keymap.keyFor('list.unread'), 'Ctrl+Shift+A');
 });
+
+test('effectiveBindings reads a service\'s own merged bindings when it has them', () => {
+  const merged = [{ action: 'chat.open', keys: ['Enter'], contexts: ['list'], label: 'Open chat' }];
+
+  assert.strictEqual(Keymap.effectiveBindings({ effectiveBindings: merged }), merged);
+});
+
+test('effectiveBindings falls back to the defaults for a missing or too-old service', () => {
+  assert.strictEqual(Keymap.effectiveBindings(null), Keymap.BINDINGS);
+  assert.strictEqual(Keymap.effectiveBindings({}), Keymap.BINDINGS);
+});
