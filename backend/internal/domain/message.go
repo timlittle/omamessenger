@@ -3,7 +3,6 @@ package domain
 import (
 	"errors"
 	"strings"
-	"unicode/utf8"
 )
 
 // Message delivery states. Outgoing messages move forward through pending,
@@ -21,7 +20,8 @@ const (
 // least this much.
 const MaxTextLength = 4096
 
-// Errors returned by NormalizeOutgoingText.
+// Errors reported when outgoing text fails validation; see
+// app.captionText.
 var (
 	ErrEmptyText   = errors.New("message text is empty")
 	ErrTextTooLong = errors.New("message text is too long")
@@ -75,20 +75,6 @@ func Excerpt(text string) string {
 	}
 
 	return string(runes[:ExcerptLength]) + "…"
-}
-
-// NormalizeOutgoingText trims surrounding whitespace and checks the length.
-func NormalizeOutgoingText(text string) (string, error) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return "", ErrEmptyText
-	}
-
-	if utf8.RuneCountInString(text) > MaxTextLength {
-		return "", ErrTextTooLong
-	}
-
-	return text, nil
 }
 
 // MediaPlaceholder is the caption a photo, video or file gets when the
