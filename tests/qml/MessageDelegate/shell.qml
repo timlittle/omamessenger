@@ -1,5 +1,6 @@
 // Checks MessageDelegate: sender names in groups, the read glyph, the
-// retry line on a failed message, that rich text escapes markup while
+// retry line on a failed message both with and without a scheduled
+// automatic retry, that rich text escapes markup while
 // linkifying URLs, a pipe table rendered as real columns instead of
 // smeared wrapped lines, a reply's quote, a photo whose full image fails
 // to load, the hover toolbar's react and reply buttons, reaction chips,
@@ -221,6 +222,7 @@ ShellRoot {
     if (!root.checkOutgoingReadGlyph()) return;
     if (!root.checkEditedLabel()) return;
     if (!root.checkFailedRetry()) return;
+    if (!root.checkFailedRetrySchedule()) return;
     if (!root.checkRichText()) return;
     if (!root.checkLineBreaks()) return;
     if (!root.checkPipeTable()) return;
@@ -283,21 +285,66 @@ ShellRoot {
     return true;
   }
 
-  // checkFailedRetry verifies the retry line appears and clicking it emits
-  // retry with the message id.
+  // checkFailedRetry verifies the retry line appears with the manual
+  // "t to retry" hint for a failed message with no automatic retry
+  // scheduled, and clicking it emits retry with the message id.
   function checkFailedRetry(): bool {
     delegate.message = { id: "m3", senderId: "me", senderName: "Me", text: "nope", outgoing: true, status: "failed", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
     t.waitForRendering(delegate);
 
     const nodes = Check.texts(delegate);
-    const retryLine = root.findText(nodes, "Not sent · t to retry");
-    if (!retryLine || !retryLine.visible) return Check.fail("retry line not shown for a failed outgoing message");
-    if (!Qt.colorEqual(retryLine.color, Color.urgent)) return Check.fail("retry line is not drawn in the urgent colour");
+    const notSent = root.findText(nodes, "Not sent");
+    if (!notSent || !notSent.visible) return Check.fail("\"Not sent\" not shown for a failed outgoing message");
+    if (!Qt.colorEqual(notSent.color, Color.urgent)) return Check.fail("\"Not sent\" is not drawn in the urgent colour");
+
+    const hint = root.findText(nodes, "· t to retry");
+    if (!hint || !hint.visible) return Check.fail("retry hint not shown with no automatic retry scheduled");
+
+    const retrying = Check.find(delegate, "retryingText");
+    if (retrying && retrying.visible) return Check.fail("a retrying label was shown with no automatic retry scheduled");
 
     root.retried = [];
-    t.mouseClick(retryLine);
+    t.mouseClick(notSent);
     if (JSON.stringify(root.retried) !== '["m3"]') return Check.fail("retry " + JSON.stringify(root.retried) + ", want [\"m3\"]");
+    return true;
+  }
+
+  // checkFailedRetrySchedule verifies the quiet "Retrying …" label shown
+  // beside "Not sent" once the helper has an automatic retry scheduled,
+  // that it reads the right wording for a near wait, a longer wait and
+  // an overdue one, that it follows nowMs, and that the manual retry
+  // hint is hidden while it is shown (but clicking still retries).
+  function checkFailedRetrySchedule(): bool {
+    delegate.message = { id: "m5", senderId: "me", senderName: "Me", text: "nope", outgoing: true, status: "failed", created: root.now, retryAt: root.now + 2 * 60 * 1000 };
+    delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
+    t.waitForRendering(delegate);
+
+    let nodes = Check.texts(delegate);
+    const hint = root.findText(nodes, "· t to retry");
+    if (hint && hint.visible) return Check.fail("manual retry hint shown while an automatic retry is scheduled");
+
+    let retrying = root.findText(nodes, "Retrying in 2 min");
+    if (!retrying || !retrying.visible) return Check.fail("\"Retrying in 2 min\" not shown for a retry due in two minutes");
+    if (Qt.colorEqual(retrying.color, Color.urgent)) return Check.fail("the retrying label is drawn in the urgent colour, not quiet");
+
+    // Two hours ahead of whatever the real clock reads right now, so this
+    // assertion never depends on what time of day the test happens to run.
+    const at = new Date(root.now + 2 * 60 * 60 * 1000);
+    const clock = String(at.getHours()).padStart(2, '0') + ":" + String(at.getMinutes()).padStart(2, '0');
+    delegate.message = Object.assign({}, delegate.message, { retryAt: at.getTime() });
+    nodes = Check.texts(delegate);
+    retrying = root.findText(nodes, "Retrying at " + clock);
+    if (!retrying || !retrying.visible) return Check.fail(`"Retrying at ${clock}" not shown for a retry an hour or more away`);
+
+    delegate.message = Object.assign({}, delegate.message, { retryAt: root.now - 1000 });
+    nodes = Check.texts(delegate);
+    retrying = root.findText(nodes, "Retrying…");
+    if (!retrying || !retrying.visible) return Check.fail("\"Retrying…\" not shown for an overdue retry");
+
+    root.retried = [];
+    t.mouseClick(retrying);
+    if (JSON.stringify(root.retried) !== '["m5"]') return Check.fail("retry " + JSON.stringify(root.retried) + ", want [\"m5\"]");
     return true;
   }
 

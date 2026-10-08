@@ -514,3 +514,24 @@ test('snoozeUntilLabel includes the year for a date in another year', () => {
   const nextYear = new Date(2027, 1, 3, 9, 0);
   assert.strictEqual(Format.snoozeUntilLabel(nextYear.getTime(), nowMs), '3 Feb 2027 09:00');
 });
+
+test('retryingLabel counts minutes under an hour away', () => {
+  assert.strictEqual(Format.retryingLabel(nowMs + 2 * 60 * 1000, nowMs), 'Retrying in 2 min');
+});
+
+test('retryingLabel rounds a sub-minute wait up to one minute', () => {
+  assert.strictEqual(Format.retryingLabel(nowMs + 30 * 1000, nowMs), 'Retrying in 1 min');
+});
+
+test('retryingLabel shows the clock time an hour or more away', () => {
+  const at = new Date(2026, 9, 6, 14, 5);
+  assert.strictEqual(Format.retryingLabel(at.getTime(), nowMs), 'Retrying at 14:05');
+});
+
+test('retryingLabel shows an ellipsis once the retry is due now', () => {
+  assert.strictEqual(Format.retryingLabel(nowMs, nowMs), 'Retrying…');
+});
+
+test('retryingLabel shows an ellipsis once the retry is overdue', () => {
+  assert.strictEqual(Format.retryingLabel(nowMs - 5000, nowMs), 'Retrying…');
+});

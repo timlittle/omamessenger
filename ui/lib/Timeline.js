@@ -58,7 +58,10 @@ function insertIndex(newestFirst, message) {
 // the last download attempt failed, starts false; mediaFailedReason,
 // the safe category of that failure (see server/errors.go), starts
 // empty too. mentionsMe is a plain boolean, which a ListModel role
-// already handles directly, so it needs no such encoding.
+// already handles directly, so it needs no such encoding. retryAt, the
+// helper's next scheduled automatic retry for a failed outgoing message
+// (Unix milliseconds), defaults to 0 while none is scheduled, a plain
+// number a ListModel role already handles directly too.
 function row(message) {
   return Object.assign({}, message, {
     media: message.media ? JSON.stringify(message.media) : '',
@@ -68,7 +71,8 @@ function row(message) {
     mediaFailedReason: message.mediaFailedReason ?? '',
     reactions: JSON.stringify(message.reactions ?? []),
     mentions: JSON.stringify(message.mentions ?? []),
-    mentionsMe: message.mentionsMe ?? false
+    mentionsMe: message.mentionsMe ?? false,
+    retryAt: message.retryAt ?? 0
   });
 }
 

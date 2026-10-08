@@ -5,6 +5,7 @@ import "../lib/Timeline.js" as Timeline
 import "../lib/Highlight.js" as Highlight
 import "../lib/SenderColor.js" as SenderColor
 import "../lib/Keymap.js" as Keymap
+import "../lib/Format.js" as Format
 
 // One message row in a conversation: an optional day separator, the sender
 // name for a grouped incoming message, the bubble with its text and any
@@ -43,6 +44,11 @@ Item {
   property bool highlighted: false
   // failed is true for an outgoing message the service could not send.
   readonly property bool failed: root.message.outgoing && root.message.status === "failed"
+  // retryAt is the helper's next scheduled automatic retry for a failed
+  // outgoing message (Unix milliseconds), or 0 while none is scheduled,
+  // either because the failure was permanent or automatic retries have
+  // run for as long as they will.
+  readonly property real retryAt: root.message.retryAt ?? 0
   // showStatus is true when the delivery glyph should be drawn.
   readonly property bool showStatus: root.message.outgoing && !root.failed
   // media is what the message carries besides its text, or null.
@@ -325,22 +331,48 @@ Item {
       onToggled: emoji => root.react(root.message.id, emoji)
     }
 
+    // The failed-send line: "Not sent" always, paired either with the
+    // "t to retry" hint while no automatic retry is scheduled, or with
+    // a quiet, nowMs-driven "Retrying …" once one is (see Format.js).
+    // Manual retry still works either way: clicking anywhere on the
+    // line resets the backoff, same as pressing t.
     Item {
       width: parent.width
-      height: retryText.height
+      height: retryRow.height
       visible: root.failed
 
-      Text {
-        id: retryText
+      Row {
+        id: retryRow
         anchors.right: parent.right
-        text: "Not sent · t to retry"
-        color: Color.urgent
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.caption
+        spacing: Theme.spacing.xxs
+
+        Text {
+          text: "Not sent"
+          color: Color.urgent
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+        }
+
+        Text {
+          visible: root.retryAt === 0
+          text: "· t to retry"
+          color: Color.urgent
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+        }
+
+        Text {
+          objectName: "retryingText"
+          visible: root.retryAt !== 0
+          text: Format.retryingLabel(root.retryAt, root.nowMs)
+          color: Util.alpha(Color.foreground, 0.5)
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+        }
       }
 
       MouseArea {
-        anchors.fill: retryText
+        anchors.fill: retryRow
         cursorShape: Qt.PointingHandCursor
         onClicked: root.retry(root.message.id)
       }

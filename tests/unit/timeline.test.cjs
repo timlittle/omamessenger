@@ -341,3 +341,8 @@ test('mentions reads a row\'s @-mention tokens back, or an empty list', () => {
   assert.deepEqual(Timeline.mentions({ mentions }), mentions);
   assert.deepEqual(Timeline.mentions({}), []);
 });
+
+test('row keeps retryAt, defaulting to 0 while no automatic retry is scheduled', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).retryAt, 0);
+  assert.strictEqual(Timeline.row({ id: 'a', retryAt: 1234 }).retryAt, 1234);
+});

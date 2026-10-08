@@ -3,7 +3,7 @@
 
 // Text formatting for the conversation list and message view: HTML escaping
 // and links, pipe tables (via Markdown.js), search highlights, initials,
-// time labels and status glyphs.
+// time labels, status glyphs and the automatic-retry countdown.
 
 var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -226,6 +226,29 @@ function snoozeUntilLabel(ms, nowMs) {
 // pad writes n with at least two digits.
 function pad(n) {
   return String(n).padStart(2, '0');
+}
+
+// RETRY_SOON_MS is how far ahead a scheduled retry still counts as "soon
+// enough to name in minutes" rather than by the clock.
+var RETRY_SOON_MS = 60 * 60 * 1000;
+
+// retryingLabel is the quiet line shown next to "Not sent" while a
+// failed outgoing message has an automatic retry scheduled: minutes
+// away for one due within the hour, the clock time otherwise, or an
+// ellipsis once it is due now or overdue, so a tick that lands between
+// "scheduled" and "fired" never reads as a wait with no time left.
+function retryingLabel(retryAtMs, nowMs) {
+  const remaining = retryAtMs - nowMs;
+  if (remaining <= 0) {
+    return 'Retrying…';
+  }
+
+  if (remaining < RETRY_SOON_MS) {
+    return `Retrying in ${Math.max(1, Math.round(remaining / 60000))} min`;
+  }
+
+  const at = new Date(retryAtMs);
+  return `Retrying at ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 // statusGlyph returns the delivery mark for a status, or "" for none.
