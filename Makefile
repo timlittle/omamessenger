@@ -125,48 +125,60 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 		grep -Ei "TypeError|ReferenceError|binding loop" $$warnings; fi; \
 	exit $$status
 
+# DEMO_SCENARIOS are the short recordings docs/demo/ gets, one feature
+# each, in README order: tests/demo/shell.qml picks which of them to run
+# from OMA_DEMO_SCENARIO.
+DEMO_SCENARIOS := list-and-send keyboard-nav palette-search media reply-reaction
+
 # Prepares tests/demo/shell.qml's root the same isolated way test-qml
-# prepares each of its roots (see above), then plays the recorded script
-# offscreen, saving a PNG per frame into the root's frames/ directory:
-# Quickshell resolves a path outside its own -p root to a blackhole, so
-# the frames have to land inside it. QS_DISABLE_FILE_WATCHER=1 stops it
-# treating its own frames as plugin source changing underfoot.
-# OMA_FAKE_DEMO=1 switches the fake helper to its small, curated demo seed
-# (backend/internal/connector/fake/demo.go), not the fuller fixture every
-# other test uses, so the list stays short and the names stay neutral.
-# grabToImage occasionally hands back one frame as RGBA instead of RGB
-# (seen on the frame right after an overlay's backdrop first covers the
-# columns this hides, still mid-blend); ffmpeg's palette filter cannot
-# cope with the pixel format changing mid-stream, so every frame is
-# normalized to RGB first. ffmpeg then builds a palette from the frames
-# for a small, sharp GIF and reuses it, and a held frame from the opening
-# list becomes the still. Re-run this after a UI change to refresh
-# docs/demo.gif and docs/demo.png.
-demo: build-fake ## Record the offscreen demo and rebuild docs/demo.gif and docs/demo.png
+# prepares each of its roots (see above), then for each name in
+# DEMO_SCENARIOS plays that scenario offscreen, saving a PNG per frame
+# into the root's frames/ directory: Quickshell resolves a path outside
+# its own -p root to a blackhole, so the frames have to land inside it.
+# QS_DISABLE_FILE_WATCHER=1 stops it treating its own frames as plugin
+# source changing underfoot. OMA_FAKE_DEMO=1 switches the fake helper to
+# its small, curated demo seed (backend/internal/connector/fake/demo.go),
+# not the fuller fixture every other test uses, so the list stays short
+# and the names stay neutral. Each scenario gets its own XDG_DATA_HOME and
+# XDG_RUNTIME_DIR, so one run's seeded messages or sockets never leak into
+# the next. grabToImage occasionally hands back one frame as RGBA instead
+# of RGB (seen on the frame right after an overlay's backdrop first
+# covers the columns this hides, still mid-blend); ffmpeg's palette
+# filter cannot cope with the pixel format changing mid-stream, so every
+# frame is normalized to RGB first. ffmpeg then builds a palette from the
+# frames for a small, sharp GIF and reuses it. A held frame from
+# list-and-send's opening list becomes the repository's preview.png.
+# Re-run this after a UI change to refresh docs/demo/ and preview.png.
+demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and preview.png
 	@command -v $(FFMPEG) >/dev/null || { echo "demo: $(FFMPEG) is not installed" >&2; exit 1; }
 	@./scripts/qml-imports.sh >/dev/null
-	root=build/demo-root; run=$$(mktemp -d); \
-	rm -rf "$$root"; mkdir -p "$$root/bin" "$$root/frames"; cp -R tests/demo/. "$$root/"; \
+	mkdir -p docs/demo; \
+	root=build/demo-root; rm -rf "$$root"; mkdir -p "$$root/bin"; cp -R tests/demo/. "$$root/"; \
 	for link in ui scripts helper-version tests/qml/Check.js; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
 	ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 	ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 	ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; \
-	env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 OMA_FAKE_DEMO=1 \
-		XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" XDG_RUNTIME_DIR="$$run" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
-		OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 90 quickshell -p "$$root" >"$$root/log" 2>&1; \
-	recorded=$$?; rm -rf "$$run"; \
-	if [ $$recorded -ne 0 ]; then \
-		echo "FAIL demo recording:"; grep -v "qt.qpa" "$$root/log" | tail -20; exit 1; \
-	fi; \
-	for f in "$$root"/frames/*.png; do \
-		$(FFMPEG) -y -loglevel error -i "$$f" -pix_fmt rgb24 "$$f.rgb.png" && mv "$$f.rgb.png" "$$f"; \
+	for name in $(DEMO_SCENARIOS); do \
+		run=$$(mktemp -d); \
+		rm -rf "$$root/frames" "$$root/data" "$$root/config" "$$root/release" "$$root/log"; mkdir -p "$$root/frames"; \
+		env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 \
+			OMA_FAKE_DEMO=1 OMA_DEMO_SCENARIO="$$name" \
+			XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" XDG_RUNTIME_DIR="$$run" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
+			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 90 quickshell -p "$$root" >"$$root/log" 2>&1; \
+		recorded=$$?; rm -rf "$$run"; \
+		if [ $$recorded -ne 0 ]; then \
+			echo "FAIL demo recording ($$name):"; grep -v "qt.qpa" "$$root/log" | tail -20; exit 1; \
+		fi; \
+		for f in "$$root"/frames/*.png; do \
+			$(FFMPEG) -y -loglevel error -i "$$f" -pix_fmt rgb24 "$$f.rgb.png" && mv "$$f.rgb.png" "$$f"; \
+		done; \
+		$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" \
+			-vf "fps=10,scale=960:-1:flags=lanczos,palettegen" -update 1 -frames:v 1 build/demo-palette.png; \
+		$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" -i build/demo-palette.png \
+			-lavfi "fps=10,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse" -loop 0 "docs/demo/$$name.gif"; \
+		if [ "$$name" = "list-and-send" ]; then cp "$$root/frames/frame-00005.png" preview.png; fi; \
 	done; \
-	$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" \
-		-vf "fps=10,scale=960:-1:flags=lanczos,palettegen" -update 1 -frames:v 1 build/demo-palette.png; \
-	$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" -i build/demo-palette.png \
-		-lavfi "fps=10,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse" -loop 0 docs/demo.gif; \
-	cp "$$root/frames/frame-00005.png" docs/demo.png; \
-	ls -lh docs/demo.gif docs/demo.png
+	ls -lh docs/demo/*.gif preview.png
 
 lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QML
 	$(GOLANGCI_LINT) run ./...

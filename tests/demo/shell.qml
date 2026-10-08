@@ -1,22 +1,20 @@
-// Records the README demo GIF: drives the real Panel, offscreen, against
-// the fake helper's small demo seed (OMA_FAKE_DEMO=1; see
-// backend/internal/connector/fake/demo.go), and saves a steady stream of
-// PNG frames while it goes. `make demo` runs this the same isolated way
-// `make test-qml` runs tests/qml/, then assembles the frames into
-// docs/demo.gif and docs/demo.png with ffmpeg. It is not under tests/qml/
-// so `make test-qml` never runs it, and it is not a pass/fail test: it
-// logs PASS or FAIL the same way so a broken run is easy to spot, but its
-// job is the recording, not an assertion.
+// Records the README's short demo GIFs: drives the real Panel, offscreen,
+// against the fake helper's small demo seed (OMA_FAKE_DEMO=1; see
+// backend/internal/connector/fake/demo.go), one feature per recording, and
+// saves a steady stream of PNG frames while it goes. `make demo` runs this
+// once per scenario, the same isolated way `make test-qml` runs tests/qml/,
+// setting OMA_DEMO_SCENARIO to pick which one below runs, then assembles
+// each run's frames into docs/demo/<scenario>.gif with ffmpeg. It is not
+// under tests/qml/ so `make test-qml` never runs it, and it is not a
+// pass/fail test: it logs PASS or FAIL the same way so a broken run is easy
+// to spot, but its job is the recording, not an assertion.
 //
-// The whole thing has to read in well under ten seconds, so it shows only
-// a few strong moments: the list with unread badges, a chat with a real
-// loaded photo and a link preview, replying (showing the composer come
-// to full contrast once it has focus) and sending, then reacting. Each
-// step below performs one user-visible action — a shortcut, typing a
-// query, a click — or holds the picture briefly so a viewer can read it,
-// the same polling step engine tests/qml/Flows/shell.qml uses. A small
-// on-screen label names each action, for the recording only: nothing
-// like it exists in the product.
+// Every scenario has to read in well under ten seconds, so each shows only
+// one feature, in a few strong moments. A step performs one user-visible
+// action — a shortcut, typing a query, a click — or holds the picture
+// briefly so a viewer can read it, the same polling step engine
+// tests/qml/Flows/shell.qml uses. A small on-screen label names each
+// action, for the recording only: nothing like it exists in the product.
 import QtQuick
 import QtTest
 import Quickshell
@@ -42,27 +40,24 @@ ShellRoot {
   // from the moment the seeded accounts are ready to the last held frame.
   property bool capturing: false
 
-  property var steps: [
-    root.waitForReady,
-    root.startCapturing,
-    root.holdFor(8),
-    root.openPriya,
-    root.waitForChatReady,
-    root.holdFor(10),
-    root.focusComposer,
-    root.waitForComposerFocused,
-    root.sendReply,
-    root.holdFor(6),
-    root.submitReply,
-    root.waitForReplyDelivered,
-    root.holdFor(8),
-    root.openReactPicker,
-    root.waitForReactionPicker,
-    root.holdFor(4),
-    root.pickReaction,
-    root.waitForReactionApplied,
-    root.holdFor(10)
-  ]
+  // scenarioName selects which recording below runs, set by the Makefile's
+  // demo target through OMA_DEMO_SCENARIO, one quickshell run per
+  // scenario. Falls back to the first one so running this file directly
+  // during development still records something.
+  readonly property string scenarioName: {
+    const requested = Quickshell.env("OMA_DEMO_SCENARIO");
+    return requested && requested.length > 0 ? requested : "list-and-send";
+  }
+
+  // unreadTitles are the demo seed's conversations with an unread badge,
+  // the ones Ctrl+J cycles between.
+  readonly property var unreadTitles: ["Priya Patel", "Design Team", "Weekend Hike"]
+
+  // _navTitle is the title captureTitle last recorded, so a later wait
+  // step can tell a jump actually moved somewhere new.
+  property string _navTitle: ""
+
+  property var steps: root.stepsFor(root.scenarioName)
 
   // fail stops the recording with a reason on stderr, the same way a
   // broken test would, so a bad run is never mistaken for a finished GIF.
@@ -135,26 +130,178 @@ ShellRoot {
   }
 
   // startCapturing begins saving frames; everything before this point was
-  // just the helper connecting, which the GIF does not need to show.
+  // just the helper connecting, which no GIF needs to show.
   function startCapturing(): var {
     root.capturing = true;
     return true;
   }
 
-  // openPriya jumps to Priya Patel with Ctrl+K, the conversation switcher:
-  // her chat carries both the photo and the link preview this records.
-  function openPriya(): var {
-    root.showLabel("Ctrl+K  →  Priya");
-    t.keyClick(Qt.Key_K, Qt.ControlModifier);
-    root.typeText("priya");
+  // pressKey returns a step that shows label, sends key with modifiers
+  // (Qt.NoModifier for a plain key), and always succeeds at once.
+  function pressKey(label: string, key: int, modifiers: int): var {
+    return function() {
+      root.showLabel(label);
+      t.keyClick(key, modifiers);
+      return true;
+    };
+  }
+
+  // openViaPalette returns a step that opens Ctrl+K, the conversation
+  // switcher, types query and presses Enter: the fastest way to a known
+  // chat by name.
+  function openViaPalette(label: string, query: string): var {
+    return function() {
+      root.showLabel(label);
+      t.keyClick(Qt.Key_K, Qt.ControlModifier);
+      root.typeText(query);
+      t.keyClick(Qt.Key_Return);
+      return true;
+    };
+  }
+
+  // waitForTitle returns a step that holds until the open conversation's
+  // title is exactly want.
+  function waitForTitle(want: string): var {
+    return function() { return root.title() === want; };
+  }
+
+  // waitForTitleAndCount returns a step that holds until the open
+  // conversation is want and its seeded messages have all loaded.
+  function waitForTitleAndCount(want: string, count: int): var {
+    return function() {
+      if (root.title() !== want) return false;
+      const model = Check.find(root.panel(), "messageListView").model;
+      return model.count === count;
+    };
+  }
+
+  // captureTitle records the open conversation's current title (or ""),
+  // so a later waitForTitleChanged or waitForUnreadTitleChanged step can
+  // tell a jump actually landed somewhere new.
+  function captureTitle(): var {
+    root._navTitle = root.title();
+    return true;
+  }
+
+  // waitForTitleChanged returns a step that holds until the open
+  // conversation's title differs from what captureTitle last recorded.
+  function waitForTitleChanged(): var {
+    return function() {
+      const current = root.title();
+      return !!current && current !== root._navTitle;
+    };
+  }
+
+  // waitForUnreadTitleChanged returns a step like waitForTitleChanged,
+  // but only accepts a title that is one of unreadTitles: the chats
+  // Ctrl+J is meant to land on.
+  function waitForUnreadTitleChanged(): var {
+    return function() {
+      const current = root.title();
+      if (!current || current === root._navTitle) return false;
+      return root.unreadTitles.indexOf(current) !== -1;
+    };
+  }
+
+  // focusComposer presses i to move keyboard focus into the composer,
+  // unless it already has it.
+  function focusComposer(): var {
+    const input = Check.find(root.panel(), "composerInput");
+    if (input && input.activeFocus) return true;
+
+    root.showLabel("i  (write)");
+    t.keyClick(Qt.Key_I);
+    return true;
+  }
+
+  // waitForComposerFocused holds until the composer's text field has
+  // keyboard focus, so typing lands in it rather than being swallowed by
+  // an unbound key in the conversation pane.
+  function waitForComposerFocused(): var {
+    const input = Check.find(root.panel(), "composerInput");
+    return !!input && input.activeFocus;
+  }
+
+  // waitForComposerBlurred holds until the composer's text field has
+  // lost keyboard focus, the mirror of waitForComposerFocused.
+  function waitForComposerBlurred(): var {
+    const input = Check.find(root.panel(), "composerInput");
+    return !!input && !input.activeFocus;
+  }
+
+  // composeMessage returns a step that shows text as the label and types
+  // it into whichever field has focus, showing the composer at full
+  // contrast before it is sent.
+  function composeMessage(text: string): var {
+    return function() {
+      root.showLabel("\"" + text + "\"");
+      root.typeText(text);
+      return true;
+    };
+  }
+
+  // sendComposed returns a step that presses Enter to send text, already
+  // typed by a prior composeMessage step.
+  function sendComposed(text: string): var {
+    return function() {
+      root.showLabel("\"" + text + "\"  ⏎");
+      t.keyClick(Qt.Key_Return);
+      return true;
+    };
+  }
+
+  // waitForDelivered returns a step that holds until text's message has
+  // sent or delivered.
+  function waitForDelivered(text: string): var {
+    return function() {
+      const status = root.messageStatus(text);
+      return status === "sent" || status === "delivered";
+    };
+  }
+
+  // reactToHighlighted leaves the composer with Escape, which moves the
+  // highlight onto the message just sent, then presses e to open the
+  // picker for it: the direct shortcut, rather than the hover toolbar's
+  // "+" or the command palette.
+  function reactToHighlighted(): var {
+    root.showLabel("Esc  ·  e  →  react");
+    t.keyClick(Qt.Key_Escape);
+    t.keyClick(Qt.Key_E);
+    return true;
+  }
+
+  // waitForReactionPicker holds until the emoji picker is open.
+  function waitForReactionPicker(): var {
+    const picker = Check.find(root.panel(), "reactionPicker");
+    return !!picker && picker.visible;
+  }
+
+  // pickReaction accepts the picker's first emoji.
+  function pickReaction(): var {
+    root.showLabel("⏎  (👍)");
     t.keyClick(Qt.Key_Return);
     return true;
   }
 
-  // waitForChatReady holds until Priya's chat is open, her newest photo
-  // has actually downloaded and decoded (not the blurred placeholder,
-  // not a broken image), and her link preview card shows.
-  function waitForChatReady(): var {
+  // waitForReactionApplied holds until the newest message's reaction
+  // chip shows: applied at once, locally, before the helper confirms it.
+  function waitForReactionApplied(): var {
+    const model = Check.find(root.panel(), "messageListView").model;
+    if (model.count === 0) return false;
+    return Timeline.reactions(model.get(0)).length > 0;
+  }
+
+  // waitForReplyBanner holds until the composer shows which message it
+  // is about to answer.
+  function waitForReplyBanner(): var {
+    const banner = Check.find(root.panel(), "replyBanner");
+    return !!banner && banner.visible;
+  }
+
+  // waitForPriyaChatReady holds until Priya's chat is open, her newest
+  // photo has actually downloaded and decoded (not the blurred
+  // placeholder, not a broken image), and her link preview card shows.
+  function waitForPriyaChatReady(): var {
     if (root.title() !== "Priya Patel") return false;
 
     const model = Check.find(root.panel(), "messageListView").model;
@@ -182,75 +329,226 @@ ShellRoot {
     return !!preview && preview.visible;
   }
 
-  // focusComposer presses i to move keyboard focus into the composer.
-  function focusComposer(): var {
-    const input = Check.find(root.panel(), "composerInput");
-    if (input && input.activeFocus) return true;
-
-    root.showLabel("i  (write)");
-    t.keyClick(Qt.Key_I);
-    return true;
+  // openHighlighted returns a step that presses Enter on the highlighted
+  // message: opens a photo in the full viewer, or starts a voice note
+  // playing, the same action the message list's own Enter takes.
+  function openHighlighted(label: string): var {
+    return function() {
+      root.showLabel(label);
+      t.keyClick(Qt.Key_Return);
+      return true;
+    };
   }
 
-  // waitForComposerFocused holds until the composer's text field has
-  // keyboard focus, so typing lands in it rather than being swallowed by
-  // an unbound key in the conversation pane.
-  function waitForComposerFocused(): var {
-    const input = Check.find(root.panel(), "composerInput");
-    return !!input && input.activeFocus;
+  // waitForPhotoViewerReady holds until the full-window photo viewer is
+  // open and its own copy of the image, not the bubble's, has actually
+  // decoded.
+  function waitForPhotoViewerReady(): var {
+    const viewer = Check.find(root.panel(), "photoViewer");
+    if (!viewer || !viewer.open) return false;
+
+    const image = Check.find(viewer, "photoImage");
+    if (!image) return false;
+    if (image.status === Image.Error) return Check.fail("the opened photo failed to load");
+    if (image.status !== Image.Ready) return false;
+    return String(image.source).indexOf("file://") === 0;
   }
 
-  // sendReply types a short reply, showing the composer at full
-  // contrast before it is sent.
-  function sendReply(): var {
-    root.showLabel("\"Count me in!\"");
-    root.typeText("Count me in!");
-    return true;
+  // waitForPhotoViewerClosed holds until the full-window photo viewer has
+  // closed.
+  function waitForPhotoViewerClosed(): var {
+    const viewer = Check.find(root.panel(), "photoViewer");
+    return !viewer || !viewer.open;
   }
 
-  // submitReply presses Enter to send the typed reply.
-  function submitReply(): var {
-    root.showLabel("\"Count me in!\"  ⏎");
-    t.keyClick(Qt.Key_Return);
-    return true;
+  // waitForVoiceReady holds until Jordan's chat is open and its newest
+  // message shows a voice note player, which lags slightly behind the
+  // model filling once a chat opens.
+  function waitForVoiceReady(): var {
+    if (root.title() !== "Jordan Lee") return false;
+    const player = Check.find(root.panel(), "voiceNotePlayer");
+    return !!player && player.visible;
   }
 
-  // waitForReplyDelivered holds until the reply has sent.
-  function waitForReplyDelivered(): var {
-    const status = root.messageStatus("Count me in!");
-    return status === "sent" || status === "delivered";
+  // waitForVoicePlaying holds until the helper has downloaded the voice
+  // note and the in-window player reports a real path and started
+  // playing, never landing on the "Unavailable" state a silent fetch
+  // failure would leave it in.
+  function waitForVoicePlaying(): var {
+    const button = Check.find(root.panel(), "voicePlayButton");
+    const time = Check.find(root.panel(), "voiceTimeLabel");
+    if (time && time.text === "Unavailable") return Check.fail("the voice note reports Unavailable instead of playing");
+    return !!button && button.text === "⏸";
   }
 
-  // openReactPicker leaves the composer with Escape, which moves the
-  // highlight onto the reply just sent, then presses e to open the
-  // picker for it: the direct shortcut, rather than the hover toolbar's
-  // "+" or the command palette.
-  function openReactPicker(): var {
-    root.showLabel("Esc  ·  e  →  react");
-    t.keyClick(Qt.Key_Escape);
-    t.keyClick(Qt.Key_E);
-    return true;
+  // openPaletteAndType returns a step that opens Ctrl+K and types query,
+  // leaving the palette open for a message search's debounce to answer.
+  function openPaletteAndType(label: string, query: string): var {
+    return function() {
+      root.showLabel(label);
+      t.keyClick(Qt.Key_K, Qt.ControlModifier);
+      root.typeText(query);
+      return true;
+    };
   }
 
-  // waitForReactionPicker holds until the emoji picker is open.
-  function waitForReactionPicker(): var {
-    const picker = Check.find(root.panel(), "reactionPicker");
-    return !!picker && picker.visible;
+  // waitForMessageRow holds until the open command palette shows a row
+  // whose text contains needle, case-insensitively: the debounced
+  // "Messages" section has answered.
+  function waitForMessageRow(needle: string): var {
+    return function() {
+      const list = Check.find(root.panel(), "paletteList");
+      if (!list) return false;
+      return Check.texts(list).some((node) => String(node.text).toLowerCase().indexOf(needle) >= 0);
+    };
   }
 
-  // pickReaction accepts the picker's first emoji.
-  function pickReaction(): var {
-    root.showLabel("⏎  (👍)");
-    t.keyClick(Qt.Key_Return);
-    return true;
+  // acceptHighlighted returns a step that shows label and presses Enter
+  // on whichever row the palette currently highlights.
+  function acceptHighlighted(label: string): var {
+    return function() {
+      root.showLabel(label);
+      t.keyClick(Qt.Key_Return);
+      return true;
+    };
   }
 
-  // waitForReactionApplied holds until the newest message's reaction
-  // chip shows: applied at once, locally, before the helper confirms it.
-  function waitForReactionApplied(): var {
-    const model = Check.find(root.panel(), "messageListView").model;
-    if (model.count === 0) return false;
-    return Timeline.reactions(model.get(0)).length > 0;
+  // waitForMessageVisible holds until titleWant is open and the message
+  // whose text contains needle has a loaded delegate on screen: proof the
+  // palette's "Messages" row landed on the exact message, scrolled into
+  // view, not just whatever chat opened. Landing also sets the exact
+  // message as the highlighted one, same as any other open, but that
+  // never has a visible moment to show here: opening a conversation
+  // always focuses the composer at once (see ConversationController's
+  // resetHighlight), and a highlight bar never shows while writing.
+  function waitForMessageVisible(titleWant: string, needle: string): var {
+    return function() {
+      if (root.title() !== titleWant) return false;
+
+      const model = Check.find(root.panel(), "messageListView").model;
+      for (let i = 0; i < model.count; i++) {
+        if (String(model.get(i).text).toLowerCase().indexOf(needle) < 0) continue;
+        return !!root.delegateFor(model.get(i).id);
+      }
+      return false;
+    };
+  }
+
+  // stepsFor returns the step list for scenario name: one feature, a
+  // few strong moments, the only thing each recording needs to show.
+  function stepsFor(name: string): var {
+    switch (name) {
+    case "list-and-send": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(8),
+      root.openViaPalette("Ctrl+K  →  Design Team", "design"),
+      root.waitForTitle("Design Team"),
+      root.holdFor(6),
+      root.focusComposer,
+      root.waitForComposerFocused,
+      root.composeMessage("Count me in!"),
+      root.holdFor(6),
+      root.sendComposed("Count me in!"),
+      root.waitForDelivered("Count me in!"),
+      root.holdFor(10)
+    ];
+    // Ctrl+J and Alt+↓/↑ open a conversation through
+    // ConversationController._openPreservingMode, which keeps whichever
+    // mode the user was already in (see its own doc comment): jumping
+    // from the list, not already writing, lands back in scrolling mode,
+    // so j/k work at once with no Escape needed. Ctrl+K's plain "open a
+    // conversation" path has no such guard and always ends up writing;
+    // the media and reply-reaction scenarios below account for that.
+    case "keyboard-nav": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(6),
+      root.captureTitle,
+      root.pressKey("Ctrl+J  →  unread", Qt.Key_J, Qt.ControlModifier),
+      root.waitForUnreadTitleChanged(),
+      root.holdFor(6),
+      root.captureTitle,
+      root.pressKey("Ctrl+J  →  unread", Qt.Key_J, Qt.ControlModifier),
+      root.waitForUnreadTitleChanged(),
+      root.holdFor(6),
+      root.captureTitle,
+      root.pressKey("Alt+↓  →  next chat", Qt.Key_Down, Qt.AltModifier),
+      root.waitForTitleChanged(),
+      root.waitForComposerBlurred,
+      root.holdFor(5),
+      root.pressKey("k  (scroll)", Qt.Key_K, Qt.NoModifier),
+      root.pressKey("k  (scroll)", Qt.Key_K, Qt.NoModifier),
+      root.holdFor(6),
+      root.focusComposer,
+      root.waitForComposerFocused,
+      root.holdFor(8)
+    ];
+    case "palette-search": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(6),
+      root.openPaletteAndType("Ctrl+K  →  \"venue\"", "venue"),
+      root.waitForMessageRow("venue"),
+      root.holdFor(8),
+      root.acceptHighlighted("⏎  →  jump"),
+      root.waitForMessageVisible("Priya Patel", "venue"),
+      root.holdFor(10)
+    ];
+    case "media": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(5),
+      root.openViaPalette("Ctrl+K  →  Priya", "priya"),
+      root.waitForPriyaChatReady,
+      root.waitForComposerFocused,
+      root.holdFor(5),
+      root.pressKey("Esc  (scroll)", Qt.Key_Escape, Qt.NoModifier),
+      root.waitForComposerBlurred,
+      root.openHighlighted("⏎  →  open photo"),
+      root.waitForPhotoViewerReady,
+      root.holdFor(8),
+      root.pressKey("Esc  (close)", Qt.Key_Escape, Qt.NoModifier),
+      root.waitForPhotoViewerClosed,
+      root.openViaPalette("Ctrl+K  →  Jordan", "jordan"),
+      root.waitForVoiceReady,
+      root.waitForComposerFocused,
+      root.holdFor(3),
+      root.pressKey("Esc  (scroll)", Qt.Key_Escape, Qt.NoModifier),
+      root.waitForComposerBlurred,
+      root.openHighlighted("⏎  →  play voice"),
+      root.waitForVoicePlaying,
+      root.holdFor(8)
+    ];
+    case "reply-reaction": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(6),
+      root.openViaPalette("Ctrl+K  →  Weekend Hike", "weekend"),
+      root.waitForTitleAndCount("Weekend Hike", 5),
+      root.waitForComposerFocused,
+      root.holdFor(4),
+      root.pressKey("Esc  (scroll)", Qt.Key_Escape, Qt.NoModifier),
+      root.waitForComposerBlurred,
+      root.pressKey("r  →  reply", Qt.Key_R, Qt.NoModifier),
+      root.waitForReplyBanner,
+      root.holdFor(4),
+      root.focusComposer,
+      root.waitForComposerFocused,
+      root.composeMessage("Count me in!"),
+      root.holdFor(5),
+      root.sendComposed("Count me in!"),
+      root.waitForDelivered("Count me in!"),
+      root.holdFor(6),
+      root.reactToHighlighted,
+      root.waitForReactionPicker,
+      root.holdFor(4),
+      root.pickReaction,
+      root.waitForReactionApplied,
+      root.holdFor(8)
+    ];
+    default: return [() => root.fail("unknown scenario \"" + name + "\"")];
+    }
   }
 
   // captureFrame grabs the window's own content, overlay label included,
@@ -283,7 +581,7 @@ ShellRoot {
       root.attempts = 0;
       if (root.step === root.steps.length) {
         root.capturing = false;
-        console.log("PASS Demo");
+        console.log("PASS " + root.scenarioName);
         return Qt.exit(0);
       }
     } else if (++root.attempts > 150) {

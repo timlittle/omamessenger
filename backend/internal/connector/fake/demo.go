@@ -7,13 +7,14 @@ import (
 )
 
 // demoScripts is a small, curated set of fake conversations for the
-// README demo recording: a handful of neutral, plausible names, not the
+// README demo recordings: a handful of neutral, plausible names, not the
 // fuller fixture scripts uses for everything else, so the list looks
 // clean in a short clip and connecting is fast enough for a short
 // recording. One conversation carries both a loaded photo and a link
-// preview, so a single open shows both without scrolling. The account is
-// Telegram, the only service this helper actually connects to; WhatsApp
-// is not supported yet (see README.md).
+// preview, so a single open shows both without scrolling; another's
+// newest message is a voice note, for the media recording to open and
+// play. The account is Telegram, the only service this helper actually
+// connects to; WhatsApp is not supported yet (see README.md).
 var demoScripts = []accountScript{
 	{
 		account:      domain.Account{ID: "tg-demo", Service: domain.ServiceTelegram, Name: "Personal"},
@@ -36,7 +37,8 @@ var demoScripts = []accountScript{
 			},
 			{
 				remoteID: "tg:jordan-lee", title: "Jordan Lee", kind: domain.KindDirect, count: 3,
-				texts: []string{"Thanks for the update", "Let me know if anything changes", "Will do"},
+				lastVoice: true,
+				texts:     []string{"Thanks for the update", "Let me know if anything changes", "Will do"},
 			},
 			{
 				remoteID: "tg:weekend-hike", title: "Weekend Hike", kind: domain.KindGroup, members: 5, count: 5, unread: 3, muted: true,

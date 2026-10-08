@@ -2,9 +2,20 @@
 
 A keyboard-first messaging client for [Omarchy](https://omarchy.org), for Telegram and WhatsApp accounts.
 
-![OmaMessenger](docs/demo.gif)
+![OmaMessenger](preview.png)
 
 OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and Hyprland manages it like any other app; a Go helper it starts handles the messaging underneath.
+
+## Demo
+
+| | |
+| --- | --- |
+| ![Unified list, open a chat, send](docs/demo/list-and-send.gif) <br> Unified list, open a chat, send a message | ![Keyboard navigation](docs/demo/keyboard-nav.gif) <br> Ctrl+J between unread chats, writing vs scrolling mode |
+| ![Command palette search](docs/demo/palette-search.gif) <br> Ctrl+K search jumping straight to a message | ![Photo and voice note](docs/demo/media.gif) <br> A photo in the full viewer, a voice note playing |
+
+![Reply and react](docs/demo/reply-reaction.gif)
+
+Reply to a message and react to it, keyboard-first
 
 ## Features
 
