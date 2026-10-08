@@ -28,7 +28,7 @@ jobs:
           cache: false
 
       - name: Test
-        run: go test -race ./...
+        run: go test -race -tags fake ./...
 
       - name: Build helpers, SHA256SUMS and license notices
         run: make build-all

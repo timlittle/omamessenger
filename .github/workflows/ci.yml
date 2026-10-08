@@ -27,6 +27,8 @@ jobs:
           make tools
           build/tools/golangci-lint run ./...
           go run ./tools/nologcontent ./backend/...
+          # Leftover merge conflict markers in committed files.
+          ! git grep -n -E '^(<<<<<<<|>>>>>>>)( |$)'
       - name: Dependency licenses
         run: make license-check
       - name: Shell scripts

@@ -7,12 +7,12 @@ override:
     threshold: 100
   - path: ^backend/internal/app/policy$
     threshold: 100
-  - path: ^backend/internal/notify$
-    threshold: 75
   # Run, sign-in and the gotd adapter need a live Telegram connection;
   # everything they call is tested against a fake API.
   - path: ^backend/internal/connector/telegram$
     threshold: 80
+  # main.go wires real services and the process lifecycle; its tests
+  # cover the subcommands and flags but not a live run.
   - path: ^backend$
     threshold: 80
 exclude:
