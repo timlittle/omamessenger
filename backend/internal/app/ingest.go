@@ -427,9 +427,15 @@ func (in *Ingest) flushMarkRead() {
 	_ = in.dispatcher.MarkRead(ctx, conv) // best effort; a later Unread sync corrects any miss
 }
 
+// missedAfter is how long before its arrival a message must have been
+// sent to count as missed while offline rather than live. It allows for
+// slow delivery and clock drift, so a live message is never silenced.
+const missedAfter = 5 * time.Minute
+
 // arrival describes a live message arriving under the current UI state.
 func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Input {
 	settings, focused, windowActive := in.ui.snapshot()
+	missed := time.Since(time.UnixMilli(m.Created)) > missedAfter
 
 	return policy.Input{
 		Notifications:  settings.Notifications,
@@ -437,6 +443,7 @@ func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Inp
 		Muted:          conv.Muted,
 		Focused:        focused == conv.ID,
 		WindowActive:   windowActive,
+		Missed:         missed,
 		Kind:           conv.Kind,
 		Sender:         m.SenderName,
 		Title:          conv.Title,

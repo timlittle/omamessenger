@@ -12,11 +12,11 @@ import (
 // cover all three.
 var everyDetail = []policy.Detail{policy.DetailNameAndMessage, policy.DetailNameOnly, policy.DetailNone}
 
-// everyInput returns an arrival for every combination of the four flags
+// everyInput returns an arrival for every combination of the five flags
 // and every detail level, in both a direct chat and a group.
 func everyInput() []policy.Input {
 	var inputs []policy.Input
-	for bits := range 16 {
+	for bits := range 32 {
 		for _, detail := range everyDetail {
 			for _, kind := range []string{domain.KindDirect, domain.KindGroup} {
 				inputs = append(inputs, policy.Input{
@@ -25,6 +25,7 @@ func everyInput() []policy.Input {
 					Muted:          bits&2 != 0,
 					Focused:        bits&4 != 0,
 					WindowActive:   bits&8 != 0,
+					Missed:         bits&16 != 0,
 					Kind:           kind,
 					Sender:         "Priya",
 					Title:          "Climbing Crew",
@@ -71,12 +72,12 @@ func TestMarkReadOnArrival_OnlyWhenLookingAtIt(t *testing.T) {
 	}
 }
 
-func TestShouldNotify_UnlessOffMutedOrLookingAtIt(t *testing.T) {
+func TestShouldNotify_UnlessOffMutedMissedOrLookingAtIt(t *testing.T) {
 	t.Parallel()
 
 	for _, in := range everyInput() {
 		lookingAtIt := in.Focused && in.WindowActive
-		want := in.Notifications && !in.Muted && !lookingAtIt
+		want := in.Notifications && !in.Muted && !in.Missed && !lookingAtIt
 		if got := policy.ShouldNotify(in); got != want {
 			t.Errorf("%+v: ShouldNotify = %t, want %t", in, got, want)
 		}

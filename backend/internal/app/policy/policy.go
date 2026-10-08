@@ -22,6 +22,7 @@ type Input struct {
 	Muted          bool   // the conversation is muted
 	Focused        bool   // the conversation is the one open in the window
 	WindowActive   bool   // the window has focus
+	Missed         bool   // sent well before it arrived, caught up after being offline
 	Kind           string
 	Sender         string
 	Title          string
@@ -35,9 +36,11 @@ func MarkReadOnArrival(in Input) bool {
 	return in.WindowActive && in.Focused
 }
 
-// ShouldNotify reports whether to raise a desktop notification.
+// ShouldNotify reports whether to raise a desktop notification. A missed
+// message still counts as unread, but notifying for each one would replay
+// everything the services kept while the helper was not running.
 func ShouldNotify(in Input) bool {
-	return in.Notifications && !in.Muted && !MarkReadOnArrival(in)
+	return in.Notifications && !in.Muted && !in.Missed && !MarkReadOnArrival(in)
 }
 
 // Notification returns the title, body and conversation id for a desktop

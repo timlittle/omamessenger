@@ -3,6 +3,7 @@ package app_test
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -97,6 +98,30 @@ func TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat(t *te
 	}
 }
 
+// TestIncoming_DoesNotNotifyForAMessageMissedWhileOffline confirms a
+// message sent long before it arrives, as both services deliver what was
+// missed while the helper was offline, still counts as unread but raises
+// no notification: starting up must not replay a burst of old ones.
+func TestIncoming_DoesNotNotifyForAMessageMissedWhileOffline(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	m := incoming("in-1", "From this morning")
+	m.Created = time.Now().Add(-time.Hour).UnixMilli()
+
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, m)
+
+	if got := f.notifier.all(); len(got) != 0 {
+		t.Errorf("notifications = %v, want none for a missed message", got)
+	}
+
+	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || got.Unread != 1 {
+		t.Errorf("unread = %d, %v; want 1", got.Unread, err)
+	}
+}
+
 func TestIncoming_NotifiesWithTheConversationID(t *testing.T) {
 	t.Parallel()
 
@@ -121,7 +146,7 @@ func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 
 	f.commands.ApplySettings(app.Settings{Notifications: true, NotificationDetail: "nameOnly"})
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("hidden", "secret"))
-	f.ingest.Incoming(ctx, "wa", group.RemoteID, domain.Message{RemoteID: "g", SenderName: "Priya", Text: "hi", Created: 1})
+	f.ingest.Incoming(ctx, "wa", group.RemoteID, domain.Message{RemoteID: "g", SenderName: "Priya", Text: "hi", Created: time.Now().UnixMilli()})
 
 	if _, err := f.commands.SetMuted(ctx, chat.ID, true); err != nil {
 		t.Fatal(err)
