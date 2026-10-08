@@ -19,27 +19,14 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int pollAttempts: 0
-
-  // retry schedules fn to run again shortly, for a condition that depends
-  // on the helper's async file load or a key event finishing its round trip.
-  function retry(fn: var): void {
-    root._next = fn;
-    retryTimer.start();
-  }
-  property var _next: null
-
   Service {
     id: service
   }
 
-  QtObject {
+  FakeShell {
     id: fakeShell
-
-    function hide(id) { panel.close(); }
-    function serviceFor(id) { return service; }
-    function toggle(id, payloadJson) { panel.open(payloadJson); }
-    function summon(id, payloadJson) { panel.open(payloadJson); }
+    panel: panel
+    service: service
   }
 
   Panel {
@@ -53,26 +40,12 @@ ShellRoot {
     when: false
   }
 
-  Timer {
-    id: retryTimer
-    interval: 100
-    onTriggered: root._next()
-  }
-
-  // A deliberately unreachable deadline: it only fires, and fails the
-  // test with a reason, if something above never happens.
-  Timer {
-    running: true
-    interval: 20000
-    onTriggered: Check.fail("timed out before the checks finished")
-  }
-
-  // Checks run once Quickshell has finished loading; Qt.exit() is
-  // ignored before then.
-  Timer {
-    running: true
-    interval: 50
-    onTriggered: root.start()
+  Stepper {
+    id: stepper
+    name: "KeyBindings"
+    deadlineMs: 20000
+    onTimeout: () => Check.fail("timed out before the checks finished")
+    startFn: root.start
   }
 
   // start opens the window, which is enough to start the service's own
@@ -89,11 +62,11 @@ ShellRoot {
 
     if (binding && binding.keys[0] === "Ctrl+Alt+P") return root.checkErrorsReported();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("palette.commands never picked up the fixture's override; keys are "
         + JSON.stringify(binding ? binding.keys : null));
-    root.retry(root.waitForOverrideLoaded);
+    stepper.retry(root.waitForOverrideLoaded);
   }
 
   // checkErrorsReported checks the fixture's deliberate mistakes were
@@ -189,7 +162,7 @@ ShellRoot {
   // reload path rather than only the startup load already checked above.
   function rewriteConfigFile(): void {
     rewriter.setText("palette.commands = Ctrl+Alt+O\n");
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForReload();
   }
 
@@ -206,11 +179,11 @@ ShellRoot {
 
     if (binding && binding.keys[0] === "Ctrl+Alt+O") return root.checkReloadedKeyWorks();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("editing keys.conf was never picked up; palette.commands keys are still "
         + JSON.stringify(binding ? binding.keys : null));
-    root.retry(root.waitForReload);
+    stepper.retry(root.waitForReload);
   }
 
   // checkReloadedKeyWorks checks the previous override key stopped

@@ -18,17 +18,8 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int pollAttempts: 0
   property int uiStateChanges: 0
   property bool hidden: false
-  property var _next: null
-
-  // retry schedules fn to run again shortly, for a condition that depends
-  // on a reply from the helper.
-  function retry(fn: var): void {
-    root._next = fn;
-    retryTimer.start();
-  }
 
   // findByTitle returns the row with title from a ListModel, or null.
   function findByTitle(model: var, title: string): var {
@@ -90,18 +81,11 @@ ShellRoot {
     service: service
   }
 
-  Timer {
-    id: retryTimer
-    interval: 100
-    onTriggered: root._next()
-  }
-
-  // A deliberately unreachable deadline: it only fires, and fails the
-  // test with a reason, if something above never happens.
-  Timer {
-    running: true
-    interval: 45000
-    onTriggered: Check.fail("timed out before the checks finished")
+  Stepper {
+    id: stepper
+    name: "Controllers"
+    deadlineMs: 45000
+    onTimeout: () => Check.fail("timed out before the checks finished")
   }
 
   // waitForConversations retries while the demo connectors are still
@@ -109,10 +93,10 @@ ShellRoot {
   function waitForConversations(): void {
     if (listController.model.count === 11) return root.checkRailFilter();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("got " + listController.model.count + " conversations after retrying, want 11");
-    root.retry(root.waitForConversations);
+    stepper.retry(root.waitForConversations);
   }
 
   // checkRailFilter narrows the rail to Telegram, checks every visible row
@@ -185,7 +169,7 @@ ShellRoot {
     if (alex.unread <= 0) return Check.fail("Alex Chen already has no unread messages to clear");
 
     conversationController.open(alex);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForOpenConversation(alex.id);
   }
 
@@ -206,10 +190,10 @@ ShellRoot {
       return root.checkLoadOlder();
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Alex Chen never finished opening: loaded=" + loaded + " unread=" + (row ? row.unread : "?"));
-    root.retry(() => root.waitForOpenConversation(id));
+    stepper.retry(() => root.waitForOpenConversation(id));
   }
 
   // checkLoadOlder opens a conversation with more than one page of
@@ -221,7 +205,7 @@ ShellRoot {
     if (!omarchy) return Check.fail("no conversation titled Omarchy Users in the fake accounts");
 
     conversationController.open(omarchy);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForFirstPage();
   }
 
@@ -231,14 +215,14 @@ ShellRoot {
     if (conversationController.messages.count === 50 && conversationController.hasMore) {
       conversationController.loadOlder();
       conversationController.loadOlder();
-      root.pollAttempts = 0;
+      stepper.attempts = 0;
       return root.waitForSecondPage();
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Omarchy Users never finished its first page, has " + conversationController.messages.count);
-    root.retry(root.waitForFirstPage);
+    stepper.retry(root.waitForFirstPage);
   }
 
   // waitForSecondPage holds for the one older page the guard allowed
@@ -248,10 +232,10 @@ ShellRoot {
     if (conversationController.messages.count > 100)
       return Check.fail("loadOlder's guard let two requests through: got " + conversationController.messages.count + " messages, want 100");
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("loadOlder never finished, has " + conversationController.messages.count);
-    root.retry(root.waitForSecondPage);
+    stepper.retry(root.waitForSecondPage);
   }
 
   // checkSend opens a conversation that never fails a send, so the test
@@ -262,7 +246,7 @@ ShellRoot {
 
     conversationController.open(mum);
     conversationController.send("integration test", "");
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForDelivered();
   }
 
@@ -274,9 +258,9 @@ ShellRoot {
       if (m.text === "integration test" && m.status === "delivered") return root.checkRemoveAccountClosesOpenConversation();
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("sent message never reached delivered");
-    root.retry(root.waitForDelivered);
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("sent message never reached delivered");
+    stepper.retry(root.waitForDelivered);
   }
 
   // checkRemoveAccountClosesOpenConversation opens a conversation that
@@ -291,7 +275,7 @@ ShellRoot {
     if (conversationController.activeId !== platformTeam.id) return Check.fail("Platform Team did not open");
 
     accountController.remove("tg-work");
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForAccountRemoved(platformTeam.id);
   }
 
@@ -302,9 +286,9 @@ ShellRoot {
   // exists.
   function waitForAccountRemoved(removedId: string): void {
     if (listController.all.some((c) => c.accountId === "tg-work")) {
-      root.pollAttempts++;
-      if (root.pollAttempts >= 100) return Check.fail("tg-work was never removed from the list");
-      return root.retry(() => root.waitForAccountRemoved(removedId));
+      stepper.attempts++;
+      if (stepper.attempts >= 100) return Check.fail("tg-work was never removed from the list");
+      return stepper.retry(() => root.waitForAccountRemoved(removedId));
     }
 
     if (conversationController.activeId !== "" || conversationController.pane !== "list")

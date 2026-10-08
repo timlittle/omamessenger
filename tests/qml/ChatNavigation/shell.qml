@@ -17,26 +17,14 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int pollAttempts: 0
-  property var _next: null
-
-  // retry schedules fn to run again shortly, for a condition that depends
-  // on a reply from the helper or on a key event finishing its round trip.
-  function retry(fn: var): void {
-    root._next = fn;
-    retryTimer.start();
-  }
-
   Service {
     id: service
   }
 
-  QtObject {
+  FakeShell {
     id: fakeShell
-    function hide(id) { panel.close(); }
-    function serviceFor(id) { return service; }
-    function toggle(id, payloadJson) { panel.open(payloadJson); }
-    function summon(id, payloadJson) { panel.open(payloadJson); }
+    panel: panel
+    service: service
   }
 
   Panel {
@@ -50,24 +38,12 @@ ShellRoot {
     when: false
   }
 
-  Timer {
-    id: retryTimer
-    interval: 100
-    onTriggered: root._next()
-  }
-
-  // A deliberately unreachable deadline: it only fires, and fails the
-  // test with a reason, if something above never happens.
-  Timer {
-    running: true
-    interval: 55000
-    onTriggered: Check.fail("timed out before the checks finished")
-  }
-
-  Timer {
-    running: true
-    interval: 50
-    onTriggered: root.start()
+  Stepper {
+    id: stepper
+    name: "ChatNavigation"
+    deadlineMs: 55000
+    onTimeout: () => Check.fail("timed out before the checks finished")
+    startFn: root.start
   }
 
   function start(): void {
@@ -79,10 +55,10 @@ ShellRoot {
     const listView = Check.find(panel, "conversationListView");
     if (listView && listView.count === 11) return root.checkListModeCursorRelative(listView);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("got " + (listView ? listView.count : "no list view") + " conversations after retrying, want 11");
-    root.retry(root.waitForConversations);
+    stepper.retry(root.waitForConversations);
   }
 
   // rowAt reads a model row's {id, title} pair by index.
@@ -125,7 +101,7 @@ ShellRoot {
     root._wantAfterDown = root.rowAt(listView, 4);
 
     t.keyClick(Qt.Key_Down, Qt.AltModifier);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForListModeOpen(listView);
   }
 
@@ -138,11 +114,11 @@ ShellRoot {
 
     if (title && title.text === root._wantAfterDown.title) return root.checkListModeLandedScrolling(listView, composer);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Alt+Down from the list opened \"" + (title ? title.text : "?") + "\", want \""
         + root._wantAfterDown.title + "\" (the row after the cursor, not the wrong one near the top)");
-    root.retry(() => root.waitForListModeOpen(listView));
+    stepper.retry(() => root.waitForListModeOpen(listView));
   }
 
   // checkListModeLandedScrolling checks Alt+Down from the list did not
@@ -164,7 +140,7 @@ ShellRoot {
     const want = root.rowAt(listView, (currentIndex - 1 + listView.model.count) % listView.model.count);
 
     t.keyClick(Qt.Key_Up, Qt.AltModifier);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForScrollModeOpen(listView, want);
   }
 
@@ -179,10 +155,10 @@ ShellRoot {
       return root.checkWritingModePreserved(listView, composer);
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Alt+Up while scrolling opened \"" + (title ? title.text : "?") + "\", want \"" + want.title + "\"");
-    root.retry(() => root.waitForScrollModeOpen(listView, want));
+    stepper.retry(() => root.waitForScrollModeOpen(listView, want));
   }
 
   // checkWritingModePreserved focuses the composer with i, then presses
@@ -190,16 +166,16 @@ ShellRoot {
   // the way Ctrl+J already works while writing.
   function checkWritingModePreserved(listView: var, composer: var): void {
     t.keyClick(Qt.Key_I);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForWritingFocus(listView, composer);
   }
 
   function waitForWritingFocus(listView: var, composer: var): void {
     if (composer.activeFocus) return root.sendAltDownWhileWriting(listView, composer);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("i never focused the composer");
-    root.retry(() => root.waitForWritingFocus(listView, composer));
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("i never focused the composer");
+    stepper.retry(() => root.waitForWritingFocus(listView, composer));
   }
 
   function sendAltDownWhileWriting(listView: var, composer: var): void {
@@ -207,7 +183,7 @@ ShellRoot {
     const want = root.rowAt(listView, (currentIndex + 1) % listView.model.count);
 
     t.keyClick(Qt.Key_Down, Qt.AltModifier);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForWritingModeOpen(listView, composer, want);
   }
 
@@ -221,17 +197,17 @@ ShellRoot {
       return root.leaveToListMode();
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Alt+Down while writing opened \"" + (title ? title.text : "?") + "\", want \"" + want.title + "\"");
-    root.retry(() => root.waitForWritingModeOpen(listView, composer, want));
+    stepper.retry(() => root.waitForWritingModeOpen(listView, composer, want));
   }
 
   // leaveToListMode steps Escape twice: once out of the composer, once to
   // close the open conversation, back to the plain list.
   function leaveToListMode(): void {
     t.keyClick(Qt.Key_Escape);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForComposeLeft();
   }
 
@@ -239,13 +215,13 @@ ShellRoot {
     const composer = Check.find(panel, "composerInput");
     if (composer && !composer.activeFocus) {
       t.keyClick(Qt.Key_Escape);
-      root.pollAttempts = 0;
+      stepper.attempts = 0;
       return root.waitForConversationClosed();
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("Escape never left the composer");
-    root.retry(root.waitForComposeLeft);
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("Escape never left the composer");
+    stepper.retry(root.waitForComposeLeft);
   }
 
   function waitForConversationClosed(): void {
@@ -254,9 +230,9 @@ ShellRoot {
 
     if (title && title.text === "") return root.checkUnreadNextOpensFromListMode(listView);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("Escape never closed the open conversation");
-    root.retry(root.waitForConversationClosed);
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("Escape never closed the open conversation");
+    stepper.retry(root.waitForConversationClosed);
   }
 
   // checkUnreadNextOpensFromListMode presses Alt+Shift+Down from the
@@ -269,7 +245,7 @@ ShellRoot {
 
     root._wantUnread = want;
     t.keyClick(Qt.Key_Down, Qt.AltModifier | Qt.ShiftModifier);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForUnreadNextOpen();
   }
 
@@ -292,11 +268,11 @@ ShellRoot {
       return root.leaveToUnreadView();
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Alt+Shift+Down from the list opened \"" + (title ? title.text : "?")
         + "\", want \"" + root._wantUnread.title + "\" (it should open the next unread chat, not just move the cursor)");
-    root.retry(root.waitForUnreadNextOpen);
+    stepper.retry(root.waitForUnreadNextOpen);
   }
 
   // leaveToUnreadView closes the conversation unread.next just opened,
@@ -304,20 +280,20 @@ ShellRoot {
   // chat.next works there too, over that view's own filtered list.
   function leaveToUnreadView(): void {
     t.keyClick(Qt.Key_Escape);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForClosedThenUnreadView();
   }
 
   function waitForClosedThenUnreadView(): void {
     const title = Check.find(panel, "conversationTitle");
     if (title && title.text !== "") {
-      root.pollAttempts++;
-      if (root.pollAttempts >= 100) return Check.fail("Escape never closed the conversation unread.next opened");
-      return root.retry(root.waitForClosedThenUnreadView);
+      stepper.attempts++;
+      if (stepper.attempts >= 100) return Check.fail("Escape never closed the conversation unread.next opened");
+      return stepper.retry(root.waitForClosedThenUnreadView);
     }
 
     t.keyClick(Qt.Key_A, Qt.ControlModifier | Qt.ShiftModifier);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForUnreadView();
   }
 
@@ -325,9 +301,9 @@ ShellRoot {
     const listColumn = Check.find(panel, "listColumn");
     if (listColumn && listColumn.unreadView) return root.checkChatNextInUnreadView();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("Ctrl+Shift+A never showed the all-unreads view");
-    root.retry(root.waitForUnreadView);
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("Ctrl+Shift+A never showed the all-unreads view");
+    stepper.retry(root.waitForUnreadView);
   }
 
   // checkChatNextInUnreadView puts the cursor on the unread view's own
@@ -341,7 +317,7 @@ ShellRoot {
     root._wantAfterDown = root.rowAt(listView, 1);
 
     t.keyClick(Qt.Key_Down, Qt.AltModifier);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForUnreadViewChatNext(listView);
   }
 
@@ -356,10 +332,10 @@ ShellRoot {
       return Qt.exit(0);
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Alt+Down inside the unread view opened \"" + (title ? title.text : "?")
         + "\", want \"" + root._wantAfterDown.title + "\"");
-    root.retry(() => root.waitForUnreadViewChatNext(listView));
+    stepper.retry(() => root.waitForUnreadViewChatNext(listView));
   }
 }

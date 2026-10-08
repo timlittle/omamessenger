@@ -18,27 +18,14 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int pollAttempts: 0
-  property var _next: null
-
-  // retry schedules fn to run again shortly, for a condition that depends
-  // on a reply from the helper or on a key event finishing its round trip.
-  function retry(fn: var): void {
-    root._next = fn;
-    retryTimer.start();
-  }
-
   Service {
     id: service
   }
 
-  QtObject {
+  FakeShell {
     id: fakeShell
-
-    function hide(id) { panel.close(); }
-    function serviceFor(id) { return service; }
-    function toggle(id, payloadJson) { panel.open(payloadJson); }
-    function summon(id, payloadJson) { panel.open(payloadJson); }
+    panel: panel
+    service: service
   }
 
   Panel {
@@ -52,26 +39,12 @@ ShellRoot {
     when: false
   }
 
-  Timer {
-    id: retryTimer
-    interval: 100
-    onTriggered: root._next()
-  }
-
-  // A deliberately unreachable deadline: it only fires, and fails the
-  // test with a reason, if something above never happens.
-  Timer {
-    running: true
-    interval: 55000
-    onTriggered: Check.fail("timed out before the checks finished")
-  }
-
-  // Checks run once Quickshell has finished loading; Qt.exit() is
-  // ignored before then.
-  Timer {
-    running: true
-    interval: 50
-    onTriggered: root.start()
+  Stepper {
+    id: stepper
+    name: "VoicePlayback"
+    deadlineMs: 55000
+    onTimeout: () => Check.fail("timed out before the checks finished")
+    startFn: root.start
   }
 
   // start opens the window and waits for the fake accounts to finish
@@ -86,10 +59,10 @@ ShellRoot {
     const listView = Check.find(panel, "conversationListView");
     if (listView && listView.count === 11) return root.openDentist();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 200)
+    stepper.attempts++;
+    if (stepper.attempts >= 200)
       return Check.fail("got " + (listView ? listView.count : "no list view") + " conversations after retrying, want 11");
-    root.retry(root.waitForConversations);
+    stepper.retry(root.waitForConversations);
   }
 
   // openDentist jumps to the dentist's chat with Ctrl+K, the conversation
@@ -99,7 +72,7 @@ ShellRoot {
     for (const ch of "dentist") t.keyClick(ch);
     t.keyClick(Qt.Key_Return);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForDentistOpen();
   }
 
@@ -112,11 +85,11 @@ ShellRoot {
     if (title && title.text.indexOf("Dentist") !== -1 && messages && messages.model && messages.model.count === 2)
       return root.leaveComposer();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 200)
+    stepper.attempts++;
+    if (stepper.attempts >= 200)
       return Check.fail("the dentist's chat never opened with its two messages: title=\""
         + (title ? title.text : "?") + "\"");
-    root.retry(root.waitForDentistOpen);
+    stepper.retry(root.waitForDentistOpen);
   }
 
   // leaveComposer presses Escape to blur the composer, so the Enter that
@@ -125,7 +98,7 @@ ShellRoot {
   function leaveComposer(): void {
     t.keyClick(Qt.Key_Escape);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForComposerLeft();
   }
 
@@ -133,9 +106,9 @@ ShellRoot {
     const composer = Check.find(panel, "composerInput");
     if (composer && !composer.activeFocus) return root.openHighlightedVoiceNote();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 200) return Check.fail("Escape never left the composer");
-    root.retry(root.waitForComposerLeft);
+    stepper.attempts++;
+    if (stepper.attempts >= 200) return Check.fail("Escape never left the composer");
+    stepper.retry(root.waitForComposerLeft);
   }
 
   // openHighlightedVoiceNote waits for the newest message's voice note
@@ -148,15 +121,15 @@ ShellRoot {
     if (player && player.visible) {
       t.keyClick(Qt.Key_Return);
 
-      root.pollAttempts = 0;
+      stepper.attempts = 0;
       root.waitForPlaying();
       return;
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 200)
+    stepper.attempts++;
+    if (stepper.attempts >= 200)
       return Check.fail("the newest message in the dentist's chat never showed a voice note player");
-    root.retry(root.openHighlightedVoiceNote);
+    stepper.retry(root.openHighlightedVoiceNote);
   }
 
   // waitForPlaying holds until the helper has downloaded the voice note
@@ -173,12 +146,12 @@ ShellRoot {
 
     if (player && player.path && button && button.text === "⏸") return root.finish(player);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 200) {
+    stepper.attempts++;
+    if (stepper.attempts >= 200) {
       return Check.fail("the voice note never started playing: path=\""
         + (player ? player.path : "?") + "\" button=\"" + (button ? button.text : "?") + "\"");
     }
-    root.retry(root.waitForPlaying);
+    stepper.retry(root.waitForPlaying);
   }
 
   // finish checks the downloaded file is real Ogg audio, the fake

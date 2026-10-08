@@ -29,19 +29,10 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int pollAttempts: 0
-  property var _next: null
   // capturedLinks records the urls the last linksRequested signal
   // carried, so o's single-link path is checked without ever calling
   // the real Qt.openUrlExternally.
   property var capturedLinks: null
-
-  // retry schedules fn to run again shortly, for the one step here that
-  // depends on real Qt focus rather than the scripted service.
-  function retry(fn: var): void {
-    root._next = fn;
-    retryTimer.start();
-  }
 
   QtObject {
     id: service
@@ -257,24 +248,13 @@ ShellRoot {
     when: false
   }
 
-  Timer {
-    id: retryTimer
-    interval: 20
-    onTriggered: root._next()
-  }
-
-  // A deliberately unreachable deadline: it only fires, and fails the
-  // test with a reason, if something above never happens.
-  Timer {
-    running: true
-    interval: 20000
-    onTriggered: Check.fail("timed out before the checks finished")
-  }
-
-  Timer {
-    running: true
-    interval: 50
-    onTriggered: root.start()
+  Stepper {
+    id: stepper
+    name: "MessageHighlight"
+    intervalMs: 20
+    deadlineMs: 20000
+    onTimeout: () => Check.fail("timed out before the checks finished")
+    startFn: root.start
   }
 
   // start opens the one conversation and begins the checks.
@@ -434,7 +414,7 @@ ShellRoot {
     if (!root.isVisuallyHighlighted("m2")) return Check.fail("m2 does not show its highlight cue before writing starts");
 
     t.keyClick(Qt.Key_I);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForComposeFocus();
   }
 
@@ -444,9 +424,9 @@ ShellRoot {
   // still conversationController.highlightedId underneath.
   function waitForComposeFocus(): void {
     if (!composerController.composeFocused) {
-      root.pollAttempts++;
-      if (root.pollAttempts >= 100) return Check.fail("i never focused the composer");
-      return root.retry(root.waitForComposeFocus);
+      stepper.attempts++;
+      if (stepper.attempts >= 100) return Check.fail("i never focused the composer");
+      return stepper.retry(root.waitForComposeFocus);
     }
 
     if (root.isVisuallyHighlighted("m2")) return Check.fail("m2 still shows its highlight cue while the composer is writing");
@@ -457,16 +437,16 @@ ShellRoot {
   // composer before checking the highlight.
   function leaveComposeWithEscape(): void {
     t.keyClick(Qt.Key_Escape);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForComposeLeft();
   }
 
   function waitForComposeLeft(): void {
     if (!composerController.composeFocused) return root.finish();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("Escape never left the composer");
-    root.retry(root.waitForComposeLeft);
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("Escape never left the composer");
+    stepper.retry(root.waitForComposeLeft);
   }
 
   // finish checks Escape reset the highlight to the newest message, that

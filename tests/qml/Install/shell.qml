@@ -19,8 +19,6 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int step: 0
-  property int attempts: 0
   // installingCount counts every time status becomes "installing",
   // caught through the signal rather than polled: the local release
   // check can finish well inside one 100ms poll, so polling for that
@@ -36,12 +34,6 @@ ShellRoot {
     root.retryWithKeyboard, root.waitForRetrying, root.waitForInstallFailedAgain,
     root.fixRelease, root.waitForFixedRelease, root.clickRetry, root.waitForReady]
 
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL step " + root.step + ": " + reason + " (status " + helperService.status + ": " + helperService.detail + ")");
-    Qt.exit(1);
-  }
-
   // waitUnopenedAndMissing holds for a second with the window never
   // opened, then checks the launcher reported no helper installed and
   // that nothing tried to download one: no release exists yet, so an
@@ -50,7 +42,7 @@ ShellRoot {
     if (helperService.status !== "missing") return false;
     if (helperService.detail.indexOf("could not download") !== -1)
       return "an install was attempted before the window was ever opened";
-    if (root.attempts < 10) return false;
+    if (stepper.attempts < 10) return false;
     return true;
   }
 
@@ -157,25 +149,6 @@ ShellRoot {
     return helperService.status === "ready" && list && list.count === 11;
   }
 
-  // runStep runs the current step and advances, retries or fails.
-  function runStep(): void {
-    const result = root.steps[root.step]();
-    if (typeof result === "string") return root.fail(result);
-
-    if (result === true) {
-      root.step++;
-      root.attempts = 0;
-      if (root.step === root.steps.length) {
-        console.log("PASS Install");
-        return Qt.exit(0);
-      }
-    } else if (++root.attempts > 200) {
-      return root.fail("condition not met within 20 s");
-    }
-
-    stepTimer.start();
-  }
-
   Service {
     id: helperService
   }
@@ -237,19 +210,14 @@ ShellRoot {
     onExited: code => goodReleaseBuilder.exitCode = code
   }
 
-  Timer {
-    id: stepTimer
-
-    interval: 100
-    onTriggered: root.runStep()
-  }
-
-  // Start once Quickshell has finished loading; Qt.exit() is ignored
-  // before then. The window is deliberately left closed here: the first
-  // step must see nothing download without it.
-  Timer {
-    running: true
-    interval: 50
-    onTriggered: root.runStep()
+  // The window is deliberately left closed here: the first step must
+  // see nothing download without it.
+  Stepper {
+    id: stepper
+    name: "Install"
+    steps: root.steps
+    maxAttempts: 200
+    describeFailure: (reason) => reason + " (status " + helperService.status + ": " + helperService.detail + ")"
+    startFn: () => stepper.runStep()
   }
 }

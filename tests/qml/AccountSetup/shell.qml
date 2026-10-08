@@ -27,21 +27,9 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int pollAttempts: 0
-  property var _next: null
-
   // last returns the most recent request the service received.
   function last(): var {
     return service.requests[service.requests.length - 1] || {};
-  }
-
-  // retry schedules fn to run again shortly: a stage or focus change that
-  // AccountSetup or RemoveAccount defers with Qt.callLater has not
-  // happened yet by the time the call that caused it returns, only once
-  // this test's own call stack has unwound back to the event loop.
-  function retry(fn: var): void {
-    root._next = fn;
-    retryTimer.start();
   }
 
   // waitForFocus holds until condition is true, then runs next; after
@@ -49,9 +37,9 @@ ShellRoot {
   function waitForFocus(condition: var, reason: string, next: var): void {
     if (condition()) return next();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail(reason + " never got keyboard focus");
-    root.retry(() => root.waitForFocus(condition, reason, next));
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail(reason + " never got keyboard focus");
+    stepper.retry(() => root.waitForFocus(condition, reason, next));
   }
 
   QtObject {
@@ -142,24 +130,14 @@ ShellRoot {
     when: false
   }
 
-  Timer {
-    id: retryTimer
-    interval: 20
-    onTriggered: root._next()
-  }
-
-  // A deliberately unreachable deadline: it only fires, and fails the
-  // test with a reason, if something above never happens.
-  Timer {
-    running: true
-    interval: 20000
-    onTriggered: Check.fail("timed out before the checks finished")
-  }
-
-  Timer {
-    running: true
-    interval: 0
-    onTriggered: root.run()
+  Stepper {
+    id: stepper
+    name: "AccountSetup"
+    intervalMs: 20
+    deadlineMs: 20000
+    startDelayMs: 0
+    onTimeout: () => Check.fail("timed out before the checks finished")
+    startFn: root.run
   }
 
   // run drives each scripted scenario in turn, then hands off to the
@@ -175,7 +153,7 @@ ShellRoot {
     if (!root.checkRemovesAnAccount()) return;
     if (!root.checkChoosesAServiceWhenThereAreSeveral()) return;
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.beginKeyboardChecks();
   }
 
@@ -413,7 +391,7 @@ ShellRoot {
 
     controller.cancel();
     service.services = [];
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.beginAddWhatsAppByLetter();
   }
 
@@ -462,7 +440,7 @@ ShellRoot {
 
     controller.cancel();
     service.services = [];
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.beginRemoveSecondOfTwo();
   }
 
@@ -508,7 +486,7 @@ ShellRoot {
     service.event("account.removed", { accountId: "tg-1" });
     if (controller.removing) return Check.fail("removal still showing after the account was removed");
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.beginCancelRemovalWithN();
   }
 

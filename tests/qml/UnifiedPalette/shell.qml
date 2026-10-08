@@ -16,9 +16,6 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int step: 0
-  property int attempts: 0
-
   QtObject {
     id: service
 
@@ -96,12 +93,6 @@ ShellRoot {
     root.toggleReceipts
   ]
 
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL step " + root.step + ": " + reason);
-    Qt.exit(1);
-  }
-
   // waitForList holds until the conversation has loaded.
   function waitForList(): var {
     return listController.all.length === 1;
@@ -112,9 +103,9 @@ ShellRoot {
   function openPaletteAndType(): var {
     windowController.run("palette.conversations");
     if (!windowController.paletteOpen)
-      return root.fail("Ctrl+K did not open the palette");
+      return stepper.fail("Ctrl+K did not open the palette");
     if (windowController.paletteItems.length !== 1 || windowController.paletteItems[0].label !== "Climbing Crew")
-      return root.fail("the palette did not list the one known conversation before typing");
+      return stepper.fail("the palette did not list the one known conversation before typing");
 
     windowController.setPaletteQuery("ticket");
     return true;
@@ -130,10 +121,10 @@ ShellRoot {
 
     const row = windowController.paletteMessageResults[0];
     if (row.sender !== "Priya" || row.conversationTitle !== "Climbing Crew" || row.snippet !== "got the ticket")
-      return root.fail("message row = " + JSON.stringify(row));
+      return stepper.fail("message row = " + JSON.stringify(row));
 
     if (windowController.paletteItems.length !== 1 || windowController.paletteItems[0].section !== "message")
-      return root.fail("paletteItems did not carry the message row: " + JSON.stringify(windowController.paletteItems));
+      return stepper.fail("paletteItems did not carry the message row: " + JSON.stringify(windowController.paletteItems));
 
     return true;
   }
@@ -143,8 +134,8 @@ ShellRoot {
   // index 0.
   function acceptMessage(): var {
     windowController.run("palette.accept");
-    if (windowController.paletteOpen) return root.fail("accepting a message row left the palette open");
-    if (conversationController.activeId !== "climbing") return root.fail("accepting a message row did not open its conversation");
+    if (windowController.paletteOpen) return stepper.fail("accepting a message row left the palette open");
+    if (conversationController.activeId !== "climbing") return stepper.fail("accepting a message row did not open its conversation");
     return true;
   }
 
@@ -160,34 +151,22 @@ ShellRoot {
   // toggleReceipts runs the palette's incognito command straight on the
   // fake service, the same way WindowController.run always does.
   function toggleReceipts(): var {
-    if (!service.readReceipts) return root.fail("service.readReceipts started false, cannot check the toggle");
+    if (!service.readReceipts) return stepper.fail("service.readReceipts started false, cannot check the toggle");
 
     windowController.run("settings.toggleReadReceipts");
-    if (service.readReceipts) return root.fail("settings.toggleReadReceipts did not turn read receipts off");
+    if (service.readReceipts) return stepper.fail("settings.toggleReadReceipts did not turn read receipts off");
 
     windowController.run("settings.toggleReadReceipts");
-    if (!service.readReceipts) return root.fail("settings.toggleReadReceipts did not turn read receipts back on");
+    if (!service.readReceipts) return stepper.fail("settings.toggleReadReceipts did not turn read receipts back on");
 
-    console.log("PASS UnifiedPalette");
-    Qt.exit(0);
     return true;
   }
 
-  Timer {
-    running: true
-    interval: 50
-    repeat: true
-    onTriggered: {
-      const result = root.steps[root.step]();
-      if (result === false) {
-        root.attempts++;
-        if (root.attempts > 100) root.fail("condition not met within 5 s");
-        return;
-      }
-      if (result !== true) return; // fail() already called Qt.exit(1)
-
-      root.attempts = 0;
-      root.step++;
-    }
+  Stepper {
+    id: stepper
+    name: "UnifiedPalette"
+    steps: root.steps
+    intervalMs: 50
+    startFn: () => stepper.runStep()
   }
 }

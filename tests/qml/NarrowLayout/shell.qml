@@ -12,15 +12,7 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int step: 0
-  property int attempts: 0
   property var steps: [root.waitForList, root.openFirst, root.checkConversationOnly, root.closeIt, root.checkListOnly]
-
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL step " + root.step + ": " + reason);
-    Qt.exit(1);
-  }
 
   // waitForList holds until the demo conversations fill a full-width list
   // and no conversation column is shown.
@@ -58,25 +50,6 @@ ShellRoot {
   function closeIt(): var {
     conversationController.close();
     return true;
-  }
-
-  // runStep runs the current step and advances, retries or fails.
-  function runStep(): void {
-    const result = root.steps[root.step]();
-    if (typeof result === "string" && root.step > 0) return root.fail(result);
-
-    if (result === true) {
-      root.step++;
-      root.attempts = 0;
-      if (root.step === root.steps.length) {
-        console.log("PASS NarrowLayout");
-        return Qt.exit(0);
-      }
-    } else if (++root.attempts > 100) {
-      return root.fail(typeof result === "string" ? result : "condition not met within 10 s");
-    }
-
-    stepTimer.start();
   }
 
   Service {
@@ -156,18 +129,14 @@ ShellRoot {
     }
   }
 
-  Timer {
-    id: stepTimer
-
-    interval: 100
-    onTriggered: root.runStep()
-  }
-
-  // Start once Quickshell has finished loading; Qt.exit() is ignored
-  // before then.
-  Timer {
-    running: true
-    interval: 50
-    onTriggered: root.runStep()
+  // At step 0, waitForList calls checkListOnly() directly once the list
+  // fills; a string result there means the "narrow" binding has not
+  // settled yet, so it is worth retrying rather than failing outright.
+  Stepper {
+    id: stepper
+    name: "NarrowLayout"
+    steps: root.steps
+    isFailure: (result) => typeof result === "string" && stepper.step > 0
+    startFn: () => stepper.runStep()
   }
 }

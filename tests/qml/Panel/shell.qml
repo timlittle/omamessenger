@@ -18,17 +18,8 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int pollAttempts: 0
   property string expectedTitle: ""
-  property var _next: null
   property real _newlineHeightBefore: 0
-
-  // retry schedules fn to run again shortly, for a condition that depends
-  // on a reply from the helper or on a key event finishing its round trip.
-  function retry(fn: var): void {
-    root._next = fn;
-    retryTimer.start();
-  }
 
   Service {
     id: service
@@ -56,26 +47,12 @@ ShellRoot {
     when: false
   }
 
-  Timer {
-    id: retryTimer
-    interval: 100
-    onTriggered: root._next()
-  }
-
-  // A deliberately unreachable deadline: it only fires, and fails the
-  // test with a reason, if something above never happens.
-  Timer {
-    running: true
-    interval: 55000
-    onTriggered: Check.fail("timed out before the checks finished")
-  }
-
-  // Checks run once Quickshell has finished loading; Qt.exit() is
-  // ignored before then.
-  Timer {
-    running: true
-    interval: 50
-    onTriggered: root.start()
+  Stepper {
+    id: stepper
+    name: "Panel"
+    deadlineMs: 55000
+    onTimeout: () => Check.fail("timed out before the checks finished")
+    startFn: root.start
   }
 
   // start opens the window and begins waiting for the demo data to load.
@@ -91,10 +68,10 @@ ShellRoot {
     const listView = Check.find(panel, "conversationListView");
     if (listView && listView.count === 11) return root.checkThirdConversation(listView);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("got " + (listView ? listView.count : "no list view") + " conversations after retrying, want 11");
-    root.retry(root.waitForConversations);
+    stepper.retry(root.waitForConversations);
   }
 
   // checkThirdConversation reads the row at index 2 (0-based) straight
@@ -108,7 +85,7 @@ ShellRoot {
     t.keyClick(Qt.Key_J);
     t.keyClick(Qt.Key_Return);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForConversationOpen();
   }
 
@@ -121,12 +98,12 @@ ShellRoot {
     if (title && title.text === root.expectedTitle && composer && composer.activeFocus)
       return root.checkWritingMode(composer);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("opening the third conversation never finished: title=\""
         + (title ? title.text : "?") + "\" want \"" + root.expectedTitle
         + "\" composerFocus=" + (composer ? composer.activeFocus : "?"));
-    root.retry(root.waitForConversationOpen);
+    stepper.retry(root.waitForConversationOpen);
   }
 
   // checkWritingMode checks the composer names its "writing" state in
@@ -169,7 +146,7 @@ ShellRoot {
     t.keyClick(Qt.Key_Return, Qt.ShiftModifier);
     for (const ch of "two") t.keyClick(ch);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForShiftNewline(composer);
   }
 
@@ -178,10 +155,10 @@ ShellRoot {
   function waitForShiftNewline(composer: var): void {
     if (composer.text === "one\ntwo") return root.checkShiftNewlineGrew(composer);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Shift+Enter gave composer text " + JSON.stringify(composer.text) + ", want \"one\\ntwo\"");
-    root.retry(() => root.waitForShiftNewline(composer));
+    stepper.retry(() => root.waitForShiftNewline(composer));
   }
 
   // checkShiftNewlineGrew checks Shift+Enter sent nothing and grew the
@@ -204,7 +181,7 @@ ShellRoot {
     for (const ch of "three") t.keyClick(ch);
     t.keyClick(Qt.Key_J, Qt.ControlModifier);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForCtrlJOpensUnread(composer);
   }
 
@@ -215,12 +192,12 @@ ShellRoot {
 
     if (title && title.text !== root.expectedTitle) return root.checkCtrlJLandedWriting(composer, title);
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) {
+    stepper.attempts++;
+    if (stepper.attempts >= 100) {
       return Check.fail("Ctrl+J never opened the next unread conversation; title is still \""
         + (title ? title.text : "?") + "\"");
     }
-    root.retry(() => root.waitForCtrlJOpensUnread(composer));
+    stepper.retry(() => root.waitForCtrlJOpensUnread(composer));
   }
 
   // checkCtrlJLandedWriting checks Ctrl+J kept writing mode in the
@@ -236,7 +213,7 @@ ShellRoot {
 
     root.expectedTitle = title.text;
     composer.text = "";
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.sendMessage(composer);
   }
 
@@ -247,7 +224,7 @@ ShellRoot {
     for (const ch of "hello") t.keyClick(ch);
     t.keyClick(Qt.Key_Return);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForDelivered();
   }
 
@@ -264,9 +241,9 @@ ShellRoot {
       }
     }
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("sent message never reached delivered");
-    root.retry(root.waitForDelivered);
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("sent message never reached delivered");
+    stepper.retry(root.waitForDelivered);
   }
 
   // checkEscapeChain steps Escape back through leaving the composer and
@@ -277,7 +254,7 @@ ShellRoot {
   function checkEscapeChain(): void {
     t.keyClick(Qt.Key_Escape);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForComposeLeft();
   }
 
@@ -288,9 +265,9 @@ ShellRoot {
     const composer = Check.find(panel, "composerInput");
     if (composer && !composer.activeFocus) return root.checkNotWritingMode();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("the first Escape never left the composer");
-    root.retry(root.waitForComposeLeft);
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("the first Escape never left the composer");
+    stepper.retry(root.waitForComposeLeft);
   }
 
   // checkNotWritingMode checks the quiet, not-writing state the Escape
@@ -313,7 +290,7 @@ ShellRoot {
     t.keyClick(Qt.Key_Escape);
     t.keyClick(Qt.Key_Escape);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForQuestion(() => {
       if (fakeShell.hideCalls.length !== 0) return Check.fail("the window hid before asking");
       // Enter chooses the default, Keep in background.
@@ -327,9 +304,9 @@ ShellRoot {
     const question = root.find("closeConfirm");
     if (question && question.visible) return next();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("the close question never showed");
-    root.retry(() => root.waitForQuestion(next));
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("the close question never showed");
+    stepper.retry(() => root.waitForQuestion(next));
   }
 
   // find looks an object up by name anywhere in the panel.
@@ -349,10 +326,10 @@ ShellRoot {
     if (fakeShell.hideCalls.length > 1)
       return Check.fail("escape chain called shell.hide " + fakeShell.hideCalls.length + " times, want 1");
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("escape chain never hid the window, called shell.hide " + fakeShell.hideCalls.length + " times");
-    root.retry(root.waitForHide);
+    stepper.retry(root.waitForHide);
   }
 
   // checkRailFilter reopens the window and narrows the rail to Telegram.
@@ -360,7 +337,7 @@ ShellRoot {
     panel.open("{}");
     t.keyClick(Qt.Key_2, Qt.ControlModifier);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForRailFilter();
   }
 
@@ -370,10 +347,10 @@ ShellRoot {
     const listView = Check.find(panel, "conversationListView");
     if (listView && listView.count === 5) return root.checkHelp();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100)
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
       return Check.fail("Ctrl+2 gave " + (listView ? listView.count : "?") + " rows, want 5");
-    root.retry(root.waitForRailFilter);
+    stepper.retry(root.waitForRailFilter);
   }
 
   // checkHelp opens the command palette with Ctrl+/, finds "New message"
@@ -429,7 +406,7 @@ ShellRoot {
     t.keyClick(Qt.Key_Down);
     t.keyClick(Qt.Key_Return);
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForAccountRemoved();
   }
 
@@ -441,9 +418,9 @@ ShellRoot {
   function waitForAccountRemoved(): void {
     const question = Check.find(panel, "removeAccount");
     if (question && question.visible) {
-      root.pollAttempts++;
-      if (root.pollAttempts >= 100) return Check.fail("the account was never removed");
-      return root.retry(root.waitForAccountRemoved);
+      stepper.attempts++;
+      if (stepper.attempts >= 100) return Check.fail("the account was never removed");
+      return stepper.retry(root.waitForAccountRemoved);
     }
 
     t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
@@ -481,7 +458,7 @@ ShellRoot {
   // helper stops; reopening the window starts it again.
   function checkQuit(): void {
     t.keyClick(Qt.Key_W, Qt.ControlModifier);
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForQuestion(() => {
       // Left moves from Keep in background to Quit.
       t.keyClick(Qt.Key_Left);
@@ -489,7 +466,7 @@ ShellRoot {
       if (service.status !== "stopped") return Check.fail("Left then Enter on the close question left the helper " + service.status);
 
       panel.open("{}");
-      root.pollAttempts = 0;
+      stepper.attempts = 0;
       root.waitForReadyAgain();
     });
   }
@@ -498,9 +475,9 @@ ShellRoot {
   function waitForReadyAgain(): void {
     if (service.status === "ready") return root.checkCompositorClose();
 
-    root.pollAttempts++;
-    if (root.pollAttempts >= 100) return Check.fail("reopening did not restart the helper: " + service.status);
-    root.retry(root.waitForReadyAgain);
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("reopening did not restart the helper: " + service.status);
+    stepper.retry(root.waitForReadyAgain);
   }
 
   // checkCompositorClose closes the window the way the compositor does,
@@ -509,7 +486,7 @@ ShellRoot {
     const hidesBefore = fakeShell.hideCalls.length;
     root.find("panelWindow").visible = false;
 
-    root.pollAttempts = 0;
+    stepper.attempts = 0;
     root.waitForQuestion(() => {
       if (!root.find("panelWindow").visible) return Check.fail("the window did not come back to ask");
       if (fakeShell.hideCalls.length !== hidesBefore) return Check.fail("the window reported hidden before asking");

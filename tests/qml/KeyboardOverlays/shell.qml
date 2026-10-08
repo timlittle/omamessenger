@@ -19,8 +19,6 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int step: 0
-  property int attempts: 0
   property string expected: ""
   // _messagesBeforeDelete is the loaded message count checkDeleteConfirm
   // records just before deleting one, for waitForMessageDeleted to
@@ -289,44 +287,16 @@ ShellRoot {
     return root.checkShortcutStillWorks("cancelling the close question");
   }
 
-  // runStep runs the current step and advances, retries or fails.
-  function runStep(): void {
-    const result = root.steps[root.step]();
-    if (typeof result === "string") return root.fail(result);
-
-    if (result === true) {
-      root.step++;
-      root.attempts = 0;
-      if (root.step === root.steps.length) {
-        console.log("PASS KeyboardOverlays");
-        return Qt.exit(0);
-      }
-    } else if (++root.attempts > 100) {
-      return root.fail("condition not met within 10 s");
-    }
-
-    stepTimer.start();
-  }
-
-  // fail stops the test with a reason on stderr.
-  function fail(reason: string): void {
-    console.error("FAIL step " + root.step + ": " + reason);
-    Qt.exit(1);
-  }
-
   // Named so Panel's own service property, inside the Loader, does not
   // shadow it and bind to itself.
   Service {
     id: helperService
   }
 
-  QtObject {
+  FakeShell {
     id: fakeShell
-
-    function hide(id) { root.panel().close(); }
-    function serviceFor(id) { return helperService; }
-    function toggle(id, payloadJson) { root.panel().open(payloadJson); }
-    function summon(id, payloadJson) { root.panel().open(payloadJson); }
+    panel: root.panel()
+    service: helperService
   }
 
   Loader {
@@ -344,28 +314,11 @@ ShellRoot {
     when: false
   }
 
-  Timer {
-    id: stepTimer
-
-    interval: 100
-    onTriggered: root.runStep()
-  }
-
-  // A backstop: it only fires if a step hangs without failing.
-  Timer {
-    running: true
-    interval: 55000
-    onTriggered: root.fail("timed out")
-  }
-
-  // Start once Quickshell has finished loading; Qt.exit() is ignored
-  // before then.
-  Timer {
-    running: true
-    interval: 50
-    onTriggered: {
-      root.panel().open("{}");
-      root.runStep();
-    }
+  Stepper {
+    id: stepper
+    name: "KeyboardOverlays"
+    steps: root.steps
+    deadlineMs: 55000
+    startFn: () => { root.panel().open("{}"); stepper.runStep(); }
   }
 }
