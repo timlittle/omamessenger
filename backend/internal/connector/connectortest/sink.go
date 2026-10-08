@@ -27,6 +27,7 @@ type Sink struct {
 	unread        map[string]int
 	organized     map[string]organizedFlags
 	deleted       map[string]map[string]bool
+	polls         map[string]domain.Poll
 }
 
 // organizedFlags is a conversation's last reported pinned and archived
@@ -42,7 +43,10 @@ type OutgoingUpdate struct {
 	Status   string
 }
 
-var _ connector.Sink = (*Sink)(nil)
+var (
+	_ connector.Sink        = (*Sink)(nil)
+	_ connector.PollUpdater = (*Sink)(nil)
+)
 
 // record adds one line, without trailing spaces from empty fields.
 func (s *Sink) record(format string, args ...any) {
@@ -176,6 +180,31 @@ func (s *Sink) Edited(_ context.Context, _, remote string, m domain.Message) {
 // Reacted records a message's reaction chips changing on their own.
 func (s *Sink) Reacted(_ context.Context, _, remote, messageRemoteID string, reactions []domain.Reaction) {
 	s.record("reacted %s %s %d", remote, messageRemoteID, len(reactions))
+}
+
+// PollUpdated records a poll's options or tallies changing, and keeps
+// the poll itself for PollFor.
+func (s *Sink) PollUpdated(_ context.Context, _, remote, messageRemoteID string, poll domain.Poll) {
+	s.record("poll %s %s %d", remote, messageRemoteID, poll.TotalVoters)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.polls == nil {
+		s.polls = map[string]domain.Poll{}
+	}
+	s.polls[remote+"/"+messageRemoteID] = poll
+}
+
+// PollFor returns the poll last reported for a message, or false when
+// none was.
+func (s *Sink) PollFor(remote, messageRemoteID string) (domain.Poll, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	poll, ok := s.polls[remote+"/"+messageRemoteID]
+
+	return poll, ok
 }
 
 // Deleted records messages removed from the service, and marks each of

@@ -30,6 +30,11 @@ Item {
   // MessageBubbleContent for its shape. Recycled delegates only ever
   // read this, never own it, so scrolling never interrupts playback.
   property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
+  // pollVote is this message's vote-mode state, read from
+  // PollsController, or the default while it is not the message voting:
+  // {voting, highlightedIndex, selectedIds}. Recycled delegates only
+  // ever read this, never own it, the same way voiceNotes works.
+  property var pollVote: ({ voting: false, highlightedIndex: -1, selectedIds: [] })
   // highlighted is true when this is the message the keyboard currently
   // points at: shown with a thin accent outline and a short accent bar
   // on the bubble itself, and a row of key hints for what pressing a
@@ -88,6 +93,9 @@ Item {
   // deleteRequested asks the caller to open the delete question for
   // this message, from the hover toolbar's delete button.
   signal deleteRequested(string id)
+  // voted asks the caller to cast optionIds as the user's vote in this
+  // message's poll.
+  signal voted(string id, var optionIds)
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
@@ -226,9 +234,11 @@ Item {
           mentions: root.mentions
           maxTextWidth: bubble.maxTextWidth
           voiceNotes: root.voiceNotes
+          pollVote: root.pollVote
           onMediaWanted: root.mediaWanted(root.message.id)
           onMediaOpen: root.mediaOpen(root.message.id)
           onQuoteOpened: remoteId => root.quoteOpened(remoteId)
+          onVoted: optionIds => root.voted(root.message.id, optionIds)
         }
 
         MessageMeta {

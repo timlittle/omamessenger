@@ -41,6 +41,10 @@ var ErrNoReactions = errors.New("connector does not support reactions")
 // messages from its service.
 var ErrNoDeleter = errors.New("connector does not support deleting messages")
 
+// ErrNoVoter reports a vote asked of a connector that does not support
+// polls.
+var ErrNoVoter = errors.New("connector does not support voting")
+
 // AccountUpserter records the accounts the Manager serves.
 type AccountUpserter interface {
 	UpsertAccount(ctx context.Context, a domain.Account) error
@@ -330,6 +334,22 @@ func (m *Manager) React(ctx context.Context, conv domain.Conversation, messageRe
 	}
 
 	return reactor.React(ctx, conv, messageRemoteID, emoji)
+}
+
+// Vote asks the conversation's connector to cast the user's vote in a
+// poll, failing with ErrNoVoter when it does not support polls.
+func (m *Manager) Vote(ctx context.Context, conv domain.Conversation, messageRemoteID string, optionIDs []string) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	voter, ok := c.(Voter)
+	if !ok {
+		return fmt.Errorf("connector: %w: %q", ErrNoVoter, conv.AccountID)
+	}
+
+	return voter.Vote(ctx, conv, messageRemoteID, optionIDs)
 }
 
 // DeleteMessages asks the conversation's connector to delete messages

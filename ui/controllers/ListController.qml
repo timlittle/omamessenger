@@ -83,10 +83,6 @@ Item {
   // _searchResults holds the server's matches for the active query.
   property var _searchResults: []
 
-  // focusRequested asks the caller to move keyboard focus into the search
-  // field, after search.focus set searchFocused.
-  signal focusRequested()
-
   // conversationFolded fires when id has just dropped out of the standard
   // list (hidden or archived while visible), so a caller showing it open
   // can close it instead of following the list's own reselect onto a
@@ -122,7 +118,6 @@ Item {
       "chat.snoozeTomorrow": () => root.setReminderOnCurrent(Snooze.tomorrow(Date.now())),
       "chat.snoozeNextWeek": () => root.setReminderOnCurrent(Snooze.nextWeek(Date.now())),
       "chat.unsnooze": () => root.setReminderOnCurrent(0),
-      "search.focus": () => { root.searchFocused = true; root.focusRequested(); },
       "list.showAll": () => root.setShowAll(!root.showAll),
       "list.unread": () => root.setUnreadView(!root.unreadView)
     };

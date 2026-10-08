@@ -260,6 +260,7 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	saveMediaRef(ctx, target.media, target.convRemoteID, m.RemoteID, content)
 	info := historyMessageInfo(target.chat, hm.GetMessage())
 	saveMessageKey(ctx, target.media, target.convRemoteID, m.RemoteID, messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing, timestamp: m.Created})
+	savePoll(ctx, target.media, target.convRemoteID, m.RemoteID, content)
 	sink.History(ctx, c.account.ID, target.convRemoteID, m)
 
 	return true

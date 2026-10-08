@@ -52,17 +52,21 @@ function newer(ids, currentId) {
 //   "r reply · e react · d delete · o open link"    (carries a link)
 //   "r reply · e react · d delete · p go to quote"  (is a reply)
 //   "r reply · e react · d delete · t retry"        (failed to send)
+//   "r reply · e react · d delete · v vote"         (carries an open poll)
 // Each key names the action's own effective key (see KeyBindings.js),
 // so a keys.conf override shows up here too, not just its own default.
 function hints(message, bindings) {
   const key = (action) => Keymap.keyFor(action, bindings);
   const parts = [`${key('message.reply')} reply`, `${key('message.react')} react`, `${key('message.delete')} delete`];
   const media = Timeline.media(message);
+  // A poll has nothing for the open key to open: voting is its own key,
+  // added below, only while it is still open.
   if (media && media.kind === 'voice') parts.push(`${key('message.open')} play`);
-  else if (media) parts.push(`${key('message.open')} open`);
+  else if (media && media.kind !== 'poll') parts.push(`${key('message.open')} open`);
   if (links(message).length > 0) parts.push(`${key('message.openLink')} open link`);
   if (Timeline.replyTo(message)) parts.push(`${key('message.goToQuote')} go to quote`);
   if (message.outgoing && message.status === 'failed') parts.push(`${key('message.retry')} retry`);
+  if (media && media.kind === 'poll' && media.poll && !media.poll.closed) parts.push(`${key('message.vote')} vote`);
   return parts.join(' · ');
 }
 

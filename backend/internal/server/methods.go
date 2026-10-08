@@ -50,6 +50,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"messages.send":             bind(messagesSend(c)),
 		"messages.retry":            bind(messagesRetry(c)),
 		"messages.react":            bind(messagesReact(c)),
+		"messages.vote":             bind(messagesVote(c)),
 		"messages.delete":           bind(messagesDelete(c)),
 		"media.fetch":               bind(mediaFetch(c)),
 		"media.paste":               bind(mediaPaste(c)),
@@ -388,6 +389,20 @@ func messagesReact(c *app.Commands) func(context.Context, reactParams) (any, err
 	}
 }
 
+// voteParams casts the user's vote in a message's poll: the option ids
+// as domain.PollOption.ID named them, replacing any previous vote.
+type voteParams struct {
+	MessageID string   `json:"messageId"`
+	OptionIDs []string `json:"optionIds"`
+}
+
+// messagesVote casts the user's vote in a message's poll.
+func messagesVote(c *app.Commands) func(context.Context, voteParams) (any, error) {
+	return func(ctx context.Context, p voteParams) (any, error) {
+		return c.Vote(ctx, p.MessageID, p.OptionIDs)
+	}
+}
+
 // deleteParams names the messages to delete from a conversation: for
 // everyone, through the service, when forEveryone is true, or only for
 // this account otherwise.
@@ -451,13 +466,17 @@ func uiSetFocus(c *app.Commands) func(context.Context, focusParams) (any, error)
 	}
 }
 
-// settingsParams are the plugin settings. NotificationDetail is additive:
-// an older UI that sends only NotificationPreview still works, since
-// app.Settings falls back to it when NotificationDetail is empty.
+// settingsParams are the plugin settings. NotificationDetail is
+// additive: an older UI that sends only NotificationPreview still
+// works, since app.Settings falls back to it when NotificationDetail is
+// empty. ReadReceipts is additive too; the UI always sends it alongside
+// every other setting (see ui/lib/Settings.js), so there is no older UI
+// that would otherwise leave it at its zero value, off, by omission.
 type settingsParams struct {
 	Notifications       bool   `json:"notifications"`
 	NotificationPreview bool   `json:"notificationPreview"`
 	NotificationDetail  string `json:"notificationDetail"`
+	ReadReceipts        bool   `json:"readReceipts"`
 }
 
 // settingsApply replaces the user's settings.

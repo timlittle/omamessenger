@@ -5,10 +5,11 @@
 
 // keyContext determines the highest-priority context for key bindings based on
 // the current UI state. Precedence: the close question > account setup > the
-// photo viewer > the health check report > palette > reaction picker > the
-// delete question > the archive-all question > dialog > search > compose >
-// conversation > list. The viewer and the reaction picker are never open
-// together, so their relative order only matters in theory.
+// photo viewer > the health check report > palette > reaction picker > poll
+// vote mode > the delete question > the archive-all question > dialog >
+// search > compose > conversation > list. The viewer, the reaction picker
+// and poll vote mode are never open together, so their relative order
+// only matters in theory.
 function keyContext(state) {
   if (state.confirmOpen) return 'confirm';
   // setupContext names the exact step showing (chooseService, qr, phone,
@@ -19,6 +20,7 @@ function keyContext(state) {
   if (state.doctorOpen) return 'doctor';
   if (state.paletteOpen) return 'palette';
   if (state.reactionPickerOpen) return 'reactionPicker';
+  if (state.pollVoteOpen) return 'pollVote';
   if (state.deleteConfirmOpen) return 'deleteConfirm';
   if (state.archiveConfirmOpen) return 'archiveConfirm';
   if (state.dialogOpen) return 'dialog';

@@ -55,6 +55,7 @@ ShellRoot {
 
       if (Array.isArray(result) && result.length === 11) {
         root.conversations = result;
+        root.checkReadReceiptsToggle();
         root.sendToMum();
         return;
       }
@@ -88,6 +89,22 @@ ShellRoot {
 
     if (!root.notificationClickForwarded)
       return Check.fail("Service did not forward notification.clicked through its event signal");
+  }
+
+  // checkReadReceiptsToggle flips incognito read receipts through the
+  // real Service and helper round trip: readReceipts starts true, and
+  // toggleReadReceipts (the palette's "Toggle read receipts" command)
+  // flips Service's own mirror of it both ways. The helper-side effect
+  // (MarkRead never reaching a connector) is covered by the app
+  // package's own Go tests; this only checks the UI wiring.
+  function checkReadReceiptsToggle(): void {
+    if (!service.readReceipts) return Check.fail("readReceipts started false, want true by default");
+
+    service.toggleReadReceipts();
+    if (service.readReceipts) return Check.fail("toggleReadReceipts did not turn read receipts off");
+
+    service.toggleReadReceipts();
+    if (!service.readReceipts) return Check.fail("toggleReadReceipts did not turn read receipts back on");
   }
 
   // sendToMum sends a message to a conversation that never fails a send

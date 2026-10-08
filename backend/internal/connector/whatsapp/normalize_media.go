@@ -94,6 +94,11 @@ func mediaAndRef(msg *waE2E.Message) (*domain.Media, mediaRef, bool) {
 		return documentMedia(msg.GetDocumentMessage())
 	case msg.GetStickerMessage() != nil:
 		return stickerMedia(msg.GetStickerMessage())
+	case pollCreation(msg) != nil:
+		// A poll has no file to fetch: its question, options and
+		// tallies are structured data, not media, so there is no
+		// reference for FetchMedia to keep.
+		return pollCreationMedia(pollCreation(msg)), mediaRef{}, false
 	default:
 		return nil, mediaRef{}, false
 	}

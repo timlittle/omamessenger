@@ -21,6 +21,7 @@ type Commands struct {
 	refresher    MessageRefresher
 	organizer    Organizer
 	reactor      Reactor
+	voter        Voter
 	deleter      Deleter
 	members      MemberLister
 	outgoing     OutgoingMedia

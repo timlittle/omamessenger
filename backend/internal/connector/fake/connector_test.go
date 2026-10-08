@@ -414,3 +414,34 @@ func TestReact_RecordsTheReactionThroughTheSink(t *testing.T) {
 		}
 	})
 }
+
+// TestVote_RecordsTheVoteThroughTheSink confirms the fake connector
+// supports voting, the way a real one does, so a demo or a screenshot
+// test can show a poll actually taking a vote rather than failing with
+// "voting is not supported here".
+func TestVote_RecordsTheVoteThroughTheSink(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
+		defer stop()
+
+		waitConnected(sink)
+		mum := conversation("wa-personal", "wa:mum", domain.KindDirect)
+		seeded := sink.Messages()["wa:mum"][0]
+
+		wa, ok := suite.Connectors()[0].(connector.Voter)
+		if !ok {
+			t.Fatal("fake connector does not support voting")
+		}
+
+		if err := wa.Vote(t.Context(), mum, seeded.RemoteID, []string{"a"}); err != nil {
+			t.Fatal(err)
+		}
+
+		poll, ok := sink.PollFor("wa:mum", seeded.RemoteID)
+		if !ok || poll.TotalVoters != 1 || len(poll.Options) != 1 || !poll.Options[0].Chosen {
+			t.Errorf("voting did not report a tally through the sink: %+v, %t", poll, ok)
+		}
+	})
+}

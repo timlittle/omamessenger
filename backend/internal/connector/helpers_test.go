@@ -128,6 +128,19 @@ func (c *withReactor) React(_ context.Context, _ domain.Conversation, messageRem
 	return nil
 }
 
+// withVoter is a connector that casts votes in polls, recording what it
+// was asked to vote for.
+type withVoter struct {
+	fakeConnector
+	voted []string
+}
+
+func (c *withVoter) Vote(_ context.Context, _ domain.Conversation, messageRemoteID string, optionIDs []string) error {
+	c.voted = append(c.voted, fmt.Sprintf("%s %v", messageRemoteID, optionIDs))
+
+	return nil
+}
+
 // withDeleter is a connector that deletes messages, recording what it
 // was asked to delete.
 type withDeleter struct {

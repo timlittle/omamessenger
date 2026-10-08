@@ -58,6 +58,7 @@ const cases = [
   ['conversation', letter('r'), MOD.Shift, 'R', ''],
   ['conversation', letter('o'), 0, 'o', 'message.openLink'],
   ['conversation', letter('p'), 0, 'p', 'message.goToQuote'],
+  ['conversation', letter('v'), 0, 'v', 'message.vote'],
   ['list', letter('a'), MOD.Ctrl | MOD.Shift, '', 'list.unread'],
   ['conversation', letter('a'), MOD.Ctrl | MOD.Shift, '', 'list.unread'],
   ['compose', letter('a'), MOD.Ctrl | MOD.Shift, '', 'list.unread'],
@@ -87,6 +88,17 @@ const cases = [
   ['reactionPicker', KEY.Right, 0, '', 'reaction.right'],
   ['reactionPicker', KEY.Enter, 0, '\r', 'reaction.accept'],
   ['reactionPicker', KEY.Escape, 0, '', 'escape'],
+
+  ['pollVote', letter('j'), 0, 'j', 'pollVote.down'],
+  ['pollVote', KEY.Down, 0, '', 'pollVote.down'],
+  ['pollVote', letter('k'), 0, 'k', 'pollVote.up'],
+  ['pollVote', KEY.Up, 0, '', 'pollVote.up'],
+  ['pollVote', KEY.Space, 0, ' ', 'pollVote.toggle'],
+  ['pollVote', KEY.Enter, 0, '\r', 'pollVote.accept'],
+  // Escape in the poll vote list cancels voting without leaving the
+  // conversation, the same way mentionPicker's own Escape never falls
+  // through to the global "escape" action.
+  ['pollVote', KEY.Escape, 0, '', 'pollVote.cancel'],
 
   ['mentionPicker', KEY.Down, 0, '', 'mention.down'],
   ['mentionPicker', KEY.Up, 0, '', 'mention.up'],

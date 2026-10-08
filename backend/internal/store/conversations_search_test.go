@@ -95,6 +95,40 @@ func TestConversations_MatchesCaseAndAccentInsensitively(t *testing.T) {
 	}
 }
 
+// TestConversations_SearchReportsTheMatchedMessageIDAndSender checks that
+// a message match names which message and who sent it, not just its text:
+// the unified command palette's "Messages" section needs both to show a
+// sender and to open and highlight that exact message.
+func TestConversations_SearchReportsTheMatchedMessageIDAndSender(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	addAccount(t, s, "wa")
+	addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s,
+		domain.Message{ID: "m1", ConversationID: "chat", SenderName: "Alex", Text: "ticket opened", Created: 1},
+		domain.Message{ID: "m2", ConversationID: "chat", SenderName: "Priya", Text: "ticket closed", Created: 2},
+	)
+
+	got, err := s.Conversations(t.Context(), "ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 1 || got[0].MatchMessageID != "m2" || got[0].MatchSender != "Priya" {
+		t.Fatalf("Conversations(ticket)[0] = %+v, want MatchMessageID m2 and MatchSender Priya", got[0])
+	}
+
+	// A title-only match, or no match at all, names no message.
+	titleOnly, err := s.Conversations(t.Context(), "Chat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if titleOnly[0].MatchMessageID != "" || titleOnly[0].MatchSender != "" {
+		t.Errorf("title-only match = %+v, want no matched message", titleOnly[0])
+	}
+}
+
 func TestConversations_RanksBestOrMostRecentMatchFirst(t *testing.T) {
 	t.Parallel()
 

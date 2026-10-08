@@ -7,8 +7,7 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Keys | Does |
 | --- | --- |
 | Ctrl+/ or Ctrl+Shift+P | Command palette |
-| Ctrl+K or Ctrl+T | Jump to a conversation |
-| Ctrl+G | Search messages |
+| Ctrl+K, Ctrl+T or Ctrl+G | Jump to a conversation or search messages, in one palette |
 | Ctrl+N or Ctrl+Shift+K | New message |
 | Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (works from the list, an open conversation or the unread view, and keeps whichever mode you were in: writing stays writing, scrolling stays scrolling) |
 | Ctrl+Shift+A | Show only unread conversations, across every service and account (Esc or the same shortcut returns to the previous list) |
@@ -19,6 +18,10 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Ctrl+Q | Quit |
 | Ctrl+R | Retry installing the helper, if it failed to install |
 | Esc | Step back: close the palette, a dialog, account setup or the photo viewer, clear the search, leave the composer or the conversation, or leave the unread view |
+
+Ctrl+K and Ctrl+G both open the same palette, so there is one search to reach for instead of two: typing filters conversations by title at once, unread ones first, and, after a short pause, also searches message text, listing matches in their own "Messages" section below, each showing who sent it, which conversation it is in and a snippet. Up/Down move the highlight across both sections together (j/k are not special here: they are just typed into the search field); Enter on a conversation opens it, and Enter on a message opens its conversation and highlights that exact message.
+
+"Toggle read receipts", in the command palette (Ctrl+/), switches incognito mode: off, OmaMessenger never tells a service a chat here was read, so the sender and this account's own other devices keep showing it unread, even though it still clears locally. The footer shows "Read receipts off" whenever incognito mode is on, so it is never a silent surprise. It is also a plugin setting, under the same name.
 
 ## Conversation list
 
@@ -54,6 +57,7 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | o | Open the highlighted message's link, if it has one |
 | p | Go to the message it replies to, if it is one |
 | t | Retry the highlighted message, if it failed to send |
+| v | Vote in the highlighted message's poll, if it carries an open one |
 | h | Back to the list |
 
 The highlight starts on the newest message when the conversation opens or when you leave the composer with Esc. The composer shows which mode it is in: dimmed, with an "i to write" hint, while scrolling; full contrast, with a "Writing · Esc to stop" hint, once it has focus.
@@ -65,6 +69,19 @@ The highlight starts on the newest message when the conversation opens or when y
 | Ctrl+V | Paste a clipboard image as an attachment |
 
 Ctrl+J always jumps to the next unread conversation instead, even while writing (see Global); it lands there in writing mode too.
+
+### Voting in a poll
+
+v, on a highlighted message with an open poll, moves the highlight into its options instead of the message list.
+
+| Keys | Does |
+| --- | --- |
+| j / k, ↓ / ↑ | Move the highlighted option |
+| Space | Check or uncheck the highlighted option (a multiple-choice poll only) |
+| Enter | Cast the vote: whatever is checked, or the highlighted option alone if nothing was |
+| Esc | Cancel without voting |
+
+Clicking an option votes for it directly, without opening vote mode first. A closed poll shows its results but takes no clicks and has no vote mode.
 
 ### @-mention picker
 

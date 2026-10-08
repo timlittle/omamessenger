@@ -12,7 +12,7 @@ var KEY = {
   Return: 0x01000004, Enter: 0x01000005, Home: 0x01000010,
   End: 0x01000011, Left: 0x01000012, Up: 0x01000013, Right: 0x01000014, Down: 0x01000015,
   PageUp: 0x01000016, PageDown: 0x01000017,
-  Slash: 0x2f, Question: 0x3f
+  Slash: 0x2f, Question: 0x3f, Space: 0x20
 };
 
 // MOD holds the Qt keyboard modifier masks.
@@ -45,6 +45,11 @@ var BINDINGS = [
   { action: 'account.add', keys: [], contexts: ['global'], label: 'Add an account', command: true },
   { action: 'account.remove', keys: [], contexts: ['global'], label: 'Remove an account', command: true },
   { action: 'account.addOwnKeys', keys: [], contexts: ['global'], label: 'Add a Telegram account with your own API keys', command: true },
+  // Incognito read receipts: off means MarkRead never reaches the
+  // service, so a chat read here stays unread on the phone and any
+  // other device signed into the same account. No key of its own, like
+  // account.add; reached through the command palette.
+  { action: 'settings.toggleReadReceipts', keys: [], contexts: ['global'], label: 'Toggle read receipts', command: true },
   { action: 'rail.all', keys: ['Ctrl+0'], contexts: ['global'], label: 'Show all services', command: true },
   { action: 'rail.whatsapp', keys: ['Ctrl+1'], contexts: ['global'], label: 'Show WhatsApp', command: true },
   { action: 'rail.telegram', keys: ['Ctrl+2'], contexts: ['global'], label: 'Show Telegram', command: true },
@@ -99,6 +104,11 @@ var BINDINGS = [
   { action: 'message.retry', keys: ['t'], contexts: ['conversation'], label: 'Retry the highlighted message', command: true },
   { action: 'message.openLink', keys: ['o'], contexts: ['conversation'], label: "Open the highlighted message's link", command: true },
   { action: 'message.goToQuote', keys: ['p'], contexts: ['conversation'], label: 'Go to the replied-to message', command: true },
+  // Not hinted here: like message.retry, it only applies to some
+  // messages, so its "v vote" hint comes from Highlight.hints, shown
+  // beside the highlighted message itself, the moment it carries an
+  // open poll.
+  { action: 'message.vote', keys: ['v'], contexts: ['conversation'], label: 'Vote in the highlighted poll', command: true },
 
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
   // Ctrl+J is deliberately not bound here: it must always mean "next
@@ -125,6 +135,18 @@ var BINDINGS = [
   { action: 'reaction.left', keys: ['Left'], contexts: ['reactionPicker'], label: 'Previous emoji' },
   { action: 'reaction.right', keys: ['Right'], contexts: ['reactionPicker'], label: 'Next emoji' },
   { action: 'reaction.accept', keys: ['Enter'], contexts: ['reactionPicker'], label: 'React', hint: true },
+
+  // Voting in a poll, opened with message.vote above: j/k move the
+  // highlighted option, Space or Enter toggles it (letting a
+  // multiple-choice poll build up a selection before it is cast), and
+  // Enter alone also casts the vote once at least one option is
+  // checked, the same key doing both the way reactionPicker's Enter
+  // both highlights and accepts in one list.
+  { action: 'pollVote.down', keys: ['j', 'Down'], contexts: ['pollVote'], label: 'Next option' },
+  { action: 'pollVote.up', keys: ['k', 'Up'], contexts: ['pollVote'], label: 'Previous option' },
+  { action: 'pollVote.toggle', keys: ['Space'], contexts: ['pollVote'], label: 'Check or uncheck the highlighted option', hint: true },
+  { action: 'pollVote.accept', keys: ['Enter'], contexts: ['pollVote'], label: 'Cast the vote', hint: true },
+  { action: 'pollVote.cancel', keys: ['Escape'], contexts: ['pollVote'], label: 'Cancel', hint: true },
 
   // The @-mention picker, open while typing a group member's name after
   // "@" in the composer. Up/Down move the highlight rather than j/k,

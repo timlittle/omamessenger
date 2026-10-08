@@ -34,6 +34,8 @@ Item {
   // deleteController is bound into the message list and the overlays'
   // delete question.
   property var deleteController: null
+  // pollsController is bound into the message list's poll bubbles.
+  property var pollsController: null
   // dialogController is bound into the new-chat dialog.
   property var dialogController: null
   // accountController is bound into account setup and the empty state.
@@ -149,14 +151,16 @@ Item {
     }
   }
 
-  // Search focus mirrors ListController.searchFocused the same way: a
-  // request focuses the field, a field focus change is read back, and the
-  // field is blurred if the controller leaves search while it still holds
-  // real focus (the Escape chain only updates the controller's flag).
+  // Search focus mirrors ListController.searchFocused: a field focus
+  // change (a click) is read back, and the field is blurred if the
+  // controller leaves search while it still holds real focus (the
+  // Escape chain only updates the controller's flag). Ctrl+G used to
+  // request this field's focus directly; it opens the command palette
+  // now instead (see WindowController), so this only ever mirrors a
+  // mouse click into the field.
   Connections {
     target: root.listController
 
-    function onFocusRequested() { listColumn.searchField.forceActiveFocus() }
     function onSearchFocusedChanged() {
       if (root.listController.searchFocused || !listColumn.searchField.activeFocus) return
       listColumn.searchField.focus = false
@@ -247,6 +251,11 @@ Item {
       composeEnabled: root.conversationController.activeId !== ""
       historyUnavailable: root.conversationController.historyUnavailable
       voiceNotes: root.conversationController.voiceNotes
+      voteState: root.pollsController ? ({
+        target: root.pollsController.voteTarget,
+        highlightedIndex: root.pollsController.voteIndex,
+        selectedIds: root.pollsController.selected
+      }) : ({ target: "", highlightedIndex: -1, selectedIds: [] })
       members: root.conversationController.groupMembers
       routeKey: root.routeKey
 
@@ -257,6 +266,7 @@ Item {
       onReact: (id, emoji) => root.reactionsController.react(id, emoji)
       onReactPickerRequested: id => root.reactionsController.openPicker(id)
       onDeleteRequested: id => { if (root.deleteController) root.deleteController.openConfirm(id) }
+      onVoted: (id, optionIds) => { if (root.pollsController) root.pollsController.castVote(id, optionIds) }
       onSend: (text, replyToId, mentions) => root.conversationController.send(text, replyToId, mentions)
       onDraftEdited: text => root.composerController.setDraft(text)
       onReplyRequested: id => root.composerController.startReply(id)

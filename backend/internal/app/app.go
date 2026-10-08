@@ -60,6 +60,11 @@ type Reactor interface {
 	React(ctx context.Context, conv domain.Conversation, messageRemoteID, emoji string) error
 }
 
+// Voter casts the signed-in user's vote in a poll, through its service.
+type Voter interface {
+	Vote(ctx context.Context, conv domain.Conversation, messageRemoteID string, optionIDs []string) error
+}
+
 // Deleter deletes messages from a conversation, through its service.
 type Deleter interface {
 	DeleteMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string, forEveryone bool) error
@@ -171,6 +176,7 @@ type Deps struct {
 	Refresher  MessageRefresher
 	Organizer  Organizer
 	Reactor    Reactor
+	Voter      Voter
 	Deleter    Deleter
 	Members    MemberLister
 	Outgoing   OutgoingMedia
@@ -195,7 +201,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	retries := newRetrier(d.Store)
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, deleter: d.Deleter, members: d.Members, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, members: d.Members, fake: d.Fake,
 		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},
@@ -221,11 +227,21 @@ type Settings struct {
 	Notifications       bool
 	NotificationPreview bool
 	NotificationDetail  string
+
+	// ReadReceipts is false for incognito mode: MarkRead still clears the
+	// local unread count, but neither Commands.MarkRead nor Ingest's
+	// debounced read receipt ever reaches the dispatcher, so the
+	// service, and any other device signed into the same account, keep
+	// showing the chat unread.
+	ReadReceipts bool
 }
 
 // DefaultSettings apply until the UI sends the user's settings.
 func DefaultSettings() Settings {
-	return Settings{Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage)}
+	return Settings{
+		Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage),
+		ReadReceipts: true,
+	}
 }
 
 // detail resolves the notification detail level these settings ask for:

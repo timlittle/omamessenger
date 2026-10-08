@@ -126,7 +126,7 @@ Item {
     if (!action) return false;
 
     const controllers = [listController, conversationController, composerController, photoViewerController,
-      reactionsController, deleteController, dialogController, accountController, windowController];
+      reactionsController, pollsController, deleteController, dialogController, accountController, windowController];
     const owner = controllers.find((c) => c.handles(action));
     if (!owner) return false;
 
@@ -143,6 +143,7 @@ Item {
       viewerOpen: photoViewerController.viewerOpen,
       paletteOpen: windowController.paletteOpen,
       reactionPickerOpen: reactionsController.pickerOpen,
+      pollVoteOpen: pollsController.voteTarget !== "",
       deleteConfirmOpen: deleteController.open,
       archiveConfirmOpen: listController.archiveAllOpen,
       dialogOpen: dialogController.open,
@@ -266,6 +267,12 @@ Item {
     conversation: conversationController
   }
 
+  PollsController {
+    id: pollsController
+    service: root.service
+    conversation: conversationController
+  }
+
   DeleteController {
     id: deleteController
     service: root.service
@@ -292,6 +299,7 @@ Item {
     composerController: composerController
     photoViewerController: photoViewerController
     reactionsController: reactionsController
+    pollsController: pollsController
     deleteController: deleteController
     dialogController: dialogController
     accountController: accountController
@@ -388,6 +396,7 @@ Item {
           composerController: composerController
           photoViewerController: photoViewerController
           reactionsController: reactionsController
+          pollsController: pollsController
           deleteController: deleteController
           dialogController: dialogController
           accountController: accountController
@@ -398,12 +407,22 @@ Item {
           focusDefault: () => keyArea.forceActiveFocus()
         }
 
-        KeyHints {
-          objectName: "keyHints"
+        RowLayout {
           Layout.fillWidth: true
           Layout.preferredHeight: Style.space(24)
-          context: Navigation.keyContext(root._navState())
-          bindings: root.bindings
+          spacing: Theme.spacing.md
+
+          KeyHints {
+            objectName: "keyHints"
+            Layout.fillWidth: true
+            context: Navigation.keyContext(root._navState())
+            bindings: root.bindings
+          }
+
+          ReadReceiptsIndicator {
+            objectName: "readReceiptsIndicator"
+            active: root.service !== null && root.service.readReceipts === false
+          }
         }
       }
     }

@@ -19,6 +19,8 @@ func media(m tg.MessageMediaClass) *domain.Media {
 		return photoMedia(m.Photo)
 	case *tg.MessageMediaDocument:
 		return documentMedia(m.Document)
+	case *tg.MessageMediaPoll:
+		return pollMedia(m)
 	default:
 		return nil
 	}

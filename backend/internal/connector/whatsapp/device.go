@@ -135,6 +135,15 @@ type device interface {
 	// change, so WhatsApp's own record of the chat agrees with it.
 	sendAppState(ctx context.Context, patch appstate.PatchInfo) error
 
+	// decryptPollVote decrypts a poll vote event, using the poll
+	// creation message's own secret whatsmeow already stored when it
+	// first arrived (see msgsecret.go in the whatsmeow module).
+	decryptPollVote(ctx context.Context, evt *events.Message) (*waE2E.PollVoteMessage, error)
+
+	// buildPollVote builds the encrypted message that casts a vote for
+	// optionNames in the poll pollInfo identifies.
+	buildPollVote(ctx context.Context, pollInfo *types.MessageInfo, optionNames []string) (*waE2E.Message, error)
+
 	// requestOlderHistory asks WhatsApp's primary phone, through a peer
 	// message only this account's own other devices receive, for count
 	// messages older than anchor in its chat (see history_ondemand.go).
@@ -413,6 +422,18 @@ func (d *waDevice) sendMediaRetryReceipt(ctx context.Context, info *types.Messag
 // sendAppState sends patch with WhatsApp.
 func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
 	return d.cli.SendAppState(ctx, patch)
+}
+
+// decryptPollVote decrypts a poll vote event with whatsmeow's own
+// per-device secret store.
+func (d *waDevice) decryptPollVote(ctx context.Context, evt *events.Message) (*waE2E.PollVoteMessage, error) {
+	return d.cli.DecryptPollVote(ctx, evt)
+}
+
+// buildPollVote builds the encrypted message that casts a vote for
+// optionNames in the poll pollInfo identifies.
+func (d *waDevice) buildPollVote(ctx context.Context, pollInfo *types.MessageInfo, optionNames []string) (*waE2E.Message, error) {
+	return d.cli.BuildPollVote(ctx, pollInfo, optionNames)
 }
 
 // requestOlderHistory sends the primary phone an on-demand history

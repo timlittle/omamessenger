@@ -82,3 +82,34 @@ test('conversationOrder: handles null or undefined input', () => {
   assert.deepEqual(Palette.conversationOrder(null), []);
   assert.deepEqual(Palette.conversationOrder(undefined), []);
 });
+
+test('messageRows: keeps only conversations with a matched message, in search order', () => {
+  const conversations = [
+    { id: 'a', title: 'Alpha', service: 'whatsapp', match: 'see you then', matchMessageId: 'm1', matchSender: 'Alex' },
+    { id: 'b', title: 'Beta', service: 'telegram' }, // title-only match: no matched message
+    { id: 'c', title: 'Gamma', service: 'whatsapp', match: 'ok', matchMessageId: 'm3', matchSender: 'Priya' }
+  ];
+
+  assert.deepEqual(Palette.messageRows(conversations), [
+    { conversationId: 'a', messageId: 'm1', sender: 'Alex', conversationTitle: 'Alpha', service: 'whatsapp', snippet: 'see you then' },
+    { conversationId: 'c', messageId: 'm3', sender: 'Priya', conversationTitle: 'Gamma', service: 'whatsapp', snippet: 'ok' }
+  ]);
+});
+
+test('messageRows: handles null or undefined input', () => {
+  assert.deepEqual(Palette.messageRows(null), []);
+  assert.deepEqual(Palette.messageRows(undefined), []);
+});
+
+test('messageRows: falls back to an empty sender or snippet', () => {
+  const conversations = [{ id: 'a', title: 'Alpha', matchMessageId: 'm1' }];
+
+  assert.deepEqual(Palette.messageRows(conversations), [
+    { conversationId: 'a', messageId: 'm1', sender: '', conversationTitle: 'Alpha', service: undefined, snippet: '' }
+  ]);
+});
+
+test('staleMessageSearch: a reply for a query the palette has moved on from is stale', () => {
+  assert.strictEqual(Palette.staleMessageSearch('cafe', 'cafe later'), true);
+  assert.strictEqual(Palette.staleMessageSearch('cafe', 'cafe'), false);
+});

@@ -112,20 +112,26 @@ ShellRoot {
     return root.listModel().count === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
   }
 
-  // searchTicket focuses search with Ctrl+G and types a query.
+  // searchTicket opens the unified palette with Ctrl+G and types a query,
+  // the message search half of it: "ticket" matches no conversation
+  // title, only a message in Alex Chen's history.
   function searchTicket(): var {
     t.keyClick(Qt.Key_G, Qt.ControlModifier);
     root.type("ticket");
     return true;
   }
 
-  // waitForSearch holds until only Alex Chen matches.
+  // waitForSearch holds until the palette's "Messages" section lists
+  // Alex Chen's matching message, the only one "ticket" finds, once its
+  // debounce and the round trip to the helper both settle.
   function waitForSearch(): var {
-    const model = root.listModel();
-    return model.count === 1 && model.get(0).title === "Alex Chen";
+    const list = Check.find(root.panel(), "paletteList");
+    const items = list ? list.model : [];
+    return items.length === 1 && items[0].detail === "Alex Chen";
   }
 
-  // openMatch opens the first search result with Enter.
+  // openMatch opens the matched message with Enter, which also
+  // highlights it in the conversation once it loads.
   function openMatch(): var {
     root.expected = String(helperService.unreadTotal);
     t.keyClick(Qt.Key_Return);

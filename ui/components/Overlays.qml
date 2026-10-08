@@ -69,11 +69,12 @@ Item {
 
   CommandPalette {
     open: root.windowController.paletteOpen
-    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation"
+    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation or search messages"
       : root.windowController.paletteMode === "links" ? "Open which link?"
       : root.windowController.paletteMode === "snoozeCustom" ? "e.g. 2h, 18:00, mon 9:00"
       : "Type a command"
     items: root.windowController.paletteItems
+    sectioned: root.windowController.paletteMode === "conversations"
     currentIndex: root.windowController.paletteIndex
     routeKey: root.routeKey
     onQueryEdited: text => root.windowController.setPaletteQuery(text)

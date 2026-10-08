@@ -18,13 +18,6 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
-// storeExists adapts db's MessageExists to cache.MessageExists, for an
-// outgoing media area built in a test to tell a real orphan from a
-// message still stored.
-func storeExists(db *store.Store) cache.MessageExists {
-	return func(ctx context.Context, id string) (bool, error) { return db.MessageExists(ctx, id) }
-}
-
 // fixture is an application over a real database with fake connectors,
 // notifications and UI.
 type fixture struct {
@@ -42,6 +35,7 @@ type fixture struct {
 	refresher  *fakeRefresher
 	organizer  *fakeOrganizer
 	reactor    *fakeReactor
+	voter      *fakeVoter
 	deleter    *fakeDeleter
 	members    *fakeMemberLister
 	outgoing   *cache.Outgoing
@@ -74,7 +68,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
-		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, deleter: &fakeDeleter{},
+		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{},
 		members:  &fakeMemberLister{},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{},
@@ -84,7 +78,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Deleter: f.deleter, Members: f.members,
+		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Members: f.members,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger,
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 	}
@@ -161,24 +155,6 @@ func (d *fakeDispatcher) Send(_ context.Context, _ domain.Conversation, m domain
 	}
 
 	return err
-}
-
-// setErr changes the error Send returns, safe to call while another
-// goroutine - the retry scheduler, say - may be calling Send
-// concurrently.
-func (d *fakeDispatcher) setErr(err error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	d.err = err
-}
-
-// sendCount reports how many times Send has been called so far.
-func (d *fakeDispatcher) sendCount() int {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	return len(d.sent)
 }
 
 // last returns the most recent message given to Send.
@@ -527,6 +503,23 @@ func (r *fakeReactor) React(_ context.Context, _ domain.Conversation, messageRem
 	r.reacted = append(r.reacted, messageRemoteID+" "+emoji)
 
 	return r.err
+}
+
+// fakeVoter records the votes it is asked to cast, as "messageRemoteID
+// optionIDs", failing with err when set.
+type fakeVoter struct {
+	mu    sync.Mutex
+	voted []string
+	err   error
+}
+
+func (v *fakeVoter) Vote(_ context.Context, _ domain.Conversation, messageRemoteID string, optionIDs []string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	v.voted = append(v.voted, fmt.Sprintf("%s %v", messageRemoteID, optionIDs))
+
+	return v.err
 }
 
 // fakeDeleter records the deletes it is asked for, as

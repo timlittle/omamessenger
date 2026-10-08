@@ -119,6 +119,33 @@ func TestMarkRead_TellsTheServiceHowManyWereUnread(t *testing.T) {
 	}
 }
 
+// TestMarkRead_SkipsTheServiceWithReadReceiptsOff checks incognito read
+// receipts: the local unread count still clears, but the service is never
+// told, so the phone and any other device keep showing the chat unread.
+func TestMarkRead_SkipsTheServiceWithReadReceiptsOff(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 1)
+	f.published.take()
+
+	f.commands.ApplySettings(app.Settings{ReadReceipts: false})
+
+	if err := f.commands.MarkRead(ctx, chat.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || got.Unread != 0 {
+		t.Errorf("unread = %d, %v, want 0 even with read receipts off", got.Unread, err)
+	}
+
+	if len(f.dispatcher.read) != 0 {
+		t.Errorf("read receipts = %v, want none reaching the service", f.dispatcher.read)
+	}
+}
+
 func TestSetMuted_UpdatesUnreadTotal(t *testing.T) {
 	t.Parallel()
 

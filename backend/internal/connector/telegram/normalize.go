@@ -176,7 +176,7 @@ func messageText(m *tg.Message) string {
 	case *tg.MessageMediaContact:
 		return "[Contact]"
 	case *tg.MessageMediaPoll:
-		return "[Poll]"
+		return pollPlaceholder(media.Poll.Question.Text)
 	default:
 		return "[Message]"
 	}

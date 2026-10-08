@@ -10,9 +10,37 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/store"
 )
+
+// storeExists adapts db's MessageExists to cache.MessageExists, for an
+// outgoing media area built in a test to tell a real orphan from a
+// message still stored.
+func storeExists(db *store.Store) cache.MessageExists {
+	return func(ctx context.Context, id string) (bool, error) { return db.MessageExists(ctx, id) }
+}
+
+// setErr changes the error fakeDispatcher.Send returns, safe to call
+// while another goroutine - the retry scheduler, say - may be calling
+// Send concurrently.
+func (d *fakeDispatcher) setErr(err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.err = err
+}
+
+// sendCount reports how many times fakeDispatcher.Send has been called
+// so far.
+func (d *fakeDispatcher) sendCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return len(d.sent)
+}
 
 // runRetries starts f.commands.RunRetries in its own goroutine,
 // returning a function that cancels it and waits for it to stop, so

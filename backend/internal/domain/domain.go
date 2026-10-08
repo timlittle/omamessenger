@@ -35,6 +35,8 @@ const (
 // kind, but a connector that cannot show one as a still image leaves
 // FileName empty so the UI never tries to fetch and decode it, falling
 // back to Thumb or Emoji instead (see Media's own doc comment).
+// MediaPoll carries no fetchable file at all: its question, options and
+// tallies live entirely in Media.Poll.
 const (
 	MediaLink    = "link"
 	MediaPhoto   = "photo"
@@ -42,6 +44,7 @@ const (
 	MediaFile    = "file"
 	MediaVoice   = "voice"
 	MediaSticker = "sticker"
+	MediaPoll    = "poll"
 )
 
 // ErrNotFound reports a missing account, contact, conversation or message.
@@ -113,6 +116,12 @@ type Conversation struct {
 
 	// Match is a snippet of the newest message that matched a search query.
 	Match string `json:"match,omitempty"`
+
+	// MatchMessageID and MatchSender identify the message Match is a
+	// snippet of: enough for a caller to open it and highlight it. Both
+	// are "" when only the title matched, or nothing matched at all.
+	MatchMessageID string `json:"matchMessageId,omitempty"`
+	MatchSender    string `json:"matchSender,omitempty"`
 }
 
 // Message is one message in a conversation. Created is in Unix
@@ -211,6 +220,10 @@ type Media struct {
 	FileName    string `json:"fileName,omitempty"`
 	Size        int64  `json:"size,omitempty"`
 	Emoji       string `json:"emoji,omitempty"`
+
+	// Poll is a poll's question, options and tallies, set only when
+	// Kind is MediaPoll.
+	Poll *Poll `json:"poll,omitempty"`
 
 	// Path is where an outgoing attachment's file sits in the helper's
 	// own outgoing media area, for a connector to read and upload. It is

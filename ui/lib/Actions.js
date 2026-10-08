@@ -9,9 +9,9 @@
 // "list" and "conversation") still has one owner, since the owning
 // controller reads whatever extra state it needs itself.
 var OWNERS = {
-  // ListController: rail filter, search, the visible conversations,
-  // selection and unread jump, mute.
-  'search.focus': 'list',
+  // ListController: rail filter, the visible conversations, selection,
+  // unread jump, mute. search.focus (Ctrl+G) now opens the command
+  // palette instead (see WindowController), so it is owned there.
   'list.showAll': 'list',
   'list.unread': 'list',
   'rail.all': 'list',
@@ -86,6 +86,14 @@ var OWNERS = {
   'reaction.right': 'reactions',
   'reaction.accept': 'reactions',
 
+  // PollsController: vote mode and casting a vote in a poll.
+  'message.vote': 'polls',
+  'pollVote.down': 'polls',
+  'pollVote.up': 'polls',
+  'pollVote.toggle': 'polls',
+  'pollVote.accept': 'polls',
+  'pollVote.cancel': 'polls',
+
   // DeleteController: the delete question and deleting a message.
   'message.delete': 'delete',
   'delete.left': 'delete',
@@ -133,6 +141,7 @@ var OWNERS = {
   // close question's own navigation, and the Escape chain.
   'palette.commands': 'window',
   'palette.conversations': 'window',
+  'search.focus': 'window',
   // chat.snoozeCustom opens the palette's custom-snooze prompt, which
   // WindowController owns along with every other palette mode; it is the
   // one chat.* action not owned by ListController, since the chat it
@@ -147,6 +156,7 @@ var OWNERS = {
   'helper.doctor': 'window',
   'keys.openConfig': 'window',
   'keys.showBindings': 'window',
+  'settings.toggleReadReceipts': 'window',
   'close.left': 'window',
   'close.right': 'window',
   'close.accept': 'window',

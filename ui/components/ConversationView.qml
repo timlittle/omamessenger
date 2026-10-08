@@ -31,6 +31,9 @@ Item {
   // voiceNotes is the playback state each message delegate reads for its
   // voice note player; see MessageBubbleContent for its shape.
   property var voiceNotes: ({ available: false, playingId: "", positionMs: 0, durationMs: 0 })
+  // voteState is PollsController's vote mode, read by whichever message
+  // delegate's id matches target: {target, highlightedIndex, selectedIds}.
+  property var voteState: ({ target: "", highlightedIndex: -1, selectedIds: [] })
   // draft is the composer's saved text for this conversation.
   property string draft: ""
   // replyTarget is the message the composer is about to answer: {id,
@@ -75,6 +78,9 @@ Item {
   // deleteRequested asks the caller to open the delete question for a
   // message, from its hover toolbar's delete button.
   signal deleteRequested(string id)
+  // voted asks the caller to cast optionIds as the user's vote in a
+  // message's poll.
+  signal voted(string id, var optionIds)
   // send reports a message the user submitted, the id of the message it
   // answers (or "" when it answers nothing), and its resolved @-mentions.
   signal send(string text, string replyToId, var mentions)
@@ -229,6 +235,11 @@ Item {
         nowMs: root.nowMs
         bindings: root.bindings
         voiceNotes: root.voiceNotes
+        pollVote: ({
+          voting: root.voteState.target !== "" && root.voteState.target === modelData.id,
+          highlightedIndex: root.voteState.highlightedIndex,
+          selectedIds: root.voteState.selectedIds
+        })
         // The highlight and its hint row only make sense in scroll
         // mode: while the composer has focus, j/k do not move it and
         // r/e/t/Enter do not act on it, so showing it would say
@@ -242,6 +253,7 @@ Item {
         onReact: (id, emoji) => root.react(id, emoji)
         onReactPickerRequested: id => root.reactPickerRequested(id)
         onDeleteRequested: id => root.deleteRequested(id)
+        onVoted: (id, optionIds) => root.voted(id, optionIds)
       }
 
       onContentYChanged: root._checkLoadOlder()
