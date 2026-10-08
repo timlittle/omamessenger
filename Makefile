@@ -100,10 +100,14 @@ keys: ## Print the effective key bindings (defaults plus keys.conf overrides), f
 # notifications. A test whose directory holds a no-dev-build file gets the
 # real launcher instead, so the helper starts out not installed; it can
 # publish the test helper (OMA_FAKE_HELPER) to OMA_RELEASE_BASE and install it.
+# Each run also gets a throwaway XDG_RUNTIME_DIR, deleted afterwards:
+# quickshell writes a log folder there per instance and never removes it,
+# and the real one is a small tmpfs the desktop needs (a full one crashed
+# Hyprland).
 test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the test helper
 	@./scripts/qml-imports.sh >/dev/null
 	@status=0; for dir in tests/qml/*/; do \
-		name=$$(basename "$$dir"); root=build/qml-tests/$$name; \
+		name=$$(basename "$$dir"); root=build/qml-tests/$$name; run=$$(mktemp -d); \
 		rm -rf "$$root"; mkdir -p "$$root/bin"; cp -R "$$dir". "$$root/"; \
 		for link in ui scripts helper-version tests/qml/Check.js tests/qml/Stepper.qml tests/qml/FakeShell.qml; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
 		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
@@ -111,9 +115,10 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 		if [ -e "$$dir/no-dev-build" ]; then ln -s "$(CURDIR)/bin/oma-messenger-service" "$$root/bin/"; \
 		else ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; fi; \
 		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen \
-			XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
+			XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" XDG_RUNTIME_DIR="$$run" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
 		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
+		rm -rf "$$run"; \
 	done; \
 	warnings=$$(grep -lEi "TypeError|ReferenceError|binding loop" build/qml-tests/*/log 2>/dev/null); \
 	if [ -n "$$warnings" ]; then status=1; echo "FAIL unexpected warnings:"; \
@@ -140,16 +145,17 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 demo: build-fake ## Record the offscreen demo and rebuild docs/demo.gif and docs/demo.png
 	@command -v $(FFMPEG) >/dev/null || { echo "demo: $(FFMPEG) is not installed" >&2; exit 1; }
 	@./scripts/qml-imports.sh >/dev/null
-	root=build/demo-root; \
+	root=build/demo-root; run=$$(mktemp -d); \
 	rm -rf "$$root"; mkdir -p "$$root/bin" "$$root/frames"; cp -R tests/demo/. "$$root/"; \
 	for link in ui scripts helper-version tests/qml/Check.js; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
 	ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 	ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 	ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; \
 	env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 OMA_FAKE_DEMO=1 \
-		XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
+		XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" XDG_RUNTIME_DIR="$$run" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 		OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 90 quickshell -p "$$root" >"$$root/log" 2>&1; \
-	if [ $$? -ne 0 ]; then \
+	recorded=$$?; rm -rf "$$run"; \
+	if [ $$recorded -ne 0 ]; then \
 		echo "FAIL demo recording:"; grep -v "qt.qpa" "$$root/log" | tail -20; exit 1; \
 	fi; \
 	for f in "$$root"/frames/*.png; do \
