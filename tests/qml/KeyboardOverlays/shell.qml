@@ -6,9 +6,11 @@
 // until the window is reopened. The overlays: the command palette, the
 // reaction picker, the delete question, the in-app photo viewer, account
 // setup (opened from the palette, since there is no "?" shortcut of its
-// own: the rail's "?" button runs the same palette.commands action),
-// account removal, the new-chat dialog (closed both with Escape and by
-// choosing a contact), and the close question. Each step polls until its
+// own: the rail's "?" button runs the same palette.commands action), the
+// health check report (also checking j and d do nothing to the
+// conversation underneath it while it covers the window), account
+// removal, the new-chat dialog (closed both with Escape and by choosing
+// a contact), and the close question. Each step polls until its
 // condition holds, because several of the paths it drives answer through
 // the helper asynchronously.
 import QtQuick
@@ -33,6 +35,11 @@ ShellRoot {
     root.waitForAlexOpen,
     root.leaveCompose,
     root.waitForHighlightAfterAlex,
+    root.primeHighlightForDoctorCheck,
+    root.openDoctorReport,
+    root.waitForDoctorOpen,
+    root.checkDoctorBlocksConversationKeys,
+    root.closeDoctorReport,
     root.checkReactionPicker,
     root.cancelDeleteConfirm,
     root.checkDeleteConfirm,
@@ -82,6 +89,27 @@ ShellRoot {
       if (root.anyVisible(kids[i], name)) return true;
     }
     return false;
+  }
+
+  // highlightedMessageId returns the id of whichever loaded message
+  // currently shows the highlight cue, found by climbing from its
+  // visible highlightBar up to the delegate root that carries the
+  // message data, or null while none is highlighted.
+  function highlightedMessageId(item: var): var {
+    if (!item) return null;
+    if (item.objectName === "highlightBar" && item.visible) {
+      let delegate = item;
+      while (delegate && typeof delegate.message === "undefined") delegate = delegate.parent;
+      return delegate ? delegate.message.id : null;
+    }
+
+    const kids = item.data || item.children;
+    if (!kids || typeof kids.length !== "number") return null;
+    for (let i = 0; i < kids.length; i++) {
+      const found = root.highlightedMessageId(kids[i]);
+      if (found !== null) return found;
+    }
+    return null;
   }
 
   // checkShortcutStillWorks presses the rail filter shortcuts and checks
@@ -144,6 +172,68 @@ ShellRoot {
   // waitForHighlightAfterAlex holds until a message is highlighted.
   function waitForHighlightAfterAlex(): var {
     return root.anyVisible(root.panel(), "highlightBar");
+  }
+
+  // primeHighlightForDoctorCheck moves the highlight one message older,
+  // off the newest message j (highlightNewer) opens a conversation on,
+  // so the next check can tell whether j actually moved it again rather
+  // than it already being unable to.
+  function primeHighlightForDoctorCheck(): var {
+    const before = root.highlightedMessageId(root.panel());
+
+    t.keyClick(Qt.Key_K);
+    if (root.highlightedMessageId(root.panel()) === before)
+      return Check.fail("k did not move the highlighted message off the newest one");
+
+    return true;
+  }
+
+  // openDoctorReport opens the command palette and runs "Run health
+  // check", which asks the helper for its report and shows it once it
+  // answers.
+  function openDoctorReport(): var {
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    for (const ch of "run health check") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitForDoctorOpen holds until the health check report has opened.
+  function waitForDoctorOpen(): var {
+    const report = Check.find(root.panel(), "doctorReport");
+    return report && report.visible;
+  }
+
+  // checkDoctorBlocksConversationKeys presses j (highlight the next
+  // message) and d (open the delete question) while the health check
+  // report covers the conversation underneath: Panel's own navigation
+  // state used to leave out whether the report was open, so the key
+  // router fell through to the conversation context and these keys
+  // reached it even though the report was the only thing visible.
+  function checkDoctorBlocksConversationKeys(): var {
+    const before = root.highlightedMessageId(root.panel());
+
+    t.keyClick(Qt.Key_J);
+    if (root.highlightedMessageId(root.panel()) !== before)
+      return Check.fail("j moved the highlighted message while the health check report was open");
+
+    t.keyClick(Qt.Key_D);
+    const confirm = Check.find(root.panel(), "deleteConfirm");
+    if (confirm && confirm.visible)
+      return Check.fail("d opened the delete question while the health check report was open");
+
+    return true;
+  }
+
+  // closeDoctorReport closes the report with Escape and checks a global
+  // shortcut still works.
+  function closeDoctorReport(): var {
+    const report = Check.find(root.panel(), "doctorReport");
+
+    t.keyClick(Qt.Key_Escape);
+    if (report.visible) return Check.fail("Escape did not close the health check report");
+
+    return root.checkShortcutStillWorks("closing the health check report");
   }
 
   // checkReactionPicker presses "e" to react to the highlighted message,

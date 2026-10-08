@@ -129,24 +129,25 @@ Item {
     return owner.run(action) !== false;
   }
 
-  // _navState assembles what Navigation.keyContext needs from whichever
-  // controller owns each piece of it.
+  // _navState assembles what Navigation.keyContext needs, through the
+  // same Navigation.buildState WindowController's own Escape chain
+  // uses, so the two cannot drift the way they once did: this one left
+  // out the health check report, and a key pressed while it covered the
+  // window fell through to the conversation underneath it.
   function _navState(): var {
-    return {
-      confirmOpen: windowController.confirmingClose,
-      setupOpen: accountController.open || accountController.removing,
-      setupContext: accountController.navContext,
-      viewerOpen: photoViewerController.viewerOpen,
-      paletteOpen: windowController.paletteOpen,
-      reactionPickerOpen: reactionsController.pickerOpen,
-      pollVoteOpen: pollsController.voteTarget !== "",
-      deleteConfirmOpen: deleteController.open,
-      archiveConfirmOpen: listController.archiveAllOpen,
-      dialogOpen: dialogController.open,
-      searchFocused: listController.searchFocused,
-      composeFocused: composerController.composeFocused,
-      pane: conversationController.pane
-    };
+    return Navigation.buildState({
+      service: root.service,
+      windowController: windowController,
+      accountController: accountController,
+      photoViewerController: photoViewerController,
+      reactionsController: reactionsController,
+      pollsController: pollsController,
+      deleteController: deleteController,
+      listController: listController,
+      dialogController: dialogController,
+      composerController: composerController,
+      conversationController: conversationController
+    });
   }
 
   // _conversationIdFrom reads conversationId out of open()'s JSON

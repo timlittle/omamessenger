@@ -399,30 +399,24 @@ Item {
   }
 
   // _navState assembles what Navigation.keyContext and escapeAction need
-  // to know, from the three controllers that each own one piece of it.
+  // to know, through the same Navigation.buildState Panel's own key
+  // router uses, so the two cannot drift apart: pollVoteOpen is the one
+  // field left out here on purpose, since poll vote mode's own Escape
+  // is bound directly in the pollVote key context rather than going
+  // through this chain.
   function _navState(): var {
-    const state = root.service ? root.service.uiState : { pane: "list", activeId: "" };
-
-    return {
-      confirmOpen: root.confirmingClose,
-      setupOpen: root.accountController ? root.accountController.open || root.accountController.removing : false,
-      setupContext: root.accountController ? root.accountController.navContext : "",
-      viewerOpen: root.photoViewerController ? root.photoViewerController.viewerOpen : false,
-      doctorOpen: root.doctorOpen,
-      paletteOpen: root.paletteOpen,
-      reactionPickerOpen: root.reactionsController ? root.reactionsController.pickerOpen : false,
-      deleteConfirmOpen: root.deleteController ? root.deleteController.open : false,
-      archiveConfirmOpen: root.listController ? root.listController.archiveAllOpen : false,
-      dialogOpen: root.dialogController ? root.dialogController.open : false,
-      searchFocused: root.listController ? root.listController.searchFocused : false,
-      composeFocused: root.composerController ? root.composerController.composeFocused : false,
-      hasAttachment: root.composerController ? root.composerController.attachmentPath !== "" : false,
-      replying: root.composerController ? root.composerController.replying : false,
-      pane: state.pane,
-      activeId: state.activeId,
-      query: root.listController ? root.listController.query : "",
-      unreadView: root.listController ? root.listController.unreadView : false
-    };
+    return Navigation.buildState({
+      service: root.service,
+      windowController: root,
+      accountController: root.accountController,
+      photoViewerController: root.photoViewerController,
+      reactionsController: root.reactionsController,
+      deleteController: root.deleteController,
+      listController: root.listController,
+      dialogController: root.dialogController,
+      composerController: root.composerController,
+      conversationController: root.conversationController
+    });
   }
 
   // messageSearchTimer debounces the palette's "Messages" section so a

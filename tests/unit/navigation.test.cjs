@@ -582,3 +582,85 @@ test('escapeAction: hide-window once the unread view is already off', () => {
 
   assert.strictEqual(Navigation.escapeAction(state), 'hide-window');
 });
+
+// buildState: Panel's key router and WindowController's Escape chain
+// both call this to assemble keyContext/escapeAction's state from
+// whichever controllers they pass it, instead of each listing them by
+// hand (which is how Panel's own copy once left out the health check
+// report).
+
+test('buildState defaults every field when no controller is given', () => {
+  assert.deepEqual(Navigation.buildState({}), {
+    confirmOpen: false,
+    setupOpen: false,
+    setupContext: '',
+    viewerOpen: false,
+    doctorOpen: false,
+    paletteOpen: false,
+    reactionPickerOpen: false,
+    pollVoteOpen: false,
+    deleteConfirmOpen: false,
+    archiveConfirmOpen: false,
+    dialogOpen: false,
+    searchFocused: false,
+    composeFocused: false,
+    hasAttachment: false,
+    replying: false,
+    pane: 'list',
+    activeId: '',
+    query: '',
+    unreadView: false
+  });
+});
+
+test('buildState reads every field from the controller that owns it, including doctorOpen', () => {
+  const ctx = {
+    service: { uiState: { pane: 'conversation', activeId: 'ignored-without-conversationController' } },
+    windowController: { confirmingClose: true, doctorOpen: true, paletteOpen: true },
+    accountController: { open: false, removing: true, navContext: 'removeAccount' },
+    photoViewerController: { viewerOpen: true },
+    reactionsController: { pickerOpen: true },
+    pollsController: { voteTarget: 'm1' },
+    deleteController: { open: true },
+    listController: { archiveAllOpen: true, searchFocused: true, query: 'abc', unreadView: true },
+    dialogController: { open: true },
+    composerController: { composeFocused: true, attachmentPath: '/tmp/a.png', replying: true },
+    conversationController: { pane: 'conversation' }
+  };
+
+  assert.deepEqual(Navigation.buildState(ctx), {
+    confirmOpen: true,
+    setupOpen: true,
+    setupContext: 'removeAccount',
+    viewerOpen: true,
+    doctorOpen: true,
+    paletteOpen: true,
+    reactionPickerOpen: true,
+    pollVoteOpen: true,
+    deleteConfirmOpen: true,
+    archiveConfirmOpen: true,
+    dialogOpen: true,
+    searchFocused: true,
+    composeFocused: true,
+    hasAttachment: true,
+    replying: true,
+    pane: 'conversation',
+    activeId: 'ignored-without-conversationController',
+    query: 'abc',
+    unreadView: true
+  });
+});
+
+test('buildState falls back to service.uiState.pane when no conversationController is given', () => {
+  const ctx = { service: { uiState: { pane: 'conversation', activeId: 'c1' } } };
+
+  const state = Navigation.buildState(ctx);
+  assert.strictEqual(state.pane, 'conversation');
+  assert.strictEqual(state.activeId, 'c1');
+});
+
+test('buildState setupOpen is true while either adding or removing an account', () => {
+  assert.strictEqual(Navigation.buildState({ accountController: { open: true, removing: false } }).setupOpen, true);
+  assert.strictEqual(Navigation.buildState({ accountController: { open: false, removing: true } }).setupOpen, true);
+  assert.strictEqual(Navigation.buildState({ accountController: { open: false, removing: false } }).setupOpen, false);
+});

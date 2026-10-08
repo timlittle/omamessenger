@@ -72,3 +72,37 @@ function escapeAction(state) {
 
   return 'hide-window';
 }
+
+// buildState assembles the state keyContext and escapeAction read from,
+// out of whichever controllers ctx hands it. Panel's key router and
+// WindowController's Escape chain each used to list every controller by
+// hand in their own copy of this object, which is how Panel's once
+// missed the health check report: a key pressed while it covered the
+// window fell through to whatever context the conversation underneath
+// was in. Both now call this one function instead, so a new piece of
+// state only has to be wired in here.
+function buildState(ctx) {
+  const ui = ctx.service ? ctx.service.uiState : { pane: 'list', activeId: '' };
+
+  return {
+    confirmOpen: ctx.windowController ? ctx.windowController.confirmingClose : false,
+    setupOpen: ctx.accountController ? (ctx.accountController.open || ctx.accountController.removing) : false,
+    setupContext: ctx.accountController ? ctx.accountController.navContext : '',
+    viewerOpen: ctx.photoViewerController ? ctx.photoViewerController.viewerOpen : false,
+    doctorOpen: ctx.windowController ? ctx.windowController.doctorOpen : false,
+    paletteOpen: ctx.windowController ? ctx.windowController.paletteOpen : false,
+    reactionPickerOpen: ctx.reactionsController ? ctx.reactionsController.pickerOpen : false,
+    pollVoteOpen: ctx.pollsController ? ctx.pollsController.voteTarget !== '' : false,
+    deleteConfirmOpen: ctx.deleteController ? ctx.deleteController.open : false,
+    archiveConfirmOpen: ctx.listController ? ctx.listController.archiveAllOpen : false,
+    dialogOpen: ctx.dialogController ? ctx.dialogController.open : false,
+    searchFocused: ctx.listController ? ctx.listController.searchFocused : false,
+    composeFocused: ctx.composerController ? ctx.composerController.composeFocused : false,
+    hasAttachment: ctx.composerController ? ctx.composerController.attachmentPath !== '' : false,
+    replying: ctx.composerController ? ctx.composerController.replying : false,
+    pane: ctx.conversationController ? ctx.conversationController.pane : ui.pane,
+    activeId: ui.activeId,
+    query: ctx.listController ? ctx.listController.query : '',
+    unreadView: ctx.listController ? ctx.listController.unreadView : false
+  };
+}
