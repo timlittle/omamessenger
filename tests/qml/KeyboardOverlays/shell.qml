@@ -7,7 +7,8 @@
 // reaction picker, the delete question, the in-app photo viewer, account
 // setup (opened from the palette, since there is no "?" shortcut of its
 // own: the rail's "?" button runs the same palette.commands action),
-// account removal, and the close question. Each step polls until its
+// account removal, the new-chat dialog (closed both with Escape and by
+// choosing a contact), and the close question. Each step polls until its
 // condition holds, because several of the paths it drives answer through
 // the helper asynchronously.
 import QtQuick
@@ -44,7 +45,16 @@ ShellRoot {
     root.checkPhotoViewer,
     root.checkAccountSetup,
     root.checkRemoveAccount,
-    root.checkCloseQuestion
+    root.checkCloseQuestion,
+    // Last, since starting a conversation with a contact who had none
+    // before permanently adds a twelfth row to the list, which the
+    // earlier steps' own checkShortcutStillWorks calls assume is still
+    // eleven.
+    root.checkNewChatDialogEscape,
+    root.openNewChatDialog,
+    root.waitForContactsLoaded,
+    root.checkNewChatDialogAccept,
+    root.waitForNewChatOpened
   ];
 
   // panel is the live Panel.
@@ -270,6 +280,73 @@ ShellRoot {
     if (remove.visible) return Check.fail("Escape did not close the removal question");
 
     return root.checkShortcutStillWorks("cancelling account removal");
+  }
+
+  // checkNewChatDialogEscape opens the new-chat dialog directly with
+  // Ctrl+N, closes it with Escape without choosing anyone, and checks
+  // keyboard focus actually returns to the key area (not just that a
+  // Ctrl+ shortcut still works: the search field forwards unhandled keys
+  // to the same router regardless of whether it still holds focus, so
+  // that alone would not have caught this), then that a global shortcut
+  // still works.
+  function checkNewChatDialogEscape(): var {
+    t.keyClick(Qt.Key_N, Qt.ControlModifier);
+    const dialog = Check.find(root.panel(), "newChatDialog");
+    if (!dialog || !dialog.visible) return Check.fail("Ctrl+N did not open the new-chat dialog");
+
+    t.keyClick(Qt.Key_Escape);
+    if (dialog.visible) return Check.fail("Escape did not close the new-chat dialog");
+    if (dialog.searchField.activeFocus) return Check.fail("Escape closed the dialog but left focus on its search field");
+    if (!Check.find(root.panel(), "keyArea").activeFocus) return Check.fail("Escape closed the dialog without returning focus to the key area");
+
+    return root.checkShortcutStillWorks("closing the new-chat dialog with Escape");
+  }
+
+  // openNewChatDialog reopens the new-chat dialog with Ctrl+N, this time
+  // to choose a contact rather than cancelling.
+  function openNewChatDialog(): var {
+    t.keyClick(Qt.Key_N, Qt.ControlModifier);
+    const dialog = Check.find(root.panel(), "newChatDialog");
+    if (!dialog || !dialog.visible) return Check.fail("Ctrl+N did not reopen the new-chat dialog");
+
+    return true;
+  }
+
+  // waitForContactsLoaded holds until contacts.list has answered, so the
+  // next step's Enter picks a real contact instead of nothing.
+  function waitForContactsLoaded(): var {
+    const dialog = Check.find(root.panel(), "newChatDialog");
+    return dialog && dialog.contacts.length > 0;
+  }
+
+  // checkNewChatDialogAccept presses Enter on the first loaded contact,
+  // which closes the dialog and opens a conversation with them.
+  function checkNewChatDialogAccept(): var {
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitForNewChatOpened holds until choosing a contact opened its
+  // conversation, then checks a global shortcut still works: the bug this
+  // guards against left focus nowhere once the dialog closed, so every
+  // shortcut went quiet until the window was reopened. Starting a
+  // conversation with a contact who had none before adds a twelfth row
+  // to the list, so this checks the rail filters directly rather than
+  // through checkShortcutStillWorks, which assumes the original eleven.
+  function waitForNewChatOpened(): var {
+    const dialog = Check.find(root.panel(), "newChatDialog");
+    const title = Check.find(root.panel(), "conversationTitle");
+    if (!dialog || dialog.visible || !title || title.text.length === 0) return false;
+
+    t.keyClick(Qt.Key_2, Qt.ControlModifier);
+    if (root.listCount() !== 5)
+      return Check.fail("after choosing a contact in the new-chat dialog, Ctrl+2 gave " + root.listCount() + " rows, want 5");
+
+    t.keyClick(Qt.Key_0, Qt.ControlModifier);
+    if (root.listCount() !== 12)
+      return Check.fail("after choosing a contact in the new-chat dialog, Ctrl+0 gave " + root.listCount() + " rows, want 12 (the original 11 plus the new conversation)");
+
+    return true;
   }
 
   // checkCloseQuestion asks to close with Ctrl+W, cancels with Escape

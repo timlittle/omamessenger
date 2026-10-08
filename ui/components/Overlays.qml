@@ -58,11 +58,15 @@ Item {
     root._refocusIfClosed(false);
   }
 
-  // Opening the new-chat dialog focuses its search field.
+  // Opening the new-chat dialog focuses its search field; closing it
+  // returns focus to the key area, the same as every other overlay below:
+  // without this, the search field keeps keyboard focus even once
+  // hidden, and nothing else ever reclaims it.
   Connections {
     target: root.dialogController
     function onOpenChanged() {
       if (root.dialogController.open) dialog.focusSearch()
+      root._refocusIfClosed(root.dialogController.open)
     }
   }
 
