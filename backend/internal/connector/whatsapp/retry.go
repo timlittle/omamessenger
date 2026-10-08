@@ -145,26 +145,15 @@ func retrySender(dev device, key messageKey) types.JID {
 
 // registerRetryWaiter reserves messageRemoteID's slot in this
 // connector's table of pending media retries, so deliverRetry has
-// somewhere to hand the phone's answer once it arrives. The returned
-// cleanup must run once the caller stops waiting, successfully or not,
-// so a request nobody is listening for any more cannot accumulate in
-// the table forever.
+// somewhere to hand the phone's answer once it arrives. A second
+// register for the same id overwrites the first's channel rather than
+// refusing, unlike registerOnDemandWaiter (history_ondemand.go). The
+// returned cleanup must run once the caller stops waiting, successfully
+// or not, so a request nobody is listening for any more cannot
+// accumulate in the table forever.
 func (c *Connector) registerRetryWaiter(messageRemoteID string) (<-chan *events.MediaRetry, func()) {
-	ch := make(chan *events.MediaRetry, 1)
-
-	c.mu.Lock()
-	if c.retryWaiters == nil {
-		c.retryWaiters = map[string]chan *events.MediaRetry{}
-	}
-	c.retryWaiters[messageRemoteID] = ch
-	c.mu.Unlock()
-
-	return ch, func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-
-		delete(c.retryWaiters, messageRemoteID)
-	}
+	ch, _ := c.retryWaiters.register(messageRemoteID, false)
+	return ch, func() { c.retryWaiters.cleanup(messageRemoteID) }
 }
 
 // deliverRetry hands a media retry notification to whichever
@@ -173,16 +162,5 @@ func (c *Connector) registerRetryWaiter(messageRemoteID string) (<-chan *events.
 // run never asked a retry for, or one that already timed out and
 // stopped listening.
 func (c *Connector) deliverRetry(e *events.MediaRetry) {
-	c.mu.Lock()
-	ch := c.retryWaiters[string(e.MessageID)]
-	c.mu.Unlock()
-
-	if ch == nil {
-		return
-	}
-
-	select {
-	case ch <- e:
-	default:
-	}
+	c.retryWaiters.deliver(string(e.MessageID), e)
 }

@@ -49,40 +49,65 @@ func rewriteMentions(ctx context.Context, dev device, text string, mentionedJIDs
 		return text, nil, false
 	}
 
-	var b strings.Builder
+	w := &mentionWriter{byDigits: byDigits}
 	var out []domain.Mention
-	mentionsMe, last, utf16Pos := false, 0, 0
+	mentionsMe, last := false, 0
 
 	for _, m := range matches {
-		start, end, digitsStart, digitsEnd := m[0], m[1], m[2], m[3]
-		jid, ok := byDigits[text[digitsStart:digitsEnd]]
+		mention, me, ok := w.write(ctx, dev, text, m, last)
 		if !ok {
 			continue
 		}
-
-		before := text[last:start]
-		b.WriteString(before)
-		utf16Pos += domain.UTF16Len(before)
-
-		name := mentionDisplayName(ctx, dev, jid)
-		token := "@" + name
-		b.WriteString(token)
-		out = append(out, domain.Mention{UserID: remoteID(jid), Name: name, Offset: utf16Pos, Length: domain.UTF16Len(token)})
-		utf16Pos += domain.UTF16Len(token)
-
-		if dev.isSelfChat(ctx, jid) {
-			mentionsMe = true
-		}
-		last = end
+		out = append(out, mention)
+		mentionsMe = mentionsMe || me
+		last = m[1]
 	}
 
 	if out == nil {
 		return text, nil, false
 	}
 
-	b.WriteString(text[last:])
+	w.b.WriteString(text[last:])
 
-	return b.String(), out, mentionsMe
+	return w.b.String(), out, mentionsMe
+}
+
+// mentionWriter holds the state rewriteMentions builds up across its
+// matches: the output built so far (b), the UTF-16 position reached in
+// it (utf16Pos), and the lookup (byDigits) each match needs to resolve
+// which JID it names. It never holds ctx or dev: those come from
+// whichever call is running and are passed into write each time.
+type mentionWriter struct {
+	byDigits map[string]types.JID
+	b        strings.Builder
+	utf16Pos int
+}
+
+// write handles one mentionToken match found by rewriteMentions: it
+// writes the literal text since the previous match (ending at last)
+// plus this one's replacement name onto w.b, advances w.utf16Pos past
+// both, and reports the Mention for the replacement and whether it
+// names the signed-in account. ok is false, and nothing is written, for
+// digits that name no JID in w.byDigits, leaving that "@<digits>" token
+// for the caller to copy verbatim along with the text around it.
+func (w *mentionWriter) write(ctx context.Context, dev device, text string, m []int, last int) (domain.Mention, bool, bool) {
+	start, digitsStart, digitsEnd := m[0], m[2], m[3]
+	jid, ok := w.byDigits[text[digitsStart:digitsEnd]]
+	if !ok {
+		return domain.Mention{}, false, false
+	}
+
+	before := text[last:start]
+	w.b.WriteString(before)
+	w.utf16Pos += domain.UTF16Len(before)
+
+	name := mentionDisplayName(ctx, dev, jid)
+	token := "@" + name
+	w.b.WriteString(token)
+	mention := domain.Mention{UserID: remoteID(jid), Name: name, Offset: w.utf16Pos, Length: domain.UTF16Len(token)}
+	w.utf16Pos += domain.UTF16Len(token)
+
+	return mention, dev.isSelfChat(ctx, jid), true
 }
 
 // mentionDisplayName is the name a mention of jid renders with: their

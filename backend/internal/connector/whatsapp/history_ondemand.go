@@ -123,29 +123,17 @@ func (c *Connector) requestOlderHistory(ctx context.Context, dev device, chatRem
 // connector's table of pending on-demand history requests, refusing a
 // second one for the same chat while the first is still waiting (see
 // errHistoryRequestInProgress) rather than letting two pile up behind
-// the same slot. The returned cleanup must run once the caller stops
+// the same slot, unlike registerRetryWaiter (retry.go), which
+// overwrites. The returned cleanup must run once the caller stops
 // waiting, successfully or not, so a request nobody is listening for
 // any more cannot block every later LoadOlder for the same chat.
 func (c *Connector) registerOnDemandWaiter(chatRemoteID string) (<-chan int, func(), error) {
-	ch := make(chan int, 1)
-
-	c.mu.Lock()
-	if c.onDemandWaiters == nil {
-		c.onDemandWaiters = map[string]chan int{}
-	}
-	if _, exists := c.onDemandWaiters[chatRemoteID]; exists {
-		c.mu.Unlock()
+	ch, ok := c.onDemandWaiters.register(chatRemoteID, true)
+	if !ok {
 		return nil, nil, errHistoryRequestInProgress
 	}
-	c.onDemandWaiters[chatRemoteID] = ch
-	c.mu.Unlock()
 
-	return ch, func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-
-		delete(c.onDemandWaiters, chatRemoteID)
-	}, nil
+	return ch, func() { c.onDemandWaiters.cleanup(chatRemoteID) }, nil
 }
 
 // deliverOnDemandHistory hands an on-demand history sync's reported
@@ -154,16 +142,5 @@ func (c *Connector) registerOnDemandWaiter(chatRemoteID string) (<-chan int, fun
 // run never asked one for, or one that already timed out and stopped
 // listening.
 func (c *Connector) deliverOnDemandHistory(chatRemoteID string, count int) {
-	c.mu.Lock()
-	ch := c.onDemandWaiters[chatRemoteID]
-	c.mu.Unlock()
-
-	if ch == nil {
-		return
-	}
-
-	select {
-	case ch <- count:
-	default:
-	}
+	c.onDemandWaiters.deliver(chatRemoteID, count)
 }

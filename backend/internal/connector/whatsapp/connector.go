@@ -80,15 +80,17 @@ type Connector struct {
 	// (see retry.go), so the event dispatcher (events.go) has somewhere
 	// to deliver events.MediaRetry once it arrives. A concurrent fetch
 	// for a different message gets its own entry and so its own
-	// channel, never the other's.
-	retryWaiters map[string]chan *events.MediaRetry
+	// channel, never the other's. It has its own mutex (waiters.go), not
+	// mu above: a second register for the same key always overwrites.
+	retryWaiters waiterTable[*events.MediaRetry]
 
 	// onDemandWaiters holds one channel per conversation remote id
 	// currently waiting on the primary phone's answer to an on-demand
 	// history request (see history_ondemand.go), so handleHistorySync
 	// has somewhere to deliver the matching events.HistorySync once it
-	// arrives. Only one entry can exist per chat at a time.
-	onDemandWaiters map[string]chan int
+	// arrives. Only one entry can exist per chat at a time: a second
+	// register for the same key is refused (see errHistoryRequestInProgress).
+	onDemandWaiters waiterTable[int]
 }
 
 // nameRank orders how much a resolved name can be trusted, so
