@@ -73,6 +73,28 @@ func TestNewDemo_OneConversationHasALoadedPhotoAndALinkPreview(t *testing.T) {
 	})
 }
 
+// TestNewDemo_NoConversationRepeatsAMessage confirms every seeded message
+// in a demo conversation has distinct text, so a recording never shows the
+// same line twice and instead reads like a natural short exchange.
+func TestNewDemo_NoConversationRepeatsAMessage(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		stop := runFake(t, fake.NewDemo(), sink)
+		synctest.Wait()
+		stop()
+
+		for remoteID, messages := range sink.Messages() {
+			seen := map[string]bool{}
+			for _, m := range messages {
+				if seen[m.Text] {
+					t.Errorf("conversation %q repeats the message %q", remoteID, m.Text)
+				}
+				seen[m.Text] = true
+			}
+		}
+	})
+}
+
 // TestNewDemo_OneConversationHasAVoiceNote confirms the demo seed gives the
 // recording a conversation whose newest message is a voice note, so the
 // media GIF has one to open and play through the real helper, the same way

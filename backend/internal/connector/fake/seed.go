@@ -52,7 +52,7 @@ func (s conversationScript) applyScriptedMedia(messages []domain.Message) {
 	if s.lastPhoto && s.count > 0 {
 		newest := &messages[s.count-1]
 		newest.Text = "[Photo]"
-		newest.Media = &domain.Media{Kind: domain.MediaPhoto, Width: 400, Height: 300}
+		newest.Media = &domain.Media{Kind: domain.MediaPhoto, Width: photoWidth, Height: photoHeight}
 
 		if older := s.count - 1 - s.extraPhotoOffset; s.extraPhotoOffset > 0 && older >= 0 {
 			messages[older].Text = "[Photo]"

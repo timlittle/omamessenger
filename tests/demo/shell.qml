@@ -49,15 +49,24 @@ ShellRoot {
     return requested && requested.length > 0 ? requested : "list-and-send";
   }
 
-  // unreadTitles are the demo seed's conversations with an unread badge,
-  // the ones Ctrl+J cycles between.
-  readonly property var unreadTitles: ["Priya Patel", "Design Team", "Weekend Hike"]
+  // unreadTitles are the demo seed's conversations Ctrl+J actually lands
+  // on: unread and not muted. Weekend Hike carries an unread badge too,
+  // but it is muted, so unread.next's own wrap-and-skip (Selection.js)
+  // never lands there.
+  readonly property var unreadTitles: ["Priya Patel", "Design Team"]
 
   // _navTitle is the title captureTitle last recorded, so a later wait
   // step can tell a jump actually moved somewhere new.
   property string _navTitle: ""
 
   property var steps: root.stepsFor(root.scenarioName)
+
+  // _photoViewer is found once the panel exists (see the startup Timer
+  // below) and kept, so keyLabel's own anchors binding below can read its
+  // "open" property directly and move out of the way reactively: the
+  // viewer's own header sits in the same top-right corner the label
+  // otherwise uses.
+  property var _photoViewer: null
 
   // fail stops the recording with a reason on stderr, the same way a
   // broken test would, so a bad run is never mistaken for a finished GIF.
@@ -121,12 +130,13 @@ ShellRoot {
     };
   }
 
-  // waitForReady holds until the fake helper's demo seed has connected
-  // and the list has loaded its handful of chats.
+  // waitForReady holds until the fake helper's demo seed — one WhatsApp
+  // account and one Telegram account — has connected and the list has
+  // loaded its handful of chats.
   function waitForReady(): var {
     const accounts = helperService.accounts;
     const model = Check.find(root.panel(), "conversationListView").model;
-    return model.count === 4 && accounts.length === 1 && accounts.every((a) => a.status === "connected");
+    return model.count === 4 && accounts.length === 2 && accounts.every((a) => a.status === "connected");
   }
 
   // startCapturing begins saving frames; everything before this point was
@@ -144,6 +154,31 @@ ShellRoot {
       t.keyClick(key, modifiers);
       return true;
     };
+  }
+
+  // pressChatStep presses chat.next (Alt+↓), or chat.prev (Alt+↑) when
+  // the open conversation is already the list's last row: Selection.move
+  // does not wrap, so "next" from the bottom row is a silent no-op. A
+  // direct step (called by the engine each tick, like waitForReady),
+  // not a factory: which row is last shifts run to run — reading a
+  // conversation drops its unread badge, which can reorder it below one
+  // of the others — so this checks the live list right before pressing,
+  // rather than deciding a direction up front.
+  function pressChatStep(): var {
+    const list = Check.find(root.panel(), "conversationListView").model;
+    let atEnd = false;
+    for (let i = 0; i < list.count; i++) {
+      if (list.get(i).title === root.title()) atEnd = i === list.count - 1;
+    }
+
+    if (atEnd) {
+      root.showLabel("Alt+↑  →  next chat");
+      t.keyClick(Qt.Key_Up, Qt.AltModifier);
+    } else {
+      root.showLabel("Alt+↓  →  next chat");
+      t.keyClick(Qt.Key_Down, Qt.AltModifier);
+    }
+    return true;
   }
 
   // openViaPalette returns a step that opens Ctrl+K, the conversation
@@ -473,7 +508,7 @@ ShellRoot {
       root.waitForUnreadTitleChanged(),
       root.holdFor(6),
       root.captureTitle,
-      root.pressKey("Alt+↓  →  next chat", Qt.Key_Down, Qt.AltModifier),
+      root.pressChatStep,
       root.waitForTitleChanged(),
       root.waitForComposerBlurred,
       root.holdFor(5),
@@ -621,19 +656,25 @@ ShellRoot {
 
     property string text: ""
 
-    // Anchored to the top-right corner: every step's content sits in the
-    // list, the conversation body or the composer, none of which reach
-    // up here, so the label never covers anything it is labelling.
+    // Positioned in the top-right corner normally: every step's content
+    // sits in the list, the conversation body or the composer, none of
+    // which reach up here. The one exception is the photo viewer, whose
+    // own header (the size label and the close button) lives in that
+    // same corner; while it is open the label moves to bottom-centre,
+    // above its footer hints, over the photo itself instead. Plain x/y
+    // bindings, not anchors: toggling between two anchor lines (right
+    // vs. horizontalCenter) left a stale one active from whichever was
+    // set first, pulling the label to the middle of the window instead
+    // of either corner.
+    readonly property bool _overViewer: !!root._photoViewer && root._photoViewer.open
     visible: text.length > 0
     width: label.implicitWidth + 32
     height: label.implicitHeight + 16
     radius: 8
     color: "#1a1a1aE6"
     z: 10000
-    anchors.top: parent ? parent.top : undefined
-    anchors.right: parent ? parent.right : undefined
-    anchors.topMargin: 16
-    anchors.rightMargin: 16
+    x: parent ? (keyLabel._overViewer ? (parent.width - keyLabel.width) / 2 : parent.width - keyLabel.width - 16) : 0
+    y: parent ? (keyLabel._overViewer ? parent.height - keyLabel.height - 56 : 16) : 0
 
     Text {
       id: label
@@ -692,6 +733,7 @@ ShellRoot {
     onTriggered: {
       root.panel().open("{}");
       keyLabel.parent = Check.find(root.panel(), "keyArea");
+      root._photoViewer = Check.find(root.panel(), "photoViewer");
 
       const rail = Check.find(root.panel(), "serviceRail");
       if (rail && rail.parent) rail.parent.layer.enabled = true;

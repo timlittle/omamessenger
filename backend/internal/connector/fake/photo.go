@@ -9,11 +9,22 @@ import (
 )
 
 // Fixed size for the procedural stand-in photo every scripted message
-// with a photo downloads as.
+// with a photo downloads as: close to the in-app photo viewer's own
+// size, so a recording shows the real thing rather than a small image
+// stretched blocky across the window.
 const (
-	photoWidth  = 480
-	photoHeight = 320
+	photoWidth  = 1280
+	photoHeight = 800
 	horizonY    = photoHeight / 2
+
+	// scale converts the artwork's tuning (amplitude, radius) from the
+	// 480-wide draft it was designed at to photoWidth, so a higher
+	// resolution still draws the same picture, just sharper rather than
+	// busier. The handful of pixel offsets below that need a whole
+	// number (a constant float-to-int conversion must be exact) are
+	// scaled by hand instead: horizonY-10 becomes horizonY-27, +15
+	// becomes +40, +5 becomes +13, and the ripple spacing of 7 becomes 19.
+	scale = float64(photoWidth) / 480.0
 )
 
 // placeholderPhoto renders a small landscape JPEG: a sunset sky, a sun,
@@ -51,10 +62,10 @@ func paintSky(img *image.RGBA) {
 // paintSun blends a soft-edged bright disc into the sky, low and to the
 // right, the way a setting sun sits just above a horizon.
 func paintSun(img *image.RGBA) {
-	cx, cy, radius := float64(photoWidth)*0.72, float64(horizonY)*0.92, 42.0
+	cx, cy, radius := float64(photoWidth)*0.72, float64(horizonY)*0.92, 42.0*scale
 	sun := color.RGBA{R: 255, G: 225, B: 150, A: 255}
 
-	for y := range horizonY + 10 {
+	for y := range horizonY + 27 {
 		for x := range photoWidth {
 			d := math.Hypot(float64(x)-cx, float64(y)-cy)
 			if d > radius*1.6 {
@@ -75,16 +86,16 @@ func paintMountains(img *image.RGBA) {
 		baseY                  int
 		amplitude, freq, phase float64
 	}{
-		{color.RGBA{R: 80, G: 100, B: 130, A: 255}, horizonY - 10, 18, 0.018, 0.6},
-		{color.RGBA{R: 55, G: 75, B: 100, A: 255}, horizonY, 28, 0.026, 2.1},
-		{color.RGBA{R: 30, G: 45, B: 65, A: 255}, horizonY + 15, 36, 0.034, 4.0},
+		{color.RGBA{R: 80, G: 100, B: 130, A: 255}, horizonY - 27, 18 * scale, 0.018 / scale, 0.6},
+		{color.RGBA{R: 55, G: 75, B: 100, A: 255}, horizonY, 28 * scale, 0.026 / scale, 2.1},
+		{color.RGBA{R: 30, G: 45, B: 65, A: 255}, horizonY + 40, 36 * scale, 0.034 / scale, 4.0},
 	}
 
 	for _, l := range layers {
 		for x := range photoWidth {
 			wave := math.Sin(float64(x)*l.freq+l.phase) + math.Sin(float64(x)*l.freq*2.3+l.phase*1.7)
 			peak := l.baseY - int(l.amplitude*wave/2)
-			for y := peak; y < horizonY+5; y++ {
+			for y := peak; y < horizonY+13; y++ {
 				img.SetRGBA(x, y, l.fill)
 			}
 		}
@@ -102,7 +113,7 @@ func paintLakeReflection(img *image.RGBA) {
 		srcY := max(2*horizonY-y-1, 0)
 		for x := range photoWidth {
 			reflected := lerpColor(img.RGBAAt(x, srcY), water, 0.45)
-			if y%7 == 0 {
+			if y%19 == 0 {
 				reflected = lerpColor(reflected, ripple, 0.12)
 			}
 			img.SetRGBA(x, y, reflected)

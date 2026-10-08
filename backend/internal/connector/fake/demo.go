@@ -13,15 +13,18 @@ import (
 // recording. One conversation carries both a loaded photo and a link
 // preview, so a single open shows both without scrolling; another's
 // newest message is a voice note, for the media recording to open and
-// play. The account is Telegram, the only service this helper actually
-// connects to; WhatsApp is not supported yet (see README.md).
+// play. Two accounts, one WhatsApp and one Telegram, so the rail shows
+// both services and the unified list mixes them, the way a real signed-in
+// setup would. Every conversation's texts slice is at least as long as
+// its message count, so history() never has to repeat a line by cycling
+// back to the start (see TestNewDemo_NoConversationRepeatsAMessage).
 var demoScripts = []accountScript{
 	{
-		account:      domain.Account{ID: "tg-demo", Service: domain.ServiceTelegram, Name: "Personal"},
+		account:      domain.Account{ID: "wa-demo", Service: domain.ServiceWhatsApp, Name: "Personal"},
 		connectDelay: 150 * time.Millisecond,
 		conversations: []conversationScript{
 			{
-				remoteID: "tg:priya-patel", title: "Priya Patel", kind: domain.KindDirect, count: 3, unread: 1,
+				remoteID: "wa:priya-patel", title: "Priya Patel", kind: domain.KindDirect, count: 3, unread: 1,
 				lastPhoto: true,
 				texts: []string{
 					"Hey, are you free Thursday?",
@@ -31,19 +34,36 @@ var demoScripts = []accountScript{
 				linkPreviewText: "Here's the venue: https://example.com/venue",
 			},
 			{
+				remoteID: "wa:weekend-hike", title: "Weekend Hike", kind: domain.KindGroup, members: 5, count: 5, unread: 3, muted: true,
+				groupSenders: []string{"Sam", "Lee"},
+				texts: []string{
+					"Meet at the trailhead at 8",
+					"I'll be there",
+					"Don't forget water",
+					"I'll bring the first aid kit",
+					"Weather looks good",
+				},
+			},
+		},
+	},
+	{
+		account:      domain.Account{ID: "tg-demo", Service: domain.ServiceTelegram, Name: "Personal"},
+		connectDelay: 150 * time.Millisecond,
+		conversations: []conversationScript{
+			{
 				remoteID: "tg:design-team", title: "Design Team", kind: domain.KindGroup, members: 6, count: 4, unread: 2,
 				groupSenders: []string{"Noah", "Mia"},
-				texts:        []string{"Can we push the review to Friday?", "I've updated the mockups", "Sounds good to me"},
+				texts: []string{
+					"Can we push the review to Friday?",
+					"Works for me",
+					"I've updated the mockups",
+					"Sounds good to me",
+				},
 			},
 			{
 				remoteID: "tg:jordan-lee", title: "Jordan Lee", kind: domain.KindDirect, count: 3,
 				lastVoice: true,
 				texts:     []string{"Thanks for the update", "Let me know if anything changes", "Will do"},
-			},
-			{
-				remoteID: "tg:weekend-hike", title: "Weekend Hike", kind: domain.KindGroup, members: 5, count: 5, unread: 3, muted: true,
-				groupSenders: []string{"Sam", "Lee"},
-				texts:        []string{"Meet at the trailhead at 8", "I'll bring the first aid kit", "Weather looks good"},
 			},
 		},
 	},

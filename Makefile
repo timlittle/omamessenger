@@ -146,8 +146,10 @@ DEMO_SCENARIOS := list-and-send keyboard-nav palette-search media reply-reaction
 # covers the columns this hides, still mid-blend); ffmpeg's palette
 # filter cannot cope with the pixel format changing mid-stream, so every
 # frame is normalized to RGB first. ffmpeg then builds a palette from the
-# frames for a small, sharp GIF and reuses it. A held frame from
-# list-and-send's opening list becomes the repository's preview.png.
+# frames for a small, sharp GIF and reuses it, with sierra2_4a dithering
+# so the demo photo's sky and water gradients stay smooth on a 256-colour
+# palette instead of banding. A held frame from list-and-send's opening
+# list becomes the repository's preview.png.
 # Re-run this after a UI change to refresh docs/demo/ and preview.png.
 demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and preview.png
 	@command -v $(FFMPEG) >/dev/null || { echo "demo: $(FFMPEG) is not installed" >&2; exit 1; }
@@ -175,7 +177,7 @@ demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and pr
 		$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" \
 			-vf "fps=10,scale=960:-1:flags=lanczos,palettegen" -update 1 -frames:v 1 build/demo-palette.png; \
 		$(FFMPEG) -y -framerate 10 -i "$$root/frames/frame-%05d.png" -i build/demo-palette.png \
-			-lavfi "fps=10,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse" -loop 0 "docs/demo/$$name.gif"; \
+			-lavfi "fps=10,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=sierra2_4a" -loop 0 "docs/demo/$$name.gif"; \
 		if [ "$$name" = "list-and-send" ]; then cp "$$root/frames/frame-00005.png" preview.png; fi; \
 	done; \
 	ls -lh docs/demo/*.gif preview.png
