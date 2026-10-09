@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2](https://github.com/timlittle/omamessenger/compare/v0.3.1...v0.3.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **notify:** send desktop notifications over D-Bus so message text never appears in process arguments ([f8f6aa9](https://github.com/timlittle/omamessenger/commit/f8f6aa9a9f8d0971c87ae06fe6437c5632c90f67))
+* **whatsapp:** drop key-distribution-only messages instead of showing a placeholder ([52b69b2](https://github.com/timlittle/omamessenger/commit/52b69b2e61b4c1149df5160b5952af65630b06cb))
+
 ## [0.3.1](https://github.com/timlittle/omamessenger/compare/v0.3.0...v0.3.1) (2026-10-09)
 
 
