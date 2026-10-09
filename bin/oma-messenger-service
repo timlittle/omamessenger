@@ -4,7 +4,7 @@
 # scripts/install-helper.sh. Exit status 3 means no helper is installed.
 set -eu
 
-plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+plugin_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 dev_helper="$plugin_dir/bin/dev/oma-messenger-service"
 if [ -x "$dev_helper" ]; then
     exec "$dev_helper" "$@"

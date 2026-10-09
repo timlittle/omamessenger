@@ -16,8 +16,8 @@
 # OMA_RELEASE_BASE overrides the download location (tests use file://).
 set -eu
 
-plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-# shellcheck source=desktop-entry.sh
+plugin_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+# shellcheck source=SCRIPTDIR/desktop-entry.sh
 . "$plugin_dir/scripts/desktop-entry.sh"
 version=$(tr -d ' \n' < "$plugin_dir/helper-version")
 case $(uname -m) in

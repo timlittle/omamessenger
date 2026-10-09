@@ -15,7 +15,7 @@
 # Safe to re-run: it replaces any existing symlinks at the target paths.
 set -eu
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 shell_dir="${OMARCHY_SHELL_DIR:-${OMARCHY_PATH:-/usr/share/omarchy}/shell}"
 
 fail() { printf 'qml-imports.sh: %s\n' "$1" >&2; exit 1; }

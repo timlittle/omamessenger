@@ -8,7 +8,7 @@
 # `make build-all` does this for you.
 set -eu
 
-project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+project_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_dir"
 out=build/release
 notices=build/THIRD_PARTY_NOTICES

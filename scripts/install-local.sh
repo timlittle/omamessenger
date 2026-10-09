@@ -14,7 +14,7 @@
 set -Eeuo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-# shellcheck source=desktop-entry.sh
+# shellcheck source=SCRIPTDIR/desktop-entry.sh
 . "$repo_root/scripts/desktop-entry.sh"
 plugin_id=io.github.omamessenger
 expected_dir="${HOME}/.config/omarchy/plugins/${plugin_id}"

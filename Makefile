@@ -210,7 +210,7 @@ demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and pr
 lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QML
 	$(GOLANGCI_LINT) run ./...
 	$(GO) run ./tools/nologcontent ./backend/...
-	@if command -v shellcheck >/dev/null; then shellcheck scripts/*.sh bin/oma-messenger-service; \
+	@if command -v shellcheck >/dev/null; then shellcheck -x scripts/*.sh bin/oma-messenger-service; \
 	else echo "shellcheck not installed; skipping (CI runs it)"; fi
 	./scripts/qml-imports.sh
 	$(QMLLINT) -I build/qml --max-warnings 0 $$(find ui -name '*.qml')
