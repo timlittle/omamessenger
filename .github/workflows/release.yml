@@ -26,7 +26,9 @@ jobs:
   # trusting whatever already ran against the branch it came from, so a
   # release can never ship from code CI has not verified at this exact ref.
   ci:
-    uses: ./.github/workflows/ci.yml
+    # zizmor wants the newer $/... form; actionlint v1.7.12 does not parse
+    # it yet and fails the build on it, so this stays ./... until it does.
+    uses: ./.github/workflows/ci.yml # zizmor: ignore[self-repository]
     permissions:
       contents: read
 
@@ -44,6 +46,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
 
       - name: Check the tag, helper-version and manifest.json agree
         run: |

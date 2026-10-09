@@ -18,6 +18,11 @@ GOLANGCI_LINT_VERSION := v2.14.0
 GO_TEST_COVERAGE_VERSION := v2.20.0
 GO_LICENSES_VERSION := v2.0.1
 GOVULNCHECK_VERSION := v1.8.0
+ACTIONLINT_VERSION := v1.7.12
+# zizmor has no Go module to `go install`; ZIZMOR_SHA256 pins the exact
+# release asset downloaded by its build rule below.
+ZIZMOR_VERSION := v1.30.1
+ZIZMOR_SHA256 := e65324f4430c2717591937edcec90ccbefaf14c174f8ec9415e03ca875b46e1a
 TOOLS := $(CURDIR)/build/tools
 # Go's own build scratch goes under build/, on disk: /tmp is a RAM-backed
 # tmpfs here, and go-build directories left by an interrupted run sat in
@@ -28,6 +33,8 @@ GOLANGCI_LINT := $(TOOLS)/golangci-lint
 GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
 GO_LICENSES := $(TOOLS)/go-licenses
 GOVULNCHECK := $(TOOLS)/govulncheck
+ACTIONLINT := $(TOOLS)/actionlint
+ZIZMOR := $(TOOLS)/zizmor
 
 FAKE_HELPER := build/fake/oma-messenger-service
 THIRD_PARTY_NOTICES := build/THIRD_PARTY_NOTICES
@@ -207,11 +214,16 @@ demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and pr
 	done; \
 	ls -lh docs/demo/*.gif preview.png
 
-lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QML
+# Cheapest checks first, so a workflow typo or a Go lint finding fails
+# before the slower QML lint even starts.
+lint: $(GOLANGCI_LINT) $(ACTIONLINT) $(ZIZMOR) ## Lint Go (golangci-lint, privacy), GitHub workflows, shell scripts and QML
+	$(ACTIONLINT)
+	$(ZIZMOR) .github/workflows
 	$(GOLANGCI_LINT) run ./...
 	$(GO) run ./tools/nologcontent ./backend/...
 	@if command -v shellcheck >/dev/null; then shellcheck -x scripts/*.sh bin/oma-messenger-service; \
-	else echo "shellcheck not installed; skipping (CI runs it)"; fi
+	elif command -v docker >/dev/null; then docker run --rm -u "$$(id -u):$$(id -g)" -v "$(CURDIR):$(CURDIR)" -w "$(CURDIR)" koalaman/shellcheck:v0.9.0 -x scripts/*.sh bin/oma-messenger-service; \
+	else echo "shellcheck not installed and docker unavailable; skipping (CI runs it)"; fi
 	./scripts/qml-imports.sh
 	$(QMLLINT) -I build/qml --max-warnings 0 $$(find ui -name '*.qml')
 	git --no-pager diff --check
@@ -227,7 +239,7 @@ third-party-notices: $(GO_LICENSES) ## Generate build/THIRD_PARTY_NOTICES, publi
 	GOROOT="$$($(GO) env GOROOT)" $(GO_LICENSES) report ./backend $(LICENSE_IGNORE) --ignore github.com/timlittle/omamessenger \
 		--template scripts/third-party-notices.tmpl > $(THIRD_PARTY_NOTICES)
 
-tools: $(GOLANGCI_LINT) $(GO_TEST_COVERAGE) $(GO_LICENSES) $(GOVULNCHECK) ## Build the pinned golangci-lint, go-test-coverage, go-licenses and govulncheck
+tools: $(GOLANGCI_LINT) $(GO_TEST_COVERAGE) $(GO_LICENSES) $(GOVULNCHECK) $(ACTIONLINT) $(ZIZMOR) ## Build the pinned golangci-lint, go-test-coverage, go-licenses, govulncheck, actionlint and zizmor
 
 $(GOLANGCI_LINT):
 	GOBIN=$(TOOLS) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -240,6 +252,20 @@ $(GO_LICENSES):
 
 $(GOVULNCHECK):
 	GOBIN=$(TOOLS) $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+
+$(ACTIONLINT):
+	GOBIN=$(TOOLS) $(GO) install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+
+# zizmor is a Rust binary with no Go module, so this downloads the pinned
+# release tarball instead of `go install`-ing it, and checks it against
+# ZIZMOR_SHA256 before trusting it.
+$(ZIZMOR):
+	mkdir -p $(TOOLS)
+	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	curl -fsSL -o "$$tmp/zizmor.tar.gz" "https://github.com/zizmorcore/zizmor/releases/download/$(ZIZMOR_VERSION)/zizmor-x86_64-unknown-linux-gnu.tar.gz"; \
+	echo "$(ZIZMOR_SHA256)  $$tmp/zizmor.tar.gz" | sha256sum -c -; \
+	tar -xzf "$$tmp/zizmor.tar.gz" -C "$$tmp" zizmor; \
+	mv "$$tmp/zizmor" $(ZIZMOR)
 
 validate: ## Validate the plugin files, as staged for install, with Omarchy
 	OMARCHY="$(OMARCHY)" ./scripts/install-local.sh --check

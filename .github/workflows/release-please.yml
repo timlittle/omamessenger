@@ -39,7 +39,9 @@ jobs:
   release:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
-    uses: ./.github/workflows/release.yml
+    # zizmor wants the newer $/... form; actionlint v1.7.12 does not parse
+    # it yet and fails the build on it, so this stays ./... until it does.
+    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository]
     permissions:
       contents: write
       id-token: write
