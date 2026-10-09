@@ -28,7 +28,12 @@ for path in "$tmp"/oma-*; do
     report "$path is in a RAM-backed temp directory; keep caches and scratch under build/"
 done
 
-owned=$(find "$root" -path "$root/.git" -prune -o -user 0 -print 2>/dev/null | head -n 5)
+# Running as root (inside a CI container), every file is root-owned by
+# design, so only a normal user's checkout can be checked.
+owned=""
+if [ "$(id -u)" -ne 0 ]; then
+    owned=$(find "$root" -path "$root/.git" -prune -o -user 0 -print 2>/dev/null | head -n 5)
+fi
 if [ -n "$owned" ]; then
     report "root-owned files in the checkout (run containers with -u \$(id -u):\$(id -g)): $(echo "$owned" | tr '\n' ' ')"
 fi
