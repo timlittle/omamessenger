@@ -87,7 +87,7 @@ jobs:
         # GitHub's runner has shellcheck; act's smaller image does not.
         run: |
           command -v shellcheck >/dev/null || { $(command -v sudo) apt-get update -q && $(command -v sudo) apt-get install -yq shellcheck; }
-          shellcheck -x scripts/*.sh bin/oma-messenger-service
+          shellcheck -x scripts/*.sh bin/oma-messenger-service hooks/commit-msg
 
   # Runs only once everything else has passed.
   release-build:

@@ -57,7 +57,7 @@ LICENSE_IGNORE := --ignore github.com/segmentio/asm
 # test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local release-check benchmark ci clean
+.PHONY: help check build build-fake build-all install-helper test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local install-hooks release-check benchmark ci clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -221,8 +221,8 @@ lint: $(GOLANGCI_LINT) $(ACTIONLINT) $(ZIZMOR) ## Lint Go (golangci-lint, privac
 	$(ZIZMOR) .github/workflows
 	$(GOLANGCI_LINT) run ./...
 	$(GO) run ./tools/nologcontent ./backend/...
-	@if command -v shellcheck >/dev/null; then shellcheck -x scripts/*.sh bin/oma-messenger-service; \
-	elif command -v docker >/dev/null; then docker run --rm -u "$$(id -u):$$(id -g)" -v "$(CURDIR):$(CURDIR)" -w "$(CURDIR)" koalaman/shellcheck:v0.9.0 -x scripts/*.sh bin/oma-messenger-service; \
+	@if command -v shellcheck >/dev/null; then shellcheck -x scripts/*.sh bin/oma-messenger-service hooks/commit-msg; \
+	elif command -v docker >/dev/null; then docker run --rm -u "$$(id -u):$$(id -g)" -v "$(CURDIR):$(CURDIR)" -w "$(CURDIR)" koalaman/shellcheck:v0.9.0 -x scripts/*.sh bin/oma-messenger-service hooks/commit-msg; \
 	else echo "shellcheck not installed and docker unavailable; skipping (CI runs it)"; fi
 	./scripts/qml-imports.sh
 	$(QMLLINT) -I build/qml --max-warnings 0 $$(find ui -name '*.qml')
@@ -272,6 +272,9 @@ validate: ## Validate the plugin files, as staged for install, with Omarchy
 
 install-local: build ## Install this checkout into Omarchy, enable it and restart the shell
 	OMARCHY="$(OMARCHY)" OMARCHY_SHELL="$(OMARCHY_SHELL)" RSYNC="$(RSYNC)" ./scripts/install-local.sh "$(PLUGIN_DIR)"
+
+install-hooks: ## Point this checkout's git at hooks/, enforcing Conventional Commits on every commit
+	git config core.hooksPath hooks
 
 # Runs .github/workflows/ci.yml's jobs locally in Docker through act, so a
 # push is only made once CI would pass. ubuntu-latest maps to act's own
