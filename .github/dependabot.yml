@@ -1,0 +1,21 @@
+# Dependabot keeps the GitHub Actions and Go module versions current.
+# Weekly, grouped updates keep the PR count low; golangci-lint and the
+# other dev tools are pinned in the Makefile, not go.mod, so they are not
+# covered here.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-dependencies:
+        patterns: ["*"]
