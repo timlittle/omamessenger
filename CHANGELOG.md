@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/timlittle/omamessenger/compare/v0.3.2...v0.3.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* **ui:** render text from other people as plain text so it cannot load remote images ([b8d0b1c](https://github.com/timlittle/omamessenger/commit/b8d0b1c016fea73b2c17b64386afd4de086cff46))
+
 ## [0.3.2](https://github.com/timlittle/omamessenger/compare/v0.3.1...v0.3.2) (2026-10-09)
 
 
