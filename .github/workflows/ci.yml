@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
 
+# A new push cancels a run already in progress for the same branch or PR,
+# so an outdated commit's jobs do not keep burning runner minutes once a
+# newer one has superseded it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # Compiles the helper and every test binary once, race detector and
   # coverage included, and saves Go's build cache (setup-go keys it on
@@ -13,6 +20,7 @@ jobs:
   # to compile.
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -26,6 +34,7 @@ jobs:
   test:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     permissions:
       contents: read
     steps:
@@ -45,6 +54,7 @@ jobs:
   checks:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -73,6 +83,7 @@ jobs:
   release-build:
     needs: [test, checks, qml]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -89,6 +100,7 @@ jobs:
   qml:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container: archlinux:base-devel
     permissions:
       contents: read
