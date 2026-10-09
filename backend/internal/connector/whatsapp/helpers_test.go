@@ -676,6 +676,9 @@ func boolPtr(b bool) *bool { return &b }
 // u32 takes the address of a uint32 literal, for the same reason.
 func u32(n uint32) *uint32 { return &n }
 
+// int32Ptr takes the address of an int32 literal, for the same reason.
+func int32Ptr(n int32) *int32 { return &n }
+
 // u64 takes the address of a uint64 literal, for the same reason.
 func u64(n uint64) *uint64 { return &n }
 

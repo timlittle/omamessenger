@@ -193,12 +193,13 @@ func logPhoneResend() {
 // already turns into a real message (see messageText and its helpers
 // in normalize_message.go), handles as its own event (a reaction, an
 // edit or a revoke; see normalize_events.go), drops as contentless
-// housekeeping (see isContentless), or that unwrap already peels away
-// before a connector ever has to recognise them, plus the handful of
-// companion fields WhatsApp sends alongside real content (a session's
-// key distribution, or MessageContextInfo's bot and device metadata).
-// Anything else reaching mediaPlaceholder's generic "[Message]" is
-// content this connector has never been taught to show.
+// housekeeping on its own (see isContentless), or that unwrap already
+// peels away before a connector ever has to recognise them, plus the
+// handful of companion fields WhatsApp sends alongside real content (a
+// session's key distribution, or MessageContextInfo's bot and device
+// metadata; see isKeyDistributionOnly for when those are dropped
+// instead). Anything else reaching mediaPlaceholder's generic
+// "[Message]" is content this connector has never been taught to show.
 var recognizedContentFields = map[string]bool{
 	"conversation": true, "extendedTextMessage": true, "imageMessage": true,
 	"videoMessage": true, "audioMessage": true, "documentMessage": true,

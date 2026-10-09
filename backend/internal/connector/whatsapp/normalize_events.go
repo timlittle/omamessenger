@@ -6,6 +6,7 @@ import (
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -83,23 +84,70 @@ var housekeepingProtocolTypes = map[waE2E.ProtocolMessage_Type]bool{
 	waE2E.ProtocolMessage_LID_MIGRATION_MAPPING_SYNC:                   true,
 }
 
+// keyDistributionOnlyFields are the waE2E.Message top-level fields
+// that carry nothing but encryption and delivery housekeeping: a
+// group session's key distribution, in either of its two forms, and
+// the message context info WhatsApp attaches for bot replies and
+// multi-device delivery. Unlike the other housekeeping kinds
+// isContentless already recognises below, WhatsApp routinely sends
+// these alongside real content too (it often attaches a sender-key
+// distribution to a group's first message in a new session), so
+// isKeyDistributionOnly checks that these are the *only* fields msg
+// populated before treating it as contentless, rather than matching on
+// their presence alone the way the switch below does for a call, a
+// pinned message and the rest.
+var keyDistributionOnlyFields = map[string]bool{
+	"senderKeyDistributionMessage":               true,
+	"fastRatchetKeySenderKeyDistributionMessage": true,
+	"messageContextInfo":                         true,
+}
+
+// isKeyDistributionOnly reports whether msg's only populated top-level
+// fields are session key distribution and delivery housekeeping (see
+// keyDistributionOnlyFields), with nothing a person wrote alongside
+// them. A field this connector does not recognise at all, populated
+// alongside one of these, is left for messageText's own placeholder
+// fallback rather than assumed contentless: a kind this connector has
+// not been taught to show real text for yet must still be found, not
+// silently dropped.
+func isKeyDistributionOnly(msg *waE2E.Message) bool {
+	populated := false
+	onlyHousekeeping := true
+
+	msg.ProtoReflect().Range(func(fd protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
+		populated = true
+		if !keyDistributionOnlyFields[string(fd.Name())] {
+			onlyHousekeeping = false
+		}
+
+		return true
+	})
+
+	return populated && onlyHousekeeping
+}
+
 // isContentless reports whether msg is one of WhatsApp's own protocol
 // or system notices rather than something a person sent: a known
 // housekeeping ProtocolMessage kind other than a revoke or an edit
 // (handled separately; see isRevoke, isEdit and
-// housekeepingProtocolTypes), a message pinned or kept in a chat, a
-// voice or video call's log entry, an album's own header (its photos
-// and videos arrive as their own messages, each wrapped in an
-// associatedChildMessage that unwrap peels away; see
-// normalize_message.go), or one of the other housekeeping kinds
-// WhatsApp's wire format carries alongside a session (a history-sync
-// bundle or notice, a secret or key-share payload), none of which carry
-// anything a person actually said. A poll vote is handled separately
-// too (see handlePollVote in vote.go), never replayed from a bulk sync
-// the same way a reaction is not.
+// housekeepingProtocolTypes), a message that carries only session key
+// distribution and delivery housekeeping (see isKeyDistributionOnly), a
+// message pinned or kept in a chat, a voice or video call's log entry,
+// an album's own header (its photos and videos arrive as their own
+// messages, each wrapped in an associatedChildMessage that unwrap
+// peels away; see normalize_message.go), or one of the other
+// housekeeping kinds WhatsApp's wire format carries alongside a
+// session (a history-sync bundle or notice, a secret or key-share
+// payload), none of which carry anything a person actually said. A
+// poll vote is handled separately too (see handlePollVote in vote.go),
+// never replayed from a bulk sync the same way a reaction is not.
 func isContentless(msg *waE2E.Message) bool {
 	if pm := msg.GetProtocolMessage(); pm != nil {
 		return !isRevoke(msg) && !isEdit(msg) && housekeepingProtocolTypes[pm.GetType()]
+	}
+
+	if isKeyDistributionOnly(msg) {
+		return true
 	}
 
 	switch {

@@ -46,6 +46,46 @@ func TestIsContentless_RecognisesHousekeepingKinds(t *testing.T) {
 		// the same as any other content this connector does not
 		// recognise yet.
 		{"an unrecognised protocol message type", &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REQUEST_WELCOME_MESSAGE.Enum()}}, false},
+		// A sender-key distribution and the message context info
+		// WhatsApp attaches for bot replies and multi-device delivery
+		// are pure encryption and delivery housekeeping: WhatsApp
+		// sends one ahead of a group's first message in a new
+		// session, with nothing else set, so that message must be
+		// dropped like any other contentless kind rather than shown
+		// as the generic placeholder (see messageText).
+		{"sender key distribution only", &waE2E.Message{SenderKeyDistributionMessage: &waE2E.SenderKeyDistributionMessage{GroupID: strPtr("g1")}}, true},
+		{"message context info only", &waE2E.Message{MessageContextInfo: &waE2E.MessageContextInfo{DeviceListMetadataVersion: int32Ptr(2)}}, true},
+		{
+			"sender key distribution and message context info together",
+			&waE2E.Message{
+				SenderKeyDistributionMessage: &waE2E.SenderKeyDistributionMessage{GroupID: strPtr("g1")},
+				MessageContextInfo:           &waE2E.MessageContextInfo{DeviceListMetadataVersion: int32Ptr(2)},
+			},
+			true,
+		},
+		// WhatsApp often attaches a sender-key distribution to a
+		// group's first real message in a new session; that real
+		// content must still show normally, not be dropped with it.
+		{
+			"sender key distribution alongside real text is still shown",
+			&waE2E.Message{
+				SenderKeyDistributionMessage: &waE2E.SenderKeyDistributionMessage{GroupID: strPtr("g1")},
+				Conversation:                 strPtr("hi"),
+			},
+			false,
+		},
+		// A future message kind this connector does not recognise yet
+		// must still fall through to the generic placeholder (see
+		// messageText) instead of being silently dropped alongside the
+		// housekeeping fields it happens to arrive with.
+		{
+			"sender key distribution alongside an unrecognised future field falls through to the placeholder",
+			&waE2E.Message{
+				SenderKeyDistributionMessage: &waE2E.SenderKeyDistributionMessage{GroupID: strPtr("g1")},
+				EventMessage:                 &waE2E.EventMessage{},
+			},
+			false,
+		},
 	}
 
 	for _, tt := range tests {
