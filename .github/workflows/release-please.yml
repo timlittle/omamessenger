@@ -1,0 +1,48 @@
+name: release-please
+
+# Opens and updates the release pull request on every push to main, and
+# once it is merged, tags the release and publishes it: see
+# release-please-config.json and .release-please-manifest.json for what
+# gets bumped (manifest.json, helper-version, CHANGELOG.md).
+#
+# release-please-action creates the tag and GitHub Release itself, using
+# the default GITHUB_TOKEN. GitHub never lets a GITHUB_TOKEN-created tag
+# trigger another workflow's "push: tags" event (it would let a workflow
+# trigger itself over and over), so release.yml's own tag-push trigger
+# never fires for this. Calling release.yml directly below, with the tag
+# release-please just created, is what actually builds and publishes the
+# helper binaries.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  release:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
