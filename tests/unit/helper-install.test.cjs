@@ -9,7 +9,9 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const repo = path.resolve(__dirname, '../..');
-const version = fs.readFileSync(path.join(repo, 'helper-version'), 'utf8').trim();
+// helper-version carries a trailing "# x-release-please-version" comment
+// that release-please's generic updater matches on; drop it before use.
+const version = fs.readFileSync(path.join(repo, 'helper-version'), 'utf8').split('#')[0].trim();
 const arch = { x64: 'amd64', arm64: 'arm64' }[os.arch()];
 const assetName = `oma-messenger-service-linux-${arch}`;
 

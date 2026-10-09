@@ -19,7 +19,10 @@ set -eu
 plugin_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 # shellcheck source=SCRIPTDIR/desktop-entry.sh
 . "$plugin_dir/scripts/desktop-entry.sh"
-version=$(tr -d ' \n' < "$plugin_dir/helper-version")
+# helper-version carries a trailing "# x-release-please-version" comment
+# that release-please's generic updater matches on; cut it before the
+# comment, then trim the rest.
+version=$(cut -d'#' -f1 "$plugin_dir/helper-version" | tr -d ' \n')
 case $(uname -m) in
     x86_64|amd64) arch=amd64 ;;
     aarch64|arm64) arch=arm64 ;;

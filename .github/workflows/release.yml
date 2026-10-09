@@ -22,7 +22,7 @@ jobs:
       - name: Check the tag, helper-version and manifest.json agree
         run: |
           tag=${GITHUB_REF_NAME#v}
-          helper=$(tr -d ' \n' < helper-version)
+          helper=$(cut -d'#' -f1 helper-version | tr -d ' \n')
           manifest=$(jq -r .version manifest.json)
           if [ "$tag" != "$helper" ] || [ "$tag" != "$manifest" ]; then
             printf 'version mismatch: tag=v%s helper-version=%s manifest.json=%s\n' "$tag" "$helper" "$manifest" >&2

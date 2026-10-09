@@ -150,7 +150,10 @@ func TestHelperVersion_MatchesThePin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := strings.TrimSpace(string(pin)); got != helperVersion {
+	// helper-version carries a trailing "# x-release-please-version"
+	// comment that release-please's generic updater matches on.
+	line, _, _ := strings.Cut(string(pin), "#")
+	if got := strings.TrimSpace(line); got != helperVersion {
 		t.Fatalf("helper-version is %q but the helper reports %q; change both together", got, helperVersion)
 	}
 }

@@ -10,7 +10,10 @@ if [ -x "$dev_helper" ]; then
     exec "$dev_helper" "$@"
 fi
 
-version=$(tr -d ' \n' < "$plugin_dir/helper-version")
+# helper-version carries a trailing "# x-release-please-version" comment
+# that release-please's generic updater matches on; cut it before the
+# comment, then trim the rest.
+version=$(cut -d'#' -f1 "$plugin_dir/helper-version" | tr -d ' \n')
 helper="${XDG_DATA_HOME:-$HOME/.local/share}/omamessenger/bin/oma-messenger-service-$version"
 if [ -x "$helper" ]; then
     exec "$helper" "$@"

@@ -25,4 +25,4 @@ done
 cp LICENSE-GPL-3.0 "$out/LICENSE-GPL-3.0"
 cp "$notices" "$out/THIRD_PARTY_NOTICES"
 (cd "$out" && sha256sum oma-messenger-service-linux-* LICENSE-GPL-3.0 THIRD_PARTY_NOTICES > SHA256SUMS)
-printf 'Built %s helpers in %s\n' "$(tr -d ' \n' < helper-version)" "$out"
+printf 'Built %s helpers in %s\n' "$(cut -d'#' -f1 helper-version | tr -d ' \n')" "$out"
