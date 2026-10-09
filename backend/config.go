@@ -10,7 +10,7 @@ import (
 
 // helperVersion is this helper's release. It must match the helper-version
 // file, which the installer uses to download the matching release.
-const helperVersion = "0.3.0"
+const helperVersion = "0.3.0" // x-release-please-version
 
 // config is the helper's command-line configuration.
 type config struct {
