@@ -65,6 +65,7 @@ Item {
           id: chipText
           anchors.centerIn: parent
           text: chip.modelData.emoji + " " + chip.modelData.count
+          textFormat: Text.PlainText
           color: Color.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption

@@ -29,6 +29,7 @@ Row {
 
   Text {
     text: root.message ? Format.timeLabel(root.message.created, root.nowMs) : ""
+    textFormat: Text.PlainText
     color: Util.alpha(Color.foreground, 0.5)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
@@ -36,6 +37,7 @@ Row {
   Text {
     visible: root.message && root.message.edited === true
     text: "edited"
+    textFormat: Text.PlainText
     color: Util.alpha(Color.foreground, 0.5)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
@@ -43,6 +45,7 @@ Row {
   Text {
     visible: root.showStatus
     text: root.message ? Format.statusGlyph(root.message.status) : ""
+    textFormat: Text.PlainText
     color: root.message && root.message.status === "read" ? Color.accent : Util.alpha(Color.foreground, 0.5)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }

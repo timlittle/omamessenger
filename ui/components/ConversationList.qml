@@ -81,6 +81,7 @@ Item {
     width: parent.width - Theme.spacing.xl * 2
     horizontalAlignment: Text.AlignHCenter
     wrapMode: Text.WordWrap
+    textFormat: Text.PlainText
     text: root.query.length > 0
       ? "No chats match “" + root.query + "”"
       : root.unreadView

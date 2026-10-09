@@ -29,6 +29,7 @@ Item {
       id: label
       anchors.centerIn: parent
       text: root.text
+      textFormat: Text.PlainText
       color: root.muted ? Color.foreground : Color.background
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption

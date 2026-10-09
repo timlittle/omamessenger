@@ -203,6 +203,7 @@ Item {
       horizontalAlignment: Text.AlignRight
       elide: Text.ElideRight
       text: root.modeHint
+      textFormat: Text.PlainText
       color: root.writing ? Color.accent : Util.alpha(Color.foreground, 0.5)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption
@@ -227,6 +228,11 @@ Item {
         Layout.fillWidth: true
         elide: Text.ElideRight
         text: root.replyTo ? ("Replying to " + root.replyTo.senderName + ": " + root.replyTo.text) : ""
+        // senderName and text both come from the other person, unescaped:
+        // PlainText so a message that looks like HTML (an "<img src=...>",
+        // say) is never auto-detected as rich text and never fetches
+        // anything.
+        textFormat: Text.PlainText
         color: Util.alpha(Color.foreground, 0.7)
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
@@ -267,6 +273,7 @@ Item {
           anchors.centerIn: parent
           visible: root._attachmentKind !== "photo"
           text: root._attachmentKind === "video" ? "▶" : "📄"
+          textFormat: Text.PlainText
           color: Color.accent
           font { family: Theme.font.family; pixelSize: Theme.font.icon }
         }
@@ -276,6 +283,7 @@ Item {
         objectName: "attachmentName"
         Layout.fillWidth: true
         text: root.attachmentPath !== "" ? Format.baseName(root.attachmentPath) : ""
+        textFormat: Text.PlainText
         elide: Text.ElideMiddle
         color: Color.foreground
         font.family: Theme.font.family
@@ -333,6 +341,7 @@ Item {
           // starts writing.
           opacity: root.writing ? 1.0 : root.dimmedOpacity
           wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+          textFormat: TextEdit.PlainText
           selectByMouse: true
           placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
 

@@ -120,6 +120,7 @@ Item {
       visible: root.annotation.showDay
       horizontalAlignment: Text.AlignHCenter
       text: root.annotation.dayLabel
+      textFormat: Text.PlainText
       color: Util.alpha(Color.foreground, 0.5)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption
@@ -130,6 +131,8 @@ Item {
       x: Theme.spacing.md + root.indentWidth
       visible: root.annotation.showSender
       text: root.message.senderName
+      // The sender's own display name, unescaped: PlainText.
+      textFormat: Text.PlainText
       color: root.nameColor
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption
@@ -201,6 +204,7 @@ Item {
           objectName: "mentionGlyph"
           visible: !!root.message.mentionsMe
           text: "@"
+          textFormat: Text.PlainText
           color: Color.accent
           anchors.top: parent.top
           anchors.right: root.message.outgoing ? parent.right : undefined
@@ -320,6 +324,7 @@ Item {
       anchors.rightMargin: root.message.outgoing ? Theme.spacing.xxs : 0
       anchors.leftMargin: root.message.outgoing ? 0 : Theme.spacing.xxs
       text: Highlight.hints(root.message, root.bindings)
+      textFormat: Text.PlainText
       color: Util.alpha(Color.foreground, 0.5)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.bodySmall
@@ -350,6 +355,7 @@ Item {
 
         Text {
           text: "Not sent"
+          textFormat: Text.PlainText
           color: Color.urgent
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -358,6 +364,7 @@ Item {
         Text {
           visible: root.retryAt === 0
           text: "· t to retry"
+          textFormat: Text.PlainText
           color: Color.urgent
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -367,6 +374,7 @@ Item {
           objectName: "retryingText"
           visible: root.retryAt !== 0
           text: Format.retryingLabel(root.retryAt, root.nowMs)
+          textFormat: Text.PlainText
           color: Util.alpha(Color.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption

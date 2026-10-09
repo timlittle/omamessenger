@@ -97,6 +97,7 @@ Item {
         text: root.stage === "chooseService" ? "Add an account"
           : root.stage === "credentials" ? "Add a " + root.serviceName + " account"
           : "Sign in to " + root.serviceName
+        textFormat: Text.PlainText
         color: Color.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.subtitle; weight: Font.DemiBold }
       }
@@ -109,6 +110,11 @@ Item {
           ? "To use your own Telegram app instead of OmaMessenger's, sign in at <a href=\"https://my.telegram.org/apps\">my.telegram.org</a>, open API development tools, and copy the app's api_id and api_hash here. They stay on this computer."
           : root.stage === "waiting" ? "Connecting to " + root.serviceName + "…" : root.hint
         visible: text !== ""
+        // StyledText is safe here only because every branch is a fixed
+        // string we wrote ourselves (root.serviceName comes from the
+        // helper's own fixed service list, never a contact or message):
+        // nothing here is sender-controlled, so there is no way for a
+        // remote "<img>" to reach this label.
         textFormat: Text.StyledText
         wrapMode: Text.WordWrap
         linkColor: Color.accent
@@ -191,6 +197,7 @@ Item {
         Layout.fillWidth: true
         visible: root.error !== ""
         text: root.error
+        textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         color: Color.urgent
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }

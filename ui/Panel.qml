@@ -346,6 +346,7 @@ Item {
           Text {
             Layout.fillWidth: true
             text: root._helperStatusText()
+            textFormat: Text.PlainText
             elide: Text.ElideRight
             color: Color.foreground
             font.family: Theme.font.family
@@ -369,6 +370,7 @@ Item {
             || deleteController.lastError || listController.lastError || dialogController.lastError || windowController.lastError
           visible: errorLine.message.length > 0
           text: errorLine.message
+          textFormat: Text.PlainText
           elide: Text.ElideRight
           color: Color.urgent
           font.family: Theme.font.family

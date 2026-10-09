@@ -83,6 +83,12 @@ Column {
     readOnly: true
     selectByMouse: true
     wrapMode: TextEdit.Wrap
+    // Safe only because Format.messageHtml always escapes the message's
+    // raw text before adding any markup: the only tags that can ever
+    // come out are <a>, <b>, <br>, &nbsp; and a pipe table's own <table>
+    // cells, each built from already-escaped text (see Format.js and
+    // Markdown.js). No sender-controlled text ever reaches this as a
+    // literal "<img>" or any other element that could load a resource.
     textFormat: TextEdit.RichText
     text: Format.messageHtml(body.caption, Color.accent, Color.muted, root.mentions)
     color: Color.foreground

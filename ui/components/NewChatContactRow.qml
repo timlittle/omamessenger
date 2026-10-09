@@ -41,6 +41,9 @@ Rectangle {
     Text {
       Layout.fillWidth: true
       text: root.contact.name
+      // A contact's name is whatever they or the service set it to:
+      // PlainText.
+      textFormat: Text.PlainText
       elide: Text.ElideRight
       color: Color.foreground
       font.family: Theme.font.family

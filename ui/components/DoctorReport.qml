@@ -38,6 +38,7 @@ Item {
 
       Text {
         text: "Health check"
+        textFormat: Text.PlainText
         color: Color.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.subtitle; weight: Font.DemiBold }
       }
@@ -60,6 +61,7 @@ Item {
             Text {
               objectName: "doctorCheckGlyph"
               text: row.modelData.ok ? "✓" : "✗"
+              textFormat: Text.PlainText
               color: row.modelData.ok ? Util.alpha(Color.foreground, 0.6) : Color.urgent
               font { family: Theme.font.family; pixelSize: Theme.font.body; bold: !row.modelData.ok }
             }
@@ -68,6 +70,7 @@ Item {
               objectName: "doctorCheckText"
               Layout.fillWidth: true
               text: row.modelData.name + (row.modelData.detail ? ": " + row.modelData.detail : "")
+              textFormat: Text.PlainText
               wrapMode: Text.WordWrap
               color: row.modelData.ok ? Color.foreground : Color.urgent
               font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }

@@ -95,6 +95,7 @@ Item {
             required property string section
 
             text: section === "message" ? "Messages" : "Conversations"
+            textFormat: Text.PlainText
             topPadding: Theme.spacing.sm
             bottomPadding: Theme.spacing.xs
             color: Util.alpha(Color.foreground, 0.5)
@@ -116,6 +117,7 @@ Item {
       Text {
         visible: root.items.length === 0
         text: "No matches"
+        textFormat: Text.PlainText
         color: Util.alpha(Color.foreground, 0.5)
         font { family: Theme.font.family; pixelSize: Theme.font.body }
       }

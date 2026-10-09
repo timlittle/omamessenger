@@ -71,6 +71,7 @@ Item {
           Text {
             anchors.centerIn: parent
             text: slot.modelData
+            textFormat: Text.PlainText
             font.pixelSize: Theme.font.title
           }
 

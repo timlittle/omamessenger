@@ -66,6 +66,8 @@ Item {
 
     objectName: "photoImage"
     anchors.fill: parent
+    // Always the helper's own downloaded file or an embedded base64
+    // thumb; never a remote URL.
     source: root.path && !root._video && !root._loadFailed ? "file://" + root.path : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
     fillMode: Image.PreserveAspectFit
     asynchronous: true
@@ -90,6 +92,8 @@ Item {
     horizontalAlignment: Text.AlignHCenter
     wrapMode: Text.Wrap
     text: root.photo.fileName ? "Photo unavailable · " + root.photo.fileName : "Photo unavailable"
+    // fileName is sender-controlled: PlainText.
+    textFormat: Text.PlainText
     color: Util.alpha(Color.foreground, 0.6)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
@@ -99,6 +103,7 @@ Item {
     anchors.centerIn: parent
     visible: root._video
     text: "▶"
+    textFormat: Text.PlainText
     color: Color.foreground
     style: Text.Outline
     styleColor: Util.alpha(Color.background, 0.6)
@@ -109,6 +114,7 @@ Item {
     anchors { right: parent.right; bottom: parent.bottom; margins: Theme.spacing.xs }
     visible: root._video && text !== ""
     text: Format.duration(root.photo.duration)
+    textFormat: Text.PlainText
     color: Color.foreground
     style: Text.Outline
     styleColor: Util.alpha(Color.background, 0.6)

@@ -73,6 +73,8 @@ Item {
       id: image
       objectName: "photoImage"
       anchors.fill: parent
+      // Always the helper's own downloaded file or an embedded base64
+      // thumb; never a remote URL.
       source: root.path ? "file://" + root.path : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
       fillMode: Image.PreserveAspectFit
       asynchronous: true
@@ -95,6 +97,7 @@ Item {
       anchors.centerIn: parent
       visible: root.path === ""
       text: "Loading…"
+      textFormat: Text.PlainText
       color: Util.alpha(Color.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.body }
     }
@@ -108,6 +111,7 @@ Item {
       objectName: "sizeLabel"
       Layout.fillWidth: true
       text: root.photo ? Format.photoSize(root.photo.width, root.photo.height) : ""
+      textFormat: Text.PlainText
       color: Util.alpha(Color.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
     }

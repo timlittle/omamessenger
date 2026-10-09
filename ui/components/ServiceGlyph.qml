@@ -19,6 +19,7 @@ Item {
   Text {
     id: glyph
     text: root.text
+    textFormat: Text.PlainText
     color: Color.foreground
     font.family: Theme.font.family
     font.pixelSize: Theme.font.icon

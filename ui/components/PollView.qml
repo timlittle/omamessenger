@@ -49,6 +49,10 @@ Item {
       Layout.fillWidth: true
       objectName: "pollQuestion"
       text: root.poll.question
+      // A poll's question and options are written by whoever sent it:
+      // PlainText so "<img src=...>" is never auto-detected as rich
+      // text and never fetches anything.
+      textFormat: Text.PlainText
       wrapMode: Text.Wrap
       color: Color.foreground
       font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
@@ -59,6 +63,7 @@ Item {
       objectName: "pollMultipleChoiceNote"
       visible: !!root.poll.multipleChoice
       text: "Select one or more"
+      textFormat: Text.PlainText
       color: Util.alpha(Color.foreground, 0.6)
       font { family: Theme.font.family; pixelSize: Theme.font.caption }
     }
@@ -103,6 +108,7 @@ Item {
             objectName: "pollOptionChosenMark-" + optionRow.index
             visible: optionRow.checked
             text: "✓"
+            textFormat: Text.PlainText
             color: Color.accent
             font { family: Theme.font.family; pixelSize: Theme.font.body }
           }
@@ -111,6 +117,8 @@ Item {
             Layout.fillWidth: true
             objectName: "pollOptionText-" + optionRow.index
             text: optionRow.modelData.text
+            // Each option's own text, also sender-controlled: PlainText.
+            textFormat: Text.PlainText
             wrapMode: Text.Wrap
             color: Color.foreground
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: optionRow.checked ? Font.DemiBold : Font.Normal }
@@ -119,6 +127,7 @@ Item {
           Text {
             objectName: "pollOptionShareText-" + optionRow.index
             text: (root._shares[optionRow.index] ?? 0) + "% · " + optionRow.modelData.votes
+            textFormat: Text.PlainText
             color: Util.alpha(Color.foreground, 0.6)
             font { family: Theme.font.family; pixelSize: Theme.font.caption }
           }
@@ -140,6 +149,7 @@ Item {
       Layout.fillWidth: true
       objectName: "pollFooter"
       text: (root.poll.closed ? "Closed · " : "") + Poll.voterLabel(root.poll.totalVoters)
+      textFormat: Text.PlainText
       color: Util.alpha(Color.foreground, 0.5)
       font { family: Theme.font.family; pixelSize: Theme.font.caption }
     }

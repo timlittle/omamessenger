@@ -94,6 +94,7 @@ Item {
         objectName: "voiceAccessibleLabel"
         Layout.fillWidth: true
         text: "Voice message"
+        textFormat: Text.PlainText
         elide: Text.ElideRight
         color: Color.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall; weight: Font.DemiBold }
@@ -124,6 +125,7 @@ Item {
         text: root._unplayable
           ? "Unavailable"
           : Format.elapsed(Math.floor(root.positionMs / 1000)) + " / " + Format.elapsed(Math.floor(root._knownDurationMs / 1000))
+        textFormat: Text.PlainText
         color: Util.alpha(Color.foreground, 0.6)
         font { family: Theme.font.family; pixelSize: Theme.font.caption }
       }
@@ -146,6 +148,7 @@ Item {
       Text {
         anchors.centerIn: parent
         text: "▶"
+        textFormat: Text.PlainText
         color: Color.accent
         font { family: Theme.font.family; pixelSize: Theme.font.body }
       }
@@ -158,6 +161,7 @@ Item {
       Text {
         Layout.fillWidth: true
         text: "Voice message · open"
+        textFormat: Text.PlainText
         color: Color.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall; weight: Font.DemiBold }
       }
@@ -166,6 +170,7 @@ Item {
         Layout.fillWidth: true
         visible: text !== ""
         text: Format.duration(root.media.duration)
+        textFormat: Text.PlainText
         color: Util.alpha(Color.foreground, 0.6)
         font { family: Theme.font.family; pixelSize: Theme.font.caption }
       }

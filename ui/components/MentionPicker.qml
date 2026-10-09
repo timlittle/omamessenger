@@ -61,6 +61,8 @@ Rectangle {
           anchors.verticalCenter: parent.verticalCenter
           x: Theme.spacing.sm
           text: row.modelData.name
+          // A group member's display name is sender-controlled: PlainText.
+          textFormat: Text.PlainText
           color: Color.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.body

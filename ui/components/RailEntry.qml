@@ -120,6 +120,7 @@ Item {
       Layout.alignment: Qt.AlignHCenter
       Layout.maximumWidth: root.width - Theme.spacing.xs * 2
       text: root.entry.label ?? ""
+      textFormat: Text.PlainText
       color: Color.foreground
       elide: Text.ElideRight
       font { family: Theme.font.family; pixelSize: root.account ? Theme.font.caption : Theme.font.bodySmall }

@@ -41,6 +41,7 @@ Item {
       Text {
         anchors.centerIn: parent
         text: root._extension
+        textFormat: Text.PlainText
         color: Color.accent
         font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
       }
@@ -53,6 +54,9 @@ Item {
       Text {
         Layout.fillWidth: true
         text: root.file.fileName || "File"
+        // The file name is whatever the sender named it: PlainText so
+        // it is never auto-detected as rich text.
+        textFormat: Text.PlainText
         elide: Text.ElideMiddle
         color: Color.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall; weight: Font.DemiBold }
@@ -62,6 +66,7 @@ Item {
         Layout.fillWidth: true
         visible: text !== ""
         text: [Format.fileSize(root.file.size), Format.duration(root.file.duration)].filter((part) => part !== "").join(" · ")
+        textFormat: Text.PlainText
         color: Util.alpha(Color.foreground, 0.6)
         font { family: Theme.font.family; pixelSize: Theme.font.caption }
       }

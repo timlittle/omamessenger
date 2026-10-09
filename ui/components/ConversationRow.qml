@@ -156,6 +156,10 @@ Item {
           objectName: "titleText"
           Layout.fillWidth: true
           text: root._conv.title ?? ""
+          // A contact or group title is sender-controlled, never escaped
+          // before it reaches here, so PlainText keeps it from ever being
+          // auto-detected as rich text (see Composer's replyBannerText).
+          textFormat: Text.PlainText
           color: Color.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.body
@@ -167,6 +171,7 @@ Item {
           objectName: "pinIcon"
           visible: root._pinned
           text: "📌"
+          textFormat: Text.PlainText
           color: Util.alpha(Color.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -186,6 +191,7 @@ Item {
           objectName: "pinnedLabel"
           visible: root._pinned
           text: "Pinned"
+          textFormat: Text.PlainText
           color: Util.alpha(Color.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -195,6 +201,7 @@ Item {
           objectName: "dimLabel"
           visible: root.dimLabel.length > 0
           text: root._dimText
+          textFormat: Text.PlainText
           color: Util.alpha(Color.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -204,6 +211,7 @@ Item {
           objectName: "reminderLabel"
           visible: root.reminderDue
           text: "Reminder"
+          textFormat: Text.PlainText
           color: Color.accent
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -212,6 +220,7 @@ Item {
 
         Text {
           text: Format.timeLabel(root._conv.lastActivity ?? 0, root.nowMs)
+          textFormat: Text.PlainText
           color: Util.alpha(Color.foreground, 0.6)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -230,6 +239,7 @@ Item {
         Text {
           visible: root.showAccount
           text: root.accountName
+          textFormat: Text.PlainText
           color: Util.alpha(Color.foreground, 0.6)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
@@ -238,6 +248,12 @@ Item {
         Text {
           objectName: "previewText"
           Layout.fillWidth: true
+          // _previewHtml is always Format.escapeHtml'd first (see above),
+          // so the only tag that can ever reach here is highlight()'s own
+          // <b>: a literal "<img" can never appear, since escapeHtml
+          // turns every "<" into "&lt;" before anything else runs. Stays
+          // StyledText rather than RichText because RichText silently
+          // drops eliding long text, which this row relies on.
           textFormat: Text.StyledText
           text: root._previewHtml
           color: Util.alpha(Color.foreground, 0.7)
@@ -250,6 +266,7 @@ Item {
           objectName: "muteIcon"
           visible: root._muted
           text: "🔇"
+          textFormat: Text.PlainText
           color: Util.alpha(Color.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption

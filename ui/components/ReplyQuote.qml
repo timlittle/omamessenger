@@ -43,6 +43,9 @@ Item {
       Layout.fillWidth: true
       visible: text !== ""
       text: root.reply.senderName || ""
+      // The quoted message's sender name and excerpt are both
+      // sender-controlled, unescaped: PlainText.
+      textFormat: Text.PlainText
       elide: Text.ElideRight
       color: Color.accent
       font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
@@ -52,6 +55,7 @@ Item {
       Layout.fillWidth: true
       visible: text !== ""
       text: root.reply.text || ""
+      textFormat: Text.PlainText
       elide: Text.ElideRight
       maximumLineCount: 1
       color: Util.alpha(Color.foreground, 0.7)

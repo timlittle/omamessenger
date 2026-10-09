@@ -42,6 +42,8 @@ Item {
     objectName: "stickerImage"
     anchors.fill: parent
     visible: root._hasImage
+    // Always the helper's own downloaded file or an embedded base64
+    // thumb; never a remote URL.
     source: root.path ? "file://" + root.path : (root.sticker.thumb ? "data:image/png;base64," + root.sticker.thumb : "")
     fillMode: Image.PreserveAspectFit
     asynchronous: true
@@ -53,6 +55,8 @@ Item {
     anchors.centerIn: parent
     visible: !root._hasImage
     text: root.sticker.emoji || "🏷️"
+    // The sticker's emoji fallback is sender-controlled: PlainText.
+    textFormat: Text.PlainText
     font.pixelSize: root._size * 0.6
   }
 }

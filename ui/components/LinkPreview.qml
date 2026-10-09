@@ -47,6 +47,10 @@ Item {
         Layout.fillWidth: true
         visible: text !== ""
         text: root.preview.siteName || ""
+        // The whole preview comes from the message's sender (or
+        // whatever the link itself fed back to their client); none of
+        // it is ever escaped, so every label here stays PlainText.
+        textFormat: Text.PlainText
         elide: Text.ElideRight
         color: Color.accent
         font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
@@ -56,6 +60,7 @@ Item {
         Layout.fillWidth: true
         visible: text !== ""
         text: root.preview.title || ""
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         maximumLineCount: 2
         elide: Text.ElideRight
@@ -67,6 +72,7 @@ Item {
         Layout.fillWidth: true
         visible: text !== ""
         text: root.preview.description || ""
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         maximumLineCount: 3
         elide: Text.ElideRight
@@ -80,6 +86,8 @@ Item {
       Layout.preferredHeight: Style.space(56)
       Layout.alignment: Qt.AlignTop
       visible: !!root.preview.thumb
+      // thumb is a base64 JPEG the connector already downloaded and
+      // embedded in the message; this never fetches a remote URL.
       source: root.preview.thumb ? "data:image/jpeg;base64," + root.preview.thumb : ""
       fillMode: Image.PreserveAspectCrop
     }

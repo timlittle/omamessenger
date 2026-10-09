@@ -87,6 +87,7 @@ Item {
       Text {
         objectName: root.titleObjectName
         text: root.title
+        textFormat: Text.PlainText
         color: Color.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.subtitle; weight: Font.DemiBold }
       }
@@ -95,6 +96,7 @@ Item {
         Layout.fillWidth: true
         visible: root.description !== ""
         text: root.description
+        textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         color: Util.alpha(Color.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.body }
@@ -144,6 +146,7 @@ Item {
         Layout.fillWidth: true
         visible: root.layout === "list" && root.errorText !== ""
         text: root.errorText
+        textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         color: Color.urgent
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }

@@ -29,6 +29,7 @@ Item {
     Text {
       anchors.centerIn: parent
       text: root.text
+      textFormat: Text.PlainText
       color: root.tinted ? root.tint : Color.foreground
       font.family: Theme.font.family
       font.pixelSize: Math.round(root.size * 0.4)

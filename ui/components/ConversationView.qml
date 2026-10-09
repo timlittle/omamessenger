@@ -197,6 +197,9 @@ Item {
           objectName: "conversationTitle"
           Layout.fillWidth: true
           text: root.conversation ? root.conversation.title : ""
+          // A contact or group title is sender-controlled; PlainText
+          // keeps it from ever being auto-detected as rich text.
+          textFormat: Text.PlainText
           elide: Text.ElideRight
           color: Color.foreground
           font.family: Theme.font.family
@@ -207,6 +210,7 @@ Item {
         Text {
           Layout.fillWidth: true
           text: root.subtitle
+          textFormat: Text.PlainText
           elide: Text.ElideRight
           color: Util.alpha(Color.foreground, 0.6)
           font.family: Theme.font.family
@@ -268,6 +272,7 @@ Item {
         topPadding: Theme.spacing.sm
         bottomPadding: Theme.spacing.sm
         text: "Older messages need your phone online — try again later"
+        textFormat: Text.PlainText
         color: Util.alpha(Color.foreground, 0.6)
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
@@ -296,6 +301,7 @@ Item {
     anchors.centerIn: parent
     visible: root.conversation === null
     text: "Pick a chat · j/k to move · Enter to open"
+    textFormat: Text.PlainText
     color: Util.alpha(Color.foreground, 0.5)
     font.family: Theme.font.family
     font.pixelSize: Theme.font.body
