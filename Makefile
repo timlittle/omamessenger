@@ -196,12 +196,15 @@ lint: $(GOLANGCI_LINT) ## Lint Go (golangci-lint, privacy), shell scripts and QM
 	$(QMLLINT) -I build/qml --max-warnings 0 $$(find ui -name '*.qml')
 	git --no-pager diff --check
 
+# go-licenses tells the standard library apart by GOROOT. go.mod pins a
+# toolchain that Go downloads into the module cache, so point it at that
+# toolchain's GOROOT rather than the one go-licenses was built with.
 license-check: $(GO_LICENSES) ## Fail if a helper dependency's license is not on the allow-list
-	$(GO_LICENSES) check ./backend --allowed_licenses=$(ALLOWED_LICENSES) $(LICENSE_IGNORE)
+	GOROOT="$$($(GO) env GOROOT)" $(GO_LICENSES) check ./backend --allowed_licenses=$(ALLOWED_LICENSES) $(LICENSE_IGNORE)
 
 third-party-notices: $(GO_LICENSES) ## Generate build/THIRD_PARTY_NOTICES, published with each release
 	@mkdir -p $(dir $(THIRD_PARTY_NOTICES))
-	$(GO_LICENSES) report ./backend $(LICENSE_IGNORE) --ignore github.com/timlittle/omamessenger \
+	GOROOT="$$($(GO) env GOROOT)" $(GO_LICENSES) report ./backend $(LICENSE_IGNORE) --ignore github.com/timlittle/omamessenger \
 		--template scripts/third-party-notices.tmpl > $(THIRD_PARTY_NOTICES)
 
 tools: $(GOLANGCI_LINT) $(GO_TEST_COVERAGE) $(GO_LICENSES) ## Build the pinned golangci-lint, go-test-coverage and go-licenses
