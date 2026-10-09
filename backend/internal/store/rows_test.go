@@ -18,7 +18,7 @@ import (
 func TestScanAll_ReportsARowThatFailsToScan(t *testing.T) {
 	t.Parallel()
 
-	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -192,7 +192,7 @@ func FuzzConversations(f *testing.F) {
 	}
 
 	path := filepath.Join(f.TempDir(), "data", "messages.db")
-	s, err := store.Open(f.Context(), path)
+	s, err := store.Open(f.Context(), path, nil)
 	if err != nil {
 		f.Fatalf("Open: %v", err)
 	}

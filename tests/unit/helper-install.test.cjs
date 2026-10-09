@@ -61,6 +61,12 @@ test('installs the pinned release, which the launcher then runs', { skip: !arch 
   assert.equal(install.status, 0, install.stderr);
   assert.ok(fs.existsSync(p.installed));
 
+  // The data directory and its bin folder are private to this account,
+  // not left at the directory's default mode.
+  const dataDir = path.join(p.data, 'omamessenger');
+  assert.equal(fs.statSync(dataDir).mode & 0o777, 0o700);
+  assert.equal(fs.statSync(path.join(dataDir, 'bin')).mode & 0o777, 0o700);
+
   // Installing the helper also drops OmaMessenger into the apps menu.
   assert.ok(fs.existsSync(p.desktopFile));
   assert.equal(fs.statSync(p.desktopFile).mode & 0o777, 0o644);

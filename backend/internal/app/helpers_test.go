@@ -53,7 +53,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		t.Fatal(err)
 	}
 	dbPath := filepath.Join(dataDir, "messages.db")
-	db, err := store.Open(t.Context(), dbPath)
+	db, err := store.Open(t.Context(), dbPath, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

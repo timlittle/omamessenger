@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -14,7 +15,7 @@ func TestOpen_CreatesPrivateFilesAndReopens(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "private", "messages.db")
-	s, err := store.Open(t.Context(), path)
+	s, err := store.Open(t.Context(), path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +32,7 @@ func TestOpen_CreatesPrivateFilesAndReopens(t *testing.T) {
 	assertMode(t, filepath.Dir(path), 0o700)
 	assertMode(t, path, 0o600)
 
-	s, err = store.Open(t.Context(), path)
+	s, err = store.Open(t.Context(), path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +44,38 @@ func TestOpen_CreatesPrivateFilesAndReopens(t *testing.T) {
 	}
 }
 
+// TestOpen_TightensLooseDataDirectory confirms Open secures a data
+// directory that already exists looser than 0700 - a cold install's own
+// installer can leave it at the default mode before this change - and
+// reports the change through the logger it is given, without naming the
+// path (see scripts/install-helper.sh for the installer's own half of
+// this fix).
+func TestOpen_TightensLooseDataDirectory(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "messages.db")
+
+	logger := &fakeLogger{}
+	s, err := store.Open(t.Context(), path, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	assertMode(t, dir, 0o700)
+
+	if len(logger.lines) != 1 {
+		t.Fatalf("logged %v, want exactly one line", logger.lines)
+	}
+	if strings.Contains(logger.lines[0], dir) {
+		t.Errorf("logged line named the path: %q", logger.lines[0])
+	}
+}
+
 func TestOpen_RejectsUnusablePaths(t *testing.T) {
 	t.Parallel()
 
@@ -51,7 +84,7 @@ func TestOpen_RejectsUnusablePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := store.Open(t.Context(), filepath.Join(file, "messages.db")); err == nil {
+	if _, err := store.Open(t.Context(), filepath.Join(file, "messages.db"), nil); err == nil {
 		t.Error("Open under a regular file succeeded")
 	}
 
@@ -64,7 +97,7 @@ func TestOpen_RejectsUnusablePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := store.Open(t.Context(), filepath.Join(readOnly, "messages.db")); err == nil {
+	if _, err := store.Open(t.Context(), filepath.Join(readOnly, "messages.db"), nil); err == nil {
 		t.Error("Open in a read-only directory succeeded")
 	}
 }
@@ -74,7 +107,7 @@ func TestOpen_RejectsUnusablePaths(t *testing.T) {
 func TestStore_ReportsDatabaseErrors(t *testing.T) {
 	t.Parallel()
 
-	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,10 +25,20 @@ type Store struct {
 	db *sql.DB
 }
 
+// Logger receives one diagnostic line when Open tightens the data
+// directory's permissions. *log.Logger already satisfies it; a nil
+// logger, as most tests pass, just skips that line.
+type Logger interface {
+	Printf(format string, v ...any)
+}
+
 // Open creates the database file and its directory, readable only by the
-// owner, and applies any pending migrations.
-func Open(ctx context.Context, path string) (*Store, error) {
-	if err := createPrivateFile(path); err != nil {
+// owner, and applies any pending migrations. When the directory already
+// exists looser than owner-only - a cold install's installer can leave
+// it at the default mode before creating it private - Open tightens it
+// and reports the change through logger.
+func Open(ctx context.Context, path string, logger Logger) (*Store, error) {
+	if err := createPrivateFile(path, logger); err != nil {
 		return nil, fmt.Errorf("store: create %s: %w", path, err)
 	}
 
@@ -56,10 +66,11 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// createPrivateFile makes sure path exists with owner-only permissions
-// before SQLite opens it, because SQLite would create it world-readable.
-func createPrivateFile(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+// createPrivateFile makes sure path's directory and the file itself
+// exist with owner-only permissions before SQLite opens it, because
+// SQLite would create the file world-readable.
+func createPrivateFile(path string, logger Logger) error {
+	if err := securePrivateDir(filepath.Dir(path), logger); err != nil {
 		return err
 	}
 
@@ -69,6 +80,35 @@ func createPrivateFile(path string) error {
 	}
 
 	return f.Close()
+}
+
+// securePrivateDir creates dir at 0700 when it does not exist yet, and
+// tightens it to 0700 when it already exists readable or writable by
+// the group or others, logging the change through logger - never the
+// path itself, which stays out of logs. A cold install's installer can
+// leave the data directory at the default mode before this function
+// first runs against it; see scripts/install-helper.sh for the
+// installer's own half of this. A directory missing one of the owner's
+// own bits (such as a read-only test fixture) is left alone: that is a
+// different problem, and Open fails on it in its own way below.
+func securePrivateDir(dir string, logger Logger) error {
+	info, err := os.Stat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return os.MkdirAll(dir, 0o700)
+	}
+	if err != nil {
+		return err
+	}
+
+	if info.Mode().Perm()&0o077 == 0 {
+		return nil
+	}
+
+	if logger != nil {
+		logger.Printf("store: tightened the data directory's permissions")
+	}
+
+	return os.Chmod(dir, 0o700) //nolint:gosec // deliberate: 0700 is a directory mode (owner rwx, no group or other access); gosec's G302 does not distinguish it from an overly open file mode
 }
 
 // wrap turns sql.ErrNoRows into domain.ErrNotFound and wraps any other

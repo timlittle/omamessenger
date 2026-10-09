@@ -123,7 +123,8 @@ func runDoctor(ctx context.Context, args []string, env func(string) string, s st
 		return err
 	}
 
-	db, err := store.Open(ctx, cfg.dbPath)
+	logger := log.New(s.errOut, "", 0)
+	db, err := store.Open(ctx, cfg.dbPath, logger)
 	if err != nil {
 		return fmt.Errorf("doctor: open database: %w", err)
 	}
@@ -163,7 +164,8 @@ func printDoctorReport(w io.Writer, report doctor.Report) {
 
 // serve opens the database, wires the application and serves the UI.
 func serve(ctx context.Context, cfg config, s streams) error {
-	db, err := store.Open(ctx, cfg.dbPath)
+	logger := log.New(s.errOut, "", 0)
+	db, err := store.Open(ctx, cfg.dbPath, logger)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
@@ -172,7 +174,6 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	logger := log.New(s.errOut, "", 0)
 	srv := server.New(helperVersion, logger)
 
 	registry := newAccountRegistry(db, cfg.dataDir, providers())

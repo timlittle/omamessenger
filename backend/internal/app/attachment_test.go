@@ -318,7 +318,7 @@ func TestDispatch_ReservesTheAttachmentForTheDurationOfTheSend(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "messages.db"))
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "messages.db"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

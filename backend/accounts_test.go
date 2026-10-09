@@ -95,7 +95,7 @@ func (p *fakeProvider) Forget(_, accountID string) error {
 func testRegistry(t *testing.T, idOf func(domain.Account) string, saved ...domain.Account) (*accountRegistry, *fakeProvider) {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestAccountRegistry_AddFailsWhenPrepareDoes(t *testing.T) {
 func TestAccountRegistry_ServicesListsRegisteredProvidersInOrder(t *testing.T) {
 	t.Parallel()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

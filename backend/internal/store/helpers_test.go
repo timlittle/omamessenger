@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -8,12 +9,23 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
+// fakeLogger records every line Printf formats, so a test can check what
+// Open reports without a real *log.Logger.
+type fakeLogger struct {
+	lines []string
+}
+
+// Printf records the formatted line.
+func (f *fakeLogger) Printf(format string, v ...any) {
+	f.lines = append(f.lines, fmt.Sprintf(format, v...))
+}
+
 // openStore opens a fresh database in a temporary directory and closes it
 // when the test ends.
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
 
-	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "data", "messages.db"))
+	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "data", "messages.db"), nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

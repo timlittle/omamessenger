@@ -18,7 +18,7 @@ func TestOpen_RejectsNewerSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Open(t.Context(), path); !errors.Is(err, ErrSchemaTooNew) {
+	if _, err := Open(t.Context(), path, nil); !errors.Is(err, ErrSchemaTooNew) {
 		t.Fatalf("Open = %v, want ErrSchemaTooNew", err)
 	}
 }

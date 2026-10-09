@@ -28,7 +28,8 @@ case $(uname -m) in
     aarch64|arm64) arch=arm64 ;;
     *) printf 'OmaMessenger has no helper for this architecture: %s\n' "$(uname -m)" >&2; exit 1 ;;
 esac
-bin_dir="${XDG_DATA_HOME:-$HOME/.local/share}/omamessenger/bin"
+data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/omamessenger"
+bin_dir="$data_dir/bin"
 dest="$bin_dir/oma-messenger-service-$version"
 name="oma-messenger-service-linux-$arch"
 base="${OMA_RELEASE_BASE:-https://github.com/timlittle/omamessenger/releases/download/v$version}"
@@ -54,7 +55,7 @@ fetch() { curl --fail --silent --show-error --location --proto "$protocols" --pr
     --connect-timeout 10 --max-time 300 --max-filesize "$2" --output "$3" "$1"; }
 
 mkdir -p "$bin_dir"
-chmod 700 "$bin_dir"
+chmod 700 "$data_dir" "$bin_dir"
 work=$(TMPDIR="$bin_dir" mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

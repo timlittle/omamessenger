@@ -77,7 +77,7 @@ func TestConversations_SearchScalesToThousandsOfMessages(t *testing.T) {
 func seedSearchStore(t *testing.T, n int) *Store {
 	t.Helper()
 
-	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "data", "messages.db"))
+	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "data", "messages.db"), nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

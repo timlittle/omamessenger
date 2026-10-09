@@ -107,7 +107,7 @@ func connectWithHistory(t *testing.T, history app.HistoryLoader) *session {
 func openSeeded(t *testing.T) *store.Store {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"))
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "messages.db"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

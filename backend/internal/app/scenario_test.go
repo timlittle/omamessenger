@@ -31,7 +31,7 @@ func TestIngest_SurvivesAHelperRestart(t *testing.T) {
 		ctx := t.Context()
 		path := filepath.Join(t.TempDir(), "messages.db")
 
-		db1, err := store.Open(ctx, path)
+		db1, err := store.Open(ctx, path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +60,7 @@ func TestIngest_SurvivesAHelperRestart(t *testing.T) {
 		// The helper restarts: a brand new Store and Ingest over the
 		// same database, with nothing carried over from the first
 		// instance but what it wrote to disk.
-		db2, err := store.Open(ctx, path)
+		db2, err := store.Open(ctx, path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

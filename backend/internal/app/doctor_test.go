@@ -49,7 +49,7 @@ func checkNamed(t *testing.T, r doctor.Report, name string) doctor.Check {
 func doctorCommandsWithPaths(t *testing.T, dataDir, dbPath string) *app.Commands {
 	t.Helper()
 
-	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "x.db"))
+	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "x.db"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestDoctor_FlagsOutgoingAttachmentsOverTheirLimit(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "x.db"))
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "x.db"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
