@@ -86,6 +86,10 @@ func TestMediaStore_GetReportsNotFoundForAnUnknownMessage(t *testing.T) {
 func TestOpenMediaStore_RejectsAnUnwritableDirectory(t *testing.T) {
 	t.Parallel()
 
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file permissions, as in a local act run")
+	}
+
 	dir := filepath.Join(t.TempDir(), "whatsapp")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)

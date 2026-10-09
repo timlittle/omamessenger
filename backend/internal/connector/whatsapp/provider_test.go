@@ -97,6 +97,10 @@ func TestProvider_ForgetDeletesTheMediaStore(t *testing.T) {
 func TestProvider_ForgetReportsAFileItCannotDelete(t *testing.T) {
 	t.Parallel()
 
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file permissions, as in a local act run")
+	}
+
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "wa-1.db"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
