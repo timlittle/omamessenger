@@ -227,10 +227,13 @@ install-local: build ## Install this checkout into Omarchy, enable it and restar
 # Runs .github/workflows/ci.yml's jobs locally in Docker through act, so a
 # push is only made once CI would pass. ubuntu-latest maps to act's own
 # Ubuntu image, close to but not identical with GitHub's runner; the qml
-# job already runs in its own archlinux container.
+# job already runs in its own archlinux container. The jobs run one after
+# the other, not side by side, to keep memory use within a laptop's.
 ci: ## Run the GitHub Actions CI workflow locally in Docker (needs act)
 	@command -v act >/dev/null || { echo "ci: act is not installed (pacman -S act)" >&2; exit 1; }
-	act push -W .github/workflows/ci.yml -P ubuntu-latest=catthehacker/ubuntu:act-latest
+	for job in check qml; do \
+		act push -W .github/workflows/ci.yml -j "$$job" -P ubuntu-latest=catthehacker/ubuntu:act-latest || exit 1; \
+	done
 
 benchmark: ## Measure OmaMessenger's memory and CPU use against Telegram Desktop and WhatsApp Web; writes docs/BENCHMARK.md (not part of make check: restarts omarchy-shell and opens real apps)
 	./scripts/run-benchmark.sh
