@@ -6,7 +6,25 @@ on:
     branches: [main]
 
 jobs:
-  check:
+  # Compiles the helper and every test binary once, race detector and
+  # coverage included, and saves Go's build cache (setup-go keys it on
+  # go.sum). The later jobs restore it, so none of them recompiles the
+  # largest packages again: the Telegram library alone takes about 5 GB
+  # to compile.
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+      - name: Compile the helper and all test binaries
+        run: make test-build
+
+  test:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -18,10 +36,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Go tests with coverage gates
+        run: make test-go
+      - name: JavaScript tests with coverage gates
+        run: make test-js
 
-      # `make check` minus QML lint, which needs Omarchy's shell installed.
-      - name: Tests with coverage gates
-        run: make test
+  # Static checks and security scans over the built code.
+  checks:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
       - name: Go lint and the privacy check
         run: |
           make tools
@@ -29,10 +59,24 @@ jobs:
           go run ./tools/nologcontent ./backend/...
           # Leftover merge conflict markers in committed files.
           ! git grep -n -E '^(<<<<<<<|>>>>>>>)( |$)'
+      - name: Known vulnerabilities in dependencies
+        run: make vulncheck
       - name: Dependency licenses
         run: make license-check
       - name: Shell scripts
         run: shellcheck scripts/*.sh bin/oma-messenger-service
+
+  # Runs only once everything else has passed.
+  release-build:
+    needs: [test, checks, qml]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
       - name: Release build
         run: make build-all
 
@@ -40,6 +84,7 @@ jobs:
   # run in Arch with Omarchy's source checked out at the version the UI is
   # built against.
   qml:
+    needs: build
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     permissions:

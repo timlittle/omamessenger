@@ -17,6 +17,7 @@ COVERAGE_FILE := build/cover.out
 GOLANGCI_LINT_VERSION := v2.14.0
 GO_TEST_COVERAGE_VERSION := v2.20.0
 GO_LICENSES_VERSION := v2.0.1
+GOVULNCHECK_VERSION := v1.8.0
 TOOLS := $(CURDIR)/build/tools
 # Go's own build scratch goes under build/, on disk: /tmp is a RAM-backed
 # tmpfs here, and go-build directories left by an interrupted run sat in
@@ -26,6 +27,7 @@ $(shell mkdir -p $(GOTMPDIR))
 GOLANGCI_LINT := $(TOOLS)/golangci-lint
 GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
 GO_LICENSES := $(TOOLS)/go-licenses
+GOVULNCHECK := $(TOOLS)/govulncheck
 
 FAKE_HELPER := build/fake/oma-messenger-service
 THIRD_PARTY_NOTICES := build/THIRD_PARTY_NOTICES
@@ -48,7 +50,7 @@ LICENSE_IGNORE := --ignore github.com/segmentio/asm
 # test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo keys lint license-check third-party-notices tools validate install-local release-check benchmark ci clean
+.PHONY: help check build build-fake build-all install-helper test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local release-check benchmark ci clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -85,6 +87,18 @@ install-helper: ## Download and verify the helper release named in helper-versio
 	./scripts/install-helper.sh
 
 test: test-go test-js ## Run the Go and JavaScript tests
+
+# Compiles the helper, the test build and every race-instrumented test
+# binary, exactly as test-go builds them, without running a test: CI's
+# build job runs this once and caches the result, so later jobs reuse the
+# compiled packages instead of each recompiling the largest ones.
+test-build: ## Compile the helper and all test binaries without running tests
+	$(GO) build ./...
+	$(GO) build -tags fake ./...
+	$(GO) test -race -tags fake -coverprofile=$(GOTMPDIR)/test-build.cover -run '^$$' ./... >/dev/null
+
+vulncheck: $(GOVULNCHECK) ## Report known vulnerabilities in the helper's dependencies that its code reaches
+	$(GOVULNCHECK) ./backend/...
 
 test-go: $(GO_TEST_COVERAGE) ## Run Go tests with the race detector and the coverage gates in .testcoverage.yml
 	@mkdir -p $(dir $(COVERAGE_FILE))
@@ -213,7 +227,7 @@ third-party-notices: $(GO_LICENSES) ## Generate build/THIRD_PARTY_NOTICES, publi
 	GOROOT="$$($(GO) env GOROOT)" $(GO_LICENSES) report ./backend $(LICENSE_IGNORE) --ignore github.com/timlittle/omamessenger \
 		--template scripts/third-party-notices.tmpl > $(THIRD_PARTY_NOTICES)
 
-tools: $(GOLANGCI_LINT) $(GO_TEST_COVERAGE) $(GO_LICENSES) ## Build the pinned golangci-lint, go-test-coverage and go-licenses
+tools: $(GOLANGCI_LINT) $(GO_TEST_COVERAGE) $(GO_LICENSES) $(GOVULNCHECK) ## Build the pinned golangci-lint, go-test-coverage, go-licenses and govulncheck
 
 $(GOLANGCI_LINT):
 	GOBIN=$(TOOLS) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -223,6 +237,9 @@ $(GO_TEST_COVERAGE):
 
 $(GO_LICENSES):
 	GOBIN=$(TOOLS) $(GO) install github.com/google/go-licenses/v2@$(GO_LICENSES_VERSION)
+
+$(GOVULNCHECK):
+	GOBIN=$(TOOLS) $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
 validate: ## Validate the plugin files, as staged for install, with Omarchy
 	OMARCHY="$(OMARCHY)" ./scripts/install-local.sh --check
@@ -237,14 +254,14 @@ install-local: build ## Install this checkout into Omarchy, enable it and restar
 # the other, not side by side, each capped at CI_MEMORY so a run cannot
 # starve the desktop, and every act container is removed afterwards, even
 # when the run fails or is interrupted.
-CI_MEMORY ?= 5g
+CI_MEMORY ?= 6g
 # Go builds and tests at most this many packages at once inside a local CI
 # job, so its compilers stay within CI_MEMORY.
 CI_GO_PARALLEL ?= 1
 ci: ## Run the GitHub Actions CI workflow locally in Docker (needs act)
 	@command -v act >/dev/null || { echo "ci: act is not installed (pacman -S act)" >&2; exit 1; }
 	@trap 'docker rm -f $$(docker ps -aq --filter name=act-CI-) >/dev/null 2>&1' EXIT INT TERM; \
-	for job in check qml; do \
+	for job in build test checks qml; do \
 		act push -W .github/workflows/ci.yml -j "$$job" --rm --env GOFLAGS=-p=$(CI_GO_PARALLEL) \
 			--container-options "--memory=$(CI_MEMORY) --memory-swap=$(CI_MEMORY)" \
 			-P ubuntu-latest=catthehacker/ubuntu:act-latest || exit 1; \
