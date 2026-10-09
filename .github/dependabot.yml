@@ -11,6 +11,8 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+    commit-message:
+      prefix: "ci(deps)"
 
   - package-ecosystem: "gomod"
     directory: "/"
@@ -19,3 +21,5 @@ updates:
     groups:
       go-dependencies:
         patterns: ["*"]
+    commit-message:
+      prefix: "build(deps)"
