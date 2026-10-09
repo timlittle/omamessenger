@@ -291,7 +291,7 @@ func startInProcess(t *testing.T, ctx context.Context) (io.Closer, *jsonrpc2.Con
 	}()
 
 	updates := make(chan domain.Account, 32)
-	client := jsonrpc2.NewConn(t.Context(), jsonrpc2.NewPlainObjectStream(pipe{outR, inW}), &accountUpdates{updates: updates})
+	client := jsonrpc2.NewConn(ctx, jsonrpc2.NewPlainObjectStream(pipe{outR, inW}), &accountUpdates{updates: updates})
 	t.Cleanup(func() { _ = client.Close() })
 
 	return inW, client, stderr, done, updates
@@ -317,11 +317,12 @@ func startBinary(t *testing.T) (*exec.Cmd, io.Closer, *jsonrpc2.Conn, *lockedBuf
 	t.Helper()
 
 	binary := filepath.Join(t.TempDir(), "oma-messenger-service")
-	if out, err := exec.Command("go", "build", "-tags", "fake", "-buildvcs=false", "-o", binary, ".").CombinedOutput(); err != nil {
+	build := exec.CommandContext(t.Context(), "go", "build", "-tags", "fake", "-buildvcs=false", "-o", binary, ".")
+	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 
-	cmd := exec.Command(binary, "--data-dir", filepath.Join(t.TempDir(), "data"))
+	cmd := exec.CommandContext(t.Context(), binary, "--data-dir", filepath.Join(t.TempDir(), "data"))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

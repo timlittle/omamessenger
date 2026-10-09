@@ -31,7 +31,7 @@ type PastedImage struct {
 // area, for the composer to attach to the next message sent.
 func (c *Commands) PasteImage(ctx context.Context) (PastedImage, error) {
 	if c.clipboard == nil || c.outgoing == nil {
-		return PastedImage{}, fmt.Errorf("%w: %s", ErrInvalidInput, errNoClipboardImage)
+		return PastedImage{}, fmt.Errorf("%w: %w", ErrInvalidInput, errNoClipboardImage)
 	}
 
 	mimeType, err := c.clipboardImageType(ctx)
@@ -71,5 +71,5 @@ func (c *Commands) clipboardImageType(ctx context.Context) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("%w: %s", ErrInvalidInput, errNoClipboardImage)
+	return "", fmt.Errorf("%w: %w", ErrInvalidInput, errNoClipboardImage)
 }

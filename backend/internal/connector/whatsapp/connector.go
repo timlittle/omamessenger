@@ -236,7 +236,7 @@ func (c *Connector) SubmitAuth(ctx context.Context, step, value string) error {
 func (c *Connector) Logout(ctx context.Context) error {
 	dev, _, err := c.session()
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // deliberate: see the doc comment above, nothing connected means nothing to unlink
 	}
 
 	return dev.logOut(ctx)

@@ -114,14 +114,14 @@ func newUpdateStorage(path string) (*updateStorage, error) {
 	if err != nil {
 		log.Printf("telegram: update state unreadable, starting fresh and resyncing")
 
-		return s, nil
+		return s, nil //nolint:nilerr // deliberate: see the doc comment above, starting fresh just costs one resync
 	}
 
 	if err := json.Unmarshal(raw, &s.data); err != nil {
 		log.Printf("telegram: update state corrupt, discarding and resyncing")
 		s.data = emptyUpdateStateFile()
 
-		return s, nil
+		return s, nil //nolint:nilerr // deliberate: see the doc comment above, starting fresh just costs one resync
 	}
 	s.data.fillMissingMaps()
 

@@ -8,10 +8,27 @@ run:
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:
-    - depguard   # which internal packages each package may import
-    - revive     # size, complexity and doc comment rules
-    - nolintlint # every //nolint names the linter and gives a reason
+    - depguard     # which internal packages each package may import
+    - revive       # size, complexity and doc comment rules
+    - nolintlint   # every //nolint names the linter and gives a reason
+    - gosec        # common security mistakes (weak randomness, file perms, ...)
+    - errorlint    # %w wrapping, errors.Is/As instead of comparing error values
+    - bodyclose    # every http.Response.Body is closed
+    - contextcheck # a context passed to a callee came from this function's own argument, not a fresh one
+    - noctx        # no HTTP request without a context
+    - nilerr       # a function does not return nil when the err it checked is non-nil
+    - misspell     # misspelled words in comments and strings
+    - gocritic     # diagnostic-tag checks only; see settings below for why
   settings:
+    gocritic:
+      # Style and performance checks are opinionated and noisy; the
+      # diagnostic tag is the small, high-signal subset that is actually
+      # finding bugs rather than offering taste.
+      enabled-tags: [diagnostic]
+    gosec:
+      excludes:
+        - G304 # every path gosec flags here is this helper's own cache, session or attachment path, never raw untrusted input
+        - G115 # every conversion gosec flags here is a bounded domain value (a timestamp, a file size, pixel dimensions, a random id's own bits)
     depguard:
       # Production files only; tests may import more, such as a real store.
       # The main package (backend/*.go) wires everything and may import
@@ -143,6 +160,14 @@ linters:
       - path: _test\.go
         linters: [revive]
         text: "function-length|cyclomatic|exported|unused-receiver"
+      # Tests routinely chmod a t.TempDir() to simulate a denied write,
+      # write and exec a fixture binary or script they just built
+      # themselves, and read back a file they just wrote: gosec cannot
+      # tell that apart from a real permission or injection risk, so it
+      # does not run over tests at all rather than needing a nolint on
+      # nearly every file in the suite.
+      - path: _test\.go
+        linters: [gosec]
 
 formatters:
   enable: [gofumpt]

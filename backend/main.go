@@ -63,15 +63,24 @@ const outgoingSweepInterval = time.Hour
 var _ app.Notifier = notify.Desktop{}
 
 // main runs the helper until the UI disconnects or it receives SIGTERM.
+// The actual work is in exitCode so os.Exit always runs after mainErr's
+// own deferred cleanup, instead of cutting it short.
 func main() { // coverage-ignore: process entry point; run is tested
+	os.Exit(exitCode())
+}
+
+// exitCode runs the helper and returns the process exit status: 0 on a
+// clean disconnect or SIGTERM, 1 if run reported an error.
+func exitCode() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	streams := streams{in: os.Stdin, out: os.Stdout, errOut: os.Stderr}
 	if err := run(ctx, streams, os.Args[1:], os.Getenv); err != nil {
 		fmt.Fprintln(os.Stderr, "OmaMessenger helper:", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // streams are the protocol input and output and the log output.

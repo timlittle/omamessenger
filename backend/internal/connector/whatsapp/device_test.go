@@ -50,7 +50,7 @@ func TestSessionPath_NamesTheAccountsDatabase(t *testing.T) {
 	t.Parallel()
 
 	got := sessionPath("/data/whatsapp", "wa-1")
-	if want := filepath.Join("/data/whatsapp", "wa-1.db"); got != want {
+	if want := "/data/whatsapp/wa-1.db"; got != want {
 		t.Errorf("sessionPath = %q, want %q", got, want)
 	}
 }
@@ -311,7 +311,7 @@ func TestOpenDevice_RejectsAnUnwritableDirectory(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.Chmod(dir, 0o700) }() // restore so t.TempDir() can clean up
+	defer func() { _ = os.Chmod(dir, 0o700) }()
 
 	if _, err := openDevice(t.Context(), dir, "wa-1"); err == nil {
 		t.Error("openDevice in an unwritable directory = nil error, want one")

@@ -29,7 +29,7 @@ func newTestConnector(dev *fakeDevice) *Connector {
 		account:   domain.Account{ID: "wa-1", Service: domain.ServiceWhatsApp},
 		answers:   make(chan answer, 1),
 		open:      func(context.Context) (device, error) { return dev, nil },
-		openMedia: func(ctx context.Context) (*mediaStore, error) { return newInMemoryMediaStore(ctx) },
+		openMedia: newInMemoryMediaStore,
 	}
 }
 

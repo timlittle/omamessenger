@@ -22,10 +22,11 @@ func TestStandaloneRunOnRealPackages(t *testing.T) {
 		t.Skip("builds and runs the checker")
 	}
 	binary := filepath.Join(t.TempDir(), "nologcontent")
-	if out, err := exec.Command("go", "build", "-buildvcs=false", "-o", binary, ".").CombinedOutput(); err != nil {
+	build := exec.CommandContext(t.Context(), "go", "build", "-buildvcs=false", "-o", binary, ".")
+	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
-	run := exec.Command(binary, "./backend/...")
+	run := exec.CommandContext(t.Context(), binary, "./backend/...")
 	run.Dir = filepath.Join("..", "..")
 	out, err := run.CombinedOutput()
 	if strings.Contains(string(out), "internal error") {

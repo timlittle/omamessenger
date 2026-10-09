@@ -79,5 +79,5 @@ func (w Wayland) command(ctx context.Context, name string, args ...string) *exec
 		return w.Command(ctx, name, args...)
 	}
 
-	return exec.CommandContext(ctx, name, args...)
+	return exec.CommandContext(ctx, name, args...) //nolint:gosec // deliberate: name is always a literal this package's own callers pass, never untrusted input
 }

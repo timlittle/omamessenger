@@ -116,7 +116,7 @@ func needsRefresh(m domain.Message) bool {
 func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversation, beforeID string, limit int, page []domain.Message) ([]domain.Message, bool, bool, error) {
 	oldest, err := c.store.OldestRemoteID(ctx, conv.ID)
 	if err != nil {
-		return page, false, false, nil
+		return page, false, false, nil //nolint:nilerr // deliberate: see the doc comment above, scrolling back is not worth an error
 	}
 
 	loaded, err := c.history.LoadOlder(ctx, conv, oldest, max(limit, store.DefaultPageSize))

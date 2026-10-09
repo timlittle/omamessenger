@@ -63,7 +63,7 @@ func (d Desktop) run(ctx context.Context, name string, args ...string) *exec.Cmd
 		return d.Command(ctx, name, args...)
 	}
 
-	return exec.CommandContext(ctx, name, args...)
+	return exec.CommandContext(ctx, name, args...) //nolint:gosec // deliberate: name is always a literal this package's own callers pass, never untrusted input
 }
 
 // wait reads the action notify-send reports on stdout, tells Click about a

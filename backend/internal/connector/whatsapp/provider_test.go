@@ -108,7 +108,7 @@ func TestProvider_ForgetReportsAFileItCannotDelete(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.Chmod(dir, 0o700) }() // restore so t.TempDir() can clean up
+	defer func() { _ = os.Chmod(dir, 0o700) }()
 
 	p := whatsapp.Provider{}
 	if err := p.Forget(dir, "wa-1"); err == nil {

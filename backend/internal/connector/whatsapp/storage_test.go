@@ -16,7 +16,7 @@ func TestMediaStorePath_NamesTheAccountsDatabase(t *testing.T) {
 	t.Parallel()
 
 	got := mediaStorePath("/data/whatsapp", "wa-1")
-	if want := filepath.Join("/data/whatsapp", "wa-1-media.db"); got != want {
+	if want := "/data/whatsapp/wa-1-media.db"; got != want {
 		t.Errorf("mediaStorePath = %q, want %q", got, want)
 	}
 }
@@ -97,7 +97,7 @@ func TestOpenMediaStore_RejectsAnUnwritableDirectory(t *testing.T) {
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.Chmod(dir, 0o700) }() // restore so t.TempDir() can clean up
+	defer func() { _ = os.Chmod(dir, 0o700) }()
 
 	if _, err := openMediaStore(t.Context(), dir, "wa-1"); err == nil {
 		t.Error("openMediaStore in an unwritable directory = nil error, want one")

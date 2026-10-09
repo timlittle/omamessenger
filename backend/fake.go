@@ -19,5 +19,7 @@ func fakeConnectors() ([]connector.Connector, app.Injector) {
 		suite = fake.NewDemo()
 	}
 
-	return suite.Connectors(), suite
+	connectors := suite.Connectors()
+
+	return connectors, suite
 }

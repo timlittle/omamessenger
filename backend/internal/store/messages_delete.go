@@ -68,6 +68,7 @@ func (s *Store) deletionScope(ctx context.Context, accountID string, conversatio
 // findDeletable returns the stored messages among remoteIDs, in any of
 // convIDs.
 func (s *Store) findDeletable(ctx context.Context, convIDs, remoteIDs []string) ([]domain.Message, error) {
+	//nolint:gosec // deliberate: messageColumns and placeholders() are fixed strings this package builds; every actual value is a bound ? argument
 	query := `SELECT ` + messageColumns + ` FROM messages
 		WHERE remote_id<>'' AND conversation_id IN (` + placeholders(len(convIDs)) + `)
 		AND remote_id IN (` + placeholders(len(remoteIDs)) + `)`
@@ -139,6 +140,7 @@ func deleteOneMessage(ctx context.Context, tx *sql.Tx, m domain.Message) error {
 // from whatever messages it has left, after one or more were removed.
 func refreshAfterDeletion(ctx context.Context, tx *sql.Tx, conversationID string) error {
 	const newest = `SELECT %s FROM messages WHERE conversation_id=? ORDER BY created DESC, rowid DESC LIMIT 1`
+	//nolint:gosec // deliberate: newest's %s is always one of this function's own fixed column-name literals below, never untrusted input
 	_, err := tx.ExecContext(ctx, `UPDATE conversations SET
 			preview=COALESCE((`+fmt.Sprintf(newest, "text")+`),''),
 			preview_sender=COALESCE((`+fmt.Sprintf(newest, "sender_name")+`),''),

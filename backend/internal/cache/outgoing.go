@@ -175,7 +175,7 @@ func (o *Outgoing) Sweep(ctx context.Context) error {
 func (o *Outgoing) sweepOne(ctx context.Context, e os.DirEntry, cutoff time.Time) error {
 	info, err := e.Info()
 	if err != nil || !info.Mode().IsRegular() || strings.HasSuffix(e.Name(), partSuffix) {
-		return nil
+		return nil //nolint:nilerr // deliberate: a stat error just means leave this entry alone, same as the other skip conditions here
 	}
 
 	if info.ModTime().After(cutoff) || o.reserved(attachmentID(e.Name())) {

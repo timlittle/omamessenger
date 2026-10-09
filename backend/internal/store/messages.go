@@ -360,6 +360,7 @@ func (s *Store) Messages(ctx context.Context, conversationID, beforeID string, l
 	}
 
 	// Fetch one extra row to learn whether another page exists.
+	//nolint:gosec // deliberate: messageColumns and cursor are fixed strings this package builds; every actual value is a bound ? argument
 	rows, err := s.db.QueryContext(ctx, `SELECT `+messageColumns+` FROM messages
 		WHERE conversation_id=?`+cursor+` ORDER BY created DESC, rowid DESC LIMIT ?`,
 		append(args, limit+1)...)

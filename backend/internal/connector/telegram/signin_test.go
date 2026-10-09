@@ -74,6 +74,10 @@ type person struct {
 
 // newPerson returns a person with replies given as step, value pairs.
 func newPerson(pairs ...string) *person {
+	if len(pairs)%2 != 0 {
+		panic("newPerson: pairs must be step, value pairs (an even count)")
+	}
+
 	p := &person{replies: map[string][]string{}, answers: make(chan answer, len(pairs)/2+1)}
 	for i := 0; i < len(pairs); i += 2 {
 		p.replies[pairs[i]] = append(p.replies[pairs[i]], pairs[i+1])

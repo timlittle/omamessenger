@@ -107,7 +107,7 @@ func (s *Store) DeleteMessagesByID(ctx context.Context, ids []string) ([]domain.
 
 // findByIDs returns the stored messages among ids.
 func (s *Store) findByIDs(ctx context.Context, ids []string) ([]domain.Message, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE id IN (`+placeholders(len(ids))+`)`,
+	rows, err := s.db.QueryContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE id IN (`+placeholders(len(ids))+`)`, //nolint:gosec // deliberate: messageColumns and placeholders() are fixed strings this package builds; every actual value is a bound ? argument
 		toArgs(ids)...)
 	if err != nil {
 		return nil, wrap("find by ids", err)

@@ -620,8 +620,9 @@ func connectedMediaFixture(t *testing.T) (*fakeDevice, *connectortest.Sink, *Con
 	t.Helper()
 	dev, sink := newFakeDevice(), &connectortest.Sink{}
 	c := connectedToWithMedia(t, dev, sink)
+	media := c.mediaFor()
 
-	return dev, sink, c, c.mediaFor()
+	return dev, sink, c, media
 }
 
 // handlerFixture returns a connector, a fake device and a recording sink

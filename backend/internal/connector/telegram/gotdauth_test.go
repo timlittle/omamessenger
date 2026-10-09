@@ -33,7 +33,7 @@ func TestTranslate_MapsTelegramErrorsToSignInOutcomes(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := translate(tt.err); !errors.Is(got, tt.want) && got != tt.want {
+		if got := translate(tt.err); !errors.Is(got, tt.want) {
 			t.Errorf("%s: translate = %v, want %v", tt.name, got, tt.want)
 		}
 	}

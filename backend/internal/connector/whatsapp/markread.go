@@ -84,7 +84,7 @@ func (c *Connector) MarkRead(ctx context.Context, conv domain.Conversation) erro
 func markReadFrom(ctx context.Context, dev device, chat types.JID, senderRemoteID string, ids []string) error {
 	sender, err := jidFromRemoteID(senderRemoteID)
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // deliberate: see the doc comment above, skip a sender id this connector did not make
 	}
 
 	messageIDs := make([]types.MessageID, len(ids))

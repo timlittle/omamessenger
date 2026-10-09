@@ -14,7 +14,7 @@ func TestOpen_RejectsNewerSchema(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "future.db")
 	db := openRaw(t, path)
-	if _, err := db.Exec(`PRAGMA user_version=1000`); err != nil {
+	if _, err := db.ExecContext(t.Context(), `PRAGMA user_version=1000`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -34,7 +34,7 @@ func TestMigrate_FailedStepKeepsLastGoodVersion(t *testing.T) {
 	}
 
 	var version int
-	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 1 {
+	if err := db.QueryRowContext(t.Context(), `PRAGMA user_version`).Scan(&version); err != nil || version != 1 {
 		t.Fatalf("user_version = %d (%v), want 1", version, err)
 	}
 
