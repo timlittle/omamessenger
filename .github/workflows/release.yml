@@ -17,12 +17,12 @@ jobs:
       id-token: write     # sign the build provenance
       attestations: write # store the build provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check the tag matches helper-version
         run: test "$GITHUB_REF_NAME" = "v$(tr -d ' \n' < helper-version)"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.27.x"
           cache: false
@@ -34,7 +34,7 @@ jobs:
         run: make build-all
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: build/release/oma-messenger-service-linux-*
 
