@@ -68,6 +68,10 @@ func TestOutgoingStore_FailsWhenTheDirectoryCannotBeCreated(t *testing.T) {
 func TestOutgoingStore_FailsWhenTheDestinationCannotBeOpened(t *testing.T) {
 	t.Parallel()
 
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file permissions, as in a local act run")
+	}
+
 	dir := t.TempDir()
 	o := cache.NewOutgoing(dir, 24*time.Hour, 1<<30, alwaysExists)
 	if err := os.Chmod(dir, 0o500); err != nil {

@@ -43,7 +43,7 @@ LICENSE_IGNORE := --ignore github.com/segmentio/asm
 # test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo keys lint license-check third-party-notices tools validate install-local release-check benchmark clean
+.PHONY: help check build build-fake build-all install-helper test test-go test-js test-qml demo keys lint license-check third-party-notices tools validate install-local release-check benchmark ci clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -220,6 +220,14 @@ validate: ## Validate the plugin files, as staged for install, with Omarchy
 
 install-local: build ## Install this checkout into Omarchy, enable it and restart the shell
 	OMARCHY="$(OMARCHY)" OMARCHY_SHELL="$(OMARCHY_SHELL)" RSYNC="$(RSYNC)" ./scripts/install-local.sh "$(PLUGIN_DIR)"
+
+# Runs .github/workflows/ci.yml's jobs locally in Docker through act, so a
+# push is only made once CI would pass. ubuntu-latest maps to act's own
+# Ubuntu image, close to but not identical with GitHub's runner; the qml
+# job already runs in its own archlinux container.
+ci: ## Run the GitHub Actions CI workflow locally in Docker (needs act)
+	@command -v act >/dev/null || { echo "ci: act is not installed (pacman -S act)" >&2; exit 1; }
+	act push -W .github/workflows/ci.yml -P ubuntu-latest=catthehacker/ubuntu:act-latest
 
 benchmark: ## Measure OmaMessenger's memory and CPU use against Telegram Desktop and WhatsApp Web; writes docs/BENCHMARK.md (not part of make check: restarts omarchy-shell and opens real apps)
 	./scripts/run-benchmark.sh
