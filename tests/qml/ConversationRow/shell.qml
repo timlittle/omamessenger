@@ -12,7 +12,8 @@
 // only a glyph as its only cue. Also checks the account colour stripe:
 // hidden for a single-account row, shown and tinted with the row's own
 // account colour otherwise, always paired with a tooltip naming the
-// account.
+// account. Also checks that a title written to look like HTML renders as
+// the literal text instead of being auto-detected as rich text.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -78,6 +79,12 @@ ShellRoot {
     width: 260
     conversation: ({ id: "c9", title: "Due Chat", lastActivity: Date.now() })
     reminderDue: true
+  }
+
+  ConversationRow {
+    id: hostileRow
+    width: 260
+    conversation: ({ id: "c10", title: "<img src=\"https://example.com/x.png\">Group", lastActivity: Date.now() })
   }
 
   ConversationRow {
@@ -163,6 +170,15 @@ ShellRoot {
     const mutedPinnedLabel = Check.find(mutedRow, "pinnedLabel");
     if (mutedPinnedLabel.visible)
       return Check.fail("a merely muted row shows a \"Pinned\" tag");
+
+    // A group title written to look like HTML (an <img> tag that would
+    // fetch a remote image just by being displayed) must show as the
+    // literal text it is, never auto-detected as rich text.
+    const hostileTitle = Check.find(hostileRow, "titleText");
+    if (!hostileTitle || hostileTitle.text !== "<img src=\"https://example.com/x.png\">Group")
+      return Check.fail("a hostile title was not shown literally: " + (hostileTitle && hostileTitle.text));
+    if (hostileTitle.textFormat !== Text.PlainText)
+      return Check.fail("title textFormat is " + hostileTitle.textFormat + ", want PlainText");
 
     const plainStripe = Check.find(plainRow, "accountColorStripe");
     if (!plainStripe || plainStripe.visible)

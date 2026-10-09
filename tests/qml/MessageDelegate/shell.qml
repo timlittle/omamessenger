@@ -219,6 +219,7 @@ ShellRoot {
   // and the earlier Qt.exit(1) is the one that takes effect.
   function run(): void {
     if (!root.checkGroupSender()) return;
+    if (!root.checkSenderNameRendersLiterally()) return;
     if (!root.checkOutgoingReadGlyph()) return;
     if (!root.checkEditedLabel()) return;
     if (!root.checkFailedRetry()) return;
@@ -251,6 +252,23 @@ ShellRoot {
     const nodes = Check.texts(delegate);
     const sender = root.findText(nodes, "Alex");
     if (!sender || !sender.visible) return Check.fail("sender name \"Alex\" not shown for a grouped incoming message");
+    return true;
+  }
+
+  // checkSenderNameRendersLiterally verifies a sender name that looks like
+  // HTML (an <img> tag that would fetch a remote image, a <b>) shows as
+  // the literal text it is, never auto-detected as rich text: nothing
+  // escapes a sender's own display name before it reaches here, so the
+  // Text element itself has to be the one refusing to interpret it.
+  function checkSenderNameRendersLiterally(): bool {
+    const hostile = "<img src=\"https://example.com/x.png\"><b>Alex</b>";
+    delegate.message = { id: "m17", senderId: "s1", senderName: hostile, text: "hi", outgoing: false, status: "delivered", created: root.now };
+    delegate.annotation = { showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false };
+
+    const name = Check.find(delegate, "senderName");
+    if (!name) return Check.fail("sender name not found");
+    if (name.textFormat !== Text.PlainText) return Check.fail("sender name textFormat is " + name.textFormat + ", want PlainText");
+    if (name.text !== hostile) return Check.fail("sender name was not shown literally: " + name.text);
     return true;
   }
 

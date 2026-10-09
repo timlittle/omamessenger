@@ -1,7 +1,9 @@
 // Checks a poll message: it shows its question, each option's text and
-// its share of the vote, the signed-in user's own choice marked and not
-// by colour alone, a multiple-choice poll's own note, clicking an open
-// option reports a vote, and a closed poll takes no clicks.
+// its share of the vote, that a question or option written to look like
+// HTML renders as the literal text instead of being auto-detected as
+// rich text, the signed-in user's own choice marked and not by colour
+// alone, a multiple-choice poll's own note, clicking an open option
+// reports a vote, and a closed poll takes no clicks.
 import QtQuick
 import QtTest
 import Quickshell
@@ -16,6 +18,7 @@ ShellRoot {
 
   function run(): void {
     if (!root.checkShowsQuestionAndOptions()) return;
+    if (!root.checkHostileQuestionRendersLiterally()) return;
     if (!root.checkMarksTheChosenOption()) return;
     if (!root.checkMultipleChoiceNote()) return;
     if (!root.checkClickingAnOptionVotes()) return;
@@ -39,6 +42,26 @@ ShellRoot {
 
     const footer = Check.find(openPoll, "pollFooter");
     if (!footer || footer.text !== "4 votes") return Check.fail("footer = " + (footer && footer.text));
+    return true;
+  }
+
+  // checkHostileQuestionRendersLiterally verifies a poll question and
+  // option that look like HTML (an <img> tag that would fetch a remote
+  // image just by being displayed, a <b>) show as the literal text they
+  // are: this is the vulnerability a real poll once reached the screen
+  // with (see PollView.qml), so it is pinned here rather than only in
+  // the textFormat coverage scan.
+  function checkHostileQuestionRendersLiterally(): bool {
+    const hostileQuestion = "<img src=\"https://example.com/x.png\">Lunch?"
+    const hostileOption = "<b>Pizza</b>"
+
+    const question = Check.find(hostilePoll, "pollQuestion");
+    if (!question || question.text !== hostileQuestion) return Check.fail("question = " + (question && question.text));
+    if (question.textFormat !== Text.PlainText) return Check.fail("question textFormat is " + question.textFormat + ", want PlainText");
+
+    const option = Check.find(hostilePoll, "pollOptionText-0");
+    if (!option || option.text !== hostileOption) return Check.fail("option text = " + (option && option.text));
+    if (option.textFormat !== Text.PlainText) return Check.fail("option textFormat is " + option.textFormat + ", want PlainText");
     return true;
   }
 
@@ -104,6 +127,20 @@ ShellRoot {
           } }
         })
         onVoted: (id, optionIds) => root.votedCalls.push(optionIds)
+      }
+
+      MessageDelegate {
+        id: hostilePoll
+        width: 600
+        annotation: root.noAnnotation
+        message: ({
+          id: "p4", outgoing: false, status: "received", created: 0, senderName: "",
+          text: "[Poll: Lunch?]",
+          media: { kind: "poll", poll: {
+            question: "<img src=\"https://example.com/x.png\">Lunch?", multipleChoice: false, totalVoters: 1,
+            options: [{ id: "a", text: "<b>Pizza</b>", votes: 1, chosen: false }]
+          } }
+        })
       }
 
       MessageDelegate {
