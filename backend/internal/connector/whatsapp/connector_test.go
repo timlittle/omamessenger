@@ -196,6 +196,42 @@ func TestRun_EndsWhenWhatsAppWillNotReconnectOnItsOwn(t *testing.T) {
 	})
 }
 
+// TestRun_ReportsConnectingWhileWhatsmeowReconnectsOnItsOwn confirms
+// an ordinary drop - one whatsmeow's own auto-reconnect will recover
+// from, unlike the permanent kind TestRun_EndsWhenWhatsAppWillNotReconnectOnItsOwn
+// covers - shows the account as connecting again, not as stopped or
+// still connected.
+func TestRun_ReportsConnectingWhileWhatsmeowReconnectsOnItsOwn(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dev := newFakeDevice()
+		dev.paired = true
+		var sink connectortest.Sink
+
+		done := make(chan error, 1)
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() { done <- newTestConnector(dev).Run(ctx, &sink) }()
+		synctest.Wait()
+		sink.Take() // drop the initial "connecting" status reported before Run even connects
+
+		dev.status(statusDisconnected)
+		synctest.Wait()
+
+		if !sink.Has("status wa-1 " + domain.AccountConnecting) {
+			t.Errorf("events = %q, want a connecting status reported for an ordinary drop", sink.Lines())
+		}
+
+		select {
+		case err := <-done:
+			t.Errorf("Run returned %v after an ordinary drop, want it still running", err)
+		default:
+		}
+
+		cancel()
+		synctest.Wait()
+		drain(t, done)
+	})
+}
+
 func TestRun_RefusesASecondConcurrentRun(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev := newFakeDevice()

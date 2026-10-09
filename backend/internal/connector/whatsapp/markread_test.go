@@ -19,6 +19,38 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+// TestMarkReadFrom_SkipsASenderIDThisConnectorNeverMade confirms a
+// sender id that does not parse as one of this connector's own remote
+// ids is skipped rather than failing the whole MarkRead call: senders
+// are grouped by whatever message_keys last recorded (see keys.go),
+// and a pre-migration row this account sent of its own has none.
+func TestMarkReadFrom_SkipsASenderIDThisConnectorNeverMade(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+
+	if err := markReadFrom(t.Context(), dev, directPeer, "", []string{"m1"}); err != nil {
+		t.Errorf("markReadFrom(bad sender id) = %v, want nil, skipped", err)
+	}
+	if len(dev.markReadCalls) != 0 {
+		t.Errorf("markReadCalls = %v, want none sent for a sender id that does not parse", dev.markReadCalls)
+	}
+}
+
+// TestMarkReadFrom_WrapsADeviceError confirms a failure sending the
+// read receipt itself reaches the caller, rather than being swallowed
+// the way an unparseable sender id deliberately is.
+func TestMarkReadFrom_WrapsADeviceError(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.markReadErr = errors.New("server unavailable")
+
+	if err := markReadFrom(t.Context(), dev, directPeer, remoteID(directPeer), []string{"m1"}); !errors.Is(err, dev.markReadErr) {
+		t.Errorf("markReadFrom = %v, want it to wrap the device's error", err)
+	}
+}
+
 func TestMarkRead_SendsAReceiptForADirectChatAfterARestart(t *testing.T) {
 	t.Parallel()
 

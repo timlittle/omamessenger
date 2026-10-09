@@ -2,6 +2,15 @@ module github.com/timlittle/omamessenger
 
 go 1.26.0
 
+// Pinned so `go test`'s statement-coverage counting matches exactly between
+// a developer's machine and CI, whatever Go version each has installed:
+// Go 1.27.2 changed how some statements are counted for coverage relative
+// to 1.27.0, so the two versions report different percentages for the same
+// tests. GOTOOLCHAIN=auto (the default) downloads and uses this exact
+// version for every `go` command in this module, overriding whatever
+// toolchain is on PATH.
+toolchain go1.27.2
+
 require (
 	github.com/gotd/td v0.162.0
 	github.com/sourcegraph/jsonrpc2 v0.2.3

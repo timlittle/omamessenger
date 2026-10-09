@@ -79,6 +79,45 @@ func TestMediaStore_GetReportsNotFoundForAnUnknownMessage(t *testing.T) {
 	}
 }
 
+// TestOpenMediaStore_RejectsAnUnwritableDirectory confirms a directory
+// this process cannot write into, such as one owned by another user or
+// left behind with the wrong permissions, is reported as an error
+// rather than a silent, broken store.
+func TestOpenMediaStore_RejectsAnUnwritableDirectory(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "whatsapp")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(dir, 0o700) }() // restore so t.TempDir() can clean up
+
+	if _, err := openMediaStore(t.Context(), dir, "wa-1"); err == nil {
+		t.Error("openMediaStore in an unwritable directory = nil error, want one")
+	}
+}
+
+// TestOpenMediaStore_RejectsAFileLeftCorrupted confirms a media store
+// file that is not a valid SQLite database - left behind by a crash or
+// a disk that filled up mid-write - is reported as an error rather
+// than treated as an empty store, which would otherwise silently lose
+// every reference already saved in it.
+func TestOpenMediaStore_RejectsAFileLeftCorrupted(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(mediaStorePath(dir, "wa-1"), []byte("not a sqlite database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := openMediaStore(t.Context(), dir, "wa-1"); err == nil {
+		t.Error("openMediaStore over a corrupted file = nil error, want one")
+	}
+}
+
 func TestMediaStore_PutReplacesAnEarlierReferenceForTheSameMessage(t *testing.T) {
 	t.Parallel()
 

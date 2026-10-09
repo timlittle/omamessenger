@@ -89,6 +89,29 @@ func TestProvider_ForgetDeletesTheMediaStore(t *testing.T) {
 	}
 }
 
+// TestProvider_ForgetReportsAFileItCannotDelete confirms a deletion
+// failure that is not simply the file already being gone - such as a
+// directory this process lost write access to after the account was
+// created - reaches the caller as an error, rather than Forget
+// reporting the account removed when its files are still there.
+func TestProvider_ForgetReportsAFileItCannotDelete(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "wa-1.db"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(dir, 0o700) }() // restore so t.TempDir() can clean up
+
+	p := whatsapp.Provider{}
+	if err := p.Forget(dir, "wa-1"); err == nil {
+		t.Error("Forget in an unwritable directory = nil error, want the deletion failure reported")
+	}
+}
+
 func TestProvider_ForgetIsANoOpWithoutASession(t *testing.T) {
 	t.Parallel()
 

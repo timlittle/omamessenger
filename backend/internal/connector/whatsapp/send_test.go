@@ -11,8 +11,10 @@ import (
 	"testing/synctest"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -105,6 +107,26 @@ func TestSend_WrapsAWhatsAppError(t *testing.T) {
 	}
 	if len(sink.Outgoing("local-5")) != 0 {
 		t.Errorf("outgoing updates = %v, want none for a failed send", sink.Outgoing("local-5"))
+	}
+}
+
+// TestSend_ReportsABroadcastListAsPermanent confirms the one WhatsApp
+// send error this connector already knows will never succeed on retry
+// - a conversation that turns out to be a broadcast list, which
+// whatsmeow refuses outright - is classified as permanent, so the
+// app layer's retry scheduler does not keep trying it forever.
+func TestSend_ReportsABroadcastListAsPermanent(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c := connectedFixture(t)
+	dev.sendErr = whatsmeow.ErrBroadcastListUnsupported
+
+	err := c.Send(t.Context(), directChat, domain.Message{ID: "local-broadcast"})
+	if !errors.Is(err, connector.ErrSendPermanent) {
+		t.Errorf("Send = %v, want it classified as connector.ErrSendPermanent", err)
+	}
+	if !errors.Is(err, whatsmeow.ErrBroadcastListUnsupported) {
+		t.Errorf("Send = %v, want the original whatsmeow error still wrapped in", err)
 	}
 }
 

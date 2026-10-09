@@ -43,6 +43,22 @@ func TestMigrate_FailedStepKeepsLastGoodVersion(t *testing.T) {
 	}
 }
 
+// TestMigrate_ReportsAFailureReadingTheSchemaVersion confirms migrate
+// surfaces a failure to even read PRAGMA user_version, rather than
+// treating it as a blank database and running every step again.
+func TestMigrate_ReportsAFailureReadingTheSchemaVersion(t *testing.T) {
+	t.Parallel()
+
+	db := openRaw(t, filepath.Join(t.TempDir(), "messages.db"))
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := migrate(t.Context(), db, migrations); err == nil {
+		t.Error("migrate on a closed database = nil error, want the read failure reported")
+	}
+}
+
 // openRaw opens a SQLite database without migrating it.
 func openRaw(t *testing.T, path string) *sql.DB {
 	t.Helper()

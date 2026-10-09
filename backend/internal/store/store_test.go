@@ -126,6 +126,25 @@ func storeCalls(t *testing.T, s *store.Store) map[string]func() error {
 		"UpdateMessageStatus":  func() error { _, _, err := s.UpdateMessageStatus(ctx, "m", domain.StatusSent); return err },
 		"Messages":             func() error { _, _, err := s.Messages(ctx, "c", "", 10); return err },
 		"Messages before":      func() error { _, _, err := s.Messages(ctx, "c", "m", 10); return err },
+		"OldestRemoteID":       func() error { _, err := s.OldestRemoteID(ctx, "c"); return err },
+		"EditMessage": func() error {
+			_, _, err := s.EditMessage(ctx, "c", "remote", store.MessageEdit{Text: "hi"})
+			return err
+		},
+		"SetReactions":         func() error { _, _, err := s.SetReactions(ctx, "c", "remote", nil); return err },
+		"SetPoll":              func() error { _, _, err := s.SetPoll(ctx, "c", "remote", domain.Poll{}); return err },
+		"DeleteMessages":       func() error { _, err := s.DeleteMessages(ctx, "wa", []string{"r"}, []string{"remote"}); return err },
+		"DeleteMessagesByID":   func() error { _, err := s.DeleteMessagesByID(ctx, []string{"m"}); return err },
+		"ScheduleMessageRetry": func() error { return s.ScheduleMessageRetry(ctx, "m", 1, 1, 1) },
+		"StopMessageRetry":     func() error { return s.StopMessageRetry(ctx, "m") },
+		"ClearMessageRetry":    func() error { return s.ClearMessageRetry(ctx, "m") },
+		"PendingRetries":       func() error { _, err := s.PendingRetries(ctx); return err },
+		"MessageExists":        func() error { _, err := s.MessageExists(ctx, "m"); return err },
+		"FailedAttachmentCount": func() error {
+			_, err := s.FailedAttachmentCount(ctx)
+			return err
+		},
+		"RefreshSenderName": func() error { _, err := s.RefreshSenderName(ctx, "wa", "r", "Name"); return err },
 	}
 }
 

@@ -167,6 +167,112 @@ func TestHandleEvents_RoutesAMediaRetryAnswerToItsWaiter(t *testing.T) {
 	}
 }
 
+// TestHandleEvents_DispatchesChatPresenceToSink confirms handleEvents'
+// own switch, not just handleChatPresence itself (already covered
+// directly in live_test.go), reaches a typing update.
+func TestHandleEvents_DispatchesChatPresenceToSink(t *testing.T) {
+	t.Parallel()
+
+	dev, sink, _, unregister := wireEvents(t)
+	defer unregister()
+
+	dev.fireEvent(&events.ChatPresence{
+		MessageSource: types.MessageSource{Chat: directPeer, Sender: directPeer}, State: types.ChatPresenceComposing,
+	})
+
+	if !sink.Has("typing 15551234567@s.whatsapp.net true") {
+		t.Errorf("events = %q, want the chat presence dispatched through handleEvents", sink.Lines())
+	}
+}
+
+// TestHandleEvents_DispatchesDeleteForMeToSink confirms handleEvents'
+// own switch, not just handleDeleteForMe itself (already covered
+// directly in delete_test.go), reaches a deletion.
+func TestHandleEvents_DispatchesDeleteForMeToSink(t *testing.T) {
+	t.Parallel()
+
+	dev, sink, _, unregister := wireEvents(t)
+	defer unregister()
+
+	dev.fireEvent(&events.DeleteForMe{ChatJID: directPeer, MessageID: "M1"})
+
+	if !sink.Has("deleted 15551234567@s.whatsapp.net M1") {
+		t.Errorf("events = %q, want the deletion dispatched through handleEvents", sink.Lines())
+	}
+}
+
+// TestHandleEvents_DispatchesOrganizingChangesToSink confirms
+// handleChatListEvent's own switch reaches a pin and an archive
+// change, both already covered directly in organize_test.go.
+func TestHandleEvents_DispatchesOrganizingChangesToSink(t *testing.T) {
+	t.Parallel()
+
+	dev, sink, _, unregister := wireEvents(t)
+	defer unregister()
+
+	// handlePin and handleArchive both re-read the chat settings store
+	// rather than trust the event's own payload (see docs/decisions.md),
+	// so the live echo must already be reflected there, the same way a
+	// real pairing's app-state processing would have left it.
+	dev.setChatSettings(directPeer.String(), true, false)
+	dev.fireEvent(&events.Pin{JID: directPeer, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
+	if !sink.Has("organized 15551234567@s.whatsapp.net true false") {
+		t.Errorf("events = %q, want the pin dispatched through handleEvents", sink.Lines())
+	}
+
+	dev.setChatSettings(directPeer.String(), true, true)
+	dev.fireEvent(&events.Archive{JID: directPeer, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
+	if !sink.Has("organized 15551234567@s.whatsapp.net true true") {
+		t.Errorf("events = %q, want the archive dispatched through handleEvents", sink.Lines())
+	}
+}
+
+// TestHandleEvents_DispatchesNameUpdatesToSink confirms
+// handleChatListEvent's own switch reaches a contact, push name and
+// business name update, each already covered directly in
+// contacts_test.go.
+func TestHandleEvents_DispatchesNameUpdatesToSink(t *testing.T) {
+	t.Parallel()
+
+	dev, sink, _, unregister := wireEvents(t)
+	defer unregister()
+
+	dev.fireEvent(&events.Contact{JID: directPeer, Action: &waSyncAction.ContactAction{FullName: strPtr("Nadia Rahman")}})
+	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia Rahman") {
+		t.Errorf("events = %q, want the contact update dispatched through handleEvents", sink.Lines())
+	}
+
+	pushJID := types.NewJID("15552223333", types.DefaultUserServer)
+	dev.fireEvent(&events.PushName{JID: pushJID, NewPushName: "Push Nadia"})
+	if !sink.Has("conversation 15552223333@s.whatsapp.net Push Nadia") {
+		t.Errorf("events = %q, want the push name update dispatched through handleEvents", sink.Lines())
+	}
+
+	business := types.NewJID("15559998888", types.DefaultUserServer)
+	dev.fireEvent(&events.BusinessName{JID: business, NewBusinessName: "Acme Support"})
+	if !sink.Has("conversation 15559998888@s.whatsapp.net Acme Support") {
+		t.Errorf("events = %q, want the business name update dispatched through handleEvents", sink.Lines())
+	}
+}
+
+// TestHandleEvents_DispatchesAppStateSyncCompleteToSink confirms
+// handleChatListEvent's own switch reaches handleAppStateSyncComplete,
+// already covered directly in contacts_test.go.
+func TestHandleEvents_DispatchesAppStateSyncCompleteToSink(t *testing.T) {
+	t.Parallel()
+
+	dev, sink, c, unregister := wireEvents(t)
+	defer unregister()
+	c.noteChat(remoteID(directPeer), domain.KindDirect)
+	dev.contactNames = map[string]string{directPeer.String(): "Nadia Rahman"}
+
+	dev.fireEvent(&events.AppStateSyncComplete{})
+
+	if !sink.Has("conversation 15551234567@s.whatsapp.net Nadia Rahman") {
+		t.Errorf("events = %q, want the app-state sync completion dispatched through handleEvents", sink.Lines())
+	}
+}
+
 func TestHandleEvents_DropsAMuteChangeWithoutReportingAnything(t *testing.T) {
 	t.Parallel()
 
