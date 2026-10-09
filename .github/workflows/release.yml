@@ -19,8 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Check the tag matches helper-version
-        run: test "$GITHUB_REF_NAME" = "v$(tr -d ' \n' < helper-version)"
+      - name: Check the tag, helper-version and manifest.json agree
+        run: |
+          tag=${GITHUB_REF_NAME#v}
+          helper=$(tr -d ' \n' < helper-version)
+          manifest=$(jq -r .version manifest.json)
+          if [ "$tag" != "$helper" ] || [ "$tag" != "$manifest" ]; then
+            printf 'version mismatch: tag=v%s helper-version=%s manifest.json=%s\n' "$tag" "$helper" "$manifest" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
