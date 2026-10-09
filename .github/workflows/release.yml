@@ -5,23 +5,49 @@ name: Release helper
 # the plugin installs the binary pinned in helper-version with
 # scripts/install-helper.sh, which verifies SHA256SUMS (covering all four
 # files; see docs/decisions.md for why a release binary ships GPL-3.0 text).
+#
+# Runs on a direct "v*" tag push (a manual release) and, called by
+# release-please.yml right after it tags a release itself, on workflow_call
+# with that tag: a tag release-please creates with GITHUB_TOKEN does not
+# trigger this workflow's own "push: tags" event, so release-please.yml
+# calls this workflow directly instead of relying on the tag push.
 on:
   push:
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: "The release tag to build and publish (defaults to the triggering tag)"
+        required: false
+        type: string
 
 jobs:
+  # Reruns the full CI pipeline against the tagged commit, rather than
+  # trusting whatever already ran against the branch it came from, so a
+  # release can never ship from code CI has not verified at this exact ref.
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: ci
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write     # create the release
       id-token: write     # sign the build provenance
       attestations: write # store the build provenance
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Check the tag, helper-version and manifest.json agree
         run: |
-          tag=${GITHUB_REF_NAME#v}
+          tag=${RELEASE_TAG#v}
           helper=$(cut -d'#' -f1 helper-version | tr -d ' \n')
           manifest=$(jq -r .version manifest.json)
           if [ "$tag" != "$helper" ] || [ "$tag" != "$manifest" ]; then
@@ -34,9 +60,6 @@ jobs:
           go-version: "1.27.x"
           cache: false
 
-      - name: Test
-        run: go test -race -tags fake ./...
-
       - name: Build helpers, SHA256SUMS and license notices
         run: make build-all
 
@@ -48,4 +71,4 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/release/* --generate-notes
+        run: gh release create "$RELEASE_TAG" build/release/* --generate-notes

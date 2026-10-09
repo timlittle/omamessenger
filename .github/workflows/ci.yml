@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Lets release.yml run this same pipeline against the tag it is about
+  # to publish, instead of keeping a second, separately maintained copy
+  # of the test steps.
+  workflow_call:
 
 # A new push cancels a run already in progress for the same branch or PR,
 # so an outdated commit's jobs do not keep burning runner minutes once a
