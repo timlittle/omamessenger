@@ -18,6 +18,11 @@ GOLANGCI_LINT_VERSION := v2.14.0
 GO_TEST_COVERAGE_VERSION := v2.20.0
 GO_LICENSES_VERSION := v2.0.1
 TOOLS := $(CURDIR)/build/tools
+# Go's own build scratch goes under build/, on disk: /tmp is a RAM-backed
+# tmpfs here, and go-build directories left by an interrupted run sat in
+# memory until reboot.
+export GOTMPDIR := $(CURDIR)/build/gotmp
+$(shell mkdir -p $(GOTMPDIR))
 GOLANGCI_LINT := $(TOOLS)/golangci-lint
 GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
 GO_LICENSES := $(TOOLS)/go-licenses
@@ -48,7 +53,8 @@ NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-check: build test test-qml lint license-check ## Run every gate: build, tests with coverage, QML tests, lint, dependency licenses
+check: build test test-qml lint license-check ## Run every gate: build, tests with coverage, QML tests, lint, dependency licenses, then a leak check
+	@./scripts/check-leaks.sh
 
 build: ## Build the helper for this machine into bin/dev/, which the launcher prefers
 	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/dev/oma-messenger-service ./backend
@@ -228,12 +234,19 @@ install-local: build ## Install this checkout into Omarchy, enable it and restar
 # push is only made once CI would pass. ubuntu-latest maps to act's own
 # Ubuntu image, close to but not identical with GitHub's runner; the qml
 # job already runs in its own archlinux container. The jobs run one after
-# the other, not side by side, to keep memory use within a laptop's.
+# the other, not side by side, each capped at CI_MEMORY so a run cannot
+# starve the desktop, and every act container is removed afterwards, even
+# when the run fails or is interrupted.
+CI_MEMORY ?= 4g
 ci: ## Run the GitHub Actions CI workflow locally in Docker (needs act)
 	@command -v act >/dev/null || { echo "ci: act is not installed (pacman -S act)" >&2; exit 1; }
+	@trap 'docker rm -f $$(docker ps -aq --filter name=act-CI-) >/dev/null 2>&1' EXIT INT TERM; \
 	for job in check qml; do \
-		act push -W .github/workflows/ci.yml -j "$$job" -P ubuntu-latest=catthehacker/ubuntu:act-latest || exit 1; \
+		act push -W .github/workflows/ci.yml -j "$$job" --rm \
+			--container-options "--memory=$(CI_MEMORY) --memory-swap=$(CI_MEMORY)" \
+			-P ubuntu-latest=catthehacker/ubuntu:act-latest || exit 1; \
 	done
+	@./scripts/check-leaks.sh
 
 benchmark: ## Measure OmaMessenger's memory and CPU use against Telegram Desktop and WhatsApp Web; writes docs/BENCHMARK.md (not part of make check: restarts omarchy-shell and opens real apps)
 	./scripts/run-benchmark.sh
