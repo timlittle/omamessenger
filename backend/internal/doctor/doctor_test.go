@@ -117,16 +117,16 @@ func TestBuild_SizeLimitsFlagOverLimit(t *testing.T) {
 	}
 }
 
-// TestBuild_NotifySendAvailability confirms the desktop notification
-// check follows Facts.NotifySendAvailable.
-func TestBuild_NotifySendAvailability(t *testing.T) {
+// TestBuild_NotificationServiceReachability confirms the desktop
+// notification check follows Facts.NotificationServiceReachable.
+func TestBuild_NotificationServiceReachability(t *testing.T) {
 	t.Parallel()
 
-	if got := checkNamed(t, doctor.Build(doctor.Facts{NotifySendAvailable: true}), "Desktop notifications"); !got.OK {
-		t.Errorf("notify-send available reports a problem: %q", got.Detail)
+	if got := checkNamed(t, doctor.Build(doctor.Facts{NotificationServiceReachable: true}), "Desktop notifications"); !got.OK {
+		t.Errorf("a reachable notification service reports a problem: %q", got.Detail)
 	}
-	if got := checkNamed(t, doctor.Build(doctor.Facts{NotifySendAvailable: false}), "Desktop notifications"); got.OK {
-		t.Errorf("notify-send missing reports no problem: %q", got.Detail)
+	if got := checkNamed(t, doctor.Build(doctor.Facts{NotificationServiceReachable: false}), "Desktop notifications"); got.OK {
+		t.Errorf("an unreachable notification service reports no problem: %q", got.Detail)
 	}
 }
 
@@ -162,13 +162,13 @@ func TestBuild_ProblemsCountsOnlyFailingChecks(t *testing.T) {
 	t.Parallel()
 
 	report := doctor.Build(doctor.Facts{
-		DatabaseOK:          false,
-		NotifySendAvailable: false,
-		Accounts:            []doctor.AccountFact{{Service: "telegram", Status: "connected"}},
+		DatabaseOK:                   false,
+		NotificationServiceReachable: false,
+		Accounts:                     []doctor.AccountFact{{Service: "telegram", Status: "connected"}},
 	})
 
 	if got := report.Problems(); got != 2 {
-		t.Errorf("Problems = %d, want 2 (database and notify-send)", got)
+		t.Errorf("Problems = %d, want 2 (database and the notification service)", got)
 	}
 }
 

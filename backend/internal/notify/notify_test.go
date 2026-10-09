@@ -1,58 +1,92 @@
-// Desktop's Command field replaces notify-send itself, so every test here
-// runs a stub process instead of the real one and can run in parallel.
+// Desktop's Dial field replaces a real session bus connection, so every
+// test here runs a hand-written fake Bus instead of reaching one, and
+// can run in parallel.
 package notify_test
 
 import (
 	"context"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"slices"
+	"errors"
+	"go/parser"
+	"go/token"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/godbus/dbus/v5"
 
 	"github.com/timlittle/omamessenger/backend/internal/notify"
 )
 
-// stub writes a notify-send look-alike to dir that records its arguments
-// into argsPath and, if action is non-empty, prints it to stdout the way
-// notify-send prints the name of the action the user chose.
-func stub(t *testing.T, dir, argsPath, action string) string {
-	t.Helper()
+// fakeBus is a hand-written stand-in for notify.Bus. It records Show's
+// arguments and lets a test script the signals Wait sees, without ever
+// reaching a real session bus.
+type fakeBus struct {
+	mu sync.Mutex
 
-	path := filepath.Join(dir, "notify-send")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + argsPath + "\"\n"
-	if action != "" {
-		script += "printf '%s\\n' \"" + action + "\"\n"
-	}
+	gotAppName string
+	gotTitle   string
+	gotBody    string
+	gotActions []string
+	gotHints   map[string]dbus.Variant
 
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	showErr error
+	id      uint32
 
-	return path
+	signals chan string // one entry per ActionInvoked action key seen before close; "" closes with no action
+	waitErr error
 }
 
-// desktopWithStub returns a Desktop whose Command runs the stub at path
-// regardless of the name Notify asked for, and a channel fed by click.
-// The stub runs through sh rather than being executed itself: a script
-// written and executed at once can fail with "text file busy" while a
-// parallel test forks with the file still open for writing.
-func desktopWithStub(path string) (notify.Desktop, <-chan string) {
+// Show records its arguments and returns the fake's scripted id and
+// error.
+func (b *fakeBus) Show(appName, title, body string, actions []string, hints map[string]dbus.Variant) (uint32, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.gotAppName, b.gotTitle, b.gotBody, b.gotActions, b.gotHints = appName, title, body, actions, hints
+
+	return b.id, b.showErr
+}
+
+// Wait reads from signals until it is closed or ctx ends, mirroring how
+// the real Bus waits for NotificationClosed after an optional
+// ActionInvoked.
+func (b *fakeBus) Wait(ctx context.Context, _ uint32) (string, error) {
+	if b.waitErr != nil {
+		return "", b.waitErr
+	}
+
+	select {
+	case action := <-b.signals:
+		return action, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// args returns Show's recorded arguments under the fake's lock, so a
+// test can read them once the goroutine that called Show has finished.
+func (b *fakeBus) args() (appName, title, body string, actions []string, hints map[string]dbus.Variant) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.gotAppName, b.gotTitle, b.gotBody, b.gotActions, b.gotHints
+}
+
+// desktopWithFake returns a Desktop whose Dial hands Notify the given
+// fake bus, and a channel fed by Click.
+func desktopWithFake(b *fakeBus) (notify.Desktop, <-chan string) {
 	clicks := make(chan string, 1)
 	d := notify.Desktop{
-		Command: func(ctx context.Context, _ string, args ...string) *exec.Cmd {
-			return exec.CommandContext(ctx, "sh", append([]string{path}, args...)...)
-		},
+		Dial:  func(context.Context) (notify.Bus, func(), error) { return b, func() {}, nil },
 		Click: func(conversationID string) { clicks <- conversationID },
 	}
 
 	return d, clicks
 }
 
-// waitForClick returns the conversation id Click was called with, or fails
-// the test if the stub process never reports one.
+// waitForClick returns the conversation id Click was called with, or
+// fails the test if it never was.
 func waitForClick(t *testing.T, clicks <-chan string) string {
 	t.Helper()
 
@@ -66,7 +100,7 @@ func waitForClick(t *testing.T, clicks <-chan string) string {
 }
 
 // assertNoClick fails the test if clicks receives anything within a
-// window well beyond how long the local stub process needs to exit.
+// window well beyond how long the fake needs to answer.
 func assertNoClick(t *testing.T, clicks <-chan string) {
 	t.Helper()
 
@@ -77,36 +111,52 @@ func assertNoClick(t *testing.T, clicks <-chan string) {
 	}
 }
 
-func TestNotify_RunsNotifySendWithTitleBodyAndDefaultAction(t *testing.T) {
+// closedWithoutAction scripts a fake bus whose Wait reports the
+// notification closed with no action chosen.
+func closedWithoutAction() *fakeBus {
+	b := &fakeBus{signals: make(chan string, 1)}
+	b.signals <- ""
+
+	return b
+}
+
+// closedWithDefaultAction scripts a fake bus whose Wait reports the
+// default action was chosen before the notification closed.
+func closedWithDefaultAction() *fakeBus {
+	b := &fakeBus{signals: make(chan string, 1)}
+	b.signals <- "default"
+
+	return b
+}
+
+func TestNotify_CallsShowWithTitleBodyAndDefaultAction(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	argsPath := filepath.Join(dir, "args")
-	d, clicks := desktopWithStub(stub(t, dir, argsPath, ""))
+	b := closedWithoutAction()
+	d, clicks := desktopWithFake(b)
 
 	d.Notify("Alex · Work", "New message", "conv-1")
 	assertNoClick(t, clicks)
 
-	data, err := os.ReadFile(argsPath)
-	if err != nil {
-		t.Fatalf("stub did not run: %v", err)
+	appName, title, body, actions, hints := b.args()
+	if appName != "OmaMessenger" {
+		t.Errorf("app name = %q, want OmaMessenger", appName)
 	}
-
-	got := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-	want := []string{
-		"--app-name=OmaMessenger", "--category=im.received", "--action=default=Open",
-		"--", "Alex · Work", "New message",
+	if title != "Alex · Work" || body != "New message" {
+		t.Errorf("title/body = %q/%q, want %q/%q", title, body, "Alex · Work", "New message")
 	}
-	if !slices.Equal(got, want) {
-		t.Errorf("notify-send arguments = %q, want %q", got, want)
+	if len(actions) != 2 || actions[0] != "default" {
+		t.Errorf("actions = %v, want a default action first", actions)
+	}
+	if got, ok := hints["category"]; !ok || got.Value() != "im.received" {
+		t.Errorf("category hint = %v, want im.received", hints["category"])
 	}
 }
 
 func TestNotify_ReportsAClickWithTheConversationID(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	d, clicks := desktopWithStub(stub(t, dir, filepath.Join(dir, "args"), "default"))
+	d, clicks := desktopWithFake(closedWithDefaultAction())
 
 	d.Notify("title", "body", "conv-42")
 
@@ -115,77 +165,104 @@ func TestNotify_ReportsAClickWithTheConversationID(t *testing.T) {
 	}
 }
 
-func TestNotify_IgnoresANotificationClosedWithoutAClick(t *testing.T) {
+func TestNotify_IgnoresANotificationClosedWithoutAnAction(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	d, clicks := desktopWithStub(stub(t, dir, filepath.Join(dir, "args"), ""))
+	d, clicks := desktopWithFake(closedWithoutAction())
 
 	d.Notify("title", "body", "conv-1")
 
 	assertNoClick(t, clicks)
 }
 
-func TestNotify_IgnoresAnUnrelatedLineOfOutput(t *testing.T) {
+func TestNotify_IgnoresAnUnrelatedAction(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	d, clicks := desktopWithStub(stub(t, dir, filepath.Join(dir, "args"), "0"))
+	b := &fakeBus{signals: make(chan string, 1)}
+	b.signals <- "ignored-action"
+	d, clicks := desktopWithFake(b)
 
 	d.Notify("title", "body", "conv-1")
 
 	assertNoClick(t, clicks)
 }
 
-func TestNotify_IgnoresMissingNotifySend(t *testing.T) {
+func TestNotify_IgnoresAFailureToDialTheBus(t *testing.T) {
 	t.Parallel()
 
 	d := notify.Desktop{
-		Command: func(ctx context.Context, _ string, args ...string) *exec.Cmd {
-			return exec.CommandContext(ctx, filepath.Join(t.TempDir(), "no-such-binary"), args...)
-		},
+		Dial: func(context.Context) (notify.Bus, func(), error) { return nil, nil, errors.New("no session bus") },
 	}
 
 	d.Notify("title", "body", "conv-1") // must not panic or block
 }
 
-func TestNotify_DefaultsToTheRealNotifySendCommand(t *testing.T) {
-	// Not parallel: t.Setenv forbids it.
-	// No Command set: Notify must fall back to exec.CommandContext rather
-	// than panic on a nil func. Point PATH at a stub so nothing real runs.
-	dir := t.TempDir()
-	argsPath := filepath.Join(dir, "args")
-	stub(t, dir, argsPath, "")
-	t.Setenv("PATH", dir)
-
-	notify.Desktop{}.Notify("title", "body", "conv-1")
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.ReadFile(argsPath); err == nil {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("stub notify-send on PATH was never run")
-}
-
-// Desktop must still see the "default" action when notify-send's last
-// write has no trailing newline; bufio.Scanner yields that final line too.
-func TestNotify_ReadsAFinalLineWithoutATrailingNewline(t *testing.T) {
+// TestNotify_DefaultsToDialingTheRealSessionBus confirms Notify falls
+// back to dialSessionBus rather than panicking on a nil Dial func, and
+// that it still does not block when there is nothing to connect to
+// (every test runs with DBUS_SESSION_BUS_ADDRESS pointed nowhere, so
+// this never reaches a real bus).
+func TestNotify_DefaultsToDialingTheRealSessionBus(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "notify-send")
-	script := "#!/bin/sh\nprintf 'default'\n"
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
+	notify.Desktop{}.Notify("title", "body", "conv-1") // must not panic or block
+}
+
+func TestNotify_IgnoresAFailedShowCall(t *testing.T) {
+	t.Parallel()
+
+	b := &fakeBus{showErr: errors.New("service refused the call")}
+	d, clicks := desktopWithFake(b)
+
+	d.Notify("title", "body", "conv-1")
+
+	assertNoClick(t, clicks)
+}
+
+func TestNotify_IgnoresAFailedWaitCall(t *testing.T) {
+	t.Parallel()
+
+	b := &fakeBus{waitErr: errors.New("lost the connection"), signals: make(chan string, 1)}
+	d, clicks := desktopWithFake(b)
+
+	d.Notify("title", "body", "conv-1")
+
+	assertNoClick(t, clicks)
+}
+
+// TestServiceReachable_ReturnsFalseWithNoSessionBusConfigured confirms
+// ServiceReachable fails closed, promptly, when there is nothing to
+// connect to - the situation every test run is in, and many desktops
+// without a notification daemon running too.
+func TestServiceReachable_ReturnsFalseWithNoSessionBusConfigured(t *testing.T) {
+	// Not parallel: t.Setenv forbids it.
+	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent")
+
+	start := time.Now()
+	if notify.ServiceReachable(t.Context()) {
+		t.Error("ServiceReachable = true with no session bus configured, want false")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("ServiceReachable took %s to fail, want a prompt result", elapsed)
+	}
+}
+
+// TestNotify_NeverSpawnsAnExternalProcess confirms notify.go has no
+// os/exec import at all, so no code path in this package can ever put a
+// notification's title, body or conversation id into another process's
+// command line, readable from /proc by any other local user.
+func TestNotify_NeverSpawnsAnExternalProcess(t *testing.T) {
+	t.Parallel()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "notify.go", nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse notify.go: %v", err)
 	}
 
-	d, clicks := desktopWithStub(path)
-	d.Notify("title", "body", "conv-9")
-
-	if got := waitForClick(t, clicks); got != "conv-9" {
-		t.Errorf("click reported conversation %q, want %q", got, "conv-9")
+	for _, imp := range file.Imports {
+		if strings.Trim(imp.Path.Value, `"`) == "os/exec" {
+			t.Fatal("notify.go imports os/exec: a notification could leak its content into a process's argv")
+		}
 	}
 }

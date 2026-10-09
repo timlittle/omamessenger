@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 	"os"
-	"os/exec"
 
 	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/notify"
 )
 
 // CacheStats reports how many bytes a media cache holds against its
@@ -27,18 +27,18 @@ func (c *Commands) Doctor(ctx context.Context) (doctor.Report, error) {
 	failedAttachments, _ := c.store.FailedAttachmentCount(ctx) // best effort; 0 if the query fails
 
 	facts := doctor.Facts{
-		CompiledVersion:       c.helperVersion,
-		ExecutableName:        c.execName,
-		DataDirSecure:         permissionState(c.dataDir, 0o700),
-		DBFileSecure:          permissionState(c.dbPath, 0o600),
-		DatabaseOK:            err == nil,
-		CacheSize:             cacheSizeState(c.cache),
-		OutgoingSize:          outgoingSizeState(c.outgoing),
-		OutgoingLimitMiB:      outgoingLimitMiB(c.outgoing),
-		FailedAttachments:     failedAttachments,
-		NotifySendAvailable:   notifySendOnPath(),
-		RecentErrorCategories: c.recentErrors.snapshot(),
-		Accounts:              accountFacts(accounts),
+		CompiledVersion:              c.helperVersion,
+		ExecutableName:               c.execName,
+		DataDirSecure:                permissionState(c.dataDir, 0o700),
+		DBFileSecure:                 permissionState(c.dbPath, 0o600),
+		DatabaseOK:                   err == nil,
+		CacheSize:                    cacheSizeState(c.cache),
+		OutgoingSize:                 outgoingSizeState(c.outgoing),
+		OutgoingLimitMiB:             outgoingLimitMiB(c.outgoing),
+		FailedAttachments:            failedAttachments,
+		NotificationServiceReachable: notify.ServiceReachable(ctx),
+		RecentErrorCategories:        c.recentErrors.snapshot(),
+		Accounts:                     accountFacts(accounts),
 	}
 
 	return doctor.Build(facts), nil
@@ -127,11 +127,4 @@ func outgoingLimitMiB(outgoing OutgoingMedia) int64 {
 	}
 
 	return limit / (1 << 20)
-}
-
-// notifySendOnPath reports whether notify-send is available to run.
-func notifySendOnPath() bool {
-	_, err := exec.LookPath("notify-send")
-
-	return err == nil
 }

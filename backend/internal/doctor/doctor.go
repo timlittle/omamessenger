@@ -1,14 +1,14 @@
 // Package doctor turns a snapshot of the helper's own health into a
 // short, safe report: version consistency, data permissions, the
 // database, the media cache, each account's last known connection state,
-// whether notify-send is on the path, and any recent error categories
-// recorded in process. Every check's detail text is safe to show as is:
-// a state or a category word, never a path, a name or a token - except
-// for a plain count where it helps say what a check actually found, such
-// as how many failed messages are waiting in an over-limit outgoing
-// media area. Gathering the facts is impure (file stats, a database query, a PATH
-// lookup); Build itself does none of that, so every combination of
-// outcomes is cheap to test.
+// whether a notification service answers on the session bus, and any
+// recent error categories recorded in process. Every check's detail text
+// is safe to show as is: a state or a category word, never a path, a
+// name or a token - except for a plain count where it helps say what a
+// check actually found, such as how many failed messages are waiting in
+// an over-limit outgoing media area. Gathering the facts is impure (file
+// stats, a database query, a D-Bus call); Build itself does none of
+// that, so every combination of outcomes is cheap to test.
 package doctor
 
 import (
@@ -68,8 +68,9 @@ type Facts struct {
 	// connection status.
 	Accounts []AccountFact
 
-	// NotifySendAvailable is true when notify-send is on the PATH.
-	NotifySendAvailable bool
+	// NotificationServiceReachable is true when something answers on
+	// the session bus as org.freedesktop.Notifications.
+	NotificationServiceReachable bool
 
 	// RecentErrorCategories are the last few safe error categories
 	// recorded during this run, oldest first; empty when none have been
@@ -193,14 +194,14 @@ func outgoingSizeCheck(f Facts) Check {
 	return Check{Name: "Outgoing attachments", OK: false, Detail: detail}
 }
 
-// notifyCheck flags a missing notify-send, since without it no
-// notification setting can do anything.
+// notifyCheck flags an unreachable notification service, since without
+// one no notification setting can do anything.
 func notifyCheck(f Facts) Check {
-	if !f.NotifySendAvailable {
-		return Check{Name: "Desktop notifications", OK: false, Detail: "notify-send not found"}
+	if !f.NotificationServiceReachable {
+		return Check{Name: "Desktop notifications", OK: false, Detail: "notification service unreachable"}
 	}
 
-	return Check{Name: "Desktop notifications", OK: true, Detail: "notify-send available"}
+	return Check{Name: "Desktop notifications", OK: true, Detail: "notification service reachable"}
 }
 
 // accountCheck flags an account waiting for sign-in or in error; any

@@ -105,6 +105,7 @@ linters:
             - github.com/timlittle/omamessenger/backend/internal/connector$
             - github.com/timlittle/omamessenger/backend/internal/doctor$
             - github.com/timlittle/omamessenger/backend/internal/domain$
+            - github.com/timlittle/omamessenger/backend/internal/notify$
             - github.com/timlittle/omamessenger/backend/internal/store$
         server:
           list-mode: strict
@@ -121,7 +122,9 @@ linters:
         notify:
           list-mode: strict
           files: ["**/backend/internal/notify/*.go", "!$test"]
-          allow: [$gostd]
+          allow:
+            - $gostd
+            - github.com/godbus/dbus/v5
         clipboard:
           list-mode: strict
           files: ["**/backend/internal/clipboard/*.go", "!$test"]

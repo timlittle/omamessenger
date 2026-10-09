@@ -58,8 +58,8 @@ const outgoingSizeLimit = 256 << 20
 // for orphaned copies while the helper runs, on top of once at startup.
 const outgoingSweepInterval = time.Hour
 
-// notify.Desktop is the only Notifier the helper wires; app can't import
-// notify (see .golangci.yml), so the pairing is checked here instead.
+// notify.Desktop is the only Notifier the helper wires; checked here,
+// next to where it is wired, rather than inside app.
 var _ app.Notifier = notify.Desktop{}
 
 // main runs the helper until the UI disconnects or it receives SIGTERM.

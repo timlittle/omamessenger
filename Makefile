@@ -53,8 +53,8 @@ ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC,MPL-2.0,GPL-3.0
 LICENSE_IGNORE := --ignore github.com/segmentio/asm
 
 # Tests run the helper with fake accounts that send messages. Pointing the
-# session bus nowhere makes their notify-send calls fail quietly, so no
-# test notification reaches the desktop.
+# session bus nowhere makes their D-Bus notification calls fail quietly,
+# so no test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
 .PHONY: help check build build-fake build-all install-helper test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local install-hooks release-check benchmark ci clean

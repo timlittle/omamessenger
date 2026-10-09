@@ -15,7 +15,7 @@ ShellRoot {
 
   property var checks: [
     { name: "Database", ok: true, detail: "open and up to date" },
-    { name: "Desktop notifications", ok: false, detail: "notify-send not found" }
+    { name: "Desktop notifications", ok: false, detail: "notification service unreachable" }
   ]
 
   FloatingWindow {
@@ -57,7 +57,7 @@ ShellRoot {
     const texts = Check.texts(report).map((item) => item.text);
     if (!texts.some((text) => text.includes("Database") && text.includes("open and up to date")))
       return Check.fail("passing check not shown with its name and detail: " + JSON.stringify(texts));
-    if (!texts.some((text) => text.includes("Desktop notifications") && text.includes("notify-send not found")))
+    if (!texts.some((text) => text.includes("Desktop notifications") && text.includes("notification service unreachable")))
       return Check.fail("failing check not shown with its name and detail: " + JSON.stringify(texts));
 
     const glyphs = [];

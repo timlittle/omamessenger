@@ -12,6 +12,7 @@ go 1.26.0
 toolchain go1.27.2
 
 require (
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gotd/td v0.162.0
 	github.com/sourcegraph/jsonrpc2 v0.2.3
 	go.mau.fi/whatsmeow v0.0.0-20261007111105-c386243a72ba

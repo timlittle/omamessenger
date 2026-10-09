@@ -97,8 +97,8 @@ func TestRun_PrintsVersionWithoutTouchingData(t *testing.T) {
 // runs standalone, without starting the server or any connector, and
 // prints a line naming the database check on a data directory it has
 // just created for itself. It does not assert the overall exit status:
-// whether notify-send happens to be on this machine's PATH is outside
-// the test's control, and must not make the test flaky.
+// whether a notification service answers on this machine's session bus
+// is outside the test's control, and must not make the test flaky.
 func TestRun_DoctorReportsOnAFreshInstall(t *testing.T) {
 	t.Parallel()
 
