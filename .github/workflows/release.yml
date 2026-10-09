@@ -27,6 +27,10 @@ on:
         required: false
         type: string
 
+# Every job below declares its own minimal permissions, so the default
+# token grant is zero.
+permissions: {}
+
 jobs:
   # Reruns the full CI pipeline against the tagged commit, rather than
   # trusting whatever already ran against the branch it came from, so a

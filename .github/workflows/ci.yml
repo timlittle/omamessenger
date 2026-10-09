@@ -16,6 +16,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job below declares its own minimal permissions, so the default
+# token grant is zero.
+permissions: {}
+
 jobs:
   # Compiles the helper and every test binary once, race detector and
   # coverage included, and saves Go's build cache (setup-go keys it on
