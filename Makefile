@@ -237,12 +237,15 @@ install-local: build ## Install this checkout into Omarchy, enable it and restar
 # the other, not side by side, each capped at CI_MEMORY so a run cannot
 # starve the desktop, and every act container is removed afterwards, even
 # when the run fails or is interrupted.
-CI_MEMORY ?= 4g
+CI_MEMORY ?= 5g
+# Go builds and tests at most this many packages at once inside a local CI
+# job, so its compilers stay within CI_MEMORY.
+CI_GO_PARALLEL ?= 2
 ci: ## Run the GitHub Actions CI workflow locally in Docker (needs act)
 	@command -v act >/dev/null || { echo "ci: act is not installed (pacman -S act)" >&2; exit 1; }
 	@trap 'docker rm -f $$(docker ps -aq --filter name=act-CI-) >/dev/null 2>&1' EXIT INT TERM; \
 	for job in check qml; do \
-		act push -W .github/workflows/ci.yml -j "$$job" --rm \
+		act push -W .github/workflows/ci.yml -j "$$job" --rm --env GOFLAGS=-p=$(CI_GO_PARALLEL) \
 			--container-options "--memory=$(CI_MEMORY) --memory-swap=$(CI_MEMORY)" \
 			-P ubuntu-latest=catthehacker/ubuntu:act-latest || exit 1; \
 	done
