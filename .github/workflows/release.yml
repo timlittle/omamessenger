@@ -14,6 +14,12 @@ name: Release helper
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to rebuild and publish assets for"
+        required: true
+        type: string
   workflow_call:
     inputs:
       tag:
@@ -48,13 +54,14 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
           persist-credentials: false
 
-      - name: Check the tag, helper-version and manifest.json agree
+      - name: Check the tag, helper-version, manifest.json and the compiled-in version agree
         run: |
           tag=${RELEASE_TAG#v}
           helper=$(cut -d'#' -f1 helper-version | tr -d ' \n')
           manifest=$(jq -r .version manifest.json)
-          if [ "$tag" != "$helper" ] || [ "$tag" != "$manifest" ]; then
-            printf 'version mismatch: tag=v%s helper-version=%s manifest.json=%s\n' "$tag" "$helper" "$manifest" >&2
+          compiled=$(sed -n 's/.*helperVersion = "\([^"]*\)".*/\1/p' backend/config.go)
+          if [ "$tag" != "$helper" ] || [ "$tag" != "$manifest" ] || [ "$tag" != "$compiled" ]; then
+            printf 'version mismatch: tag=v%s helper-version=%s manifest.json=%s compiled-in=%s\n' "$tag" "$helper" "$manifest" "$compiled" >&2
             exit 1
           fi
 
@@ -72,6 +79,17 @@ jobs:
           subject-path: build/release/oma-messenger-service-linux-*
 
       - name: Publish the release
+        # release-please already created the GitHub Release (and its tag)
+        # before calling this workflow, so that path uploads assets to the
+        # existing release instead of trying to create it a second time.
+        # A direct "v*" tag push (a manual release) has no release yet, so
+        # that path still creates it. workflow_dispatch rebuilds and
+        # re-publishes an existing tag's assets, so it also uploads.
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$RELEASE_TAG" build/release/* --generate-notes
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" build/release/* --clobber
+          else
+            gh release create "$RELEASE_TAG" build/release/* --generate-notes
+          fi
