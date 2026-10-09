@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.omamessenger",
   "name": "OmaMessenger",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "OmaMessenger contributors",
   "license": "MIT",
   "description": "A keyboard-first unified messaging client for Omarchy.",
@@ -38,7 +38,11 @@
         "key": "notificationDetail",
         "type": "enum",
         "label": "Notification detail",
-        "options": ["Name and message", "Name only", "Nothing"],
+        "options": [
+          "Name and message",
+          "Name only",
+          "Nothing"
+        ],
         "defaultValue": "Name and message",
         "description": "How much a notification reveals: the sender and message text, just who it is from, or a generic notice with neither."
       },
