@@ -21,3 +21,13 @@ Out of scope:
 ## Rewards
 
 There is no bounty program. Reports are reviewed and fixed on a best-effort basis.
+
+## Verifying a release binary
+
+Each release's helper binaries are built and signed by the `release.yml` workflow on GitHub-hosted runners, never on a developer's machine, and their build provenance is attested with `actions/attest-build-provenance`. Verify a downloaded binary matches that attested build:
+
+```sh
+gh attestation verify oma-messenger-service-linux-amd64 -R timlittle/omamessenger
+```
+
+This confirms the file was produced by this repository's release workflow from the commit tagged for that release, not altered afterwards. `scripts/install-helper.sh` checks the release's `SHA256SUMS` on every install; attestation verification is an extra, optional check for anyone who wants to confirm the binary's build origin as well as its checksum.
