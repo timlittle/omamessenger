@@ -22,6 +22,12 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+// stuckAfter is how long a wait lasts before the test calls the helper
+// stuck. It only guards against hanging: every wait ends on an event, and
+// a shared CI runner building the helper under the race detector in
+// parallel can take far longer than a developer machine.
+const stuckAfter = time.Minute
+
 func TestRun_ServesTheDemoAndStopsAtEndOfInput(t *testing.T) {
 	t.Parallel()
 
@@ -217,14 +223,14 @@ func findConversation(t *testing.T, client *jsonrpc2.Conn, title string) domain.
 }
 
 // awaitAccountStatus waits for an account.updated notification reporting
-// accountID at status, failing the test after five seconds. A notification
+// accountID at status, failing the test after stuckAfter. A notification
 // for a different account or an earlier status is skipped rather than
 // treated as a failure: an account reports connecting before connected,
 // and the helper runs several fake accounts at once.
 func awaitAccountStatus(t *testing.T, updates chan domain.Account, accountID, status string) {
 	t.Helper()
 
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(stuckAfter)
 	for {
 		select {
 		case account := <-updates:
@@ -288,14 +294,14 @@ func startInProcess(t *testing.T, ctx context.Context) (io.Closer, *jsonrpc2.Con
 	return inW, client, stderr, done, updates
 }
 
-// await returns run's result, failing if it takes over five seconds.
+// await returns run's result, failing if it takes over stuckAfter.
 func await(t *testing.T, done chan error) error {
 	t.Helper()
 
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(5 * time.Second):
+	case <-time.After(stuckAfter):
 		t.Fatal("run did not return")
 		return nil
 	}
@@ -337,7 +343,7 @@ func startBinary(t *testing.T) (*exec.Cmd, io.Closer, *jsonrpc2.Conn, *lockedBuf
 	return cmd, stdin, client, stderr, updates
 }
 
-// waitExit fails unless the helper exits cleanly within five seconds.
+// waitExit fails unless the helper exits cleanly within stuckAfter.
 func waitExit(t *testing.T, cmd *exec.Cmd, stderr *lockedBuffer) {
 	t.Helper()
 
@@ -349,7 +355,7 @@ func waitExit(t *testing.T, cmd *exec.Cmd, stderr *lockedBuffer) {
 		if err != nil {
 			t.Fatalf("helper exit: %v\n%s", err, stderr.String())
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(stuckAfter):
 		t.Fatal("helper did not exit")
 	}
 }
