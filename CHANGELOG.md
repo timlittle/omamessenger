@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/timlittle/omamessenger/compare/v0.3.0...v0.3.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* create and keep the data directory private (0700) ([b4ced75](https://github.com/timlittle/omamessenger/commit/b4ced75b7a83adda5cc30f360ecdb60432722075))
+
 ## 0.3.0 — first release
 
 The first tagged release: a keyboard-first unified messaging client for Omarchy, with Telegram and WhatsApp connectors.
