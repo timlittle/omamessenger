@@ -64,7 +64,10 @@ jobs:
       - name: Dependency licenses
         run: make license-check
       - name: Shell scripts
-        run: shellcheck scripts/*.sh bin/oma-messenger-service
+        # GitHub's runner has shellcheck; act's smaller image does not.
+        run: |
+          command -v shellcheck >/dev/null || { $(command -v sudo) apt-get update -q && $(command -v sudo) apt-get install -yq shellcheck; }
+          shellcheck scripts/*.sh bin/oma-messenger-service
 
   # Runs only once everything else has passed.
   release-build:
