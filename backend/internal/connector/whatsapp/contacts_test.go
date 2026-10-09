@@ -188,6 +188,37 @@ func TestHandlePushNameUpdate_NeverDowngradesAResolvedContactName(t *testing.T) 
 	}
 }
 
+// TestHandlePushNameUpdate_IgnoresAnEmptyPushName is handleContactUpdate's
+// same regression (TestHandleContactUpdate_IgnoresAnActionThatNamesNoOne)
+// for a push name update: WhatsApp can report one with no name set.
+func TestHandlePushNameUpdate_IgnoresAnEmptyPushName(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink := handlerFixture(t)
+	jid := types.NewJID("15551234567", types.DefaultUserServer)
+
+	c.handlePushNameUpdate(t.Context(), sink, dev, nil, &events.PushName{JID: jid, NewPushName: ""})
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want nothing reported for a push name update with no name", sink.Lines())
+	}
+}
+
+// TestHandleBusinessNameUpdate_IgnoresAnEmptyBusinessName is the same
+// regression for a verified business name update.
+func TestHandleBusinessNameUpdate_IgnoresAnEmptyBusinessName(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink := handlerFixture(t)
+	jid := types.NewJID("15551234567", types.DefaultUserServer)
+
+	c.handleBusinessNameUpdate(t.Context(), sink, dev, nil, &events.BusinessName{JID: jid, NewBusinessName: ""})
+
+	if len(sink.Lines()) != 0 {
+		t.Errorf("events = %q, want nothing reported for a business name update with no name", sink.Lines())
+	}
+}
+
 func TestHandleAppStateSyncComplete_NeverRetitlesTheSelfChat(t *testing.T) {
 	t.Parallel()
 

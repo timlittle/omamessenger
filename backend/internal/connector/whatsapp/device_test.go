@@ -12,7 +12,39 @@ import (
 
 	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 )
+
+// TestStatusOf_TranslatesTheEventsOnStatusActsOn confirms statusOf
+// reports onStatus's three statuses for the right whatsmeow events -
+// including events.StreamReplaced, one of several unrelated types that
+// satisfy events.PermanentDisconnect - and ignores one it does not.
+func TestStatusOf_TranslatesTheEventsOnStatusActsOn(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		evt    any
+		status string
+		ok     bool
+	}{
+		{"connected", &events.Connected{}, statusConnected, true},
+		{"disconnected", &events.Disconnected{}, statusDisconnected, true},
+		{"a permanent disconnect", &events.StreamReplaced{}, statusStopped, true},
+		{"an event onStatus does not act on", &events.ChatPresence{}, "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			status, ok := statusOf(tt.evt)
+			if status != tt.status || ok != tt.ok {
+				t.Errorf("statusOf(%T) = %q, %t, want %q, %t", tt.evt, status, ok, tt.status, tt.ok)
+			}
+		})
+	}
+}
 
 func TestSessionPath_NamesTheAccountsDatabase(t *testing.T) {
 	t.Parallel()

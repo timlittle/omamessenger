@@ -138,6 +138,11 @@ func TestMessageText_ExtractsBusinessInteractiveKinds(t *testing.T) {
 			"Medium",
 		},
 		{
+			"list response falls back to its description with no title",
+			&waE2E.Message{ListResponseMessage: &waE2E.ListResponseMessage{Description: strPtr("Size: Medium")}},
+			"Size: Medium",
+		},
+		{
 			"order prefers the business's own note over its title",
 			&waE2E.Message{OrderMessage: &waE2E.OrderMessage{Message: strPtr("Packed and ready"), OrderTitle: strPtr("Order #123")}},
 			"Packed and ready",

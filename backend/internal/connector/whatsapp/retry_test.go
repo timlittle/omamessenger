@@ -338,6 +338,52 @@ func TestDeliverRetry_DropsAnAnswerNobodyIsWaitingFor(t *testing.T) {
 
 // TestFetchMedia_DoesNotRetryAGenericHTTPFailure confirms a download
 // failure whose status is not one WhatsApp uses for a stale link (403,
+// TestRetrySender_FallsBackToTheAccountsOwnJID confirms retryMessageInfo
+// (through retrySender) reports this account's own JID, not the
+// message's recorded sender, both for a message this account sent and
+// for one with no sender recorded at all, matching how targetKey
+// (keys.go) decides whose participant a group action names. The
+// everyday case - a message from someone else, with its sender
+// recorded - is already proven through FetchMedia itself, above.
+func TestRetrySender_FallsBackToTheAccountsOwnJID(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.selfJID = directPeer
+
+	tests := []struct {
+		name string
+		key  messageKey
+	}{
+		{"a message this account sent", messageKey{fromMe: true, senderID: remoteID(types.NewJID("15559998888", types.DefaultUserServer))}},
+		{"a message with no sender recorded", messageKey{fromMe: false, senderID: ""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := retrySender(dev, tt.key); got != directPeer {
+				t.Errorf("retrySender(%+v) = %v, want the account's own JID %v", tt.key, got, directPeer)
+			}
+		})
+	}
+}
+
+// TestRetrySender_IsEmptyWhenTheAccountsOwnJIDIsNotKnownYet confirms
+// retrySender falls back to an empty JID, rather than panicking or
+// guessing, when it has no sender to fall back to either: a device
+// that has not paired yet has no self-chat id for jidFromRemoteID to
+// parse.
+func TestRetrySender_IsEmptyWhenTheAccountsOwnJIDIsNotKnownYet(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice() // selfJID deliberately left unset
+
+	if got := retrySender(dev, messageKey{fromMe: true}); !got.IsEmpty() {
+		t.Errorf("retrySender = %v, want an empty JID", got)
+	}
+}
+
 // 404 or 410) is returned as its plain self, with no retry receipt ever
 // sent: retry.go has no reason to believe the primary phone can fix it.
 func TestFetchMedia_DoesNotRetryAGenericHTTPFailure(t *testing.T) {

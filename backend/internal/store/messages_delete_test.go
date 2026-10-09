@@ -87,3 +87,35 @@ func TestDeleteMessages_IgnoresAnEmptyScope(t *testing.T) {
 		t.Fatalf("DeleteMessages(no scope) = %v, %v; want none deleted", deleted, err)
 	}
 }
+
+func TestDeleteMessages_IgnoresAnEmptyRemoteIDList(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "a", Created: 1})
+
+	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, nil)
+	if err != nil || deleted != nil {
+		t.Fatalf("DeleteMessages(no remote ids) = %v, %v; want nil, nil", deleted, err)
+	}
+}
+
+// TestDeleteMessages_SkipsAConversationRemoteIDThatIsNotFound confirms a
+// deletion naming several conversations still deletes a message from
+// whichever of them are found, skipping the rest, rather than failing
+// the whole call because one named conversation does not exist: a
+// connector resolving conversationRemoteIDs from its own chat list can
+// legitimately name one this store never saw.
+func TestDeleteMessages_SkipsAConversationRemoteIDThatIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: "a", Created: 1})
+
+	deleted, err := s.DeleteMessages(ctx, "wa", []string{"r-missing", "r-chat"}, []string{"1"})
+	if err != nil || !slices.Equal(ids(deleted), []string{"m1"}) {
+		t.Fatalf("DeleteMessages(unknown conversation first) = %v, %v", ids(deleted), err)
+	}
+}
