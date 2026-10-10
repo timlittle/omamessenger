@@ -62,6 +62,7 @@ type listedDialog struct {
 // returning the ones it reported.
 func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialogs tg.ModifiedMessagesDialogs) []listedDialog {
 	e := newEntities(dialogs.GetUsers(), dialogs.GetChats())
+	c.learnNames(ctx, sink, e)
 	top := map[string]*tg.Message{}
 	for _, m := range dialogs.GetMessages() {
 		if msg, ok := m.(*tg.Message); ok {
@@ -85,7 +86,7 @@ func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialog
 		sink.Conversation(ctx, conv)
 		sink.Organized(ctx, c.account.ID, conv.RemoteID, dialog.Pinned, dialog.FolderID == archiveFolderID)
 		if msg, ok := top[shortKey(dialog.Peer)+"/"+strconv.Itoa(dialog.TopMessage)]; ok {
-			sink.History(ctx, c.account.ID, conv.RemoteID, message(msg, e, c.selfUserID()))
+			sink.History(ctx, c.account.ID, conv.RemoteID, c.resolvedMessage(msg, e, c.selfUserID()))
 		}
 		sink.Unread(ctx, c.account.ID, conv.RemoteID, dialog.UnreadCount)
 		listed = append(listed, listedDialog{conv: conv, dialog: dialog})
@@ -158,10 +159,11 @@ func (c *Connector) history(ctx context.Context, api *tg.Client, sink connector.
 	}
 
 	e := newEntities(messages.GetUsers(), messages.GetChats())
+	c.learnNames(ctx, sink, e)
 	found := 0
 	for _, m := range messages.GetMessages() {
 		if msg, ok := m.(*tg.Message); ok {
-			sink.History(ctx, c.account.ID, p.conv.RemoteID, message(msg, e, c.selfUserID()))
+			sink.History(ctx, c.account.ID, p.conv.RemoteID, c.resolvedMessage(msg, e, c.selfUserID()))
 			found++
 		}
 	}
@@ -207,6 +209,67 @@ func (c *Connector) lookup(key string) (string, bool) {
 	remote, ok := c.remotes[key]
 
 	return remote, ok
+}
+
+// nameFor returns the best name learned so far for a Telegram user's
+// remote id (see learnNames), or "" when none has resolved yet.
+func (c *Connector) nameFor(remoteID string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.names[remoteID]
+}
+
+// rememberName records a user's real name and, when it is new or
+// different from what was cached, reports the change through sink: a
+// message already stored under a weaker one, or a reply already
+// quoting it, can then be corrected too (see connector.SenderNamer). A
+// name that has not actually changed is not reported again.
+func (c *Connector) rememberName(ctx context.Context, sink connector.Sink, remoteID, name string) {
+	c.mu.Lock()
+	changed := c.names[remoteID] != name
+	if changed {
+		c.names[remoteID] = name
+	}
+	c.mu.Unlock()
+
+	if !changed {
+		return
+	}
+
+	if namer, ok := sink.(connector.SenderNamer); ok {
+		namer.SenderName(ctx, c.account.ID, remoteID, name)
+	}
+}
+
+// learnNames records a real name for every user entities resolves one
+// for, so a later message that carries no user entity of its own -
+// every private chat message Telegram delivers live does not - can
+// still show the right sender (see resolvedMessage).
+func (c *Connector) learnNames(ctx context.Context, sink connector.Sink, e entities) {
+	for id, u := range e.users {
+		if name := ownName(u); name != "" && name != unknownUserName {
+			c.rememberName(ctx, sink, strconv.FormatInt(id, 10), name)
+		}
+	}
+}
+
+// resolvedMessage normalizes m, then fills in its sender's name from
+// this connector's own cache (see learnNames) when the response that
+// carried it resolved none of its own: Telegram's short update form for
+// a private chat message never does, trusting the client to already
+// know the sender from an earlier, fuller response.
+func (c *Connector) resolvedMessage(m *tg.Message, e entities, selfID int64) domain.Message {
+	msg := message(m, e, selfID)
+	if msg.Outgoing || msg.SenderName != unknownUserName || msg.SenderID == "" {
+		return msg
+	}
+
+	if cached := c.nameFor(msg.SenderID); cached != "" {
+		msg.SenderName = cached
+	}
+
+	return msg
 }
 
 // nonChannelRemotes lists the full remote ids of every private chat and

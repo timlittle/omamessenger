@@ -47,6 +47,7 @@ type Connector struct {
 	self    int64             // this account's own user id, set once Run signs in
 	remotes map[string]string // "user:42" to the full remote id with its access hash
 	sent    map[string]string // "<remote id>/<message id>" to our message id
+	names   map[string]string // a user's remote id to the best real name learned for them
 }
 
 var (
@@ -69,6 +70,7 @@ func New(account domain.Account, dir string) *Connector {
 		answers: make(chan answer, 1),
 		remotes: map[string]string{},
 		sent:    map[string]string{},
+		names:   map[string]string{},
 	}
 }
 

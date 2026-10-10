@@ -14,6 +14,32 @@ import (
 // chatWithNadia is a direct conversation the tests send to.
 var chatWithNadia = domain.Conversation{AccountID: "tg", RemoteID: "user:42:99"}
 
+// TestNewMessage_ReportsALearnedNameOnceThroughSenderNamer confirms a
+// name resolved from a message's own entities is also reported through
+// connector.SenderNamer, so the store can correct any message, and any
+// reply quoting one, already stored under a weaker name, and that
+// learning the same name again does not repeat the report.
+func TestNewMessage_ReportsALearnedNameOnceThroughSenderNamer(t *testing.T) {
+	t.Parallel()
+
+	sink := &recordingSink{Sink: &connectortest.Sink{}}
+	c := New(domain.Account{ID: "tg"}, "")
+
+	c.newMessage(t.Context(), sink, &tg.Message{ID: 6, PeerID: &tg.PeerUser{UserID: 42}, Message: "hey"},
+		tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
+
+	want := []senderNameCall{{"tg", "42", "Nadia"}}
+	if !slices.Equal(sink.senderNames, want) {
+		t.Errorf("senderNames = %+v, want %+v", sink.senderNames, want)
+	}
+
+	c.newMessage(t.Context(), sink, &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "again"},
+		tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
+	if !slices.Equal(sink.senderNames, want) {
+		t.Errorf("senderNames after the same name again = %+v, want no further reports", sink.senderNames)
+	}
+}
+
 func TestSend_ReportsSentThenReadWhenTheyReadIt(t *testing.T) {
 	t.Parallel()
 

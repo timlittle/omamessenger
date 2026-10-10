@@ -9,6 +9,7 @@ import (
 	"github.com/gotd/td/tg"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -118,4 +119,24 @@ func connectedAndKnown(f *fakeTelegram, sink connector.Sink, remoteIDs ...string
 	}
 
 	return c
+}
+
+// senderNameCall records one call to recordingSink.SenderName.
+type senderNameCall struct {
+	accountID, senderRemoteID, name string
+}
+
+// recordingSink wraps connectortest.Sink, additionally implementing
+// connector.SenderNamer, so a test can confirm a name this connector
+// learns is also reported as a correction for messages already stored
+// under a weaker one, which connectortest.Sink alone has no need to
+// support since most tests here check only what was reported.
+type recordingSink struct {
+	*connectortest.Sink
+	senderNames []senderNameCall
+}
+
+// SenderName records the call.
+func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string) {
+	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name})
 }

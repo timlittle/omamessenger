@@ -12,6 +12,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+
+	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // RefreshSenderName updates every message senderRemoteID sent, within
@@ -40,6 +43,10 @@ func (s *Store) RefreshSenderName(ctx context.Context, accountID, senderRemoteID
 	}
 
 	if err := refreshPreviewSenders(ctx, tx, accountID, senderRemoteID); err != nil {
+		return nil, wrap("refresh sender name", err)
+	}
+
+	if err := refreshReplyQuotes(ctx, tx, accountID, senderRemoteID, name); err != nil {
 		return nil, wrap("refresh sender name", err)
 	}
 
@@ -105,4 +112,100 @@ func refreshPreviewSenders(ctx context.Context, tx *sql.Tx, accountID, senderRem
 		accountID, senderRemoteID)
 
 	return err
+}
+
+// refreshReplyQuotes brings every reply quote naming senderRemoteID as
+// its sender back in step with renameSender, within account: a reply
+// keeps its own copy of the quoted message's sender name, resolved once
+// when it was first stored (see resolveReply), so correcting that
+// sender's own messages is not enough on its own - a reply already
+// quoting one of them would otherwise keep showing whatever name was
+// known at the time forever.
+func refreshReplyQuotes(ctx context.Context, tx *sql.Tx, accountID, senderRemoteID, name string) error {
+	remotes, err := sentRemoteIDs(ctx, tx, accountID, senderRemoteID)
+	if err != nil || len(remotes) == 0 {
+		return err
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, reply_to FROM messages
+		WHERE reply_to<>'' AND conversation_id IN (SELECT id FROM conversations WHERE account_id=?)`, accountID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	fixes, err := staleQuotes(rows, remotes, name)
+	if err != nil {
+		return err
+	}
+
+	for _, f := range fixes {
+		if _, err := tx.ExecContext(ctx, `UPDATE messages SET reply_to=? WHERE id=?`, f.replyTo, f.id); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// quotedMessageFix is one reply quote refreshReplyQuotes found stale,
+// with its corrected JSON ready to write back.
+type quotedMessageFix struct {
+	id, replyTo string
+}
+
+// staleQuotes scans rows of a message's id and its reply_to JSON, and
+// returns the fix for every one that quotes a message in remotes under
+// a name other than name.
+func staleQuotes(rows *sql.Rows, remotes map[string]bool, name string) ([]quotedMessageFix, error) {
+	var fixes []quotedMessageFix
+	for rows.Next() {
+		var id, replyTo string
+		if err := rows.Scan(&id, &replyTo); err != nil {
+			return nil, err
+		}
+
+		var reply domain.Reply
+		if err := json.Unmarshal([]byte(replyTo), &reply); err != nil {
+			continue
+		}
+		if !remotes[reply.RemoteID] || reply.SenderName == name {
+			continue
+		}
+
+		reply.SenderName = name
+		encoded, err := json.Marshal(reply)
+		if err != nil {
+			return nil, err
+		}
+		fixes = append(fixes, quotedMessageFix{id, string(encoded)})
+	}
+
+	return fixes, rows.Err()
+}
+
+// sentRemoteIDs lists the remote ids, within account, that senderRemoteID
+// has a message stored under, so refreshReplyQuotes can tell whether a
+// stored reply quotes one of them.
+func sentRemoteIDs(ctx context.Context, tx *sql.Tx, accountID, senderRemoteID string) (map[string]bool, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT remote_id FROM messages
+		WHERE sender_id=? AND remote_id<>'' AND conversation_id IN (SELECT id FROM conversations WHERE account_id=?)`,
+		senderRemoteID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+
+	return out, rows.Err()
 }

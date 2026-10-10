@@ -98,6 +98,40 @@ func TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat(t *te
 	}
 }
 
+// TestSenderName_CorrectsAnAlreadyStoredReplyQuoteToo confirms a
+// connector resolving a sender's real name after the fact also fixes a
+// reply already quoting one of their messages under the weaker name it
+// carried when the reply was first stored (see store.resolveReply): a
+// reply keeps its own copy of the quoted sender's name, so correcting
+// the sender's own messages is not enough on its own.
+func TestSenderName_CorrectsAnAlreadyStoredReplyQuoteToo(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, domain.Message{
+		RemoteID: "100", SenderID: "alex", SenderName: "WhatsApp user", Text: "I'm about to try", Created: 1,
+	})
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, domain.Message{
+		RemoteID: "101", SenderID: "alex", SenderName: "WhatsApp user", Text: "sure", Created: 2,
+		ReplyTo: &domain.Reply{RemoteID: "100", SenderName: "WhatsApp user", Text: "I'm about to try"},
+	})
+
+	f.ingest.SenderName(ctx, "wa", "alex", "Alex Chen")
+
+	page, _, _, err := f.commands.Messages(ctx, chat.ID, "", 0)
+	if err != nil || len(page) != 2 {
+		t.Fatalf("Messages = %+v, %v", page, err)
+	}
+
+	reply := page[1]
+	if reply.ReplyTo == nil || reply.ReplyTo.SenderName != "Alex Chen" {
+		t.Errorf("reply.ReplyTo = %+v, want its quoted sender corrected to Alex Chen", reply.ReplyTo)
+	}
+}
+
 // TestIncoming_DoesNotNotifyForAMessageMissedWhileOffline confirms a
 // message sent long before it arrives, as both services deliver what was
 // missed while the helper was offline, still counts as unread but raises

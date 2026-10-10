@@ -68,6 +68,30 @@ func TestNewMessage_UsesAKnownPeerWhenTheUpdateOmitsIt(t *testing.T) {
 	}
 }
 
+// TestNewMessage_FillsSenderNameFromAnEarlierResponseWhenThisOneCarriesNone
+// reproduces a sent reply whose quoted sender showed as "Telegram user"
+// instead of the contact's name: Telegram delivers every later message
+// in a private chat through its short update form, which carries no
+// user entity at all, relying on the client already knowing the
+// sender from an earlier, fuller response such as the dialog sync every
+// run starts with.
+func TestNewMessage_FillsSenderNameFromAnEarlierResponseWhenThisOneCarriesNone(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+
+	c.newMessage(t.Context(), &sink, &tg.Message{ID: 6, PeerID: &tg.PeerUser{UserID: 42}, Message: "hey"},
+		tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
+
+	c.newMessage(t.Context(), &sink, &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi"}, tg.Entities{})
+
+	live := sink.LiveMessages()["user:42:99"]
+	if len(live) != 2 || live[1].SenderName != "Nadia" {
+		t.Errorf("second incoming message = %+v, want sender Nadia, not the generic fallback", live)
+	}
+}
+
 func TestEditMessage_ReportsAnEditedMessageInAKnownConversation(t *testing.T) {
 	t.Parallel()
 

@@ -201,6 +201,16 @@ func reactions(mr tg.MessageReactions) []domain.Reaction {
 	return out
 }
 
+// unknownUserName is what a message or conversation is named when
+// Telegram gave this response no usable information about who it
+// belongs to: neither a resolved user nor a name learned earlier (see
+// Connector.resolvedMessage) covers it. Every private chat message
+// Telegram delivers live carries no user entity at all, relying on the
+// client already knowing the sender from an earlier, fuller response,
+// so this is reached only when nothing has taught the connector that
+// sender's name yet.
+const unknownUserName = "Telegram user"
+
 // userName names a user the way Telegram's chat list does: the chat with
 // yourself is your saved messages.
 func userName(u *tg.User) string {
@@ -215,13 +225,13 @@ func userName(u *tg.User) string {
 func ownName(u *tg.User) string {
 	switch {
 	case u == nil:
-		return "Telegram user"
+		return unknownUserName
 	case strings.TrimSpace(u.FirstName+" "+u.LastName) != "":
 		return strings.TrimSpace(u.FirstName + " " + u.LastName)
 	case u.Username != "":
 		return "@" + u.Username
 	default:
-		return "Telegram user"
+		return unknownUserName
 	}
 }
 

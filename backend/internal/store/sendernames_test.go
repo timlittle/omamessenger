@@ -94,6 +94,89 @@ func TestRefreshSenderName_LeavesAnOlderMessagesPreviewAlone(t *testing.T) {
 	}
 }
 
+// TestRefreshSenderName_CorrectsAReplyQuoteToo reproduces a sent
+// reply's quote showing a contact's generic fallback name instead of
+// their real one: a reply keeps its own copy of the quoted message's
+// sender name, resolved once when the reply was first stored (see
+// resolveReply), so correcting the sender's own messages is not enough
+// on its own. It also confirms a reply quoting someone else, and one
+// already showing the right name, are both left alone.
+func TestRefreshSenderName_CorrectsAReplyQuoteToo(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	chat := addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s,
+		domain.Message{
+			ID: "m1", ConversationID: chat.ID, RemoteID: "r1",
+			SenderID: "r-priya", SenderName: "WhatsApp user", Text: "I'm about to try", Created: 100,
+		},
+		domain.Message{
+			ID: "m2", ConversationID: chat.ID, RemoteID: "r2",
+			SenderID: "r-sam", SenderName: "Sam", Text: "me too", Created: 150,
+			ReplyTo: &domain.Reply{RemoteID: "r1", SenderName: "WhatsApp user", Text: "I'm about to try"},
+		},
+		domain.Message{
+			ID: "m3", ConversationID: chat.ID, RemoteID: "r3",
+			SenderID: "self", SenderName: "You", Text: "sure", Created: 200,
+			ReplyTo: &domain.Reply{RemoteID: "r1", SenderName: "WhatsApp user", Text: "I'm about to try"},
+		},
+		domain.Message{
+			ID: "m4", ConversationID: chat.ID, RemoteID: "r4",
+			SenderID: "self", SenderName: "You", Text: "ok", Created: 250,
+			ReplyTo: &domain.Reply{RemoteID: "r2", SenderName: "Sam", Text: "me too"},
+		},
+	)
+
+	if _, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair"); err != nil {
+		t.Fatalf("RefreshSenderName: %v", err)
+	}
+
+	quoting, err := s.Message(ctx, "m3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quoting.ReplyTo == nil || quoting.ReplyTo.SenderName != "Priya Nair" || quoting.ReplyTo.Text != "I'm about to try" {
+		t.Errorf("m3.ReplyTo = %+v, want its quoted sender corrected to Priya Nair, text kept", quoting.ReplyTo)
+	}
+
+	other, err := s.Message(ctx, "m4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.ReplyTo == nil || other.ReplyTo.SenderName != "Sam" {
+		t.Errorf("m4.ReplyTo = %+v, want the quote of a different sender left alone", other.ReplyTo)
+	}
+
+	// Refreshing to the same name again is a no-op, not an error.
+	if _, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair"); err != nil {
+		t.Fatalf("RefreshSenderName (repeat): %v", err)
+	}
+}
+
+// TestRefreshSenderName_IgnoresASenderWithNoMessagesStored confirms
+// refreshing a sender nothing has ever quoted or sent a message under
+// changes nothing and returns no error.
+func TestRefreshSenderName_IgnoresASenderWithNoMessagesStored(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	chat := addConversation(t, s, "wa", "chat", "Chat")
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: chat.ID, RemoteID: "r1", SenderID: "r-sam", SenderName: "Sam", Text: "hi", Created: 100})
+
+	changed, err := s.RefreshSenderName(ctx, "wa", "r-nobody", "Nobody")
+	if err != nil {
+		t.Fatalf("RefreshSenderName: %v", err)
+	}
+	if len(changed) != 0 {
+		t.Errorf("RefreshSenderName changed = %v, want none", changed)
+	}
+}
+
 // TestRefreshSenderName_IsScopedToOneAccount confirms a sender id that
 // happens to match one used by a different account's conversation is
 // never touched: remote ids are only unique within a service account.
