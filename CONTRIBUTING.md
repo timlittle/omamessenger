@@ -55,6 +55,10 @@ It builds the helper, runs the Go tests with the race detector and the coverage 
 
 Automated checks cover logic and QML validity, not what the window looks like. Run `make install-local` on an Omarchy machine, open the plugin, and try the changed flow with keyboard and mouse. Include the theme, window size and a screenshot in the pull request when you can. Never claim a check you did not do.
 
+## Release
+
+release-please opens and tags the release PR; merging it runs `.github/workflows/release.yml`, which builds and publishes the helper binaries. Once that release has assets, run `make marketplace-update` to request that the Omarchy marketplace listing pick up the new commit.
+
 ## Pull requests
 
 Keep each pull request to one user-visible change or one maintenance task. Include:

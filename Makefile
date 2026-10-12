@@ -57,7 +57,7 @@ LICENSE_IGNORE := --ignore github.com/segmentio/asm
 # so no test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local install-hooks release-check benchmark ci clean
+.PHONY: help check build build-fake build-all install-helper marketplace-update test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local install-hooks release-check benchmark ci clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -92,6 +92,9 @@ release-check: build-all ## Install a real cross-compiled release into a throwaw
 
 install-helper: ## Download and verify the helper release named in helper-version
 	./scripts/install-helper.sh
+
+marketplace-update: ## Request an Omarchy marketplace listing update for the latest release
+	./scripts/marketplace-update.sh
 
 test: test-go test-js ## Run the Go and JavaScript tests
 
