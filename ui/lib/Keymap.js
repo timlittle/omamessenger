@@ -38,6 +38,9 @@ var BINDINGS = [
   { action: 'list.unread', keys: ['Ctrl+Shift+A'], contexts: ['global'], label: 'Show unread conversations', command: true },
   { action: 'search.focus', keys: ['Ctrl+G'], contexts: ['global'], label: 'Search messages', command: true },
   { action: 'chat.new', keys: ['Ctrl+N', 'Ctrl+Shift+K'], contexts: ['global'], label: 'New message', hint: true, command: true },
+  // compose's own binding for Ctrl+J (see the compose context below)
+  // wins over this one while writing, so Ctrl+J only jumps to the next
+  // unread conversation outside the composer.
   { action: 'unread.next', keys: ['Ctrl+J', 'Alt+Shift+Down'], contexts: ['global'], label: 'Next unread conversation', command: true },
   { action: 'unread.prev', keys: ['Alt+Shift+Up'], contexts: ['global'], label: 'Previous unread conversation', command: true },
   { action: 'chat.next', keys: ['Alt+Down'], contexts: ['global'], label: 'Next conversation', command: true },
@@ -111,10 +114,14 @@ var BINDINGS = [
   { action: 'message.vote', keys: ['v'], contexts: ['conversation'], label: 'Vote in the highlighted poll', command: true },
 
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
-  // Ctrl+J is deliberately not bound here: it must always mean "next
-  // unread conversation" (see the global unread.next binding below),
-  // even while writing, so only Shift+Enter inserts a line break.
-  { action: 'compose.newline', keys: ['Shift+Enter'], contexts: ['compose'], label: 'New line', hint: true },
+  // Ctrl+J inserts a line break while writing, the same as Shift+Enter:
+  // it used to mean "next unread conversation" here too (the global
+  // unread.next binding below), but that stole the one newline key
+  // IRC and Slack both train people to reach for. compose's own
+  // binding wins over the global one (see match's context-before-global
+  // order), so Ctrl+J only jumps to the next unread conversation outside
+  // the composer; Alt+Shift+Down/Up keep doing that while writing.
+  { action: 'compose.newline', keys: ['Shift+Enter', 'Ctrl+J'], contexts: ['compose'], label: 'New line', hint: true },
   { action: 'compose.attach', keys: ['Ctrl+V'], contexts: ['compose'], label: 'Paste a clipboard image as an attachment' },
   { action: 'compose.attachFile', keys: [], contexts: ['conversation', 'compose'], label: 'Attach a file', command: true },
   { action: 'search.accept', keys: ['Enter', 'Down'], contexts: ['search'], label: 'First result', hint: true },

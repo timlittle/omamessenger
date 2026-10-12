@@ -68,10 +68,19 @@ const cases = [
 
   ['compose', KEY.Return, 0, '\r', 'message.send'],
   ['compose', KEY.Return, MOD.Shift, '\r', 'compose.newline'],
-  // Ctrl+J must always mean "next unread conversation", even while
-  // writing, so it falls through to the global binding instead of
-  // inserting a newline.
-  ['compose', letter('j'), MOD.Ctrl, '', 'unread.next'],
+  // Ctrl+J inserts a newline while writing, the composer's own binding
+  // winning over the global "next unread conversation" one for the same
+  // key (see Keymap.js's compose.newline comment).
+  ['compose', letter('j'), MOD.Ctrl, '', 'compose.newline'],
+  // Outside the composer, Ctrl+J still means "next unread conversation",
+  // unchanged: a list or conversation context has no binding of its own
+  // for it, so the global one applies.
+  ['list', letter('j'), MOD.Ctrl, '', 'unread.next'],
+  // Alt+Shift+Down/Up keep jumping to the next/previous unread
+  // conversation while writing: unlike Ctrl+J, compose claims no
+  // binding of its own for them, so the global ones still apply.
+  ['compose', KEY.Down, MOD.Alt | MOD.Shift, '', 'unread.next'],
+  ['compose', KEY.Up, MOD.Alt | MOD.Shift, '', 'unread.prev'],
   ['compose', letter('j'), 0, 'j', ''],
   ['search', KEY.Return, 0, '\r', 'search.accept'],
   ['search', letter('j'), 0, 'j', ''],

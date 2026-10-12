@@ -26,8 +26,9 @@
 //   Composer's own test drives the component directly, not through Panel)
 // - Shift+Enter inserts a newline and grows the composer instead of
 //   sending (its only coverage anywhere)
-// - Ctrl+J, the "next unread conversation" shortcut, works while writing
-//   without carrying the old draft over or sending it
+// - Ctrl+J inserts a newline too while writing, the same as Shift+Enter,
+//   rather than jumping to the next unread conversation (its only
+//   coverage anywhere)
 // - three Escapes step back through compose, the open conversation and
 //   finally ask to close the window, which Enter answers by keeping it in
 //   the background, hiding it through the host's shell facade
@@ -98,7 +99,7 @@ ShellRoot {
     root.typeMultiline,
     root.waitShiftNewlineInserted,
     root.typeThreeAndCtrlJ,
-    root.waitCtrlJSwitched,
+    root.waitCtrlJInsertedNewline,
     root.leaveComposeForEscapeChain,
     root.waitComposeLeftNotWriting,
     root.closeConversationAndAskToClose,
@@ -536,31 +537,30 @@ ShellRoot {
     return true;
   }
 
-  // typeThreeAndCtrlJ types "three" then presses Ctrl+J: Ctrl+J must
-  // always mean "next unread conversation", even while writing, rather
-  // than inserting a newline.
+  // typeThreeAndCtrlJ types "three", Ctrl+J, then "four": Ctrl+J now
+  // means "new line" while writing, the same as Shift+Enter, rather than
+  // jumping to the next unread conversation.
   function typeThreeAndCtrlJ(): var {
     root._priorTitle = root.title();
     for (const ch of "three") t.keyClick(ch);
     t.keyClick(Qt.Key_J, Qt.ControlModifier);
+    for (const ch of "four") t.keyClick(ch);
     return true;
   }
 
-  // waitCtrlJSwitched holds until Ctrl+J has switched the open
-  // conversation away from the one "three" was typed into, then checks it
-  // kept writing mode in the conversation it switched to, left no trace
-  // of the old draft, and sent nothing.
-  function waitCtrlJSwitched(): var {
-    const newTitle = root.title();
-    if (newTitle === "" || newTitle === root._priorTitle) return false;
-
+  // waitCtrlJInsertedNewline holds until the composer's text shows the
+  // typed newline, then checks it stayed in the same conversation,
+  // kept writing mode, and sent nothing.
+  function waitCtrlJInsertedNewline(): var {
     const composer = Check.find(root.panel(), "composerInput");
-    if (!composer || !composer.activeFocus)
-      return Check.fail("Ctrl+J left writing mode instead of keeping it in the next unread conversation");
-    if (composer.text.indexOf("three") !== -1)
-      return Check.fail("Ctrl+J carried the old draft over: " + JSON.stringify(composer.text));
+    if (!composer || composer.text !== "three\nfour") return false;
+
+    if (root.title() !== root._priorTitle)
+      return Check.fail("Ctrl+J jumped to another conversation instead of inserting a newline");
+    if (!composer.activeFocus)
+      return Check.fail("Ctrl+J left writing mode instead of inserting a newline");
     if (root.messageStatus("three") !== "" || root.messageStatus("three\nfour") !== "")
-      return Check.fail("Ctrl+J sent a message instead of jumping to the next unread conversation");
+      return Check.fail("Ctrl+J sent a message instead of inserting a newline");
 
     composer.text = "";
     return true;

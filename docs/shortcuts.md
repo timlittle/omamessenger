@@ -9,7 +9,7 @@ OmaMessenger is keyboard-first; every action also works with the mouse. **Ctrl+/
 | Ctrl+/ or Ctrl+Shift+P | Command palette |
 | Ctrl+K, Ctrl+T or Ctrl+G | Jump to a conversation or search messages, in one palette |
 | Ctrl+N or Ctrl+Shift+K | New message |
-| Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (works from the list, an open conversation or the unread view, and keeps whichever mode you were in: writing stays writing, scrolling stays scrolling) |
+| Ctrl+J, Alt+Shift+↓ / ↑ | Next / previous unread conversation (works from the list, an open conversation or the unread view, and keeps whichever mode you were in: writing stays writing, scrolling stays scrolling). Ctrl+J inserts a new line instead while writing (see Open conversation); Alt+Shift+↓ / ↑ still jump from there |
 | Ctrl+Shift+A | Show only unread conversations, across every service and account (Esc or the same shortcut returns to the previous list) |
 | Alt+↓ / ↑ | Next / previous conversation (same as above: works from any mode and keeps it) |
 | Ctrl+0 / 1 / 2 | All / WhatsApp / Telegram |
@@ -65,10 +65,10 @@ The highlight starts on the newest message when the conversation opens or when y
 | Keys | Does |
 | --- | --- |
 | Enter | Send |
-| Shift+Enter | Start a new line instead of sending |
+| Shift+Enter or Ctrl+J | Start a new line instead of sending |
 | Ctrl+V | Paste a clipboard image as an attachment |
 
-Ctrl+J always jumps to the next unread conversation instead, even while writing (see Global); it lands there in writing mode too.
+Alt+Shift+↓ / ↑ still jump to the next / previous unread conversation while writing, landing there in writing mode too (see Global); Ctrl+J means a new line here instead.
 
 ### Voting in a poll
 
