@@ -90,7 +90,7 @@ ${SHA}
 
 ### Standard installation acknowledgment
 
-- [ ] I confirm that this listed root plugin supports the standard Omarchy installation path and does not require manual setup.
+- [x] I confirm that this listed root plugin supports the standard Omarchy installation path and does not require manual setup.
 `;
 
 // stubGh writes a `gh` standing in for the real CLI: it answers the exact

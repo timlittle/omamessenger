@@ -131,7 +131,7 @@ $sha
 
 ### $std_label
 
-- [ ] $std_text
+- [x] $std_text
 EOF
 
 printf '%s\n\n' "$title"
