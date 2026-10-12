@@ -16,13 +16,29 @@ func TestBuild_VersionChecksTheExecutableNameAgainstTheCompiledVersion(t *testin
 	t.Parallel()
 
 	cases := []struct {
-		name   string
-		facts  doctor.Facts
-		wantOK bool
+		name       string
+		facts      doctor.Facts
+		wantOK     bool
+		wantDetail string
 	}{
-		{"matches the pin", doctor.Facts{CompiledVersion: "0.3.0", ExecutableName: "oma-messenger-service-0.3.0"}, true},
-		{"does not match the pin", doctor.Facts{CompiledVersion: "0.3.0", ExecutableName: "oma-messenger-service-0.2.0"}, false},
-		{"an unpinned dev build", doctor.Facts{CompiledVersion: "0.3.0", ExecutableName: "oma-messenger-service"}, true},
+		{
+			"matches the pin",
+			doctor.Facts{CompiledVersion: "0.3.0", ExecutableName: "oma-messenger-service-0.3.0"},
+			true,
+			"0.3.0, matches its installed pin",
+		},
+		{
+			"does not match the pin",
+			doctor.Facts{CompiledVersion: "0.3.0", ExecutableName: "oma-messenger-service-0.2.0"},
+			false,
+			"0.3.0, does not match its installed pin (0.2.0)",
+		},
+		{
+			"an unpinned dev build",
+			doctor.Facts{CompiledVersion: "0.3.0", ExecutableName: "oma-messenger-service"},
+			true,
+			"0.3.0, unpinned build",
+		},
 	}
 
 	for _, c := range cases {
@@ -32,6 +48,9 @@ func TestBuild_VersionChecksTheExecutableNameAgainstTheCompiledVersion(t *testin
 			got := checkNamed(t, doctor.Build(c.facts), "Helper version")
 			if got.OK != c.wantOK {
 				t.Errorf("OK = %t, want %t (detail %q)", got.OK, c.wantOK, got.Detail)
+			}
+			if got.Detail != c.wantDetail {
+				t.Errorf("Detail = %q, want %q", got.Detail, c.wantDetail)
 			}
 		})
 	}

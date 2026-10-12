@@ -131,21 +131,25 @@ func Build(f Facts) Report {
 	return Report{Checks: checks}
 }
 
-// versionCheck compares the compiled version against the version the
-// running executable's own file name claims, when it follows the
-// installer's "oma-messenger-service-<version>" naming; a dev build run
-// under another name has nothing to compare, which is not a problem.
+// versionCheck reports the helper's own compiled version, so a user can
+// find it without a path to the binary, and compares it against the
+// version the running executable's own file name claims, when it follows
+// the installer's "oma-messenger-service-<version>" naming; a dev build
+// run under another name has nothing to compare, which is not a problem.
+// Versions are not sensitive, so this is the one check that includes a
+// specific value.
 func versionCheck(f Facts) Check {
 	pinned, ok := strings.CutPrefix(f.ExecutableName, executablePrefix)
 	if !ok {
-		return Check{Name: "Helper version", OK: true, Detail: "running an unpinned build"}
+		return Check{Name: "Helper version", OK: true, Detail: f.CompiledVersion + ", unpinned build"}
 	}
 
 	if pinned != f.CompiledVersion {
-		return Check{Name: "Helper version", OK: false, Detail: "does not match its installed pin"}
+		detail := fmt.Sprintf("%s, does not match its installed pin (%s)", f.CompiledVersion, pinned)
+		return Check{Name: "Helper version", OK: false, Detail: detail}
 	}
 
-	return Check{Name: "Helper version", OK: true, Detail: "matches its installed pin"}
+	return Check{Name: "Helper version", OK: true, Detail: f.CompiledVersion + ", matches its installed pin"}
 }
 
 // permissionsCheck flags a data directory or database file looser than
