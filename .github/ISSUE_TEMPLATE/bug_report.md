@@ -22,7 +22,7 @@ labels: bug
 - Omarchy version:
 - Hyprland version:
 - Quickshell version:
-- OmaMessenger helper version (`oma-messenger-service --version`, or **Status** in the command palette):
+- OmaMessenger helper version (**Run health check** in the command palette, the Helper version line, or `cat ~/.config/omarchy/plugins/io.github.omamessenger/helper-version`):
 
 ## Logs
 
