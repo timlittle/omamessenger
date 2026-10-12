@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.3](https://github.com/timlittle/omamessenger/compare/v0.3.2...v0.3.3) (2026-10-12)
+
+
+### Features
+
+* **telegram:** show the two-step verification password hint ([f979bfe](https://github.com/timlittle/omamessenger/commit/f979bfe0f5b64924a75d9c608e829aafb9b03cd6))
+
+
+### Bug Fixes
+
+* **doctor:** show the helper's version in the health check ([a3ba943](https://github.com/timlittle/omamessenger/commit/a3ba9430e3530e3976dc28474a75921a87e89669))
+* **telegram:** resolve a reply quote's sender name instead of the generic fallback ([c7753d5](https://github.com/timlittle/omamessenger/commit/c7753d5ff5ab5252cb7869141ac2c08490ed0f61))
+* **telegram:** stay on phone sign-in when the QR code refreshes ([c58933c](https://github.com/timlittle/omamessenger/commit/c58933ca94f255dd8ff04ec77c89c854218a6224))
+* **ui:** make Ctrl+J insert a new line while writing again ([c2a6df7](https://github.com/timlittle/omamessenger/commit/c2a6df7649c998dae4d593b022442f9fb3b16950))
+* **ui:** render text from other people as plain text so it cannot load remote images ([b8d0b1c](https://github.com/timlittle/omamessenger/commit/b8d0b1c016fea73b2c17b64386afd4de086cff46))
+
+
+### Miscellaneous
+
+* **release:** release 0.3.3 ([fbc6bff](https://github.com/timlittle/omamessenger/commit/fbc6bffe045aa082d2110da8d25e0ce0a49c985e))
+
 ## [0.3.2](https://github.com/timlittle/omamessenger/compare/v0.3.1...v0.3.2) (2026-10-09)
 
 
