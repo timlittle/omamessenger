@@ -77,6 +77,19 @@ func (a *gotdAuth) password(ctx context.Context, password string) error {
 	return translate(err)
 }
 
+// passwordHint reads the hint the user set for their two-step
+// verification password, or "" when the account has none.
+func (a *gotdAuth) passwordHint(ctx context.Context) (string, error) {
+	settings, err := a.client.API().AccountGetPassword(ctx)
+	if err != nil {
+		return "", fmt.Errorf("telegram: get password hint: %w", err)
+	}
+
+	hint, _ := settings.GetHint()
+
+	return hint, nil
+}
+
 // translate turns Telegram's sign-in errors into the sequence's outcomes.
 func translate(err error) error {
 	switch {

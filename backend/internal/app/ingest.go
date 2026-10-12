@@ -327,7 +327,7 @@ func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, nam
 
 // AuthStep publishes what an account's sign-in needs from the user.
 func (in *Ingest) AuthStep(ctx context.Context, accountID string, step connector.AuthStep) {
-	in.events.publish(ctx, EventAuthStep, AuthStep{AccountID: accountID, Kind: step.Kind, QR: step.QR, Hint: step.Hint})
+	in.events.publish(ctx, EventAuthStep, AuthStep{AccountID: accountID, Kind: step.Kind, QR: step.QR, Hint: step.Hint, PasswordHint: step.PasswordHint})
 }
 
 // save stores a message in a known conversation, counting it towards the

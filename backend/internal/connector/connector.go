@@ -182,6 +182,11 @@ type AuthStep struct {
 
 	// Hint explains the step, for example where the code was sent.
 	Hint string `json:"hint,omitempty"`
+
+	// PasswordHint is the hint the user set for their two-step
+	// verification password, from the service. Set only for the
+	// "password" kind, and only when the service has one to show.
+	PasswordHint string `json:"passwordHint,omitempty"`
 }
 
 // Sink receives normalized updates from a running Connector. It has one

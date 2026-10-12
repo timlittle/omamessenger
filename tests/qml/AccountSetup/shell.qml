@@ -100,6 +100,7 @@ ShellRoot {
       chooseIndex: controller.chooseIndex
       qr: controller.qr
       hint: controller.hint
+      passwordHint: controller.passwordHint
       error: controller.lastError
       busy: controller.busy
       routeKey: root.routeKey
@@ -192,7 +193,8 @@ ShellRoot {
   }
 
   // checkSignInByPhone shows the QR code, switches to phone, sends the
-  // phone and code, and closes once connected.
+  // phone and code, and closes once connected. The two-step verification
+  // hint must show under the password field once that step arrives.
   function checkSignInByPhone(): bool {
     service.event("auth.step", { accountId: "tg-1", kind: "qr", qr: "cG5n", hint: "Scan it" });
     if (controller.stage !== "qr" || !Check.find(view, "qrImage").visible) return Check.fail("QR code not shown");
@@ -204,9 +206,12 @@ ShellRoot {
 
     service.event("auth.step", { accountId: "tg-1", kind: "code", hint: "That code did not work. Check it and try again." });
     if (Check.find(view, "stepHint").text.indexOf("did not work") < 0) return Check.fail("wrong-code hint not shown");
+    if (Check.find(view, "passwordHint").visible) return Check.fail("a password hint shown before the password step");
 
-    service.event("auth.step", { accountId: "tg-1", kind: "password", hint: "Two-step" });
+    service.event("auth.step", { accountId: "tg-1", kind: "password", hint: "Two-step", passwordHint: "my pet's name" });
     if (!Check.find(view, "answerField").password) return Check.fail("password not hidden");
+    const hintLabel = Check.find(view, "passwordHint");
+    if (!hintLabel.visible || hintLabel.text !== "Hint: my pet's name") return Check.fail("password hint not shown: " + hintLabel.text);
 
     service.event("account.updated", { id: "tg-1", status: "error", detail: "Wrong password" });
     if (controller.lastError !== "Wrong password") return Check.fail("error not shown: " + controller.lastError);

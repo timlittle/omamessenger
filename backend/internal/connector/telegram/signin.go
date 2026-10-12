@@ -18,7 +18,10 @@ var (
 // QRHint tells people where to scan the code.
 const QRHint = "Open Telegram on your phone, go to Settings → Devices → Link Desktop Device, and scan this code."
 
-// authAPI is the part of Telegram sign-in this sequence drives.
+// authAPI is the part of Telegram sign-in this sequence drives. It has
+// more than two methods because each is a distinct step of gotd's own
+// auth API (QR, phone code, password, and the password's hint), and
+// signIn drives all of them through one fake in tests.
 type authAPI interface {
 	// qr shows login codes until one is scanned, calling show with each
 	// as a base64 PNG. It returns errPasswordNeeded when the account has
@@ -33,6 +36,10 @@ type authAPI interface {
 
 	// password checks the two-step verification password.
 	password(ctx context.Context, password string) error
+
+	// passwordHint reads the hint the user set for their two-step
+	// verification password, or "" when the account has none to show.
+	passwordHint(ctx context.Context) (string, error)
 }
 
 // answer is something the user typed in reply to a sign-in step.
@@ -109,8 +116,16 @@ func afterLogin(ctx context.Context, api authAPI, err error, answers <-chan answ
 	}
 
 	hint := "This account has two-step verification. Enter its password."
+
+	// The hint is a courtesy only: if reading it from Telegram fails, the
+	// password step still works, just without a reminder shown.
+	passwordHint := ""
+	if h, err := api.passwordHint(ctx); err == nil {
+		passwordHint = h
+	}
+
 	for {
-		report(connector.AuthStep{Kind: "password", Hint: hint})
+		report(connector.AuthStep{Kind: "password", Hint: hint, PasswordHint: passwordHint})
 
 		pw, err := next(ctx, answers, "password")
 		if err != nil {

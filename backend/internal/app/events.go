@@ -47,10 +47,11 @@ type AccountRemoved struct {
 // AuthStep is the data of an auth.step event: what an account's sign-in
 // needs from the user next.
 type AuthStep struct {
-	AccountID string `json:"accountId"`
-	Kind      string `json:"kind"`
-	QR        string `json:"qr,omitempty"`
-	Hint      string `json:"hint,omitempty"`
+	AccountID    string `json:"accountId"`
+	Kind         string `json:"kind"`
+	QR           string `json:"qr,omitempty"`
+	Hint         string `json:"hint,omitempty"`
+	PasswordHint string `json:"passwordHint,omitempty"`
 }
 
 // NotificationClicked is the data of a notification.clicked event: the

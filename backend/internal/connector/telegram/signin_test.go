@@ -21,6 +21,8 @@ type scriptedAuth struct {
 	codes     []string
 	passwords []string
 	phones    []string
+	hint      string
+	hintErr   error
 }
 
 func (a *scriptedAuth) qr(ctx context.Context, show func(png string) error) error {
@@ -61,15 +63,20 @@ func (a *scriptedAuth) password(_ context.Context, pw string) error {
 	return nil
 }
 
+func (a *scriptedAuth) passwordHint(_ context.Context) (string, error) {
+	return a.hint, a.hintErr
+}
+
 // person answers sign-in steps the way someone at the keyboard would: only
 // once a step is shown, with the next reply they have for that kind of
 // step. It records the kinds of step shown, in order.
 type person struct {
-	mu      sync.Mutex
-	kinds   []string
-	hints   []string
-	replies map[string][]string
-	answers chan answer
+	mu            sync.Mutex
+	kinds         []string
+	hints         []string
+	passwordHints []string
+	replies       map[string][]string
+	answers       chan answer
 }
 
 // newPerson returns a person with replies given as step, value pairs.
@@ -93,6 +100,7 @@ func (p *person) report(step connector.AuthStep) {
 
 	p.kinds = append(p.kinds, step.Kind)
 	p.hints = append(p.hints, step.Hint)
+	p.passwordHints = append(p.passwordHints, step.PasswordHint)
 
 	kind := step.Kind
 	if kind == "qr" {
@@ -143,6 +151,48 @@ func TestSignIn_ByQRWithTwoStepVerification(t *testing.T) {
 
 	if retry := p.hints[2]; !strings.Contains(retry, "did not work") {
 		t.Errorf("retry hint = %q, want it to say the password did not work", retry)
+	}
+}
+
+func TestSignIn_ShowsThePasswordHintWhenTheAccountHasOne(t *testing.T) {
+	t.Parallel()
+
+	p := newPerson("password", "right")
+	api := &scriptedAuth{qrResult: errPasswordNeeded, passwords: []string{"right"}, hint: "my pet's name"}
+	if err := signIn(t.Context(), api, p.answers, p.report); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := p.passwordHints[1]; got != "my pet's name" {
+		t.Errorf("password hint = %q, want %q", got, "my pet's name")
+	}
+}
+
+func TestSignIn_OmitsThePasswordHintWhenTheAccountHasNone(t *testing.T) {
+	t.Parallel()
+
+	p := newPerson("password", "right")
+	api := &scriptedAuth{qrResult: errPasswordNeeded, passwords: []string{"right"}}
+	if err := signIn(t.Context(), api, p.answers, p.report); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := p.passwordHints[1]; got != "" {
+		t.Errorf("password hint = %q, want none", got)
+	}
+}
+
+func TestSignIn_OmitsThePasswordHintWhenFetchingItFails(t *testing.T) {
+	t.Parallel()
+
+	p := newPerson("password", "right")
+	api := &scriptedAuth{qrResult: errPasswordNeeded, passwords: []string{"right"}, hintErr: errors.New("boom")}
+	if err := signIn(t.Context(), api, p.answers, p.report); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := p.passwordHints[1]; got != "" {
+		t.Errorf("password hint = %q, want none when the fetch failed", got)
 	}
 }
 

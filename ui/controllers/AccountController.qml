@@ -39,6 +39,10 @@ Item {
   // hint explains the current step, from the helper.
   property string hint: ""
 
+  // passwordHint is the two-step verification hint the user set for
+  // their account, from the helper, for the password step only.
+  property string passwordHint: ""
+
   // busy is true while a request is in flight, so it is not sent twice.
   property bool busy: false
 
@@ -278,6 +282,7 @@ Item {
     root.stage = step.kind;
     root.qr = step.qr || "";
     root.hint = step.hint || "";
+    root.passwordHint = step.passwordHint || "";
     root.busy = false;
   }
 
@@ -326,6 +331,7 @@ Item {
     root._added = false;
     root.qr = "";
     root.hint = "";
+    root.passwordHint = "";
     root.busy = false;
     root.lastError = "";
     root.chooseIndex = -1;

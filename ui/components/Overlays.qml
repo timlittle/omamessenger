@@ -170,6 +170,7 @@ Item {
     chooseIndex: root.accountController?.chooseIndex ?? -1
     qr: root.accountController?.qr ?? ""
     hint: root.accountController?.hint ?? ""
+    passwordHint: root.accountController?.passwordHint ?? ""
     error: root.accountController?.lastError ?? ""
     busy: root.accountController?.busy ?? false
     routeKey: root.routeKey

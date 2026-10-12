@@ -149,3 +149,15 @@ func TestAuthStep_IsPublished(t *testing.T) {
 		t.Errorf("published %+v, want %+v", got, want)
 	}
 }
+
+func TestAuthStep_CarriesThePasswordHint(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.ingest.AuthStep(t.Context(), "tg", connector.AuthStep{Kind: "password", Hint: "Enter it.", PasswordHint: "my pet's name"})
+
+	want := app.AuthStep{AccountID: "tg", Kind: "password", Hint: "Enter it.", PasswordHint: "my pet's name"}
+	if got := f.published.last(); got != want {
+		t.Errorf("published %+v, want %+v", got, want)
+	}
+}

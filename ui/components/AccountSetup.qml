@@ -29,6 +29,9 @@ Item {
   property string qr: ""
   // hint explains the current step.
   property string hint: ""
+  // passwordHint is the two-step verification hint the user set for
+  // their account, shown under the password field; "" shows nothing.
+  property string passwordHint: ""
   // error is the last failure, shown under the step.
   property string error: ""
   // busy disables Continue while a request is in flight.
@@ -191,6 +194,19 @@ Item {
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: event => { if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true }
         onAccepted: root.submit()
+      }
+
+      Text {
+        objectName: "passwordHint"
+        Layout.fillWidth: true
+        visible: root.stage === "password" && root.passwordHint !== ""
+        text: "Hint: " + root.passwordHint
+        // PlainText: the hint is whatever the user typed into Telegram
+        // when they set their password, so it is untrusted text.
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        color: Util.alpha(Color.foreground, 0.7)
+        font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
       }
 
       Text {
