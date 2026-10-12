@@ -291,7 +291,7 @@ CI_MEMORY ?= 6g
 # job, so its compilers stay within CI_MEMORY.
 CI_GO_PARALLEL ?= 1
 ci: ## Run the GitHub Actions CI workflow locally in Docker (needs act)
-	@command -v act >/dev/null || { echo "ci: act is not installed (pacman -S act)" >&2; exit 1; }
+	@command -v act >/dev/null || { echo "ci: act is not installed; see https://github.com/nektos/act" >&2; exit 1; }
 	@trap 'docker rm -f $$(docker ps -aq --filter name=act-CI-) >/dev/null 2>&1' EXIT INT TERM; \
 	for job in build test checks qml; do \
 		act push -W .github/workflows/ci.yml -j "$$job" --rm --env GOFLAGS=-p=$(CI_GO_PARALLEL) \
