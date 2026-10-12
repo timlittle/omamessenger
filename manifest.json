@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.omamessenger",
   "name": "OmaMessenger",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": "OmaMessenger contributors",
   "license": "MIT",
   "description": "A keyboard-first unified messaging client for Omarchy.",
