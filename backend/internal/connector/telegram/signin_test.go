@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 )
@@ -23,6 +24,14 @@ type scriptedAuth struct {
 	phones    []string
 	hint      string
 	hintErr   error
+
+	// hintRecoversAfter, when greater than zero, makes passwordHint
+	// return hintErr only for its first hintRecoversAfter calls and
+	// hint from then on, so a test can script a fetch that fails a
+	// few times before it succeeds. Zero means hintErr, when set, is
+	// returned on every call.
+	hintRecoversAfter int
+	hintCalls         int
 }
 
 func (a *scriptedAuth) qr(ctx context.Context, show func(png string) error) error {
@@ -64,7 +73,15 @@ func (a *scriptedAuth) password(_ context.Context, pw string) error {
 }
 
 func (a *scriptedAuth) passwordHint(_ context.Context) (string, error) {
-	return a.hint, a.hintErr
+	a.hintCalls++
+	if a.hintErr == nil {
+		return a.hint, nil
+	}
+	if a.hintRecoversAfter > 0 && a.hintCalls > a.hintRecoversAfter {
+		return a.hint, nil
+	}
+
+	return "", a.hintErr
 }
 
 // person answers sign-in steps the way someone at the keyboard would: only
@@ -183,17 +200,43 @@ func TestSignIn_OmitsThePasswordHintWhenTheAccountHasNone(t *testing.T) {
 }
 
 func TestSignIn_OmitsThePasswordHintWhenFetchingItFails(t *testing.T) {
-	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		p := newPerson("password", "right")
+		api := &scriptedAuth{qrResult: errPasswordNeeded, passwords: []string{"right"}, hintErr: errors.New("boom")}
+		if err := signIn(t.Context(), api, p.answers, p.report); err != nil {
+			t.Fatal(err)
+		}
 
-	p := newPerson("password", "right")
-	api := &scriptedAuth{qrResult: errPasswordNeeded, passwords: []string{"right"}, hintErr: errors.New("boom")}
-	if err := signIn(t.Context(), api, p.answers, p.report); err != nil {
-		t.Fatal(err)
-	}
+		if got := p.passwordHints[1]; got != "" {
+			t.Errorf("password hint = %q, want none when every fetch failed", got)
+		}
 
-	if got := p.passwordHints[1]; got != "" {
-		t.Errorf("password hint = %q, want none when the fetch failed", got)
-	}
+		if api.hintCalls != passwordHintAttempts {
+			t.Errorf("hint fetch attempts = %d, want %d", api.hintCalls, passwordHintAttempts)
+		}
+	})
+}
+
+// TestSignIn_RetriesAFailedPasswordHintFetchBeforeGivingUp reproduces the
+// report that a real account's password hint never reached the screen:
+// Telegram's account.getPassword call failed once, right after the fresh
+// SESSION_PASSWORD_NEEDED response, and the single-attempt fetch this
+// used to be gave up for good instead of trying again.
+func TestSignIn_RetriesAFailedPasswordHintFetchBeforeGivingUp(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		p := newPerson("password", "right")
+		api := &scriptedAuth{
+			qrResult: errPasswordNeeded, passwords: []string{"right"},
+			hint: "my pet's name", hintErr: errors.New("boom"), hintRecoversAfter: passwordHintAttempts - 1,
+		}
+		if err := signIn(t.Context(), api, p.answers, p.report); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := p.passwordHints[1]; got != "my pet's name" {
+			t.Errorf("password hint = %q, want %q once the fetch recovers", got, "my pet's name")
+		}
+	})
 }
 
 func TestSignIn_ByPhoneInsteadOfQR(t *testing.T) {

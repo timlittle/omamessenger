@@ -3,9 +3,21 @@ package telegram
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 )
+
+// passwordHintAttempts bounds how many times fetchPasswordHint retries a
+// failed password-hint fetch before giving up: the extra round trips are
+// invisible to the user, so it is worth absorbing one flaky request
+// rather than silently losing a hint Telegram did have.
+const passwordHintAttempts = 3
+
+// passwordHintRetryDelay is how long fetchPasswordHint waits between
+// attempts.
+const passwordHintRetryDelay = 200 * time.Millisecond
 
 // Sign-in outcomes the Telegram adapter reports, so the sign-in sequence
 // can react to them without knowing Telegram's error codes.
@@ -116,13 +128,7 @@ func afterLogin(ctx context.Context, api authAPI, err error, answers <-chan answ
 	}
 
 	hint := "This account has two-step verification. Enter its password."
-
-	// The hint is a courtesy only: if reading it from Telegram fails, the
-	// password step still works, just without a reminder shown.
-	passwordHint := ""
-	if h, err := api.passwordHint(ctx); err == nil {
-		passwordHint = h
-	}
+	passwordHint := fetchPasswordHint(ctx, api)
 
 	for {
 		report(connector.AuthStep{Kind: "password", Hint: hint, PasswordHint: passwordHint})
@@ -138,6 +144,49 @@ func afterLogin(ctx context.Context, api authAPI, err error, answers <-chan answ
 		}
 
 		hint = "That password did not work. Try again."
+	}
+}
+
+// fetchPasswordHint reads the two-step verification hint, retrying a
+// failed fetch passwordHintAttempts times before giving up. The hint is a
+// courtesy only: once every attempt has failed, the password step still
+// works, just without a reminder shown. It logs which of present, empty
+// or fetch-failed happened, so a report of a missing hint can be told
+// apart from an account that genuinely set none.
+func fetchPasswordHint(ctx context.Context, api authAPI) string {
+	var hint string
+	var err error
+
+	for attempt := 0; attempt < passwordHintAttempts; attempt++ {
+		hint, err = api.passwordHint(ctx)
+		if err == nil {
+			break
+		}
+
+		if attempt < passwordHintAttempts-1 {
+			time.Sleep(passwordHintRetryDelay)
+		}
+	}
+
+	logPasswordHintOutcome(hint, err)
+	if err != nil {
+		return ""
+	}
+
+	return hint
+}
+
+// logPasswordHintOutcome records which branch a password step's hint
+// fetch took: present, empty or fetch-failed with its error's category,
+// never the hint or error text itself.
+func logPasswordHintOutcome(hint string, err error) {
+	switch {
+	case err != nil:
+		log.Printf("telegram: password step (hint=fetch-failed, error=%s)", passwordHintErrorCategory(err))
+	case hint != "":
+		log.Printf("telegram: password step (hint=present)")
+	default:
+		log.Printf("telegram: password step (hint=empty)")
 	}
 }
 

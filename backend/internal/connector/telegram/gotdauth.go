@@ -90,6 +90,18 @@ func (a *gotdAuth) passwordHint(ctx context.Context) (string, error) {
 	return hint, nil
 }
 
+// passwordHintErrorCategory reports a privacy-safe category for a failed
+// password-hint fetch: Telegram's RPC error type when there is one (a
+// protocol code such as "FLOOD_WAIT", never account content), or the Go
+// error's type name otherwise.
+func passwordHintErrorCategory(err error) string {
+	if rpcErr, ok := tgerr.As(err); ok {
+		return rpcErr.Type
+	}
+
+	return fmt.Sprintf("%T", err)
+}
+
 // translate turns Telegram's sign-in errors into the sequence's outcomes.
 func translate(err error) error {
 	switch {
