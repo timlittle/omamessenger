@@ -273,9 +273,19 @@ Item {
     root._close();
   }
 
-  // _showStep opens setup at a step the helper asked for.
+  // _showStep opens setup at a step the helper asked for. The QR login
+  // keeps refreshing its code in the background until the user actually
+  // submits a phone number, so a "qr" step that arrives after the user
+  // already moved on to phone, code or password only refreshes the
+  // cached QR image, so "q" still shows a fresh code: it must not switch
+  // the screen back and throw away what the user was typing.
   function _showStep(step: var): void {
     if (!step || (root.open && root.accountId && step.accountId !== root.accountId)) return;
+
+    if (Setup.qrRefreshOnly(root.accountId, root.stage, step.kind)) {
+      root.qr = step.qr || "";
+      return;
+    }
 
     root.open = true;
     root.accountId = step.accountId;

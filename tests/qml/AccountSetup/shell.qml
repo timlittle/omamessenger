@@ -193,14 +193,25 @@ ShellRoot {
   }
 
   // checkSignInByPhone shows the QR code, switches to phone, sends the
-  // phone and code, and closes once connected. The two-step verification
-  // hint must show under the password field once that step arrives.
+  // phone and code, and closes once connected. A QR code refresh
+  // arriving while the phone number is being typed must not throw the
+  // user back to the QR step, and the two-step verification hint must
+  // show under the password field once that step arrives.
   function checkSignInByPhone(): bool {
     service.event("auth.step", { accountId: "tg-1", kind: "qr", qr: "cG5n", hint: "Scan it" });
     if (controller.stage !== "qr" || !Check.find(view, "qrImage").visible) return Check.fail("QR code not shown");
 
     controller.usePhone();
     Check.find(view, "answerField").text = "+447700900000";
+
+    // The QR login keeps refreshing in the background until a phone
+    // number is actually submitted; a refresh here must only update the
+    // cached code, not switch the screen back to it.
+    service.event("auth.step", { accountId: "tg-1", kind: "qr", qr: "cmVmcmVzaGVk", hint: "Scan it" });
+    if (controller.stage !== "phone") return Check.fail("a QR refresh switched away from the phone step");
+    if (Check.find(view, "answerField").text !== "+447700900000") return Check.fail("a QR refresh cleared what was typed");
+    if (controller.qr !== "cmVmcmVzaGVk") return Check.fail("the refreshed QR code was not cached for later");
+
     view.submit();
     if (root.last().method !== "auth.submit" || root.last().params.step !== "phone") return Check.fail("phone not sent");
 

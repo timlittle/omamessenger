@@ -63,3 +63,22 @@ test('wrapIndex stays at -1 with nothing to move through', () => {
   assert.strictEqual(Setup.wrapIndex(-1, 1, 0), -1);
   assert.strictEqual(Setup.wrapIndex(-1, -1, 0), -1);
 });
+
+test('qrRefreshOnly is false for the first QR code, before an account is known', () => {
+  assert.strictEqual(Setup.qrRefreshOnly('', 'waiting', 'qr'), false);
+});
+
+test('qrRefreshOnly is false while still on the QR stage, so a refresh still updates it', () => {
+  assert.strictEqual(Setup.qrRefreshOnly('tg-1', 'qr', 'qr'), false);
+});
+
+test('qrRefreshOnly is true for a QR refresh once the user moved on to phone, code or password', () => {
+  for (const stage of ['phone', 'code', 'password']) {
+    assert.strictEqual(Setup.qrRefreshOnly('tg-1', stage, 'qr'), true, stage);
+  }
+});
+
+test('qrRefreshOnly is false for a step that is not a QR code, even past the QR stage', () => {
+  assert.strictEqual(Setup.qrRefreshOnly('tg-1', 'phone', 'code'), false);
+  assert.strictEqual(Setup.qrRefreshOnly('tg-1', 'phone', 'password'), false);
+});
