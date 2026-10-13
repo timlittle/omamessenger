@@ -261,9 +261,11 @@ Item {
 
     root.service.request("conversations.markRead", { conversationId: id }, function(error) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
 
       root.service.request("conversations.setArchived", { conversationId: id, archived: true }, function(error2, result) {
         if (error2) { root.lastError = Rpc.errorText(error2); return; }
+        root.lastError = "";
         root._applyConversationUpdated(result);
       });
     });
@@ -291,6 +293,7 @@ Item {
     for (const id of ids) {
       root.service.request("conversations.setArchived", { conversationId: id, archived: true }, function(error, result) {
         if (error) { root.lastError = Rpc.errorText(error); return; }
+        root.lastError = "";
         root._applyConversationUpdated(result);
       });
     }
@@ -314,6 +317,7 @@ Item {
 
     root.service.request("conversations.setReminder", { conversationId: id, at: at || null }, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
       root._applyConversationUpdated(result);
     });
   }
@@ -338,6 +342,7 @@ Item {
     params[field] = !conversation[field];
     root.service.request(method, params, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
       root._applyConversationUpdated(result);
     });
   }
@@ -358,6 +363,7 @@ Item {
     root.service.request("conversations.list", { query: query }, function(error, result) {
       if (!isCurrent()) return;
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
       root._searchResults = result ?? [];
       root._syncModel();
     });
@@ -367,6 +373,7 @@ Item {
   function _loadAll(): void {
     root.service.request("conversations.list", {}, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
       root._all = result ?? [];
       if (root.query.length > 0) root._search();
       else root._syncModel();

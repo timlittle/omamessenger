@@ -79,6 +79,26 @@ for (const c of escapeActionCases) {
 }
 
 
+// A visible helper-error notice is the first thing Escape clears, before
+// even the close question: dismissing it must never also close or leave
+// whatever else happens to be open behind it.
+
+test('escapeAction dismisses a visible helper error before anything else', () => {
+  assert.strictEqual(Navigation.escapeAction({ ...base, errorOpen: true }), 'dismiss-error');
+  assert.strictEqual(Navigation.escapeAction({ ...base, errorOpen: true, confirmOpen: true }), 'dismiss-error');
+  assert.strictEqual(Navigation.escapeAction({ ...base, errorOpen: true, setupOpen: true }), 'dismiss-error');
+  assert.strictEqual(Navigation.escapeAction({ ...base, errorOpen: true, paletteOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' }), 'dismiss-error');
+});
+
+test('escapeAction falls through to the rest of the chain once the error is clear', () => {
+  assert.strictEqual(Navigation.escapeAction({ ...base, errorOpen: false, dialogOpen: true }), 'close-dialog');
+});
+
+test('keyContext ignores errorOpen: the banner is dismissed by Escape only, not a key context of its own', () => {
+  assert.strictEqual(Navigation.keyContext({ ...base, errorOpen: true }), 'list');
+  assert.strictEqual(Navigation.keyContext({ ...base, errorOpen: true, dialogOpen: true }), 'dialog');
+});
+
 test('the close question takes keys before anything else', () => {
   const state = { confirmOpen: true, paletteOpen: true, dialogOpen: true, pane: 'conversation', activeId: 'c1' };
 
@@ -223,6 +243,7 @@ test('escapeAction: hide-window once the unread view is already off', () => {
 
 test('buildState defaults every field when no controller is given', () => {
   assert.deepEqual(Navigation.buildState({}), {
+    errorOpen: false,
     confirmOpen: false,
     setupOpen: false,
     setupContext: '',
@@ -248,7 +269,7 @@ test('buildState defaults every field when no controller is given', () => {
 test('buildState reads every field from the controller that owns it, including doctorOpen', () => {
   const ctx = {
     service: { uiState: { pane: 'conversation', activeId: 'ignored-without-conversationController' } },
-    windowController: { confirmingClose: true, doctorOpen: true, paletteOpen: true },
+    windowController: { confirmingClose: true, doctorOpen: true, paletteOpen: true, errorBannerText: 'could not send' },
     accountController: { open: false, removing: true, navContext: 'removeAccount' },
     photoViewerController: { viewerOpen: true },
     reactionsController: { pickerOpen: true },
@@ -261,6 +282,7 @@ test('buildState reads every field from the controller that owns it, including d
   };
 
   assert.deepEqual(Navigation.buildState(ctx), {
+    errorOpen: true,
     confirmOpen: true,
     setupOpen: true,
     setupContext: 'removeAccount',

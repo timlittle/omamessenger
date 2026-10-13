@@ -68,6 +68,7 @@ QtObject {
 
     root.service.request("messages.react", { messageId: id, emoji: toSend }, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
       root.conversation.applyMessage(result);
     });
   }

@@ -4,6 +4,7 @@ import "../lib/Actions.js" as Actions
 import "../lib/Keymap.js" as Keymap
 import "../lib/Palette.js" as Palette
 import "../lib/Rpc.js" as Rpc
+import "../lib/ErrorBanner.js" as ErrorBanner
 
 // Owns the command palette, closing and quitting (which ask first), and
 // the Escape chain. The palette runs commands through whichever
@@ -120,8 +121,33 @@ Item {
   // Quit, 2 Keep in background (its safe default), left to right.
   property int confirmIndex: 2
 
-  // lastError is the safe text of the most recent request failure.
+  // lastError is the safe text of the most recent request failure run
+  // from this controller itself (the palette's message search and the
+  // health check).
   property string lastError: ""
+
+  // errorBannerTimeoutMs is how long the helper-error banner stays shown
+  // before it clears itself; a property rather than a literal so a test
+  // can shrink the wait instead of sitting through the real six seconds.
+  property int errorBannerTimeoutMs: 6000
+
+  // errorBannerText is the safe text of whichever controller most
+  // recently failed a request, shown as Panel's dismissible banner.
+  // ErrorBanner.pick keeps the priority among the six sources (the open
+  // conversation, reactions, delete, the list, the new-chat dialog, this
+  // controller itself) in one tested function instead of inline QML.
+  readonly property string errorBannerText: ErrorBanner.pick([
+    root.conversationController ? root.conversationController.lastError : "",
+    root.reactionsController ? root.reactionsController.lastError : "",
+    root.deleteController ? root.deleteController.lastError : "",
+    root.listController ? root.listController.lastError : "",
+    root.dialogController ? root.dialogController.lastError : "",
+    root.lastError
+  ])
+  onErrorBannerTextChanged: {
+    if (root.errorBannerText) errorBannerTimer.restart();
+    else errorBannerTimer.stop();
+  }
 
   // doctorOpen shows the health check report.
   property bool doctorOpen: false
@@ -230,6 +256,7 @@ Item {
     root.service.request("helper.doctor", {}, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
 
+      root.lastError = "";
       root.doctorChecks = result.checks ?? [];
       root.doctorOpen = true;
     });
@@ -238,6 +265,19 @@ Item {
   // closeDoctor hides the health check report.
   function closeDoctor(): void {
     root.doctorOpen = false;
+  }
+
+  // dismissErrorBanner hides the helper-error banner, by clearing every
+  // controller's lastError it could currently be showing: a click on the
+  // banner's own dismiss button, the auto-clear timer below, and Escape
+  // (see Navigation.escapeAction's "dismiss-error" step) all call this.
+  function dismissErrorBanner(): void {
+    root.lastError = "";
+    if (root.conversationController) root.conversationController.clearError();
+    if (root.reactionsController) root.reactionsController.lastError = "";
+    if (root.deleteController) root.deleteController.lastError = "";
+    if (root.listController) root.listController.lastError = "";
+    if (root.dialogController) root.dialogController.lastError = "";
   }
 
   // setPaletteQuery filters the palette and highlights the best match.
@@ -266,6 +306,7 @@ Item {
       if (!isCurrent() || !root.paletteOpen) return;
       if (error) { root.lastError = Rpc.errorText(error); return; }
 
+      root.lastError = "";
       root._messageSearchResults = result ?? [];
     });
   }
@@ -385,6 +426,7 @@ Item {
       "close-reaction-picker": () => { if (root.reactionsController) root.reactionsController.closePicker(); },
       "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
       "cancel-archive-all": () => { if (root.listController) root.listController.cancelArchiveAllRead(); },
+      "dismiss-error": () => root.dismissErrorBanner(),
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
@@ -428,5 +470,34 @@ Item {
     id: messageSearchTimer
     interval: 250
     onTriggered: root._searchMessages()
+  }
+
+  // errorBannerTimer clears the helper-error banner on its own once it
+  // has been up for errorBannerTimeoutMs; restarted every time a new
+  // error replaces an old one (or the first one appears), so each
+  // failure gets its own full look before it goes away unread.
+  Timer {
+    id: errorBannerTimer
+    interval: root.errorBannerTimeoutMs
+    onTriggered: root.dismissErrorBanner()
+  }
+
+  // Opening a different conversation is a fresh start: whatever failed
+  // before it is no longer relevant, so the banner goes with it.
+  Connections {
+    target: root.conversationController
+
+    function onActiveIdChanged() { root.dismissErrorBanner(); }
+  }
+
+  // The helper changing status (restarting, reinstalling, going away)
+  // invalidates whatever was in flight when it happened: a request
+  // cancelled by that restart (RpcClient's own "The helper restarted.")
+  // would otherwise leave a stale banner sitting over the status row
+  // that already explains what is actually going on.
+  Connections {
+    target: root.service
+
+    function onStatusChanged() { root.dismissErrorBanner(); }
   }
 }

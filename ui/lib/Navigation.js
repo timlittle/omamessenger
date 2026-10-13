@@ -30,14 +30,17 @@ function keyContext(state) {
   return 'list';
 }
 
-// escapeAction returns what Escape does: it undoes the innermost thing
-// first (account setup, the photo viewer, the health check report, palette,
-// the reaction picker, the delete question, dialog, search, composer, open
-// conversation, query, the all-unreads view) and hides the window only when
-// there is nothing left to undo. Inside the composer itself the order is:
-// remove a pending attachment, then cancel a reply in progress, then leave
-// the composer.
+// escapeAction returns what Escape does: a visible helper-error notice
+// clears first and alone, before anything else is checked, so dismissing
+// it never also closes whatever is open behind it. Below that it undoes
+// the innermost thing first (account setup, the photo viewer, the health
+// check report, palette, the reaction picker, the delete question, dialog,
+// search, composer, open conversation, query, the all-unreads view) and
+// hides the window only when there is nothing left to undo. Inside the
+// composer itself the order is: remove a pending attachment, then cancel
+// a reply in progress, then leave the composer.
 function escapeAction(state) {
+  if (state.errorOpen) return 'dismiss-error';
   if (state.confirmOpen) return 'cancel-close';
   if (state.setupOpen) return 'close-setup';
   if (state.viewerOpen) return 'close-viewer';
@@ -85,6 +88,7 @@ function buildState(ctx) {
   const ui = ctx.service ? ctx.service.uiState : { pane: 'list', activeId: '' };
 
   return {
+    errorOpen: ctx.windowController ? ctx.windowController.errorBannerText !== '' : false,
     confirmOpen: ctx.windowController ? ctx.windowController.confirmingClose : false,
     setupOpen: ctx.accountController ? (ctx.accountController.open || ctx.accountController.removing) : false,
     setupContext: ctx.accountController ? ctx.accountController.navContext : '',

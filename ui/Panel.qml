@@ -290,6 +290,7 @@ Item {
 
   WindowController {
     id: windowController
+    objectName: "windowController"
     service: root.service
     listController: listController
     conversationController: conversationController
@@ -363,18 +364,40 @@ Item {
           }
         }
 
-        Text {
-          id: errorLine
+        RowLayout {
+          id: errorBanner
+          objectName: "errorBanner"
           Layout.fillWidth: true
-          readonly property string message: conversationController.lastError || reactionsController.lastError
-            || deleteController.lastError || listController.lastError || dialogController.lastError || windowController.lastError
-          visible: errorLine.message.length > 0
-          text: errorLine.message
-          textFormat: Text.PlainText
-          elide: Text.ElideRight
-          color: Color.urgent
-          font.family: Theme.font.family
-          font.pixelSize: Theme.font.bodySmall
+          visible: windowController.errorBannerText.length > 0
+          spacing: Theme.spacing.sm
+
+          Text {
+            id: errorLine
+            objectName: "errorLine"
+            Layout.fillWidth: true
+            text: windowController.errorBannerText
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            color: Color.urgent
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.bodySmall
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: windowController.dismissErrorBanner()
+            }
+          }
+
+          Ui.PanelActionButton {
+            id: dismissErrorButton
+            objectName: "dismissErrorButton"
+            iconText: "×"
+            tooltipText: "Dismiss"
+            foreground: Color.urgent
+            focusable: true
+            onClicked: windowController.dismissErrorBanner()
+          }
         }
 
         MessengerLayout {

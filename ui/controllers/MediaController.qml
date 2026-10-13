@@ -100,6 +100,7 @@ QtObject {
 
       timeline.setMediaFailed(id, false, "");
       timeline.setMediaPath(id, result.path);
+      timeline.lastError = "";
       done(result.path);
     });
   }

@@ -198,6 +198,14 @@ Item {
     if (root.listController) root.listController.selectId(conversation.id);
   }
 
+  // clearError dismisses the most recent request failure. lastError is a
+  // binding onto timeline.lastError, so it cannot be assigned directly
+  // without breaking that binding; this is the one place that clears the
+  // real source instead.
+  function clearError(): void {
+    timeline.lastError = "";
+  }
+
   // closeIfOpen closes the open conversation if it is id: used when the
   // list reports id just folded out of the standard view, so the pane
   // goes back to the empty state instead of following the list's own
@@ -253,6 +261,7 @@ Item {
 
     root.service.request("messages.send", params, function(error, result) {
       if (error) { timeline.lastError = Rpc.errorText(error); return; }
+      timeline.lastError = "";
       root.applyMessage(result);
     });
     if (root.composer) {
@@ -295,6 +304,7 @@ Item {
 
     root.service.request("messages.retry", { messageId: id }, function(error, result) {
       if (error) { timeline.lastError = Rpc.errorText(error); return; }
+      timeline.lastError = "";
       root.applyMessage(result);
     });
   }

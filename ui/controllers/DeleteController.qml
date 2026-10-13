@@ -123,7 +123,7 @@ QtObject {
     root.service.request("messages.delete",
       { conversationId: conversationId, messageIds: [messageId], forEveryone: forEveryone },
       function(error) {
-        if (error) root.lastError = Rpc.errorText(error);
+        root.lastError = error ? Rpc.errorText(error) : "";
       });
   }
 }

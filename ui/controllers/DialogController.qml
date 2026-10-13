@@ -84,6 +84,7 @@ QtObject {
   function openConversation(accountId: string, contactId: string): void {
     root.service.request("conversations.open", { accountId: accountId, contactId: contactId }, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
       root.open = false;
       root.opened(result);
     });
@@ -137,6 +138,7 @@ QtObject {
     root.service.request("contacts.list", params, function(error, result) {
       if (!accountCurrent() || !queryCurrent()) return;
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
       root.contacts = result ?? [];
       root.currentIndex = root.contacts.length > 0 ? 0 : -1;
     });

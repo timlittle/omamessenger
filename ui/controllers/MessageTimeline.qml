@@ -37,12 +37,16 @@ Item {
   signal initialLoaded()
 
   // reset clears the loaded messages, for a conversation about to load.
+  // Opening a conversation is a fresh start, so any error left over from
+  // whatever was open before goes with it, rather than lingering over
+  // this one until something else happens to clear it.
   function reset(): void {
     messagesModel.clear();
     root.hasMore = true;
     root.historyUnavailable = false;
     root.annotations = [];
     root._loadingMore = false;
+    root.lastError = "";
   }
 
   // loadInitial replaces the model with conversationId's newest page.
@@ -56,6 +60,7 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       if (!guard()) return;
 
+      root.lastError = "";
       root.hasMore = result.hasMore;
       root.historyUnavailable = !!result.historyUnavailable;
       root._appendOlder(result.messages, isGroup);
@@ -79,6 +84,7 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       if (!guard()) return;
 
+      root.lastError = "";
       root.hasMore = result.hasMore;
       root.historyUnavailable = !!result.historyUnavailable;
       root._appendOlder(result.messages, isGroup);
