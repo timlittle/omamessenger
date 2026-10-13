@@ -128,6 +128,24 @@ func phoneFormOf(ctx context.Context, dev device, jid types.JID) types.JID {
 	return jid
 }
 
+// lidFormOf is jid's own LID form when whatsmeow's LID store already
+// maps it to one, or jid unchanged otherwise: the opposite direction
+// from phoneFormOf. sendChatReadState (markread.go) needs this for a
+// chat first reported by phone JID (chatID keeps whichever form a chat
+// was first seen under, see its own doc comment), before whatsmeow
+// learned its LID: once an account has migrated to LID addressing, its
+// "mark chat as read" app-state patch must name the chat by that LID,
+// not its phone JID, or WhatsApp's server rejects the patch every time
+// even though a plain read receipt to the same phone JID still goes
+// through (see docs/decisions.md).
+func lidFormOf(ctx context.Context, dev device, jid types.JID) types.JID {
+	if alt := dev.altJID(ctx, jid); alt.Server == types.HiddenUserServer {
+		return alt
+	}
+
+	return jid
+}
+
 // jidFromRemoteID parses a stored remote id back into the JID whatsmeow
 // takes, accepting only a real user on a server, in the exact canonical
 // string remoteID produces. Like the Telegram connector's inputPeer,

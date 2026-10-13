@@ -14,10 +14,12 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 
@@ -110,13 +112,15 @@ const (
 )
 
 // chatPatchResult is what sendChatReadState's app-state mutation
-// achieved, for logMarkRead's diagnostic line: its outcome, and whether
-// the message it named had a real timestamp rather than the zero value
-// an account paired before keys.go's timestamp column existed would
-// still carry for a message never seen again since.
+// achieved, for logMarkRead's diagnostic line: its outcome, whether the
+// message it named had a real timestamp rather than the zero value an
+// account paired before keys.go's timestamp column existed would still
+// carry for a message never seen again since, and, when it failed, the
+// safe category of why (see chatPatchFailureClass).
 type chatPatchResult struct {
 	status       string
 	hasTimestamp bool
+	failureClass string
 }
 
 // sendChatReadState sends the app-state mutation that marks chat fully
@@ -138,23 +142,52 @@ func sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat 
 
 	result := chatPatchResult{status: chatPatchSent, hasTimestamp: key.timestamp != 0}
 
-	patch := appstate.BuildMarkChatAsRead(chat, true, time.UnixMilli(key.timestamp), targetKey(chat, key, messageID))
+	// A chat first reported by phone JID, before whatsmeow learned its
+	// LID, must still be addressed by that LID here once an account has
+	// migrated to LID addressing, or WhatsApp's server rejects the patch
+	// (see lidFormOf's own doc comment).
+	target := lidFormOf(ctx, dev, chat)
+	patch := appstate.BuildMarkChatAsRead(target, true, time.UnixMilli(key.timestamp), targetKey(target, key, messageID))
 	if err := dev.sendAppState(ctx, patch); err != nil {
 		result.status = chatPatchFailed
+		result.failureClass = chatPatchFailureClass(err)
 	}
 
 	return result
 }
 
+// chatPatchFailureClass categorizes why sending the chat-read app-state
+// patch failed, safe to log alongside chat_patch=failed: "key" when
+// whatsmeow has no app-state key to encrypt it with yet, which happens
+// when the account has not finished its post-pairing app-state sync;
+// "rejected" when WhatsApp's own server reported the patch invalid;
+// "timeout" for a context that ran out waiting on either; and "other"
+// for anything else, such as a plain network failure. Never the error's
+// own text, which whatsmeow does not guarantee free of a JID or similar
+// detail.
+func chatPatchFailureClass(err error) string {
+	switch {
+	case errors.Is(err, appstate.ErrKeyNotFound):
+		return "key"
+	case errors.Is(err, whatsmeow.ErrAppStateUpdate):
+		return "rejected"
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
+		return "timeout"
+	default:
+		return "other"
+	}
+}
+
 // logMarkRead reports one MarkRead call's shape: how many read receipts
 // it sent and across how many senders, whether the app-state mutation
 // marking the whole chat read was sent, failed, or never attempted at
-// all (see chatPatchResult), and whether the message that mutation
+// all (see chatPatchResult), the safe category of why when it failed
+// (see chatPatchFailureClass), and whether the message that mutation
 // named carried a real timestamp. A report of "still shows unread on
 // the phone" can be checked against this: receipts and senders both 0
 // means nothing was unread by this connector's own reckoning in the
 // first place, not that sending failed.
 func logMarkRead(receipts, senders int, patch chatPatchResult) {
-	log.Printf("whatsapp: mark read (receipts=%d, senders=%d, chat_patch=%s, has_timestamp=%v)",
-		receipts, senders, patch.status, patch.hasTimestamp)
+	log.Printf("whatsapp: mark read (receipts=%d, senders=%d, chat_patch=%s, chat_patch_error=%s, has_timestamp=%v)",
+		receipts, senders, patch.status, patch.failureClass, patch.hasTimestamp)
 }

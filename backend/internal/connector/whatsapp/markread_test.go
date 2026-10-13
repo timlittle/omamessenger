@@ -9,11 +9,15 @@ package whatsapp
 // is what makes it still work right after a restart or a re-pair.
 
 import (
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/types"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -274,6 +278,127 @@ func TestSendChatReadState_ReportsNoTimestampForAPreMigrationRow(t *testing.T) {
 	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
 	if got.status != chatPatchSent || got.hasTimestamp {
 		t.Errorf("sendChatReadState = %+v, want it sent with hasTimestamp false", got)
+	}
+}
+
+// TestSendChatReadState_AddressesTheMigratedChatByItsLID confirms a
+// chat first known by its phone JID, once whatsmeow's own LID store
+// has since learned that chat's LID, gets its "mark chat as read"
+// app-state patch addressed by that LID instead: a real account showed
+// WhatsApp's server reject this patch every single time while the
+// chat's own phone-JID address was used, the symptom lidFormOf (see
+// normalize.go) exists to fix.
+func TestSendChatReadState_AddressesTheMigratedChatByItsLID(t *testing.T) {
+	t.Parallel()
+
+	lid := types.NewJID("98765432109", types.HiddenUserServer)
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice()
+	dev.lidPhones = map[string]types.JID{lid.String(): directPeer}
+
+	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	if got.status != chatPatchSent {
+		t.Fatalf("sendChatReadState = %+v, want it sent", got)
+	}
+	if len(dev.appStatePatches) != 1 {
+		t.Fatalf("appStatePatches = %d, want 1", len(dev.appStatePatches))
+	}
+
+	mutation := dev.appStatePatches[0].Mutations[0]
+	if index := mutation.Index; len(index) != 2 || index[1] != lid.String() {
+		t.Errorf("index = %v, want the chat addressed by its LID %s", index, lid.String())
+	}
+
+	action := mutation.Value.GetMarkChatAsReadAction()
+	messages := action.GetMessageRange().GetMessages()
+	if len(messages) != 1 || messages[0].GetKey().GetRemoteJID() != lid.String() {
+		t.Errorf("message key remote JID = %+v, want the chat's LID %s", messages, lid.String())
+	}
+}
+
+// TestSendChatReadState_KeepsThePhoneJIDWhenNoLIDIsKnown confirms a
+// chat whatsmeow's LID store has no mapping for at all keeps being
+// addressed exactly as it always was, so an account that has not
+// migrated to LID addressing sees no change in behaviour.
+func TestSendChatReadState_KeepsThePhoneJIDWhenNoLIDIsKnown(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice() // lidPhones deliberately left unset
+
+	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	if got.status != chatPatchSent {
+		t.Fatalf("sendChatReadState = %+v, want it sent", got)
+	}
+
+	mutation := dev.appStatePatches[0].Mutations[0]
+	if index := mutation.Index; len(index) != 2 || index[1] != directChat.RemoteID {
+		t.Errorf("index = %v, want the chat still addressed by its phone JID %s", index, directChat.RemoteID)
+	}
+}
+
+// TestChatPatchFailureClass_SortsEveryAppStateErrorIntoItsSafeCategory
+// confirms the category logMarkRead reports for a failed chat-read
+// patch never reflects anything beyond these four safe words.
+func TestChatPatchFailureClass_SortsEveryAppStateErrorIntoItsSafeCategory(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		err  error
+		want string
+	}{
+		"no app-state key yet":   {appstate.ErrKeyNotFound, "key"},
+		"the server rejected it": {whatsmeow.ErrAppStateUpdate, "rejected"},
+		"a timed-out context":    {context.DeadlineExceeded, "timeout"},
+		"a cancelled context":    {context.Canceled, "timeout"},
+		"a plain network error":  {errors.New("dial tcp: connection refused"), "other"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := chatPatchFailureClass(tt.err); got != tt.want {
+				t.Errorf("chatPatchFailureClass(%v) = %q, want %q", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMarkRead_LogsTheChatPatchFailureCategory confirms a failed
+// app-state patch's diagnostic line names why, not just that it failed,
+// so a report of "still shows unread on the phone" can be checked
+// against which of the known causes it actually was. Not run with
+// t.Parallel so capturing the log output stays reliable.
+func TestMarkRead_LogsTheChatPatchFailureCategory(t *testing.T) {
+	buf := captureLog(t)
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice()
+	dev.appStateErr = appstate.ErrKeyNotFound
+	var sink connectortest.Sink
+	c := newConnectorWithMedia(dev, &sink, media)
+
+	conv := directChat
+	conv.Unread = 1
+	if err := c.MarkRead(t.Context(), conv); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := buf.String(); !strings.Contains(got, "chat_patch=failed, chat_patch_error=key") {
+		t.Errorf("log output = %q, want the chat_patch_error category included", got)
 	}
 }
 
