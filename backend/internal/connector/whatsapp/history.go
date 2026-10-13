@@ -187,10 +187,20 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	}
 	m = c.improvedSenderName(m)
 
-	saveMediaRef(ctx, target.media, target.convRemoteID, m.RemoteID, content)
+	// content is still whichever ephemeral, view-once or other wrapper
+	// WhatsApp stored it in (see unwrap's own doc comment: a live
+	// message is already unwrapped by whatsmeow's own event dispatch
+	// before this file ever sees it, but a history sync's
+	// WebMessageInfo never goes through that). historyMessage already
+	// unwraps its own copy to read m's text and media, so the reference
+	// and poll this saves must be read from the same unwrapped content,
+	// or a wrapped photo or video's download reference is silently
+	// never saved at all.
+	unwrapped := unwrap(content)
+	saveMediaRef(ctx, target.media, target.convRemoteID, m.RemoteID, unwrapped)
 	info := historyMessageInfo(target.chat, hm.GetMessage())
 	saveMessageKey(ctx, target.media, target.convRemoteID, m.RemoteID, messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing, timestamp: m.Created})
-	savePoll(ctx, target.media, target.convRemoteID, m.RemoteID, content)
+	savePoll(ctx, target.media, target.convRemoteID, m.RemoteID, unwrapped)
 	sink.History(ctx, c.account.ID, target.convRemoteID, m)
 
 	return true

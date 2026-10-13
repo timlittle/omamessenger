@@ -60,6 +60,16 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 			true,
 		},
 		{
+			"video note (ptv)",
+			&waE2E.Message{PtvMessage: &waE2E.VideoMessage{
+				Width: u32(480), Height: u32(480), Seconds: u32(8), FileLength: u64(1536), Mimetype: strPtr("video/mp4"),
+				DirectPath: strPtr("/v/ptv"), MediaKey: []byte("key"),
+			}},
+			&domain.Media{Kind: domain.MediaVideo, Width: 480, Height: 480, Duration: 8, Size: 1536},
+			mediaRef{Kind: mediaKindVideo, DirectPath: "/v/ptv", MediaKey: []byte("key"), FileLength: 1536, Mimetype: "video/mp4"},
+			true,
+		},
+		{
 			"voice note",
 			&waE2E.Message{AudioMessage: &waE2E.AudioMessage{
 				PTT: boolPtr(true), Seconds: u32(12), FileLength: u64(512), Mimetype: strPtr("audio/ogg"),

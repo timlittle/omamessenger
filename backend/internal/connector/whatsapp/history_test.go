@@ -412,6 +412,47 @@ func TestHandleHistorySync_PersistsAMessagesMediaReference(t *testing.T) {
 	}
 }
 
+// TestHandleHistorySync_PersistsAMediaReferenceForADisappearingMessage
+// confirms a photo sent in a chat with disappearing messages on, which
+// WhatsApp stores wrapped in waE2E.EphemeralMessage, still gets its
+// download reference saved. A live message already arrives unwrapped
+// (whatsmeow's own event dispatch peels this before a connector ever
+// sees it, see normalize.go's unwrap), but a history sync's
+// WebMessageInfo never goes through that: before this test's fix,
+// syncMessage saved the wrapper itself, which carries no image field of
+// its own, so the reference was silently never saved and media.fetch
+// later failed with domain.ErrNotFound.
+func TestHandleHistorySync_PersistsAMediaReferenceForADisappearingMessage(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+
+	hm := &waHistorySync.HistorySyncMsg{Message: &waWeb.WebMessageInfo{
+		Key: &waCommon.MessageKey{ID: strPtr("H1")},
+		Message: &waE2E.Message{EphemeralMessage: &waE2E.FutureProofMessage{
+			Message: &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+				DirectPath: strPtr("/v/abc"), MediaKey: []byte{1}, FileSHA256: []byte{2}, FileEncSHA256: []byte{3},
+				FileLength: u64(99), Mimetype: strPtr("image/jpeg"),
+			}},
+		}},
+		MessageTimestamp: u64(1),
+	}}
+	conv := &waHistorySync.Conversation{ID: strPtr("15551234567@s.whatsapp.net"), Name: strPtr("Nadia"), Messages: []*waHistorySync.HistorySyncMsg{hm}}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
+
+	ref, ok, err := media.get(t.Context(), "15551234567@s.whatsapp.net", "H1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("media reference was not saved for a disappearing message")
+	}
+	want := mediaRef{Kind: mediaKindImage, DirectPath: "/v/abc", MediaKey: []byte{1}, FileSHA256: []byte{2}, FileEncSHA256: []byte{3}, FileLength: 99, Mimetype: "image/jpeg"}
+	if !reflect.DeepEqual(ref, want) {
+		t.Errorf("media reference = %+v, want %+v", ref, want)
+	}
+}
+
 func TestHandleHistorySync_DropsAReactionFromHistory(t *testing.T) {
 	t.Parallel()
 

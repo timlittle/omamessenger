@@ -202,7 +202,7 @@ func logPhoneResend() {
 // "[Message]" is content this connector has never been taught to show.
 var recognizedContentFields = map[string]bool{
 	"conversation": true, "extendedTextMessage": true, "imageMessage": true,
-	"videoMessage": true, "audioMessage": true, "documentMessage": true,
+	"videoMessage": true, "ptvMessage": true, "audioMessage": true, "documentMessage": true,
 	"stickerMessage": true, "contactMessage": true, "contactsArrayMessage": true,
 	"locationMessage": true, "liveLocationMessage": true,
 	"groupInviteMessage": true, "stickerPackMessage": true,

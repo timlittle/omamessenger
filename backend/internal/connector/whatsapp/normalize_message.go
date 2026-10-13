@@ -232,6 +232,8 @@ func contextInfo(msg *waE2E.Message) *waE2E.ContextInfo {
 		return msg.GetImageMessage().GetContextInfo()
 	case msg.GetVideoMessage() != nil:
 		return msg.GetVideoMessage().GetContextInfo()
+	case msg.GetPtvMessage() != nil:
+		return msg.GetPtvMessage().GetContextInfo()
 	case msg.GetAudioMessage() != nil:
 		return msg.GetAudioMessage().GetContextInfo()
 	case msg.GetDocumentMessage() != nil:
@@ -379,6 +381,8 @@ func mediaCaption(msg *waE2E.Message) string {
 		return msg.GetImageMessage().GetCaption()
 	case msg.GetVideoMessage() != nil:
 		return msg.GetVideoMessage().GetCaption()
+	case msg.GetPtvMessage() != nil:
+		return msg.GetPtvMessage().GetCaption()
 	case msg.GetDocumentMessage() != nil:
 		return msg.GetDocumentMessage().GetCaption()
 	default:
@@ -400,7 +404,7 @@ func mediaPlaceholder(msg *waE2E.Message) string {
 	switch {
 	case msg.GetImageMessage() != nil:
 		return "[Photo]"
-	case msg.GetVideoMessage() != nil:
+	case msg.GetVideoMessage() != nil, msg.GetPtvMessage() != nil:
 		return "[Video]"
 	case msg.GetAudioMessage() != nil:
 		return audioPlaceholder(msg.GetAudioMessage())

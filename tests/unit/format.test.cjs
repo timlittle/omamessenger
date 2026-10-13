@@ -430,6 +430,27 @@ for (const [reason, want] of mediaFailureReasonCases) {
   });
 }
 
+const mediaUnavailableMessageCases = [
+  ['photo', 'not-found', 'This photo is no longer available.'],
+  ['video', 'not-found', 'This video is no longer available.'],
+  ['video', 'expired', 'This video is no longer on the phone.'],
+  ['photo', 'decrypt', 'This photo could not be verified.'],
+  ['voice', 'not-found', 'This voice message is no longer available.'],
+  ['sticker', 'not-found', 'This sticker is no longer available.'],
+  ['document', 'not-found', 'This file is no longer available.'],
+  ['video', 'download', ''],
+  ['video', 'cache', ''],
+  ['video', 'timeout', ''],
+  ['video', 'bogus', ''],
+  ['video', '', '']
+];
+
+for (const [kind, reason, want] of mediaUnavailableMessageCases) {
+  test(`mediaUnavailableMessage(${kind}, ${JSON.stringify(reason)}) is ${want || 'nothing'}`, () => {
+    assert.strictEqual(Format.mediaUnavailableMessage(kind, reason), want);
+  });
+}
+
 const snoozeUntilLabelCases = [
   ['shows just the clock time for later today', new Date(2026, 9, 6, 18, 0), '18:00'],
   ['names tomorrow', new Date(2026, 9, 7, 9, 0), 'Tomorrow 09:00'],

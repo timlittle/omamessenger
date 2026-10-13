@@ -38,6 +38,7 @@ func TestUnknownContentKind_RecognisesEveryKindThisConnectorHandles(t *testing.T
 		{"plain text", &waE2E.Message{Conversation: strPtr("hi")}},
 		{"extended text", &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strPtr("hi")}}},
 		{"image", &waE2E.Message{ImageMessage: &waE2E.ImageMessage{}}},
+		{"video note", &waE2E.Message{PtvMessage: &waE2E.VideoMessage{}}},
 		{"poll", &waE2E.Message{PollCreationMessage: &waE2E.PollCreationMessage{}}},
 		{"poll v5", &waE2E.Message{PollCreationMessageV5: &waE2E.PollCreationMessage{}}},
 		{"group invite", &waE2E.Message{GroupInviteMessage: &waE2E.GroupInviteMessage{}}},

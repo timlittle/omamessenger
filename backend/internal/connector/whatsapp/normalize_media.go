@@ -88,6 +88,12 @@ func mediaAndRef(msg *waE2E.Message) (*domain.Media, mediaRef, bool) {
 		return imageMedia(msg.GetImageMessage())
 	case msg.GetVideoMessage() != nil:
 		return videoMedia(msg.GetVideoMessage())
+	case msg.GetPtvMessage() != nil:
+		// A video note ("round" video message) is WhatsApp's own
+		// VideoMessage with a different field name for its wrapper;
+		// nothing about how it is downloaded or shown differs from an
+		// ordinary video.
+		return videoMedia(msg.GetPtvMessage())
 	case msg.GetAudioMessage() != nil:
 		return audioMedia(msg.GetAudioMessage())
 	case msg.GetDocumentMessage() != nil:

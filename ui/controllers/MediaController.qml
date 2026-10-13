@@ -1,4 +1,5 @@
 import QtQuick
+import "../lib/Format.js" as Format
 import "../lib/Media.js" as Media
 import "../lib/Rpc.js" as Rpc
 
@@ -73,9 +74,13 @@ QtObject {
   // that a failed, silent auto-fetch would otherwise leave forever, and
   // always logged to the console with its code and safe reason
   // category, so a failed fetch is never silent even when nothing asked
-  // to see its error text. The photo viewer reuses this rather than
-  // asking the helper itself, so there is one place that tracks an
-  // in-flight download.
+  // to see its error text. A reason that means the file is truly gone
+  // (not found, expired or undecryptable) gets its own sentence naming
+  // the media's kind, such as "This video is no longer available.",
+  // rather than the generic "something went wrong" every other helper
+  // error shows. The photo viewer reuses this rather than asking the
+  // helper itself, so there is one place that tracks an in-flight
+  // download.
   function downloadMedia(timeline: var, id: string, report: bool, done: var): void {
     if (root._fetching[id]) return;
 
@@ -86,7 +91,10 @@ QtObject {
         const reason = Rpc.errorReason(error);
         console.warn("media.fetch failed for " + id + ": code=" + error.code + " reason=" + (reason || "unknown"));
         timeline.setMediaFailed(id, true, reason);
-        if (report) timeline.lastError = Rpc.errorText(error);
+        if (report) {
+          const kind = Media.kindFor(timeline.media(id));
+          timeline.lastError = Format.mediaUnavailableMessage(kind, reason) || Rpc.errorText(error);
+        }
         return;
       }
 

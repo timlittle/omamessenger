@@ -387,3 +387,33 @@ var MEDIA_FAILURE_REASONS = {
 function mediaFailureReason(reason) {
   return MEDIA_FAILURE_REASONS[reason] ?? '';
 }
+
+// MEDIA_KIND_NOUNS names the media a fetch failure happened for, in the
+// phrasing "This <noun> ...", with "file" as the safe catch-all for a
+// kind this map does not list.
+var MEDIA_KIND_NOUNS = { photo: 'photo', video: 'video', voice: 'voice message', sticker: 'sticker', file: 'file' };
+
+// MEDIA_UNAVAILABLE_ENDINGS are the media.fetch reason categories that
+// mean the file is truly gone, each as the sentence ending for
+// mediaUnavailableMessage. Any other reason (a connection, cache or
+// timeout problem) is worth retrying, so it keeps the helper's own
+// generic error text instead of claiming the media is gone for good.
+var MEDIA_UNAVAILABLE_ENDINGS = {
+  'not-found': 'is no longer available.',
+  expired: 'is no longer on the phone.',
+  decrypt: 'could not be verified.'
+};
+
+// mediaUnavailableMessage names what could not be fetched, such as
+// "This video is no longer available.", for a media.fetch reason that
+// means the file is truly gone, or "" for any other reason, so the
+// caller falls back to the helper's own generic error text instead.
+function mediaUnavailableMessage(kind, reason) {
+  const ending = MEDIA_UNAVAILABLE_ENDINGS[reason];
+  if (!ending) {
+    return '';
+  }
+
+  const noun = MEDIA_KIND_NOUNS[kind] ?? 'file';
+  return `This ${noun} ${ending}`;
+}
