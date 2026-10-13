@@ -14,6 +14,7 @@ Short clips of each feature are in [docs/demo.md](docs/demo.md).
 - Keyboard-first: every action has a shortcut, and **Ctrl+/** lists them all
 - Search across every conversation with **Ctrl+K**, and an unread view with **Ctrl+Shift+A**
 - Photos, video, files, voice notes, link previews, replies, reactions, polls and @-mentions
+- English spell check in the composer, with a picker for suggestions, adding a word, or ignoring it for the session
 - Pin, archive, hide and snooze conversations; failed sends retry themselves
 - Desktop notifications, and read receipts you can turn off
 - About 120 MB in use, against about 2 GB for Telegram Desktop and WhatsApp Web together ([benchmark](docs/BENCHMARK.md))

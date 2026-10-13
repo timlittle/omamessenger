@@ -1,8 +1,8 @@
 # Data and privacy
 
-The helper stores its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db` (accounts, chats and messages), `telegram/` (each account's session and API keys), `whatsapp/` (each account's session and the media references it needs to download photos and files later) and `media/` (cached photos and files), all `0600`, their directories `0700`.
+The helper stores its data in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`: `messages.db` (accounts, chats and messages), `telegram/` (each account's session and API keys), `whatsapp/` (each account's session and the media references it needs to download photos and files later), `media/` (cached photos and files) and `spelling/` (your personal spell-check dictionary), all `0600`, their directories `0700`.
 
-OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with your account, and Telegram can rate-limit, restrict or ban an account independent of anything OmaMessenger does. WhatsApp support uses an unofficial library ([whatsmeow](https://github.com/tulir/whatsmeow)) the same way, and WhatsApp may similarly restrict or ban an account for using an unofficial client. The helper connects only to the messaging services. It does not log credentials, session keys, phone numbers or message text.
+OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with your account, and Telegram can rate-limit, restrict or ban an account independent of anything OmaMessenger does. WhatsApp support uses an unofficial library ([whatsmeow](https://github.com/tulir/whatsmeow)) the same way, and WhatsApp may similarly restrict or ban an account for using an unofficial client. The helper connects only to the messaging services. It does not log credentials, session keys, phone numbers, message text or the words a spell check looks up.
 
 ## What OmaMessenger reads, writes and sends
 
@@ -12,6 +12,7 @@ OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with y
 | Telegram sessions and API keys | `$XDG_DATA_HOME/omamessenger/telegram/` | files `0600`, directory `0700` | signed-in Telegram accounts |
 | WhatsApp sessions and media references | `$XDG_DATA_HOME/omamessenger/whatsapp/` | files `0600`, directory `0700` | signed-in WhatsApp accounts |
 | Cached photos, video and files | `$XDG_DATA_HOME/omamessenger/media/` | files `0600`, directory `0700` | avoids re-downloading media already seen |
+| Your personal spell-check dictionary | `$XDG_DATA_HOME/omamessenger/spelling/` | files `0600`, directory `0700` | words added to the dictionary through the composer's spelling picker |
 | The installed helper binary | `$XDG_DATA_HOME/omamessenger/bin/` | executable, directory `0700` | the helper release pinned in `helper-version` |
 | Plugin source (this checkout) | `~/.config/omarchy/plugins/io.github.omamessenger/` | as installed, read-only at runtime | the QML UI and manifest Omarchy loads; no session or message data is ever written here |
 | Apps menu entry | `~/.local/share/applications/io.github.omamessenger.desktop` | `0644`, no secrets | lets Omarchy's menu and **SUPER+ALT+SPACE** open OmaMessenger |
@@ -25,3 +26,5 @@ WhatsApp chats show the recent history your phone syncs when you link the device
 Removing an account (**Remove an account** in the command palette) signs it out and deletes its session and messages from this computer. It does not touch your chat history on the service or on other devices.
 
 Turning off read receipts (**Toggle read receipts** in the command palette, or the plugin's own "Read receipts" setting) only ever affects what this account tells the service: a chat read here still clears its own badge locally, but Telegram's or WhatsApp's read receipt is never sent, so the sender, and this account's own other devices, keep seeing it as unread. A quiet "Read receipts off" label shows in the footer while it is on.
+
+Spell check runs entirely on this computer, against a dictionary bundled with the helper: the text you are composing never leaves it, and nothing about spell check reaches Telegram, WhatsApp or anywhere else. Turning it off in the plugin's "Spell check" setting releases the dictionary from memory until it is turned back on.
