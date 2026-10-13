@@ -27,10 +27,15 @@ const mediaRetryTimeout = 30 * time.Second
 
 // retryDownload asks the primary phone to re-upload req.ref's media
 // and, once it answers with a fresh path, downloads it once more. It
-// reports domain.ErrMediaExpired when the phone says the media is
-// gone, when it never answers in time, or when this run never
-// recorded the message's sender and so cannot ask at all (see keys.go).
-func (c *Connector) retryDownload(ctx context.Context, dev device, media *mediaStore, req fetchRequest) ([]byte, error) {
+// reports domain.ErrMediaExpired when the phone says the media is gone
+// or when it never answers in time. When this run never recorded the
+// message's sender, and so cannot even ask (see keys.go), cause - the
+// failure that sent downloadOrRetry here in the first place - is
+// reported instead, classified the same way it would have been without
+// any retry attempted: a stale link is still reported expired, but a
+// decrypt failure stays a decrypt failure rather than being reported as
+// if the primary phone had been asked and said the media was gone.
+func (c *Connector) retryDownload(ctx context.Context, dev device, media *mediaStore, req fetchRequest, cause error) ([]byte, error) {
 	chat, err := jidFromRemoteID(req.conv.RemoteID)
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp: media retry: %w", err)
@@ -41,7 +46,7 @@ func (c *Connector) retryDownload(ctx context.Context, dev device, media *mediaS
 		return nil, fmt.Errorf("whatsapp: media retry: %w", err)
 	}
 	if !found {
-		return nil, domain.ErrMediaExpired
+		return nil, retryUnavailableErr(cause)
 	}
 
 	info := retryMessageInfo(dev, chat, key, req.messageRemoteID)
@@ -68,6 +73,19 @@ func (c *Connector) retryDownload(ctx context.Context, dev device, media *mediaS
 
 	logDownloadFailed(err)
 	return nil, classifyDownloadErr(err)
+}
+
+// retryUnavailableErr reports what retryDownload could not even attempt
+// to recover: cause classified as a decrypt failure when that is why
+// downloadOrRetry sent it here, or domain.ErrMediaExpired otherwise, the
+// category a stale CDN link with nothing to retry it with has always
+// been reported as.
+func retryUnavailableErr(cause error) error {
+	if isDecryptFailure(cause) {
+		return classifyDownloadErr(cause)
+	}
+
+	return domain.ErrMediaExpired
 }
 
 // requestMediaRetry sends the retry receipt for info and waits for the

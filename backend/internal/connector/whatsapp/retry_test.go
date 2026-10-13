@@ -170,6 +170,109 @@ func TestFetchMedia_AcceptsAReuploadThatOnlyFailsThePlaintextDigest(t *testing.T
 	})
 }
 
+// TestFetchMedia_RetriesADecryptFailureThroughThePhone confirms a
+// worn-out hash or HMAC, exactly like an expired CDN link, sends one
+// retry receipt to the primary phone: WhatsApp's primary device can
+// re-encrypt a file when it answers a retry, so the fresh path it
+// comes back with can decrypt correctly even when the original one
+// never could.
+func TestFetchMedia_RetriesADecryptFailureThroughThePhone(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		key := testMediaKey(8)
+		dev, sink, c, media := connectedMediaFixture(t)
+		dev.downloadErrPaths = map[string]error{"/old": whatsmeow.ErrInvalidMediaHMAC}
+		dev.downloadData = []byte("re-keyed bytes")
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
+		defer unregister()
+
+		seedRetryMessage(t, media, "msg-1", key, "/old")
+
+		path := filepath.Join(t.TempDir(), "out")
+		done := make(chan error, 1)
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		synctest.Wait()
+
+		if len(dev.mediaRetryCalls) != 1 {
+			t.Fatalf("mediaRetryCalls = %d, want exactly one retry receipt sent for a decrypt failure", len(dev.mediaRetryCalls))
+		}
+
+		dev.fireEvent(mediaRetryEvent(t, key, "msg-1", &waMmsRetry.MediaRetryNotification{
+			Result: waMmsRetry.MediaRetryNotification_SUCCESS.Enum(), DirectPath: strPtr("/new"),
+		}))
+		synctest.Wait()
+
+		if err := <-done; err != nil {
+			t.Fatalf("FetchMedia = %v, want it to succeed once the phone answers with a path that decrypts", err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != "re-keyed bytes" {
+			t.Errorf("downloaded %q, %v, want the bytes fetched with the new path", got, err)
+		}
+	})
+}
+
+// TestFetchMedia_KeepsTheDecryptReasonWhenTheRetryStillWontDecrypt
+// confirms that when the primary phone's re-upload still fails the
+// same way, FetchMedia still reports domain.ErrMediaDecryptFailed, not
+// domain.ErrMediaExpired: the phone answered and offered a fresh path,
+// it is simply that path's bytes that still will not decrypt, which is
+// a different situation from the phone saying the media is gone.
+func TestFetchMedia_KeepsTheDecryptReasonWhenTheRetryStillWontDecrypt(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		key := testMediaKey(9)
+		dev, sink, c, media := connectedMediaFixture(t)
+		dev.downloadErr = whatsmeow.ErrInvalidMediaHMAC
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
+		defer unregister()
+
+		seedRetryMessage(t, media, "msg-1", key, "/old")
+
+		path := filepath.Join(t.TempDir(), "out")
+		done := make(chan error, 1)
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		synctest.Wait()
+
+		dev.fireEvent(mediaRetryEvent(t, key, "msg-1", &waMmsRetry.MediaRetryNotification{
+			Result: waMmsRetry.MediaRetryNotification_SUCCESS.Enum(), DirectPath: strPtr("/new"),
+		}))
+		synctest.Wait()
+
+		err := <-done
+		if !errors.Is(err, domain.ErrMediaDecryptFailed) {
+			t.Errorf("FetchMedia = %v, want domain.ErrMediaDecryptFailed when the retried download still won't decrypt", err)
+		}
+		if errors.Is(err, domain.ErrMediaExpired) {
+			t.Errorf("FetchMedia = %v, want it not reported as expired: the phone did answer", err)
+		}
+	})
+}
+
+// TestFetchMedia_ReportsDecryptFailureWithNoMessageKeyToRetryWith
+// confirms a decrypt failure for a message this run never recorded a
+// message key for (so retryDownload cannot even build a retry request)
+// still reports domain.ErrMediaDecryptFailed, the same as it would
+// have without this file's retry-on-decrypt change, rather than the
+// unrelated domain.ErrMediaExpired a stale link with nothing to retry
+// is reported as.
+func TestFetchMedia_ReportsDecryptFailureWithNoMessageKeyToRetryWith(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	dev.downloadErr = whatsmeow.ErrInvalidMediaHMAC
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
+		t.Fatal(err)
+	}
+
+	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"))
+	if !errors.Is(err, domain.ErrMediaDecryptFailed) {
+		t.Errorf("FetchMedia = %v, want domain.ErrMediaDecryptFailed", err)
+	}
+	if len(dev.mediaRetryCalls) != 0 {
+		t.Errorf("mediaRetryCalls = %d, want no retry receipt sent with no message key to build one from", len(dev.mediaRetryCalls))
+	}
+}
+
 // TestFetchMedia_ReportsExpiredWhenThePhoneSaysTheMediaIsGone confirms
 // a NOT_FOUND answer is reported as domain.ErrMediaExpired, the
 // category the UI shows as "no longer on the phone".

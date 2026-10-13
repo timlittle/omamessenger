@@ -75,11 +75,15 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 }
 
 // downloadOrRetry downloads ref once, and, when WhatsApp's CDN reports
-// the link has expired (see isExpiredDownload), asks the primary phone
-// to re-upload the media (see retry.go) and tries the download once
-// more with whatever new path it answers with. Any other failure is
-// returned as-is, with domain.ErrMediaDecryptFailed joined in for a
-// hash or HMAC mismatch.
+// the link has expired (see isExpiredDownload) or the file no longer
+// decrypts with the key or hash the message carried (see
+// isDecryptFailure), asks the primary phone to re-upload the media (see
+// retry.go) and tries the download once more with whatever new path it
+// answers with: a reference that looks permanently stale can still be
+// one WhatsApp's primary device re-encrypted on its last upload, which
+// only a fresh retry answer, not a second attempt at the same link, can
+// recover from. Any other failure is returned as-is, with
+// domain.ErrMediaDecryptFailed joined in for a hash or HMAC mismatch.
 func (c *Connector) downloadOrRetry(ctx context.Context, dev device, media *mediaStore, req fetchRequest) ([]byte, error) {
 	data, err := downloadOnce(ctx, dev, req.ref)
 	if err == nil {
@@ -92,11 +96,11 @@ func (c *Connector) downloadOrRetry(ctx context.Context, dev device, media *medi
 	}
 
 	logDownloadFailed(err)
-	if !isExpiredDownload(err) {
+	if !isExpiredDownload(err) && !isDecryptFailure(err) {
 		return nil, classifyDownloadErr(err)
 	}
 
-	return c.retryDownload(ctx, dev, media, req)
+	return c.retryDownload(ctx, dev, media, req, err)
 }
 
 // downloadOnce runs one bounded download attempt.
