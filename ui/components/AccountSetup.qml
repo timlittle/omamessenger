@@ -80,6 +80,13 @@ Item {
   anchors.fill: parent
   onStageChanged: Qt.callLater(root._focusStep)
   onVisibleChanged: if (root.visible) Qt.callLater(root._focusStep)
+  // Setup is only ever instantiated while open (see Overlays.qml, which
+  // destroys it on close instead of just hiding it, so its credential,
+  // phone, code and password fields cannot read the clipboard while
+  // hidden): onVisibleChanged above only fires on a later toggle, never
+  // for the value a binding already had when this object was created,
+  // so this is what actually focuses the first step's field.
+  Component.onCompleted: Qt.callLater(root._focusStep)
 
   Keys.onPressed: event => {
     if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true

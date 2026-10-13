@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import "../lib/Keymap.js" as Keymap
 
@@ -58,16 +59,23 @@ Item {
     root._refocusIfClosed(false);
   }
 
-  // Opening the new-chat dialog focuses its search field; closing it
-  // returns focus to the key area, the same as every other overlay below:
-  // without this, the search field keeps keyboard focus even once
-  // hidden, and nothing else ever reclaims it.
+  // Closing the new-chat dialog returns focus to the key area, the same
+  // as every other overlay below: without this, nothing else ever
+  // reclaims it. Opening it focuses its own search field, in
+  // NewChatDialog's own Component.onCompleted, since the dialog (and
+  // that field) exists only while open; see the Loader below.
   Connections {
     target: root.dialogController
-    function onOpenChanged() {
-      if (root.dialogController.open) dialog.focusSearch()
-      root._refocusIfClosed(root.dialogController.open)
-    }
+    function onOpenChanged() { root._refocusIfClosed(root.dialogController.open); }
+  }
+
+  // Returns focus to the key area once the command palette closes, for
+  // the same reason as the new-chat dialog above: the palette's own
+  // onOpenChanged cannot report that transition any more once it exists
+  // only while open (see the Loader below).
+  Connections {
+    target: root.windowController
+    function onPaletteOpenChanged() { root._refocusIfClosed(root.windowController.paletteOpen); }
   }
 
   ReactionPicker {
@@ -80,20 +88,31 @@ Item {
     onOpenChanged: root._refocusIfClosed(open)
   }
 
-  CommandPalette {
-    open: root.windowController.paletteOpen
-    placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation or search messages"
-      : root.windowController.paletteMode === "links" ? "Open which link?"
-      : root.windowController.paletteMode === "snoozeCustom" ? "e.g. 2h, 18:00, mon 9:00"
-      : "Type a command"
-    items: root.windowController.paletteItems
-    sectioned: root.windowController.paletteMode === "conversations"
-    currentIndex: root.windowController.paletteIndex
-    routeKey: root.routeKey
-    onQueryEdited: text => root.windowController.setPaletteQuery(text)
-    onAccepted: index => root.windowController.acceptPalette(index)
-    onCancelled: root.windowController.closePalette()
-    onOpenChanged: root._refocusIfClosed(open)
+  // Active only while the palette is open, so its search TextField is
+  // destroyed on close rather than merely hidden: a hidden-but-alive
+  // TextField still reads clipboard changes on supported Qt versions,
+  // with no size limit or deadline, which a maintainer flagged as a way
+  // to stall or exhaust the shared shell with a streaming clipboard
+  // offer before any paste ever happens.
+  Loader {
+    id: paletteLoader
+    anchors.fill: parent
+    active: root.windowController.paletteOpen
+
+    sourceComponent: CommandPalette {
+      open: true
+      placeholder: root.windowController.paletteMode === "conversations" ? "Jump to a conversation or search messages"
+        : root.windowController.paletteMode === "links" ? "Open which link?"
+        : root.windowController.paletteMode === "snoozeCustom" ? "e.g. 2h, 18:00, mon 9:00"
+        : "Type a command"
+      items: root.windowController.paletteItems
+      sectioned: root.windowController.paletteMode === "conversations"
+      currentIndex: root.windowController.paletteIndex
+      routeKey: root.routeKey
+      onQueryEdited: text => root.windowController.setPaletteQuery(text)
+      onAccepted: index => root.windowController.acceptPalette(index)
+      onCancelled: root.windowController.closePalette()
+    }
   }
 
   DoctorReport {
@@ -160,27 +179,36 @@ Item {
     }
   }
 
-  // Tests may build the layout without an account controller.
-  AccountSetup {
-    visible: root.accountController?.open ?? false
+  // Active only while setup is open, so its credential, phone, code and
+  // password fields are destroyed on close rather than merely hidden;
+  // see the palette's own Loader above for why. AccountController keeps
+  // the step itself (stage, serviceName, …), so closing and reopening
+  // still resumes wherever a sign-in in progress left off. Tests may
+  // build the layout without an account controller.
+  Loader {
+    id: accountSetupLoader
+    anchors.fill: parent
+    active: root.accountController?.open ?? false
 
-    stage: root.accountController?.stage ?? "credentials"
-    services: root.service ? root.service.services : []
-    serviceName: root.accountController?.serviceName ?? "Telegram"
-    chooseIndex: root.accountController?.chooseIndex ?? -1
-    qr: root.accountController?.qr ?? ""
-    hint: root.accountController?.hint ?? ""
-    passwordHint: root.accountController?.passwordHint ?? ""
-    error: root.accountController?.lastError ?? ""
-    busy: root.accountController?.busy ?? false
-    routeKey: root.routeKey
+    sourceComponent: AccountSetup {
+      stage: root.accountController?.stage ?? "credentials"
+      services: root.service ? root.service.services : []
+      serviceName: root.accountController?.serviceName ?? "Telegram"
+      chooseIndex: root.accountController?.chooseIndex ?? -1
+      qr: root.accountController?.qr ?? ""
+      hint: root.accountController?.hint ?? ""
+      passwordHint: root.accountController?.passwordHint ?? ""
+      error: root.accountController?.lastError ?? ""
+      busy: root.accountController?.busy ?? false
+      routeKey: root.routeKey
 
-    onServiceChosen: serviceId => root.accountController.chooseService(serviceId)
-    onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)
-    onPhoneRequested: root.accountController.usePhone()
-    onQrRequested: root.accountController.useQr()
-    onAnswered: value => root.accountController.answer(value)
-    onCancelled: root.accountController.cancel()
+      onServiceChosen: serviceId => root.accountController.chooseService(serviceId)
+      onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)
+      onPhoneRequested: root.accountController.usePhone()
+      onQrRequested: root.accountController.useQr()
+      onAnswered: value => root.accountController.answer(value)
+      onCancelled: root.accountController.cancel()
+    }
   }
 
   RemoveAccount {
@@ -206,23 +234,29 @@ Item {
     function onRemovingChanged() { root._refocusIfSetupClosed(); }
   }
 
-  NewChatDialog {
-    objectName: "newChatDialog"
-    id: dialog
+  // Active only while the dialog is open, so its contact search
+  // TextField is destroyed on close rather than merely hidden; see the
+  // palette's own Loader above for why.
+  Loader {
+    id: newChatDialogLoader
     anchors.fill: parent
-    visible: root.dialogController.open
+    active: root.dialogController.open
 
-    accounts: root.service ? root.service.accounts : []
-    accountId: root.dialogController.accountId
-    knownServices: root.service ? root.service.services : []
-    query: root.dialogController.query
-    contacts: root.dialogController.contacts
-    currentIndex: root.dialogController.currentIndex
-    routeKey: root.routeKey
+    sourceComponent: NewChatDialog {
+      objectName: "newChatDialog"
 
-    onAccountChanged: id => root.dialogController.setAccount(id)
-    onQueryEdited: text => root.dialogController.setQuery(text)
-    onAccepted: (accountId, contactId) => root.dialogController.openConversation(accountId, contactId)
-    onCancelled: root.dialogController.close()
+      accounts: root.service ? root.service.accounts : []
+      accountId: root.dialogController.accountId
+      knownServices: root.service ? root.service.services : []
+      query: root.dialogController.query
+      contacts: root.dialogController.contacts
+      currentIndex: root.dialogController.currentIndex
+      routeKey: root.routeKey
+
+      onAccountChanged: id => root.dialogController.setAccount(id)
+      onQueryEdited: text => root.dialogController.setQuery(text)
+      onAccepted: (accountId, contactId) => root.dialogController.openConversation(accountId, contactId)
+      onCancelled: root.dialogController.close()
+    }
   }
 }

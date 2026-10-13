@@ -657,20 +657,22 @@ ShellRoot {
   // Enter: fuzzy-matching and ranking the command is Palette.js's own job
   // (see tests/unit/palette.test.cjs), so this only checks the keystrokes
   // reach the command palette and running one opens the right dialog.
+  // Both the palette and the dialog are destroyed outright on close (see
+  // Overlays.qml), so "closed" below means gone from Check.find, not a
+  // stale reference reading back not visible.
   function checkCommandPaletteOpensNewChat(): var {
     t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
-    const palette = Check.find(root.panel(), "commandPalette");
-    if (!palette || !palette.visible) return Check.fail("Ctrl+/ did not open the command palette");
+    if (!Check.find(root.panel(), "commandPalette")?.visible) return Check.fail("Ctrl+/ did not open the command palette");
 
     for (const ch of "new mes") t.keyClick(ch);
     t.keyClick(Qt.Key_Return);
 
+    if (Check.find(root.panel(), "commandPalette")) return Check.fail("running a command left the palette open");
     const dialog = Check.find(root.panel(), "newChatDialog");
-    if (palette.visible) return Check.fail("running a command left the palette open");
     if (!dialog || !dialog.visible) return Check.fail("running \"New message\" from the command palette did not open the new-chat dialog");
 
     t.keyClick(Qt.Key_Escape);
-    if (dialog.visible) return Check.fail("Escape did not close the new-chat dialog");
+    if (Check.find(root.panel(), "newChatDialog")) return Check.fail("Escape did not close the new-chat dialog");
     return true;
   }
 

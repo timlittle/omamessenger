@@ -50,6 +50,13 @@ Item {
     field.text = "";
     root.focusInput();
   }
+  // The palette is only ever instantiated while open (see Overlays.qml,
+  // which destroys it on close instead of just hiding it, so its field
+  // cannot read the clipboard while hidden): onOpenChanged above only
+  // fires on a later toggle, never for the value a binding already had
+  // when this object was created, so this is what actually focuses the
+  // field the first time.
+  Component.onCompleted: if (root.open) root.focusInput();
 
   // Near the top of the window, like Telescope or Alfred, so the list has
   // room to grow downwards.

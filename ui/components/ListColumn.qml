@@ -64,6 +64,7 @@ ColumnLayout {
 
   Ui.TextField {
     id: searchField
+    objectName: "searchField"
     Layout.fillWidth: true
     placeholderText: "Search"
     text: root.query

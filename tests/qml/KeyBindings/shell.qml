@@ -133,6 +133,10 @@ ShellRoot {
 
   // checkShowKeyBindingsCommand runs "Show key bindings" from the palette
   // and checks the listing names the override and both reported errors.
+  // Running the command closes this palette instance and opens a fresh
+  // one in "keyBindings" mode within the same step (see Overlays.qml and
+  // WindowController.acceptPalette), so the listing is read from a new
+  // Check.find rather than the reference captured before Enter.
   function checkShowKeyBindingsCommand(): void {
     t.keyClick(Qt.Key_P, Qt.ControlModifier | Qt.AltModifier);
     for (const ch of "show key bind") t.keyClick(ch);
@@ -142,13 +146,16 @@ ShellRoot {
       return Check.fail("typing \"show key bind\" listed " + JSON.stringify(palette ? palette.items.map((i) => i.label) : []));
 
     t.keyClick(Qt.Key_Return);
-    const labels = palette.items.map((i) => i.label);
+    const reopened = Check.find(panel, "commandPalette");
+    if (!reopened) return Check.fail("running \"Show key bindings\" did not reopen the palette with the bindings list");
+
+    const labels = reopened.items.map((i) => i.label);
     if (!labels.some((l) => l.indexOf("Error (line") === 0))
       return Check.fail("Show key bindings did not list the fixture's errors: " + JSON.stringify(labels));
     if (!labels.includes("Command palette"))
       return Check.fail("Show key bindings did not list Command palette: " + JSON.stringify(labels));
 
-    const commandRow = palette.items.find((i) => i.label === "Command palette");
+    const commandRow = reopened.items.find((i) => i.label === "Command palette");
     if (commandRow.detail !== "custom" || commandRow.keys !== "Ctrl+Alt+P")
       return Check.fail("Show key bindings did not mark Command palette as custom with its new key: "
         + JSON.stringify(commandRow));
@@ -187,14 +194,16 @@ ShellRoot {
   }
 
   // checkReloadedKeyWorks checks the previous override key stopped
-  // working and the file's new key opens the palette instead.
+  // working and the file's new key opens the palette instead. The
+  // palette is destroyed on close (see Overlays.qml), so Check.find
+  // returns null rather than a hidden instance once it is gone.
   function checkReloadedKeyWorks(): void {
     t.keyClick(Qt.Key_P, Qt.ControlModifier | Qt.AltModifier);
-    if (Check.find(panel, "commandPalette").visible)
+    if (Check.find(panel, "commandPalette"))
       return Check.fail("the old override key (Ctrl+Alt+P) still opened the palette after the file changed");
 
     t.keyClick(Qt.Key_O, Qt.ControlModifier | Qt.AltModifier);
-    if (!Check.find(panel, "commandPalette").visible)
+    if (!Check.find(panel, "commandPalette")?.visible)
       return Check.fail("the file's new key (Ctrl+Alt+O) did not open the palette after reloading");
 
     console.log("PASS KeyBindings");

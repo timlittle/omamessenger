@@ -75,6 +75,12 @@ Item {
   }
 
   anchors.fill: parent
+  // The dialog is only ever instantiated while open (see Overlays.qml,
+  // which destroys it on close instead of just hiding it, so its search
+  // field cannot read the clipboard while hidden), so this is what
+  // focuses the field, rather than a caller reaching in from outside
+  // once it exists.
+  Component.onCompleted: root.focusSearch()
 
   ModalCard {
     id: modal
@@ -111,6 +117,7 @@ Item {
 
       Ui.TextField {
         id: searchField
+        objectName: "newChatSearchField"
         Layout.fillWidth: true
         placeholderText: "Search contacts"
         text: root.query

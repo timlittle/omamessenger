@@ -133,14 +133,16 @@ ShellRoot {
   }
 
   // checkPalette opens the command palette with Ctrl+/, closes it with
-  // Escape, and checks a global shortcut still works.
+  // Escape, and checks a global shortcut still works. Closing it
+  // destroys the palette outright (see Overlays.qml), so the proof it
+  // closed is that it can no longer be found at all, not that a stale
+  // reference to it reads back not visible.
   function checkPalette(): var {
     t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
-    const palette = Check.find(root.panel(), "commandPalette");
-    if (!palette || !palette.visible) return Check.fail("Ctrl+/ did not open the command palette");
+    if (!Check.find(root.panel(), "commandPalette")?.visible) return Check.fail("Ctrl+/ did not open the command palette");
 
     t.keyClick(Qt.Key_Escape);
-    if (palette.visible) return Check.fail("Escape did not close the command palette");
+    if (Check.find(root.panel(), "commandPalette")) return Check.fail("Escape did not close the command palette");
 
     return root.checkShortcutStillWorks("closing the command palette");
   }
@@ -337,17 +339,19 @@ ShellRoot {
   // checkAccountSetup opens the command palette, runs "Add an account"
   // (there is no key of its own; it is palette-only, same as the rail's
   // own "+" button for a new chat is not what opens this), closes it with
-  // Escape, and checks a global shortcut still works.
+  // Escape, and checks a global shortcut still works. Closing it destroys
+  // setup outright (see Overlays.qml), so the proof it closed is that it
+  // can no longer be found at all, not that a stale reference to it reads
+  // back not visible.
   function checkAccountSetup(): var {
     t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
     for (const ch of "add an account") t.keyClick(ch);
     t.keyClick(Qt.Key_Return);
 
-    const setup = Check.find(root.panel(), "accountSetup");
-    if (!setup || !setup.visible) return Check.fail("running \"Add an account\" from the palette did not open account setup");
+    if (!Check.find(root.panel(), "accountSetup")?.visible) return Check.fail("running \"Add an account\" from the palette did not open account setup");
 
     t.keyClick(Qt.Key_Escape);
-    if (setup.visible) return Check.fail("Escape did not close account setup");
+    if (Check.find(root.panel(), "accountSetup")) return Check.fail("Escape did not close account setup");
 
     return root.checkShortcutStillWorks("closing account setup");
   }
@@ -378,15 +382,16 @@ ShellRoot {
   // Ctrl+ shortcut still works: the search field forwards unhandled keys
   // to the same router regardless of whether it still holds focus, so
   // that alone would not have caught this), then that a global shortcut
-  // still works.
+  // still works. Closing it destroys the dialog, and its search field
+  // with it (see Overlays.qml), so the proof it closed is that it can no
+  // longer be found at all, which already proves the field lost focus
+  // too: a destroyed field cannot hold any.
   function checkNewChatDialogEscape(): var {
     t.keyClick(Qt.Key_N, Qt.ControlModifier);
-    const dialog = Check.find(root.panel(), "newChatDialog");
-    if (!dialog || !dialog.visible) return Check.fail("Ctrl+N did not open the new-chat dialog");
+    if (!Check.find(root.panel(), "newChatDialog")?.visible) return Check.fail("Ctrl+N did not open the new-chat dialog");
 
     t.keyClick(Qt.Key_Escape);
-    if (dialog.visible) return Check.fail("Escape did not close the new-chat dialog");
-    if (dialog.searchField.activeFocus) return Check.fail("Escape closed the dialog but left focus on its search field");
+    if (Check.find(root.panel(), "newChatDialog")) return Check.fail("Escape did not close the new-chat dialog");
     if (!Check.find(root.panel(), "keyArea").activeFocus) return Check.fail("Escape closed the dialog without returning focus to the key area");
 
     return root.checkShortcutStillWorks("closing the new-chat dialog with Escape");
@@ -423,10 +428,12 @@ ShellRoot {
   // conversation with a contact who had none before adds a twelfth row
   // to the list, so this checks the rail filters directly rather than
   // through checkShortcutStillWorks, which assumes the original eleven.
+  // Accepting a contact destroys the dialog outright (see Overlays.qml),
+  // so "closed" here means gone, not merely not visible.
   function waitForNewChatOpened(): var {
     const dialog = Check.find(root.panel(), "newChatDialog");
     const title = Check.find(root.panel(), "conversationTitle");
-    if (!dialog || dialog.visible || !title || title.text.length === 0) return false;
+    if ((dialog && dialog.visible) || !title || title.text.length === 0) return false;
 
     t.keyClick(Qt.Key_2, Qt.ControlModifier);
     if (root.listCount() !== 5)
