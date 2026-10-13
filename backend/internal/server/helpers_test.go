@@ -18,6 +18,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/server"
+	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -51,6 +52,7 @@ func connect(t *testing.T, faked bool) *session {
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: accounts,
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Members: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
+		Spell: spell.New(t.TempDir(), func(string) string { return "" }),
 	}
 	if faked {
 		deps.Fake = unreachableFake{}

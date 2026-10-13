@@ -15,6 +15,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -66,10 +67,9 @@ func newFixture(t *testing.T, faked bool) *fixture {
 
 	f := &fixture{
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
-		published: &fakePublisher{}, injector: &fakeInjector{},
+		published: &fakePublisher{}, injector: &fakeInjector{}, members: &fakeMemberLister{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{},
-		members:  &fakeMemberLister{},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{},
 	}
@@ -79,7 +79,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Members: f.members,
-		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger,
+		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 	}
 	if faked {

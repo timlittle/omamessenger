@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -28,6 +29,7 @@ type Commands struct {
 	clipboard    ClipboardRunner
 	fake         Injector
 	logger       Logger
+	spell        *spell.Checker
 	events       *events
 	ui           *uiState
 	refreshed    *attemptedRefresh
@@ -130,6 +132,46 @@ func (c *Commands) SetFocus(ctx context.Context, conversationID string, windowAc
 // ApplySettings replaces the user's settings.
 func (c *Commands) ApplySettings(s Settings) {
 	c.ui.apply(s)
+
+	if c.spell != nil {
+		c.spell.SetEnabled(s.SpellCheck)
+		c.spell.SetLanguage(s.SpellLanguage)
+	}
+}
+
+// CheckSpelling finds misspelled words in text; see spell.Checker.Check.
+// It returns nil without error when no spell checker was wired in, so a
+// test build that does not need one is not forced to provide one.
+func (c *Commands) CheckSpelling(ctx context.Context, text string) ([]spell.Misspelling, error) {
+	if c.spell == nil {
+		return nil, nil
+	}
+
+	return c.spell.Check(ctx, text)
+}
+
+// SuggestSpelling returns replacement words for a misspelled word; see
+// spell.Checker.Suggest.
+func (c *Commands) SuggestSpelling(ctx context.Context, word string) ([]string, error) {
+	if c.spell == nil {
+		return nil, nil
+	}
+
+	return c.spell.Suggest(ctx, word)
+}
+
+// AddSpellingWord adds word to the user's personal dictionary; see
+// spell.Checker.AddWord.
+func (c *Commands) AddSpellingWord(ctx context.Context, word string) error {
+	if word == "" {
+		return fmt.Errorf("%w: word is required", ErrInvalidInput)
+	}
+
+	if c.spell == nil {
+		return nil
+	}
+
+	return c.spell.AddWord(ctx, word)
 }
 
 // Inject asks the fake connectors to deliver a message into a conversation

@@ -24,6 +24,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
 	"github.com/timlittle/omamessenger/backend/internal/server"
+	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -108,7 +109,7 @@ func run(ctx context.Context, s streams, args []string, env func(string) string)
 		return err
 	}
 
-	return serve(ctx, cfg, s)
+	return serve(ctx, cfg, s, env)
 }
 
 // runDoctor runs the helper's own health checks against the data
@@ -163,7 +164,9 @@ func printDoctorReport(w io.Writer, report doctor.Report) {
 }
 
 // serve opens the database, wires the application and serves the UI.
-func serve(ctx context.Context, cfg config, s streams) error {
+// env resolves the locale environment the spell checker picks a
+// dictionary from, the same lookup resolveConfig already used.
+func serve(ctx context.Context, cfg config, s streams, env func(string) string) error {
 	logger := log.New(s.errOut, "", 0)
 	db, err := store.Open(ctx, cfg.dbPath, logger)
 	if err != nil {
@@ -180,7 +183,7 @@ func serve(ctx context.Context, cfg config, s streams) error {
 	caches := newMediaCaches(cfg.dataDir, db)
 	commands, ingest, manager, err := wire(ctx, wireDeps{
 		db: db, srv: srv, registry: registry, caches: caches, logger: logger,
-		dataDir: cfg.dataDir, dbPath: cfg.dbPath,
+		dataDir: cfg.dataDir, dbPath: cfg.dbPath, env: env,
 	})
 	if err != nil {
 		return err
@@ -264,6 +267,7 @@ type wireDeps struct {
 	logger   *log.Logger
 	dataDir  string
 	dbPath   string
+	env      func(string) string
 }
 
 // wire builds the application around d's database and server, starting
@@ -276,6 +280,7 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 	deps := app.Deps{
 		Store: d.db, Notifier: notifier, Publisher: d.srv, Accounts: d.registry, Cache: d.caches.downloaded,
 		Outgoing: d.caches.outgoing, Clipboard: clipboard.Wayland{}, Logger: d.logger,
+		Spell:   spell.New(d.dataDir, d.env),
 		DataDir: d.dataDir, DBPath: d.dbPath, ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
 	}
 

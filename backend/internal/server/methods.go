@@ -57,6 +57,9 @@ func methods(c *app.Commands, version string) map[string]method {
 		"ui.setFocus":               bind(uiSetFocus(c)),
 		"settings.apply":            bind(settingsApply(c)),
 		"helper.doctor":             bind(helperDoctor(c)),
+		"spell.check":               bind(spellCheck(c)),
+		"spell.suggest":             bind(spellSuggest(c)),
+		"spell.addWord":             bind(spellAddWord(c)),
 	}
 
 	if c.Faked() {
@@ -469,14 +472,19 @@ func uiSetFocus(c *app.Commands) func(context.Context, focusParams) (any, error)
 // settingsParams are the plugin settings. NotificationDetail is
 // additive: an older UI that sends only NotificationPreview still
 // works, since app.Settings falls back to it when NotificationDetail is
-// empty. ReadReceipts is additive too; the UI always sends it alongside
-// every other setting (see ui/lib/Settings.js), so there is no older UI
-// that would otherwise leave it at its zero value, off, by omission.
+// empty. ReadReceipts, SpellCheck and SpellLanguage are additive too;
+// the UI always sends them alongside every other setting (see
+// ui/lib/Settings.js), so there is no older UI that would otherwise
+// leave them at their zero value, off and "", by omission. An empty
+// SpellLanguage behaves the same as "auto" (see spell.chooseLocale),
+// so a UI that did omit it would still get a working default.
 type settingsParams struct {
 	Notifications       bool   `json:"notifications"`
 	NotificationPreview bool   `json:"notificationPreview"`
 	NotificationDetail  string `json:"notificationDetail"`
 	ReadReceipts        bool   `json:"readReceipts"`
+	SpellCheck          bool   `json:"spellCheck"`
+	SpellLanguage       string `json:"spellLanguage"`
 }
 
 // settingsApply replaces the user's settings.
@@ -492,6 +500,72 @@ func settingsApply(c *app.Commands) func(context.Context, settingsParams) (any, 
 func helperDoctor(c *app.Commands) func(context.Context, none) (any, error) {
 	return func(ctx context.Context, _ none) (any, error) {
 		return c.Doctor(ctx)
+	}
+}
+
+// spellCheckParams names the text to spell-check.
+type spellCheckParams struct {
+	Text string `json:"text"`
+}
+
+// spellMisspelling is one flagged word in a spell.check result, in the
+// same UTF-16 offsets convention a mention's offset uses.
+type spellMisspelling struct {
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+	Word  string `json:"word"`
+}
+
+// spellCheckResult is spell.check's result.
+type spellCheckResult struct {
+	Misspellings []spellMisspelling `json:"misspellings"`
+}
+
+// spellCheck finds misspelled words in text.
+func spellCheck(c *app.Commands) func(context.Context, spellCheckParams) (any, error) {
+	return func(ctx context.Context, p spellCheckParams) (any, error) {
+		found, err := c.CheckSpelling(ctx, p.Text)
+		if err != nil {
+			return nil, err
+		}
+
+		out := make([]spellMisspelling, len(found))
+		for i, m := range found {
+			out[i] = spellMisspelling{Start: m.Start, End: m.End, Word: m.Word}
+		}
+
+		return spellCheckResult{Misspellings: out}, nil
+	}
+}
+
+// spellWordParams names a word, for spell.suggest and spell.addWord.
+type spellWordParams struct {
+	Word string `json:"word"`
+}
+
+// spellSuggestResult is spell.suggest's result.
+type spellSuggestResult struct {
+	Suggestions []string `json:"suggestions"`
+}
+
+// spellSuggest returns up to five replacement words for a misspelled
+// word.
+func spellSuggest(c *app.Commands) func(context.Context, spellWordParams) (any, error) {
+	return func(ctx context.Context, p spellWordParams) (any, error) {
+		suggestions, err := c.SuggestSpelling(ctx, p.Word)
+		if err != nil {
+			return nil, err
+		}
+
+		return spellSuggestResult{Suggestions: suggestions}, nil
+	}
+}
+
+// spellAddWord adds a word to the user's personal dictionary, so it is
+// never flagged again.
+func spellAddWord(c *app.Commands) func(context.Context, spellWordParams) (any, error) {
+	return func(ctx context.Context, p spellWordParams) (any, error) {
+		return none{}, c.AddSpellingWord(ctx, p.Word)
 	}
 }
 

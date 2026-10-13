@@ -11,6 +11,7 @@ import (
 
 	"github.com/timlittle/omamessenger/backend/internal/app/policy"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
@@ -183,6 +184,7 @@ type Deps struct {
 	Clipboard  ClipboardRunner
 	Fake       Injector
 	Logger     Logger
+	Spell      *spell.Checker
 
 	// DataDir, DBPath, ExecutableName and HelperVersion are read only by
 	// Doctor, to stat the data directory's and database's permissions
@@ -202,7 +204,7 @@ func New(d Deps) (*Commands, *Ingest) {
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, members: d.Members, fake: d.Fake,
-		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger,
+		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},
 		reminders:    newReminders(d.Store, d.Notifier, events, state),
@@ -210,6 +212,15 @@ func New(d Deps) (*Commands, *Ingest) {
 		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 	}
 	retries.commands = commands
+
+	// Spell checking starts at the same defaults as every other
+	// setting, so it behaves sensibly even if the UI is slow to call
+	// settings.apply after connecting; ApplySettings updates it again
+	// once the UI's own settings arrive.
+	if commands.spell != nil {
+		commands.spell.SetEnabled(state.settings.SpellCheck)
+		commands.spell.SetLanguage(state.settings.SpellLanguage)
+	}
 
 	ingest := &Ingest{
 		store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state,
@@ -234,6 +245,12 @@ type Settings struct {
 	// service, and any other device signed into the same account, keep
 	// showing the chat unread.
 	ReadReceipts bool
+
+	// SpellCheck turns the composer's English spell check on or off.
+	// SpellLanguage picks the dictionary: "auto" (from the locale
+	// environment), "en_GB" or "en_US". See spell.Checker.
+	SpellCheck    bool
+	SpellLanguage string
 }
 
 // DefaultSettings apply until the UI sends the user's settings.
@@ -241,6 +258,7 @@ func DefaultSettings() Settings {
 	return Settings{
 		Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage),
 		ReadReceipts: true,
+		SpellCheck:   true, SpellLanguage: "auto",
 	}
 }
 

@@ -96,6 +96,12 @@ linters:
           files: ["**/backend/internal/doctor/*.go", "!$test"]
           allow:
             - $gostd
+        spell:
+          list-mode: strict
+          files: ["**/backend/internal/spell/*.go", "!$test"]
+          allow:
+            - $gostd
+            - github.com/client9/gospell
         app:
           list-mode: strict
           files: ["**/backend/internal/app/*.go", "!$test"]
@@ -106,6 +112,7 @@ linters:
             - github.com/timlittle/omamessenger/backend/internal/doctor$
             - github.com/timlittle/omamessenger/backend/internal/domain$
             - github.com/timlittle/omamessenger/backend/internal/notify$
+            - github.com/timlittle/omamessenger/backend/internal/spell$
             - github.com/timlittle/omamessenger/backend/internal/store$
         server:
           list-mode: strict

@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -99,5 +100,107 @@ func TestInject_RefusedWithoutFakes(t *testing.T) {
 
 	if _, err := f.commands.Inject(t.Context(), "chat"); !errors.Is(err, app.ErrNoFake) {
 		t.Errorf("Inject = %v, want ErrNoFake", err)
+	}
+}
+
+// TestCheckSpelling_EnabledByDefault finds a misspelling without any
+// settings.apply call, since spell checking starts at the same default
+// as every other setting (see app.New).
+func TestCheckSpelling_EnabledByDefault(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+
+	got, err := f.commands.CheckSpelling(t.Context(), "this is wrongg")
+	if err != nil {
+		t.Fatalf("CheckSpelling: %v", err)
+	}
+	if len(got) != 1 || got[0].Word != "wrongg" {
+		t.Fatalf("CheckSpelling = %+v, want one misspelling of %q", got, "wrongg")
+	}
+}
+
+// TestApplySettings_TurnsSpellCheckOff disables spell checking through
+// the same settings path the UI uses.
+func TestApplySettings_TurnsSpellCheckOff(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+
+	f.commands.ApplySettings(app.Settings{SpellCheck: false, SpellLanguage: "auto"})
+
+	got, err := f.commands.CheckSpelling(t.Context(), "wrongg")
+	if err != nil {
+		t.Fatalf("CheckSpelling: %v", err)
+	}
+	if got != nil {
+		t.Errorf("CheckSpelling with spell check off = %+v, want nil", got)
+	}
+}
+
+// TestSuggestSpelling_AndAddSpellingWord round-trips a word through
+// Suggest and AddWord.
+func TestSuggestSpelling_AndAddSpellingWord(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+
+	suggestions, err := f.commands.SuggestSpelling(ctx, "colr")
+	if err != nil {
+		t.Fatalf("SuggestSpelling: %v", err)
+	}
+	if !slices.Contains(suggestions, "color") {
+		t.Errorf("SuggestSpelling(colr) = %v, want it to contain %q", suggestions, "color")
+	}
+
+	if err := f.commands.AddSpellingWord(ctx, "omamessenger"); err != nil {
+		t.Fatalf("AddSpellingWord: %v", err)
+	}
+	got, err := f.commands.CheckSpelling(ctx, "omamessenger")
+	if err != nil {
+		t.Fatalf("CheckSpelling: %v", err)
+	}
+	if got != nil {
+		t.Errorf("CheckSpelling(omamessenger) after AddSpellingWord = %+v, want nil", got)
+	}
+}
+
+// TestAddSpellingWord_RejectsEmpty reports invalid input rather than
+// silently adding nothing.
+func TestAddSpellingWord_RejectsEmpty(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+
+	if err := f.commands.AddSpellingWord(t.Context(), ""); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("AddSpellingWord(\"\") = %v, want ErrInvalidInput", err)
+	}
+}
+
+// TestSpellMethods_WithoutASpellChecker no-op rather than panic when no
+// spell.Checker was wired in (see appOver, which leaves Deps.Spell
+// unset, the same as a build that chose not to provide one).
+func TestSpellMethods_WithoutASpellChecker(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	commands, _, _, _ := appOver(t, f.store)
+	ctx := t.Context()
+
+	commands.ApplySettings(app.Settings{SpellCheck: true, SpellLanguage: "auto"})
+
+	got, err := commands.CheckSpelling(ctx, "wrongg")
+	if err != nil || got != nil {
+		t.Errorf("CheckSpelling without a spell checker = %+v, %v, want nil, nil", got, err)
+	}
+
+	suggestions, err := commands.SuggestSpelling(ctx, "colr")
+	if err != nil || suggestions != nil {
+		t.Errorf("SuggestSpelling without a spell checker = %v, %v, want nil, nil", suggestions, err)
+	}
+
+	if err := commands.AddSpellingWord(ctx, "omamessenger"); err != nil {
+		t.Errorf("AddSpellingWord without a spell checker = %v, want nil", err)
 	}
 }
