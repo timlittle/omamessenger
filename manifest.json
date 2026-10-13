@@ -24,7 +24,9 @@
     "defaults": {
       "notifications": true,
       "notificationDetail": "Name and message",
-      "readReceipts": true
+      "readReceipts": true,
+      "spellCheck": true,
+      "spellLanguage": "Automatic"
     },
     "schema": [
       {
@@ -52,6 +54,25 @@
         "label": "Read receipts",
         "defaultValue": true,
         "description": "Off means incognito mode: OmaMessenger never tells a service a chat here was read, so the phone and any other device signed into the same account keep showing it unread. Also reachable from the command palette's \"Toggle read receipts\"."
+      },
+      {
+        "key": "spellCheck",
+        "type": "boolean",
+        "label": "Spell check",
+        "defaultValue": true,
+        "description": "Underline misspelled words in English while composing a message."
+      },
+      {
+        "key": "spellLanguage",
+        "type": "enum",
+        "label": "Spelling dictionary",
+        "options": [
+          "Automatic",
+          "British English",
+          "American English"
+        ],
+        "defaultValue": "Automatic",
+        "description": "Which English spelling to check against. Automatic follows this computer's own locale."
       }
     ]
   }

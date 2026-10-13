@@ -23,6 +23,10 @@ ShellRoot {
   property int cancelCount: 0
   property var attached: []
   property int removeRequests: 0
+  property var testMisspellings: []
+  property var testSuggestions: []
+  property var spellSuggestionRequests: []
+  property var spellWordAdditions: []
 
   FloatingWindow {
     implicitWidth: 400
@@ -34,12 +38,16 @@ ShellRoot {
 
       anchors.fill: parent
       title: "Mum"
+      misspellings: root.testMisspellings
+      suggestions: root.testSuggestions
       onSubmitted: (text, replyToId, mentions) => {
         root.sent.push(text); root.sentReplyIds.push(replyToId); root.sentMentions.push(mentions);
       }
       onReplyCanceled: root.cancelCount += 1
       onFileAttached: path => root.attached.push(path)
       onAttachmentRemoveRequested: root.removeRequests++
+      onSpellSuggestionsRequested: word => root.spellSuggestionRequests.push(word)
+      onSpellWordAdded: word => root.spellWordAdditions.push(word)
     }
   }
 
@@ -64,7 +72,7 @@ ShellRoot {
   Timer {
     id: mentionFocusTimer
     interval: 20
-    onTriggered: root.checkMentionPicker()
+    onTriggered: root.runFocusedChecks()
   }
 
   // run drives the composer and checks the outcome.
@@ -179,26 +187,37 @@ ShellRoot {
     return true;
   }
 
+  // runFocusedChecks chains the checks that need real keyboard focus:
+  // the @-mention picker, then the spelling picker, since both compete
+  // for the same input and its focus.
+  function runFocusedChecks(): void {
+    if (!root.checkMentionPicker()) return;
+    if (!root.checkSpellCheck()) return;
+
+    console.log("PASS Composer");
+    Qt.exit(0);
+  }
+
   // checkMentionPicker drives the @-mention picker end to end: it opens
   // while typing "@query" in a group, filters to matching members,
   // Escape closes it without changing the text, Tab inserts the
   // highlighted member by keyboard, a click inserts one by mouse, and
   // the text submitted carries the resolved mention at its real
   // position in the final, trimmed text.
-  function checkMentionPicker(): void {
+  function checkMentionPicker(): bool {
     const input = composer.input;
-    if (!input.activeFocus) { Check.fail("composer input did not get active focus"); return; }
+    if (!input.activeFocus) return Check.fail("composer input did not get active focus");
     input.text = "hi @nad";
     input.cursorPosition = input.text.length;
 
-    if (!composer.pickerOpen) { Check.fail("picker not open while typing an @query"); return; }
+    if (!composer.pickerOpen) return Check.fail("picker not open while typing an @query");
 
     const picker = Check.find(composer, "mentionPicker");
-    if (!picker || !picker.visible) { Check.fail("mentionPicker not visible while the picker is open"); return; }
+    if (!picker || !picker.visible) return Check.fail("mentionPicker not visible while the picker is open");
 
     const names = Check.texts(picker).map((item) => item.text);
-    if (!names.includes("Nadia")) { Check.fail("picker did not show Nadia: " + names); return; }
-    if (names.includes("Ben")) { Check.fail("picker showed Ben, which does not match \"nad\": " + names); return; }
+    if (!names.includes("Nadia")) return Check.fail("picker did not show Nadia: " + names);
+    if (names.includes("Ben")) return Check.fail("picker showed Ben, which does not match \"nad\": " + names);
 
     // A key the mention picker does not own, such as the command
     // palette's Ctrl+/, must still reach routeKey while the picker is
@@ -214,55 +233,144 @@ ShellRoot {
     composer.routeKey = (key, modifiers, text) => { root.routeKeyCalls.push(key); return true; };
     t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
     if (!root.routeKeyCalls.includes(Qt.Key_Slash)) {
-      Check.fail("Ctrl+/ while the mention picker was open did not reach routeKey: " + JSON.stringify(root.routeKeyCalls));
-      return;
+      return Check.fail("Ctrl+/ while the mention picker was open did not reach routeKey: " + JSON.stringify(root.routeKeyCalls));
     }
     composer.routeKey = null;
 
     t.keyClick(Qt.Key_Escape);
-    if (composer.pickerOpen) { Check.fail("Escape did not close the picker"); return; }
-    if (input.text !== "hi @nad") { Check.fail("Escape changed the text: " + input.text); return; }
+    if (composer.pickerOpen) return Check.fail("Escape did not close the picker");
+    if (input.text !== "hi @nad") return Check.fail("Escape changed the text: " + input.text);
 
     input.text = "";
     input.text = "hi @nad";
     input.cursorPosition = input.text.length;
-    if (!composer.pickerOpen) { Check.fail("picker did not reopen for a fresh query"); return; }
+    if (!composer.pickerOpen) return Check.fail("picker did not reopen for a fresh query");
 
     t.keyClick(Qt.Key_Tab);
-    if (input.text !== "hi @Nadia ") { Check.fail("Tab did not insert the mention: " + input.text); return; }
-    if (composer.pickerOpen) { Check.fail("picker stayed open after accepting a mention"); return; }
+    if (input.text !== "hi @Nadia ") return Check.fail("Tab did not insert the mention: " + input.text);
+    if (composer.pickerOpen) return Check.fail("picker stayed open after accepting a mention");
 
     root.sent = [];
     root.sentReplyIds = [];
     root.sentMentions = [];
     composer.submit();
     if (JSON.stringify(root.sent) !== '["hi @Nadia"]') {
-      Check.fail("sent " + JSON.stringify(root.sent) + ", want [\"hi @Nadia\"]");
-      return;
+      return Check.fail("sent " + JSON.stringify(root.sent) + ", want [\"hi @Nadia\"]");
     }
 
     const mentions = root.sentMentions[0];
     if (!mentions || mentions.length !== 1 || mentions[0].userId !== "u1" || mentions[0].offset !== 3 || mentions[0].length !== 6) {
-      Check.fail("resolved mentions = " + JSON.stringify(mentions) + ", want one mention of u1 at offset 3, length 6");
-      return;
+      return Check.fail("resolved mentions = " + JSON.stringify(mentions) + ", want one mention of u1 at offset 3, length 6");
     }
 
     input.text = "";
     input.text = "hi @b";
     input.cursorPosition = input.text.length;
-    if (!composer.pickerOpen) { Check.fail("picker did not open for the second query"); return; }
+    if (!composer.pickerOpen) return Check.fail("picker did not open for the second query");
 
     const picker2 = Check.find(composer, "mentionPicker");
-    if (!picker2) { Check.fail("no mentionPicker found for the second query"); return; }
+    if (!picker2) return Check.fail("no mentionPicker found for the second query");
     // The real click goes through MentionPicker's own MouseArea straight
     // to this same accepted signal (see MentionPicker.qml's onClicked);
     // emitting it here is how the test harness reaches the mouse path
     // without depending on synthetic pointer coordinates landing inside
     // an offscreen, zero-geometry window.
     picker2.accepted(0);
-    if (input.text !== "hi @Ben ") { Check.fail("clicking the row did not insert the mention: " + input.text); return; }
+    if (input.text !== "hi @Ben ") return Check.fail("clicking the row did not insert the mention: " + input.text);
 
-    console.log("PASS Composer");
-    Qt.exit(0);
+    return true;
+  }
+
+  // checkSpellCheck drives the spelling picker end to end: an underline
+  // is drawn under a misspelled range given in misspellings, the
+  // keyboard shortcut and a right-click both open the picker for the
+  // word under the caret or the click and ask the caller for
+  // suggestions, choosing one replaces the word, "Add to dictionary"
+  // reports the word without changing the text, and "Ignore" clears the
+  // underline locally without reporting anything to the caller.
+  function checkSpellCheck(): bool {
+    const input = composer.input;
+    input.text = "";
+    input.text = "see wrongg now"; // "wrongg" spans [4, 10)
+    input.cursorPosition = input.text.length;
+    root.testMisspellings = [{ start: 4, end: 10, word: "wrongg" }];
+
+    if (!root.spellUnderlineDrawn()) return Check.fail("no underline drawn under the misspelled word");
+
+    input.cursorPosition = 6;
+    root.spellSuggestionRequests = [];
+    t.keyClick(Qt.Key_Period, Qt.ControlModifier);
+    if (!composer.spellPickerOpen) return Check.fail("Ctrl+. did not open the spelling picker");
+    if (JSON.stringify(root.spellSuggestionRequests) !== '["wrongg"]') {
+      return Check.fail("spellSuggestionsRequested = " + JSON.stringify(root.spellSuggestionRequests) + ", want [\"wrongg\"]");
+    }
+
+    root.testSuggestions = ["wrong", "wrongs"];
+    const picker = Check.find(composer, "spellPicker");
+    if (!picker || !picker.visible) return Check.fail("spellPicker not visible while the picker is open");
+
+    const rowNames = Check.texts(picker).map((item) => item.text);
+    if (!rowNames.includes("wrong") || !rowNames.includes("Add to dictionary") || !rowNames.includes("Ignore")) {
+      return Check.fail("spellPicker rows = " + JSON.stringify(rowNames) + ", want wrong, Add to dictionary and Ignore");
+    }
+
+    // Enter with the first suggestion highlighted (the picker always
+    // opens with highlightedIndex 0) replaces the word.
+    t.keyClick(Qt.Key_Return);
+    if (input.text !== "see wrong now") return Check.fail("choosing a suggestion did not replace the word: " + input.text);
+    if (composer.spellPickerOpen) return Check.fail("picker stayed open after choosing a suggestion");
+
+    // Reopen for a fresh word and add it to the dictionary instead.
+    input.text = "";
+    input.text = "see wrongg now";
+    root.testMisspellings = [{ start: 4, end: 10, word: "wrongg" }];
+    input.cursorPosition = 6;
+    t.keyClick(Qt.Key_Period, Qt.ControlModifier);
+    if (!composer.spellPickerOpen) return Check.fail("Ctrl+. did not reopen the spelling picker");
+
+    root.spellWordAdditions = [];
+    t.keyClick(Qt.Key_A);
+    if (composer.spellPickerOpen) return Check.fail("picker stayed open after adding to the dictionary");
+    if (JSON.stringify(root.spellWordAdditions) !== '["wrongg"]') {
+      return Check.fail("spellWordAdded = " + JSON.stringify(root.spellWordAdditions) + ", want [\"wrongg\"]");
+    }
+    if (input.text !== "see wrongg now") return Check.fail("adding to the dictionary changed the text: " + input.text);
+
+    // Ignore clears the underline locally, without reporting anything.
+    input.cursorPosition = 6;
+    t.keyClick(Qt.Key_Period, Qt.ControlModifier);
+    if (!composer.spellPickerOpen) return Check.fail("Ctrl+. did not reopen the spelling picker a third time");
+
+    root.spellWordAdditions = [];
+    t.keyClick(Qt.Key_I);
+    if (composer.spellPickerOpen) return Check.fail("picker stayed open after ignoring the word");
+    if (root.spellWordAdditions.length !== 0) return Check.fail("ignoring the word reported it to the caller, want nothing sent");
+    if (root.spellUnderlineDrawn()) return Check.fail("underline still drawn under an ignored word");
+
+    // A right-click on a flagged word opens the picker the same way the
+    // shortcut does, for whichever word the click landed on rather than
+    // the caret. A fresh word, never "wrongg": the step above already
+    // put that one in _ignoredWords, which would filter it out here.
+    input.text = "";
+    input.text = "mispelt";
+    root.testMisspellings = [{ start: 0, end: 7, word: "mispelt" }];
+    root.spellSuggestionRequests = [];
+    const clickPos = input.positionToRectangle(2);
+    t.mouseClick(input, clickPos.x + 1, clickPos.y + 1, Qt.RightButton);
+    if (!composer.spellPickerOpen) return Check.fail("a right-click on a flagged word did not open the spelling picker");
+    if (JSON.stringify(root.spellSuggestionRequests) !== '["mispelt"]') {
+      return Check.fail("right-click spellSuggestionsRequested = " + JSON.stringify(root.spellSuggestionRequests) + ", want [\"mispelt\"]");
+    }
+    t.keyClick(Qt.Key_Escape);
+
+    return true;
+  }
+
+  // spellUnderlineDrawn reports whether the overlay currently draws at
+  // least one underline. _recomputeOverlay defers with Qt.callLater, so
+  // this waits one real turn of the event loop first.
+  function spellUnderlineDrawn(): bool {
+    t.wait(50);
+    return composer._overlayRects.length > 0;
   }
 }

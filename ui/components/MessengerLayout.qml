@@ -253,6 +253,8 @@ Item {
         selectedIds: root.pollsController.selected
       }) : ({ target: "", highlightedIndex: -1, selectedIds: [] })
       members: root.conversationController.groupMembers
+      misspellings: root.composerController.spellMisspellings
+      suggestions: root.composerController.spellSuggestions
       routeKey: root.routeKey
 
       onLoadOlder: root.conversationController.loadOlder()
@@ -264,12 +266,17 @@ Item {
       onDeleteRequested: id => { if (root.deleteController) root.deleteController.openConfirm(id) }
       onVoted: (id, optionIds) => { if (root.pollsController) root.pollsController.castVote(id, optionIds) }
       onSend: (text, replyToId, mentions) => root.conversationController.send(text, replyToId, mentions)
-      onDraftEdited: text => root.composerController.setDraft(text)
+      onDraftEdited: text => {
+        root.composerController.setDraft(text);
+        root.composerController.requestSpellCheck(text);
+      }
       onReplyRequested: id => root.composerController.startReply(id)
       onReplyCanceled: root.composerController.cancelReply()
       onQuoteOpened: remoteId => root.conversationController.scrollToReply(remoteId)
       onFileAttached: path => root.composerController.attachFile(path)
       onAttachmentRemoveRequested: root.composerController.removeAttachment()
+      onSpellSuggestionsRequested: word => root.composerController.requestSpellSuggestions(word)
+      onSpellWordAdded: word => root.composerController.addSpellingWord(word)
     }
   }
 

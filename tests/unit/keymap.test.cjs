@@ -117,6 +117,19 @@ const cases = [
   // fall through to the global "escape" action while the picker is open.
   ['mentionPicker', KEY.Escape, 0, '', 'mention.cancel'],
 
+  ['compose', KEY.Period, MOD.Ctrl, '', 'compose.spellSuggestions'],
+
+  ['spellPicker', KEY.Down, 0, '', 'spell.down'],
+  ['spellPicker', KEY.Up, 0, '', 'spell.up'],
+  ['spellPicker', KEY.Tab, 0, '\t', 'spell.accept'],
+  ['spellPicker', KEY.Enter, 0, '\r', 'spell.accept'],
+  ['spellPicker', letter('a'), 0, 'a', 'spell.addToDictionary'],
+  ['spellPicker', letter('i'), 0, 'i', 'spell.ignore'],
+  // Escape closes the picker without leaving the composer, the same way
+  // mentionPicker's own Escape never falls through to the global
+  // "escape" action.
+  ['spellPicker', KEY.Escape, 0, '', 'spell.cancel'],
+
   // The viewer and the reaction picker share Left/Right physically, but
   // never open at once (see Navigation.keyContext); each context only
   // answers to its own binding.
@@ -188,6 +201,12 @@ test('display shows keys the way people read them', () => {
   assert.strictEqual(Keymap.display('Ctrl+K'), 'Ctrl+K');
   assert.strictEqual(Keymap.display('Left'), '←');
   assert.strictEqual(Keymap.display('Right'), '→');
+  assert.strictEqual(Keymap.display('Ctrl+Period'), 'Ctrl+.');
+});
+
+test('the palette offers the spelling suggestions shortcut', () => {
+  assert.strictEqual(Keymap.keyFor('compose.spellSuggestions'), 'Ctrl+.');
+  assert.ok(Keymap.commands().some((c) => c.action === 'compose.spellSuggestions'));
 });
 
 test('bindingsFor hints the photo viewer steps without offering them as commands', () => {

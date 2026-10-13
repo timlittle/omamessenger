@@ -12,14 +12,14 @@ var KEY = {
   Return: 0x01000004, Enter: 0x01000005, Home: 0x01000010,
   End: 0x01000011, Left: 0x01000012, Up: 0x01000013, Right: 0x01000014, Down: 0x01000015,
   PageUp: 0x01000016, PageDown: 0x01000017,
-  Slash: 0x2f, Question: 0x3f, Space: 0x20
+  Slash: 0x2f, Question: 0x3f, Space: 0x20, Period: 0x2e
 };
 
 // MOD holds the Qt keyboard modifier masks.
 var MOD = { Shift: 0x02000000, Ctrl: 0x04000000, Alt: 0x08000000 };
 
 // KEY_NAMES shows spec names the way people type them.
-var KEY_NAMES = { Slash: '/', Question: '?', Up: '↑', Down: '↓', Left: '←', Right: '→', Escape: 'Esc' };
+var KEY_NAMES = { Slash: '/', Question: '?', Up: '↑', Down: '↓', Left: '←', Right: '→', Escape: 'Esc', Period: '.' };
 
 // BINDINGS define every key action. Each has an action name, key specs,
 // the contexts it applies in (or "global"), a label, whether the footer
@@ -124,6 +124,10 @@ var BINDINGS = [
   { action: 'compose.newline', keys: ['Shift+Enter', 'Ctrl+J'], contexts: ['compose'], label: 'New line', hint: true },
   { action: 'compose.attach', keys: ['Ctrl+V'], contexts: ['compose'], label: 'Paste a clipboard image as an attachment' },
   { action: 'compose.attachFile', keys: [], contexts: ['conversation', 'compose'], label: 'Attach a file', command: true },
+  // Opens the spelling picker for the misspelled word the caret is
+  // currently inside; see Composer.qml and SpellCheck.js. Does nothing
+  // if the caret is not inside a flagged word.
+  { action: 'compose.spellSuggestions', keys: ['Ctrl+Period'], contexts: ['compose'], label: 'Spelling suggestions', hint: true, command: true },
   { action: 'search.accept', keys: ['Enter', 'Down'], contexts: ['search'], label: 'First result', hint: true },
 
   { action: 'viewer.next', keys: ['Right'], contexts: ['viewer'], label: 'Next photo', hint: true },
@@ -165,6 +169,19 @@ var BINDINGS = [
   { action: 'mention.up', keys: ['Up'], contexts: ['mentionPicker'], label: 'Previous member' },
   { action: 'mention.accept', keys: ['Tab', 'Enter'], contexts: ['mentionPicker'], label: 'Insert mention', hint: true },
   { action: 'mention.cancel', keys: ['Escape'], contexts: ['mentionPicker'], label: 'Close without inserting', hint: true },
+
+  // The spelling suggestions picker, opened with compose.spellSuggestions
+  // above or a right-click on a flagged word: Up/Down move the
+  // highlight, Enter or Tab replaces the word with the highlighted
+  // suggestion, a and i add the word to the personal dictionary or
+  // ignore it for this session, and Escape closes the picker without
+  // changing anything.
+  { action: 'spell.down', keys: ['Down'], contexts: ['spellPicker'], label: 'Next suggestion' },
+  { action: 'spell.up', keys: ['Up'], contexts: ['spellPicker'], label: 'Previous suggestion' },
+  { action: 'spell.accept', keys: ['Tab', 'Enter'], contexts: ['spellPicker'], label: 'Replace word', hint: true },
+  { action: 'spell.addToDictionary', keys: ['a'], contexts: ['spellPicker'], label: 'Add to dictionary', hint: true },
+  { action: 'spell.ignore', keys: ['i'], contexts: ['spellPicker'], label: 'Ignore for this session', hint: true },
+  { action: 'spell.cancel', keys: ['Escape'], contexts: ['spellPicker'], label: 'Close', hint: true },
 
   // The service chooser, at the first step of adding an account: j/k and
   // Up/Down move the highlight, Enter chooses it, and t/w jump straight

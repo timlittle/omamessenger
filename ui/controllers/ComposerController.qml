@@ -2,15 +2,16 @@ import QtQuick
 import "../lib/Actions.js" as Actions
 import "../lib/Format.js" as Format
 import "../lib/Rpc.js" as Rpc
+import "../lib/SpellCheck.js" as SpellCheck
 
 // Owns the composer's state for the open conversation: its draft text,
 // the message it is replying to, a pasted or attached file waiting to be
-// sent, and whether it holds keyboard focus. conversation supplies the
-// open conversation's id and timeline, and the place a draft is saved;
-// set it once, from whoever wires the controllers together.
+// sent, whether it holds keyboard focus, and the spell check round trip
+// (Composer.qml draws the underlines and the picker from what this
+// controller reports; it never calls the helper itself, see qml.md).
 //
-// QtObject rather than Item: it holds no child objects.
-QtObject {
+// Item rather than QtObject: spellCheckTimer below needs a child object.
+Item {
   id: root
 
   // service is the Service instance that owns the helper connection.
@@ -146,6 +147,8 @@ QtObject {
   function reset(): void {
     root.replyTarget = null;
     root.attachmentPath = "";
+    root.spellMisspellings = [];
+    root.spellSuggestions = [];
   }
 
   // restore loads id's saved draft and clears any reply or attachment
@@ -159,5 +162,77 @@ QtObject {
   function draftFor(id: string): string {
     const drafts = root.service.uiState.drafts || {};
     return drafts[id] || "";
+  }
+
+  // spellMisspellings is the last spell.check result for the composer's
+  // text: [{start, end, word}], in UTF-16 offsets. Composer.qml draws
+  // the underlines from this.
+  property var spellMisspellings: []
+
+  // spellSuggestions is the last spell.suggest result, for whichever
+  // word the picker most recently asked about.
+  property var spellSuggestions: []
+
+  // _lastSpellText is the composer text spellCheckTimer's debounce is
+  // about to check, or just checked; addSpellingWord re-checks it
+  // directly once a word is added, since adding one does not itself
+  // change the text and so would otherwise never trigger a recheck.
+  property string _lastSpellText: ""
+
+  // requestSpellCheck asks the helper to re-check text, debounced by
+  // spellCheckTimer so a fast typist sends one request, not one per
+  // keystroke. Called from Composer.qml on every text change.
+  function requestSpellCheck(text: string): void {
+    root._lastSpellText = text;
+    spellCheckTimer.restart();
+  }
+
+  // _runSpellCheck sends the debounced spell.check request. A reply for
+  // text the composer has since moved on from is dropped, the same
+  // staleness guard pasteImage uses above.
+  function _runSpellCheck(): void {
+    if (!root.service) return;
+
+    const text = root._lastSpellText;
+    const isCurrent = Rpc.guard(() => root._lastSpellText, text);
+    root.service.request("spell.check", { text: text }, function(error, result) {
+      if (!isCurrent()) return;
+      root.spellMisspellings = error ? [] : (result.misspellings || []);
+    });
+  }
+
+  // requestSpellSuggestions asks the helper for replacement words for
+  // word, for the picker Composer.qml opens over a flagged word.
+  function requestSpellSuggestions(word: string): void {
+    if (!root.service) { root.spellSuggestions = []; return; }
+
+    const isCurrent = Rpc.guard(() => word, word);
+    root.service.request("spell.suggest", { word: word }, function(error, result) {
+      if (!isCurrent()) return;
+      root.spellSuggestions = error ? [] : (result.suggestions || []);
+    });
+  }
+
+  // addSpellingWord adds word to the user's personal dictionary and
+  // re-checks the composer's text at once, so its underline clears
+  // without waiting for the next edit.
+  function addSpellingWord(word: string): void {
+    if (!root.service) return;
+
+    root.service.request("spell.addWord", { word: word }, function(error) {
+      if (error) return;
+
+      spellCheckTimer.stop();
+      root._runSpellCheck();
+    });
+  }
+
+  // spellCheckTimer debounces requestSpellCheck so a burst of keystrokes
+  // produces one spell.check call, not one per keystroke, the same
+  // pattern WindowController's messageSearchTimer uses.
+  Timer {
+    id: spellCheckTimer
+    interval: SpellCheck.DEBOUNCE_MS
+    onTriggered: root._runSpellCheck()
   }
 }

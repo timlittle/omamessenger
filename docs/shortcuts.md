@@ -67,6 +67,7 @@ The highlight starts on the newest message when the conversation opens or when y
 | Enter | Send |
 | Shift+Enter or Ctrl+J | Start a new line instead of sending |
 | Ctrl+V | Paste a clipboard image as an attachment |
+| Ctrl+. | Open spelling suggestions for the misspelled word the caret is in |
 
 Alt+Shift+↓ / ↑ still jump to the next / previous unread conversation while writing, landing there in writing mode too (see Global); Ctrl+J means a new line here instead.
 
@@ -94,6 +95,18 @@ Typing "@" in a group conversation opens a picker of the group's members, filter
 | Esc | Close the picker without inserting, staying in the composer |
 
 A message that mentions you is shown with a subtle highlight and an "@" mark.
+
+### Spelling suggestions picker
+
+Misspelled English words are underlined as you type (the "Spell check" plugin setting, on by default; "Spelling dictionary" picks British, American or automatic from this computer's locale). Ctrl+. opens suggestions for the word the caret is in; right-clicking a flagged word opens the same picker for it directly.
+
+| Keys | Does |
+| --- | --- |
+| ↓ / ↑ | Move the highlighted suggestion |
+| Tab or Enter | Replace the word with the highlighted suggestion |
+| a | Add the word to your personal dictionary |
+| i | Ignore the word, for this session only |
+| Esc | Close the picker without changing anything |
 
 ## Adding an account
 

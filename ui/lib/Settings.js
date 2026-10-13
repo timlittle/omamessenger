@@ -6,7 +6,10 @@
 // the helper's settings.apply expects.
 
 // DEFAULTS mirror the defaultValue of each setting in manifest.json.
-var DEFAULTS = { notifications: true, notificationDetail: 'nameAndMessage', readReceipts: true };
+var DEFAULTS = {
+  notifications: true, notificationDetail: 'nameAndMessage', readReceipts: true,
+  spellCheck: true, spellLanguage: 'auto',
+};
 
 // DETAIL_LABELS maps manifest.json's notificationDetail option labels,
 // which Omarchy shows the user as is, to the helper's own values.
@@ -20,6 +23,19 @@ var DETAIL_LABELS = {
 // as well as the labels above so a value already in that form passes
 // through unchanged.
 var DETAIL_VALUES = ['nameAndMessage', 'nameOnly', 'none'];
+
+// LANGUAGE_LABELS maps manifest.json's spellLanguage option labels to
+// the helper's own values.
+var LANGUAGE_LABELS = {
+  'Automatic': 'auto',
+  'British English': 'en_GB',
+  'American English': 'en_US',
+};
+
+// LANGUAGE_VALUES are the helper's own spellLanguage values, accepted as
+// well as the labels above so a value already in that form passes
+// through unchanged.
+var LANGUAGE_VALUES = ['auto', 'en_GB', 'en_US'];
 
 // withDefaults returns every known setting, taking the user's value where
 // there is one and the default otherwise. Unknown keys are dropped.
@@ -37,7 +53,20 @@ function withDefaults(settings, currentReadReceipts) {
     notifications: typeof given.notifications === 'boolean' ? given.notifications : DEFAULTS.notifications,
     notificationDetail: resolveDetail(given),
     readReceipts: typeof given.readReceipts === 'boolean' ? given.readReceipts : readReceiptsFallback,
+    spellCheck: typeof given.spellCheck === 'boolean' ? given.spellCheck : DEFAULTS.spellCheck,
+    spellLanguage: resolveLanguage(given),
   };
+}
+
+// resolveLanguage picks the spellLanguage value to send: the manifest's
+// label or the helper's own value when given names one, otherwise the
+// manifest default.
+function resolveLanguage(given) {
+  var language = given.spellLanguage;
+  if (LANGUAGE_LABELS[language]) return LANGUAGE_LABELS[language];
+  if (LANGUAGE_VALUES.includes(language)) return language;
+
+  return DEFAULTS.spellLanguage;
 }
 
 // resolveDetail picks the notificationDetail value to send: the manifest's

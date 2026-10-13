@@ -58,6 +58,13 @@ Item {
   // members are the open group's members, for the composer's @-mention
   // picker; an empty list for a direct chat.
   property var members: []
+  // misspellings are the composer's last spell.check result:
+  // [{start, end, word}] in UTF-16 offsets. Empty while spell check is
+  // off or nothing is flagged.
+  property var misspellings: []
+  // suggestions are the last spell.suggest result, for whichever word
+  // the spelling picker most recently asked about.
+  property var suggestions: []
 
   // loadOlder asks the caller to fetch messages before the oldest loaded
   // one. It fires on every scroll near the top, so the caller ignores it
@@ -96,6 +103,12 @@ Item {
   signal fileAttached(string path)
   // attachmentRemoveRequested asks the caller to clear attachmentPath.
   signal attachmentRemoveRequested()
+  // spellSuggestionsRequested asks the caller to fetch replacement words
+  // for word, for the spelling picker the composer just opened.
+  signal spellSuggestionsRequested(string word)
+  // spellWordAdded asks the caller to add word to the personal
+  // dictionary.
+  signal spellWordAdded(string word)
 
   // scrollBy moves the view by a number of lines; negative scrolls up.
   function scrollBy(lines: int): void {
@@ -289,11 +302,15 @@ Item {
       bindings: root.bindings
       routeKey: root.routeKey
       members: root.members
+      misspellings: root.misspellings
+      suggestions: root.suggestions
       onSubmitted: (text, replyToId, mentions) => root.send(text, replyToId, mentions)
       onTextChanged: root.draftEdited(composer.text)
       onReplyCanceled: root.replyCanceled()
       onFileAttached: path => root.fileAttached(path)
       onAttachmentRemoveRequested: root.attachmentRemoveRequested()
+      onSpellSuggestionsRequested: word => root.spellSuggestionsRequested(word)
+      onSpellWordAdded: word => root.spellWordAdded(word)
     }
   }
 

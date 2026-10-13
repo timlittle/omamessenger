@@ -74,6 +74,15 @@ var OWNERS = {
   'mention.up': 'composer',
   'mention.accept': 'composer',
   'mention.cancel': 'composer',
+  // The spelling suggestions picker, same reasoning: it opens over the
+  // composer's own text field for the flagged word under the caret.
+  'compose.spellSuggestions': 'composer',
+  'spell.down': 'composer',
+  'spell.up': 'composer',
+  'spell.accept': 'composer',
+  'spell.addToDictionary': 'composer',
+  'spell.ignore': 'composer',
+  'spell.cancel': 'composer',
 
   // PhotoViewerController: stepping through the in-app photo viewer.
   'viewer.next': 'photoViewer',
