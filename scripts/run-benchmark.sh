@@ -149,9 +149,14 @@ preflight() {
     if pgrep -x chromium >/dev/null 2>&1; then
         heavy="${heavy}  - Chromium (chromium)\n"
     fi
-    if pgrep -x bambustu_main >/dev/null 2>&1; then
-        heavy="${heavy}  - Bambu Studio (bambustu_main)\n"
-    fi
+    # BENCH_HEAVY_APPS lists any other process names (space separated)
+    # that would distort the measurements on this machine, e.g. a CAD
+    # slicer or other resource-heavy app left running in the background.
+    for app in ${BENCH_HEAVY_APPS:-}; do
+        if pgrep -x "$app" >/dev/null 2>&1; then
+            heavy="${heavy}  - $app\n"
+        fi
+    done
     # A second Telegram Desktop hands over to the running one and exits,
     # leaving nothing of this run's own to measure.
     if pgrep -x "$(basename "$telegram_bin")" >/dev/null 2>&1; then

@@ -244,14 +244,21 @@ test('refuses to start when Chromium is already running', (t) => {
   assert.equal(fs.existsSync(s.outFile), false);
 });
 
-test('refuses to start when Bambu Studio is already running', (t) => {
+test('refuses to start when a BENCH_HEAVY_APPS process is already running', (t) => {
   const s = sandbox(t);
-  s.seedFixture('x_bambustu_main', '424243');
-  const result = s.run();
+  s.seedFixture('x_some-heavy-app', '424243');
+  const result = s.run({ BENCH_HEAVY_APPS: 'some-heavy-app' });
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Bambu Studio/);
+  assert.match(result.stderr, /some-heavy-app/);
   assert.equal(fs.readFileSync(s.callLog, 'utf8'), '');
+});
+
+test('does not check for heavy apps when BENCH_HEAVY_APPS is unset', (t) => {
+  const s = sandbox(t);
+  const result = s.run();
+
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test('refuses to start when Telegram Desktop is already running', (t) => {

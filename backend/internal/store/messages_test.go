@@ -426,7 +426,7 @@ func TestAddMessage_RoundTripsAnAttachmentsOriginalFile(t *testing.T) {
 	s, _ := openChatStore(t)
 	ctx := t.Context()
 
-	media := &domain.Media{Kind: domain.MediaPhoto, FileName: "photo.png", Size: 10, OriginalPath: "/home/tim/photo.png", OriginalModTime: 12345}
+	media := &domain.Media{Kind: domain.MediaPhoto, FileName: "photo.png", Size: 10, OriginalPath: "/home/user/photo.png", OriginalModTime: 12345}
 	addMessages(t, s, domain.Message{
 		ID: "out", ConversationID: "chat", Text: "hi", Outgoing: true, Created: 1, Media: media,
 	})

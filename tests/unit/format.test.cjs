@@ -387,7 +387,7 @@ for (const [w, h, want] of photoSizeCases) {
 }
 
 const baseNameCases = [
-  ['/home/tim/photo.png', 'photo.png'],
+  ['/home/user/photo.png', 'photo.png'],
   ['report.pdf', 'report.pdf']
 ];
 
