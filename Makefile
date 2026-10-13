@@ -2,6 +2,10 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+# Per-developer settings that should never be committed (e.g. CI_HOST for
+# `make ci-remote`) go in local.mk, which is gitignored.
+-include local.mk
+
 GO ?= go
 NODE ?= node
 OMARCHY ?= omarchy
@@ -57,7 +61,7 @@ LICENSE_IGNORE := --ignore github.com/segmentio/asm
 # so no test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper marketplace-update test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local install-hooks release-check benchmark ci clean
+.PHONY: help check build build-fake build-all install-helper marketplace-update test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local install-hooks release-check benchmark ci ci-remote clean
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -292,6 +296,9 @@ CI_MEMORY ?= 6g
 CI_GO_PARALLEL ?= 1
 ci: ## Run the GitHub Actions CI workflow locally in Docker (needs act)
 	@command -v act >/dev/null || { echo "ci: act is not installed; see https://github.com/nektos/act" >&2; exit 1; }
+	@need=$$(echo "$(CI_MEMORY)" | sed 's/[gG]$$//'); \
+	avail=$$(awk '/^MemAvailable:/ { print int($$2 / 1048576) }' /proc/meminfo); \
+	[ "$$avail" -ge "$$need" ] || { echo "ci: only $${avail} GB of memory is available, $${need} GB needed; run make ci-remote" >&2; exit 1; }
 	@trap 'docker rm -f $$(docker ps -aq --filter name=act-CI-) >/dev/null 2>&1' EXIT INT TERM; \
 	for job in build test checks qml; do \
 		act push -W .github/workflows/ci.yml -j "$$job" --rm --env GOFLAGS=-p=$(CI_GO_PARALLEL) \
@@ -299,6 +306,15 @@ ci: ## Run the GitHub Actions CI workflow locally in Docker (needs act)
 			-P ubuntu-latest=catthehacker/ubuntu:act-latest || exit 1; \
 	done
 	@./scripts/check-leaks.sh
+
+# Runs make ci on CI_HOST over ssh, for when this machine lacks the
+# memory: the checkout (git history included, build output excluded) is
+# mirrored to ~/ci/omamessenger there first. CI_HOST needs docker and act.
+# Set it in local.mk (gitignored): CI_HOST := your-host
+ci-remote: ## Run make ci on CI_HOST over ssh (set CI_HOST in local.mk)
+	@[ -n "$(CI_HOST)" ] || { echo "ci-remote: set CI_HOST (in local.mk) to the host to run make ci on" >&2; exit 1; }
+	rsync -a --delete --exclude /build/ --exclude /bin/dev/ ./ $(CI_HOST):ci/omamessenger/
+	ssh $(CI_HOST) 'cd ci/omamessenger && make ci CI_MEMORY=$(CI_MEMORY)'
 
 benchmark: ## Measure OmaMessenger's memory and CPU use against Telegram Desktop and WhatsApp Web; writes docs/BENCHMARK.md (not part of make check: restarts omarchy-shell and opens real apps)
 	./scripts/run-benchmark.sh

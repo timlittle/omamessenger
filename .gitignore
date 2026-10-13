@@ -10,3 +10,5 @@
 # Subagent worktrees
 /.claude/worktrees/
 /backend/backend
+# Per-developer Makefile settings (e.g. CI_HOST), never committed.
+/local.mk
