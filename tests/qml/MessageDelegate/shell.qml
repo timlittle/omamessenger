@@ -450,9 +450,11 @@ ShellRoot {
   }
 
   // checkPhoto verifies a photo without a caption shows only the photo, at
-  // its shape, asks to be downloaded, and shows the download once it is in.
+  // its shape, asks to be downloaded, and shows the download once it is
+  // in; its pixel dimensions and file size show underneath, as soon as
+  // the service reports them, with no download needed first.
   function checkPhoto(): bool {
-    const photo = { kind: "photo", width: 400, height: 200, thumb: "" };
+    const photo = { kind: "photo", width: 400, height: 200, size: 1024, thumb: "" };
     delegate.message = { id: "m8", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
 
     const view = Check.find(delegate, "photoView");
@@ -460,6 +462,9 @@ ShellRoot {
     if (Check.find(delegate, "body").visible) return Check.fail("the [Photo] label is shown beside the photo");
     if (Math.abs(view.height - view.width / 2) > 1) return Check.fail(`photo is ${view.width}x${view.height}, not at its 2:1 shape`);
     if (root.wanted.indexOf("m8") < 0) return Check.fail("the photo did not ask to be downloaded");
+
+    const meta = Check.find(delegate, "photoMeta");
+    if (!meta.visible || meta.text !== "400 × 200 · 1.0 KB") return Check.fail("photo dimensions and size not shown: " + meta.text);
 
     delegate.message = Object.assign({}, delegate.message, { mediaPath: "/tmp/m8.jpg" });
     if (String(Check.find(delegate, "photoImage").source) !== "file:///tmp/m8.jpg") return Check.fail("the downloaded photo is not shown");
@@ -490,17 +495,19 @@ ShellRoot {
     return true;
   }
 
-  // checkVideoAndFile verifies a video shows a play mark and its length
-  // without downloading itself, a file shows its name and size, and a
-  // click on either asks to open it.
+  // checkVideoAndFile verifies a video shows a play mark, its length and
+  // its pixel dimensions and file size, without downloading itself; a
+  // file shows its name and size, and a click on either asks to open it.
   function checkVideoAndFile(): bool {
     root.wanted = [];
-    const video = { kind: "video", width: 1280, height: 720, duration: 65 };
+    const video = { kind: "video", width: 1280, height: 720, duration: 65, size: 5242880 };
     delegate.message = { id: "m9", senderId: "s1", senderName: "Alex", text: "[Video]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(video), mediaPath: "" };
 
     const view = Check.find(delegate, "photoView");
     if (!view.visible || !Check.find(delegate, "playMark").visible) return Check.fail("video shown without its play mark");
     if (!Check.texts(view).some((item) => item.text === "1:05" && item.visible)) return Check.fail("video length not shown");
+    const videoMeta = Check.find(delegate, "photoMeta");
+    if (!videoMeta.visible || videoMeta.text !== "1280 × 720 · 5.0 MB") return Check.fail("video dimensions and size not shown: " + videoMeta.text);
     if (root.wanted.length !== 0) return Check.fail("a video started downloading by itself");
     t.wait(50); // let the layout catch up with the new message before clicking
     t.mouseClick(view);

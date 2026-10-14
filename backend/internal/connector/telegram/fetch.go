@@ -83,8 +83,8 @@ func fileLocation(m tg.MessageMediaClass) (tg.InputFileLocationClass, error) {
 	switch m := m.(type) {
 	case *tg.MessageMediaPhoto:
 		if photo, ok := m.Photo.(*tg.Photo); ok {
-			size, _, _ := largest(photo.Sizes)
-			return &tg.InputPhotoFileLocation{ID: photo.ID, AccessHash: photo.AccessHash, FileReference: photo.FileReference, ThumbSize: size}, nil
+			kind, _, _, _ := largest(photo.Sizes)
+			return &tg.InputPhotoFileLocation{ID: photo.ID, AccessHash: photo.AccessHash, FileReference: photo.FileReference, ThumbSize: kind}, nil
 		}
 	case *tg.MessageMediaDocument:
 		if doc, ok := m.Document.(*tg.Document); ok {

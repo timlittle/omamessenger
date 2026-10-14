@@ -126,6 +126,18 @@ Column {
     onOpened: root.mediaOpen()
   }
 
+  Text {
+    objectName: "photoMeta"
+    // Pixel dimensions and file size, whichever the service gave this
+    // photo or video; a video's own length already shows on its
+    // thumbnail (see PhotoView), so this never repeats it.
+    visible: (root._mediaKind === "photo" || root._mediaKind === "video") && text !== ""
+    text: root.media ? [Format.photoSize(root.media.width, root.media.height), Format.fileSize(root.media.size)].filter((part) => part !== "").join(" · ") : ""
+    textFormat: Text.PlainText
+    color: Util.alpha(Color.foreground, 0.6)
+    font { family: Theme.font.family; pixelSize: Theme.font.caption }
+  }
+
   FileView {
     objectName: "fileView"
     width: Math.min(implicitWidth, root.maxTextWidth)

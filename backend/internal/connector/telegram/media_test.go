@@ -45,13 +45,14 @@ func TestMedia_LinkPreview(t *testing.T) {
 }
 
 // photo is a photo with a stripped preview and two sizes, the larger
-// progressive. It returns a fresh value each time, for the same reason
-// as stripped.
+// progressive with a file size of its own (the last, full entry of a
+// progressive JPEG's prefix sizes). It returns a fresh value each time,
+// for the same reason as stripped.
 func photo() *tg.Photo {
 	return &tg.Photo{ID: 7, AccessHash: 8, FileReference: []byte("ref"), Sizes: []tg.PhotoSizeClass{
 		stripped(),
-		&tg.PhotoSize{Type: "m", W: 320, H: 240},
-		&tg.PhotoSizeProgressive{Type: "y", W: 1280, H: 960},
+		&tg.PhotoSize{Type: "m", W: 320, H: 240, Size: 9000},
+		&tg.PhotoSizeProgressive{Type: "y", W: 1280, H: 960, Sizes: []int{2000, 50000, 153600}},
 	}}
 }
 
@@ -59,8 +60,8 @@ func TestMedia_Photo(t *testing.T) {
 	t.Parallel()
 
 	got := media(&tg.MessageMediaPhoto{Photo: photo()})
-	if got == nil || got.Kind != domain.MediaPhoto || got.Width != 1280 || got.Height != 960 || got.Thumb == "" {
-		t.Errorf("media = %+v, want the photo at its largest size with a preview", got)
+	if got == nil || got.Kind != domain.MediaPhoto || got.Width != 1280 || got.Height != 960 || got.Size != 153600 || got.Thumb == "" {
+		t.Errorf("media = %+v, want the photo at its largest size with a preview and its file size", got)
 	}
 }
 

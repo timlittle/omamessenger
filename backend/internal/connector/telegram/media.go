@@ -59,31 +59,37 @@ func photoMedia(p tg.PhotoClass) *domain.Media {
 		return nil
 	}
 
-	_, w, h := largest(photo.Sizes)
+	_, w, h, size := largest(photo.Sizes)
 
-	return &domain.Media{Kind: domain.MediaPhoto, Width: w, Height: h, Thumb: strippedThumb(photo.Sizes)}
+	return &domain.Media{Kind: domain.MediaPhoto, Width: w, Height: h, Size: size, Thumb: strippedThumb(photo.Sizes)}
 }
 
 // largest finds a photo's largest size: its type, which names it for
-// download, and its width and height.
-func largest(sizes []tg.PhotoSizeClass) (kind string, w, h int) {
-	for _, size := range sizes {
+// download, its width and height, and its file size in bytes. A
+// progressive JPEG reports its size as the last, full entry of its
+// prefix sizes rather than a single Size field.
+func largest(sizes []tg.PhotoSizeClass) (kind string, w, h int, size int64) {
+	for _, s := range sizes {
 		var sw, sh int
-		switch s := size.(type) {
+		var sz int64
+		switch v := s.(type) {
 		case *tg.PhotoSize:
-			sw, sh = s.W, s.H
+			sw, sh, sz = v.W, v.H, int64(v.Size)
 		case *tg.PhotoSizeProgressive:
-			sw, sh = s.W, s.H
+			sw, sh = v.W, v.H
+			if n := len(v.Sizes); n > 0 {
+				sz = int64(v.Sizes[n-1])
+			}
 		default:
 			continue
 		}
 
 		if sw*sh > w*h {
-			kind, w, h = size.GetType(), sw, sh
+			kind, w, h, size = s.GetType(), sw, sh, sz
 		}
 	}
 
-	return kind, w, h
+	return kind, w, h, size
 }
 
 // document is what a document's attributes say it is.
