@@ -24,6 +24,12 @@ var ErrInvalidInput = errors.New("invalid input")
 var ErrNoFake = errors.New("no fake connectors in this build")
 
 // Dispatcher hands outgoing work to the connector that owns the account.
+// Send and MarkRead are deliberately the only two ways anything here can
+// tell a service about this account's own activity: there is no method
+// to report typing, presence or a voice note played, because neither
+// connector ever sends any of those in the first place (see
+// docs/privacy.md). MarkRead is the only one Settings.ReadReceipts
+// gates, and it is the only one there is to gate.
 type Dispatcher interface {
 	Send(ctx context.Context, conv domain.Conversation, m domain.Message) error
 	MarkRead(ctx context.Context, conv domain.Conversation) error

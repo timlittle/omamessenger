@@ -25,6 +25,18 @@ WhatsApp chats show the recent history your phone syncs when you link the device
 
 Removing an account (**Remove an account** in the command palette) signs it out and deletes its session and messages from this computer. It does not touch your chat history on the service or on other devices.
 
+### Reading and replying without the sender being told
+
 Turning off read receipts (**Toggle read receipts** in the command palette, or the plugin's own "Read receipts" setting) only ever affects what this account tells the service: a chat read here still clears its own badge locally, but Telegram's or WhatsApp's read receipt is never sent, so the sender, and this account's own other devices, keep seeing it as unread. A quiet "Read receipts off" label shows in the footer while it is on.
+
+This is the one signal this app ever sends about a chat being looked at, so turning it off is a complete "read without being seen reading" mode, not a partial one. The rest of this section is the audit behind that claim, so it is a documented fact rather than an assumption:
+
+- **Typing indicators.** OmaMessenger shows the other side's typing indicator to you (the `typing` event), but it never sends your own: there is no code path, in either connector, that reports you are composing a reply. Nothing needed turning off.
+- **Online/presence.** Neither connector ever calls WhatsApp's "available"/"unavailable" presence or Telegram's `account.updateStatus`; OmaMessenger has no notion of "online" to report at all. What it cannot control: simply being connected can itself be visible. A linked WhatsApp device and an active Telegram session can both surface as "online" or a recent "last seen" to someone who has your chat open, as part of how each service's own protocol works, regardless of anything this app sends or withholds.
+- **Played receipts for voice notes.** Opening or playing a voice note here never sends a distinct "played" signal: WhatsApp's read receipt call here is never given its separate played-receipt type, and Telegram's own `messages.readMessageContents` (its equivalent for a voice note or round video) is never called either. A voice note gets exactly the same, single read receipt as a text message — covered by the one setting above like everything else, with nothing extra to turn off.
+- **Downloading media.** Fetching a photo, video or file to view it is a download from the service's media storage; it is not a report that you opened the message, and nothing about it reaches the sender.
+- **Replying.** Sending a reply at all is not something this setting touches or could: the message itself reaches the service and the other side, the same as always, which necessarily shows you active regardless of the read-receipts setting. Turn read receipts back on afterwards if you want the chat's own unread state to resync normally.
+
+These were checked directly in the WhatsApp and Telegram connectors' own code, each backed by a test (`TestMarkRead_SendsNoOtherSignal` in both `backend/internal/connector/whatsapp` and `backend/internal/connector/telegram`) that fails if a future change ever adds one of these calls outside this setting's gate.
 
 Spell check runs entirely on this computer, against a dictionary bundled with the helper: the text you are composing never leaves it, and nothing about spell check reaches Telegram, WhatsApp or anywhere else. Turning it off in the plugin's "Spell check" setting releases the dictionary from memory until it is turned back on.

@@ -79,6 +79,43 @@ func TestMarkRead_SendsAReceiptForADirectChatAfterARestart(t *testing.T) {
 	}
 }
 
+// TestMarkRead_SendsNoOtherSignal confirms a MarkRead call's only two
+// effects, for a voice note the same as for any other message, are the
+// per-message read receipt and the chat-read app-state patch: nothing
+// here can ask whatsmeow for a typing indicator or a presence update (the
+// device interface above has no such methods), or for a voice note's own
+// separate "played" receipt type (markRead takes no receipt-type
+// parameter at all, and message_keys, which MarkRead reads unread ids
+// back from, has no media-kind column to tell a voice note apart from
+// any other message in the first place). Incognito mode (read receipts
+// off) skips this whole call from the app layer, proven in
+// app.TestMarkRead_SkipsTheServiceWithReadReceiptsOff; this test is what
+// proves there was nothing else here for it to have skipped. See
+// docs/privacy.md for what that leaves this mode unable to hide.
+func TestMarkRead_SendsNoOtherSignal(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "voice1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := newConnectorWithMedia(dev, &sink, media)
+
+	conv := directChat
+	conv.Unread = 1
+	if err := c.MarkRead(t.Context(), conv); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.markReadCalls) != 1 || len(dev.appStatePatches) != 1 {
+		t.Errorf("markRead calls = %d, app state patches = %d; want exactly one of each and nothing else",
+			len(dev.markReadCalls), len(dev.appStatePatches))
+	}
+}
+
 func TestMarkRead_SendsOneReceiptPerSenderForAGroupAfterARestart(t *testing.T) {
 	t.Parallel()
 

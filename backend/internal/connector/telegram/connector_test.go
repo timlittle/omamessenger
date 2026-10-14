@@ -161,6 +161,37 @@ func TestMarkRead_UsesTheChannelCallForChannels(t *testing.T) {
 	}
 }
 
+// TestMarkRead_SendsNoOtherSignal confirms MarkRead's only effect is
+// the one read-history call: nothing here also asks Telegram to update
+// this account's online status (account.updateStatus), send a typing
+// action (messages.setTyping), or mark a voice note "played"
+// (messages.readMessageContents, Telegram's own separate signal for
+// a voice note or round video, distinct from readHistory). Incognito
+// mode (read receipts off) skips this whole call from the app layer,
+// proven in app.TestMarkRead_SkipsTheServiceWithReadReceiptsOff; this
+// test is what proves there was nothing else here for it to have
+// skipped. See docs/privacy.md for what that leaves this mode unable
+// to hide.
+func TestMarkRead_SendsNoOtherSignal(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesReadHistoryRequest{}, &tg.MessagesAffectedMessages{})
+
+	c := connectedTo(f, &connectortest.Sink{})
+	if err := c.MarkRead(t.Context(), chatWithNadia); err != nil {
+		t.Fatal(err)
+	}
+
+	sent := f.sent()
+	if len(sent) != 1 {
+		t.Fatalf("requests sent = %d, want exactly the one read-history call: %+v", len(sent), sent)
+	}
+	if _, ok := sent[0].(*tg.MessagesReadHistoryRequest); !ok {
+		t.Errorf("sent %T, want MessagesReadHistoryRequest", sent[0])
+	}
+}
+
 func TestMarkRead_Fails(t *testing.T) {
 	t.Parallel()
 
