@@ -44,6 +44,11 @@ Item {
   // message list to show.
   property var voiceController: null
 
+  // openExternally hands a local file to the user's own application,
+  // through media (see MediaController); a test overrides it with a
+  // recorder rather than letting a video or file open for real.
+  property var openExternally: (path) => Qt.openUrlExternally("file://" + path)
+
   // activeId is the open conversation's id, or "" when none is open.
   property string activeId: ""
 
@@ -570,6 +575,7 @@ Item {
     service: root.service
     photoViewer: root.photoViewer
     voiceController: root.voiceController
+    openExternally: root.openExternally
   }
 
   Timer {

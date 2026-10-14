@@ -7,6 +7,15 @@
 // Format.mediaUnavailableMessage's job, proven exhaustively in
 // tests/unit/format.test.cjs; this only checks the controller reaches it
 // with the right media kind and reason.
+//
+// It also checks the fix for clicking a video or file repeatedly before
+// it is ready: opening the same id twice before media.fetch answers
+// sends only one fetch and opens the result only once, and opening an
+// already-cached id twice back to back (the same way two clicks with no
+// gap between them would reach this controller) opens it only once too.
+// openExternally stands in for the real Qt.openUrlExternally throughout,
+// so "opens" here means this test's own recorder, never a real external
+// application.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -15,25 +24,39 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
+  // openCalls records every path controller.openExternally was asked to
+  // open, standing in for the real Qt.openUrlExternally.
+  property var openCalls: []
+
   QtObject {
     id: service
 
     property var uiState: ({})
     property var accounts: []
-    // initialMessages seeds one undownloaded video and one undownloaded
-    // file, so a failure's reported sentence can be checked against two
-    // media kinds; a file, unlike a photo or an available voice player,
-    // always falls through openMedia's plain download-and-open path.
+    // initialMessages seeds an undownloaded video and file for the
+    // failure checks below, plus a second, already-cached video (v2)
+    // for the repeated-click-on-cached-media check: a file, unlike a
+    // photo or an available voice player, always falls through
+    // openMedia's plain download-and-open path.
     property var initialMessages: [
-      { id: "v1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 20, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
+      { id: "v1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 30, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
+      { id: "v2", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 20, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v2.mp4" },
       { id: "f1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: 10, media: { kind: "file", fileName: "notes.pdf" }, mediaPath: "" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
+    // fetchRequests records every message id media.fetch was called for,
+    // in order, so a click that should have been suppressed shows up as
+    // an extra entry rather than silently passing.
+    property var fetchRequests: []
 
     function request(method, params, callback) {
       if (method === "messages.list") { callback(null, { hasMore: false, messages: service.initialMessages }); return; }
-      if (method === "media.fetch") { service.pendingFetch[params.messageId] = callback; return; }
+      if (method === "media.fetch") {
+        service.fetchRequests.push(params.messageId);
+        service.pendingFetch[params.messageId] = callback;
+        return;
+      }
       callback(null, {});
     }
   }
@@ -41,6 +64,7 @@ ShellRoot {
   ConversationController {
     id: controller
     service: service
+    openExternally: (path) => root.openCalls.push(path)
   }
 
   Timer {
@@ -56,11 +80,20 @@ ShellRoot {
     callback(error, null);
   }
 
+  // answerFetchSuccess resolves a held media.fetch call with path.
+  function answerFetchSuccess(id, path) {
+    const callback = service.pendingFetch[id];
+    delete service.pendingFetch[id];
+    callback(null, { path: path });
+  }
+
   function run(): void {
     controller.open({ id: "c1", title: "Group" });
 
     if (!root.checkTrulyGoneReasonNamesTheKind()) return;
     if (!root.checkRetryableReasonKeepsTheGenericText()) return;
+    if (!root.checkRapidClicksFetchAndOpenOnce()) return;
+    if (!root.checkCachedMediaOpensOnceForBackToBackClicks()) return;
 
     console.log("PASS MediaController");
     Qt.exit(0);
@@ -88,6 +121,54 @@ ShellRoot {
 
     if (controller.lastError !== "Something went wrong in the helper. Try again.") {
       return Check.fail("lastError = " + controller.lastError + ", want the helper's generic sentence");
+    }
+    return true;
+  }
+
+  // checkRapidClicksFetchAndOpenOnce verifies opening an undownloaded
+  // video twice before its media.fetch answers sends only one fetch
+  // request, and opens the result only once: the bug this fixes let an
+  // impatient second click while a video was still downloading end up
+  // opening a second player once the download finished.
+  function checkRapidClicksFetchAndOpenOnce(): bool {
+    root.openCalls = [];
+    service.fetchRequests = [];
+
+    controller.openMedia("v1");
+    controller.openMedia("v1");
+
+    if (service.fetchRequests.length !== 1) {
+      return Check.fail("fetchRequests = " + JSON.stringify(service.fetchRequests) + ", want exactly one");
+    }
+
+    root.answerFetchSuccess("v1", "/tmp/v1.mp4");
+
+    if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/v1.mp4") {
+      return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want exactly one open of /tmp/v1.mp4");
+    }
+
+    // The download has finished and nothing is in flight any more, so a
+    // later click opens it again rather than staying suppressed forever.
+    controller.openMedia("v1");
+    if (root.openCalls.length !== 2) {
+      return Check.fail("a click after the first open finished did not open it again");
+    }
+    return true;
+  }
+
+  // checkCachedMediaOpensOnceForBackToBackClicks verifies opening an
+  // already-downloaded video twice with nothing in between (the same
+  // way two clicks with no gap would reach this controller) opens it
+  // only once: before this fix, the already-cached path had no guard
+  // at all, so every click opened a fresh player.
+  function checkCachedMediaOpensOnceForBackToBackClicks(): bool {
+    root.openCalls = [];
+
+    controller.openMedia("v2");
+    controller.openMedia("v2");
+
+    if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/v2.mp4") {
+      return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want exactly one open of /tmp/v2.mp4");
     }
     return true;
   }

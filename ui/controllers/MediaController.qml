@@ -24,9 +24,29 @@ QtObject {
   // pauses through, when it is there and QtMultimedia loaded.
   property var voiceController: null
 
+  // openExternally hands a local file to the user's own application.
+  // The default calls the real Qt.openUrlExternally; a test overrides
+  // it with a recorder, so opening a video or file can be proven to
+  // dispatch exactly once without ever calling the real, user-visible
+  // function.
+  property var openExternally: (path) => Qt.openUrlExternally("file://" + path)
+
   // _fetching holds the ids of messages whose media is downloading, so a
   // photo already on its way is never asked for twice.
   property var _fetching: ({})
+
+  // _opening holds the ids of messages whose already-downloaded video or
+  // file a click just handed to openExternally, cleared on the next
+  // turn of the event loop rather than at once: this is what makes two
+  // opens reaching this function back to back, with nothing in between,
+  // open it only once (see the issue this fixes - repeatedly clicking a
+  // video opened it several times over). It is not a guard against a
+  // second click once that turn has passed, since nothing tells this
+  // controller when, or whether, the external player it handed the file
+  // to ever closes; the download itself stays guarded for its whole
+  // duration by _fetching above, which is the window the reported bug
+  // actually clicked through.
+  property var _opening: ({})
 
   // fetchMedia downloads a message's photo and shows it once it is here.
   // A photo asks each time its row is shown, so one already on its way is
@@ -52,8 +72,20 @@ QtObject {
     if (kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(timeline, id, media); return; }
 
     const path = timeline.mediaPath(id);
-    if (path) Qt.openUrlExternally("file://" + path);
-    else root.downloadMedia(timeline, id, true, (downloaded) => Qt.openUrlExternally("file://" + downloaded));
+    if (path) { root._openCached(id, path); return; }
+
+    root.downloadMedia(timeline, id, true, (downloaded) => root.openExternally(downloaded));
+  }
+
+  // _openCached hands an already-downloaded video or file to
+  // openExternally, guarded by _opening so a second open reaching this
+  // function before the event loop has moved on does nothing extra.
+  function _openCached(id: string, path: string): void {
+    if (root._opening[id]) return;
+
+    root._opening[id] = true;
+    root.openExternally(path);
+    Qt.callLater(() => delete root._opening[id]);
   }
 
   // _toggleVoice plays or pauses a voice note, downloading it first if it
