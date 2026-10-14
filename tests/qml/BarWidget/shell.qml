@@ -1,8 +1,10 @@
 // Checks the bar icon: the unread count (hidden at zero), the tooltip
-// text, dimming while the helper is not ready, that a left click toggles
-// the window through the bar's shell facade, and that settings are
-// forwarded to the service on load and on every change. Uses fake
-// bar/shell/service objects, not the real Service or a helper process.
+// text and that it reaches the bar's own tooltip bubble on hover and
+// leaves it on exit, dimming while the helper is not ready, that a left
+// click toggles the window through the bar's shell facade, and that
+// settings are forwarded to the service on load and on every change.
+// Uses fake bar/shell/service objects, not the real Service or a helper
+// process.
 import QtQuick
 import QtTest
 import Quickshell
@@ -14,6 +16,8 @@ ShellRoot {
 
   property var toggleCalls: []
   property var appliedSettings: []
+  property var tooltipCalls: []
+  property int hideTooltipCalls: 0
 
   QtObject {
     id: fakeService
@@ -31,6 +35,8 @@ ShellRoot {
   QtObject {
     id: fakeBar
     property QtObject shell: fakeShell
+    function showTooltip(target, text) { root.tooltipCalls.push({ target: target, text: text }); }
+    function hideTooltip(target) { root.hideTooltipCalls += 1; }
   }
 
   FloatingWindow {
@@ -82,6 +88,19 @@ ShellRoot {
       return Check.fail("badge did not follow unreadTotal, count=" + badge.count + " visible=" + badge.visible);
     if (widget.tooltipText !== "OmaMessenger · 3 unread")
       return Check.fail("tooltip was '" + widget.tooltipText + "'");
+
+    // Hovering asks the bar to show its own tooltip bubble with the
+    // widget's current text; the formatting itself is Tooltip.js's job,
+    // proven exhaustively by its own node tests (see tests/unit).
+    t.mouseMove(widget, widget.width / 2, widget.height / 2);
+    if (root.tooltipCalls.length !== 1)
+      return Check.fail("expected one showTooltip call on hover, got " + root.tooltipCalls.length);
+    if (root.tooltipCalls[0].target !== widget || root.tooltipCalls[0].text !== widget.tooltipText)
+      return Check.fail("showTooltip called with " + JSON.stringify(root.tooltipCalls[0]));
+
+    t.mouseMove(widget, -10, -10);
+    if (root.hideTooltipCalls !== 1)
+      return Check.fail("expected one hideTooltip call on leaving the widget, got " + root.hideTooltipCalls);
 
     fakeService.unreadTotal = 0;
     if (badge.visible) return Check.fail("badge still visible after unreadTotal returned to zero");

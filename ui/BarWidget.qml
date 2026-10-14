@@ -1,6 +1,5 @@
 import QtQuick
 import qs.Commons
-import qs.Ui as Ui
 import "theme"
 import "components"
 
@@ -47,8 +46,22 @@ Item {
       root.service.applySettings(root.settings);
   }
 
+  // _showTooltip asks the host bar to show its own shared tooltip bubble
+  // over this widget. Omarchy's bar widgets never draw a tooltip
+  // themselves (a plain QtQuick.Controls ToolTip does not size itself to
+  // this widget's small bar slot); they ask the bar to show its own, the
+  // same way Ui.WidgetButton does on hover.
+  function _showTooltip(): void {
+    if (root.bar) root.bar.showTooltip(root, root.tooltipText);
+  }
+
   onBarChanged: root._forwardSettings()
   onSettingsChanged: root._forwardSettings()
+  // The unread count changes while the pointer stays put (a message
+  // arrives, settings are forwarded); re-show the tooltip so its text
+  // stays current instead of the one shown when the pointer first
+  // entered, since Omarchy's bar sets its tooltip text once per show.
+  onTooltipTextChanged: if (hover.containsMouse) root._showTooltip()
 
   Rectangle {
     anchors.fill: parent
@@ -73,13 +86,10 @@ Item {
     id: hover
     anchors.fill: parent
     hoverEnabled: true
+    onEntered: root._showTooltip()
+    onExited: if (root.bar) root.bar.hideTooltip(root)
     onClicked: {
       if (root.bar && root.bar.shell) root.bar.shell.toggle(root.pluginId, "{}");
     }
-  }
-
-  Ui.PanelToolTip {
-    visible: hover.containsMouse
-    text: root.tooltipText
   }
 }
