@@ -32,6 +32,10 @@ Item {
   // unreadTotal is the unread count across every conversation.
   readonly property int unreadTotal: appState.unreadTotal
 
+  // unreadByService is the unread count for each service that has any,
+  // keyed by service id, for the bar tooltip's per-service breakdown.
+  readonly property var unreadByService: appState.unreadByService
+
   // accounts is the signed-in accounts the helper reported.
   readonly property var accounts: appState.accounts
 

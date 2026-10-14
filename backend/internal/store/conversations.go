@@ -331,6 +331,32 @@ func (s *Store) UnreadTotal(ctx context.Context) (int, error) {
 	return total, wrap("unread total", err)
 }
 
+// UnreadByService counts unread messages in conversations that are not
+// muted, grouped by the owning account's service. A service with no
+// unread messages at all is left out of the map, so the bar tooltip can
+// tell "no unread" apart from "this service does not exist yet".
+func (s *Store) UnreadByService(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT a.service,SUM(c.unread) FROM conversations c JOIN accounts a ON a.id=c.account_id
+		WHERE c.muted=0 GROUP BY a.service HAVING SUM(c.unread)>0`)
+	if err != nil {
+		return nil, wrap("unread by service", err)
+	}
+	defer rows.Close()
+
+	byService := map[string]int{}
+	for rows.Next() {
+		var service string
+		var total int
+		if err := rows.Scan(&service, &total); err != nil {
+			return nil, wrap("unread by service", err)
+		}
+		byService[service] = total
+	}
+
+	return byService, wrap("unread by service", rows.Err())
+}
+
 // scanConversation reads one row selected with conversationColumns.
 func scanConversation(row scanner) (domain.Conversation, error) {
 	return scanConversationWith(row)

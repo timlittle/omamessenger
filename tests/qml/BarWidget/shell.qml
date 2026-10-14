@@ -23,6 +23,9 @@ ShellRoot {
     id: fakeService
     property string status: "starting"
     property int unreadTotal: 0
+    property var unreadByService: ({})
+    property var services: []
+    property var accounts: []
     function applySettings(settings) { root.appliedSettings.push(settings); }
   }
 
@@ -98,10 +101,23 @@ ShellRoot {
     if (root.tooltipCalls[0].target !== widget || root.tooltipCalls[0].text !== widget.tooltipText)
       return Check.fail("showTooltip called with " + JSON.stringify(root.tooltipCalls[0]));
 
+    // A per-service unread count or a disconnected account changes the
+    // tooltip text while still hovered; the widget re-shows it so the
+    // bubble never shows stale data.
+    fakeService.unreadByService = ({ whatsapp: 3 });
+    if (root.tooltipCalls.length !== 2 || root.tooltipCalls[1].text.indexOf("WhatsApp") === -1)
+      return Check.fail("tooltip did not pick up the per-service breakdown: " + JSON.stringify(root.tooltipCalls));
+
+    fakeService.accounts = [{ service: "telegram", name: "Work", status: "needs-auth" }];
+    if (root.tooltipCalls.length !== 3 || root.tooltipCalls[2].text.indexOf("needs sign-in") === -1)
+      return Check.fail("tooltip did not pick up the disconnected account: " + JSON.stringify(root.tooltipCalls));
+
     t.mouseMove(widget, -10, -10);
     if (root.hideTooltipCalls !== 1)
       return Check.fail("expected one hideTooltip call on leaving the widget, got " + root.hideTooltipCalls);
 
+    fakeService.unreadByService = ({});
+    fakeService.accounts = [];
     fakeService.unreadTotal = 0;
     if (badge.visible) return Check.fail("badge still visible after unreadTotal returned to zero");
 

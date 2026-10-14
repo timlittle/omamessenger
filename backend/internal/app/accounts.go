@@ -65,7 +65,7 @@ func (c *Commands) RemoveAccount(ctx context.Context, accountID string) error {
 
 	c.events.publish(ctx, EventAccountRemoved, AccountRemoved{AccountID: accountID})
 	if after := c.events.unreadTotal(ctx); after != before {
-		c.events.publish(ctx, EventUnreadChanged, UnreadChanged{Total: after})
+		c.events.publish(ctx, EventUnreadChanged, c.events.unreadChanged(ctx, after))
 	}
 
 	return nil

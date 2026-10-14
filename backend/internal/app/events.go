@@ -21,9 +21,13 @@ const (
 	EventNotificationClicked = "notification.clicked"
 )
 
-// UnreadChanged is the data of an unread.changed event.
+// UnreadChanged is the data of an unread.changed event. ByService is the
+// unread total for each service that has any, so the bar tooltip can
+// show WhatsApp and Telegram apart; it is empty, and omitted, once
+// nothing anywhere is unread.
 type UnreadChanged struct {
-	Total int `json:"total"`
+	Total     int            `json:"total"`
+	ByService map[string]int `json:"byService,omitempty"`
 }
 
 // MessageRemoved is the data of a message.removed event.
@@ -84,6 +88,18 @@ func (e *events) unreadTotal(ctx context.Context) int {
 	return total
 }
 
+// unreadChanged builds an unread.changed event's data for total, filling
+// in the per-service breakdown or leaving it nil when it cannot be read;
+// the next successful change corrects it.
+func (e *events) unreadChanged(ctx context.Context, total int) UnreadChanged {
+	byService, err := e.store.UnreadByService(ctx)
+	if err != nil {
+		return UnreadChanged{Total: total}
+	}
+
+	return UnreadChanged{Total: total, ByService: byService}
+}
+
 // conversationChanged publishes the conversation's current summary, then
 // the unread total if it differs from before.
 func (e *events) conversationChanged(ctx context.Context, id string, unreadBefore int) {
@@ -95,7 +111,7 @@ func (e *events) conversationChanged(ctx context.Context, id string, unreadBefor
 	e.publish(ctx, EventConversationUpdated, conv)
 
 	if after := e.unreadTotal(ctx); after != unreadBefore {
-		e.publish(ctx, EventUnreadChanged, UnreadChanged{Total: after})
+		e.publish(ctx, EventUnreadChanged, e.unreadChanged(ctx, after))
 	}
 }
 

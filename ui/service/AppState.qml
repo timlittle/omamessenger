@@ -13,6 +13,11 @@ QtObject {
   // unreadTotal is the unread count shown on the bar widget.
   property int unreadTotal: 0
 
+  // unreadByService is the unread count for each service that has any,
+  // keyed by service id ("whatsapp", "telegram"), for the bar tooltip's
+  // per-service breakdown. Empty for a helper too old to report it.
+  property var unreadByService: ({})
+
   // pendingAuth is the sign-in step an account is waiting on, from the
   // last auth.step, or null. It lives here so account setup can show it
   // again after the panel is recreated.
@@ -41,6 +46,7 @@ QtObject {
   function applyHello(result: var): void {
     root.version = result.protocol || 0;
     root.unreadTotal = result.unreadTotal || 0;
+    root.unreadByService = result.unreadByService || {};
     root.services = result.services || [];
   }
 
@@ -70,9 +76,10 @@ QtObject {
     if (root.pendingAuth && root.pendingAuth.accountId === accountId) root.pendingAuth = null;
   }
 
-  // applyUnreadChanged stores the new unread total from an unread.changed
-  // event.
+  // applyUnreadChanged stores the new unread total and per-service
+  // breakdown from an unread.changed event.
   function applyUnreadChanged(data: var): void {
     root.unreadTotal = data.total || 0;
+    root.unreadByService = data.byService || {};
   }
 }

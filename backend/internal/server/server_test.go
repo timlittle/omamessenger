@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -41,6 +42,25 @@ func TestServer_HelloListsAvailableServices(t *testing.T) {
 	want := []domain.Service{{ID: domain.ServiceTelegram, Name: "Telegram"}}
 	if !slices.Equal(got.Services, want) {
 		t.Errorf("hello services = %+v, want %+v", got.Services, want)
+	}
+}
+
+func TestServer_HelloReportsUnreadByService(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+	s.ingest.Unread(t.Context(), "wa", "r-chat", 2)
+
+	got, err := call[struct {
+		UnreadByService map[string]int `json:"unreadByService"`
+	}](t, s, "hello", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]int{domain.ServiceWhatsApp: 2}
+	if !maps.Equal(got.UnreadByService, want) {
+		t.Errorf("hello unreadByService = %v, want %v", got.UnreadByService, want)
 	}
 }
 

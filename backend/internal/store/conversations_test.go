@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"testing"
 
@@ -424,5 +425,33 @@ func TestUnreadTotal_IgnoresMutedConversations(t *testing.T) {
 
 	if err := s.SetMuted(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("SetMuted(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestUnreadByService_GroupsByServiceAndIgnoresMuted(t *testing.T) {
+	t.Parallel()
+
+	s, chat := openChatStore(t)
+	ctx := t.Context()
+	addMessages(t, s, domain.Message{ID: "in", ConversationID: chat.ID, Text: "one", Created: 1})
+
+	if err := s.UpsertAccount(ctx, domain.Account{ID: "tg", Service: domain.ServiceTelegram, Name: "tg"}); err != nil {
+		t.Fatal(err)
+	}
+	tgChat := addConversation(t, s, "tg", "tg-chat", "TG Chat")
+	addMessages(t, s, domain.Message{ID: "tg-in", ConversationID: tgChat.ID, Text: "two", Created: 1})
+
+	want := map[string]int{domain.ServiceWhatsApp: 1, domain.ServiceTelegram: 1}
+	if got, err := s.UnreadByService(ctx); err != nil || !maps.Equal(got, want) {
+		t.Errorf("UnreadByService = %v, %v; want %v", got, err, want)
+	}
+
+	if err := s.SetMuted(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	want = map[string]int{domain.ServiceTelegram: 1}
+	if got, err := s.UnreadByService(ctx); err != nil || !maps.Equal(got, want) {
+		t.Errorf("UnreadByService with a muted WhatsApp chat = %v, %v; want %v", got, err, want)
 	}
 }

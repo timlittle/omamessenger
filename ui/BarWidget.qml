@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "theme"
 import "components"
+import "lib/Tooltip.js" as Tooltip
 
 // The OmaMessenger bar icon: the unread count across every conversation,
 // dimmed until the helper is ready, and a left click that opens or closes
@@ -30,8 +31,14 @@ Item {
   readonly property bool ready: root.service ? root.service.status === "ready" : false
   // unreadTotal is the unread count across every conversation.
   readonly property int unreadTotal: root.service ? root.service.unreadTotal : 0
-  // tooltipText names the plugin and its unread count.
-  readonly property string tooltipText: "OmaMessenger · " + root.unreadTotal + " unread"
+  // tooltipText names the plugin, its total unread count, unread per
+  // service, and any account that is not connected.
+  readonly property string tooltipText: Tooltip.format({
+    total: root.unreadTotal,
+    byService: root.service ? root.service.unreadByService : ({}),
+    services: root.service ? root.service.services : [],
+    accounts: root.service ? root.service.accounts : []
+  })
 
   implicitWidth: Theme.bar.iconSlot
   implicitHeight: Theme.bar.iconSlot

@@ -83,6 +83,12 @@ func (c *Commands) UnreadTotal(ctx context.Context) int {
 	return c.events.unreadTotal(ctx)
 }
 
+// UnreadByService counts unread messages outside muted conversations,
+// grouped by service, for the hello response's per-service breakdown.
+func (c *Commands) UnreadByService(ctx context.Context) map[string]int {
+	return c.events.unreadChanged(ctx, 0).ByService
+}
+
 // RunReminders fires every snoozed conversation's reminder at its due
 // time, until ctx is cancelled. main.go starts it as its own goroutine
 // once, alongside the connectors.

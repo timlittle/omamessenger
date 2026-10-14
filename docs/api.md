@@ -12,7 +12,7 @@ The protocol version is `3`.
 
 | Method | Params | Result |
 | --- | --- | --- |
-| `hello` | | `{protocol, version, unreadTotal, services}`; `services` is `[{id, name}]`, the messaging services available to add an account for |
+| `hello` | | `{protocol, version, unreadTotal, unreadByService, services}`; `unreadByService` is `{whatsapp: N, telegram: N, …}`, omitted entries meaning zero; `services` is `[{id, name}]`, the messaging services available to add an account for |
 | `accounts.list` | | `[Account]` |
 | `accounts.add` | `{service, apiId, apiHash, options}` | `Account`. `apiId` and `apiHash` are Telegram's own API keys, kept for compatibility; `options` is the general form, a map of a provider's own setup values (Telegram reads the same two keys from it as `apiId`/`apiHash` strings). Without either, the account uses OmaMessenger's own keys |
 | `accounts.remove` | `{accountId}` | `{}`; signs out and deletes the account's session, credentials and messages |
@@ -56,7 +56,7 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | `message.added` | `Message` |
 | `message.updated` | `Message`; also sent when the service reports a message edited, or its reactions changed |
 | `message.removed` | `{conversationId, messageId}`; sent when the service reports a message deleted |
-| `unread.changed` | `{total}` |
+| `unread.changed` | `{total, byService}`; `byService` is `{whatsapp: N, telegram: N, …}`, a service omitted meaning zero |
 | `typing` | `{conversationId, name, active}` |
 | `notification.clicked` | `{conversationId}`: the user clicked a desktop notification; the UI opens that conversation |
 

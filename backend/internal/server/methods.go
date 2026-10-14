@@ -75,19 +75,26 @@ type none struct{}
 
 // helloResult describes the helper to the UI when it connects. Services
 // is the messaging services available to add an account for, omitted
-// when the helper cannot list them.
+// when the helper cannot list them. UnreadByService is the unread total
+// for each service that has any, omitted when none do.
 type helloResult struct {
-	Protocol    int              `json:"protocol"`
-	Version     string           `json:"version"`
-	UnreadTotal int              `json:"unreadTotal"`
-	Services    []domain.Service `json:"services,omitempty"`
+	Protocol        int              `json:"protocol"`
+	Version         string           `json:"version"`
+	UnreadTotal     int              `json:"unreadTotal"`
+	UnreadByService map[string]int   `json:"unreadByService,omitempty"`
+	Services        []domain.Service `json:"services,omitempty"`
 }
 
 // hello reports the protocol version, the helper version, the unread
-// total and the services available to add an account for.
+// total (overall and per service) and the services available to add an
+// account for.
 func hello(c *app.Commands, version string) func(context.Context, none) (any, error) {
 	return func(ctx context.Context, _ none) (any, error) {
-		return helloResult{Protocol: Protocol, Version: version, UnreadTotal: c.UnreadTotal(ctx), Services: c.Services()}, nil
+		return helloResult{
+			Protocol: Protocol, Version: version,
+			UnreadTotal: c.UnreadTotal(ctx), UnreadByService: c.UnreadByService(ctx),
+			Services: c.Services(),
+		}, nil
 	}
 }
 
