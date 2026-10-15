@@ -82,7 +82,7 @@ build-all: third-party-notices ## Build the release helpers, SHA256SUMS and lice
 # run it by hand before a release, or in CI only for a tag push. It installs
 # into a throwaway HOME, never the real one, and cleans up after itself.
 release-check: build-all ## Install a real cross-compiled release into a throwaway HOME, end to end
-	@tmp=$$(mktemp -d); \
+	@tmp=$$(mktemp -d -p build); \
 	trap 'rm -rf "$$tmp"' EXIT; \
 	mkdir -p "$$tmp/home" "$$tmp/data"; \
 	base="file://$(CURDIR)/build/release"; \
@@ -141,7 +141,7 @@ keys: ## Print the effective key bindings (defaults plus keys.conf overrides), f
 test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the test helper
 	@./scripts/qml-imports.sh >/dev/null
 	@status=0; for dir in tests/qml/*/; do \
-		name=$$(basename "$$dir"); root=build/qml-tests/$$name; run=$$(mktemp -d); \
+		name=$$(basename "$$dir"); root=build/qml-tests/$$name; run=$$(mktemp -d -t oma-qml.XXXXXX); \
 		rm -rf "$$root"; mkdir -p "$$root/bin"; cp -R "$$dir". "$$root/"; \
 		for link in ui scripts helper-version tests/qml/Check.js tests/qml/Stepper.qml tests/qml/FakeShell.qml; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
 		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
@@ -200,7 +200,7 @@ demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and pr
 	mkdir -p "$$root/home/.local/state/omarchy/current"; \
 	ln -s "$(CURDIR)/$$root/theme" "$$root/home/.local/state/omarchy/current/theme"; \
 	for name in $(DEMO_SCENARIOS); do \
-		run=$$(mktemp -d); \
+		run=$$(mktemp -d -t oma-qml.XXXXXX); \
 		rm -rf "$$root/frames" "$$root/data" "$$root/config" "$$root/release" "$$root/log"; mkdir -p "$$root/frames"; \
 		env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen QS_DISABLE_FILE_WATCHER=1 \
 			OMA_FAKE_DEMO=1 OMA_DEMO_SCENARIO="$$name" HOME="$(CURDIR)/$$root/home" \
@@ -268,7 +268,7 @@ $(ACTIONLINT):
 # ZIZMOR_SHA256 before trusting it.
 $(ZIZMOR):
 	mkdir -p $(TOOLS)
-	tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	tmp=$$(mktemp -d -p build); trap 'rm -rf "$$tmp"' EXIT; \
 	curl -fsSL -o "$$tmp/zizmor.tar.gz" "https://github.com/zizmorcore/zizmor/releases/download/$(ZIZMOR_VERSION)/zizmor-x86_64-unknown-linux-gnu.tar.gz"; \
 	echo "$(ZIZMOR_SHA256)  $$tmp/zizmor.tar.gz" | sha256sum -c -; \
 	tar -xzf "$$tmp/zizmor.tar.gz" -C "$$tmp" zizmor; \
