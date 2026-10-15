@@ -196,6 +196,54 @@ func TestAdopt_PrunesOverItsLimitTheSameAsAFill(t *testing.T) {
 	}
 }
 
+// TestAdopt_RefreshesModTimeSoAJustAdoptedFileIsNotTreatedAsStale
+// confirms an adopted file is treated as used right now, not as old as
+// the outgoing copy it came from: an attachment stored hours before it
+// was finally sent and adopted must still outlive a file fetched before
+// it, the same as a fresh fill would.
+func TestAdopt_RefreshesModTimeSoAJustAdoptedFileIsNotTreatedAsStale(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	c := cache.New(dir, 25)
+	calls := 0
+
+	// "earlier" is fetched - and so counts as used - before "sent" is
+	// adopted, so a true LRU must prefer dropping it first.
+	earlier, err := c.Fetch(t.Context(), "earlier", writeBytes(10, &calls))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The outgoing copy was created hours ago, when the user attached it
+	// to the message, long before the message was actually sent and its
+	// attachment adopted into the cache just now.
+	src := filepath.Join(t.TempDir(), "sent.bin")
+	if err := os.WriteFile(src, make([]byte, 10), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(src, time.Now().Add(-3*time.Hour), time.Now().Add(-3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Adopt(t.Context(), "sent", src); err != nil {
+		t.Fatalf("Adopt() error = %v", err)
+	}
+
+	// A third file pushes the cache over its limit; the least recently
+	// used of the first two must go, and that is "earlier", not "sent",
+	// which was adopted after it.
+	if _, err := c.Fetch(t.Context(), "third", writeBytes(10, &calls)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "sent")); err != nil {
+		t.Errorf("the attachment adopted after \"earlier\" was dropped instead: %v", err)
+	}
+	if _, err := os.Stat(earlier); !os.IsNotExist(err) {
+		t.Errorf("the least recently used file was kept instead of dropped")
+	}
+}
+
 // TestAdopt_RejectsNamesOutsideTheCache confirms Adopt validates name
 // the same way Fetch does.
 func TestAdopt_RejectsNamesOutsideTheCache(t *testing.T) {

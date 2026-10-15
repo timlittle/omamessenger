@@ -2,12 +2,28 @@ package app_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
+
+// writeTestPhoto writes a file large enough to make several of them
+// overrun the media cache's test limit, starting with a real PNG
+// signature so prepareAttachment classifies it as a photo the same as
+// an actual sent image.
+func writeTestPhoto(t *testing.T, name string, size int) string {
+	t.Helper()
+
+	data := make([]byte, size)
+	copy(data, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
+
+	return writeTestFile(t, name, data)
+}
 
 // TestOutgoingStatus_KeepsTheCopyUntilConfirmed confirms a pending
 // message's outgoing attachment is left alone: only a confirmed
@@ -111,5 +127,105 @@ func TestOutgoingStatus_MovesASentPhotoIntoTheCacheSoItStillDisplays(t *testing.
 	}
 	if len(f.media.fetched) != 0 {
 		t.Errorf("FetchMedia downloaded from the service: %v, want it served from the cache", f.media.fetched)
+	}
+}
+
+// TestOutgoingStatus_KeepsEveryPhotoRecoverableWhenConfirmedInOrder
+// sends several photos in a row, each confirmed delivered right after
+// it is sent (the ordinary case), and confirms every one still
+// resolves to a full image: the cache can only hold two of the three,
+// so the first one sent and confirmed - the only one truly least
+// recently used - is evicted and re-downloaded, never one of the
+// others.
+func TestOutgoingStatus_KeepsEveryPhotoRecoverableWhenConfirmedInOrder(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	const photoSize = 500 * 1024 // two fit in the test fixture's 1 MiB media cache, three do not
+	var sent [3]domain.Message
+	for i := range sent {
+		path := writeTestPhoto(t, fmt.Sprintf("photo%d.png", i), photoSize)
+
+		m, err := f.commands.Send(ctx, "chat", "", app.SendOptions{AttachmentPath: path})
+		if err != nil {
+			t.Fatalf("Send(%d) error = %v", i, err)
+		}
+		sent[i] = m
+
+		f.ingest.OutgoingStatus(ctx, m.ID, fmt.Sprintf("remote-%d", i), domain.StatusSent)
+	}
+
+	assertEveryPhotoRecoverable(t, f, sent[:])
+	if !slices.Equal(f.media.fetched, []string{"remote-0"}) {
+		t.Errorf("redownloaded %v, want only the first photo sent and confirmed", f.media.fetched)
+	}
+}
+
+// TestOutgoingStatus_KeepsEveryPhotoRecoverableWhenConfirmedOutOfOrder
+// reproduces sending several photos in a row whose delivery receipts
+// come back out of order, the way a slower upload can finish after a
+// faster one sent moments later. The photo actually confirmed first -
+// the one truly due for eviction - must be the one the cache drops, not
+// whichever happens to carry the oldest outgoing-copy timestamp from
+// when it was composed.
+func TestOutgoingStatus_KeepsEveryPhotoRecoverableWhenConfirmedOutOfOrder(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	const photoSize = 500 * 1024 // two fit in the test fixture's 1 MiB media cache, three do not
+	var sent [3]domain.Message
+	for i := range sent {
+		path := writeTestPhoto(t, fmt.Sprintf("photo%d.png", i), photoSize)
+
+		m, err := f.commands.Send(ctx, "chat", "", app.SendOptions{AttachmentPath: path})
+		if err != nil {
+			t.Fatalf("Send(%d) error = %v", i, err)
+		}
+		sent[i] = m
+
+		// The outgoing copy's timestamp says when it was composed, in
+		// send order, well before any of the three attachments are
+		// actually confirmed below.
+		composed := time.Now().Add(-2*time.Hour + time.Duration(i)*time.Minute)
+		if err := os.Chtimes(f.outgoing.Path(m.ID, m.Media.FileName), composed, composed); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Confirmations arrive out of order: the third photo's receipt
+	// lands first, so it - not the first photo - is the one truly
+	// least recently used once all three are adopted.
+	f.ingest.OutgoingStatus(ctx, sent[2].ID, "remote-2", domain.StatusSent)
+	f.ingest.OutgoingStatus(ctx, sent[1].ID, "remote-1", domain.StatusSent)
+	f.ingest.OutgoingStatus(ctx, sent[0].ID, "remote-0", domain.StatusSent)
+
+	assertEveryPhotoRecoverable(t, f, sent[:])
+	if !slices.Equal(f.media.fetched, []string{"remote-2"}) {
+		t.Errorf("redownloaded %v, want only the photo confirmed first (remote-2) evicted", f.media.fetched)
+	}
+}
+
+// assertEveryPhotoRecoverable confirms FetchMedia still returns an
+// existing local file for every message in sent, whether that is the
+// cache's own adopted copy or one re-downloaded for a copy the cache
+// has since dropped.
+func assertEveryPhotoRecoverable(t *testing.T, f *fixture, sent []domain.Message) {
+	t.Helper()
+
+	for i, m := range sent {
+		path, err := f.commands.FetchMedia(t.Context(), m.ID)
+		if err != nil {
+			t.Fatalf("FetchMedia(%d) error = %v", i, err)
+		}
+
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("FetchMedia(%d) path %q does not exist: %v", i, path, err)
+		}
 	}
 }

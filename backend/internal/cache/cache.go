@@ -147,8 +147,9 @@ func (c *Cache) fill(ctx context.Context, path string, fill func(ctx context.Con
 // Adopt places the file at path into the cache under name, so a file
 // this helper already created elsewhere - an attachment just sent, say -
 // is served and governed by this cache's own limit from here on,
-// without being downloaded again. A path that no longer exists is not
-// an error: by the time Adopt runs, the file may already be gone.
+// without being downloaded again (see adoptFile for how it ages into
+// the cache's own LRU bookkeeping). A path that no longer exists is
+// not an error: by the time Adopt runs, the file may already be gone.
 func (c *Cache) Adopt(ctx context.Context, name, path string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -179,7 +180,24 @@ func (c *Cache) Adopt(ctx context.Context, name, path string) error {
 // adoptFile places the file at src at dst: a rename when the two paths
 // share a filesystem, the usual case here since both media areas live
 // under the same data directory, or a copy across filesystems otherwise.
+// Either way dst's modification time is reset to now, the same as a
+// fresh fill's: its old time, from wherever it was created, says
+// nothing about how recently this cache has actually used it, and
+// pruning by that stale time would drop it ahead of a file genuinely
+// fetched earlier.
 func adoptFile(src, dst string) error {
+	if err := adoptFileContent(src, dst); err != nil {
+		return err
+	}
+
+	now := time.Now()
+
+	return os.Chtimes(dst, now, now)
+}
+
+// adoptFileContent is adoptFile's own move or copy of src's bytes to
+// dst, before its modification time is reset.
+func adoptFileContent(src, dst string) error {
 	err := os.Rename(src, dst)
 	if err == nil {
 		return nil
