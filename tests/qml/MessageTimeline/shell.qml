@@ -202,7 +202,42 @@ ShellRoot {
       return;
     }
 
+    if (!root.checkUpsertDropsStaleMediaPathOnRetire()) return;
     root.checkLoadOlderDropsStaleReply();
+  }
+
+  // checkUpsertDropsStaleMediaPathOnRetire reproduces the helper
+  // retiring a sent photo's attachment: upsert must drop the cached
+  // mediaPath (resolved while the message was still pending, to its
+  // now-removed outgoing copy) the moment the message's own update
+  // first confirms delivery, so the bubble resolves it again instead of
+  // pointing at a file that is gone forever. A later update once
+  // already confirmed, or one for a message without media, must leave
+  // whatever mediaPath is already there alone. Returns false, having
+  // already called Check.fail, on the first thing that does not hold.
+  function checkUpsertDropsStaleMediaPathOnRetire(): bool {
+    timeline.upsert(Object.assign(root.photoMessage("mp1", 90), { outgoing: true, status: "pending" }), false);
+    timeline.setMediaPath("mp1", "/data/omamessenger/media/outgoing/mp1-photo.jpg");
+
+    timeline.upsert(Object.assign(root.photoMessage("mp1", 90), { outgoing: true, status: "sent" }), false);
+    if (timeline.mediaPath("mp1") !== "") {
+      return Check.fail("upsert kept a sent photo's stale outgoing mediaPath instead of dropping it: " + timeline.mediaPath("mp1"));
+    }
+
+    timeline.setMediaPath("mp1", "/data/omamessenger/media/mp1.jpg");
+    timeline.upsert(Object.assign(root.photoMessage("mp1", 90), { outgoing: true, status: "delivered" }), false);
+    if (timeline.mediaPath("mp1") !== "/data/omamessenger/media/mp1.jpg") {
+      return Check.fail("upsert dropped an already-confirmed photo's resolved mediaPath on a later status update: " + timeline.mediaPath("mp1"));
+    }
+
+    timeline.upsert(Object.assign(root.message("mt1", 91), { outgoing: true, status: "pending" }), false);
+    timeline.setMediaPath("mt1", "/data/omamessenger/media/outgoing/mt1.txt");
+    timeline.upsert(Object.assign(root.message("mt1", 91), { outgoing: true, status: "sent" }), false);
+    if (timeline.mediaPath("mt1") !== "/data/omamessenger/media/outgoing/mt1.txt") {
+      return Check.fail("upsert dropped mediaPath for a message with no media: " + timeline.mediaPath("mt1"));
+    }
+
+    return true;
   }
 
   // checkLoadOlderDropsStaleReply reproduces scrolling up in conversation

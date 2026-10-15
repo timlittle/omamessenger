@@ -93,12 +93,20 @@ Item {
 
   // upsert updates one message in place, or inserts it where its time puts
   // it when it is not loaded yet: new messages at the top, and older
-  // history fetched from the service further down.
+  // history fetched from the service further down. A cached mediaPath
+  // (and mediaFailed) normally carries over untouched, since the
+  // service's own update never carries one - but the moment this
+  // update is the message's attachment being retired into the download
+  // cache (see Timeline.mediaJustRetired), that cached path is dropped
+  // instead: it may point at the outgoing copy the helper just removed,
+  // and must be resolved again rather than shown as missing forever.
   function upsert(message: var, isGroup: bool): void {
     const loaded = root._snapshot();
     const at = loaded.findIndex((m) => m.id === message.id);
     if (at !== -1) {
-      const kept = { mediaPath: loaded[at].mediaPath, mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason };
+      const kept = Timeline.mediaJustRetired(loaded[at], message)
+        ? { mediaPath: "", mediaFailed: false, mediaFailedReason: "" }
+        : { mediaPath: loaded[at].mediaPath, mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason };
       messagesModel.set(at, Timeline.row(Object.assign(kept, message)));
     } else {
       messagesModel.insert(Timeline.insertIndex(loaded, message), Timeline.row(message));

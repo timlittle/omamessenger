@@ -19,7 +19,10 @@
 //   caption, and is delivered as a file attachment
 // - a photo from the test's own directory is attached the same way and
 //   sent to Mum, and its bubble shows the real downloaded image, not an
-//   empty box, once it is delivered
+//   empty box, once it is delivered; once a second photo sent right
+//   after it is delivered too, the first photo's timeline row has moved
+//   on to its real copy in the download cache, not the outgoing copy
+//   the helper already removed, and still loads
 // - opening a conversation by moving the list cursor with j, j and
 //   pressing Enter focuses the composer in its "writing" state (the only
 //   place that checks the writing/not-writing chrome itself, since
@@ -90,6 +93,10 @@ ShellRoot {
     root.waitForAttachmentDelivered,
     root.attachImageToMum,
     root.waitForImageDelivered,
+    root.waitForFirstSentPhotoResolvedToCache,
+    root.attachSecondImageToMum,
+    root.waitForSecondImageDelivered,
+    root.waitForSecondSentPhotoResolvedToCache,
     root.leaveComposeForListReturn,
     root.waitComposeLeftForListReturn,
     root.closeConversationForListReturn,
@@ -388,6 +395,20 @@ ShellRoot {
   // way the composer's file dialog would report it having been picked,
   // then sends it with a caption.
   function attachImageToMum(): var {
+    return root.attachPhotoToMum("see this photo");
+  }
+
+  // attachSecondImageToMum sends a second photo to Mum, right after the
+  // first is delivered, so both are in flight close together the way
+  // sending several in a row really happens.
+  function attachSecondImageToMum(): var {
+    return root.attachPhotoToMum("see this photo too");
+  }
+
+  // attachPhotoToMum attaches the test's photo from disk, the way the
+  // composer's file dialog would report it having been picked, then
+  // sends it with caption.
+  function attachPhotoToMum(caption: string): var {
     const composer = Check.find(root.panel(), "composer");
     composer.fileAttached(root.testRoot + "/photo.png");
 
@@ -398,7 +419,7 @@ ShellRoot {
     if (!name || name.text !== "photo.png")
       return Check.fail("attachment chip name = " + (name && name.text) + ", want photo.png");
 
-    root.type("see this photo");
+    root.type(caption);
     t.keyClick(Qt.Key_Return);
     return true;
   }
@@ -423,26 +444,76 @@ ShellRoot {
     return null;
   }
 
-  // waitForImageDelivered holds until the attached photo is delivered and
-  // its bubble shows the real downloaded image: a non-empty source that
-  // has finished loading, not an empty box and not stuck waiting.
+  // waitForImageDelivered holds until the first attached photo is
+  // delivered and its bubble shows the real downloaded image.
   function waitForImageDelivered(): var {
+    return root.waitForPhotoDelivered("see this photo");
+  }
+
+  // waitForSecondImageDelivered holds the same way for the second photo.
+  function waitForSecondImageDelivered(): var {
+    return root.waitForPhotoDelivered("see this photo too");
+  }
+
+  // waitForPhotoDelivered holds until caption's attached photo is
+  // delivered and its bubble shows the real downloaded image: a
+  // non-empty source that has finished loading, not an empty box and
+  // not stuck waiting.
+  function waitForPhotoDelivered(caption: string): var {
     const chip = Check.find(root.panel(), "attachmentChip");
     if (chip && chip.visible) return false;
 
-    const status = root.messageStatus("see this photo");
+    const status = root.messageStatus(caption);
     if (status !== "sent" && status !== "delivered") return false;
 
-    const image = root.photoImageFor(root.messageIdFor("see this photo"));
+    const image = root.photoImageFor(root.messageIdFor(caption));
     if (!image) return false;
     if (String(image.source) === "") return false;
-    if (image.status === Image.Error) return Check.fail("the sent photo's image failed to load");
+    if (image.status === Image.Error) return Check.fail(caption + "'s image failed to load");
     if (image.status !== Image.Ready) return false;
 
     // The real file, not just the small inline thumb, must be what
     // loaded: that is the whole point of the local copy being used.
-    if (String(image.source).indexOf("file://") !== 0) return Check.fail("the sent photo shows its thumb, not the real downloaded image: " + image.source);
+    if (String(image.source).indexOf("file://") !== 0) return Check.fail(caption + " shows its thumb, not the real downloaded image: " + image.source);
     return true;
+  }
+
+  // waitForFirstSentPhotoResolvedToCache and
+  // waitForSecondSentPhotoResolvedToCache hold until that photo's
+  // delivery is confirmed (see retireOutgoingAttachment, the Go side) and
+  // its timeline row has moved on from the outgoing copy that retiring
+  // already removed to its real copy in the downloaded-media cache,
+  // which still loads: reproduces sending several images in a row and
+  // confirms neither is left pointing at a file that is gone.
+  function waitForFirstSentPhotoResolvedToCache(): var {
+    return root.waitForSentPhotoResolvedToCache("see this photo");
+  }
+
+  function waitForSecondSentPhotoResolvedToCache(): var {
+    return root.waitForSentPhotoResolvedToCache("see this photo too");
+  }
+
+  // waitForSentPhotoResolvedToCache is waitForFirstSentPhotoResolvedToCache
+  // and waitForSecondSentPhotoResolvedToCache's shared check for caption's
+  // photo.
+  function waitForSentPhotoResolvedToCache(caption: string): var {
+    const id = root.messageIdFor(caption);
+    if (!id) return false;
+
+    const model = Check.find(root.panel(), "messageListView").model;
+    let path = "";
+    for (let i = 0; i < model.count; i++) {
+      if (model.get(i).id === id) { path = model.get(i).mediaPath; break; }
+    }
+    if (!path) return false;
+    if (path.indexOf("/omamessenger/media/outgoing/") >= 0) return false;
+    if (path.indexOf("/omamessenger/media/") < 0)
+      return Check.fail(caption + "'s path left the media cache entirely: " + path);
+
+    const image = root.photoImageFor(id);
+    if (!image) return false;
+    if (image.status === Image.Error) return Check.fail(caption + " failed to reload from its cache copy");
+    return image.status === Image.Ready;
   }
 
   // leaveComposeForListReturn presses Escape to blur the composer, which

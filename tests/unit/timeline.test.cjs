@@ -353,3 +353,39 @@ test('row keeps retryAt, defaulting to 0 while no automatic retry is scheduled',
   assert.strictEqual(Timeline.row({ id: 'a' }).retryAt, 0);
   assert.strictEqual(Timeline.row({ id: 'a', retryAt: 1234 }).retryAt, 1234);
 });
+
+test('mediaJustRetired is true the first time an outgoing photo reaches sent', () => {
+  const oldRow = { status: 'pending' };
+  const update = { outgoing: true, media: { kind: 'photo' }, status: 'sent' };
+  assert.strictEqual(Timeline.mediaJustRetired(oldRow, update), true);
+});
+
+test('mediaJustRetired is true moving straight from pending to read', () => {
+  const oldRow = { status: 'pending' };
+  const update = { outgoing: true, media: { kind: 'file' }, status: 'read' };
+  assert.strictEqual(Timeline.mediaJustRetired(oldRow, update), true);
+});
+
+test('mediaJustRetired is false once already confirmed, such as a later read receipt', () => {
+  const oldRow = { status: 'sent' };
+  const update = { outgoing: true, media: { kind: 'photo' }, status: 'delivered' };
+  assert.strictEqual(Timeline.mediaJustRetired(oldRow, update), false);
+});
+
+test('mediaJustRetired is false for a message with no media', () => {
+  const oldRow = { status: 'pending' };
+  const update = { outgoing: true, status: 'sent' };
+  assert.strictEqual(Timeline.mediaJustRetired(oldRow, update), false);
+});
+
+test('mediaJustRetired is false for an incoming message', () => {
+  const oldRow = { status: 'received' };
+  const update = { outgoing: false, media: { kind: 'photo' }, status: 'received' };
+  assert.strictEqual(Timeline.mediaJustRetired(oldRow, update), false);
+});
+
+test('mediaJustRetired is false for an unrelated update, such as a reaction, that leaves status alone', () => {
+  const oldRow = { status: 'sent' };
+  const update = { outgoing: true, media: { kind: 'photo' }, status: 'sent' };
+  assert.strictEqual(Timeline.mediaJustRetired(oldRow, update), false);
+});

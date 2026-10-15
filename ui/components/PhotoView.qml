@@ -45,6 +45,12 @@ Item {
   // showing the broken file the next time this delegate is reused.
   property bool _loadFailed: false
 
+  // _retriedForPath is true once a load failure for the current path
+  // has already asked for a fresh one, so a path that keeps failing
+  // does not ask again and again; resetting it only on a new path lets
+  // a genuinely new failure ask once more.
+  property bool _retriedForPath: false
+
   // _unavailable is true once the full image is known not to be coming
   // (it failed to load, or its fetch itself failed) and there is no
   // thumb to fall back to either, so the bubble shows a quiet message
@@ -56,10 +62,17 @@ Item {
 
   // Each time a photo row is shown without its image, it asks for it;
   // rows are recycled as the list scrolls, so this follows what is on
-  // screen.
+  // screen. A path cleared out from under it - the helper retiring a
+  // sent photo's attachment drops a now-stale cached path the same way
+  // - counts as "shown without its image" too, so it asks again right
+  // away rather than waiting for the next visibility change.
   Component.onCompleted: if (root.visible && !root.path && !root._video) root.wanted()
   onVisibleChanged: if (root.visible && !root.path && !root._video) root.wanted()
-  onPathChanged: root._loadFailed = false
+  onPathChanged: {
+    root._loadFailed = false;
+    root._retriedForPath = false;
+    if (root.visible && !root.path && !root._video) root.wanted();
+  }
 
   Image {
     id: image
@@ -73,7 +86,19 @@ Item {
     asynchronous: true
     // Scaling a tiny preview up smoothly keeps it a soft blur.
     smooth: true
-    onStatusChanged: if (status === Image.Error) root._loadFailed = true
+    // A path that no longer resolves to a real file - the local copy
+    // swept, or moved into the cache under a different name the model
+    // was never told about - must not stay a permanently broken image:
+    // asking once for a fresh path either recovers it or, once that
+    // fails too, leaves the thumbnail or "Photo unavailable" showing
+    // instead, same as any other failed fetch.
+    onStatusChanged: {
+      if (status !== Image.Error) return;
+      root._loadFailed = true;
+      if (root._retriedForPath) return;
+      root._retriedForPath = true;
+      root.wanted();
+    }
   }
 
   // A video without a preview, or a photo that failed to load and has no

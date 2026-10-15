@@ -11,6 +11,24 @@ function annotate(newestFirst, isGroup, nowMs) {
   return newestFirst.map((msg, index) => annotateAt(newestFirst, index, isGroup, nowMs));
 }
 
+// CONFIRMED_STATUSES are the delivery states that will never be
+// retried (see domain.StatusAdvances on the helper side). The moment
+// an outgoing message with its own attachment first reaches one, the
+// helper has just retired that attachment into its download cache and
+// removed the outgoing copy a cached mediaPath from before may still
+// point at.
+var CONFIRMED_STATUSES = new Set(['sent', 'delivered', 'read']);
+
+// mediaJustRetired reports whether message's update to oldRow is the
+// first time an outgoing message carrying media reaches a confirmed
+// delivery state, so upsert knows to drop a cached mediaPath (and any
+// mediaFailed flag) from before rather than keep it: the file it
+// points at may already be gone, and the next time it is shown it must
+// be resolved again instead of staying stuck on it.
+function mediaJustRetired(oldRow, message) {
+  return !!message.outgoing && !!message.media && !CONFIRMED_STATUSES.has(oldRow.status) && CONFIRMED_STATUSES.has(message.status);
+}
+
 // annotateAt returns the annotation for one message. Its older neighbour
 // is the next index, because the list is shown bottom to top.
 function annotateAt(newestFirst, index, isGroup, nowMs) {
