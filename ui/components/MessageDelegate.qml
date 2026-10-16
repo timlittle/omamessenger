@@ -65,6 +65,10 @@ Item {
   readonly property var reactions: Timeline.reactions(root.message)
   // mentions are this message's @-mention tokens, or an empty list.
   readonly property var mentions: Timeline.mentions(root.message)
+  // formatting are this message's rich-text formatting spans (links,
+  // bold, italic, underline, strike, code, pre, spoiler), or an empty
+  // list.
+  readonly property var formatting: Timeline.formatting(root.message)
   // nameColor is this message's sender's colour in a group chat, stable
   // for the same sender across every message; direct chats keep the
   // plain foreground colour the name used before group colouring existed.
@@ -245,6 +249,7 @@ Item {
           media: root.media
           quote: root.quote
           mentions: root.mentions
+          formatting: root.formatting
           maxTextWidth: bubble.maxTextWidth
           voiceNotes: root.voiceNotes
           pollVote: root.pollVote

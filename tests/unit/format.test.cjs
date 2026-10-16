@@ -253,6 +253,117 @@ test('messageHtml with no mentions renders exactly as before', () => {
   assert.equal(Format.messageHtml('plain text', null, null, []), 'plain text');
 });
 
+// Formatting spans (a connector's links, bold, italic, underline, strike,
+// code, pre and spoiler runs) are rendered on top of the escaped text the
+// same way mentions are, through messageHtml's fifth argument.
+
+test('messageHtml renders a link span as an anchor, escaping its URL', () => {
+  const html = Format.messageHtml('see link here', null, null, [], [
+    { kind: 'link', start: 4, end: 8, url: 'https://example.com/a?x=1&y="2"' }
+  ]);
+  assert.equal(html, 'see <a href="https://example.com/a?x=1&amp;y=&quot;2&quot;">link</a> here');
+});
+
+test('messageHtml colours a link span the same way auto-linked URLs are', () => {
+  const html = Format.messageHtml('link', '#89b4fa', null, [], [{ kind: 'link', start: 0, end: 4, url: 'https://x.io' }]);
+  assert.equal(html, '<a href="https://x.io" style="color:#89b4fa">link</a>');
+});
+
+test('messageHtml drops a link span whose URL scheme is not allowed', () => {
+  const html = Format.messageHtml('click here', null, null, [], [{ kind: 'link', start: 0, end: 5, url: 'javascript:alert(1)' }]);
+  assert.equal(html, 'click here');
+});
+
+const allowedSchemeCases = ['http://x.io', 'https://x.io', 'mailto:a@x.io', 'tg://resolve?domain=x'];
+for (const url of allowedSchemeCases) {
+  test(`messageHtml allows a link span with scheme ${url.split(':')[0]}`, () => {
+    const html = Format.messageHtml('go', null, null, [], [{ kind: 'link', start: 0, end: 2, url }]);
+    assert.equal(html, `<a href="${url}">go</a>`);
+  });
+}
+
+const simpleSpanCases = [
+  ['bold', '<b>text</b>'],
+  ['italic', '<i>text</i>'],
+  ['underline', '<u>text</u>'],
+  ['strike', '<s>text</s>']
+];
+for (const [kind, want] of simpleSpanCases) {
+  test(`messageHtml renders a ${kind} span`, () => {
+    assert.equal(Format.messageHtml('text', null, null, [], [{ kind, start: 0, end: 4 }]), want);
+  });
+}
+
+test('messageHtml renders a code span in monospace', () => {
+  const html = Format.messageHtml('text', null, null, [], [{ kind: 'code', start: 0, end: 4 }]);
+  assert.equal(html, '<span style="font-family:monospace">text</span>');
+});
+
+test('messageHtml renders a pre span the same way as code', () => {
+  const html = Format.messageHtml('text', null, null, [], [{ kind: 'pre', start: 0, end: 4 }]);
+  assert.equal(html, '<span style="font-family:monospace">text</span>');
+});
+
+test('messageHtml renders a spoiler span as plain text, with no tag at all', () => {
+  assert.equal(Format.messageHtml('secret', null, null, [], [{ kind: 'spoiler', start: 0, end: 6 }]), 'secret');
+});
+
+test('messageHtml escapes text inside a formatting span', () => {
+  const html = Format.messageHtml('<script>', null, null, [], [{ kind: 'bold', start: 0, end: 8 }]);
+  assert.equal(html, '<b>&lt;script&gt;</b>');
+});
+
+test('messageHtml nests overlapping spans into well-formed, matching tags', () => {
+  const html = Format.messageHtml('bold italic', null, null, [], [
+    { kind: 'bold', start: 0, end: 11 },
+    { kind: 'italic', start: 5, end: 11 }
+  ]);
+  assert.equal(html, '<b>bold </b><i><b>italic</b></i>');
+});
+
+test('messageHtml nests a bold span inside a link span', () => {
+  // The link is cut into two adjacent anchors, one per active style
+  // underneath it, rather than one tag that would have to close and
+  // reopen mid-way through; both anchors carry the same href, so the
+  // rendered link is one continuous clickable region either way.
+  const html = Format.messageHtml('a bold link', null, null, [], [
+    { kind: 'link', start: 2, end: 11, url: 'https://x.io' },
+    { kind: 'bold', start: 2, end: 6 }
+  ]);
+  assert.equal(html, 'a <a href="https://x.io"><b>bold</b></a><a href="https://x.io"> link</a>');
+});
+
+test('messageHtml renders sanely when a span overlaps a mention', () => {
+  // Cutting at every range's boundary means the stretch where the
+  // italic span and the mention overlap gets both tags, and the italic
+  // tag reopens for the stretch after the mention ends but the span has
+  // not yet: still well-formed, matching tags throughout.
+  const html = Format.messageHtml('@Nadia says hi', null, null, [{ offset: 0, length: 6 }], [
+    { kind: 'italic', start: 3, end: 8 }
+  ]);
+  assert.equal(html, '<b>@Na</b><i><b>dia</b></i><i> s</i>ays hi');
+});
+
+test('messageHtml drops a span that no longer fits the text', () => {
+  assert.equal(Format.messageHtml('hi', null, null, [], [{ kind: 'bold', start: 0, end: 10 }]), 'hi');
+});
+
+test('messageHtml ignores a span kind it does not recognise, showing plain text', () => {
+  assert.equal(Format.messageHtml('text', null, null, [], [{ kind: 'blockquote', start: 0, end: 4 }]), 'text');
+});
+
+test('messageHtml never produces an <img> tag, however it is given a formatting span', () => {
+  const inputs = [
+    [{ kind: 'link', start: 0, end: 5, url: 'data:image/png;base64,AAA' }],
+    [{ kind: 'link', start: 0, end: 5, url: '<img src=x onerror=alert(1)>' }],
+    [{ kind: 'photo', start: 0, end: 5 }]
+  ];
+  for (const spans of inputs) {
+    const html = Format.messageHtml('<img>', null, null, [], spans);
+    assert.ok(!html.includes('<img'), `rendered an <img> from ${JSON.stringify(spans)}: ${html}`);
+  }
+});
+
 test('longestLine picks the widest line to size a bubble by', () => {
   assert.equal(Format.longestLine('short\na much longer line\nmid'), 'a much longer line');
   assert.equal(Format.longestLine(''), '');

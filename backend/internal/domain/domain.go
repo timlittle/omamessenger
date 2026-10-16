@@ -167,6 +167,12 @@ type Message struct {
 	// already knows its own identity, the same way Reaction.Mine is.
 	MentionsMe bool `json:"mentionsMe,omitempty"`
 
+	// Formatting are the rich-text spans over Text a connector read from
+	// the service's own formatting metadata: links, bold, italic,
+	// underline, strike, code, pre and spoiler runs. An outgoing message
+	// carries none: the composer sends plain text only.
+	Formatting []Span `json:"formatting,omitempty"`
+
 	// RetryAt is when a failed outgoing message's next automatic retry
 	// attempt is due, in Unix milliseconds, or 0 when none is scheduled:
 	// the service refused it for a reason retrying will not fix, or the

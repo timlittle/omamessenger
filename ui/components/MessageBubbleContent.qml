@@ -24,6 +24,9 @@ Column {
   required property var quote
   // mentions are message's @-mention tokens, or an empty list.
   property var mentions: []
+  // formatting are message's rich-text formatting spans (links, bold,
+  // italic, underline, strike, code, pre, spoiler), or an empty list.
+  property var formatting: []
   // maxTextWidth caps how wide the text, link preview, photo, file or
   // voice note may grow before wrapping or eliding.
   required property real maxTextWidth
@@ -85,12 +88,16 @@ Column {
     wrapMode: TextEdit.Wrap
     // Safe only because Format.messageHtml always escapes the message's
     // raw text before adding any markup: the only tags that can ever
-    // come out are <a>, <b>, <br>, &nbsp; and a pipe table's own <table>
-    // cells, each built from already-escaped text (see Format.js and
-    // Markdown.js). No sender-controlled text ever reaches this as a
-    // literal "<img>" or any other element that could load a resource.
+    // come out are <a>, <b>, <i>, <u>, <s>, <span style="font-family:
+    // monospace">, <br>, &nbsp; and a pipe table's own <table> cells,
+    // each built from already-escaped text (see Format.js and
+    // Markdown.js). A link's href comes only from a formatting span
+    // whose scheme Format.spanURL allows (http, https, mailto, tg) or
+    // from an auto-linked bare URL already in the escaped text; no
+    // sender-controlled text ever reaches this as a literal "<img>" or
+    // any other element that could load a resource.
     textFormat: TextEdit.RichText
-    text: Format.messageHtml(body.caption, Color.accent, Color.muted, root.mentions)
+    text: Format.messageHtml(body.caption, Color.accent, Color.muted, root.mentions, root.formatting)
     color: Color.foreground
     font { family: Theme.font.family; pixelSize: Theme.font.body }
     onLinkActivated: link => Qt.openUrlExternally(link)

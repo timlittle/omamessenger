@@ -40,10 +40,17 @@ function linkify(escaped, color) {
 // TextEdit has no colors of its own for either. mentions, when given,
 // are the message's @-mention tokens ({offset, length} in the same
 // UTF-16 units a JavaScript string already indexes by, so no
-// conversion is needed here); each one renders in bold. A message with
-// mentions skips table rendering, since an @-mention is ordinary chat
-// text, never a pipe table.
-function messageHtml(text, linkColor, tableBorderColor, mentions) {
+// conversion is needed here); each one renders in bold. spans, when
+// given, are a connector's own formatting spans ({kind, start, end,
+// url}, see styledRanges) - links, bold, italic, underline, strike,
+// code, pre and spoiler - applied the same way on top of the escaped
+// text. A message with mentions or spans skips table rendering, since
+// neither is ordinary enough to coexist with a pipe table.
+function messageHtml(text, linkColor, tableBorderColor, mentions, spans) {
+  if (spans && spans.length > 0) {
+    return styledHtml(text, linkColor, mentions, spans);
+  }
+
   if (mentions && mentions.length > 0) {
     return mentionHtml(text, linkColor, mentions);
   }
@@ -54,6 +61,131 @@ function messageHtml(text, linkColor, tableBorderColor, mentions) {
       ? Markdown.tableHtml(part.table, escapeHtml, (cell) => linkify(cell, linkColor), borderColor)
       : lineHtml(part.text, linkColor)))
     .join('');
+}
+
+// LINK_SCHEMES are the URL schemes a formatting span's link may open;
+// anything else a service's own link-shaped entity could carry, such as
+// a custom app scheme, is dropped rather than rendered as a clickable
+// link.
+var LINK_SCHEMES = ['http:', 'https:', 'mailto:', 'tg:'];
+
+// spanURL returns url unchanged when its scheme is one LINK_SCHEMES
+// allows, or '' to drop anything else, including text with no scheme at
+// all.
+function spanURL(url) {
+  const match = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.exec(url || '');
+  return match && LINK_SCHEMES.includes(match[0].toLowerCase()) ? url : '';
+}
+
+// STYLE_TAGS pairs a span kind with the tag styledSegment wraps it in,
+// applied in this order so two active styles always nest the same way
+// regardless of the order spans were given in. "code" and "pre" are
+// handled separately, sharing one monospace look; "spoiler" and any
+// kind this list does not name add no tag at all, so an unrecognised
+// span still shows its text rather than breaking the message.
+var STYLE_TAGS = [
+  ['bold', 'b'],
+  ['italic', 'i'],
+  ['underline', 'u'],
+  ['strike', 's']
+];
+
+// plainHtml escapes text and keeps its line breaks and runs of spaces,
+// the same as lineHtml but without linkifying bare URLs: used inside a
+// span that is already its own link, where linkify would otherwise nest
+// a second, redundant link inside the first.
+function plainHtml(text) {
+  return escapeHtml(text).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
+}
+
+// styledRanges turns mentions and formatting spans into one list of
+// {start, end, kind, url} ranges messageHtml can render: a mention
+// becomes a 'bold' range, and a link span whose URL's scheme spanURL
+// does not allow is dropped rather than shown as a clickable link.
+// Anything that no longer fits text, such as a mention or span left
+// over after an edit shortened it, is dropped too.
+function styledRanges(text, mentions, spans) {
+  const ranges = [];
+
+  for (const m of mentions || []) {
+    if (m.length > 0 && m.offset >= 0 && m.offset + m.length <= text.length) {
+      ranges.push({ start: m.offset, end: m.offset + m.length, kind: 'bold' });
+    }
+  }
+
+  for (const s of spans || []) {
+    if (s.start < 0 || s.end > text.length || s.start >= s.end) {
+      continue;
+    }
+
+    if (s.kind === 'link') {
+      const url = spanURL(s.url);
+      if (url) {
+        ranges.push({ start: s.start, end: s.end, kind: 'link', url });
+      }
+      continue;
+    }
+
+    ranges.push({ start: s.start, end: s.end, kind: s.kind });
+  }
+
+  return ranges;
+}
+
+// styledHtml renders text with mentions bolded and formatting spans
+// applied on top of it. It cuts text at every range's start and end, so
+// a stretch covered by more than one range - a bold word inside a link,
+// say - renders with every style active over it, rather than one tag
+// closing early and leaving the markup broken.
+function styledHtml(text, linkColor, mentions, spans) {
+  const ranges = styledRanges(text, mentions, spans);
+  if (ranges.length === 0) {
+    return lineHtml(text, linkColor);
+  }
+
+  const points = [0, text.length];
+  for (const r of ranges) {
+    points.push(r.start, r.end);
+  }
+  const bounds = [...new Set(points)].sort((a, b) => a - b);
+
+  let html = '';
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const start = bounds[i];
+    const end = bounds[i + 1];
+    const active = ranges.filter((r) => r.start <= start && r.end >= end);
+    html += styledSegment(text.slice(start, end), linkColor, active);
+  }
+
+  return html;
+}
+
+// styledSegment renders one cut of text with every range active over
+// it, nesting bold, italic, underline and strike in STYLE_TAGS's fixed
+// order inside a link, which always wraps outermost, so two overlapping
+// styles always produce well-formed, matching tags regardless of the
+// order the caller listed them in. Code and pre share one monospace
+// look; spoiler and any other kind add no tag, showing as plain text.
+function styledSegment(text, linkColor, active) {
+  const link = active.find((r) => r.kind === 'link');
+  let html = link ? plainHtml(text) : lineHtml(text, linkColor);
+
+  if (active.some((r) => r.kind === 'code' || r.kind === 'pre')) {
+    html = `<span style="font-family:monospace">${html}</span>`;
+  }
+
+  for (const [kind, tag] of STYLE_TAGS) {
+    if (active.some((r) => r.kind === kind)) {
+      html = `<${tag}>${html}</${tag}>`;
+    }
+  }
+
+  if (link) {
+    const style = linkColor ? ` style="color:${linkColor}"` : '';
+    html = `<a href="${escapeHtml(link.url)}"${style}>${html}</a>`;
+  }
+
+  return html;
 }
 
 // mentionHtml renders text with each mention's span wrapped in <b>,

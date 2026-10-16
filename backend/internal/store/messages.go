@@ -12,7 +12,7 @@ import (
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me,retry_at,retry_attempts,retry_since,attachment_original_path,attachment_original_modtime`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me,retry_at,retry_attempts,retry_since,attachment_original_path,attachment_original_modtime,formatting`
 
 // Page sizes for Messages.
 const (
@@ -176,11 +176,16 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message, countUnread
 		return err
 	}
 
+	formatting, err := encodeFormatting(m.Formatting)
+	if err != nil {
+		return err
+	}
+
 	originalPath, originalModTime := originalAttachment(m.Media)
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo, reactions, mentions, m.MentionsMe,
-		m.RetryAt, m.RetryAttempts, m.RetrySince, originalPath, originalModTime)
+		m.RetryAt, m.RetryAttempts, m.RetrySince, originalPath, originalModTime, formatting)
 	if err != nil {
 		return err
 	}
@@ -282,14 +287,15 @@ func (s *Store) UpdateMessageStatus(ctx context.Context, id, status string) (_ d
 }
 
 // MessageEdit is what EditMessage applies to a stored message: its new
-// text, media, reactions and mentions, bundled into one argument to
-// keep the function's signature short.
+// text, media, reactions, mentions and formatting spans, bundled into
+// one argument to keep the function's signature short.
 type MessageEdit struct {
 	Text       string
 	Media      *domain.Media
 	Reactions  []domain.Reaction
 	Mentions   []domain.Mention
 	MentionsMe bool
+	Formatting []domain.Span
 }
 
 // EditMessage updates a stored message's text, media and reactions after
@@ -320,14 +326,20 @@ func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID string
 		return m, false, wrap("edit message", err)
 	}
 
-	_, err = s.db.ExecContext(ctx, `UPDATE messages SET text=?,media=?,edited=1,reactions=?,mentions=?,mentions_me=? WHERE id=?`,
-		edit.Text, encodedMedia, encodedReactions, encodedMentions, edit.MentionsMe, m.ID)
+	encodedFormatting, err := encodeFormatting(edit.Formatting)
+	if err != nil {
+		return m, false, wrap("edit message", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, `UPDATE messages SET text=?,media=?,edited=1,reactions=?,mentions=?,mentions_me=?,formatting=? WHERE id=?`,
+		edit.Text, encodedMedia, encodedReactions, encodedMentions, edit.MentionsMe, encodedFormatting, m.ID)
 	if err != nil {
 		return m, false, wrap("edit message", err)
 	}
 
 	m.Text, m.Media, m.Edited, m.Reactions = edit.Text, edit.Media, true, edit.Reactions
 	m.Mentions, m.MentionsMe = edit.Mentions, edit.MentionsMe
+	m.Formatting = edit.Formatting
 
 	return m, true, nil
 }
@@ -401,12 +413,12 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 // scanMessage reads one row selected with messageColumns.
 func scanMessage(row scanner) (domain.Message, error) {
 	var m domain.Message
-	var media, replyTo, reactions, mentions, originalPath string
+	var media, replyTo, reactions, mentions, originalPath, formatting string
 	var originalModTime int64
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
 		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &replyTo, &reactions,
 		&mentions, &m.MentionsMe, &m.RetryAt, &m.RetryAttempts, &m.RetrySince,
-		&originalPath, &originalModTime); err != nil {
+		&originalPath, &originalModTime, &formatting); err != nil {
 		return m, err
 	}
 
@@ -433,6 +445,11 @@ func scanMessage(row scanner) (domain.Message, error) {
 
 	var err error
 	m.Mentions, err = decodeMentions(mentions)
+	if err != nil {
+		return m, err
+	}
+
+	m.Formatting, err = decodeFormatting(formatting)
 
 	return m, err
 }

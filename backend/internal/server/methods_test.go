@@ -229,6 +229,30 @@ func TestMessagesSend_CarriesMentions(t *testing.T) {
 	}
 }
 
+// TestMessagesList_EncodesFormatting confirms a message's formatting
+// spans, set by a connector rather than taken from the UI, survive the
+// round trip through the store and out over messages.list as the
+// additive "formatting" field.
+func TestMessagesList_EncodesFormatting(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, true)
+	ctx := t.Context()
+	spans := []domain.Span{{Kind: domain.SpanLink, Start: 0, End: 4, URL: "https://example.com"}}
+	if _, _, err := s.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r1", Text: "link here", Created: 1, Formatting: spans,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := call[struct {
+		Messages []domain.Message `json:"messages"`
+	}](t, s, "messages.list", map[string]string{"conversationId": "chat"})
+	if err != nil || len(page.Messages) != 1 || !slices.Equal(page.Messages[0].Formatting, spans) {
+		t.Errorf("messages.list formatting = %+v, %v, want %+v", page.Messages, err, spans)
+	}
+}
+
 func TestAccountsAdd_AcceptsAGeneralOptionsObject(t *testing.T) {
 	t.Parallel()
 

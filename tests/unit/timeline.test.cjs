@@ -349,6 +349,21 @@ test('mentions reads a row\'s @-mention tokens back, or an empty list', () => {
   assert.deepEqual(Timeline.mentions({}), []);
 });
 
+test('row keeps formatting as a string, so updating it later does not silently drop it', () => {
+  const formatting = [{ kind: 'link', start: 0, end: 4, url: 'https://x.io' }];
+
+  assert.strictEqual(Timeline.row({ id: 'a' }).formatting, '[]');
+  assert.strictEqual(Timeline.row({ id: 'a', formatting }).formatting, JSON.stringify(formatting));
+});
+
+test('formatting reads a row\'s rich-text spans back, or an empty list', () => {
+  const formatting = [{ kind: 'bold', start: 0, end: 4 }];
+  assert.deepEqual(Timeline.formatting({ formatting: JSON.stringify(formatting) }), formatting);
+  assert.deepEqual(Timeline.formatting({ formatting: '' }), []);
+  assert.deepEqual(Timeline.formatting({ formatting }), formatting);
+  assert.deepEqual(Timeline.formatting({}), []);
+});
+
 test('row keeps retryAt, defaulting to 0 while no automatic retry is scheduled', () => {
   assert.strictEqual(Timeline.row({ id: 'a' }).retryAt, 0);
   assert.strictEqual(Timeline.row({ id: 'a', retryAt: 1234 }).retryAt, 1234);

@@ -307,6 +307,24 @@ func TestEdited_UpdatesTheStoredMessageAndPublishes(t *testing.T) {
 	}
 }
 
+func TestEdited_UpdatesFormatting(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "first"))
+	f.published.take()
+
+	spans := []domain.Span{{Kind: domain.SpanBold, Start: 0, End: 5}}
+	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e1", Text: "fixed", Formatting: spans})
+
+	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
+	if err != nil || len(messages) != 1 || !slices.Equal(messages[0].Formatting, spans) {
+		t.Fatalf("messages = %+v, %v; want formatting %+v", messages, err, spans)
+	}
+}
+
 func TestEdited_IgnoresUnknownConversationsAndMessages(t *testing.T) {
 	t.Parallel()
 

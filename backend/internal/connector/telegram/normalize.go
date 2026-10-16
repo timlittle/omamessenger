@@ -120,6 +120,7 @@ func message(m *tg.Message, e entities, selfID int64) domain.Message {
 		Reactions:  reactions(m.Reactions),
 		Mentions:   mentions,
 		MentionsMe: mentionsMe,
+		Formatting: spansFromEntities(m.Entities, m.Message),
 	}
 
 	if m.Out {

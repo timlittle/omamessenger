@@ -109,6 +109,10 @@ var migrations = []string{
 	// it, kept in the database rather than in memory so a restart does
 	// not announce the same still-due reminder a second time.
 	`ALTER TABLE conversations ADD COLUMN reminder_notified_at INTEGER NOT NULL DEFAULT 0;`,
+	// A message's rich-text formatting spans (links, bold, italic,
+	// underline, strike, code, pre, spoiler), as JSON, the same way
+	// mentions are stored.
+	`ALTER TABLE messages ADD COLUMN formatting TEXT NOT NULL DEFAULT '';`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

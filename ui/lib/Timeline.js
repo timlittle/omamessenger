@@ -67,8 +67,8 @@ function insertIndex(newestFirst, message) {
 }
 
 // row is a message as a timeline model row. A ListModel needs every row to
-// share a shape, so media, replyTo, reactions and mentions, each an
-// object, a list or absent, are kept as JSON strings: setting a
+// share a shape, so media, replyTo, reactions, mentions and formatting,
+// each an object, a list or absent, are kept as JSON strings: setting a
 // ListModel role straight to an array of objects, rather than at the
 // row's first insert, silently leaves the role empty, and reacting to a
 // message is exactly that case, an update rather than an insert.
@@ -90,6 +90,7 @@ function row(message) {
     reactions: JSON.stringify(message.reactions ?? []),
     mentions: JSON.stringify(message.mentions ?? []),
     mentionsMe: message.mentionsMe ?? false,
+    formatting: JSON.stringify(message.formatting ?? []),
     retryAt: message.retryAt ?? 0
   });
 }
@@ -129,4 +130,10 @@ function reactions(item) {
 // none. It also accepts a message as the helper sends it.
 function mentions(item) {
   return readJsonField(item, 'mentions', []);
+}
+
+// formatting reads a row's rich-text formatting spans, or an empty list
+// when it has none. It also accepts a message as the helper sends it.
+function formatting(item) {
+  return readJsonField(item, 'formatting', []);
 }
