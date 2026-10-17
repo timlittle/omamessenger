@@ -8,11 +8,15 @@
 // tests/unit/format.test.cjs; this only checks the controller reaches it
 // with the right media kind and reason.
 //
-// It also checks the fix for clicking a video or file repeatedly before
-// it is ready: opening the same id twice before media.fetch answers
-// sends only one fetch and opens the result only once, and opening an
-// already-cached id twice back to back (the same way two clicks with no
-// gap between them would reach this controller) opens it only once too.
+// It also checks the fix for clicking a video or file repeatedly:
+// opening the same id twice before media.fetch answers sends only one
+// fetch and opens the result only once, and opening it again right
+// after that open (or an already-cached id's, back to back) is ignored
+// as a repeat rather than opening a second player — this is the
+// cooldown MediaOpen.canOpen decides, proven exhaustively in
+// tests/unit/mediaopen.test.cjs; this only checks the wiring: the
+// cooldown is per message (a different message still opens at once)
+// and it clears once mediaOpenCooldownMs has actually passed.
 // openExternally stands in for the real Qt.openUrlExternally throughout,
 // so "opens" here means this test's own recorder, never a real external
 // application.
@@ -34,14 +38,17 @@ ShellRoot {
     property var uiState: ({})
     property var accounts: []
     // initialMessages seeds an undownloaded video and file for the
-    // failure checks below, plus a second, already-cached video (v2)
-    // for the repeated-click-on-cached-media check: a file, unlike a
-    // photo or an available voice player, always falls through
-    // openMedia's plain download-and-open path.
+    // failure checks below, an already-cached video (v2) for the
+    // repeated-click-on-cached-media check (a file, unlike a photo or
+    // an available voice player, always falls through openMedia's plain
+    // download-and-open path), and a third, never-clicked cached video
+    // (v3) the cross-message cooldown check opens while v2 is on its
+    // own cooldown, so that check never depends on another one's timing.
     property var initialMessages: [
       { id: "v1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 30, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
       { id: "v2", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 20, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v2.mp4" },
-      { id: "f1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: 10, media: { kind: "file", fileName: "notes.pdf" }, mediaPath: "" }
+      { id: "f1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: 10, media: { kind: "file", fileName: "notes.pdf" }, mediaPath: "" },
+      { id: "v3", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v3.mp4" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -65,12 +72,25 @@ ShellRoot {
     id: controller
     service: service
     openExternally: (path) => root.openCalls.push(path)
+    // Short enough that waiting it out in cooldownTimer below costs the
+    // test run almost nothing, while still being a real, positive delay
+    // rather than 0.
+    mediaOpenCooldownMs: 80
   }
 
   Timer {
     running: true
     interval: 0
     onTriggered: root.run()
+  }
+
+  // cooldownTimer waits past controller's cooldown before
+  // checkCooldownClearsAfterItPasses re-opens v2, so the check proves
+  // the cooldown actually expires rather than only that it blocks.
+  Timer {
+    id: cooldownTimer
+    interval: 150
+    onTriggered: root.finishAfterCooldown()
   }
 
   // answerFetch resolves a held media.fetch call with error.
@@ -94,6 +114,15 @@ ShellRoot {
     if (!root.checkRetryableReasonKeepsTheGenericText()) return;
     if (!root.checkRapidClicksFetchAndOpenOnce()) return;
     if (!root.checkCachedMediaOpensOnceForBackToBackClicks()) return;
+    if (!root.checkDifferentMessageStillOpensDuringAnothersCooldown()) return;
+
+    cooldownTimer.start();
+  }
+
+  // finishAfterCooldown runs once cooldownTimer fires, after
+  // mediaOpenCooldownMs has actually passed.
+  function finishAfterCooldown(): void {
+    if (!root.checkCooldownClearsAfterItPasses()) return;
 
     console.log("PASS MediaController");
     Qt.exit(0);
@@ -127,9 +156,10 @@ ShellRoot {
 
   // checkRapidClicksFetchAndOpenOnce verifies opening an undownloaded
   // video twice before its media.fetch answers sends only one fetch
-  // request, and opens the result only once: the bug this fixes let an
-  // impatient second click while a video was still downloading end up
-  // opening a second player once the download finished.
+  // request and opens the result only once, and that clicking it again
+  // right after that open is ignored too: this is the issue the
+  // cooldown fixes - repeatedly clicking a video kept opening more
+  // players once the download finished.
   function checkRapidClicksFetchAndOpenOnce(): bool {
     root.openCalls = [];
     service.fetchRequests = [];
@@ -147,11 +177,11 @@ ShellRoot {
       return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want exactly one open of /tmp/v1.mp4");
     }
 
-    // The download has finished and nothing is in flight any more, so a
-    // later click opens it again rather than staying suppressed forever.
+    // A click right after the one that just opened it is still within
+    // the cooldown, so it is ignored rather than opening a second player.
     controller.openMedia("v1");
-    if (root.openCalls.length !== 2) {
-      return Check.fail("a click after the first open finished did not open it again");
+    if (root.openCalls.length !== 1) {
+      return Check.fail("a click within the cooldown opened the video again");
     }
     return true;
   }
@@ -169,6 +199,36 @@ ShellRoot {
 
     if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/v2.mp4") {
       return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want exactly one open of /tmp/v2.mp4");
+    }
+    return true;
+  }
+
+  // checkDifferentMessageStillOpensDuringAnothersCooldown verifies v2's
+  // own cooldown (just started above) never blocks v3, a different,
+  // never-clicked message: the cooldown is keyed by message id, not a
+  // single global lock on "a media open just happened".
+  function checkDifferentMessageStillOpensDuringAnothersCooldown(): bool {
+    root.openCalls = [];
+
+    controller.openMedia("v3");
+
+    if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/v3.mp4") {
+      return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want v3 to open while v2 is on cooldown");
+    }
+    return true;
+  }
+
+  // checkCooldownClearsAfterItPasses verifies that once
+  // mediaOpenCooldownMs has actually passed, opening the same message
+  // again opens it: the cooldown ignores a repeat click, it does not
+  // lock the message out forever.
+  function checkCooldownClearsAfterItPasses(): bool {
+    root.openCalls = [];
+
+    controller.openMedia("v2");
+
+    if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/v2.mp4") {
+      return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want v2 to open again once its cooldown passed");
     }
     return true;
   }

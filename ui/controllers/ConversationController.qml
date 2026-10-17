@@ -49,6 +49,12 @@ Item {
   // recorder rather than letting a video or file open for real.
   property var openExternally: (path) => Qt.openUrlExternally("file://" + path)
 
+  // mediaOpenCooldownMs is how long media (see MediaController) ignores
+  // a repeat open of the same message after opening it; a test
+  // shortens it to prove the cooldown clears rather than waiting out
+  // the real default.
+  property int mediaOpenCooldownMs: 5000
+
   // activeId is the open conversation's id, or "" when none is open.
   property string activeId: ""
 
@@ -576,6 +582,7 @@ Item {
     photoViewer: root.photoViewer
     voiceController: root.voiceController
     openExternally: root.openExternally
+    cooldownMs: root.mediaOpenCooldownMs
   }
 
   Timer {

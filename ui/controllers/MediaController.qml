@@ -1,6 +1,7 @@
 import QtQuick
 import "../lib/Format.js" as Format
 import "../lib/Media.js" as Media
+import "../lib/MediaOpen.js" as MediaOpen
 import "../lib/Rpc.js" as Rpc
 
 // Downloads and opens a message's photo, video, file or voice note, for
@@ -31,22 +32,25 @@ QtObject {
   // function.
   property var openExternally: (path) => Qt.openUrlExternally("file://" + path)
 
+  // cooldownMs is how long a message's video or file stays ignored after
+  // it was last opened. Nothing tells this controller when, or whether,
+  // the external player it handed a file to ever closes, so a click on
+  // the same message again soon after reads as an impatient repeat of
+  // the one that just opened it, not a second, deliberate one (see the
+  // issue this fixes - repeatedly clicking a video kept opening more
+  // players). A property, not a constant, so a test can shorten it.
+  property int cooldownMs: 5000
+
   // _fetching holds the ids of messages whose media is downloading, so a
   // photo already on its way is never asked for twice.
   property var _fetching: ({})
 
-  // _opening holds the ids of messages whose already-downloaded video or
-  // file a click just handed to openExternally, cleared on the next
-  // turn of the event loop rather than at once: this is what makes two
-  // opens reaching this function back to back, with nothing in between,
-  // open it only once (see the issue this fixes - repeatedly clicking a
-  // video opened it several times over). It is not a guard against a
-  // second click once that turn has passed, since nothing tells this
-  // controller when, or whether, the external player it handed the file
-  // to ever closes; the download itself stays guarded for its whole
-  // duration by _fetching above, which is the window the reported bug
-  // actually clicked through.
-  property var _opening: ({})
+  // _lastOpenedAt holds, per message id, when its video or file was last
+  // handed to openExternally. MediaOpen.canOpen reads one message's own
+  // entry to decide whether a new click opens it again or is ignored as
+  // too soon; a different message's id is never consulted, so one
+  // message's cooldown never blocks another's.
+  property var _lastOpenedAt: ({})
 
   // fetchMedia downloads a message's photo and shows it once it is here.
   // A photo asks each time its row is shown, so one already on its way is
@@ -72,20 +76,20 @@ QtObject {
     if (kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(timeline, id, media); return; }
 
     const path = timeline.mediaPath(id);
-    if (path) { root._openCached(id, path); return; }
+    if (path) { root._openIfAllowed(id, path); return; }
 
-    root.downloadMedia(timeline, id, true, (downloaded) => root.openExternally(downloaded));
+    root.downloadMedia(timeline, id, true, (downloaded) => root._openIfAllowed(id, downloaded));
   }
 
-  // _openCached hands an already-downloaded video or file to
-  // openExternally, guarded by _opening so a second open reaching this
-  // function before the event loop has moved on does nothing extra.
-  function _openCached(id: string, path: string): void {
-    if (root._opening[id]) return;
+  // _openIfAllowed hands path to openExternally unless this same
+  // message was already opened within cooldownMs, in which case the
+  // click is ignored as a repeat rather than a second, deliberate open.
+  function _openIfAllowed(id: string, path: string): void {
+    const now = Date.now();
+    if (!MediaOpen.canOpen(root._lastOpenedAt[id], now, root.cooldownMs)) return;
 
-    root._opening[id] = true;
+    root._lastOpenedAt[id] = now;
     root.openExternally(path);
-    Qt.callLater(() => delete root._opening[id]);
   }
 
   // _toggleVoice plays or pauses a voice note, downloading it first if it
