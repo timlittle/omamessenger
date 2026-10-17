@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.4](https://github.com/timlittle/omamessenger/compare/v0.3.3...v0.3.4) (2026-10-17)
+
+
+### Features
+
+* show attachment size, length and dimensions ([fe198f3](https://github.com/timlittle/omamessenger/commit/fe198f31b4b59debe58f1853d82418b0d33b884e)), closes [#24](https://github.com/timlittle/omamessenger/issues/24)
+* **spell:** add English spell check to the helper ([6a943bb](https://github.com/timlittle/omamessenger/commit/6a943bb968e11332d1b3ea05025047e55293c01d))
+* **ui:** show unread counts per service in the bar tooltip ([5a25c09](https://github.com/timlittle/omamessenger/commit/5a25c09c49104839414288d718b41ef44b996e44)), closes [#18](https://github.com/timlittle/omamessenger/issues/18)
+* **ui:** underline misspelled words in the composer ([f646c98](https://github.com/timlittle/omamessenger/commit/f646c988f5a0c03c0548be8398b72fea9f3ba457)), closes [#13](https://github.com/timlittle/omamessenger/issues/13)
+
+
+### Bug Fixes
+
+* **cache:** refresh an adopted file's mtime so it is not pruned as stale ([2e9d19e](https://github.com/timlittle/omamessenger/commit/2e9d19e61f0d50682e69b3387f71c1a9b9d58604))
+* **telegram:** keep message links and formatting ([386d471](https://github.com/timlittle/omamessenger/commit/386d47189e02151c883ce394b3753a9d5872e8a0)), closes [#26](https://github.com/timlittle/omamessenger/issues/26)
+* **telegram:** retry a failed password-hint fetch during sign-in ([7bfac63](https://github.com/timlittle/omamessenger/commit/7bfac63f233724c8bdfc2c080da2cf0d1b089883)), closes [#8](https://github.com/timlittle/omamessenger/issues/8)
+* **ui:** destroy the command palette, account setup and new-chat dialog on close ([1c8a2a1](https://github.com/timlittle/omamessenger/commit/1c8a2a1318b39b88347b8ee16941ac28f8e2b691))
+* **ui:** ignore repeat opens of the same video for a few seconds ([ae1a720](https://github.com/timlittle/omamessenger/commit/ae1a72087bc2fa5b85f27eb72b37d281edcbecbb)), closes [#22](https://github.com/timlittle/omamessenger/issues/22)
+* **ui:** keep the bar tooltip text inside its bubble ([4a1e2ec](https://github.com/timlittle/omamessenger/commit/4a1e2ec88257b28f825fb87ae1102c264cbf706e)), closes [#17](https://github.com/timlittle/omamessenger/issues/17)
+* **ui:** let helper errors clear themselves and be dismissed ([378c4f0](https://github.com/timlittle/omamessenger/commit/378c4f005f58784facd7f908581b1a1c1e0cf72c))
+* **ui:** open a video once however many times it is clicked while loading ([332db31](https://github.com/timlittle/omamessenger/commit/332db315aea0a5df1ca08ce0806dcde6edda4514)), closes [#22](https://github.com/timlittle/omamessenger/issues/22)
+* **ui:** resolve a sent photo's path again once it is retired to the cache ([5a26eda](https://github.com/timlittle/omamessenger/commit/5a26edabb9e06ba6d9c7a49f6926c00f84927980)), closes [#25](https://github.com/timlittle/omamessenger/issues/25)
+* **whatsapp:** address a migrated chat's mark-read patch by its LID ([4b2229a](https://github.com/timlittle/omamessenger/commit/4b2229a2739f57f496f3a7c27c1c7f12a0620bf3))
+* **whatsapp:** retry a decrypt failure through the primary phone too ([05c3394](https://github.com/timlittle/omamessenger/commit/05c339437c3e95ada221b58a9d6f653cd2b2bd2b))
+* **whatsapp:** save a history-synced media reference from its unwrapped message ([4b36202](https://github.com/timlittle/omamessenger/commit/4b362028b689ed8d97734c7464b7922775cdb3c0))
+
 ## [0.3.3](https://github.com/timlittle/omamessenger/compare/v0.3.2...v0.3.3) (2026-10-12)
 
 
