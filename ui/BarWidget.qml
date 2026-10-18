@@ -40,6 +40,10 @@ Item {
     accounts: root.service ? root.service.accounts : []
   })
 
+  // tooltipHovered tells Omarchy's bar this widget is under the pointer;
+  // its showTooltip ignores any target that doesn't report it.
+  readonly property bool tooltipHovered: hover.containsMouse
+
   implicitWidth: Theme.bar.iconSlot
   implicitHeight: Theme.bar.iconSlot
   opacity: root.ready ? 1 : 0.4

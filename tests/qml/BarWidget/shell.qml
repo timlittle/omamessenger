@@ -38,7 +38,12 @@ ShellRoot {
   QtObject {
     id: fakeBar
     property QtObject shell: fakeShell
-    function showTooltip(target, text) { root.tooltipCalls.push({ target: target, text: text }); }
+    // Like Omarchy's Bar.showTooltip, ignore a target that doesn't report
+    // tooltipHovered: the real bar shows nothing for it.
+    function showTooltip(target, text) {
+      if (!target || target.tooltipHovered !== true) return;
+      root.tooltipCalls.push({ target: target, text: text });
+    }
     function hideTooltip(target) { root.hideTooltipCalls += 1; }
   }
 
