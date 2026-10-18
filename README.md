@@ -35,6 +35,13 @@ It also adds OmaMessenger to Omarchy's apps menu (**SUPER+ALT+SPACE**). To bind 
 o.bind("SUPER + ALT + M", "OmaMessenger", "omarchy-shell shell summon io.github.omamessenger '{}'")
 ```
 
+`omarchy plugin add --enable` places the bar icon for you. If you enabled an older copy of this plugin before it had a bar widget, Omarchy may already have a plain entry for it that its own placement command cannot find — it reports success and "moves" the widget, but no icon appears and `omarchy plugin list` still shows it disabled. Clear that old entry once, then place the widget again:
+
+```sh
+omarchy plugin disable io.github.omamessenger
+omarchy plugin enable io.github.omamessenger right   # or left / center
+```
+
 ## Sign in to Telegram
 
 Choose **Add an account** in the window or the command palette. Scan the QR code shown with Telegram (**Settings → Devices → Link Desktop Device**), or choose **Use phone number instead** for a code, and a password if the account has two-step verification. Recent chats sync once it connects.
