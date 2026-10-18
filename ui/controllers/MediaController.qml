@@ -41,8 +41,13 @@ QtObject {
   // players). A property, not a constant, so a test can shorten it.
   property int cooldownMs: 5000
 
-  // _fetching holds the ids of messages whose media is downloading, so a
-  // photo already on its way is never asked for twice.
+  // _fetching holds, per message id whose media is downloading, every
+  // caller still waiting on it: {report, done} pairs, so a photo's own
+  // silent prefetch and a deliberate open that follows before it answers
+  // share the one request instead of sending a second, and both still
+  // hear back once it answers, rather than the second caller's own
+  // report flag and done callback being dropped silently (see
+  // tests/qml/MediaController's prefetch-race check).
   property var _fetching: ({})
 
   // _lastOpenedAt holds, per message id, when its video or file was last
@@ -103,41 +108,55 @@ QtObject {
   }
 
   // downloadMedia asks the helper for a message's media once, records
-  // where it is, then runs done with the path. A failure is reported to
-  // the user only when they asked for the media, rather than a photo
-  // fetching itself, but is always recorded on the message, so a photo
-  // with no preview shows "Photo unavailable" instead of an empty box
-  // that a failed, silent auto-fetch would otherwise leave forever, and
-  // always logged to the console with its code and safe reason
-  // category, so a failed fetch is never silent even when nothing asked
-  // to see its error text. A reason that means the file is truly gone
-  // (not found, expired or undecryptable) gets its own sentence naming
-  // the media's kind, such as "This video is no longer available.",
-  // rather than the generic "something went wrong" every other helper
-  // error shows. The photo viewer reuses this rather than asking the
-  // helper itself, so there is one place that tracks an in-flight
-  // download.
+  // where it is, then runs done with the path. A second call for the
+  // same id while the first is still waiting on media.fetch joins that
+  // one request instead of sending another, and is still answered once
+  // it comes back: this is what lets a photo's or voice note's own
+  // silent prefetch (report false, done a no-op) and a deliberate open
+  // that follows right after it (report true, done something that
+  // matters) both get what they asked for from the one round trip. A
+  // failure is reported to the user only for a caller that asked for it,
+  // but is always recorded on the message, so a photo with no preview
+  // shows "Photo unavailable" instead of an empty box that a failed,
+  // silent auto-fetch would otherwise leave forever, and always logged
+  // to the console with its code and safe reason category, so a failed
+  // fetch is never silent even when nothing asked to see its error
+  // text. A reason that means the file is truly gone (not found,
+  // expired or undecryptable) gets its own sentence naming the media's
+  // kind, such as "This video is no longer available.", rather than the
+  // generic "something went wrong" every other helper error shows. The
+  // photo viewer reuses this rather than asking the helper itself, so
+  // there is one place that tracks an in-flight download.
   function downloadMedia(timeline: var, id: string, report: bool, done: var): void {
-    if (root._fetching[id]) return;
+    if (root._fetching[id]) { root._fetching[id].push({ report: report, done: done }); return; }
 
-    root._fetching[id] = true;
+    root._fetching[id] = [{ report: report, done: done }];
     root.service.request("media.fetch", { messageId: id }, function(error, result) {
+      const waiting = root._fetching[id];
       delete root._fetching[id];
-      if (error) {
-        const reason = Rpc.errorReason(error);
-        console.warn("media.fetch failed for " + id + ": code=" + error.code + " reason=" + (reason || "unknown"));
-        timeline.setMediaFailed(id, true, reason);
-        if (report) {
-          const kind = Media.kindFor(timeline.media(id));
-          timeline.lastError = Format.mediaUnavailableMessage(kind, reason) || Rpc.errorText(error);
-        }
-        return;
-      }
+
+      if (error) { root._failDownload(timeline, id, error, waiting); return; }
 
       timeline.setMediaFailed(id, false, "");
       timeline.setMediaPath(id, result.path);
       timeline.lastError = "";
-      done(result.path);
+      for (const waiter of waiting) waiter.done(result.path);
     });
+  }
+
+  // _failDownload records a failed media.fetch on the message and tells
+  // every waiter that asked to be told (report true) a user-facing
+  // reason, once for the whole shared request rather than once per
+  // waiter, so two callers failing together do not overwrite each
+  // other's sentence with the same text twice.
+  function _failDownload(timeline: var, id: string, error: var, waiting: var): void {
+    const reason = Rpc.errorReason(error);
+    console.warn("media.fetch failed for " + id + ": code=" + error.code + " reason=" + (reason || "unknown"));
+    timeline.setMediaFailed(id, true, reason);
+
+    if (!waiting.some(waiter => waiter.report)) return;
+
+    const kind = Media.kindFor(timeline.media(id));
+    timeline.lastError = Format.mediaUnavailableMessage(kind, reason) || Rpc.errorText(error);
   }
 }

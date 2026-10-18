@@ -17,6 +17,16 @@
 // tests/unit/mediaopen.test.cjs; this only checks the wiring: the
 // cooldown is per message (a different message still opens at once)
 // and it clears once mediaOpenCooldownMs has actually passed.
+//
+// Finally, it checks a race between a silent prefetch (ConversationController.
+// fetchMedia, the same call a voice note's or photo's row makes the moment
+// it becomes visible) and a deliberate open that follows before that
+// prefetch has answered: the open must still open the file once the one
+// shared fetch comes back, rather than being dropped because a fetch for
+// that id was already in flight. This is the bug behind
+// tests/qml/VoicePlayback's own intermittent failure - there the race
+// shows up as the play button never flipping to pause, because a voice
+// note's prefetch and its own open both call downloadMedia for the same id.
 // openExternally stands in for the real Qt.openUrlExternally throughout,
 // so "opens" here means this test's own recorder, never a real external
 // application.
@@ -43,12 +53,16 @@ ShellRoot {
     // an available voice player, always falls through openMedia's plain
     // download-and-open path), and a third, never-clicked cached video
     // (v3) the cross-message cooldown check opens while v2 is on its
-    // own cooldown, so that check never depends on another one's timing.
+    // own cooldown, so that check never depends on another one's timing,
+    // and a fourth, never-clicked undownloaded video (v4) the prefetch
+    // race check uses, so it never depends on any id another check has
+    // already fetched or cached.
     property var initialMessages: [
       { id: "v1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 30, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
       { id: "v2", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 20, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v2.mp4" },
       { id: "f1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: 10, media: { kind: "file", fileName: "notes.pdf" }, mediaPath: "" },
-      { id: "v3", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v3.mp4" }
+      { id: "v3", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v3.mp4" },
+      { id: "v4", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 1, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -115,6 +129,7 @@ ShellRoot {
     if (!root.checkRapidClicksFetchAndOpenOnce()) return;
     if (!root.checkCachedMediaOpensOnceForBackToBackClicks()) return;
     if (!root.checkDifferentMessageStillOpensDuringAnothersCooldown()) return;
+    if (!root.checkOpenDuringAnInFlightPrefetchStillOpensOnceAnswered()) return;
 
     cooldownTimer.start();
   }
@@ -229,6 +244,32 @@ ShellRoot {
 
     if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/v2.mp4") {
       return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want v2 to open again once its cooldown passed");
+    }
+    return true;
+  }
+
+  // checkOpenDuringAnInFlightPrefetchStillOpensOnceAnswered verifies
+  // that opening v4 while its own silent prefetch (controller.fetchMedia,
+  // called the moment its row becomes visible) is still waiting on
+  // media.fetch still opens the file once that one shared fetch answers,
+  // rather than being dropped because downloadMedia saw a fetch for v4
+  // already in flight and returned without ever queuing this open's own
+  // callback.
+  function checkOpenDuringAnInFlightPrefetchStillOpensOnceAnswered(): bool {
+    root.openCalls = [];
+    service.fetchRequests = [];
+
+    controller.fetchMedia("v4");
+    controller.openMedia("v4");
+
+    if (service.fetchRequests.length !== 1) {
+      return Check.fail("fetchRequests = " + JSON.stringify(service.fetchRequests) + ", want exactly one, not a second fetch while one is already in flight");
+    }
+
+    root.answerFetchSuccess("v4", "/tmp/v4.mp4");
+
+    if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/v4.mp4") {
+      return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want the open that arrived while the prefetch was in flight to open the file once answered");
     }
     return true;
   }

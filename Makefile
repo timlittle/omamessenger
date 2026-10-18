@@ -151,7 +151,7 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen \
 			XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" XDG_RUNTIME_DIR="$$run" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
 			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
-		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log" | grep -E "FAIL|ERROR" | head -20; fi; \
+		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log"; fi; \
 		rm -rf "$$run"; \
 	done; \
 	warnings=$$(grep -lEi "TypeError|ReferenceError|binding loop" build/qml-tests/*/log 2>/dev/null); \
