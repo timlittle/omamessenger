@@ -1,54 +1,58 @@
 #!/usr/bin/env sh
-# Request an Omarchy marketplace listing update for OmaMessenger's latest
-# release. Called by `make marketplace-update`; files a verify-plugin issue
-# in omacom/omarchy-plugin-marketplace under the maintainer's own `gh`
-# login, asking it to pick up the new commit.
+# Request an Omarchy marketplace listing update for the current HEAD of
+# this repository's default branch. Called by `make marketplace-update`;
+# files a verify-plugin issue in omacom/omarchy-plugin-marketplace under
+# the maintainer's own `gh` login, asking it to pick up that commit.
 #
-# It finds the latest published release and the commit it points to,
-# refuses if that release has no assets yet or if this checkout's
-# manifest.json and helper-version disagree with the tag, then builds the
-# issue body from the marketplace repository's own verify-plugin.yml issue
-# form: the form is fetched live and parsed for its headings and checkbox
-# wording, so a change to that template upstream is never silently missed.
-# It prints the title and body and asks before filing anything.
+# The marketplace only accepts a target that is the default branch's
+# current HEAD, so this script resolves that HEAD from GitHub rather than
+# any local tag or checkout. It then refuses unless, at that HEAD, the
+# plugin is still pinned to the latest release: manifest.json and
+# helper-version must equal the release tag's version, and the release
+# must have its assets. Both files are read from GitHub at that HEAD, not
+# from this checkout, since a local worktree may not be at HEAD. It lists
+# every commit between the release tag and HEAD, so the maintainer filing
+# the issue can see what they are attesting to, then builds the issue body
+# from the marketplace repository's own verify-plugin.yml issue form: the
+# form is fetched live and parsed for its headings and checkbox wording,
+# so a change to that template upstream is never silently missed. It
+# prints the title and body and asks before filing anything.
 #
-# DRY_RUN=1 prints the title and body and exits without asking or filing.
+# DRY_RUN=1 prints the commit list, title and body and exits without
+# asking or filing.
 set -eu
 
-repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-cd "$repo_root"
-
+source_repo=timlittle/omamessenger
+repository_url="https://github.com/$source_repo"
 marketplace_repo=omacom/omarchy-plugin-marketplace
 plugin_id=io.github.omamessenger
-repository_url=https://github.com/timlittle/omamessenger
 action_text="Verify and publish a newer upstream commit"
 
-for tool in gh jq; do
+for tool in gh jq base64; do
     command -v "$tool" >/dev/null 2>&1 || { printf 'marketplace-update: %s is required\n' "$tool" >&2; exit 1; }
 done
-
-# A stale local tag list never blocks the version check below, which
-# compares this checkout's own files against the tag name returned by
-# the GitHub API, not anything local git resolves; best effort only.
-git fetch --tags --quiet 2>/dev/null || true
 
 tag=$(gh release view --json tagName --jq .tagName)
 assets=$(gh release view "$tag" --json assets --jq '.assets | length')
 [ "$assets" -gt 0 ] || { printf 'marketplace-update: release %s has no assets yet\n' "$tag" >&2; exit 1; }
 
-sha=$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)
-case "$sha" in
-    *[!0-9a-fA-F]*) sha='' ;;
+head_sha=$(gh api "repos/$source_repo/commits/main" --jq .sha)
+case "$head_sha" in
+    *[!0-9a-fA-F]*) head_sha='' ;;
 esac
-[ "${#sha}" -eq 40 ] || { printf 'marketplace-update: release %s has no commit SHA\n' "$tag" >&2; exit 1; }
+[ "${#head_sha}" -eq 40 ] || { printf 'marketplace-update: could not resolve the default branch HEAD\n' >&2; exit 1; }
+
+manifest_version=$(gh api "repos/$source_repo/contents/manifest.json?ref=$head_sha" --jq .content | base64 -d | jq -r .version)
+helper_version=$(gh api "repos/$source_repo/contents/helper-version?ref=$head_sha" --jq .content | base64 -d | cut -d'#' -f1 | tr -d ' \n')
 
 tag_version=${tag#v}
-manifest_version=$(jq -r .version manifest.json)
-helper_version=$(cut -d'#' -f1 helper-version | tr -d ' \n')
 if [ "$tag_version" != "$manifest_version" ] || [ "$tag_version" != "$helper_version" ]; then
-    printf 'marketplace-update: version mismatch: tag=%s manifest.json=%s helper-version=%s\n' "$tag" "$manifest_version" "$helper_version" >&2
+    printf 'marketplace-update: HEAD %s is not pinned to the latest release %s (manifest.json=%s, helper-version=%s); the existing validation and baseline do not cover that newer commit\n' \
+        "$head_sha" "$tag" "$manifest_version" "$helper_version" >&2
     exit 1
 fi
+
+commits=$(gh api "repos/$source_repo/compare/$tag...$head_sha" --jq '.commits[] | (.sha[0:7] + " " + (.commit.message | split("\n")[0]))')
 
 template=$(gh api "repos/$marketplace_repo/contents/.github/ISSUE_TEMPLATE/verify-plugin.yml" --jq .content | base64 -d)
 
@@ -123,7 +127,7 @@ $repository_url
 
 ### $commit_label
 
-$sha
+$head_sha
 
 ### $ack_label
 
@@ -134,7 +138,13 @@ $sha
 - [x] $std_text
 EOF
 
-printf '%s\n\n' "$title"
+printf 'Commits between %s and HEAD (%s):\n' "$tag" "$head_sha"
+if [ -n "$commits" ]; then
+    printf '%s\n' "$commits"
+else
+    printf '  (none)\n'
+fi
+printf '\n%s\n\n' "$title"
 cat "$body_file"
 
 [ "${DRY_RUN:-0}" != "1" ] || exit 0

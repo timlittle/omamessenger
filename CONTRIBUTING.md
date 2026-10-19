@@ -61,7 +61,7 @@ Automated checks cover logic and QML validity, not what the window looks like. R
 
 ## Release
 
-release-please opens and tags the release PR; merging it runs `.github/workflows/release.yml`, which builds and publishes the helper binaries. Once that release has assets, run `make marketplace-update` to request that the Omarchy marketplace listing pick up the new commit.
+release-please opens and tags the release PR; merging it runs `.github/workflows/release.yml`, which builds and publishes the helper binaries. Once that release has assets, run `make marketplace-update` to request that the Omarchy marketplace listing pick up the default branch's current HEAD; it refuses unless that HEAD is still pinned to the latest release's version.
 
 ## Pull requests
 
