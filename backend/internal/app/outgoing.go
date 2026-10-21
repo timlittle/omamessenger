@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -22,7 +23,7 @@ func (in *Ingest) retireOutgoingAttachment(ctx context.Context, m domain.Message
 
 	if in.cache != nil {
 		path := in.outgoing.Path(m.ID, m.Media.FileName)
-		if err := in.cache.Adopt(ctx, mediaFileName(m), path); err != nil && in.logger != nil {
+		if err := in.cache.Adopt(ctx, outgoingCacheName(m), path); err != nil && in.logger != nil {
 			in.logger.Printf("media: keep sent attachment failed (reason=adopt)")
 		}
 	}
@@ -30,6 +31,27 @@ func (in *Ingest) retireOutgoingAttachment(ctx context.Context, m domain.Message
 	if err := in.outgoing.Remove(ctx, m.ID, m.Media.FileName); err != nil && in.logger != nil {
 		in.logger.Printf("media: remove sent attachment failed")
 	}
+}
+
+// outgoingCacheName names m's own attachment the same way the cache
+// would once it is adopted there: fixedMediaName's name for a photo or
+// video, or, for anything else, the id plus the extension of the file
+// the user themselves chose to attach - safe to reuse as-is, unlike a
+// sender's claim about someone else's file, since nobody but the user
+// sending it picked this one. cache.FetchNamed's own lookup matches
+// any extension on this id, so only the id, not this exact extension,
+// has to agree with what a later FetchMedia asks for.
+func outgoingCacheName(m domain.Message) string {
+	if name, ok := fixedMediaName(m); ok {
+		return name
+	}
+
+	ext := filepath.Ext(filepath.Base(m.Media.FileName))
+	if ext == "" {
+		ext = ".bin"
+	}
+
+	return m.ID + ext
 }
 
 // confirmedDelivery reports whether status is a delivery state that will

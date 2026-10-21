@@ -106,9 +106,16 @@ type MemberLister interface {
 
 // MediaCache keeps downloaded media, filling a file the first time it is
 // asked for, or taking in one already on disk - a sent attachment, say -
-// so it needs no download at all.
+// so it needs no download at all. Three methods, not the usual one or
+// two (see interfaces.md): FetchNamed is Fetch's own counterpart for a
+// kind whose correct cache name can only be known once its bytes
+// exist - every kind but a photo or video, named from a verified MIME
+// type sniffed after downloading rather than a sender's own claim (see
+// fetchIntoCache and docs/decisions.md) - and genuinely differs in when
+// the final name is decided, not merely in its parameters.
 type MediaCache interface {
 	Fetch(ctx context.Context, name string, fill func(ctx context.Context, path string) error) (string, error)
+	FetchNamed(ctx context.Context, id string, fill func(ctx context.Context, path string) error, nameFor func(path string) (string, error)) (string, error)
 	Adopt(ctx context.Context, name, path string) error
 }
 

@@ -385,12 +385,14 @@ func (h *fakeHistory) LoadOlder(ctx context.Context, conv domain.Conversation, b
 // it (to drive the cache's own size limit, say), or failing with err.
 type fakeMedia struct {
 	fetched []string
+	paths   []string
 	err     error
 	data    []byte
 }
 
 func (m *fakeMedia) FetchMedia(_ context.Context, _ domain.Conversation, messageRemoteID, path string, _ bool) error {
 	m.fetched = append(m.fetched, messageRemoteID)
+	m.paths = append(m.paths, path)
 	if m.err != nil {
 		return m.err
 	}
@@ -409,6 +411,12 @@ func (m *fakeMedia) FetchMedia(_ context.Context, _ domain.Conversation, message
 type fakeCache struct{ err error }
 
 func (c *fakeCache) Fetch(context.Context, string, func(context.Context, string) error) (string, error) {
+	return "", c.err
+}
+
+// FetchNamed is never exercised by a test using fakeCache; it only ever
+// fails the same way Fetch does.
+func (c *fakeCache) FetchNamed(context.Context, string, func(context.Context, string) error, func(string) (string, error)) (string, error) {
 	return "", c.err
 }
 

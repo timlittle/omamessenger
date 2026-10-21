@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -153,7 +152,7 @@ func (c *Commands) failDecodeCheck(ctx context.Context, m domain.Message, err er
 // from one the connector itself reported.
 func (c *Commands) download(ctx context.Context, conv domain.Conversation, m domain.Message, auto bool) (string, error) {
 	var connectorErr error
-	path, err := c.cache.Fetch(ctx, mediaFileName(m), func(ctx context.Context, path string) error {
+	path, err := c.fetchIntoCache(ctx, m, func(ctx context.Context, path string) error {
 		connectorErr = c.media.FetchMedia(ctx, conv, m.RemoteID, path, auto)
 		return connectorErr
 	})
@@ -165,6 +164,59 @@ func (c *Commands) download(ctx context.Context, conv domain.Conversation, m dom
 	c.logFetchFailure(conv.Service, m.Media.Kind, reason)
 
 	return "", &MediaFetchError{Reason: reason, err: err}
+}
+
+// fetchIntoCache fills the media cache for m: Fetch under a fixed, safe
+// name for a photo or video (see fixedMediaName), never chosen from
+// anything the sender claims, or FetchNamed's own sniffed one for
+// every other kind, chosen only once fill's downloaded bytes exist, so
+// a file, voice note or sticker's cache name is never again picked
+// from the sender's own file name the way it used to be (see
+// docs/decisions.md).
+func (c *Commands) fetchIntoCache(ctx context.Context, m domain.Message, fill func(context.Context, string) error) (string, error) {
+	if name, ok := fixedMediaName(m); ok {
+		return c.cache.Fetch(ctx, name, fill)
+	}
+
+	return c.cache.FetchNamed(ctx, m.ID, voiceHintedFill(m, fill), func(part string) (string, error) {
+		contentType, err := sniffContentType(part)
+		if err != nil {
+			return "", err
+		}
+
+		return m.ID + extensionFor(contentType), nil
+	})
+}
+
+// voiceHintedFill wraps fill so a voice note's download briefly exists
+// under a path ending ".ogg" before being moved to the plain one
+// FetchNamed actually asked for, once fill has written it: the fake
+// connector `make build-fake` builds for tests decides which
+// placeholder bytes to write from path's own extension, the one thing
+// it can tell a voice note apart from a photo by without the message's
+// media kind in its own signature (see fake.Connector.FetchMedia,
+// matching every real connector's). Every real connector ignores
+// path's extension and writes whatever the service actually sent
+// regardless, so this changes nothing for them; it never changes the
+// file's own final cache name either, which fetchIntoCache's own
+// nameFor always decides from the downloaded bytes, never this hint.
+func voiceHintedFill(m domain.Message, fill func(context.Context, string) error) func(context.Context, string) error {
+	if m.Media.Kind != domain.MediaVoice {
+		return fill
+	}
+
+	return func(ctx context.Context, path string) error {
+		hinted := path + ".ogg"
+		if err := fill(ctx, hinted); err != nil {
+			if rmErr := os.Remove(hinted); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+				return errors.Join(err, rmErr)
+			}
+
+			return err
+		}
+
+		return os.Rename(hinted, path)
+	}
 }
 
 // fetchFailureReason classifies a media download failure: err is what
@@ -261,27 +313,25 @@ func (c *Commands) localAttachment(m domain.Message) (string, bool) {
 	return path, true
 }
 
-// mediaFileName names a message's media in the cache by the message's id,
-// with an extension that says what it is, or for a file its own name, so
-// it opens in the right application. Every MediaVideo message is cached
-// as ".mp4", even the rare one whose downloaded bytes turn out to be a
-// genuine GIF image once DecodeAsForMedia checks them: Qt's own image
-// plugins sniff a file's actual format from its content, not its
-// extension, and this name must never again be chosen from a sender's
-// own filename or attributes (see DecodeAsForMedia and
-// docs/decisions.md).
-func mediaFileName(m domain.Message) string {
+// fixedMediaName returns the cache name a photo or video always uses,
+// and true: an extension that says what it is, never the sender's
+// own filename or attributes, which fetchIntoCache must trust even
+// less for these two kinds than for any other, since Qt's own image
+// and video engines are handed this file directly by its extension.
+// Every MediaVideo message is cached as ".mp4", even the rare one
+// whose downloaded bytes turn out to be a genuine GIF image once
+// DecodeAsForMedia checks them: Qt's own image plugins sniff a file's
+// actual format from its content, not its extension (see
+// DecodeAsForMedia and docs/decisions.md). ok is false for every other
+// kind, whose correct name can only be known once its own bytes exist
+// to sniff (see fetchIntoCache).
+func fixedMediaName(m domain.Message) (name string, ok bool) {
 	switch m.Media.Kind {
 	case domain.MediaPhoto:
-		return m.ID + ".jpg"
+		return m.ID + ".jpg", true
 	case domain.MediaVideo:
-		return m.ID + ".mp4"
+		return m.ID + ".mp4", true
+	default:
+		return "", false
 	}
-
-	name := filepath.Base(m.Media.FileName)
-	if name == "." || name == "/" {
-		return m.ID
-	}
-
-	return m.ID + "-" + name
 }

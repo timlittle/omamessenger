@@ -87,7 +87,7 @@ func (c *Cache) lockName(name string) func() {
 // Fetch returns the path of the cached file name, first calling fill to
 // write it when it is not cached. A fill that fails leaves nothing behind.
 func (c *Cache) Fetch(ctx context.Context, name string, fill func(ctx context.Context, path string) error) (string, error) {
-	if name == "" || name == "." || name == ".." || name != filepath.Base(name) || strings.HasSuffix(name, partSuffix) {
+	if !validName(name) {
 		return "", fmt.Errorf("%w: %q", ErrInvalidName, name)
 	}
 
@@ -183,7 +183,7 @@ func (c *Cache) Adopt(ctx context.Context, name, path string) error {
 		return err
 	}
 
-	if name == "" || name == "." || name == ".." || name != filepath.Base(name) || strings.HasSuffix(name, partSuffix) {
+	if !validName(name) {
 		return fmt.Errorf("%w: %q", ErrInvalidName, name)
 	}
 

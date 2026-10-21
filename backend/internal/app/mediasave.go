@@ -40,7 +40,7 @@ func (c *Commands) SaveMedia(ctx context.Context, messageID string) (string, err
 		return "", fmt.Errorf("media: save: create downloads directory: %w", err)
 	}
 
-	dst, err := uniqueDownloadPath(c.downloadsDir, downloadName(m.Media, mediaFileName(m)))
+	dst, err := uniqueDownloadPath(c.downloadsDir, downloadName(m.Media, filepath.Base(src)))
 	if err != nil {
 		return "", fmt.Errorf("media: save: %w", err)
 	}
@@ -54,9 +54,10 @@ func (c *Commands) SaveMedia(ctx context.Context, messageID string) (string, err
 
 // downloadName picks the name media.save gives the copy it leaves in
 // the downloads directory: the sender's own file name when there is
-// one, or otherwise the same name the media cache already uses, which
-// already carries a sensible extension for a photo or video (see
-// mediaFileName).
+// one - shown only, never used to pick how the file is cached or
+// opened (see fetchIntoCache and docs/decisions.md) - or otherwise
+// cacheName, the media cache's own name for it, already carrying a
+// safe extension for whatever the file actually is.
 func downloadName(media *domain.Media, cacheName string) string {
 	if media != nil {
 		if name := filepath.Base(media.FileName); name != "" && name != "." && name != "/" {

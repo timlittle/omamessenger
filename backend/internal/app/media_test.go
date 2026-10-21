@@ -52,8 +52,13 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 		t.Errorf("second FetchMedia = %v, downloads %v; want the cached copy", err, f.media.fetched)
 	}
 
-	if path, err := f.commands.FetchMedia(ctx, "m2", false); err != nil || filepath.Base(path) != "m2-notes.pdf" {
-		t.Errorf("FetchMedia(file) = %q, %v; want its own name kept", path, err)
+	// "41", the fake connector's default content for this message, is
+	// plain ASCII text, so the file is cached as "m2.txt": its own
+	// sniffed content, never the sender's claimed "../notes.pdf" (see
+	// TestFetchMedia_NamesAFileBySniffedContentNeverTheSendersClaim for
+	// the case that matters more - a disguised, dangerous extension).
+	if path, err := f.commands.FetchMedia(ctx, "m2", false); err != nil || filepath.Base(path) != "m2.txt" {
+		t.Errorf("FetchMedia(file) = %q, %v; want m2.txt, named from its own sniffed content", path, err)
 	}
 }
 
