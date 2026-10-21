@@ -4,9 +4,13 @@
 // account setup and the new-chat dialog must be destroyed on close, not
 // just hidden (see Overlays.qml). This drives the real Panel with every
 // gated overlay closed, then opened one at a time, and checks the whole
-// tree for any editable text field other than the composer and the
-// conversation list's own search field, both of which exist for as long
-// as the window is open and are not part of this fix.
+// tree for any editable text field other than the conversation list's
+// own search field, which exists for as long as the window is open and
+// is not part of this fix. The composer's own text input is not in this
+// baseline either: with no conversation open, it does not exist at all
+// (see Composer.qml's own active and docs/decisions.md) - its own
+// lifetime, and the search field's, are checked separately, in
+// tests/qml/FieldLifetime.
 import QtQuick
 import QtTest
 import Quickshell
@@ -17,10 +21,9 @@ ShellRoot {
   id: root
 
   // fieldsAlwaysPresent are the only editable fields allowed to exist
-  // while every gated overlay is closed: the composer (always on screen
-  // once a conversation is open) and the conversation list's own search
-  // field (always on screen beside it).
-  readonly property var fieldsAlwaysPresent: ["composerInput", "searchField"]
+  // while every gated overlay is closed and no conversation is open:
+  // the conversation list's own search field, always on screen.
+  readonly property var fieldsAlwaysPresent: ["searchField"]
 
   property var steps: [
     root.waitForList,

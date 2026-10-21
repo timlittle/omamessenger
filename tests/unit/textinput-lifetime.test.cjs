@@ -25,14 +25,16 @@ const path = require('node:path');
 const UI_ROOT = path.resolve(__dirname, '../../ui');
 
 // ALLOWLIST names every component allowed to hold a text input field
-// without being gated behind a Loader, each with the one-line reason it
-// is safe: both are always on screen, the same as any other visible
-// input a user can focus and paste into, with no overlay lifetime to
-// bound.
-const ALLOWLIST = {
-  'components/Composer.qml': 'the always-visible message composer',
-  'components/ListColumn.qml': 'the always-visible conversation search field',
-};
+// with no Loader gating it at all, anywhere, each with the one-line
+// reason it is safe. Empty: ListColumn's search field and Composer's
+// own text input used to be listed here as "always visible, so nothing
+// to bound" - true of the component itself, but not of the field inside
+// it, which is hidden along with everything else in a narrow window or
+// with no conversation open while staying alive underneath. Each now
+// gates its own field with an inner Loader instead (see
+// fieldSelfGated), so a caller may still instantiate ListColumn or
+// Composer freely, uninvolved with this fix.
+const ALLOWLIST = {};
 
 // FIELD_PATTERN matches the start of a TextField, TextArea or TextInput
 // object declaration, whether bare or namespaced (qs.Ui's "Ui.TextField").
@@ -109,10 +111,29 @@ function findUngatedUsages(file, src, componentName) {
   return found;
 }
 
+// fieldSelfGated reports whether every TextField, TextArea and
+// TextInput declaration in src sits inside a gated Loader block within
+// that same file: a component such as ListColumn or Composer that must
+// always exist itself, but whose one field inside it must not, gates
+// that field with its own inner Loader rather than asking every caller
+// to wrap the whole component in one (see each field's own comment).
+// A component this is true for needs no entry in ALLOWLIST and no
+// caller-side check at all: nothing about how it is instantiated
+// matters to this fix, since the field's own lifetime no longer
+// follows the component's.
+function fieldSelfGated(src) {
+  FIELD_PATTERN.lastIndex = 0;
+  for (const match of src.matchAll(FIELD_PATTERN)) {
+    if (!isGated(src, match.index)) return false;
+  }
+  return true;
+}
+
 test('every TextField, TextArea and TextInput outside the allow-list is only ever instantiated behind a gated Loader', () => {
   const files = qmlFiles(UI_ROOT).map((file) => path.relative(UI_ROOT, file));
   const fieldFiles = files.filter((file) => hasField(fs.readFileSync(path.join(UI_ROOT, file), 'utf8')));
-  const toCheck = fieldFiles.filter((file) => !(file in ALLOWLIST));
+  const toCheck = fieldFiles.filter((file) =>
+    !(file in ALLOWLIST) && !fieldSelfGated(fs.readFileSync(path.join(UI_ROOT, file), 'utf8')));
 
   const offenders = [];
   for (const fieldFile of toCheck) {
@@ -147,4 +168,23 @@ test('a Loader with active hard-coded to true does not gate its usage', () => {
   const src = 'Item {\n  Loader {\n    active: true\n    sourceComponent: Dummy {\n      open: true\n    }\n  }\n}\n';
 
   assert.deepEqual(findUngatedUsages('fixture.qml', src, 'Dummy'), ['fixture.qml:4']);
+});
+
+test('fieldSelfGated is true when every field in the file sits behind its own gated Loader', () => {
+  const src = 'Item {\n  Loader {\n    active: root.shown\n    sourceComponent: Component {\n      TextField {\n        id: f\n      }\n    }\n  }\n}\n';
+
+  assert.equal(fieldSelfGated(src), true);
+});
+
+test('fieldSelfGated is false when any field in the file is not gated at all', () => {
+  const src = 'Item {\n  Loader {\n    active: root.shown\n    sourceComponent: Component {\n      TextField {\n        id: f\n      }\n    }\n  }\n  TextArea {\n    id: g\n  }\n}\n';
+
+  assert.equal(fieldSelfGated(src), false);
+});
+
+test("ListColumn's search field and Composer's own input are both self-gated, needing no caller-side Loader", () => {
+  for (const file of ['components/ListColumn.qml', 'components/Composer.qml']) {
+    const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
+    assert.equal(fieldSelfGated(src), true, `${file} has a field not gated by its own inner Loader`);
+  }
 });

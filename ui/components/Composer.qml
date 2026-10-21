@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -43,8 +44,34 @@ Item {
 
   // ------------------------------------------------------------- API
   property string title: ""
-  property alias text: area.text
-  property alias input: area
+  // text is the draft text, kept here rather than as an alias to the
+  // text input itself: the input is destroyed and recreated as active
+  // changes (see below), so something outside it has to be the value's
+  // real home. Pushed down to a freshly loaded input (onLoaded) and on
+  // every later external change (onTextChanged below); pulled back up
+  // whenever the input's own text changes from typing, each guarded by
+  // the other so this never loops, the same idiom ConversationView's
+  // own draft already uses one layer up.
+  property string text: ""
+  // input is the live text input while active is true, or null while it
+  // does not exist; a caller inserting text or reading its cursor
+  // position must check for null first (see MessengerLayout.qml). A
+  // plain var, not an alias, since the Loader's own item has no
+  // declared type for qmllint to check members against (the same
+  // reasoning VoiceNoteController's own `_engine` documents).
+  property var input: inputLoader.item ? inputLoader.item.area : null
+  // active is false while this composer's text input must not exist at
+  // all: no conversation open, or the conversation pane is hidden in a
+  // narrow window (see ConversationView.qml). A hidden-but-alive
+  // TextArea still reads Wayland clipboard changes with no size or time
+  // limit, the same risk every other field in this UI is gated against
+  // (see docs/decisions.md). Defaults true so a test or other caller
+  // that never sets it keeps the input always there, as it used to be.
+  property bool active: true
+  // _focusPending is true when focusInput() was asked for before the
+  // input existed yet (just as active turned true, say): the Loader's
+  // own onLoaded consumes it once there is something to focus.
+  property bool _focusPending: false
   // replyTo is the message being answered: {id, senderName, text}, or
   // null when the user is not replying to anything.
   property var replyTo: null
@@ -122,8 +149,9 @@ Item {
   // writing is true while the text input holds keyboard focus: typing
   // and scrolling the conversation look identical otherwise, bar the
   // blinking text cursor, so the mode hint, the input and Send all read
-  // this to show which one is active.
-  readonly property bool writing: area.activeFocus
+  // this to show which one is active. False with no input loaded at
+  // all, which cannot be focused.
+  readonly property bool writing: !!root.input && root.input.activeFocus
   // dimmedOpacity is how faded the input and Send look while scrolling,
   // not writing. It is visual only: both stay enabled and clickable, so
   // clicking the input starts writing and Send still works by mouse.
@@ -154,20 +182,29 @@ Item {
   // dictionary.
   signal spellWordAdded(string word)
 
+  // A binding from text straight to the input would break the moment
+  // the input's own typing changes it back (see the property's own
+  // comment), so a change from outside is copied in explicitly
+  // instead, guarded so copying it back out below never loops.
+  onTextChanged: if (root.input && root.input.text !== root.text) root.input.text = root.text
+
   // submit sends the input's trimmed text and whatever is attached,
   // unless there is neither.
   function submit() {
-    var trimmed = area.text.trim()
+    var trimmed = root.text.trim()
     if (trimmed.length === 0 && root.attachmentPath === "") return
     const mentions = Mentions.resolveMentions(trimmed, root._mentionTokens)
     root.submitted(trimmed, root.replyTo ? root.replyTo.id : "", mentions)
-    area.text = ""
+    root.text = ""
     root._mentionTokens = []
   }
 
-  // focusInput moves keyboard focus into the text input.
+  // focusInput moves keyboard focus into the text input, once it
+  // exists; if it is still loading (active just turned true), the
+  // Loader's own onLoaded grants the focus this asked for instead.
   function focusInput() {
-    area.forceActiveFocus()
+    if (root.input) { root.input.forceActiveFocus(); return }
+    root._focusPending = true
   }
 
   // The caller's spell.check result can arrive after further typing
@@ -179,7 +216,7 @@ Item {
   // the input's current text and caret position; called whenever
   // either changes.
   function _updateMentionQuery() {
-    const query = root.members.length > 0 ? Mentions.activeQuery(area.text, area.cursorPosition) : null
+    const query = root.members.length > 0 ? Mentions.activeQuery(root.input.text, root.input.cursorPosition) : null
     root._activeQuery = query
     root._mentionMatches = query ? Mentions.filterMembers(root.members, query.query).slice(0, 6) : []
     root._mentionIndex = 0
@@ -205,12 +242,12 @@ Item {
   // final position later.
   function _acceptMention(index) {
     const member = root._mentionMatches[index]
-    if (!member) return
+    if (!member || !root.input) return
 
-    const result = Mentions.insertMention(area.text, root._activeQuery.start, area.cursorPosition, member)
+    const result = Mentions.insertMention(root.input.text, root._activeQuery.start, root.input.cursorPosition, member)
     root._mentionTokens = root._mentionTokens.concat([{ id: member.id, name: member.name }])
-    area.text = result.text
-    area.cursorPosition = result.cursor
+    root.input.text = result.text
+    root.input.cursorPosition = result.cursor
   }
 
   // openFilePicker opens the attach button's file dialog, for the
@@ -226,7 +263,7 @@ Item {
   // IME composition is in progress, so a half-typed character is never
   // mistaken for a finished, misspelled word.
   function _openSpellPickerAt(pos) {
-    if (area.inputMethodComposing) return
+    if (!root.input || root.input.inputMethodComposing) return
 
     const found = SpellCheck.misspellingAtPosition(root._effectiveMisspellings, pos) || SpellCheck.misspellingAtCaret(root._effectiveMisspellings, pos)
     if (!found) return
@@ -280,11 +317,11 @@ Item {
   // suggestions[index] and closes the picker.
   function _applySpellSuggestion(index) {
     const word = root.suggestions[index]
-    if (!word || !root._spellActive) return
+    if (!word || !root._spellActive || !root.input) return
 
-    const result = SpellCheck.applySuggestion(area.text, root._spellActive, word)
-    area.text = result.text
-    area.cursorPosition = result.cursor
+    const result = SpellCheck.applySuggestion(root.input.text, root._spellActive, word)
+    root.input.text = result.text
+    root.input.cursorPosition = result.cursor
     root._closeSpellPicker()
   }
 
@@ -315,6 +352,8 @@ Item {
   // the same tick a text or misspellings change arrives in.
   function _recomputeOverlay() {
     Qt.callLater(function() {
+      if (!root.input) return // the input was destroyed before this deferred call ran
+
       let rects = []
       for (const m of root._effectiveMisspellings) rects = rects.concat(root._rectsForRange(m.start, m.end))
       root._overlayRects = rects
@@ -322,27 +361,28 @@ Item {
   }
 
   // _rectsForRange returns the rectangle(s) to underline for the range
-  // [start, end) in area's own coordinates: one rectangle, or two when
-  // the range wraps across a line break.
+  // [start, end) in the input's own coordinates: one rectangle, or two
+  // when the range wraps across a line break. Only ever called once
+  // _recomputeOverlay has already confirmed root.input exists.
   function _rectsForRange(start, end) {
-    const from = area.positionToRectangle(start)
-    const to = area.positionToRectangle(end)
+    const from = root.input.positionToRectangle(start)
+    const to = root.input.positionToRectangle(end)
 
     if (Math.abs(from.y - to.y) < 1) {
       return [{ x: from.x, y: from.y + from.height, width: Math.max(to.x - from.x, 1), height: 2 }]
     }
 
     return [
-      { x: from.x, y: from.y + from.height, width: Math.max(area.width - area.rightPadding - from.x, 1), height: 2 },
-      { x: area.leftPadding, y: to.y + to.height, width: Math.max(to.x - area.leftPadding, 1), height: 2 }
+      { x: from.x, y: from.y + from.height, width: Math.max(root.input.width - root.input.rightPadding - from.x, 1), height: 2 },
+      { x: root.input.leftPadding, y: to.y + to.height, width: Math.max(to.x - root.input.leftPadding, 1), height: 2 }
     ]
   }
 
   // ------------------------------------------------------------- sizing
   readonly property int maxVisibleLines: 6
   readonly property real _lineHeight: fontMetrics.height
-  readonly property real _maxInputHeight: _lineHeight * maxVisibleLines + area.topPadding + area.bottomPadding
-  readonly property bool _canSend: area.text.trim().length > 0 || root.attachmentPath !== ""
+  readonly property real _maxInputHeight: _lineHeight * maxVisibleLines + (root.input ? root.input.topPadding + root.input.bottomPadding : 0)
+  readonly property bool _canSend: root.text.trim().length > 0 || root.attachmentPath !== ""
   // _attachmentKind guesses the chip's thumbnail-or-name choice from the
   // file name alone, before the helper ever sniffs its real content.
   readonly property string _attachmentKind: root.attachmentPath !== "" ? Format.guessMediaKind(root.attachmentPath) : ""
@@ -581,140 +621,164 @@ Item {
         onClicked: root.openFilePicker()
       }
 
-      ScrollView {
-        id: inputScroll
+      // The text input lives behind a Loader, active only while root.active
+      // is true: a hidden-but-alive TextArea still reads Wayland clipboard
+      // changes with no size or time limit, the same risk every other
+      // field in this UI is gated against (see docs/decisions.md and
+      // root.active's own comment above). Its text is seeded from
+      // root.text once it loads; destroying it loses nothing, since
+      // every change already flowed up through the input's own
+      // onTextChanged as it happened.
+      Loader {
+        id: inputLoader
         Layout.fillWidth: true
-        Layout.preferredHeight: Math.min(area.implicitHeight, root._maxInputHeight)
-        clip: true
-        ScrollBar.vertical.policy: area.implicitHeight > root._maxInputHeight ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-
-        TextArea {
-          id: area
-          objectName: "composerInput"
-          enabled: root.enabled
-          // Dimmed while scrolling rather than writing, so the mode is
-          // visible at a glance without relying on the hint text alone.
-          // The input stays enabled: clicking it while dimmed still
-          // starts writing.
-          opacity: root.writing ? 1.0 : root.dimmedOpacity
-          wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
-          textFormat: TextEdit.PlainText
-          selectByMouse: true
-          placeholderText: root.blocked ? "Blocked" : (root.title.length > 0 ? ("Message " + root.title) : "Message")
-
-          onTextChanged: {
-            root._updateMentionQuery()
-            root._closeSpellPicker()
-            root._recomputeOverlay()
+        Layout.preferredHeight: Math.min(root.input ? root.input.implicitHeight : fontMetrics.height, root._maxInputHeight)
+        active: root.active
+        onLoaded: {
+          item.area.text = root.text
+          if (root._focusPending) {
+            item.area.forceActiveFocus()
+            root._focusPending = false
           }
-          onCursorPositionChanged: {
-            root._updateMentionQuery()
-            if (root.spellPickerOpen && (area.cursorPosition < root._spellActive.start || area.cursorPosition > root._spellActive.end)) {
+        }
+
+        sourceComponent: ScrollView {
+          id: inputScroll
+          // area exposes the text input itself, so root.input can reach
+          // it through the Loader's own item without a second alias hop.
+          property alias area: area
+          clip: true
+          ScrollBar.vertical.policy: area.implicitHeight > root._maxInputHeight ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+
+          TextArea {
+            id: area
+            objectName: "composerInput"
+            enabled: root.enabled
+            // Dimmed while scrolling rather than writing, so the mode is
+            // visible at a glance without relying on the hint text alone.
+            // The input stays enabled: clicking it while dimmed still
+            // starts writing.
+            opacity: root.writing ? 1.0 : root.dimmedOpacity
+            wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+            textFormat: TextEdit.PlainText
+            selectByMouse: true
+            placeholderText: root.blocked ? "Blocked" : (root.title.length > 0 ? ("Message " + root.title) : "Message")
+
+            onTextChanged: {
+              if (root.text !== text) root.text = text
+              root._updateMentionQuery()
               root._closeSpellPicker()
+              root._recomputeOverlay()
             }
-          }
+            onCursorPositionChanged: {
+              root._updateMentionQuery()
+              if (root.spellPickerOpen && (area.cursorPosition < root._spellActive.start || area.cursorPosition > root._spellActive.end)) {
+                root._closeSpellPicker()
+              }
+            }
 
-          Keys.priority: Keys.BeforeItem
-          Keys.onPressed: event => {
-            if (root.pickerOpen) {
-              // Keymap.match also matches every global binding in this
-              // context, not just the picker's own, so only a mention.*
-              // action is handled here; anything else (Ctrl+N, Ctrl+/,
-              // a rail switch, …) falls through to routeKey below
-              // instead of being silently swallowed.
-              const action = Keymap.match("mentionPicker", event.key, event.modifiers, event.text, root.bindings)
-              if (action.startsWith("mention.")) {
-                root._runMentionAction(action)
+            Keys.priority: Keys.BeforeItem
+            Keys.onPressed: event => {
+              if (root.pickerOpen) {
+                // Keymap.match also matches every global binding in this
+                // context, not just the picker's own, so only a mention.*
+                // action is handled here; anything else (Ctrl+N, Ctrl+/,
+                // a rail switch, …) falls through to routeKey below
+                // instead of being silently swallowed.
+                const action = Keymap.match("mentionPicker", event.key, event.modifiers, event.text, root.bindings)
+                if (action.startsWith("mention.")) {
+                  root._runMentionAction(action)
+                  event.accepted = true
+                  return
+                }
+              }
+              if (root.spellPickerOpen) {
+                const action = Keymap.match("spellPicker", event.key, event.modifiers, event.text, root.bindings)
+                if (action.startsWith("spell.")) {
+                  root._runSpellAction(action)
+                  event.accepted = true
+                  return
+                }
+              }
+              // Matched generically (not against a fixed "compose" context
+              // pass-through) so every other compose binding - Enter,
+              // Shift+Enter, Ctrl+V, … - keeps falling through to routeKey
+              // exactly as before; only an exact match on this one action
+              // is ever handled here.
+              if (Keymap.match("compose", event.key, event.modifiers, event.text, root.bindings) === "compose.spellSuggestions") {
+                root._openSpellPickerAt(area.cursorPosition)
                 event.accepted = true
                 return
               }
+              if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
             }
-            if (root.spellPickerOpen) {
-              const action = Keymap.match("spellPicker", event.key, event.modifiers, event.text, root.bindings)
-              if (action.startsWith("spell.")) {
-                root._runSpellAction(action)
-                event.accepted = true
-                return
+
+            font.family: Theme.font.family
+            font.pixelSize: Theme.font.body
+            color: Theme.foreground
+            placeholderTextColor: Util.alpha(Theme.foreground, 0.4)
+            selectionColor: Style.selectionFill
+            selectedTextColor: Theme.foreground
+
+            topPadding: Theme.spacing.inputPaddingY
+            bottomPadding: Theme.spacing.inputPaddingY
+            leftPadding: Theme.spacing.controlPaddingX
+            rightPadding: Theme.spacing.controlPaddingX
+
+            background: Rectangle {
+              radius: Style.cornerRadius
+              // Omarchy's control-state tokens, so the input matches its own fields.
+              color: area.activeFocus ? Style.focusFillColor : Style.normalFill
+              border.width: area.activeFocus ? Style.focusBorderWidth : 0
+              border.color: area.activeFocus ? Style.focusBorderColor : "transparent"
+
+              Behavior on color { ColorAnimation { duration: 120 } }
+            }
+
+            // spellOverlay draws a wavy-in-spirit (a thin solid rule;
+            // QML has no dashed/wavy line primitive) underline under each
+            // misspelled range, recomputed by _recomputeOverlay whenever
+            // the text, the caret or the misspellings themselves change,
+            // so it tracks wrapped lines and edits.
+            Item {
+              id: spellOverlay
+              objectName: "spellOverlay"
+              anchors.fill: parent
+              z: 1
+
+              Repeater {
+                model: root._overlayRects
+
+                Rectangle {
+                  objectName: "spellUnderline-" + index
+                  x: modelData.x
+                  y: modelData.y
+                  width: modelData.width
+                  height: modelData.height
+                  color: Theme.urgent
+                }
               }
             }
-            // Matched generically (not against a fixed "compose" context
-            // pass-through) so every other compose binding - Enter,
-            // Shift+Enter, Ctrl+V, … - keeps falling through to routeKey
-            // exactly as before; only an exact match on this one action
-            // is ever handled here.
-            if (Keymap.match("compose", event.key, event.modifiers, event.text, root.bindings) === "compose.spellSuggestions") {
-              root._openSpellPickerAt(area.cursorPosition)
-              event.accepted = true
-              return
-            }
-            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
-          }
 
-          font.family: Theme.font.family
-          font.pixelSize: Theme.font.body
-          color: Theme.foreground
-          placeholderTextColor: Util.alpha(Theme.foreground, 0.4)
-          selectionColor: Style.selectionFill
-          selectedTextColor: Theme.foreground
+            // spellRightClick opens the spelling picker for the word
+            // under a right-click, without otherwise changing how the
+            // text input handles the mouse: a left-click, drag or
+            // scroll passes straight through to it.
+            MouseArea {
+              id: spellRightClick
+              objectName: "spellRightClickArea"
+              anchors.fill: parent
+              acceptedButtons: Qt.LeftButton | Qt.RightButton
+              propagateComposedEvents: true
+              onPressed: mouse => {
+                if (mouse.button !== Qt.RightButton) {
+                  mouse.accepted = false
+                  return
+                }
 
-          topPadding: Theme.spacing.inputPaddingY
-          bottomPadding: Theme.spacing.inputPaddingY
-          leftPadding: Theme.spacing.controlPaddingX
-          rightPadding: Theme.spacing.controlPaddingX
-
-          background: Rectangle {
-            radius: Style.cornerRadius
-            // Omarchy's control-state tokens, so the input matches its own fields.
-            color: area.activeFocus ? Style.focusFillColor : Style.normalFill
-            border.width: area.activeFocus ? Style.focusBorderWidth : 0
-            border.color: area.activeFocus ? Style.focusBorderColor : "transparent"
-
-            Behavior on color { ColorAnimation { duration: 120 } }
-          }
-
-          // spellOverlay draws a wavy-in-spirit (a thin solid rule;
-          // QML has no dashed/wavy line primitive) underline under each
-          // misspelled range, recomputed by _recomputeOverlay whenever
-          // the text, the caret or the misspellings themselves change,
-          // so it tracks wrapped lines and edits.
-          Item {
-            id: spellOverlay
-            objectName: "spellOverlay"
-            anchors.fill: parent
-            z: 1
-
-            Repeater {
-              model: root._overlayRects
-
-              Rectangle {
-                objectName: "spellUnderline-" + index
-                x: modelData.x
-                y: modelData.y
-                width: modelData.width
-                height: modelData.height
-                color: Theme.urgent
+                root._openSpellPickerAt(area.positionAt(mouse.x, mouse.y))
+                mouse.accepted = true
               }
-            }
-          }
-
-          // spellRightClick opens the spelling picker for the word
-          // under a right-click, without otherwise changing how the
-          // text input handles the mouse: a left-click, drag or
-          // scroll passes straight through to it.
-          MouseArea {
-            id: spellRightClick
-            objectName: "spellRightClickArea"
-            anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            propagateComposedEvents: true
-            onPressed: mouse => {
-              if (mouse.button !== Qt.RightButton) {
-                mouse.accepted = false
-                return
-              }
-
-              root._openSpellPickerAt(area.positionAt(mouse.x, mouse.y))
-              mouse.accepted = true
             }
           }
         }

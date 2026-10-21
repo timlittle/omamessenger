@@ -350,6 +350,12 @@ Item {
       Layout.fillWidth: true
       Layout.margins: Theme.spacing.md
       title: root.conversation ? root.conversation.title : ""
+      // active is false, destroying the text input, whenever there is
+      // nothing to compose into at all: no conversation open, or this
+      // whole view hidden (a narrow window showing the list instead;
+      // see MessengerLayout.qml's own _showConversation, which sets
+      // root.visible). See Composer.qml's own active for why.
+      active: root.visible && root.conversation !== null
       enabled: root.composeEnabled && !root._blocked
       blocked: root._blocked
       attachmentPath: root.attachmentPath

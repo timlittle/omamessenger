@@ -135,20 +135,22 @@ Item {
     function onSubmitRequested() { conversationView.composer.submit() }
     function onNewlineRequested() {
       const input = conversationView.composer.input
-      input.insert(input.cursorPosition, "\n")
+      if (input) input.insert(input.cursorPosition, "\n")
     }
     function onLeaveComposeRequested() {
-      conversationView.composer.input.focus = false
+      if (conversationView.composer.input) conversationView.composer.input.focus = false
       if (root.focusDefault) root.focusDefault()
     }
     function onAttachFileRequested() { conversationView.composer.openFilePicker() }
-    function onPasteFallbackRequested() { conversationView.composer.input.paste() }
+    function onPasteFallbackRequested() {
+      if (conversationView.composer.input) conversationView.composer.input.paste()
+    }
   }
 
   Connections {
     target: conversationView.composer.input
     function onActiveFocusChanged() {
-      root.composerController.composeFocused = conversationView.composer.input.activeFocus
+      root.composerController.composeFocused = !!conversationView.composer.input && conversationView.composer.input.activeFocus
     }
   }
 
@@ -163,7 +165,7 @@ Item {
     target: root.listController
 
     function onSearchFocusedChanged() {
-      if (root.listController.searchFocused || !listColumn.searchField.activeFocus) return
+      if (root.listController.searchFocused || !listColumn.searchField || !listColumn.searchField.activeFocus) return
       listColumn.searchField.focus = false
       if (root.focusDefault) root.focusDefault()
     }
@@ -172,7 +174,7 @@ Item {
   Connections {
     target: listColumn.searchField
     function onActiveFocusChanged() {
-      root.listController.searchFocused = listColumn.searchField.activeFocus
+      root.listController.searchFocused = !!listColumn.searchField && listColumn.searchField.activeFocus
     }
   }
 

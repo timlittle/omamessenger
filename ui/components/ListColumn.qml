@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
@@ -43,8 +44,13 @@ ColumnLayout {
   // a key router intercepts through a function property, not a signal.
   property var routeKey: null
 
-  // searchField exposes the field itself so a key router can focus it.
-  property alias searchField: searchField
+  // searchField exposes the loaded field itself, or null while the list
+  // column is not shown and the field does not exist: a key router or a
+  // focus-tracking Connections must guard against null (see
+  // MessengerLayout.qml). A plain var, not an alias, since the Loader's
+  // own item has no declared type for qmllint to check members against
+  // (the same reasoning VoiceNoteController's own `_engine` documents).
+  property var searchField: searchFieldLoader.item
 
   // queryEdited reports the search text as the user types it.
   signal queryEdited(string text)
@@ -62,19 +68,30 @@ ColumnLayout {
 
   spacing: Theme.spacing.sm
 
-  Ui.TextField {
-    id: searchField
-    objectName: "searchField"
+  // The search field is destroyed, not merely hidden, while the list
+  // column is not shown: a hidden but still-alive TextInput keeps reading
+  // Wayland clipboard changes with no size or time limit, the same risk
+  // tests/unit/textinput-lifetime.test.cjs guards for every other field
+  // (see docs/decisions.md). Its text is a one-way mirror of root.query,
+  // owned by ListController, so losing and recreating this item on every
+  // show never loses anything: the controller's own value is what comes
+  // back.
+  Loader {
+    id: searchFieldLoader
     Layout.fillWidth: true
-    placeholderText: "Search"
-    text: root.query
+    active: root.visible
+    sourceComponent: Ui.TextField {
+      objectName: "searchField"
+      placeholderText: "Search"
+      text: root.query
 
-    Keys.priority: Keys.BeforeItem
-    Keys.onPressed: event => {
-      if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+      Keys.priority: Keys.BeforeItem
+      Keys.onPressed: event => {
+        if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+      }
+
+      onTextChanged: root.queryEdited(text)
     }
-
-    onTextChanged: root.queryEdited(text)
   }
 
   // With no accounts yet, the list says how to add one.
