@@ -40,6 +40,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"conversations.list":        bind(conversationsList(c)),
 		"conversations.open":        bind(conversationsOpen(c)),
 		"conversations.markRead":    bind(conversationsMarkRead(c)),
+		"conversations.markUnread":  bind(conversationsMarkUnread(c)),
 		"conversations.setMuted":    bind(conversationsSetMuted(c)),
 		"conversations.setPinned":   bind(conversationsSetPinned(c)),
 		"conversations.setArchived": bind(conversationsSetArchived(c)),
@@ -218,6 +219,14 @@ type conversationParams struct {
 func conversationsMarkRead(c *app.Commands) func(context.Context, conversationParams) (any, error) {
 	return func(ctx context.Context, p conversationParams) (any, error) {
 		return none{}, c.MarkRead(ctx, p.ConversationID)
+	}
+}
+
+// conversationsMarkUnread flags a conversation unread again, for the
+// command palette's "Mark as unread" command.
+func conversationsMarkUnread(c *app.Commands) func(context.Context, conversationParams) (any, error) {
+	return func(ctx context.Context, p conversationParams) (any, error) {
+		return c.MarkUnread(ctx, p.ConversationID)
 	}
 }
 

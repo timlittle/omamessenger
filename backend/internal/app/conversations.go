@@ -76,6 +76,34 @@ func (c *Commands) MarkRead(ctx context.Context, conversationID string) error {
 	return c.dispatcher.MarkRead(ctx, conv)
 }
 
+// MarkUnread flags a conversation unread again, for the command
+// palette's "Mark as unread": entirely local to OmaMessenger, like
+// SetHidden and SetReminder, since there is nothing useful to tell a
+// service whose own unread count is what Unread already syncs back. It
+// gives the conversation a count of 1, the same generic placeholder
+// every other inbox shows for "something here again", and does nothing
+// when it already has an unread count of its own, so this can never
+// lower a real count the service reported.
+func (c *Commands) MarkUnread(ctx context.Context, conversationID string) (domain.Conversation, error) {
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+
+	if conv.Unread > 0 {
+		return conv, nil
+	}
+
+	before := c.events.unreadTotal(ctx)
+	if _, err := c.store.SetUnread(ctx, conversationID, 1); err != nil {
+		return domain.Conversation{}, err
+	}
+
+	c.events.conversationChanged(ctx, conversationID, before)
+
+	return c.store.Conversation(ctx, conversationID)
+}
+
 // SetMuted mutes or unmutes a conversation. Muted conversations do not
 // notify or count towards the unread total.
 func (c *Commands) SetMuted(ctx context.Context, conversationID string, muted bool) (domain.Conversation, error) {

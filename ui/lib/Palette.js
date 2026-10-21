@@ -15,18 +15,24 @@
 // a mode is one entry in that table.
 
 // search returns the items whose text matches query, best first. textOf
-// picks the text to match from an item. An empty query keeps every item
-// in its original order.
-function search(items, query, textOf) {
+// picks the text to match from an item. tieBreak, when given, rates an
+// item for a tie that score alone cannot settle, higher ranking first;
+// it defaults to leaving every item tied, so callers that have nothing
+// to add here keep the original stable order (see DEFAULT_MODE's own
+// tieBreak, which keeps a compound action from winning one). An empty
+// query keeps every item in its original order.
+function search(items, query, textOf, tieBreak) {
   const wanted = (query ?? '').trim().toLowerCase();
   if (!wanted) {
     return items.slice();
   }
 
+  const rank = tieBreak || (() => 0);
+
   return items
     .map((item, index) => ({ item, index, score: score(textOf(item).toLowerCase(), wanted) }))
     .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .sort((a, b) => b.score - a.score || rank(b.item) - rank(a.item) || a.index - b.index)
     .map((entry) => entry.item);
 }
 
@@ -66,13 +72,44 @@ function messageRows(conversations) {
     }));
 }
 
-// score rates how well text matches wanted, or returns 0 when the letters
-// do not all appear in order. Each matched letter scores 1, plus 3 at the
-// start of a word and 2 when it follows the previous match directly. Text
-// containing the whole query scores extra, most of all at a word start.
-function score(text, wanted) {
+// TIER_WEIGHT separates how well wanted sits in text from the finer
+// letter-by-letter score below: it is comfortably larger than any
+// plausible fuzzy accumulation for a real command label, so a tier
+// always wins over the one below it, regardless of how long either
+// label is. A whole-word match for wanted ranks above one that is only
+// a word's prefix, which ranks above wanted appearing anywhere else in
+// text (mid-word, or not as a substring at all) - exactly "exact word
+// and prefix matches outrank fuzzy subsequence matches".
+const TIER_WEIGHT = 1000;
+
+// wordTier rates how wanted sits in text as a substring: 2 for a whole
+// word (bounded by text's own start/end or a space on both sides), 1
+// for a word's prefix (bounded on the left only), 0 for anywhere else,
+// including not matching as a substring at all.
+function wordTier(text, wanted) {
   const whole = text.indexOf(wanted);
-  let total = whole < 0 ? 0 : 10 + (whole === 0 || text[whole - 1] === ' ' ? 10 : 0);
+  if (whole < 0) {
+    return 0;
+  }
+
+  const startsWord = whole === 0 || text[whole - 1] === ' ';
+  if (!startsWord) {
+    return 0;
+  }
+
+  const endsWord = whole + wanted.length === text.length || text[whole + wanted.length] === ' ';
+
+  return endsWord ? 2 : 1;
+}
+
+// score rates how well text matches wanted, or returns 0 when the letters
+// do not all appear in order. The tier above (see wordTier) dominates the
+// result; within the same tier, each matched letter adds 1, plus 3 at
+// the start of a word and 2 when it follows the previous match directly,
+// so a fuller or more contiguous match of the same tier still ranks
+// higher.
+function score(text, wanted) {
+  let fuzzy = 0;
   let from = 0;
   let previous = -2;
 
@@ -82,12 +119,12 @@ function score(text, wanted) {
       return 0;
     }
 
-    total += 1 + (at === 0 || text[at - 1] === ' ' ? 3 : 0) + (at === previous + 1 ? 2 : 0);
+    fuzzy += 1 + (at === 0 || text[at - 1] === ' ' ? 3 : 0) + (at === previous + 1 ? 2 : 0);
     previous = at;
     from = at + 1;
   }
 
-  return total;
+  return wordTier(text, wanted) * TIER_WEIGHT + fuzzy;
 }
 
 // MODES says, for every palette mode but the default "commands" one,
@@ -122,10 +159,19 @@ var MODES = {
   }
 };
 
+// COMPOUND_ACTIONS are commands that do more than their query might ask
+// for - archiving a chat as well as marking it read, or archiving every
+// read chat at once - so a tie against a command that does only the one
+// thing the query named must never go to one of these instead (see
+// DEFAULT_MODE's tieBreak).
+var COMPOUND_ACTIONS = new Set(['chat.archiveRead', 'list.archiveAllRead']);
+
 // DEFAULT_MODE is "commands": every command binding, best match first,
-// shown as-is.
+// shown as-is. A tie goes to whichever command is not compound (see
+// COMPOUND_ACTIONS), so an action that also archives the chat never
+// wins over one that just does what the query named.
 var DEFAULT_MODE = {
-  results: (ctx) => search(Keymap.commands(ctx.bindings), ctx.query, (c) => c.label),
+  results: (ctx) => search(Keymap.commands(ctx.bindings), ctx.query, (c) => c.label, (c) => COMPOUND_ACTIONS.has(c.action) ? -1 : 0),
   items: (results) => results
 };
 

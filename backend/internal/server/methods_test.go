@@ -104,6 +104,11 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("conversations.setHidden = %+v, %v", hidden, err)
 	}
 
+	unread, err := call[domain.Conversation](t, s, "conversations.markUnread", map[string]string{"conversationId": "chat"})
+	if err != nil || unread.Unread == 0 {
+		t.Errorf("conversations.markUnread = %+v, %v", unread, err)
+	}
+
 	snoozed, err := call[domain.Conversation](t, s, "conversations.setReminder", map[string]any{"conversationId": "chat", "at": 5000})
 	if err != nil || snoozed.ReminderAt != 5000 {
 		t.Errorf("conversations.setReminder = %+v, %v", snoozed, err)

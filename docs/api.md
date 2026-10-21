@@ -21,6 +21,7 @@ The protocol version is `3`.
 | `conversations.list` | `{query}` | `[Conversation]`, newest first; `match` holds the newest matching message, and `matchMessageId`/`matchSender` identify it and who sent it, for a caller that wants to open and highlight that exact message rather than just the conversation (the unified command palette's "Messages" section) |
 | `conversations.open` | `{accountId, contactId}` | `Conversation`, created if needed |
 | `conversations.markRead` | `{conversationId}` | `{}` |
+| `conversations.markUnread` | `{conversationId}` | `Conversation`; the command palette's "Mark as unread". Local to this computer only, never reported to the service: it gives the conversation an unread count of 1, and does nothing when it already has an unread count of its own, so this can never lower a real count the service reported |
 | `conversations.setMuted` | `{conversationId, muted}` | `Conversation` |
 | `conversations.setPinned` | `{conversationId, pinned}` | `Conversation`; `conversations.list` always orders pinned conversations first |
 | `conversations.setArchived` | `{conversationId, archived}` | `Conversation`; `conversations.list` still returns archived conversations, the UI hides them by default |

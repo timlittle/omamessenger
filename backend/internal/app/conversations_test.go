@@ -282,6 +282,59 @@ func TestSetHidden_StoresAndPublishesWithNoServiceCall(t *testing.T) {
 	}
 }
 
+// TestMarkUnread_FlagsAnAlreadyReadConversationWithNoServiceCall checks
+// the command palette's "Mark as unread" command: like SetHidden and
+// SetReminder, this is local to OmaMessenger only, since there is
+// nothing meaningful to tell a service that only ever reports how many
+// messages it considers unread.
+func TestMarkUnread_FlagsAnAlreadyReadConversationWithNoServiceCall(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	got, err := f.commands.MarkUnread(ctx, chat.ID)
+	if err != nil || got.Unread != 1 {
+		t.Fatalf("MarkUnread = %+v, %v, want Unread 1", got, err)
+	}
+
+	if len(f.dispatcher.read) != 0 {
+		t.Errorf("read receipts = %v, want none: marking unread is local only", f.dispatcher.read)
+	}
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated, app.EventUnreadChanged}) {
+		t.Errorf("events = %v", got)
+	}
+
+	if _, err := f.commands.MarkUnread(ctx, "missing"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("MarkUnread(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestMarkUnread_LeavesAnAlreadyUnreadConversationAlone checks that
+// marking an already-unread conversation unread again never lowers
+// whatever real count the service already reported, and does not
+// publish a change nobody asked for.
+func TestMarkUnread_LeavesAnAlreadyUnreadConversationAlone(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 5)
+	f.published.take()
+
+	got, err := f.commands.MarkUnread(ctx, chat.ID)
+	if err != nil || got.Unread != 5 {
+		t.Fatalf("MarkUnread on an already-unread conversation = %+v, %v, want Unread unchanged at 5", got, err)
+	}
+
+	if len(f.published.take()) != 0 {
+		t.Error("MarkUnread published a change for a conversation that was already unread")
+	}
+}
+
 func TestSetReminder_StoresAndPublishesWithNoServiceCall(t *testing.T) {
 	t.Parallel()
 

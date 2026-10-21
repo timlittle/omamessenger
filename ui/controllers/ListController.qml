@@ -9,7 +9,8 @@ import "../lib/Snooze.js" as Snooze
 // Owns the rail filter, search and the visible conversation list: the
 // only controller that calls conversations.list, conversations.setMuted,
 // conversations.setPinned, conversations.setArchived,
-// conversations.setHidden and conversations.setReminder.
+// conversations.setHidden, conversations.setReminder and
+// conversations.markUnread.
 // The list itself is a ListModel kept in sync in place with ListSync, so
 // opening or scrolling never resets because of an unrelated event.
 //
@@ -110,6 +111,7 @@ Item {
       "chat.pin": () => root._togglePin(),
       "chat.archive": () => root._toggleArchive(),
       "chat.hide": () => root._toggleHidden(),
+      "chat.markUnread": () => root._markCurrentUnread(),
       "chat.archiveRead": () => root._archiveAndMarkRead(),
       "list.archiveAllRead": () => root._askArchiveAllRead(),
       "archiveAll.accept": () => root.confirmArchiveAllRead(),
@@ -247,6 +249,21 @@ Item {
   // service: it is local to this computer only.
   function _toggleHidden(): void {
     root._setOnCurrent("conversations.setHidden", "hidden");
+  }
+
+  // _markCurrentUnread flags whichever conversation is contextually
+  // current unread again, the command palette's "Mark as unread".
+  // Local to this computer only (see conversations.markUnread), so it
+  // never asks the service anything, unlike mute, pin and archive.
+  function _markCurrentUnread(): void {
+    const id = root._currentId();
+    if (!id || !root.findConversation(id)) return;
+
+    root.service.request("conversations.markUnread", { conversationId: id }, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
+      root._applyConversationUpdated(result);
+    });
   }
 
   // _archiveAndMarkRead marks whichever conversation is contextually

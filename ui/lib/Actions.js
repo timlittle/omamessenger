@@ -27,6 +27,7 @@ var OWNERS = {
   'chat.pin': 'list',
   'chat.archive': 'list',
   'chat.hide': 'list',
+  'chat.markUnread': 'list',
   'chat.archiveRead': 'list',
   'list.archiveAllRead': 'list',
   'archiveAll.accept': 'list',

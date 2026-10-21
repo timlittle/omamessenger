@@ -78,6 +78,9 @@ var BINDINGS = [
   { action: 'chat.pin', keys: [], contexts: ['list', 'conversation'], label: 'Pin or unpin chat', command: true },
   { action: 'chat.archive', keys: [], contexts: ['list', 'conversation'], label: 'Archive or unarchive chat', command: true },
   { action: 'chat.hide', keys: [], contexts: ['list', 'conversation'], label: 'Hide or unhide chat', command: true },
+  // Palette-only: flagging a chat unread again is a deliberate lookup,
+  // not something worth a key of its own next to mute, pin and archive.
+  { action: 'chat.markUnread', keys: [], contexts: ['list', 'conversation'], label: 'Mark as unread', command: true },
   // "a" is free in the list context (the conversation context already
   // uses it for compose.focus), so the key works for the selected chat
   // and the command palette reaches the open one too, since a palette

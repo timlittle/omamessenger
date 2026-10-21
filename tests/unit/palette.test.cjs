@@ -163,3 +163,53 @@ test('results/items: the default "commands" mode matches the command palette lis
   assert.deepEqual(results, [{ action: 'app.quit', label: 'Quit OmaMessenger', keys: 'Ctrl+Q' }]);
   assert.strictEqual(Palette.items('commands', results, ctx), results);
 });
+
+// An exact word or prefix match must always outrank a scattered fuzzy
+// match, no matter how long the fuzzy candidate is: a short real command
+// must never lose to a long label that merely happens to contain the
+// same letters somewhere inside it, far apart.
+test('score: a word-start match always outranks a scattered fuzzy match, regardless of label length', () => {
+  const exact = 'Pin or unpin chat';
+  const scattered = 'Please if nobody intervenes, we negotiate near opportunities involving nothing';
+
+  const ranked = Palette.search([scattered, exact], 'pin', (s) => s);
+
+  assert.deepEqual(ranked, [exact, scattered]);
+});
+
+// A tie must never be won by a compound action (one that does more than
+// the query asked for) over a plain one that matches exactly as well:
+// see chat.archiveRead ("Archive and mark read"), the command issue #33
+// reported winning queries meant for a plain "mark unread" lookup.
+test('commands mode: a tie is never won by a compound action like chat.archiveRead', () => {
+  const bindings = [
+    { action: 'chat.archiveRead', keys: [], contexts: ['global'], label: 'Mark read', command: true },
+    { action: 'chat.markUnread', keys: [], contexts: ['global'], label: 'Mark read', command: true }
+  ];
+  const ctx = { query: 'mark', bindings };
+
+  const results = Palette.results('commands', ctx);
+  const items = Palette.items('commands', results, ctx);
+
+  assert.strictEqual(items[0].action, 'chat.markUnread');
+});
+
+// The command palette's real list, end to end: typing "unread" or "mark
+// un" looking for a way to flag a chat unread again must never surface
+// the compound "Archive and mark read" command, which does something the
+// query never asked for, and once "Mark as unread" exists, "mark un"
+// uniquely names it.
+test('commands mode: real queries for "unread" never surface "Archive and mark read" first', () => {
+  const cases = ['unread', 'mark un'];
+
+  for (const query of cases) {
+    const results = Palette.results('commands', { query });
+    const items = Palette.items('commands', results, { query });
+
+    assert.notStrictEqual(items[0] && items[0].label, 'Archive and mark read', `query "${query}"`);
+  }
+
+  const results = Palette.results('commands', { query: 'mark un' });
+  const items = Palette.items('commands', results, { query: 'mark un' });
+  assert.strictEqual(items[0].label, 'Mark as unread');
+});
