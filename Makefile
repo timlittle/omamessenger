@@ -156,7 +156,7 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 	@status=0; for dir in tests/qml/*/; do \
 		name=$$(basename "$$dir"); root=build/qml-tests/$$name; run=$$(mktemp -d -t oma-qml.XXXXXX); \
 		rm -rf "$$root"; mkdir -p "$$root/bin"; cp -R "$$dir". "$$root/"; \
-		for link in ui scripts helper-version tests/qml/Check.js tests/qml/Stepper.qml tests/qml/FakeShell.qml; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
+		for link in ui scripts helper-version whats-new.json tests/qml/Check.js tests/qml/Stepper.qml tests/qml/FakeShell.qml; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
 		ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 		ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 		if [ -e "$$dir/no-dev-build" ]; then ln -s "$(CURDIR)/bin/oma-messenger-service" "$$root/bin/"; \
@@ -207,7 +207,7 @@ demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and pr
 	@./scripts/qml-imports.sh >/dev/null
 	mkdir -p docs/demo; \
 	root=build/demo-root; rm -rf "$$root"; mkdir -p "$$root/bin"; cp -R tests/demo/. "$$root/"; \
-	for link in ui scripts helper-version tests/qml/Check.js; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
+	for link in ui scripts helper-version whats-new.json tests/qml/Check.js; do ln -s "$(CURDIR)/$$link" "$$root/$$(basename $$link)"; done; \
 	ln -s "$$(readlink -f build/qml/qs/Commons)" "$$root/Commons"; \
 	ln -s "$$(readlink -f build/qml/qs/Ui)" "$$root/Ui"; \
 	ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; \

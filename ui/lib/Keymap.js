@@ -63,6 +63,9 @@ var BINDINGS = [
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
   { action: 'helper.retryInstall', keys: ['Ctrl+R'], contexts: ['global'], label: 'Retry installing the helper', command: true },
   { action: 'helper.doctor', keys: [], contexts: ['global'], label: 'Run health check', command: true },
+  // Palette-only, like helper.doctor: a list of past releases is a
+  // deliberate lookup, not something worth a key of its own.
+  { action: 'whatsNew.show', keys: [], contexts: ['global'], label: "What's new", command: true },
   // keys.conf lets a person remap these bindings; these two commands
   // manage that file rather than any key of their own, like account.add.
   { action: 'keys.openConfig', keys: [], contexts: ['global'], label: 'Open key bindings file', command: true },
@@ -178,6 +181,9 @@ var BINDINGS = [
   { action: 'viewer.next', keys: ['Right'], contexts: ['viewer'], label: 'Next photo', hint: true },
   { action: 'viewer.prev', keys: ['Left'], contexts: ['viewer'], label: 'Previous photo', hint: true },
   { action: 'viewer.openExternal', keys: ['o'], contexts: ['viewer'], label: 'Open in your own application', hint: true, command: true },
+
+  { action: 'whatsNew.down', keys: ['j', 'Down'], contexts: ['whatsNew'], label: 'Next release' },
+  { action: 'whatsNew.up', keys: ['k', 'Up'], contexts: ['whatsNew'], label: 'Previous release' },
 
   { action: 'dialog.down', keys: ['Down', 'Ctrl+J'], contexts: ['dialog'], label: 'Next contact' },
   { action: 'dialog.up', keys: ['Up', 'Ctrl+K'], contexts: ['dialog'], label: 'Previous contact' },

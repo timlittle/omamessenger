@@ -120,6 +120,12 @@ var migrations = []string{
 	// Whether the account has blocked the contact behind a direct
 	// conversation (see app.Commands.BlockContact and ReportSpam).
 	`ALTER TABLE conversations ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0;`,
+	// A single row of durable UI state that outlives a plugin reload,
+	// starting with the version the user last saw the in-app "What's
+	// new" list for (see store.SeenWhatsNewVersion), so the one-time
+	// update hint shows at most once per release.
+	`CREATE TABLE ui_state(id INTEGER PRIMARY KEY CHECK (id = 1), seen_whats_new_version TEXT NOT NULL DEFAULT '');
+	INSERT INTO ui_state(id) VALUES (1);`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

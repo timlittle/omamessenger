@@ -83,6 +83,13 @@ Item {
     function onPaletteOpenChanged() { root._refocusIfClosed(root.windowController.paletteOpen); }
   }
 
+  // Same reason again for the "What's new" overlay, also Loader-wrapped
+  // below.
+  Connections {
+    target: root.windowController
+    function onWhatsNewOpenChanged() { root._refocusIfClosed(root.windowController.whatsNewOpen); }
+  }
+
   ReactionPicker {
     open: root.reactionsController.pickerOpen
     emojis: root.reactionsController.pickerEmojis
@@ -306,6 +313,21 @@ Item {
       onQueryEdited: text => root.dialogController.setQuery(text)
       onAccepted: (accountId, contactId) => root.dialogController.openConversation(accountId, contactId)
       onCancelled: root.dialogController.close()
+    }
+  }
+
+  // Active only while open, matching every other Loader-wrapped overlay
+  // above.
+  Loader {
+    id: whatsNewLoader
+    anchors.fill: parent
+    active: root.windowController.whatsNewOpen
+
+    sourceComponent: WhatsNewOverlay {
+      open: true
+      releases: root.service ? root.service.whatsNewReleases : []
+      highlightedIndex: root.windowController.whatsNewIndex
+      onClosed: root.windowController.closeWhatsNew()
     }
   }
 }

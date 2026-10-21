@@ -5,11 +5,12 @@
 
 // keyContext determines the highest-priority context for key bindings based on
 // the current UI state. Precedence: the close question > account setup > the
-// photo viewer > the health check report > palette > reaction picker > poll
-// vote mode > the delete question > the archive-all question > the block or
-// report-spam question > dialog > search > compose > conversation > list.
-// The viewer, the reaction picker and poll vote mode are never open
-// together, so their relative order only matters in theory.
+// photo viewer > the health check report > the "What's new" overlay >
+// palette > reaction picker > poll vote mode > the delete question > the
+// archive-all question > the block or report-spam question > dialog >
+// search > compose > conversation > list. The viewer, the reaction picker
+// and poll vote mode are never open together, so their relative order
+// only matters in theory.
 function keyContext(state) {
   if (state.confirmOpen) return 'confirm';
   // setupContext names the exact step showing (chooseService, qr, phone,
@@ -18,6 +19,7 @@ function keyContext(state) {
   if (state.setupOpen) return state.setupContext || 'setup';
   if (state.viewerOpen) return 'viewer';
   if (state.doctorOpen) return 'doctor';
+  if (state.whatsNewOpen) return 'whatsNew';
   if (state.paletteOpen) return 'palette';
   if (state.reactionPickerOpen) return 'reactionPicker';
   if (state.pollVoteOpen) return 'pollVote';
@@ -35,17 +37,19 @@ function keyContext(state) {
 // clears first and alone, before anything else is checked, so dismissing
 // it never also closes whatever is open behind it. Below that it undoes
 // the innermost thing first (account setup, the photo viewer, the health
-// check report, palette, the reaction picker, the delete question, dialog,
-// search, composer, open conversation, query, the all-unreads view) and
-// hides the window only when there is nothing left to undo. Inside the
-// composer itself the order is: remove a pending attachment, then cancel
-// an edit or reply in progress, then leave the composer.
+// check report, the "What's new" overlay, palette, the reaction picker,
+// the delete question, dialog, search, composer, open conversation,
+// query, the all-unreads view) and hides the window only when there is
+// nothing left to undo. Inside the composer itself the order is: remove
+// a pending attachment, then cancel an edit or reply in progress, then
+// leave the composer.
 function escapeAction(state) {
   if (state.errorOpen) return 'dismiss-error';
   if (state.confirmOpen) return 'cancel-close';
   if (state.setupOpen) return 'close-setup';
   if (state.viewerOpen) return 'close-viewer';
   if (state.doctorOpen) return 'close-doctor';
+  if (state.whatsNewOpen) return 'close-whatsNew';
   if (state.paletteOpen) return 'close-palette';
   if (state.reactionPickerOpen) return 'close-reaction-picker';
   if (state.deleteConfirmOpen) return 'close-delete-confirm';
@@ -97,6 +101,7 @@ function buildState(ctx) {
     setupContext: ctx.accountController ? ctx.accountController.navContext : '',
     viewerOpen: ctx.photoViewerController ? ctx.photoViewerController.viewerOpen : false,
     doctorOpen: ctx.windowController ? ctx.windowController.doctorOpen : false,
+    whatsNewOpen: ctx.windowController ? ctx.windowController.whatsNewOpen : false,
     paletteOpen: ctx.windowController ? ctx.windowController.paletteOpen : false,
     reactionPickerOpen: ctx.reactionsController ? ctx.reactionsController.pickerOpen : false,
     pollVoteOpen: ctx.pollsController ? ctx.pollsController.voteTarget !== '' : false,

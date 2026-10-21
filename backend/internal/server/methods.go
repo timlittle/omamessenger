@@ -62,6 +62,8 @@ func methods(c *app.Commands, version string) map[string]method {
 		"media.save":                bind(mediaSave(c)),
 		"media.paste":               bind(mediaPaste(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
+		"whatsNew.getSeenVersion":   bind(whatsNewGetSeenVersion(c)),
+		"whatsNew.setSeenVersion":   bind(whatsNewSetSeenVersion(c)),
 		"settings.apply":            bind(settingsApply(c)),
 		"helper.doctor":             bind(helperDoctor(c)),
 		"spell.check":               bind(spellCheck(c)),

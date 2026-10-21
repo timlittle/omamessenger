@@ -6,6 +6,7 @@ import "../lib/Palette.js" as Palette
 import "../lib/Rpc.js" as Rpc
 import "../lib/ErrorBanner.js" as ErrorBanner
 import "../lib/Links.js" as Links
+import "../lib/WhatsNew.js" as WhatsNew
 
 // Owns the command palette, closing and quitting (which ask first), and
 // the Escape chain. The palette runs commands through whichever
@@ -169,12 +170,21 @@ Item {
   // error banner's own timeout.
   property int noticeTimeoutMs: 6000
 
+  // _updateHintDismissed is set once the one-time "Updated to vX" hint
+  // (see noticeText) has been dismissed, so it never comes back for the
+  // rest of this run even though service.showUpdateHint itself stays
+  // true until the next restart.
+  property bool _updateHintDismissed: false
+
   // noticeText is a brief, non-error confirmation for something that
-  // just worked, such as copying or saving a message's photo or video
-  // (see ConversationController.notice). It never competes with an
-  // error: bannerText below always prefers errorBannerText while both
-  // are set.
-  readonly property string noticeText: root.conversationController ? root.conversationController.notice : ""
+  // just worked: the quiet update hint takes priority the one time it
+  // has something to say, falling back to whatever a message action
+  // just confirmed, such as copying or saving a photo or video (see
+  // ConversationController.notice). It never competes with an error:
+  // bannerText below always prefers errorBannerText while both are set.
+  readonly property string noticeText: (!root._updateHintDismissed && root.service && root.service.showUpdateHint)
+    ? WhatsNew.hintText(root.service.appVersion)
+    : (root.conversationController ? root.conversationController.notice : "")
   onNoticeTextChanged: {
     if (root.noticeText) noticeTimer.restart();
     else noticeTimer.stop();
@@ -192,6 +202,15 @@ Item {
   // doctorChecks are the report's checks: [{name, ok, detail}], from the
   // helper's helper.doctor method.
   property var doctorChecks: []
+
+  // whatsNewOpen shows the "What's new" overlay, listing
+  // service.whatsNewReleases.
+  property bool whatsNewOpen: false
+
+  // whatsNewIndex is the release currently scrolled to in the overlay,
+  // moved by j/k or the arrow keys; the overlay uses it to keep that
+  // release in view.
+  property int whatsNewIndex: 0
 
   // hideRequested asks the caller to hide the window. The panel turns
   // this into shell.hide, since only it holds the shell facade.
@@ -219,6 +238,9 @@ Item {
       "app.quit": () => root.quit(),
       "helper.retryInstall": () => root.retryInstall(),
       "helper.doctor": () => root.runDoctor(),
+      "whatsNew.show": () => root.openWhatsNew(),
+      "whatsNew.down": () => root.moveWhatsNew(1),
+      "whatsNew.up": () => root.moveWhatsNew(-1),
       "keys.openConfig": () => { if (root.service) root.service.openKeyConfigFile(); },
       "keys.showBindings": () => root.openPalette("keyBindings"),
       "settings.toggleReadReceipts": () => { if (root.service) root.service.toggleReadReceipts(); },
@@ -311,6 +333,27 @@ Item {
     root.doctorOpen = false;
   }
 
+  // openWhatsNew shows the "What's new" overlay, scrolled to the newest
+  // release.
+  function openWhatsNew(): void {
+    root.whatsNewIndex = 0;
+    root.whatsNewOpen = true;
+  }
+
+  // closeWhatsNew hides the "What's new" overlay.
+  function closeWhatsNew(): void {
+    root.whatsNewOpen = false;
+  }
+
+  // moveWhatsNew scrolls the overlay by delta releases, clamped to the
+  // list service.whatsNewReleases actually has.
+  function moveWhatsNew(delta: int): void {
+    const count = root.service && root.service.whatsNewReleases ? root.service.whatsNewReleases.length : 0;
+    if (count === 0) return;
+
+    root.whatsNewIndex = Math.max(0, Math.min(count - 1, root.whatsNewIndex + delta));
+  }
+
   // dismissErrorBanner hides the helper-error banner, by clearing every
   // controller's lastError it could currently be showing: a click on the
   // banner's own dismiss button, the auto-clear timer below, and Escape
@@ -329,6 +372,7 @@ Item {
   // Navigation.escapeAction's "dismiss-error" step, which this shares
   // with dismissErrorBanner).
   function dismissNotice(): void {
+    root._updateHintDismissed = true;
     if (root.conversationController) root.conversationController.clearNotice();
   }
 
@@ -475,6 +519,7 @@ Item {
       "close-palette": () => root.closePalette(),
       "close-viewer": () => { if (root.photoViewerController) root.photoViewerController.close(); },
       "close-doctor": () => root.closeDoctor(),
+      "close-whatsNew": () => root.closeWhatsNew(),
       "close-reaction-picker": () => { if (root.reactionsController) root.reactionsController.closePicker(); },
       "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
       "cancel-archive-all": () => { if (root.listController) root.listController.cancelArchiveAllRead(); },

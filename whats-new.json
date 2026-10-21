@@ -1,0 +1,18 @@
+{
+  "releases": [
+    {
+      "version": "0.3.5",
+      "date": "2026-10-21",
+      "changes": [
+        "Edit your own sent messages: press Up in an empty message box, or E on a highlighted message",
+        "Play GIFs and videos in the chat, and open them full size",
+        "Copy, save or open a photo or video with c, s and x on the highlighted message",
+        "Name your accounts, such as \"Personal WhatsApp\" and \"Work WhatsApp\", with Rename account in the palette",
+        "Block a contact, and report spam on Telegram, from the palette",
+        "Mark a chat as read or unread from the palette",
+        "A chat you have open no longer shows new messages as unread",
+        "Safer handling of images, videos, links and files you receive"
+      ]
+    }
+  ]
+}

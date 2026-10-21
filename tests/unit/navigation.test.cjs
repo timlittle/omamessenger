@@ -152,6 +152,22 @@ test('escapeAction closes the health check report before anything beneath it, bu
   assert.strictEqual(Navigation.escapeAction({ doctorOpen: true, confirmOpen: true }), 'cancel-close');
 });
 
+test('keyContext puts the "What\'s new" overlay above the palette but below the health check report, the photo viewer, setup and the close question', () => {
+  assert.strictEqual(Navigation.keyContext({ whatsNewOpen: true, paletteOpen: true, dialogOpen: true, pane: 'conversation' }), 'whatsNew');
+  assert.strictEqual(Navigation.keyContext({ whatsNewOpen: true, doctorOpen: true, pane: 'list' }), 'doctor');
+  assert.strictEqual(Navigation.keyContext({ whatsNewOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ whatsNewOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ whatsNewOpen: true, confirmOpen: true, pane: 'list' }), 'confirm');
+});
+
+test('escapeAction closes the "What\'s new" overlay before anything beneath it, but not before the health check report, the photo viewer, setup or the close question', () => {
+  assert.strictEqual(Navigation.escapeAction({ whatsNewOpen: true, paletteOpen: true, dialogOpen: true, searchFocused: true }), 'close-whatsNew');
+  assert.strictEqual(Navigation.escapeAction({ whatsNewOpen: true, doctorOpen: true }), 'close-doctor');
+  assert.strictEqual(Navigation.escapeAction({ whatsNewOpen: true, viewerOpen: true }), 'close-viewer');
+  assert.strictEqual(Navigation.escapeAction({ whatsNewOpen: true, setupOpen: true }), 'close-setup');
+  assert.strictEqual(Navigation.escapeAction({ whatsNewOpen: true, confirmOpen: true }), 'cancel-close');
+});
+
 test('keyContext returns reactionPicker when open, above dialog, search and compose', () => {
   const state = { reactionPickerOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
   assert.strictEqual(Navigation.keyContext(state), 'reactionPicker');
@@ -272,6 +288,7 @@ test('buildState defaults every field when no controller is given', () => {
     setupContext: '',
     viewerOpen: false,
     doctorOpen: false,
+    whatsNewOpen: false,
     paletteOpen: false,
     reactionPickerOpen: false,
     pollVoteOpen: false,
@@ -294,7 +311,7 @@ test('buildState defaults every field when no controller is given', () => {
 test('buildState reads every field from the controller that owns it, including doctorOpen', () => {
   const ctx = {
     service: { uiState: { pane: 'conversation', activeId: 'ignored-without-conversationController' } },
-    windowController: { confirmingClose: true, doctorOpen: true, paletteOpen: true, errorBannerText: 'could not send' },
+    windowController: { confirmingClose: true, doctorOpen: true, whatsNewOpen: true, paletteOpen: true, errorBannerText: 'could not send' },
     accountController: { open: false, removing: true, navContext: 'removeAccount' },
     photoViewerController: { viewerOpen: true },
     reactionsController: { pickerOpen: true },
@@ -313,6 +330,7 @@ test('buildState reads every field from the controller that owns it, including d
     setupContext: 'removeAccount',
     viewerOpen: true,
     doctorOpen: true,
+    whatsNewOpen: true,
     paletteOpen: true,
     reactionPickerOpen: true,
     pollVoteOpen: true,

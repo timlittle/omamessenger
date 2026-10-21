@@ -37,7 +37,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 # The validator expects the folder to be named after the plugin id.
 staging_dir="$tmp_dir/$plugin_id"
 mkdir -p "$staging_dir/bin/dev" "$staging_dir/scripts"
-cp "$repo_root/manifest.json" "$repo_root/LICENSE" "$repo_root/helper-version" "$repo_root/helper-checksums" "$staging_dir/"
+cp "$repo_root/manifest.json" "$repo_root/LICENSE" "$repo_root/helper-version" "$repo_root/helper-checksums" "$repo_root/whats-new.json" "$staging_dir/"
 cp -r "$repo_root/ui" "$staging_dir/ui"
 cp "$repo_root/bin/oma-messenger-service" "$staging_dir/bin/"
 cp "$repo_root/scripts/install-helper.sh" "$repo_root/scripts/desktop-entry.sh" "$staging_dir/scripts/"

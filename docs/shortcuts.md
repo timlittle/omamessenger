@@ -156,6 +156,15 @@ The service chooser, shown when more than one service is offered, and the QR and
 
 At the alias field, Enter saves it; leaving it empty clears the alias and falls back to the account's plain name. Esc cancels without changing anything.
 
+## What's new
+
+"What's new" in the command palette (Ctrl+/) lists big changes release by release, newest first, each as a short line in your own words rather than commit messages. After an update, the window also shows a quiet, one-time hint pointing at this list; it never shows twice for the same update, and never shows at all on a fresh install.
+
+| Keys | Does |
+| --- | --- |
+| j / k, ↓ / ↑ | Scroll to the next / previous release |
+| Esc | Close |
+
 ## Closing the window
 
 Ctrl+W asks whether to keep OmaMessenger running in the background or quit.

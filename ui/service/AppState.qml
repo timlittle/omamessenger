@@ -26,9 +26,26 @@ QtObject {
   // version is the helper's protocol version, from hello.
   property int version: 0
 
+  // helperVersion is the helper's own release, such as "0.3.5", from
+  // hello. Kept in step with manifest.json's version by release-please
+  // (see release-please-config.json's extra-files), so it doubles as
+  // the running plugin's own version for the "What's new" update hint.
+  property string helperVersion: ""
+
   // services are the messaging services the helper can add an account
   // for, from hello. Empty for a helper too old to report them.
   property var services: []
+
+  // showUpdateHint is true for the one run after an update where the
+  // quiet "Updated to vX" hint should show, set once Service.qml has
+  // asked the helper which version the user last saw (see
+  // Service._checkWhatsNew). Stays false for a fresh install.
+  property bool showUpdateHint: false
+
+  // whatsNewReleases are the committed whats-new.json's releases,
+  // newest first, parsed by Service.qml's own FileView; empty until
+  // that first read finishes, or if the file is missing or malformed.
+  property var whatsNewReleases: []
 
   // uiState is what the panel restores after Omarchy destroys and
   // recreates it: the rail filter, selection, open pane, search text and
@@ -45,6 +62,7 @@ QtObject {
   // applyHello stores the fields the hello response carries.
   function applyHello(result: var): void {
     root.version = result.protocol || 0;
+    root.helperVersion = result.version || "";
     root.unreadTotal = result.unreadTotal || 0;
     root.unreadByService = result.unreadByService || {};
     root.services = result.services || [];

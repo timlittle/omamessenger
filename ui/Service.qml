@@ -4,6 +4,7 @@ import Quickshell.Io
 import "lib/Settings.js" as Settings
 import "lib/Keymap.js" as Keymap
 import "lib/KeyBindings.js" as KeyBindings
+import "lib/WhatsNew.js" as WhatsNew
 import "service"
 
 // Owns the helper process and everything that must survive the panel
@@ -42,6 +43,20 @@ Item {
   // services are the messaging services the helper can add an account
   // for, from hello. Empty for a helper too old to report them.
   readonly property var services: appState.services
+
+  // appVersion is the running helper's own release, used as this
+  // plugin's version for the "What's new" overlay and update hint; see
+  // AppState.helperVersion for why the helper's version stands in for
+  // the plugin's own.
+  readonly property string appVersion: appState.helperVersion
+
+  // showUpdateHint is true for the one run after an update where the
+  // quiet "Updated to vX" hint should show in the window.
+  readonly property bool showUpdateHint: appState.showUpdateHint
+
+  // whatsNewReleases are the committed whats-new.json's releases,
+  // newest first, for the "What's new" palette command's overlay.
+  readonly property var whatsNewReleases: appState.whatsNewReleases
 
   // pendingAuth is the sign-in step an account is waiting on, or null.
   readonly property var pendingAuth: appState.pendingAuth
@@ -85,6 +100,11 @@ Item {
 
   // _keyConfigPath is where keys.conf lives, following XDG_CONFIG_HOME.
   readonly property string _keyConfigPath: KeyBindings.configPath(Quickshell.env("HOME"), Quickshell.env("XDG_CONFIG_HOME"))
+
+  // _whatsNewPath is the committed whats-new.json shipped alongside this
+  // plugin's own files, resolved the same way HelperProcess resolves
+  // the launcher and installer scripts.
+  readonly property string _whatsNewPath: String(Qt.resolvedUrl("../whats-new.json")).replace("file://", "")
 
   // _keyConfigMissing is true once the first read has confirmed the
   // file does not exist yet, so openKeyConfigFile knows to seed it.
@@ -166,10 +186,27 @@ Item {
       if (error) return;
 
       appState.applyHello(result);
+      root._checkWhatsNew();
       root.request("accounts.list", {}, function(listError, accounts) {
         if (listError) return;
         appState.accounts = accounts;
       });
+    });
+  }
+
+  // _checkWhatsNew asks the helper which "What's new" version the user
+  // has already seen, decides whether the quiet update hint should show
+  // this run, then records the running version as seen so it never
+  // shows again for it. Asking the helper again after a reconnect within
+  // the same Service lifetime is harmless: by then it already holds the
+  // version this call itself just recorded, so shouldShowHint says no
+  // the second time.
+  function _checkWhatsNew(): void {
+    root.request("whatsNew.getSeenVersion", {}, function(error, result) {
+      if (error) return;
+
+      appState.showUpdateHint = WhatsNew.shouldShowHint(appState.helperVersion, result.version);
+      root.request("whatsNew.setSeenVersion", { version: appState.helperVersion }, function() {});
     });
   }
 
@@ -238,5 +275,19 @@ Item {
     // text() is stale inside fileChanged itself; reload() re-reads the
     // file fresh and reports back through onLoaded/onLoadFailed.
     onFileChanged: reload()
+  }
+
+  // whatsNewFile holds the committed whats-new.json shipped with the
+  // plugin. WhatsNew.parse never throws, so malformed JSON just means
+  // an empty "What's new" list rather than a broken overlay; no watch,
+  // since it only ever changes with the plugin's own files, which is
+  // already a full reload.
+  FileView {
+    id: whatsNewFile
+    path: root._whatsNewPath
+    printErrors: false
+
+    onLoaded: appState.whatsNewReleases = WhatsNew.parse(text())
+    onLoadFailed: appState.whatsNewReleases = []
   }
 }
