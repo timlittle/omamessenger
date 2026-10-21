@@ -363,7 +363,7 @@ Item {
       elide: Text.ElideRight
       text: root.modeHint
       textFormat: Text.PlainText
-      color: root.writing ? Color.accent : Util.alpha(Color.foreground, 0.5)
+      color: root.writing ? Theme.accent : Util.alpha(Theme.foreground, 0.5)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption
     }
@@ -379,7 +379,7 @@ Item {
         Layout.preferredWidth: Theme.spacing.xxs
         Layout.fillHeight: true
         radius: width / 2
-        color: Color.accent
+        color: Theme.accent
       }
 
       Text {
@@ -392,7 +392,7 @@ Item {
         // say) is never auto-detected as rich text and never fetches
         // anything.
         textFormat: Text.PlainText
-        color: Util.alpha(Color.foreground, 0.7)
+        color: Util.alpha(Theme.foreground, 0.7)
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
       }
@@ -418,7 +418,7 @@ Item {
         Layout.preferredHeight: Style.space(32)
         radius: Style.cornerRadius
         clip: true
-        color: Util.alpha(Color.accent, 0.22)
+        color: Util.alpha(Theme.accent, 0.22)
 
         Image {
           anchors.fill: parent
@@ -433,7 +433,7 @@ Item {
           visible: root._attachmentKind !== "photo"
           text: root._attachmentKind === "video" ? "▶" : "📄"
           textFormat: Text.PlainText
-          color: Color.accent
+          color: Theme.accent
           font { family: Theme.font.family; pixelSize: Theme.font.icon }
         }
       }
@@ -444,7 +444,7 @@ Item {
         text: root.attachmentPath !== "" ? Format.baseName(root.attachmentPath) : ""
         textFormat: Text.PlainText
         elide: Text.ElideMiddle
-        color: Color.foreground
+        color: Theme.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
       }
@@ -567,10 +567,10 @@ Item {
 
           font.family: Theme.font.family
           font.pixelSize: Theme.font.body
-          color: Color.foreground
-          placeholderTextColor: Util.alpha(Color.foreground, 0.4)
+          color: Theme.foreground
+          placeholderTextColor: Util.alpha(Theme.foreground, 0.4)
           selectionColor: Style.selectionFill
-          selectedTextColor: Color.foreground
+          selectedTextColor: Theme.foreground
 
           topPadding: Theme.spacing.inputPaddingY
           bottomPadding: Theme.spacing.inputPaddingY
@@ -607,7 +607,7 @@ Item {
                 y: modelData.y
                 width: modelData.width
                 height: modelData.height
-                color: Color.urgent
+                color: Theme.urgent
               }
             }
           }

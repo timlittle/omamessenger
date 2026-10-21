@@ -30,9 +30,10 @@ Baselines: the Qt [QML coding conventions](https://doc.qt.io/qt-6/qml-codingconv
 ### Theme
 
 - Colours, spacing, fonts and radii come from Omarchy's `qs.Commons` (`Color`, `Style`, `Util`). No colour literals except `"transparent"`, and no hard-coded pixel sizes; use `Style.space(px)` so Omarchy's scaling applies
+- Never write the bare identifier `Color` anywhere outside `ui/theme/Theme.qml`: Qt 6.12 added a global QML type of the same name that shadows Omarchy's `Color` singleton, so `Color.foreground` and the like silently resolve to the wrong thing and throw. Read every colour, including plain tokens such as `Color.foreground` or `Color.accent`, as `Theme.foreground`/`Theme.accent` through the typed adapter; `tests/unit/no-bare-color.test.cjs` fails the build on a bare `Color.` outside that one file. `Style` and `Util` are unaffected and still used bare for non-colour tokens (`Style.hoverFill`, `Util.alpha(...)`)
 - Nested token groups (`Style.font`, `Style.spacing`, `Color.popups`, …) are invisible to qmllint, so read them through the typed adapter: `import "../theme"` then `Theme.font.body`, `Theme.spacing.md`. `ui/theme/Theme.qml` is the only file allowed to disable a qmllint warning
 - Use `qs.Ui` controls (`Button`, `TextField`, `Dropdown`, `Toggle`, `Panel`, …) before writing your own
-- Controls stay visually quiet until hovered, focused or selected. Use `Style.hoverFill` for hover and `Util.alpha(Color.accent, Style.selectedFillAlpha)` for selection
+- Controls stay visually quiet until hovered, focused or selected. Use `Style.hoverFill` for hover and `Util.alpha(Theme.accent, Style.selectedFillAlpha)` for selection
 - Never rely on colour alone: pair it with a glyph, weight or label. Pair every icon glyph with a label or tooltip
 
 ### Keyboard and windows

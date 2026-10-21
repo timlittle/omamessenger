@@ -96,7 +96,7 @@ Item {
         text: "Voice message"
         textFormat: Text.PlainText
         elide: Text.ElideRight
-        color: Color.foreground
+        color: Theme.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall; weight: Font.DemiBold }
       }
 
@@ -108,7 +108,7 @@ Item {
         Rectangle {
           anchors.fill: parent
           radius: height / 2
-          color: Util.alpha(Color.foreground, 0.15)
+          color: Util.alpha(Theme.foreground, 0.15)
         }
 
         Rectangle {
@@ -116,7 +116,7 @@ Item {
           anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
           width: track.width * root._fraction
           radius: height / 2
-          color: Color.accent
+          color: Theme.accent
         }
       }
 
@@ -126,7 +126,7 @@ Item {
           ? "Unavailable"
           : Format.elapsed(Math.floor(root.positionMs / 1000)) + " / " + Format.elapsed(Math.floor(root._knownDurationMs / 1000))
         textFormat: Text.PlainText
-        color: Util.alpha(Color.foreground, 0.6)
+        color: Util.alpha(Theme.foreground, 0.6)
         font { family: Theme.font.family; pixelSize: Theme.font.caption }
       }
     }
@@ -143,13 +143,13 @@ Item {
       Layout.preferredWidth: Style.space(40)
       Layout.preferredHeight: Style.space(40)
       radius: Style.cornerRadius
-      color: Util.alpha(Color.accent, 0.22)
+      color: Util.alpha(Theme.accent, 0.22)
 
       Text {
         anchors.centerIn: parent
         text: "▶"
         textFormat: Text.PlainText
-        color: Color.accent
+        color: Theme.accent
         font { family: Theme.font.family; pixelSize: Theme.font.body }
       }
     }
@@ -162,7 +162,7 @@ Item {
         Layout.fillWidth: true
         text: "Voice message · open"
         textFormat: Text.PlainText
-        color: Color.foreground
+        color: Theme.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall; weight: Font.DemiBold }
       }
 
@@ -171,7 +171,7 @@ Item {
         visible: text !== ""
         text: Format.duration(root.media.duration)
         textFormat: Text.PlainText
-        color: Util.alpha(Color.foreground, 0.6)
+        color: Util.alpha(Theme.foreground, 0.6)
         font { family: Theme.font.family; pixelSize: Theme.font.caption }
       }
     }

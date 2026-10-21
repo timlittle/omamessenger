@@ -45,7 +45,7 @@ Rectangle {
       // PlainText.
       textFormat: Text.PlainText
       elide: Text.ElideRight
-      color: Color.foreground
+      color: Theme.foreground
       font.family: Theme.font.family
       font.pixelSize: Theme.font.body
     }

@@ -29,7 +29,7 @@ RowLayout {
     objectName: "readReceiptsLabel"
     text: "Read receipts off"
     textFormat: Text.PlainText
-    color: Util.alpha(Color.foreground, 0.6)
+    color: Util.alpha(Theme.foreground, 0.6)
     font.family: Theme.font.family
     font.pixelSize: Theme.font.caption
   }

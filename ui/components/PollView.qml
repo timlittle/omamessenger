@@ -54,7 +54,7 @@ Item {
       // text and never fetches anything.
       textFormat: Text.PlainText
       wrapMode: Text.Wrap
-      color: Color.foreground
+      color: Theme.foreground
       font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
     }
 
@@ -64,7 +64,7 @@ Item {
       visible: !!root.poll.multipleChoice
       text: "Select one or more"
       textFormat: Text.PlainText
-      color: Util.alpha(Color.foreground, 0.6)
+      color: Util.alpha(Theme.foreground, 0.6)
       font { family: Theme.font.family; pixelSize: Theme.font.caption }
     }
 
@@ -86,7 +86,7 @@ Item {
         radius: Style.cornerRadius
         color: optionRow.rowHighlighted ? Style.hoverFill : optionHover.containsMouse ? Style.hoverFill : "transparent"
         border.width: optionRow.checked ? Theme.spacing.hairline : 0
-        border.color: Color.accent
+        border.color: Theme.accent
         clip: true
 
         // share is this option's bar, drawn behind its text and count.
@@ -94,7 +94,7 @@ Item {
           objectName: "pollOptionShare-" + optionRow.index
           anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
           width: parent.width * (root._shares[optionRow.index] ?? 0) / 100
-          color: Util.alpha(Color.accent, 0.14)
+          color: Util.alpha(Theme.accent, 0.14)
         }
 
         RowLayout {
@@ -109,7 +109,7 @@ Item {
             visible: optionRow.checked
             text: "✓"
             textFormat: Text.PlainText
-            color: Color.accent
+            color: Theme.accent
             font { family: Theme.font.family; pixelSize: Theme.font.body }
           }
 
@@ -120,7 +120,7 @@ Item {
             // Each option's own text, also sender-controlled: PlainText.
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
-            color: Color.foreground
+            color: Theme.foreground
             font { family: Theme.font.family; pixelSize: Theme.font.body; weight: optionRow.checked ? Font.DemiBold : Font.Normal }
           }
 
@@ -128,7 +128,7 @@ Item {
             objectName: "pollOptionShareText-" + optionRow.index
             text: (root._shares[optionRow.index] ?? 0) + "% · " + optionRow.modelData.votes
             textFormat: Text.PlainText
-            color: Util.alpha(Color.foreground, 0.6)
+            color: Util.alpha(Theme.foreground, 0.6)
             font { family: Theme.font.family; pixelSize: Theme.font.caption }
           }
         }
@@ -150,7 +150,7 @@ Item {
       objectName: "pollFooter"
       text: (root.poll.closed ? "Closed · " : "") + Poll.voterLabel(root.poll.totalVoters)
       textFormat: Text.PlainText
-      color: Util.alpha(Color.foreground, 0.5)
+      color: Util.alpha(Theme.foreground, 0.5)
       font { family: Theme.font.family; pixelSize: Theme.font.caption }
     }
   }

@@ -106,7 +106,7 @@ Item {
   Rectangle {
     anchors.fill: parent
     visible: (root._video && !root.photo.thumb) || root._unavailable
-    color: Util.alpha(Color.foreground, 0.08)
+    color: Util.alpha(Theme.foreground, 0.08)
   }
 
   Text {
@@ -119,7 +119,7 @@ Item {
     text: root.photo.fileName ? "Photo unavailable · " + root.photo.fileName : "Photo unavailable"
     // fileName is sender-controlled: PlainText.
     textFormat: Text.PlainText
-    color: Util.alpha(Color.foreground, 0.6)
+    color: Util.alpha(Theme.foreground, 0.6)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
 
@@ -129,9 +129,9 @@ Item {
     visible: root._video
     text: "▶"
     textFormat: Text.PlainText
-    color: Color.foreground
+    color: Theme.foreground
     style: Text.Outline
-    styleColor: Util.alpha(Color.background, 0.6)
+    styleColor: Util.alpha(Theme.background, 0.6)
     font { family: Theme.font.family; pixelSize: Theme.font.heading }
   }
 
@@ -140,9 +140,9 @@ Item {
     visible: root._video && text !== ""
     text: Format.duration(root.photo.duration)
     textFormat: Text.PlainText
-    color: Color.foreground
+    color: Theme.foreground
     style: Text.Outline
-    styleColor: Util.alpha(Color.background, 0.6)
+    styleColor: Util.alpha(Theme.background, 0.6)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
 

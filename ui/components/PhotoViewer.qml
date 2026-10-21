@@ -98,7 +98,7 @@ Item {
       visible: root.path === ""
       text: "Loading…"
       textFormat: Text.PlainText
-      color: Util.alpha(Color.foreground, 0.7)
+      color: Util.alpha(Theme.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.body }
     }
   }
@@ -112,7 +112,7 @@ Item {
       Layout.fillWidth: true
       text: root.photo ? Format.photoSize(root.photo.width, root.photo.height) : ""
       textFormat: Text.PlainText
-      color: Util.alpha(Color.foreground, 0.7)
+      color: Util.alpha(Theme.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
     }
 

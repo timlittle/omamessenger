@@ -23,14 +23,14 @@ Item {
   Rectangle {
     anchors.fill: parent
     radius: height / 2
-    color: root.muted ? Util.alpha(Color.foreground, 0.25) : Color.accent
+    color: root.muted ? Util.alpha(Theme.foreground, 0.25) : Theme.accent
 
     Text {
       id: label
       anchors.centerIn: parent
       text: root.text
       textFormat: Text.PlainText
-      color: root.muted ? Color.foreground : Color.background
+      color: root.muted ? Theme.foreground : Theme.background
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption
       font.weight: Font.Bold

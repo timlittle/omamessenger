@@ -36,13 +36,13 @@ Item {
       Layout.preferredWidth: Style.space(40)
       Layout.preferredHeight: Style.space(40)
       radius: Style.cornerRadius
-      color: Util.alpha(Color.accent, 0.22)
+      color: Util.alpha(Theme.accent, 0.22)
 
       Text {
         anchors.centerIn: parent
         text: root._extension
         textFormat: Text.PlainText
-        color: Color.accent
+        color: Theme.accent
         font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
       }
     }
@@ -58,7 +58,7 @@ Item {
         // it is never auto-detected as rich text.
         textFormat: Text.PlainText
         elide: Text.ElideMiddle
-        color: Color.foreground
+        color: Theme.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall; weight: Font.DemiBold }
       }
 
@@ -67,7 +67,7 @@ Item {
         visible: text !== ""
         text: [Format.fileSize(root.file.size), Format.duration(root.file.duration)].filter((part) => part !== "").join(" · ")
         textFormat: Text.PlainText
-        color: Util.alpha(Color.foreground, 0.6)
+        color: Util.alpha(Theme.foreground, 0.6)
         font { family: Theme.font.family; pixelSize: Theme.font.caption }
       }
     }

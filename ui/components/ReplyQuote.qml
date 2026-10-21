@@ -25,7 +25,7 @@ Item {
     width: Theme.spacing.xxs
     height: parent.height
     radius: width / 2
-    color: Color.accent
+    color: Theme.accent
   }
 
   ColumnLayout {
@@ -47,7 +47,7 @@ Item {
       // sender-controlled, unescaped: PlainText.
       textFormat: Text.PlainText
       elide: Text.ElideRight
-      color: Color.accent
+      color: Theme.accent
       font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
     }
 
@@ -58,7 +58,7 @@ Item {
       textFormat: Text.PlainText
       elide: Text.ElideRight
       maximumLineCount: 1
-      color: Util.alpha(Color.foreground, 0.7)
+      color: Util.alpha(Theme.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
     }
   }

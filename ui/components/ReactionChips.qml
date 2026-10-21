@@ -49,10 +49,10 @@ Item {
 
         objectName: "chip-" + chip.modelData.emoji
         radius: Style.cornerRadius
-        color: chip.modelData.mine ? Util.alpha(Color.accent, Style.selectedFillAlpha)
-          : chipHover.containsMouse ? Style.hoverFill : Util.alpha(Color.foreground, 0.06)
+        color: chip.modelData.mine ? Util.alpha(Theme.accent, Style.selectedFillAlpha)
+          : chipHover.containsMouse ? Style.hoverFill : Util.alpha(Theme.foreground, 0.06)
         border.width: chip.modelData.mine ? Theme.spacing.hairline : 0
-        border.color: Color.accent
+        border.color: Theme.accent
         width: chipText.implicitWidth + Theme.spacing.sm * 2
         height: chipText.implicitHeight + Theme.spacing.xxs * 2
 
@@ -66,7 +66,7 @@ Item {
           anchors.centerIn: parent
           text: chip.modelData.emoji + " " + chip.modelData.count
           textFormat: Text.PlainText
-          color: Color.foreground
+          color: Theme.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
           font.weight: chip.modelData.mine ? Font.DemiBold : Font.Normal

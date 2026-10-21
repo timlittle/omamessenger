@@ -53,7 +53,7 @@ Item {
   Rectangle {
     visible: root.selected
     width: Style.space(2)
-    color: Color.accent
+    color: Theme.accent
     anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
   }
 
@@ -88,8 +88,8 @@ Item {
         width: Style.space(8)
         height: Style.space(8)
         radius: width / 2
-        color: root.entry.status === "error" || root.entry.status === "needs-auth" ? Color.urgent : "transparent"
-        border { width: root.entry.status === "connecting" ? Theme.spacing.hairline : 0; color: Color.foreground }
+        color: root.entry.status === "error" || root.entry.status === "needs-auth" ? Theme.urgent : "transparent"
+        border { width: root.entry.status === "connecting" ? Theme.spacing.hairline : 0; color: Theme.foreground }
         anchors { right: glyph.right; bottom: glyph.bottom }
       }
 
@@ -121,7 +121,7 @@ Item {
       Layout.maximumWidth: root.width - Theme.spacing.xs * 2
       text: root.entry.label ?? ""
       textFormat: Text.PlainText
-      color: Color.foreground
+      color: Theme.foreground
       elide: Text.ElideRight
       font { family: Theme.font.family; pixelSize: root.account ? Theme.font.caption : Theme.font.bodySmall }
     }

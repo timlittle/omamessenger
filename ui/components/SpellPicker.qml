@@ -40,7 +40,7 @@ Rectangle {
   radius: Style.cornerRadius
   color: Style.normalFill
   border.width: Theme.spacing.hairline
-  border.color: Util.alpha(Color.foreground, 0.15)
+  border.color: Util.alpha(Theme.foreground, 0.15)
   clip: true
 
   Column {
@@ -56,7 +56,7 @@ Rectangle {
       // The flagged word comes from the message being typed: PlainText.
       textFormat: Text.PlainText
       elide: Text.ElideRight
-      color: Util.alpha(Color.foreground, 0.6)
+      color: Util.alpha(Theme.foreground, 0.6)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption
     }
@@ -90,7 +90,7 @@ Rectangle {
           // A suggested word is derived from the dictionary, not shown
           // text from outside, but PlainText anyway: it is never markup.
           textFormat: Text.PlainText
-          color: Color.foreground
+          color: Theme.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.body
         }
@@ -127,7 +127,7 @@ Rectangle {
         x: Theme.spacing.sm
         text: "Add to dictionary"
         textFormat: Text.PlainText
-        color: Color.foreground
+        color: Theme.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
       }
@@ -163,7 +163,7 @@ Rectangle {
         x: Theme.spacing.sm
         text: "Ignore"
         textFormat: Text.PlainText
-        color: Color.foreground
+        color: Theme.foreground
         font.family: Theme.font.family
         font.pixelSize: Theme.font.body
       }

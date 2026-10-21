@@ -1,5 +1,4 @@
 import QtQuick
-import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 
@@ -20,7 +19,7 @@ Item {
     id: glyph
     text: root.text
     textFormat: Text.PlainText
-    color: Color.foreground
+    color: Theme.foreground
     font.family: Theme.font.family
     font.pixelSize: Theme.font.icon
   }

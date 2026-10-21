@@ -108,7 +108,7 @@ Item {
           : root.stage === "credentials" ? "Add a " + root.serviceName + " account"
           : "Sign in to " + root.serviceName
         textFormat: Text.PlainText
-        color: Color.foreground
+        color: Theme.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.subtitle; weight: Font.DemiBold }
       }
 
@@ -127,8 +127,8 @@ Item {
         // remote "<img>" to reach this label.
         textFormat: Text.StyledText
         wrapMode: Text.WordWrap
-        linkColor: Color.accent
-        color: Util.alpha(Color.foreground, 0.7)
+        linkColor: Theme.accent
+        color: Util.alpha(Theme.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.body }
         onLinkActivated: link => Qt.openUrlExternally(link)
       }
@@ -212,7 +212,7 @@ Item {
         // when they set their password, so it is untrusted text.
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        color: Util.alpha(Color.foreground, 0.7)
+        color: Util.alpha(Theme.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
       }
 
@@ -222,7 +222,7 @@ Item {
         text: root.error
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        color: Color.urgent
+        color: Theme.urgent
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
       }
 

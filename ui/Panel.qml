@@ -315,7 +315,7 @@ Item {
     id: window
     objectName: "panelWindow"
     title: "OmaMessenger"
-    color: Color.background
+    color: Theme.background
     implicitWidth: Style.space(1120)
     implicitHeight: Style.space(760)
     minimumSize: Qt.size(Style.space(420), Style.space(420))
@@ -349,7 +349,7 @@ Item {
             text: root._helperStatusText()
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            color: Color.foreground
+            color: Theme.foreground
             font.family: Theme.font.family
             font.pixelSize: Theme.font.bodySmall
           }
@@ -378,7 +378,7 @@ Item {
             text: windowController.errorBannerText
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            color: Color.urgent
+            color: Theme.urgent
             font.family: Theme.font.family
             font.pixelSize: Theme.font.bodySmall
 
@@ -394,7 +394,7 @@ Item {
             objectName: "dismissErrorButton"
             iconText: "×"
             tooltipText: "Dismiss"
-            foreground: Color.urgent
+            foreground: Theme.urgent
             focusable: true
             onClicked: windowController.dismissErrorBanner()
           }

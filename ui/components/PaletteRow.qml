@@ -42,7 +42,7 @@ Item {
       // A row here can be a conversation title or a message excerpt,
       // both sender-controlled: PlainText.
       textFormat: Text.PlainText
-      color: Color.foreground
+      color: Theme.foreground
       elide: Text.ElideRight
       font { family: Theme.font.family; pixelSize: Theme.font.body }
     }
@@ -51,7 +51,7 @@ Item {
       Layout.fillWidth: true
       text: root.item.detail ?? ""
       textFormat: Text.PlainText
-      color: Util.alpha(Color.foreground, 0.5)
+      color: Util.alpha(Theme.foreground, 0.5)
       elide: Text.ElideRight
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
     }
@@ -66,7 +66,7 @@ Item {
       visible: text !== ""
       text: root.item.keys ?? ""
       textFormat: Text.PlainText
-      color: Util.alpha(Color.foreground, 0.6)
+      color: Util.alpha(Theme.foreground, 0.6)
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
     }
   }

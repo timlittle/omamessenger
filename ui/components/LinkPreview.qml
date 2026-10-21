@@ -25,7 +25,7 @@ Item {
     width: Theme.spacing.xxs
     height: parent.height
     radius: width / 2
-    color: Color.accent
+    color: Theme.accent
   }
 
   RowLayout {
@@ -52,7 +52,7 @@ Item {
         // it is ever escaped, so every label here stays PlainText.
         textFormat: Text.PlainText
         elide: Text.ElideRight
-        color: Color.accent
+        color: Theme.accent
         font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
       }
 
@@ -64,7 +64,7 @@ Item {
         wrapMode: Text.Wrap
         maximumLineCount: 2
         elide: Text.ElideRight
-        color: Color.foreground
+        color: Theme.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall; weight: Font.DemiBold }
       }
 
@@ -76,7 +76,7 @@ Item {
         wrapMode: Text.Wrap
         maximumLineCount: 3
         elide: Text.ElideRight
-        color: Util.alpha(Color.foreground, 0.7)
+        color: Util.alpha(Theme.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
       }
     }

@@ -63,10 +63,10 @@ Item {
           Layout.preferredWidth: Theme.spacing.controlHeight
           Layout.preferredHeight: Theme.spacing.controlHeight
           radius: Style.cornerRadius
-          color: slot.current ? Util.alpha(Color.accent, Style.selectedFillAlpha)
+          color: slot.current ? Util.alpha(Theme.accent, Style.selectedFillAlpha)
             : hover.containsMouse ? Style.hoverFill : "transparent"
           border.width: slot.current ? Theme.spacing.hairline : 0
-          border.color: Color.accent
+          border.color: Theme.accent
 
           Text {
             anchors.centerIn: parent

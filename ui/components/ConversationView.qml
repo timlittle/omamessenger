@@ -214,7 +214,7 @@ Item {
           // keeps it from ever being auto-detected as rich text.
           textFormat: Text.PlainText
           elide: Text.ElideRight
-          color: Color.foreground
+          color: Theme.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.title
           font.weight: Font.DemiBold
@@ -225,7 +225,7 @@ Item {
           text: root.subtitle
           textFormat: Text.PlainText
           elide: Text.ElideRight
-          color: Util.alpha(Color.foreground, 0.6)
+          color: Util.alpha(Theme.foreground, 0.6)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.bodySmall
         }
@@ -286,7 +286,7 @@ Item {
         bottomPadding: Theme.spacing.sm
         text: "Older messages need your phone online — try again later"
         textFormat: Text.PlainText
-        color: Util.alpha(Color.foreground, 0.6)
+        color: Util.alpha(Theme.foreground, 0.6)
         font.family: Theme.font.family
         font.pixelSize: Theme.font.bodySmall
       }
@@ -319,7 +319,7 @@ Item {
     visible: root.conversation === null
     text: "Pick a chat · j/k to move · Enter to open"
     textFormat: Text.PlainText
-    color: Util.alpha(Color.foreground, 0.5)
+    color: Util.alpha(Theme.foreground, 0.5)
     font.family: Theme.font.family
     font.pixelSize: Theme.font.body
   }

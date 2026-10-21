@@ -101,7 +101,7 @@ Item {
     anchors.top: parent.top
     anchors.bottom: parent.bottom
     width: Style.space(2)
-    color: Color.accent
+    color: Theme.accent
   }
 
   // Account colour stripe: sits just inside the selection bar, so the two
@@ -160,7 +160,7 @@ Item {
           // before it reaches here, so PlainText keeps it from ever being
           // auto-detected as rich text (see Composer's replyBannerText).
           textFormat: Text.PlainText
-          color: Color.foreground
+          color: Theme.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.body
           font.bold: root._unread
@@ -172,7 +172,7 @@ Item {
           visible: root._pinned
           text: "📌"
           textFormat: Text.PlainText
-          color: Util.alpha(Color.foreground, 0.5)
+          color: Util.alpha(Theme.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
 
@@ -192,7 +192,7 @@ Item {
           visible: root._pinned
           text: "Pinned"
           textFormat: Text.PlainText
-          color: Util.alpha(Color.foreground, 0.5)
+          color: Util.alpha(Theme.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
         }
@@ -202,7 +202,7 @@ Item {
           visible: root.dimLabel.length > 0
           text: root._dimText
           textFormat: Text.PlainText
-          color: Util.alpha(Color.foreground, 0.5)
+          color: Util.alpha(Theme.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
         }
@@ -212,7 +212,7 @@ Item {
           visible: root.reminderDue
           text: "Reminder"
           textFormat: Text.PlainText
-          color: Color.accent
+          color: Theme.accent
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
           font.bold: true
@@ -221,7 +221,7 @@ Item {
         Text {
           text: Format.timeLabel(root._conv.lastActivity ?? 0, root.nowMs)
           textFormat: Text.PlainText
-          color: Util.alpha(Color.foreground, 0.6)
+          color: Util.alpha(Theme.foreground, 0.6)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
         }
@@ -240,7 +240,7 @@ Item {
           visible: root.showAccount
           text: root.accountName
           textFormat: Text.PlainText
-          color: Util.alpha(Color.foreground, 0.6)
+          color: Util.alpha(Theme.foreground, 0.6)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
         }
@@ -256,7 +256,7 @@ Item {
           // drops eliding long text, which this row relies on.
           textFormat: Text.StyledText
           text: root._previewHtml
-          color: Util.alpha(Color.foreground, 0.7)
+          color: Util.alpha(Theme.foreground, 0.7)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.bodySmall
           elide: Text.ElideRight
@@ -267,7 +267,7 @@ Item {
           visible: root._muted
           text: "🔇"
           textFormat: Text.PlainText
-          color: Util.alpha(Color.foreground, 0.5)
+          color: Util.alpha(Theme.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
 

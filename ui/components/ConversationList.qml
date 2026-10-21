@@ -87,7 +87,7 @@ Item {
       : root.unreadView
       ? "No unread conversations · Esc to leave"
       : "No conversations yet · Ctrl+N to start one"
-    color: Util.alpha(Color.foreground, 0.6)
+    color: Util.alpha(Theme.foreground, 0.6)
     font.family: Theme.font.family
     font.pixelSize: Theme.font.body
   }

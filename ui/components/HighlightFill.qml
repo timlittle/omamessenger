@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../theme"
 
 // Shared quiet-until-hovered/selected fill colour for a row or list item:
 // an accent tint when selected, a plain hover tint when hovered, and
@@ -16,6 +17,6 @@ QtObject {
 
   // color is the fill this row should paint.
   readonly property color color: root.selected
-    ? Util.alpha(Color.accent, Style.selectedFillAlpha)
+    ? Util.alpha(Theme.accent, Style.selectedFillAlpha)
     : root.hovered ? Style.hoverFill : "transparent"
 }

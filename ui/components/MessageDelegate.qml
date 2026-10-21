@@ -74,7 +74,7 @@ Item {
   // plain foreground colour the name used before group colouring existed.
   readonly property color nameColor: root.isGroup
     ? Theme.senderColor(SenderColor.colorIndex(root.message.senderId, Theme.senderPaletteSize))
-    : Color.foreground
+    : Theme.foreground
   // showAvatar is true only for the first message of a run from one
   // sender in a group chat: the message the avatar and name sit beside.
   readonly property bool showAvatar: root.isGroup && !root.message.outgoing && root.annotation.showSender
@@ -125,7 +125,7 @@ Item {
       horizontalAlignment: Text.AlignHCenter
       text: root.annotation.dayLabel
       textFormat: Text.PlainText
-      color: Util.alpha(Color.foreground, 0.5)
+      color: Util.alpha(Theme.foreground, 0.5)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.caption
     }
@@ -190,8 +190,8 @@ Item {
         // paired below with an "@" glyph: colour alone must never be the
         // only cue (see qml.md).
         color: root.isSticker ? "transparent" : (root.message.outgoing
-          ? Util.alpha(Color.accent, root.message.mentionsMe ? 0.32 : 0.22)
-          : (root.message.mentionsMe ? Util.alpha(Color.accent, 0.16) : Util.alpha(Color.foreground, 0.06)))
+          ? Util.alpha(Theme.accent, root.message.mentionsMe ? 0.32 : 0.22)
+          : (root.message.mentionsMe ? Util.alpha(Theme.accent, 0.16) : Util.alpha(Theme.foreground, 0.06)))
         anchors.right: root.message.outgoing ? parent.right : undefined
         anchors.left: root.message.outgoing ? undefined : parent.left
         anchors.leftMargin: root.message.outgoing ? 0 : root.indentWidth
@@ -200,7 +200,7 @@ Item {
         // A message that mentions the signed-in user keeps a fainter
         // version of the same outline even while not highlighted.
         border.width: root.highlighted || root.message.mentionsMe ? Style.space(1) : 0
-        border.color: root.highlighted ? Color.accent : (root.message.mentionsMe ? Util.alpha(Color.accent, 0.5) : "transparent")
+        border.color: root.highlighted ? Theme.accent : (root.message.mentionsMe ? Util.alpha(Theme.accent, 0.5) : "transparent")
 
         // The glyph that pairs with the tint above: an own-identity cue
         // text alone (colour) would fail someone who cannot see it.
@@ -209,7 +209,7 @@ Item {
           visible: !!root.message.mentionsMe
           text: "@"
           textFormat: Text.PlainText
-          color: Color.accent
+          color: Theme.accent
           anchors.top: parent.top
           anchors.right: root.message.outgoing ? parent.right : undefined
           anchors.left: root.message.outgoing ? undefined : parent.left
@@ -235,7 +235,7 @@ Item {
           anchors.rightMargin: root.message.outgoing ? Theme.spacing.xxs : 0
           width: Style.space(2)
           radius: width / 2
-          color: Color.accent
+          color: Theme.accent
         }
 
         // The text, then any link preview, photo or file; parts a
@@ -330,7 +330,7 @@ Item {
       anchors.leftMargin: root.message.outgoing ? 0 : Theme.spacing.xxs
       text: Highlight.hints(root.message, root.bindings)
       textFormat: Text.PlainText
-      color: Util.alpha(Color.foreground, 0.5)
+      color: Util.alpha(Theme.foreground, 0.5)
       font.family: Theme.font.family
       font.pixelSize: Theme.font.bodySmall
     }
@@ -361,7 +361,7 @@ Item {
         Text {
           text: "Not sent"
           textFormat: Text.PlainText
-          color: Color.urgent
+          color: Theme.urgent
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
         }
@@ -370,7 +370,7 @@ Item {
           visible: root.retryAt === 0
           text: "· t to retry"
           textFormat: Text.PlainText
-          color: Color.urgent
+          color: Theme.urgent
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
         }
@@ -380,7 +380,7 @@ Item {
           visible: root.retryAt !== 0
           text: Format.retryingLabel(root.retryAt, root.nowMs)
           textFormat: Text.PlainText
-          color: Util.alpha(Color.foreground, 0.5)
+          color: Util.alpha(Theme.foreground, 0.5)
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption
         }

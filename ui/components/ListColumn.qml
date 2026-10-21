@@ -89,7 +89,7 @@ ColumnLayout {
       text: "No accounts yet. Add an account to see your chats here."
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      color: Util.alpha(Color.foreground, 0.7)
+      color: Util.alpha(Theme.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.body }
     }
 
@@ -115,7 +115,7 @@ ColumnLayout {
       Layout.fillWidth: true
       text: "Unread"
       textFormat: Text.PlainText
-      color: Color.accent
+      color: Theme.accent
       font { family: Theme.font.family; pixelSize: Theme.font.subtitle; weight: Font.DemiBold }
     }
 
@@ -158,7 +158,7 @@ ColumnLayout {
         : root.hiddenCount + (root.hiddenCount === 1 ? " chat hidden" : " chats hidden")
       textFormat: Text.PlainText
       elide: Text.ElideRight
-      color: Util.alpha(Color.foreground, 0.7)
+      color: Util.alpha(Theme.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
     }
 

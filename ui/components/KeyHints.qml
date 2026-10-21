@@ -22,7 +22,7 @@ Text {
   text: root.hintsText
   textFormat: Text.PlainText
   elide: Text.ElideRight
-  color: Util.alpha(Color.foreground, 0.5)
+  color: Util.alpha(Theme.foreground, 0.5)
   font.family: Theme.font.family
   font.pixelSize: Theme.font.caption
 }

@@ -27,7 +27,7 @@ Rectangle {
   radius: Style.cornerRadius
   color: Style.normalFill
   border.width: Theme.spacing.hairline
-  border.color: Util.alpha(Color.foreground, 0.15)
+  border.color: Util.alpha(Theme.foreground, 0.15)
   clip: true
 
   Column {
@@ -63,7 +63,7 @@ Rectangle {
           text: row.modelData.name
           // A group member's display name is sender-controlled: PlainText.
           textFormat: Text.PlainText
-          color: Color.foreground
+          color: Theme.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.body
         }

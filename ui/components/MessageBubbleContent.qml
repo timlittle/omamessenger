@@ -97,8 +97,8 @@ Column {
     // sender-controlled text ever reaches this as a literal "<img>" or
     // any other element that could load a resource.
     textFormat: TextEdit.RichText
-    text: Format.messageHtml(body.caption, Color.accent, Color.muted, root.mentions, root.formatting)
-    color: Color.foreground
+    text: Format.messageHtml(body.caption, Theme.accent, Theme.muted, root.mentions, root.formatting)
+    color: Theme.foreground
     font { family: Theme.font.family; pixelSize: Theme.font.body }
     onLinkActivated: link => Qt.openUrlExternally(link)
   }
@@ -141,7 +141,7 @@ Column {
     visible: (root._mediaKind === "photo" || root._mediaKind === "video") && text !== ""
     text: root.media ? [Format.photoSize(root.media.width, root.media.height), Format.fileSize(root.media.size)].filter((part) => part !== "").join(" · ") : ""
     textFormat: Text.PlainText
-    color: Util.alpha(Color.foreground, 0.6)
+    color: Util.alpha(Theme.foreground, 0.6)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
 
