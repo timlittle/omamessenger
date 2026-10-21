@@ -380,20 +380,27 @@ func (h *fakeHistory) LoadOlder(ctx context.Context, conv domain.Conversation, b
 	return n, nil
 }
 
-// fakeMedia plays a service's media downloads, writing the message's remote
-// id as the file's content, or failing with err.
+// fakeMedia plays a service's media downloads, writing the message's
+// remote id as the file's content, or data instead when a test sets
+// it (to drive the cache's own size limit, say), or failing with err.
 type fakeMedia struct {
 	fetched []string
 	err     error
+	data    []byte
 }
 
-func (m *fakeMedia) FetchMedia(_ context.Context, _ domain.Conversation, messageRemoteID, path string) error {
+func (m *fakeMedia) FetchMedia(_ context.Context, _ domain.Conversation, messageRemoteID, path string, _ bool) error {
 	m.fetched = append(m.fetched, messageRemoteID)
 	if m.err != nil {
 		return m.err
 	}
 
-	return os.WriteFile(path, []byte(messageRemoteID), 0o600)
+	content := m.data
+	if content == nil {
+		content = []byte(messageRemoteID)
+	}
+
+	return os.WriteFile(path, content, 0o600)
 }
 
 // fakeCache fails every Fetch with err, without ever calling fill, for

@@ -472,37 +472,10 @@ func (d *fakeDevice) altJID(_ context.Context, jid types.JID) types.JID {
 	return types.JID{}
 }
 
-// downloadMedia records ref and reports the scripted bytes or error, or
-// blocks on ctx when downloadBlocks is set, as a real download that
-// never hears back from WhatsApp's media servers does. A path-specific
-// error in downloadErrPaths overrides the plain downloadErr for that
-// one reference only.
-func (d *fakeDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error) {
-	d.mu.Lock()
-	d.downloadCalls = append(d.downloadCalls, ref)
-	blocks, data, err := d.downloadBlocks, d.downloadData, d.downloadErr
-	if pathErr, ok := d.downloadErrPaths[ref.DirectPath]; ok {
-		err = pathErr
-	}
-	d.mu.Unlock()
-
-	if blocks {
-		<-ctx.Done()
-		return nil, ctx.Err()
-	}
-	if err != nil {
-		// Real whatsmeow still returns the decrypted bytes alongside
-		// whatsmeow.ErrInvalidMediaSHA256: its own downloadAndDecrypt
-		// sets data before running that specific check. A test that
-		// wants to drive recoverStaleDigest sets downloadData as well
-		// as downloadErr to mimic that; every other scripted error
-		// means no data at all, matching every failure that happens
-		// before whatsmeow ever gets to decrypt anything.
-		return data, err
-	}
-
-	return data, nil
-}
+// downloadMedia, downloadMediaToFile and recordDownload, fakeDevice's
+// own media-download methods, live in fetch_helpers_test.go, kept
+// apart from the rest of this file's fakes so neither grows past the
+// project's own file-length limit.
 
 // uploadMedia records the call and reports the scripted response or
 // error.

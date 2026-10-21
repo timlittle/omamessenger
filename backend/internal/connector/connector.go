@@ -89,8 +89,14 @@ var ErrHistoryUnavailable = errors.New("connector: history unavailable")
 // or file.
 type MediaFetcher interface {
 	// FetchMedia writes the media of the message the service knows as
-	// messageRemoteID to path.
-	FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error
+	// messageRemoteID to path. auto is true for a fetch the UI made on
+	// its own, with no click from the user asking for this file - an
+	// animated "GIF" video autoplaying as soon as it is shown - which a
+	// fully sender-controlled flag must never let download something
+	// large before the user has asked for anything; every implementation
+	// enforces AutoFetchMaxBytes for one of these and MaxUserFetchBytes
+	// otherwise (see limits.go).
+	FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string, auto bool) error
 }
 
 // MessageRefresher is a Connector that can re-report messages already

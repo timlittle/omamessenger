@@ -92,7 +92,7 @@ type withMedia struct {
 	fetched []string
 }
 
-func (c *withMedia) FetchMedia(_ context.Context, _ domain.Conversation, messageRemoteID, path string) error {
+func (c *withMedia) FetchMedia(_ context.Context, _ domain.Conversation, messageRemoteID, path string, _ bool) error {
 	c.fetched = append(c.fetched, messageRemoteID+" "+path)
 
 	return nil

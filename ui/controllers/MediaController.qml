@@ -75,9 +75,16 @@ QtObject {
 
   // fetchMedia downloads a message's photo and shows it once it is here.
   // A photo asks each time its row is shown, so one already on its way is
-  // not asked for twice; if the download fails the preview stays.
+  // not asked for twice; if the download fails the preview stays. auto
+  // is true only for a video the sending service marked to autoplay
+  // like a silent "GIF" (see Media.isAnimated): the one case this
+  // silent, no-click fetch is for a kind large enough that the helper's
+  // own auto cap matters (see media.fetch's auto param in
+  // docs/api.md). A photo or sticker's own silent fetch is already
+  // bounded by the helper's image profile regardless, so this is never
+  // true for those.
   function fetchMedia(timeline: var, id: string): void {
-    root.downloadMedia(timeline, id, false, () => {});
+    root.downloadMedia(timeline, id, false, Media.isAnimated(timeline.media(id)), () => {});
   }
 
   // openMedia opens a message's photo, video, file or voice note. A photo
@@ -100,7 +107,7 @@ QtObject {
     const path = timeline.mediaPath(id);
     if (path) { root._openIfAllowed(id, path); return; }
 
-    root.downloadMedia(timeline, id, true, (downloaded) => root._openIfAllowed(id, downloaded));
+    root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(id, downloaded));
   }
 
   // _playableInViewer reports whether the in-app viewer (see
@@ -136,7 +143,7 @@ QtObject {
     const path = timeline.mediaPath(id);
     if (path) { root.videoController.toggle(id); return; }
 
-    root.downloadMedia(timeline, id, true, () => root.videoController.toggle(id));
+    root.downloadMedia(timeline, id, true, false, () => root.videoController.toggle(id));
   }
 
   // openExternal downloads id's media if need be and hands it straight
@@ -148,7 +155,7 @@ QtObject {
     const path = timeline.mediaPath(id);
     if (path) { root._openIfAllowed(id, path); return; }
 
-    root.downloadMedia(timeline, id, true, (downloaded) => root._openIfAllowed(id, downloaded));
+    root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(id, downloaded));
   }
 
   // copyMedia downloads id's photo or video if need be and copies it to
@@ -161,7 +168,7 @@ QtObject {
     const path = timeline.mediaPath(id);
     if (path) { root._copyAndNotify(timeline, path, mimeType); return; }
 
-    root.downloadMedia(timeline, id, true, (downloaded) => root._copyAndNotify(timeline, downloaded, mimeType));
+    root.downloadMedia(timeline, id, true, false, (downloaded) => root._copyAndNotify(timeline, downloaded, mimeType));
   }
 
   // _copyAndNotify copies path to the clipboard and shows a brief
@@ -201,7 +208,7 @@ QtObject {
     const path = timeline.mediaPath(id);
     if (path) { root.voiceController.toggle(id, path, (media.duration || 0) * 1000); return; }
 
-    root.downloadMedia(timeline, id, true, (downloaded) => root.voiceController.toggle(id, downloaded, (media.duration || 0) * 1000));
+    root.downloadMedia(timeline, id, true, false, (downloaded) => root.voiceController.toggle(id, downloaded, (media.duration || 0) * 1000));
   }
 
   // downloadMedia asks the helper for a message's media once, records
@@ -223,12 +230,18 @@ QtObject {
   // kind, such as "This video is no longer available.", rather than the
   // generic "something went wrong" every other helper error shows. The
   // photo viewer reuses this rather than asking the helper itself, so
-  // there is one place that tracks an in-flight download.
-  function downloadMedia(timeline: var, id: string, report: bool, done: var): void {
+  // there is one place that tracks an in-flight download. auto is sent
+  // to the helper only for the call that actually starts the request
+  // (a joiner's own auto is never consulted): true means the helper
+  // applies its small, automatic-fetch size cap instead of the far
+  // larger one a deliberate click is trusted with (see media.fetch's
+  // auto param in docs/api.md).
+  function downloadMedia(timeline: var, id: string, report: bool, auto: bool, done: var): void {
     if (root._fetching[id]) { root._fetching[id].push({ report: report, done: done }); return; }
 
     root._fetching[id] = [{ report: report, done: done }];
-    root.service.request("media.fetch", { messageId: id }, function(error, result) {
+    const params = auto ? { messageId: id, auto: true } : { messageId: id };
+    root.service.request("media.fetch", params, function(error, result) {
       const waiting = root._fetching[id];
       delete root._fetching[id];
 

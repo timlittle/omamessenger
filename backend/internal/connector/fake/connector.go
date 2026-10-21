@@ -248,7 +248,7 @@ func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, _ s
 // names path, always gives a voice note's own file extension, so
 // telling the two apart by path alone is enough: this connector never
 // sees the message's media kind directly.
-func (c *Connector) FetchMedia(_ context.Context, _ domain.Conversation, _, path string) error {
+func (c *Connector) FetchMedia(_ context.Context, _ domain.Conversation, _, path string, _ bool) error {
 	if _, err := c.current(); err != nil {
 		return err
 	}

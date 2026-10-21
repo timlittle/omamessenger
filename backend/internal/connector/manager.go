@@ -261,8 +261,8 @@ func (m *Manager) LoadOlder(ctx context.Context, conv domain.Conversation, befor
 }
 
 // FetchMedia asks the conversation's connector to download a message's
-// media to path.
-func (m *Manager) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error {
+// media to path; see MediaFetcher.FetchMedia for what auto means.
+func (m *Manager) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string, auto bool) error {
 	c, err := m.connectorFor(conv.AccountID)
 	if err != nil {
 		return err
@@ -273,7 +273,7 @@ func (m *Manager) FetchMedia(ctx context.Context, conv domain.Conversation, mess
 		return fmt.Errorf("connector: %w: %q", ErrNoMedia, conv.AccountID)
 	}
 
-	return fetcher.FetchMedia(ctx, conv, messageRemoteID, path)
+	return fetcher.FetchMedia(ctx, conv, messageRemoteID, path, auto)
 }
 
 // RefreshMessages asks the conversation's connector to re-report the

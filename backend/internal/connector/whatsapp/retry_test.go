@@ -100,7 +100,7 @@ func TestFetchMedia_RetriesAnExpiredLinkThroughThePhone(t *testing.T) {
 
 		path := filepath.Join(t.TempDir(), "out")
 		done := make(chan error, 1)
-		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path, false) }()
 		synctest.Wait()
 
 		if len(dev.mediaRetryCalls) != 1 {
@@ -151,7 +151,7 @@ func TestFetchMedia_AcceptsAReuploadThatOnlyFailsThePlaintextDigest(t *testing.T
 
 		path := filepath.Join(t.TempDir(), "out")
 		done := make(chan error, 1)
-		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path, false) }()
 		synctest.Wait()
 
 		dev.fireEvent(mediaRetryEvent(t, key, "msg-1", &waMmsRetry.MediaRetryNotification{
@@ -189,7 +189,7 @@ func TestFetchMedia_RetriesADecryptFailureThroughThePhone(t *testing.T) {
 
 		path := filepath.Join(t.TempDir(), "out")
 		done := make(chan error, 1)
-		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path, false) }()
 		synctest.Wait()
 
 		if len(dev.mediaRetryCalls) != 1 {
@@ -230,7 +230,7 @@ func TestFetchMedia_KeepsTheDecryptReasonWhenTheRetryStillWontDecrypt(t *testing
 
 		path := filepath.Join(t.TempDir(), "out")
 		done := make(chan error, 1)
-		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path, false) }()
 		synctest.Wait()
 
 		dev.fireEvent(mediaRetryEvent(t, key, "msg-1", &waMmsRetry.MediaRetryNotification{
@@ -264,7 +264,7 @@ func TestFetchMedia_ReportsDecryptFailureWithNoMessageKeyToRetryWith(t *testing.
 		t.Fatal(err)
 	}
 
-	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"))
+	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"), false)
 	if !errors.Is(err, domain.ErrMediaDecryptFailed) {
 		t.Errorf("FetchMedia = %v, want domain.ErrMediaDecryptFailed", err)
 	}
@@ -288,7 +288,7 @@ func TestFetchMedia_ReportsExpiredWhenThePhoneSaysTheMediaIsGone(t *testing.T) {
 
 		path := filepath.Join(t.TempDir(), "x")
 		done := make(chan error, 1)
-		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path, false) }()
 		synctest.Wait()
 
 		dev.fireEvent(mediaRetryEvent(t, key, "msg-1", &waMmsRetry.MediaRetryNotification{
@@ -313,7 +313,7 @@ func TestFetchMedia_ReportsExpiredWhenThePhoneNeverAnswers(t *testing.T) {
 
 		path := filepath.Join(t.TempDir(), "x")
 		done := make(chan error, 1)
-		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path, false) }()
 
 		time.Sleep(mediaRetryTimeout)
 		synctest.Wait()
@@ -359,8 +359,8 @@ func TestFetchMedia_ConcurrentRetriesEachResolveTheirOwnMessage(t *testing.T) {
 
 		done1, done2 := make(chan error, 1), make(chan error, 1)
 		path1, path2 := filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")
-		go func() { done1 <- c.FetchMedia(t.Context(), directChat, "msg-1", path1) }()
-		go func() { done2 <- c.FetchMedia(t.Context(), directChat, "msg-2", path2) }()
+		go func() { done1 <- c.FetchMedia(t.Context(), directChat, "msg-1", path1, false) }()
+		go func() { done2 <- c.FetchMedia(t.Context(), directChat, "msg-2", path2, false) }()
 		synctest.Wait()
 
 		if len(dev.mediaRetryCalls) != 2 {
@@ -498,7 +498,7 @@ func TestFetchMedia_DoesNotRetryAGenericHTTPFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"))
+	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"), false)
 	if !errors.Is(err, dev.downloadErr) {
 		t.Errorf("FetchMedia = %v, want the plain download error returned unchanged", err)
 	}
@@ -524,7 +524,7 @@ func TestFetchMedia_Retries403ThroughThePhone(t *testing.T) {
 
 		path := filepath.Join(t.TempDir(), "out")
 		done := make(chan error, 1)
-		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path, false) }()
 		synctest.Wait()
 
 		if len(dev.mediaRetryCalls) != 1 {

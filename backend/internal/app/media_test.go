@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -34,7 +36,7 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 		}
 	}
 
-	path, err := f.commands.FetchMedia(ctx, "m1")
+	path, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil || filepath.Base(path) != "m1.jpg" {
 		t.Fatalf("FetchMedia = %q, %v; want m1.jpg in the cache", path, err)
 	}
@@ -43,11 +45,11 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 		t.Errorf("cached %q, want the downloaded media", got)
 	}
 
-	if _, err := f.commands.FetchMedia(ctx, "m1"); err != nil || !slices.Equal(f.media.fetched, []string{"40"}) {
+	if _, err := f.commands.FetchMedia(ctx, "m1", false); err != nil || !slices.Equal(f.media.fetched, []string{"40"}) {
 		t.Errorf("second FetchMedia = %v, downloads %v; want the cached copy", err, f.media.fetched)
 	}
 
-	if path, err := f.commands.FetchMedia(ctx, "m2"); err != nil || filepath.Base(path) != "m2-notes.pdf" {
+	if path, err := f.commands.FetchMedia(ctx, "m2", false); err != nil || filepath.Base(path) != "m2-notes.pdf" {
 		t.Errorf("FetchMedia(file) = %q, %v; want its own name kept", path, err)
 	}
 }
@@ -73,7 +75,7 @@ func TestFetchMedia_CachesARealGIFFileWithAGIFExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path, err := f.commands.FetchMedia(ctx, "m1")
+	path, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil || filepath.Base(path) != "m1.gif" {
 		t.Fatalf("FetchMedia = %q, %v; want m1.gif in the cache", path, err)
 	}
@@ -100,7 +102,7 @@ func TestFetchMedia_Rejects(t *testing.T) {
 		"link":    app.ErrInvalidInput,
 		"missing": domain.ErrNotFound,
 	} {
-		if _, err := f.commands.FetchMedia(ctx, id); !errors.Is(err, want) {
+		if _, err := f.commands.FetchMedia(ctx, id, false); !errors.Is(err, want) {
 			t.Errorf("FetchMedia(%q) = %v, want %v", id, err, want)
 		}
 	}
@@ -119,7 +121,7 @@ func TestFetchMedia_OutgoingPhotoUsesTheLocalCopyWhileStillPending(t *testing.T)
 		t.Fatalf("Send() = %+v, %v; want it still pending with no remote id", sent, err)
 	}
 
-	got, err := f.commands.FetchMedia(ctx, sent.ID)
+	got, err := f.commands.FetchMedia(ctx, sent.ID, false)
 	if err != nil {
 		t.Fatalf("FetchMedia() error = %v", err)
 	}
@@ -157,7 +159,7 @@ func TestFetchMedia_OutgoingPhotoFallsBackToDownloadIfTheLocalCopyIsGone(t *test
 		t.Fatal(err)
 	}
 
-	got, err := f.commands.FetchMedia(ctx, sent.ID)
+	got, err := f.commands.FetchMedia(ctx, sent.ID, false)
 	if err != nil || filepath.Base(got) != sent.ID+".jpg" {
 		t.Fatalf("FetchMedia() = %q, %v; want the service's copy once the local one is gone", got, err)
 	}
@@ -180,7 +182,7 @@ func TestFetchMedia_ReportsADownloadFailure(t *testing.T) {
 	}
 
 	f.media.err = errors.New("offline")
-	if _, err := f.commands.FetchMedia(ctx, "m1"); !errors.Is(err, f.media.err) {
+	if _, err := f.commands.FetchMedia(ctx, "m1", false); !errors.Is(err, f.media.err) {
 		t.Errorf("FetchMedia = %v, want the download's error", err)
 	}
 }
@@ -200,6 +202,7 @@ func TestFetchMedia_LogsAndCategorizesEveryFailureReason(t *testing.T) {
 		"a reference the service never saved":      {domain.ErrNotFound, app.MediaNotFound},
 		"media the phone no longer has":            {domain.ErrMediaExpired, app.MediaExpired},
 		"a downloaded file that failed to decrypt": {domain.ErrMediaDecryptFailed, app.MediaDecryptFailed},
+		"a declared or actual size over the limit": {connector.ErrMediaTooLarge, app.MediaTooLarge},
 		"a fetch that ran out of time":             {context.DeadlineExceeded, app.MediaTimedOut},
 		"a fetch cancelled with the request":       {context.Canceled, app.MediaTimedOut},
 		"a plain network or server failure":        {errors.New("offline"), app.MediaDownloadFailed},
@@ -220,7 +223,7 @@ func TestFetchMedia_LogsAndCategorizesEveryFailureReason(t *testing.T) {
 			}
 
 			f.media.err = tt.connectorErr
-			_, err := f.commands.FetchMedia(ctx, "m1")
+			_, err := f.commands.FetchMedia(ctx, "m1", false)
 
 			var mediaErr *app.MediaFetchError
 			if !errors.As(err, &mediaErr) || mediaErr.Reason != tt.wantReason {
@@ -262,7 +265,7 @@ func TestFetchMedia_ReportsACacheFailureWithoutCallingTheConnector(t *testing.T)
 		Store: f.store, Media: f.media, Cache: &fakeCache{err: errors.New("cache: disk full")}, Logger: logger,
 	})
 
-	_, err := commands.FetchMedia(ctx, "m1")
+	_, err := commands.FetchMedia(ctx, "m1", false)
 
 	var mediaErr *app.MediaFetchError
 	if !errors.As(err, &mediaErr) || mediaErr.Reason != app.MediaCacheFailed {
@@ -275,5 +278,45 @@ func TestFetchMedia_ReportsACacheFailureWithoutCallingTheConnector(t *testing.T)
 	lines := logger.take()
 	if len(lines) != 1 || !strings.Contains(lines[0], "reason=cache") {
 		t.Errorf("logged %v, want one line mentioning reason=cache", lines)
+	}
+}
+
+// TestFetchMedia_ReportsATooLargeFileTheCacheRefusedAfterDownloading
+// confirms a download that completed - the connector was happy with
+// it, and every one of its own size checks passed - but whose own
+// bytes alone exceed the cache's own, separate limit (see
+// cache.ErrTooLargeForCache) is still reported as too large, not a
+// generic cache failure: the UI shows the same "too large" reason
+// whichever layer actually refused it.
+func TestFetchMedia_ReportsATooLargeFileTheCacheRefusedAfterDownloading(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile, FileName: "huge.bin"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	const limit = 1024
+	f.media.data = bytes.Repeat([]byte{0x42}, limit+1)
+	logger := &fakeLogger{}
+	commands, _ := app.New(app.Deps{
+		Store: f.store, Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), limit), Logger: logger,
+	})
+
+	_, err := commands.FetchMedia(ctx, "m1", false)
+
+	var mediaErr *app.MediaFetchError
+	if !errors.As(err, &mediaErr) || mediaErr.Reason != app.MediaTooLarge {
+		t.Fatalf("FetchMedia = %v, want a *MediaFetchError with reason %q", err, app.MediaTooLarge)
+	}
+
+	lines := logger.take()
+	if len(lines) != 1 || !strings.Contains(lines[0], "reason=too-large") {
+		t.Errorf("logged %v, want one line mentioning reason=too-large", lines)
 	}
 }

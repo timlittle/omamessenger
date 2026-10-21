@@ -226,7 +226,7 @@ func errorData[T any](err error) (T, bool) {
 // cares how the server reports that failure to the UI.
 type fakeMediaFetcher struct{ err error }
 
-func (m fakeMediaFetcher) FetchMedia(context.Context, domain.Conversation, string, string) error {
+func (m fakeMediaFetcher) FetchMedia(context.Context, domain.Conversation, string, string, bool) error {
 	return m.err
 }
 
@@ -236,8 +236,26 @@ func (m fakeMediaFetcher) FetchMedia(context.Context, domain.Conversation, strin
 type fakeMediaWriter struct{ content []byte }
 
 // FetchMedia writes w's content to path and reports no error.
-func (w fakeMediaWriter) FetchMedia(_ context.Context, _ domain.Conversation, _, path string) error {
+func (w fakeMediaWriter) FetchMedia(_ context.Context, _ domain.Conversation, _, path string, _ bool) error {
 	return os.WriteFile(path, w.content, 0o600)
+}
+
+// fakeMediaAutoRecorder writes a fixed byte to whatever path it is
+// asked to fill and records every auto value FetchMedia was called
+// with, for a test that confirms media.fetch's own auto param
+// actually reaches the connector.
+type fakeMediaAutoRecorder struct {
+	mu   sync.Mutex
+	auto []bool
+}
+
+// FetchMedia records auto and writes a single byte to path.
+func (w *fakeMediaAutoRecorder) FetchMedia(_ context.Context, _ domain.Conversation, _, path string, auto bool) error {
+	w.mu.Lock()
+	w.auto = append(w.auto, auto)
+	w.mu.Unlock()
+
+	return os.WriteFile(path, []byte("x"), 0o600)
 }
 
 // fakeHistory answers every LoadOlder with err, for a test that only

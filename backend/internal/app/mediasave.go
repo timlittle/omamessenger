@@ -31,7 +31,7 @@ func (c *Commands) SaveMedia(ctx context.Context, messageID string) (string, err
 		return "", err
 	}
 
-	src, err := c.FetchMedia(ctx, messageID)
+	src, err := c.FetchMedia(ctx, messageID, false)
 	if err != nil {
 		return "", err
 	}

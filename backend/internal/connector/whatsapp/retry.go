@@ -36,29 +36,9 @@ const mediaRetryTimeout = 30 * time.Second
 // decrypt failure stays a decrypt failure rather than being reported as
 // if the primary phone had been asked and said the media was gone.
 func (c *Connector) retryDownload(ctx context.Context, dev device, media *mediaStore, req fetchRequest, cause error) ([]byte, error) {
-	chat, err := jidFromRemoteID(req.conv.RemoteID)
-	if err != nil {
-		return nil, fmt.Errorf("whatsapp: media retry: %w", err)
-	}
-
-	key, found, err := media.messageKeyFor(ctx, req.conv.RemoteID, req.messageRemoteID)
-	if err != nil {
-		return nil, fmt.Errorf("whatsapp: media retry: %w", err)
-	}
-	if !found {
-		return nil, retryUnavailableErr(cause)
-	}
-
-	info := retryMessageInfo(dev, chat, key, req.messageRemoteID)
-	notif, err := c.requestMediaRetry(ctx, dev, info, req.ref.MediaKey)
+	ref, err := c.refreshRef(ctx, dev, media, req, cause)
 	if err != nil {
 		return nil, err
-	}
-
-	ref := req.ref
-	ref.DirectPath = notif.GetDirectPath()
-	if err := media.put(ctx, req.conv.RemoteID, req.messageRemoteID, ref); err != nil {
-		return nil, fmt.Errorf("whatsapp: media retry: %w", err)
 	}
 
 	data, err := downloadOnce(ctx, dev, ref)
@@ -73,6 +53,70 @@ func (c *Connector) retryDownload(ctx context.Context, dev device, media *mediaS
 
 	logDownloadFailed(err)
 	return nil, classifyDownloadErr(err)
+}
+
+// retryStreamedDownload is retryDownload's own streamed-to-file
+// counterpart (see fetch_stream.go's streamOrRetry), for a video, file
+// or voice note too large to hold in memory: the same primary-phone
+// retry, then one more bounded, deadline-aware streamed attempt at
+// req.path with the fresh reference.
+func (c *Connector) retryStreamedDownload(ctx context.Context, dev device, media *mediaStore, req fetchRequest, cause error) error {
+	ref, err := c.refreshRef(ctx, dev, media, req, cause)
+	if err != nil {
+		return err
+	}
+
+	err = streamOnce(ctx, dev, ref, req.path, req.auto)
+	if err == nil {
+		return nil
+	}
+
+	if recoverableStaleDigest(err, fileHasBytes(req.path)) {
+		logStaleDigestAccepted()
+		return nil
+	}
+
+	removeIfPresent(req.path)
+	logDownloadFailed(err)
+
+	return classifyDownloadErr(err)
+}
+
+// refreshRef asks the primary phone to re-upload req.ref's media and
+// returns the fresh reference it points the message's download at,
+// saving it the same way the original reference was (see
+// saveMediaRef). It reports domain.ErrMediaExpired when the phone says
+// the media is gone or when it never answers in time, or, when this
+// run never recorded the message's sender and so cannot even ask (see
+// keys.go), reports cause instead, classified the same way it would
+// have been without any retry attempted: see retryUnavailableErr.
+func (c *Connector) refreshRef(ctx context.Context, dev device, media *mediaStore, req fetchRequest, cause error) (mediaRef, error) {
+	chat, err := jidFromRemoteID(req.conv.RemoteID)
+	if err != nil {
+		return mediaRef{}, fmt.Errorf("whatsapp: media retry: %w", err)
+	}
+
+	key, found, err := media.messageKeyFor(ctx, req.conv.RemoteID, req.messageRemoteID)
+	if err != nil {
+		return mediaRef{}, fmt.Errorf("whatsapp: media retry: %w", err)
+	}
+	if !found {
+		return mediaRef{}, retryUnavailableErr(cause)
+	}
+
+	info := retryMessageInfo(dev, chat, key, req.messageRemoteID)
+	notif, err := c.requestMediaRetry(ctx, dev, info, req.ref.MediaKey)
+	if err != nil {
+		return mediaRef{}, err
+	}
+
+	ref := req.ref
+	ref.DirectPath = notif.GetDirectPath()
+	if err := media.put(ctx, req.conv.RemoteID, req.messageRemoteID, ref); err != nil {
+		return mediaRef{}, fmt.Errorf("whatsapp: media retry: %w", err)
+	}
+
+	return ref, nil
 }
 
 // retryUnavailableErr reports what retryDownload could not even attempt

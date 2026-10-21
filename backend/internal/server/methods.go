@@ -477,10 +477,21 @@ type mediaResult struct {
 	Path string `json:"path"`
 }
 
+// mediaFetchParams names the message whose media to fetch. Auto is
+// true for a fetch the UI made on its own, with no click from the
+// user: today, only an animated "GIF" video autoplaying as soon as its
+// bubble is shown (see docs/api.md). Omitted, it defaults to false, a
+// deliberate fetch, which every existing caller before this field
+// existed is still treated as.
+type mediaFetchParams struct {
+	MessageID string `json:"messageId"`
+	Auto      bool   `json:"auto,omitempty"`
+}
+
 // mediaFetch downloads a message's media, or finds it already cached.
-func mediaFetch(c *app.Commands) func(context.Context, retryParams) (any, error) {
-	return func(ctx context.Context, p retryParams) (any, error) {
-		path, err := c.FetchMedia(ctx, p.MessageID)
+func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, error) {
+	return func(ctx context.Context, p mediaFetchParams) (any, error) {
+		path, err := c.FetchMedia(ctx, p.MessageID, p.Auto)
 
 		return mediaResult{Path: path}, err
 	}

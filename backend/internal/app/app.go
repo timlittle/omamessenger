@@ -42,9 +42,10 @@ type HistoryLoader interface {
 }
 
 // MediaFetcher downloads a message's photo, video or file from its
-// service.
+// service. auto is true for a fetch the UI made on its own, with no
+// click from the user - see Commands.FetchMedia.
 type MediaFetcher interface {
-	FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error
+	FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string, auto bool) error
 }
 
 // MessageRefresher re-reports messages already stored, so the store can

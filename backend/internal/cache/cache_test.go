@@ -115,6 +115,47 @@ func TestFetch_DropsTheLeastRecentlyUsedOverTheLimit(t *testing.T) {
 	}
 }
 
+// TestFetch_RefusesAFileLargerThanTheCacheOnItsOwn confirms a single
+// fetch whose own bytes already exceed the cache's limit is refused
+// outright rather than kept: prune's rule of never dropping the file
+// it was just asked to keep means a file larger than the whole limit
+// could otherwise never be brought back under it (see
+// cache.ErrTooLargeForCache and docs/decisions.md).
+func TestFetch_RefusesAFileLargerThanTheCacheOnItsOwn(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	c := cache.New(dir, 25)
+	calls := 0
+
+	if _, err := c.Fetch(t.Context(), "huge", writeBytes(26, &calls)); !errors.Is(err, cache.ErrTooLargeForCache) {
+		t.Errorf("Fetch() = %v, want ErrTooLargeForCache", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "huge")); !os.IsNotExist(err) {
+		t.Error("the oversized file was left in the cache")
+	}
+}
+
+// TestFetch_StillServesAFileExactlyAtTheLimit confirms the oversized
+// check is strictly greater than the limit, not greater-or-equal, so a
+// file that exactly fills the cache is still served normally.
+func TestFetch_StillServesAFileExactlyAtTheLimit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	c := cache.New(dir, 25)
+	calls := 0
+
+	path, err := c.Fetch(t.Context(), "exact", writeBytes(25, &calls))
+	if err != nil {
+		t.Fatalf("Fetch() = %v, want a file exactly at the limit accepted", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("Stat(%q) = %v, want the file kept", path, err)
+	}
+}
+
 // TestAdopt_MovesTheFileInAndServesItWithoutFilling confirms a file
 // already on disk is moved into the cache under name, found afterwards
 // without the fill func ever running.

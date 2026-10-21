@@ -343,9 +343,10 @@ Item {
   // downloadMedia asks the helper for a message's media once, through
   // media (see MediaController): the photo viewer reuses this rather
   // than asking the helper itself, so there is one place that tracks an
-  // in-flight download.
+  // in-flight download. Always a deliberate fetch (auto false): the
+  // viewer only ever opens once the user asks to see something.
   function downloadMedia(id: string, report: bool, done: var): void {
-    media.downloadMedia(timeline, id, report, done);
+    media.downloadMedia(timeline, id, report, false, done);
   }
 
   // toggleVideo selects, deselects or pauses a message's video, through

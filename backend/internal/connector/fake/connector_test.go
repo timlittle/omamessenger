@@ -253,7 +253,7 @@ func TestFetchMedia_WritesTheScriptedPhoto(t *testing.T) {
 		}
 
 		path := filepath.Join(t.TempDir(), "photo.jpg")
-		if err := wa.FetchMedia(t.Context(), conversation("wa-personal", "wa:mum", domain.KindDirect), newest.RemoteID, path); err != nil {
+		if err := wa.FetchMedia(t.Context(), conversation("wa-personal", "wa:mum", domain.KindDirect), newest.RemoteID, path, false); err != nil {
 			t.Fatal(err)
 		}
 
@@ -323,7 +323,7 @@ func TestFetchMedia_WritesTheScriptedVoiceNote(t *testing.T) {
 		}
 
 		path := filepath.Join(t.TempDir(), "voice.ogg")
-		if err := wa.FetchMedia(t.Context(), conversation("wa-personal", "wa:dentist", domain.KindDirect), newest.RemoteID, path); err != nil {
+		if err := wa.FetchMedia(t.Context(), conversation("wa-personal", "wa:dentist", domain.KindDirect), newest.RemoteID, path, false); err != nil {
 			t.Fatal(err)
 		}
 
@@ -366,7 +366,7 @@ func TestFetchMedia_WritesRealOggThroughTheCachesTemporaryFile(t *testing.T) {
 
 		fill := cache.New(t.TempDir(), 1<<20)
 		path, err := fill.Fetch(t.Context(), "voice-message.ogg", func(ctx context.Context, fillPath string) error {
-			return wa.FetchMedia(ctx, conversation("wa-personal", "wa:dentist", domain.KindDirect), newest.RemoteID, fillPath)
+			return wa.FetchMedia(ctx, conversation("wa-personal", "wa:dentist", domain.KindDirect), newest.RemoteID, fillPath, false)
 		})
 		if err != nil {
 			t.Fatal(err)

@@ -22,6 +22,14 @@ const partSuffix = ".part"
 // ErrInvalidName reports a name that is not a plain file name.
 var ErrInvalidName = errors.New("cache: invalid file name")
 
+// ErrTooLargeForCache reports a file whose own size alone already
+// exceeds the cache's limit: Fetch refuses it rather than keeping it
+// around until nothing has it open, the simpler of the two safe
+// choices a cache with no reference counting of its own can make (see
+// docs/decisions.md). The file is removed before this is returned, so
+// a caller never sees a path for it.
+var ErrTooLargeForCache = errors.New("cache: file exceeds the cache limit")
+
 // Cache is a size-limited directory of downloaded files. Two fetches for
 // different names fill concurrently; two fetches for the same name share
 // one lock, so only one of them actually fills it.
@@ -96,7 +104,27 @@ func (c *Cache) Fetch(ctx context.Context, name string, fill func(ctx context.Co
 		return "", err
 	}
 
+	if err := c.rejectIfOversized(path); err != nil {
+		return "", err
+	}
+
 	return path, c.prune(name)
+}
+
+// rejectIfOversized removes path and reports ErrTooLargeForCache when
+// path's own size alone already exceeds the cache's limit: prune's own
+// rule of never dropping the file it was just asked to keep means such
+// a file could otherwise never be brought back under the limit.
+func (c *Cache) rejectIfOversized(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("cache: %w", err)
+	}
+	if info.Size() <= c.limit {
+		return nil
+	}
+
+	return errors.Join(ErrTooLargeForCache, removeIfPresent(path))
 }
 
 // Stats returns how many bytes the cache currently holds and the limit

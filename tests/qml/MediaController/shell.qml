@@ -66,13 +66,16 @@ ShellRoot {
     // own cooldown, so that check never depends on another one's timing,
     // and a fourth, never-clicked undownloaded video (v4) the prefetch
     // race check uses, so it never depends on any id another check has
-    // already fetched or cached.
+    // already fetched or cached, and a fifth, never-clicked undownloaded
+    // video (v5) the sending service marked animated, for the auto-fetch
+    // param check.
     property var initialMessages: [
       { id: "v1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 30, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
       { id: "v2", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 20, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v2.mp4" },
       { id: "f1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: 10, media: { kind: "file", fileName: "notes.pdf" }, mediaPath: "" },
       { id: "v3", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v3.mp4" },
-      { id: "v4", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 1, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" }
+      { id: "v4", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 1, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
+      { id: "v5", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 0, media: { kind: "video", width: 800, height: 600, duration: 5, animated: true }, mediaPath: "" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -80,11 +83,16 @@ ShellRoot {
     // in order, so a click that should have been suppressed shows up as
     // an extra entry rather than silently passing.
     property var fetchRequests: []
+    // fetchParams records the full params object of the most recent
+    // media.fetch call for each message id, so a check can confirm
+    // whether auto was actually sent.
+    property var fetchParams: ({})
 
     function request(method, params, callback) {
       if (method === "messages.list") { callback(null, { hasMore: false, messages: service.initialMessages }); return; }
       if (method === "media.fetch") {
         service.fetchRequests.push(params.messageId);
+        service.fetchParams[params.messageId] = params;
         service.pendingFetch[params.messageId] = callback;
         return;
       }
@@ -176,9 +184,43 @@ ShellRoot {
     if (!root.checkOpenMediaShowsAPlayableVideoInTheViewer()) return;
     if (!root.checkCopyMediaShowsAConfirmation()) return;
     if (!root.checkSaveMediaShowsWhereItWentWithHomeFolded()) return;
+    if (!root.checkFetchMediaSendsAutoForAnAnimatedVideo()) return;
+    if (!root.checkFetchMediaOmitsAutoForAnOrdinaryFetch()) return;
 
     console.log("PASS MediaController");
     Qt.exit(0);
+  }
+
+  // checkFetchMediaSendsAutoForAnAnimatedVideo verifies the silent
+  // fetch fetchMedia makes for a video the sending service marked
+  // animated (v5, autoplaying like a silent "GIF") sends media.fetch's
+  // auto param, so the helper applies its small, automatic-fetch size
+  // cap rather than the far larger one a deliberate click is trusted
+  // with (see media.fetch's auto param in docs/api.md).
+  function checkFetchMediaSendsAutoForAnAnimatedVideo(): bool {
+    controller.fetchMedia("v5");
+
+    const params = service.fetchParams["v5"];
+    if (!params || params.auto !== true)
+      return Check.fail("params = " + JSON.stringify(params) + ", want auto:true for an animated video's own silent fetch");
+
+    root.answerFetchSuccess("v5", "/tmp/v5.mp4");
+    return true;
+  }
+
+  // checkFetchMediaOmitsAutoForAnOrdinaryFetch verifies the same silent
+  // fetch for an ordinary file (f1, not a video the sender marked
+  // animated) never sends auto at all, the same as every call before
+  // media.fetch's auto param existed.
+  function checkFetchMediaOmitsAutoForAnOrdinaryFetch(): bool {
+    controller.fetchMedia("f1");
+
+    const params = service.fetchParams["f1"];
+    if (!params || params.auto)
+      return Check.fail("params = " + JSON.stringify(params) + ", want no auto flag for an ordinary, non-animated fetch");
+
+    root.answerFetchSuccess("f1", "/tmp/f1-notes.pdf");
+    return true;
   }
 
   // checkCopyMediaShowsAConfirmation verifies copying v2's already-

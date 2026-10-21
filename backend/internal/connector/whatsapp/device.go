@@ -120,6 +120,12 @@ type device interface {
 	// the reference it was saved with (see normalize_media.go).
 	downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error)
 
+	// downloadMediaToFile downloads and decrypts a message's attachment
+	// straight into file, never holding the whole plaintext in memory at
+	// once: the path a video, file or voice note large enough to need it
+	// takes instead of downloadMedia (see fetch.go).
+	downloadMediaToFile(ctx context.Context, ref mediaRef, file whatsmeow.File) error
+
 	// sendMediaRetryReceipt asks WhatsApp's primary phone to re-upload
 	// the media of the message info identifies, because its CDN link has
 	// aged out (see retry.go). The phone's answer arrives later as an

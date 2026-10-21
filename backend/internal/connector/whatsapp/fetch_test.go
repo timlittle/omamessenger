@@ -7,16 +7,15 @@ package whatsapp
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/proto/waMmsRetry"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
@@ -42,7 +41,7 @@ func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "out.pdf")
-	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err != nil {
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,7 +89,7 @@ func TestFetchMedia_SanitizesADownloadedPhotoStickerAndGIF(t *testing.T) {
 			}
 
 			path := filepath.Join(t.TempDir(), "out")
-			if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err != nil {
+			if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err != nil {
 				t.Fatalf("FetchMedia() = %v, want a sanitized file written", err)
 			}
 
@@ -125,7 +124,7 @@ func TestFetchMedia_RejectsAnUnsafeDownloadedPhoto(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "out.jpg")
-	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err == nil {
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err == nil {
 		t.Fatal("FetchMedia() = nil, want an error for unsafe image bytes")
 	}
 	if _, err := os.Stat(path); err == nil {
@@ -152,7 +151,7 @@ func TestFetchMedia_RefusesADeclaredSizeOverTheCap(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "out.jpg")
-	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err == nil {
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err == nil {
 		t.Fatal("FetchMedia() with an oversized declared size succeeded, want it refused")
 	}
 
@@ -181,7 +180,7 @@ func TestFetchMedia_RejectsADownloadLargerThanItsDeclaredSize(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "out")
-	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err == nil {
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err == nil {
 		t.Fatal("FetchMedia() with a download larger than its declared size succeeded, want it refused")
 	}
 	if _, err := os.Stat(path); err == nil {
@@ -207,7 +206,7 @@ func TestFetchMedia_DownloadsAnAudioReference(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "out.ogg")
-	if err := c.FetchMedia(t.Context(), directChat, "msg-voice", path); err != nil {
+	if err := c.FetchMedia(t.Context(), directChat, "msg-voice", path, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -240,7 +239,7 @@ func TestFetchMedia_ReportsDecryptFailureForAWornOutReference(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"))
+		err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"), false)
 		if !errors.Is(err, domain.ErrMediaDecryptFailed) {
 			t.Errorf("FetchMedia with %v = %v, want it to also report domain.ErrMediaDecryptFailed", want, err)
 		}
@@ -251,11 +250,14 @@ func TestFetchMedia_ReportsDecryptFailureForAWornOutReference(t *testing.T) {
 }
 
 // TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest confirms a
-// download that decrypted successfully, but no longer matches the
-// plaintext hash its message declared, is still written out: whatsmeow
-// already authenticated it with the media-key HMAC before running that
-// specific check (see recoverStaleDigest in fetch.go), and WhatsApp's
-// own apps accept a stale digest the same way.
+// streamed, non-image download (savedRef is mediaKindDocument - see
+// fetch_stream.go) that decrypted successfully, but no longer matches
+// the plaintext hash its message declared, is still written out:
+// whatsmeow already authenticated it with the media-key HMAC before
+// running that specific check (see recoverableStaleDigest in
+// fetch.go), and WhatsApp's own apps accept a stale digest the same
+// way. TestFetchMedia_AcceptsAPhotoThatOnlyFailsThePlaintextDigest
+// covers the same recovery for the in-memory image path.
 func TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest(t *testing.T) {
 	t.Parallel()
 
@@ -267,7 +269,7 @@ func TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "x")
-	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err != nil {
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err != nil {
 		t.Fatalf("FetchMedia = %v, want a stale plaintext digest to be accepted", err)
 	}
 
@@ -277,12 +279,43 @@ func TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest(t *testing.T) {
 	}
 }
 
+// TestFetchMedia_AcceptsAPhotoThatOnlyFailsThePlaintextDigest is
+// TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest's own
+// in-memory counterpart: a photo whose plaintext no longer matches its
+// declared hash is still sanitized and written, through
+// downloadOrRetry's own recoverStaleDigest, with no retry needed at
+// all.
+func TestFetchMedia_AcceptsAPhotoThatOnlyFailsThePlaintextDigest(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	dev.downloadData = tinyJPEG(t)
+	dev.downloadErr = whatsmeow.ErrInvalidMediaSHA256
+	ref := mediaRef{Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"), FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/jpeg"}
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "out.jpg")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err != nil {
+		t.Fatalf("FetchMedia = %v, want a stale plaintext digest to be accepted", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read downloaded photo: %v", err)
+	}
+	if _, err := jpegDecodeConfig(got); err != nil {
+		t.Errorf("downloaded photo does not decode: %v", err)
+	}
+}
+
 func TestFetchMedia_ReportsNotFoundForAnUnsavedMessage(t *testing.T) {
 	t.Parallel()
 
 	dev, _, c, _ := connectedMediaFixture(t)
 
-	err := c.FetchMedia(t.Context(), directChat, "missing", filepath.Join(t.TempDir(), "x"))
+	err := c.FetchMedia(t.Context(), directChat, "missing", filepath.Join(t.TempDir(), "x"), false)
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("FetchMedia = %v, want domain.ErrNotFound", err)
 	}
@@ -296,10 +329,62 @@ func TestFetchMedia_FailsWhenNotConnected(t *testing.T) {
 
 	c := New(domain.Account{ID: "wa-1"}, t.TempDir())
 
-	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"))
+	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"), false)
 	if !errors.Is(err, errNotConnected) {
 		t.Errorf("FetchMedia = %v, want errNotConnected", err)
 	}
+}
+
+// TestFetchMedia_RetriesAnExpiredLinkForAPhotoThroughThePhone covers
+// retryDownload's own in-memory path - a photo, sticker or real GIF
+// file, which goes through imagesafe rather than streaming to disk
+// (see fetch.go's fetchImage) - the image-kind counterpart of
+// retry_test.go's own TestFetchMedia_RetriesAnExpiredLinkThroughThePhone,
+// which only exercises a document's own streamed retry
+// (retryStreamedDownload).
+func TestFetchMedia_RetriesAnExpiredLinkForAPhotoThroughThePhone(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		key := testMediaKey(2)
+		dev, sink, c, media := connectedMediaFixture(t)
+		dev.downloadErrPaths = map[string]error{"/old": whatsmeow.ErrMediaDownloadFailedWith410}
+		dev.downloadData = tinyJPEG(t)
+		unregister := c.handleEvents(t.Context(), dev, media, sink)
+		defer unregister()
+
+		if err := media.putMessageKey(t.Context(), directChat.RemoteID, "msg-photo", messageKey{senderID: remoteID(directPeer)}); err != nil {
+			t.Fatal(err)
+		}
+		ref := mediaRef{Kind: mediaKindImage, DirectPath: "/old", MediaKey: key, FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), Mimetype: "image/jpeg"}
+		if err := media.put(t.Context(), directChat.RemoteID, "msg-photo", ref); err != nil {
+			t.Fatal(err)
+		}
+
+		path := filepath.Join(t.TempDir(), "out.jpg")
+		done := make(chan error, 1)
+		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-photo", path, false) }()
+		synctest.Wait()
+
+		if len(dev.mediaRetryCalls) != 1 {
+			t.Fatalf("mediaRetryCalls = %d, want exactly one retry receipt sent", len(dev.mediaRetryCalls))
+		}
+
+		dev.fireEvent(mediaRetryEvent(t, key, "msg-photo", &waMmsRetry.MediaRetryNotification{
+			Result: waMmsRetry.MediaRetryNotification_SUCCESS.Enum(), DirectPath: strPtr("/new"),
+		}))
+		synctest.Wait()
+
+		if err := <-done; err != nil {
+			t.Fatalf("FetchMedia = %v, want it to succeed once the phone answers", err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read downloaded photo: %v", err)
+		}
+		if _, err := jpegDecodeConfig(got); err != nil {
+			t.Errorf("downloaded photo does not decode: %v", err)
+		}
+	})
 }
 
 func TestFetchMedia_WrapsADownloadError(t *testing.T) {
@@ -311,37 +396,10 @@ func TestFetchMedia_WrapsADownloadError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"))
+	err := c.FetchMedia(t.Context(), directChat, "msg-1", filepath.Join(t.TempDir(), "x"), false)
 	if !errors.Is(err, dev.downloadErr) {
 		t.Errorf("FetchMedia = %v, want it to wrap the device's error", err)
 	}
-}
-
-func TestFetchMedia_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dev, _, c, media := connectedMediaFixture(t)
-		dev.downloadBlocks = true
-		defer func() { _ = media.close() }() // stop its connection-opener goroutine before the bubble ends
-		if err := media.put(t.Context(), directChat.RemoteID, "msg-1", savedRef()); err != nil {
-			t.Fatal(err)
-		}
-
-		done := make(chan error, 1)
-		path := filepath.Join(t.TempDir(), "x")
-		go func() { done <- c.FetchMedia(t.Context(), directChat, "msg-1", path) }()
-
-		time.Sleep(fetchTimeout)
-		synctest.Wait()
-
-		select {
-		case err := <-done:
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Errorf("FetchMedia = %v, want context.DeadlineExceeded after the fetch timeout", err)
-			}
-		default:
-			t.Fatal("FetchMedia did not return once its timeout elapsed")
-		}
-	})
 }
 
 // savedRef is a document reference complete enough to pass media's

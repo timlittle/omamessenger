@@ -25,8 +25,10 @@ var errNoFile = errors.New("telegram: the message has nothing to download")
 // outright before FetchMedia asks Telegram for anything, or, for a
 // stream whose declared size undersold what Telegram's CDN actually
 // sends, as soon as downloadImage notices. Either way this is a
-// permanent failure, never retried.
-var errMediaTooLarge = errors.New("telegram: media exceeds the size limit")
+// permanent failure, never retried. It wraps connector.ErrMediaTooLarge
+// so a video or other document refused the same way for the same
+// reason (see download) is reported under the one shared category.
+var errMediaTooLarge = fmt.Errorf("telegram: %w", connector.ErrMediaTooLarge)
 
 // fetchTimeout bounds how long one image download attempt waits for
 // Telegram's servers, so a stalled download cannot leave a caller
@@ -35,8 +37,13 @@ const fetchTimeout = 2 * time.Minute
 
 // FetchMedia downloads the photo or file of the message Telegram numbers
 // messageRemoteID to path. A message's file reference expires, so the
-// message is read again for a fresh one first.
-func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error {
+// message is read again for a fresh one first. auto is true for a
+// fetch the UI made on its own, with no click from the user - today,
+// only an animated "GIF" video autoplaying as soon as it is shown -
+// which download bounds to connector.AutoFetchMaxBytes rather than the
+// far larger limit a deliberate click is trusted with (see
+// connector.MaxBytes).
+func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string, auto bool) error {
 	api, _, err := c.session()
 	if err != nil {
 		return err
@@ -57,12 +64,14 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return err
 	}
 
+	declared, known := declaredMediaSize(msg.Media)
+
 	profile, ok := imageProfile(msg.Media)
 	if !ok {
-		return download(ctx, api, location, path)
+		return download(ctx, api, fileDownload{location: location, path: path, auto: auto, declaredSize: declared})
 	}
 
-	if size, known := declaredMediaSize(msg.Media); known && size > profile.MaxInputLen {
+	if known && declared > profile.MaxInputLen {
 		return errMediaTooLarge
 	}
 
@@ -195,16 +204,80 @@ func fileLocation(m tg.MessageMediaClass) (tg.InputFileLocationClass, error) {
 	return nil, errNoFile
 }
 
-// download writes a file from Telegram to path, readable only by the user.
-func download(ctx context.Context, api *tg.Client, location tg.InputFileLocationClass, path string) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+// fileDownload bundles what download needs about the video, file or
+// voice note it is about to fetch, keeping download itself within the
+// project's own argument limit: where Telegram keeps it, where to
+// write it, whether this is an automatic fetch (see connector.MaxBytes)
+// and its sender-declared size, 0 when the message carried none.
+type fileDownload struct {
+	location     tg.InputFileLocationClass
+	path         string
+	auto         bool
+	declaredSize int64
+}
+
+// download writes fd's file from Telegram to fd.path, readable only by
+// the user, refusing outright a declared size already over the limit
+// fd.auto selects (see connector.MaxBytes), and otherwise capping the
+// bytes actually received at that declared size plus a small tolerance
+// (see connector.ByteCap): the same discipline downloadImage already
+// gives a photo, sticker or GIF, just applied to a format Qt's own
+// image decoders never touch, so it streams straight to disk rather
+// than buffering in memory first.
+func download(ctx context.Context, api *tg.Client, fd fileDownload) error {
+	max := connector.MaxBytes(fd.auto)
+	if fd.declaredSize > max {
+		return errMediaTooLarge
+	}
+
+	downloadCtx, onWrite, stop := downloadDeadline(ctx, fd.auto)
+	defer stop()
+
+	f, err := os.OpenFile(fd.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("telegram: fetch media: %w", err)
 	}
 
-	if _, err := downloader.NewDownloader().Download(api, location).Stream(ctx, f); err != nil {
-		return errors.Join(fmt.Errorf("telegram: fetch media: %w", err), f.Close())
+	w := &connector.BoundedWriter{W: f, Max: connector.ByteCap(fd.declaredSize, max), OnWrite: onWrite}
+	if _, err := downloader.NewDownloader().Download(api, fd.location).Stream(downloadCtx, w); err != nil {
+		return failedDownload(fd.path, f, err)
 	}
 
 	return f.Close()
+}
+
+// failedDownload closes f and removes the partial bytes a failed
+// stream already wrote to path, so a refused or aborted download never
+// leaves a file behind even for a caller that talks to this connector
+// directly rather than through the cache's own cleanup (see
+// cache.Cache.Fetch, which would otherwise be the only thing removing
+// it). The remove is best effort: if it fails there is nothing more
+// useful to do than return the download's own error, which is what the
+// caller already needs to see.
+func failedDownload(path string, f *os.File, streamErr error) error {
+	closeErr := f.Close()
+	_ = os.Remove(path) // best effort cleanup; streamErr is the error that matters here
+
+	if errors.Is(streamErr, connector.ErrMediaTooLarge) {
+		return errors.Join(errMediaTooLarge, closeErr)
+	}
+
+	return errors.Join(fmt.Errorf("telegram: fetch media: %w", streamErr), closeErr)
+}
+
+// downloadDeadline bounds one download attempt: the same flat
+// fetchTimeout every small, automatic fetch already used, since
+// AutoFetchMaxBytes keeps those quick regardless, or an idle timeout
+// with a longer absolute ceiling for a user-requested file large
+// enough to need one - a slow but steadily arriving transfer should
+// not be cut off just because it takes longer than a small file would,
+// while a connection that has actually stalled is still caught
+// quickly (see connector.IdleContext).
+func downloadDeadline(ctx context.Context, auto bool) (downloadCtx context.Context, onWrite func(), stop func()) {
+	if auto {
+		downloadCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
+		return downloadCtx, func() {}, cancel
+	}
+
+	return connector.IdleContext(ctx, connector.IdleTimeout, connector.AbsoluteCeiling)
 }

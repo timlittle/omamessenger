@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/timlittle/omamessenger/backend/internal/cache"
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -28,6 +30,7 @@ const (
 	MediaNotFound       MediaFetchReason = "not-found"
 	MediaExpired        MediaFetchReason = "expired"
 	MediaDecryptFailed  MediaFetchReason = "decrypt"
+	MediaTooLarge       MediaFetchReason = "too-large"
 	MediaCacheFailed    MediaFetchReason = "cache"
 	MediaTimedOut       MediaFetchReason = "timeout"
 	MediaDownloadFailed MediaFetchReason = "download"
@@ -58,10 +61,15 @@ func (e *MediaFetchError) Unwrap() error {
 // note. An outgoing message's own attachment is already on this
 // machine, so its local copy is returned at once, with no remote id
 // needed; anything else is downloaded from the service the first time,
-// then kept in the media cache. A download failure is always logged
-// with its safe reason category and returned as a *MediaFetchError, so
-// nothing fails silently (see docs/decisions.md).
-func (c *Commands) FetchMedia(ctx context.Context, messageID string) (string, error) {
+// then kept in the media cache. auto is true for a fetch the UI made on
+// its own, with no click from the user - today, only an animated "GIF"
+// video autoplaying as soon as it is shown - which every connector
+// bounds to a far smaller size than a deliberate click is trusted
+// with (see connector.MaxBytes); SaveMedia, always a deliberate action,
+// passes false. A download failure is always logged with its safe
+// reason category and returned as a *MediaFetchError, so nothing fails
+// silently (see docs/decisions.md).
+func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto bool) (string, error) {
 	if strings.TrimSpace(messageID) == "" {
 		return "", fmt.Errorf("%w: messageId is required", ErrInvalidInput)
 	}
@@ -88,34 +96,41 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string) (string, er
 		return "", err
 	}
 
-	return c.download(ctx, conv, m)
+	return c.download(ctx, conv, m, auto)
 }
 
 // download runs the cache-filling fetch for m and classifies a failure,
 // logging it and wrapping it as a *MediaFetchError before it is
 // returned. connectorErr, captured from the fill closure, is what tells
-// a cache failure (the closure never even ran) apart from one the
-// connector itself reported.
-func (c *Commands) download(ctx context.Context, conv domain.Conversation, m domain.Message) (string, error) {
+// a cache failure (the closure never even ran, or the cache itself
+// refused the result afterwards - see cache.ErrTooLargeForCache) apart
+// from one the connector itself reported.
+func (c *Commands) download(ctx context.Context, conv domain.Conversation, m domain.Message, auto bool) (string, error) {
 	var connectorErr error
 	path, err := c.cache.Fetch(ctx, mediaFileName(m), func(ctx context.Context, path string) error {
-		connectorErr = c.media.FetchMedia(ctx, conv, m.RemoteID, path)
+		connectorErr = c.media.FetchMedia(ctx, conv, m.RemoteID, path, auto)
 		return connectorErr
 	})
 	if err == nil {
 		return path, nil
 	}
 
-	reason := fetchFailureReason(connectorErr)
+	reason := fetchFailureReason(err, connectorErr)
 	c.logFetchFailure(conv.Service, m.Media.Kind, reason)
 
 	return "", &MediaFetchError{Reason: reason, err: err}
 }
 
-// fetchFailureReason classifies a media download failure from the
-// connector error the fill closure in download saw, or nil when the
-// cache itself failed before or after calling the connector at all.
-func fetchFailureReason(connectorErr error) MediaFetchReason {
+// fetchFailureReason classifies a media download failure: err is what
+// cache.Fetch itself returned, which also catches a result the cache
+// refused after a successful download (too large for its own limit);
+// connectorErr is what the fill closure in download saw, or nil when
+// the cache failed before ever calling the connector at all.
+func fetchFailureReason(err, connectorErr error) MediaFetchReason {
+	if errors.Is(err, cache.ErrTooLargeForCache) {
+		return MediaTooLarge
+	}
+
 	switch {
 	case connectorErr == nil:
 		return MediaCacheFailed
@@ -125,6 +140,8 @@ func fetchFailureReason(connectorErr error) MediaFetchReason {
 		return MediaExpired
 	case errors.Is(connectorErr, domain.ErrMediaDecryptFailed):
 		return MediaDecryptFailed
+	case errors.Is(connectorErr, connector.ErrMediaTooLarge):
+		return MediaTooLarge
 	case errors.Is(connectorErr, context.DeadlineExceeded), errors.Is(connectorErr, context.Canceled):
 		return MediaTimedOut
 	default:

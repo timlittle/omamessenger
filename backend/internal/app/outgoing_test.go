@@ -118,7 +118,7 @@ func TestOutgoingStatus_MovesASentPhotoIntoTheCacheSoItStillDisplays(t *testing.
 		t.Fatalf("outgoing copy after confirmed sent = %v, want it removed", err)
 	}
 
-	got, err := f.commands.FetchMedia(ctx, sent.ID)
+	got, err := f.commands.FetchMedia(ctx, sent.ID, false)
 	if err != nil {
 		t.Fatalf("FetchMedia() error = %v", err)
 	}
@@ -219,7 +219,7 @@ func assertEveryPhotoRecoverable(t *testing.T, f *fixture, sent []domain.Message
 	t.Helper()
 
 	for i, m := range sent {
-		path, err := f.commands.FetchMedia(t.Context(), m.ID)
+		path, err := f.commands.FetchMedia(t.Context(), m.ID, false)
 		if err != nil {
 			t.Fatalf("FetchMedia(%d) error = %v", i, err)
 		}

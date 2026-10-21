@@ -306,7 +306,7 @@ func TestScenario_ExpiredMediaSurvivesRestart(t *testing.T) {
 
 		path := filepath.Join(t.TempDir(), "out")
 		done := make(chan error, 1)
-		go func() { done <- c2.FetchMedia(t.Context(), directChat, "msg-1", path) }()
+		go func() { done <- c2.FetchMedia(t.Context(), directChat, "msg-1", path, false) }()
 		synctest.Wait()
 
 		if len(dev.mediaRetryCalls) != 1 {

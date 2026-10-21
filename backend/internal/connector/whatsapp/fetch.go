@@ -21,28 +21,41 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// fetchTimeout bounds how long one download attempt waits for
+// fetchTimeout bounds how long one small, in-memory download attempt -
+// a photo, sticker or real GIF file, or any automatic fetch - waits for
 // WhatsApp's media servers, so a stalled download cannot leave a
-// caller waiting forever.
+// caller waiting forever. A user-requested video or file instead
+// streams to disk under connector.IdleTimeout and
+// connector.AbsoluteCeiling (see fetch_stream.go), since it may
+// legitimately take far longer than this to arrive in full.
 const fetchTimeout = 2 * time.Minute
 
-// errMediaTooLarge reports a photo, sticker or GIF document whose
-// sender-declared FileLength is already larger than the image
-// profile's own input cap. whatsmeow's DownloadMediaWithPath returns a
-// file in one piece, with no way to cap it mid-stream the way
-// Telegram's own chunked downloader can (see telegram/fetch.go), so
-// this is the one check this connector can make: refused before any
-// bytes are downloaded, and never retried.
-var errMediaTooLarge = errors.New("whatsapp: declared media size exceeds the limit")
+// errMediaTooLarge reports a download refused because its declared or
+// actual size exceeds the limit that applies to it (see
+// connector.ErrMediaTooLarge, which this wraps so every connector's
+// too-large fetch is reported under the one shared category): a photo,
+// sticker or GIF document whose sender-declared FileLength already
+// exceeds the image profile's own input cap, checked before any bytes
+// are downloaded since whatsmeow's in-memory DownloadMediaWithPath
+// returns a file in one piece with no way to cap it mid-stream; or a
+// video, file or voice note whose declared or actual size exceeds
+// connector.MaxBytes, checked and bounded the same way Telegram's own
+// chunked downloader is (see fetch_stream.go). Either way this is a
+// permanent failure, never retried.
+var errMediaTooLarge = fmt.Errorf("whatsapp: %w", connector.ErrMediaTooLarge)
 
-// fetchRequest bundles the conversation, message id and saved
-// reference one FetchMedia call acts on, so passing all three through
-// downloadOrRetry and retryDownload does not grow either function's
-// own argument list every time one more of them is needed.
+// fetchRequest bundles everything one FetchMedia call acts on - the
+// conversation, message id, saved reference, destination path and
+// whether this is an automatic fetch - so passing all of it through
+// downloadOrRetry, retryDownload and the streamed path's own
+// equivalents (see fetch_stream.go) does not grow any one function's
+// own argument list every time another of them needs it.
 type fetchRequest struct {
 	conv            domain.Conversation
 	messageRemoteID string
 	ref             mediaRef
+	path            string
+	auto            bool
 }
 
 // FetchMedia downloads and decrypts the photo, video, voice note or
@@ -51,7 +64,14 @@ type fetchRequest struct {
 // which the UI already shows as "photo unavailable"; a link WhatsApp's
 // CDN no longer recognises is retried once through the primary phone
 // (see retry.go) before failing the same way, as domain.ErrMediaExpired.
-func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string) error {
+// auto is true for a fetch the UI made on its own, with no click from
+// the user - today, only an animated "GIF" video autoplaying as soon as
+// it is shown - which a video, file or voice note bounds to
+// connector.AutoFetchMaxBytes rather than the far larger limit a
+// deliberate click is trusted with (see connector.MaxBytes); it makes
+// no difference to a photo, sticker or real GIF file, which is already
+// bounded by its own, stricter imagesafe profile regardless.
+func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string, auto bool) error {
 	dev, _, err := c.session()
 	if err != nil {
 		return err
@@ -70,17 +90,31 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return fmt.Errorf("whatsapp: fetch media: %w", domain.ErrNotFound)
 	}
 
-	if oversizedImage(ref) {
+	req := fetchRequest{conv: conv, messageRemoteID: messageRemoteID, ref: ref, path: path, auto: auto}
+
+	if _, isImage := imageProfile(ref); isImage {
+		return c.fetchImage(ctx, dev, media, req)
+	}
+
+	return c.fetchFile(ctx, dev, media, req)
+}
+
+// fetchImage downloads a photo, sticker or real GIF file fully into
+// memory and writes it through imagesafe's sanitizer: unaffected by
+// req.auto, since these kinds are already bounded by their own,
+// stricter profile (see oversizedImage).
+func (c *Connector) fetchImage(ctx context.Context, dev device, media *mediaStore, req fetchRequest) error {
+	if oversizedImage(req.ref) {
 		return fmt.Errorf("whatsapp: fetch media: %w", errMediaTooLarge)
 	}
 
-	req := fetchRequest{conv: conv, messageRemoteID: messageRemoteID, ref: ref}
 	data, err := c.downloadOrRetry(ctx, dev, media, req)
 	if err != nil {
 		return fmt.Errorf("whatsapp: fetch media: %w", err)
 	}
 
-	if err := saveFetchedMedia(path, data, ref); err != nil {
+	profile, _ := imageProfile(req.ref)
+	if err := connector.SaveImageMedia(req.path, data, profile); err != nil {
 		return fmt.Errorf("whatsapp: fetch media: %w", err)
 	}
 
@@ -90,7 +124,7 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 // oversizedImage reports whether ref is a photo, sticker or GIF
 // document whose own declared FileLength is already larger than the
 // cap the matching imagesafe.Profile would check once downloaded:
-// checked before FetchMedia asks whatsmeow to download anything at
+// checked before fetchImage asks whatsmeow to download anything at
 // all, since there is no way to cap that download mid-stream (see
 // errMediaTooLarge). A kind imageProfile does not cover at all, or
 // one that declares no length, is never flagged here: the actual
@@ -100,18 +134,6 @@ func oversizedImage(ref mediaRef) bool {
 	profile, ok := imageProfile(ref)
 
 	return ok && ref.FileLength > 0 && int64(ref.FileLength) > profile.MaxInputLen
-}
-
-// saveFetchedMedia writes data to path, through the sanitizer every
-// photo, sticker and GIF must pass before the UI can load it into a
-// QML Image or AnimatedImage, or unchanged for every other kind,
-// which the UI never shows that way.
-func saveFetchedMedia(path string, data []byte, ref mediaRef) error {
-	if profile, ok := imageProfile(ref); ok {
-		return connector.SaveImageMedia(path, data, profile)
-	}
-
-	return connector.SaveMedia(path, data)
 }
 
 // downloadOrRetry downloads ref once, and, when WhatsApp's CDN reports
@@ -187,22 +209,35 @@ func classifyDownloadErr(err error) error {
 	return err
 }
 
-// recoverStaleDigest reports whether a download that failed only
-// because the file no longer matches the plaintext hash its message
-// declared is safe to use anyway: whatsmeow sets data to the decrypted
-// bytes before running that specific check (see its downloadAndDecrypt),
-// so by the time it fails the media-key HMAC has already authenticated
-// the ciphertext against this message's own key. WhatsApp's media retry
-// can answer with a file that was re-encoded when the phone re-uploaded
-// it, so its plaintext legitimately no longer matches the hash the
-// original message declared; WhatsApp's own apps accept the file
-// anyway, so this connector does too (see docs/decisions.md). Any other
-// decrypt failure never reaches this far with data at all: ok is false,
-// and the caller's own classifyDownloadErr still reports it.
+// recoverStaleDigest reports whether an in-memory download that failed
+// only because the file no longer matches the plaintext hash its
+// message declared is safe to use anyway: whatsmeow sets data to the
+// decrypted bytes before running that specific check (see its
+// downloadAndDecrypt), so by the time it fails the media-key HMAC has
+// already authenticated the ciphertext against this message's own
+// key. See recoverableStaleDigest for why this is safe to accept, and
+// fetch_stream.go's own use of it for the streamed-to-file path, where
+// the already-decrypted bytes are the file on disk rather than data.
 func recoverStaleDigest(data []byte, err error) ([]byte, bool) {
-	if len(data) == 0 || !errors.Is(err, whatsmeow.ErrInvalidMediaSHA256) {
+	if !recoverableStaleDigest(err, len(data) > 0) {
 		return nil, false
 	}
 
 	return data, true
+}
+
+// recoverableStaleDigest reports whether a download that failed with
+// whatsmeow.ErrInvalidMediaSHA256 - and nothing else - still has
+// already-decrypted, HMAC-authenticated bytes sitting somewhere safe to
+// use: hasBytes is len(data) > 0 for the in-memory path, or the file
+// written to disk being non-empty for the streamed one. WhatsApp's
+// media retry can answer with a file that was re-encoded when the
+// phone re-uploaded it, so its plaintext legitimately no longer
+// matches the hash the original message declared; WhatsApp's own apps
+// accept the file anyway, so this connector does too (see
+// docs/decisions.md). Any other decrypt failure never reaches this far
+// with bytes at all: the caller's own classifyDownloadErr still
+// reports it.
+func recoverableStaleDigest(err error, hasBytes bool) bool {
+	return hasBytes && errors.Is(err, whatsmeow.ErrInvalidMediaSHA256)
 }

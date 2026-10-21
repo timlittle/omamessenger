@@ -458,7 +458,7 @@ func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
 		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
 		stopManager(t, cancel, m)
 
-		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "tg"}, "40", "/tmp/x.part"); err != nil {
+		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "tg"}, "40", "/tmp/x.part", false); err != nil {
 			t.Fatal(err)
 		}
 
@@ -466,11 +466,11 @@ func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
 			t.Errorf("fetched %v", tg.fetched)
 		}
 
-		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "plain"}, "40", "/tmp/x"); !errors.Is(err, connector.ErrNoMedia) {
+		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "plain"}, "40", "/tmp/x", false); !errors.Is(err, connector.ErrNoMedia) {
 			t.Errorf("FetchMedia from a connector without media = %v, want ErrNoMedia", err)
 		}
 
-		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "nobody"}, "40", "/tmp/x"); !errors.Is(err, connector.ErrNoConnector) {
+		if err := m.FetchMedia(ctx, domain.Conversation{AccountID: "nobody"}, "40", "/tmp/x", false); !errors.Is(err, connector.ErrNoConnector) {
 			t.Errorf("FetchMedia for an unknown account = %v", err)
 		}
 	})

@@ -163,6 +163,45 @@ func TestMediaFetch_ReportsTheSafeReasonInItsErrorData(t *testing.T) {
 	}
 }
 
+// TestMediaFetch_PassesAutoThroughToTheConnector confirms media.fetch's
+// optional auto param reaches app.Commands.FetchMedia and from there the
+// connector, defaulting to false when the UI omits it, so an existing
+// caller from before this field existed is still treated as a
+// deliberate fetch.
+func TestMediaFetch_PassesAutoThroughToTheConnector(t *testing.T) {
+	t.Parallel()
+
+	media := &fakeMediaAutoRecorder{}
+	s := connectWithMedia(t, media, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo, Animated: true},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := call[any](t, s, "media.fetch", map[string]any{"messageId": "m1", "auto": true}); err != nil {
+		t.Fatalf("media.fetch(auto=true) = %v", err)
+	}
+
+	msg2 := domain.Message{
+		ID: "m2", ConversationID: "chat", RemoteID: "r-2", Text: "[Video]", Created: 2,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg2); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := call[any](t, s, "media.fetch", map[string]any{"messageId": "m2"}); err != nil {
+		t.Fatalf("media.fetch(no auto) = %v", err)
+	}
+
+	if want := []bool{true, false}; !slices.Equal(media.auto, want) {
+		t.Errorf("auto values seen by the connector = %v, want %v", media.auto, want)
+	}
+}
+
 func TestServer_WaitReturnsWhenTheUIDisconnects(t *testing.T) {
 	t.Parallel()
 
