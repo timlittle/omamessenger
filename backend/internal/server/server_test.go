@@ -204,6 +204,50 @@ func TestMediaFetch_PassesAutoThroughToTheConnector(t *testing.T) {
 	}
 }
 
+// TestMediaFetch_ReportsPlayable confirms media.fetch's result
+// carries the helper's own verdict on whether a downloaded video's
+// container and stream headers are safe to decode in place (see
+// docs/api.md): true for one videosafe actually accepts, false for
+// one it does not, each reached only through app.Commands, never
+// recomputed here.
+func TestMediaFetch_ReportsPlayable(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		content []byte
+		want    bool
+	}{
+		"a well-formed video is playable":      {onePlayableMP4(), true},
+		"an unrecognized file is not playable": {[]byte("not a video at all"), false},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s := connectWithMedia(t, fakeMediaWriter{content: tt.content}, cache.New(t.TempDir(), 1<<20))
+			msg := domain.Message{
+				ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Video]", Created: 1,
+				Media: &domain.Media{Kind: domain.MediaVideo},
+			}
+			if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+				t.Fatal(err)
+			}
+
+			result, err := call[struct {
+				Path     string `json:"path"`
+				Playable bool   `json:"playable"`
+			}](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+			if err != nil {
+				t.Fatalf("media.fetch = %v", err)
+			}
+			if result.Playable != tt.want {
+				t.Errorf("playable = %t, want %t", result.Playable, tt.want)
+			}
+		})
+	}
+}
+
 // TestMediaFetch_ReportsRiskyForActiveContent confirms media.fetch's
 // additive risky field names a genuine web page as content that must
 // never reach xdg-open unconfirmed, sniffed from the downloaded bytes

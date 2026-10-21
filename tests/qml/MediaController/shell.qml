@@ -73,8 +73,11 @@ ShellRoot {
     // and a fourth, never-clicked undownloaded video (v4) the prefetch
     // race check uses, so it never depends on any id another check has
     // already fetched or cached, and a fifth, never-clicked undownloaded
-    // video (v5) the sending service marked animated, for the auto-fetch
-    // param check.
+    // video (v5) the sending service marked animated, for the check that
+    // fetchMedia never sends media.fetch's auto param for one any more.
+    // v6 and v7, both never-clicked and undownloaded, are for the
+    // toggleVideo checks below: one media.fetch answers unplayable, the
+    // other playable.
     property var initialMessages: [
       { id: "v1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 30, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
       { id: "v2", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 20, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v2.mp4" },
@@ -82,10 +85,12 @@ ShellRoot {
       { id: "v3", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v3.mp4" },
       { id: "v4", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 1, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
       { id: "v5", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 0, media: { kind: "video", width: 800, height: 600, duration: 5, animated: true }, mediaPath: "" },
+      { id: "v6", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: -1, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
+      { id: "v7", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: -2, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
       // r1 is a never-clicked undownloaded file, for the risky-open
       // question check, which answers its media.fetch itself rather
       // than reusing another check's own fixture.
-      { id: "r1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -1, media: { kind: "file", fileName: "invoice.html" }, mediaPath: "" }
+      { id: "r1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -3, media: { kind: "file", fileName: "invoice.html" }, mediaPath: "" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -134,6 +139,18 @@ ShellRoot {
   QtObject {
     id: fakeVideoController
     property bool available: true
+    property string playingId: ""
+    // toggleCalls records every id toggleVideo actually selected for
+    // in-window playback, so checkToggleVideoGatesOnPlayable can tell
+    // a video the helper validated apart from one it refused.
+    property var toggleCalls: []
+
+    function toggle(id) {
+      fakeVideoController.toggleCalls.push(id);
+      fakeVideoController.playingId = fakeVideoController.playingId === id ? "" : id;
+    }
+    function select(id) { fakeVideoController.playingId = id; }
+    function deselect(id) { if (fakeVideoController.playingId === id) fakeVideoController.playingId = ""; }
   }
 
   // viewer is wired up only for that one check: every other check above
@@ -167,11 +184,12 @@ ShellRoot {
     callback(error, null);
   }
 
-  // answerFetchSuccess resolves a held media.fetch call with path.
-  function answerFetchSuccess(id, path) {
+  // answerFetchSuccess resolves a held media.fetch call with path and,
+  // for a check that cares, the helper's own playable verdict.
+  function answerFetchSuccess(id, path, playable) {
     const callback = service.pendingFetch[id];
     delete service.pendingFetch[id];
-    callback(null, { path: path });
+    callback(null, { path: path, playable: !!playable });
   }
 
   // answerFetchSuccessRisky resolves a held media.fetch call with path,
@@ -203,12 +221,36 @@ ShellRoot {
     if (!root.checkOpenMediaShowsAPlayableVideoInTheViewer()) return;
     if (!root.checkCopyMediaShowsAConfirmation()) return;
     if (!root.checkSaveMediaShowsWhereItWentWithHomeFolded()) return;
-    if (!root.checkFetchMediaSendsAutoForAnAnimatedVideo()) return;
-    if (!root.checkFetchMediaOmitsAutoForAnOrdinaryFetch()) return;
+    if (!root.checkFetchMediaNeverSendsAutoAnyMore()) return;
+    if (!root.checkToggleVideoGatesOnPlayable()) return;
     if (!root.checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer()) return;
 
     console.log("PASS MediaController");
     Qt.exit(0);
+  }
+
+  // checkToggleVideoGatesOnPlayable verifies toggleVideo never selects
+  // a video for in-window playback until media.fetch has validated it:
+  // an unvalidated one (v6) opens externally instead, exactly the
+  // fallback a click already takes while in-window playback cannot
+  // work on this machine at all; a validated one (v7) selects through
+  // videoController.toggle instead, and never also opens externally.
+  function checkToggleVideoGatesOnPlayable(): bool {
+    root.openCalls = [];
+    controller.videoController = fakeVideoController;
+
+    controller.toggleVideo("v6");
+    root.answerFetchSuccess("v6", "/tmp/v6.mp4", false);
+    if (fakeVideoController.toggleCalls.includes("v6")) return Check.fail("an unvalidated video was selected for in-window playback anyway");
+    if (!root.openCalls.includes("/tmp/v6.mp4")) return Check.fail("an unvalidated video did not fall back to opening externally");
+
+    controller.toggleVideo("v7");
+    root.answerFetchSuccess("v7", "/tmp/v7.mp4", true);
+    if (!fakeVideoController.toggleCalls.includes("v7")) return Check.fail("a validated video was never selected for in-window playback");
+    if (root.openCalls.includes("/tmp/v7.mp4")) return Check.fail("a validated video also opened externally");
+
+    controller.videoController = null;
+    return true;
   }
 
   // checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer verifies a
@@ -245,34 +287,25 @@ ShellRoot {
     return true;
   }
 
-  // checkFetchMediaSendsAutoForAnAnimatedVideo verifies the silent
-  // fetch fetchMedia makes for a video the sending service marked
-  // animated (v5, autoplaying like a silent "GIF") sends media.fetch's
-  // auto param, so the helper applies its small, automatic-fetch size
-  // cap rather than the far larger one a deliberate click is trusted
-  // with (see media.fetch's auto param in docs/api.md).
-  function checkFetchMediaSendsAutoForAnAnimatedVideo(): bool {
+  // checkFetchMediaNeverSendsAutoAnyMore verifies fetchMedia's own
+  // silent prefetch never sends media.fetch's auto param any more,
+  // not even for a video the sending service marked animated (v5,
+  // flagged to autoplay like a silent "GIF"): that flag no longer
+  // triggers a fetch with no click at all (see InlineVideo.qml), so
+  // nothing here ever needs the small, automatic-fetch size cap auto
+  // used to ask the helper for (see docs/api.md, which now documents
+  // the param as accepted but unused by this controller).
+  function checkFetchMediaNeverSendsAutoAnyMore(): bool {
     controller.fetchMedia("v5");
-
-    const params = service.fetchParams["v5"];
-    if (!params || params.auto !== true)
-      return Check.fail("params = " + JSON.stringify(params) + ", want auto:true for an animated video's own silent fetch");
-
-    root.answerFetchSuccess("v5", "/tmp/v5.mp4");
-    return true;
-  }
-
-  // checkFetchMediaOmitsAutoForAnOrdinaryFetch verifies the same silent
-  // fetch for an ordinary file (f1, not a video the sender marked
-  // animated) never sends auto at all, the same as every call before
-  // media.fetch's auto param existed.
-  function checkFetchMediaOmitsAutoForAnOrdinaryFetch(): bool {
     controller.fetchMedia("f1");
 
-    const params = service.fetchParams["f1"];
-    if (!params || params.auto)
-      return Check.fail("params = " + JSON.stringify(params) + ", want no auto flag for an ordinary, non-animated fetch");
+    for (const id of ["v5", "f1"]) {
+      const params = service.fetchParams[id];
+      if (!params || params.auto)
+        return Check.fail("params = " + JSON.stringify(params) + ", want no auto flag for id " + id);
+    }
 
+    root.answerFetchSuccess("v5", "/tmp/v5.mp4");
     root.answerFetchSuccess("f1", "/tmp/f1-notes.pdf");
     return true;
   }

@@ -140,6 +140,54 @@ func TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes(t *testing.T) {
 	})
 }
 
+// TestVideoPlayable_ChecksTheFilesOwnHeaders covers the two outcomes
+// FetchMedia's own caller depends on: a video whose container and
+// stream headers videosafe actually accepts is reported playable, and
+// one that fails that check - garbage bytes here, every other way a
+// header can fail is videosafe's own package to test - is reported
+// not playable, with no error, since this is attacker-controlled
+// data, not a program fault.
+func TestVideoPlayable_ChecksTheFilesOwnHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a well-formed video is reported playable", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "video.mp4")
+		if err := os.WriteFile(path, onePlayableMP4(), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		playable, err := connector.VideoPlayable(path)
+		if err != nil || !playable {
+			t.Fatalf("VideoPlayable() = %t, %v, want true, nil", playable, err)
+		}
+	})
+
+	t.Run("a file with no recognizable video headers is reported not playable", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "video.mp4")
+		if err := os.WriteFile(path, []byte("not a video at all, whatever its name claims"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		playable, err := connector.VideoPlayable(path)
+		if err != nil || playable {
+			t.Fatalf("VideoPlayable() = %t, %v, want false, nil", playable, err)
+		}
+	})
+
+	t.Run("a missing file is reported as an error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := connector.VideoPlayable(filepath.Join(t.TempDir(), "missing.mp4"))
+		if err == nil {
+			t.Fatal("VideoPlayable() on a missing file succeeded")
+		}
+	})
+}
+
 // TestSaveMedia_WritesUnchanged covers a video, audio or document: none
 // of SaveImageMedia's checks apply, so whatever bytes a connector
 // downloaded land on disk exactly as they were.

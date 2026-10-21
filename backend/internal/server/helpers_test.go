@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
@@ -220,6 +221,47 @@ func errorData[T any](err error) (T, bool) {
 	}
 
 	return out, json.Unmarshal(*rpcErr.Data, &out) == nil
+}
+
+// onePlayableMP4 returns a minimal, well-formed MP4 file - an
+// ordinary H.264 video at 640x480 - for a test that needs bytes
+// videosafe actually accepts rather than an arbitrary placeholder:
+// one moov box with an mvhd and a single video trak, just enough of
+// a real file's own box structure for videosafe's own parser to read.
+func onePlayableMP4() []byte {
+	mediaHeader := func(timescale, duration uint32) []byte {
+		buf := make([]byte, 20)
+		binary.BigEndian.PutUint32(buf[12:16], timescale)
+		binary.BigEndian.PutUint32(buf[16:20], duration)
+		return buf
+	}
+	box := func(boxType string, body []byte) []byte {
+		buf := make([]byte, 8+len(body))
+		binary.BigEndian.PutUint32(buf[0:4], uint32(len(buf)))
+		copy(buf[4:8], boxType)
+		copy(buf[8:], body)
+		return buf
+	}
+
+	sampleDescription := make([]byte, 8+44)
+	binary.BigEndian.PutUint32(sampleDescription[4:8], 1) // entry_count
+	binary.BigEndian.PutUint32(sampleDescription[8:12], 44)
+	copy(sampleDescription[12:16], "avc1")
+	binary.BigEndian.PutUint16(sampleDescription[40:42], 640)
+	binary.BigEndian.PutUint16(sampleDescription[42:44], 480)
+
+	mdhd := box("mdhd", mediaHeader(1000, 5000))
+	hdlr := box("hdlr", append(make([]byte, 8), []byte("vide")...))
+	stsd := box("stsd", sampleDescription)
+	stsz := box("stsz", make([]byte, 12))
+	stbl := box("stbl", append(append([]byte{}, stsd...), stsz...))
+	minf := box("minf", stbl)
+	mdia := box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
+	trak := box("trak", mdia)
+	mvhd := box("mvhd", mediaHeader(1000, 5000))
+	moov := box("moov", append(append([]byte{}, mvhd...), trak...))
+
+	return moov
 }
 
 // fakeMediaFetcher answers FetchMedia with err, for a test that only

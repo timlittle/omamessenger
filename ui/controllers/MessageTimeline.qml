@@ -114,9 +114,10 @@ Item {
     const at = loaded.findIndex((m) => m.id === message.id);
     if (at !== -1) {
       const kept = Timeline.mediaJustRetired(loaded[at], message)
-        ? { mediaPath: "", mediaDecodeAs: "", mediaRisky: false, mediaFailed: false, mediaFailedReason: "" }
+        ? { mediaPath: "", mediaDecodeAs: "", mediaPlayable: false, mediaRisky: false, mediaFailed: false, mediaFailedReason: "" }
         : {
-            mediaPath: loaded[at].mediaPath, mediaDecodeAs: loaded[at].mediaDecodeAs, mediaRisky: loaded[at].mediaRisky,
+            mediaPath: loaded[at].mediaPath, mediaDecodeAs: loaded[at].mediaDecodeAs,
+            mediaPlayable: loaded[at].mediaPlayable, mediaRisky: loaded[at].mediaRisky,
             mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason
           };
       messagesModel.set(at, Timeline.row(Object.assign(kept, message)));
@@ -168,6 +169,17 @@ Item {
     return row ? row.mediaDecodeAs : "";
   }
 
+  // mediaPlayable returns the helper's own verdict on whether a
+  // message's downloaded video is safe to play in the in-window video
+  // player at all (see media.fetch's playable in docs/api.md), or
+  // false before it has answered or for anything but a video. Never
+  // computed here from the message's own media object: only
+  // media.fetch's result, through setMediaPlayable, ever sets it.
+  function mediaPlayable(id: string): bool {
+    const row = root._snapshot().find((m) => m.id === id);
+    return row ? row.mediaPlayable : false;
+  }
+
   // media returns a message's parsed photo or video media (kind, width,
   // height, duration, thumb), or null when it has none or is not loaded.
   function media(id: string): var {
@@ -205,6 +217,14 @@ Item {
   function setMediaDecodeAs(id: string, decodeAs: string): void {
     const at = root._snapshot().findIndex((m) => m.id === id);
     if (at !== -1) messagesModel.setProperty(at, "mediaDecodeAs", decodeAs);
+  }
+
+  // setMediaPlayable records the helper's own verdict on whether a
+  // message's downloaded video is safe to play in place, from
+  // media.fetch's result.
+  function setMediaPlayable(id: string, playable: bool): void {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    if (at !== -1) messagesModel.setProperty(at, "mediaPlayable", playable);
   }
 
   // mediaRisky returns the helper's own verdict on whether a message's

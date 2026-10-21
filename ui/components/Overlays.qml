@@ -14,6 +14,11 @@ Item {
   // service is the Service instance, read for the lists of known and
   // signed-in services the account and new-chat overlays show.
   property var service: null
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. Forwarded to the photo viewer's own video player, so
+  // leaving the window unloads it the same way an inline video bubble
+  // already does.
+  property bool windowActive: true
   // listController is bound into the archive-all question.
   property var listController: null
   // conversationController is bound into the risky-open question.
@@ -144,6 +149,8 @@ Item {
     path: root.photoViewerController.viewerPath
     decodeAs: root.photoViewerController.viewerDecodeAs
     videoAvailable: root.videoController ? root.videoController.available : true
+    videoPlayable: root.photoViewerController.viewerPlayable
+    windowActive: root.windowActive
     videoMuted: root.videoController ? root.videoController.muted : true
     routeKey: root.routeKey
     bindings: root.bindings

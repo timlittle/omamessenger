@@ -165,12 +165,12 @@ Column {
     video: root.media ? root.media : ({})
     path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
     decodeAs: visible && root.message && root.message.mediaDecodeAs ? root.message.mediaDecodeAs : ""
+    playable: visible && !!root.message && !!root.message.mediaPlayable
     failed: visible && !!(root.message && root.message.mediaFailed)
     available: root.videoPlayback.available
     playing: visible && !!root.message && root.videoPlayback.playingId === root.message.id
     muted: root.videoPlayback.muted
     windowActive: root.windowActive
-    onWanted: root.mediaWanted()
     onOpened: root.mediaOpen()
     onToggled: root.videoToggled()
     onMuteToggled: root.videoMuteToggled()

@@ -297,6 +297,11 @@ test('row keeps the helper\'s own decode verdict for a video, and starts without
   assert.strictEqual(Timeline.row({ id: 'a', mediaDecodeAs: 'gif' }).mediaDecodeAs, 'gif');
 });
 
+test('row keeps the helper\'s own playable verdict for a video, and starts false', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).mediaPlayable, false);
+  assert.strictEqual(Timeline.row({ id: 'a', mediaPlayable: true }).mediaPlayable, true);
+});
+
 test('row keeps the helper\'s own risky verdict, and starts not risky', () => {
   assert.strictEqual(Timeline.row({ id: 'a' }).mediaRisky, false);
   assert.strictEqual(Timeline.row({ id: 'a', mediaRisky: true }).mediaRisky, true);

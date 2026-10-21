@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
+import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
 
 // The player shown inside the in-app media viewer (see PhotoViewer, which
@@ -30,9 +31,18 @@ Item {
   // available is false when in-window video playback cannot work at
   // all on this machine; a real .gif file plays regardless.
   property bool available: true
+  // playable is the helper's own verdict on whether an ordinary
+  // video's own container and stream headers are safe to decode at
+  // all (see media.fetch's playable in docs/api.md); a real .gif file
+  // plays regardless, since this field never applies to one.
+  property bool playable: true
   // muted mutes a playing, non-gif video; shared with every other video
   // in the window, the same preference InlineVideo reads.
   property bool muted: true
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. Playback stops decoding while it is false, the same
+  // as an inline video bubble already does.
+  property bool windowActive: true
   // runtimeSource is the file the player engine loads: VideoRuntime by
   // default, overridable so a test can point it at a broken file
   // instead, to drive the Loader.Error path without QtMultimedia
@@ -67,8 +77,8 @@ Item {
     objectName: "fullGifImage"
     anchors.fill: parent
     visible: root._isGifFile && root.path !== ""
-    source: visible ? "file://" + root.path : ""
-    playing: visible
+    source: visible ? Links.fileURL(root.path) : ""
+    playing: visible && root.windowActive
     fillMode: Image.PreserveAspectFit
     // Bounded to this player's own box (the viewer's full window
     // stage), never the file's own declared size (see PhotoView.qml's
@@ -81,7 +91,7 @@ Item {
     id: _runtime
     objectName: "fullVideoRuntimeLoader"
     anchors.fill: parent
-    active: root.available && !root._isGifFile && root.path !== ""
+    active: root.available && root.playable && root.windowActive && !root._isGifFile && root.path !== ""
     source: root.runtimeSource
 
     onLoaded: {
@@ -97,10 +107,15 @@ Item {
     objectName: "fullVideoUnavailableLabel"
     anchors.centerIn: parent
     width: parent.width - Theme.spacing.sm * 2
-    visible: !root._isGifFile && !root.available
+    // Covers both reasons this can never decode here: the machine has
+    // no QtMultimedia at all, or the helper could not validate this
+    // particular video's own headers (see docs/decisions.md) - never
+    // distinguished in the message itself, since the fix is the same
+    // either way: the "Open in your own video player" button above.
+    visible: !root._isGifFile && root.path !== "" && (!root.available || !root.playable)
     horizontalAlignment: Text.AlignHCenter
     wrapMode: Text.Wrap
-    text: "In-window video playback is not available on this machine."
+    text: "This video can't be played here."
     textFormat: Text.PlainText
     color: Util.alpha(Theme.foreground, 0.7)
     font { family: Theme.font.family; pixelSize: Theme.font.body }
@@ -109,7 +124,7 @@ Item {
   RowLayout {
     id: controls
     objectName: "fullVideoControls"
-    visible: !root._isGifFile && root.available && root.path !== ""
+    visible: !root._isGifFile && root.available && root.playable && root.path !== ""
     anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: Theme.spacing.md }
     spacing: Theme.spacing.sm
 

@@ -298,6 +298,7 @@ Item {
 
   Overlays {
     anchors.fill: parent
+    windowActive: root.conversationController.windowActive
     service: root.service
     listController: root.listController
     conversationController: root.conversationController

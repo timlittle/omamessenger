@@ -42,6 +42,12 @@ QtObject {
   // closed or showing a photo.
   readonly property string viewerDecodeAs: root.viewerId ? root.conversation.timeline.mediaDecodeAs(root.viewerId) : ""
 
+  // viewerPlayable is the helper's own verdict on whether the open
+  // video is safe to play in place at all (see InlineVideo.qml), or
+  // false while the viewer is closed, showing a photo, or still
+  // waiting on media.fetch.
+  readonly property bool viewerPlayable: root.viewerId ? root.conversation.timeline.mediaPlayable(root.viewerId) : false
+
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
     return Actions.owner(action) === "photoViewer";
@@ -59,16 +65,34 @@ QtObject {
     if (handler) handler();
   }
 
-  // show displays id's photo in the in-app viewer, downloading it first
-  // if it is not here yet.
+  // show displays id's photo, video or GIF in the in-app viewer,
+  // downloading it first if it is not here yet. A video claims the
+  // single decoding slot every video shares (see VideoController),
+  // taking over from whichever other one, inline or full-size, held
+  // it before: the viewer's own FullVideoPlayer only ever decodes
+  // while this is the selected video.
   function show(id: string): void {
     root.viewerId = id;
+    if (root._isVideo(id) && root.conversation.videoController) root.conversation.videoController.select(id);
     if (!root.conversation.timeline.mediaPath(id)) root.conversation.downloadMedia(id, true, () => {});
   }
 
-  // close hides the in-app photo viewer.
+  // close hides the in-app photo viewer, giving up the single
+  // decoding slot if the video it was showing still held it: nothing
+  // keeps decoding once the viewer is gone, even though the message
+  // bubble behind it may still be visible.
   function close(): void {
+    const id = root.viewerId;
     root.viewerId = "";
+    if (id && root._isVideo(id) && root.conversation.videoController) root.conversation.videoController.deselect(id);
+  }
+
+  // _isVideo reports whether id's own media is a video or GIF, for
+  // show and close to know whether to touch the shared decoding slot
+  // at all.
+  function _isVideo(id: string): bool {
+    const media = root.conversation.timeline.media(id);
+    return !!media && media.kind === "video";
   }
 
   // openExternally opens the viewed photo in the user's own image viewer

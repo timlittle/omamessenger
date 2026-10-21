@@ -38,6 +38,23 @@ Item {
     root.playingId = root.playingId === id ? "" : id;
   }
 
+  // select makes id the one video playing right now, the same as
+  // toggle, but never deselects it when it is already the selected
+  // one: for the in-app viewer, which must own the single decoding
+  // slot for whichever video it opens even when that video was
+  // already selected, rather than toggling it off.
+  function select(id: string): void {
+    root.playingId = id;
+  }
+
+  // deselect clears id as the one video playing right now, but only
+  // if it still is: for the in-app viewer, which must give up the
+  // single decoding slot when it closes, unless something else
+  // already claimed it since.
+  function deselect(id: string): void {
+    if (root.playingId === id) root.playingId = "";
+  }
+
   // setMuted changes the shared mute preference.
   function setMuted(value: bool): void {
     root.muted = value;

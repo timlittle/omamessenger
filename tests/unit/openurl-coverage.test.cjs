@@ -99,25 +99,9 @@ test('the allowed files are not flagged for their own local file:// opens', () =
 // concatenation - rather than through Links.fileURL's percent-encoding.
 const RAW_FILE_URL_PATTERN = /["']file:\/\/["']\s*\+/g;
 
-// FILES_PENDING_THE_VIDEO_FETCH_FIX still build a raw "file://" URL for
-// a video. InlineVideo.qml, VideoRuntime.qml and FullVideoPlayer.qml are
-// being changed by a separate, concurrent piece of work on the video
-// fetch path, so this fix leaves them as they are rather than risk a
-// conflict; they still need the same fileURL fix once that work lands.
-const FILES_PENDING_THE_VIDEO_FETCH_FIX = new Set([
-  'components/InlineVideo.qml',
-  'components/VideoRuntime.qml',
-  'components/FullVideoPlayer.qml'
-]);
-
 // findRawFileURLs returns one description per hand-built "file://" URL
-// in src, as "<file>:<line>", when file is not one of the exceptions
-// above.
+// in src, as "<file>:<line>".
 function findRawFileURLs(file, src) {
-  if (FILES_PENDING_THE_VIDEO_FETCH_FIX.has(file)) {
-    return [];
-  }
-
   const found = [];
   for (const match of src.matchAll(RAW_FILE_URL_PATTERN)) {
     const line = src.slice(0, match.index).split('\n').length;

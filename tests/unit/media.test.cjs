@@ -95,3 +95,15 @@ test('decodesAsGif is false for anything else, including a name or flag that mer
   assert.strictEqual(Media.decodesAsGif(null), false);
   assert.strictEqual(Media.decodesAsGif(undefined), false);
 });
+
+test('canPlayInline is true for a genuine GIF image regardless of playable', () => {
+  assert.strictEqual(Media.canPlayInline('gif', false), true);
+  assert.strictEqual(Media.canPlayInline('gif', true), true);
+  assert.strictEqual(Media.canPlayInline('gif', undefined), true);
+});
+
+test('canPlayInline is true for an ordinary video only once playable is true', () => {
+  assert.strictEqual(Media.canPlayInline('', true), true);
+  assert.strictEqual(Media.canPlayInline('', false), false);
+  assert.strictEqual(Media.canPlayInline('', undefined), false);
+});

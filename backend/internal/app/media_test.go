@@ -178,6 +178,67 @@ func TestDecodeAsForMedia_IgnoresEveryMediaKindButVideo(t *testing.T) {
 	}
 }
 
+// TestVideoPlayableForMedia_ChecksTheDownloadedBytes covers the three
+// outcomes server.mediaFetch depends on: an ordinary video whose
+// container and stream headers videosafe accepts is reported
+// playable; one that fails that check is reported not playable, with
+// no error; and anything that is not a video at all - even one whose
+// bytes happen to pass videosafe's own checks - is always reported
+// not playable, since the field has no meaning outside a video.
+func TestVideoPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	// Two distinct video messages, not one reused for both outcomes:
+	// the media cache keys on the message id, so fetching the same id
+	// twice would return the first download's cached file again
+	// however f.media.data changed in between.
+	for _, m := range []domain.Message{
+		{ID: "video-good", ConversationID: chat.ID, RemoteID: "1", Text: "[Video]", Created: 1, Media: &domain.Media{Kind: domain.MediaVideo}},
+		{ID: "video-bad", ConversationID: chat.ID, RemoteID: "2", Text: "[Video]", Created: 2, Media: &domain.Media{Kind: domain.MediaVideo}},
+		{ID: "photo", ConversationID: chat.ID, RemoteID: "3", Text: "[Photo]", Created: 3, Media: &domain.Media{Kind: domain.MediaPhoto}},
+	} {
+		if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("a well-formed video is reported playable", func(t *testing.T) {
+		f.media.data = onePlayableMP4()
+		path, err := f.commands.FetchMedia(ctx, "video-good", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		playable, err := f.commands.VideoPlayableForMedia(ctx, "video-good", path)
+		if err != nil || !playable {
+			t.Fatalf("VideoPlayableForMedia() = %t, %v, want true, nil", playable, err)
+		}
+	})
+
+	t.Run("a video whose headers fail the check is not playable", func(t *testing.T) {
+		f.media.data = []byte("not a video at all")
+		path, err := f.commands.FetchMedia(ctx, "video-bad", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		playable, err := f.commands.VideoPlayableForMedia(ctx, "video-bad", path)
+		if err != nil || playable {
+			t.Fatalf("VideoPlayableForMedia() = %t, %v, want false, nil", playable, err)
+		}
+	})
+
+	t.Run("a non-video message is always not playable", func(t *testing.T) {
+		playable, err := f.commands.VideoPlayableForMedia(ctx, "photo", "/does/not/matter")
+		if err != nil || playable {
+			t.Fatalf("VideoPlayableForMedia() = %t, %v, want false, nil", playable, err)
+		}
+	})
+}
+
 // onePixelGIF returns a tiny, real GIF, for a test that needs bytes a
 // genuine GIF header check and imagesafe's own sanitizer both actually
 // accept, rather than an arbitrary placeholder.

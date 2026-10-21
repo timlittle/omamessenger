@@ -128,10 +128,41 @@ func (c *Commands) DecodeAsForMedia(ctx context.Context, messageID, path string)
 	return "gif", nil
 }
 
-// failDecodeCheck classifies and logs a SanitizeIfGIF failure the same
-// way download classifies and logs a failed fetch, so a video that
-// turned out to be unsafe once its actual bytes were checked is never
-// silently left as it was.
+// VideoPlayableForMedia reports whether messageID's video, already
+// downloaded to path by a prior FetchMedia, is safe for the UI to
+// hand to its own in-window video player at all: its container and
+// stream headers, read in pure Go without ever shelling out (see
+// connector.VideoPlayable), declare an allowed codec, dimensions and
+// duration within videosafe's own limits, and, if it carries audio,
+// an allowed audio codec too. It is always false for anything but a
+// video, and for a video whose bytes DecodeAsForMedia already
+// confirmed are a genuine GIF image: that file no longer looks like a
+// video at all once imagesafe has rewritten it, so this reports false
+// for it too, which is exactly right - the UI already knows to play a
+// "gif" decodeAs result through an image engine instead, and never
+// consults this field for one.
+func (c *Commands) VideoPlayableForMedia(ctx context.Context, messageID, path string) (bool, error) {
+	m, err := c.store.Message(ctx, messageID)
+	if err != nil {
+		return false, err
+	}
+	if m.Media == nil || m.Media.Kind != domain.MediaVideo {
+		return false, nil
+	}
+
+	playable, err := connector.VideoPlayable(path)
+	if err != nil {
+		return false, c.failDecodeCheck(ctx, m, err)
+	}
+
+	return playable, nil
+}
+
+// failDecodeCheck classifies and logs a failure from either check a
+// downloaded video's own bytes must pass - SanitizeIfGIF or
+// VideoPlayable - the same way download classifies and logs a failed
+// fetch, so a video that turned out to be unreadable once its actual
+// bytes were checked is never silently left as it was.
 func (c *Commands) failDecodeCheck(ctx context.Context, m domain.Message, err error) error {
 	conv, convErr := c.store.Conversation(ctx, m.ConversationID)
 	if convErr != nil {

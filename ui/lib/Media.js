@@ -66,6 +66,22 @@ function decodesAsGif(decodeAs) {
   return decodeAs === 'gif';
 }
 
+// canPlayInline reports whether a downloaded video's bytes may be
+// loaded into the in-window video player at all: a genuine GIF image
+// (decodeAs "gif", see decodesAsGif) always can, through the image
+// engine, regardless of playable; an ordinary video can only once
+// playable is true, media.fetch's own verdict that the helper has
+// validated its container and stream headers (see docs/api.md).
+// Never computed from the video's own fileName or animated flag,
+// both fully sender-controlled, and never true just because playable
+// is true but the bytes turned out to be a GIF image instead - that
+// case is always routed through decodesAsGif's own branch, never this
+// one, since a GIF image is never a valid video container to begin
+// with.
+function canPlayInline(decodeAs, playable) {
+  return decodesAsGif(decodeAs) || !!playable;
+}
+
 // mimeFor names the MIME type to offer when copying media's full file to
 // the clipboard, or null for a kind there is nothing sensible to copy as
 // (a link preview, a poll, a sticker still only on the service, …). The

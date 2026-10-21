@@ -1,5 +1,6 @@
 import QtQuick
 import QtMultimedia
+import "../lib/Links.js" as Links
 
 // The actual decode-and-render engine for inline video and GIF playback,
 // kept in its own file for the same reason VoiceNoteRuntime is: importing
@@ -41,7 +42,7 @@ Item {
     player.setPosition(ms);
   }
 
-  onSourceChanged: player.source = root.source ? "file://" + root.source : ""
+  onSourceChanged: player.source = Links.fileURL(root.source)
   onPlayingChanged: root.playing ? player.play() : player.pause()
   onMutedChanged: audioOutput.muted = root.muted
   onLoopChanged: player.loops = root.loop ? MediaPlayer.Infinite : 1

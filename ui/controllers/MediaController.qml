@@ -93,16 +93,15 @@ QtObject {
 
   // fetchMedia downloads a message's photo and shows it once it is here.
   // A photo asks each time its row is shown, so one already on its way is
-  // not asked for twice; if the download fails the preview stays. auto
-  // is true only for a video the sending service marked to autoplay
-  // like a silent "GIF" (see Media.isAnimated): the one case this
-  // silent, no-click fetch is for a kind large enough that the helper's
-  // own auto cap matters (see media.fetch's auto param in
-  // docs/api.md). A photo or sticker's own silent fetch is already
-  // bounded by the helper's image profile regardless, so this is never
-  // true for those.
+  // not asked for twice; if the download fails the preview stays. Always
+  // a deliberate fetch (auto false): a video, even one the sending
+  // service marked to autoplay like a silent "GIF", never asks for its
+  // file on its own any more (see InlineVideo.qml) - only a click does,
+  // through toggleVideo - so nothing here ever needs media.fetch's own
+  // auto param (see docs/api.md), kept accepted server-side for
+  // compatibility but unused by this controller now.
   function fetchMedia(timeline: var, id: string): void {
-    root.downloadMedia(timeline, id, false, Media.isAnimated(timeline.media(id)), () => {});
+    root.downloadMedia(timeline, id, false, false, () => {});
   }
 
   // openMedia opens a message's photo, video, file or voice note. A photo
@@ -202,14 +201,29 @@ QtObject {
   // toggleVideo selects, deselects or pauses id as the one video
   // playing right now, downloading it first if it is not on this
   // machine yet; does nothing with no videoController wired (an older
-  // caller that never set one up).
+  // caller that never set one up). A video media.fetch has not
+  // validated as playable (see Media.canPlayInline) never selects for
+  // in-window playback at all, even once downloaded: it opens
+  // externally instead, the same fallback a machine with no
+  // QtMultimedia already takes.
   function toggleVideo(timeline: var, id: string): void {
     if (!root.videoController) return;
 
     const path = timeline.mediaPath(id);
-    if (path) { root.videoController.toggle(id); return; }
+    if (path) { root._selectOrOpenVideo(timeline, id, path); return; }
 
-    root.downloadMedia(timeline, id, true, false, () => root.videoController.toggle(id));
+    root.downloadMedia(timeline, id, true, false, (downloaded) => root._selectOrOpenVideo(timeline, id, downloaded));
+  }
+
+  // _selectOrOpenVideo selects id for in-window playback once
+  // media.fetch has validated it (or it is a genuine GIF image,
+  // always playable through the image engine regardless), or opens it
+  // externally instead, never both: a video that failed validation is
+  // never handed to the video engine at all.
+  function _selectOrOpenVideo(timeline: var, id: string, path: string): void {
+    if (Media.canPlayInline(timeline.mediaDecodeAs(id), timeline.mediaPlayable(id))) { root.videoController.toggle(id); return; }
+
+    root._openIfAllowed(timeline, id, path);
   }
 
   // openExternal downloads id's media if need be and hands it straight
@@ -316,6 +330,7 @@ QtObject {
       timeline.setMediaFailed(id, false, "");
       timeline.setMediaPath(id, result.path);
       timeline.setMediaDecodeAs(id, result.decodeAs || "");
+      timeline.setMediaPlayable(id, !!result.playable);
       timeline.setMediaRisky(id, !!result.risky);
       timeline.lastError = "";
       for (const waiter of waiting) waiter.done(result.path);

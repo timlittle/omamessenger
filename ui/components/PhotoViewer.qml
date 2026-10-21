@@ -36,9 +36,19 @@ Item {
   // at all on this machine; a real GIF file plays regardless. Read only
   // while photo is a video.
   property bool videoAvailable: true
+  // videoPlayable is the helper's own verdict on whether an ordinary
+  // video's own container and stream headers are safe to play in
+  // place at all (see InlineVideo.decodeAs's sibling property);
+  // ignored for a real GIF file, which plays regardless. Read only
+  // while photo is a video.
+  property bool videoPlayable: true
   // videoMuted mutes a playing video, shared with every other video in
   // the window.
   property bool videoMuted: true
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. A playing video stops decoding while it is false, the
+  // same as an inline video bubble already does.
+  property bool windowActive: true
   // routeKey is the panel's key router, so Escape and the photo-stepping
   // keys work while this holds keyboard focus, the same as every other
   // full-window dialog here.
@@ -129,7 +139,9 @@ Item {
       path: root.path
       decodeAs: root.decodeAs
       available: root.videoAvailable
+      playable: root.videoPlayable
       muted: root.videoMuted
+      windowActive: root.windowActive
       onMuteToggled: root.videoMuteToggled()
     }
 

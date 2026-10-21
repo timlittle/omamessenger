@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
+	"github.com/timlittle/omamessenger/backend/internal/videosafe"
 )
 
 // ErrUnsafeImage reports that a photo, sticker or GIF a connector
@@ -112,6 +113,26 @@ func SanitizeIfGIF(path string) (isGIF bool, err error) {
 	}
 
 	return true, nil
+}
+
+// VideoPlayable reports whether path, an ordinary video FetchMedia has
+// already written to disk unchanged (never one SanitizeIfGIF already
+// confirmed is actually a GIF image), is safe to hand to the UI's own
+// in-window video player at all: its container and stream headers,
+// read in pure Go without ever shelling out or reading its sample
+// data (see videosafe), declare an allowed codec, dimensions and
+// duration within this package's limits, and, if it carries audio, an
+// allowed audio codec too. False, with no error, covers every way a
+// video fails that check - the sender's own bytes turned out to be
+// something this UI must never be trusted to decode in place - while
+// an error here means path itself could not be read at all.
+func VideoPlayable(path string) (bool, error) {
+	playable, err := videosafe.Validate(path)
+	if err != nil {
+		return false, fmt.Errorf("connector: video playable: %w", err)
+	}
+
+	return playable, nil
 }
 
 // peekFile reads up to n leading bytes of path and reports the file's

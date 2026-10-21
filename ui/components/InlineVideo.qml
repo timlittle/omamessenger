@@ -3,30 +3,38 @@ import QtQuick.Layouts
 import qs.Commons
 import "../theme"
 import "../lib/Format.js" as Format
+import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
 
-// A video or GIF in a message, once downloaded. A video the sending
-// service marked as a silent, looping "GIF" (see domain.Media.Animated)
-// autoplays muted and looping as soon as it is here, the same way a
-// photo asks for its full image as soon as it is shown; an ordinary
-// video stays a thumbnail with a play mark and its length until clicked,
-// then plays in place with play/pause, a draggable seek bar and a mute
-// button. Either kind stops decoding - the engine is torn down, not
-// merely paused - once this bubble scrolls out of view or the window
-// loses focus, so a long scroll-back through a chat full of GIFs never
-// keeps every one of them decoding at once.
+// A video or GIF in a message, once downloaded. Nothing here ever
+// fetches or decodes without a click: a video the sending service
+// marked as a silent, looping "GIF" (see domain.Media.Animated) shows
+// its thumbnail and a play mark exactly like any other video, never
+// autoplaying on its own - that flag is fully sender-controlled, and
+// the fetch and decode it used to trigger for free is exactly the
+// risk this component now closes. A click downloads the file if it
+// is not here yet, asks the helper to validate it (see playable
+// below), and only then plays it in place: looping and muted for a
+// "GIF" video, with play/pause, a draggable seek bar and a mute
+// button for an ordinary one. Either kind stops decoding - the engine
+// is torn down, not merely paused - once this bubble scrolls out of
+// view, the window loses focus, or another video or the full-size
+// viewer takes over the one decoding slot every video shares (see
+// VideoController), so a long scroll-back through a chat full of
+// videos never keeps more than one of them decoding at once.
 //
 // A real .gif file (an actual GIF image, confirmed only by the helper's
 // own decodeAs verdict once downloaded - see Media.decodesAsGif, never
 // a filename or the animated flag, both fully sender-controlled)
 // always animates through AnimatedImage, whether or not QtMultimedia is
 // even loaded: its bytes are genuine GIF data, a video engine was never
-// going to decode them. available is false when
-// QtMultimedia itself could not be loaded (see VideoController): an
-// animated "GIF" that is actually a silent MP4 - true for every
-// WhatsApp or Telegram one - can only fall back to a still thumbnail
-// while it is false, and an ordinary video falls back to opening
-// externally, exactly as it did before this component existed.
+// going to decode them. available is false when QtMultimedia itself
+// could not be loaded (see VideoController); playable is false until
+// media.fetch has validated this video's own container and stream
+// headers (see docs/api.md) - ignored for a real GIF file, which
+// plays regardless. Either one being false falls back to opening
+// externally instead of decoding in place, exactly as it did before
+// this component existed.
 Item {
   id: root
 
@@ -47,10 +55,16 @@ Item {
   // available is false when in-window playback (for anything but a real
   // .gif file) cannot work at all: see VideoController.available.
   property bool available: true
-  // playing is true while this is the one video (of the single slot
-  // every non-animated video shares) actually decoding right now.
-  // Ignored for an animated GIF, which plays whenever it is visible and
-  // the window is active, independent of every other one.
+  // playable is the helper's own verdict on whether this video's own
+  // container and stream headers are safe to decode at all (see
+  // media.fetch's playable in docs/api.md); ignored for a real .gif
+  // file, which plays regardless, since this field never applies to
+  // one.
+  property bool playable: true
+  // playing is true while this is the one video, of the single slot
+  // every video shares (see VideoController), actually decoding right
+  // now - an animated "GIF" included, which no longer decodes on its
+  // own just because it is visible.
   property bool playing: false
   // muted mutes a playing, non-animated video; an animated GIF is
   // always muted regardless of this, since it carries no audio worth
@@ -76,24 +90,25 @@ Item {
   // itself.
   property bool expandable: true
 
-  // wanted asks for an animated GIF's file to be downloaded; never
-  // fired for an ordinary video, which downloads only once asked for.
-  signal wanted()
-  // toggled asks the caller to start or pause this video; only
-  // meaningful while available is true.
+  // toggled asks the caller to select, deselect or pause this video: a
+  // click on a video that is not yet downloaded or selected asks the
+  // caller to fetch it, validate it, and only then select it for
+  // in-window playback - or, failing that validation, open it
+  // externally instead (see MediaController.toggleVideo); the
+  // component itself never knows which of those a click will turn out
+  // to be ahead of time.
   signal toggled()
   // muteToggled asks the caller to flip the shared mute preference.
   signal muteToggled()
   // opened asks for this video to be opened externally instead: the
-  // fallback a click takes for an ordinary video while available is
-  // false, exactly what it did before in-window playback existed.
+  // fallback a click takes while available is false, exactly what it
+  // did before in-window playback existed.
   signal opened()
   // expandRequested asks the caller to show this video or GIF full
-  // size in the in-app viewer: a GIF is always reachable this way,
-  // since it never shows the plain toggle click that starts an
-  // ordinary video's own inline playback; a playing ordinary video is
-  // reachable the same way once selected, over the frame itself rather
-  // than its controls.
+  // size in the in-app viewer: reachable once this is the one video
+  // already selected and decoding, over the frame itself rather than
+  // its controls, so a first click still starts it inline exactly as
+  // it always did.
   signal expandRequested()
 
   // _animated is true for a video the service marked as a silent,
@@ -109,15 +124,15 @@ Item {
   // _aspect is height over width, square when the size is unknown.
   readonly property real _aspect: root.video.width > 0 ? root.video.height / root.video.width : 1
   // _decoding is true while this bubble should actually hold the
-  // QtMultimedia engine: an animated GIF (but never a real .gif file,
-  // which plays through AnimatedImage below instead and has no use for
-  // QtMultimedia at all) whenever it is on screen and the window is
-  // active, or the one non-animated video the caller selected
-  // (playing), under the same two conditions. A selected video that
-  // the user has merely paused still counts: pausing only stops its
-  // own frames, through _paused below, rather than tearing the whole
-  // engine down and losing the frame on screen.
-  readonly property bool _decoding: root.available && root.path !== "" && root.visible && root.windowActive && !root._realGifFile && (root._animated || root.playing)
+  // QtMultimedia engine: the one video the caller selected (playing),
+  // downloaded, validated playable, on screen and with the window
+  // active - never a real .gif file, which plays through
+  // AnimatedImage below instead and has no use for QtMultimedia at
+  // all. A selected video that the user has merely paused still
+  // counts: pausing only stops its own frames, through _paused below,
+  // rather than tearing the whole engine down and losing the frame on
+  // screen.
+  readonly property bool _decoding: root.available && root.playable && root.path !== "" && root.visible && root.windowActive && !root._realGifFile && root.playing
   // _paused is a selected, non-animated video's own local pause state:
   // the engine stays loaded and its last frame stays on screen, only
   // its own playback stops. Reset whenever a new engine loads, so
@@ -132,23 +147,14 @@ Item {
   // rule PhotoView applies to a photo.
   readonly property bool _unavailable: !root.video.thumb && root.failed && root.path === ""
   // _expandable is true while a click on this video's own frame should
-  // ask to open the full-size viewer instead of (or, for a GIF, in
-  // addition to, since nothing else handles its click at all) starting
-  // or pausing inline playback: always for an animated GIF, which never
-  // shows the plain toggle click below; for an ordinary video, only
+  // ask to open the full-size viewer instead of toggling it again:
   // once it is the one selected and playing, so a first click still
-  // starts it inline exactly as it always did.
-  readonly property bool _expandable: root.expandable && (root._animated || (root.playing && root.available))
+  // starts it inline exactly as it always did, whether this is an
+  // animated "GIF" or an ordinary video.
+  readonly property bool _expandable: root.expandable && root.playing && root.available
 
   implicitWidth: Math.min(root.maxWidth, Style.space(320))
   implicitHeight: Math.min(root.implicitWidth * root._aspect, Style.space(400))
-
-  // An animated GIF asks for its file the moment it is shown, exactly
-  // like a photo's own thumbnail-to-full-image fetch; an ordinary video
-  // never does, since videos can be large.
-  Component.onCompleted: if (root.visible && root._animated && !root.path) root.wanted()
-  onVisibleChanged: if (root.visible && root._animated && !root.path) root.wanted()
-  onPathChanged: if (root.visible && root._animated && !root.path) root.wanted()
 
   Loader {
     id: _runtime
@@ -203,7 +209,7 @@ Item {
     objectName: "realGifImage"
     anchors.fill: parent
     visible: !root._decoding && root._animated && root._realGifFile && root.path !== ""
-    source: visible ? "file://" + root.path : ""
+    source: visible ? Links.fileURL(root.path) : ""
     playing: visible && root.visible && root.windowActive
     fillMode: Image.PreserveAspectFit
     // Bounded to this bubble's own box, never the file's own declared
@@ -247,7 +253,7 @@ Item {
   Text {
     objectName: "playMark"
     anchors.centerIn: parent
-    visible: !root._animated && !root._decoding && !root._unavailable
+    visible: !root._decoding && !root._unavailable && !(root._animated && root._realGifFile)
     text: "▶"
     textFormat: Text.PlainText
     color: Theme.foreground
@@ -267,9 +273,11 @@ Item {
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
 
-  // Asks to open the full-size viewer: a GIF's whole frame (it has no
-  // other click handler at all), or a selected, playing video's frame
-  // above its controls row, left clickable for pause, seek and mute.
+  // Asks to open the full-size viewer, once this video is the one
+  // selected and playing: a real GIF's whole frame, which has no
+  // controls row to leave room for, or an ordinary video's frame
+  // above its own controls row, left clickable for pause, seek and
+  // mute.
   MouseArea {
     id: expandArea
     objectName: "videoExpandArea"
@@ -379,9 +387,15 @@ Item {
     root._engine.seek(fraction * root._engine.durationMs);
   }
 
+  // Starts, selects or opens this video: every first click, before it
+  // is the one selected and playing, lands here rather than on
+  // expandArea above, which only claims the bubble once _expandable
+  // is already true - the same switch controls.visible makes for an
+  // ordinary video, generalised to cover a real GIF too, which never
+  // shows a controls row at all.
   MouseArea {
     anchors.fill: parent
-    visible: !root._animated && !controls.visible
+    visible: !controls.visible && !root._expandable
     enabled: root.visible
     cursorShape: Qt.PointingHandCursor
     onClicked: root.available ? root.toggled() : root.opened()
