@@ -9,7 +9,7 @@ go 1.26.0
 // tests. GOTOOLCHAIN=auto (the default) downloads and uses this exact
 // version for every `go` command in this module, overriding whatever
 // toolchain is on PATH.
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	github.com/client9/gospell v0.9.2
