@@ -1,5 +1,5 @@
 // Checks the composer: trimmed submit, whitespace ignored, cleared input,
-// a placeholder naming the conversation, the blocked banner and
+// a fixed placeholder that never names the conversation, the blocked banner and
 // placeholder shown while blocked, the reply banner and sending the
 // id it answers, cancelling a reply, the attachment chip, both the
 // banner and the chip showing together, the @-mention picker (shown
@@ -39,7 +39,6 @@ ShellRoot {
       id: composer
 
       anchors.fill: parent
-      title: "Mum"
       misspellings: root.testMisspellings
       suggestions: root.testSuggestions
       onSubmitted: (text, replyToId, mentions) => {
@@ -95,7 +94,7 @@ ShellRoot {
   }
 
   // checkSubmit verifies trimming, whitespace-only text being ignored,
-  // and the placeholder naming the conversation.
+  // and the placeholder staying a fixed string.
   function checkSubmit(): bool {
     composer.text = "  hello  ";
     composer.submit();
@@ -106,8 +105,10 @@ ShellRoot {
       return Check.fail("sent " + JSON.stringify(root.sent) + ", want [\"hello\"]");
     if (composer.text !== "   ")
       return Check.fail("whitespace-only text was cleared or sent");
-    if (composer.input.placeholderText.indexOf("Mum") < 0)
-      return Check.fail("placeholder \"" + composer.input.placeholderText + "\" does not name the conversation");
+    // The style draws the hint as AutoText, so it must never carry the
+    // chat's own title, which the other side controls.
+    if (composer.input.placeholderText !== "Message")
+      return Check.fail("placeholder \"" + composer.input.placeholderText + "\", want the fixed \"Message\"");
     return true;
   }
 

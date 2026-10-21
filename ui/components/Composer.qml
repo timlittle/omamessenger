@@ -18,7 +18,7 @@ import "../lib/SpellCheck.js" as SpellCheck
 // This is a view only. It holds no helper or service references and makes
 // no decision about *when* a message is sent beyond "there is text or an
 // attachment" — that call belongs to whoever wires it up. attachmentPath
-// and replyTo are supplied by the caller, the same way title and draft
+// and replyTo are supplied by the caller, the same way the draft
 // text are: the attach button's own file picker and a pasted image both
 // need no protocol call, but a pasted image does (media.paste), and a
 // reply is chosen from the conversation above, so the caller decides
@@ -43,7 +43,6 @@ Item {
   objectName: "composer"
 
   // ------------------------------------------------------------- API
-  property string title: ""
   // text is the draft text, kept here rather than as an alias to the
   // text input itself: the input is destroyed and recreated as active
   // changes (see below), so something outside it has to be the value's
@@ -662,7 +661,7 @@ Item {
             wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
             textFormat: TextEdit.PlainText
             selectByMouse: true
-            placeholderText: root.blocked ? "Blocked" : (root.title.length > 0 ? ("Message " + root.title) : "Message")
+            placeholderText: root.blocked ? "Blocked" : "Message"
 
             onTextChanged: {
               if (root.text !== text) root.text = text

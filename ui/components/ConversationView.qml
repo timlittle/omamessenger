@@ -349,7 +349,6 @@ Item {
       id: composer
       Layout.fillWidth: true
       Layout.margins: Theme.spacing.md
-      title: root.conversation ? root.conversation.title : ""
       // active is false, destroying the text input, whenever there is
       // nothing to compose into at all: no conversation open, or this
       // whole view hidden (a narrow window showing the list instead;
