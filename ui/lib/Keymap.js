@@ -81,7 +81,18 @@ var BINDINGS = [
   { action: 'chat.hide', keys: [], contexts: ['list', 'conversation'], label: 'Hide or unhide chat', command: true },
   // Palette-only: flagging a chat unread again is a deliberate lookup,
   // not something worth a key of its own next to mute, pin and archive.
-  { action: 'chat.markUnread', keys: [], contexts: ['list', 'conversation'], label: 'Mark as unread', command: true },
+  // keywords adds "read" as a search term the palette scores as cleanly
+  // as a standalone word (see Palette.js's bestScore): the label's own
+  // fuzzy match for "read" is dragged down by the "r" already in
+  // "Mark", so without this a plain "read" query ranked this well below
+  // commands that merely happen to contain the word "read" too.
+  { action: 'chat.markUnread', keys: [], contexts: ['list', 'conversation'], label: 'Mark as unread', command: true, keywords: ['read', 'unread'] },
+  // The opposite of chat.markUnread above, reusing conversations.markRead
+  // the way opening a conversation already does, for a chat read
+  // elsewhere that this computer still shows unread. Same keyword, and
+  // for the same reason: "Mark" is also where "Mark as read" picks up
+  // its own dragged-down fuzzy match for "read".
+  { action: 'chat.markRead', keys: [], contexts: ['list', 'conversation'], label: 'Mark as read', command: true, keywords: ['read'] },
   // Block, unblock and report spam only ever apply to a direct chat's
   // one contact (a group has no single contact to block); asking for
   // either on a group fails with a safe error rather than being hidden
@@ -403,12 +414,21 @@ function keyFor(action, list) {
 
 // commands returns what the command palette offers: every command
 // binding, with its first key shown so people learn it, if it has one.
-// list defaults to BINDINGS, same as match.
+// keywords carries through whatever extra search terms the binding
+// declared (see chat.markUnread), and scoped says whether the action
+// acts on a particular chat ("list" or "conversation") rather than
+// something global, such as a setting or a toggle - both are read by
+// Palette.js's ranking, so a chat's own command outranks a global one
+// it only ties with on the query's letters. list defaults to BINDINGS,
+// same as match.
 function commands(list) {
   const bindings = list || BINDINGS;
   return bindings
     .filter((b) => b.command)
-    .map((b) => ({ action: b.action, label: b.label, keys: b.keys.length > 0 ? display(b.keys[0]) : '' }));
+    .map((b) => ({
+      action: b.action, label: b.label, keys: b.keys.length > 0 ? display(b.keys[0]) : '',
+      keywords: b.keywords || [], scoped: b.contexts.includes('list') || b.contexts.includes('conversation')
+    }));
 }
 
 // composeHint names the composer's current mode in words: what starts

@@ -15,12 +15,15 @@
 // a mode is one entry in that table.
 
 // search returns the items whose text matches query, best first. textOf
-// picks the text to match from an item. tieBreak, when given, rates an
-// item for a tie that score alone cannot settle, higher ranking first;
-// it defaults to leaving every item tied, so callers that have nothing
-// to add here keep the original stable order (see DEFAULT_MODE's own
-// tieBreak, which keeps a compound action from winning one). An empty
-// query keeps every item in its original order.
+// picks the text to match from an item: a single string, or an array of
+// candidate strings (a label plus its extra search keywords, see
+// bestScore) when more than one text should count as a match for the
+// same item. tieBreak, when given, rates an item for a tie that score
+// alone cannot settle, higher ranking first; it defaults to leaving
+// every item tied, so callers that have nothing to add here keep the
+// original stable order (see DEFAULT_MODE's own tieBreak, which keeps a
+// compound action from winning one). An empty query keeps every item in
+// its original order.
 function search(items, query, textOf, tieBreak) {
   const wanted = (query ?? '').trim().toLowerCase();
   if (!wanted) {
@@ -30,10 +33,24 @@ function search(items, query, textOf, tieBreak) {
   const rank = tieBreak || (() => 0);
 
   return items
-    .map((item, index) => ({ item, index, score: score(textOf(item).toLowerCase(), wanted) }))
+    .map((item, index) => ({ item, index, score: bestScore(textOf(item), wanted) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score || rank(b.item) - rank(a.item) || a.index - b.index)
     .map((entry) => entry.item);
+}
+
+// bestScore returns the best of score()'s rating of wanted against
+// candidates: a single string, or several (a label and its keywords),
+// each scored on its own and the highest kept, so a command whose label
+// alone would only score a scattered fuzzy match still ranks by its
+// exact keyword instead (see chat.markUnread's "read" keyword).
+function bestScore(candidates, wanted) {
+  const texts = Array.isArray(candidates) ? candidates : [candidates];
+  let best = 0;
+  for (const text of texts) {
+    best = Math.max(best, score((text ?? '').toLowerCase(), wanted));
+  }
+  return best;
 }
 
 // conversationOrder sorts conversations the way Ctrl+K lists them before a
@@ -166,12 +183,22 @@ var MODES = {
 // DEFAULT_MODE's tieBreak).
 var COMPOUND_ACTIONS = new Set(['chat.archiveRead', 'list.archiveAllRead']);
 
+// commandRank rates a command for a tie score alone cannot settle:
+// lowest for a compound action (see COMPOUND_ACTIONS), since it does
+// more than the query asked for; highest for one that is scoped to a
+// particular chat ("list" or "conversation", see Keymap.commands),
+// since the query is almost always about the chat someone has open or
+// highlighted, not a global setting or toggle, which ranks in between.
+function commandRank(c) {
+  if (COMPOUND_ACTIONS.has(c.action)) return -1;
+  return c.scoped ? 1 : 0;
+}
+
 // DEFAULT_MODE is "commands": every command binding, best match first,
-// shown as-is. A tie goes to whichever command is not compound (see
-// COMPOUND_ACTIONS), so an action that also archives the chat never
-// wins over one that just does what the query named.
+// matched against its label and any extra keywords it declared (see
+// chat.markUnread), shown as-is. Ties go by commandRank above.
 var DEFAULT_MODE = {
-  results: (ctx) => search(Keymap.commands(ctx.bindings), ctx.query, (c) => c.label, (c) => COMPOUND_ACTIONS.has(c.action) ? -1 : 0),
+  results: (ctx) => search(Keymap.commands(ctx.bindings), ctx.query, (c) => [c.label].concat(c.keywords || []), commandRank),
   items: (results) => results
 };
 

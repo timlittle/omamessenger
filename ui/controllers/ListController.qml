@@ -124,6 +124,7 @@ Item {
       "chat.archive": () => root._toggleArchive(),
       "chat.hide": () => root._toggleHidden(),
       "chat.markUnread": () => root._markCurrentUnread(),
+      "chat.markRead": () => root._markCurrentRead(),
       "chat.archiveRead": () => root._archiveAndMarkRead(),
       "list.archiveAllRead": () => root._askArchiveAllRead(),
       "archiveAll.accept": () => root.confirmArchiveAllRead(),
@@ -280,6 +281,24 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.lastError = "";
       root._applyConversationUpdated(result);
+    });
+  }
+
+  // _markCurrentRead flags whichever conversation is contextually
+  // current read, the command palette's "Mark as read": the same
+  // conversations.markRead call opening a conversation already makes
+  // (see ConversationController.open), offered on its own for a chat
+  // read elsewhere that this computer still shows unread. The call
+  // answers with nothing to apply - the service reports the change
+  // through its own conversation.updated event instead, same as the
+  // debounced mark-read a message arriving while reading already
+  // triggers - so this only surfaces a failure.
+  function _markCurrentRead(): void {
+    const id = root._currentId();
+    if (!id || !root.findConversation(id)) return;
+
+    root.service.request("conversations.markRead", { conversationId: id }, function(error) {
+      root.lastError = error ? Rpc.errorText(error) : "";
     });
   }
 
@@ -583,7 +602,8 @@ Item {
       reminderAt: conversation.reminderAt ?? 0,
       dimmed: root.showAll && Rail.isDimmed(conversation, now, keepId),
       dimLabel: root.showAll ? Rail.dimLabel(conversation, now, keepId) : "",
-      reminderDue: Rail.isDueReminder(conversation, now)
+      reminderDue: Rail.isDueReminder(conversation, now),
+      blocked: conversation.blocked ?? false
     });
   }
 

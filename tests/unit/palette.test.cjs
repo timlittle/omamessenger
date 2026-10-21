@@ -160,7 +160,7 @@ test('results/items: the default "commands" mode matches the command palette lis
   const ctx = { query: 'quit', bindings: [{ action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true }] };
 
   const results = Palette.results('commands', ctx);
-  assert.deepEqual(results, [{ action: 'app.quit', label: 'Quit OmaMessenger', keys: 'Ctrl+Q' }]);
+  assert.deepEqual(results, [{ action: 'app.quit', label: 'Quit OmaMessenger', keys: 'Ctrl+Q', keywords: [], scoped: false }]);
   assert.strictEqual(Palette.items('commands', results, ctx), results);
 });
 
@@ -212,4 +212,101 @@ test('commands mode: real queries for "unread" never surface "Archive and mark r
   const results = Palette.results('commands', { query: 'mark un' });
   const items = Palette.items('commands', results, { query: 'mark un' });
   assert.strictEqual(items[0].label, 'Mark as unread');
+});
+
+// search: a command may declare extra search keywords (an array from
+// textOf, rather than a single string), and the best-scoring one of
+// them counts, so a label that only matches a query by a scattered
+// fuzzy subsequence still ranks by an exact keyword instead.
+test('search: textOf may return several candidate texts per item, and the best one wins', () => {
+  const items = [
+    { label: 'Mark as unread', keywords: ['read'] },
+    { label: 'React to the highlighted message', keywords: [] }
+  ];
+
+  const ranked = Palette.search(items, 'read', (c) => [c.label].concat(c.keywords));
+
+  assert.strictEqual(ranked[0].label, 'Mark as unread');
+});
+
+// A tie between a command scoped to the chat someone has open or
+// highlighted and a global setting or toggle must go to the scoped one:
+// the query is almost always about that chat, not a global toggle that
+// only happens to score the same.
+test('commands mode: a tie prefers a command scoped to the current chat over a global one', () => {
+  const bindings = [
+    { action: 'settings.toggleReadReceipts', keys: [], contexts: ['global'], label: 'Toggle read receipts', command: true },
+    { action: 'chat.markUnread', keys: [], contexts: ['list', 'conversation'], label: 'Mark unread', command: true, keywords: ['read'] }
+  ];
+
+  const results = Palette.results('commands', { query: 'read', bindings });
+
+  assert.strictEqual(results[0].action, 'chat.markUnread');
+});
+
+// The real command list, end to end, for the query the user actually
+// typed looking for a way to flag a chat unread again: "read". The
+// chat's own read-state commands ("Mark as unread", "Mark as read")
+// must come first, ahead of a global toggle that only happens to
+// contain the same word ("Toggle read receipts"), which in turn comes
+// ahead of compound actions that do more than the query asked for
+// ("Archive and mark read", "Archive all read conversations"), which in
+// turn come ahead of anything that merely contains "read" scattered
+// inside another word or elsewhere in a longer label ("React to the
+// highlighted message", "Show/Next/Previous unread conversation(s)").
+test('commands mode: real "read" query ranks the chat\'s own read-state commands first, then a global toggle, then compound actions, then scattered matches', () => {
+  const results = Palette.results('commands', { query: 'read' });
+  const actions = results.map((c) => c.action);
+
+  assert.deepEqual(actions.slice(0, 2).sort(), ['chat.markRead', 'chat.markUnread']);
+
+  const toggle = actions.indexOf('settings.toggleReadReceipts');
+  const archiveRead = actions.indexOf('chat.archiveRead');
+  const archiveAllRead = actions.indexOf('list.archiveAllRead');
+  const react = actions.indexOf('message.react');
+
+  assert.strictEqual(toggle, 2);
+  assert.ok(archiveRead > toggle, 'compound chat.archiveRead must rank below the global toggle');
+  assert.ok(archiveAllRead > archiveRead, 'list.archiveAllRead must rank below chat.archiveRead');
+  assert.ok(react > archiveAllRead, 'a scattered match like message.react must rank below every exact-word match');
+});
+
+// The real command list for "unread": "Mark as unread" must come first,
+// ahead of the global unread-navigation commands that also contain the
+// literal word "unread" ("Show/Next/Previous unread conversation(s)"),
+// and the compound "Archive and mark read"/"Archive all read
+// conversations" must never appear at all, since neither contains the
+// letter "u".
+test('commands mode: real "unread" query puts "Mark as unread" first and never surfaces a compound action', () => {
+  const results = Palette.results('commands', { query: 'unread' });
+  const actions = results.map((c) => c.action);
+
+  assert.strictEqual(actions[0], 'chat.markUnread');
+  assert.ok(!actions.includes('chat.archiveRead'));
+  assert.ok(!actions.includes('list.archiveAllRead'));
+});
+
+// The real command list for "mark": both read-state commands, the only
+// two whose label starts with the word "mark", rank first, in either
+// order.
+test('commands mode: real "mark" query surfaces both read-state commands first', () => {
+  const results = Palette.results('commands', { query: 'mark' });
+  const top = results.slice(0, 2).map((c) => c.action).sort();
+
+  assert.deepEqual(top, ['chat.markRead', 'chat.markUnread']);
+});
+
+// The real command list for "archive": the plain "Archive or unarchive
+// chat" must rank above the two compound actions that also mark the
+// chat read, chat.archiveRead before list.archiveAllRead (their
+// original order, since both are compound and otherwise tied).
+test('commands mode: real "archive" query ranks the plain archive command above the compound ones', () => {
+  const results = Palette.results('commands', { query: 'archive' });
+  const actions = results.map((c) => c.action);
+
+  assert.strictEqual(actions[0], 'chat.archive');
+  const archiveRead = actions.indexOf('chat.archiveRead');
+  const archiveAllRead = actions.indexOf('list.archiveAllRead');
+  assert.ok(archiveRead > 0);
+  assert.ok(archiveAllRead > archiveRead);
 });

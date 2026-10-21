@@ -221,7 +221,7 @@ test('the palette offers commands with their first key', () => {
   const commands = Keymap.commands();
 
   const jump = commands.find((c) => c.action === 'palette.conversations');
-  assert.deepEqual(jump, { action: 'palette.conversations', label: 'Jump to conversation', keys: 'Ctrl+K' });
+  assert.deepEqual(jump, { action: 'palette.conversations', label: 'Jump to conversation', keys: 'Ctrl+K', keywords: [], scoped: false });
   assert.ok(!commands.some((c) => c.action === 'palette.commands' || c.action === 'cursor.down'));
 });
 
@@ -236,7 +236,7 @@ test('bindingsFor puts the context hints before the global ones', () => {
 test('the palette offers commands that have no key, with none shown', () => {
   const add = Keymap.commands().find((c) => c.action === 'account.add');
 
-  assert.deepEqual(add, { action: 'account.add', label: 'Add an account', keys: '' });
+  assert.deepEqual(add, { action: 'account.add', label: 'Add an account', keys: '', keywords: [], scoped: false });
   assert.ok(Keymap.commands().some((c) => c.action === 'account.addOwnKeys'));
   assert.ok(Keymap.commands().some((c) => c.action === 'account.remove'));
   assert.ok(Keymap.commands().some((c) => c.action === 'list.showAll'));
@@ -264,19 +264,19 @@ test('the palette offers opening a link and going to a quote, and retrying the h
   assert.ok(commands.some((c) => c.action === 'viewer.openExternal'));
 
   const retry = commands.find((c) => c.action === 'helper.retryInstall');
-  assert.deepEqual(retry, { action: 'helper.retryInstall', label: 'Retry installing the helper', keys: 'Ctrl+R' });
+  assert.deepEqual(retry, { action: 'helper.retryInstall', label: 'Retry installing the helper', keys: 'Ctrl+R', keywords: [], scoped: false });
 });
 
 test('the palette offers running a health check, with no shortcut of its own', () => {
   const doctor = Keymap.commands().find((c) => c.action === 'helper.doctor');
 
-  assert.deepEqual(doctor, { action: 'helper.doctor', label: 'Run health check', keys: '' });
+  assert.deepEqual(doctor, { action: 'helper.doctor', label: 'Run health check', keys: '', keywords: [], scoped: false });
 });
 
 test('the palette offers showing unread conversations, with its shortcut', () => {
   const unread = Keymap.commands().find((c) => c.action === 'list.unread');
 
-  assert.deepEqual(unread, { action: 'list.unread', label: 'Show unread conversations', keys: 'Ctrl+Shift+A' });
+  assert.deepEqual(unread, { action: 'list.unread', label: 'Show unread conversations', keys: 'Ctrl+Shift+A', keywords: [], scoped: false });
   assert.strictEqual(Keymap.keyFor('list.unread'), 'Ctrl+Shift+A');
 });
 
