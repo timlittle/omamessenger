@@ -26,6 +26,15 @@ import (
 // caller waiting forever.
 const fetchTimeout = 2 * time.Minute
 
+// errMediaTooLarge reports a photo, sticker or GIF document whose
+// sender-declared FileLength is already larger than the image
+// profile's own input cap. whatsmeow's DownloadMediaWithPath returns a
+// file in one piece, with no way to cap it mid-stream the way
+// Telegram's own chunked downloader can (see telegram/fetch.go), so
+// this is the one check this connector can make: refused before any
+// bytes are downloaded, and never retried.
+var errMediaTooLarge = errors.New("whatsapp: declared media size exceeds the limit")
+
 // fetchRequest bundles the conversation, message id and saved
 // reference one FetchMedia call acts on, so passing all three through
 // downloadOrRetry and retryDownload does not grow either function's
@@ -61,6 +70,10 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return fmt.Errorf("whatsapp: fetch media: %w", domain.ErrNotFound)
 	}
 
+	if oversizedImage(ref) {
+		return fmt.Errorf("whatsapp: fetch media: %w", errMediaTooLarge)
+	}
+
 	req := fetchRequest{conv: conv, messageRemoteID: messageRemoteID, ref: ref}
 	data, err := c.downloadOrRetry(ctx, dev, media, req)
 	if err != nil {
@@ -72,6 +85,21 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 	}
 
 	return nil
+}
+
+// oversizedImage reports whether ref is a photo, sticker or GIF
+// document whose own declared FileLength is already larger than the
+// cap the matching imagesafe.Profile would check once downloaded:
+// checked before FetchMedia asks whatsmeow to download anything at
+// all, since there is no way to cap that download mid-stream (see
+// errMediaTooLarge). A kind imageProfile does not cover at all, or
+// one that declares no length, is never flagged here: the actual
+// bytes still pass through imagesafe.Sanitize's own cap once
+// downloaded, same as always.
+func oversizedImage(ref mediaRef) bool {
+	profile, ok := imageProfile(ref)
+
+	return ok && ref.FileLength > 0 && int64(ref.FileLength) > profile.MaxInputLen
 }
 
 // saveFetchedMedia writes data to path, through the sanitizer every

@@ -2,18 +2,23 @@ package telegram
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
+	"errors"
 	"image"
 	_ "image/jpeg" // registers the JPEG decoder this file's own decode checks use
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/gotd/td/bin"
 	"github.com/gotd/td/tg"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // stripped is a stripped thumbnail as Telegram sends it: a version byte,
@@ -305,6 +310,92 @@ func TestFetchMedia_SanitizesStickerAndGIFDocument(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFetchMedia_RefusesADeclaredSizeOverTheCap covers a document
+// whose own declared Size already exceeds the image profile's input
+// cap: FetchMedia must refuse before ever asking Telegram to download
+// it, not after buffering the whole thing into memory first.
+func TestFetchMedia_RefusesADeclaredSizeOverTheCap(t *testing.T) {
+	t.Parallel()
+
+	doc := &tg.Document{
+		ID: 7, AccessHash: 8, FileReference: []byte("ref"), Size: imagesafe.Thumbnail.MaxInputLen + 1, MimeType: "image/webp",
+		Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeSticker{Alt: "😀", Stickerset: &tg.InputStickerSetEmpty{}}},
+	}
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
+		&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaDocument{Document: doc}},
+	}})
+
+	path := filepath.Join(t.TempDir(), "out")
+	if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path); err == nil {
+		t.Fatal("FetchMedia() with an oversized declared size succeeded, want it refused")
+	}
+
+	for _, r := range f.sent() {
+		if _, ok := r.(*tg.UploadGetFileRequest); ok {
+			t.Error("FetchMedia() downloaded bytes for an oversized declared size, want it refused before asking Telegram at all")
+		}
+	}
+}
+
+// TestFetchMedia_RefusesAStreamLargerThanDeclared covers a sender
+// whose declared size passes the cheap check above, but whose actual
+// bytes do not: the stream itself must still be bounded, so FetchMedia
+// never ends up holding more than one profile's worth of bytes in
+// memory, and never leaves a file behind either.
+func TestFetchMedia_RefusesAStreamLargerThanDeclared(t *testing.T) {
+	t.Parallel()
+
+	doc := &tg.Document{
+		ID: 7, AccessHash: 8, FileReference: []byte("ref"), Size: 500, MimeType: "image/webp",
+		Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeSticker{Alt: "😀", Stickerset: &tg.InputStickerSetEmpty{}}},
+	}
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
+		&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaDocument{Document: doc}},
+	}})
+	oversized := bytes.Repeat([]byte{0x42}, int(imagesafe.Thumbnail.MaxInputLen)+1)
+	f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFileJpeg{}, Bytes: oversized})
+
+	path := filepath.Join(t.TempDir(), "out")
+	if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path); err == nil {
+		t.Fatal("FetchMedia() with a stream larger than declared succeeded, want it refused")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("FetchMedia() with an oversized stream left a file behind")
+	}
+}
+
+// TestFetchMedia_TimesOutDownloadingAnImage confirms a stalled image
+// download does not leave a caller waiting forever.
+func TestFetchMedia_TimesOutDownloadingAnImage(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFakeTelegram()
+		f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
+			&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaPhoto{Photo: photo()}},
+		}})
+		f.blockRequest(&tg.UploadGetFileRequest{})
+
+		path := filepath.Join(t.TempDir(), "x")
+		done := make(chan error, 1)
+		go func() {
+			done <- connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path)
+		}()
+
+		time.Sleep(fetchTimeout)
+		synctest.Wait()
+
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Errorf("FetchMedia() = %v, want context.DeadlineExceeded after the fetch timeout", err)
+			}
+		default:
+			t.Fatal("FetchMedia did not return once its timeout elapsed")
+		}
+	})
 }
 
 // TestFetchMedia_WritesAnOrdinaryDocumentUnchanged proves the

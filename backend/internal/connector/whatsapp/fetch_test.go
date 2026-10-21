@@ -6,6 +6,7 @@ package whatsapp
 // WhatsApp's servers.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"go.mau.fi/whatsmeow"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // TestFetchMedia_DownloadsAndDecryptsAStoredReference covers the
@@ -128,6 +130,62 @@ func TestFetchMedia_RejectsAnUnsafeDownloadedPhoto(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("unsafe image bytes were written to disk anyway")
+	}
+}
+
+// TestFetchMedia_RefusesADeclaredSizeOverTheCap covers a photo
+// reference whose own declared FileLength already exceeds the image
+// profile's input cap: FetchMedia must refuse before ever asking
+// whatsmeow to download it, not after buffering the whole file into
+// memory first.
+func TestFetchMedia_RefusesADeclaredSizeOverTheCap(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	ref := mediaRef{
+		Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"),
+		FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/jpeg",
+		FileLength: uint64(imagesafe.FullImage.MaxInputLen) + 1,
+	}
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "out.jpg")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err == nil {
+		t.Fatal("FetchMedia() with an oversized declared size succeeded, want it refused")
+	}
+
+	if len(dev.downloadCalls) != 0 {
+		t.Errorf("downloadCalls = %+v, want nothing downloaded for an oversized declared size", dev.downloadCalls)
+	}
+}
+
+// TestFetchMedia_RejectsADownloadLargerThanItsDeclaredSize covers a
+// sender whose declared FileLength passes the cheap check above, but
+// whose actual bytes do not: imagesafe.Sanitize's own input cap is
+// still the backstop that refuses it, since whatsmeow's
+// DownloadMediaWithPath returns a file in one piece with no way for
+// this connector to cap it mid-stream.
+func TestFetchMedia_RejectsADownloadLargerThanItsDeclaredSize(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	dev.downloadData = bytes.Repeat([]byte{0x42}, int(imagesafe.Thumbnail.MaxInputLen)+1)
+	ref := mediaRef{
+		Kind: mediaKindSticker, DirectPath: "/v/sticker", MediaKey: []byte("key"),
+		FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/webp", FileLength: 500,
+	}
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "out")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err == nil {
+		t.Fatal("FetchMedia() with a download larger than its declared size succeeded, want it refused")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("FetchMedia() with an oversized download left a file behind")
 	}
 }
 

@@ -47,6 +47,7 @@ type fakeTelegram struct {
 	replies   map[string]bin.Encoder
 	sequences map[string][]bin.Encoder
 	failures  map[string][]error
+	blocked   map[string]bool
 	requests  []bin.Encoder
 }
 
@@ -56,6 +57,7 @@ func newFakeTelegram() *fakeTelegram {
 		replies:   map[string]bin.Encoder{},
 		sequences: map[string][]bin.Encoder{},
 		failures:  map[string][]error{},
+		blocked:   map[string]bool{},
 	}
 }
 
@@ -90,14 +92,35 @@ func (f *fakeTelegram) reply(request, response bin.Encoder) {
 	f.replies[fmt.Sprintf("%T", request)] = response
 }
 
-// Invoke encodes the canned reply and decodes it into output, as the
-// network layer would.
-func (f *fakeTelegram) Invoke(_ context.Context, input bin.Encoder, output bin.Decoder) error {
+// blockRequest makes every request of request's type hang until its
+// context ends rather than ever being answered, so a test can drive a
+// real download timeout without an actual network delay.
+func (f *fakeTelegram) blockRequest(request bin.Encoder) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.requests = append(f.requests, input)
+	f.blocked[fmt.Sprintf("%T", request)] = true
+}
+
+// Invoke encodes the canned reply and decodes it into output, as the
+// network layer would, or waits for ctx to end when blockRequest
+// marked this request's type.
+func (f *fakeTelegram) Invoke(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
 	key := fmt.Sprintf("%T", input)
+
+	f.mu.Lock()
+	f.requests = append(f.requests, input)
+	blocked := f.blocked[key]
+	f.mu.Unlock()
+
+	if blocked {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	if errs := f.failures[key]; len(errs) > 0 {
 		f.failures[key] = errs[1:]
 		return errs[0]
