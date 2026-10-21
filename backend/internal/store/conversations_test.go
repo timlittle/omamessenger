@@ -31,6 +31,79 @@ func TestEnsureConversation_CreatesThenFollowsRemote(t *testing.T) {
 	}
 }
 
+// TestEnsureConversation_KeepsTwoAccountsOfTheSameServiceIndependent proves
+// issue #12's premise at the storage layer: two accounts signed in to the
+// same service (two WhatsApp numbers, say) are told apart by account id
+// alone, not by service, so the same remote id - the same contact
+// talking to both - gets its own conversation row under each account,
+// and deleting one account's data never touches the other's.
+func TestEnsureConversation_KeepsTwoAccountsOfTheSameServiceIndependent(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa-one")
+	addAccount(t, s, "wa-two")
+
+	first, isNew, err := s.EnsureConversation(ctx, domain.Conversation{
+		ID: "chat-one", AccountID: "wa-one", RemoteID: "shared-remote", Title: "Shared Contact", Kind: domain.KindDirect,
+	})
+	if err != nil || !isNew {
+		t.Fatalf("first EnsureConversation = %+v, %t, %v", first, isNew, err)
+	}
+
+	second, isNew, err := s.EnsureConversation(ctx, domain.Conversation{
+		ID: "chat-two", AccountID: "wa-two", RemoteID: "shared-remote", Title: "Shared Contact", Kind: domain.KindDirect,
+	})
+	if err != nil || !isNew {
+		t.Fatalf("second EnsureConversation = %+v, %t, %v", second, isNew, err)
+	}
+
+	if first.ID == second.ID {
+		t.Fatalf("both accounts' conversations shared one row: %+v, %+v", first, second)
+	}
+
+	byOne, err := s.ConversationByRemote(ctx, "wa-one", "shared-remote")
+	if err != nil || byOne.ID != "chat-one" {
+		t.Fatalf("ConversationByRemote(wa-one) = %+v, %v, want chat-one", byOne, err)
+	}
+
+	byTwo, err := s.ConversationByRemote(ctx, "wa-two", "shared-remote")
+	if err != nil || byTwo.ID != "chat-two" {
+		t.Fatalf("ConversationByRemote(wa-two) = %+v, %v, want chat-two", byTwo, err)
+	}
+
+	if _, _, err := s.AddMessage(ctx, domain.Message{ID: "m-one", ConversationID: "chat-one", Text: "hi from one", Created: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AddMessage(ctx, domain.Message{ID: "m-two", ConversationID: "chat-two", Text: "hi from two", Created: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteAccount(ctx, "wa-one"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Conversation(ctx, "chat-one"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("chat-one after deleting its account = %v, want ErrNotFound", err)
+	}
+
+	stillThere, err := s.Conversation(ctx, "chat-two")
+	if err != nil || stillThere.AccountID != "wa-two" {
+		t.Fatalf("chat-two after deleting the other account = %+v, %v, want untouched", stillThere, err)
+	}
+
+	messages, _, err := s.Messages(ctx, "chat-two", "", 10)
+	if err != nil || len(messages) != 1 || messages[0].ID != "m-two" {
+		t.Fatalf("messages for chat-two after deleting the other account = %+v, %v", messages, err)
+	}
+
+	accounts, err := s.Accounts(ctx)
+	if err != nil || len(accounts) != 1 || accounts[0].ID != "wa-two" {
+		t.Fatalf("Accounts after removing wa-one = %+v, %v, want only wa-two", accounts, err)
+	}
+}
+
 func TestEnsureConversation_RejectsMissingFields(t *testing.T) {
 	t.Parallel()
 

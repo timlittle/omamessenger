@@ -170,6 +170,71 @@ func TestAccountRegistry_AddsAndRemovesAnAccount(t *testing.T) {
 	}
 }
 
+// TestAccountRegistry_AddsTwoAccountsOfTheSameServiceIndependently proves
+// issue #12's premise through the registry Commands.AddAccount actually
+// calls: adding a second account for a service that already has one
+// gets its own id and its own running connector rather than colliding
+// with or replacing the first, and removing one leaves the other
+// running and in the database.
+func TestAccountRegistry_AddsTwoAccountsOfTheSameServiceIndependently(t *testing.T) {
+	t.Parallel()
+
+	r, provider := testRegistry(t, nil)
+	startManager(t, r)
+
+	first, err := r.Add(t.Context(), app.NewAccount{Service: domain.ServiceTelegram, Options: map[string]string{"apiId": "1", "apiHash": "hash"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id := <-provider.started; id != first.ID {
+		t.Fatalf("started %q, want %q", id, first.ID)
+	}
+
+	second, err := r.Add(t.Context(), app.NewAccount{Service: domain.ServiceTelegram, Options: map[string]string{"apiId": "2", "apiHash": "hash"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id := <-provider.started; id != second.ID {
+		t.Fatalf("started %q, want %q", id, second.ID)
+	}
+
+	if first.ID == second.ID {
+		t.Fatalf("both accounts of the same service got the same id: %q", first.ID)
+	}
+
+	accounts, err := r.db.Accounts(t.Context())
+	if err != nil || len(accounts) != 2 {
+		t.Fatalf("accounts = %+v, %v, want both", accounts, err)
+	}
+	for _, a := range accounts {
+		if a.Service != domain.ServiceTelegram {
+			t.Errorf("account %+v, want service %q", a, domain.ServiceTelegram)
+		}
+	}
+
+	if err := r.Remove(t.Context(), first.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	remaining, err := r.db.Accounts(t.Context())
+	if err != nil || len(remaining) != 1 || remaining[0].ID != second.ID {
+		t.Fatalf("accounts after removing the first = %+v, %v, want only %q", remaining, err, second.ID)
+	}
+
+	if !slices.Equal(provider.forgotten, []string{first.ID}) {
+		t.Errorf("forgotten = %v, want only %q", provider.forgotten, first.ID)
+	}
+
+	// The survivor's own connector was never touched by adding, removing
+	// or forgetting its sibling account.
+	if err := r.manager.Send(t.Context(), domain.Conversation{AccountID: second.ID}, domain.Message{ID: "m1"}); err != nil {
+		t.Errorf("Send to the surviving account = %v, want it still running", err)
+	}
+	if err := r.manager.Send(t.Context(), domain.Conversation{AccountID: first.ID}, domain.Message{ID: "m2"}); !errors.Is(err, connector.ErrNoConnector) {
+		t.Errorf("Send to the removed account = %v, want connector.ErrNoConnector", err)
+	}
+}
+
 func TestAccountRegistry_StartsSavedAccountsWithARegisteredProviderOnly(t *testing.T) {
 	t.Parallel()
 
