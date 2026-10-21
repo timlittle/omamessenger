@@ -105,6 +105,11 @@ Item {
   // read or change them: the composer, the photo viewer and reactions.
   readonly property alias timeline: timeline
 
+  // riskyOpenConfirmOpen is true while media is asking whether to open
+  // a file that could run code or load a web page, through media (see
+  // MediaController.riskyConfirmOpen).
+  readonly property alias riskyOpenConfirmOpen: media.riskyConfirmOpen
+
   // typing is true while the other side is composing a reply.
   property bool typing: false
 
@@ -214,7 +219,10 @@ Item {
       "message.saveMedia": () => root._saveHighlighted(),
       "message.openExternal": () => root._openExternalHighlighted(),
       "unread.next": () => root._stepUnread(1),
-      "unread.prev": () => root._stepUnread(-1)
+      "unread.prev": () => root._stepUnread(-1),
+      "openConfirm.save": () => root.saveRiskyToDownloads(),
+      "openConfirm.accept": () => root.confirmRiskyOpen(),
+      "openConfirm.cancel": () => root.cancelRiskyOpen()
     };
 
     const handler = handlers[action];
@@ -381,6 +389,25 @@ Item {
   // media (see MediaController).
   function openMediaExternal(id: string): void {
     media.openExternal(timeline, id);
+  }
+
+  // confirmRiskyOpen opens the file riskyOpenConfirmOpen's question is
+  // about, through media (see MediaController).
+  function confirmRiskyOpen(): void {
+    media.confirmRiskyOpen();
+  }
+
+  // cancelRiskyOpen leaves riskyOpenConfirmOpen's question answered
+  // without opening its file, through media (see MediaController).
+  function cancelRiskyOpen(): void {
+    media.cancelRiskyOpen();
+  }
+
+  // saveRiskyToDownloads saves riskyOpenConfirmOpen's question's file
+  // into the downloads directory instead of opening it, through media
+  // (see MediaController).
+  function saveRiskyToDownloads(): void {
+    media.saveRiskyToDownloads();
   }
 
   // retryMessage resends one failed outgoing message by id.

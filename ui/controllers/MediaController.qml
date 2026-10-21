@@ -8,7 +8,9 @@ import "../lib/MediaOpen.js" as MediaOpen
 import "../lib/Rpc.js" as Rpc
 
 // Downloads and opens a message's photo, video, file or voice note, for
-// the open conversation. Split out of ConversationController to keep
+// the open conversation, asking first when the helper named a file
+// risky (see riskyConfirmOpen) rather than handing it to the user's own
+// application unconfirmed. Split out of ConversationController to keep
 // that file within the size guideline. Every function here takes the
 // timeline to read and update as a parameter, rather than holding one
 // itself, since ConversationController's timeline is reset for each
@@ -78,6 +80,17 @@ QtObject {
   // message's cooldown never blocks another's.
   property var _lastOpenedAt: ({})
 
+  // riskyConfirmOpen is true while a received file's "this can run
+  // code" question is open, asking the user to confirm before it opens
+  // externally, or to save it to Downloads instead (see
+  // _askBeforeOpening and docs/decisions.md).
+  property bool riskyConfirmOpen: false
+
+  // _pendingRisky holds the timeline, message id and already-resolved
+  // path riskyConfirmOpen's own question is about, until the user
+  // answers it; an empty id means none is open.
+  property var _pendingRisky: ({ timeline: null, id: "", path: "" })
+
   // fetchMedia downloads a message's photo and shows it once it is here.
   // A photo asks each time its row is shown, so one already on its way is
   // not asked for twice; if the download fails the preview stays. auto
@@ -110,9 +123,9 @@ QtObject {
     if (kind === "video" && root._playableInViewer(timeline, id) && root.photoViewer) { root.photoViewer.show(id); return; }
 
     const path = timeline.mediaPath(id);
-    if (path) { root._openIfAllowed(id, path); return; }
+    if (path) { root._openIfAllowed(timeline, id, path); return; }
 
-    root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(id, downloaded));
+    root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(timeline, id, downloaded));
   }
 
   // _playableInViewer reports whether the in-app viewer (see
@@ -131,13 +144,59 @@ QtObject {
 
   // _openIfAllowed hands path to openExternally unless this same
   // message was already opened within cooldownMs, in which case the
-  // click is ignored as a repeat rather than a second, deliberate open.
-  function _openIfAllowed(id: string, path: string): void {
+  // click is ignored as a repeat rather than a second, deliberate open,
+  // or unless the helper named id's own media risky (see
+  // MessageTimeline.mediaRisky and docs/decisions.md), in which case it
+  // asks first rather than opening anything.
+  function _openIfAllowed(timeline: var, id: string, path: string): void {
     const now = Date.now();
     if (!MediaOpen.canOpen(root._lastOpenedAt[id], now, root.cooldownMs)) return;
 
+    if (timeline.mediaRisky(id)) { root._askBeforeOpening(timeline, id, path); return; }
+
     root._lastOpenedAt[id] = now;
     root.openExternally(path);
+  }
+
+  // _askBeforeOpening opens the risky-open question for id, remembering
+  // what confirming, cancelling or saving to Downloads instead must act
+  // on once the user answers.
+  function _askBeforeOpening(timeline: var, id: string, path: string): void {
+    root._pendingRisky = { timeline: timeline, id: id, path: path };
+    root.riskyConfirmOpen = true;
+  }
+
+  // confirmRiskyOpen opens the file the risky-open question is about,
+  // the deliberate "open anyway" answer, bypassing the cooldown check
+  // _openIfAllowed already applied before asking: this is the same
+  // click still being answered, not a new one.
+  function confirmRiskyOpen(): void {
+    const pending = root._pendingRisky;
+    root._closeRiskyConfirm();
+    if (!pending.id) return;
+
+    root._lastOpenedAt[pending.id] = Date.now();
+    root.openExternally(pending.path);
+  }
+
+  // cancelRiskyOpen leaves the risky-open question's file unopened.
+  function cancelRiskyOpen(): void {
+    root._closeRiskyConfirm();
+  }
+
+  // saveRiskyToDownloads saves the risky-open question's file into the
+  // downloads directory instead of opening it, the safe default.
+  function saveRiskyToDownloads(): void {
+    const pending = root._pendingRisky;
+    root._closeRiskyConfirm();
+    if (pending.id) root.saveMedia(pending.timeline, pending.id);
+  }
+
+  // _closeRiskyConfirm closes the risky-open question and forgets which
+  // file it was about.
+  function _closeRiskyConfirm(): void {
+    root.riskyConfirmOpen = false;
+    root._pendingRisky = { timeline: null, id: "", path: "" };
   }
 
   // toggleVideo selects, deselects or pauses id as the one video
@@ -160,9 +219,9 @@ QtObject {
   // thing" default.
   function openExternal(timeline: var, id: string): void {
     const path = timeline.mediaPath(id);
-    if (path) { root._openIfAllowed(id, path); return; }
+    if (path) { root._openIfAllowed(timeline, id, path); return; }
 
-    root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(id, downloaded));
+    root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(timeline, id, downloaded));
   }
 
   // copyMedia downloads id's photo or video if need be and copies it to
@@ -257,6 +316,7 @@ QtObject {
       timeline.setMediaFailed(id, false, "");
       timeline.setMediaPath(id, result.path);
       timeline.setMediaDecodeAs(id, result.decodeAs || "");
+      timeline.setMediaRisky(id, !!result.risky);
       timeline.lastError = "";
       for (const waiter of waiting) waiter.done(result.path);
     });

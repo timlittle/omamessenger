@@ -65,6 +65,14 @@ var OWNERS = {
   'message.copyMedia': 'conversation',
   'message.saveMedia': 'conversation',
   'message.openExternal': 'conversation',
+  // The risky-open question: a received file that can run code or load
+  // a web page, asking the user to confirm before opening it, or save
+  // it to Downloads instead. ConversationController owns it rather than
+  // a controller of its own, the same as every other media action
+  // above, since it already tracks which message is pending an answer.
+  'openConfirm.save': 'conversation',
+  'openConfirm.accept': 'conversation',
+  'openConfirm.cancel': 'conversation',
   // unread.next/prev open the conversation they land on when one is
   // already showing, which is why ConversationController (which already
   // knows how to open one) owns them rather than ListController, which

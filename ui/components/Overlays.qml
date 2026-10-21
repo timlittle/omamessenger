@@ -16,6 +16,8 @@ Item {
   property var service: null
   // listController is bound into the archive-all question.
   property var listController: null
+  // conversationController is bound into the risky-open question.
+  property var conversationController: null
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides), read for the photo viewer's own label.
   readonly property var bindings: Keymap.effectiveBindings(root.service)
@@ -189,6 +191,16 @@ Item {
     routeKey: root.routeKey
     onConfirmed: root.listController.confirmBlock()
     onCancelled: root.listController.cancelBlock()
+    onOpenChanged: root._refocusIfClosed(open)
+  }
+
+  // Tests may build this layout without a conversation controller.
+  OpenRiskyConfirm {
+    open: root.conversationController?.riskyOpenConfirmOpen ?? false
+    routeKey: root.routeKey
+    onConfirmedOpen: root.conversationController.confirmRiskyOpen()
+    onSavedToDownloads: root.conversationController.saveRiskyToDownloads()
+    onCancelled: root.conversationController.cancelRiskyOpen()
     onOpenChanged: root._refocusIfClosed(open)
   }
 

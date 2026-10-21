@@ -524,6 +524,7 @@ Item {
       "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
       "cancel-archive-all": () => { if (root.listController) root.listController.cancelArchiveAllRead(); },
       "cancel-block": () => { if (root.listController) root.listController.cancelBlock(); },
+      "cancel-risky-open": () => { if (root.conversationController) root.conversationController.cancelRiskyOpen(); },
       "dismiss-error": () => { root.dismissErrorBanner(); root.dismissNotice(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },

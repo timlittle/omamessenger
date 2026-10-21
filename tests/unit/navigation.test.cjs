@@ -250,6 +250,26 @@ test('escapeAction closes the block question before the dialog beneath it, but n
   assert.strictEqual(Navigation.escapeAction({ blockConfirmOpen: true, archiveConfirmOpen: true }), 'cancel-archive-all');
 });
 
+test('keyContext returns openConfirm when open, above dialog, search and compose', () => {
+  const state = { openConfirmOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
+  assert.strictEqual(Navigation.keyContext(state), 'openConfirm');
+});
+
+test('keyContext: the viewer, the palette, setup, the reaction picker, the delete question, the archive-all question and the block question still win over the risky-open question', () => {
+  assert.strictEqual(Navigation.keyContext({ openConfirmOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ openConfirmOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
+  assert.strictEqual(Navigation.keyContext({ openConfirmOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ openConfirmOpen: true, reactionPickerOpen: true, pane: 'list' }), 'reactionPicker');
+  assert.strictEqual(Navigation.keyContext({ openConfirmOpen: true, deleteConfirmOpen: true, pane: 'list' }), 'deleteConfirm');
+  assert.strictEqual(Navigation.keyContext({ openConfirmOpen: true, archiveConfirmOpen: true, pane: 'list' }), 'archiveConfirm');
+  assert.strictEqual(Navigation.keyContext({ openConfirmOpen: true, blockConfirmOpen: true, pane: 'list' }), 'blockConfirm');
+});
+
+test('escapeAction closes the risky-open question before the dialog beneath it, but not before the block question', () => {
+  assert.strictEqual(Navigation.escapeAction({ openConfirmOpen: true, dialogOpen: true }), 'cancel-risky-open');
+  assert.strictEqual(Navigation.escapeAction({ openConfirmOpen: true, blockConfirmOpen: true }), 'cancel-block');
+});
+
 test('escapeAction: leave-unread-view when nothing else is open', () => {
   const state = { pane: 'list', activeId: '', query: '', unreadView: true };
 
@@ -295,6 +315,7 @@ test('buildState defaults every field when no controller is given', () => {
     deleteConfirmOpen: false,
     archiveConfirmOpen: false,
     blockConfirmOpen: false,
+    openConfirmOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -320,7 +341,7 @@ test('buildState reads every field from the controller that owns it, including d
     listController: { archiveAllOpen: true, blockConfirmOpen: true, searchFocused: true, query: 'abc', unreadView: true },
     dialogController: { open: true },
     composerController: { composeFocused: true, attachmentPath: '/tmp/a.png', replying: true, editing: true },
-    conversationController: { pane: 'conversation' }
+    conversationController: { pane: 'conversation', riskyOpenConfirmOpen: true }
   };
 
   assert.deepEqual(Navigation.buildState(ctx), {
@@ -337,6 +358,7 @@ test('buildState reads every field from the controller that owns it, including d
     deleteConfirmOpen: true,
     archiveConfirmOpen: true,
     blockConfirmOpen: true,
+    openConfirmOpen: true,
     dialogOpen: true,
     searchFocused: true,
     composeFocused: true,

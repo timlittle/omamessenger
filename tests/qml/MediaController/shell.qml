@@ -37,6 +37,12 @@
 // to the plain download-and-open path every other check here exercises,
 // and that copying or saving a message's media sets a brief
 // confirmation naming what happened, rather than doing it silently.
+//
+// It also checks a media.fetch result flagged risky opens the
+// risky-open question instead of handing the file to openExternally,
+// that cancelling leaves it unopened, and that clicking the same file
+// again and confirming does open it, reusing the cached path and
+// risky verdict rather than fetching it again.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -75,7 +81,11 @@ ShellRoot {
       { id: "f1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: 10, media: { kind: "file", fileName: "notes.pdf" }, mediaPath: "" },
       { id: "v3", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v3.mp4" },
       { id: "v4", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 1, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
-      { id: "v5", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 0, media: { kind: "video", width: 800, height: 600, duration: 5, animated: true }, mediaPath: "" }
+      { id: "v5", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 0, media: { kind: "video", width: 800, height: 600, duration: 5, animated: true }, mediaPath: "" },
+      // r1 is a never-clicked undownloaded file, for the risky-open
+      // question check, which answers its media.fetch itself rather
+      // than reusing another check's own fixture.
+      { id: "r1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -1, media: { kind: "file", fileName: "invoice.html" }, mediaPath: "" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -164,6 +174,15 @@ ShellRoot {
     callback(null, { path: path });
   }
 
+  // answerFetchSuccessRisky resolves a held media.fetch call with path,
+  // flagged risky, the same as the helper does for active or
+  // executable content (see app.MediaRisk and docs/decisions.md).
+  function answerFetchSuccessRisky(id, path) {
+    const callback = service.pendingFetch[id];
+    delete service.pendingFetch[id];
+    callback(null, { path: path, risky: true });
+  }
+
   function run(): void {
     controller.open({ id: "c1", title: "Group" });
 
@@ -186,9 +205,44 @@ ShellRoot {
     if (!root.checkSaveMediaShowsWhereItWentWithHomeFolded()) return;
     if (!root.checkFetchMediaSendsAutoForAnAnimatedVideo()) return;
     if (!root.checkFetchMediaOmitsAutoForAnOrdinaryFetch()) return;
+    if (!root.checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer()) return;
 
     console.log("PASS MediaController");
     Qt.exit(0);
+  }
+
+  // checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer verifies a
+  // media.fetch result flagged risky opens the risky-open question
+  // instead of handing the file to openExternally; cancelling leaves it
+  // unopened, and clicking again and confirming opens it, reusing the
+  // cached path and risky verdict rather than fetching it again.
+  function checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer(): bool {
+    root.openCalls = [];
+
+    controller.openMedia("r1");
+    root.answerFetchSuccessRisky("r1", "/tmp/r1.html");
+
+    if (!controller.riskyOpenConfirmOpen)
+      return Check.fail("riskyOpenConfirmOpen = false after a risky media.fetch result, want true");
+    if (root.openCalls.length !== 0)
+      return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want none before the question is answered");
+
+    controller.cancelRiskyOpen();
+    if (controller.riskyOpenConfirmOpen || root.openCalls.length !== 0)
+      return Check.fail("cancelRiskyOpen left the question open, or opened the file anyway");
+
+    // The same file, already cached and already known risky, asks
+    // again on a second click rather than remembering a cancelled
+    // answer; confirming this time actually opens it.
+    controller.openMedia("r1");
+    if (!controller.riskyOpenConfirmOpen)
+      return Check.fail("a second click of the same risky file did not ask again");
+
+    controller.confirmRiskyOpen();
+    if (controller.riskyOpenConfirmOpen || root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/r1.html")
+      return Check.fail("confirmRiskyOpen = " + JSON.stringify(root.openCalls) + ", want exactly one open of /tmp/r1.html");
+
+    return true;
   }
 
   // checkFetchMediaSendsAutoForAnAnimatedVideo verifies the silent

@@ -300,6 +300,7 @@ Item {
     anchors.fill: parent
     service: root.service
     listController: root.listController
+    conversationController: root.conversationController
     windowController: root.windowController
     dialogController: root.dialogController
     accountController: root.accountController

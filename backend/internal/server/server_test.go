@@ -1,8 +1,10 @@
 package server_test
 
 import (
+	"encoding/json"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -199,6 +201,53 @@ func TestMediaFetch_PassesAutoThroughToTheConnector(t *testing.T) {
 
 	if want := []bool{true, false}; !slices.Equal(media.auto, want) {
 		t.Errorf("auto values seen by the connector = %v, want %v", media.auto, want)
+	}
+}
+
+// TestMediaFetch_ReportsRiskyForActiveContent confirms media.fetch's
+// additive risky field names a genuine web page as content that must
+// never reach xdg-open unconfirmed, sniffed from the downloaded bytes
+// themselves, not the message's own claimed file name.
+func TestMediaFetch_ReportsRiskyForActiveContent(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithMedia(t, fakeMediaWriter{content: []byte("<!DOCTYPE html><html></html>")}, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile, FileName: "report.pdf"},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := call[struct {
+		Risky bool `json:"risky"`
+	}](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+	if err != nil || !got.Risky {
+		t.Fatalf("media.fetch = %+v, %v; want risky true for a genuine web page", got, err)
+	}
+}
+
+// TestMediaFetch_OmitsRiskyForEverydayMedia confirms a photo is never
+// flagged, so the UI's own JSON for the common case stays unchanged.
+func TestMediaFetch_OmitsRiskyForEverydayMedia(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithMedia(t, fakeMediaWriter{content: []byte("a photo")}, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := call[json.RawMessage](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "risky") {
+		t.Errorf("media.fetch result = %s, want no risky field for everyday media", raw)
 	}
 }
 

@@ -313,7 +313,15 @@ var BINDINGS = [
   // Blocking a contact or reporting one as spam: the same y/n idiom as
   // archiveConfirm above, since Cancel is again the only other choice.
   { action: 'blockConfirm.accept', keys: ['Enter', 'y'], contexts: ['blockConfirm'], label: 'Confirm', hint: true },
-  { action: 'blockConfirm.cancel', keys: ['n'], contexts: ['blockConfirm'], label: 'Cancel', hint: true }
+  { action: 'blockConfirm.cancel', keys: ['n'], contexts: ['blockConfirm'], label: 'Cancel', hint: true },
+
+  // A received file that can run code or load a web page, rather than
+  // only show its contents: unlike every other y/n question above,
+  // Enter chooses the safe default, Save to Downloads, not Cancel or
+  // Open, so a stray Enter never runs anything.
+  { action: 'openConfirm.save', keys: ['Enter', 's'], contexts: ['openConfirm'], label: 'Save to Downloads', hint: true },
+  { action: 'openConfirm.accept', keys: ['y'], contexts: ['openConfirm'], label: 'Open anyway', hint: true },
+  { action: 'openConfirm.cancel', keys: ['n'], contexts: ['openConfirm'], label: 'Cancel', hint: true }
 ];
 
 // effectiveBindings returns service's own effective bindings (defaults

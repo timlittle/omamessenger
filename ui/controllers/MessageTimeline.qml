@@ -114,9 +114,9 @@ Item {
     const at = loaded.findIndex((m) => m.id === message.id);
     if (at !== -1) {
       const kept = Timeline.mediaJustRetired(loaded[at], message)
-        ? { mediaPath: "", mediaDecodeAs: "", mediaFailed: false, mediaFailedReason: "" }
+        ? { mediaPath: "", mediaDecodeAs: "", mediaRisky: false, mediaFailed: false, mediaFailedReason: "" }
         : {
-            mediaPath: loaded[at].mediaPath, mediaDecodeAs: loaded[at].mediaDecodeAs,
+            mediaPath: loaded[at].mediaPath, mediaDecodeAs: loaded[at].mediaDecodeAs, mediaRisky: loaded[at].mediaRisky,
             mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason
           };
       messagesModel.set(at, Timeline.row(Object.assign(kept, message)));
@@ -205,6 +205,24 @@ Item {
   function setMediaDecodeAs(id: string, decodeAs: string): void {
     const at = root._snapshot().findIndex((m) => m.id === id);
     if (at !== -1) messagesModel.setProperty(at, "mediaDecodeAs", decodeAs);
+  }
+
+  // mediaRisky returns the helper's own verdict on whether a message's
+  // downloaded media is active or executable content that must be
+  // confirmed before it opens externally (see media.fetch's risky in
+  // docs/api.md), or false before it has answered. Never computed here
+  // from the message's own media object: only media.fetch's result,
+  // through setMediaRisky, ever sets it, the same as mediaDecodeAs.
+  function mediaRisky(id: string): bool {
+    const row = root._snapshot().find((m) => m.id === id);
+    return row ? !!row.mediaRisky : false;
+  }
+
+  // setMediaRisky records the helper's own risky verdict for a
+  // message's downloaded media, from media.fetch's result.
+  function setMediaRisky(id: string, risky: bool): void {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    if (at !== -1) messagesModel.setProperty(at, "mediaRisky", risky);
   }
 
   // setMediaFailed records whether a message's last media fetch failed,

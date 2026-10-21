@@ -187,6 +187,16 @@ d, on a highlighted message, asks whether to delete it. Your own messages offer 
 | e / m / n | Delete for everyone (your own messages only) / delete for me / cancel, straight away |
 | Esc | Cancel |
 
+## Opening a risky file
+
+Opening a received file the helper found to be active or executable content - a web page, a vector image carrying a script, or anything it could not confirm safe - asks first, rather than handing it straight to your own application. Save to Downloads is the default, so a stray Enter never runs anything; it still shows up even for a file your own application would otherwise just open.
+
+| Keys | Does |
+| --- | --- |
+| Enter or s | Save to Downloads instead of opening it (the default) |
+| y | Open anyway |
+| n or Esc | Cancel |
+
 ## Media viewer
 
 Clicking a photo, or pressing Enter on a highlighted photo, video or GIF, opens it inside the window, sized to fit. A video or GIF plays with the same play/pause, seek and mute controls it has inline, just bigger; a real .gif file animates without needing the optional QtMultimedia module at all.

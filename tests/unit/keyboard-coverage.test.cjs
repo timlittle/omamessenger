@@ -74,6 +74,9 @@ const MOUSE_ACTIONS = {
   'AccountSetup "Use QR code instead" button': 'phone.useQr',
   'Panel helper-install "Retry" button': 'helper.retryInstall',
   'MentionPicker row click (insert mention)': 'mention.accept',
+  'OpenRiskyConfirm "Save to Downloads" button': 'openConfirm.save',
+  'OpenRiskyConfirm "Open anyway" button': 'openConfirm.accept',
+  'OpenRiskyConfirm "Cancel" button': 'openConfirm.cancel',
 };
 
 test('every mouse action with a keyboard counterpart stays reachable by key or the palette', () => {

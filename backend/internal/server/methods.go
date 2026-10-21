@@ -480,10 +480,17 @@ func messagesEdit(c *app.Commands) func(context.Context, editParams) (any, error
 // ("gif"); omitted for an ordinary video or anything else, which the
 // UI must never decode through an image component. The UI reads only
 // this field to make that choice, never a message's own filename or
-// "animated" flag (see docs/decisions.md).
+// "animated" flag (see docs/decisions.md). Risky is true only when
+// app.MediaRisk, sniffing path's own bytes, finds active or executable
+// content - a web page, a vector image or a script; omitted (false)
+// for everyday media, which is every message's media until proven
+// otherwise. The UI must ask for confirmation before opening a file
+// this names risky, never decide that itself from the message's own
+// claimed name (see docs/decisions.md).
 type mediaResult struct {
 	Path     string `json:"path"`
 	DecodeAs string `json:"decodeAs,omitempty"`
+	Risky    bool   `json:"risky,omitempty"`
 }
 
 // mediaFetchParams names the message whose media to fetch. Auto is
@@ -511,7 +518,7 @@ func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, e
 
 		decodeAs, err := c.DecodeAsForMedia(ctx, p.MessageID, path)
 
-		return mediaResult{Path: path, DecodeAs: decodeAs}, err
+		return mediaResult{Path: path, DecodeAs: decodeAs, Risky: app.MediaRisk(path)}, err
 	}
 }
 
