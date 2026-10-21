@@ -2,11 +2,14 @@
 // service: opening a photo that is already downloaded shows it at once
 // without asking the helper again; opening one that is not downloaded yet
 // shows the viewer while it asks, and fills in the path once the helper
-// answers; closing clears it; and stepping moves to the next or previous
+// answers; closing clears it; stepping moves to the next or previous
 // photo in the open conversation, skipping the video between them, and
-// downloads a photo it steps to that is not here yet. Video and file
-// media are never driven through here, since opening them for real calls
-// Qt.openUrlExternally.
+// downloads a photo it steps to that is not here yet; and opening
+// externally routes through the controller's own gated openExternally
+// (see MediaController._openIfAllowed) rather than calling
+// Qt.openUrlExternally itself. Video and file media are never driven
+// through the rest of this file, since opening them for real would call
+// the real Qt.openUrlExternally.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -44,10 +47,19 @@ ShellRoot {
     }
   }
 
+  // openCalls records every path controller.openExternally was asked to
+  // open, standing in for the real Qt.openUrlExternally.
+  property var openCalls: []
+
   ConversationController {
     id: controller
     service: service
     photoViewer: viewer
+    // A recorder, not the real Qt.openUrlExternally, so
+    // checkOpenExternallyRoutesThroughTheGate can prove the viewer's
+    // own openExternally reaches this one path rather than opening
+    // anything for real.
+    openExternally: (path) => root.openCalls.push(path)
   }
 
   PhotoViewerController {
@@ -76,6 +88,7 @@ ShellRoot {
     if (!root.checkCloseViewer()) return;
     if (!root.checkStepViewer()) return;
     if (!root.checkStepDoesNothingForAVideo()) return;
+    if (!root.checkOpenExternallyRoutesThroughTheGate()) return;
 
     console.log("PASS PhotoViewerController");
     Qt.exit(0);
@@ -163,6 +176,24 @@ ShellRoot {
     if (viewer.viewerId !== "v1") return Check.fail("stepping back while viewing a video moved to " + viewer.viewerId);
 
     viewer.close();
+    return true;
+  }
+
+  // checkOpenExternallyRoutesThroughTheGate verifies the viewer's own
+  // openExternally no longer calls Qt.openUrlExternally itself: it
+  // reaches controller's recorder - the one path every other external
+  // open already goes through (see MediaController._openIfAllowed) -
+  // and closes the viewer, the same as before this check existed.
+  function checkOpenExternallyRoutesThroughTheGate(): bool {
+    root.openCalls = [];
+    controller.openMedia("p1");
+    if (!viewer.viewerOpen) return Check.fail("opening p1 did not open the viewer")
+
+    viewer.openExternally();
+    if (viewer.viewerOpen) return Check.fail("openExternally left the viewer open")
+    if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/p1.jpg") {
+      return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want exactly one call with p1's path");
+    }
     return true;
   }
 }

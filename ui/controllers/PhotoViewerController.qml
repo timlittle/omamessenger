@@ -1,6 +1,5 @@
 import QtQuick
 import "../lib/Actions.js" as Actions
-import "../lib/Links.js" as Links
 
 // Owns the in-app media viewer: which message's photo, video or GIF is
 // shown, stepping to a neighbouring photo and closing, in or out to the
@@ -95,12 +94,18 @@ QtObject {
     return !!media && media.kind === "video";
   }
 
-  // openExternally opens the viewed photo in the user's own image viewer
-  // and closes the in-app view, for anyone who wants that instead.
+  // openExternally opens the viewed photo, video or GIF in the user's
+  // own application and closes the in-app view, for anyone who wants
+  // that instead. Routed through conversation.openMediaExternal (see
+  // MediaController._openIfAllowed) rather than calling
+  // Qt.openUrlExternally itself, so the same cooldown and risky-open
+  // question every other external open goes through still applies
+  // here: the viewer offering its own, ungated shortcut around that
+  // check was the exact gap a security review found.
   function openExternally(): void {
-    const path = root.viewerPath;
+    const id = root.viewerId;
     root.close();
-    if (path) Qt.openUrlExternally(Links.fileURL(path));
+    if (id) root.conversation.openMediaExternal(id);
   }
 
   // step moves the in-app viewer to the next photo in the open

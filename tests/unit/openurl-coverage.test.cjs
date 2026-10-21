@@ -33,13 +33,21 @@ const UI_ROOT = path.resolve(__dirname, '../../ui');
 const OPEN_URL_PATTERN = /Qt\.openUrlExternally\(/g;
 
 // ALLOWED_FILES are the only files that may call Qt.openUrlExternally
-// directly, relative to ui/.
+// directly, relative to ui/: WindowController's own openExternalLink,
+// the one gate a sender- or service-controlled URL goes through;
+// MediaController's and ConversationController's own default
+// openExternally property, the terminal action every other file reaches
+// only after MediaController._openIfAllowed has already approved it (a
+// cooldown and, for risky media, a confirmation first) - nothing else
+// may call Qt.openUrlExternally for a message's media, which is why
+// PhotoViewerController no longer does; and Service.qml's one local
+// open of the user's own keys.conf for editing, unrelated to either
+// gate since it never carries sender- or service-controlled content.
 const ALLOWED_FILES = new Set([
   'controllers/WindowController.qml',
   'Service.qml',
   'controllers/ConversationController.qml',
-  'controllers/MediaController.qml',
-  'controllers/PhotoViewerController.qml'
+  'controllers/MediaController.qml'
 ]);
 
 // qmlFiles walks dir and returns every ".qml" file under it.
