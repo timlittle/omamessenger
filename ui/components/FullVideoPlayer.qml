@@ -66,6 +66,11 @@ Item {
     source: visible ? "file://" + root.path : ""
     playing: visible
     fillMode: Image.PreserveAspectFit
+    // Bounded to this player's own box (the viewer's full window
+    // stage), never the file's own declared size (see PhotoView.qml's
+    // own sourceSize for why).
+    sourceSize.width: Math.max(1, root.width)
+    sourceSize.height: Math.max(1, root.height)
   }
 
   Loader {

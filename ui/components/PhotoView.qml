@@ -79,6 +79,13 @@ Item {
     // thumb; never a remote URL.
     source: root.path && !root._loadFailed ? "file://" + root.path : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
     fillMode: Image.PreserveAspectFit
+    // Bounded to this bubble's own box, never the file's own declared
+    // size: the helper's imagesafe package already caps what a photo
+    // or sticker can declare, but a bounded sourceSize means Qt never
+    // even tries to allocate a bitmap larger than what is actually
+    // drawn, for a received image specifically (see docs/decisions.md).
+    sourceSize.width: root.implicitWidth
+    sourceSize.height: root.implicitHeight
     asynchronous: true
     // Scaling a tiny preview up smoothly keeps it a soft blur.
     smooth: true

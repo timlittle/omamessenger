@@ -34,6 +34,7 @@ const mediaStoreSchema = `CREATE TABLE IF NOT EXISTS media_refs (
 	file_enc_sha256 BLOB NOT NULL,
 	file_length     INTEGER NOT NULL,
 	mimetype        TEXT NOT NULL,
+	file_name       TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (conversation_id, message_id)
 )`
 
@@ -64,6 +65,11 @@ func openMediaStoreDSN(ctx context.Context, dsn string) (*mediaStore, error) {
 		return nil, fmt.Errorf("whatsapp: prepare media store: %w", err)
 	}
 
+	if err := addMediaRefFileNameColumn(ctx, db); err != nil {
+		_ = db.Close() // same as above
+		return nil, err
+	}
+
 	if err := ensureMessageKeysTable(ctx, db); err != nil {
 		_ = db.Close() // same as above
 		return nil, err
@@ -86,15 +92,15 @@ func openMediaStoreDSN(ctx context.Context, dsn string) (*mediaStore, error) {
 // replacing whatever was saved for it before.
 func (m *mediaStore) put(ctx context.Context, conversationRemoteID, messageRemoteID string, ref mediaRef) error {
 	const q = `INSERT INTO media_refs
-		(conversation_id, message_id, kind, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		(conversation_id, message_id, kind, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype, file_name)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (conversation_id, message_id) DO UPDATE SET
 			kind = excluded.kind, direct_path = excluded.direct_path, media_key = excluded.media_key,
 			file_sha256 = excluded.file_sha256, file_enc_sha256 = excluded.file_enc_sha256,
-			file_length = excluded.file_length, mimetype = excluded.mimetype`
+			file_length = excluded.file_length, mimetype = excluded.mimetype, file_name = excluded.file_name`
 
 	_, err := m.db.ExecContext(ctx, q, conversationRemoteID, messageRemoteID, string(ref.Kind),
-		ref.DirectPath, ref.MediaKey, ref.FileSHA256, ref.FileEncSHA256, ref.FileLength, ref.Mimetype)
+		ref.DirectPath, ref.MediaKey, ref.FileSHA256, ref.FileEncSHA256, ref.FileLength, ref.Mimetype, ref.FileName)
 	if err != nil {
 		return fmt.Errorf("whatsapp: save media reference: %w", err)
 	}
@@ -105,13 +111,13 @@ func (m *mediaStore) put(ctx context.Context, conversationRemoteID, messageRemot
 // get returns the media reference saved for a message, or false when none
 // was saved for it.
 func (m *mediaStore) get(ctx context.Context, conversationRemoteID, messageRemoteID string) (mediaRef, bool, error) {
-	const q = `SELECT kind, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype
+	const q = `SELECT kind, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype, file_name
 		FROM media_refs WHERE conversation_id = ? AND message_id = ?`
 
 	var ref mediaRef
 	var kind string
 	row := m.db.QueryRowContext(ctx, q, conversationRemoteID, messageRemoteID)
-	err := row.Scan(&kind, &ref.DirectPath, &ref.MediaKey, &ref.FileSHA256, &ref.FileEncSHA256, &ref.FileLength, &ref.Mimetype)
+	err := row.Scan(&kind, &ref.DirectPath, &ref.MediaKey, &ref.FileSHA256, &ref.FileEncSHA256, &ref.FileLength, &ref.Mimetype, &ref.FileName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return mediaRef{}, false, nil
 	}
@@ -122,6 +128,48 @@ func (m *mediaStore) get(ctx context.Context, conversationRemoteID, messageRemot
 	ref.Kind = mediaKind(kind)
 
 	return ref, true, nil
+}
+
+// addMediaRefFileNameColumn adds media_refs' file_name column when an
+// account's existing database still lacks it: CREATE TABLE IF NOT
+// EXISTS never adds a column to a table that already exists under the
+// older schema (see addMessageKeyTimestampColumn in keys.go, the same
+// pattern for message_keys' own added column).
+func addMediaRefFileNameColumn(ctx context.Context, db *sql.DB) error {
+	has, err := hasMediaRefFileNameColumn(ctx, db)
+	if err != nil || has {
+		return err
+	}
+
+	if _, err := db.ExecContext(ctx, `ALTER TABLE media_refs ADD COLUMN file_name TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("whatsapp: add media reference file name: %w", err)
+	}
+
+	return nil
+}
+
+// hasMediaRefFileNameColumn reports whether media_refs already has its
+// file_name column.
+func hasMediaRefFileNameColumn(ctx context.Context, db *sql.DB) (bool, error) {
+	rows, err := db.QueryContext(ctx, `PRAGMA table_info(media_refs)`)
+	if err != nil {
+		return false, fmt.Errorf("whatsapp: inspect media store: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			return false, fmt.Errorf("whatsapp: inspect media store: %w", err)
+		}
+		if name == "file_name" {
+			return true, nil
+		}
+	}
+
+	return false, rows.Err()
 }
 
 // close releases the media store's database handle.

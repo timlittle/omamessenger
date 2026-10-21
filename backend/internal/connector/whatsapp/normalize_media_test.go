@@ -103,7 +103,7 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 				DirectPath: strPtr("/v/doc"), MediaKey: []byte("key"),
 			}},
 			&domain.Media{Kind: domain.MediaFile, FileName: "report.pdf", Size: 4096},
-			mediaRef{Kind: mediaKindDocument, DirectPath: "/v/doc", MediaKey: []byte("key"), FileLength: 4096, Mimetype: "application/pdf"},
+			mediaRef{Kind: mediaKindDocument, DirectPath: "/v/doc", MediaKey: []byte("key"), FileLength: 4096, Mimetype: "application/pdf", FileName: "report.pdf"},
 			true,
 		},
 		{
@@ -127,7 +127,7 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 				DirectPath: strPtr("/v/gif"), MediaKey: []byte("key"),
 			}},
 			&domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Size: 5000, Animated: true},
-			mediaRef{Kind: mediaKindDocument, DirectPath: "/v/gif", MediaKey: []byte("key"), FileLength: 5000, Mimetype: "image/gif"},
+			mediaRef{Kind: mediaKindDocument, DirectPath: "/v/gif", MediaKey: []byte("key"), FileLength: 5000, Mimetype: "image/gif", FileName: "run.gif"},
 			true,
 		},
 		{
@@ -184,6 +184,13 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 	}
 }
 
+// TestThumb_EncodesOrReportsNone covers the happy path (a real JPEG
+// comes back base64-encoded) and the two ways a thumbnail never
+// reaches the UI at all: no bytes sent, or bytes imagesafe rejects -
+// which is what a reviewer flagged this package's sticker thumbnail
+// for forwarding unchecked (see docs/decisions.md). The malicious case
+// itself, and that the output decodes to the same pixels, is imagesafe's
+// own test; this one only proves thumb actually routes through it.
 func TestThumb_EncodesOrReportsNone(t *testing.T) {
 	t.Parallel()
 
@@ -191,9 +198,19 @@ func TestThumb_EncodesOrReportsNone(t *testing.T) {
 		t.Errorf("thumb(nil) = %q, want empty", got)
 	}
 
-	jpeg := []byte{0xFF, 0xD8, 0xFF}
-	if got := thumb(jpeg); got != base64.StdEncoding.EncodeToString(jpeg) {
-		t.Errorf("thumb(%v) = %q, want the base64 encoding", jpeg, got)
+	jpeg := tinyJPEG(t)
+	got := thumb(jpeg)
+	want, err := base64.StdEncoding.DecodeString(got)
+	if err != nil {
+		t.Fatalf("thumb(real JPEG) = %q, not valid base64: %v", got, err)
+	}
+	if _, err := jpegDecodeConfig(want); err != nil {
+		t.Errorf("thumb(real JPEG) decodes to an invalid image: %v", err)
+	}
+
+	notAnImage := []byte("this is not an image at all")
+	if got := thumb(notAnImage); got != "" {
+		t.Errorf("thumb(garbage) = %q, want empty", got)
 	}
 }
 

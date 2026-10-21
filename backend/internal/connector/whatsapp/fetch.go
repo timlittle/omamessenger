@@ -13,11 +13,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"go.mau.fi/whatsmeow"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -67,11 +67,23 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return fmt.Errorf("whatsapp: fetch media: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := saveFetchedMedia(path, data, ref); err != nil {
 		return fmt.Errorf("whatsapp: fetch media: %w", err)
 	}
 
 	return nil
+}
+
+// saveFetchedMedia writes data to path, through the sanitizer every
+// photo, sticker and GIF must pass before the UI can load it into a
+// QML Image or AnimatedImage, or unchanged for every other kind,
+// which the UI never shows that way.
+func saveFetchedMedia(path string, data []byte, ref mediaRef) error {
+	if profile, ok := imageProfile(ref); ok {
+		return connector.SaveImageMedia(path, data, profile)
+	}
+
+	return connector.SaveMedia(path, data)
 }
 
 // downloadOrRetry downloads ref once, and, when WhatsApp's CDN reports

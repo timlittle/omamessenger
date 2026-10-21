@@ -1,9 +1,14 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"sync"
+	"testing"
 
 	"github.com/gotd/td/bin"
 	"github.com/gotd/td/tg"
@@ -12,6 +17,28 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
+
+// tinyJPEG returns a tiny, real JPEG, for a test that needs bytes
+// imagesafe actually accepts rather than an arbitrary placeholder: a
+// sanitizer that only ever saw its own hand-rolled fixtures would
+// prove nothing about whether a real image still gets through.
+func tinyJPEG(t *testing.T) []byte {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 16), G: uint8(y * 16), B: 100, A: 255})
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatalf("encode tiny JPEG fixture: %v", err)
+	}
+
+	return buf.Bytes()
+}
 
 // fakeTelegram answers API requests with canned replies, keyed by the
 // request's Go type, and records the requests it was sent.

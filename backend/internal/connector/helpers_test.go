@@ -1,15 +1,31 @@
 package connector_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
+
+// onePixelPNG returns a tiny, real PNG, for a test that needs bytes
+// imagesafe actually accepts rather than an arbitrary placeholder.
+func onePixelPNG() []byte {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{R: 200, G: 100, B: 50, A: 255})
+
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+
+	return buf.Bytes()
+}
 
 // fakeConnector runs the run function, or blocks until cancelled when it
 // is nil, and records what it was asked to send.

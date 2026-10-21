@@ -177,6 +177,10 @@ Item {
     visible: !root._decoding && !(root._animated && root._realGifFile && root.path)
     source: root.video.thumb ? "data:image/jpeg;base64," + root.video.thumb : ""
     fillMode: Image.PreserveAspectFit
+    // Bounded to this bubble's own box, never the file's own declared
+    // size (see PhotoView.qml's own sourceSize for why).
+    sourceSize.width: root.implicitWidth
+    sourceSize.height: root.implicitHeight
     asynchronous: true
     smooth: true
   }
@@ -193,6 +197,10 @@ Item {
     source: visible ? "file://" + root.path : ""
     playing: visible && root.visible && root.windowActive
     fillMode: Image.PreserveAspectFit
+    // Bounded to this bubble's own box, never the file's own declared
+    // size (see PhotoView.qml's own sourceSize for why).
+    sourceSize.width: root.implicitWidth
+    sourceSize.height: root.implicitHeight
   }
 
   Rectangle {

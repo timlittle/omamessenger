@@ -90,6 +90,10 @@ Item {
       // embedded in the message; this never fetches a remote URL.
       source: root.preview.thumb ? "data:image/jpeg;base64," + root.preview.thumb : ""
       fillMode: Image.PreserveAspectCrop
+      // Bounded to this thumbnail's own fixed box (see PhotoView.qml's
+      // own sourceSize for why).
+      sourceSize.width: Style.space(56)
+      sourceSize.height: Style.space(56)
     }
   }
 

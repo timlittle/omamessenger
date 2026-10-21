@@ -8,6 +8,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // mediaRef is what a connector needs to download a message's media
@@ -27,6 +28,12 @@ type mediaRef struct {
 	FileEncSHA256 []byte
 	FileLength    uint64
 	Mimetype      string
+	// FileName is only ever set for a mediaKindDocument reference,
+	// where it is what lets FetchMedia tell a genuine GIF image sent
+	// as a plain file (see isGIFImage) apart from every other kind of
+	// document, which Kind alone cannot: unlike image and sticker,
+	// Kind never gets its own value for this case (see imageProfile).
+	FileName string
 }
 
 // mediaKind says which of WhatsApp's media types a reference is for, so
@@ -190,6 +197,7 @@ func documentMedia(m *waE2E.DocumentMessage) (*domain.Media, mediaRef, bool) {
 	ref := mediaRef{
 		Kind: mediaKindDocument, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),
 		FileEncSHA256: m.GetFileEncSHA256(), FileLength: m.GetFileLength(), Mimetype: m.GetMimetype(),
+		FileName: m.GetFileName(),
 	}
 
 	if isGIFImage(m.GetMimetype(), m.GetFileName()) {
@@ -247,12 +255,45 @@ func stickerMedia(m *waE2E.StickerMessage) (*domain.Media, mediaRef, bool) {
 	return sticker, ref, true
 }
 
-// thumb base64-encodes a message's embedded JPEG preview, or "" when it
-// sent none.
-func thumb(jpeg []byte) string {
-	if len(jpeg) == 0 {
+// thumb base64-encodes a message's embedded preview - a JPEG for
+// every kind but a sticker, which carries a PNG - once imagesafe has
+// stripped it of anything compressed or declaring a size this UI
+// never needs for a thumbnail. Returns "" when the message sent no
+// preview at all, or the preview failed that check: a sender's
+// thumbnail is exactly the untrusted image bytes the review that
+// found this package's own reason for existing was about (see
+// docs/decisions.md), so nothing unsanitized ever reaches the UI as a
+// thumbnail either.
+func thumb(data []byte) string {
+	if len(data) == 0 {
 		return ""
 	}
 
-	return base64.StdEncoding.EncodeToString(jpeg)
+	safe, ok := imagesafe.Sanitize(data, imagesafe.Thumbnail)
+	if !ok {
+		return ""
+	}
+
+	return base64.StdEncoding.EncodeToString(safe)
+}
+
+// imageProfile is the imagesafe.Profile ref's downloaded bytes must
+// pass before FetchMedia writes them to disk, and whether ref is one
+// at all: an image or a sticker, both of which whatsmeow authenticates
+// the same way (see appInfo), always reach a QML Image component
+// directly, and so does a document that turned out to be a genuine
+// GIF image (see isGIFImage) - the one case Kind itself cannot name,
+// since documentMedia has no kind of its own for it and FileName is
+// what this falls back to. Every other kind is written unchanged.
+func imageProfile(ref mediaRef) (imagesafe.Profile, bool) {
+	switch {
+	case ref.Kind == mediaKindImage:
+		return imagesafe.FullImage, true
+	case ref.Kind == mediaKindSticker:
+		return imagesafe.Thumbnail, true
+	case ref.Kind == mediaKindDocument && isGIFImage(ref.Mimetype, ref.FileName):
+		return imagesafe.FullImage, true
+	default:
+		return imagesafe.Profile{}, false
+	}
 }

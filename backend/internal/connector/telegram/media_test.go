@@ -3,6 +3,8 @@ package telegram
 import (
 	"bytes"
 	"encoding/base64"
+	"image"
+	_ "image/jpeg" // registers the JPEG decoder this file's own decode checks use
 	"os"
 	"path/filepath"
 	"testing"
@@ -222,17 +224,26 @@ func TestFetchMedia_DownloadsTheLargestPhotoWithAFreshReference(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			jpeg := tinyJPEG(t)
 			f := newFakeTelegram()
 			f.reply(tt.get, &tg.MessagesMessages{Messages: []tg.MessageClass{&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaPhoto{Photo: photo()}}}})
-			f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFileJpeg{}, Bytes: []byte("jpeg")})
+			f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFileJpeg{}, Bytes: jpeg})
 
 			path := filepath.Join(t.TempDir(), "m1.jpg")
 			if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), tt.conv, "40", path); err != nil {
 				t.Fatal(err)
 			}
 
-			if got, err := os.ReadFile(path); err != nil || string(got) != "jpeg" {
-				t.Errorf("downloaded %q, %v", got, err)
+			// A photo routes through imagesafe (see imageProfile), which
+			// never guarantees a byte-identical copy, only that the
+			// result still decodes; imagesafe's own tests cover what it
+			// strips and caps in detail.
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read downloaded photo: %v", err)
+			}
+			if _, _, err := image.DecodeConfig(bytes.NewReader(got)); err != nil {
+				t.Errorf("downloaded photo does not decode: %v", err)
 			}
 
 			var location *tg.InputPhotoFileLocation
@@ -245,6 +256,82 @@ func TestFetchMedia_DownloadsTheLargestPhotoWithAFreshReference(t *testing.T) {
 				t.Errorf("downloaded from %+v, want the largest size of photo 7", location)
 			}
 		})
+	}
+}
+
+// TestFetchMedia_SanitizesStickerAndGIFDocument covers the two
+// document-shaped media kinds this connector lets the UI load into a
+// QML Image or AnimatedImage - a static WebP sticker, and a document
+// that isGIFImage says is a genuine GIF - proving each routes through
+// imagesafe rather than writing Telegram's downloaded bytes straight
+// to disk; an ordinary document, Telegram's own stand-in for every
+// other file kind, proves the boundary by being written unchanged.
+func TestFetchMedia_SanitizesStickerAndGIFDocument(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]*tg.Document{
+		"sticker": {
+			ID: 7, AccessHash: 8, FileReference: []byte("ref"), Size: 500, MimeType: "image/webp",
+			Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeSticker{Alt: "😀", Stickerset: &tg.InputStickerSetEmpty{}}},
+		},
+		"gif as a document": {
+			ID: 7, AccessHash: 8, FileReference: []byte("ref"), Size: 500, MimeType: "image/gif",
+			Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeFilename{FileName: "nice.gif"}},
+		},
+	}
+
+	for name, doc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			jpeg := tinyJPEG(t)
+			f := newFakeTelegram()
+			f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
+				&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaDocument{Document: doc}},
+			}})
+			f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFileJpeg{}, Bytes: jpeg})
+
+			path := filepath.Join(t.TempDir(), "out")
+			if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path); err != nil {
+				t.Fatalf("FetchMedia() = %v, want a sanitized file written", err)
+			}
+
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read sanitized file: %v", err)
+			}
+			if _, _, err := image.DecodeConfig(bytes.NewReader(got)); err != nil {
+				t.Errorf("sanitized file does not decode as an image: %v", err)
+			}
+		})
+	}
+}
+
+// TestFetchMedia_WritesAnOrdinaryDocumentUnchanged proves the
+// boundary TestFetchMedia_SanitizesStickerAndGIFDocument covers the
+// inside of: a document that is none of a photo, a sticker or a real
+// GIF - a PDF here, any other file in practice - is written exactly
+// as Telegram sent it, never run through imagesafe at all.
+func TestFetchMedia_WritesAnOrdinaryDocumentUnchanged(t *testing.T) {
+	t.Parallel()
+
+	doc := &tg.Document{
+		ID: 7, AccessHash: 8, FileReference: []byte("ref"), Size: 500, MimeType: "application/pdf",
+		Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeFilename{FileName: "report.pdf"}},
+	}
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
+		&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaDocument{Document: doc}},
+	}})
+	f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFileJpeg{}, Bytes: []byte("not an image at all")})
+
+	path := filepath.Join(t.TempDir(), "report.pdf")
+	if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := os.ReadFile(path); err != nil || string(got) != "not an image at all" {
+		t.Errorf("downloaded %q, %v, want the bytes written unchanged", got, err)
 	}
 }
 

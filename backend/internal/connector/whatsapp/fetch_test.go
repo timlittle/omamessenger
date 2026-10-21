@@ -20,20 +20,26 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+// TestFetchMedia_DownloadsAndDecryptsAStoredReference covers the
+// generic download-decrypt-write mechanics with a document reference:
+// a kind that reaches the UI as a plain file, never a QML Image, so
+// this test's own bytes stay an arbitrary placeholder rather than a
+// real image. A photo, sticker or GIF's own route through imagesafe is
+// covered separately below.
 func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 	t.Parallel()
 
 	dev, _, c, media := connectedMediaFixture(t)
 	dev.downloadData = []byte("decrypted bytes")
 	ref := mediaRef{
-		Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"),
-		FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 16, Mimetype: "image/jpeg",
+		Kind: mediaKindDocument, DirectPath: "/v/doc", MediaKey: []byte("key"),
+		FileSHA256: []byte("sha"), FileEncSHA256: []byte("enc"), FileLength: 16, Mimetype: "application/pdf", FileName: "report.pdf",
 	}
 	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
 		t.Fatal(err)
 	}
 
-	path := filepath.Join(t.TempDir(), "out.jpg")
+	path := filepath.Join(t.TempDir(), "out.pdf")
 	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err != nil {
 		t.Fatal(err)
 	}
@@ -50,6 +56,78 @@ func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 
 	if len(dev.downloadCalls) != 1 || !reflect.DeepEqual(dev.downloadCalls[0], ref) {
 		t.Errorf("downloadCalls = %+v, want the stored reference", dev.downloadCalls)
+	}
+}
+
+// TestFetchMedia_SanitizesADownloadedPhotoStickerAndGIF covers every
+// kind this connector lets the UI load into a QML Image or
+// AnimatedImage - a photo, a sticker and a document that turned out
+// to be a real GIF (see isGIFImage) - proving each one routes through
+// imagesafe rather than writing whatsmeow's downloaded bytes straight
+// to disk.
+func TestFetchMedia_SanitizesADownloadedPhotoStickerAndGIF(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]mediaRef{
+		"photo":   {Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"), FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/jpeg"},
+		"sticker": {Kind: mediaKindSticker, DirectPath: "/v/sticker", MediaKey: []byte("key"), FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/webp"},
+		"gif as a document": {
+			Kind: mediaKindDocument, DirectPath: "/v/gif", MediaKey: []byte("key"), FileSHA256: []byte{}, FileEncSHA256: []byte{},
+			Mimetype: "image/gif", FileName: "nice.gif",
+		},
+	}
+
+	for name, ref := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			dev, _, c, media := connectedMediaFixture(t)
+			dev.downloadData = tinyJPEG(t) // imagesafe detects the real format by magic bytes, not ref.Mimetype
+			if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+				t.Fatal(err)
+			}
+
+			path := filepath.Join(t.TempDir(), "out")
+			if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err != nil {
+				t.Fatalf("FetchMedia() = %v, want a sanitized file written", err)
+			}
+
+			got, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read sanitized file: %v", err)
+			}
+			if _, err := jpegDecodeConfig(got); err != nil {
+				t.Errorf("sanitized file does not decode as an image: %v", err)
+			}
+		})
+	}
+}
+
+// TestFetchMedia_RejectsAnUnsafeDownloadedPhoto covers a photo
+// download that comes back as something other than a real image: the
+// kind every QML Image component ever loads, so writing it to disk
+// unchecked is exactly the class a marketplace review flagged this
+// connector's sticker thumbnail for. No file must ever land on disk
+// for it.
+func TestFetchMedia_RejectsAnUnsafeDownloadedPhoto(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	dev.downloadData = []byte("not an image at all")
+	ref := mediaRef{
+		Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"),
+		FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/jpeg",
+	}
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "out.jpg")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path); err == nil {
+		t.Fatal("FetchMedia() = nil, want an error for unsafe image bytes")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Fatal("unsafe image bytes were written to disk anyway")
 	}
 }
 

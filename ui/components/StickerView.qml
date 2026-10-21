@@ -46,6 +46,10 @@ Item {
     // thumb; never a remote URL.
     source: root.path ? "file://" + root.path : (root.sticker.thumb ? "data:image/png;base64," + root.sticker.thumb : "")
     fillMode: Image.PreserveAspectFit
+    // Bounded to this sticker's own fixed box (see PhotoView.qml's own
+    // sourceSize for why).
+    sourceSize.width: root._size
+    sourceSize.height: root._size
     asynchronous: true
     smooth: true
   }

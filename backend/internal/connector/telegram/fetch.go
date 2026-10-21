@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,7 +11,9 @@ import (
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/tg"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // errNoFile reports a message with no photo or file to download.
@@ -40,7 +43,33 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return err
 	}
 
+	if profile, ok := imageProfile(msg.Media); ok {
+		return downloadImage(ctx, api, location, path, profile)
+	}
+
 	return download(ctx, api, location, path)
+}
+
+// downloadImage downloads location fully into memory - bounded by
+// profile's own MaxInputLen, so this never holds more than a
+// thumbnail's or a photo's worth of bytes - and writes it to path
+// through the sanitizer every photo, sticker or GIF must pass before
+// the UI can load it into a QML Image (see connector.SaveImageMedia).
+// A video or other document instead streams straight to disk through
+// download below: formats Qt's image decoders never touch, so
+// buffering them in memory first would cost without ever paying for
+// anything.
+func downloadImage(ctx context.Context, api *tg.Client, location tg.InputFileLocationClass, path string, profile imagesafe.Profile) error {
+	var buf bytes.Buffer
+	if _, err := downloader.NewDownloader().Download(api, location).Stream(ctx, &buf); err != nil {
+		return fmt.Errorf("telegram: fetch media: %w", err)
+	}
+
+	if err := connector.SaveImageMedia(path, buf.Bytes(), profile); err != nil {
+		return fmt.Errorf("telegram: fetch media: %w", err)
+	}
+
+	return nil
 }
 
 // reread fetches one message again, from a channel or a chat.

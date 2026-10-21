@@ -6,6 +6,7 @@ package whatsapp
 // in a temporary directory.
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -142,5 +143,68 @@ func TestMediaStore_PutReplacesAnEarlierReferenceForTheSameMessage(t *testing.T)
 	}
 	if !ok || !reflect.DeepEqual(got, second) {
 		t.Errorf("get after replace = %+v, %v, want %+v, true", got, ok, second)
+	}
+}
+
+// TestOpenMediaStoreDSN_AddsFileNameToAnOlderSchema covers an
+// account's database from before a document's file name was needed to
+// tell a real GIF image apart from an ordinary document (see
+// imageProfile): CREATE TABLE IF NOT EXISTS alone never adds a column
+// to a table that already exists under the older schema.
+func TestOpenMediaStoreDSN_AddsFileNameToAnOlderSchema(t *testing.T) {
+	t.Parallel()
+
+	db, err := sql.Open("sqlite", "file::memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	const oldSchema = `CREATE TABLE media_refs (
+		conversation_id TEXT NOT NULL,
+		message_id      TEXT NOT NULL,
+		kind            TEXT NOT NULL DEFAULT '',
+		direct_path     TEXT NOT NULL,
+		media_key       BLOB NOT NULL,
+		file_sha256     BLOB NOT NULL,
+		file_enc_sha256 BLOB NOT NULL,
+		file_length     INTEGER NOT NULL,
+		mimetype        TEXT NOT NULL,
+		PRIMARY KEY (conversation_id, message_id)
+	)`
+	if _, err := db.ExecContext(t.Context(), oldSchema); err != nil {
+		t.Fatal(err)
+	}
+	old := mediaRef{
+		Kind: mediaKindDocument, DirectPath: "/v/old", MediaKey: []byte{1}, FileSHA256: []byte{1},
+		FileEncSHA256: []byte{1}, FileLength: 1, Mimetype: "application/pdf",
+	}
+	const insertOld = `INSERT INTO media_refs
+		(conversation_id, message_id, kind, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype)
+		VALUES ('conv-1', 'msg-old', ?, ?, ?, ?, ?, ?, ?)`
+	if _, err := db.ExecContext(t.Context(), insertOld, string(old.Kind), old.DirectPath, old.MediaKey, old.FileSHA256, old.FileEncSHA256, old.FileLength, old.Mimetype); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := addMediaRefFileNameColumn(t.Context(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &mediaStore{db: db}
+	got, ok, err := m.get(t.Context(), "conv-1", "msg-old")
+	if err != nil || !ok || got.FileName != "" {
+		t.Errorf("get(row from before the migration) = %+v, %v, %v, want FileName empty, found, no error", got, ok, err)
+	}
+
+	gif := mediaRef{
+		Kind: mediaKindDocument, DirectPath: "/v/gif", MediaKey: []byte{2}, FileSHA256: []byte{2},
+		FileEncSHA256: []byte{2}, FileLength: 2, Mimetype: "image/gif", FileName: "nice.gif",
+	}
+	if err := m.put(t.Context(), "conv-1", "msg-gif", gif); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err = m.get(t.Context(), "conv-1", "msg-gif")
+	if err != nil || !ok || !reflect.DeepEqual(got, gif) {
+		t.Errorf("get after migration = %+v, %v, %v, want %+v, true, no error", got, ok, err, gif)
 	}
 }

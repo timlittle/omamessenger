@@ -8,6 +8,7 @@ import (
 	"github.com/gotd/td/tg"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // media describes what a message carries besides its text, or nil when
@@ -219,8 +220,14 @@ func documentLabel(dc tg.DocumentClass) string {
 	}
 }
 
-// strippedThumb is the tiny blurred preview among a photo's or document's
-// sizes as a base64 JPEG, or "" when Telegram sent none.
+// strippedThumb is the tiny blurred preview among a photo's or
+// document's sizes as a base64 JPEG, once imagesafe has checked it,
+// or "" when Telegram sent none or it failed that check. Expand turns
+// Telegram's own compact encoding back into a real, if tiny, JPEG
+// using fixed quantization tables, so this is already this
+// connector's own bytes rather than a sender's; running it through
+// imagesafe anyway costs little and means every thumbnail this UI
+// ever shows took the same path (see docs/decisions.md).
 func strippedThumb(sizes []tg.PhotoSizeClass) string {
 	for _, size := range sizes {
 		s, ok := size.(*tg.PhotoStrippedSize)
@@ -228,10 +235,75 @@ func strippedThumb(sizes []tg.PhotoSizeClass) string {
 			continue
 		}
 
-		if jpeg, err := thumbnail.Expand(s.Bytes); err == nil {
-			return base64.StdEncoding.EncodeToString(jpeg)
+		jpeg, err := thumbnail.Expand(s.Bytes)
+		if err != nil {
+			continue
 		}
+
+		safe, ok := imagesafe.Sanitize(jpeg, imagesafe.Thumbnail)
+		if !ok {
+			return ""
+		}
+
+		return base64.StdEncoding.EncodeToString(safe)
 	}
 
 	return ""
+}
+
+// imageProfile is the imagesafe.Profile a downloaded message's media
+// must pass before FetchMedia writes it to disk, and whether it is
+// one at all: a photo, a static WebP sticker, or a video document
+// Telegram itself marks as an actual GIF file rather than an encoded
+// clip, the only media kinds this UI ever loads into a QML Image or
+// AnimatedImage. Everything else is written unchanged.
+func imageProfile(m tg.MessageMediaClass) (imagesafe.Profile, bool) {
+	switch mm := m.(type) {
+	case *tg.MessageMediaPhoto:
+		return imagesafe.FullImage, true
+	case *tg.MessageMediaDocument:
+		return documentImageProfile(mm.Document)
+	default:
+		return imagesafe.Profile{}, false
+	}
+}
+
+// documentImageProfile is imageProfile's own case for a document,
+// mirroring documentMedia's own dispatch order exactly so the two
+// never disagree about which document is which: a static WebP
+// sticker, or - once d.sticker and d.video are both ruled out, the
+// same order documentMedia checks them in - a document isGIFImage
+// says is a genuine GIF file. d.video alone is never this: Telegram's
+// own "send as animation" still encodes a silent mp4 (see
+// domain.Media.IsGIFFile), never real GIF-format bytes, so a video
+// document is written unchanged whatever its Animated attribute says.
+func documentImageProfile(dc tg.DocumentClass) (imagesafe.Profile, bool) {
+	doc, ok := dc.(*tg.Document)
+	if !ok {
+		return imagesafe.Profile{}, false
+	}
+
+	d := describe(doc)
+	switch {
+	case d.sticker:
+		return stickerImageProfile(doc.MimeType)
+	case d.video:
+		return imagesafe.Profile{}, false
+	case isGIFImage(doc.MimeType, d.name):
+		return imagesafe.FullImage, true
+	default:
+		return imagesafe.Profile{}, false
+	}
+}
+
+// stickerImageProfile is documentImageProfile's own case for a
+// sticker: only a static WebP is ever fetched as a file at all (see
+// stickerMedia), so a Lottie or WebM sticker's mime type never
+// reaches here with anything to sanitize in the first place.
+func stickerImageProfile(mimeType string) (imagesafe.Profile, bool) {
+	if mimeType != "image/webp" {
+		return imagesafe.Profile{}, false
+	}
+
+	return imagesafe.Thumbnail, true
 }

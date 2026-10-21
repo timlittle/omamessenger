@@ -97,6 +97,10 @@ Item {
       // thumb; never a remote URL.
       source: root.path ? "file://" + root.path : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
       fillMode: Image.PreserveAspectFit
+      // Bounded to the viewer's own stage, never the file's own
+      // declared size (see PhotoView.qml's own sourceSize for why).
+      sourceSize.width: Math.max(1, stage.width)
+      sourceSize.height: Math.max(1, stage.height)
       asynchronous: true
       // Scaling a tiny preview up smoothly keeps it a soft blur, same as
       // the bubble's own photo view.
