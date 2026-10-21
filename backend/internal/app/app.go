@@ -239,6 +239,7 @@ func New(d Deps) (*Commands, *Ingest) {
 		store: d.Store, notifier: d.Notifier, dispatcher: d.Dispatcher, events: events, ui: state,
 		outgoing: d.Outgoing, cache: d.Cache, logger: d.Logger, retries: retries,
 	}
+	commands.ingest = ingest
 
 	return commands, ingest
 }

@@ -595,8 +595,15 @@ Item {
     target: root.service
 
     function onStatusChanged() {
-      if (root.service.status === "ready" && root.activeId)
-        timeline.loadInitial(root.service, root.activeId, () => true, root.isGroup);
+      if (root.service.status !== "ready") return;
+
+      // A helper that just restarted starts with nobody's focus
+      // recorded, even though the UI never closed this conversation, so
+      // it has to be told again who is looking (see Ingest.Looked in
+      // backend/internal/app/ingest.go, which catches up any backlog
+      // this uncovers).
+      root._reportFocus();
+      if (root.activeId) timeline.loadInitial(root.service, root.activeId, () => true, root.isGroup);
     }
 
     function onEvent(name, data) {

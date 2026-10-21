@@ -124,6 +124,64 @@ func TestIncoming_NeverReportsReadWhenNotLookingAtIt(t *testing.T) {
 	})
 }
 
+// TestSetFocus_MarksABacklogReadWhenRegainingFocus reproduces a chat
+// that already has unread messages from before the window had focus -
+// the user alt-tabbed away, or the helper crashed and restarted -
+// getting focused again. Incoming only catches a message that arrives
+// after this moment; without this, whatever piled up earlier stays
+// flagged unread until the user closes and reopens the conversation,
+// even though they are looking right at it now.
+func TestSetFocus_MarksABacklogReadWhenRegainingFocus(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx := t.Context()
+		chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+		f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "while away"))
+		if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 1 {
+			t.Fatalf("unread before focus = %d, want 1", got.Unread)
+		}
+
+		if err := f.commands.SetFocus(ctx, chat.ID, true); err != nil {
+			t.Fatal(err)
+		}
+
+		if got, _ := f.store.Conversation(ctx, chat.ID); got.Unread != 0 {
+			t.Errorf("unread right after regaining focus = %d, want 0", got.Unread)
+		}
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		if got := f.dispatcher.read; !slices.Equal(got, []string{chat.ID}) {
+			t.Errorf("read receipts = %v, want one report for %s", got, chat.ID)
+		}
+	})
+}
+
+// TestSetFocus_DoesNothingForAnAlreadyReadConversation checks SetFocus
+// never nags the service with a read receipt for a conversation that had
+// nothing unread, so a window merely regaining focus, or a chat merely
+// being opened, does not spam a connector that has nothing to catch up on.
+func TestSetFocus_DoesNothingForAnAlreadyReadConversation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t, false)
+		ctx := t.Context()
+		chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+		if err := f.commands.SetFocus(ctx, chat.ID, true); err != nil {
+			t.Fatal(err)
+		}
+
+		time.Sleep(time.Second)
+		synctest.Wait()
+
+		if len(f.dispatcher.read) != 0 {
+			t.Errorf("read receipts = %v, want none for an already-read conversation", f.dispatcher.read)
+		}
+	})
+}
+
 // TestUnread_ReMarksReadForTheOpenConversation reproduces the badge
 // reappearing on a conversation the user is still looking at: Telegram's
 // own count can report non-zero for it, for example because our read

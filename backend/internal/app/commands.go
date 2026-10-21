@@ -33,6 +33,7 @@ type Commands struct {
 	spell        *spell.Checker
 	events       *events
 	ui           *uiState
+	ingest       *Ingest
 	refreshed    *attemptedRefresh
 	recentErrors *errorHistory
 	reminders    *reminders
@@ -122,16 +123,28 @@ func (c *Commands) Contacts(ctx context.Context, accountID, query string) ([]dom
 	return c.store.Contacts(ctx, accountID, query)
 }
 
-// SetFocus records which conversation the user is looking at, which decides
-// whether arriving messages are read at once or notify.
+// SetFocus records which conversation the user is looking at, which
+// decides whether arriving messages are read at once or notify. Landing
+// on conv with the window active also clears whatever was already
+// unread in it (see Ingest.Looked): Incoming only catches a message that
+// arrives after this call, not a backlog left by switching chats, the
+// window regaining focus, or the helper itself having just restarted
+// while the UI still considered conv open.
 func (c *Commands) SetFocus(ctx context.Context, conversationID string, windowActive bool) error {
-	if conversationID != "" {
-		if _, err := c.store.Conversation(ctx, conversationID); err != nil {
-			return err
-		}
+	if conversationID == "" {
+		c.ui.setFocus(conversationID, windowActive)
+		return nil
+	}
+
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return err
 	}
 
 	c.ui.setFocus(conversationID, windowActive)
+	if windowActive {
+		c.ingest.Looked(ctx, conv)
+	}
 
 	return nil
 }

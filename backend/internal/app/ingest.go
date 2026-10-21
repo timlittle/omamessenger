@@ -364,6 +364,33 @@ func (in *Ingest) looking(conversationID string) bool {
 	return policy.MarkReadOnArrival(policy.Input{WindowActive: windowActive, Focused: focused == conversationID})
 }
 
+// Looked reports that the user just became focused on conv, with the
+// window active: SetFocus calls this for every such moment, whether the
+// user switched into conv, the window regained focus with conv already
+// open, or the helper itself just restarted while the UI still considers
+// conv open. Incoming and Unread only ever clear a message that arrives
+// or syncs after the user is already looking; this clears whatever
+// piled up before that moment, the same way and through the same
+// debounced report, coalescing with whatever either of them is about to
+// report for conv rather than sending the service a second, separate
+// one. It does nothing for a conversation that had no unread messages,
+// so a window merely regaining focus never nags the service with a read
+// receipt it has no reason to send.
+func (in *Ingest) Looked(ctx context.Context, conv domain.Conversation) {
+	if conv.Unread == 0 {
+		return
+	}
+
+	before := in.events.unreadTotal(ctx)
+	changed, err := in.store.MarkRead(ctx, conv.ID)
+	if err != nil || !changed {
+		return
+	}
+
+	in.events.conversationChanged(ctx, conv.ID, before)
+	in.scheduleMarkRead(conv, conv.Unread)
+}
+
 // scheduleMarkRead reports conv as read to its service after
 // markReadDebounce, extending the wait if another message arrives first
 // so a burst produces one call rather than one per message. unread adds
