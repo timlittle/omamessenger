@@ -11,7 +11,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
+	"unicode/utf8"
 
 	"github.com/godbus/dbus/v5"
 
@@ -75,9 +77,9 @@ func (b *fakeBus) args() (appName, title, body string, actions []string, hints m
 
 // desktopWithFake returns a Desktop whose Dial hands Notify the given
 // fake bus, and a channel fed by Click.
-func desktopWithFake(b *fakeBus) (notify.Desktop, <-chan string) {
+func desktopWithFake(b *fakeBus) (*notify.Desktop, <-chan string) {
 	clicks := make(chan string, 1)
-	d := notify.Desktop{
+	d := &notify.Desktop{
 		Dial:  func(context.Context) (notify.Bus, func(), error) { return b, func() {}, nil },
 		Click: func(conversationID string) { clicks <- conversationID },
 	}
@@ -216,7 +218,7 @@ func TestNotify_IgnoresAnUnrelatedAction(t *testing.T) {
 func TestNotify_IgnoresAFailureToDialTheBus(t *testing.T) {
 	t.Parallel()
 
-	d := notify.Desktop{
+	d := &notify.Desktop{
 		Dial: func(context.Context) (notify.Bus, func(), error) { return nil, nil, errors.New("no session bus") },
 	}
 
@@ -231,7 +233,8 @@ func TestNotify_IgnoresAFailureToDialTheBus(t *testing.T) {
 func TestNotify_DefaultsToDialingTheRealSessionBus(t *testing.T) {
 	t.Parallel()
 
-	notify.Desktop{}.Notify("title", "body", "conv-1") // must not panic or block
+	d := &notify.Desktop{}
+	d.Notify("title", "body", "conv-1") // must not panic or block
 }
 
 func TestNotify_IgnoresAFailedShowCall(t *testing.T) {
@@ -254,6 +257,134 @@ func TestNotify_IgnoresAFailedWaitCall(t *testing.T) {
 	d.Notify("title", "body", "conv-1")
 
 	assertNoClick(t, clicks)
+}
+
+// blockingBus is a Bus whose Show always succeeds and whose Wait never
+// returns on its own, so a notification shown through it holds its
+// concurrency slot until ctx ends - the same as a real notification
+// nothing ever closes, up to notifyTimeout.
+type blockingBus struct {
+	mu    sync.Mutex
+	shown []string
+}
+
+func (b *blockingBus) Show(_, title, _ string, _ []string, _ map[string]dbus.Variant) (uint32, error) {
+	b.mu.Lock()
+	b.shown = append(b.shown, title)
+	b.mu.Unlock()
+
+	return 1, nil
+}
+
+func (b *blockingBus) Wait(ctx context.Context, _ uint32) (string, error) {
+	<-ctx.Done()
+	return "", ctx.Err()
+}
+
+func (b *blockingBus) titles() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return append([]string(nil), b.shown...)
+}
+
+// TestNotify_DropsBeyondTheConcurrencyCap confirms a burst of
+// notifications - WhatsApp or Telegram delivering a backlog at once,
+// say - never opens more than MaxConcurrentNotifications goroutines
+// and bus connections: acquiring a slot happens synchronously inside
+// Notify, so every call beyond the cap is dropped at once rather than
+// racing the goroutines it would otherwise spawn.
+func TestNotify_DropsBeyondTheConcurrencyCap(t *testing.T) {
+	t.Parallel()
+
+	b := &blockingBus{}
+	d := &notify.Desktop{Dial: func(context.Context) (notify.Bus, func(), error) { return b, func() {}, nil }}
+
+	for i := 0; i < notify.MaxConcurrentNotifications+3; i++ {
+		d.Notify("title", "body", "conv-1")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(b.titles()) < notify.MaxConcurrentNotifications && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+
+	if got := len(b.titles()); got != notify.MaxConcurrentNotifications {
+		t.Errorf("Show was called %d times, want exactly MaxConcurrentNotifications (%d)", got, notify.MaxConcurrentNotifications)
+	}
+}
+
+// TestNotify_ReleasesItsSlotOnceANotificationEnds confirms a slot a
+// notification held is free again once its own run ends - here,
+// because nothing ever closes it and notifyTimeout elapses - so a
+// notification dropped while the cap was full can still show once
+// room frees up, rather than being dropped forever.
+func TestNotify_ReleasesItsSlotOnceANotificationEnds(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		b := &blockingBus{}
+		d := &notify.Desktop{Dial: func(context.Context) (notify.Bus, func(), error) { return b, func() {}, nil }}
+
+		for i := 0; i < notify.MaxConcurrentNotifications; i++ {
+			d.Notify("filling", "body", "conv-1")
+		}
+		synctest.Wait()
+
+		d.Notify("dropped while full", "body", "conv-1")
+		synctest.Wait()
+
+		for _, title := range b.titles() {
+			if title == "dropped while full" {
+				t.Fatal("Show was called while every slot was already in use")
+			}
+		}
+
+		time.Sleep(6 * time.Minute) // past notifyTimeout: every blocked Wait gives up and releases its slot
+		synctest.Wait()
+
+		d.Notify("fits now", "body", "conv-1")
+		synctest.Wait()
+
+		found := false
+		for _, title := range b.titles() {
+			found = found || title == "fits now"
+		}
+		if !found {
+			t.Error("Show was never called for a notification sent once a slot had freed up")
+		}
+
+		// Let this last notification's own goroutine finish too, so none
+		// are left durably blocked when the bubble ends.
+		time.Sleep(6 * time.Minute)
+		synctest.Wait()
+	})
+}
+
+// TestNotify_TruncatesAnOverlongTitleAndBodyOnARuneBoundary confirms a
+// sender-controlled title or body far longer than any real one could
+// usefully be is cut down before it ever reaches Show, on a rune
+// boundary so a multi-byte character at the cut point is never split
+// into invalid UTF-8.
+func TestNotify_TruncatesAnOverlongTitleAndBodyOnARuneBoundary(t *testing.T) {
+	t.Parallel()
+
+	b := closedWithoutAction()
+	d, clicks := desktopWithFake(b)
+
+	longTitle := strings.Repeat("a", 500)
+	longBody := strings.Repeat("🎉", 3000) // a multi-byte rune throughout, to prove the cut never splits one
+	d.Notify(longTitle, longBody, "conv-1")
+	assertNoClick(t, clicks)
+
+	_, title, body, _, _ := b.args()
+	if n := len([]rune(title)); n > 200 {
+		t.Errorf("title has %d runes, want at most 200", n)
+	}
+	if n := len([]rune(body)); n > 2000 {
+		t.Errorf("body has %d runes, want at most 2000", n)
+	}
+	if !utf8.ValidString(title) || !utf8.ValidString(body) {
+		t.Error("truncated title or body is not valid UTF-8: the cut split a multi-byte rune")
+	}
 }
 
 // TestServiceReachable_ReturnsFalseWithNoSessionBusConfigured confirms

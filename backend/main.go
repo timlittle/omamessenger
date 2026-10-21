@@ -63,7 +63,7 @@ const outgoingSweepInterval = time.Hour
 
 // notify.Desktop is the only Notifier the helper wires; checked here,
 // next to where it is wired, rather than inside app.
-var _ app.Notifier = notify.Desktop{}
+var _ app.Notifier = &notify.Desktop{}
 
 // main runs the helper until the UI disconnects or it receives SIGTERM.
 // The actual work is in exitCode so os.Exit always runs after mainErr's
@@ -277,7 +277,7 @@ type wireDeps struct {
 // with the accounts already saved. Test builds add the fake connectors;
 // see fake.go.
 func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connector.Manager, error) {
-	notifier := notify.Desktop{Click: func(conversationID string) {
+	notifier := &notify.Desktop{Click: func(conversationID string) {
 		d.srv.Publish(ctx, app.EventNotificationClicked, app.NotificationClicked{ConversationID: conversationID})
 	}}
 	deps := app.Deps{

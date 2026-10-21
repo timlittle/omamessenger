@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -42,6 +43,42 @@ const defaultAction = "default"
 // notification short.
 const notifyTimeout = 5 * time.Minute
 
+// MaxConcurrentNotifications bounds how many notifications a Desktop
+// shows at once, and so how many goroutines and session-bus
+// connections it can have open at once, each living up to
+// notifyTimeout: a burst of incoming messages (reconnecting after
+// being offline, say) must never be able to open an unbounded number
+// of either. A notification beyond this many already showing is
+// dropped at once rather than queued (see acquire): a notification is
+// a transient hint, never something worth making a later one wait
+// behind.
+const MaxConcurrentNotifications = 8
+
+// maxTitleRunes and maxBodyRunes bound a notification's title and
+// body. Generous for any real conversation name or message preview -
+// Omarchy's own notification daemon already wraps long text to a few
+// lines on screen - while keeping a single crafted message from
+// growing the D-Bus call this package makes, and what the daemon then
+// has to render, without bound.
+const (
+	maxTitleRunes = 200
+	maxBodyRunes  = 2000
+)
+
+// truncateRunes returns s unchanged if it already has at most max
+// runes, or its first max runes otherwise. Converting to []rune first,
+// rather than slicing the string's bytes directly, means the cut
+// always falls on a rune boundary, never partway through a multi-byte
+// character.
+func truncateRunes(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+
+	return string(runes[:max])
+}
+
 // Bus is the one seam between Desktop and a real D-Bus session bus
 // connection: showing a notification and waiting for its own
 // ActionInvoked or NotificationClosed signal. dialSessionBus is the
@@ -72,13 +109,55 @@ type Desktop struct {
 	// itself, rather than closing or ignoring it. Nil means clicks are
 	// not reported.
 	Click func(conversationID string)
+
+	// mu guards sem's own lazy creation (see acquire): Desktop is often
+	// constructed as a bare struct literal, so the semaphore cannot be
+	// set up by a constructor this package has no other use for.
+	mu  sync.Mutex
+	sem chan struct{}
+}
+
+// acquire reserves one of this Desktop's MaxConcurrentNotifications
+// concurrent slots, creating the semaphore on first use, and reports
+// whether it got one: false means that many are already showing, and
+// the caller must drop this notification rather than wait behind them.
+func (d *Desktop) acquire() bool {
+	d.mu.Lock()
+	if d.sem == nil {
+		d.sem = make(chan struct{}, MaxConcurrentNotifications)
+	}
+	sem := d.sem
+	d.mu.Unlock()
+
+	select {
+	case sem <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+// release frees the slot a successful acquire reserved.
+func (d *Desktop) release() {
+	d.mu.Lock()
+	sem := d.sem
+	d.mu.Unlock()
+
+	<-sem
 }
 
 // Notify shows title and body as a notification carrying
 // conversationID, and waits for it in its own goroutine so the caller
 // never blocks. A missing or failing notification service is ignored: a
-// notification is never worth failing a message over.
-func (d Desktop) Notify(title, body, conversationID string) {
+// notification is never worth failing a message over. One already
+// showing beyond MaxConcurrentNotifications is dropped at once instead
+// (see acquire); title and body are bounded and cut on a rune boundary
+// (see truncateRunes) before anything else happens to them.
+func (d *Desktop) Notify(title, body, conversationID string) {
+	if !d.acquire() {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
 
 	dial := d.Dial
@@ -86,8 +165,11 @@ func (d Desktop) Notify(title, body, conversationID string) {
 		dial = dialSessionBus
 	}
 
+	title, body = truncateRunes(title, maxTitleRunes), truncateRunes(body, maxBodyRunes)
+
 	go func() {
 		defer cancel()
+		defer d.release()
 		d.run(ctx, dial, title, body, conversationID)
 	}()
 }
@@ -97,7 +179,7 @@ func (d Desktop) Notify(title, body, conversationID string) {
 // dial, show or wait failure as nothing to report rather than a crash:
 // see Notify, which releases ctx and the bus connection once run
 // returns.
-func (d Desktop) run(ctx context.Context, dial func(context.Context) (Bus, func(), error), title, body, conversationID string) {
+func (d *Desktop) run(ctx context.Context, dial func(context.Context) (Bus, func(), error), title, body, conversationID string) {
 	b, release, err := dial(ctx)
 	if err != nil {
 		return
