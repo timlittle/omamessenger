@@ -19,7 +19,22 @@ linters:
     - nilerr       # a function does not return nil when the err it checked is non-nil
     - misspell     # misspelled words in comments and strings
     - gocritic     # diagnostic-tag checks only; see settings below for why
+    - forbidigo    # exec.Command/CommandContext only in the one file allowed to launch a subprocess
   settings:
+    forbidigo:
+      forbid:
+        - pattern: '^exec\.Command$'
+          msg: >-
+            only backend/internal/clipboard/clipboard.go may launch a subprocess, and only with a literal
+            program name: an argument another person or service controls reaching argv is readable by any
+            other local user through /proc, the same class of finding that moved desktop notifications to
+            D-Bus (see backend/internal/notify).
+        - pattern: '^exec\.CommandContext$'
+          msg: >-
+            only backend/internal/clipboard/clipboard.go may launch a subprocess, and only with a literal
+            program name: an argument another person or service controls reaching argv is readable by any
+            other local user through /proc, the same class of finding that moved desktop notifications to
+            D-Bus (see backend/internal/notify).
     gocritic:
       # Style and performance checks are opinionated and noisy; the
       # diagnostic tag is the small, high-signal subset that is actually
@@ -178,6 +193,12 @@ linters:
       # nearly every file in the suite.
       - path: _test\.go
         linters: [gosec]
+      # Tests build and launch their own fixture binaries (the helper
+      # itself, a stub D-Bus daemon, a scripted stub command): the
+      # program and every argument are literals the test itself wrote,
+      # never content from a sender, a service or another local user.
+      - path: _test\.go
+        linters: [forbidigo]
 
 formatters:
   enable: [gofumpt]
