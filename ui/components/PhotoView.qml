@@ -24,6 +24,13 @@ Item {
   // failed is true once a fetch for this photo's full image has
   // definitely failed, as opposed to simply not having happened yet.
   property bool failed: false
+  // failedReason is that fetch's safe reason category (see
+  // server/errors.go), "" when failed is false or the helper gave
+  // none; "too-large" means the automatic fetch a row's own visibility
+  // asked for was refused only for being over that fetch's own, small
+  // cap, never that the photo itself is unavailable (see
+  // _tooLargeAuto).
+  property string failedReason: ""
   // maxWidth is the widest the photo may be drawn.
   property real maxWidth: Style.space(320)
 
@@ -48,11 +55,20 @@ Item {
   // a genuinely new failure ask once more.
   property bool _retriedForPath: false
 
+  // _tooLargeAuto is true once the automatic fetch a row's own
+  // visibility asked for was refused only for being over its own,
+  // small cap: never a permanent failure, so a click still opens the
+  // viewer (see the MouseArea below), which downloads it again,
+  // deliberately, rather than leaving it stuck on the blurred preview
+  // forever.
+  readonly property bool _tooLargeAuto: root.failed && root.failedReason === "too-large" && !root.path
+
   // _unavailable is true once the full image is known not to be coming
-  // (it failed to load, or its fetch itself failed) and there is no
-  // thumb to fall back to either, so the bubble shows a quiet message
+  // for good (it failed to load, or its fetch itself failed for a
+  // reason other than the automatic-fetch cap) and there is no thumb
+  // to fall back to either, so the bubble shows a quiet message
   // instead of staying blank.
-  readonly property bool _unavailable: !root.photo.thumb && (root._loadFailed || root.failed)
+  readonly property bool _unavailable: !root.photo.thumb && (root._loadFailed || (root.failed && !root._tooLargeAuto))
 
   implicitWidth: Math.min(root.maxWidth, Style.space(320))
   implicitHeight: Math.min(root.implicitWidth * root._aspect, Style.space(400))
@@ -127,9 +143,25 @@ Item {
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
 
+  // tooLargeLabel marks a photo refused only for being over the
+  // automatic-fetch cap as tappable, over the thumbnail when there is
+  // one or the quiet background above otherwise, rather than leaving
+  // it looking the same as a permanent failure.
+  Text {
+    objectName: "tooLargeLabel"
+    anchors { bottom: parent.bottom; left: parent.left; right: parent.right; margins: Theme.spacing.xs }
+    visible: root._tooLargeAuto
+    horizontalAlignment: Text.AlignHCenter
+    wrapMode: Text.Wrap
+    text: "Tap to load full image"
+    textFormat: Text.PlainText
+    color: Theme.foreground
+    font { family: Theme.font.family; pixelSize: Theme.font.caption; weight: Font.DemiBold }
+  }
+
   MouseArea {
     anchors.fill: parent
-    enabled: root.path !== "" && !root._loadFailed
+    enabled: (root.path !== "" && !root._loadFailed) || root._tooLargeAuto
     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
     onClicked: root.opened()
   }

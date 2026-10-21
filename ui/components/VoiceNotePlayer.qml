@@ -49,10 +49,15 @@ Item {
   readonly property real _knownDurationMs: root.durationMs > 0 ? root.durationMs : (root.media.duration || 0) * 1000
   // _fraction is how far through playback is, 0 when nothing is known yet.
   readonly property real _fraction: root._knownDurationMs > 0 ? Math.min(1, root.positionMs / root._knownDurationMs) : 0
-  // _unplayable is true once a fetch is known to have failed and there is
-  // still no downloaded copy to play, so the button and label say so
-  // instead of offering to play nothing.
-  readonly property bool _unplayable: root.failed && !root.path
+  // _tooLargeAuto is true once the automatic fetch this voice note's
+  // own visibility asked for was refused only for being over its own,
+  // small cap: never a permanent failure, so the play button still
+  // asks for it, deliberately, rather than refusing forever.
+  readonly property bool _tooLargeAuto: root.failedReason === "too-large" && !root.path
+  // _unplayable is true once a fetch is known to have failed for good
+  // and there is still no downloaded copy to play, so the button and
+  // label say so instead of offering to play nothing.
+  readonly property bool _unplayable: root.failed && !root.path && !root._tooLargeAuto
   // _unavailableHint is a short, safe phrase for failedReason's category
   // ("connection problem", "took too long", …), or "" when there is none
   // to show, so the play button's tooltip can say why without ever
@@ -80,7 +85,7 @@ Item {
       text: root.playing ? "⏸" : "▶"
       tooltipText: root._unplayable
         ? ("Unavailable" + (root._unavailableHint ? " — " + root._unavailableHint : ""))
-        : (root.playing ? "Pause voice message" : "Play voice message")
+        : root._tooLargeAuto ? "Tap to load" : (root.playing ? "Pause voice message" : "Play voice message")
       enabled: !root._unplayable
       focusable: true
       onClicked: root.opened()

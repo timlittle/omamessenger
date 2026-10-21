@@ -266,6 +266,7 @@ Item {
       onLoadOlder: root.conversationController.loadOlder()
       onRetry: id => root.conversationController.retryMessage(id)
       onMediaWanted: id => root.conversationController.fetchMedia(id)
+      onMediaRetry: id => root.conversationController.retryMedia(id)
       onMediaOpen: id => root.conversationController.openMedia(id)
       onReact: (id, emoji) => root.reactionsController.react(id, emoji)
       onReactPickerRequested: id => root.reactionsController.openPicker(id)

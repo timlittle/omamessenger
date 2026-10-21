@@ -101,6 +101,11 @@ Item {
   signal retry(string id)
   // mediaWanted asks for this message's photo to be downloaded.
   signal mediaWanted(string id)
+  // mediaRetry asks for this message's photo, sticker or voice note to
+  // be downloaded deliberately, bypassing the automatic-fetch cap
+  // mediaWanted's own fetch applies: the tap-to-load action offered
+  // once that fetch was refused only for being too large.
+  signal mediaRetry(string id)
   // mediaOpen asks for this message's photo, video or file to be opened.
   signal mediaOpen(string id)
   // videoToggled asks the caller to select, deselect or pause this
@@ -283,6 +288,7 @@ Item {
           videoPlayback: root.videoPlayback
           windowActive: root.windowActive
           onMediaWanted: root.mediaWanted(root.message.id)
+          onMediaRetry: root.mediaRetry(root.message.id)
           onMediaOpen: root.mediaOpen(root.message.id)
           onVideoToggled: root.videoToggled(root.message.id)
           onVideoMuteToggled: root.videoMuteToggled(root.message.id)

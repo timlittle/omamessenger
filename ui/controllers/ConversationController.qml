@@ -1,5 +1,4 @@
 import QtQuick
-import qs.Commons
 import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
 import "../lib/Links.js" as Links
@@ -56,14 +55,6 @@ Item {
   // through media (see MediaController); a test overrides it with a
   // recorder rather than letting a video or file open for real.
   property var openExternally: (path) => Qt.openUrlExternally(Links.fileURL(path))
-
-  // copyToClipboard puts a photo's or video's file on the system
-  // clipboard, through media (see MediaController); a test overrides it
-  // with a recorder rather than shelling out to wl-copy for real.
-  // Util.execDetached runs its argument as a single command string
-  // under "bash -lc", not an argv list (see MediaController's own
-  // copyToClipboard for why a list silently copied nothing at all).
-  property var copyToClipboard: (path, mimeType) => Util.execDetached("wl-copy --type " + Util.shellQuote(mimeType) + " < " + Util.shellQuote(path))
 
   // mediaOpenCooldownMs is how long media (see MediaController) ignores
   // a repeat open of the same message after opening it; a test
@@ -340,10 +331,19 @@ Item {
     if (id) root.scrollToMessageRequested(id);
   }
 
-  // fetchMedia downloads a message's photo and shows it once it is here,
-  // through media (see MediaController).
+  // fetchMedia downloads a message's photo, sticker or voice note and
+  // shows it once it is here, through media (see MediaController): the
+  // automatic fetch a row's own visibility asks for.
   function fetchMedia(id: string): void {
     media.fetchMedia(timeline, id);
+  }
+
+  // retryMedia downloads a message's photo, sticker or voice note
+  // deliberately, through media (see MediaController): the tap-to-load
+  // action offered once fetchMedia's own automatic fetch was refused
+  // only for being too large.
+  function retryMedia(id: string): void {
+    media.retryMedia(timeline, id);
   }
 
   // openMedia opens a message's photo, video, file or voice note, through
@@ -372,8 +372,8 @@ Item {
     if (root.videoController) root.videoController.setMuted(!root.videoController.muted);
   }
 
-  // copyMedia copies a message's photo or video to the clipboard,
-  // through media (see MediaController).
+  // copyMedia asks the helper to copy a message's photo or video to
+  // the clipboard, through media (see MediaController).
   function copyMedia(id: string): void {
     media.copyMedia(timeline, id);
   }
@@ -740,7 +740,6 @@ Item {
     voiceController: root.voiceController
     videoController: root.videoController
     openExternally: root.openExternally
-    copyToClipboard: root.copyToClipboard
     cooldownMs: root.mediaOpenCooldownMs
   }
 

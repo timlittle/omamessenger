@@ -3,25 +3,29 @@
 // <string> as a single command line under `bash -lc` (see Omarchy's own
 // Commons/Util.qml), which splits on spaces, quotes and operators the
 // string happens to contain — the same way an attacker who controls a
-// chat name or a file path (from a photo or video someone else sent, see
-// ui/controllers/MediaController.qml's copyToClipboard) could break out
-// of the intended `wl-copy ... < path` and run something else entirely.
-// The known-good shape wraps every interpolated value in
-// `Util.shellQuote(...)` before it joins the string; this check fails on
-// any concatenation that skips it. It also catches the opposite mistake
-// that once shipped here: wrapping the whole string in an argv array
-// (`Util.execDetached(["sh", "-c", "<string>"])`) rather than passing it
-// directly - Util.execDetached takes one command string, not an argv
-// list, so a list was silently coerced to one unexecutable, comma-joined
-// word and copying anything failed every time with no error at all.
+// chat name or a file path could break out of an intended command and
+// run something else entirely. A photo's or video's own copy-to-
+// clipboard used to build exactly this kind of command string itself
+// (`wl-copy ... < path`); it now asks the helper's `media.copy` to do
+// it instead, with a fixed argv and the file on stdin, never a shell
+// string built from anything a sender or this UI's own code supplied
+// (see backend/internal/clipboard and docs/decisions.md). The second
+// check below guards against that ever coming back.
 //
-// This cannot judge whether a *literal* string segment is safe on its own
-// merit — only that every non-literal segment went through shellQuote
-// rather than being joined in raw. See tests/qml/MediaController for
-// proof that copyToClipboard dispatches exactly once; a real wl-copy
-// invocation receiving the quoted form is checked by hand (see
-// docs/decisions.md), since no automated test here touches the real,
-// user-visible clipboard.
+// The known-good shape, for anything that still does build one of
+// these strings, wraps every interpolated value in
+// `Util.shellQuote(...)` before it joins the string; the first check
+// fails on any concatenation that skips it. It also catches the
+// opposite mistake that once shipped here: wrapping the whole string
+// in an argv array (`Util.execDetached(["sh", "-c", "<string>"])`)
+// rather than passing it directly - Util.execDetached takes one
+// command string, not an argv list, so a list was silently coerced to
+// one unexecutable, comma-joined word and copying anything failed
+// every time with no error at all.
+//
+// This cannot judge whether a *literal* string segment is safe on its
+// own merit — only that every non-literal segment went through
+// shellQuote rather than being joined in raw.
 'use strict';
 
 const { test } = require('node:test');
@@ -149,9 +153,22 @@ test('a deliberately broken expectation is caught: the argv-array shape Util.exe
   assert.deepEqual(offenders, ['fixture.qml:1']);
 });
 
-test('the known-good wl-copy shape in MediaController.qml and ConversationController.qml is not flagged', () => {
-  for (const file of ['controllers/MediaController.qml', 'controllers/ConversationController.qml']) {
-    const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
-    assert.deepEqual(findUnquoted(file, src), []);
-  }
+// WL_COPY_PATTERN matches a QML file shelling out to wl-copy directly,
+// the class of bug this file guards against reappearing: copying a
+// message's media must go through the helper's media.copy instead
+// (see docs/decisions.md).
+const WL_COPY_PATTERN = /Util\.execDetached\([^)]*wl-copy/;
+
+test('no QML file shells out to wl-copy any more; copying media goes through media.copy', () => {
+  const offenders = qmlFiles(UI_ROOT)
+    .map((file) => path.relative(UI_ROOT, file))
+    .filter((file) => WL_COPY_PATTERN.test(fs.readFileSync(path.join(UI_ROOT, file), 'utf8')));
+
+  assert.deepEqual(offenders, [],
+    `${offenders.length} QML file(s) still shell out to wl-copy directly, instead of asking the helper's ` +
+    `media.copy to run it with a fixed argv and the file on stdin:\n  ${offenders.join('\n  ')}`);
+});
+
+test('a deliberately broken expectation is caught: a QML file shelling out to wl-copy', () => {
+  assert.equal(WL_COPY_PATTERN.test('property var f: () => Util.execDetached("wl-copy --type " + mime)'), true);
 });

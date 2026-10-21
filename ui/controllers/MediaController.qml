@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import qs.Commons
 import "../lib/Format.js" as Format
 import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
@@ -33,20 +32,6 @@ QtObject {
   // videoController is the VideoController a video selects, deselects
   // or mutes through, when it is there.
   property var videoController: null
-
-  // copyToClipboard puts path's content on the system clipboard as
-  // mimeType, by shelling out to wl-copy the same way Omarchy's own
-  // shell copies a value: Quickshell's own clipboard property only
-  // carries plain text, with nothing for an image or a video.
-  // Util.execDetached runs its argument as a single command string
-  // under "bash -lc", not an argv list (see Omarchy's own
-  // Commons/Util.qml); passing it a list silently failed to copy
-  // anything at all, since the whole list was coerced to one
-  // comma-joined, unexecutable word. The default calls the real
-  // wl-copy; a test overrides it with a recorder, so copying a photo
-  // or video can be proven to dispatch exactly once without ever
-  // touching the real, user-visible clipboard.
-  property var copyToClipboard: (path, mimeType) => Util.execDetached("wl-copy --type " + Util.shellQuote(mimeType) + " < " + Util.shellQuote(path))
 
   // openExternally hands a local file to the user's own application.
   // The default calls the real Qt.openUrlExternally; a test overrides
@@ -91,16 +76,28 @@ QtObject {
   // answers it; an empty id means none is open.
   property var _pendingRisky: ({ timeline: null, id: "", path: "" })
 
-  // fetchMedia downloads a message's photo and shows it once it is here.
-  // A photo asks each time its row is shown, so one already on its way is
-  // not asked for twice; if the download fails the preview stays. Always
-  // a deliberate fetch (auto false): a video, even one the sending
-  // service marked to autoplay like a silent "GIF", never asks for its
-  // file on its own any more (see InlineVideo.qml) - only a click does,
-  // through toggleVideo - so nothing here ever needs media.fetch's own
-  // auto param (see docs/api.md), kept accepted server-side for
-  // compatibility but unused by this controller now.
+  // fetchMedia downloads a message's photo, sticker or voice note and
+  // shows it once it is here: the fetch a row's own visibility asks
+  // for on its own, with no click from the user, so auto is always
+  // true - the helper applies its small AutoFetchMaxBytes cap instead
+  // of the far larger one a deliberate click is trusted with (see
+  // media.fetch's auto param in docs/api.md). A row asks each time it
+  // is shown, so one already on its way is not asked for twice; if
+  // the download fails the preview stays, or, once it was refused
+  // only for being over the auto cap, the view offers to load it on a
+  // click instead (see retryMedia). A video, even one the sending
+  // service marked to autoplay like a silent "GIF", never asks for
+  // its file this way (see InlineVideo.qml) - only a click does,
+  // through toggleVideo.
   function fetchMedia(timeline: var, id: string): void {
+    root.downloadMedia(timeline, id, false, true, () => {});
+  }
+
+  // retryMedia downloads a message's photo, sticker or voice note
+  // deliberately, bypassing the automatic-fetch cap fetchMedia applies:
+  // the tap-to-load action offered once an automatic fetch was refused
+  // only for being too large, never retried on its own.
+  function retryMedia(timeline: var, id: string): void {
     root.downloadMedia(timeline, id, false, false, () => {});
   }
 
@@ -238,24 +235,28 @@ QtObject {
     root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(timeline, id, downloaded));
   }
 
-  // copyMedia downloads id's photo or video if need be and copies it to
-  // the clipboard; does nothing for any other media kind, which has
-  // nothing sensible to copy as (see Media.mimeFor).
+  // copyMedia asks the helper to copy a message's photo or video to
+  // the clipboard (see media.copy in docs/api.md), fetching it first
+  // if need be; does nothing for any other media kind, which has
+  // nothing sensible to copy as (see Media.mimeFor). The helper runs
+  // wl-copy itself, with a fixed argv and the file on stdin, rather
+  // than this controller building a shell command string: a chat name
+  // or file name reaching that command line was the exact class of
+  // bug a security review found here (see docs/decisions.md).
   function copyMedia(timeline: var, id: string): void {
-    const mimeType = Media.mimeFor(timeline.media(id));
-    if (!mimeType) return;
+    if (!Media.mimeFor(timeline.media(id))) return;
 
-    const path = timeline.mediaPath(id);
-    if (path) { root._copyAndNotify(timeline, path, mimeType); return; }
+    root.service.request("media.copy", { messageId: id }, function(error, result) {
+      if (error) {
+        const reason = Rpc.errorReason(error);
+        console.warn("media.copy failed for " + id + ": code=" + error.code + " reason=" + (reason || "unknown"));
+        timeline.lastError = Format.mediaUnavailableMessage(Media.kindFor(timeline.media(id)), reason) || Rpc.errorText(error);
+        return;
+      }
 
-    root.downloadMedia(timeline, id, true, false, (downloaded) => root._copyAndNotify(timeline, downloaded, mimeType));
-  }
-
-  // _copyAndNotify copies path to the clipboard and shows a brief
-  // confirmation, so Copy is never silent about having done anything.
-  function _copyAndNotify(timeline: var, path: string, mimeType: string): void {
-    root.copyToClipboard(path, mimeType);
-    timeline.notice = "Copied to clipboard";
+      timeline.lastError = "";
+      timeline.notice = "Copied to clipboard";
+    });
   }
 
   // saveMedia asks the helper to save id's media into the downloads

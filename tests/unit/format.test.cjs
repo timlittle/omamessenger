@@ -542,6 +542,7 @@ const mediaFailureReasonCases = [
   ['decrypt', 'could not be verified'],
   ['cache', 'storage problem'],
   ['timeout', 'took too long'],
+  ['too-large', 'too large to load automatically — tap to load'],
   ['bogus', ''],
   ['', ''],
   [undefined, '']

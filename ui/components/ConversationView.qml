@@ -86,6 +86,11 @@ Item {
   signal retry(string id)
   // mediaWanted asks for a message's photo to be downloaded.
   signal mediaWanted(string id)
+  // mediaRetry asks for a message's photo, sticker or voice note to be
+  // downloaded deliberately, the tap-to-load action offered once
+  // mediaWanted's own automatic fetch was refused only for being too
+  // large.
+  signal mediaRetry(string id)
   // mediaOpen asks for a message's photo, video or file to be opened.
   signal mediaOpen(string id)
   // react asks the caller to toggle a message's reaction with emoji.
@@ -303,6 +308,7 @@ Item {
         highlighted: !composer.writing && root.highlightedId !== "" && modelData.id === root.highlightedId
         onRetry: id => root.retry(id)
         onMediaWanted: id => root.mediaWanted(id)
+        onMediaRetry: id => root.mediaRetry(id)
         onMediaOpen: id => root.mediaOpen(id)
         onReplyRequested: id => root.replyRequested(id)
         onQuoteOpened: remoteId => root.quoteOpened(remoteId)

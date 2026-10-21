@@ -521,7 +521,8 @@ var MEDIA_FAILURE_REASONS = {
   download: 'connection problem',
   decrypt: 'could not be verified',
   cache: 'storage problem',
-  timeout: 'took too long'
+  timeout: 'took too long',
+  'too-large': 'too large to load automatically — tap to load'
 };
 
 // mediaFailureReason turns a media.fetch error's safe reason category

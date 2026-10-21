@@ -52,6 +52,11 @@ Column {
   // mediaWanted asks for this message's photo, animated video or voice
   // note to be downloaded.
   signal mediaWanted()
+  // mediaRetry asks for this message's photo, sticker or voice note to
+  // be downloaded deliberately, the tap-to-load action offered once
+  // mediaWanted's own automatic fetch was refused only for being too
+  // large.
+  signal mediaRetry()
   // mediaOpen asks for this message's photo, video, file or voice note
   // to be opened, played or paused; for a video this is only the
   // fallback path, taken while in-window playback cannot work at all
@@ -152,6 +157,7 @@ Column {
     photo: root.media ? root.media : ({})
     path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
     failed: visible && !!(root.message && root.message.mediaFailed)
+    failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
     onWanted: root.mediaWanted()
     onOpened: root.mediaOpen()
   }
@@ -202,7 +208,9 @@ Column {
     visible: root._mediaKind === "sticker"
     sticker: root.media ? root.media : ({})
     path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
+    failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
     onWanted: root.mediaWanted()
+    onRetryRequested: root.mediaRetry()
   }
 
   PollView {

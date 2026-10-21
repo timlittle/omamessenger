@@ -54,9 +54,6 @@ ShellRoot {
   // openCalls records every path controller.openExternally was asked to
   // open, standing in for the real Qt.openUrlExternally.
   property var openCalls: []
-  // copyCalls records every [path, mimeType] controller.copyToClipboard
-  // was asked to copy, standing in for the real wl-copy.
-  property var copyCalls: []
 
   QtObject {
     id: service
@@ -74,7 +71,7 @@ ShellRoot {
     // race check uses, so it never depends on any id another check has
     // already fetched or cached, and a fifth, never-clicked undownloaded
     // video (v5) the sending service marked animated, for the check that
-    // fetchMedia never sends media.fetch's auto param for one any more.
+    // fetchMedia always sends media.fetch's auto flag, even for one.
     // v6 and v7, both never-clicked and undownloaded, are for the
     // toggleVideo checks below: one media.fetch answers unplayable, the
     // other playable.
@@ -102,6 +99,9 @@ ShellRoot {
     // media.fetch call for each message id, so a check can confirm
     // whether auto was actually sent.
     property var fetchParams: ({})
+    // copyRequests records every message id media.copy was called for,
+    // in place of the removed wl-copy shell-out.
+    property var copyRequests: []
 
     function request(method, params, callback) {
       if (method === "messages.list") { callback(null, { hasMore: false, messages: service.initialMessages }); return; }
@@ -115,6 +115,7 @@ ShellRoot {
       // check below never depends on what $HOME happens to be on the
       // machine actually running this test.
       if (method === "media.save") { callback(null, { path: "/mnt/media-save-test/v2.mp4" }); return; }
+      if (method === "media.copy") { service.copyRequests.push(params.messageId); callback(null, {}); return; }
       callback(null, {});
     }
   }
@@ -123,9 +124,6 @@ ShellRoot {
     id: controller
     service: service
     openExternally: (path) => root.openCalls.push(path)
-    // A recorder, not the real wl-copy, the same reason openExternally
-    // above is one.
-    copyToClipboard: (path, mimeType) => root.copyCalls.push([path, mimeType])
     // Short enough that waiting it out in cooldownTimer below costs the
     // test run almost nothing, while still being a real, positive delay
     // rather than 0.
@@ -221,7 +219,7 @@ ShellRoot {
     if (!root.checkOpenMediaShowsAPlayableVideoInTheViewer()) return;
     if (!root.checkCopyMediaShowsAConfirmation()) return;
     if (!root.checkSaveMediaShowsWhereItWentWithHomeFolded()) return;
-    if (!root.checkFetchMediaNeverSendsAutoAnyMore()) return;
+    if (!root.checkFetchMediaAlwaysSendsAutoAndRetryMediaDoesNot()) return;
     if (!root.checkToggleVideoGatesOnPlayable()) return;
     if (!root.checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer()) return;
 
@@ -287,42 +285,50 @@ ShellRoot {
     return true;
   }
 
-  // checkFetchMediaNeverSendsAutoAnyMore verifies fetchMedia's own
-  // silent prefetch never sends media.fetch's auto param any more,
-  // not even for a video the sending service marked animated (v5,
-  // flagged to autoplay like a silent "GIF"): that flag no longer
-  // triggers a fetch with no click at all (see InlineVideo.qml), so
-  // nothing here ever needs the small, automatic-fetch size cap auto
-  // used to ask the helper for (see docs/api.md, which now documents
-  // the param as accepted but unused by this controller).
-  function checkFetchMediaNeverSendsAutoAnyMore(): bool {
+  // checkFetchMediaAlwaysSendsAutoAndRetryMediaDoesNot verifies
+  // fetchMedia's own silent prefetch - the fetch a row's own
+  // visibility asks for, with no click from the user - always sends
+  // media.fetch's auto flag, so the helper applies its own small,
+  // automatic-fetch size cap (see docs/api.md) rather than the far
+  // larger one a deliberate click is trusted with; retryMedia, the
+  // tap-to-load action offered once that cap refuses something, sends
+  // no auto flag at all, the same deliberate fetch a click already
+  // gets.
+  function checkFetchMediaAlwaysSendsAutoAndRetryMediaDoesNot(): bool {
     controller.fetchMedia("v5");
     controller.fetchMedia("f1");
 
     for (const id of ["v5", "f1"]) {
       const params = service.fetchParams[id];
-      if (!params || params.auto)
-        return Check.fail("params = " + JSON.stringify(params) + ", want no auto flag for id " + id);
+      if (!params || params.auto !== true)
+        return Check.fail("params = " + JSON.stringify(params) + ", want auto: true for id " + id);
     }
 
     root.answerFetchSuccess("v5", "/tmp/v5.mp4");
     root.answerFetchSuccess("f1", "/tmp/f1-notes.pdf");
+
+    controller.retryMedia("v5");
+    const retried = service.fetchParams["v5"];
+    if (!retried || retried.auto)
+      return Check.fail("retryMedia params = " + JSON.stringify(retried) + ", want no auto flag");
+    root.answerFetchSuccess("v5", "/tmp/v5.mp4");
+
     return true;
   }
 
   // checkCopyMediaShowsAConfirmation verifies copying v2's already-
-  // cached video dispatches the real clipboard copy exactly once and
-  // sets a brief confirmation, so Copy is never silent about having
-  // done anything.
+  // cached video asks the helper's media.copy exactly once and sets a
+  // brief confirmation, so Copy is never silent about having done
+  // anything.
   function checkCopyMediaShowsAConfirmation(): bool {
-    root.copyCalls = [];
+    service.copyRequests = [];
     controller.timeline.lastError = "";
     controller.timeline.notice = "";
 
     controller.copyMedia("v2");
 
-    if (root.copyCalls.length !== 1 || root.copyCalls[0][0] !== "/tmp/v2.mp4" || root.copyCalls[0][1] !== "video/mp4")
-      return Check.fail("copyCalls = " + JSON.stringify(root.copyCalls) + ", want one copy of /tmp/v2.mp4 as video/mp4");
+    if (service.copyRequests.length !== 1 || service.copyRequests[0] !== "v2")
+      return Check.fail("copyRequests = " + JSON.stringify(service.copyRequests) + ", want exactly one media.copy for v2");
     if (controller.timeline.notice !== "Copied to clipboard")
       return Check.fail("notice = " + controller.timeline.notice + ", want \"Copied to clipboard\"");
     return true;
