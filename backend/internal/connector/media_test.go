@@ -140,6 +140,76 @@ func TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes(t *testing.T) {
 	})
 }
 
+// TestSanitizeOutgoingImageFile_ChecksSizeFormatAndRewritesInPlace
+// covers every outcome app.describeAttachment's own sanitizeAttachedPhoto
+// depends on: a real image is rewritten in place through imagesafe; a
+// file declaring more bytes than imagesafe.FullImage accepts is
+// refused before anything reads it; bytes that merely sniff as an
+// image but fail imagesafe's own parser are refused too; and a
+// missing file is a plain error, none of connector's own sentinels.
+func TestSanitizeOutgoingImageFile_ChecksSizeFormatAndRewritesInPlace(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a real image is sanitized in place", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "out.png")
+		if err := os.WriteFile(path, onePixelPNG(), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := connector.SanitizeOutgoingImageFile(path); err != nil {
+			t.Fatalf("SanitizeOutgoingImageFile() = %v, want nil", err)
+		}
+
+		safe, err := os.ReadFile(path)
+		if err != nil || len(safe) == 0 {
+			t.Fatalf("file on disk = %v, %v, want a sanitized image", safe, err)
+		}
+	})
+
+	t.Run("a declared size over the profile's cap is refused before reading it in full", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "huge.png")
+		huge := append([]byte{0x89, 0x50, 0x4E, 0x47}, make([]byte, imagesafe.FullImage.MaxInputLen+1)...)
+		if err := os.WriteFile(path, huge, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		err := connector.SanitizeOutgoingImageFile(path)
+		if !errors.Is(err, connector.ErrMediaTooLarge) {
+			t.Fatalf("SanitizeOutgoingImageFile() = %v, want %v", err, connector.ErrMediaTooLarge)
+		}
+	})
+
+	t.Run("bytes that are not really a valid image are refused", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "evil.png")
+		if err := os.WriteFile(path, []byte("not an image at all"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		err := connector.SanitizeOutgoingImageFile(path)
+		if !errors.Is(err, connector.ErrUnsafeImage) {
+			t.Fatalf("SanitizeOutgoingImageFile() = %v, want %v", err, connector.ErrUnsafeImage)
+		}
+	})
+
+	t.Run("a missing file is a plain error", func(t *testing.T) {
+		t.Parallel()
+
+		err := connector.SanitizeOutgoingImageFile(filepath.Join(t.TempDir(), "missing.png"))
+		if err == nil {
+			t.Fatal("SanitizeOutgoingImageFile() on a missing file succeeded")
+		}
+		if errors.Is(err, connector.ErrMediaTooLarge) || errors.Is(err, connector.ErrUnsafeImage) {
+			t.Errorf("err = %v, want a plain stat error, not one of connector's own sentinels", err)
+		}
+	})
+}
+
 // TestVideoPlayable_ChecksTheFilesOwnHeaders covers the two outcomes
 // FetchMedia's own caller depends on: a video whose container and
 // stream headers videosafe actually accepts is reported playable, and

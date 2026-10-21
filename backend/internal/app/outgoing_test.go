@@ -1,8 +1,13 @@
 package app_test
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
+	"math"
+	"math/rand"
 	"os"
 	"slices"
 	"testing"
@@ -13,16 +18,27 @@ import (
 )
 
 // writeTestPhoto writes a file large enough to make several of them
-// overrun the media cache's test limit, starting with a real PNG
-// signature so prepareAttachment classifies it as a photo the same as
-// an actual sent image.
+// overrun the media cache's test limit: a real, valid PNG (unlike a
+// bare magic header followed by zeroes) since Send now runs every
+// photo attachment through imagesafe's own sanitizer, which refuses
+// anything that is not actually well-formed. Its pixels are noise
+// rather than a solid colour so PNG's own compression cannot shrink
+// the file far below size, keeping this helper's byte-budget
+// reasoning in the tests that use it accurate.
 func writeTestPhoto(t *testing.T, name string, size int) string {
 	t.Helper()
 
-	data := make([]byte, size)
-	copy(data, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
+	side := int(math.Sqrt(float64(size) / 4))
+	img := image.NewRGBA(image.Rect(0, 0, side, side))
+	rnd := rand.New(rand.NewSource(1))
+	rnd.Read(img.Pix)
 
-	return writeTestFile(t, name, data)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+
+	return writeTestFile(t, name, buf.Bytes())
 }
 
 // TestOutgoingStatus_KeepsTheCopyUntilConfirmed confirms a pending

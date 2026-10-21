@@ -35,6 +35,27 @@ linters:
             program name: an argument another person or service controls reaching argv is readable by any
             other local user through /proc, the same class of finding that moved desktop notifications to
             D-Bus (see backend/internal/notify).
+        - pattern: '^image\.Decode$'
+          msg: >-
+            decoding an image without a preceding dimension check lets a crafted header's declared size
+            allocate an unbounded bitmap; run the bytes through imagesafe.Sanitize first, or confirm
+            image.DecodeConfig's own declared width and height against a known cap before calling this
+            (see backend/internal/imagesafe and docs/decisions.md). Allowed, with that guard already in
+            place, only in imagesafe itself and the two call sites this rule's exclusions name.
+        - pattern: '^image\.DecodeConfig$'
+          msg: >-
+            reading an image's declared dimensions is the cheap half of the same check image.Decode needs
+            the expensive half of; a DecodeConfig call with nothing checking its result against a cap, or
+            run on bytes imagesafe has not already sanitized, is the same unbounded-allocation risk one
+            step removed (see backend/internal/imagesafe and docs/decisions.md).
+        - pattern: '^png\.Decode$'
+          msg: 'use imagesafe.Sanitize, or image.DecodeConfig with a declared-dimension check first; see backend/internal/imagesafe and docs/decisions.md.'
+        - pattern: '^jpeg\.Decode$'
+          msg: 'use imagesafe.Sanitize, or image.DecodeConfig with a declared-dimension check first; see backend/internal/imagesafe and docs/decisions.md.'
+        - pattern: '^gif\.Decode$'
+          msg: 'use imagesafe.Sanitize, or image.DecodeConfig with a declared-dimension check first; see backend/internal/imagesafe and docs/decisions.md.'
+        - pattern: '^gif\.DecodeAll$'
+          msg: 'use imagesafe.Sanitize, or image.DecodeConfig with a declared-dimension check first; see backend/internal/imagesafe and docs/decisions.md.'
     gocritic:
       # Style and performance checks are opinionated and noisy; the
       # diagnostic tag is the small, high-signal subset that is actually
@@ -212,6 +233,27 @@ linters:
       # never content from a sender, a service or another local user.
       - path: _test\.go
         linters: [forbidigo]
+      # imagesafe is the one package allowed to decode an image at all:
+      # every call here runs only after its own dimension and format
+      # checks already passed (png.go, jpeg.go, gif.go, imagesafe.go's
+      # own confirmation DecodeConfig).
+      - path: backend/internal/imagesafe/
+        linters: [forbidigo]
+        text: "image\\.Decode|image\\.DecodeConfig|png\\.Decode|jpeg\\.Decode|gif\\.Decode"
+      # jpegThumbnail and imageDimensions each call image.DecodeConfig
+      # first and check its declared width and height against
+      # imagesafe.FullImage's own caps before jpegThumbnail's one
+      # image.Decode call; see their own doc comments.
+      - path: backend/internal/connector/whatsapp/upload\.go
+        linters: [forbidigo]
+        text: "image\\.Decode|image\\.DecodeConfig"
+      # describeAttachment runs a photo attachment through
+      # sanitizeAttachedPhoto (imagesafe's own full-size profile)
+      # before imageDimensions or photoThumb ever decodes it; see its
+      # own doc comment.
+      - path: backend/internal/app/attachment\.go
+        linters: [forbidigo]
+        text: "image\\.Decode|image\\.DecodeConfig"
 
 formatters:
   enable: [gofumpt]

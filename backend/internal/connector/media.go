@@ -55,6 +55,45 @@ func SanitizeOutgoingImage(data []byte) ([]byte, error) {
 	return safe, nil
 }
 
+// SanitizeOutgoingImageFile overwrites path in place with imagesafe's
+// own sanitized rewrite of its own content, under the same full-size
+// profile SanitizeOutgoingImage already applies to a pasted image:
+// for a photo attachment the app layer has already copied into the
+// outgoing media area from a file the user picked on disk, checked
+// the same way before anything reads or decodes it further, never
+// trusted further just because the user chose to attach it (see
+// docs/decisions.md). path's declared size is checked against that
+// profile's own input cap before the file is ever read into memory,
+// the same discipline a downloaded photo's declared size already
+// gets, so an attachment many times larger than any real photo
+// cannot force an unbounded read just to find out it will be
+// refused.
+func SanitizeOutgoingImageFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("connector: sanitize outgoing image file: %w", err)
+	}
+	if info.Size() > imagesafe.FullImage.MaxInputLen {
+		return fmt.Errorf("connector: sanitize outgoing image file: %w", ErrMediaTooLarge)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("connector: sanitize outgoing image file: %w", err)
+	}
+
+	safe, err := SanitizeOutgoingImage(data)
+	if err != nil {
+		return fmt.Errorf("connector: sanitize outgoing image file: %w", err)
+	}
+
+	if err := os.WriteFile(path, safe, 0o600); err != nil { //nolint:gosec // deliberate: path is the outgoing media area path the app layer already wrote this same file to; it is never built from untrusted input
+		return fmt.Errorf("connector: sanitize outgoing image file: %w", err)
+	}
+
+	return nil
+}
+
 // SaveMedia writes data to path unchanged, readable only by the
 // user, for a video, audio, voice note, file or document: formats
 // Qt's own image decoders never touch, so none of SaveImageMedia's

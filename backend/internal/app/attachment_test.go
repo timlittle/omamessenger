@@ -149,6 +149,49 @@ func TestSend_WithAttachment_PlaceholderCaptionNeverSentAsRealText(t *testing.T)
 	}
 }
 
+// TestSend_RejectsAnUnsafeImageAttachment covers attachment.go's own
+// version of the bug a security review found in photoThumb: a file
+// whose first bytes sniff as an image (so Send would otherwise
+// decode it with no bound at all) but whose body fails imagesafe's
+// own sanitizer must refuse the whole send with a safe, invalid-input
+// message, never reach image.Decode unchecked.
+func TestSend_RejectsAnUnsafeImageAttachment(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	// A real PNG magic header (what sniffKind and http.DetectContentType
+	// both key off) followed by garbage: imagesafe.Sanitize must still
+	// refuse this once it actually parses the chunk structure.
+	path := writeTestFile(t, "evil.png", append([]byte("\x89PNG\r\n\x1a\n"), []byte("not a real png body at all")...))
+
+	if _, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil}); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("Send(unsafe image) = %v, want ErrInvalidInput", err)
+	}
+}
+
+// TestSend_RejectsAnOversizedImageAttachment covers the other half of
+// the same fix: a photo attachment declaring more bytes than
+// imagesafe's own FullImage profile accepts (32 MiB) is refused
+// before anything attempts to read it into memory at all, the same
+// discipline a downloaded photo's declared size already gets.
+func TestSend_RejectsAnOversizedImageAttachment(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	oversized := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 33*1024*1024)...)
+	path := writeTestFile(t, "huge.png", oversized)
+
+	if _, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path, ReplyToID: "", Mentions: nil}); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("Send(oversized image) = %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestSend_RejectsAnUnreadableAttachment(t *testing.T) {
 	t.Parallel()
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif" // registers GIF decoding for image.DecodeConfig
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -60,7 +62,12 @@ func (c *Commands) prepareAttachment(ctx context.Context, id, path string) (*dom
 		return nil, err
 	}
 
-	media := describeAttachment(stored, name, info.Size())
+	media, err := describeAttachment(stored, name, info.Size())
+	if err != nil {
+		_ = os.Remove(stored) // best effort: the attachment is refused either way, and a stale file here is cleaned up on the next prune regardless
+		return nil, err
+	}
+
 	if c.attachedFromDisk(path) {
 		media.OriginalPath, media.OriginalModTime = path, info.ModTime().UnixMilli()
 	}
@@ -106,17 +113,49 @@ func (c *Commands) storeAttachment(ctx context.Context, id, name, path string) (
 // photo or video for a common type its bytes say it is, file otherwise,
 // with dimensions for a photo. name is the attachment's original file
 // name, kept for display even though the stored copy's own name also
-// carries the message id.
-func describeAttachment(storedPath, name string, size int64) *domain.Media {
+// carries the message id. A photo is run through imagesafe's own
+// full-size sanitizer first (see sanitizeAttachedPhoto), the same
+// check a downloaded or pasted photo already gets, before anything
+// here decodes it to read its dimensions or build a thumbnail: an
+// error means the attachment is refused outright, never sent with an
+// unchecked image.
+func describeAttachment(storedPath, name string, size int64) (*domain.Media, error) {
 	kind := sniffKind(storedPath)
-	media := &domain.Media{Kind: kind, Path: storedPath, FileName: name, Size: size}
+	if kind == domain.MediaPhoto {
+		if err := sanitizeAttachedPhoto(storedPath); err != nil {
+			return nil, err
+		}
+	}
 
+	media := &domain.Media{Kind: kind, Path: storedPath, FileName: name, Size: size}
 	if kind == domain.MediaPhoto {
 		media.Width, media.Height = imageDimensions(storedPath)
 		media.Thumb = photoThumb(storedPath)
 	}
 
-	return media
+	return media, nil
+}
+
+// sanitizeAttachedPhoto overwrites storedPath - a photo attachment
+// already copied into the outgoing media area - in place with
+// imagesafe's own sanitized rewrite (see connector.SanitizeOutgoingImageFile),
+// so an attached image is never trusted further than one received
+// from a sender or pasted from the clipboard just because the user
+// chose to attach it from disk (see docs/decisions.md). The errors
+// this can report are reduced to one of three safe, fixed sentences,
+// never the underlying error, which could otherwise echo a file path.
+func sanitizeAttachedPhoto(storedPath string) error {
+	err := connector.SanitizeOutgoingImageFile(storedPath)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, connector.ErrMediaTooLarge):
+		return fmt.Errorf("%w: the attached image is too large to send", ErrInvalidInput)
+	case errors.Is(err, connector.ErrUnsafeImage):
+		return fmt.Errorf("%w: the attached image could not be used", ErrInvalidInput)
+	default:
+		return fmt.Errorf("%w: the attached image could not be read", ErrInvalidInput)
+	}
 }
 
 // photoThumb returns a small base64 JPEG preview of the photo at path, so
