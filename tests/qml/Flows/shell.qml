@@ -584,9 +584,11 @@ ShellRoot {
     if (image.status !== Image.Ready) return false;
 
     // The real file, not just the small inline thumb, must be what
-    // loaded: that is the whole point of the local copy being used.
-    if (String(image.source).indexOf("file://") !== 0) return Check.fail(caption + " shows its thumb, not the real downloaded image: " + image.source);
-    return true;
+    // loaded: that is the whole point of the local copy being used. The
+    // thumb shows briefly while the outgoing copy is retired to the
+    // cache, so keep waiting; a bubble stuck on its thumb still fails
+    // when the step times out.
+    return String(image.source).indexOf("file://") === 0;
   }
 
   // waitForFirstSentPhotoResolvedToCache and
