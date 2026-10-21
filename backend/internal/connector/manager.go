@@ -505,7 +505,7 @@ func supervise(ctx context.Context, c Connector, sink Sink) {
 
 	for {
 		started := time.Now()
-		err := c.Run(ctx, sink)
+		err := runRecovered(ctx, c, sink)
 		if ctx.Err() != nil {
 			return
 		}
@@ -526,6 +526,25 @@ func supervise(ctx context.Context, c Connector, sink Sink) {
 
 		attempt++
 	}
+}
+
+// errConnectorPanicked reports a connector run that panicked. Its text
+// reaches the UI as the account's status, so it names no detail of the
+// panic, which could carry message content.
+var errConnectorPanicked = errors.New("connector failed unexpectedly")
+
+// runRecovered runs c, turning a panic in its own run loop, such as one
+// parsing a malformed update, into errConnectorPanicked, so the
+// supervisor restarts that account instead of the panic crashing the
+// whole helper and every other account with it.
+func runRecovered(ctx context.Context, c Connector, sink Sink) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = errConnectorPanicked
+		}
+	}()
+
+	return c.Run(ctx, sink)
 }
 
 // sleep waits for d, returning false if ctx is cancelled first.
