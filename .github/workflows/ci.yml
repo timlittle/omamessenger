@@ -136,17 +136,41 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed git go nodejs quickshell qt6-declarative qt6-multimedia qt6-multimedia-ffmpeg
           cd /tmp
-          for spec in "qt6-base 6.11.2-3" "qt6-declarative 6.11.2-1" "qt6-multimedia 6.11.2-1" "qt6-multimedia-ffmpeg 6.11.2-1" "quickshell 0.3.1-1"; do
-            name=${spec% *}
-            version=${spec#* }
-            curl -fsSLO "https://archive.archlinux.org/packages/${name:0:1}/$name/$name-$version-x86_64.pkg.tar.zst"
+          # Each package's sha256, pinned by downloading the exact URL
+          # below once and hashing it: a compromised mirror or cache
+          # answering with anything else must fail the install, never
+          # reach pacman -U unseen (see docs/decisions.md).
+          for spec in \
+            "qt6-base 6.11.2-3 257c5ef6180119d5b4365bdfe2a2ad051694b5dff390eac8e736dd78b8107b21" \
+            "qt6-declarative 6.11.2-1 dcb644fab007d87711650ad46e588ad086b20aae4496845bba19b9ddf0b9855b" \
+            "qt6-multimedia 6.11.2-1 1dc7671b26be1d60b8e51255552ebf5e3649fa2c2a178b5d7a07565e5454984b" \
+            "qt6-multimedia-ffmpeg 6.11.2-1 5e56b0f6c0886eb033a34d1a5ce531791e7eeadb4137f9dbdbfe09bfbb9fcb44" \
+            "quickshell 0.3.1-1 5988659fdc1b0addf138a3cd8e3540fc1078bfc60c995c6f4cd0fb9054484ec7"; do
+            read -r name version sum <<< "$spec"
+            file="$name-$version-x86_64.pkg.tar.zst"
+            curl -fsSLO "https://archive.archlinux.org/packages/${name:0:1}/$name/$file"
+            echo "$sum  $file" | sha256sum -c -
           done
           pacman -U --noconfirm ./*.pkg.tar.zst
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Check out Omarchy 4.0.4
-        run: git clone --depth 1 --branch v4.0.4 https://github.com/basecamp/omarchy /tmp/omarchy
+        # v4.0.4 resolves to this commit (git ls-remote --tags
+        # https://github.com/basecamp/omarchy v4.0.4); pinning the
+        # commit, not the tag, means a re-pushed or moved tag can never
+        # silently swap in different source.
+        run: |
+          omarchy_commit=c668141e9c42b13c80c9ca4ea108e11708c5e8a5
+          mkdir -p /tmp/omarchy
+          git -C /tmp/omarchy init -q
+          git -C /tmp/omarchy fetch -q --depth 1 https://github.com/basecamp/omarchy "$omarchy_commit"
+          git -C /tmp/omarchy checkout -q --detach "$omarchy_commit"
+          got=$(git -C /tmp/omarchy rev-parse HEAD)
+          if [ "$got" != "$omarchy_commit" ]; then
+            echo "omarchy checkout = $got, want $omarchy_commit" >&2
+            exit 1
+          fi
       - name: Offscreen QML tests
         run: make build test-qml
       - name: Qt 6 qmllint
@@ -178,7 +202,21 @@ jobs:
         with:
           persist-credentials: false
       - name: Check out Omarchy 4.0.4
-        run: git clone --depth 1 --branch v4.0.4 https://github.com/basecamp/omarchy /tmp/omarchy
+        # v4.0.4 resolves to this commit (git ls-remote --tags
+        # https://github.com/basecamp/omarchy v4.0.4); pinning the
+        # commit, not the tag, means a re-pushed or moved tag can never
+        # silently swap in different source.
+        run: |
+          omarchy_commit=c668141e9c42b13c80c9ca4ea108e11708c5e8a5
+          mkdir -p /tmp/omarchy
+          git -C /tmp/omarchy init -q
+          git -C /tmp/omarchy fetch -q --depth 1 https://github.com/basecamp/omarchy "$omarchy_commit"
+          git -C /tmp/omarchy checkout -q --detach "$omarchy_commit"
+          got=$(git -C /tmp/omarchy rev-parse HEAD)
+          if [ "$got" != "$omarchy_commit" ]; then
+            echo "omarchy checkout = $got, want $omarchy_commit" >&2
+            exit 1
+          fi
       - name: Offscreen QML tests
         run: make build test-qml
       - name: Qt 6 qmllint
