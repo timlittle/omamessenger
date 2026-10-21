@@ -77,6 +77,12 @@ type Deleter interface {
 	DeleteMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string, forEveryone bool) error
 }
 
+// Editor changes the text of a message this account already sent,
+// through its service.
+type Editor interface {
+	EditMessage(ctx context.Context, conv domain.Conversation, messageRemoteID, newText string, mentions []domain.Mention) error
+}
+
 // MemberLister lists a group conversation's current members, through
 // its service, for the @-mention picker.
 type MemberLister interface {
@@ -185,6 +191,7 @@ type Deps struct {
 	Reactor    Reactor
 	Voter      Voter
 	Deleter    Deleter
+	Editor     Editor
 	Members    MemberLister
 	Outgoing   OutgoingMedia
 	Clipboard  ClipboardRunner
@@ -209,7 +216,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	retries := newRetrier(d.Store)
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, members: d.Members, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, members: d.Members, fake: d.Fake,
 		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},

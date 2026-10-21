@@ -154,6 +154,19 @@ func (c *withDeleter) DeleteMessages(_ context.Context, _ domain.Conversation, i
 	return nil
 }
 
+// withEditor is a connector that edits sent messages, recording what it
+// was asked to change.
+type withEditor struct {
+	fakeConnector
+	edited []string
+}
+
+func (c *withEditor) EditMessage(_ context.Context, _ domain.Conversation, messageRemoteID, newText string, mentions []domain.Mention) error {
+	c.edited = append(c.edited, fmt.Sprintf("%s %q %v", messageRemoteID, newText, mentions))
+
+	return nil
+}
+
 // withLogout is a connector that can unlink itself from its service,
 // recording whether it was asked to and reporting logoutErr.
 type withLogout struct {

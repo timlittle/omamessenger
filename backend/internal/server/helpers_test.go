@@ -50,7 +50,7 @@ func connect(t *testing.T, faked bool) *session {
 	clipboard := &fakeClipboard{}
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: accounts,
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Members: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
 		Spell: spell.New(t.TempDir(), func(string) string { return "" }),
 	}
@@ -76,7 +76,7 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 	db := openSeeded(t)
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
 		Media: media, Cache: mediaCache,
 	}
@@ -95,7 +95,7 @@ func connectWithHistory(t *testing.T, history app.HistoryLoader) *session {
 	db := openSeeded(t)
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
 		History: history,
 	}
@@ -265,6 +265,11 @@ func (acceptAll) Vote(context.Context, domain.Conversation, string, []string) er
 
 // DeleteMessages accepts any delete.
 func (acceptAll) DeleteMessages(context.Context, domain.Conversation, []string, bool) error {
+	return nil
+}
+
+// EditMessage accepts any edit.
+func (acceptAll) EditMessage(context.Context, domain.Conversation, string, string, []domain.Mention) error {
 	return nil
 }
 

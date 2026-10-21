@@ -24,6 +24,7 @@ type Commands struct {
 	reactor      Reactor
 	voter        Voter
 	deleter      Deleter
+	editor       Editor
 	members      MemberLister
 	outgoing     OutgoingMedia
 	clipboard    ClipboardRunner

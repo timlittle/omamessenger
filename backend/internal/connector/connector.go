@@ -153,6 +153,22 @@ type Deleter interface {
 	DeleteMessages(ctx context.Context, conv domain.Conversation, ids []string, forEveryone bool) error
 }
 
+// ErrEditUnsupported reports an edit a MessageEditor's service refuses:
+// the message is not this account's own, carries no text to edit, or
+// is past the service's own time limit on editing it.
+var ErrEditUnsupported = errors.New("connector: message cannot be edited")
+
+// MessageEditor is a Connector that can change the text of a message
+// this account already sent.
+type MessageEditor interface {
+	// EditMessage changes the text of the message the service knows as
+	// messageRemoteID to newText, reapplying mentions as the service's
+	// own entities. A message that is not this account's own, or past
+	// the service's time limit to edit, returns an error wrapping
+	// ErrEditUnsupported.
+	EditMessage(ctx context.Context, conv domain.Conversation, messageRemoteID, newText string, mentions []domain.Mention) error
+}
+
 // MemberLister is a Connector that can list a group's members, with
 // display names resolved, so the UI can offer them in an @-mention
 // picker.

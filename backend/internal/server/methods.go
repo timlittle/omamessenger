@@ -52,6 +52,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"messages.react":            bind(messagesReact(c)),
 		"messages.vote":             bind(messagesVote(c)),
 		"messages.delete":           bind(messagesDelete(c)),
+		"messages.edit":             bind(messagesEdit(c)),
 		"media.fetch":               bind(mediaFetch(c)),
 		"media.paste":               bind(mediaPaste(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
@@ -426,6 +427,20 @@ type deleteParams struct {
 func messagesDelete(c *app.Commands) func(context.Context, deleteParams) (any, error) {
 	return func(ctx context.Context, p deleteParams) (any, error) {
 		return none{}, c.DeleteMessages(ctx, p.ConversationID, p.MessageIDs, p.ForEveryone)
+	}
+}
+
+// editParams names the message to edit and its new text.
+type editParams struct {
+	ConversationID string `json:"conversationId"`
+	MessageID      string `json:"messageId"`
+	Text           string `json:"text"`
+}
+
+// messagesEdit changes the text of a message the account already sent.
+func messagesEdit(c *app.Commands) func(context.Context, editParams) (any, error) {
+	return func(ctx context.Context, p editParams) (any, error) {
+		return c.EditMessage(ctx, p.ConversationID, p.MessageID, p.Text)
 	}
 }
 

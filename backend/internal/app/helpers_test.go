@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +37,7 @@ type fixture struct {
 	reactor    *fakeReactor
 	voter      *fakeVoter
 	deleter    *fakeDeleter
+	editor     *fakeEditor
 	members    *fakeMemberLister
 	outgoing   *cache.Outgoing
 	clipboard  *fakeClipboard
@@ -69,7 +69,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{}, members: &fakeMemberLister{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
-		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{},
+		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{},
 	}
@@ -78,7 +78,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Members: f.members,
+		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor, Members: f.members,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 	}
@@ -106,7 +106,7 @@ func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDi
 		Store: db, Dispatcher: dispatcher, Notifier: notifier, Publisher: &fakePublisher{},
 		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
 		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
-		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{},
+		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{}, Editor: &fakeEditor{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
 	}
 
@@ -428,129 +428,6 @@ func (l *fakeLogger) take() []string {
 	l.lines = nil
 
 	return lines
-}
-
-// fakeRefresher plays a service's response to being asked to re-report
-// messages: for each remote id it is given a message to report, it reports
-// that message through the ingest, as a connector does through its Sink.
-// It records every batch it was asked to refresh.
-type fakeRefresher struct {
-	ingest *app.Ingest
-	toSend map[string]domain.Message
-	asked  [][]string
-	err    error
-}
-
-func (r *fakeRefresher) RefreshMessages(ctx context.Context, conv domain.Conversation, remoteIDs []string) error {
-	r.asked = append(r.asked, remoteIDs)
-	if r.err != nil {
-		return r.err
-	}
-
-	for _, id := range remoteIDs {
-		if m, ok := r.toSend[id]; ok {
-			r.ingest.History(ctx, conv.AccountID, conv.RemoteID, m)
-		}
-	}
-
-	return nil
-}
-
-// fakeOrganizer records the pins and archives it is asked for, as
-// "<conversationId> <value>", failing with err when it is set.
-type fakeOrganizer struct {
-	mu       sync.Mutex
-	pinned   []string
-	archived []string
-	err      error
-}
-
-func (o *fakeOrganizer) SetPinned(_ context.Context, conv domain.Conversation, pinned bool) error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
-	o.pinned = append(o.pinned, fmt.Sprintf("%s %t", conv.ID, pinned))
-
-	return o.err
-}
-
-func (o *fakeOrganizer) SetArchived(_ context.Context, conv domain.Conversation, archived bool) error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
-	o.archived = append(o.archived, fmt.Sprintf("%s %t", conv.ID, archived))
-
-	return o.err
-}
-
-// fakeMemberLister reports a scripted member list, failing with err
-// when it is set.
-type fakeMemberLister struct {
-	mu      sync.Mutex
-	members []domain.Member
-	err     error
-	asked   []string
-}
-
-func (l *fakeMemberLister) Members(_ context.Context, conv domain.Conversation) ([]domain.Member, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.asked = append(l.asked, conv.ID)
-
-	return l.members, l.err
-}
-
-// fakeReactor records the reactions it is asked for, as
-// "<messageRemoteId> <emoji>", failing with err when it is set.
-type fakeReactor struct {
-	mu      sync.Mutex
-	reacted []string
-	err     error
-}
-
-func (r *fakeReactor) React(_ context.Context, _ domain.Conversation, messageRemoteID, emoji string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.reacted = append(r.reacted, messageRemoteID+" "+emoji)
-
-	return r.err
-}
-
-// fakeVoter records the votes it is asked to cast, as "messageRemoteID
-// optionIDs", failing with err when set.
-type fakeVoter struct {
-	mu    sync.Mutex
-	voted []string
-	err   error
-}
-
-func (v *fakeVoter) Vote(_ context.Context, _ domain.Conversation, messageRemoteID string, optionIDs []string) error {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
-	v.voted = append(v.voted, fmt.Sprintf("%s %v", messageRemoteID, optionIDs))
-
-	return v.err
-}
-
-// fakeDeleter records the deletes it is asked for, as
-// "<conversationId> <remoteIds> <forEveryone>", failing with err when
-// it is set.
-type fakeDeleter struct {
-	mu      sync.Mutex
-	deleted []string
-	err     error
-}
-
-func (d *fakeDeleter) DeleteMessages(_ context.Context, conv domain.Conversation, remoteIDs []string, forEveryone bool) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	d.deleted = append(d.deleted, fmt.Sprintf("%s %s %t", conv.ID, strings.Join(remoteIDs, ","), forEveryone))
-
-	return d.err
 }
 
 // fakeClipboard answers a clipboard check from canned data, keyed by MIME

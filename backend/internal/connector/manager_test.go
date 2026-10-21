@@ -426,6 +426,31 @@ func TestReact_AsksConnectorsThatSupportReactions(t *testing.T) {
 	})
 }
 
+func TestEditMessage_AsksConnectorsThatSupportEditing(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		tg := &withEditor{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
+
+		mentions := []domain.Mention{{UserID: "u1", Name: "Ben", Offset: 0, Length: 3}}
+		if err := m.EditMessage(ctx, domain.Conversation{AccountID: "tg"}, "40", "hi there", mentions); err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{`40 "hi there" [{u1 Ben 0 3}]`}; !slices.Equal(tg.edited, want) {
+			t.Errorf("edited %v, want %v", tg.edited, want)
+		}
+
+		if err := m.EditMessage(ctx, domain.Conversation{AccountID: "plain"}, "40", "hi", nil); !errors.Is(err, connector.ErrNoEditor) {
+			t.Errorf("EditMessage on a connector without editing = %v, want ErrNoEditor", err)
+		}
+
+		if err := m.EditMessage(ctx, domain.Conversation{AccountID: "nobody"}, "40", "hi", nil); !errors.Is(err, connector.ErrNoConnector) {
+			t.Errorf("EditMessage for an unknown account = %v", err)
+		}
+	})
+}
+
 func TestFetchMedia_AsksConnectorsThatDownloadMedia(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

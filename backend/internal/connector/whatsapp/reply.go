@@ -26,19 +26,28 @@ import (
 func outgoingMessage(ctx context.Context, media *mediaStore, conversationRemoteID string, chat types.JID, m domain.Message) *waE2E.Message {
 	text, mentionedJIDs := outgoingMentions(m.Text, m.Mentions)
 	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" {
-		if len(mentionedJIDs) == 0 {
-			return &waE2E.Message{Conversation: strp(text)}
-		}
-
-		return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-			Text: strp(text), ContextInfo: &waE2E.ContextInfo{MentionedJID: mentionedJIDs},
-		}}
+		return plainOrMentionedMessage(text, mentionedJIDs)
 	}
 
 	info := quoteContext(ctx, media, conversationRemoteID, chat, m.ReplyTo)
 	info.MentionedJID = mentionedJIDs
 
 	return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: strp(text), ContextInfo: info}}
+}
+
+// plainOrMentionedMessage builds a text-only message proto: a plain
+// conversation message, or, once text carries any @-mentions, an
+// extended text message with the ContextInfo WhatsApp's clients need to
+// render them. Shared by outgoingMessage's own no-reply case and by
+// EditMessage (see edit.go), which never threads a reply.
+func plainOrMentionedMessage(text string, mentionedJIDs []string) *waE2E.Message {
+	if len(mentionedJIDs) == 0 {
+		return &waE2E.Message{Conversation: strp(text)}
+	}
+
+	return &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+		Text: strp(text), ContextInfo: &waE2E.ContextInfo{MentionedJID: mentionedJIDs},
+	}}
 }
 
 // quoteContext builds the ContextInfo that quotes reply: its stanza id

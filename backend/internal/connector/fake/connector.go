@@ -324,6 +324,15 @@ func (c *Connector) DeleteMessages(_ context.Context, _ domain.Conversation, _ [
 	return err
 }
 
+// EditMessage accepts any edit while the connector is running.
+// app.Commands.EditMessage updates the stored message and publishes it
+// itself once this returns, the same as DeleteMessages.
+func (c *Connector) EditMessage(_ context.Context, _ domain.Conversation, _, _ string, _ []domain.Mention) error {
+	_, err := c.current()
+
+	return err
+}
+
 // firstOlderLoad records that a conversation's older history was asked
 // for, reporting whether this is the first time.
 func (c *Connector) firstOlderLoad(remoteID string) bool {

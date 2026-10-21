@@ -45,6 +45,10 @@ var ErrNoDeleter = errors.New("connector does not support deleting messages")
 // polls.
 var ErrNoVoter = errors.New("connector does not support voting")
 
+// ErrNoEditor reports an edit asked of a connector that cannot edit
+// messages on its service.
+var ErrNoEditor = errors.New("connector does not support editing messages")
+
 // AccountUpserter records the accounts the Manager serves.
 type AccountUpserter interface {
 	UpsertAccount(ctx context.Context, a domain.Account) error
@@ -367,6 +371,23 @@ func (m *Manager) DeleteMessages(ctx context.Context, conv domain.Conversation, 
 	}
 
 	return deleter.DeleteMessages(ctx, conv, remoteIDs, forEveryone)
+}
+
+// EditMessage asks the conversation's connector to change the text of a
+// message this account already sent, failing with ErrNoEditor when it
+// cannot edit messages at all.
+func (m *Manager) EditMessage(ctx context.Context, conv domain.Conversation, messageRemoteID, newText string, mentions []domain.Mention) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	editor, ok := c.(MessageEditor)
+	if !ok {
+		return fmt.Errorf("connector: %w: %q", ErrNoEditor, conv.AccountID)
+	}
+
+	return editor.EditMessage(ctx, conv, messageRemoteID, newText, mentions)
 }
 
 // SubmitAuth hands sign-in input, such as a code, to the connector for

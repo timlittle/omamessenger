@@ -70,6 +70,11 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("messages.react = %v", err)
 	}
 
+	edited, err := call[domain.Message](t, s, "messages.edit", map[string]string{"conversationId": "chat", "messageId": sent.ID, "text": "hi there"})
+	if err != nil || edited.Text != "hi there" || !edited.Edited {
+		t.Errorf("messages.edit = %+v, %v", edited, err)
+	}
+
 	if _, err := call[struct{}](t, s, "messages.delete", map[string]any{
 		"conversationId": "chat", "messageIds": []string{sent.ID}, "forEveryone": true,
 	}); err != nil {
