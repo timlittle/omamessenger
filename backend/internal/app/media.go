@@ -99,6 +99,52 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto bool) 
 	return c.download(ctx, conv, m, auto)
 }
 
+// DecodeAsForMedia reports how the UI must decode messageID's video,
+// already downloaded to path by a prior FetchMedia: "gif" once path's
+// own bytes are confirmed, by their magic header alone, to be a
+// genuine GIF image, sanitized through imagesafe first, in place, the
+// same check and profile every other image this UI ever shows must
+// pass (see connector.SanitizeIfGIF); "" for an ordinary video, or any
+// other media kind, which the UI must never decode as an animated
+// image. Never inferred from a sender's filename, mime type or
+// "animated" flag - the bug this replaces - so the result can only
+// ever disagree with that metadata in the safe direction.
+func (c *Commands) DecodeAsForMedia(ctx context.Context, messageID, path string) (string, error) {
+	m, err := c.store.Message(ctx, messageID)
+	if err != nil {
+		return "", err
+	}
+	if m.Media == nil || m.Media.Kind != domain.MediaVideo {
+		return "", nil
+	}
+
+	isGIF, err := connector.SanitizeIfGIF(path)
+	if err != nil {
+		return "", c.failDecodeCheck(ctx, m, err)
+	}
+	if !isGIF {
+		return "", nil
+	}
+
+	return "gif", nil
+}
+
+// failDecodeCheck classifies and logs a SanitizeIfGIF failure the same
+// way download classifies and logs a failed fetch, so a video that
+// turned out to be unsafe once its actual bytes were checked is never
+// silently left as it was.
+func (c *Commands) failDecodeCheck(ctx context.Context, m domain.Message, err error) error {
+	conv, convErr := c.store.Conversation(ctx, m.ConversationID)
+	if convErr != nil {
+		return convErr
+	}
+
+	reason := fetchFailureReason(err, err)
+	c.logFetchFailure(conv.Service, m.Media.Kind, reason)
+
+	return &MediaFetchError{Reason: reason, err: err}
+}
+
 // download runs the cache-filling fetch for m and classifies a failure,
 // logging it and wrapping it as a *MediaFetchError before it is
 // returned. connectorErr, captured from the fill closure, is what tells
@@ -217,17 +263,17 @@ func (c *Commands) localAttachment(m domain.Message) (string, bool) {
 
 // mediaFileName names a message's media in the cache by the message's id,
 // with an extension that says what it is, or for a file its own name, so
-// it opens in the right application. A real GIF image the connector
-// marked MediaVideo to reach the inline video view (see
-// domain.Media.IsGIFFile) is cached as ".gif", not ".mp4": the
-// downloaded bytes are genuine GIF data, which only an image engine can
-// decode, not a video one.
+// it opens in the right application. Every MediaVideo message is cached
+// as ".mp4", even the rare one whose downloaded bytes turn out to be a
+// genuine GIF image once DecodeAsForMedia checks them: Qt's own image
+// plugins sniff a file's actual format from its content, not its
+// extension, and this name must never again be chosen from a sender's
+// own filename or attributes (see DecodeAsForMedia and
+// docs/decisions.md).
 func mediaFileName(m domain.Message) string {
 	switch {
 	case m.Media.Kind == domain.MediaPhoto:
 		return m.ID + ".jpg"
-	case m.Media.IsGIFFile():
-		return m.ID + ".gif"
 	case m.Media.Kind == domain.MediaVideo:
 		return m.ID + ".mp4"
 	}

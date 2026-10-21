@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/color"
+	"image/gif"
 	"os"
 	"path/filepath"
 	"slices"
@@ -54,14 +57,13 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 	}
 }
 
-// TestFetchMedia_CachesARealGIFFileWithAGIFExtension reproduces the bug
-// behind a GIF document failing to play inline: the cache named every
-// MediaVideo message "<id>.mp4", even a real GIF image the connector
-// marks MediaVideo and Animated to reach the same inline view (see
-// domain.Media.IsGIFFile). The downloaded bytes are genuine GIF data,
-// so caching them under a ".mp4" name is misleading at best; this
-// checks they land as "<id>.gif" instead.
-func TestFetchMedia_CachesARealGIFFileWithAGIFExtension(t *testing.T) {
+// TestFetchMedia_CachesEveryVideoWithAnMp4Extension confirms the cache
+// never again picks a ".gif" name from a message's own filename or
+// "animated" flag (the bug behind a disguised video bypassing the image
+// sanitizer): every MediaVideo message, whatever it claims about
+// itself, is cached as "<id>.mp4". A real GIF's actual decode decision
+// is DecodeAsForMedia's own job, not the cache's.
+func TestFetchMedia_CachesEveryVideoWithAnMp4Extension(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
@@ -76,9 +78,112 @@ func TestFetchMedia_CachesARealGIFFileWithAGIFExtension(t *testing.T) {
 	}
 
 	path, err := f.commands.FetchMedia(ctx, "m1", false)
-	if err != nil || filepath.Base(path) != "m1.gif" {
-		t.Fatalf("FetchMedia = %q, %v; want m1.gif in the cache", path, err)
+	if err != nil || filepath.Base(path) != "m1.mp4" {
+		t.Fatalf("FetchMedia = %q, %v; want m1.mp4 in the cache", path, err)
 	}
+}
+
+// TestDecodeAsForMedia_NeverTrustsAFileNameOrAttribute reproduces a
+// Telegram "GIF" that bypassed the image sanitizer: a video document
+// carrying the video and animated attributes, and a sender-chosen
+// ".gif" name, whose actual downloaded bytes are not GIF data at all.
+// DecodeAsForMedia must say "" - never "gif" - whatever the message's
+// own metadata claims, since only the file's own bytes decide.
+func TestDecodeAsForMedia_NeverTrustsAFileNameOrAttribute(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[GIF]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo, FileName: "evil.gif", Animated: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = []byte("a plain silent mp4, whatever the filename and attributes claim")
+	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decodeAs, err := f.commands.DecodeAsForMedia(ctx, "m1", path)
+	if err != nil || decodeAs != "" {
+		t.Fatalf("DecodeAsForMedia() = %q, %v; want \"\", nil", decodeAs, err)
+	}
+}
+
+// TestDecodeAsForMedia_SanitizesAGenuineGIFAndReportsIt confirms the
+// other side: once a video's actual downloaded bytes are a real GIF
+// image, DecodeAsForMedia sanitizes them through imagesafe in place and
+// reports "gif", so the UI can trust decoding it as an animated image.
+func TestDecodeAsForMedia_SanitizesAGenuineGIFAndReportsIt(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[GIF]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Animated: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = onePixelGIF()
+	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	decodeAs, err := f.commands.DecodeAsForMedia(ctx, "m1", path)
+	if err != nil || decodeAs != "gif" {
+		t.Fatalf("DecodeAsForMedia() = %q, %v; want \"gif\", nil", decodeAs, err)
+	}
+
+	safe, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(safe, []byte("GIF8")) {
+		t.Errorf("cached file no longer starts with a GIF header: %q", safe[:min(len(safe), 16)])
+	}
+}
+
+// TestDecodeAsForMedia_IgnoresEveryMediaKindButVideo confirms the check
+// never even runs for a photo, file or any other kind: only a video can
+// ever carry the "animated GIF" ambiguity this guards against.
+func TestDecodeAsForMedia_IgnoresEveryMediaKindButVideo(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	decodeAs, err := f.commands.DecodeAsForMedia(ctx, "m1", "/does/not/matter")
+	if err != nil || decodeAs != "" {
+		t.Fatalf("DecodeAsForMedia() = %q, %v; want \"\", nil", decodeAs, err)
+	}
+}
+
+// onePixelGIF returns a tiny, real GIF, for a test that needs bytes a
+// genuine GIF header check and imagesafe's own sanitizer both actually
+// accept, rather than an arbitrary placeholder.
+func onePixelGIF() []byte {
+	img := image.NewPaletted(image.Rect(0, 0, 1, 1), color.Palette{color.RGBA{R: 200, G: 100, B: 50, A: 255}})
+	img.SetColorIndex(0, 0, 0)
+
+	var buf bytes.Buffer
+	_ = gif.Encode(&buf, img, nil)
+
+	return buf.Bytes()
 }
 
 func TestFetchMedia_Rejects(t *testing.T) {

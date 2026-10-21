@@ -52,16 +52,18 @@ function isAnimated(media) {
   return !!media && media.kind === 'video' && !!media.animated;
 }
 
-// isGifFile reports whether media is a genuine GIF image rather than an
-// ordinary video or a video the sending service merely marked to play
-// back like one: both of those are actually silent MP4 bytes, which
-// only a video engine can decode, while a real GIF has no video codec
-// at all and plays through an image engine instead (AnimatedImage). The
-// helper marks a genuine GIF the same way it marks those - isAnimated
-// true - but always with a fileName ending ".gif" (see the connectors
-// and domain.Media.IsGIFFile), which is what tells the two apart here.
-function isGifFile(media) {
-  return isAnimated(media) && /\.gif$/i.test(media.fileName || '');
+// decodesAsGif reports whether decodeAs - media.fetch's own result
+// field (see docs/api.md), never a message's fileName or animated
+// flag - says a downloaded video's actual bytes are a genuine,
+// sanitized GIF image that must play through an image engine
+// (AnimatedImage) rather than a video one: both an ordinary video and
+// one a sending service merely marked to play back like a silent,
+// looping "GIF" are actually MP4 bytes, which only a video engine can
+// decode. The helper is the only thing that ever sets this, from the
+// file's own bytes once it is downloaded, which is why nothing here
+// reads the media object itself any more.
+function decodesAsGif(decodeAs) {
+  return decodeAs === 'gif';
 }
 
 // mimeFor names the MIME type to offer when copying media's full file to

@@ -72,6 +72,7 @@ ShellRoot {
     if (!root.checkEscapeForwardedAndClosesWhenRouterSaysSo()) return;
     if (!root.checkVideoOpensIntoFullVideoPlayer()) return;
     if (!root.checkRealGifFilePlaysEvenWithoutInWindowVideo()) return;
+    if (!root.checkAFileNameAloneNeverPicksAnimatedImage()) return;
 
     console.log("PASS PhotoViewer");
     Qt.exit(0);
@@ -206,14 +207,16 @@ ShellRoot {
   }
 
   // checkRealGifFilePlaysEvenWithoutInWindowVideo verifies a real GIF
-  // file (see Media.isGifFile) animates through FullVideoPlayer's own
-  // AnimatedImage even while videoAvailable is false: it needs no
+  // file (see Media.decodesAsGif) animates through FullVideoPlayer's
+  // own AnimatedImage even while videoAvailable is false: it needs no
   // QtMultimedia at all, unlike an ordinary video or a silent "GIF"
-  // mp4.
+  // mp4. decodeAs, the helper's own post-download verdict, is what
+  // triggers this, never the fileName or animated flag alone.
   function checkRealGifFilePlaysEvenWithoutInWindowVideo(): bool {
     viewer.open = true;
     viewer.videoAvailable = false;
     viewer.photo = { kind: "video", animated: true, fileName: "run.gif", thumb: "" };
+    viewer.decodeAs = "gif";
     viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
 
     const gifImage = Check.find(viewer, "fullGifImage");
@@ -221,6 +224,28 @@ ShellRoot {
 
     const unavailableLabel = Check.find(viewer, "fullVideoUnavailableLabel");
     if (unavailableLabel && unavailableLabel.visible) return Check.fail("a real .gif file shows the \"video playback unavailable\" message");
+
+    return true;
+  }
+
+  // checkAFileNameAloneNeverPicksAnimatedImage guards the bug this
+  // fixes: a video merely named and flagged like a GIF, but with no
+  // decodeAs verdict from the helper, must never animate through
+  // AnimatedImage - it falls back to the "video playback unavailable"
+  // message here, exactly like any other video while videoAvailable is
+  // false.
+  function checkAFileNameAloneNeverPicksAnimatedImage(): bool {
+    viewer.open = true;
+    viewer.videoAvailable = false;
+    viewer.photo = { kind: "video", animated: true, fileName: "evil.gif", thumb: "" };
+    viewer.decodeAs = "";
+    viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
+
+    const gifImage = Check.find(viewer, "fullGifImage");
+    if (gifImage && gifImage.visible) return Check.fail("a fileName and animated flag alone picked AnimatedImage with no decodeAs verdict");
+
+    const unavailableLabel = Check.find(viewer, "fullVideoUnavailableLabel");
+    if (!unavailableLabel || !unavailableLabel.visible) return Check.fail("a video with no decodeAs verdict and no in-window video shows no unavailable message");
 
     return true;
   }

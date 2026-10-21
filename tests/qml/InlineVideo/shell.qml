@@ -73,7 +73,8 @@ ShellRoot {
         failed: true
       }
 
-      // A real GIF image (animated, with a genuine ".gif" name) must
+      // A real GIF image (confirmed by the helper's own decodeAs
+      // verdict, never the fileName or animated flag alone) must
       // animate through AnimatedImage even though in-window playback
       // (QtMultimedia) is available: the downloaded bytes are actual
       // GIF data, which only an image engine can decode, never a video
@@ -84,7 +85,21 @@ ShellRoot {
         id: realGifVideo
         video: ({ kind: "video", width: 16, height: 9, animated: true, fileName: "run.gif", thumb: "" })
         available: true
+        decodeAs: "gif"
         path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist.gif"
+      }
+
+      // A video merely named and flagged like a GIF, but with no
+      // decodeAs verdict from the helper, must never animate through
+      // AnimatedImage: the exact exploit this fix closes, where a
+      // sender set fileName and the animated attribute on a video the
+      // helper had not sanitized or confirmed as GIF data at all.
+      InlineVideo {
+        id: fakeGifVideo
+        video: ({ kind: "video", width: 16, height: 9, animated: true, fileName: "evil.gif", thumb: "" })
+        available: true
+        decodeAs: ""
+        path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-either.mp4"
       }
     }
   }
@@ -164,6 +179,12 @@ ShellRoot {
 
     const realGifLoader = Check.find(realGifVideo, "videoRuntimeLoader");
     if (realGifLoader && realGifLoader.active) return Check.fail("a real .gif file loaded the QtMultimedia video runtime instead of playing through AnimatedImage");
+
+    // A video merely named and flagged like a GIF, with no decodeAs
+    // verdict, never animates through AnimatedImage: it stays an
+    // ordinary video, exactly like unavailableVideo above.
+    const fakeGifImage = Check.find(fakeGifVideo, "realGifImage");
+    if (fakeGifImage && fakeGifImage.visible) return Check.fail("a fileName and animated flag alone picked AnimatedImage with no decodeAs verdict");
 
     console.log("PASS InlineVideo");
     Qt.exit(0);

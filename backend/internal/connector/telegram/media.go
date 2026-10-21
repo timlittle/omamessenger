@@ -149,8 +149,10 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 		// of DocumentAttributeVideo or DocumentAttributeAnimated: only
 		// its mime type or name says what it is. It still reaches the
 		// UI as a video kind marked animated, exactly like a service's
-		// own GIF playback, so it plays inline the same way; see
-		// domain.Media.IsGIFFile for how the UI tells the two apart.
+		// own GIF playback, so it plays inline the same way; this is
+		// only ever a classification hint, though, never what decides
+		// the UI's decoder - see app.DecodeAsForMedia, which checks
+		// the downloaded bytes themselves.
 		return &domain.Media{Kind: domain.MediaVideo, FileName: gifFileName(d.name), Size: doc.Size, Animated: true}
 	case d.voice:
 		return &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}
@@ -171,9 +173,9 @@ func isGIFImage(mimeType, name string) bool {
 }
 
 // gifFileName is name, or a sensible default ending ".gif" when
-// Telegram sent no filename attribute at all: domain.Media.IsGIFFile
-// needs that extension to tell a real GIF apart from a video merely
-// marked to play like one.
+// Telegram sent no filename attribute at all: a classification hint
+// for the UI's file-type labelling only, never what picks its decoder
+// (see app.DecodeAsForMedia).
 func gifFileName(name string) string {
 	if name == "" {
 		return "image.gif"
@@ -273,10 +275,14 @@ func imageProfile(m tg.MessageMediaClass) (imagesafe.Profile, bool) {
 // never disagree about which document is which: a static WebP
 // sticker, or - once d.sticker and d.video are both ruled out, the
 // same order documentMedia checks them in - a document isGIFImage
-// says is a genuine GIF file. d.video alone is never this: Telegram's
-// own "send as animation" still encodes a silent mp4 (see
-// domain.Media.IsGIFFile), never real GIF-format bytes, so a video
-// document is written unchanged whatever its Animated attribute says.
+// says is a genuine GIF file. A document carrying DocumentAttributeVideo
+// is written unchanged here regardless of its Animated attribute or
+// name: a sender fully controls both and could set them on bytes that
+// are not GIF-format at all, which is exactly what this skips running
+// through imagesafe's image-only checks for. That sender-controlled
+// claim is never the last word, though - app.DecodeAsForMedia checks
+// the actual downloaded bytes afterwards and only then sanitizes and
+// reports a genuine GIF, never trusting this attribute alone.
 func documentImageProfile(dc tg.DocumentClass) (imagesafe.Profile, bool) {
 	doc, ok := dc.(*tg.Document)
 	if !ok {

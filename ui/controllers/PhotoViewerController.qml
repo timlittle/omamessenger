@@ -36,6 +36,11 @@ QtObject {
   // "" until that finishes.
   readonly property string viewerPath: root.viewerId ? root.conversation.timeline.mediaPath(root.viewerId) : ""
 
+  // viewerDecodeAs is the helper's own verdict on how to decode the
+  // open video (see InlineVideo.decodeAs), or "" while the viewer is
+  // closed or showing a photo.
+  readonly property string viewerDecodeAs: root.viewerId ? root.conversation.timeline.mediaDecodeAs(root.viewerId) : ""
+
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
     return Actions.owner(action) === "photoViewer";

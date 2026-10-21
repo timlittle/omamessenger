@@ -7,7 +7,7 @@ import "../lib/Media.js" as Media
 // The player shown inside the in-app media viewer (see PhotoViewer, which
 // reuses that same full-window viewer for a video or GIF, not only a
 // photo) once it is a video or a real GIF file rather than a photo. A
-// real .gif file (see Media.isGifFile) animates through AnimatedImage,
+// real .gif file (see Media.decodesAsGif) animates through AnimatedImage,
 // which needs no QtMultimedia at all; an ordinary video, or one a
 // service marked to play back like a silent, looping GIF, plays through
 // the same QtMultimedia-backed runtime the message bubble's own
@@ -23,6 +23,10 @@ Item {
   required property var video
   // path is where the full file was downloaded, or "" until then.
   property string path: ""
+  // decodeAs is the helper's own verdict on how to decode this video
+  // (see InlineVideo.decodeAs); "gif" is the only value that matters
+  // here, never video's own fileName or animated flag.
+  property string decodeAs: ""
   // available is false when in-window video playback cannot work at
   // all on this machine; a real .gif file plays regardless.
   property bool available: true
@@ -40,8 +44,8 @@ Item {
 
   // _isGifFile is true when video is a genuine GIF image rather than an
   // ordinary video, which needs no QtMultimedia at all (see
-  // Media.isGifFile).
-  readonly property bool _isGifFile: Media.isGifFile(root.video)
+  // Media.decodesAsGif).
+  readonly property bool _isGifFile: Media.decodesAsGif(root.decodeAs)
   // _paused is the player's own local pause state.
   property bool _paused: false
   // _engine is the loaded VideoRuntime, as a plain var: see

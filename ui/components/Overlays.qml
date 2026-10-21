@@ -133,6 +133,7 @@ Item {
     open: root.photoViewerController.viewerOpen
     photo: root.photoViewerController.viewerPhoto
     path: root.photoViewerController.viewerPath
+    decodeAs: root.photoViewerController.viewerDecodeAs
     videoAvailable: root.videoController ? root.videoController.available : true
     videoMuted: root.videoController ? root.videoController.muted : true
     routeKey: root.routeKey

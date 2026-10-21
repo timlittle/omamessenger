@@ -1,8 +1,10 @@
 package connector
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
@@ -59,6 +61,89 @@ func SanitizeOutgoingImage(data []byte) ([]byte, error) {
 func SaveMedia(path string, data []byte) error {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("connector: save media: %w", err)
+	}
+
+	return nil
+}
+
+// gifMagic is the byte sequence a genuine GIF file begins with
+// ("GIF87a" or "GIF89a"). SanitizeIfGIF checks a file's own bytes
+// against it directly; a sender's filename, mime type or "animated"
+// attribute is never enough on its own to pick an image decoder over a
+// video one (see docs/decisions.md).
+var gifMagic = []byte("GIF8")
+
+// SanitizeIfGIF re-examines path, a video or other document FetchMedia
+// has already written to disk unchanged because the sender's own
+// attributes said it was not an image. When path's actual first bytes
+// are a genuine GIF header, it rewrites the file in place through
+// imagesafe's FullImage profile and reports true, so the UI can trust
+// decoding it as an animated image; a file whose bytes fail that
+// sanitizer, whether malformed or over its caps, is removed and
+// reported as an error rather than left half-trusted on disk. Anything
+// whose header does not match, or whose size alone is already larger
+// than FullImage's own input cap, is left exactly as it was and
+// reported false: a real video, which SanitizeIfGIF never reads in
+// full, let alone sanitizes.
+func SanitizeIfGIF(path string) (isGIF bool, err error) {
+	head, size, err := peekFile(path, len(gifMagic))
+	if err != nil {
+		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
+	}
+	if !bytes.Equal(head, gifMagic) {
+		return false, nil
+	}
+	if size > imagesafe.FullImage.MaxInputLen {
+		return false, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrMediaTooLarge, removeIfPresent(path)))
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
+	}
+
+	safe, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+	if !ok {
+		return false, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
+	}
+
+	if err := os.WriteFile(path, safe, 0o600); err != nil {
+		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
+	}
+
+	return true, nil
+}
+
+// peekFile reads up to n leading bytes of path and reports the file's
+// total size, for SanitizeIfGIF's two checks: what the file actually
+// starts with, and whether it is small enough to read in full at all.
+func peekFile(path string, n int) (head []byte, size int64, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer f.Close() // reading only; nothing to flush
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	head = make([]byte, n)
+	read, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return nil, 0, err
+	}
+
+	return head[:read], info.Size(), nil
+}
+
+// removeIfPresent deletes path, treating one already gone as removed:
+// the best-effort cleanup for a file SanitizeIfGIF refuses after it was
+// already written to disk by the ordinary, unsanitized download path.
+func removeIfPresent(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 
 	return nil

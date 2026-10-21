@@ -114,8 +114,11 @@ Item {
     const at = loaded.findIndex((m) => m.id === message.id);
     if (at !== -1) {
       const kept = Timeline.mediaJustRetired(loaded[at], message)
-        ? { mediaPath: "", mediaFailed: false, mediaFailedReason: "" }
-        : { mediaPath: loaded[at].mediaPath, mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason };
+        ? { mediaPath: "", mediaDecodeAs: "", mediaFailed: false, mediaFailedReason: "" }
+        : {
+            mediaPath: loaded[at].mediaPath, mediaDecodeAs: loaded[at].mediaDecodeAs,
+            mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason
+          };
       messagesModel.set(at, Timeline.row(Object.assign(kept, message)));
     } else {
       messagesModel.insert(Timeline.insertIndex(loaded, message), Timeline.row(message));
@@ -155,6 +158,16 @@ Item {
     return row ? row.mediaPath : "";
   }
 
+  // mediaDecodeAs returns the helper's own verdict on how to decode a
+  // message's downloaded video (see media.fetch's decodeAs in
+  // docs/api.md), or "" before it has answered or for anything but a
+  // video. Never computed here from the message's own media object:
+  // only media.fetch's result, through setMediaDecodeAs, ever sets it.
+  function mediaDecodeAs(id: string): string {
+    const row = root._snapshot().find((m) => m.id === id);
+    return row ? row.mediaDecodeAs : "";
+  }
+
   // media returns a message's parsed photo or video media (kind, width,
   // height, duration, thumb), or null when it has none or is not loaded.
   function media(id: string): var {
@@ -185,6 +198,13 @@ Item {
   function setMediaPath(id: string, path: string): void {
     const at = root._snapshot().findIndex((m) => m.id === id);
     if (at !== -1) messagesModel.setProperty(at, "mediaPath", path);
+  }
+
+  // setMediaDecodeAs records the helper's own verdict on how to decode
+  // a message's downloaded video, from media.fetch's result.
+  function setMediaDecodeAs(id: string, decodeAs: string): void {
+    const at = root._snapshot().findIndex((m) => m.id === id);
+    if (at !== -1) messagesModel.setProperty(at, "mediaDecodeAs", decodeAs);
   }
 
   // setMediaFailed records whether a message's last media fetch failed,

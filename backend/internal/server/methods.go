@@ -473,8 +473,15 @@ func messagesEdit(c *app.Commands) func(context.Context, editParams) (any, error
 }
 
 // mediaResult is where a downloaded photo, video or file is on disk.
+// DecodeAs is set only for a video, and only once the helper has
+// confirmed its actual bytes are a genuine, sanitized GIF image
+// ("gif"); omitted for an ordinary video or anything else, which the
+// UI must never decode through an image component. The UI reads only
+// this field to make that choice, never a message's own filename or
+// "animated" flag (see docs/decisions.md).
 type mediaResult struct {
-	Path string `json:"path"`
+	Path     string `json:"path"`
+	DecodeAs string `json:"decodeAs,omitempty"`
 }
 
 // mediaFetchParams names the message whose media to fetch. Auto is
@@ -488,12 +495,21 @@ type mediaFetchParams struct {
 	Auto      bool   `json:"auto,omitempty"`
 }
 
-// mediaFetch downloads a message's media, or finds it already cached.
+// mediaFetch downloads a message's media, or finds it already cached,
+// then asks the helper's own verdict on how to decode it (see
+// mediaResult.DecodeAs): a second step, rather than folded into
+// FetchMedia itself, since it only ever applies to a video and never
+// changes what was downloaded or where.
 func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, error) {
 	return func(ctx context.Context, p mediaFetchParams) (any, error) {
 		path, err := c.FetchMedia(ctx, p.MessageID, p.Auto)
+		if err != nil {
+			return mediaResult{}, err
+		}
 
-		return mediaResult{Path: path}, err
+		decodeAs, err := c.DecodeAsForMedia(ctx, p.MessageID, path)
+
+		return mediaResult{Path: path, DecodeAs: decodeAs}, err
 	}
 }
 

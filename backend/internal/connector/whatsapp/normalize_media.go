@@ -190,9 +190,10 @@ func audioMedia(m *waE2E.AudioMessage) (*domain.Media, mediaRef, bool) {
 // GifPlayback set) carries nothing to tell it apart from any other
 // document except its mime type or name, so it is marked the same way
 // that mp4 is - MediaVideo with Animated true - to reach the same
-// inline view, but keeps its genuine ".gif" name: that is what tells
-// the UI it is actual GIF bytes rather than a silent video (see
-// domain.Media.IsGIFFile).
+// inline view. That mime type and name are only ever classification
+// hints, though, both fully sender-controlled: the UI's actual
+// decoder choice never comes from here, only from app.DecodeAsForMedia
+// checking the downloaded file's own bytes once it is on disk.
 func documentMedia(m *waE2E.DocumentMessage) (*domain.Media, mediaRef, bool) {
 	ref := mediaRef{
 		Kind: mediaKindDocument, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),
@@ -224,9 +225,9 @@ func isGIFImage(mimeType, name string) bool {
 }
 
 // gifFileName is name, or a sensible default ending ".gif" when the
-// message carries no file name at all: domain.Media.IsGIFFile needs
-// that extension to tell a real GIF apart from a video merely marked
-// to play like one.
+// message carries no file name at all: a classification hint for the
+// UI's file-type labelling only, never what picks its decoder (see
+// app.DecodeAsForMedia).
 func gifFileName(name string) string {
 	if name == "" {
 		return "image.gif"

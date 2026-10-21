@@ -75,16 +75,21 @@ function insertIndex(newestFirst, message) {
 // mediaPath, where its download is, starts empty; mediaFailed, whether
 // the last download attempt failed, starts false; mediaFailedReason,
 // the safe category of that failure (see server/errors.go), starts
-// empty too. mentionsMe is a plain boolean, which a ListModel role
-// already handles directly, so it needs no such encoding. retryAt, the
-// helper's next scheduled automatic retry for a failed outgoing message
-// (Unix milliseconds), defaults to 0 while none is scheduled, a plain
-// number a ListModel role already handles directly too.
+// empty too. mediaDecodeAs, the helper's own verdict on how to decode a
+// video once media.fetch has answered (see MessageTimeline.setMediaDecodeAs
+// and ui/lib/Media.js's decodesAsGif), starts empty, the same as
+// mediaPath, until a fetch answers. mentionsMe is a plain boolean,
+// which a ListModel role already handles directly, so it needs no such
+// encoding. retryAt, the helper's next scheduled automatic retry for a
+// failed outgoing message (Unix milliseconds), defaults to 0 while none
+// is scheduled, a plain number a ListModel role already handles
+// directly too.
 function row(message) {
   return Object.assign({}, message, {
     media: message.media ? JSON.stringify(message.media) : '',
     replyTo: message.replyTo ? JSON.stringify(message.replyTo) : '',
     mediaPath: message.mediaPath ?? '',
+    mediaDecodeAs: message.mediaDecodeAs ?? '',
     mediaFailed: message.mediaFailed ?? false,
     mediaFailedReason: message.mediaFailedReason ?? '',
     reactions: JSON.stringify(message.reactions ?? []),

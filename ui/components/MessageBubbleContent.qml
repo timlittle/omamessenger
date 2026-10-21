@@ -159,6 +159,7 @@ Column {
     visible: root._mediaKind === "video"
     video: root.media ? root.media : ({})
     path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
+    decodeAs: visible && root.message && root.message.mediaDecodeAs ? root.message.mediaDecodeAs : ""
     failed: visible && !!(root.message && root.message.mediaFailed)
     available: root.videoPlayback.available
     playing: visible && !!root.message && root.videoPlayback.playingId === root.message.id

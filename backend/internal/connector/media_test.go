@@ -53,6 +53,93 @@ func TestSaveImageMedia_SanitizesOrRejects(t *testing.T) {
 	})
 }
 
+// TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes reproduces the bug a
+// video Telegram document carrying both a video attribute and an
+// animated attribute could exploit: a sender who marks a document a
+// video (so FetchMedia streams it to disk unchanged, never through
+// SaveImageMedia) but gives it a ".gif" name and the animated flag can
+// make the UI pick AnimatedImage purely from that metadata. The fix is
+// this check, run after such a file is already on disk: it never
+// reads a filename, mime type or attribute, only the file's own first
+// bytes, so a video that merely claims to be a GIF is left exactly as
+// it was, while bytes that really are GIF-format are sanitized in
+// place and reported as such.
+func TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a real GIF is sanitized in place and reported true", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "evil.gif")
+		if err := os.WriteFile(path, onePixelGIF(), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		isGIF, err := connector.SanitizeIfGIF(path)
+		if err != nil || !isGIF {
+			t.Fatalf("SanitizeIfGIF() = %t, %v, want true, nil", isGIF, err)
+		}
+
+		safe, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := imagesafe.Sanitize(safe, imagesafe.FullImage); !ok {
+			t.Error("the file on disk is not sanitized, valid GIF bytes")
+		}
+	})
+
+	t.Run("a video merely named and flagged like a GIF is left untouched and reported false", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "evil.gif")
+		original := []byte("not a gif at all, whatever its name or attributes claim")
+		if err := os.WriteFile(path, original, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		isGIF, err := connector.SanitizeIfGIF(path)
+		if err != nil || isGIF {
+			t.Fatalf("SanitizeIfGIF() = %t, %v, want false, nil", isGIF, err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != string(original) {
+			t.Errorf("file changed to %q, %v, want it left exactly as it was", got, err)
+		}
+	})
+
+	t.Run("GIF bytes over imagesafe's own caps are refused, not silently left as a video", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "bomb.gif")
+		huge := append([]byte("GIF89a"), make([]byte, imagesafe.FullImage.MaxInputLen)...)
+		if err := os.WriteFile(path, huge, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		isGIF, err := connector.SanitizeIfGIF(path)
+		if err == nil || isGIF {
+			t.Fatalf("SanitizeIfGIF() = %t, %v, want an error refusing it", isGIF, err)
+		}
+		if !errors.Is(err, connector.ErrMediaTooLarge) {
+			t.Errorf("err = %v, want %v", err, connector.ErrMediaTooLarge)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Error("an oversized claimed GIF was left on disk")
+		}
+	})
+
+	t.Run("a missing file is reported as an error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := connector.SanitizeIfGIF(filepath.Join(t.TempDir(), "missing.gif"))
+		if err == nil {
+			t.Fatal("SanitizeIfGIF() on a missing file succeeded")
+		}
+	})
+}
+
 // TestSaveMedia_WritesUnchanged covers a video, audio or document: none
 // of SaveImageMedia's checks apply, so whatever bytes a connector
 // downloaded land on disk exactly as they were.

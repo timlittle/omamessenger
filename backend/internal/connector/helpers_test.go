@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/png"
 	"testing"
 
@@ -23,6 +24,19 @@ func onePixelPNG() []byte {
 
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)
+
+	return buf.Bytes()
+}
+
+// onePixelGIF returns a tiny, real GIF, for a test that needs bytes a
+// genuine GIF header check and imagesafe's own sanitizer both actually
+// accept, rather than an arbitrary placeholder.
+func onePixelGIF() []byte {
+	img := image.NewPaletted(image.Rect(0, 0, 1, 1), color.Palette{color.RGBA{R: 200, G: 100, B: 50, A: 255}})
+	img.SetColorIndex(0, 0, 0)
+
+	var buf bytes.Buffer
+	_ = gif.Encode(&buf, img, nil)
 
 	return buf.Bytes()
 }

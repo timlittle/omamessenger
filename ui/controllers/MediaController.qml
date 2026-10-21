@@ -102,7 +102,7 @@ QtObject {
     const kind = Media.kindFor(media);
     if (kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
     if (kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(timeline, id, media); return; }
-    if (kind === "video" && root._playableInViewer(media) && root.photoViewer) { root.photoViewer.show(id); return; }
+    if (kind === "video" && root._playableInViewer(timeline, id) && root.photoViewer) { root.photoViewer.show(id); return; }
 
     const path = timeline.mediaPath(id);
     if (path) { root._openIfAllowed(id, path); return; }
@@ -112,14 +112,16 @@ QtObject {
 
   // _playableInViewer reports whether the in-app viewer (see
   // photoViewer, which shows a video or GIF too) can actually play
-  // media: a real GIF file always can, through AnimatedImage; an
-  // ordinary video, or one a service marked to play back like one,
-  // needs videoController's own QtMultimedia probe to have succeeded.
-  // Without either, opening falls through to the plain
-  // download-and-open-externally path below instead, exactly as it did
-  // before the viewer could show a video at all.
-  function _playableInViewer(media: var): bool {
-    return Media.isGifFile(media) || (!!root.videoController && root.videoController.available);
+  // media: a real GIF file, confirmed only by the helper's own
+  // decodeAs verdict once downloaded (see Media.decodesAsGif), always
+  // can, through AnimatedImage; an ordinary video, or one a service
+  // marked to play back like one, needs videoController's own
+  // QtMultimedia probe to have succeeded. Without either, opening
+  // falls through to the plain download-and-open-externally path
+  // below instead, exactly as it did before the viewer could show a
+  // video at all.
+  function _playableInViewer(timeline: var, id: string): bool {
+    return Media.decodesAsGif(timeline.mediaDecodeAs(id)) || (!!root.videoController && root.videoController.available);
   }
 
   // _openIfAllowed hands path to openExternally unless this same
@@ -249,6 +251,7 @@ QtObject {
 
       timeline.setMediaFailed(id, false, "");
       timeline.setMediaPath(id, result.path);
+      timeline.setMediaDecodeAs(id, result.decodeAs || "");
       timeline.lastError = "";
       for (const waiter of waiting) waiter.done(result.path);
     });

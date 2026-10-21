@@ -16,10 +16,12 @@ import "../lib/Media.js" as Media
 // loses focus, so a long scroll-back through a chat full of GIFs never
 // keeps every one of them decoding at once.
 //
-// A real .gif file (an actual GIF image, whatever marked it animated -
-// see Media.isGifFile) always animates through AnimatedImage, whether
-// or not QtMultimedia is even loaded: its bytes are genuine GIF data, a
-// video engine was never going to decode them. available is false when
+// A real .gif file (an actual GIF image, confirmed only by the helper's
+// own decodeAs verdict once downloaded - see Media.decodesAsGif, never
+// a filename or the animated flag, both fully sender-controlled)
+// always animates through AnimatedImage, whether or not QtMultimedia is
+// even loaded: its bytes are genuine GIF data, a video engine was never
+// going to decode them. available is false when
 // QtMultimedia itself could not be loaded (see VideoController): an
 // animated "GIF" that is actually a silent MP4 - true for every
 // WhatsApp or Telegram one - can only fall back to a still thumbnail
@@ -33,6 +35,13 @@ Item {
   required property var video
   // path is where the full file was downloaded, or "" until then.
   property string path: ""
+  // decodeAs is the helper's own verdict on how to decode this video,
+  // from media.fetch's result (see docs/api.md): "gif" once it has
+  // confirmed the downloaded bytes are a genuine, sanitized GIF image,
+  // or "" for an ordinary video or before it has answered. Never
+  // computed here from video's own fileName or animated flag, both
+  // fully sender-controlled.
+  property string decodeAs: ""
   // failed is true once a fetch for this video has definitely failed.
   property bool failed: false
   // available is false when in-window playback (for anything but a real
@@ -93,10 +102,10 @@ Item {
   // _realGifFile is true when the file itself is an actual .gif, the
   // one animated format AnimatedImage can decode without QtMultimedia;
   // every GIF WhatsApp or Telegram actually sends on its own is a
-  // silent MP4, so this is rare, but a real one (see Media.isGifFile)
+  // silent MP4, so this is rare, but a real one (see Media.decodesAsGif)
   // still deserves to animate, and through AnimatedImage specifically:
   // see _decoding below.
-  readonly property bool _realGifFile: Media.isGifFile(root.video)
+  readonly property bool _realGifFile: Media.decodesAsGif(root.decodeAs)
   // _aspect is height over width, square when the size is unknown.
   readonly property real _aspect: root.video.width > 0 ? root.video.height / root.video.width : 1
   // _decoding is true while this bubble should actually hold the

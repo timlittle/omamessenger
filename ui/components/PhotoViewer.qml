@@ -28,6 +28,9 @@ Item {
   property var photo: null
   // path is where the full file was downloaded, or "" until then.
   property string path: ""
+  // decodeAs is the helper's own verdict on how to decode the open
+  // video (see InlineVideo.decodeAs), or "" for a photo.
+  property string decodeAs: ""
   // videoAvailable is false when in-window video playback cannot work
   // at all on this machine; a real GIF file plays regardless. Read only
   // while photo is a video.
@@ -123,6 +126,7 @@ Item {
       visible: root._isVideo
       video: root.photo ? root.photo : ({})
       path: root.path
+      decodeAs: root.decodeAs
       available: root.videoAvailable
       muted: root.videoMuted
       onMuteToggled: root.videoMuteToggled()

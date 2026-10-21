@@ -82,22 +82,16 @@ test('mimeFor is null for a kind with nothing sensible to copy', () => {
   assert.strictEqual(Media.mimeFor(undefined), null);
 });
 
-test('isGifFile is true only for an animated video whose name ends .gif', () => {
-  assert.strictEqual(Media.isGifFile({ kind: 'video', animated: true, fileName: 'run.gif' }), true);
-  assert.strictEqual(Media.isGifFile({ kind: 'video', animated: true, fileName: 'RUN.GIF' }), true);
+test('decodesAsGif is true only for the helper\'s own "gif" verdict', () => {
+  assert.strictEqual(Media.decodesAsGif('gif'), true);
 });
 
-test('isGifFile is false for a silent mp4 the service only marked animated', () => {
-  // Every WhatsApp or Telegram "GIF" the sending service itself plays
-  // back like one is actually a silent MP4, not real GIF bytes, even
-  // when its own name happens to mention "gif" (see clip.gif.mp4 in
-  // the connector tests).
-  assert.strictEqual(Media.isGifFile({ kind: 'video', animated: true, fileName: 'clip.gif.mp4' }), false);
-});
-
-test('isGifFile is false for a non-animated video or a non-video kind', () => {
-  assert.strictEqual(Media.isGifFile({ kind: 'video', animated: false, fileName: 'run.gif' }), false);
-  assert.strictEqual(Media.isGifFile({ kind: 'photo', animated: true, fileName: 'run.gif' }), false);
-  assert.strictEqual(Media.isGifFile(null), false);
-  assert.strictEqual(Media.isGifFile(undefined), false);
+test('decodesAsGif is false for anything else, including a name or flag that merely claims gif', () => {
+  // Guards the bug this fixes: a sender fully controls a video's
+  // fileName and animated flag, so neither one may ever decide this -
+  // only media.fetch's own decodeAs result can.
+  assert.strictEqual(Media.decodesAsGif(''), false);
+  assert.strictEqual(Media.decodesAsGif('video'), false);
+  assert.strictEqual(Media.decodesAsGif(null), false);
+  assert.strictEqual(Media.decodesAsGif(undefined), false);
 });
