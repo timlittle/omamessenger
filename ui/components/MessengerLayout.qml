@@ -248,6 +248,8 @@ Item {
       composeEnabled: root.conversationController.activeId !== ""
       historyUnavailable: root.conversationController.historyUnavailable
       voiceNotes: root.conversationController.voiceNotes
+      videoPlayback: root.conversationController.videoPlayback
+      windowActive: root.conversationController.windowActive
       voteState: root.pollsController ? ({
         target: root.pollsController.voteTarget,
         highlightedIndex: root.pollsController.voteIndex,
@@ -266,6 +268,11 @@ Item {
       onReactPickerRequested: id => root.reactionsController.openPicker(id)
       onDeleteRequested: id => { if (root.deleteController) root.deleteController.openConfirm(id) }
       onVoted: (id, optionIds) => { if (root.pollsController) root.pollsController.castVote(id, optionIds) }
+      onVideoToggled: id => root.conversationController.toggleVideo(id)
+      onVideoMuteToggled: id => root.conversationController.toggleVideoMute()
+      onMediaCopyRequested: id => root.conversationController.copyMedia(id)
+      onMediaSaveRequested: id => root.conversationController.saveMedia(id)
+      onMediaOpenExternalRequested: id => root.conversationController.openMediaExternal(id)
       onSend: (text, replyToId, mentions) => {
         if (root.composerController.editing) root.composerController.saveEdit(text);
         else root.conversationController.send(text, replyToId, mentions);

@@ -40,12 +40,30 @@ Column {
   // summary rather than the controller itself, for the same reason
   // voiceNotes is.
   property var pollVote: ({ voting: false, highlightedIndex: -1, selectedIds: [] })
+  // videoPlayback is this message's video playback state, read from
+  // VideoController: {playingId, muted, available}, the same plain
+  // summary voiceNotes already is.
+  property var videoPlayback: ({ playingId: "", muted: true, available: true })
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. A video pauses while it is false, the same as it does
+  // while scrolled out of view.
+  property bool windowActive: true
 
-  // mediaWanted asks for this message's photo or voice note to be downloaded.
+  // mediaWanted asks for this message's photo, animated video or voice
+  // note to be downloaded.
   signal mediaWanted()
   // mediaOpen asks for this message's photo, video, file or voice note
-  // to be opened, played or paused.
+  // to be opened, played or paused; for a video this is only the
+  // fallback path, taken while in-window playback cannot work at all
+  // (see videoToggled).
   signal mediaOpen()
+  // videoToggled asks the caller to select or deselect this message's
+  // video: start it (downloading first if need be), pause it, or hand
+  // its single playing slot to a different video.
+  signal videoToggled()
+  // videoMuteToggled asks the caller to flip the shared mute preference
+  // every video reads.
+  signal videoMuteToggled()
   // quoteOpened asks the caller to scroll to the message this one quotes.
   signal quoteOpened(string remoteId)
   // voted asks the caller to cast optionIds as the user's vote in this
@@ -125,12 +143,31 @@ Column {
     maxWidth: root.maxTextWidth
     width: implicitWidth
     height: implicitHeight
-    visible: root._mediaKind === "photo" || root._mediaKind === "video"
+    visible: root._mediaKind === "photo"
     photo: root.media ? root.media : ({})
     path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
     failed: visible && !!(root.message && root.message.mediaFailed)
     onWanted: root.mediaWanted()
     onOpened: root.mediaOpen()
+  }
+
+  InlineVideo {
+    objectName: "inlineVideo"
+    maxWidth: root.maxTextWidth
+    width: implicitWidth
+    height: implicitHeight
+    visible: root._mediaKind === "video"
+    video: root.media ? root.media : ({})
+    path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
+    failed: visible && !!(root.message && root.message.mediaFailed)
+    available: root.videoPlayback.available
+    playing: visible && !!root.message && root.videoPlayback.playingId === root.message.id
+    muted: root.videoPlayback.muted
+    windowActive: root.windowActive
+    onWanted: root.mediaWanted()
+    onOpened: root.mediaOpen()
+    onToggled: root.videoToggled()
+    onMuteToggled: root.videoMuteToggled()
   }
 
   Text {

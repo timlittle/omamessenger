@@ -16,6 +16,9 @@ Item {
 
   // active shows the toolbar, fading it in.
   property bool active: false
+  // mediaActions shows the copy, save and open-externally buttons,
+  // for a message whose photo or video this toolbar can act on.
+  property bool mediaActions: false
   // hitSize is each button's clickable square: bigger than the glyph
   // itself, so the react and reply targets are easy to land a mouse on.
   readonly property real hitSize: Style.space(28)
@@ -27,6 +30,16 @@ Item {
   // deleteRequested asks the caller to open the delete question for
   // this message.
   signal deleteRequested()
+  // copyRequested asks the caller to copy this message's photo or
+  // video to the clipboard.
+  signal copyRequested()
+  // saveRequested asks the caller to save this message's photo or
+  // video into the downloads directory.
+  signal saveRequested()
+  // openExternalRequested asks the caller to open this message's photo
+  // or video in the user's own application, bypassing the in-app
+  // viewer or player.
+  signal openExternalRequested()
 
   objectName: "hoverToolbar"
   implicitWidth: surface.implicitWidth
@@ -69,6 +82,33 @@ Item {
         tooltipText: "Reply"
         size: root.hitSize
         onClicked: root.reply()
+      }
+
+      Ui.PanelActionButton {
+        objectName: "copyButton"
+        visible: root.mediaActions
+        iconText: "⧉"
+        tooltipText: "Copy"
+        size: root.hitSize
+        onClicked: root.copyRequested()
+      }
+
+      Ui.PanelActionButton {
+        objectName: "saveButton"
+        visible: root.mediaActions
+        iconText: "⇩"
+        tooltipText: "Save"
+        size: root.hitSize
+        onClicked: root.saveRequested()
+      }
+
+      Ui.PanelActionButton {
+        objectName: "openExternalButton"
+        visible: root.mediaActions
+        iconText: "↗"
+        tooltipText: "Open externally"
+        size: root.hitSize
+        onClicked: root.openExternalRequested()
       }
 
       Ui.PanelActionButton {

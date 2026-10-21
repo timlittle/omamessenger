@@ -59,3 +59,25 @@ test('isAudioFileName is case-insensitive and ignores files with no extension', 
   assert.strictEqual(Media.isAudioFileName(''), false);
   assert.strictEqual(Media.isAudioFileName(undefined), false);
 });
+
+test('isAnimated is true only for a video the service marked animated', () => {
+  assert.strictEqual(Media.isAnimated({ kind: 'video', animated: true }), true);
+  assert.strictEqual(Media.isAnimated({ kind: 'video', animated: false }), false);
+  assert.strictEqual(Media.isAnimated({ kind: 'video' }), false);
+  assert.strictEqual(Media.isAnimated({ kind: 'photo', animated: true }), false);
+  assert.strictEqual(Media.isAnimated(null), false);
+  assert.strictEqual(Media.isAnimated(undefined), false);
+});
+
+test('mimeFor names a photo as JPEG and a video as MP4', () => {
+  assert.strictEqual(Media.mimeFor({ kind: 'photo' }), 'image/jpeg');
+  assert.strictEqual(Media.mimeFor({ kind: 'video' }), 'video/mp4');
+});
+
+test('mimeFor is null for a kind with nothing sensible to copy', () => {
+  for (const kind of ['link', 'voice', 'sticker', 'poll', 'file']) {
+    assert.strictEqual(Media.mimeFor({ kind }), null, kind);
+  }
+  assert.strictEqual(Media.mimeFor(null), null);
+  assert.strictEqual(Media.mimeFor(undefined), null);
+});

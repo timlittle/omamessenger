@@ -1,23 +1,22 @@
 import QtQuick
 import qs.Commons
 import "../theme"
-import "../lib/Format.js" as Format
 
-// A photo or video in a message, at its shape. A photo shows its blurred
-// preview until the full image is downloaded, which it asks for as soon as
-// it is shown; if the full image then fails to load, or its fetch is known
-// to have failed outright, it falls back to the preview, or a quiet
+// A photo in a message, at its shape. It shows its blurred preview until
+// the full image is downloaded, which it asks for as soon as it is
+// shown; if the full image then fails to load, or its fetch is known to
+// have failed outright, it falls back to the preview, or a quiet
 // message naming the file when there is no preview either. Without that
 // second check a photo with neither a preview nor a successful download
-// would stay an empty box forever, since nothing ever attempts to load an
-// empty image source. A video shows its preview with a play mark and its
-// length, and downloads only when clicked, since videos can be large. A
-// click opens either in the user's viewer.
+// would stay an empty box forever, since nothing ever attempts to load
+// an empty image source. A click opens the in-app photo viewer. A video
+// is InlineVideo instead, which plays in place rather than only ever
+// opening externally.
 Item {
   id: root
 
-  // photo is the message's photo or video media: kind, width, height,
-  // duration and thumb, a base64 JPEG preview.
+  // photo is the message's photo media: width, height and thumb, a
+  // base64 JPEG preview.
   required property var photo
   // path is where the full image was downloaded, or "" until then.
   property string path: ""
@@ -29,12 +28,9 @@ Item {
 
   // wanted asks for the full photo to be downloaded.
   signal wanted()
-  // opened asks for the photo or video to be opened, downloading it first
-  // if need be.
+  // opened asks for the photo to be opened in the in-app viewer,
+  // downloading it first if need be.
   signal opened()
-
-  // _video is true for a video, which is never downloaded unasked.
-  readonly property bool _video: root.photo.kind === "video"
 
   // _aspect is height over width, square when the size is unknown.
   readonly property real _aspect: root.photo.width > 0 ? root.photo.height / root.photo.width : 1
@@ -66,12 +62,12 @@ Item {
   // sent photo's attachment drops a now-stale cached path the same way
   // - counts as "shown without its image" too, so it asks again right
   // away rather than waiting for the next visibility change.
-  Component.onCompleted: if (root.visible && !root.path && !root._video) root.wanted()
-  onVisibleChanged: if (root.visible && !root.path && !root._video) root.wanted()
+  Component.onCompleted: if (root.visible && !root.path) root.wanted()
+  onVisibleChanged: if (root.visible && !root.path) root.wanted()
   onPathChanged: {
     root._loadFailed = false;
     root._retriedForPath = false;
-    if (root.visible && !root.path && !root._video) root.wanted();
+    if (root.visible && !root.path) root.wanted();
   }
 
   Image {
@@ -81,7 +77,7 @@ Item {
     anchors.fill: parent
     // Always the helper's own downloaded file or an embedded base64
     // thumb; never a remote URL.
-    source: root.path && !root._video && !root._loadFailed ? "file://" + root.path : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
+    source: root.path && !root._loadFailed ? "file://" + root.path : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
     fillMode: Image.PreserveAspectFit
     asynchronous: true
     // Scaling a tiny preview up smoothly keeps it a soft blur.
@@ -101,11 +97,11 @@ Item {
     }
   }
 
-  // A video without a preview, or a photo that failed to load and has no
-  // thumb either, still needs a quiet background rather than an empty box.
+  // A photo that failed to load and has no thumb either still needs a
+  // quiet background rather than an empty box.
   Rectangle {
     anchors.fill: parent
-    visible: (root._video && !root.photo.thumb) || root._unavailable
+    visible: root._unavailable
     color: Util.alpha(Theme.foreground, 0.08)
   }
 
@@ -123,32 +119,9 @@ Item {
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
 
-  Text {
-    objectName: "playMark"
-    anchors.centerIn: parent
-    visible: root._video
-    text: "▶"
-    textFormat: Text.PlainText
-    color: Theme.foreground
-    style: Text.Outline
-    styleColor: Util.alpha(Theme.background, 0.6)
-    font { family: Theme.font.family; pixelSize: Theme.font.heading }
-  }
-
-  Text {
-    anchors { right: parent.right; bottom: parent.bottom; margins: Theme.spacing.xs }
-    visible: root._video && text !== ""
-    text: Format.duration(root.photo.duration)
-    textFormat: Text.PlainText
-    color: Theme.foreground
-    style: Text.Outline
-    styleColor: Util.alpha(Theme.background, 0.6)
-    font { family: Theme.font.family; pixelSize: Theme.font.caption }
-  }
-
   MouseArea {
     anchors.fill: parent
-    enabled: (root.path !== "" && !root._loadFailed) || root._video
+    enabled: root.path !== "" && !root._loadFailed
     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
     onClicked: root.opened()
   }

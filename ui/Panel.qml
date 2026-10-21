@@ -241,10 +241,15 @@ Item {
     composer: composerController
     photoViewer: photoViewerController
     voiceController: voiceNoteController
+    videoController: videoController
   }
 
   VoiceNoteController {
     id: voiceNoteController
+  }
+
+  VideoController {
+    id: videoController
   }
 
   ComposerController {

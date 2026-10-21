@@ -30,6 +30,12 @@ Item {
   // voiceNotes is the playback state each message delegate reads for its
   // voice note player; see MessageBubbleContent for its shape.
   property var voiceNotes: Media.NO_VOICE_NOTE
+  // videoPlayback is the playback state each message delegate reads for
+  // its video player; see MessageBubbleContent for its shape.
+  property var videoPlayback: ({ playingId: "", muted: true, available: true })
+  // windowActive is whether the user can see the window at all: shown
+  // and focused, read by each video player to pause while it is false.
+  property bool windowActive: true
   // voteState is PollsController's vote mode, read by whichever message
   // delegate's id matches target: {target, highlightedIndex, selectedIds}.
   property var voteState: ({ target: "", highlightedIndex: -1, selectedIds: [] })
@@ -90,6 +96,21 @@ Item {
   // deleteRequested asks the caller to open the delete question for a
   // message, from its hover toolbar's delete button.
   signal deleteRequested(string id)
+  // videoToggled asks the caller to select, deselect or pause a
+  // message's video.
+  signal videoToggled(string id)
+  // videoMuteToggled asks the caller to flip the shared mute preference
+  // every video reads.
+  signal videoMuteToggled(string id)
+  // mediaCopyRequested asks the caller to copy a message's photo or
+  // video to the clipboard.
+  signal mediaCopyRequested(string id)
+  // mediaSaveRequested asks the caller to save a message's photo or
+  // video into the downloads directory.
+  signal mediaSaveRequested(string id)
+  // mediaOpenExternalRequested asks the caller to open a message's
+  // photo or video in the user's own application.
+  signal mediaOpenExternalRequested(string id)
   // voted asks the caller to cast optionIds as the user's vote in a
   // message's poll.
   signal voted(string id, var optionIds)
@@ -265,6 +286,8 @@ Item {
         isGroup: root.isGroup
         bindings: root.bindings
         voiceNotes: root.voiceNotes
+        videoPlayback: root.videoPlayback
+        windowActive: root.windowActive
         pollVote: ({
           voting: root.voteState.target !== "" && root.voteState.target === modelData.id,
           highlightedIndex: root.voteState.highlightedIndex,
@@ -284,6 +307,11 @@ Item {
         onReactPickerRequested: id => root.reactPickerRequested(id)
         onDeleteRequested: id => root.deleteRequested(id)
         onVoted: (id, optionIds) => root.voted(id, optionIds)
+        onVideoToggled: id => root.videoToggled(id)
+        onVideoMuteToggled: id => root.videoMuteToggled(id)
+        onMediaCopyRequested: id => root.mediaCopyRequested(id)
+        onMediaSaveRequested: id => root.mediaSaveRequested(id)
+        onMediaOpenExternalRequested: id => root.mediaOpenExternalRequested(id)
       }
 
       onContentYChanged: root._checkLoadOlder()

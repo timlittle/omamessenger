@@ -34,6 +34,12 @@ Item {
   // MessageBubbleContent for its shape. Recycled delegates only ever
   // read this, never own it, so scrolling never interrupts playback.
   property var voiceNotes: Media.NO_VOICE_NOTE
+  // videoPlayback is this message's video playback state; see
+  // MessageBubbleContent for its shape.
+  property var videoPlayback: ({ playingId: "", muted: true, available: true })
+  // windowActive is whether the user can see the window at all: shown
+  // and focused, read by the video player to pause while it is false.
+  property bool windowActive: true
   // pollVote is this message's vote-mode state, read from
   // PollsController, or the default while it is not the message voting:
   // {voting, highlightedIndex, selectedIds}. Recycled delegates only
@@ -56,6 +62,9 @@ Item {
   readonly property bool showStatus: root.message.outgoing && !root.failed
   // media is what the message carries besides its text, or null.
   readonly property var media: Timeline.media(root.message)
+  // hasMedia is true for a photo or video, the kinds the hover
+  // toolbar's copy, save and open-externally buttons act on.
+  readonly property bool hasMedia: !!root.media && (root.media.kind === "photo" || root.media.kind === "video")
   // isSticker is true for a sticker message, shown with no bubble
   // behind it at all, unlike every other media kind.
   readonly property bool isSticker: !!root.media && root.media.kind === "sticker"
@@ -94,6 +103,12 @@ Item {
   signal mediaWanted(string id)
   // mediaOpen asks for this message's photo, video or file to be opened.
   signal mediaOpen(string id)
+  // videoToggled asks the caller to select, deselect or pause this
+  // message's video.
+  signal videoToggled(string id)
+  // videoMuteToggled asks the caller to flip the shared mute preference
+  // every video reads.
+  signal videoMuteToggled(string id)
   // replyRequested asks the caller to start replying to this message.
   signal replyRequested(string id)
   // quoteOpened asks the caller to scroll to the message this one quotes.
@@ -106,6 +121,15 @@ Item {
   // deleteRequested asks the caller to open the delete question for
   // this message, from the hover toolbar's delete button.
   signal deleteRequested(string id)
+  // mediaCopyRequested asks the caller to copy this message's photo or
+  // video to the clipboard.
+  signal mediaCopyRequested(string id)
+  // mediaSaveRequested asks the caller to save this message's photo or
+  // video into the downloads directory.
+  signal mediaSaveRequested(string id)
+  // mediaOpenExternalRequested asks the caller to open this message's
+  // photo or video in the user's own application.
+  signal mediaOpenExternalRequested(string id)
   // voted asks the caller to cast optionIds as the user's vote in this
   // message's poll.
   signal voted(string id, var optionIds)
@@ -253,8 +277,12 @@ Item {
           maxTextWidth: bubble.maxTextWidth
           voiceNotes: root.voiceNotes
           pollVote: root.pollVote
+          videoPlayback: root.videoPlayback
+          windowActive: root.windowActive
           onMediaWanted: root.mediaWanted(root.message.id)
           onMediaOpen: root.mediaOpen(root.message.id)
+          onVideoToggled: root.videoToggled(root.message.id)
+          onVideoMuteToggled: root.videoMuteToggled(root.message.id)
           onQuoteOpened: remoteId => root.quoteOpened(remoteId)
           onVoted: optionIds => root.voted(root.message.id, optionIds)
         }
@@ -306,9 +334,13 @@ Item {
           y: hoverToolbar.fitsBeside
             ? Math.max(0, Math.min(bubble.height - hoverToolbar.height, (bubble.height - hoverToolbar.height) / 2))
             : Theme.spacing.xs
+          mediaActions: root.hasMedia
           onReact: root.reactPickerRequested(root.message.id)
           onReply: root.replyRequested(root.message.id)
           onDeleteRequested: root.deleteRequested(root.message.id)
+          onCopyRequested: root.mediaCopyRequested(root.message.id)
+          onSaveRequested: root.mediaSaveRequested(root.message.id)
+          onOpenExternalRequested: root.mediaOpenExternalRequested(root.message.id)
 
           HoverHandler { id: toolbarHover }
         }

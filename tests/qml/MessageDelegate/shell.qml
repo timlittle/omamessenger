@@ -36,6 +36,12 @@ ShellRoot {
   property var quoted: []
   property var reacted: []
   property var pickerRequests: []
+  // videoToggled and copyRequested/saveRequested/openExternalRequested
+  // record the ids each new media action reported.
+  property var videoToggled: []
+  property var copyRequested: []
+  property var saveRequested: []
+  property var openExternalRequested: []
   property real now: Date.now()
 
   // testRoot is this test's own directory, resolved from the running
@@ -100,6 +106,10 @@ ShellRoot {
       onQuoteOpened: remoteId => root.quoted.push(remoteId)
       onReact: (id, emoji) => root.reacted.push(id + " " + emoji)
       onReactPickerRequested: id => root.pickerRequests.push(id)
+      onVideoToggled: id => root.videoToggled.push(id)
+      onMediaCopyRequested: id => root.copyRequested.push(id)
+      onMediaSaveRequested: id => root.saveRequested.push(id)
+      onMediaOpenExternalRequested: id => root.openExternalRequested.push(id)
     }
 
     // A stack of three delegates, stood up only to measure layout: it
@@ -233,6 +243,7 @@ ShellRoot {
     if (!root.checkVideoAndFile()) return;
     if (!root.checkReplyQuote()) return;
     if (!root.checkHoverToolbar()) return;
+    if (!root.checkMediaActionButtons()) return;
     if (!root.checkReactionChips()) return;
     if (!root.checkHoverNeverShiftsLayout()) return;
     if (!root.checkToolbarStaysVisibleOnItself()) return;
@@ -496,14 +507,16 @@ ShellRoot {
   }
 
   // checkVideoAndFile verifies a video shows a play mark, its length and
-  // its pixel dimensions and file size, without downloading itself; a
-  // file shows its name and size, and a click on either asks to open it.
+  // its pixel dimensions and file size, without downloading itself, and
+  // a click on it asks to select it for in-window playback rather than
+  // opening it externally (see InlineVideo); a file shows its name and
+  // size, and a click on it asks to open it.
   function checkVideoAndFile(): bool {
     root.wanted = [];
     const video = { kind: "video", width: 1280, height: 720, duration: 65, size: 5242880 };
     delegate.message = { id: "m9", senderId: "s1", senderName: "Alex", text: "[Video]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(video), mediaPath: "" };
 
-    const view = Check.find(delegate, "photoView");
+    const view = Check.find(delegate, "inlineVideo");
     if (!view.visible || !Check.find(delegate, "playMark").visible) return Check.fail("video shown without its play mark");
     if (!Check.texts(view).some((item) => item.text === "1:05" && item.visible)) return Check.fail("video length not shown");
     const videoMeta = Check.find(delegate, "photoMeta");
@@ -511,7 +524,7 @@ ShellRoot {
     if (root.wanted.length !== 0) return Check.fail("a video started downloading by itself");
     t.wait(50); // let the layout catch up with the new message before clicking
     t.mouseClick(view);
-    if (root.opened.indexOf("m9") < 0) return Check.fail("clicking a video did not ask to open it");
+    if (root.videoToggled.indexOf("m9") < 0) return Check.fail("clicking a video did not ask to select it for playback");
 
     const file = { kind: "file", fileName: "report.pdf", size: 2048 };
     delegate.message = { id: "m10", senderId: "s1", senderName: "Alex", text: "[File]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(file), mediaPath: "" };
@@ -588,6 +601,44 @@ ShellRoot {
     root.replied = [];
     t.mouseClick(replyButton);
     if (JSON.stringify(root.replied) !== '["m13"]') return Check.fail("reply click reported " + JSON.stringify(root.replied) + ", want [\"m13\"]");
+    return true;
+  }
+
+  // checkMediaActionButtons verifies the hover toolbar's copy, save and
+  // open-externally buttons appear only for a message with a photo or
+  // video, not for an ordinary text message, and that each asks the
+  // caller for the right message id.
+  function checkMediaActionButtons(): bool {
+    // m13, left over from checkHoverToolbar, carries no media.
+    const toolbar = Check.find(delegate, "hoverToolbar");
+    if (Check.find(toolbar, "copyButton").visible) return Check.fail("copy button shown for a message with no media");
+    if (Check.find(toolbar, "saveButton").visible) return Check.fail("save button shown for a message with no media");
+    if (Check.find(toolbar, "openExternalButton").visible) return Check.fail("open-externally button shown for a message with no media");
+
+    const photo = { kind: "photo", width: 400, height: 200, thumb: "" };
+    delegate.message = { id: "m18", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
+
+    t.mouseMove(delegate, 2, 2);
+    t.wait(150);
+    const bubble = Check.find(delegate, "bubble");
+    t.mouseMove(bubble, bubble.width / 2, bubble.height / 2);
+    t.wait(50);
+
+    const copyButton = Check.find(toolbar, "copyButton");
+    const saveButton = Check.find(toolbar, "saveButton");
+    const openExternalButton = Check.find(toolbar, "openExternalButton");
+    if (!copyButton.visible || !saveButton.visible || !openExternalButton.visible) {
+      return Check.fail("copy, save and open-externally buttons not all shown for a photo message");
+    }
+
+    t.mouseClick(copyButton);
+    if (JSON.stringify(root.copyRequested) !== '["m18"]') return Check.fail("copy click reported " + JSON.stringify(root.copyRequested) + ", want [\"m18\"]");
+
+    t.mouseClick(saveButton);
+    if (JSON.stringify(root.saveRequested) !== '["m18"]') return Check.fail("save click reported " + JSON.stringify(root.saveRequested) + ", want [\"m18\"]");
+
+    t.mouseClick(openExternalButton);
+    if (JSON.stringify(root.openExternalRequested) !== '["m18"]') return Check.fail("open-externally click reported " + JSON.stringify(root.openExternalRequested) + ", want [\"m18\"]");
     return true;
   }
 

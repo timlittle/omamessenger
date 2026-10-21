@@ -126,6 +126,13 @@ var BINDINGS = [
   { action: 'message.retry', keys: ['t'], contexts: ['conversation'], label: 'Retry the highlighted message', command: true },
   { action: 'message.openLink', keys: ['o'], contexts: ['conversation'], label: "Open the highlighted message's link", command: true },
   { action: 'message.goToQuote', keys: ['p'], contexts: ['conversation'], label: 'Go to the replied-to message', command: true },
+  // Not hinted here, like message.retry: it only applies to a video.
+  { action: 'message.play', keys: ['Space'], contexts: ['conversation'], label: 'Play or pause the highlighted video', command: true },
+  // Not hinted here, like message.play: each only applies to a photo
+  // or video.
+  { action: 'message.copyMedia', keys: ['c'], contexts: ['conversation'], label: "Copy the highlighted photo or video", command: true },
+  { action: 'message.saveMedia', keys: ['s'], contexts: ['conversation'], label: "Save the highlighted photo or video", command: true },
+  { action: 'message.openExternal', keys: ['x'], contexts: ['conversation'], label: "Open the highlighted photo or video externally", command: true },
   // Not hinted here: like message.retry, it only applies to some
   // messages, so its "v vote" hint comes from Highlight.hints, shown
   // beside the highlighted message itself, the moment it carries an

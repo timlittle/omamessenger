@@ -44,6 +44,36 @@ function kindFor(media) {
   return isAudioFileName(media.fileName) ? 'voice' : 'file';
 }
 
+// isAnimated reports whether media is a video the sending service itself
+// marked as a silent, looping "GIF" (see domain.Media.Animated), so the
+// UI autoplays it muted and looping instead of waiting for a click, the
+// same way a real animated image would.
+function isAnimated(media) {
+  return !!media && media.kind === 'video' && !!media.animated;
+}
+
+// mimeFor names the MIME type to offer when copying media's full file to
+// the clipboard, or null for a kind there is nothing sensible to copy as
+// (a link preview, a poll, a sticker still only on the service, …). The
+// helper always normalizes a photo to a JPEG and a video to MP4 when it
+// downloads one (see mediaFileName in media.go), so these are fixed,
+// never read from the message itself.
+function mimeFor(media) {
+  if (!media) {
+    return null;
+  }
+
+  if (media.kind === 'photo') {
+    return 'image/jpeg';
+  }
+
+  if (media.kind === 'video') {
+    return 'video/mp4';
+  }
+
+  return null;
+}
+
 // isAudioFileName reports whether name's extension is one the voice
 // player can play, used to recognise an audio file the connector only
 // ever marked as a plain file.

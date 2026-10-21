@@ -45,6 +45,11 @@ Item {
   // message list to show.
   property var voiceController: null
 
+  // videoController is the VideoController this controller asks to
+  // select, deselect or mute a video, and reads playback state from for
+  // the message list to show.
+  property var videoController: null
+
   // openExternally hands a local file to the user's own application,
   // through media (see MediaController); a test overrides it with a
   // recorder rather than letting a video or file open for real.
@@ -134,6 +139,17 @@ Item {
     durationMs: root.voiceController.durationMs
   } : ({ available: false, playingId: "", playing: false, positionMs: 0, durationMs: 0 })
 
+  // videoPlayback is the playback state the message list reads for each
+  // bubble's video: which message, if any, is selected to play, the
+  // shared mute preference, and whether in-window playback is
+  // available at all. A plain summary rather than videoController
+  // itself, for the same reason voiceNotes is.
+  readonly property var videoPlayback: root.videoController ? {
+    playingId: root.videoController.playingId,
+    muted: root.videoController.muted,
+    available: root.videoController.available
+  } : ({ playingId: "", muted: true, available: true })
+
   // scroll asks the caller to move the message view: "down", "up",
   // "pageDown", "pageUp", "newest" or "oldest".
   signal scroll(string direction)
@@ -178,6 +194,10 @@ Item {
       "chat.next": () => root._step(1),
       "chat.prev": () => root._step(-1),
       "message.retry": () => root._retryHighlighted(),
+      "message.play": () => root._playHighlighted(),
+      "message.copyMedia": () => root._copyHighlighted(),
+      "message.saveMedia": () => root._saveHighlighted(),
+      "message.openExternal": () => root._openExternalHighlighted(),
       "unread.next": () => root._stepUnread(1),
       "unread.prev": () => root._stepUnread(-1)
     };
@@ -308,6 +328,36 @@ Item {
   // in-flight download.
   function downloadMedia(id: string, report: bool, done: var): void {
     media.downloadMedia(timeline, id, report, done);
+  }
+
+  // toggleVideo selects, deselects or pauses a message's video, through
+  // media (see MediaController).
+  function toggleVideo(id: string): void {
+    media.toggleVideo(timeline, id);
+  }
+
+  // toggleVideoMute flips the shared mute preference every video reads.
+  function toggleVideoMute(): void {
+    if (root.videoController) root.videoController.setMuted(!root.videoController.muted);
+  }
+
+  // copyMedia copies a message's photo or video to the clipboard,
+  // through media (see MediaController).
+  function copyMedia(id: string): void {
+    media.copyMedia(timeline, id);
+  }
+
+  // saveMedia saves a message's photo or video into the downloads
+  // directory, through media (see MediaController).
+  function saveMedia(id: string): void {
+    media.saveMedia(timeline, id);
+  }
+
+  // openMediaExternal opens a message's photo or video in the user's
+  // own application, bypassing the in-app viewer or player, through
+  // media (see MediaController).
+  function openMediaExternal(id: string): void {
+    media.openExternal(timeline, id);
   }
 
   // retryMessage resends one failed outgoing message by id.
@@ -489,6 +539,40 @@ Item {
     if (m && m.outgoing && m.status === "failed") root.retryMessage(m.id);
   }
 
+  // _playHighlighted starts or pauses the highlighted message's video,
+  // the keyboard equivalent of clicking it; does nothing when the
+  // highlighted message carries no video.
+  function _playHighlighted(): void {
+    const media = timeline.media(highlight.highlightedId);
+    if (media && media.kind === "video") root.toggleVideo(highlight.highlightedId);
+  }
+
+  // _copyHighlighted copies the highlighted message's photo or video to
+  // the clipboard; does nothing for any other kind.
+  function _copyHighlighted(): void {
+    if (root._hasCopyableMedia()) root.copyMedia(highlight.highlightedId);
+  }
+
+  // _saveHighlighted saves the highlighted message's photo or video
+  // into the downloads directory; does nothing for any other kind.
+  function _saveHighlighted(): void {
+    if (root._hasCopyableMedia()) root.saveMedia(highlight.highlightedId);
+  }
+
+  // _openExternalHighlighted opens the highlighted message's photo or
+  // video in the user's own application; does nothing for any other
+  // kind.
+  function _openExternalHighlighted(): void {
+    if (root._hasCopyableMedia()) root.openMediaExternal(highlight.highlightedId);
+  }
+
+  // _hasCopyableMedia reports whether the highlighted message carries a
+  // photo or video: the kinds copy, save and open-externally act on.
+  function _hasCopyableMedia(): bool {
+    const media = timeline.media(highlight.highlightedId);
+    return !!media && (media.kind === "photo" || media.kind === "video");
+  }
+
   // applyMessage applies a sent, retried or pushed message to the
   // timeline, ignoring one for a conversation that is not the open one.
   // Reactions and the composer's own send both land here.
@@ -604,6 +688,7 @@ Item {
     service: root.service
     photoViewer: root.photoViewer
     voiceController: root.voiceController
+    videoController: root.videoController
     openExternally: root.openExternally
     cooldownMs: root.mediaOpenCooldownMs
   }

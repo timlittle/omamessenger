@@ -60,6 +60,10 @@ var OWNERS = {
   'message.retry': 'conversation',
   'message.openLink': 'conversation',
   'message.goToQuote': 'conversation',
+  'message.play': 'conversation',
+  'message.copyMedia': 'conversation',
+  'message.saveMedia': 'conversation',
+  'message.openExternal': 'conversation',
   // unread.next/prev open the conversation they land on when one is
   // already showing, which is why ConversationController (which already
   // knows how to open one) owns them rather than ListController, which

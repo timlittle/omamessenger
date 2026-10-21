@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 import "../lib/Format.js" as Format
 import "../lib/Media.js" as Media
 import "../lib/MediaOpen.js" as MediaOpen
@@ -24,6 +25,20 @@ QtObject {
   // voiceController is the VoiceNoteController a voice note plays or
   // pauses through, when it is there and QtMultimedia loaded.
   property var voiceController: null
+
+  // videoController is the VideoController a video selects, deselects
+  // or mutes through, when it is there.
+  property var videoController: null
+
+  // copyToClipboard puts path's content on the system clipboard as
+  // mimeType, by shelling out to wl-copy the same way Omarchy's own
+  // shell copies a value: Quickshell's own clipboard property only
+  // carries plain text, with nothing for an image or a video. The
+  // default calls the real wl-copy; a test overrides it with a
+  // recorder, so copying a photo or video can be proven to dispatch
+  // exactly once without ever touching the real, user-visible
+  // clipboard.
+  property var copyToClipboard: (path, mimeType) => Util.execDetached(["sh", "-c", "wl-copy --type " + Util.shellQuote(mimeType) + " < " + Util.shellQuote(path)])
 
   // openExternally hands a local file to the user's own application.
   // The default calls the real Qt.openUrlExternally; a test overrides
@@ -79,6 +94,7 @@ QtObject {
     const kind = Media.kindFor(media);
     if (kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
     if (kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(timeline, id, media); return; }
+    if (kind === "video" && root.videoController && root.videoController.available) { root.toggleVideo(timeline, id); return; }
 
     const path = timeline.mediaPath(id);
     if (path) { root._openIfAllowed(id, path); return; }
@@ -95,6 +111,62 @@ QtObject {
 
     root._lastOpenedAt[id] = now;
     root.openExternally(path);
+  }
+
+  // toggleVideo selects, deselects or pauses id as the one video
+  // playing right now, downloading it first if it is not on this
+  // machine yet; does nothing with no videoController wired (an older
+  // caller that never set one up).
+  function toggleVideo(timeline: var, id: string): void {
+    if (!root.videoController) return;
+
+    const path = timeline.mediaPath(id);
+    if (path) { root.videoController.toggle(id); return; }
+
+    root.downloadMedia(timeline, id, true, () => root.videoController.toggle(id));
+  }
+
+  // openExternal downloads id's media if need be and hands it straight
+  // to the user's own application, bypassing the in-app photo viewer or
+  // video player even when one is available: the explicit "open
+  // externally" action, as opposed to openMedia's "do the obvious
+  // thing" default.
+  function openExternal(timeline: var, id: string): void {
+    const path = timeline.mediaPath(id);
+    if (path) { root._openIfAllowed(id, path); return; }
+
+    root.downloadMedia(timeline, id, true, (downloaded) => root._openIfAllowed(id, downloaded));
+  }
+
+  // copyMedia downloads id's photo or video if need be and copies it to
+  // the clipboard; does nothing for any other media kind, which has
+  // nothing sensible to copy as (see Media.mimeFor).
+  function copyMedia(timeline: var, id: string): void {
+    const mimeType = Media.mimeFor(timeline.media(id));
+    if (!mimeType) return;
+
+    const path = timeline.mediaPath(id);
+    if (path) { root.copyToClipboard(path, mimeType); return; }
+
+    root.downloadMedia(timeline, id, true, (downloaded) => root.copyToClipboard(downloaded, mimeType));
+  }
+
+  // saveMedia asks the helper to save id's media into the downloads
+  // directory, fetching it first if need be; the helper does both in
+  // one round trip (see media.save in docs/api.md), so this never asks
+  // downloadMedia itself. A failure is reported the same way a failed
+  // media.fetch already is.
+  function saveMedia(timeline: var, id: string): void {
+    root.service.request("media.save", { messageId: id }, function(error, result) {
+      if (error) {
+        const reason = Rpc.errorReason(error);
+        console.warn("media.save failed for " + id + ": code=" + error.code + " reason=" + (reason || "unknown"));
+        timeline.lastError = Format.mediaUnavailableMessage(Media.kindFor(timeline.media(id)), reason) || Rpc.errorText(error);
+        return;
+      }
+
+      timeline.lastError = "";
+    });
   }
 
   // _toggleVoice plays or pauses a voice note, downloading it first if it

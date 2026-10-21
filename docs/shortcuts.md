@@ -52,7 +52,11 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | Ctrl+D, PageDown / Ctrl+U, PageUp | Page down / up |
 | G, End / g, Home | Jump to the newest / oldest message |
 | i or a | Start writing |
-| Enter | Open the highlighted message's photo, video or file, or play/pause its voice note |
+| Enter | Open the highlighted message's photo, video or file, or play/pause its voice note (a video plays in place instead of opening externally when that is available; see below) |
+| Space | Play or pause the highlighted video |
+| c | Copy the highlighted photo or video |
+| s | Save the highlighted photo or video to your downloads directory |
+| x | Open the highlighted photo or video in your own application, even while in-window playback is available |
 | r | Reply to the highlighted message |
 | e | React to the highlighted message |
 | E | Edit the highlighted message, if it is your own, text-only and already sent |
@@ -62,6 +66,8 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | t | Retry the highlighted message, if it failed to send |
 | v | Vote in the highlighted message's poll, if it carries an open one |
 | h | Back to the list |
+
+A video sent as a silent, looping "GIF" plays inline, muted and looping, as soon as it downloads; an ordinary video stays a thumbnail until clicked (or Space on the highlighted message), then plays in place with play/pause, a draggable seek bar and a mute button. Either kind stops playing once it scrolls out of view or the window loses focus. Hovering a photo or video shows copy, save and open-externally buttons alongside react, reply and delete; the same three actions have their own keys above. In-window video playback needs the optional QtMultimedia module Omarchy's own packages install; without it, an ordinary video (and a "GIF" that is really a silent video, as every WhatsApp or Telegram one is) falls back to opening externally as it always did, while a genuine .gif file still animates in place.
 
 The highlight starts on the newest message when the conversation opens or when you leave the composer with Esc. The composer shows which mode it is in: dimmed, with an "i to write" hint, while scrolling; full contrast, with a "Writing · Esc to stop" hint, once it has focus.
 
