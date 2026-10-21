@@ -81,15 +81,14 @@ Column {
   signal linkOpenRequested(string url)
 
   // _mediaKind is which view media belongs in: "link", "photo", "video",
-  // "voice", "file", or "" for no media. It is also an audio file the
-  // connector only ever marked as a plain file (see Media.js), so an old
-  // voice note that predates the "voice" media kind still gets a player
-  // instead of the plain file row. Computed once here, rather than
-  // inline on each view's own visible binding, so the path below is
-  // never handed to a view other than the one that matches: an
-  // invisible sibling would otherwise still try to load it, which is
-  // how a voice note's audio file once reached the image view and
-  // failed to decode as a photo.
+  // "voice", "file", or "" for no media, read only from the helper's
+  // own normalized media kind (see Media.js) - never guessed from a
+  // sender's claimed file name, which must never choose a decoder.
+  // Computed once here, rather than inline on each view's own visible
+  // binding, so the path below is never handed to a view other than
+  // the one that matches: an invisible sibling would otherwise still
+  // try to load it, which is how a voice note's audio file once
+  // reached the image view and failed to decode as a photo.
   readonly property string _mediaKind: Media.kindFor(root.media) ?? ""
 
   spacing: Theme.spacing.xs
@@ -233,6 +232,7 @@ Column {
     failed: visible && !!(root.message && root.message.mediaFailed)
     failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
     available: root.voiceNotes.available
+    playable: visible && !!root.message && !!root.message.mediaPlayable
     playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id && root.voiceNotes.playing
     positionMs: playing ? root.voiceNotes.positionMs : 0
     durationMs: playing ? root.voiceNotes.durationMs : 0

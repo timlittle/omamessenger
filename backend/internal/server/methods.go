@@ -475,19 +475,21 @@ func messagesEdit(c *app.Commands) func(context.Context, editParams) (any, error
 	}
 }
 
-// mediaResult is where a downloaded photo, video or file is on disk.
-// DecodeAs is set only for a video, and only once the helper has
-// confirmed its actual bytes are a genuine, sanitized GIF image
-// ("gif"); omitted for an ordinary video or anything else, which the
-// UI must never decode through an image component. The UI reads only
-// this field to make that choice, never a message's own filename or
-// "animated" flag (see docs/decisions.md). Playable is set only for
-// an ordinary video (DecodeAs omitted) whose own container and
-// stream headers the helper has validated well enough to trust its
-// in-window video player with at all; omitted (false) for anything
-// else, including a video that failed that check, which the UI must
-// then offer only to open in the user's own video player, never load
-// into its own player. Risky is true only when app.MediaRisk,
+// mediaResult is where a downloaded photo, video, file or voice note
+// is on disk. DecodeAs is set only for a video, and only once the
+// helper has confirmed its actual bytes are a genuine, sanitized GIF
+// image ("gif"); omitted for an ordinary video or anything else,
+// which the UI must never decode through an image component. The UI
+// reads only this field to make that choice, never a message's own
+// filename or "animated" flag (see docs/decisions.md). Playable is
+// set for an ordinary video (DecodeAs omitted) whose own container
+// and stream headers the helper has validated well enough to trust
+// its in-window video player with, or for a voice note whose own
+// bytes the helper has validated as a safe, single-stream audio
+// file; omitted (false) for anything else, including a video or
+// voice note that failed its own check, which the UI must then offer
+// only to open in the user's own application, never load into its
+// own player. Risky is true only when app.MediaRisk,
 // sniffing path's own bytes, finds active or executable content - a
 // web page, a vector image or a script; omitted (false) for everyday
 // media, which is every message's media until proven otherwise. The
@@ -514,11 +516,11 @@ type mediaFetchParams struct {
 
 // mediaFetch downloads a message's media, or finds it already cached,
 // then asks the helper's own verdict on how to decode it and, for an
-// ordinary video, whether it is safe to play in place at all (see
-// mediaResult.DecodeAs and mediaResult.Playable): two further steps,
-// rather than folded into FetchMedia itself, since neither ever
-// applies to anything but a video, and neither changes what was
-// downloaded or where.
+// ordinary video or a voice note, whether it is safe to play in
+// place at all (see mediaResult.DecodeAs and mediaResult.Playable):
+// further steps, rather than folded into FetchMedia itself, since
+// none of them ever applies to anything but a video or voice note,
+// and none changes what was downloaded or where.
 func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, error) {
 	return func(ctx context.Context, p mediaFetchParams) (any, error) {
 		path, err := c.FetchMedia(ctx, p.MessageID, p.Auto)
@@ -531,9 +533,14 @@ func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, e
 			return mediaResult{Path: path, DecodeAs: decodeAs}, err
 		}
 
-		playable, err := c.VideoPlayableForMedia(ctx, p.MessageID, path)
+		videoPlayable, err := c.VideoPlayableForMedia(ctx, p.MessageID, path)
+		if err != nil {
+			return mediaResult{Path: path, DecodeAs: decodeAs}, err
+		}
 
-		return mediaResult{Path: path, DecodeAs: decodeAs, Playable: playable, Risky: app.MediaRisk(path)}, err
+		audioPlayable, err := c.AudioPlayableForMedia(ctx, p.MessageID, path)
+
+		return mediaResult{Path: path, DecodeAs: decodeAs, Playable: videoPlayable || audioPlayable, Risky: app.MediaRisk(path)}, err
 	}
 }
 

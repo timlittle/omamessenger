@@ -29,6 +29,13 @@ Item {
   property string failedReason: ""
   // available is false when in-window playback cannot work at all.
   property bool available: true
+  // playable is the helper's own verdict, once path is known, on
+  // whether this voice note's downloaded bytes are safe to decode in
+  // place (see media.fetch's playable in docs/api.md); never read
+  // from the message's claimed file name or kind. Defaults true so
+  // this never shows a false "will open externally" hint before a
+  // fetch has even run.
+  property bool playable: true
   // playing is true while this particular voice note is the one making
   // sound; a different note playing, or this one paused, is false.
   property bool playing: false
@@ -63,6 +70,12 @@ Item {
   // to show, so the play button's tooltip can say why without ever
   // showing the error itself.
   readonly property string _unavailableHint: Format.mediaFailureReason(root.failedReason)
+  // _opensExternally is true once the file is downloaded but the
+  // helper's own verdict says its bytes are not safe to decode in
+  // place: the button still works, but opened() falls through to the
+  // gated external-open path instead of in-window playback (see
+  // MediaController._selectOrOpenVoice).
+  readonly property bool _opensExternally: !!root.path && !root.playable
 
   implicitWidth: Style.space(280)
   implicitHeight: available ? playerRow.implicitHeight : fallbackRow.implicitHeight
@@ -85,7 +98,9 @@ Item {
       text: root.playing ? "⏸" : "▶"
       tooltipText: root._unplayable
         ? ("Unavailable" + (root._unavailableHint ? " — " + root._unavailableHint : ""))
-        : root._tooLargeAuto ? "Tap to load" : (root.playing ? "Pause voice message" : "Play voice message")
+        : root._tooLargeAuto ? "Tap to load"
+        : root._opensExternally ? "Open in your own application"
+        : (root.playing ? "Pause voice message" : "Play voice message")
       enabled: !root._unplayable
       focusable: true
       onClicked: root.opened()

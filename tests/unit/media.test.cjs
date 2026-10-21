@@ -21,17 +21,20 @@ test('kindFor passes through photo, video, link, voice and sticker unchanged', (
   assert.strictEqual(Media.kindFor({ kind: 'sticker' }), 'sticker');
 });
 
-test('kindFor treats a legacy voice note stored as a file as voice', () => {
+test('kindFor leaves a legacy voice note stored as a file as a plain file', () => {
   // Before the helper's "voice" media kind existed, a WhatsApp push-to-talk
   // message was stored as a plain file named "voice-message.ogg"; that
-  // stored row never gets re-normalized, so this is real, permanent data.
+  // stored row never gets re-normalized. A sender's claimed file name must
+  // never choose a decoder (see docs/decisions.md), so this is no longer
+  // guessed back into "voice" from its name - it opens only through the
+  // gated external-open path, like any other file.
   const media = { kind: 'file', fileName: 'voice-message.ogg', duration: 7 };
-  assert.strictEqual(Media.kindFor(media), 'voice');
+  assert.strictEqual(Media.kindFor(media), 'file');
 });
 
-test('kindFor treats any audio file extension as voice, not just ogg', () => {
+test('kindFor never guesses voice from a file name, for any audio extension', () => {
   for (const name of ['clip.mp3', 'clip.m4a', 'clip.wav', 'clip.aac', 'clip.opus', 'clip.oga', 'clip.amr', 'clip.weba', 'clip.flac']) {
-    assert.strictEqual(Media.kindFor({ kind: 'file', fileName: name }), 'voice', name);
+    assert.strictEqual(Media.kindFor({ kind: 'file', fileName: name }), 'file', name);
   }
 });
 
@@ -51,13 +54,6 @@ test('kindFor never answers photo or video for a file kind', () => {
   const result = Media.kindFor(media);
   assert.notStrictEqual(result, 'photo');
   assert.notStrictEqual(result, 'video');
-});
-
-test('isAudioFileName is case-insensitive and ignores files with no extension', () => {
-  assert.strictEqual(Media.isAudioFileName('Voice.OGG'), true);
-  assert.strictEqual(Media.isAudioFileName('noext'), false);
-  assert.strictEqual(Media.isAudioFileName(''), false);
-  assert.strictEqual(Media.isAudioFileName(undefined), false);
 });
 
 test('isAnimated is true only for a video the service marked animated', () => {

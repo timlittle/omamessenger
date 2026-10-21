@@ -89,6 +89,10 @@ linters:
           list-mode: strict
           files: ["**/backend/internal/videosafe/*.go", "!$test"]
           allow: [$gostd]
+        audiosafe:
+          list-mode: strict
+          files: ["**/backend/internal/audiosafe/*.go", "!$test"]
+          allow: [$gostd]
         connector:
           list-mode: strict
           files: ["**/backend/internal/connector/*.go", "!$test"]
@@ -97,6 +101,7 @@ linters:
             - github.com/timlittle/omamessenger/backend/internal/domain$
             - github.com/timlittle/omamessenger/backend/internal/imagesafe$
             - github.com/timlittle/omamessenger/backend/internal/videosafe$
+            - github.com/timlittle/omamessenger/backend/internal/audiosafe$
         connectortest:
           list-mode: strict
           files: ["**/backend/internal/connector/connectortest/*.go"]

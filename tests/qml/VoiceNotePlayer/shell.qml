@@ -21,6 +21,7 @@ ShellRoot {
     if (!root.checkAvailablePlayer()) return;
     if (!root.checkPlayingGlyph()) return;
     if (!root.checkUnplayable()) return;
+    if (!root.checkOpensExternallyHint()) return;
     if (!root.checkFallback()) return;
 
     console.log("PASS VoiceNotePlayer");
@@ -93,6 +94,26 @@ ShellRoot {
 
     player.failed = false;
     player.failedReason = "";
+    return true;
+  }
+
+  // checkOpensExternallyHint verifies that once a voice note is
+  // downloaded but the helper's own verdict says it is not safe to
+  // decode in place (playable false), the button still works but its
+  // tooltip says it will open externally instead of playing - the
+  // sender's claimed file name or kind never decides this, only
+  // media.fetch's own playable result does (see docs/decisions.md).
+  function checkOpensExternallyHint(): bool {
+    player.path = "/tmp/voice-message.ogg";
+    player.playable = false;
+
+    const button = Check.find(player, "voicePlayButton");
+    if (button.tooltipText !== "Open in your own application")
+      return Check.fail("tooltip is \"" + button.tooltipText + "\", want the external-open hint for an unplayable, downloaded note");
+    if (!button.enabled) return Check.fail("play button is disabled for a downloaded but unplayable note, want it still clickable");
+
+    player.path = "";
+    player.playable = true;
     return true;
   }
 

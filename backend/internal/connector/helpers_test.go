@@ -83,6 +83,26 @@ func onePlayableMP4() []byte {
 	return moov
 }
 
+// onePlayableOggOpus returns a minimal, well-formed single-page
+// Ogg/Opus file, for a test that needs bytes audiosafe actually
+// accepts rather than an arbitrary placeholder: one page, marked
+// both the first and last of its logical bitstream, whose payload
+// opens with the "OpusHead" packet magic and whose granule position
+// implies a five-second stream.
+func onePlayableOggOpus() []byte {
+	payload := []byte("OpusHead further opus header bytes here")
+
+	hdr := make([]byte, 27)
+	copy(hdr[0:4], "OggS")
+	hdr[5] = 0x06 // BOS | EOS: the one page is the whole stream
+	binary.LittleEndian.PutUint64(hdr[6:14], 48_000*5)
+	binary.LittleEndian.PutUint32(hdr[14:18], 1) // serial
+	hdr[26] = 1                                  // one segment table entry
+
+	hdr = append(hdr, byte(len(payload)))
+	return append(hdr, payload...)
+}
+
 // fakeConnector runs the run function, or blocks until cancelled when it
 // is nil, and records what it was asked to send.
 type fakeConnector struct {

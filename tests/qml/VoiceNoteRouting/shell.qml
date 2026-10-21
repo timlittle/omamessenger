@@ -1,11 +1,13 @@
-// Checks that a voice note stored before the helper's "voice" media kind
-// existed, which is permanently stuck with kind "file" and a file name
-// like "voice-message.ogg" (see Media.js and ConversationController's
-// openMedia), still renders and plays as a voice note rather than the
-// image view: the bug this guards against showed a real voice note's
-// audio file reaching PhotoView, which then failed to decode it as a
-// photo. A real photo and a plain, non-audio file are checked the same
-// way, so the fix narrows dispatch without breaking either.
+// Checks that media dispatch and opening never guess a decoder from a
+// sender's claimed file name: a message stored before the helper's
+// "voice" media kind existed, permanently stuck with kind "file" and a
+// file name like "voice-message.ogg" (see Media.js), now renders as a
+// plain file row and opens only through the gated external-open path,
+// never the in-window voice player - the fix for a reviewed bug where a
+// sender's own name alone decided which decoder a bubble's audio
+// reached. A real photo, a real voice note and a plain, non-audio file
+// are checked the same way, so the fix narrows dispatch without
+// breaking any of them.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -30,7 +32,11 @@ ShellRoot {
 
   ConversationController {
     id: controller
+
+    property var _openCalls: []
+
     voiceController: fakeVoiceController
+    openExternally: (path) => controller._openCalls.push(path)
   }
 
   MessageDelegate {
@@ -41,6 +47,16 @@ ShellRoot {
       id: "legacy-voice", outgoing: false, status: "received", created: 0, senderName: "", senderId: "s1",
       text: "", media: { kind: "file", fileName: "voice-message.ogg", duration: 9 },
       mediaPath: "/tmp/legacy-voice-message.ogg"
+    })
+  }
+
+  MessageDelegate {
+    id: voiceDelegate
+    width: 400
+    annotation: root.noAnnotation
+    message: ({
+      id: "voice", outgoing: false, status: "received", created: 0, senderName: "", senderId: "s1",
+      text: "", media: { kind: "voice", duration: 9 }
     })
   }
 
@@ -72,10 +88,11 @@ ShellRoot {
 
   // run checks both the view dispatch and the controller's own routing.
   function run(): void {
-    if (!root.checkDelegate(legacyVoiceDelegate, "voiceNotePlayer", "a legacy voice note stored as a file")) return;
+    if (!root.checkDelegate(legacyVoiceDelegate, "fileView", "a legacy voice note stored as a file")) return;
+    if (!root.checkDelegate(voiceDelegate, "voiceNotePlayer", "a real voice note")) return;
     if (!root.checkDelegate(photoDelegate, "photoView", "a real photo")) return;
     if (!root.checkDelegate(fileDelegate, "fileView", "a plain, non-audio file")) return;
-    if (!root.checkControllerPlaysLegacyVoiceNote()) return;
+    if (!root.checkControllerOpensLegacyFileExternally()) return;
     if (!root.checkPausedNoteShowsPlayGlyph()) return;
 
     console.log("PASS VoiceNoteRouting");
@@ -99,10 +116,12 @@ ShellRoot {
     return true;
   }
 
-  // checkControllerPlaysLegacyVoiceNote verifies ConversationController's
-  // openMedia sends a legacy file-kind voice note to the voice player,
-  // not to the "open in your own application" path a plain file gets.
-  function checkControllerPlaysLegacyVoiceNote(): bool {
+  // checkControllerOpensLegacyFileExternally verifies
+  // ConversationController's openMedia sends a legacy file-kind "voice
+  // note" through the same gated external-open path a plain file gets,
+  // never the in-window voice player: the sender's own claimed file
+  // name must never choose a decoder (see docs/decisions.md).
+  function checkControllerOpensLegacyFileExternally(): bool {
     controller.timeline.upsert({
       id: "legacy-voice", remoteId: "", senderId: "s1", senderName: "", text: "", outgoing: false,
       status: "received", created: 0, media: { kind: "file", fileName: "voice-message.ogg", duration: 9 }
@@ -111,10 +130,10 @@ ShellRoot {
 
     controller.openMedia("legacy-voice");
 
-    if (fakeVoiceController.calls.length !== 1)
-      return Check.fail("opening a legacy voice note did not play it through the voice controller");
-    if (fakeVoiceController.calls[0].path !== "/tmp/voice-message.ogg")
-      return Check.fail("voice controller got path \"" + fakeVoiceController.calls[0].path + "\", want \"/tmp/voice-message.ogg\"");
+    if (fakeVoiceController.calls.length !== 0)
+      return Check.fail("a legacy file-kind \"voice note\" was played through the voice controller, guessed from its file name");
+    if (controller._openCalls.length !== 1 || controller._openCalls[0] !== "/tmp/voice-message.ogg")
+      return Check.fail("opening it did not reach the gated external-open path: " + JSON.stringify(controller._openCalls));
     return true;
   }
 
@@ -125,15 +144,15 @@ ShellRoot {
   // bubble treated "loaded" and "playing" as the same thing, so pausing
   // a note never visibly flipped its button back.
   function checkPausedNoteShowsPlayGlyph(): bool {
-    legacyVoiceDelegate.voiceNotes = { available: true, playingId: "legacy-voice", playing: false, positionMs: 0, durationMs: 0 };
+    voiceDelegate.voiceNotes = { available: true, playingId: "voice", playing: false, positionMs: 0, durationMs: 0 };
 
-    let button = Check.find(legacyVoiceDelegate, "voicePlayButton");
+    let button = Check.find(voiceDelegate, "voicePlayButton");
     if (button.text !== "▶")
       return Check.fail("a loaded but paused note shows \"" + button.text + "\", want the play glyph");
 
-    legacyVoiceDelegate.voiceNotes = { available: true, playingId: "legacy-voice", playing: true, positionMs: 0, durationMs: 0 };
+    voiceDelegate.voiceNotes = { available: true, playingId: "voice", playing: true, positionMs: 0, durationMs: 0 };
 
-    button = Check.find(legacyVoiceDelegate, "voicePlayButton");
+    button = Check.find(voiceDelegate, "voicePlayButton");
     if (button.text !== "⏸")
       return Check.fail("a loaded, playing note shows \"" + button.text + "\", want the pause glyph");
     return true;

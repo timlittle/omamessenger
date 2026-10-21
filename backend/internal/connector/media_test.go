@@ -258,6 +258,53 @@ func TestVideoPlayable_ChecksTheFilesOwnHeaders(t *testing.T) {
 	})
 }
 
+// TestAudioPlayable_ChecksTheFilesOwnHeaders covers the two outcomes
+// FetchMedia's own caller depends on for a voice note, mirroring
+// TestVideoPlayable_ChecksTheFilesOwnHeaders: a file whose bytes
+// audiosafe actually accepts is reported playable, and one that
+// fails that check is reported not playable, with no error, since
+// this is attacker-controlled data, not a program fault.
+func TestAudioPlayable_ChecksTheFilesOwnHeaders(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a well-formed voice note is reported playable", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "voice.ogg")
+		if err := os.WriteFile(path, onePlayableOggOpus(), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		playable, err := connector.AudioPlayable(path)
+		if err != nil || !playable {
+			t.Fatalf("AudioPlayable() = %t, %v, want true, nil", playable, err)
+		}
+	})
+
+	t.Run("a file with no recognizable audio headers is reported not playable", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "voice.ogg")
+		if err := os.WriteFile(path, []byte("not audio at all, whatever its name claims"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		playable, err := connector.AudioPlayable(path)
+		if err != nil || playable {
+			t.Fatalf("AudioPlayable() = %t, %v, want false, nil", playable, err)
+		}
+	})
+
+	t.Run("a missing file is reported as an error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := connector.AudioPlayable(filepath.Join(t.TempDir(), "missing.ogg"))
+		if err == nil {
+			t.Fatal("AudioPlayable() on a missing file succeeded")
+		}
+	})
+}
+
 // TestSaveMedia_WritesUnchanged covers a video, audio or document: none
 // of SaveImageMedia's checks apply, so whatever bytes a connector
 // downloaded land on disk exactly as they were.

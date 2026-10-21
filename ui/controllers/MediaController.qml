@@ -105,17 +105,14 @@ QtObject {
   // opens in the in-app viewer: Omarchy's window rule floats the external
   // image viewer small and keeps keyboard focus on this window, so its
   // close keys never reach it. A voice note plays or pauses in place
-  // through voiceController, when it is there and QtMultimedia loaded;
-  // otherwise it falls through to the same "open in your own application"
-  // path a video or file already gets. Media.kindFor also catches a
-  // voice note stored before the helper's "voice" media kind existed,
-  // which still carries kind "file" forever (see Media.js), so it plays
-  // in place too rather than opening externally.
+  // only once the helper has validated its downloaded bytes (see
+  // _toggleVoice); otherwise it falls through to the same "open in your
+  // own application" path a video or file already gets.
   function openMedia(timeline: var, id: string): void {
     const media = timeline.media(id);
     const kind = Media.kindFor(media);
     if (kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
-    if (kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(timeline, id, media); return; }
+    if (kind === "voice") { root._toggleVoice(timeline, id, media); return; }
     if (kind === "video" && root._playableInViewer(timeline, id) && root.photoViewer) { root.photoViewer.show(id); return; }
 
     const path = timeline.mediaPath(id);
@@ -287,9 +284,25 @@ QtObject {
   // happens the same way a photo's own missing full image would.
   function _toggleVoice(timeline: var, id: string, media: var): void {
     const path = timeline.mediaPath(id);
-    if (path) { root.voiceController.toggle(id, path, (media.duration || 0) * 1000); return; }
+    if (path) { root._selectOrOpenVoice(timeline, id, path, media); return; }
 
-    root.downloadMedia(timeline, id, true, false, (downloaded) => root.voiceController.toggle(id, downloaded, (media.duration || 0) * 1000));
+    root.downloadMedia(timeline, id, true, false, (downloaded) => root._selectOrOpenVoice(timeline, id, downloaded, media));
+  }
+
+  // _selectOrOpenVoice plays id in place through voiceController only
+  // once media.fetch has validated its downloaded bytes (see
+  // MessageTimeline.mediaPlayable) and QtMultimedia is actually loaded;
+  // otherwise it falls back to the gated external-open path, the same
+  // fallback a machine with no QtMultimedia already takes. The sender's
+  // claimed file name or kind never decides this - only the helper's own
+  // verdict on the bytes it downloaded does (see docs/decisions.md).
+  function _selectOrOpenVoice(timeline: var, id: string, path: string, media: var): void {
+    if (root.voiceController && root.voiceController.available && timeline.mediaPlayable(id)) {
+      root.voiceController.toggle(id, path, (media.duration || 0) * 1000);
+      return;
+    }
+
+    root._openIfAllowed(timeline, id, path);
   }
 
   // downloadMedia asks the helper for a message's media once, records

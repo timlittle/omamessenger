@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/timlittle/omamessenger/backend/internal/audiosafe"
 	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 	"github.com/timlittle/omamessenger/backend/internal/videosafe"
 )
@@ -169,6 +170,25 @@ func VideoPlayable(path string) (bool, error) {
 	playable, err := videosafe.Validate(path)
 	if err != nil {
 		return false, fmt.Errorf("connector: video playable: %w", err)
+	}
+
+	return playable, nil
+}
+
+// AudioPlayable reports whether path, a voice note or audio file
+// FetchMedia has already written to disk unchanged, is safe to hand
+// to the UI's own in-window audio player at all: its own bytes, read
+// in pure Go without ever shelling out (see audiosafe), describe a
+// single-stream Ogg/Opus, MP4/M4A (AAC or Opus, no video track) or
+// simple constant-bitrate MP3 file within audiosafe's own duration
+// limit. False, with no error, covers every way an audio file fails
+// that check - the sender's own bytes turned out to be something
+// this UI must never be trusted to decode in place - while an error
+// here means path itself could not be read at all.
+func AudioPlayable(path string) (bool, error) {
+	playable, err := audiosafe.Validate(path)
+	if err != nil {
+		return false, fmt.Errorf("connector: audio playable: %w", err)
 	}
 
 	return playable, nil

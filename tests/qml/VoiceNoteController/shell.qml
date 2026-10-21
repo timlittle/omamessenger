@@ -24,6 +24,7 @@ ShellRoot {
     if (!root.checkSecondNoteTakesOver()) return;
     if (!root.checkUnavailableFallback()) return;
     if (!root.checkOpenMediaDownloadsAndToggles()) return;
+    if (!root.checkOpenMediaRespectsUnplayable()) return;
 
     root.checkPlaybackErrorResetsState();
   }
@@ -103,6 +104,26 @@ ShellRoot {
     return true;
   }
 
+  // checkOpenMediaRespectsUnplayable verifies that a voice note the
+  // helper's own media.fetch names not playable never reaches the
+  // in-window player at all, whatever its kind or file name claim:
+  // opening it falls through to the gated external-open path instead,
+  // the same fallback a machine with no QtMultimedia already takes
+  // (see docs/decisions.md).
+  function checkOpenMediaRespectsUnplayable(): bool {
+    conversationController.openExternally = (path) => root.openedExternally.push(path);
+    root.openedExternally = [];
+
+    conversationController.openMedia("vm2");
+    if (controller.playingId === "vm2") return Check.fail("an unplayable voice note still started in the in-window player");
+    if (root.openedExternally.length !== 1) return Check.fail("opening an unplayable voice note did not reach the gated external-open path");
+    return true;
+  }
+
+  // openedExternally records every path ConversationController.openExternally
+  // was asked to open, for checkOpenMediaRespectsUnplayable.
+  property var openedExternally: []
+
   // checkPlaybackErrorResetsState verifies that a file the player cannot
   // decode at all resets playback state instead of leaving playing true
   // forever with nothing able to flip the button back: the bug this
@@ -152,13 +173,14 @@ ShellRoot {
     function request(method, params, callback) {
       if (method === "messages.list") {
         callback(null, { hasMore: false, messages: [
-          { id: "vm1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Voice message]", outgoing: false, status: "received", created: 10, media: { kind: "voice", duration: 7 }, mediaPath: "" }
+          { id: "vm1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Voice message]", outgoing: false, status: "received", created: 10, media: { kind: "voice", duration: 7 }, mediaPath: "" },
+          { id: "vm2", conversationId: "c1", senderId: "s", senderName: "S", text: "[Voice message]", outgoing: false, status: "received", created: 11, media: { kind: "voice", duration: 7 }, mediaPath: "" }
         ] });
         return;
       }
       if (method === "media.fetch") {
         fakeService.fetchRequests.push(params.messageId);
-        callback(null, { path: testRoot + "/tone.ogg" });
+        callback(null, { path: testRoot + "/tone.ogg", playable: params.messageId !== "vm2" });
         return;
       }
       callback(null, {});
