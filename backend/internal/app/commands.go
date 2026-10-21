@@ -25,6 +25,8 @@ type Commands struct {
 	voter        Voter
 	deleter      Deleter
 	editor       Editor
+	blocker      Blocker
+	spamReporter SpamReporter
 	members      MemberLister
 	outgoing     OutgoingMedia
 	clipboard    ClipboardRunner

@@ -36,6 +36,11 @@ var OWNERS = {
   'chat.snoozeTomorrow': 'list',
   'chat.snoozeNextWeek': 'list',
   'chat.unsnooze': 'list',
+  'chat.block': 'list',
+  'chat.unblock': 'list',
+  'chat.reportSpam': 'list',
+  'blockConfirm.accept': 'list',
+  'blockConfirm.cancel': 'list',
 
   // ConversationController: the open conversation itself, paging,
   // send, retry, scrolling, and moving between chats while one is open.

@@ -215,6 +215,25 @@ test('escapeAction closes the archive-all question before the dialog beneath it,
   assert.strictEqual(Navigation.escapeAction({ archiveConfirmOpen: true, deleteConfirmOpen: true }), 'close-delete-confirm');
 });
 
+test('keyContext returns blockConfirm when open, above dialog, search and compose', () => {
+  const state = { blockConfirmOpen: true, dialogOpen: true, searchFocused: true, composeFocused: true, pane: 'conversation' };
+  assert.strictEqual(Navigation.keyContext(state), 'blockConfirm');
+});
+
+test('keyContext: the viewer, the palette, setup, the reaction picker, the delete question and the archive-all question still win over the block question', () => {
+  assert.strictEqual(Navigation.keyContext({ blockConfirmOpen: true, viewerOpen: true, pane: 'list' }), 'viewer');
+  assert.strictEqual(Navigation.keyContext({ blockConfirmOpen: true, paletteOpen: true, pane: 'list' }), 'palette');
+  assert.strictEqual(Navigation.keyContext({ blockConfirmOpen: true, setupOpen: true, pane: 'list' }), 'setup');
+  assert.strictEqual(Navigation.keyContext({ blockConfirmOpen: true, reactionPickerOpen: true, pane: 'list' }), 'reactionPicker');
+  assert.strictEqual(Navigation.keyContext({ blockConfirmOpen: true, deleteConfirmOpen: true, pane: 'list' }), 'deleteConfirm');
+  assert.strictEqual(Navigation.keyContext({ blockConfirmOpen: true, archiveConfirmOpen: true, pane: 'list' }), 'archiveConfirm');
+});
+
+test('escapeAction closes the block question before the dialog beneath it, but not before the archive-all question', () => {
+  assert.strictEqual(Navigation.escapeAction({ blockConfirmOpen: true, dialogOpen: true }), 'cancel-block');
+  assert.strictEqual(Navigation.escapeAction({ blockConfirmOpen: true, archiveConfirmOpen: true }), 'cancel-archive-all');
+});
+
 test('escapeAction: leave-unread-view when nothing else is open', () => {
   const state = { pane: 'list', activeId: '', query: '', unreadView: true };
 
@@ -258,6 +277,7 @@ test('buildState defaults every field when no controller is given', () => {
     pollVoteOpen: false,
     deleteConfirmOpen: false,
     archiveConfirmOpen: false,
+    blockConfirmOpen: false,
     dialogOpen: false,
     searchFocused: false,
     composeFocused: false,
@@ -280,7 +300,7 @@ test('buildState reads every field from the controller that owns it, including d
     reactionsController: { pickerOpen: true },
     pollsController: { voteTarget: 'm1' },
     deleteController: { open: true },
-    listController: { archiveAllOpen: true, searchFocused: true, query: 'abc', unreadView: true },
+    listController: { archiveAllOpen: true, blockConfirmOpen: true, searchFocused: true, query: 'abc', unreadView: true },
     dialogController: { open: true },
     composerController: { composeFocused: true, attachmentPath: '/tmp/a.png', replying: true, editing: true },
     conversationController: { pane: 'conversation' }
@@ -298,6 +318,7 @@ test('buildState reads every field from the controller that owns it, including d
     pollVoteOpen: true,
     deleteConfirmOpen: true,
     archiveConfirmOpen: true,
+    blockConfirmOpen: true,
     dialogOpen: true,
     searchFocused: true,
     composeFocused: true,

@@ -14,7 +14,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -260,6 +260,20 @@ func (s *Store) SetHidden(ctx context.Context, id string, hidden bool) error {
 	return requireRow("set hidden", res)
 }
 
+// SetBlocked records whether the account has blocked the contact
+// behind a direct conversation. Like hidden, this never changes what
+// Conversations or Conversation otherwise read from the service: a
+// connector that blocks or unblocks the contact with the service is
+// asked separately (see app.Commands.BlockContact).
+func (s *Store) SetBlocked(ctx context.Context, id string, blocked bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET blocked=? WHERE id=?`, boolInt(blocked), id)
+	if err != nil {
+		return wrap("set blocked", err)
+	}
+
+	return requireRow("set blocked", res)
+}
+
 // SetReminder snoozes a conversation until at, in Unix milliseconds, or
 // clears its reminder when at is 0. This is local to this computer only:
 // like hidden, it is never reported to or read from the service. It
@@ -379,7 +393,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked,
 	}, extra...)
 	err := row.Scan(dest...)
 

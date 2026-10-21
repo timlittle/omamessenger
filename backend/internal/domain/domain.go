@@ -115,6 +115,12 @@ type Conversation struct {
 	Hidden        bool   `json:"hidden"`
 	LastActivity  int64  `json:"lastActivity"`
 
+	// Blocked is true once the account's contact behind a direct
+	// conversation has been blocked (see app.Commands.BlockContact and
+	// ReportSpam). It is always false for a group: only a direct
+	// conversation has the one contact a block applies to.
+	Blocked bool `json:"blocked"`
+
 	// ReminderAt is when a snoozed conversation comes back, in Unix
 	// milliseconds, or 0 for none. It is local to this computer only:
 	// never reported to or read from the service.

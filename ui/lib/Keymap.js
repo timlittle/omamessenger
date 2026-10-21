@@ -82,6 +82,16 @@ var BINDINGS = [
   // Palette-only: flagging a chat unread again is a deliberate lookup,
   // not something worth a key of its own next to mute, pin and archive.
   { action: 'chat.markUnread', keys: [], contexts: ['list', 'conversation'], label: 'Mark as unread', command: true },
+  // Block, unblock and report spam only ever apply to a direct chat's
+  // one contact (a group has no single contact to block); asking for
+  // either on a group fails with a safe error rather than being hidden
+  // from the palette outright, the same as a service's own pin limit
+  // surfaces through chat.pin rather than filtering it out in advance.
+  // No key of its own, like account.add: deliberate enough to look up
+  // in the palette, not something to reach for by reflex.
+  { action: 'chat.block', keys: [], contexts: ['list', 'conversation'], label: 'Block contact', command: true },
+  { action: 'chat.unblock', keys: [], contexts: ['list', 'conversation'], label: 'Unblock contact', command: true },
+  { action: 'chat.reportSpam', keys: [], contexts: ['list', 'conversation'], label: 'Report as spam', command: true },
   // "a" is free in the list context (the conversation context already
   // uses it for compose.focus), so the key works for the selected chat
   // and the command palette reaches the open one too, since a palette
@@ -274,7 +284,12 @@ var BINDINGS = [
   // RemoveAccount's own confirmation uses, since Cancel is the only
   // other choice and needs no highlight to move between.
   { action: 'archiveAll.accept', keys: ['Enter', 'y'], contexts: ['archiveConfirm'], label: 'Archive the read conversations', hint: true },
-  { action: 'archiveAll.cancel', keys: ['n'], contexts: ['archiveConfirm'], label: 'Cancel', hint: true }
+  { action: 'archiveAll.cancel', keys: ['n'], contexts: ['archiveConfirm'], label: 'Cancel', hint: true },
+
+  // Blocking a contact or reporting one as spam: the same y/n idiom as
+  // archiveConfirm above, since Cancel is again the only other choice.
+  { action: 'blockConfirm.accept', keys: ['Enter', 'y'], contexts: ['blockConfirm'], label: 'Confirm', hint: true },
+  { action: 'blockConfirm.cancel', keys: ['n'], contexts: ['blockConfirm'], label: 'Cancel', hint: true }
 ];
 
 // effectiveBindings returns service's own effective bindings (defaults

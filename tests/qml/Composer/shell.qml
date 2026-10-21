@@ -1,5 +1,6 @@
 // Checks the composer: trimmed submit, whitespace ignored, cleared input,
-// a placeholder naming the conversation, the reply banner and sending the
+// a placeholder naming the conversation, the blocked banner and
+// placeholder shown while blocked, the reply banner and sending the
 // id it answers, cancelling a reply, the attachment chip, both the
 // banner and the chip showing together, the @-mention picker (shown
 // while typing "@" in a group, keyboard and mouse insertion, Escape
@@ -80,6 +81,7 @@ ShellRoot {
   // run drives the composer and checks the outcome.
   function run(): void {
     if (!root.checkSubmit()) return;
+    if (!root.checkBlocked()) return;
     if (!root.checkReplyBanner()) return;
     if (!root.checkEditBanner()) return;
     if (!root.checkAttachment()) return;
@@ -106,6 +108,23 @@ ShellRoot {
       return Check.fail("whitespace-only text was cleared or sent");
     if (composer.input.placeholderText.indexOf("Mum") < 0)
       return Check.fail("placeholder \"" + composer.input.placeholderText + "\" does not name the conversation");
+    return true;
+  }
+
+  // checkBlocked verifies the banner naming why the contact is blocked,
+  // and that the placeholder says so too, then resets blocked before the
+  // checks that follow.
+  function checkBlocked(): bool {
+    const banner = Check.find(composer, "blockedBanner");
+    if (banner.visible) return Check.fail("blocked banner shown while not blocked");
+
+    composer.blocked = true;
+
+    if (!banner.visible) return Check.fail("blocked banner not shown while blocked");
+    if (composer.input.placeholderText !== "Blocked")
+      return Check.fail("placeholder \"" + composer.input.placeholderText + "\" does not say Blocked");
+
+    composer.blocked = false;
     return true;
   }
 

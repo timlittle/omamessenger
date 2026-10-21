@@ -6,10 +6,10 @@
 // keyContext determines the highest-priority context for key bindings based on
 // the current UI state. Precedence: the close question > account setup > the
 // photo viewer > the health check report > palette > reaction picker > poll
-// vote mode > the delete question > the archive-all question > dialog >
-// search > compose > conversation > list. The viewer, the reaction picker
-// and poll vote mode are never open together, so their relative order
-// only matters in theory.
+// vote mode > the delete question > the archive-all question > the block or
+// report-spam question > dialog > search > compose > conversation > list.
+// The viewer, the reaction picker and poll vote mode are never open
+// together, so their relative order only matters in theory.
 function keyContext(state) {
   if (state.confirmOpen) return 'confirm';
   // setupContext names the exact step showing (chooseService, qr, phone,
@@ -23,6 +23,7 @@ function keyContext(state) {
   if (state.pollVoteOpen) return 'pollVote';
   if (state.deleteConfirmOpen) return 'deleteConfirm';
   if (state.archiveConfirmOpen) return 'archiveConfirm';
+  if (state.blockConfirmOpen) return 'blockConfirm';
   if (state.dialogOpen) return 'dialog';
   if (state.searchFocused) return 'search';
   if (state.composeFocused) return 'compose';
@@ -49,6 +50,7 @@ function escapeAction(state) {
   if (state.reactionPickerOpen) return 'close-reaction-picker';
   if (state.deleteConfirmOpen) return 'close-delete-confirm';
   if (state.archiveConfirmOpen) return 'cancel-archive-all';
+  if (state.blockConfirmOpen) return 'cancel-block';
   if (state.dialogOpen) return 'close-dialog';
 
   if (state.searchFocused) {
@@ -100,6 +102,7 @@ function buildState(ctx) {
     pollVoteOpen: ctx.pollsController ? ctx.pollsController.voteTarget !== '' : false,
     deleteConfirmOpen: ctx.deleteController ? ctx.deleteController.open : false,
     archiveConfirmOpen: ctx.listController ? ctx.listController.archiveAllOpen : false,
+    blockConfirmOpen: ctx.listController ? ctx.listController.blockConfirmOpen : false,
     dialogOpen: ctx.dialogController ? ctx.dialogController.open : false,
     searchFocused: ctx.listController ? ctx.listController.searchFocused : false,
     composeFocused: ctx.composerController ? ctx.composerController.composeFocused : false,

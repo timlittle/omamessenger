@@ -5,11 +5,12 @@
 // colour or opacity alone. A snoozed row is faded with a "Snoozed until
 // …" label naming the actual wake time, and a row whose reminder has come
 // due carries a bold "Reminder" label instead of being dimmed at all.
-// Also checks the pin and mute markers: a pinned
-// or muted row's glyph actually renders (non-zero width, not just an
-// empty or unmapped-codepoint string), and a pinned row also carries a
-// "Pinned" tag, so a chat sorted to the top of the list is not left with
-// only a glyph as its only cue. Also checks the account colour stripe:
+// Also checks the pin, mute and blocked markers: a pinned, muted or
+// blocked row's glyph actually renders (non-zero width, not just an
+// empty or unmapped-codepoint string), and a pinned or blocked row also
+// carries a matching text tag, so a chat sorted to the top of the list,
+// or one that cannot be messaged, is not left with only a glyph as its
+// only cue. Also checks the account colour stripe:
 // hidden for a single-account row, shown and tinted with the row's own
 // account colour otherwise, always paired with a tooltip naming the
 // account. Also checks that a title written to look like HTML renders as
@@ -64,6 +65,12 @@ ShellRoot {
     id: mutedRow
     width: 260
     conversation: ({ id: "c6", title: "Muted Chat", lastActivity: Date.now(), muted: true })
+  }
+
+  ConversationRow {
+    id: blockedRow
+    width: 260
+    conversation: ({ id: "c11", title: "Blocked Chat", lastActivity: Date.now(), blocked: true })
   }
 
   ConversationRow {
@@ -170,6 +177,19 @@ ShellRoot {
     const mutedPinnedLabel = Check.find(mutedRow, "pinnedLabel");
     if (mutedPinnedLabel.visible)
       return Check.fail("a merely muted row shows a \"Pinned\" tag");
+
+    const plainBlocked = Check.find(plainRow, "blockedIcon");
+    if (!plainBlocked || plainBlocked.visible)
+      return Check.fail("an unblocked row shows a blocked icon");
+
+    const blockedIcon = Check.find(blockedRow, "blockedIcon");
+    if (!blockedIcon || !blockedIcon.visible)
+      return Check.fail("a blocked row does not show a blocked icon");
+    if (blockedIcon.implicitWidth <= 0)
+      return Check.fail("a blocked row's icon has no width: \"" + blockedIcon.text + "\" does not render in this font");
+    const blockedLabel = Check.find(blockedRow, "blockedLabel");
+    if (!blockedLabel || !blockedLabel.visible || blockedLabel.text !== "Blocked")
+      return Check.fail("a blocked row does not carry a \"Blocked\" tag beside its glyph");
 
     // A group title written to look like HTML (an <img> tag that would
     // fetch a remote image just by being displayed) must show as the

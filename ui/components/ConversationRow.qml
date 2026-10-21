@@ -11,7 +11,8 @@ import "../lib/Format.js" as Format
 // pinned chat is marked with a glyph, a "Pinned" tag and a tooltip, never
 // the glyph alone, since a pin sorted to the top of the list is otherwise
 // the only cue it is pinned at all; a muted chat gets the same glyph and
-// tooltip treatment. Both glyphs are plain Unicode symbols, like the rest
+// tooltip treatment, and a blocked one the same again. Every glyph is plain
+// Unicode, like the rest
 // of the app's icons (the composer's paperclip, the hover toolbar's reply
 // arrow): an icon font's own private-use codepoint has no glyph in the
 // app's regular font and draws nothing. An archived chat's unread badge is
@@ -67,6 +68,7 @@ Item {
   readonly property bool _muted: root._conv.muted ?? false
   readonly property bool _pinned: root._conv.pinned ?? false
   readonly property bool _archived: root._conv.archived ?? false
+  readonly property bool _blocked: root._conv.blocked ?? false
   readonly property string _previewHtml: root.query.length > 0 && root._conv.match
     ? Format.highlight(Format.escapeHtml(root._conv.match), root.query)
     : Format.escapeHtml(Format.previewLine(root._conv))
@@ -191,6 +193,36 @@ Item {
           objectName: "pinnedLabel"
           visible: root._pinned
           text: "Pinned"
+          textFormat: Text.PlainText
+          color: Util.alpha(Theme.foreground, 0.5)
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+        }
+
+        Text {
+          objectName: "blockedIcon"
+          visible: root._blocked
+          text: "🚫"
+          textFormat: Text.PlainText
+          color: Util.alpha(Theme.foreground, 0.5)
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+
+          // A passive hover handler, like the pin and mute glyphs: it
+          // must not swallow the row's own click.
+          HoverHandler {
+            id: blockedHover
+          }
+          Ui.PanelToolTip {
+            visible: blockedHover.hovered
+            text: "Blocked"
+          }
+        }
+
+        Text {
+          objectName: "blockedLabel"
+          visible: root._blocked
+          text: "Blocked"
           textFormat: Text.PlainText
           color: Util.alpha(Theme.foreground, 0.5)
           font.family: Theme.font.family

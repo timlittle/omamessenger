@@ -117,6 +117,9 @@ var migrations = []string{
 	// "Personal WhatsApp", shown instead of its plain name wherever it
 	// is identified; empty until they set one.
 	`ALTER TABLE accounts ADD COLUMN alias TEXT NOT NULL DEFAULT '';`,
+	// Whether the account has blocked the contact behind a direct
+	// conversation (see app.Commands.BlockContact and ReportSpam).
+	`ALTER TABLE conversations ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

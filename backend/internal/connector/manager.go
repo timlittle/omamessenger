@@ -49,6 +49,10 @@ var ErrNoVoter = errors.New("connector does not support voting")
 // messages on its service.
 var ErrNoEditor = errors.New("connector does not support editing messages")
 
+// ErrNoBlocker reports a block or unblock asked of a connector that
+// cannot block contacts on its service.
+var ErrNoBlocker = errors.New("connector does not support blocking contacts")
+
 // AccountUpserter records the accounts the Manager serves.
 type AccountUpserter interface {
 	UpsertAccount(ctx context.Context, a domain.Account) error
@@ -388,6 +392,40 @@ func (m *Manager) EditMessage(ctx context.Context, conv domain.Conversation, mes
 	}
 
 	return editor.EditMessage(ctx, conv, messageRemoteID, newText, mentions)
+}
+
+// SetBlocked asks the conversation's connector to block or unblock its
+// contact with the service, failing with ErrNoBlocker when it cannot.
+func (m *Manager) SetBlocked(ctx context.Context, conv domain.Conversation, blocked bool) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	blocker, ok := c.(Blocker)
+	if !ok {
+		return fmt.Errorf("connector: %w: %q", ErrNoBlocker, conv.AccountID)
+	}
+
+	return blocker.SetBlocked(ctx, conv, blocked)
+}
+
+// ReportSpam asks the conversation's connector to report it as spam
+// with the service, if it can; one that does not leaves nothing
+// reported, since app.Commands.ReportSpam blocks the contact locally
+// either way.
+func (m *Manager) ReportSpam(ctx context.Context, conv domain.Conversation) error {
+	c, err := m.connectorFor(conv.AccountID)
+	if err != nil {
+		return err
+	}
+
+	reporter, ok := c.(SpamReporter)
+	if !ok {
+		return nil
+	}
+
+	return reporter.ReportSpam(ctx, conv)
 }
 
 // SubmitAuth hands sign-in input, such as a code, to the connector for

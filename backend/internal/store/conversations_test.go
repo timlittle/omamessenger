@@ -257,6 +257,33 @@ func TestSetHidden_HidesAndUnhides(t *testing.T) {
 	}
 }
 
+func TestSetBlocked_BlocksAndUnblocks(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	if err := s.SetBlocked(ctx, "chat", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || !c.Blocked {
+		t.Fatalf("Conversation after block = %+v, %v; want Blocked true", c, err)
+	}
+
+	if err := s.SetBlocked(ctx, "chat", false); err != nil {
+		t.Fatal(err)
+	}
+
+	if c, err := s.Conversation(ctx, "chat"); err != nil || c.Blocked {
+		t.Fatalf("Conversation after unblock = %+v, %v; want Blocked false", c, err)
+	}
+
+	if err := s.SetBlocked(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetBlocked(missing) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestSetReminder_SnoozesAndClears(t *testing.T) {
 	t.Parallel()
 

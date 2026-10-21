@@ -51,6 +51,7 @@ func connect(t *testing.T, faked bool) *session {
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: accounts,
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
+		Blocker: acceptAll{}, SpamReporter: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
 		Spell: spell.New(t.TempDir(), func(string) string { return "" }),
 	}
@@ -277,6 +278,12 @@ func (acceptAll) EditMessage(context.Context, domain.Conversation, string, strin
 func (acceptAll) Members(context.Context, domain.Conversation) ([]domain.Member, error) {
 	return []domain.Member{{ID: "u1", Name: "Nadia"}}, nil
 }
+
+// SetBlocked accepts any block or unblock.
+func (acceptAll) SetBlocked(context.Context, domain.Conversation, bool) error { return nil }
+
+// ReportSpam accepts any spam report.
+func (acceptAll) ReportSpam(context.Context, domain.Conversation) error { return nil }
 
 // storeAccounts adds and removes accounts straight in the store,
 // recording the options of the last Add call so tests can check what

@@ -426,6 +426,7 @@ Item {
       "close-reaction-picker": () => { if (root.reactionsController) root.reactionsController.closePicker(); },
       "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
       "cancel-archive-all": () => { if (root.listController) root.listController.cancelArchiveAllRead(); },
+      "cancel-block": () => { if (root.listController) root.listController.cancelBlock(); },
       "dismiss-error": () => root.dismissErrorBanner(),
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },

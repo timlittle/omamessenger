@@ -83,6 +83,20 @@ type Editor interface {
 	EditMessage(ctx context.Context, conv domain.Conversation, messageRemoteID, newText string, mentions []domain.Mention) error
 }
 
+// Blocker blocks or unblocks a direct conversation's contact, through
+// its service.
+type Blocker interface {
+	SetBlocked(ctx context.Context, conv domain.Conversation, blocked bool) error
+}
+
+// SpamReporter reports a conversation as spam or abuse, through its
+// service, when the service offers one; a connector without one is
+// asked nothing, since Commands.ReportSpam blocks the contact either
+// way.
+type SpamReporter interface {
+	ReportSpam(ctx context.Context, conv domain.Conversation) error
+}
+
 // MemberLister lists a group conversation's current members, through
 // its service, for the @-mention picker.
 type MemberLister interface {
@@ -177,27 +191,29 @@ type Injector interface {
 
 // Deps are the application's dependencies. Fake is nil outside test builds.
 type Deps struct {
-	Store      *store.Store
-	Dispatcher Dispatcher
-	Notifier   Notifier
-	Publisher  Publisher
-	SignIn     SignIn
-	Accounts   Accounts
-	History    HistoryLoader
-	Media      MediaFetcher
-	Cache      MediaCache
-	Refresher  MessageRefresher
-	Organizer  Organizer
-	Reactor    Reactor
-	Voter      Voter
-	Deleter    Deleter
-	Editor     Editor
-	Members    MemberLister
-	Outgoing   OutgoingMedia
-	Clipboard  ClipboardRunner
-	Fake       Injector
-	Logger     Logger
-	Spell      *spell.Checker
+	Store        *store.Store
+	Dispatcher   Dispatcher
+	Notifier     Notifier
+	Publisher    Publisher
+	SignIn       SignIn
+	Accounts     Accounts
+	History      HistoryLoader
+	Media        MediaFetcher
+	Cache        MediaCache
+	Refresher    MessageRefresher
+	Organizer    Organizer
+	Reactor      Reactor
+	Voter        Voter
+	Deleter      Deleter
+	Editor       Editor
+	Blocker      Blocker
+	SpamReporter SpamReporter
+	Members      MemberLister
+	Outgoing     OutgoingMedia
+	Clipboard    ClipboardRunner
+	Fake         Injector
+	Logger       Logger
+	Spell        *spell.Checker
 
 	// DataDir, DBPath, ExecutableName and HelperVersion are read only by
 	// Doctor, to stat the data directory's and database's permissions
@@ -216,7 +232,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	retries := newRetrier(d.Store)
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, members: d.Members, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, fake: d.Fake,
 		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},

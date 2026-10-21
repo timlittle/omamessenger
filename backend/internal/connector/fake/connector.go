@@ -38,6 +38,8 @@ var (
 	_ connector.MediaFetcher  = (*Connector)(nil)
 	_ connector.Reactor       = (*Connector)(nil)
 	_ connector.Voter         = (*Connector)(nil)
+	_ connector.Blocker       = (*Connector)(nil)
+	_ connector.SpamReporter  = (*Connector)(nil)
 )
 
 // run is one Run call: where updates go and how work is scheduled.
@@ -328,6 +330,22 @@ func (c *Connector) DeleteMessages(_ context.Context, _ domain.Conversation, _ [
 // app.Commands.EditMessage updates the stored message and publishes it
 // itself once this returns, the same as DeleteMessages.
 func (c *Connector) EditMessage(_ context.Context, _ domain.Conversation, _, _ string, _ []domain.Mention) error {
+	_, err := c.current()
+
+	return err
+}
+
+// SetBlocked accepts any block or unblock while the connector is
+// running. app.Commands.BlockContact persists the blocked state itself
+// once this returns, the same as DeleteMessages and EditMessage.
+func (c *Connector) SetBlocked(_ context.Context, _ domain.Conversation, _ bool) error {
+	_, err := c.current()
+
+	return err
+}
+
+// ReportSpam accepts any spam report while the connector is running.
+func (c *Connector) ReportSpam(_ context.Context, _ domain.Conversation) error {
 	_, err := c.current()
 
 	return err

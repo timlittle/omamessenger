@@ -258,6 +258,49 @@ ShellRoot {
     service: snoozeService
   }
 
+  // blockService backs the block, unblock and report-spam scenarios: one
+  // direct chat, not yet blocked.
+  QtObject {
+    id: blockService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", activeId: "", query: "", drafts: {} })
+    property var conversations: [
+      { id: "b1", title: "Spammer", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, blocked: false }
+    ]
+    property var blockedIds: []
+    property int spamReports: 0
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") {
+        callback(null, blockService.conversations.map((c) => Object.assign({}, c)));
+        return;
+      }
+      if (method === "contacts.block" || method === "contacts.unblock") {
+        const blocked = method === "contacts.block";
+        const index = blockService.conversations.findIndex((c) => c.id === params.conversationId);
+        blockService.conversations[index] = Object.assign({}, blockService.conversations[index], { blocked });
+        blockService.blockedIds.push(params.conversationId + " " + blocked);
+        callback(null, Object.assign({}, blockService.conversations[index]));
+        return;
+      }
+      if (method === "conversations.reportSpam") {
+        blockService.spamReports++;
+        const index = blockService.conversations.findIndex((c) => c.id === params.conversationId);
+        blockService.conversations[index] = Object.assign({}, blockService.conversations[index], { blocked: true, hidden: true });
+        callback(null, Object.assign({}, blockService.conversations[index]));
+      }
+    }
+  }
+
+  ListController {
+    id: blockList
+    service: blockService
+  }
+
   Timer {
     running: true
     interval: 0
@@ -535,6 +578,64 @@ ShellRoot {
     snoozeList.run("chat.unsnooze");
     if (snoozeList.model.count !== 1 || snoozeList.model.get(0).reminderDue) {
       Check.fail("unsnoozing did not clear the reminder mark");
+      return;
+    }
+
+    root.checkBlock();
+  }
+
+  // checkBlock drives blocking a contact (which asks for confirmation
+  // and can be cancelled without blocking anything), unblocking (which
+  // needs none), and reporting as spam (which also asks, and on
+  // confirming blocks the contact and hides the chat).
+  function checkBlock(): void {
+    blockList.selectId("b1");
+    blockList.run("chat.block");
+
+    if (!blockList.blockConfirmOpen || blockList.blockConfirmKind !== "block") {
+      Check.fail("chat.block did not open the block confirmation: open " + blockList.blockConfirmOpen + ", kind " + blockList.blockConfirmKind);
+      return;
+    }
+
+    blockList.run("blockConfirm.cancel");
+    if (blockList.blockConfirmOpen || blockService.blockedIds.length !== 0) {
+      Check.fail("cancelling the block question must not block anything");
+      return;
+    }
+
+    blockList.run("chat.block");
+    blockList.run("blockConfirm.accept");
+
+    if (blockList.blockConfirmOpen || JSON.stringify(blockService.blockedIds) !== '["b1 true"]') {
+      Check.fail("confirming chat.block did not block exactly the selected contact: blockedIds "
+        + JSON.stringify(blockService.blockedIds));
+      return;
+    }
+    if (!blockList.model.get(0).blocked) {
+      Check.fail("the blocked chat's own row was not updated");
+      return;
+    }
+
+    blockList.run("chat.unblock");
+    if (JSON.stringify(blockService.blockedIds) !== '["b1 true","b1 false"]' || blockList.model.get(0).blocked) {
+      Check.fail("chat.unblock did not unblock at once, with no confirmation needed: blockedIds "
+        + JSON.stringify(blockService.blockedIds));
+      return;
+    }
+
+    blockList.run("chat.reportSpam");
+    if (!blockList.blockConfirmOpen || blockList.blockConfirmKind !== "spam") {
+      Check.fail("chat.reportSpam did not open the spam confirmation: open " + blockList.blockConfirmOpen + ", kind " + blockList.blockConfirmKind);
+      return;
+    }
+
+    blockList.run("blockConfirm.accept");
+    if (blockList.blockConfirmOpen || blockService.spamReports !== 1) {
+      Check.fail("confirming chat.reportSpam did not report the contact as spam");
+      return;
+    }
+    if (blockList.model.count !== 0) {
+      Check.fail("reporting spam did not hide the conversation from the standard list: " + blockList.model.count);
       return;
     }
 

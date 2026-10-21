@@ -151,6 +151,10 @@ type device interface {
 	// optionNames in the poll pollInfo identifies.
 	buildPollVote(ctx context.Context, pollInfo *types.MessageInfo, optionNames []string) (*waE2E.Message, error)
 
+	// updateBlocklist blocks or unblocks jid with WhatsApp's own
+	// account-wide block list.
+	updateBlocklist(ctx context.Context, jid types.JID, block bool) error
+
 	// requestOlderHistory asks WhatsApp's primary phone, through a peer
 	// message only this account's own other devices receive, for count
 	// messages older than anchor in its chat (see history_ondemand.go).
@@ -456,6 +460,18 @@ func (d *waDevice) decryptPollVote(ctx context.Context, evt *events.Message) (*w
 // optionNames in the poll pollInfo identifies.
 func (d *waDevice) buildPollVote(ctx context.Context, pollInfo *types.MessageInfo, optionNames []string) (*waE2E.Message, error) {
 	return d.cli.BuildPollVote(ctx, pollInfo, optionNames)
+}
+
+// updateBlocklist blocks or unblocks jid with WhatsApp.
+func (d *waDevice) updateBlocklist(ctx context.Context, jid types.JID, block bool) error {
+	action := events.BlocklistChangeActionUnblock
+	if block {
+		action = events.BlocklistChangeActionBlock
+	}
+
+	_, err := d.cli.UpdateBlocklist(ctx, jid, action, "")
+
+	return err
 }
 
 // requestOlderHistory sends the primary phone an on-demand history

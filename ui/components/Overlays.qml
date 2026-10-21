@@ -166,6 +166,16 @@ Item {
     onOpenChanged: root._refocusIfClosed(open)
   }
 
+  // Tests may build this layout without a list controller.
+  BlockConfirm {
+    open: root.listController?.blockConfirmOpen ?? false
+    kind: root.listController?.blockConfirmKind ?? "block"
+    routeKey: root.routeKey
+    onConfirmed: root.listController.confirmBlock()
+    onCancelled: root.listController.cancelBlock()
+    onOpenChanged: root._refocusIfClosed(open)
+  }
+
   // Escape cancels the close question straight through WindowController,
   // never through CloseConfirm's own cancelled() signal, so this is the
   // one place that covers every way the question closes: the buttons, an

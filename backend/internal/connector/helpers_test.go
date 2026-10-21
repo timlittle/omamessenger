@@ -167,6 +167,32 @@ func (c *withEditor) EditMessage(_ context.Context, _ domain.Conversation, messa
 	return nil
 }
 
+// withBlocker is a connector that blocks and unblocks contacts,
+// recording what it was asked to set.
+type withBlocker struct {
+	fakeConnector
+	blocked []bool
+}
+
+func (c *withBlocker) SetBlocked(_ context.Context, _ domain.Conversation, blocked bool) error {
+	c.blocked = append(c.blocked, blocked)
+
+	return nil
+}
+
+// withSpamReporter is a connector that reports conversations as spam,
+// recording how many times it was asked.
+type withSpamReporter struct {
+	fakeConnector
+	reported int
+}
+
+func (c *withSpamReporter) ReportSpam(_ context.Context, _ domain.Conversation) error {
+	c.reported++
+
+	return nil
+}
+
 // withLogout is a connector that can unlink itself from its service,
 // recording whether it was asked to and reporting logoutErr.
 type withLogout struct {

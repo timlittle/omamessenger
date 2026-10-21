@@ -58,6 +58,9 @@ Item {
   property var routeKey: null
   // isGroup is true when the open conversation is a group chat.
   readonly property bool isGroup: root.conversation ? root.conversation.kind === "group" : false
+  // _blocked is true while the open conversation's contact is blocked,
+  // which disables the composer and shows why (see Composer.blocked).
+  readonly property bool _blocked: root.conversation ? !!root.conversation.blocked : false
   // members are the open group's members, for the composer's @-mention
   // picker; an empty list for a direct chat.
   property var members: []
@@ -309,7 +312,8 @@ Item {
       Layout.fillWidth: true
       Layout.margins: Theme.spacing.md
       title: root.conversation ? root.conversation.title : ""
-      enabled: root.composeEnabled
+      enabled: root.composeEnabled && !root._blocked
+      blocked: root._blocked
       attachmentPath: root.attachmentPath
       bindings: root.bindings
       routeKey: root.routeKey

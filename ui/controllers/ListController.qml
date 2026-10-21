@@ -9,8 +9,9 @@ import "../lib/Snooze.js" as Snooze
 // Owns the rail filter, search and the visible conversation list: the
 // only controller that calls conversations.list, conversations.setMuted,
 // conversations.setPinned, conversations.setArchived,
-// conversations.setHidden, conversations.setReminder and
-// conversations.markUnread.
+// conversations.setHidden, conversations.setReminder,
+// conversations.markUnread, contacts.block, contacts.unblock and
+// conversations.reportSpam.
 // The list itself is a ListModel kept in sync in place with ListSync, so
 // opening or scrolling never resets because of an unrelated event.
 //
@@ -77,6 +78,17 @@ Item {
   // meantime cannot alter what Enter actually does.
   property var _archiveAllIds: []
 
+  // blockConfirmOpen shows the question asking whether to block a
+  // contact or report one as spam; blockConfirmKind says which ("block"
+  // or "spam"), for BlockConfirm to show the right title and wording.
+  property bool blockConfirmOpen: false
+  property string blockConfirmKind: "block"
+
+  // _blockConfirmId is the conversation blockConfirmOpen's question
+  // applies to, captured when it was asked so a list change in the
+  // meantime cannot alter what confirming it actually does.
+  property string _blockConfirmId: ""
+
   // _all holds every conversation the helper reported, unfiltered by the
   // rail or a search.
   property var _all: []
@@ -116,6 +128,11 @@ Item {
       "list.archiveAllRead": () => root._askArchiveAllRead(),
       "archiveAll.accept": () => root.confirmArchiveAllRead(),
       "archiveAll.cancel": () => root.cancelArchiveAllRead(),
+      "chat.block": () => root._askBlock(),
+      "chat.unblock": () => root._unblockCurrent(),
+      "chat.reportSpam": () => root._askReportSpam(),
+      "blockConfirm.accept": () => root.confirmBlock(),
+      "blockConfirm.cancel": () => root.cancelBlock(),
       "chat.snoozeLaterToday": () => root.setReminderOnCurrent(Snooze.laterToday(Date.now())),
       "chat.snoozeTomorrow": () => root.setReminderOnCurrent(Snooze.tomorrow(Date.now())),
       "chat.snoozeNextWeek": () => root.setReminderOnCurrent(Snooze.nextWeek(Date.now())),
@@ -320,6 +337,75 @@ Item {
   function cancelArchiveAllRead(): void {
     root.archiveAllOpen = false;
     root._archiveAllIds = [];
+  }
+
+  // _askBlock shows the question asking whether to block whichever
+  // conversation is contextually current, or does nothing when there is
+  // none, or it is already blocked. Blocking is the one point of this
+  // command, so it asks first, unlike mute, pin, archive and hide.
+  function _askBlock(): void {
+    const id = root._currentId();
+    const conversation = id ? root.findConversation(id) : null;
+    if (!conversation || conversation.blocked) return;
+
+    root._blockConfirmId = id;
+    root.blockConfirmKind = "block";
+    root.blockConfirmOpen = true;
+  }
+
+  // _unblockCurrent unblocks whichever conversation is contextually
+  // current, with no confirmation: unblocking only ever reverses a
+  // block already asked for once, so a second question here would be
+  // asking the same thing twice.
+  function _unblockCurrent(): void {
+    const id = root._currentId();
+    const conversation = id ? root.findConversation(id) : null;
+    if (!conversation || !conversation.blocked) return;
+
+    root.service.request("contacts.unblock", { conversationId: id }, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
+      root._applyConversationUpdated(result);
+    });
+  }
+
+  // _askReportSpam shows the question asking whether to report
+  // whichever conversation is contextually current as spam, or does
+  // nothing when there is none: reporting also blocks and hides the
+  // chat, so it asks first, the same as blocking alone.
+  function _askReportSpam(): void {
+    const id = root._currentId();
+    if (!id || !root.findConversation(id)) return;
+
+    root._blockConfirmId = id;
+    root.blockConfirmKind = "spam";
+    root.blockConfirmOpen = true;
+  }
+
+  // confirmBlock blocks, or reports as spam, the conversation
+  // blockConfirmOpen's question named, then closes it. Which method it
+  // calls follows blockConfirmKind: a plain block only blocks, while a
+  // spam report blocks and hides the chat together, on the helper's own
+  // side (see app.Commands.ReportSpam).
+  function confirmBlock(): void {
+    const id = root._blockConfirmId;
+    const method = root.blockConfirmKind === "spam" ? "conversations.reportSpam" : "contacts.block";
+    root.blockConfirmOpen = false;
+    root._blockConfirmId = "";
+    if (!id) return;
+
+    root.service.request(method, { conversationId: id }, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
+      root._applyConversationUpdated(result);
+    });
+  }
+
+  // cancelBlock leaves the conversation blockConfirmOpen's question
+  // named as it is.
+  function cancelBlock(): void {
+    root.blockConfirmOpen = false;
+    root._blockConfirmId = "";
   }
 
   // setReminderOnCurrent snoozes or unsnoozes whichever conversation is

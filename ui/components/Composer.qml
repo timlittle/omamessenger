@@ -90,6 +90,13 @@ Item {
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides), read for the mode hint below.
   property var bindings: Keymap.BINDINGS
+  // blocked is true while the open conversation's contact is blocked:
+  // the caller also disables the composer itself (enabled is an Item's
+  // own property, cascading to every child here), but that alone looks
+  // like the input is merely inert rather than explaining why, so this
+  // shows a banner naming the reason instead of leaving it to a dimmed,
+  // unresponsive text field alone.
+  property bool blocked: false
 
   // _ignoredWords are words "Ignore" has dismissed for this session
   // only; never sent to the helper, and forgotten once the composer
@@ -377,6 +384,34 @@ Item {
     }
 
     RowLayout {
+      id: blockedBanner
+      objectName: "blockedBanner"
+      Layout.fillWidth: true
+      visible: root.blocked
+      spacing: Theme.spacing.xs
+
+      Text {
+        objectName: "blockedBannerIcon"
+        text: "🚫"
+        textFormat: Text.PlainText
+        color: Util.alpha(Theme.foreground, 0.7)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
+      }
+
+      Text {
+        objectName: "blockedBannerText"
+        Layout.fillWidth: true
+        wrapMode: Text.WordWrap
+        text: "You have blocked this contact · unblock them from the command palette to send a message"
+        textFormat: Text.PlainText
+        color: Util.alpha(Theme.foreground, 0.7)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
+      }
+    }
+
+    RowLayout {
       id: replyBanner
       objectName: "replyBanner"
       Layout.fillWidth: true
@@ -557,7 +592,7 @@ Item {
           wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
           textFormat: TextEdit.PlainText
           selectByMouse: true
-          placeholderText: root.title.length > 0 ? ("Message " + root.title) : "Message"
+          placeholderText: root.blocked ? "Blocked" : (root.title.length > 0 ? ("Message " + root.title) : "Message")
 
           onTextChanged: {
             root._updateMentionQuery()

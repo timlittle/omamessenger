@@ -3,7 +3,9 @@
 // message reaching the send signal with its reply id, replyTarget copied
 // into the composer, a delegate's reply signals relayed outward, j/k and
 // paging clamping at the real newest/oldest ends of the message list, and
-// the "phone offline" note showing only while historyUnavailable is set.
+// the "phone offline" note showing only while historyUnavailable is set,
+// and a blocked conversation disabling the composer and reaching its own
+// blocked flag.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -128,9 +130,27 @@ ShellRoot {
     if (!root.checkScrollClampAtOldest()) return;
     if (!root.checkScrollPageClamp()) return;
     if (!root.checkHistoryUnavailableNote()) return;
+    if (!root.checkBlockedWiring()) return;
 
     console.log("PASS ConversationView");
     Qt.exit(0);
+  }
+
+  // checkBlockedWiring verifies that a blocked conversation reaches the
+  // composer: disabled (composeEnabled alone does not say why) and its
+  // own blocked flag set, so Composer shows the reason (see
+  // tests/qml/Composer, which checks the banner and placeholder in
+  // detail); this only checks the wiring reaches it.
+  function checkBlockedWiring(): bool {
+    view.conversation = Object.assign({}, view.conversation, { blocked: true });
+
+    if (!view.composer.blocked) return Check.fail("a blocked conversation did not reach the composer's own blocked flag");
+    if (view.composer.enabled) return Check.fail("the composer stayed enabled for a blocked conversation");
+
+    view.conversation = Object.assign({}, view.conversation, { blocked: false });
+    if (view.composer.blocked) return Check.fail("composer.blocked stayed true once the conversation was unblocked");
+    if (!view.composer.enabled) return Check.fail("the composer stayed disabled once the conversation was unblocked");
+    return true;
   }
 
   // checkHistoryUnavailableNote verifies the "phone offline" note only

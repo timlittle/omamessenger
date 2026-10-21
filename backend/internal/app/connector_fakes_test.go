@@ -155,3 +155,37 @@ func (e *fakeEditor) EditMessage(_ context.Context, _ domain.Conversation, messa
 
 	return e.err
 }
+
+// fakeBlocker records the blocks and unblocks it is asked for, as
+// "<conversationId> <blocked>", failing with err when it is set.
+type fakeBlocker struct {
+	mu      sync.Mutex
+	blocked []string
+	err     error
+}
+
+func (b *fakeBlocker) SetBlocked(_ context.Context, conv domain.Conversation, blocked bool) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.blocked = append(b.blocked, fmt.Sprintf("%s %t", conv.ID, blocked))
+
+	return b.err
+}
+
+// fakeSpamReporter counts the spam reports it is asked for, failing
+// with err when it is set.
+type fakeSpamReporter struct {
+	mu       sync.Mutex
+	reported int
+	err      error
+}
+
+func (r *fakeSpamReporter) ReportSpam(_ context.Context, _ domain.Conversation) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.reported++
+
+	return r.err
+}

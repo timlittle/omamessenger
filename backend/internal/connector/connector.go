@@ -169,6 +169,22 @@ type MessageEditor interface {
 	EditMessage(ctx context.Context, conv domain.Conversation, messageRemoteID, newText string, mentions []domain.Mention) error
 }
 
+// Blocker is a Connector that can block or unblock a direct
+// conversation's contact with its service.
+type Blocker interface {
+	// SetBlocked blocks or unblocks conv's contact.
+	SetBlocked(ctx context.Context, conv domain.Conversation, blocked bool) error
+}
+
+// SpamReporter is a Connector that can report a conversation as spam
+// or abuse to its service. It is distinct from Blocker because a
+// service can offer one without the other: WhatsApp's API has block
+// but no equivalent report, so its connector implements only Blocker.
+type SpamReporter interface {
+	// ReportSpam reports conv to the service as spam.
+	ReportSpam(ctx context.Context, conv domain.Conversation) error
+}
+
 // MemberLister is a Connector that can list a group's members, with
 // display names resolved, so the UI can offer them in an @-mention
 // picker.

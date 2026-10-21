@@ -38,6 +38,8 @@ type fixture struct {
 	voter      *fakeVoter
 	deleter    *fakeDeleter
 	editor     *fakeEditor
+	blocker    *fakeBlocker
+	spamReport *fakeSpamReporter
 	members    *fakeMemberLister
 	outgoing   *cache.Outgoing
 	clipboard  *fakeClipboard
@@ -70,6 +72,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		published: &fakePublisher{}, injector: &fakeInjector{}, members: &fakeMemberLister{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
+		blocker: &fakeBlocker{}, spamReport: &fakeSpamReporter{},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{},
 	}
@@ -78,7 +81,8 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor, Members: f.members,
+		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
+		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 	}
@@ -107,6 +111,7 @@ func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDi
 		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
 		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
 		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{}, Editor: &fakeEditor{},
+		Blocker: &fakeBlocker{}, SpamReporter: &fakeSpamReporter{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
 	}
 

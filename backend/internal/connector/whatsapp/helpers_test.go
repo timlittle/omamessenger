@@ -153,6 +153,13 @@ type fakeDevice struct {
 	// history_ondemand_test.go drives these.
 	requestHistoryErr   error
 	requestHistoryCalls []requestHistoryCall
+
+	// blockErr scripts updateBlocklist, and blockCalls records what it
+	// was asked to block or unblock; block_test.go drives these, and
+	// also defines blockCall and the updateBlocklist method itself (see
+	// that file's own doc comment).
+	blockErr   error
+	blockCalls []blockCall
 }
 
 // buildVoteCall records one call to buildPollVote.
