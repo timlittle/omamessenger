@@ -271,10 +271,10 @@ func (c *Commands) localAttachment(m domain.Message) (string, bool) {
 // own filename or attributes (see DecodeAsForMedia and
 // docs/decisions.md).
 func mediaFileName(m domain.Message) string {
-	switch {
-	case m.Media.Kind == domain.MediaPhoto:
+	switch m.Media.Kind {
+	case domain.MediaPhoto:
 		return m.ID + ".jpg"
-	case m.Media.Kind == domain.MediaVideo:
+	case domain.MediaVideo:
 		return m.ID + ".mp4"
 	}
 

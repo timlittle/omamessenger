@@ -107,7 +107,7 @@ func SanitizeIfGIF(path string) (isGIF bool, err error) {
 		return false, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
 	}
 
-	if err := os.WriteFile(path, safe, 0o600); err != nil {
+	if err := os.WriteFile(path, safe, 0o600); err != nil { //nolint:gosec // deliberate: path is the media cache path FetchMedia already wrote to and this function only re-reads; it is never built from untrusted input
 		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
 	}
 
