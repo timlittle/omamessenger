@@ -199,6 +199,19 @@ for (const [name, conv, want] of previewLineCases) {
   });
 }
 
+test('previewLine caps a huge preview to one row\'s worth of text', () => {
+  const huge = 'x'.repeat(100000);
+  const line = Format.previewLine({ kind: 'group', preview: huge, previewSender: 'Alice', previewOutgoing: false });
+  assert.equal(line.length, Format.MAX_PREVIEW_LENGTH);
+  assert.ok(line.startsWith('Alice: x'));
+});
+
+test('previewText caps a search match the same way', () => {
+  assert.equal(Format.previewText('y'.repeat(100000)).length, Format.MAX_PREVIEW_LENGTH);
+  assert.equal(Format.previewText('short'), 'short');
+  assert.equal(Format.previewText(null), '');
+});
+
 test('a conversation with no activity yet has no time label', () => {
   const now = new Date(2026, 9, 6, 12, 0).getTime();
 

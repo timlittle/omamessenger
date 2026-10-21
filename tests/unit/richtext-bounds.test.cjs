@@ -24,7 +24,7 @@ const UI_ROOT = path.resolve(__dirname, '../../ui');
 // RichText, each with the one-line reason its input is already bounded.
 const ALLOWLIST = {
   'components/MessageBubbleContent.qml': 'Format.messageHtml caps its own input to MAX_RICH_TEXT_INPUT_LENGTH before building any rich text',
-  'components/ConversationRow.qml': 'the preview text it shows is the stored message text, already capped at ingest by domain.MaxIncomingTextLength, and shown on one elided line',
+  'components/ConversationRow.qml': 'its preview and search match are cut to Format.MAX_PREVIEW_LENGTH characters before escaping',
   'components/AccountSetup.qml': 'every branch of the sign-in hint it shows is a fixed, short, connector-written sentence, never raw service or sender text (see docs/decisions.md)',
 };
 

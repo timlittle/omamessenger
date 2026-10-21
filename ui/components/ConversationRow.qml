@@ -70,7 +70,7 @@ Item {
   readonly property bool _archived: root._conv.archived ?? false
   readonly property bool _blocked: root._conv.blocked ?? false
   readonly property string _previewHtml: root.query.length > 0 && root._conv.match
-    ? Format.highlight(Format.escapeHtml(root._conv.match), root.query)
+    ? Format.highlight(Format.escapeHtml(Format.previewText(root._conv.match)), root.query)
     : Format.escapeHtml(Format.previewLine(root._conv))
   // _dimText appends the actual wake time to a "Snoozed" dimLabel, since
   // Rail.dimLabel only names the reason, not the when.

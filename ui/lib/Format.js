@@ -411,14 +411,25 @@ function statusGlyph(status) {
 // names who wrote the last message.
 function previewLine(conv) {
   if (!conv.preview || conv.kind !== 'group') {
-    return conv.preview || '';
+    return previewText(conv.preview);
   }
 
   if (conv.previewOutgoing) {
-    return `You: ${conv.preview}`;
+    return previewText(`You: ${conv.preview}`);
   }
 
-  return conv.previewSender ? `${conv.previewSender}: ${conv.preview}` : conv.preview;
+  return previewText(conv.previewSender ? `${conv.previewSender}: ${conv.preview}` : conv.preview);
+}
+
+// MAX_PREVIEW_LENGTH bounds a conversation row's one-line preview: a row
+// shows a single elided line, so anything longer is laid out as rich
+// text on the shell's UI thread for nothing.
+var MAX_PREVIEW_LENGTH = 200;
+
+// previewText cuts text to MAX_PREVIEW_LENGTH characters, for a
+// conversation row's preview or search match, before it is escaped.
+function previewText(text) {
+  return String(text || '').slice(0, MAX_PREVIEW_LENGTH);
 }
 
 // MEDIA_LABELS are the texts the helper gives a photo, video, file,
