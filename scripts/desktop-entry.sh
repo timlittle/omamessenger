@@ -8,8 +8,11 @@
 #   install_desktop_entry
 
 # install_desktop_entry writes the user-scoped .desktop entry atomically
-# (temp file, then mv within the same directory) and refreshes the
-# desktop database when update-desktop-database is installed.
+# (temp file, then mv within the same directory). It never runs
+# update-desktop-database: that rewrites the whole shared
+# mimeinfo.cache in this directory, every other app's entry included,
+# and this entry declares no MimeType for it to index in the first
+# place.
 install_desktop_entry() {
     desktop_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
     desktop_file="$desktop_dir/io.github.omamessenger.desktop"
@@ -29,8 +32,4 @@ StartupNotify=false
 EOF
     chmod 644 "$desktop_tmp"
     mv -f "$desktop_tmp" "$desktop_file"
-
-    if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database "$desktop_dir" >/dev/null 2>&1 || true
-    fi
 }
