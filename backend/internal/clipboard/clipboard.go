@@ -7,6 +7,7 @@ package clipboard
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -17,6 +18,20 @@ import (
 // commandTimeout bounds how long wl-paste may run, so a stuck clipboard
 // portal cannot block the helper forever.
 const commandTimeout = 3 * time.Second
+
+// MaxPasteLen bounds how many bytes Read accepts from wl-paste: the
+// same cap as the full-size image profile a pasted photo is sanitized
+// against (see app/paste.go and imagesafe.FullImage), large enough for
+// any image this UI would otherwise accept, small enough that a stuck
+// or hostile clipboard source cannot grow this process's memory
+// without bound.
+const MaxPasteLen = 32 << 20
+
+// errPasteTooLarge reports that wl-paste's own output was larger than
+// MaxPasteLen: the clipboard belongs to whichever other program last
+// put something on it, so its declared or actual size is never
+// trusted any more than a message attachment's.
+var errPasteTooLarge = errors.New("clipboard: paste exceeds the size limit")
 
 // Wayland reads the clipboard with wl-paste.
 type Wayland struct {
@@ -55,21 +70,40 @@ func (w Wayland) Read(ctx context.Context, mimeType string, dst io.Writer) error
 }
 
 // run invokes wl-paste with args and returns its stdout, bounded by
-// commandTimeout.
+// commandTimeout and MaxPasteLen.
 func (w Wayland) run(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 
 	cmd := w.command(ctx, "wl-paste", args...)
 
-	var out bytes.Buffer
-	cmd.Stdout = &out
+	out := &boundedWriter{max: MaxPasteLen}
+	cmd.Stdout = out
 
 	if err := cmd.Run(); err != nil {
 		return nil, err
 	}
 
-	return out.Bytes(), nil
+	return out.buf.Bytes(), nil
+}
+
+// boundedWriter collects what is written to it the same way
+// bytes.Buffer does, but fails once more than max bytes have arrived,
+// so wl-paste's own output can never grow this process's memory past
+// the clipboard's declared cap, however large the clipboard source
+// claims to be.
+type boundedWriter struct {
+	buf bytes.Buffer
+	max int
+}
+
+// Write appends p, refusing once the total written would exceed max bytes.
+func (w *boundedWriter) Write(p []byte) (int, error) {
+	if w.buf.Len()+len(p) > w.max {
+		return 0, errPasteTooLarge
+	}
+
+	return w.buf.Write(p)
 }
 
 // command builds the process through Command, or exec.CommandContext

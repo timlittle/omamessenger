@@ -47,12 +47,14 @@ const mediaCacheLimit = 1 << 30
 // regardless of its age; see cache.Outgoing.
 const outgoingOrphanGrace = time.Hour
 
-// outgoingSizeLimit is how much the outgoing media area is expected to
-// hold: generous for a handful of large attachments awaiting a retry,
-// far below the 1 GiB downloaded media is allowed. Nothing is evicted
-// to enforce it; going over it only raises a doctor warning, since a
-// pending or failed message's attachment is kept until it is sent or
-// the user deletes it (see cache.Outgoing and docs/decisions.md).
+// outgoingSizeLimit is how much the outgoing media area may hold:
+// generous for a handful of large attachments awaiting a retry, far
+// below the 1 GiB downloaded media is allowed. Store refuses a new
+// attachment that would push the area past this, rather than only
+// warning once it already has, since a pending or failed message's
+// attachment is kept until it is sent or the user deletes it and
+// nothing else ever shrinks the area back down (see cache.Outgoing
+// and docs/decisions.md).
 const outgoingSizeLimit = 256 << 20
 
 // outgoingSweepInterval is how often the outgoing media area is swept

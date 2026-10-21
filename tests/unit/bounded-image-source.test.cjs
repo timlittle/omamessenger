@@ -5,9 +5,11 @@
 // check it, so a crafted header can still make Qt allocate a huge
 // bitmap even after the helper's own imagesafe package has stripped
 // everything else a reviewer flagged (see docs/decisions.md): the
-// cap belongs on both sides. A component showing only the user's own
-// local file (an outgoing attachment preview, a locally generated QR
-// code) is not received content and is not checked here.
+// cap belongs on both sides. A component showing only a value this UI
+// generated itself (a locally generated QR code) is not received
+// content and is not checked here. A composer's attachment preview is
+// checked like any other image: its content can come from the
+// clipboard, which another program controls.
 'use strict';
 
 const { test } = require('node:test');
@@ -22,12 +24,11 @@ const UI_ROOT = path.resolve(__dirname, '../../ui');
 // closing brace.
 const IMAGE_BLOCK = /\b(Image|AnimatedImage)\s*\{/g;
 
-// LOCAL_SOURCE_MARKERS appear only in a source expression built from
-// this machine's own file, never a sender's: an outgoing attachment
-// the user picked, or a QR code this UI generated itself. A block
-// naming one of these is never "received content", however its source
-// expression is built.
-const LOCAL_SOURCE_MARKERS = ['attachmentPath', 'qrSource'];
+// LOCAL_SOURCE_MARKERS appear only in a source expression built from a
+// value this UI generated itself, never a sender's or the clipboard's:
+// a QR code this UI rendered. A block naming one of these is never
+// "received content", however its source expression is built.
+const LOCAL_SOURCE_MARKERS = ['qrSource'];
 
 // qmlFiles walks dir and returns every ".qml" file under it.
 function qmlFiles(dir) {
@@ -90,14 +91,25 @@ test('every Image or AnimatedImage showing received content sets a bounded sourc
     `whatever size the file itself declares:\n  ${offenders.join('\n  ')}`);
 });
 
-test('a component showing only a local file is not flagged', () => {
+test('a component showing only a value generated locally is not flagged', () => {
   const src = `
     Image {
-      source: "file://" + root.attachmentPath
+      source: "file://" + root.qrSource
     }
   `;
 
   assert.deepEqual(findUnboundedImages('fixture.qml', src), []);
+});
+
+test('an attachment preview with no sourceSize is flagged: its content can come from the clipboard', () => {
+  const src = `
+    Image {
+      source: "file://" + root.attachmentPath
+      fillMode: Image.PreserveAspectCrop
+    }
+  `;
+
+  assert.deepEqual(findUnboundedImages('fixture.qml', src), ['fixture.qml:2 (Image)']);
 });
 
 test('a deliberately broken expectation is caught', () => {

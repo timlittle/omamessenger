@@ -194,6 +194,43 @@ func TestOutgoingStats_ReportsBytesHeldAndTheLimit(t *testing.T) {
 	}
 }
 
+// TestOutgoingStore_RefusesOnceTheAreaIsFull confirms Store itself
+// enforces the configured size limit, rather than only reporting it
+// through Stats for a health check to warn about.
+func TestOutgoingStore_RefusesOnceTheAreaIsFull(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "outgoing")
+	o := cache.NewOutgoing(dir, 24*time.Hour, 10, alwaysExists)
+
+	mustStore(t, o, "m1", "a.bin", "0123456789") // exactly fills the 10-byte limit
+
+	if _, err := o.Store(t.Context(), "m2", "b.bin", strings.NewReader("x")); err == nil {
+		t.Error("Store() over a full outgoing area succeeded, want it refused")
+	}
+	if _, err := os.Stat(o.Path("m2", "b.bin")); err == nil {
+		t.Error("Store() over a full area left a file behind")
+	}
+}
+
+// TestOutgoingStore_RefusesAFileLargerThanTheRemainingRoom confirms a
+// single attachment that would alone push the area past its limit is
+// refused too, not just a second attachment arriving once the area is
+// already full.
+func TestOutgoingStore_RefusesAFileLargerThanTheRemainingRoom(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "outgoing")
+	o := cache.NewOutgoing(dir, 24*time.Hour, 10, alwaysExists)
+
+	if _, err := o.Store(t.Context(), "m1", "big.bin", strings.NewReader("01234567890")); err == nil { // 11 bytes, one over the limit
+		t.Error("Store() of a file over the remaining room succeeded, want it refused")
+	}
+	if _, err := os.Stat(o.Path("m1", "big.bin")); err == nil {
+		t.Error("Store() over the limit left a file behind")
+	}
+}
+
 // TestOutgoingStats_ReportsFilesystemFailures confirms a Stats failure
 // that is not "the area was never created" is reported, the same as
 // Cache.Stats.

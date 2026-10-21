@@ -161,7 +161,15 @@ func TestDoctor_FlagsOutgoingAttachmentsOverTheirLimit(t *testing.T) {
 	}
 
 	outgoing := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 10, storeExists(db))
-	if _, err := outgoing.Store(ctx, "m1", "file.bin", strings.NewReader("this is over ten bytes")); err != nil {
+	// Store itself now refuses a copy that would push the area past its
+	// limit (see cache.Outgoing's own tests), so an area already over it
+	// - left behind by a lowered limit, say - is simulated by writing
+	// straight to the path Store would have used, bypassing that check.
+	path := outgoing.Path("m1", "file.bin")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("this is over ten bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

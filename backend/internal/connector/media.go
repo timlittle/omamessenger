@@ -35,6 +35,23 @@ func SaveImageMedia(path string, data []byte, profile imagesafe.Profile) error {
 	return nil
 }
 
+// SanitizeOutgoingImage strips compressed or oversized metadata from
+// data, an image the user is attaching to an outgoing message - a
+// paste from the clipboard, say - and returns the sanitized bytes
+// without writing anything to disk: the app layer copies the result
+// into the outgoing media area itself. A pasted image comes from
+// whichever other program last put something on the clipboard, so it
+// is checked against the same full-size profile a downloaded photo
+// is, never trusted just because the user chose to paste it.
+func SanitizeOutgoingImage(data []byte) ([]byte, error) {
+	safe, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+	if !ok {
+		return nil, fmt.Errorf("connector: sanitize outgoing image: %w", ErrUnsafeImage)
+	}
+
+	return safe, nil
+}
+
 // SaveMedia writes data to path unchanged, readable only by the
 // user, for a video, audio, voice note, file or document: formats
 // Qt's own image decoders never touch, so none of SaveImageMedia's

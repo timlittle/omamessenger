@@ -35,18 +35,31 @@ type Outgoing struct {
 	inflight map[string]int
 }
 
+// errOutgoingFull reports that writing a new attachment would push
+// the outgoing media area past its configured size limit: this area
+// grows from content a person themselves chooses to attach, with no
+// eviction to fall back on the way the downloaded media cache has, so
+// Store refuses rather than letting it grow without bound (see
+// docs/decisions.md).
+var errOutgoingFull = errors.New("cache: outgoing: media area is full")
+
 // NewOutgoing returns an outgoing media area rooted at dir. Sweep
 // removes a file older than grace whose id matches no message exists
-// reports as stored at all; sizeLimit is reported through Stats for a
-// health check to warn about, never evicted against. Neither applies
-// until Sweep or RunSweeper is actually called.
+// reports as stored at all; sizeLimit bounds how much Store will ever
+// accept, reported through Stats too for a health check to show
+// alongside it. Sweep's own grace period applies only once Sweep or
+// RunSweeper is actually called.
 func NewOutgoing(dir string, grace time.Duration, sizeLimit int64, exists MessageExists) *Outgoing {
 	return &Outgoing{dir: dir, grace: grace, sizeLimit: sizeLimit, exists: exists, inflight: map[string]int{}}
 }
 
 // Store copies the bytes of r into the outgoing media area under id and
 // fileName, readable only by the user, and returns the new path. A
-// failed or interrupted copy leaves nothing behind.
+// failed or interrupted copy leaves nothing behind, and so does a copy
+// that would push the area past its configured size limit
+// (errOutgoingFull): Store caps the copy at exactly the room left
+// rather than discovering the overrun only after writing the whole
+// file.
 func (o *Outgoing) Store(ctx context.Context, id, fileName string, r io.Reader) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -56,12 +69,59 @@ func (o *Outgoing) Store(ctx context.Context, id, fileName string, r io.Reader) 
 		return "", fmt.Errorf("cache: outgoing: %w", err)
 	}
 
+	room, err := o.remaining()
+	if err != nil {
+		return "", fmt.Errorf("cache: outgoing: %w", err)
+	}
+
 	dst := o.Path(id, fileName)
-	if err := copyToFile(dst, r); err != nil {
+	if err := copyToFile(dst, io.LimitReader(r, room+1)); err != nil {
+		return "", fmt.Errorf("cache: outgoing: %w", err)
+	}
+
+	if err := enforceRoom(dst, room); err != nil {
 		return "", fmt.Errorf("cache: outgoing: %w", err)
 	}
 
 	return dst, nil
+}
+
+// remaining is how many more bytes Store may accept before the
+// outgoing area reaches its configured size limit, zero once it is
+// already at or past it. An area not created yet simply has its full
+// limit free.
+func (o *Outgoing) remaining() (int64, error) {
+	entries, err := os.ReadDir(o.dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return o.sizeLimit, nil
+		}
+
+		return 0, err
+	}
+
+	_, total := cached(entries)
+	if total >= o.sizeLimit {
+		return 0, nil
+	}
+
+	return o.sizeLimit - total, nil
+}
+
+// enforceRoom removes dst and reports errOutgoingFull when it holds
+// more than room bytes: Store already capped the copy at room+1, so
+// this only ever has that one byte too many to catch, never an
+// unbounded write.
+func enforceRoom(dst string, room int64) error {
+	info, err := os.Stat(dst)
+	if err != nil {
+		return err
+	}
+	if info.Size() <= room {
+		return nil
+	}
+
+	return errors.Join(errOutgoingFull, removeIfPresent(dst))
 }
 
 // Path is where an attachment named fileName for message id is stored,

@@ -78,7 +78,18 @@ func TestSweep_NeverRemovesAPendingOrFailedMessagesCopy(t *testing.T) {
 
 	o := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), time.Hour, 1, alwaysExists)
 
-	path := mustStore(t, o, "m1", "file.bin", "0123456789")
+	// Store itself now refuses a copy over the area's size limit (see
+	// outgoing_test.go), so "over the limit" is simulated the same way
+	// it would arrive in practice - a file already there before the
+	// limit applied, or one Reserve'd mid-send from before this run
+	// lowered it - by writing straight to the path Store would use.
+	path := o.Path("m1", "file.bin")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("0123456789"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	backdate(t, path, 2*time.Hour)
 
 	if err := o.Sweep(t.Context()); err != nil {

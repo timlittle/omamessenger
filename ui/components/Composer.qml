@@ -503,6 +503,13 @@ Item {
           source: root._attachmentKind === "photo" ? ("file://" + root.attachmentPath) : ""
           fillMode: Image.PreserveAspectCrop
           asynchronous: true
+          // Bounded to this chip's own box, never the file's own
+          // declared size: an attachment can come from the clipboard,
+          // which another program controls, the same risk a received
+          // photo carries (see PhotoView.qml's own sourceSize and
+          // docs/decisions.md).
+          sourceSize.width: Style.space(32)
+          sourceSize.height: Style.space(32)
         }
 
         Text {

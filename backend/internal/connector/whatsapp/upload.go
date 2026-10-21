@@ -25,6 +25,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // errUnsupportedAttachment reports an attachment of a kind this
@@ -178,9 +179,18 @@ func imageDimensions(data []byte) (width, height int) {
 // jpegThumbnail returns a small JPEG preview of a photo's bytes, no
 // larger than thumbMaxSize on its longer side, for WhatsApp to show
 // before the full image downloads. It returns nil when the photo
-// cannot be decoded, which only costs that preview: the full image is
-// still sent and can still be fetched.
+// cannot be decoded, or declares dimensions past imagesafe.FullImage's
+// own cap, which only costs that preview: the full image is still
+// sent and can still be fetched. The declared size is checked by its
+// header alone, the same way imagesafe.Sanitize checks a downloaded
+// image, before ever calling image.Decode - a full decode, unlike
+// DecodeConfig, allocates a bitmap the size the header declares.
 func jpegThumbnail(data []byte) []byte {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || !withinThumbnailSourceCaps(cfg.Width, cfg.Height) {
+		return nil
+	}
+
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil
@@ -192,6 +202,22 @@ func jpegThumbnail(data []byte) []byte {
 	}
 
 	return buf.Bytes()
+}
+
+// withinThumbnailSourceCaps reports whether a width and height are
+// safe to decode in full just to build a tiny outgoing thumbnail: the
+// same bounds imagesafe.FullImage enforces for a downloaded photo, so
+// a local file whose header declares a bitmap large enough to balloon
+// memory cannot make this connector's own decode do that either.
+func withinThumbnailSourceCaps(width, height int) bool {
+	if width <= 0 || height <= 0 {
+		return false
+	}
+	if width > imagesafe.FullImage.MaxSide || height > imagesafe.FullImage.MaxSide {
+		return false
+	}
+
+	return int64(width)*int64(height) <= imagesafe.FullImage.MaxPixels
 }
 
 // shrinkThumbnail returns a nearest-neighbour copy of img no larger

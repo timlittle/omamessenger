@@ -212,6 +212,31 @@ func TestJPEGThumbnail_ReturnsNilForUndecodableData(t *testing.T) {
 	}
 }
 
+// TestJPEGThumbnail_RejectsOversizedDeclaredDimensions covers a JPEG
+// whose header declares a width and height far past
+// imagesafe.FullImage's own cap: jpegThumbnail must refuse it by its
+// header alone, the same way imagesafe.Sanitize does for a downloaded
+// image, rather than calling image.Decode and letting Go's own JPEG
+// decoder allocate a bitmap that size.
+func TestJPEGThumbnail_RejectsOversizedDeclaredDimensions(t *testing.T) {
+	t.Parallel()
+
+	src := tinyJPEG(t)
+	sof := bytes.Index(src, []byte{0xFF, 0xC0})
+	if sof < 0 {
+		t.Fatal("test JPEG has no baseline SOF0 marker")
+	}
+
+	// SOF0 payload: precision(1) height(2) width(2) ...; set both to
+	// 60000, far past any sane photo and past imagesafe.FullImage's cap.
+	src[sof+5], src[sof+6] = 0xEA, 0x60
+	src[sof+7], src[sof+8] = 0xEA, 0x60
+
+	if got := jpegThumbnail(src); got != nil {
+		t.Errorf("jpegThumbnail(60000x60000 header) = %v, want nil", got)
+	}
+}
+
 func TestShrinkThumbnail_ScalesDownOnlyWhenLargerThanTheLimit(t *testing.T) {
 	t.Parallel()
 

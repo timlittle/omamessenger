@@ -8,12 +8,19 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // errNoClipboardImage reports a paste asked for when the clipboard holds
 // no image the helper can read.
 var errNoClipboardImage = errors.New("there is no image on the clipboard")
+
+// errUnsafeClipboardImage reports a pasted image that failed the same
+// safety check a downloaded photo must pass: the clipboard belongs to
+// whichever other program last put something on it, so it is never
+// trusted further than a sender's own attachment.
+var errUnsafeClipboardImage = errors.New("the pasted image could not be used")
 
 // pasteImageTypes are the clipboard MIME types PasteImage accepts, most
 // preferred first.
@@ -44,9 +51,14 @@ func (c *Commands) PasteImage(ctx context.Context) (PastedImage, error) {
 		return PastedImage{}, fmt.Errorf("clipboard: %w", err)
 	}
 
+	safe, err := connector.SanitizeOutgoingImage(data.Bytes())
+	if err != nil {
+		return PastedImage{}, fmt.Errorf("%w: %w", ErrInvalidInput, errUnsafeClipboardImage)
+	}
+
 	id := newAttachmentID()
 	name := "pasted." + strings.TrimPrefix(mimeType, "image/")
-	stored, err := c.outgoing.Store(ctx, id, name, &data)
+	stored, err := c.outgoing.Store(ctx, id, name, bytes.NewReader(safe))
 	if err != nil {
 		return PastedImage{}, fmt.Errorf("clipboard: %w", err)
 	}

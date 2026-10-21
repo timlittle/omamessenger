@@ -2,6 +2,8 @@ package clipboard_test
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"testing"
@@ -76,5 +78,20 @@ func TestRead_FailsWhenTheCommandFails(t *testing.T) {
 
 	if err := w.Read(t.Context(), "image/png", new(strings.Builder)); err == nil {
 		t.Error("Read() with a failing command = nil error, want one")
+	}
+}
+
+// TestRead_FailsWhenOutputExceedsTheCap confirms a clipboard source
+// that answers with more than MaxPasteLen bytes is refused rather than
+// read fully into memory: the clipboard belongs to whichever other
+// program last put something on it, so its size is never trusted any
+// more than a message attachment's.
+func TestRead_FailsWhenOutputExceedsTheCap(t *testing.T) {
+	t.Parallel()
+
+	w := clipboard.Wayland{Command: stubCommand(fmt.Sprintf("head -c %d /dev/zero", clipboard.MaxPasteLen+1))}
+
+	if err := w.Read(t.Context(), "image/png", io.Discard); err == nil {
+		t.Error("Read() over the cap = nil error, want one")
 	}
 }

@@ -50,6 +50,23 @@ func TestPasteImage_RejectsAClipboardWithNoImage(t *testing.T) {
 	}
 }
 
+// TestPasteImage_RejectsAnUnsafeImage confirms a pasted image is run
+// through the same safety check a downloaded photo must pass: the
+// clipboard belongs to whichever other program last put something on
+// it, so bytes that are not a real, safely-sized image are refused
+// rather than written to the outgoing media area unchecked.
+func TestPasteImage_RejectsAnUnsafeImage(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.clipboard.types = []string{"image/png"}
+	f.clipboard.data = map[string][]byte{"image/png": []byte("not a real image")}
+
+	if _, err := f.commands.PasteImage(t.Context()); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("PasteImage(unsafe image) = %v, want ErrInvalidInput", err)
+	}
+}
+
 func TestPasteImage_ReportsAClipboardFailure(t *testing.T) {
 	t.Parallel()
 
