@@ -9,8 +9,13 @@
 # any local tag or checkout. It then refuses unless, at that HEAD, the
 # plugin is still pinned to the latest release: manifest.json and
 # helper-version must equal the release tag's version, and the release
-# must have its assets. Both files are read from GitHub at that HEAD, not
-# from this checkout, since a local worktree may not be at HEAD. It lists
+# must have its assets. It also refuses unless HEAD's committed
+# helper-checksums has an entry for that version, for both architectures,
+# matching the release's own published SHA256SUMS: a HEAD still waiting on
+# the release's checksum pull request is not something a fresh install can
+# verify, so it is no more ready to list than a HEAD on the wrong version.
+# All of these are read from GitHub at that HEAD, not from this checkout,
+# since a local worktree may not be at HEAD. It lists
 # every commit between the release tag and HEAD, so the maintainer filing
 # the issue can see what they are attesting to, then builds the issue body
 # from the marketplace repository's own verify-plugin.yml issue form: the
@@ -51,6 +56,36 @@ if [ "$tag_version" != "$manifest_version" ] || [ "$tag_version" != "$helper_ver
         "$head_sha" "$tag" "$manifest_version" "$helper_version" >&2
     exit 1
 fi
+
+checksums=$(gh api "repos/$source_repo/contents/helper-checksums?ref=$head_sha" --jq .content | base64 -d)
+
+sums_dir=$(mktemp -d)
+trap 'rm -rf "$sums_dir"' EXIT
+gh release download "$tag" -p SHA256SUMS -D "$sums_dir" --repo "$source_repo" >/dev/null
+published_sums=$(cat "$sums_dir/SHA256SUMS")
+rm -rf "$sums_dir"
+trap - EXIT
+
+for arch in amd64 arm64; do
+    name="oma-messenger-service-linux-$arch"
+    key="oma-messenger-service-$tag_version-linux-$arch"
+    committed=$(printf '%s\n' "$checksums" | awk -v k="$key" '$2 == k { print $1 }')
+    if [ -z "$committed" ]; then
+        printf 'marketplace-update: HEAD %s has no committed checksum for %s; the release'"'"'s checksum pull request has not landed there yet\n' \
+            "$head_sha" "$key" >&2
+        exit 1
+    fi
+    published=$(printf '%s\n' "$published_sums" | awk -v n="$name" '$2 == n { print $1 }')
+    if [ -z "$published" ]; then
+        printf 'marketplace-update: release %s has no SHA256SUMS entry for %s\n' "$tag" "$name" >&2
+        exit 1
+    fi
+    if [ "$committed" != "$published" ]; then
+        printf 'marketplace-update: HEAD %s'"'"'s committed checksum for %s does not match release %s'"'"'s published SHA256SUMS\n' \
+            "$head_sha" "$key" "$tag" >&2
+        exit 1
+    fi
+done
 
 commits=$(gh api "repos/$source_repo/compare/$tag...$head_sha" --jq '.commits[] | (.sha[0:7] + " " + (.commit.message | split("\n")[0]))')
 

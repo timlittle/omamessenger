@@ -61,7 +61,7 @@ Automated checks cover logic and QML validity, not what the window looks like. R
 
 ## Release
 
-release-please opens and tags the release PR; merging it runs `.github/workflows/release.yml`, which builds and publishes the helper binaries. Once that release has assets, run `make marketplace-update` to request that the Omarchy marketplace listing pick up the default branch's current HEAD; it refuses unless that HEAD is still pinned to the latest release's version.
+release-please opens and tags the release PR; merging it runs `.github/workflows/release.yml`, which builds and publishes the helper binaries, then opens a second pull request, titled `build(release): pin helper checksums for v<version>` on branch `pin-helper-<version>`, committing those binaries' SHA-256 into `helper-checksums` (see [docs/decisions.md](docs/decisions.md) for why that pin is a separate, reviewed commit rather than part of the release commit itself). GitHub never lets a workflow-token pull request trigger a check run on itself, so that pull request starts with no CI: re-run or approve its checks by hand, then review and merge it like any other change. Only once it has landed is the default branch's HEAD installable — `scripts/install-helper.sh` refuses a version with no committed checksum — and only then does `make marketplace-update` succeed: it requests that the Omarchy marketplace listing pick up the default branch's current HEAD, and refuses unless that HEAD is still pinned to the latest release's version *and* that release's checksums.
 
 ## Pull requests
 

@@ -68,6 +68,15 @@ const TAG = 'v0.3.2';
 const HEAD_SHA = 'b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3';
 const COMMIT_LINES = ['a1b2c3d chore(deps): bump sourcegraph/jsonrpc2', '4d5e6f7 chore(deps): bump quickshell import version'];
 
+// Default checksums: the committed helper-checksums entries and the
+// release's published SHA256SUMS agree by default, as they would once a
+// release's checksum pull request has landed; a test overrides one or the
+// other to exercise a refusal.
+const HASH_AMD64 = 'a'.repeat(64);
+const HASH_ARM64 = 'b'.repeat(64);
+const defaultChecksums = (version) => `${HASH_AMD64}  oma-messenger-service-${version}-linux-amd64\n${HASH_ARM64}  oma-messenger-service-${version}-linux-arm64\n`;
+const defaultPublishedSums = () => `${HASH_AMD64}  oma-messenger-service-linux-amd64\n${HASH_ARM64}  oma-messenger-service-linux-arm64\n`;
+
 const EXPECTED_TITLE = `[Verify]: OmaMessenger ${TAG}`;
 const EXPECTED_BODY = `### Verification action
 
@@ -100,9 +109,10 @@ ${HEAD_SHA}
 // check what would have been filed, without ever reaching GitHub. Every
 // `gh api ... --jq <filter>` call is answered with the value that filter
 // would have produced, since the filter itself is never run by the stub.
-function stubGh(dir, { tag, assets, headSha, manifestVersion, helperVersion, commitLines, templateYaml, recordDir }) {
+function stubGh(dir, { tag, assets, headSha, manifestVersion, helperVersion, checksums, publishedSums, commitLines, templateYaml, recordDir }) {
   const manifestB64 = Buffer.from(JSON.stringify({ version: manifestVersion }), 'utf8').toString('base64');
   const helperB64 = Buffer.from(`${helperVersion} # x-release-please-version\n`, 'utf8').toString('base64');
+  const checksumsB64 = Buffer.from(checksums, 'utf8').toString('base64');
   const templateB64 = Buffer.from(templateYaml, 'utf8').toString('base64');
   const commits = commitLines.join('\n');
   const file = path.join(dir, 'gh');
@@ -110,6 +120,19 @@ function stubGh(dir, { tag, assets, headSha, manifestVersion, helperVersion, com
 set -eu
 case "$1" in
   release)
+    if [ "$2" = "download" ]; then
+      shift 2
+      outdir=""
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          -D) outdir=$2; shift 2 ;;
+          -p|--repo) shift 2 ;;
+          *) shift ;;
+        esac
+      done
+      printf '%s' '${publishedSums}' > "$outdir/SHA256SUMS"
+      exit 0
+    fi
     if [ "$2" != "view" ]; then echo "gh-stub: unexpected release subcommand: $2" >&2; exit 1; fi
     shift 2
     if [ "$1" = "--json" ]; then
@@ -128,6 +151,7 @@ case "$1" in
       */commits/main) printf '%s\\n' '${headSha}' ;;
       */contents/manifest.json\\?ref=*) printf '%s\\n' '${manifestB64}' ;;
       */contents/helper-version\\?ref=*) printf '%s\\n' '${helperB64}' ;;
+      */contents/helper-checksums\\?ref=*) printf '%s\\n' '${checksumsB64}' ;;
       */compare/*) printf '%s\\n' '${commits}' ;;
       */contents/.github/ISSUE_TEMPLATE/verify-plugin.yml) printf '%s\\n' '${templateB64}' ;;
       *) echo "gh-stub: unexpected api path: $path_arg" >&2; exit 1 ;;
@@ -163,7 +187,7 @@ esac
 // and a stubbed gh on PATH, and returns how to run it and where a filed
 // issue would have been recorded. By default HEAD is pinned to the latest
 // release, as the script requires.
-function fixture(t, { tag = TAG, assets = 2, headSha = HEAD_SHA, manifestVersion, helperVersion, commitLines = COMMIT_LINES, templateYaml = TEMPLATE_YAML } = {}) {
+function fixture(t, { tag = TAG, assets = 2, headSha = HEAD_SHA, manifestVersion, helperVersion, checksums, publishedSums, commitLines = COMMIT_LINES, templateYaml = TEMPLATE_YAML } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'oma-marketplace-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const version = tag.replace(/^v/, '');
@@ -182,6 +206,8 @@ function fixture(t, { tag = TAG, assets = 2, headSha = HEAD_SHA, manifestVersion
     headSha,
     manifestVersion: manifestVersion ?? version,
     helperVersion: helperVersion ?? version,
+    checksums: checksums ?? defaultChecksums(version),
+    publishedSums: publishedSums ?? defaultPublishedSums(),
     commitLines,
     templateYaml,
     recordDir,
@@ -255,6 +281,35 @@ test('refuses when HEAD\'s helper-version disagrees with the latest release', (t
 
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /is not pinned to the latest release/);
+  assert.ok(!fs.existsSync(path.join(recordDir, 'title')));
+});
+
+test('refuses when HEAD\'s helper-checksums has no entry for the release version', (t) => {
+  const { run, recordDir } = fixture(t, { checksums: defaultChecksums('0.0.1') });
+  const result = run({ DRY_RUN: '1' });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /no committed checksum/);
+  assert.ok(!fs.existsSync(path.join(recordDir, 'title')));
+});
+
+test('refuses when HEAD\'s committed checksum does not match the release\'s published SHA256SUMS', (t) => {
+  const version = TAG.replace(/^v/, '');
+  const tampered = `${'c'.repeat(64)}  oma-messenger-service-${version}-linux-amd64\n${HASH_ARM64}  oma-messenger-service-${version}-linux-arm64\n`;
+  const { run, recordDir } = fixture(t, { checksums: tampered });
+  const result = run({ DRY_RUN: '1' });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /does not match release .* published SHA256SUMS/);
+  assert.ok(!fs.existsSync(path.join(recordDir, 'title')));
+});
+
+test('refuses when the release\'s published SHA256SUMS has no entry for an architecture', (t) => {
+  const { run, recordDir } = fixture(t, { publishedSums: `${HASH_AMD64}  oma-messenger-service-linux-amd64\n` });
+  const result = run({ DRY_RUN: '1' });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /has no SHA256SUMS entry for/);
   assert.ok(!fs.existsSync(path.join(recordDir, 'title')));
 });
 
