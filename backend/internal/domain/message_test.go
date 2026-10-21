@@ -3,6 +3,7 @@ package domain_test
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -65,6 +66,64 @@ func TestExcerpt(t *testing.T) {
 				t.Errorf("Excerpt(%q) = %q, want %q", tt.text, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestTruncateIncomingText_LeavesShortTextAlone covers text already
+// within MaxIncomingTextLength: returned unchanged, with no suffix
+// appended.
+func TestTruncateIncomingText_LeavesShortTextAlone(t *testing.T) {
+	t.Parallel()
+
+	for _, text := range []string{"", "hello", strings.Repeat("a", domain.MaxIncomingTextLength)} {
+		if got := domain.TruncateIncomingText(text); got != text {
+			t.Errorf("TruncateIncomingText(%d bytes) changed unchanged text", len(text))
+		}
+	}
+}
+
+// TestTruncateIncomingText_CutsLongTextOnARuneBoundary covers text over
+// the cap: the result is at most MaxIncomingTextLength bytes, still
+// valid UTF-8, ends with the truncation notice, and keeps as a prefix
+// of the original text everything before that notice.
+func TestTruncateIncomingText_CutsLongTextOnARuneBoundary(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("a", domain.MaxIncomingTextLength+1000)
+	got := domain.TruncateIncomingText(long)
+
+	const suffix = "\n\n[message truncated]"
+
+	if len(got) > domain.MaxIncomingTextLength {
+		t.Fatalf("len(got) = %d, want at most %d", len(got), domain.MaxIncomingTextLength)
+	}
+	if !utf8.ValidString(got) {
+		t.Fatal("TruncateIncomingText produced invalid UTF-8")
+	}
+	if !strings.HasSuffix(got, suffix) {
+		t.Fatalf("TruncateIncomingText(long) does not end with the truncation notice: %q", got[len(got)-40:])
+	}
+
+	prefix := strings.TrimSuffix(got, suffix)
+	if !strings.HasPrefix(long, prefix) {
+		t.Error("TruncateIncomingText's own prefix is not a prefix of the original text")
+	}
+}
+
+// TestTruncateIncomingText_NeverSplitsAMultiByteRune covers text whose
+// cut point would otherwise land inside a multi-byte rune: the cut
+// backs up to a rune boundary rather than producing invalid UTF-8.
+func TestTruncateIncomingText_NeverSplitsAMultiByteRune(t *testing.T) {
+	t.Parallel()
+
+	// A multi-byte rune repeated enough times to cross the cap, chosen
+	// so the naive byte cap would land mid-rune almost regardless of
+	// the exact cap and suffix length.
+	long := strings.Repeat("€", domain.MaxIncomingTextLength)
+	got := domain.TruncateIncomingText(long)
+
+	if !utf8.ValidString(got) {
+		t.Fatal("TruncateIncomingText split a multi-byte rune")
 	}
 }
 

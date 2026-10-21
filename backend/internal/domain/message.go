@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"strings"
+	"unicode/utf8"
 )
 
 // Message delivery states. Outgoing messages move forward through pending,
@@ -19,6 +20,40 @@ const (
 // MaxTextLength bounds outgoing text in characters. Both services accept at
 // least this much.
 const MaxTextLength = 4096
+
+// MaxIncomingTextLength bounds a received message's text in bytes, far
+// more generous than MaxTextLength since it exists only to cap a
+// sender-controlled field, not to match what a real client would ever
+// send: a message with no length limit at all could otherwise make the
+// UI lay out an unbounded amount of rich text in one bubble (see
+// ui/lib/Markdown.js and docs/decisions.md).
+const MaxIncomingTextLength = 64 * 1024
+
+// incomingTruncatedSuffix is appended, within the same cap, when
+// TruncateIncomingText actually had to cut a message's text, so the
+// user sees why it ends abruptly rather than assuming the sender's own
+// message really stopped there.
+const incomingTruncatedSuffix = "\n\n[message truncated]"
+
+// TruncateIncomingText cuts text to MaxIncomingTextLength bytes, never
+// splitting a UTF-8 rune, and appends incomingTruncatedSuffix within
+// that same cap when it actually had to cut anything. Unlike
+// MaxTextLength, which rejects outgoing text outright, a received
+// message is never dropped for being too long, only shortened: the
+// sender is not asking permission the way the local user is when
+// sending.
+func TruncateIncomingText(text string) string {
+	if len(text) <= MaxIncomingTextLength {
+		return text
+	}
+
+	limit := MaxIncomingTextLength - len(incomingTruncatedSuffix)
+	for limit > 0 && !utf8.RuneStart(text[limit]) {
+		limit--
+	}
+
+	return text[:limit] + incomingTruncatedSuffix
+}
 
 // Errors reported when outgoing text fails validation; see
 // app.captionText.

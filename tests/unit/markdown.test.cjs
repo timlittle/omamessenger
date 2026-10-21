@@ -92,6 +92,45 @@ test('splitTables reads left, right, center and absent alignment from colons', (
   assert.deepEqual(parts[0].table.aligns, ['left', 'right', 'center', '']);
 });
 
+// buildTable returns a well-formed pipe table's own text with the
+// given number of columns and body rows, so a test can exercise
+// MAX_TABLE_COLUMNS and MAX_TABLE_ROWS without hand-writing either by
+// hand.
+function buildTable(columns, rows) {
+  const headerCells = Array.from({ length: columns }, (_, i) => `H${i}`);
+  const sepCells = Array.from({ length: columns }, () => '---');
+  const lines = [`| ${headerCells.join(' | ')} |`, `| ${sepCells.join(' | ')} |`];
+  for (let r = 0; r < rows; r++) {
+    const rowCells = Array.from({ length: columns }, (_, i) => `r${r}c${i}`);
+    lines.push(`| ${rowCells.join(' | ')} |`);
+  }
+  return lines.join('\n');
+}
+
+test('splitTables renders a table at the row and column caps normally', () => {
+  const text = buildTable(20, 50);
+  const parts = Markdown.splitTables(text);
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0].kind, 'table');
+  assert.equal(parts[0].table.header.length, 20);
+  assert.equal(parts[0].table.rows.length, 50);
+});
+
+test('splitTables renders a table over the row cap as plain text instead', () => {
+  const text = buildTable(3, 51);
+  const parts = Markdown.splitTables(text);
+
+  assert.ok(!parts.some((p) => p.kind === 'table'), 'a table over the row cap must not render as a table');
+  assert.equal(parts.map((p) => p.text || '').join('\n').includes('r50c0'), true);
+});
+
+test('splitTables renders a table over the column cap as plain text instead', () => {
+  const text = buildTable(21, 3);
+  const parts = Markdown.splitTables(text);
+
+  assert.ok(!parts.some((p) => p.kind === 'table'), 'a table over the column cap must not render as a table');
+});
+
 test('tableHtml renders a header row in <th> and body rows in <td>', () => {
   const parts = Markdown.splitTables(TABLE_TEXT);
   const html = Markdown.tableHtml(parts[0].table, identity, identity, '#888888');

@@ -11,6 +11,18 @@
 // dashes with optional leading/trailing colons for alignment.
 var SEPARATOR_CELL = /^:?-+:?$/;
 
+// MAX_TABLE_ROWS and MAX_TABLE_COLUMNS bound a pipe table this file
+// will ever render as an HTML <table>: a sender fully controls a
+// message's text, and an unbounded number of rows or columns could
+// otherwise make the UI lay out an unbounded amount of rich text in
+// one bubble. A table over either cap is not rendered as a table at
+// all - tryParseTable reports it as plain text instead, the same as
+// any other text with a stray "|" in it - rather than silently
+// dropping the rows or columns past the cap, which would show a
+// table that quietly disagreed with the sender's own message.
+var MAX_TABLE_ROWS = 50;
+var MAX_TABLE_COLUMNS = 20;
+
 // splitTables breaks text into an ordered list of parts, each either
 // { kind: 'text', text } or { kind: 'table', table }. A table is only
 // recognized when a header row is immediately followed by a matching
@@ -55,15 +67,24 @@ function tryParseTable(lines, start) {
   if (separator.length !== header.length || !separator.every((cell) => SEPARATOR_CELL.test(cell))) {
     return null;
   }
+  if (header.length > MAX_TABLE_COLUMNS) {
+    return null;
+  }
+
+  let end = start + 2;
+  while (end < lines.length && isBodyRow(lines[end])) {
+    end++;
+  }
+  if (end - (start + 2) > MAX_TABLE_ROWS) {
+    return null;
+  }
 
   const aligns = separator.map(cellAlign);
   const rows = [];
-  let i = start + 2;
-  while (i < lines.length && isBodyRow(lines[i])) {
+  for (let i = start + 2; i < end; i++) {
     rows.push(padRow(splitRow(lines[i]), header.length));
-    i++;
   }
-  return { next: i, table: { header, aligns, rows } };
+  return { next: end, table: { header, aligns, rows } };
 }
 
 // isBodyRow reports whether line continues a table: a non-blank line

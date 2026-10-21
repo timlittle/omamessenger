@@ -12,6 +12,20 @@ var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
 // STATUS_GLYPHS are the delivery marks shown after an outgoing message.
 var STATUS_GLYPHS = { pending: '○', sent: '✓', delivered: '✓✓', read: '✓✓', failed: '!' };
 
+// MAX_RICH_TEXT_INPUT_LENGTH bounds how much of a message's own text
+// messageHtml ever turns into rich text, in UTF-16 code units (the
+// same unit a JavaScript string already indexes by). A generous match
+// for the helper's own incoming cap (domain.MaxIncomingTextLength, 64
+// KiB), kept here independently since this file has no way to import
+// a Go constant - the same two-independently-maintained-but-matching
+// pair Links.js's own allow-list and domain.AllowedLinkURL already
+// are. Cutting the plain input first, before any escaping, linkifying
+// or table rendering runs over it, means the HTML this file builds is
+// always bounded by a predictable multiple of this cap: never a raw
+// cut through the middle of a tag, which slicing the finished HTML
+// itself could otherwise produce.
+var MAX_RICH_TEXT_INPUT_LENGTH = 65536;
+
 // URL_PATTERN matches http(s) links in escaped text. Entities such as &amp;
 // may appear inside a link; any other '&' ends it.
 var URL_PATTERN = /https?:\/\/[^\s<"&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\s<"&]*)*/g;
@@ -45,18 +59,23 @@ function linkify(escaped, color) {
 // url}, see styledRanges) - links, bold, italic, underline, strike,
 // code, pre and spoiler - applied the same way on top of the escaped
 // text. A message with mentions or spans skips table rendering, since
-// neither is ordinary enough to coexist with a pipe table.
+// neither is ordinary enough to coexist with a pipe table. text is cut
+// to MAX_RICH_TEXT_INPUT_LENGTH first, before any of this runs, so the
+// rich text this builds is always bounded too, whatever the message's
+// own length (see MAX_RICH_TEXT_INPUT_LENGTH's own comment).
 function messageHtml(text, linkColor, tableBorderColor, mentions, spans) {
+  const capped = text.length > MAX_RICH_TEXT_INPUT_LENGTH ? text.slice(0, MAX_RICH_TEXT_INPUT_LENGTH) : text;
+
   if (spans && spans.length > 0) {
-    return styledHtml(text, linkColor, mentions, spans);
+    return styledHtml(capped, linkColor, mentions, spans);
   }
 
   if (mentions && mentions.length > 0) {
-    return mentionHtml(text, linkColor, mentions);
+    return mentionHtml(capped, linkColor, mentions);
   }
 
   const borderColor = tableBorderColor ?? '#888888';
-  return Markdown.splitTables(text)
+  return Markdown.splitTables(capped)
     .map((part) => (part.kind === 'table'
       ? Markdown.tableHtml(part.table, escapeHtml, (cell) => linkify(cell, linkColor), borderColor)
       : lineHtml(part.text, linkColor)))

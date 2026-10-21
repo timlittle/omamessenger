@@ -418,6 +418,33 @@ test('messageHtml defaults a table\'s border colour when none is given', () => {
   assert.match(Format.messageHtml(text), /border:1px solid #888888/);
 });
 
+// MAX_RICH_TEXT_INPUT_LENGTH is not exported; these tests work from the
+// same value Format.js itself documents, so a future change to the
+// constant only needs updating in one place to keep them accurate.
+const MAX_RICH_TEXT_INPUT_LENGTH = 65536;
+
+test('messageHtml leaves text within the length cap untouched', () => {
+  const text = 'a'.repeat(MAX_RICH_TEXT_INPUT_LENGTH);
+  assert.equal(Format.messageHtml(text), text);
+});
+
+test('messageHtml cuts plain text over the length cap before rendering it', () => {
+  const text = 'a'.repeat(MAX_RICH_TEXT_INPUT_LENGTH + 1000);
+  assert.equal(Format.messageHtml(text), 'a'.repeat(MAX_RICH_TEXT_INPUT_LENGTH));
+});
+
+test('messageHtml bounds its own output even for a message built to escape or table-render large', () => {
+  // Escaping (each '<' or '>' grows six-fold) and a huge run of table
+  // rows both expand their input; the cap on messageHtml's own input
+  // bounds the output regardless, to a fixed multiple of that cap.
+  const escaping = Format.messageHtml('<script>'.repeat(200000));
+  assert.ok(escaping.length <= MAX_RICH_TEXT_INPUT_LENGTH * 6);
+
+  const row = '| ' + 'c'.repeat(100) + ' |\n';
+  const tabular = Format.messageHtml('| A |\n| --- |\n' + row.repeat(10000));
+  assert.ok(tabular.length <= MAX_RICH_TEXT_INPUT_LENGTH * 6);
+});
+
 test('caption drops the label a photo, video, file or voice note stands in for', () => {
   assert.strictEqual(Format.caption('[Photo]', { kind: 'photo' }), '');
   assert.strictEqual(Format.caption('[Video]', { kind: 'video' }), '');
