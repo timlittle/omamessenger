@@ -55,7 +55,7 @@ Item {
   // one check after each covers every way out instead of a focusDefault
   // call scattered over every signal that can close them.
   function _refocusIfSetupClosed(): void {
-    if (!root.accountController || root.accountController.open || root.accountController.removing) return;
+    if (!root.accountController || root.accountController.open || root.accountController.removing || root.accountController.renaming) return;
     root._refocusIfClosed(false);
   }
 
@@ -223,15 +223,44 @@ Item {
     onCancelled: root.accountController.cancel()
   }
 
-  // Covers every way account setup or its removal question can close:
-  // cancelling, a sign-in finishing, or the helper reporting an account
-  // removed. Without this, the control that had focus is simply gone
-  // once the overlay hides, and the key area never gets it back, so
-  // shortcuts stop doing anything until the window is closed and reopened.
+  // Active only while renaming, so its alias TextField is destroyed on
+  // close rather than merely hidden; see the palette's own Loader above
+  // for why. AccountController keeps the chosen account and its
+  // prefilled alias, so reopening mid-flow (there is none here, but the
+  // pattern matches account setup) would resume cleanly too.
+  Loader {
+    id: renameAccountLoader
+    anchors.fill: parent
+    active: root.accountController?.renaming ?? false
+
+    sourceComponent: RenameAccount {
+      open: true
+      stage: (root.accountController?.renameAccountId ?? "") === "" ? "choose" : "alias"
+      accounts: root.service ? root.service.accounts : []
+      chooseIndex: root.accountController?.renameIndex ?? -1
+      currentAlias: root.accountController?.renameAlias ?? ""
+      error: root.accountController?.lastError ?? ""
+      busy: root.accountController?.busy ?? false
+      knownServices: root.service ? root.service.services : []
+      routeKey: root.routeKey
+
+      onChosen: accountId => root.accountController.chooseRename(accountId)
+      onSubmitted: alias => root.accountController.submitAlias(alias)
+      onCancelled: root.accountController.cancel()
+    }
+  }
+
+  // Covers every way account setup, its removal question or its rename
+  // dialog can close: cancelling, a sign-in finishing, saving an alias,
+  // or the helper reporting an account removed. Without this, the
+  // control that had focus is simply gone once the overlay hides, and
+  // the key area never gets it back, so shortcuts stop doing anything
+  // until the window is closed and reopened.
   Connections {
     target: root.accountController
     function onOpenChanged() { root._refocusIfSetupClosed(); }
     function onRemovingChanged() { root._refocusIfSetupClosed(); }
+    function onRenamingChanged() { root._refocusIfSetupClosed(); }
   }
 
   // Active only while the dialog is open, so its contact search

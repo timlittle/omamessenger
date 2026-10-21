@@ -319,8 +319,9 @@ test('buildState falls back to service.uiState.pane when no conversationControll
   assert.strictEqual(state.activeId, 'c1');
 });
 
-test('buildState setupOpen is true while either adding or removing an account', () => {
-  assert.strictEqual(Navigation.buildState({ accountController: { open: true, removing: false } }).setupOpen, true);
-  assert.strictEqual(Navigation.buildState({ accountController: { open: false, removing: true } }).setupOpen, true);
-  assert.strictEqual(Navigation.buildState({ accountController: { open: false, removing: false } }).setupOpen, false);
+test('buildState setupOpen is true while adding, removing or renaming an account', () => {
+  assert.strictEqual(Navigation.buildState({ accountController: { open: true, removing: false, renaming: false } }).setupOpen, true);
+  assert.strictEqual(Navigation.buildState({ accountController: { open: false, removing: true, renaming: false } }).setupOpen, true);
+  assert.strictEqual(Navigation.buildState({ accountController: { open: false, removing: false, renaming: true } }).setupOpen, true);
+  assert.strictEqual(Navigation.buildState({ accountController: { open: false, removing: false, renaming: false } }).setupOpen, false);
 });

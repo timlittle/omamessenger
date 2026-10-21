@@ -53,6 +53,59 @@ func TestUpsertAccount_RenamesButKeepsStatus(t *testing.T) {
 	}
 }
 
+func TestSetAccountAlias_SetsAndClears(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+
+	got, err := s.SetAccountAlias(ctx, "wa", "Personal WhatsApp")
+	if err != nil || got.Alias != "Personal WhatsApp" {
+		t.Fatalf("SetAccountAlias = %+v, %v", got, err)
+	}
+
+	got, err = s.Account(ctx, "wa")
+	if err != nil || got.Alias != "Personal WhatsApp" {
+		t.Fatalf("Account after setting an alias = %+v, %v", got, err)
+	}
+
+	got, err = s.SetAccountAlias(ctx, "wa", "")
+	if err != nil || got.Alias != "" {
+		t.Fatalf("SetAccountAlias(\"\") = %+v, %v, want it cleared", got, err)
+	}
+
+	if _, err := s.SetAccountAlias(ctx, "missing", "x"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetAccountAlias(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestUpsertAccount_NeverOverwritesAnAliasAlreadySet proves a connector
+// re-recording an account it already knows about - on every helper
+// restart - never wipes out the alias the user set for it, the same
+// way it never overwrites the status the connector itself reports.
+func TestUpsertAccount_NeverOverwritesAnAliasAlreadySet(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+
+	if _, err := s.SetAccountAlias(ctx, "wa", "Work WhatsApp"); err != nil {
+		t.Fatal(err)
+	}
+
+	resaved := domain.Account{ID: "wa", Service: domain.ServiceWhatsApp, Name: "wa", Status: domain.AccountConnected}
+	if err := s.UpsertAccount(ctx, resaved); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Account(ctx, "wa")
+	if err != nil || got.Alias != "Work WhatsApp" {
+		t.Fatalf("account after re-upserting = %+v, %v, want its alias kept", got, err)
+	}
+}
+
 func TestSetAccountStatus(t *testing.T) {
 	t.Parallel()
 

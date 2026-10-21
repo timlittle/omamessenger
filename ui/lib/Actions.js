@@ -128,6 +128,7 @@ var OWNERS = {
   'account.add': 'account',
   'account.addOwnKeys': 'account',
   'account.remove': 'account',
+  'account.rename': 'account',
   'setup.down': 'account',
   'setup.up': 'account',
   'setup.accept': 'account',
@@ -149,6 +150,19 @@ var OWNERS = {
   'remove.pick9': 'account',
   'remove.accept': 'account',
   'remove.cancel': 'account',
+  'rename.down': 'account',
+  'rename.up': 'account',
+  'rename.pick1': 'account',
+  'rename.pick2': 'account',
+  'rename.pick3': 'account',
+  'rename.pick4': 'account',
+  'rename.pick5': 'account',
+  'rename.pick6': 'account',
+  'rename.pick7': 'account',
+  'rename.pick8': 'account',
+  'rename.pick9': 'account',
+  'rename.accept': 'account',
+  'rename.cancel': 'account',
 
   // WindowController: the command palette, closing and quitting, the
   // close question's own navigation, and the Escape chain.

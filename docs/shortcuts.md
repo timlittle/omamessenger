@@ -135,6 +135,19 @@ The service chooser, shown when more than one service is offered, and the QR and
 | Enter or y | Remove the highlighted account (does nothing if Cancel, the default, is highlighted) |
 | n or Esc | Cancel without removing anything |
 
+## Renaming an account
+
+"Rename account" in the command palette (Ctrl+/) sets an account's display name, such as "Personal WhatsApp", shown instead of its plain name wherever it is identified: the rail, the conversation list and the conversation header, once more than one account exists. With more than one account, it asks which one first, the same list "Removing an account" uses; with only one, it goes straight to the alias field.
+
+| Keys | Does |
+| --- | --- |
+| j / k, ↓ / ↑ | Move the highlighted account |
+| 1-9 | Jump straight to that account |
+| Enter | Choose the highlighted account (does nothing if Cancel, the default, is highlighted) |
+| n or Esc | Cancel without renaming anything |
+
+At the alias field, Enter saves it; leaving it empty clears the alias and falls back to the account's plain name. Esc cancels without changing anything.
+
 ## Closing the window
 
 Ctrl+W asks whether to keep OmaMessenger running in the background or quit.

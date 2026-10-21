@@ -306,6 +306,11 @@ test('accountLabel uses the helper\'s own service name when given', () => {
   assert.strictEqual(Rail.accountLabel({ service: 'telegram', name: 'Work' }, known), 'Telegram (beta) · Work');
 });
 
+test('accountLabel prefers the account\'s own alias over its plain name', () => {
+  assert.strictEqual(Rail.accountLabel({ service: 'whatsapp', name: 'WhatsApp', alias: 'Personal WhatsApp' }), 'WhatsApp · Personal WhatsApp');
+  assert.strictEqual(Rail.accountLabel({ service: 'whatsapp', name: 'WhatsApp', alias: '' }), 'WhatsApp · WhatsApp');
+});
+
 test('items: an account waiting for sign-in ranks worst', () => {
   const accounts = [
     { id: 'a1', service: 'telegram', name: 'T1', status: 'error' },
@@ -328,6 +333,12 @@ test('accountNames maps each account id to its name', () => {
   assert.deepEqual(Rail.accountNames(null), {});
 });
 
+test('accountNames prefers an account\'s own alias over its plain name', () => {
+  const accounts = [{ id: 'a1', name: 'WhatsApp', alias: 'Personal WhatsApp' }, { id: 'a2', name: 'WhatsApp', alias: '' }];
+
+  assert.deepEqual(Rail.accountNames(accounts), { a1: 'Personal WhatsApp', a2: 'WhatsApp' });
+});
+
 test('multiAccountServices lists the services the rail split by account', () => {
   const items = [
     { kind: 'all' }, { kind: 'service', service: 'telegram' },
@@ -346,6 +357,36 @@ test('accountDescription uses the helper\'s own service name when given', () => 
   const known = [{ id: 'telegram', name: 'Telegram (beta)' }];
 
   assert.strictEqual(Rail.accountDescription({ service: 'telegram', name: 'Work', detail: '' }, known), 'Telegram (beta) · Work');
+});
+
+test('accountDescription prefers the account\'s own alias over both detail and name', () => {
+  assert.strictEqual(
+    Rail.accountDescription({ service: 'telegram', name: 'Telegram', detail: 'Signed in as Tim', alias: 'Work Telegram' }),
+    'Telegram · Work Telegram'
+  );
+});
+
+test('accountSuffix names the account only once its service has more than one', () => {
+  const accounts = [
+    { id: 'a1', service: 'whatsapp', name: 'WhatsApp', alias: 'Personal WhatsApp' },
+    { id: 'a2', service: 'whatsapp', name: 'WhatsApp', alias: '' },
+    { id: 't1', service: 'telegram', name: 'Telegram' }
+  ];
+
+  assert.strictEqual(Rail.accountSuffix(accounts[0], accounts), 'Personal WhatsApp');
+  assert.strictEqual(Rail.accountSuffix(accounts[2], accounts), '');
+  assert.strictEqual(Rail.accountSuffix(null, accounts), '');
+});
+
+test('accountEntries sorts and labels accounts by their own alias', () => {
+  const accounts = [
+    { id: 'a1', service: 'whatsapp', name: 'WhatsApp', alias: 'Work WhatsApp', status: 'connected' },
+    { id: 'a2', service: 'whatsapp', name: 'WhatsApp', alias: 'Personal WhatsApp', status: 'connected' }
+  ];
+
+  const entries = Rail.accountEntries(accounts, []);
+  assert.deepEqual(entries.map((e) => e.label), ['Personal WhatsApp', 'Work WhatsApp']);
+  assert.deepEqual(entries.map((e) => e.accountId), ['a2', 'a1']);
 });
 
 test('standard keeps chats active within a month and the open one, folding an old chat even when it is unread', () => {

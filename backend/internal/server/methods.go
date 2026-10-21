@@ -35,6 +35,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"accounts.list":             bind(accountsList(c)),
 		"accounts.add":              bind(accountsAdd(c)),
 		"accounts.remove":           bind(accountsRemove(c)),
+		"accounts.setAlias":         bind(accountsSetAlias(c)),
 		"auth.submit":               bind(authSubmit(c)),
 		"contacts.list":             bind(contactsList(c)),
 		"conversations.list":        bind(conversationsList(c)),
@@ -155,6 +156,20 @@ type accountParams struct {
 func accountsRemove(c *app.Commands) func(context.Context, accountParams) (any, error) {
 	return func(ctx context.Context, p accountParams) (any, error) {
 		return none{}, c.RemoveAccount(ctx, p.AccountID)
+	}
+}
+
+// setAliasParams names an account and the alias to give it; an empty
+// alias clears it.
+type setAliasParams struct {
+	AccountID string `json:"accountId"`
+	Alias     string `json:"alias"`
+}
+
+// accountsSetAlias saves the display name the user chose for an account.
+func accountsSetAlias(c *app.Commands) func(context.Context, setAliasParams) (any, error) {
+	return func(ctx context.Context, p setAliasParams) (any, error) {
+		return c.SetAccountAlias(ctx, p.AccountID, p.Alias)
 	}
 }
 

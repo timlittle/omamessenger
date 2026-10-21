@@ -113,6 +113,10 @@ var migrations = []string{
 	// underline, strike, code, pre, spoiler), as JSON, the same way
 	// mentions are stored.
 	`ALTER TABLE messages ADD COLUMN formatting TEXT NOT NULL DEFAULT '';`,
+	// The display name the user chose for an account, such as
+	// "Personal WhatsApp", shown instead of its plain name wherever it
+	// is identified; empty until they set one.
+	`ALTER TABLE accounts ADD COLUMN alias TEXT NOT NULL DEFAULT '';`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

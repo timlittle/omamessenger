@@ -80,6 +80,12 @@ type Account struct {
 	Name    string `json:"name"`
 	Status  string `json:"status"`
 	Detail  string `json:"detail"`
+
+	// Alias is the display name the user chose for this account, such
+	// as "Personal WhatsApp", shown instead of Name wherever the
+	// account is identified. Empty when they never set one, or cleared
+	// it, in which case the UI falls back to Name.
+	Alias string `json:"alias,omitempty"`
 }
 
 // Contact is a person the account can start a conversation with.

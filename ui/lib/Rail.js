@@ -47,12 +47,18 @@ function items(accounts, conversations, knownServices) {
   return result;
 }
 
-// accountEntries returns one entry per account, sorted by name.
+// displayName names an account the way the user chose, through its
+// alias, falling back to its plain name when it has none set.
+function displayName(account) {
+  return account.alias || account.name;
+}
+
+// accountEntries returns one entry per account, sorted by display name.
 function accountEntries(accounts, conversations) {
   return accounts
     .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((a) => Object.assign(entry(`account:${a.id}`, 'account', a.name, [a], conversations),
+    .sort((a, b) => displayName(a).localeCompare(displayName(b)))
+    .map((a) => Object.assign(entry(`account:${a.id}`, 'account', displayName(a), [a], conversations),
       { service: a.service, accountId: a.id }));
 }
 
@@ -108,15 +114,31 @@ function serviceLabel(service, knownServices) {
 }
 
 // accountLabel names an account together with its service, because
-// account names such as "Personal" repeat across services.
+// account names such as "Personal" repeat across services. Prefers the
+// user's own alias, when they set one, over the plain name.
 function accountLabel(account, knownServices) {
-  return `${serviceLabel(account.service, knownServices)} · ${account.name}`;
+  return `${serviceLabel(account.service, knownServices)} · ${displayName(account)}`;
 }
 
 // accountDescription names an account by who is signed in to it when the
-// helper says so, since its name is often just the service's.
+// helper says so, since its name is often just the service's; the
+// user's own alias, when set, always wins over both.
 function accountDescription(account, knownServices) {
-  return `${serviceLabel(account.service, knownServices)} · ${account.detail || account.name}`;
+  return `${serviceLabel(account.service, knownServices)} · ${account.alias || account.detail || account.name}`;
+}
+
+// accountSuffix names account's own display name, for the conversation
+// header, only once more than one account shares its service; "" when
+// it is that service's only account, so the header stays uncluttered
+// until there is something to tell apart.
+function accountSuffix(account, accounts) {
+  if (!account) {
+    return '';
+  }
+
+  const sameService = (accounts ?? []).filter((a) => a.service === account.service);
+
+  return sameService.length > 1 ? displayName(account) : '';
 }
 
 // unreadTotal sums the unread counts of conversations that are not muted.
@@ -141,11 +163,12 @@ function statusLabel(status) {
   return STATUS_LABELS[status] ?? status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-// accountNames maps each account id to its name, for rows that show it.
+// accountNames maps each account id to its display name (its alias when
+// it has one, else its plain name), for rows that show it.
 function accountNames(accounts) {
   const names = {};
   for (const a of accounts ?? []) {
-    names[a.id] = a.name;
+    names[a.id] = displayName(a);
   }
 
   return names;

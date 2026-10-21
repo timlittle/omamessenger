@@ -119,6 +119,52 @@ func TestRemoveAccount_DeletesItsChatsAndUpdatesUnread(t *testing.T) {
 	}
 }
 
+func TestSetAccountAlias_SavesAndPublishesTheUpdatedAccount(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	got, err := f.commands.SetAccountAlias(t.Context(), "wa", "  Personal WhatsApp  ")
+	if err != nil || got.Alias != "Personal WhatsApp" {
+		t.Fatalf("SetAccountAlias = %+v, %v", got, err)
+	}
+
+	if names := f.published.take(); !slices.Equal(names, []string{app.EventAccountUpdated}) {
+		t.Errorf("events = %v, want [account.updated]", names)
+	}
+}
+
+func TestSetAccountAlias_ClearsWithAnEmptyAlias(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	if _, err := f.commands.SetAccountAlias(t.Context(), "wa", "Work"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := f.commands.SetAccountAlias(t.Context(), "wa", "   ")
+	if err != nil || got.Alias != "" {
+		t.Fatalf("SetAccountAlias(whitespace) = %+v, %v, want the alias cleared", got, err)
+	}
+}
+
+func TestSetAccountAlias_RejectsAMissingAccountID(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	if _, err := f.commands.SetAccountAlias(t.Context(), "", "Work"); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("SetAccountAlias(\"\") = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestSetAccountAlias_ReportsAnUnknownAccount(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	if _, err := f.commands.SetAccountAlias(t.Context(), "missing", "Work"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("SetAccountAlias(missing) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestSubmitAuth_PassesTrimmedAnswersOn(t *testing.T) {
 	t.Parallel()
 

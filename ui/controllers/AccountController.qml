@@ -52,6 +52,17 @@ Item {
   // removing shows the question asking which account to remove.
   property bool removing: false
 
+  // renaming shows the rename dialog, at whichever of its own two
+  // stages renameAccountId puts it in.
+  property bool renaming: false
+
+  // renameAccountId is the account being renamed, once chosen; "" shows
+  // the chooser instead of the alias field.
+  property string renameAccountId: ""
+
+  // renameAlias prefills the alias field with the account's current one.
+  property string renameAlias: ""
+
   // chooseIndex is the highlighted row in the service chooser: -1 for
   // Cancel, else an index into service.services.
   property int chooseIndex: -1
@@ -60,11 +71,19 @@ Item {
   // Cancel, else an index into service.accounts.
   property int removeIndex: -1
 
-  // navContext names the key-router context for whichever step setup or
-  // removal is showing, so each one answers to its own keys instead of
-  // one catch-all "setup" context that could not tell them apart; "" when
-  // neither is open.
-  readonly property string navContext: root.removing ? "removeAccount" : (root.open ? root.stage : "")
+  // renameIndex is the highlighted row in the rename chooser: -1 for
+  // Cancel, else an index into service.accounts.
+  property int renameIndex: -1
+
+  // navContext names the key-router context for whichever step setup,
+  // removal or renaming is showing, so each one answers to its own keys
+  // instead of one catch-all "setup" context that could not tell them
+  // apart; "" when none is open, including the rename dialog's own
+  // alias field, which needs no key-router context of its own since its
+  // text field already captures every key but Escape, caught globally.
+  readonly property string navContext: root.removing ? "removeAccount"
+    : (root.renaming && root.renameAccountId === "") ? "renameAccount"
+    : (root.open ? root.stage : "")
 
   // _added is true when this setup created the account, so cancelling may
   // remove it. A saved account asking to sign in again is never removed.
@@ -104,7 +123,21 @@ Item {
       "remove.pick6": () => root._pickRemove(5),
       "remove.pick7": () => root._pickRemove(6),
       "remove.pick8": () => root._pickRemove(7),
-      "remove.pick9": () => root._pickRemove(8)
+      "remove.pick9": () => root._pickRemove(8),
+      "account.rename": () => root.beginRename(),
+      "rename.down": () => root._moveRename(1),
+      "rename.up": () => root._moveRename(-1),
+      "rename.accept": () => root._acceptRenameChoice(),
+      "rename.cancel": () => root.cancel(),
+      "rename.pick1": () => root._pickRename(0),
+      "rename.pick2": () => root._pickRename(1),
+      "rename.pick3": () => root._pickRename(2),
+      "rename.pick4": () => root._pickRename(3),
+      "rename.pick5": () => root._pickRename(4),
+      "rename.pick6": () => root._pickRename(5),
+      "rename.pick7": () => root._pickRename(6),
+      "rename.pick8": () => root._pickRename(7),
+      "rename.pick9": () => root._pickRename(8)
     };
 
     const handler = handlers[action];
@@ -162,6 +195,79 @@ Item {
   // question closes when the helper reports it removed.
   function remove(accountId: string): void {
     root._call("accounts.remove", { accountId: accountId }, () => {});
+  }
+
+  // _moveRename shifts the rename chooser's highlight by delta, wrapping
+  // through Cancel, the same as _moveRemove.
+  function _moveRename(delta: int): void {
+    const accounts = root.service && root.service.accounts ? root.service.accounts : [];
+    root.renameIndex = Setup.wrapIndex(root.renameIndex, delta, accounts.length);
+  }
+
+  // _pickRename highlights the account at index directly, for the
+  // chooser's number mnemonics; out of range does nothing.
+  function _pickRename(index: int): void {
+    const accounts = root.service && root.service.accounts ? root.service.accounts : [];
+    if (index >= 0 && index < accounts.length) root.renameIndex = index;
+  }
+
+  // _acceptRenameChoice moves to the alias field for the highlighted
+  // account, or cancels when nothing is highlighted (Cancel).
+  function _acceptRenameChoice(): void {
+    const accounts = root.service && root.service.accounts ? root.service.accounts : [];
+    const account = accounts[root.renameIndex];
+    if (account) root._startRenaming(account);
+    else root.cancel();
+  }
+
+  // beginRename opens the rename dialog: straight to the alias field
+  // for the one account there is, or a chooser first when there is more
+  // than one. It does nothing without an account to rename.
+  function beginRename(): void {
+    const accounts = root.service && root.service.accounts ? root.service.accounts : [];
+    if (accounts.length === 0) return;
+
+    root.lastError = "";
+    if (accounts.length === 1) {
+      root._startRenaming(accounts[0]);
+      return;
+    }
+
+    root.renaming = true;
+    root.renameIndex = -1;
+    root.renameAccountId = "";
+  }
+
+  // _startRenaming shows the alias field for account, prefilled with
+  // whatever alias it already has.
+  function _startRenaming(account: var): void {
+    root.renaming = true;
+    root.renameAccountId = account.id;
+    root.renameAlias = account.alias || "";
+  }
+
+  // chooseRename moves to the alias field for the account picked in the
+  // rename chooser; it does nothing if the account has disappeared
+  // since the chooser was shown.
+  function chooseRename(accountId: string): void {
+    const accounts = root.service && root.service.accounts ? root.service.accounts : [];
+    const account = accounts.find((a) => a.id === accountId);
+    if (account) root._startRenaming(account);
+  }
+
+  // submitAlias saves alias for the account being renamed, trimmed; the
+  // dialog closes once the helper confirms it.
+  function submitAlias(alias: string): void {
+    root._call("accounts.setAlias", { accountId: root.renameAccountId, alias: alias.trim() }, () => { root._closeRename(); });
+  }
+
+  // _closeRename hides the rename dialog and clears its own state.
+  function _closeRename(): void {
+    root.renaming = false;
+    root.renameAccountId = "";
+    root.renameAlias = "";
+    root.renameIndex = -1;
+    root.lastError = "";
   }
 
   // begin starts adding an account: straight to its own setup when the
@@ -265,6 +371,11 @@ Item {
       return;
     }
 
+    if (root.renaming) {
+      root._closeRename();
+      return;
+    }
+
     const account = (root.service ? root.service.accounts : []).find((a) => a.id === root.accountId);
     if (root._added && (!account || account.status !== "connected")) {
       root.service.request("accounts.remove", { accountId: root.accountId }, function() {});
@@ -321,11 +432,13 @@ Item {
     });
   }
 
-  // _accountRemoved closes the removal question, and setup for that account.
+  // _accountRemoved closes the removal question, setup for that
+  // account, and the rename dialog if it was renaming that same account.
   function _accountRemoved(accountId: string): void {
     root.removing = false;
     root.removeIndex = -1;
     if (accountId === root.accountId) root._close();
+    if (accountId === root.renameAccountId) root._closeRename();
   }
 
   // _close hides setup and clears it.

@@ -47,6 +47,7 @@ var BINDINGS = [
   { action: 'chat.prev', keys: ['Alt+Up'], contexts: ['global'], label: 'Previous conversation', command: true },
   { action: 'account.add', keys: [], contexts: ['global'], label: 'Add an account', command: true },
   { action: 'account.remove', keys: [], contexts: ['global'], label: 'Remove an account', command: true },
+  { action: 'account.rename', keys: [], contexts: ['global'], label: 'Rename account', command: true },
   { action: 'account.addOwnKeys', keys: [], contexts: ['global'], label: 'Add a Telegram account with your own API keys', command: true },
   // Incognito read receipts: off means MarkRead never reaches the
   // service, so a chat read here stays unread on the phone and any
@@ -233,6 +234,20 @@ var BINDINGS = [
   { action: 'remove.pick9', keys: ['9'], contexts: ['removeAccount'], label: 'Highlight the ninth account' },
   { action: 'remove.accept', keys: ['Enter', 'y'], contexts: ['removeAccount'], label: 'Remove the highlighted account', hint: true },
   { action: 'remove.cancel', keys: ['n'], contexts: ['removeAccount'], label: 'Cancel', hint: true },
+
+  { action: 'rename.down', keys: ['j', 'Down'], contexts: ['renameAccount'], label: 'Next account' },
+  { action: 'rename.up', keys: ['k', 'Up'], contexts: ['renameAccount'], label: 'Previous account' },
+  { action: 'rename.pick1', keys: ['1'], contexts: ['renameAccount'], label: 'Highlight the first account' },
+  { action: 'rename.pick2', keys: ['2'], contexts: ['renameAccount'], label: 'Highlight the second account' },
+  { action: 'rename.pick3', keys: ['3'], contexts: ['renameAccount'], label: 'Highlight the third account' },
+  { action: 'rename.pick4', keys: ['4'], contexts: ['renameAccount'], label: 'Highlight the fourth account' },
+  { action: 'rename.pick5', keys: ['5'], contexts: ['renameAccount'], label: 'Highlight the fifth account' },
+  { action: 'rename.pick6', keys: ['6'], contexts: ['renameAccount'], label: 'Highlight the sixth account' },
+  { action: 'rename.pick7', keys: ['7'], contexts: ['renameAccount'], label: 'Highlight the seventh account' },
+  { action: 'rename.pick8', keys: ['8'], contexts: ['renameAccount'], label: 'Highlight the eighth account' },
+  { action: 'rename.pick9', keys: ['9'], contexts: ['renameAccount'], label: 'Highlight the ninth account' },
+  { action: 'rename.accept', keys: ['Enter'], contexts: ['renameAccount'], label: 'Rename the highlighted account', hint: true },
+  { action: 'rename.cancel', keys: ['n'], contexts: ['renameAccount'], label: 'Cancel', hint: true },
 
   // The close question: h/l move the highlight across Cancel, Quit and
   // Keep, Enter chooses it, and a mnemonic letter jumps straight to one.

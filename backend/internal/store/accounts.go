@@ -9,7 +9,7 @@ import (
 )
 
 // accountColumns lists the columns scanAccount reads, in order.
-const accountColumns = `id,service,name,status,detail`
+const accountColumns = `id,service,name,status,detail,alias`
 
 // ErrInvalidAccount reports an account without an id, a name or a
 // supported service.
@@ -26,9 +26,9 @@ func (s *Store) UpsertAccount(ctx context.Context, a domain.Account) error {
 		a.Status = domain.AccountOffline
 	}
 
-	_, err := s.db.ExecContext(ctx, `INSERT INTO accounts(`+accountColumns+`) VALUES(?,?,?,?,?)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO accounts(`+accountColumns+`) VALUES(?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET service=excluded.service,name=excluded.name`,
-		a.ID, a.Service, a.Name, a.Status, a.Detail)
+		a.ID, a.Service, a.Name, a.Status, a.Detail, a.Alias)
 
 	return wrap("upsert account", err)
 }
@@ -71,9 +71,25 @@ func (s *Store) Accounts(ctx context.Context) ([]domain.Account, error) {
 // scanAccount reads one row selected with accountColumns.
 func scanAccount(row scanner) (domain.Account, error) {
 	var a domain.Account
-	err := row.Scan(&a.ID, &a.Service, &a.Name, &a.Status, &a.Detail)
+	err := row.Scan(&a.ID, &a.Service, &a.Name, &a.Status, &a.Detail, &a.Alias)
 
 	return a, err
+}
+
+// SetAccountAlias records the display name the user chose for an
+// account, or clears it when alias is "", and returns the updated
+// account.
+func (s *Store) SetAccountAlias(ctx context.Context, id, alias string) (domain.Account, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE accounts SET alias=? WHERE id=?`, alias, id)
+	if err != nil {
+		return domain.Account{}, wrap("set account alias", err)
+	}
+
+	if err := requireRow("set account alias", res); err != nil {
+		return domain.Account{}, err
+	}
+
+	return s.Account(ctx, id)
 }
 
 // DeleteAccount removes an account with its contacts, conversations and

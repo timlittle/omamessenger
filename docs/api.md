@@ -16,6 +16,7 @@ The protocol version is `3`.
 | `accounts.list` | | `[Account]` |
 | `accounts.add` | `{service, apiId, apiHash, options}` | `Account`. `apiId` and `apiHash` are Telegram's own API keys, kept for compatibility; `options` is the general form, a map of a provider's own setup values (Telegram reads the same two keys from it as `apiId`/`apiHash` strings). Without either, the account uses OmaMessenger's own keys |
 | `accounts.remove` | `{accountId}` | `{}`; signs out and deletes the account's session, credentials and messages |
+| `accounts.setAlias` | `{accountId, alias}` | `Account`; saves the display name the user chose for the account, such as "Personal WhatsApp", shown instead of its plain name wherever it is identified. An empty `alias` clears it, falling back to the plain name again |
 | `auth.submit` | `{accountId, step, value}` | `{}`; answers an `auth.step`: `phone`, `code` or `password` |
 | `contacts.list` | `{accountId, query}` | `[Contact]` |
 | `conversations.list` | `{query}` | `[Conversation]`, newest first; `match` holds the newest matching message, and `matchMessageId`/`matchSender` identify it and who sent it, for a caller that wants to open and highlight that exact message rather than just the conversation (the unified command palette's "Messages" section) |

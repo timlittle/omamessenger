@@ -71,6 +71,25 @@ func (c *Commands) RemoveAccount(ctx context.Context, accountID string) error {
 	return nil
 }
 
+// SetAccountAlias records the display name the user chose for an
+// account, such as "Personal WhatsApp", shown instead of its plain name
+// wherever it is identified; an empty alias clears it. accountId must
+// name an account the helper already knows.
+func (c *Commands) SetAccountAlias(ctx context.Context, accountID, alias string) (domain.Account, error) {
+	if accountID == "" {
+		return domain.Account{}, fmt.Errorf("%w: accountId is required", ErrInvalidInput)
+	}
+
+	account, err := c.store.SetAccountAlias(ctx, accountID, strings.TrimSpace(alias))
+	if err != nil {
+		return domain.Account{}, err
+	}
+
+	c.events.publish(ctx, EventAccountUpdated, account)
+
+	return account, nil
+}
+
 // SubmitAuth answers the sign-in step an account's connector asked for.
 func (c *Commands) SubmitAuth(ctx context.Context, accountID, step, value string) error {
 	if !slices.Contains(authSteps, step) {

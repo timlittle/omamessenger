@@ -91,7 +91,7 @@ function buildState(ctx) {
   return {
     errorOpen: ctx.windowController ? ctx.windowController.errorBannerText !== '' : false,
     confirmOpen: ctx.windowController ? ctx.windowController.confirmingClose : false,
-    setupOpen: ctx.accountController ? (ctx.accountController.open || ctx.accountController.removing) : false,
+    setupOpen: ctx.accountController ? (ctx.accountController.open || ctx.accountController.removing || ctx.accountController.renaming) : false,
     setupContext: ctx.accountController ? ctx.accountController.navContext : '',
     viewerOpen: ctx.photoViewerController ? ctx.photoViewerController.viewerOpen : false,
     doctorOpen: ctx.windowController ? ctx.windowController.doctorOpen : false,

@@ -29,6 +29,16 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("accounts.list = %v, %v", accounts, err)
 	}
 
+	renamed, err := call[domain.Account](t, s, "accounts.setAlias", map[string]string{"accountId": "wa", "alias": "Personal WhatsApp"})
+	if err != nil || renamed.Alias != "Personal WhatsApp" {
+		t.Errorf("accounts.setAlias = %+v, %v", renamed, err)
+	}
+
+	accounts, err = call[[]domain.Account](t, s, "accounts.list", nil)
+	if err != nil || len(accounts) != 1 || accounts[0].Alias != "Personal WhatsApp" {
+		t.Errorf("accounts.list after setAlias = %+v, %v", accounts, err)
+	}
+
 	contacts, err := call[[]domain.Contact](t, s, "contacts.list", map[string]string{"accountId": "wa"})
 	if err != nil || len(contacts) != 1 {
 		t.Errorf("contacts.list = %v, %v", contacts, err)

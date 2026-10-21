@@ -1,6 +1,7 @@
 import QtQuick
 import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
+import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
 
 // Owns the open conversation itself: which one is open, paging through
@@ -525,14 +526,36 @@ Item {
   }
 
   // _subtitleText computes the header's subtitle: typing wins, then group
-  // size, then the owning account's connection status.
+  // size or the owning account's connection status, with that account's
+  // own display name appended once more than one account shares its
+  // service (see Rail.accountSuffix), so it is never ambiguous which
+  // one a conversation belongs to.
   function _subtitleText(): string {
     if (root.typing) return root.typingName ? (root.typingName + " is typing…") : "typing…";
     if (!root.conversation) return "";
-    if (root.conversation.kind === "group") return root.conversation.members + " members";
 
+    const base = root.conversation.kind === "group" ? root.conversation.members + " members" : root._accountStatusText();
+
+    return root._withAccountSuffix(base);
+  }
+
+  // _accountStatusText names the open conversation's own account's
+  // connection state, for a direct chat's subtitle.
+  function _accountStatusText(): string {
     const account = (root.service ? root.service.accounts : []).find((a) => a.id === root.conversation.accountId);
     return account ? (account.status.charAt(0).toUpperCase() + account.status.slice(1)) : "";
+  }
+
+  // _withAccountSuffix appends the open conversation's account's own
+  // display name to base, only when its service has more than one
+  // account; base alone otherwise.
+  function _withAccountSuffix(base: string): string {
+    const accounts = root.service ? root.service.accounts : [];
+    const account = accounts.find((a) => a.id === root.conversation.accountId);
+    const suffix = Rail.accountSuffix(account, accounts);
+    if (!suffix) return base;
+
+    return base ? base + " · " + suffix : suffix;
   }
 
   // saveUiState merges patch into service.uiState as a new object, so a
