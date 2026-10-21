@@ -103,6 +103,11 @@ var BINDINGS = [
   { action: 'message.open', keys: ['Enter'], contexts: ['conversation'], label: 'Open the highlighted message' },
   { action: 'message.reply', keys: ['r'], contexts: ['conversation'], label: 'Reply to the highlighted message', command: true },
   { action: 'message.react', keys: ['e'], contexts: ['conversation'], label: 'React to the highlighted message', command: true },
+  // Shift+E, alongside react's lowercase e: the same letter, the other
+  // case, for the other thing you can do to your own words (see g/G for
+  // oldest/newest above). Does nothing on a message that is not editable
+  // (see Edit.isEditable); the composer loads its text in "editing" mode.
+  { action: 'message.edit', keys: ['E'], contexts: ['conversation'], label: 'Edit the highlighted message', command: true },
   { action: 'message.delete', keys: ['d'], contexts: ['conversation'], label: 'Delete the highlighted message', command: true },
   { action: 'message.retry', keys: ['t'], contexts: ['conversation'], label: 'Retry the highlighted message', command: true },
   { action: 'message.openLink', keys: ['o'], contexts: ['conversation'], label: "Open the highlighted message's link", command: true },
@@ -124,6 +129,14 @@ var BINDINGS = [
   { action: 'compose.newline', keys: ['Shift+Enter', 'Ctrl+J'], contexts: ['compose'], label: 'New line', hint: true },
   { action: 'compose.attach', keys: ['Ctrl+V'], contexts: ['compose'], label: 'Paste a clipboard image as an attachment' },
   { action: 'compose.attachFile', keys: [], contexts: ['conversation', 'compose'], label: 'Attach a file', command: true },
+  // Up moves the caret while there is text, so this only ever fires once
+  // the composer is empty and something is actually editable (see
+  // Edit.upMeansEdit); otherwise ComposerController.run leaves the key
+  // unhandled and the TextArea's own Up keeps doing nothing useful on an
+  // empty field. Not hinted here, like message.retry and message.vote,
+  // since it only applies some of the time; it has no row of its own
+  // because there is no highlighted message to hint it beside.
+  { action: 'compose.editLast', keys: ['Up'], contexts: ['compose'], label: 'Edit your last message' },
   // Opens the spelling picker for the misspelled word the caret is
   // currently inside; see Composer.qml and SpellCheck.js. Does nothing
   // if the caret is not inside a flagged word.

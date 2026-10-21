@@ -53,6 +53,7 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | Enter | Open the highlighted message's photo, video or file, or play/pause its voice note |
 | r | Reply to the highlighted message |
 | e | React to the highlighted message |
+| E | Edit the highlighted message, if it is your own, text-only and already sent |
 | d | Delete the highlighted message |
 | o | Open the highlighted message's link, if it has one |
 | p | Go to the message it replies to, if it is one |
@@ -64,12 +65,16 @@ The highlight starts on the newest message when the conversation opens or when y
 
 | Keys | Does |
 | --- | --- |
-| Enter | Send |
+| Enter | Send, or save an edit in progress |
+| ↑, in an empty composer | Load your most recent editable sent message for editing |
 | Shift+Enter or Ctrl+J | Start a new line instead of sending |
 | Ctrl+V | Paste a clipboard image as an attachment |
 | Ctrl+. | Open spelling suggestions for the misspelled word the caret is in |
+| Esc | While editing, cancel and restore the composer to what it held before |
 
 Alt+Shift+↓ / ↑ still jump to the next / previous unread conversation while writing, landing there in writing mode too (see Global); Ctrl+J means a new line here instead.
+
+**Editing a sent message**: press ↑ in an empty composer, or E on a highlighted message, to load your own most recently sent text-only message into the composer, with a banner reading "Editing message · Esc to cancel". Enter saves the change through the service; Esc cancels and restores whatever the composer held before. Only a message you sent, with no attachment, that the service has already confirmed can be edited.
 
 ### Voting in a poll
 

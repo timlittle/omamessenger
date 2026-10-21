@@ -243,6 +243,7 @@ Item {
       bindings: root.bindings
       draft: root.composerController.draft
       replyTarget: root.composerController.replyTarget
+      editTarget: root.composerController.editTarget
       attachmentPath: root.composerController.attachmentPath
       composeEnabled: root.conversationController.activeId !== ""
       historyUnavailable: root.conversationController.historyUnavailable
@@ -265,13 +266,17 @@ Item {
       onReactPickerRequested: id => root.reactionsController.openPicker(id)
       onDeleteRequested: id => { if (root.deleteController) root.deleteController.openConfirm(id) }
       onVoted: (id, optionIds) => { if (root.pollsController) root.pollsController.castVote(id, optionIds) }
-      onSend: (text, replyToId, mentions) => root.conversationController.send(text, replyToId, mentions)
+      onSend: (text, replyToId, mentions) => {
+        if (root.composerController.editing) root.composerController.saveEdit(text);
+        else root.conversationController.send(text, replyToId, mentions);
+      }
       onDraftEdited: text => {
         root.composerController.setDraft(text);
         root.composerController.requestSpellCheck(text);
       }
       onReplyRequested: id => root.composerController.startReply(id)
       onReplyCanceled: root.composerController.cancelReply()
+      onEditCanceled: root.composerController.cancelEdit()
       onQuoteOpened: remoteId => root.conversationController.scrollToReply(remoteId)
       onFileAttached: path => root.composerController.attachFile(path)
       onAttachmentRemoveRequested: root.composerController.removeAttachment()

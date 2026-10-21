@@ -16,6 +16,7 @@
 .import "Selection.js" as Selection
 .import "Timeline.js" as Timeline
 .import "Keymap.js" as Keymap
+.import "Edit.js" as Edit
 
 // LINK_PATTERN matches http(s) links in a message's raw text, the shape
 // messageHtml's own linkify in Format.js uses on the escaped version. It
@@ -44,8 +45,9 @@ function newer(ids, currentId) {
 // key does to it right now. Reply, react and delete are always on
 // offer, since every message can take any of them; the rest only ever
 // apply to this particular message, so they only show when it actually
-// carries a photo, video, file or voice note, a link, a quote, or is
-// itself a failed outgoing send:
+// carries a photo, video, file or voice note, a link, a quote, is
+// itself a failed outgoing send, or is this account's own already-sent
+// text message, which Edit.isEditable accepts:
 //   "r reply · e react · d delete"
 //   "r reply · e react · d delete · Enter open"     (carries media)
 //   "r reply · e react · d delete · Enter play"     (carries a voice note)
@@ -53,6 +55,7 @@ function newer(ids, currentId) {
 //   "r reply · e react · d delete · p go to quote"  (is a reply)
 //   "r reply · e react · d delete · t retry"        (failed to send)
 //   "r reply · e react · d delete · v vote"         (carries an open poll)
+//   "r reply · e react · d delete · E edit"         (your own sent text)
 // Each key names the action's own effective key (see KeyBindings.js),
 // so a keys.conf override shows up here too, not just its own default.
 function hints(message, bindings) {
@@ -67,6 +70,7 @@ function hints(message, bindings) {
   if (Timeline.replyTo(message)) parts.push(`${key('message.goToQuote')} go to quote`);
   if (message.outgoing && message.status === 'failed') parts.push(`${key('message.retry')} retry`);
   if (media && media.kind === 'poll' && media.poll && !media.poll.closed) parts.push(`${key('message.vote')} vote`);
+  if (Edit.isEditable(message)) parts.push(`${key('message.edit')} edit`);
   return parts.join(' · ');
 }
 

@@ -61,9 +61,12 @@ var OWNERS = {
   'unread.next': 'conversation',
   'unread.prev': 'conversation',
 
-  // ComposerController: the draft, replying, attaching and sending.
+  // ComposerController: the draft, replying, editing, attaching and
+  // sending.
   'compose.focus': 'composer',
   'message.reply': 'composer',
+  'message.edit': 'composer',
+  'compose.editLast': 'composer',
   'message.send': 'composer',
   'compose.newline': 'composer',
   'compose.attach': 'composer',

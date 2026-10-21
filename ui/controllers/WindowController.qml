@@ -432,6 +432,7 @@ Item {
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
       "leave-unread-view": () => { if (root.listController) root.listController.setUnreadView(false); },
       "clear-attachment": () => { if (root.composerController) root.composerController.removeAttachment(); },
+      "cancel-edit": () => { if (root.composerController) root.composerController.cancelEdit(); },
       "cancel-reply": () => { if (root.composerController) root.composerController.cancelReply(); },
       "leave-compose": () => root._leaveCompose(),
       "close-conversation": () => { if (root.conversationController) root.conversationController.close(); },

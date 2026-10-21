@@ -1,5 +1,6 @@
 import QtQuick
 import "../lib/Actions.js" as Actions
+import "../lib/Edit.js" as Edit
 import "../lib/Format.js" as Format
 import "../lib/Rpc.js" as Rpc
 import "../lib/SpellCheck.js" as SpellCheck
@@ -30,6 +31,20 @@ Item {
   // replying is true while replyTarget names a message, for the Escape
   // chain: Escape cancels the reply before it leaves the composer.
   readonly property bool replying: root.replyTarget !== null
+
+  // editTarget is the message the composer is about to save new text
+  // for: {id}, or null while not editing. Its text is loaded straight
+  // into draft (see startEdit), the same way a reply never duplicates
+  // its own text storage.
+  property var editTarget: null
+
+  // editing is true while editTarget names a message, for the Escape
+  // chain and for message.send's save-instead-of-send branch.
+  readonly property bool editing: root.editTarget !== null
+
+  // _draftBeforeEdit is the draft startEdit overwrote, restored by
+  // cancelEdit so cancelling an edit never loses what was being typed.
+  property string _draftBeforeEdit: ""
 
   // attachmentPath is the file to send with the next message, or "" for
   // none: set by attachFile (the composer's own file picker) or
@@ -71,19 +86,25 @@ Item {
     return Actions.owner(action) === "composer";
   }
 
-  // run performs action, the only entry point a key router needs.
-  function run(action: string): void {
+  // run performs action, the only entry point a key router needs. It
+  // returns false only for compose.editLast finding nothing to do (the
+  // composer holds text, or there is nothing editable), so the key
+  // router leaves Up unaccepted and the TextArea's own caret movement
+  // runs instead; every other action here always has something to do.
+  function run(action: string): bool {
     const handlers = {
-      "compose.focus": () => root.composeFocusRequested(),
-      "message.reply": () => root.startReply(root.conversation.highlightedId),
-      "message.send": () => root.submitRequested(),
-      "compose.newline": () => root.newlineRequested(),
-      "compose.attach": () => root.pasteImage(),
-      "compose.attachFile": () => root.attachFileRequested()
+      "compose.focus": () => { root.composeFocusRequested(); return true; },
+      "message.reply": () => { root.startReply(root.conversation.highlightedId); return true; },
+      "message.edit": () => { root.startEdit(root.conversation.highlightedId); return true; },
+      "compose.editLast": () => root.startEditFromUp(),
+      "message.send": () => { root.submitRequested(); return true; },
+      "compose.newline": () => { root.newlineRequested(); return true; },
+      "compose.attach": () => { root.pasteImage(); return true; },
+      "compose.attachFile": () => { root.attachFileRequested(); return true; }
     };
 
     const handler = handlers[action];
-    if (handler) handler();
+    return handler ? handler() !== false : true;
   }
 
   // setDraft stores the composer's text for the open conversation, so it
@@ -96,17 +117,85 @@ Item {
   }
 
   // startReply makes id, a loaded message, the one the composer answers
-  // next. Nothing changes if it is not loaded.
+  // next, cancelling any edit in progress first: the two banners never
+  // show together. Nothing changes if it is not loaded.
   function startReply(id: string): void {
     const m = root.conversation.timeline.messageById(id);
     if (!m) return;
 
+    root.cancelEdit();
     root.replyTarget = { id: m.id, senderName: m.outgoing ? "You" : m.senderName, text: Format.singleLine(m.text) };
   }
 
   // cancelReply clears the composer's reply target without sending.
   function cancelReply(): void {
     root.replyTarget = null;
+  }
+
+  // startEdit loads id, a loaded message, into the composer for
+  // editing: its text replaces the draft, a banner takes the reply
+  // banner's place, and Enter now saves it instead of sending something
+  // new (see Composer.qml's onSubmitted wiring in MessengerLayout).
+  // Nothing changes if it is not loaded or not something EditMessage
+  // would accept (see Edit.isEditable): this account's own text
+  // message, with no attachment, that has already reached the service.
+  function startEdit(id: string): void {
+    const m = root.conversation.timeline.messageById(id);
+    if (!Edit.isEditable(m)) return;
+
+    root.cancelReply();
+    root._draftBeforeEdit = root.draft;
+    root.editTarget = { id: m.id };
+    root.setDraft(m.text);
+  }
+
+  // startEditFromUp runs compose.editLast: Up in an empty composer loads
+  // the conversation's most recently sent editable message, the same as
+  // pressing E on it while highlighted (see Edit.upMeansEdit). It
+  // returns false when the composer holds text or nothing qualifies, so
+  // the key router leaves Up unaccepted and the TextArea's own caret
+  // movement runs instead of this.
+  function startEditFromUp(): bool {
+    if (!root.conversation) return false;
+
+    const messages = root.conversation.timeline.model;
+    if (!Edit.upMeansEdit(root.draft, messages)) return false;
+
+    root.startEdit(Edit.lastEditableId(messages));
+    return true;
+  }
+
+  // cancelEdit clears the composer's edit target and restores whatever
+  // draft startEdit overwrote, without saving anything.
+  function cancelEdit(): void {
+    if (!root.editing) return;
+
+    root.editTarget = null;
+    root.setDraft(root._draftBeforeEdit);
+    root._draftBeforeEdit = "";
+  }
+
+  // saveEdit sends editTarget's new text through messages.edit, clearing
+  // the edit target first: Composer.submit() has already emptied the
+  // composer by the time this runs, so there is nothing left to restore
+  // either way. A refusal surfaces as lastError, the same as a failed
+  // send; the message itself is already back to its original text by
+  // then, through the helper's own message.updated event, since
+  // Commands.EditMessage reverts what it changed before answering.
+  function saveEdit(text: string): void {
+    if (!root.service || !root.editTarget || !root.conversation) return;
+
+    const id = root.editTarget.id;
+    root.editTarget = null;
+    root._draftBeforeEdit = "";
+    if (!text) return;
+
+    const conversationId = root.conversation.activeId;
+    root.service.request("messages.edit", { conversationId: conversationId, messageId: id, text: text }, function(error, result) {
+      if (error) { root.conversation.timeline.lastError = Rpc.errorText(error); return; }
+      root.conversation.timeline.lastError = "";
+      root.conversation.applyMessage(result);
+    });
   }
 
   // attachFile records a file the composer's own file picker chose, to
@@ -141,11 +230,13 @@ Item {
     });
   }
 
-  // reset clears the reply and any attachment, without touching the
-  // draft: ConversationController calls this when the open conversation
-  // closes or switches to another one.
+  // reset clears the reply, any edit in progress and any attachment,
+  // without touching the draft: ConversationController calls this when
+  // the open conversation closes or switches to another one.
   function reset(): void {
     root.replyTarget = null;
+    root.editTarget = null;
+    root._draftBeforeEdit = "";
     root.attachmentPath = "";
     root.spellMisspellings = [];
     root.spellSuggestions = [];

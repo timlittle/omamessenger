@@ -21,6 +21,7 @@ ShellRoot {
   property var sentMentions: []
   property var routeKeyCalls: []
   property int cancelCount: 0
+  property int editCancelCount: 0
   property var attached: []
   property int removeRequests: 0
   property var testMisspellings: []
@@ -44,6 +45,7 @@ ShellRoot {
         root.sent.push(text); root.sentReplyIds.push(replyToId); root.sentMentions.push(mentions);
       }
       onReplyCanceled: root.cancelCount += 1
+      onEditCanceled: root.editCancelCount += 1
       onFileAttached: path => root.attached.push(path)
       onAttachmentRemoveRequested: root.removeRequests++
       onSpellSuggestionsRequested: word => root.spellSuggestionRequests.push(word)
@@ -79,6 +81,7 @@ ShellRoot {
   function run(): void {
     if (!root.checkSubmit()) return;
     if (!root.checkReplyBanner()) return;
+    if (!root.checkEditBanner()) return;
     if (!root.checkAttachment()) return;
     if (!root.checkBannerAndChipTogether()) return;
 
@@ -134,6 +137,42 @@ ShellRoot {
     if (root.cancelCount !== 1) return Check.fail("replyCanceled fired " + root.cancelCount + " times, want 1");
 
     composer.replyTo = null;
+    return true;
+  }
+
+  // checkEditBanner verifies the editing banner shows its fixed text
+  // while editTarget names a message, that submitting still reports the
+  // text through submitted() exactly like a normal send (the caller
+  // decides whether that means saving an edit or sending something new,
+  // see ComposerController and MessengerLayout.onSend), and that
+  // cancelling it reports editCanceled.
+  function checkEditBanner(): bool {
+    const banner = Check.find(composer, "editBanner");
+    if (banner.visible) return Check.fail("editing banner shown with no edit in progress");
+
+    composer.editTarget = { id: "m1" };
+    if (!banner.visible) return Check.fail("editing banner not shown while editing");
+
+    const bannerText = Check.find(composer, "editBannerText");
+    if (bannerText.text.indexOf("Esc to cancel") < 0)
+      return Check.fail("editing banner text \"" + bannerText.text + "\" does not mention Esc to cancel");
+
+    const sentBefore = root.sent;
+    root.sent = [];
+    composer.text = "edited";
+    composer.submit();
+    const sentWhileEditing = root.sent;
+    root.sent = sentBefore;
+    if (JSON.stringify(sentWhileEditing) !== '["edited"]')
+      return Check.fail("submit while editing did not report the text: " + JSON.stringify(sentWhileEditing));
+
+    composer.editTarget = { id: "m2" };
+    const cancelButton = Check.find(composer, "editCancel");
+    root.editCancelCount = 0;
+    cancelButton.clicked();
+    if (root.editCancelCount !== 1) return Check.fail("editCanceled fired " + root.editCancelCount + " times, want 1");
+
+    composer.editTarget = null;
     return true;
   }
 

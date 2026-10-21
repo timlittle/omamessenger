@@ -47,6 +47,12 @@ Item {
   // replyTo is the message being answered: {id, senderName, text}, or
   // null when the user is not replying to anything.
   property var replyTo: null
+  // editTarget is the message text is non-null while the composer holds
+  // an edit in progress rather than a new message: {id}, or null while
+  // not editing. The caller has already loaded the message's own text
+  // into text itself (see ComposerController.startEdit); this only
+  // drives the banner and submit()'s send-or-save choice.
+  property var editTarget: null
   // attachmentPath is the file to send with the next message, or "" for
   // none. The chip above the text field shows it.
   property string attachmentPath: ""
@@ -126,6 +132,8 @@ Item {
   signal submitted(string text, string replyToId, var mentions)
   // replyCanceled reports that the user dismissed the reply banner.
   signal replyCanceled()
+  // editCanceled reports that the user dismissed the editing banner.
+  signal editCanceled()
   // fileAttached reports a file the attach button's own picker chose.
   signal fileAttached(string path)
   // attachmentRemoveRequested asks the caller to clear attachmentPath,
@@ -403,6 +411,40 @@ Item {
         tooltipText: "Cancel reply"
         focusable: true
         onClicked: root.replyCanceled()
+      }
+    }
+
+    RowLayout {
+      id: editBanner
+      objectName: "editBanner"
+      Layout.fillWidth: true
+      visible: root.editTarget !== null
+      spacing: Theme.spacing.xs
+
+      Rectangle {
+        Layout.preferredWidth: Theme.spacing.xxs
+        Layout.fillHeight: true
+        radius: width / 2
+        color: Theme.accent
+      }
+
+      Text {
+        objectName: "editBannerText"
+        Layout.fillWidth: true
+        elide: Text.ElideRight
+        text: "Editing message · Esc to cancel"
+        textFormat: Text.PlainText
+        color: Util.alpha(Theme.foreground, 0.7)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
+      }
+
+      Ui.Button {
+        objectName: "editCancel"
+        text: "✕"
+        tooltipText: "Cancel editing"
+        focusable: true
+        onClicked: root.editCanceled()
       }
     }
 

@@ -98,7 +98,22 @@ const hintsCases = [
       text: 'see https://example.com',
       replyTo: { remoteId: 'r1', senderName: 'Alex', text: 'hi' }
     }),
-    'r reply · e react · d delete · o open link · p go to quote · t retry']
+    'r reply · e react · d delete · o open link · p go to quote · t retry'],
+  ['adds E edit for your own already-sent text message',
+    message({ outgoing: true, remoteId: 'r1' }),
+    'r reply · e react · d delete · E edit'],
+  ['does not add E edit for an incoming message, even with a remote id',
+    message({ outgoing: false, remoteId: 'r1' }),
+    'r reply · e react · d delete'],
+  ['does not add E edit for a message that has not reached the service yet',
+    message({ outgoing: true, remoteId: '' }),
+    'r reply · e react · d delete'],
+  ['does not add E edit for a message carrying media',
+    message({ outgoing: true, remoteId: 'r1', media: { kind: 'photo', width: 10, height: 10 } }),
+    'r reply · e react · d delete · Enter open'],
+  ['combines a link and editable, in order',
+    message({ outgoing: true, remoteId: 'r1', text: 'see https://example.com' }),
+    'r reply · e react · d delete · o open link · E edit']
 ];
 
 for (const [name, msg, want] of hintsCases) {

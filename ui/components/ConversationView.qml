@@ -38,6 +38,9 @@ Item {
   // replyTarget is the message the composer is about to answer: {id,
   // senderName, text}, or null.
   property var replyTarget: null
+  // editTarget is the message the composer is about to save new text
+  // for: {id}, or null while not editing.
+  property var editTarget: null
   // attachmentPath is the file to send with the next message, or "" for
   // none; see Composer.qml for why the caller owns it.
   property string attachmentPath: ""
@@ -96,6 +99,8 @@ Item {
   signal replyRequested(string id)
   // replyCanceled asks the caller to clear the reply in progress.
   signal replyCanceled()
+  // editCanceled asks the caller to clear the edit in progress.
+  signal editCanceled()
   // quoteOpened asks the caller to scroll to the message a reply quotes,
   // by the remote id the quote carries.
   signal quoteOpened(string remoteId)
@@ -164,9 +169,16 @@ Item {
       composer.replyTo = root.replyTarget;
   }
 
+  // editTarget is copied into the composer the same way replyTarget is.
+  onEditTargetChanged: {
+    if (composer.editTarget !== root.editTarget)
+      composer.editTarget = root.editTarget;
+  }
+
   Component.onCompleted: {
     composer.text = root.draft;
     composer.replyTo = root.replyTarget;
+    composer.editTarget = root.editTarget;
   }
 
   // _clampContentY keeps a scroll target within the list's scrollable range.
@@ -307,6 +319,7 @@ Item {
       onSubmitted: (text, replyToId, mentions) => root.send(text, replyToId, mentions)
       onTextChanged: root.draftEdited(composer.text)
       onReplyCanceled: root.replyCanceled()
+      onEditCanceled: root.editCanceled()
       onFileAttached: path => root.fileAttached(path)
       onAttachmentRemoveRequested: root.attachmentRemoveRequested()
       onSpellSuggestionsRequested: word => root.spellSuggestionsRequested(word)
