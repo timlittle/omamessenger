@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../lib/Links.js" as Links
 
 // A sticker in a message: a small, borderless static image, never
 // animated (an animated WebP or video sticker still only ever shows its
@@ -44,7 +45,7 @@ Item {
     visible: root._hasImage
     // Always the helper's own downloaded file or an embedded base64
     // thumb; never a remote URL.
-    source: root.path ? "file://" + root.path : (root.sticker.thumb ? "data:image/png;base64," + root.sticker.thumb : "")
+    source: root.path ? Links.fileURL(root.path) : (root.sticker.thumb ? "data:image/png;base64," + root.sticker.thumb : "")
     fillMode: Image.PreserveAspectFit
     // Bounded to this sticker's own fixed box (see PhotoView.qml's own
     // sourceSize for why).

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import qs.Commons
 import "../lib/Format.js" as Format
+import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
 import "../lib/MediaOpen.js" as MediaOpen
 import "../lib/Rpc.js" as Rpc
@@ -50,7 +51,7 @@ QtObject {
   // it with a recorder, so opening a video or file can be proven to
   // dispatch exactly once without ever calling the real, user-visible
   // function.
-  property var openExternally: (path) => Qt.openUrlExternally("file://" + path)
+  property var openExternally: (path) => Qt.openUrlExternally(Links.fileURL(path))
 
   // cooldownMs is how long a message's video or file stays ignored after
   // it was last opened. Nothing tells this controller when, or whether,

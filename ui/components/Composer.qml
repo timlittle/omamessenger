@@ -7,6 +7,7 @@ import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
 import "../lib/Keymap.js" as Keymap
+import "../lib/Links.js" as Links
 import "../lib/Mentions.js" as Mentions
 import "../lib/SpellCheck.js" as SpellCheck
 
@@ -500,7 +501,7 @@ Item {
         Image {
           anchors.fill: parent
           visible: root._attachmentKind === "photo"
-          source: root._attachmentKind === "photo" ? ("file://" + root.attachmentPath) : ""
+          source: root._attachmentKind === "photo" ? Links.fileURL(root.attachmentPath) : ""
           fillMode: Image.PreserveAspectCrop
           asynchronous: true
           // Bounded to this chip's own box, never the file's own

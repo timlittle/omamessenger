@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "../theme"
+import "../lib/Links.js" as Links
 
 // A photo in a message, at its shape. It shows its blurred preview until
 // the full image is downloaded, which it asks for as soon as it is
@@ -77,7 +78,7 @@ Item {
     anchors.fill: parent
     // Always the helper's own downloaded file or an embedded base64
     // thumb; never a remote URL.
-    source: root.path && !root._loadFailed ? "file://" + root.path : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
+    source: root.path && !root._loadFailed ? Links.fileURL(root.path) : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
     fillMode: Image.PreserveAspectFit
     // Bounded to this bubble's own box, never the file's own declared
     // size: the helper's imagesafe package already caps what a photo

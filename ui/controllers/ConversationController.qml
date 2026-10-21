@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
+import "../lib/Links.js" as Links
 import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
 
@@ -54,7 +55,7 @@ Item {
   // openExternally hands a local file to the user's own application,
   // through media (see MediaController); a test overrides it with a
   // recorder rather than letting a video or file open for real.
-  property var openExternally: (path) => Qt.openUrlExternally("file://" + path)
+  property var openExternally: (path) => Qt.openUrlExternally(Links.fileURL(path))
 
   // copyToClipboard puts a photo's or video's file on the system
   // clipboard, through media (see MediaController); a test overrides it

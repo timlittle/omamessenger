@@ -1,5 +1,6 @@
 import QtQuick
 import "../lib/Actions.js" as Actions
+import "../lib/Links.js" as Links
 
 // Owns the in-app media viewer: which message's photo, video or GIF is
 // shown, stepping to a neighbouring photo and closing, in or out to the
@@ -75,7 +76,7 @@ QtObject {
   function openExternally(): void {
     const path = root.viewerPath;
     root.close();
-    if (path) Qt.openUrlExternally("file://" + path);
+    if (path) Qt.openUrlExternally(Links.fileURL(path));
   }
 
   // step moves the in-app viewer to the next photo in the open

@@ -5,6 +5,7 @@ import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
 import "../lib/Keymap.js" as Keymap
+import "../lib/Links.js" as Links
 
 // Shows a conversation's photo, video or GIF over the whole window.
 // Omarchy's Hyprland window rule floats an external viewer too small to
@@ -98,7 +99,7 @@ Item {
       visible: !root._isVideo
       // Always the helper's own downloaded file or an embedded base64
       // thumb; never a remote URL.
-      source: root.path ? "file://" + root.path : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
+      source: root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
       fillMode: Image.PreserveAspectFit
       // Bounded to the viewer's own stage, never the file's own
       // declared size (see PhotoView.qml's own sourceSize for why).

@@ -1,5 +1,6 @@
 import QtQuick
 import QtMultimedia
+import "../lib/Links.js" as Links
 
 // The actual decode-and-play engine for voice notes, kept in its own file
 // because QtMultimedia is an optional system dependency (not every Omarchy
@@ -30,7 +31,7 @@ Item {
   // stay out of logs (see privacy.md).
   signal failed(int code)
 
-  onSourceChanged: player.source = root.source ? "file://" + root.source : ""
+  onSourceChanged: player.source = root.source ? Links.fileURL(root.source) : ""
   onPlayingChanged: root.playing ? player.play() : player.pause()
   onRateChanged: player.playbackRate = root.rate
 

@@ -5,6 +5,7 @@ import "lib/Settings.js" as Settings
 import "lib/Keymap.js" as Keymap
 import "lib/KeyBindings.js" as KeyBindings
 import "lib/WhatsNew.js" as WhatsNew
+import "lib/Links.js" as Links
 import "service"
 
 // Owns the helper process and everything that must survive the panel
@@ -166,7 +167,7 @@ Item {
   function openKeyConfigFile(): void {
     if (root._keyConfigMissing) keysFile.setText(KeyBindings.template(Keymap.BINDINGS));
 
-    Qt.openUrlExternally("file://" + root._keyConfigPath);
+    Qt.openUrlExternally(Links.fileURL(root._keyConfigPath));
   }
 
   // _applyKeyConfig re-merges keys.conf's text into effectiveBindings,
