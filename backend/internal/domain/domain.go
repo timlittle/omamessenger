@@ -3,7 +3,10 @@
 // Telegram wire formats.
 package domain
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // Services the UI knows how to present.
 const (
@@ -278,6 +281,19 @@ type Media struct {
 	// retry whether the file still at that path is still the one that
 	// was attached, before it is trusted enough to re-copy.
 	OriginalModTime int64 `json:"-"`
+}
+
+// IsGIFFile reports whether m is a genuine GIF image rather than an
+// ordinary video or a video the sending service merely marked to play
+// back like one (WhatsApp's gifPlayback flag, Telegram's animated
+// document attribute): both of those are actually a silent MP4, which
+// only a video engine can decode, while a real GIF has no video codec
+// at all and plays through an image engine instead. A connector marks a
+// genuine GIF the same way it marks those - MediaVideo with Animated
+// true - but always with a FileName ending ".gif", which is what tells
+// the two apart here; m being nil reports false rather than panicking.
+func (m *Media) IsGIFFile() bool {
+	return m != nil && m.Kind == MediaVideo && m.Animated && strings.HasSuffix(strings.ToLower(m.FileName), ".gif")
 }
 
 // ValidService reports whether service is a supported provider.

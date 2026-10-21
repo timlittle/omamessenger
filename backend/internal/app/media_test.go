@@ -52,6 +52,33 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 	}
 }
 
+// TestFetchMedia_CachesARealGIFFileWithAGIFExtension reproduces the bug
+// behind a GIF document failing to play inline: the cache named every
+// MediaVideo message "<id>.mp4", even a real GIF image the connector
+// marks MediaVideo and Animated to reach the same inline view (see
+// domain.Media.IsGIFFile). The downloaded bytes are genuine GIF data,
+// so caching them under a ".mp4" name is misleading at best; this
+// checks they land as "<id>.gif" instead.
+func TestFetchMedia_CachesARealGIFFileWithAGIFExtension(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	gif := domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[GIF]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Animated: true},
+	}
+	if _, _, err := f.store.AddMessage(ctx, gif); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := f.commands.FetchMedia(ctx, "m1")
+	if err != nil || filepath.Base(path) != "m1.gif" {
+		t.Fatalf("FetchMedia = %q, %v; want m1.gif in the cache", path, err)
+	}
+}
+
 func TestFetchMedia_Rejects(t *testing.T) {
 	t.Parallel()
 

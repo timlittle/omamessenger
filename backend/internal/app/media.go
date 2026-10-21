@@ -200,12 +200,18 @@ func (c *Commands) localAttachment(m domain.Message) (string, bool) {
 
 // mediaFileName names a message's media in the cache by the message's id,
 // with an extension that says what it is, or for a file its own name, so
-// it opens in the right application.
+// it opens in the right application. A real GIF image the connector
+// marked MediaVideo to reach the inline video view (see
+// domain.Media.IsGIFFile) is cached as ".gif", not ".mp4": the
+// downloaded bytes are genuine GIF data, which only an image engine can
+// decode, not a video one.
 func mediaFileName(m domain.Message) string {
-	switch m.Media.Kind {
-	case domain.MediaPhoto:
+	switch {
+	case m.Media.Kind == domain.MediaPhoto:
 		return m.ID + ".jpg"
-	case domain.MediaVideo:
+	case m.Media.IsGIFFile():
+		return m.ID + ".gif"
+	case m.Media.Kind == domain.MediaVideo:
 		return m.ID + ".mp4"
 	}
 

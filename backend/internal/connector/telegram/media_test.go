@@ -79,6 +79,17 @@ func TestMedia_VideoFileAndVoice(t *testing.T) {
 	}}
 	file := &tg.Document{Size: 2048, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeFilename{FileName: "report.pdf"}}}
 	voice := &tg.Document{Size: 300, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeAudio{Voice: true, Duration: 5}}}
+	// gifImage is a real GIF image sent as a plain document (not through
+	// Telegram's own "send as animation" picker, which would carry
+	// DocumentAttributeAnimated and arrive as a silent MP4 instead): no
+	// video attribute at all, just an image/gif document.
+	gifImage := &tg.Document{Size: 500, MimeType: "image/gif", Attributes: []tg.DocumentAttributeClass{
+		&tg.DocumentAttributeFilename{FileName: "run.gif"},
+	}}
+	// gifImageNoName is the same, but Telegram sent no filename
+	// attribute at all, so the connector must still recognise it from
+	// its mime type and give it a name the UI's own ".gif" check matches.
+	gifImageNoName := &tg.Document{Size: 300, MimeType: "image/gif"}
 
 	tests := map[string]struct {
 		doc  *tg.Document
@@ -90,6 +101,13 @@ func TestMedia_VideoFileAndVoice(t *testing.T) {
 		"animated video (GIF)": {gif, domain.Media{Kind: domain.MediaVideo, Width: 480, Height: 270, Duration: 3, FileName: "clip.gif.mp4", Size: 500, Animated: true}},
 		"file":                 {file, domain.Media{Kind: domain.MediaFile, FileName: "report.pdf", Size: 2048}},
 		"voice":                {voice, domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: 300, Duration: 5}},
+		// A genuine GIF image sent as a document gets the same video
+		// kind and animated flag as a service's own GIF playback, so it
+		// reaches the same inline view, but with its real ".gif" name
+		// kept: that is what tells the UI it is actual GIF bytes rather
+		// than a silent MP4, decodable without QtMultimedia at all.
+		"gif image document":              {gifImage, domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Size: 500, Animated: true}},
+		"gif image document with no name": {gifImageNoName, domain.Media{Kind: domain.MediaVideo, FileName: "image.gif", Size: 300, Animated: true}},
 	}
 
 	for name, tt := range tests {

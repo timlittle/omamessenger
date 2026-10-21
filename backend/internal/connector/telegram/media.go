@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"encoding/base64"
+	"strings"
 
 	"github.com/gotd/td/telegram/thumbnail"
 	"github.com/gotd/td/tg"
@@ -141,6 +142,15 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 			Kind: domain.MediaVideo, Width: d.width, Height: d.height, Duration: d.durationSec,
 			FileName: d.name, Size: doc.Size, Thumb: strippedThumb(doc.Thumbs), Animated: d.animated,
 		}
+	case isGIFImage(doc.MimeType, d.name):
+		// A real GIF image, sent as a plain document rather than
+		// through Telegram's "send as animation" picker, carries none
+		// of DocumentAttributeVideo or DocumentAttributeAnimated: only
+		// its mime type or name says what it is. It still reaches the
+		// UI as a video kind marked animated, exactly like a service's
+		// own GIF playback, so it plays inline the same way; see
+		// domain.Media.IsGIFFile for how the UI tells the two apart.
+		return &domain.Media{Kind: domain.MediaVideo, FileName: gifFileName(d.name), Size: doc.Size, Animated: true}
 	case d.voice:
 		return &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}
 	case d.name == "":
@@ -148,6 +158,27 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 	default:
 		return &domain.Media{Kind: domain.MediaFile, FileName: d.name, Size: doc.Size}
 	}
+}
+
+// isGIFImage reports whether a document is a real GIF image, by its
+// mime type or, failing that, its name: Telegram's own GIF picker
+// always sets "image/gif", but a GIF attached as a plain file carries
+// whatever mime type the sender's system guessed, so the name is the
+// fallback.
+func isGIFImage(mimeType, name string) bool {
+	return mimeType == "image/gif" || strings.HasSuffix(strings.ToLower(name), ".gif")
+}
+
+// gifFileName is name, or a sensible default ending ".gif" when
+// Telegram sent no filename attribute at all: domain.Media.IsGIFFile
+// needs that extension to tell a real GIF apart from a video merely
+// marked to play like one.
+func gifFileName(name string) string {
+	if name == "" {
+		return "image.gif"
+	}
+
+	return name
 }
 
 // stickerMedia normalizes a sticker document: a static WebP is

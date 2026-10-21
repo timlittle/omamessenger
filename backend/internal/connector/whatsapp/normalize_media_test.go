@@ -114,6 +114,33 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 			true,
 		},
 		{
+			// A real GIF image attached as a document (as opposed to a
+			// video WhatsApp itself converted to an mp4 with
+			// GifPlayback set): the connector marks it the same way as
+			// that mp4 - MediaVideo with Animated true - so it reaches
+			// the same inline view, but keeps its genuine ".gif" name,
+			// which is what tells the UI it is actual GIF bytes rather
+			// than a silent video (see domain.Media.IsGIFFile).
+			"document that is a real gif image",
+			&waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+				FileName: strPtr("run.gif"), FileLength: u64(5000), Mimetype: strPtr("image/gif"),
+				DirectPath: strPtr("/v/gif"), MediaKey: []byte("key"),
+			}},
+			&domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Size: 5000, Animated: true},
+			mediaRef{Kind: mediaKindDocument, DirectPath: "/v/gif", MediaKey: []byte("key"), FileLength: 5000, Mimetype: "image/gif"},
+			true,
+		},
+		{
+			// A gif image with no filename attribute at all is
+			// identified by its mime type alone, and still needs a
+			// ".gif" name for IsGIFFile to recognise it later.
+			"document that is a real gif image with no name",
+			&waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{FileLength: u64(300), Mimetype: strPtr("image/gif")}},
+			&domain.Media{Kind: domain.MediaVideo, FileName: "image.gif", Size: 300, Animated: true},
+			mediaRef{Kind: mediaKindDocument, FileLength: 300, Mimetype: "image/gif"},
+			true,
+		},
+		{
 			"sticker",
 			&waE2E.Message{StickerMessage: &waE2E.StickerMessage{
 				Width: u32(512), Height: u32(512), FileLength: u64(2048), Mimetype: strPtr("image/webp"), Emojis: strPtr("😀"),

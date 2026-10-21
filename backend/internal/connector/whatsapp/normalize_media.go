@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"encoding/base64"
+	"strings"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -177,20 +178,53 @@ func audioMedia(m *waE2E.AudioMessage) (*domain.Media, mediaRef, bool) {
 }
 
 // documentMedia is a file sent as a document, with its reference for
-// FetchMedia to download it later.
+// FetchMedia to download it later. A real GIF image sent this way
+// (rather than a video WhatsApp itself converted to a silent mp4 with
+// GifPlayback set) carries nothing to tell it apart from any other
+// document except its mime type or name, so it is marked the same way
+// that mp4 is - MediaVideo with Animated true - to reach the same
+// inline view, but keeps its genuine ".gif" name: that is what tells
+// the UI it is actual GIF bytes rather than a silent video (see
+// domain.Media.IsGIFFile).
 func documentMedia(m *waE2E.DocumentMessage) (*domain.Media, mediaRef, bool) {
+	ref := mediaRef{
+		Kind: mediaKindDocument, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),
+		FileEncSHA256: m.GetFileEncSHA256(), FileLength: m.GetFileLength(), Mimetype: m.GetMimetype(),
+	}
+
+	if isGIFImage(m.GetMimetype(), m.GetFileName()) {
+		doc := &domain.Media{Kind: domain.MediaVideo, FileName: gifFileName(m.GetFileName()), Size: int64(m.GetFileLength()), Animated: true}
+		return doc, ref, true
+	}
+
 	name := m.GetFileName()
 	if name == "" {
 		name = "file"
 	}
 
 	doc := &domain.Media{Kind: domain.MediaFile, FileName: name, Size: int64(m.GetFileLength())}
-	ref := mediaRef{
-		Kind: mediaKindDocument, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),
-		FileEncSHA256: m.GetFileEncSHA256(), FileLength: m.GetFileLength(), Mimetype: m.GetMimetype(),
-	}
 
 	return doc, ref, true
+}
+
+// isGIFImage reports whether a document is a real GIF image, by its
+// mime type or, failing that, its name: WhatsApp's own client always
+// sets "image/gif" for one, but a GIF forwarded from elsewhere may only
+// have its name to go on.
+func isGIFImage(mimeType, name string) bool {
+	return mimeType == "image/gif" || strings.HasSuffix(strings.ToLower(name), ".gif")
+}
+
+// gifFileName is name, or a sensible default ending ".gif" when the
+// message carries no file name at all: domain.Media.IsGIFFile needs
+// that extension to tell a real GIF apart from a video merely marked
+// to play like one.
+func gifFileName(name string) string {
+	if name == "" {
+		return "image.gif"
+	}
+
+	return name
 }
 
 // stickerMedia normalizes a sticker: always a WebP image, animated or
