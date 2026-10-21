@@ -10,11 +10,6 @@
       "jsonpath": "$.version"
     },
     {
-      "type": "json",
-      "path": "whats-new.json",
-      "jsonpath": "$.releases[0].version"
-    },
-    {
       "type": "generic",
       "path": "helper-version"
     },

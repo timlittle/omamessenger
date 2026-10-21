@@ -83,9 +83,9 @@ function hintText(currentVersion) {
 // nextPatchVersion returns version with its patch component incremented
 // by one: the bump release-please gives a "feat" or "fix" commit while
 // this project stays pre-1.0 (bump-patch-for-minor-pre-major in
-// release-please-config.json). whats-new.json's top entry is kept
-// seeded one patch ahead of manifest.json's own version for exactly
-// this reason; see tests/unit/whats-new-json.test.cjs.
+// release-please-config.json). whats-new.json's top entry may name
+// that next version while it is being prepared; see
+// tests/unit/whats-new-json.test.cjs.
 function nextPatchVersion(version) {
   const parts = String(version).split('.').map(toInt);
   while (parts.length < 3) parts.push(0);
