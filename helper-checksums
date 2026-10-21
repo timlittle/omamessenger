@@ -1,0 +1,12 @@
+# SHA-256 checksums for the helper binaries released for the version
+# pinned in helper-version, committed here so scripts/install-helper.sh
+# verifies a download against a hash that ships in this reviewed commit
+# rather than one fetched from the same release it is checking (see
+# docs/decisions.md). A release's follow-up pull request adds this
+# file's entries once the release's assets exist; release-please never
+# touches this file, so a version bump alone leaves it with no entry
+# for the new version until that follow-up pin lands.
+#
+# sha256  oma-messenger-service-<version>-linux-<arch>
+2a314e88af6c2ee2fb9d7daa36a6d832f2969731077ff2930e2e13c318a4e061  oma-messenger-service-0.3.4-linux-amd64
+2e5b2a07f8e4e4890488c4d6bda1fc99d2f1076a725f650532d90eeff1edbacb  oma-messenger-service-0.3.4-linux-arm64

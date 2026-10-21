@@ -5,15 +5,25 @@
 # missing or pinned to a different version (and again if that Retry button
 # is clicked after a failed attempt); `make install-helper` runs the same
 # script by hand. Loading the plugin never downloads anything. The binary
-# comes from the immutable GitHub release tag, must match the release's
-# SHA256SUMS and report the pinned version, and is moved into place
+# comes from the immutable GitHub release tag and is moved into place
 # atomically. It lives outside the plugin directory, so installing it
 # neither hot-reloads the plugin nor dirties its git checkout.
+#
+# The binary must report the pinned version and match the SHA-256
+# committed in helper-checksums (see docs/decisions.md): that file ships
+# in this same reviewed commit, so an attacker able to replace a release's
+# binary and its SHA256SUMS together still cannot pass verification
+# without also rewriting this repository's history. A release's
+# SHA256SUMS, downloaded from the same place as the binary, is checked
+# too, as a cheap extra sanity check, but it is never enough on its own
+# and never substitutes for the committed hash.
 #
 #   install-helper.sh            install (no-op if already installed)
 #   install-helper.sh --status   exit 0 if installed, 1 if not
 #
 # OMA_RELEASE_BASE overrides the download location (tests use file://).
+# OMA_CHECKSUMS_FILE overrides the committed checksum file's path (tests
+# use a throwaway file instead of the repository's own).
 set -eu
 
 plugin_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
@@ -33,6 +43,8 @@ bin_dir="$data_dir/bin"
 dest="$bin_dir/oma-messenger-service-$version"
 name="oma-messenger-service-linux-$arch"
 base="${OMA_RELEASE_BASE:-https://github.com/timlittle/omamessenger/releases/download/v$version}"
+checksums_file="${OMA_CHECKSUMS_FILE:-$plugin_dir/helper-checksums}"
+checksum_key="oma-messenger-service-$version-linux-$arch"
 
 fail() { printf 'Helper install failed: %s\n' "$1" >&2; exit 1; }
 
@@ -47,6 +59,15 @@ if installed; then
     install_desktop_entry
     exit 0
 fi
+
+# The committed pin is read before any network call: a release-please
+# commit bumps helper-version on its own, and until the follow-up pull
+# request adds that new version's hashes, there is nothing safe to
+# verify a download against, so this refuses rather than falling back to
+# the release's own, unpinned SHA256SUMS.
+[ -f "$checksums_file" ] || fail "no committed checksum file at $checksums_file"
+committed=$(awk -v k="$checksum_key" '$2 == k { print $1 }' "$checksums_file")
+[ -n "$committed" ] || fail "no checksum committed for $checksum_key yet; wait for the release's checksum pin to land"
 
 # Only https, except a file:// base for tests.
 protocols='=https'
@@ -66,6 +87,7 @@ expected=$(awk -v n="$name" '$2 == n || $2 == "*" n { print $1 }' "$work/SHA256S
 [ -n "$expected" ] || fail "SHA256SUMS has no entry for $name"
 actual=$(sha256sum "$work/$name" | cut -d' ' -f1)
 [ "$actual" = "$expected" ] || fail "checksum mismatch for $name"
+[ "$actual" = "$committed" ] || fail "checksum mismatch for $name against the checksum committed in helper-checksums"
 chmod 755 "$work/$name"
 reported=$("$work/$name" --version 2>/dev/null) || fail "downloaded helper does not run"
 [ "$reported" = "$version" ] || fail "downloaded helper reports version $reported, expected $version"

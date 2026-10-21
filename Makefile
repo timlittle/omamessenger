@@ -81,12 +81,24 @@ build-all: third-party-notices ## Build the release helpers, SHA256SUMS and lice
 # Cross-compiles both release binaries, so it is too slow for `make check`;
 # run it by hand before a release, or in CI only for a tag push. It installs
 # into a throwaway HOME, never the real one, and cleans up after itself.
+# It checks install-helper.sh's own mechanics (the atomic move, the no-op
+# re-run, the desktop entry), not that this machine's toolchain reproduces
+# the exact bytes GitHub's release build published, so it pins a throwaway
+# helper-checksums computed from this run's own build/release/SHA256SUMS
+# rather than reading the repository's committed one.
 release-check: build-all ## Install a real cross-compiled release into a throwaway HOME, end to end
 	@tmp=$$(mktemp -d -p build); \
 	trap 'rm -rf "$$tmp"' EXIT; \
 	mkdir -p "$$tmp/home" "$$tmp/data"; \
+	version=$$(cut -d'#' -f1 helper-version | tr -d ' \n'); \
+	checksums="$$tmp/helper-checksums"; \
+	: > "$$checksums"; \
+	for a in amd64 arm64; do \
+		h=$$(sha256sum "build/release/oma-messenger-service-linux-$$a" | cut -d' ' -f1); \
+		printf '%s  oma-messenger-service-%s-linux-%s\n' "$$h" "$$version" "$$a" >> "$$checksums"; \
+	done; \
 	base="file://$(CURDIR)/build/release"; \
-	run() { HOME="$$tmp/home" XDG_DATA_HOME="$$tmp/data" OMA_RELEASE_BASE="$$base" ./scripts/install-helper.sh "$$@"; }; \
+	run() { HOME="$$tmp/home" XDG_DATA_HOME="$$tmp/data" OMA_RELEASE_BASE="$$base" OMA_CHECKSUMS_FILE="$$checksums" ./scripts/install-helper.sh "$$@"; }; \
 	if run --status; then echo "release-check: expected --status to fail before install" >&2; exit 1; fi; \
 	run; \
 	run | grep -q "already installed" || { echo "release-check: second install was not a no-op" >&2; exit 1; }; \
@@ -133,7 +145,8 @@ keys: ## Print the effective key bindings (defaults plus keys.conf overrides), f
 # bus points nowhere, so no test can reach the running desktop or its
 # notifications. A test whose directory holds a no-dev-build file gets the
 # real launcher instead, so the helper starts out not installed; it can
-# publish the test helper (OMA_FAKE_HELPER) to OMA_RELEASE_BASE and install it.
+# publish the test helper (OMA_FAKE_HELPER) to OMA_RELEASE_BASE, pin its
+# checksum at OMA_CHECKSUMS_FILE and install it.
 # Each run also gets a throwaway XDG_RUNTIME_DIR, deleted afterwards:
 # quickshell writes a log folder there per instance and never removes it,
 # and the real one is a small tmpfs the desktop needs (a full one crashed
@@ -150,6 +163,7 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 		else ln -s "$(CURDIR)/$(FAKE_HELPER)" "$$root/bin/oma-messenger-service"; fi; \
 		if env -u WAYLAND_DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE $(NO_DESKTOP_BUS) QT_QPA_PLATFORM=offscreen \
 			XDG_DATA_HOME="$(CURDIR)/$$root/data" XDG_CONFIG_HOME="$(CURDIR)/$$root/config" XDG_RUNTIME_DIR="$$run" OMA_RELEASE_BASE="file://$(CURDIR)/$$root/release" \
+			OMA_CHECKSUMS_FILE="$(CURDIR)/$$root/helper-checksums" \
 			OMA_FAKE_HELPER="$(CURDIR)/$(FAKE_HELPER)" timeout 60 quickshell -p "$$root" >"$$root/log" 2>&1; then echo "ok   $$name"; \
 		else status=1; echo "FAIL $$name"; grep -v "qt.qpa" "$$root/log"; fi; \
 		rm -rf "$$run"; \

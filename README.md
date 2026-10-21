@@ -25,7 +25,7 @@ Short clips of each feature are in [docs/demo.md](docs/demo.md).
 omarchy plugin add https://github.com/timlittle/omamessenger --enable
 ```
 
-The first time you open the window, it downloads and verifies the helper release pinned in `helper-version`, then starts it.
+The first time you open the window, it downloads the helper release pinned in `helper-version`, verifies it against the SHA-256 committed in `helper-checksums`, and starts it.
 
 Voice notes play in the window when `qt6-multimedia` is installed; without it, they open in your default player.
 

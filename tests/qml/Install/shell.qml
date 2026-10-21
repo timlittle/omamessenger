@@ -177,7 +177,8 @@ ShellRoot {
   }
 
   // Publishes the test helper as this machine's release asset, with a
-  // SHA256SUMS that does not match it.
+  // SHA256SUMS and a committed checksum pin that do not match it. The
+  // pin, not SHA256SUMS, is what install-helper.sh now refuses on.
   Process {
     id: badReleaseBuilder
 
@@ -187,15 +188,18 @@ ShellRoot {
     command: ["sh", "-c", [
       "set -eu",
       "case $(uname -m) in x86_64|amd64) arch=amd64;; aarch64|arm64) arch=arm64;; esac",
+      "version=$(cut -d'#' -f1 helper-version | tr -d ' \\n')",
       "mkdir -p release",
       "cp \"$OMA_FAKE_HELPER\" \"release/oma-messenger-service-linux-$arch\"",
-      "printf '%064d  oma-messenger-service-linux-%s\\n' 0 \"$arch\" > release/SHA256SUMS"
+      "printf '%064d  oma-messenger-service-linux-%s\\n' 0 \"$arch\" > release/SHA256SUMS",
+      "printf '%064d  oma-messenger-service-%s-linux-%s\\n' 0 \"$version\" \"$arch\" > \"$OMA_CHECKSUMS_FILE\""
     ].join("\n")]
     onExited: code => badReleaseBuilder.exitCode = code
   }
 
-  // Rewrites SHA256SUMS with the binary's real checksum, leaving the rest
-  // of the release as badReleaseBuilder published it.
+  // Rewrites SHA256SUMS and the committed checksum pin with the binary's
+  // real checksum, leaving the rest of the release as badReleaseBuilder
+  // published it.
   Process {
     id: goodReleaseBuilder
 
@@ -205,7 +209,10 @@ ShellRoot {
     command: ["sh", "-c", [
       "set -eu",
       "case $(uname -m) in x86_64|amd64) arch=amd64;; aarch64|arm64) arch=arm64;; esac",
-      "cd release && sha256sum oma-messenger-service-linux-$arch > SHA256SUMS"
+      "version=$(cut -d'#' -f1 helper-version | tr -d ' \\n')",
+      "cd release && sha256sum oma-messenger-service-linux-$arch > SHA256SUMS",
+      "hash=$(cut -d' ' -f1 SHA256SUMS)",
+      "printf '%s  oma-messenger-service-%s-linux-%s\\n' \"$hash\" \"$version\" \"$arch\" > \"$OMA_CHECKSUMS_FILE\""
     ].join("\n")]
     onExited: code => goodReleaseBuilder.exitCode = code
   }
