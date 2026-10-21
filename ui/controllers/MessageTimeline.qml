@@ -211,6 +211,14 @@ Item {
     return at === -1 ? null : messagesModel.get(at);
   }
 
+  // snapshot returns every loaded message as a plain array, newest
+  // first, for a caller outside this file that needs array methods
+  // (find, some, …) a QML ListModel does not have: model itself stays
+  // the raw ListModel, for views to bind to directly.
+  function snapshot(): var {
+    return root._snapshot();
+  }
+
   // setReactions replaces a message's reaction chips in place, for
   // instant feedback before the server's message.updated event confirms
   // the real ones. The role holds reactions as a JSON string, the same

@@ -154,11 +154,13 @@ Item {
   // pressing E on it while highlighted (see Edit.upMeansEdit). It
   // returns false when the composer holds text or nothing qualifies, so
   // the key router leaves Up unaccepted and the TextArea's own caret
-  // movement runs instead of this.
+  // movement runs instead of this. Reads timeline.snapshot(), a plain
+  // array, rather than timeline.model, the raw ListModel: Edit.js calls
+  // Array.prototype.find on it, which a ListModel does not have.
   function startEditFromUp(): bool {
     if (!root.conversation) return false;
 
-    const messages = root.conversation.timeline.model;
+    const messages = root.conversation.timeline.snapshot();
     if (!Edit.upMeansEdit(root.draft, messages)) return false;
 
     root.startEdit(Edit.lastEditableId(messages));

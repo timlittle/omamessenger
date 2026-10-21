@@ -80,6 +80,16 @@ ShellRoot {
     root.waitForSamFailed,
     root.retryWithT,
     root.waitForSamDelivered,
+    root.focusComposeEmptyForEditLast,
+    root.pressUpForEditLast,
+    root.waitUpEditLastLoaded,
+    root.cancelEditLast,
+    root.waitEditLastCancelled,
+    root.pressEOnHighlightedMessage,
+    root.waitEEditLoaded,
+    root.focusComposeForECancel,
+    root.cancelEEdit,
+    root.waitEEditCancelledAndBlurred,
     root.hideWithSamOpen,
     root.messageWhileHidden,
     root.waitForSamUnread,
@@ -268,6 +278,107 @@ ShellRoot {
   // waitForSamDelivered holds until the retried message is delivered.
   function waitForSamDelivered(): var {
     return root.messageStatus("are you there") === "delivered";
+  }
+
+  // focusComposeEmptyForEditLast focuses the composer with the real "i"
+  // key: compose.editLast (Up means "load my last message") only fires
+  // once the composer actually holds keyboard focus and is empty, which
+  // retryWithT's own Escape just left it (compose.focus is not "i" by
+  // accident here - it is the same key the keyboard-chrome journeys
+  // below use to start writing).
+  function focusComposeEmptyForEditLast(): var {
+    t.keyClick(Qt.Key_I);
+    return true;
+  }
+
+  // pressUpForEditLast presses the real Up key in the composer: the only
+  // place a real key press reaches ComposerController.startEditFromUp,
+  // rather than calling it directly the way the controller's own test
+  // does. This failed before the fix: startEditFromUp read
+  // timeline.model, the raw ListModel, and called Edit.js's
+  // Array.prototype.find on it, which threw and left Up doing nothing.
+  function pressUpForEditLast(): var {
+    t.keyClick(Qt.Key_Up);
+    return true;
+  }
+
+  // waitUpEditLastLoaded holds until Up loaded Sam's just-delivered
+  // "are you there" into the composer for editing.
+  function waitUpEditLastLoaded(): var {
+    const banner = Check.find(root.panel(), "editBanner");
+    const composer = Check.find(root.panel(), "composerInput");
+    if (!banner || !banner.visible) return false;
+    if (!composer || composer.text !== "are you there")
+      return Check.fail("Up in the empty composer did not load the last sent message: composer text is \""
+        + (composer ? composer.text : "?") + "\"");
+    return true;
+  }
+
+  // cancelEditLast cancels the edit Up started, with Escape: the
+  // composer still holds focus, so the escape chain cancels the edit
+  // rather than leaving the composer (see Navigation.escapeAction).
+  function cancelEditLast(): var {
+    t.keyClick(Qt.Key_Escape);
+    return true;
+  }
+
+  // waitEditLastCancelled holds until cancelling clears the banner and
+  // restores the empty draft Up overwrote.
+  function waitEditLastCancelled(): var {
+    const banner = Check.find(root.panel(), "editBanner");
+    const composer = Check.find(root.panel(), "composerInput");
+    return (!banner || !banner.visible) && !!composer && composer.text === "";
+  }
+
+  // pressEOnHighlightedMessage leaves the composer with Escape (so the
+  // highlighted message, not the composer, owns the next key), then
+  // presses Shift+E, message.edit's real key: alongside Up above, the
+  // other way to reach the same editing load, confirmed here by a real
+  // key rather than a direct startEdit() call.
+  function pressEOnHighlightedMessage(): var {
+    t.keyClick(Qt.Key_Escape);
+    t.keyClick(Qt.Key_E, Qt.ShiftModifier);
+    return true;
+  }
+
+  // waitEEditLoaded holds until "E" loaded the same message for editing.
+  function waitEEditLoaded(): var {
+    const banner = Check.find(root.panel(), "editBanner");
+    const composer = Check.find(root.panel(), "composerInput");
+    if (!banner || !banner.visible) return false;
+    if (!composer || composer.text !== "are you there")
+      return Check.fail("E on the highlighted message did not load it for editing: composer text is \""
+        + (composer ? composer.text : "?") + "\"");
+    return true;
+  }
+
+  // focusComposeForECancel focuses the composer so the next Escape
+  // cancels the edit "E" started instead of closing the conversation:
+  // Escape only cancels an edit in progress while the composer holds
+  // focus (see Navigation.escapeAction).
+  function focusComposeForECancel(): var {
+    t.keyClick(Qt.Key_I);
+    return true;
+  }
+
+  // cancelEEdit cancels the "E" edit the same way cancelEditLast did.
+  function cancelEEdit(): var {
+    t.keyClick(Qt.Key_Escape);
+    return true;
+  }
+
+  // waitEEditCancelledAndBlurred holds until cancelling clears the
+  // banner and the draft, then blurs the composer with a second Escape,
+  // leaving Sam's conversation open and unfocused exactly as
+  // hideWithSamOpen, next, expects.
+  function waitEEditCancelledAndBlurred(): var {
+    const banner = Check.find(root.panel(), "editBanner");
+    const composer = Check.find(root.panel(), "composerInput");
+    if (banner && banner.visible) return false;
+    if (!composer || composer.text !== "") return false;
+
+    t.keyClick(Qt.Key_Escape);
+    return true;
   }
 
   // hideWithSamOpen closes the window with Sam's chat still open and

@@ -58,6 +58,7 @@ ShellRoot {
     ]
     property var timeline: ({
       model: fakeConversation._timelineMessages,
+      snapshot: () => fakeConversation._timelineMessages,
       lastError: "",
       messageById: (id) => fakeConversation._timelineMessages.find((m) => m.id === id) ?? null
     })
