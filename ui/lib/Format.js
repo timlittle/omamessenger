@@ -441,6 +441,18 @@ function baseName(path) {
   return path.split('/').pop();
 }
 
+// savedLocationLabel names where media.save put a file, for the brief
+// confirmation shown after Save: the full path with the user's home
+// directory folded to "~", so it reads "Saved to ~/Downloads/clip.gif"
+// rather than spelling out the whole path. This file is pure and never
+// reads the environment itself, so home is whatever the caller's own
+// $HOME resolved to; path is shown in full when it is not under home,
+// or home is empty.
+function savedLocationLabel(path, home) {
+  const shown = home && path.startsWith(home + '/') ? '~' + path.slice(home.length) : path;
+  return `Saved to ${shown}`;
+}
+
 // guessMediaKind guesses whether a locally picked file is a photo, a
 // video or, for anything else, a file, from its name alone, so the
 // composer's attachment chip knows whether to show a thumbnail before

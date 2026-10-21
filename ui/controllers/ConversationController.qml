@@ -1,4 +1,5 @@
 import QtQuick
+import qs.Commons
 import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
 import "../lib/Rail.js" as Rail
@@ -54,6 +55,11 @@ Item {
   // through media (see MediaController); a test overrides it with a
   // recorder rather than letting a video or file open for real.
   property var openExternally: (path) => Qt.openUrlExternally("file://" + path)
+
+  // copyToClipboard puts a photo's or video's file on the system
+  // clipboard, through media (see MediaController); a test overrides it
+  // with a recorder rather than shelling out to wl-copy for real.
+  property var copyToClipboard: (path, mimeType) => Util.execDetached(["sh", "-c", "wl-copy --type " + Util.shellQuote(mimeType) + " < " + Util.shellQuote(path)])
 
   // mediaOpenCooldownMs is how long media (see MediaController) ignores
   // a repeat open of the same message after opening it; a test
@@ -120,6 +126,11 @@ Item {
 
   // lastError is the safe text of the most recent request failure.
   property string lastError: timeline.lastError
+
+  // notice is a brief, non-error confirmation for something that just
+  // worked, such as copying or saving a message's photo or video (see
+  // MediaController and MessageTimeline.notice).
+  readonly property string notice: timeline.notice
 
   // voiceNotes is the playback state the message list reads for each
   // bubble's voice note player: which message, if any, is loaded,
@@ -236,6 +247,13 @@ Item {
   // real source instead.
   function clearError(): void {
     timeline.lastError = "";
+  }
+
+  // clearNotice dismisses the brief confirmation banner, the same way
+  // clearError dismisses an error: a click on the banner, its own
+  // auto-clear timer, or Escape (see WindowController).
+  function clearNotice(): void {
+    timeline.notice = "";
   }
 
   // closeIfOpen closes the open conversation if it is id: used when the
@@ -690,6 +708,7 @@ Item {
     voiceController: root.voiceController
     videoController: root.videoController
     openExternally: root.openExternally
+    copyToClipboard: root.copyToClipboard
     cooldownMs: root.mediaOpenCooldownMs
   }
 

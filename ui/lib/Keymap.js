@@ -177,7 +177,7 @@ var BINDINGS = [
 
   { action: 'viewer.next', keys: ['Right'], contexts: ['viewer'], label: 'Next photo', hint: true },
   { action: 'viewer.prev', keys: ['Left'], contexts: ['viewer'], label: 'Previous photo', hint: true },
-  { action: 'viewer.openExternal', keys: ['o'], contexts: ['viewer'], label: 'Open in your own image viewer', hint: true, command: true },
+  { action: 'viewer.openExternal', keys: ['o'], contexts: ['viewer'], label: 'Open in your own application', hint: true, command: true },
 
   { action: 'dialog.down', keys: ['Down', 'Ctrl+J'], contexts: ['dialog'], label: 'Next contact' },
   { action: 'dialog.up', keys: ['Up', 'Ctrl+K'], contexts: ['dialog'], label: 'Previous contact' },

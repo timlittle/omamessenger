@@ -91,7 +91,7 @@ function buildState(ctx) {
   const ui = ctx.service ? ctx.service.uiState : { pane: 'list', activeId: '' };
 
   return {
-    errorOpen: ctx.windowController ? ctx.windowController.errorBannerText !== '' : false,
+    errorOpen: ctx.windowController ? (ctx.windowController.errorBannerText !== '' || ctx.windowController.noticeText !== '') : false,
     confirmOpen: ctx.windowController ? ctx.windowController.confirmingClose : false,
     setupOpen: ctx.accountController ? (ctx.accountController.open || ctx.accountController.removing || ctx.accountController.renaming) : false,
     setupContext: ctx.accountController ? ctx.accountController.navContext : '',

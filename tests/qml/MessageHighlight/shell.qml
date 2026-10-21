@@ -299,7 +299,7 @@ ShellRoot {
     t.keyClick(Qt.Key_K);
     if (conversationController.highlightedId !== "m4")
       return Check.fail("k did not reach the message with a photo: got " + conversationController.highlightedId);
-    if (root.hintText("m4") !== "r reply · e react · d delete · Enter open")
+    if (root.hintText("m4") !== "r reply · e react · d delete · Enter open · c copy · s save · x open")
       return Check.fail("hint text for the photo message is \"" + root.hintText("m4") + "\"");
 
     t.keyClick(Qt.Key_Return);

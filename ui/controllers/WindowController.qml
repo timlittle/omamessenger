@@ -149,6 +149,28 @@ Item {
     else errorBannerTimer.stop();
   }
 
+  // noticeTimeoutMs is how long the brief confirmation banner (see
+  // bannerText) stays shown before it clears itself, the same as the
+  // error banner's own timeout.
+  property int noticeTimeoutMs: 6000
+
+  // noticeText is a brief, non-error confirmation for something that
+  // just worked, such as copying or saving a message's photo or video
+  // (see ConversationController.notice). It never competes with an
+  // error: bannerText below always prefers errorBannerText while both
+  // are set.
+  readonly property string noticeText: root.conversationController ? root.conversationController.notice : ""
+  onNoticeTextChanged: {
+    if (root.noticeText) noticeTimer.restart();
+    else noticeTimer.stop();
+  }
+
+  // bannerText is whichever of errorBannerText or noticeText Panel's
+  // one banner row shows right now, error first; bannerIsError says
+  // which one it is, for the row's colour and its dismiss button.
+  readonly property string bannerText: root.errorBannerText || root.noticeText
+  readonly property bool bannerIsError: root.errorBannerText !== ""
+
   // doctorOpen shows the health check report.
   property bool doctorOpen: false
 
@@ -278,6 +300,14 @@ Item {
     if (root.deleteController) root.deleteController.lastError = "";
     if (root.listController) root.listController.lastError = "";
     if (root.dialogController) root.dialogController.lastError = "";
+  }
+
+  // dismissNotice hides the brief confirmation banner: a click on it,
+  // its own auto-clear timer, or Escape while no error is showing (see
+  // Navigation.escapeAction's "dismiss-error" step, which this shares
+  // with dismissErrorBanner).
+  function dismissNotice(): void {
+    if (root.conversationController) root.conversationController.clearNotice();
   }
 
   // setPaletteQuery filters the palette and highlights the best match.
@@ -427,7 +457,7 @@ Item {
       "close-delete-confirm": () => { if (root.deleteController) root.deleteController.close(); },
       "cancel-archive-all": () => { if (root.listController) root.listController.cancelArchiveAllRead(); },
       "cancel-block": () => { if (root.listController) root.listController.cancelBlock(); },
-      "dismiss-error": () => root.dismissErrorBanner(),
+      "dismiss-error": () => { root.dismissErrorBanner(); root.dismissNotice(); },
       "close-dialog": () => { if (root.dialogController) root.dialogController.close(); },
       "clear-search": () => { if (root.listController) root.listController.clearSearch(); },
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
@@ -482,6 +512,15 @@ Item {
     id: errorBannerTimer
     interval: root.errorBannerTimeoutMs
     onTriggered: root.dismissErrorBanner()
+  }
+
+  // noticeTimer clears the brief confirmation banner the same way
+  // errorBannerTimer clears the error one, restarted each time a new
+  // notice replaces an old one.
+  Timer {
+    id: noticeTimer
+    interval: root.noticeTimeoutMs
+    onTriggered: root.dismissNotice()
   }
 
   // Opening a different conversation is a fresh start: whatever failed

@@ -508,6 +508,19 @@ for (const [path, want] of baseNameCases) {
   });
 }
 
+test('savedLocationLabel folds the user\'s home directory to "~"', () => {
+  assert.strictEqual(Format.savedLocationLabel('/home/alex/Downloads/run.gif', '/home/alex'), 'Saved to ~/Downloads/run.gif');
+});
+
+test('savedLocationLabel shows the path as-is when it is not under home', () => {
+  assert.strictEqual(Format.savedLocationLabel('/mnt/data/run.gif', '/home/alex'), 'Saved to /mnt/data/run.gif');
+});
+
+test('savedLocationLabel shows the path as-is with no home to fold', () => {
+  assert.strictEqual(Format.savedLocationLabel('/home/alex/Downloads/run.gif', ''), 'Saved to /home/alex/Downloads/run.gif');
+  assert.strictEqual(Format.savedLocationLabel('/home/alex/Downloads/run.gif', undefined), 'Saved to /home/alex/Downloads/run.gif');
+});
+
 const guessMediaKindCases = [
   ['/tmp/photo.PNG', 'photo'],
   ['/tmp/photo.jpg', 'photo'],

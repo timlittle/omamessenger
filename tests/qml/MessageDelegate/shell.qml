@@ -889,7 +889,7 @@ ShellRoot {
 
     const photo = { kind: "photo", width: 10, height: 10, thumb: "" };
     delegate.message = { id: "h3", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo) };
-    if (hints.text !== "r reply · e react · d delete · Enter open") return Check.fail(`hint text is "${hints.text}", want the media-open hint`);
+    if (hints.text !== "r reply · e react · d delete · Enter open · c copy · s save · x open") return Check.fail(`hint text is "${hints.text}", want the media-open hint`);
 
     delegate.highlighted = false;
     return true;

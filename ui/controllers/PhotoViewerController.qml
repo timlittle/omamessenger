@@ -1,11 +1,16 @@
 import QtQuick
 import "../lib/Actions.js" as Actions
 
-// Owns the in-app photo viewer: which message's photo is shown, stepping
-// to a neighbouring one and closing, in or out to the user's own image
-// viewer. conversation supplies the loaded timeline the viewer reads and
-// the download it asks for; set it once, from whoever wires the
-// controllers together.
+// Owns the in-app media viewer: which message's photo, video or GIF is
+// shown, stepping to a neighbouring photo and closing, in or out to the
+// user's own application. conversation supplies the loaded timeline the
+// viewer reads and the download it asks for; set it once, from whoever
+// wires the controllers together. Despite the name, it shows a video or
+// a real GIF file too (see PhotoViewer.qml), since every property and
+// function here - viewerPhoto, viewerPath, show, close, openExternally -
+// already reads generically from the message's own media rather than
+// anything specific to a photo; only step, which has no meaning for a
+// video, says so explicitly.
 //
 // QtObject rather than Item: it holds no child objects.
 QtObject {
@@ -70,9 +75,11 @@ QtObject {
 
   // step moves the in-app viewer to the next photo in the open
   // conversation: delta > 0 for a newer one, delta < 0 for an older one.
-  // It does nothing when there isn't one.
+  // It does nothing when there isn't one, or while a video or GIF (not
+  // a photo) is open, since photoNeighbor only ever looks for a photo
+  // and jumping from a video to an unrelated photo would be surprising.
   function step(delta: int): void {
-    if (!root.viewerId) return;
+    if (!root.viewerId || !root.viewerPhoto || root.viewerPhoto.kind !== "photo") return;
 
     const next = root.conversation.timeline.photoNeighbor(root.viewerId, delta);
     if (next) root.show(next);

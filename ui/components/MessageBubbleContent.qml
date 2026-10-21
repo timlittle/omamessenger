@@ -168,6 +168,7 @@ Column {
     onOpened: root.mediaOpen()
     onToggled: root.videoToggled()
     onMuteToggled: root.videoMuteToggled()
+    onExpandRequested: root.mediaOpen()
   }
 
   Text {

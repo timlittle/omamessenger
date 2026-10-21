@@ -28,6 +28,9 @@ Item {
   property var composerController: null
   // photoViewerController is bound into the overlays' photo viewer.
   property var photoViewerController: null
+  // videoController is bound into the overlays' photo viewer, which
+  // also plays a video or GIF full size.
+  property var videoController: null
   // reactionsController is bound into the message list and the overlays'
   // emoji picker.
   property var reactionsController: null
@@ -300,6 +303,7 @@ Item {
     dialogController: root.dialogController
     accountController: root.accountController
     photoViewerController: root.photoViewerController
+    videoController: root.videoController
     reactionsController: root.reactionsController
     deleteController: root.deleteController
     routeKey: root.routeKey

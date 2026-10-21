@@ -6,23 +6,35 @@ import "../theme"
 import "../lib/Format.js" as Format
 import "../lib/Keymap.js" as Keymap
 
-// Shows a conversation photo over the whole window. Omarchy's Hyprland
-// window rule floats the external image viewer too small to reach with
-// the keyboard, and focus stays on this window, so a photo opened there
-// gets stuck with no way to close it; this shows it here instead, where
-// Escape, the window's own close button and every other shortcut still
-// work. While the full image is still downloading it shows the same
-// blurred preview the message bubble already has.
+// Shows a conversation's photo, video or GIF over the whole window.
+// Omarchy's Hyprland window rule floats an external viewer too small to
+// reach with the keyboard, and focus stays on this window, so a photo or
+// video opened there gets stuck with no way to close it; this shows it
+// here instead, where Escape, the window's own close button and every
+// other shortcut still work. While a photo's full image is still
+// downloading it shows the same blurred preview the message bubble
+// already has; a video or GIF plays through FullVideoPlayer once its
+// file is here, the same way the bubble's own InlineVideo does but sized
+// to fill the window.
 Item {
   id: root
 
   // open shows the viewer when true.
   property bool open: false
-  // photo is the open message's media: kind, width, height and thumb, or
-  // null while nothing is open.
+  // photo is the open message's media: kind, width, height, thumb,
+  // fileName and animated, or null while nothing is open. Named for the
+  // photo case this started as; a video or GIF is just as much "photo"
+  // here, since every binding below reads it generically.
   property var photo: null
-  // path is where the full image was downloaded, or "" until then.
+  // path is where the full file was downloaded, or "" until then.
   property string path: ""
+  // videoAvailable is false when in-window video playback cannot work
+  // at all on this machine; a real GIF file plays regardless. Read only
+  // while photo is a video.
+  property bool videoAvailable: true
+  // videoMuted mutes a playing video, shared with every other video in
+  // the window.
+  property bool videoMuted: true
   // routeKey is the panel's key router, so Escape and the photo-stepping
   // keys work while this holds keyboard focus, the same as every other
   // full-window dialog here.
@@ -32,11 +44,18 @@ Item {
   property var bindings: Keymap.BINDINGS
 
   // closed asks the caller to leave the viewer: the close button, or a
-  // click on the backdrop outside the photo.
+  // click on the backdrop outside the photo or video.
   signal closed()
-  // openExternally asks the caller to open the photo in the user's own
-  // image viewer and leave the in-app view.
+  // openExternally asks the caller to open the photo or video in the
+  // user's own application and leave the in-app view.
   signal openExternally()
+  // videoMuteToggled asks the caller to flip the shared mute preference
+  // every video reads.
+  signal videoMuteToggled()
+
+  // _isVideo is true while photo is actually a video or GIF, which
+  // plays through FullVideoPlayer instead of the plain Image below.
+  readonly property bool _isVideo: !!root.photo && root.photo.kind === "video"
 
   objectName: "photoViewer"
   anchors.fill: parent
@@ -73,6 +92,7 @@ Item {
       id: image
       objectName: "photoImage"
       anchors.fill: parent
+      visible: !root._isVideo
       // Always the helper's own downloaded file or an embedded base64
       // thumb; never a remote URL.
       source: root.path ? "file://" + root.path : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
@@ -92,10 +112,22 @@ Item {
       }
     }
 
+    FullVideoPlayer {
+      id: videoPlayer
+      objectName: "fullVideoPlayer"
+      anchors.fill: parent
+      visible: root._isVideo
+      video: root.photo ? root.photo : ({})
+      path: root.path
+      available: root.videoAvailable
+      muted: root.videoMuted
+      onMuteToggled: root.videoMuteToggled()
+    }
+
     Text {
       objectName: "loadingLabel"
       anchors.centerIn: parent
-      visible: root.path === ""
+      visible: !root._isVideo && root.path === ""
       text: "Loading…"
       textFormat: Text.PlainText
       color: Util.alpha(Theme.foreground, 0.7)
@@ -110,7 +142,7 @@ Item {
     Text {
       objectName: "sizeLabel"
       Layout.fillWidth: true
-      text: root.photo ? Format.photoSize(root.photo.width, root.photo.height) : ""
+      text: root.photo && !root._isVideo ? Format.photoSize(root.photo.width, root.photo.height) : ""
       textFormat: Text.PlainText
       color: Util.alpha(Theme.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }
@@ -118,8 +150,8 @@ Item {
 
     Ui.Button {
       objectName: "openExternalButton"
-      text: "Open in image viewer (" + Keymap.keyFor("viewer.openExternal", root.bindings) + ")"
-      tooltipText: "Open in image viewer"
+      text: root._openLabel() + " (" + Keymap.keyFor("viewer.openExternal", root.bindings) + ")"
+      tooltipText: root._openLabel()
       focusable: true
       onClicked: root.openExternally()
     }
@@ -131,5 +163,12 @@ Item {
       focusable: true
       onClicked: root.closed()
     }
+  }
+
+  // _openLabel names what the external-open button does: a video or
+  // GIF opens in the user's own video player, anything else (a photo)
+  // in their own image viewer.
+  function _openLabel(): string {
+    return root._isVideo ? "Open in your own video player" : "Open in your own image viewer";
   }
 }

@@ -75,6 +75,7 @@ ShellRoot {
     if (!root.checkUndownloadedPhotoAsksAndFillsIn()) return;
     if (!root.checkCloseViewer()) return;
     if (!root.checkStepViewer()) return;
+    if (!root.checkStepDoesNothingForAVideo()) return;
 
     console.log("PASS PhotoViewerController");
     Qt.exit(0);
@@ -144,6 +145,24 @@ ShellRoot {
     viewer.step(1);
     if (viewer.viewerId !== "p1") return Check.fail("stepping past the newest photo moved away from it: " + viewer.viewerId);
 
+    return true;
+  }
+
+  // checkStepDoesNothingForAVideo verifies stepping while viewing a
+  // video (set directly, since opening v1 for real would call the real
+  // Qt.openUrlExternally - see the file header) leaves the viewer right
+  // where it is, rather than jumping to the nearest unrelated photo the
+  // way photoNeighbor alone would.
+  function checkStepDoesNothingForAVideo(): bool {
+    viewer.viewerId = "v1";
+
+    viewer.step(1);
+    if (viewer.viewerId !== "v1") return Check.fail("stepping forward while viewing a video moved to " + viewer.viewerId);
+
+    viewer.step(-1);
+    if (viewer.viewerId !== "v1") return Check.fail("stepping back while viewing a video moved to " + viewer.viewerId);
+
+    viewer.close();
     return true;
   }
 }

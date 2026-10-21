@@ -26,8 +26,13 @@ Item {
   property var dialogController: null
   // accountController is bound into account setup and its removal.
   property var accountController: null
-  // photoViewerController is bound into the in-app photo viewer.
+  // photoViewerController is bound into the in-app photo viewer, which
+  // also shows a video or GIF (see PhotoViewer.qml).
   property var photoViewerController: null
+  // videoController supplies whether in-window video playback is
+  // available and the shared mute preference, for the viewer's own
+  // video player.
+  property var videoController: null
   // reactionsController is bound into the emoji picker.
   property var reactionsController: null
   // deleteController is bound into the delete question.
@@ -128,11 +133,14 @@ Item {
     open: root.photoViewerController.viewerOpen
     photo: root.photoViewerController.viewerPhoto
     path: root.photoViewerController.viewerPath
+    videoAvailable: root.videoController ? root.videoController.available : true
+    videoMuted: root.videoController ? root.videoController.muted : true
     routeKey: root.routeKey
     bindings: root.bindings
 
     onClosed: root.photoViewerController.close()
     onOpenExternally: root.photoViewerController.openExternally()
+    onVideoMuteToggled: { if (root.videoController) root.videoController.setMuted(!root.videoController.muted); }
   }
 
   CloseConfirm {

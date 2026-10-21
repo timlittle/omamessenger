@@ -52,6 +52,18 @@ function isAnimated(media) {
   return !!media && media.kind === 'video' && !!media.animated;
 }
 
+// isGifFile reports whether media is a genuine GIF image rather than an
+// ordinary video or a video the sending service merely marked to play
+// back like one: both of those are actually silent MP4 bytes, which
+// only a video engine can decode, while a real GIF has no video codec
+// at all and plays through an image engine instead (AnimatedImage). The
+// helper marks a genuine GIF the same way it marks those - isAnimated
+// true - but always with a fileName ending ".gif" (see the connectors
+// and domain.Media.IsGIFFile), which is what tells the two apart here.
+function isGifFile(media) {
+  return isAnimated(media) && /\.gif$/i.test(media.fileName || '');
+}
+
 // mimeFor names the MIME type to offer when copying media's full file to
 // the clipboard, or null for a kind there is nothing sensible to copy as
 // (a link preview, a poll, a sticker still only on the service, …). The

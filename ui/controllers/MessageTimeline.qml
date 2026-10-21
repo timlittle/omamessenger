@@ -28,6 +28,14 @@ Item {
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
+  // notice is a brief, non-error confirmation for something that just
+  // worked, such as copying a message's photo or video to the
+  // clipboard or saving it to the downloads directory (see
+  // MediaController). Shown in the same banner row as lastError, which
+  // always takes priority over it while both are set; cleared the same
+  // way, by Panel's banner timer or dismissing it.
+  property string notice: ""
+
   // _loadingMore guards messages.list so only one older page loads at once.
   property bool _loadingMore: false
 
@@ -37,9 +45,9 @@ Item {
   signal initialLoaded()
 
   // reset clears the loaded messages, for a conversation about to load.
-  // Opening a conversation is a fresh start, so any error left over from
-  // whatever was open before goes with it, rather than lingering over
-  // this one until something else happens to clear it.
+  // Opening a conversation is a fresh start, so any error or notice left
+  // over from whatever was open before goes with it, rather than
+  // lingering over this one until something else happens to clear it.
   function reset(): void {
     messagesModel.clear();
     root.hasMore = true;
@@ -47,6 +55,7 @@ Item {
     root.annotations = [];
     root._loadingMore = false;
     root.lastError = "";
+    root.notice = "";
   }
 
   // loadInitial replaces the model with conversationId's newest page.

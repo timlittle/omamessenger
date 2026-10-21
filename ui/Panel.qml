@@ -373,24 +373,27 @@ Item {
           id: errorBanner
           objectName: "errorBanner"
           Layout.fillWidth: true
-          visible: windowController.errorBannerText.length > 0
+          visible: windowController.bannerText.length > 0
           spacing: Theme.spacing.sm
 
           Text {
             id: errorLine
             objectName: "errorLine"
             Layout.fillWidth: true
-            text: windowController.errorBannerText
+            text: windowController.bannerText
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            color: Theme.urgent
+            // A brief confirmation (Copied to clipboard, Saved to …) is
+            // never mistaken for an error: only an actual error turns
+            // this red, the same accent a real one always has.
+            color: windowController.bannerIsError ? Theme.urgent : Theme.foreground
             font.family: Theme.font.family
             font.pixelSize: Theme.font.bodySmall
 
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
-              onClicked: windowController.dismissErrorBanner()
+              onClicked: windowController.bannerIsError ? windowController.dismissErrorBanner() : windowController.dismissNotice()
             }
           }
 
@@ -399,9 +402,9 @@ Item {
             objectName: "dismissErrorButton"
             iconText: "×"
             tooltipText: "Dismiss"
-            foreground: Theme.urgent
+            foreground: windowController.bannerIsError ? Theme.urgent : Theme.foreground
             focusable: true
-            onClicked: windowController.dismissErrorBanner()
+            onClicked: windowController.bannerIsError ? windowController.dismissErrorBanner() : windowController.dismissNotice()
           }
         }
 
@@ -415,6 +418,7 @@ Item {
           conversationController: conversationController
           composerController: composerController
           photoViewerController: photoViewerController
+          videoController: videoController
           reactionsController: reactionsController
           pollsController: pollsController
           deleteController: deleteController

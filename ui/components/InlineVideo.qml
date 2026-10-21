@@ -16,13 +16,15 @@ import "../lib/Media.js" as Media
 // loses focus, so a long scroll-back through a chat full of GIFs never
 // keeps every one of them decoding at once.
 //
-// available is false when QtMultimedia itself could not be loaded (see
-// VideoController): a real .gif file still animates through
-// AnimatedImage, which needs no such module, but an animated "GIF" that
-// is actually a silent MP4 - true for every WhatsApp or Telegram one -
-// can only fall back to a still thumbnail, and an ordinary video falls
-// back to opening externally, exactly as it did before this component
-// existed.
+// A real .gif file (an actual GIF image, whatever marked it animated -
+// see Media.isGifFile) always animates through AnimatedImage, whether
+// or not QtMultimedia is even loaded: its bytes are genuine GIF data, a
+// video engine was never going to decode them. available is false when
+// QtMultimedia itself could not be loaded (see VideoController): an
+// animated "GIF" that is actually a silent MP4 - true for every
+// WhatsApp or Telegram one - can only fall back to a still thumbnail
+// while it is false, and an ordinary video falls back to opening
+// externally, exactly as it did before this component existed.
 Item {
   id: root
 
@@ -57,6 +59,13 @@ Item {
   // QtMultimedia would hit, without needing QtMultimedia to actually be
   // missing from the machine running the test.
   property url runtimeSource: Qt.resolvedUrl("VideoRuntime.qml")
+  // expandable shows a click target that asks to open this video or
+  // GIF full size (see expandRequested); true by default for the
+  // message bubble's own use, false when this is embedded somewhere
+  // that already is the full-size view, such as the in-app viewer
+  // itself, which would otherwise offer to expand into a copy of
+  // itself.
+  property bool expandable: true
 
   // wanted asks for an animated GIF's file to be downloaded; never
   // fired for an ordinary video, which downloads only once asked for.
@@ -70,25 +79,36 @@ Item {
   // fallback a click takes for an ordinary video while available is
   // false, exactly what it did before in-window playback existed.
   signal opened()
+  // expandRequested asks the caller to show this video or GIF full
+  // size in the in-app viewer: a GIF is always reachable this way,
+  // since it never shows the plain toggle click that starts an
+  // ordinary video's own inline playback; a playing ordinary video is
+  // reachable the same way once selected, over the frame itself rather
+  // than its controls.
+  signal expandRequested()
 
   // _animated is true for a video the service marked as a silent,
   // looping "GIF".
   readonly property bool _animated: Media.isAnimated(root.video)
   // _realGifFile is true when the file itself is an actual .gif, the
   // one animated format AnimatedImage can decode without QtMultimedia;
-  // every GIF WhatsApp or Telegram actually sends is a silent MP4, so
-  // this is rare, but a real one still deserves to animate.
-  readonly property bool _realGifFile: /\.gif$/i.test(root.video.fileName || "")
+  // every GIF WhatsApp or Telegram actually sends on its own is a
+  // silent MP4, so this is rare, but a real one (see Media.isGifFile)
+  // still deserves to animate, and through AnimatedImage specifically:
+  // see _decoding below.
+  readonly property bool _realGifFile: Media.isGifFile(root.video)
   // _aspect is height over width, square when the size is unknown.
   readonly property real _aspect: root.video.width > 0 ? root.video.height / root.video.width : 1
-  // _decoding is true while this bubble should actually hold the engine:
-  // an animated GIF whenever it is on screen and the window is active,
-  // or the one non-animated video the caller selected (playing), under
-  // the same two conditions. A selected video that the user has merely
-  // paused still counts: pausing only stops its own frames, through
-  // _paused below, rather than tearing the whole engine down and
-  // losing the frame on screen.
-  readonly property bool _decoding: root.available && root.path !== "" && root.visible && root.windowActive && (root._animated || root.playing)
+  // _decoding is true while this bubble should actually hold the
+  // QtMultimedia engine: an animated GIF (but never a real .gif file,
+  // which plays through AnimatedImage below instead and has no use for
+  // QtMultimedia at all) whenever it is on screen and the window is
+  // active, or the one non-animated video the caller selected
+  // (playing), under the same two conditions. A selected video that
+  // the user has merely paused still counts: pausing only stops its
+  // own frames, through _paused below, rather than tearing the whole
+  // engine down and losing the frame on screen.
+  readonly property bool _decoding: root.available && root.path !== "" && root.visible && root.windowActive && !root._realGifFile && (root._animated || root.playing)
   // _paused is a selected, non-animated video's own local pause state:
   // the engine stays loaded and its last frame stays on screen, only
   // its own playback stops. Reset whenever a new engine loads, so
@@ -102,6 +122,14 @@ Item {
   // failed and there is no thumbnail to fall back to either, the same
   // rule PhotoView applies to a photo.
   readonly property bool _unavailable: !root.video.thumb && root.failed && root.path === ""
+  // _expandable is true while a click on this video's own frame should
+  // ask to open the full-size viewer instead of (or, for a GIF, in
+  // addition to, since nothing else handles its click at all) starting
+  // or pausing inline playback: always for an animated GIF, which never
+  // shows the plain toggle click below; for an ordinary video, only
+  // once it is the one selected and playing, so a first click still
+  // starts it inline exactly as it always did.
+  readonly property bool _expandable: root.expandable && (root._animated || (root.playing && root.available))
 
   implicitWidth: Math.min(root.maxWidth, Style.space(320))
   implicitHeight: Math.min(root.implicitWidth * root._aspect, Style.space(400))
@@ -115,6 +143,7 @@ Item {
 
   Loader {
     id: _runtime
+    objectName: "videoRuntimeLoader"
     anchors.fill: parent
     active: root._decoding
     source: root.runtimeSource
@@ -152,9 +181,10 @@ Item {
     smooth: true
   }
 
-  // A real .gif file animates through AnimatedImage even with no
-  // QtMultimedia at all: this is the one case a machine without it
-  // still gets true inline playback for a "GIF".
+  // A real .gif file always animates through AnimatedImage, whether or
+  // not QtMultimedia is even loaded (see _decoding above): this is the
+  // one media kind that never touches the QtMultimedia-backed runtime
+  // at all.
   AnimatedImage {
     id: realGif
     objectName: "realGifImage"
@@ -218,6 +248,20 @@ Item {
     style: Text.Outline
     styleColor: Util.alpha(Theme.background, 0.6)
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
+  }
+
+  // Asks to open the full-size viewer: a GIF's whole frame (it has no
+  // other click handler at all), or a selected, playing video's frame
+  // above its controls row, left clickable for pause, seek and mute.
+  MouseArea {
+    id: expandArea
+    objectName: "videoExpandArea"
+    anchors { left: parent.left; right: parent.right; top: parent.top }
+    height: controls.visible ? Math.max(0, parent.height - controls.height - Theme.spacing.xs) : parent.height
+    visible: root._expandable
+    enabled: root._expandable
+    cursorShape: Qt.PointingHandCursor
+    onClicked: root.expandRequested()
   }
 
   // The playback controls, shown only while a non-animated video is

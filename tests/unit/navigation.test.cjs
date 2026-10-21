@@ -332,6 +332,14 @@ test('buildState reads every field from the controller that owns it, including d
   });
 });
 
+test('buildState errorOpen is true for a brief notice too, not only an error', () => {
+  // A notice (such as "Copied to clipboard") shares the error banner's
+  // row and its Escape step, even though it is not an error itself.
+  const ctx = { windowController: { errorBannerText: '', noticeText: 'Copied to clipboard' } };
+
+  assert.strictEqual(Navigation.buildState(ctx).errorOpen, true);
+});
+
 test('buildState falls back to service.uiState.pane when no conversationController is given', () => {
   const ctx = { service: { uiState: { pane: 'conversation', activeId: 'c1' } } };
 

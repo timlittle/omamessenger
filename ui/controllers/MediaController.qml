@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import qs.Commons
 import "../lib/Format.js" as Format
 import "../lib/Media.js" as Media
@@ -94,12 +95,24 @@ QtObject {
     const kind = Media.kindFor(media);
     if (kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
     if (kind === "voice" && root.voiceController && root.voiceController.available) { root._toggleVoice(timeline, id, media); return; }
-    if (kind === "video" && root.videoController && root.videoController.available) { root.toggleVideo(timeline, id); return; }
+    if (kind === "video" && root._playableInViewer(media) && root.photoViewer) { root.photoViewer.show(id); return; }
 
     const path = timeline.mediaPath(id);
     if (path) { root._openIfAllowed(id, path); return; }
 
     root.downloadMedia(timeline, id, true, (downloaded) => root._openIfAllowed(id, downloaded));
+  }
+
+  // _playableInViewer reports whether the in-app viewer (see
+  // photoViewer, which shows a video or GIF too) can actually play
+  // media: a real GIF file always can, through AnimatedImage; an
+  // ordinary video, or one a service marked to play back like one,
+  // needs videoController's own QtMultimedia probe to have succeeded.
+  // Without either, opening falls through to the plain
+  // download-and-open-externally path below instead, exactly as it did
+  // before the viewer could show a video at all.
+  function _playableInViewer(media: var): bool {
+    return Media.isGifFile(media) || (!!root.videoController && root.videoController.available);
   }
 
   // _openIfAllowed hands path to openExternally unless this same
@@ -146,16 +159,27 @@ QtObject {
     if (!mimeType) return;
 
     const path = timeline.mediaPath(id);
-    if (path) { root.copyToClipboard(path, mimeType); return; }
+    if (path) { root._copyAndNotify(timeline, path, mimeType); return; }
 
-    root.downloadMedia(timeline, id, true, (downloaded) => root.copyToClipboard(downloaded, mimeType));
+    root.downloadMedia(timeline, id, true, (downloaded) => root._copyAndNotify(timeline, downloaded, mimeType));
+  }
+
+  // _copyAndNotify copies path to the clipboard and shows a brief
+  // confirmation, so Copy is never silent about having done anything.
+  function _copyAndNotify(timeline: var, path: string, mimeType: string): void {
+    root.copyToClipboard(path, mimeType);
+    timeline.notice = "Copied to clipboard";
   }
 
   // saveMedia asks the helper to save id's media into the downloads
   // directory, fetching it first if need be; the helper does both in
   // one round trip (see media.save in docs/api.md), so this never asks
   // downloadMedia itself. A failure is reported the same way a failed
-  // media.fetch already is.
+  // media.fetch already is; success shows a brief confirmation naming
+  // where the file ended up, with the user's own home directory folded
+  // to "~" (Format.js is pure and never reads the environment itself,
+  // so this reads it through Quickshell.env, the same way Service.qml
+  // already does for keys.conf's own path).
   function saveMedia(timeline: var, id: string): void {
     root.service.request("media.save", { messageId: id }, function(error, result) {
       if (error) {
@@ -166,6 +190,7 @@ QtObject {
       }
 
       timeline.lastError = "";
+      timeline.notice = Format.savedLocationLabel(result.path, Quickshell.env("HOME") || "");
     });
   }
 

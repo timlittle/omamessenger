@@ -4,7 +4,10 @@
 // pixel dimensions; the close button, a click on the backdrop outside the
 // photo and Escape (forwarded through routeKey, as every other full-window
 // dialog in this UI does) all ask to close; a click on the photo itself
-// does not; and the "Open in image viewer" button reports its own intent.
+// does not; and the open-externally button reports its own intent. It
+// also checks that a video or a real GIF file opens into FullVideoPlayer
+// instead of the plain Image, and that a real GIF plays through it even
+// while in-window video playback is unavailable.
 import QtQuick
 import QtTest
 import Quickshell
@@ -67,6 +70,8 @@ ShellRoot {
     if (!root.checkCloseButton()) return;
     if (!root.checkOpenExternalButton()) return;
     if (!root.checkEscapeForwardedAndClosesWhenRouterSaysSo()) return;
+    if (!root.checkVideoOpensIntoFullVideoPlayer()) return;
+    if (!root.checkRealGifFilePlaysEvenWithoutInWindowVideo()) return;
 
     console.log("PASS PhotoViewer");
     Qt.exit(0);
@@ -175,6 +180,48 @@ ShellRoot {
       return Check.fail("Escape was not forwarded to routeKey");
 
     root.routeOutcome = null;
+    return true;
+  }
+
+  // checkVideoOpensIntoFullVideoPlayer verifies opening the viewer on a
+  // video shows FullVideoPlayer instead of the plain Image, and that the
+  // size label (a photo's own pixel-dimensions text) is left blank for
+  // it, since photoMeta already shows a video's own size inline.
+  function checkVideoOpensIntoFullVideoPlayer(): bool {
+    viewer.open = true;
+    viewer.videoAvailable = true;
+    viewer.photo = { kind: "video", width: 800, height: 600, duration: 5, thumb: "" };
+    viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
+
+    const image = Check.find(viewer, "photoImage");
+    if (image && image.visible) return Check.fail("a video still shows the plain photo Image");
+
+    const player = Check.find(viewer, "fullVideoPlayer");
+    if (!player || !player.visible) return Check.fail("a video shows no FullVideoPlayer");
+
+    const sizeText = Check.texts(viewer).find(node => node.objectName === "sizeLabel");
+    if (sizeText && sizeText.text !== "") return Check.fail("the size label shows " + sizeText.text + " for a video, want blank");
+
+    return true;
+  }
+
+  // checkRealGifFilePlaysEvenWithoutInWindowVideo verifies a real GIF
+  // file (see Media.isGifFile) animates through FullVideoPlayer's own
+  // AnimatedImage even while videoAvailable is false: it needs no
+  // QtMultimedia at all, unlike an ordinary video or a silent "GIF"
+  // mp4.
+  function checkRealGifFilePlaysEvenWithoutInWindowVideo(): bool {
+    viewer.open = true;
+    viewer.videoAvailable = false;
+    viewer.photo = { kind: "video", animated: true, fileName: "run.gif", thumb: "" };
+    viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
+
+    const gifImage = Check.find(viewer, "fullGifImage");
+    if (!gifImage || !gifImage.visible) return Check.fail("a real .gif file with in-window video unavailable shows no AnimatedImage");
+
+    const unavailableLabel = Check.find(viewer, "fullVideoUnavailableLabel");
+    if (unavailableLabel && unavailableLabel.visible) return Check.fail("a real .gif file shows the \"video playback unavailable\" message");
+
     return true;
   }
 }

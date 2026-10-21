@@ -51,6 +51,8 @@ function newer(ids, currentId) {
 //   "r reply · e react · d delete"
 //   "r reply · e react · d delete · Enter open"     (carries media)
 //   "r reply · e react · d delete · Enter play"     (carries a voice note)
+//   "r reply · e react · d delete · Enter open · c copy · s save · x open"
+//                                                    (carries a photo or video)
 //   "r reply · e react · d delete · o open link"    (carries a link)
 //   "r reply · e react · d delete · p go to quote"  (is a reply)
 //   "r reply · e react · d delete · t retry"        (failed to send)
@@ -66,6 +68,13 @@ function hints(message, bindings) {
   // added below, only while it is still open.
   if (media && media.kind === 'voice') parts.push(`${key('message.open')} play`);
   else if (media && media.kind !== 'poll') parts.push(`${key('message.open')} open`);
+  // Copy, save and open-externally only ever do something for a photo
+  // or video (see Media.mimeFor and MessageDelegate's own hasMedia),
+  // the same hover toolbar buttons show for; otherwise these keys are
+  // bound but silently do nothing, so there is no reason to hint them.
+  if (media && (media.kind === 'photo' || media.kind === 'video')) {
+    parts.push(`${key('message.copyMedia')} copy`, `${key('message.saveMedia')} save`, `${key('message.openExternal')} open`);
+  }
   if (links(message).length > 0) parts.push(`${key('message.openLink')} open link`);
   if (Timeline.replyTo(message)) parts.push(`${key('message.goToQuote')} go to quote`);
   if (message.outgoing && message.status === 'failed') parts.push(`${key('message.retry')} retry`);

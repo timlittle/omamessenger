@@ -30,6 +30,13 @@
 // openExternally stands in for the real Qt.openUrlExternally throughout,
 // so "opens" here means this test's own recorder, never a real external
 // application.
+//
+// Last, it checks that a video whose playback can actually work in the
+// in-app viewer (a videoController reporting QtMultimedia available, or
+// a real GIF file) opens into that viewer instead of falling through
+// to the plain download-and-open path every other check here exercises,
+// and that copying or saving a message's media sets a brief
+// confirmation naming what happened, rather than doing it silently.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -41,6 +48,9 @@ ShellRoot {
   // openCalls records every path controller.openExternally was asked to
   // open, standing in for the real Qt.openUrlExternally.
   property var openCalls: []
+  // copyCalls records every [path, mimeType] controller.copyToClipboard
+  // was asked to copy, standing in for the real wl-copy.
+  property var copyCalls: []
 
   QtObject {
     id: service
@@ -78,6 +88,10 @@ ShellRoot {
         service.pendingFetch[params.messageId] = callback;
         return;
       }
+      // A path deliberately outside any real home directory, so the
+      // check below never depends on what $HOME happens to be on the
+      // machine actually running this test.
+      if (method === "media.save") { callback(null, { path: "/mnt/media-save-test/v2.mp4" }); return; }
       callback(null, {});
     }
   }
@@ -86,10 +100,31 @@ ShellRoot {
     id: controller
     service: service
     openExternally: (path) => root.openCalls.push(path)
+    // A recorder, not the real wl-copy, the same reason openExternally
+    // above is one.
+    copyToClipboard: (path, mimeType) => root.copyCalls.push([path, mimeType])
     // Short enough that waiting it out in cooldownTimer below costs the
     // test run almost nothing, while still being a real, positive delay
     // rather than 0.
     mediaOpenCooldownMs: 80
+  }
+
+  // fakeVideoController stands in for the real VideoController's own
+  // QtMultimedia probe, so checkOpenMediaShowsAPlayableVideoInTheViewer
+  // can set it available without needing QtMultimedia to actually be
+  // loaded.
+  QtObject {
+    id: fakeVideoController
+    property bool available: true
+  }
+
+  // viewer is wired up only for that one check: every other check above
+  // intentionally leaves photoViewer and videoController unset, so a
+  // video with neither falls all the way through to openExternally, the
+  // way it always did.
+  PhotoViewerController {
+    id: viewer
+    conversation: controller
   }
 
   Timer {
@@ -138,9 +173,69 @@ ShellRoot {
   // mediaOpenCooldownMs has actually passed.
   function finishAfterCooldown(): void {
     if (!root.checkCooldownClearsAfterItPasses()) return;
+    if (!root.checkOpenMediaShowsAPlayableVideoInTheViewer()) return;
+    if (!root.checkCopyMediaShowsAConfirmation()) return;
+    if (!root.checkSaveMediaShowsWhereItWentWithHomeFolded()) return;
 
     console.log("PASS MediaController");
     Qt.exit(0);
+  }
+
+  // checkCopyMediaShowsAConfirmation verifies copying v2's already-
+  // cached video dispatches the real clipboard copy exactly once and
+  // sets a brief confirmation, so Copy is never silent about having
+  // done anything.
+  function checkCopyMediaShowsAConfirmation(): bool {
+    root.copyCalls = [];
+    controller.timeline.lastError = "";
+    controller.timeline.notice = "";
+
+    controller.copyMedia("v2");
+
+    if (root.copyCalls.length !== 1 || root.copyCalls[0][0] !== "/tmp/v2.mp4" || root.copyCalls[0][1] !== "video/mp4")
+      return Check.fail("copyCalls = " + JSON.stringify(root.copyCalls) + ", want one copy of /tmp/v2.mp4 as video/mp4");
+    if (controller.timeline.notice !== "Copied to clipboard")
+      return Check.fail("notice = " + controller.timeline.notice + ", want \"Copied to clipboard\"");
+    return true;
+  }
+
+  // checkSaveMediaShowsWhereItWentWithHomeFolded verifies saving v2
+  // sets a confirmation naming where it ended up. The fixture's
+  // media.save answers with a path outside any real home directory, so
+  // this only checks the path reaches the notice unchanged; folding a
+  // path actually under $HOME to "~" is Format.savedLocationLabel's own
+  // job, proven exhaustively in tests/unit/format.test.cjs.
+  function checkSaveMediaShowsWhereItWentWithHomeFolded(): bool {
+    controller.timeline.notice = "";
+
+    controller.saveMedia("v2");
+
+    if (controller.timeline.notice !== "Saved to /mnt/media-save-test/v2.mp4")
+      return Check.fail("notice = " + controller.timeline.notice + ", want \"Saved to /mnt/media-save-test/v2.mp4\"");
+    return true;
+  }
+
+  // checkOpenMediaShowsAPlayableVideoInTheViewer verifies opening a
+  // video whose playback can actually work in the in-app viewer (a
+  // videoController reporting QtMultimedia available, here faked)
+  // shows it there, through photoViewer.show, rather than falling
+  // through to the plain download-and-open-externally path every check
+  // above exercises. v2 already has a cached path from this file's own
+  // fixtures, so this needs no new media.fetch.
+  function checkOpenMediaShowsAPlayableVideoInTheViewer(): bool {
+    root.openCalls = [];
+    controller.videoController = fakeVideoController;
+    controller.photoViewer = viewer;
+
+    controller.openMedia("v2");
+
+    if (viewer.viewerId !== "v2") return Check.fail("viewerId = " + viewer.viewerId + ", want v2 shown in the viewer");
+    if (root.openCalls.length !== 0) return Check.fail("a playable video also opened externally: " + JSON.stringify(root.openCalls));
+
+    viewer.close();
+    controller.videoController = null;
+    controller.photoViewer = null;
+    return true;
   }
 
   // checkTrulyGoneReasonNamesTheKind verifies opening a video that
