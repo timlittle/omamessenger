@@ -151,3 +151,35 @@ jobs:
         run: make build test-qml
       - name: Qt 6 qmllint
         run: ./scripts/qml-imports.sh && /usr/lib/qt6/bin/qmllint -I build/qml --max-warnings 0 $(find ui -name '*.qml')
+
+  # Runs the same offscreen QML tests as the "qml" job above, but against
+  # whatever Qt and Quickshell Arch's rolling repos currently carry,
+  # instead of the pinned versions. Nothing here gates a PR
+  # (continue-on-error): it exists to notice a future Qt or Quickshell
+  # release breaking this UI (as 6.12's new global "Color" type did, see
+  # docs/decisions.md) before it reaches the pin in the required "qml"
+  # job above, not to block on it. Omarchy stays at the same v4.0.4
+  # checkout as the pinned job, so a failure here isolates to the Qt or
+  # Quickshell version rather than an unrelated Omarchy change.
+  qml-next:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    container: archlinux:base-devel
+    permissions:
+      contents: read
+    env:
+      OMARCHY_SHELL_DIR: /tmp/omarchy/shell
+    steps:
+      - name: Install current Quickshell, Qt 6, Go and Node
+        run: pacman -Syu --noconfirm --needed git go nodejs quickshell qt6-declarative qt6-multimedia qt6-multimedia-ffmpeg
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out Omarchy 4.0.4
+        run: git clone --depth 1 --branch v4.0.4 https://github.com/basecamp/omarchy /tmp/omarchy
+      - name: Offscreen QML tests
+        run: make build test-qml
+      - name: Qt 6 qmllint
+        run: ./scripts/qml-imports.sh && /usr/lib/qt6/bin/qmllint -I build/qml --max-warnings 0 $(find ui -name '*.qml')
