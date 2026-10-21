@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -244,33 +242,19 @@ func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, _ s
 // path: a small, solid-colour JPEG for a photo, or a short silent Opus
 // clip for a voice note, each decoding like the real download would, so
 // the UI has something real to show or play rather than falling back to
-// its "unavailable" label. app.mediaFileName, the only place that
-// names path, always gives a voice note's own file extension, so
-// telling the two apart by path alone is enough: this connector never
-// sees the message's media kind directly.
-func (c *Connector) FetchMedia(_ context.Context, _ domain.Conversation, _, path string, _ bool) error {
+// its "unavailable" label. Which one a message is comes from the fake's
+// own script, never from path, which the cache names by content.
+func (c *Connector) FetchMedia(_ context.Context, conv domain.Conversation, messageRemoteID, path string, _ bool) error {
 	if _, err := c.current(); err != nil {
 		return err
 	}
 
 	data := placeholderPhoto()
-	if isVoiceNotePath(path) {
+	if c.script.isVoiceNote(conv.RemoteID, messageRemoteID) {
 		data = placeholderVoiceNote()
 	}
 
 	return os.WriteFile(path, data, 0o600)
-}
-
-// isVoiceNotePath reports whether path names a voice note rather than a
-// photo, by its own file extension. The cache package fills a file
-// through a temporary one, suffixed ".part", before renaming it into
-// place, so that suffix is trimmed first: without it, every voice note
-// would be mistaken for a plain file and get the photo placeholder
-// instead, with the right ".ogg" name but the wrong bytes inside.
-func isVoiceNotePath(path string) bool {
-	path = strings.TrimSuffix(path, ".part")
-
-	return strings.EqualFold(filepath.Ext(path), ".ogg")
 }
 
 // React sets or clears the user's own reaction and reports it back

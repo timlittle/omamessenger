@@ -103,38 +103,6 @@ func TestFetchMedia_VoiceNoteAlsoNamesBySniffedContent(t *testing.T) {
 	}
 }
 
-// TestFetchMedia_VoiceNoteFillsAPathEndingInOggBeforeTheFinalNameIsKnown
-// confirms the connector is still handed a path ending ".ogg" for a
-// voice note while it is downloading, before the final, sniffed name
-// is decided: `make build-fake`'s own fake connector tells a voice
-// note's download apart from a photo's by that path's own extension,
-// the one signal it has without the message's media kind in its own
-// signature (see fake.Connector.FetchMedia and voiceHintedFill), and
-// this is the regression check for that fix once this message's cache
-// name stopped coming from mediaFileName's own fixed ".ogg".
-func TestFetchMedia_VoiceNoteFillsAPathEndingInOggBeforeTheFinalNameIsKnown(t *testing.T) {
-	t.Parallel()
-
-	f := newFixture(t, false)
-	ctx := t.Context()
-	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	if _, _, err := f.store.AddMessage(ctx, domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Voice message]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	f.media.data = []byte("OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00")
-	if _, err := f.commands.FetchMedia(ctx, "m1", false); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(f.media.paths) != 1 || filepath.Ext(f.media.paths[0]) != ".ogg" {
-		t.Fatalf("connector filled %v, want exactly one path ending .ogg", f.media.paths)
-	}
-}
-
 // TestFetchMedia_SniffedNameIsCachedAndNeverReDownloaded confirms
 // FetchNamed's own lookup finds the file a first fetch sniffed and
 // named, the same way the old, fixed naming already did, so a second

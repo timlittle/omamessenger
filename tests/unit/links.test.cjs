@@ -25,7 +25,7 @@ test('isAllowed rejects every other scheme and anything with none at all', () =>
 });
 
 test('fileURL percent-encodes a plain path with no special characters', () => {
-  assert.strictEqual(Links.fileURL('/home/tim/Downloads/report.pdf'), 'file:///home/tim/Downloads/report.pdf');
+  assert.strictEqual(Links.fileURL('/home/user/Downloads/report.pdf'), 'file:///home/user/Downloads/report.pdf');
 });
 
 test('fileURL encodes a hash, so it is never read as a URL fragment', () => {

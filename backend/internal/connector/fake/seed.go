@@ -146,3 +146,17 @@ func (s conversationScript) olderHistory(now time.Time) []domain.Message {
 
 	return messages
 }
+
+// isVoiceNote reports whether messageRemoteID names the voice note
+// applyScriptedMedia seeds as the newest message of the conversation
+// convRemoteID: the fake's own record of a message's kind, so FetchMedia
+// never has to guess it from the cache's file name.
+func (a accountScript) isVoiceNote(convRemoteID, messageRemoteID string) bool {
+	for _, s := range a.conversations {
+		if s.remoteID == convRemoteID && s.lastVoice && s.count > 0 {
+			return messageRemoteID == fmt.Sprintf("seed-%s-%d", s.remoteID, s.count)
+		}
+	}
+
+	return false
+}

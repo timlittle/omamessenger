@@ -303,6 +303,8 @@ func TestFetchMedia_WritesTheScriptedPhoto(t *testing.T) {
 // guards against had every fetch write a JPEG regardless of the
 // message's own media kind, so a voice note's player had nothing it
 // could actually decode even though the download itself "succeeded".
+// The path has no extension, as the cache's content-named downloads
+// don't, so the kind must come from the script, not the file name.
 func TestFetchMedia_WritesTheScriptedVoiceNote(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := &connectortest.Sink{}
@@ -322,7 +324,7 @@ func TestFetchMedia_WritesTheScriptedVoiceNote(t *testing.T) {
 			t.Fatal("fake connector does not download media")
 		}
 
-		path := filepath.Join(t.TempDir(), "voice.ogg")
+		path := filepath.Join(t.TempDir(), "download")
 		if err := wa.FetchMedia(t.Context(), conversation("wa-personal", "wa:dentist", domain.KindDirect), newest.RemoteID, path, false); err != nil {
 			t.Fatal(err)
 		}
@@ -344,10 +346,8 @@ func TestFetchMedia_WritesTheScriptedVoiceNote(t *testing.T) {
 // voice note placeholder still lands correctly when FetchMedia is driven
 // the way app.Commands.FetchMedia actually calls it: through the cache
 // package's own Fetch, which fills every download at a temporary path
-// suffixed ".part" before renaming it into place. The bug this guards
-// against told a voice note apart from a photo by a plain ".ogg" suffix,
-// which that temporary name never has, so the cache's real call shape
-// still wrote the photo placeholder under the right file name.
+// suffixed ".part" before renaming it into place, under a name with no
+// media extension at all.
 func TestFetchMedia_WritesRealOggThroughTheCachesTemporaryFile(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := &connectortest.Sink{}
@@ -365,7 +365,7 @@ func TestFetchMedia_WritesRealOggThroughTheCachesTemporaryFile(t *testing.T) {
 		}
 
 		fill := cache.New(t.TempDir(), 1<<20)
-		path, err := fill.Fetch(t.Context(), "voice-message.ogg", func(ctx context.Context, fillPath string) error {
+		path, err := fill.Fetch(t.Context(), "m1", func(ctx context.Context, fillPath string) error {
 			return wa.FetchMedia(ctx, conversation("wa-personal", "wa:dentist", domain.KindDirect), newest.RemoteID, fillPath, false)
 		})
 		if err != nil {

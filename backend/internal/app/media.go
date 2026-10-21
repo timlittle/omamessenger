@@ -178,7 +178,7 @@ func (c *Commands) fetchIntoCache(ctx context.Context, m domain.Message, fill fu
 		return c.cache.Fetch(ctx, name, fill)
 	}
 
-	return c.cache.FetchNamed(ctx, m.ID, voiceHintedFill(m, fill), func(part string) (string, error) {
+	return c.cache.FetchNamed(ctx, m.ID, fill, func(part string) (string, error) {
 		contentType, err := sniffContentType(part)
 		if err != nil {
 			return "", err
@@ -186,37 +186,6 @@ func (c *Commands) fetchIntoCache(ctx context.Context, m domain.Message, fill fu
 
 		return m.ID + extensionFor(contentType), nil
 	})
-}
-
-// voiceHintedFill wraps fill so a voice note's download briefly exists
-// under a path ending ".ogg" before being moved to the plain one
-// FetchNamed actually asked for, once fill has written it: the fake
-// connector `make build-fake` builds for tests decides which
-// placeholder bytes to write from path's own extension, the one thing
-// it can tell a voice note apart from a photo by without the message's
-// media kind in its own signature (see fake.Connector.FetchMedia,
-// matching every real connector's). Every real connector ignores
-// path's extension and writes whatever the service actually sent
-// regardless, so this changes nothing for them; it never changes the
-// file's own final cache name either, which fetchIntoCache's own
-// nameFor always decides from the downloaded bytes, never this hint.
-func voiceHintedFill(m domain.Message, fill func(context.Context, string) error) func(context.Context, string) error {
-	if m.Media.Kind != domain.MediaVoice {
-		return fill
-	}
-
-	return func(ctx context.Context, path string) error {
-		hinted := path + ".ogg"
-		if err := fill(ctx, hinted); err != nil {
-			if rmErr := os.Remove(hinted); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
-				return errors.Join(err, rmErr)
-			}
-
-			return err
-		}
-
-		return os.Rename(hinted, path)
-	}
 }
 
 // fetchFailureReason classifies a media download failure: err is what
