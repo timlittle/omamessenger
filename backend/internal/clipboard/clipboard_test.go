@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -93,5 +95,36 @@ func TestRead_FailsWhenOutputExceedsTheCap(t *testing.T) {
 
 	if err := w.Read(t.Context(), "image/png", io.Discard); err == nil {
 		t.Error("Read() over the cap = nil error, want one")
+	}
+}
+
+// TestWrite_SendsDataToTheCommand confirms Write hands data to the
+// command's own stdin, the way wl-copy expects what it is to put on
+// the clipboard.
+func TestWrite_SendsDataToTheCommand(t *testing.T) {
+	t.Parallel()
+
+	dst := filepath.Join(t.TempDir(), "out")
+	w := clipboard.Wayland{Command: stubCommand("cat > " + dst)}
+
+	if err := w.Write(t.Context(), "image/png", strings.NewReader("image bytes")); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	got, err := os.ReadFile(dst)
+	if err != nil || string(got) != "image bytes" {
+		t.Errorf("Write() wrote %q, %v, want %q", got, err, "image bytes")
+	}
+}
+
+// TestWrite_FailsWhenTheCommandFails confirms a failing wl-copy is
+// reported rather than treated as a successful copy.
+func TestWrite_FailsWhenTheCommandFails(t *testing.T) {
+	t.Parallel()
+
+	w := clipboard.Wayland{Command: stubCommand("exit 1")}
+
+	if err := w.Write(t.Context(), "image/png", strings.NewReader("x")); err == nil {
+		t.Error("Write() with a failing command = nil error, want one")
 	}
 }

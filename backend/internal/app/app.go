@@ -135,15 +135,24 @@ type OutgoingMedia interface {
 	Remove(ctx context.Context, id, fileName string) error
 }
 
-// ClipboardRunner reads the Wayland clipboard. Quickshell's QML cannot
-// read clipboard image data itself, only ask whether a paste happened, so
-// the helper shells out to wl-paste; this is what PasteImage asks of it.
+// ClipboardRunner reads and writes the Wayland clipboard. Quickshell's
+// QML cannot read clipboard image data, or put an image or video on the
+// clipboard at all, itself, so the helper shells out to wl-paste and
+// wl-copy; PasteImage asks for the first, CopyMedia for the second.
+// Three methods, not the usual one or two, because all three are the
+// one real resource - the system clipboard - a single command-line
+// pair already owns: splitting Read and Write into their own
+// interfaces would only mean two fields wired to the same
+// implementation for no caller's benefit.
 type ClipboardRunner interface {
 	// Types lists the MIME types the clipboard currently offers.
 	Types(ctx context.Context) ([]string, error)
 
 	// Read writes the clipboard's data of mimeType to w.
 	Read(ctx context.Context, mimeType string, w io.Writer) error
+
+	// Write puts data on the clipboard as mimeType.
+	Write(ctx context.Context, mimeType string, data io.Reader) error
 }
 
 // SignIn hands sign-in input, such as a code, to an account's connector.

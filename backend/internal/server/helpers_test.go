@@ -77,14 +77,18 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 	t.Helper()
 
 	db := openSeeded(t)
+	clipboard := &fakeClipboard{}
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
 		Media: media, Cache: mediaCache,
 	}
 
-	return newSession(t, db, deps)
+	s := newSession(t, db, deps)
+	s.clipboard = clipboard
+
+	return s
 }
 
 // connectWithMediaSave serves an application like connect, but wired
@@ -419,10 +423,12 @@ type silent struct{}
 func (silent) Notify(string, string, string) {}
 
 // fakeClipboard answers a clipboard check from canned data, keyed by MIME
-// type, in place of running wl-paste.
+// type, in place of running wl-paste, and records every write in place
+// of running wl-copy.
 type fakeClipboard struct {
-	types []string
-	data  map[string][]byte
+	types   []string
+	data    map[string][]byte
+	written []byte
 }
 
 // Types reports the MIME types the test set the clipboard to offer.
@@ -434,6 +440,19 @@ func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) er
 	_, err := w.Write(c.data[mimeType])
 
 	return err
+}
+
+// Write records data's bytes as written, ignoring mimeType: no test in
+// this package needs to assert on it.
+func (c *fakeClipboard) Write(_ context.Context, _ string, data io.Reader) error {
+	got, err := io.ReadAll(data)
+	if err != nil {
+		return err
+	}
+
+	c.written = got
+
+	return nil
 }
 
 // unreachableFake is an injector whose conversations are never found.

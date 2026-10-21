@@ -496,12 +496,23 @@ func (l *fakeLogger) take() []string {
 }
 
 // fakeClipboard answers a clipboard check from canned data, keyed by MIME
-// type, in place of running wl-paste.
+// type, in place of running wl-paste, and records every write in place
+// of running wl-copy.
 type fakeClipboard struct {
 	types    []string
 	data     map[string][]byte
 	typesErr error
 	readErr  error
+	written  []clipboardWrite
+	writeErr error
+}
+
+// clipboardWrite is one call fakeClipboard.Write recorded: the MIME
+// type it was given and the bytes read off the source before the test
+// goroutine's own buffer stops being valid.
+type clipboardWrite struct {
+	mimeType string
+	data     []byte
 }
 
 // Types reports the MIME types the test set the clipboard to offer.
@@ -518,6 +529,23 @@ func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) er
 	_, err := w.Write(c.data[mimeType])
 
 	return err
+}
+
+// Write records mimeType and data's bytes as one clipboardWrite, or
+// fails with writeErr without reading data at all.
+func (c *fakeClipboard) Write(_ context.Context, mimeType string, data io.Reader) error {
+	if c.writeErr != nil {
+		return c.writeErr
+	}
+
+	got, err := io.ReadAll(data)
+	if err != nil {
+		return err
+	}
+
+	c.written = append(c.written, clipboardWrite{mimeType: mimeType, data: got})
+
+	return nil
 }
 
 // fakeSignIn records the sign-in answers it is given.

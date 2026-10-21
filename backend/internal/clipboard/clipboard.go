@@ -19,6 +19,13 @@ import (
 // portal cannot block the helper forever.
 const commandTimeout = 3 * time.Second
 
+// writeTimeout bounds how long Write may take handing data to wl-copy,
+// which must read all of it before it can fork into the background and
+// start serving paste requests; longer than commandTimeout since a
+// copied photo or video can be considerably larger than anything this
+// helper ever pastes in.
+const writeTimeout = 10 * time.Second
+
 // MaxPasteLen bounds how many bytes Read accepts from wl-paste: the
 // same cap as the full-size image profile a pasted photo is sanitized
 // against (see app/paste.go and imagesafe.FullImage), large enough for
@@ -67,6 +74,24 @@ func (w Wayland) Read(ctx context.Context, mimeType string, dst io.Writer) error
 	_, err = dst.Write(out)
 
 	return err
+}
+
+// Write puts data on the clipboard as mimeType, through wl-copy,
+// bounded by writeTimeout: the counterpart to Read, for a photo, video
+// or other media this helper has already downloaded or is about to
+// send, so QML never has to shell out to copy anything itself.
+func (w Wayland) Write(ctx context.Context, mimeType string, data io.Reader) error {
+	ctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+
+	cmd := w.command(ctx, "wl-copy", "--type", mimeType)
+	cmd.Stdin = data
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("clipboard: write: %w", err)
+	}
+
+	return nil
 }
 
 // run invokes wl-paste with args and returns its stdout, bounded by
