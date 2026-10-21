@@ -750,6 +750,9 @@ Item {
                 model: root._overlayRects
 
                 Rectangle {
+                  required property var modelData
+                  required property int index
+
                   objectName: "spellUnderline-" + index
                   x: modelData.x
                   y: modelData.y
