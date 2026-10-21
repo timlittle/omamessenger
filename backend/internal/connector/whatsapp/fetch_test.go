@@ -162,10 +162,9 @@ func TestFetchMedia_RefusesADeclaredSizeOverTheCap(t *testing.T) {
 
 // TestFetchMedia_RejectsADownloadLargerThanItsDeclaredSize covers a
 // sender whose declared FileLength passes the cheap check above, but
-// whose actual bytes do not: imagesafe.Sanitize's own input cap is
-// still the backstop that refuses it, since whatsmeow's
-// DownloadMediaWithPath returns a file in one piece with no way for
-// this connector to cap it mid-stream.
+// whose actual bytes do not: boundedFile's own streamed cap is the
+// backstop that refuses it, well before imagesafe ever sees a byte
+// (see fetch.go's streamImageOnce).
 func TestFetchMedia_RejectsADownloadLargerThanItsDeclaredSize(t *testing.T) {
 	t.Parallel()
 
@@ -257,7 +256,7 @@ func TestFetchMedia_ReportsDecryptFailureForAWornOutReference(t *testing.T) {
 // running that specific check (see recoverableStaleDigest in
 // fetch.go), and WhatsApp's own apps accept a stale digest the same
 // way. TestFetchMedia_AcceptsAPhotoThatOnlyFailsThePlaintextDigest
-// covers the same recovery for the in-memory image path.
+// covers the same recovery for the streamed image path.
 func TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest(t *testing.T) {
 	t.Parallel()
 
@@ -281,10 +280,10 @@ func TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest(t *testing.T) {
 
 // TestFetchMedia_AcceptsAPhotoThatOnlyFailsThePlaintextDigest is
 // TestFetchMedia_AcceptsAFileThatOnlyFailsThePlaintextDigest's own
-// in-memory counterpart: a photo whose plaintext no longer matches its
-// declared hash is still sanitized and written, through
-// downloadOrRetry's own recoverStaleDigest, with no retry needed at
-// all.
+// streamed-image counterpart: a photo whose plaintext no longer
+// matches its declared hash is still sanitized and written, through
+// streamImageOrRetry's own recoverableStaleDigest check, with no
+// retry needed at all.
 func TestFetchMedia_AcceptsAPhotoThatOnlyFailsThePlaintextDigest(t *testing.T) {
 	t.Parallel()
 
@@ -336,12 +335,12 @@ func TestFetchMedia_FailsWhenNotConnected(t *testing.T) {
 }
 
 // TestFetchMedia_RetriesAnExpiredLinkForAPhotoThroughThePhone covers
-// retryDownload's own in-memory path - a photo, sticker or real GIF
-// file, which goes through imagesafe rather than streaming to disk
-// (see fetch.go's fetchImage) - the image-kind counterpart of
-// retry_test.go's own TestFetchMedia_RetriesAnExpiredLinkThroughThePhone,
-// which only exercises a document's own streamed retry
-// (retryStreamedDownload).
+// retryStreamedImageDownload - a photo, sticker or real GIF file,
+// streamed to a temporary file and sanitized through imagesafe once
+// downloaded (see fetch.go's fetchImage) - the image-kind counterpart
+// of retry_test.go's own
+// TestFetchMedia_RetriesAnExpiredLinkThroughThePhone, which only
+// exercises a document's own streamed retry (retryStreamedDownload).
 func TestFetchMedia_RetriesAnExpiredLinkForAPhotoThroughThePhone(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		key := testMediaKey(2)

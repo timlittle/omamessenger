@@ -38,11 +38,12 @@ const fetchTimeout = 2 * time.Minute
 // FetchMedia downloads the photo or file of the message Telegram numbers
 // messageRemoteID to path. A message's file reference expires, so the
 // message is read again for a fresh one first. auto is true for a
-// fetch the UI made on its own, with no click from the user - today,
-// only an animated "GIF" video autoplaying as soon as it is shown -
-// which download bounds to connector.AutoFetchMaxBytes rather than the
-// far larger limit a deliberate click is trusted with (see
-// connector.MaxBytes).
+// fetch the UI made on its own, with no click from the user - a
+// photo, sticker or voice note shown as a message's row comes into
+// view, or an animated "GIF" video autoplaying - which bounds the
+// download to connector.AutoFetchMaxBytes rather than the far larger
+// limit a deliberate click is trusted with (see connector.MaxBytes
+// and connector.ImageFetchCap).
 func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string, auto bool) error {
 	api, _, err := c.session()
 	if err != nil {
@@ -71,11 +72,12 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return download(ctx, api, fileDownload{location: location, path: path, auto: auto, declaredSize: declared})
 	}
 
-	if known && declared > profile.MaxInputLen {
+	max := connector.ImageFetchCap(profile, auto)
+	if known && declared > max {
 		return errMediaTooLarge
 	}
 
-	return downloadImage(ctx, api, location, path, profile)
+	return downloadImage(ctx, api, imageDownload{location: location, path: path, profile: profile, max: max})
 }
 
 // declaredMediaSize is the size m's sender claims for the file
@@ -99,21 +101,34 @@ func declaredMediaSize(m tg.MessageMediaClass) (int64, bool) {
 	return 0, false
 }
 
-// downloadImage downloads location into memory, bounded by profile's
-// own MaxInputLen even if Telegram's declared size undersold what it
-// actually streams (see boundedBuffer, the backstop under FetchMedia's
-// own declaredMediaSize check), and writes the result to path through
-// the sanitizer every photo, sticker or GIF must pass before the UI
-// can load it into a QML Image (see connector.SaveImageMedia). A video
-// or other document instead streams straight to disk through download
-// below: formats Qt's image decoders never touch, so buffering them in
-// memory first would cost without ever paying for anything.
-func downloadImage(ctx context.Context, api *tg.Client, location tg.InputFileLocationClass, path string, profile imagesafe.Profile) error {
+// imageDownload bundles what downloadImage needs about a photo,
+// sticker or GIF document's own download, keeping that function
+// within the project's own argument limit: where Telegram keeps it,
+// where to write it, the imagesafe.Profile its bytes must pass and
+// its own byte cap (see connector.ImageFetchCap).
+type imageDownload struct {
+	location tg.InputFileLocationClass
+	path     string
+	profile  imagesafe.Profile
+	max      int64
+}
+
+// downloadImage downloads id.location into memory, bounded by id.max
+// (see connector.ImageFetchCap) even if Telegram's declared size
+// undersold what it actually streams (see boundedBuffer, the backstop
+// under FetchMedia's own declaredMediaSize check), and writes the
+// result to id.path through the sanitizer every photo, sticker or GIF
+// must pass before the UI can load it into a QML Image (see
+// connector.SaveImageMedia). A video or other document instead streams
+// straight to disk through download below: formats Qt's image
+// decoders never touch, so buffering them in memory first would cost
+// without ever paying for anything.
+func downloadImage(ctx context.Context, api *tg.Client, id imageDownload) error {
 	downloadCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 
-	buf := &boundedBuffer{max: profile.MaxInputLen}
-	if _, err := downloader.NewDownloader().Download(api, location).Stream(downloadCtx, buf); err != nil {
+	buf := &boundedBuffer{max: id.max}
+	if _, err := downloader.NewDownloader().Download(api, id.location).Stream(downloadCtx, buf); err != nil {
 		if errors.Is(err, errMediaTooLarge) {
 			return errMediaTooLarge
 		}
@@ -121,7 +136,7 @@ func downloadImage(ctx context.Context, api *tg.Client, location tg.InputFileLoc
 		return fmt.Errorf("telegram: fetch media: %w", err)
 	}
 
-	if err := connector.SaveImageMedia(path, buf.Bytes(), profile); err != nil {
+	if err := connector.SaveImageMedia(id.path, buf.Bytes(), id.profile); err != nil {
 		return fmt.Errorf("telegram: fetch media: %w", err)
 	}
 

@@ -1,14 +1,15 @@
 package whatsapp
 
-// download_file.go streams a video, file or voice note straight to
-// disk instead of holding the whole decrypted attachment in memory the
-// way downloadMedia (device.go) does: whatsmeow's own
+// download_file.go streams a video, file, voice note, photo, sticker
+// or GIF document straight to disk instead of ever holding the whole
+// decrypted attachment in memory: whatsmeow's own
 // DownloadMediaWithPathToFile copies the ciphertext to the destination
 // file as it arrives and decrypts it in place there, so this
 // connector's own memory never holds more than one chunk at a time
-// regardless of how large the file is (see docs/decisions.md). fetch.go
-// wraps the destination in boundedFile so a declared size that
-// undersold what the server actually sends is still caught.
+// regardless of how large the file is (see docs/decisions.md).
+// fetch.go and fetch_stream.go both wrap the destination in
+// boundedFile so a declared size that undersold what the server
+// actually sends - or one left at 0 altogether - is still caught.
 
 import (
 	"context"

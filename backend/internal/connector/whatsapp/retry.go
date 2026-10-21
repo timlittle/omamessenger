@@ -25,41 +25,18 @@ import (
 // never answers cannot leave a download waiting forever.
 const mediaRetryTimeout = 30 * time.Second
 
-// retryDownload asks the primary phone to re-upload req.ref's media
-// and, once it answers with a fresh path, downloads it once more. It
-// reports domain.ErrMediaExpired when the phone says the media is gone
-// or when it never answers in time. When this run never recorded the
-// message's sender, and so cannot even ask (see keys.go), cause - the
-// failure that sent downloadOrRetry here in the first place - is
-// reported instead, classified the same way it would have been without
-// any retry attempted: a stale link is still reported expired, but a
-// decrypt failure stays a decrypt failure rather than being reported as
-// if the primary phone had been asked and said the media was gone.
-func (c *Connector) retryDownload(ctx context.Context, dev device, media *mediaStore, req fetchRequest, cause error) ([]byte, error) {
-	ref, err := c.refreshRef(ctx, dev, media, req, cause)
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := downloadOnce(ctx, dev, ref)
-	if err == nil {
-		return data, nil
-	}
-
-	if recovered, ok := recoverStaleDigest(data, err); ok {
-		logStaleDigestAccepted()
-		return recovered, nil
-	}
-
-	logDownloadFailed(err)
-	return nil, classifyDownloadErr(err)
-}
-
-// retryStreamedDownload is retryDownload's own streamed-to-file
-// counterpart (see fetch_stream.go's streamOrRetry), for a video, file
-// or voice note too large to hold in memory: the same primary-phone
-// retry, then one more bounded, deadline-aware streamed attempt at
-// req.path with the fresh reference.
+// retryStreamedDownload asks the primary phone to re-upload req.ref's
+// media (see fetch_stream.go's streamOrRetry) and, once it answers
+// with a fresh path, streams it once more to req.path, for a video,
+// file or voice note. It reports domain.ErrMediaExpired when the phone
+// says the media is gone or when it never answers in time. When this
+// run never recorded the message's sender, and so cannot even ask (see
+// keys.go), cause - the failure that sent streamOrRetry here in the
+// first place - is reported instead, classified the same way it would
+// have been without any retry attempted: a stale link is still
+// reported expired, but a decrypt failure stays a decrypt failure
+// rather than being reported as if the primary phone had been asked
+// and said the media was gone.
 func (c *Connector) retryStreamedDownload(ctx context.Context, dev device, media *mediaStore, req fetchRequest, cause error) error {
 	ref, err := c.refreshRef(ctx, dev, media, req, cause)
 	if err != nil {
@@ -77,6 +54,32 @@ func (c *Connector) retryStreamedDownload(ctx context.Context, dev device, media
 	}
 
 	removeIfPresent(req.path)
+	logDownloadFailed(err)
+
+	return classifyDownloadErr(err)
+}
+
+// retryStreamedImageDownload is retryStreamedDownload's own
+// counterpart for a photo, sticker or GIF document (see fetch.go's
+// streamImageOrRetry): the same primary-phone retry, then one more
+// streamed attempt at want.tmpPath, capped at want.max, with the
+// fresh reference.
+func (c *Connector) retryStreamedImageDownload(ctx context.Context, dev device, media *mediaStore, want imageStream, cause error) error {
+	ref, err := c.refreshRef(ctx, dev, media, want.req, cause)
+	if err != nil {
+		return err
+	}
+
+	err = streamImageOnce(ctx, dev, ref, want.tmpPath, want.max)
+	if err == nil {
+		return nil
+	}
+
+	if recoverableStaleDigest(err, fileHasBytes(want.tmpPath)) {
+		logStaleDigestAccepted()
+		return nil
+	}
+
 	logDownloadFailed(err)
 
 	return classifyDownloadErr(err)
@@ -119,11 +122,11 @@ func (c *Connector) refreshRef(ctx context.Context, dev device, media *mediaStor
 	return ref, nil
 }
 
-// retryUnavailableErr reports what retryDownload could not even attempt
-// to recover: cause classified as a decrypt failure when that is why
-// downloadOrRetry sent it here, or domain.ErrMediaExpired otherwise, the
-// category a stale CDN link with nothing to retry it with has always
-// been reported as.
+// retryUnavailableErr reports what a retry could not even attempt to
+// recover: cause classified as a decrypt failure when that is why
+// streamOrRetry or streamImageOrRetry sent it here, or
+// domain.ErrMediaExpired otherwise, the category a stale CDN link with
+// nothing to retry it with has always been reported as.
 func retryUnavailableErr(cause error) error {
 	if isDecryptFailure(cause) {
 		return classifyDownloadErr(cause)

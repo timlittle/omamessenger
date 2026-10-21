@@ -2,12 +2,13 @@ package whatsapp
 
 // fetch_stream.go streams a video, file or voice note straight to
 // disk, bounded by the limit auto selects and capped at its own
-// declared size plus a small tolerance, rather than ever holding the
-// whole thing in memory the way fetch.go's own fetchImage does for a
-// photo, sticker or real GIF file (see download_file.go and
-// docs/decisions.md). The retry-via-primary-phone behaviour is the
-// same as fetch.go's downloadOrRetry, just over a file on disk instead
-// of a byte slice: see retry.go's retryStreamedDownload.
+// declared size plus a small tolerance, never holding the whole thing
+// in memory at once (see download_file.go and docs/decisions.md).
+// fetch.go's own fetchImage streams a photo, sticker or real GIF file
+// the same way, capped at the image profile's own limit instead. The
+// retry-via-primary-phone behaviour here is the same shape as
+// fetch.go's streamImageOrRetry, just over this package's own larger
+// size caps: see retry.go's retryStreamedDownload.
 
 import (
 	"context"

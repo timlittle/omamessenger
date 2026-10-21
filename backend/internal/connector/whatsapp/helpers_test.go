@@ -472,10 +472,10 @@ func (d *fakeDevice) altJID(_ context.Context, jid types.JID) types.JID {
 	return types.JID{}
 }
 
-// downloadMedia, downloadMediaToFile and recordDownload, fakeDevice's
-// own media-download methods, live in fetch_helpers_test.go, kept
-// apart from the rest of this file's fakes so neither grows past the
-// project's own file-length limit.
+// downloadMediaToFile and recordDownload, fakeDevice's own
+// media-download method and its bookkeeping, live in
+// fetch_helpers_test.go, kept apart from the rest of this file's fakes
+// so neither grows past the project's own file-length limit.
 
 // uploadMedia records the call and reports the scripted response or
 // error.

@@ -10,6 +10,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	_ "image/jpeg" // registers the JPEG decoder this file's own decode check uses
 	"os"
 	"path/filepath"
 	"testing"
@@ -177,4 +179,70 @@ func TestFetchMedia_TimesOutAUserRequestedFileOnIdle(t *testing.T) {
 			t.Fatal("FetchMedia did not return once its idle timeout elapsed, want it not to wait for the absolute ceiling")
 		}
 	})
+}
+
+// bigPhoto is a photo whose single, largest size declares size bytes:
+// imagesafe.FullImage's own MaxInputLen (32 MiB) is well over
+// connector.AutoFetchMaxBytes (16 MiB), so this is how the following
+// two tests get a declared size in between the two to narrow against.
+func bigPhoto(size int64) *tg.Photo {
+	return &tg.Photo{ID: 7, AccessHash: 8, FileReference: []byte("ref"), Sizes: []tg.PhotoSizeClass{
+		&tg.PhotoSizeProgressive{Type: "y", W: 1280, H: 960, Sizes: []int{int(size)}},
+	}}
+}
+
+// TestFetchMedia_NarrowsAnAutomaticImageFetchToTheAutoCap confirms a
+// photo shown automatically (its own thumbnail-to-full-image fetch,
+// never a click) is bounded by connector.AutoFetchMaxBytes, the same
+// as any other automatic fetch, even though imagesafe.FullImage's own
+// MaxInputLen alone would allow more.
+func TestFetchMedia_NarrowsAnAutomaticImageFetchToTheAutoCap(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
+		&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaPhoto{Photo: bigPhoto(connector.AutoFetchMaxBytes + 1)}},
+	}})
+
+	path := filepath.Join(t.TempDir(), "out.jpg")
+	c := connectedTo(f, &connectortest.Sink{})
+	if err := c.FetchMedia(t.Context(), chatWithNadia, "40", path, true); !errors.Is(err, connector.ErrMediaTooLarge) {
+		t.Fatalf("FetchMedia(auto) = %v, want connector.ErrMediaTooLarge over the auto cap", err)
+	}
+
+	for _, r := range f.sent() {
+		if _, ok := r.(*tg.UploadGetFileRequest); ok {
+			t.Error("FetchMedia(auto) downloaded bytes over the auto cap, want it refused before asking Telegram at all")
+		}
+	}
+}
+
+// TestFetchMedia_AllowsADeliberateImageFetchOverTheAutoCap confirms
+// the same declared size
+// TestFetchMedia_NarrowsAnAutomaticImageFetchToTheAutoCap refuses for
+// an automatic fetch is still allowed once the user clicks:
+// imagesafe.FullImage's own, larger MaxInputLen applies instead of
+// connector.AutoFetchMaxBytes.
+func TestFetchMedia_AllowsADeliberateImageFetchOverTheAutoCap(t *testing.T) {
+	t.Parallel()
+
+	jpeg := tinyJPEG(t)
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
+		&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaPhoto{Photo: bigPhoto(connector.AutoFetchMaxBytes + 1)}},
+	}})
+	f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFileJpeg{}, Bytes: jpeg})
+
+	path := filepath.Join(t.TempDir(), "out.jpg")
+	if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path, false); err != nil {
+		t.Fatalf("FetchMedia(user) = %v, want a declared size over the auto cap still allowed", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read downloaded photo: %v", err)
+	}
+	if _, _, err := image.DecodeConfig(bytes.NewReader(got)); err != nil {
+		t.Errorf("downloaded photo does not decode: %v", err)
+	}
 }

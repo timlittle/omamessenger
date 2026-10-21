@@ -116,14 +116,10 @@ type device interface {
 	// nor a LID, or nothing is known yet; it never does network I/O.
 	altJID(ctx context.Context, jid types.JID) types.JID
 
-	// downloadMedia downloads and decrypts a message's attachment, using
-	// the reference it was saved with (see normalize_media.go).
-	downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error)
-
 	// downloadMediaToFile downloads and decrypts a message's attachment
-	// straight into file, never holding the whole plaintext in memory at
-	// once: the path a video, file or voice note large enough to need it
-	// takes instead of downloadMedia (see fetch.go).
+	// straight into file, using the reference it was saved with (see
+	// normalize_media.go), never holding the whole plaintext in memory
+	// at once (see fetch.go and fetch_stream.go).
 	downloadMediaToFile(ctx context.Context, ref mediaRef, file whatsmeow.File) error
 
 	// sendMediaRetryReceipt asks WhatsApp's primary phone to re-upload
@@ -411,15 +407,6 @@ func (d *waDevice) altJID(ctx context.Context, jid types.JID) types.JID {
 	}
 
 	return alt
-}
-
-// downloadMedia downloads and decrypts a message's attachment. Passing
-// "" for the mms-type lets whatsmeow choose it from the app-info key
-// alone, which is all DownloadMediaWithPath needs.
-func (d *waDevice) downloadMedia(ctx context.Context, ref mediaRef) ([]byte, error) {
-	return d.cli.DownloadMediaWithPath(
-		ctx, ref.DirectPath, ref.FileEncSHA256, ref.FileSHA256, ref.MediaKey, appInfo(ref.Kind), "", false,
-	)
 }
 
 // uploadMedia encrypts and uploads data to WhatsApp's media servers for

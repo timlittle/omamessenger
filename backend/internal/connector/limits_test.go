@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // TestMaxBytes_PicksTheLimitForAutoOrUserRequested confirms the two
@@ -65,6 +66,33 @@ func TestBoundedWriter_PassesThroughUnderTheCap(t *testing.T) {
 	}
 	if buf.String() != "hello" {
 		t.Errorf("buf = %q, want %q", buf.String(), "hello")
+	}
+}
+
+// TestImageFetchCap_NarrowsToTheAutoCapWhenSmaller confirms an
+// automatic fetch of a photo, sticker or GIF image is never trusted
+// with more than AutoFetchMaxBytes, even though imagesafe.FullImage's
+// own MaxInputLen alone would allow more; a deliberate fetch keeps the
+// profile's own, larger limit.
+func TestImageFetchCap_NarrowsToTheAutoCapWhenSmaller(t *testing.T) {
+	t.Parallel()
+
+	if got := connector.ImageFetchCap(imagesafe.FullImage, true); got != connector.AutoFetchMaxBytes {
+		t.Errorf("ImageFetchCap(FullImage, true) = %d, want AutoFetchMaxBytes", got)
+	}
+	if got := connector.ImageFetchCap(imagesafe.FullImage, false); got != imagesafe.FullImage.MaxInputLen {
+		t.Errorf("ImageFetchCap(FullImage, false) = %d, want the profile's own MaxInputLen", got)
+	}
+}
+
+// TestImageFetchCap_KeepsTheProfileCapWhenItIsAlreadySmaller confirms
+// a profile whose own MaxInputLen is already under AutoFetchMaxBytes
+// (imagesafe.Thumbnail) is never widened by an automatic fetch.
+func TestImageFetchCap_KeepsTheProfileCapWhenItIsAlreadySmaller(t *testing.T) {
+	t.Parallel()
+
+	if got := connector.ImageFetchCap(imagesafe.Thumbnail, true); got != imagesafe.Thumbnail.MaxInputLen {
+		t.Errorf("ImageFetchCap(Thumbnail, true) = %d, want the profile's own MaxInputLen", got)
 	}
 }
 

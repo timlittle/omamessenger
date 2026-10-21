@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // TestFetchMedia_DownloadsAnAutomaticFetchUnderTheCap confirms the
@@ -192,4 +193,93 @@ func TestFetchMedia_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
 			t.Fatal("FetchMedia did not return once its idle timeout elapsed")
 		}
 	})
+}
+
+// TestFetchMedia_CapsAnImageStreamWithNoDeclaredSize covers the
+// vulnerability a security review found: a sender who declares
+// FileLength 0 must not be able to force a photo, sticker or GIF
+// document's full bytes into memory unbounded. fetchImage now streams
+// to a temporary file capped at the image profile's own MaxInputLen,
+// so an undeclared size is caught the same way an undersold one
+// already is, never read into memory in full first.
+func TestFetchMedia_CapsAnImageStreamWithNoDeclaredSize(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	dev.downloadData = bytes.Repeat([]byte{0x42}, int(imagesafe.Thumbnail.MaxInputLen)+1)
+	ref := mediaRef{
+		Kind: mediaKindSticker, DirectPath: "/v/sticker", MediaKey: []byte("key"),
+		FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/webp", FileLength: 0,
+	}
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "out")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); !errors.Is(err, connector.ErrMediaTooLarge) {
+		t.Fatalf("FetchMedia() = %v, want connector.ErrMediaTooLarge for an undeclared, oversized sticker", err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("FetchMedia() with an undeclared, oversized sticker left a file behind")
+	}
+}
+
+// TestFetchMedia_NarrowsAnAutomaticImageFetchToTheAutoCap confirms a
+// photo shown automatically (its own thumbnail-to-full-image fetch,
+// never a click) is bounded by connector.AutoFetchMaxBytes, the same
+// as any other automatic fetch, even though imagesafe.FullImage's own
+// MaxInputLen alone would allow more.
+func TestFetchMedia_NarrowsAnAutomaticImageFetchToTheAutoCap(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	ref := mediaRef{
+		Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"),
+		FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/jpeg",
+		FileLength: uint64(connector.AutoFetchMaxBytes) + 1,
+	}
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "out.jpg")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, true); !errors.Is(err, connector.ErrMediaTooLarge) {
+		t.Fatalf("FetchMedia(auto) = %v, want connector.ErrMediaTooLarge over the auto cap", err)
+	}
+	if len(dev.downloadCalls) != 0 {
+		t.Errorf("downloadCalls = %+v, want nothing downloaded over the auto cap", dev.downloadCalls)
+	}
+}
+
+// TestFetchMedia_AllowsADeliberateImageFetchOverTheAutoCap confirms the
+// same declared size TestFetchMedia_NarrowsAnAutomaticImageFetchToTheAutoCap
+// refuses for an automatic fetch is still allowed once the user clicks:
+// auto false applies imagesafe.FullImage's own, larger MaxInputLen
+// instead of connector.AutoFetchMaxBytes.
+func TestFetchMedia_AllowsADeliberateImageFetchOverTheAutoCap(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	dev.downloadData = tinyJPEG(t)
+	ref := mediaRef{
+		Kind: mediaKindImage, DirectPath: "/v/photo", MediaKey: []byte("key"),
+		FileSHA256: []byte{}, FileEncSHA256: []byte{}, Mimetype: "image/jpeg",
+		FileLength: uint64(connector.AutoFetchMaxBytes) + 1,
+	}
+	if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "out.jpg")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err != nil {
+		t.Fatalf("FetchMedia(user) = %v, want a declared size over the auto cap still allowed", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read downloaded photo: %v", err)
+	}
+	if _, err := jpegDecodeConfig(got); err != nil {
+		t.Errorf("downloaded photo does not decode: %v", err)
+	}
 }

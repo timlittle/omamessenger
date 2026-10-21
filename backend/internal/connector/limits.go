@@ -13,6 +13,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // AutoFetchMaxBytes bounds a fetch the UI made on its own, with no
@@ -75,6 +77,23 @@ func MaxBytes(auto bool) int64 {
 	}
 
 	return MaxUserFetchBytes
+}
+
+// ImageFetchCap is the hard byte limit any connector's FetchMedia ever
+// streams a photo, sticker or GIF image's own bytes to: profile's own
+// MaxInputLen, narrowed to AutoFetchMaxBytes when auto is set and that
+// cap is smaller. A profile's own cap alone (imagesafe.FullImage's 32
+// MiB) can allow more than every other automatic fetch is trusted
+// with, so an automatic fetch of an image is never the exception: a
+// sender fully controls whether their photo autoplays or merely shows
+// as a thumbnail until shown, the same as any other media kind (see
+// AutoFetchMaxBytes).
+func ImageFetchCap(profile imagesafe.Profile, auto bool) int64 {
+	if auto && AutoFetchMaxBytes < profile.MaxInputLen {
+		return AutoFetchMaxBytes
+	}
+
+	return profile.MaxInputLen
 }
 
 // ByteCap narrows max to a sender's own declared size plus
