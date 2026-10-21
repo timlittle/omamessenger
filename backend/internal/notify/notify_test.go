@@ -6,6 +6,7 @@ package notify_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go/parser"
 	"go/token"
 	"strings"
@@ -384,6 +385,77 @@ func TestNotify_TruncatesAnOverlongTitleAndBodyOnARuneBoundary(t *testing.T) {
 	}
 	if !utf8.ValidString(title) || !utf8.ValidString(body) {
 		t.Error("truncated title or body is not valid UTF-8: the cut split a multi-byte rune")
+	}
+}
+
+// panicBus is a Bus whose Wait panics instead of returning, standing in
+// for a malformed signal reaching deep enough into the real
+// implementation to panic on - see notify_internal_test.go's
+// TestMatchActionInvoked_FalseWhenTheBodyHasOnlyOneElement for the
+// actual bug this guards against. Notify's own goroutine must recover
+// from it rather than crashing the helper.
+type panicBus struct{}
+
+// Show always succeeds, so run reaches the panicking Wait call below.
+func (panicBus) Show(string, string, string, []string, map[string]dbus.Variant) (uint32, error) {
+	return 1, nil
+}
+
+// Wait panics, simulating a bug reached from a malformed signal.
+func (panicBus) Wait(context.Context, uint32) (string, error) {
+	panic("simulated panic from a malformed signal")
+}
+
+// fakeLog records every Printf call's rendered line, for asserting
+// Notify's recovered panic is logged with no notification content.
+type fakeLog struct {
+	mu    sync.Mutex
+	lines []string
+}
+
+// Printf renders format and v the same way log.Logger would, and
+// records the result.
+func (l *fakeLog) Printf(format string, v ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.lines = append(l.lines, fmt.Sprintf(format, v...))
+}
+
+// all returns every line Printf has recorded so far.
+func (l *fakeLog) all() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return append([]string(nil), l.lines...)
+}
+
+// TestNotify_RecoversFromAPanicInItsOwnGoroutine confirms a panic deep
+// inside Wait never reaches outside Notify's own goroutine: the helper
+// keeps running, and the panic is logged with no notification content
+// at all, only its own category.
+func TestNotify_RecoversFromAPanicInItsOwnGoroutine(t *testing.T) {
+	t.Parallel()
+
+	log := &fakeLog{}
+	d := &notify.Desktop{
+		Dial: func(context.Context) (notify.Bus, func(), error) { return panicBus{}, func() {}, nil },
+		Log:  log,
+	}
+
+	d.Notify("secret title", "secret body text", "conv-1") // must not panic or crash the test process
+
+	deadline := time.Now().Add(2 * time.Second)
+	for len(log.all()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+
+	lines := log.all()
+	if len(lines) != 1 {
+		t.Fatalf("logged %d lines, want exactly 1", len(lines))
+	}
+	if strings.Contains(lines[0], "secret") {
+		t.Errorf("recovered-panic log line carries notification content: %q", lines[0])
 	}
 }
 

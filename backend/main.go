@@ -279,7 +279,7 @@ type wireDeps struct {
 func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connector.Manager, error) {
 	notifier := &notify.Desktop{Click: func(conversationID string) {
 		d.srv.Publish(ctx, app.EventNotificationClicked, app.NotificationClicked{ConversationID: conversationID})
-	}}
+	}, Log: d.logger}
 	deps := app.Deps{
 		Store: d.db, Notifier: notifier, Publisher: d.srv, Accounts: d.registry, Cache: d.caches.downloaded,
 		Outgoing: d.caches.outgoing, Clipboard: clipboard.Wayland{}, Logger: d.logger,

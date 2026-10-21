@@ -8,8 +8,6 @@ package notify
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +77,14 @@ func truncateRunes(s string, max int) string {
 	return string(runes[:max])
 }
 
+// Logger writes one diagnostic line, such as a recovered panic's own
+// category, to the helper's stderr. *log.Logger already satisfies it,
+// so main.go wires the same logger every other package uses, with
+// nothing special to construct.
+type Logger interface {
+	Printf(format string, v ...any)
+}
+
 // Bus is the one seam between Desktop and a real D-Bus session bus
 // connection: showing a notification and waiting for its own
 // ActionInvoked or NotificationClosed signal. dialSessionBus is the
@@ -109,6 +115,12 @@ type Desktop struct {
 	// itself, rather than closing or ignoring it. Nil means clicks are
 	// not reported.
 	Click func(conversationID string)
+
+	// Log records a panic recovered from a notification's own goroutine
+	// (see Notify), as a diagnostic line carrying no notification
+	// content at all. Nil means nowhere to log it; the panic is still
+	// recovered and swallowed either way.
+	Log Logger
 
 	// mu guards sem's own lazy creation (see acquire): Desktop is often
 	// constructed as a bare struct literal, so the semaphore cannot be
@@ -170,8 +182,26 @@ func (d *Desktop) Notify(title, body, conversationID string) {
 	go func() {
 		defer cancel()
 		defer d.release()
+		defer d.recoverPanic()
 		d.run(ctx, dial, title, body, conversationID)
 	}()
+}
+
+// recoverPanic stops a panic inside a notification's own goroutine
+// from crashing the helper: one malformed signal from the notification
+// daemon, or a bug reached only through it, must never bring down every
+// other notification along with it, let alone the helper itself (see
+// errors.md: recover at the protocol boundary). Only the recovered
+// value's own type is logged, never its content, since Go lets any
+// value be panicked with and this package must never assume one
+// carries nothing sensitive.
+func (d *Desktop) recoverPanic() {
+	r := recover()
+	if r == nil || d.Log == nil {
+		return
+	}
+
+	d.Log.Printf("notify: recovered from a panic in a notification's own goroutine: %T", r)
 }
 
 // run dials the bus, shows the notification, waits for it to close and
@@ -218,130 +248,4 @@ func escapeBody(body string) string {
 	body = strings.ReplaceAll(body, ">", "&gt;")
 
 	return body
-}
-
-// dbusBus is Bus's production implementation, driving a real
-// connection to the session bus.
-type dbusBus struct {
-	conn *dbus.Conn
-	obj  dbus.BusObject
-	sig  chan *dbus.Signal
-}
-
-// dialSessionBus opens a connection to the session bus, registers to
-// receive the notification service's ActionInvoked and
-// NotificationClosed signals, and returns it alongside a func that
-// releases the connection once the caller is done waiting.
-func dialSessionBus(ctx context.Context) (Bus, func(), error) {
-	conn, err := dbus.ConnectSessionBus(dbus.WithContext(ctx))
-	if err != nil {
-		return nil, nil, fmt.Errorf("notify: connect session bus: %w", err)
-	}
-
-	if err := conn.AddMatchSignal(dbus.WithMatchInterface(notifyInterface)); err != nil {
-		_ = conn.Close() // the connection was never usable; nothing left to report
-		return nil, nil, fmt.Errorf("notify: watch notification signals: %w", err)
-	}
-
-	sig := make(chan *dbus.Signal, 4)
-	conn.Signal(sig)
-
-	b := &dbusBus{conn: conn, obj: conn.Object(notifyInterface, notifyPath), sig: sig}
-
-	return b, func() { conn.RemoveSignal(sig); _ = conn.Close() }, nil
-}
-
-// Show calls org.freedesktop.Notifications.Notify and returns the id
-// the service assigned the notification.
-func (b *dbusBus) Show(appName, title, body string, actions []string, hints map[string]dbus.Variant) (uint32, error) {
-	var id uint32
-
-	call := b.obj.Call(notifyInterface+".Notify", 0, appName, uint32(0), "", title, body, actions, hints, int32(-1))
-	if err := call.Store(&id); err != nil {
-		return 0, fmt.Errorf("notify: Notify call: %w", err)
-	}
-
-	return id, nil
-}
-
-// Wait reads signals until it sees NotificationClosed for id, returning
-// whichever action key an ActionInvoked for id carried first (a shown
-// notification only ever carries one action to choose), or ctx's error
-// if it ends first.
-func (b *dbusBus) Wait(ctx context.Context, id uint32) (string, error) {
-	action := ""
-
-	for {
-		select {
-		case <-ctx.Done():
-			return action, ctx.Err()
-		case sig, ok := <-b.sig:
-			if !ok {
-				return action, errors.New("notify: signal channel closed")
-			}
-
-			if a, matched := matchActionInvoked(sig, id); matched {
-				action = a
-				continue
-			}
-			if matchNotificationClosed(sig, id) {
-				return action, nil
-			}
-		}
-	}
-}
-
-// matchActionInvoked reports whether sig is ActionInvoked for id, and
-// the action key it carried when it is.
-func matchActionInvoked(sig *dbus.Signal, id uint32) (string, bool) {
-	if sig.Name != sigActionInvoked || !signalIsFor(sig, id) {
-		return "", false
-	}
-
-	action, _ := sig.Body[1].(string)
-
-	return action, true
-}
-
-// matchNotificationClosed reports whether sig is NotificationClosed for
-// id.
-func matchNotificationClosed(sig *dbus.Signal, id uint32) bool {
-	return sig.Name == sigNotificationClosed && signalIsFor(sig, id)
-}
-
-// signalIsFor reports whether sig's first body argument is id, the
-// notification id every freedesktop notification signal leads with.
-func signalIsFor(sig *dbus.Signal, id uint32) bool {
-	if len(sig.Body) < 1 {
-		return false
-	}
-
-	got, ok := sig.Body[0].(uint32)
-
-	return ok && got == id
-}
-
-// serviceReachableTimeout bounds how long ServiceReachable waits for an
-// answer, so the doctor report returns promptly on a desktop with no
-// session bus at all.
-const serviceReachableTimeout = 2 * time.Second
-
-// ServiceReachable reports whether a notification service answers on
-// the session bus, for the doctor report. It never shows a notification
-// and its result is a plain state, never a path, a name or any message
-// content.
-func ServiceReachable(ctx context.Context) bool {
-	ctx, cancel := context.WithTimeout(ctx, serviceReachableTimeout)
-	defer cancel()
-
-	conn, err := dbus.ConnectSessionBus(dbus.WithContext(ctx))
-	if err != nil {
-		return false
-	}
-	defer func() { _ = conn.Close() }() // best effort; the check result does not depend on it
-
-	var hasOwner bool
-	err = conn.BusObject().CallWithContext(ctx, "org.freedesktop.DBus.NameHasOwner", 0, notifyInterface).Store(&hasOwner)
-
-	return err == nil && hasOwner
 }
