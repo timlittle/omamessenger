@@ -116,6 +116,7 @@ Item {
       required property string dimLabel
       required property real reminderAt
       required property bool reminderDue
+      required property bool blocked
 
       width: list.width
       height: row.implicitHeight
@@ -148,7 +149,8 @@ Item {
           "previewSender": wrapper.previewSender,
           "previewOutgoing": wrapper.previewOutgoing,
           "match": wrapper.match,
-          "reminderAt": wrapper.reminderAt
+          "reminderAt": wrapper.reminderAt,
+          "blocked": wrapper.blocked
         }
 
         onClicked: root.activated(wrapper.id)

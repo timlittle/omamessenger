@@ -3,12 +3,16 @@
 // unpinned one does not, a dimmed row (shown only because show-all is on)
 // is drawn with reduced opacity and a "Hidden" label, every empty state
 // shows the right text, including the all-unreads view's own wording,
-// clicking a row emits activated() with its id, and
-// a row ListController keeps in place across a conversation.updated event
-// (reordering it, rather than tearing the row down and redrawing it) still
-// shows its pin and mute marks as soon as they change, not just on first
-// draw. This drives a real ListController against a scripted service, the
-// same path a pin from the command palette or from the phone takes.
+// clicking a row emits activated() with its id, a blocked row shows its
+// "Blocked" marker through the real ListView delegate (not just when
+// ConversationRow is driven directly, see tests/qml/ConversationRow:
+// the delegate used to drop the "blocked" field on the way from the
+// model to the row), and a row ListController keeps in place across a
+// conversation.updated event (reordering it, rather than tearing the row
+// down and redrawing it) still shows its pin and mute marks as soon as
+// they change, not just on first draw. This drives a real ListController
+// against a scripted service, the same path a pin from the command
+// palette or from the phone takes.
 import QtQuick
 import QtTest
 import Quickshell
@@ -28,13 +32,13 @@ ShellRoot {
       id: "c1", title: "Short Chat", kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 2, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now, preview: "See you then",
       previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
-      reminderAt: 0, reminderDue: false
+      reminderAt: 0, reminderDue: false, blocked: false
     },
     {
       id: "c2", title: "Muted Group", kind: "group", service: "telegram", accountId: "a2",
       unread: 0, muted: true, pinned: false, archived: false, hidden: false, lastActivity: root.now, preview: "ok",
       previewSender: "Sam", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
-      reminderAt: 0, reminderDue: false
+      reminderAt: 0, reminderDue: false, blocked: false
     },
     {
       id: "c3",
@@ -43,13 +47,19 @@ ShellRoot {
       unread: 0, muted: false, pinned: true, archived: false, hidden: false, lastActivity: root.now,
       preview: "A long preview that keeps going well past the edge of the narrow column",
       previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
-      reminderAt: 0, reminderDue: false
+      reminderAt: 0, reminderDue: false, blocked: false
     },
     {
       id: "c4", title: "Older Chat", kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: false, archived: false, hidden: true, lastActivity: root.now,
       preview: "see you around", previewSender: "", previewOutgoing: false, match: "", dimmed: true, dimLabel: "Hidden",
-      reminderAt: 0, reminderDue: false
+      reminderAt: 0, reminderDue: false, blocked: false
+    },
+    {
+      id: "c5", title: "Blocked Contact", kind: "direct", service: "whatsapp", accountId: "a1",
+      unread: 0, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now,
+      preview: "", previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      reminderAt: 0, reminderDue: false, blocked: true
     }
   ]
 
@@ -237,6 +247,11 @@ ShellRoot {
     if (!unreadEmpty || !unreadEmpty.visible || unreadEmpty.text.indexOf("No unread") < 0 || unreadEmpty.text.indexOf("Esc") < 0)
       return Check.fail("empty state for the all-unreads view is wrong: "
         + (unreadEmpty ? unreadEmpty.text : "missing"));
+
+    const blockedRow = Check.find(list, "row-c5");
+    const blockedLabel = blockedRow ? Check.find(blockedRow, "blockedLabel") : null;
+    if (!blockedRow || !blockedLabel || !blockedLabel.visible)
+      return Check.fail("a blocked contact's row does not show its \"Blocked\" label");
 
     const mutedRow = Check.find(list, "row-c2");
     if (!mutedRow)
