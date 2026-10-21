@@ -96,11 +96,14 @@ func largest(sizes []tg.PhotoSizeClass) (kind string, w, h int, size int64) {
 type document struct {
 	name                       string
 	video, voice, sticker      bool
+	animated                   bool
 	emoji                      string
 	width, height, durationSec int
 }
 
-// describe reads a document's attributes.
+// describe reads a document's attributes. DocumentAttributeAnimated marks
+// a video Telegram itself treats as a silent, looping "GIF" rather than
+// an ordinary clip.
 func describe(doc *tg.Document) document {
 	var d document
 	for _, attr := range doc.Attributes {
@@ -113,6 +116,8 @@ func describe(doc *tg.Document) document {
 			d.name = a.FileName
 		case *tg.DocumentAttributeSticker:
 			d.sticker, d.emoji = true, a.Alt
+		case *tg.DocumentAttributeAnimated:
+			d.animated = true
 		}
 	}
 
@@ -134,7 +139,7 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 	case d.video:
 		return &domain.Media{
 			Kind: domain.MediaVideo, Width: d.width, Height: d.height, Duration: d.durationSec,
-			FileName: d.name, Size: doc.Size, Thumb: strippedThumb(doc.Thumbs),
+			FileName: d.name, Size: doc.Size, Thumb: strippedThumb(doc.Thumbs), Animated: d.animated,
 		}
 	case d.voice:
 		return &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}

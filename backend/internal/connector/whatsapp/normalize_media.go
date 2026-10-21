@@ -145,6 +145,9 @@ func videoMedia(m *waE2E.VideoMessage) (*domain.Media, mediaRef, bool) {
 	video := &domain.Media{
 		Kind: domain.MediaVideo, Width: int(m.GetWidth()), Height: int(m.GetHeight()),
 		Duration: int(m.GetSeconds()), Size: int64(m.GetFileLength()), Thumb: thumb(m.GetJPEGThumbnail()),
+		// GifPlayback is WhatsApp's own flag for a video sent as a
+		// silent, looping "GIF" rather than an ordinary clip.
+		Animated: m.GetGifPlayback(),
 	}
 	ref := mediaRef{
 		Kind: mediaKindVideo, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),

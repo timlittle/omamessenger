@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -83,6 +84,26 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 	}
 
 	return newSession(t, db, deps)
+}
+
+// connectWithMediaSave serves an application like connect, but wired
+// with a MediaFetcher, MediaCache and a downloads directory, for the
+// tests that drive media.save all the way through the server. It
+// returns the downloads directory too, so a test can look at what
+// landed in it.
+func connectWithMediaSave(t *testing.T, media app.MediaFetcher, mediaCache app.MediaCache) (*session, string) {
+	t.Helper()
+
+	db := openSeeded(t)
+	downloads := filepath.Join(t.TempDir(), "downloads")
+	deps := app.Deps{
+		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
+		Media: media, Cache: mediaCache, DownloadsDir: downloads,
+	}
+
+	return newSession(t, db, deps), downloads
 }
 
 // connectWithHistory serves an application like connect, but wired with
@@ -207,6 +228,16 @@ type fakeMediaFetcher struct{ err error }
 
 func (m fakeMediaFetcher) FetchMedia(context.Context, domain.Conversation, string, string) error {
 	return m.err
+}
+
+// fakeMediaWriter writes content to whatever path it is asked to fill,
+// for a test that wants media.save to find a real file waiting in the
+// cache rather than only exercising its failure path.
+type fakeMediaWriter struct{ content []byte }
+
+// FetchMedia writes w's content to path and reports no error.
+func (w fakeMediaWriter) FetchMedia(_ context.Context, _ domain.Conversation, _, path string) error {
+	return os.WriteFile(path, w.content, 0o600)
 }
 
 // fakeHistory answers every LoadOlder with err, for a test that only

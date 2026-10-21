@@ -14,9 +14,10 @@ const helperVersion = "0.3.4" // x-release-please-version
 
 // config is the helper's command-line configuration.
 type config struct {
-	dataDir string
-	dbPath  string
-	version bool
+	dataDir      string
+	dbPath       string
+	downloadsDir string
+	version      bool
 }
 
 // resolveConfig parses the command line, filling in the data directory from
@@ -41,7 +42,12 @@ func resolveConfig(args []string, env func(string) string) (config, error) {
 	return withPaths(cfg, env)
 }
 
-// withPaths fills in the data directory and database file.
+// withPaths fills in the data directory, database file and the user's
+// downloads directory (media.save's destination), each only when not
+// already given. downloadsDir is left empty, rather than erroring, when
+// HOME is unset: a caller that gave its own data-dir and db still works
+// without one, and SaveMedia itself reports the missing directory only
+// if media.save is actually used.
 func withPaths(cfg config, env func(string) string) (config, error) {
 	if cfg.dataDir == "" {
 		base := env("XDG_DATA_HOME")
@@ -58,6 +64,10 @@ func withPaths(cfg config, env func(string) string) (config, error) {
 
 	if cfg.dbPath == "" {
 		cfg.dbPath = filepath.Join(cfg.dataDir, "messages.db")
+	}
+
+	if cfg.downloadsDir == "" && env("HOME") != "" {
+		cfg.downloadsDir = filepath.Join(env("HOME"), "Downloads")
 	}
 
 	return cfg, nil

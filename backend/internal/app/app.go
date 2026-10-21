@@ -222,6 +222,12 @@ type Deps struct {
 	DBPath         string
 	ExecutableName string
 	HelperVersion  string
+
+	// DownloadsDir is where SaveMedia copies a message's media to, at
+	// the user's own request; empty when the helper could not resolve
+	// one (no HOME set), in which case SaveMedia fails rather than
+	// guessing a location.
+	DownloadsDir string
 }
 
 // New builds the two halves of the application, which share the event
@@ -239,6 +245,7 @@ func New(d Deps) (*Commands, *Ingest) {
 		reminders:    newReminders(d.Store, d.Notifier, events, state),
 		retries:      retries,
 		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
+		downloadsDir: d.DownloadsDir,
 	}
 	retries.commands = commands
 

@@ -47,6 +47,10 @@ type Commands struct {
 	dbPath        string
 	execName      string
 	helperVersion string
+
+	// downloadsDir is where SaveMedia copies a message's media to; see
+	// Deps.DownloadsDir.
+	downloadsDir string
 }
 
 // attemptedRefresh is the set of message ids this helper run has already

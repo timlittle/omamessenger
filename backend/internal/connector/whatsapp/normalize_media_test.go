@@ -60,6 +60,16 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 			true,
 		},
 		{
+			"video sent as a silent looping GIF",
+			&waE2E.Message{VideoMessage: &waE2E.VideoMessage{
+				Width: u32(480), Height: u32(270), Seconds: u32(3), FileLength: u64(900), Mimetype: strPtr("video/mp4"),
+				DirectPath: strPtr("/v/gif"), MediaKey: []byte("key"), GifPlayback: boolPtr(true),
+			}},
+			&domain.Media{Kind: domain.MediaVideo, Width: 480, Height: 270, Duration: 3, Size: 900, Animated: true},
+			mediaRef{Kind: mediaKindVideo, DirectPath: "/v/gif", MediaKey: []byte("key"), FileLength: 900, Mimetype: "video/mp4"},
+			true,
+		},
+		{
 			"video note (ptv)",
 			&waE2E.Message{PtvMessage: &waE2E.VideoMessage{
 				Width: u32(480), Height: u32(480), Seconds: u32(8), FileLength: u64(1536), Mimetype: strPtr("video/mp4"),

@@ -245,6 +245,13 @@ type Media struct {
 	Size        int64  `json:"size,omitempty"`
 	Emoji       string `json:"emoji,omitempty"`
 
+	// Animated is true for a video the sending service itself marks as a
+	// silent, looping "GIF" (WhatsApp's gifPlayback flag, Telegram's
+	// animated document attribute), never set for an ordinary video. The
+	// UI uses it to autoplay muted and looping instead of waiting for a
+	// click.
+	Animated bool `json:"animated,omitempty"`
+
 	// Poll is a poll's question, options and tallies, set only when
 	// Kind is MediaPoll.
 	Poll *Poll `json:"poll,omitempty"`

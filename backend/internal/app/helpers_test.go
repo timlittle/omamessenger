@@ -44,6 +44,7 @@ type fixture struct {
 	outgoing   *cache.Outgoing
 	clipboard  *fakeClipboard
 	logger     *fakeLogger
+	downloads  string
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -74,7 +75,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
 		blocker: &fakeBlocker{}, spamReport: &fakeSpamReporter{},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
-		logger: &fakeLogger{},
+		logger: &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
 	}
 
 	deps := app.Deps{
@@ -85,6 +86,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
+		DownloadsDir: f.downloads,
 	}
 	if faked {
 		deps.Fake = f.injector

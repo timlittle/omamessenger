@@ -72,6 +72,11 @@ func TestMedia_VideoFileAndVoice(t *testing.T) {
 		&tg.DocumentAttributeVideo{Duration: 65.4, W: 1280, H: 720},
 		&tg.DocumentAttributeFilename{FileName: "clip.mp4"},
 	}}
+	gif := &tg.Document{Size: 500, Attributes: []tg.DocumentAttributeClass{
+		&tg.DocumentAttributeVideo{Duration: 3.2, W: 480, H: 270},
+		&tg.DocumentAttributeAnimated{},
+		&tg.DocumentAttributeFilename{FileName: "clip.gif.mp4"},
+	}}
 	file := &tg.Document{Size: 2048, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeFilename{FileName: "report.pdf"}}}
 	voice := &tg.Document{Size: 300, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeAudio{Voice: true, Duration: 5}}}
 
@@ -80,8 +85,11 @@ func TestMedia_VideoFileAndVoice(t *testing.T) {
 		want domain.Media
 	}{
 		"video": {video, domain.Media{Kind: domain.MediaVideo, Width: 1280, Height: 720, Duration: 65, FileName: "clip.mp4", Size: 1000}},
-		"file":  {file, domain.Media{Kind: domain.MediaFile, FileName: "report.pdf", Size: 2048}},
-		"voice": {voice, domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: 300, Duration: 5}},
+		// A video Telegram marks as animated is a silent, looping "GIF":
+		// the UI autoplays it instead of waiting for a click.
+		"animated video (GIF)": {gif, domain.Media{Kind: domain.MediaVideo, Width: 480, Height: 270, Duration: 3, FileName: "clip.gif.mp4", Size: 500, Animated: true}},
+		"file":                 {file, domain.Media{Kind: domain.MediaFile, FileName: "report.pdf", Size: 2048}},
+		"voice":                {voice, domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: 300, Duration: 5}},
 	}
 
 	for name, tt := range tests {

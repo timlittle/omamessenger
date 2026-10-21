@@ -20,11 +20,11 @@ func TestResolveConfig(t *testing.T) {
 	}{
 		{
 			name: "defaults under HOME", env: home,
-			want: config{dataDir: "/home/test/.local/share/omamessenger", dbPath: "/home/test/.local/share/omamessenger/messages.db"},
+			want: config{dataDir: "/home/test/.local/share/omamessenger", dbPath: "/home/test/.local/share/omamessenger/messages.db", downloadsDir: "/home/test/Downloads"},
 		},
 		{
 			name: "XDG_DATA_HOME wins", env: map[string]string{"HOME": "/home/test", "XDG_DATA_HOME": "/data"},
-			want: config{dataDir: "/data/omamessenger", dbPath: "/data/omamessenger/messages.db"},
+			want: config{dataDir: "/data/omamessenger", dbPath: "/data/omamessenger/messages.db", downloadsDir: "/home/test/Downloads"},
 		},
 		{
 			name: "data-dir is used as given", args: []string{"--data-dir", "/tmp/oma"},

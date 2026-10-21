@@ -183,7 +183,7 @@ func serve(ctx context.Context, cfg config, s streams, env func(string) string) 
 	caches := newMediaCaches(cfg.dataDir, db)
 	commands, ingest, manager, err := wire(ctx, wireDeps{
 		db: db, srv: srv, registry: registry, caches: caches, logger: logger,
-		dataDir: cfg.dataDir, dbPath: cfg.dbPath, env: env,
+		dataDir: cfg.dataDir, dbPath: cfg.dbPath, downloadsDir: cfg.downloadsDir, env: env,
 	})
 	if err != nil {
 		return err
@@ -260,14 +260,15 @@ func runBackground(ctx context.Context, wg *sync.WaitGroup, d backgroundDeps) {
 // such as the logger diagnostics needed, does not keep growing wire's
 // own argument list.
 type wireDeps struct {
-	db       *store.Store
-	srv      *server.Server
-	registry *accountRegistry
-	caches   mediaCaches
-	logger   *log.Logger
-	dataDir  string
-	dbPath   string
-	env      func(string) string
+	db           *store.Store
+	srv          *server.Server
+	registry     *accountRegistry
+	caches       mediaCaches
+	logger       *log.Logger
+	dataDir      string
+	dbPath       string
+	downloadsDir string
+	env          func(string) string
 }
 
 // wire builds the application around d's database and server, starting
@@ -282,6 +283,7 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 		Outgoing: d.caches.outgoing, Clipboard: clipboard.Wayland{}, Logger: d.logger,
 		Spell:   spell.New(d.dataDir, d.env),
 		DataDir: d.dataDir, DBPath: d.dbPath, ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
+		DownloadsDir: d.downloadsDir,
 	}
 
 	connectors, injector := fakeConnectors()

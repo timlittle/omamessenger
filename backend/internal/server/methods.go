@@ -59,6 +59,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"messages.delete":           bind(messagesDelete(c)),
 		"messages.edit":             bind(messagesEdit(c)),
 		"media.fetch":               bind(mediaFetch(c)),
+		"media.save":                bind(mediaSave(c)),
 		"media.paste":               bind(mediaPaste(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
 		"settings.apply":            bind(settingsApply(c)),
