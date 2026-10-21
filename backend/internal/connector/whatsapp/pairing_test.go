@@ -7,6 +7,7 @@ package whatsapp
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"go.mau.fi/whatsmeow"
@@ -115,5 +116,28 @@ func TestPairByPhone_ReportsTheFailureAndAsksAgain(t *testing.T) {
 	}
 	if len(reported) != 1 || reported[0].Kind != "phone" {
 		t.Fatalf("reported = %+v, want one phone step", reported)
+	}
+}
+
+// TestPairByPhone_NeverPutsTheRawErrorInTheHint guards against the
+// underlying error's own text - whatsmeow's, or an IQError straight
+// from WhatsApp's servers - ever reaching the user-facing hint:
+// AccountSetup.qml renders it as StyledText, which could turn a
+// crafted error into a clickable link. The hint is a fixed, safe
+// message regardless of what the error actually says.
+func TestPairByPhone_NeverPutsTheRawErrorInTheHint(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.pairErr = errors.New(`rate-limited: <a href="javascript:alert(1)">retry</a>`)
+
+	var reported []connector.AuthStep
+	pairByPhone(t.Context(), dev, "123", func(s connector.AuthStep) { reported = append(reported, s) })
+
+	if len(reported) != 1 {
+		t.Fatalf("reported = %+v, want one step", reported)
+	}
+	if strings.Contains(reported[0].Hint, dev.pairErr.Error()) || strings.Contains(reported[0].Hint, "<a") {
+		t.Errorf("Hint = %q, want it to never contain the raw error text", reported[0].Hint)
 	}
 }

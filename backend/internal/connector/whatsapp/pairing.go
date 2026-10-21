@@ -4,11 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"go.mau.fi/whatsmeow"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 )
+
+// pairByPhoneFailedHint is what pairByPhone reports when WhatsApp
+// refuses a phone-pairing attempt: a fixed, safe sentence, never the
+// underlying error's own text, which could be an IQError straight from
+// WhatsApp's servers or otherwise echo back the number just typed.
+// AccountSetup.qml renders a hint as StyledText, so raw service text
+// here could otherwise become a clickable link to any scheme.
+const pairByPhoneFailedHint = "That did not work. Enter the number again, with its country code."
 
 // QRHint tells people where to scan the code.
 const QRHint = "Open WhatsApp on your phone, go to Settings → Linked Devices → Link a Device, and scan this code."
@@ -100,11 +109,16 @@ func handlePairingItem(item whatsmeow.QRChannelItem, usingPhone bool, report fun
 // pairByPhone asks WhatsApp to pair with number and reports the link code
 // to type on the phone, or reports the failure and asks for the number
 // again. It reports whether a pairing attempt is now in progress by
-// phone, so rotated QR codes are not shown over the link code.
+// phone, so rotated QR codes are not shown over the link code. A
+// failure's own error text never reaches the hint (see
+// pairByPhoneFailedHint); only its category is logged, and even that
+// stays fixed, since whatsmeow's own error carries nothing else safe
+// to log about a phone-pairing attempt.
 func pairByPhone(ctx context.Context, dev device, number string, report func(connector.AuthStep)) bool {
 	code, err := dev.pairPhone(ctx, number)
 	if err != nil {
-		report(connector.AuthStep{Kind: "phone", Hint: "That did not work: " + err.Error() + ". Enter the number again, with its country code."})
+		log.Print("whatsapp: pair by phone failed")
+		report(connector.AuthStep{Kind: "phone", Hint: pairByPhoneFailedHint})
 		return false
 	}
 

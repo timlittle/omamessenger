@@ -125,11 +125,19 @@ Item {
           ? "To use your own Telegram app instead of OmaMessenger's, sign in at <a href=\"https://my.telegram.org/apps\">my.telegram.org</a>, open API development tools, and copy the app's api_id and api_hash here. They stay on this computer."
           : root.stage === "waiting" ? "Connecting to " + root.serviceName + "…" : root.hint
         visible: text !== ""
-        // StyledText is safe here only because every branch is a fixed
-        // string we wrote ourselves (root.serviceName comes from the
-        // helper's own fixed service list, never a contact or message):
-        // nothing here is sender-controlled, so there is no way for a
-        // remote "<img>" to reach this label.
+        // StyledText is safe here because every branch, including
+        // root.hint, is always a fixed string the connector itself
+        // wrote (QRHint, a fixed per-step sentence, or whatsapp's
+        // pairByPhoneFailedHint): never a raw error or any other text
+        // a service returns, which is exactly what let a crafted
+        // IQError turn into a clickable link here before. root.serviceName
+        // comes from the helper's own fixed service list, never a
+        // contact or message. onLinkActivated still reports through
+        // linkOpenRequested rather than opening anything itself, so
+        // even a future hint that turned out not to be fixed could
+        // only ever open an allowed scheme (see
+        // WindowController.openExternalLink), never load a remote
+        // "<img>" or open anything else.
         textFormat: Text.StyledText
         wrapMode: Text.WordWrap
         linkColor: Theme.accent
