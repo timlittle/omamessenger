@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -103,7 +104,7 @@ func (d Desktop) run(ctx context.Context, dial func(context.Context) (Bus, func(
 	}
 	defer release()
 
-	id, err := b.Show("OmaMessenger", title, body, []string{defaultAction, "Open"}, map[string]dbus.Variant{
+	id, err := b.Show("OmaMessenger", title, escapeBody(body), []string{defaultAction, "Open"}, map[string]dbus.Variant{
 		"category": dbus.MakeVariant("im.received"),
 	})
 	if err != nil {
@@ -118,6 +119,23 @@ func (d Desktop) run(ctx context.Context, dial func(context.Context) (Bus, func(
 	if action == defaultAction && d.Click != nil {
 		d.Click(conversationID)
 	}
+}
+
+// escapeBody neutralizes the markup characters a notification server
+// that advertises the freedesktop "body-markup" capability - Omarchy's
+// own daemon does, hyperlinks included - interprets in a notification
+// body. A message's own text must never be read as a "<a href>" link
+// or a "<b>" tag just because it happens to contain the same
+// characters HTML markup uses; the notification spec's body-markup
+// subset needs only '&', '<' and '>' escaped, so that is all this
+// does. The summary (title) is never escaped: the spec requires it be
+// shown as plain text, with no markup interpreted at all.
+func escapeBody(body string) string {
+	body = strings.ReplaceAll(body, "&", "&amp;")
+	body = strings.ReplaceAll(body, "<", "&lt;")
+	body = strings.ReplaceAll(body, ">", "&gt;")
+
+	return body
 }
 
 // dbusBus is Bus's production implementation, driving a real

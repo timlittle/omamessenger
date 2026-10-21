@@ -153,6 +153,32 @@ func TestNotify_CallsShowWithTitleBodyAndDefaultAction(t *testing.T) {
 	}
 }
 
+// TestNotify_EscapesMarkupCharactersInTheBody confirms a message's own
+// text cannot be read as markup by a notification server that
+// advertises body-markup and hyperlinks, such as Omarchy's: '&', '<'
+// and '>' are escaped in the body before it ever reaches Show, and the
+// title (summary) is passed through unchanged, since the notification
+// spec requires it be shown as plain text.
+func TestNotify_EscapesMarkupCharactersInTheBody(t *testing.T) {
+	t.Parallel()
+
+	b := closedWithoutAction()
+	d, clicks := desktopWithFake(b)
+
+	d.Notify("Alex <b>", `<b>click here</b> & a<b x="y"> &amp; done`, "conv-1")
+	assertNoClick(t, clicks)
+
+	_, title, body, _, _ := b.args()
+	if title != "Alex <b>" {
+		t.Errorf("title = %q, want it passed through unescaped: the summary is plain text per the notification spec", title)
+	}
+
+	want := "&lt;b&gt;click here&lt;/b&gt; &amp; a&lt;b x=\"y\"&gt; &amp;amp; done"
+	if body != want {
+		t.Errorf("body = %q, want %q", body, want)
+	}
+}
+
 func TestNotify_ReportsAClickWithTheConversationID(t *testing.T) {
 	t.Parallel()
 
