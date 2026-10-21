@@ -10,18 +10,10 @@ package telegram
 // domain.ByteOffsetsForUTF16 to slice the UTF-8 Go string by it.
 
 import (
-	"strings"
-
 	"github.com/gotd/td/tg"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
-
-// linkSchemes are the URL schemes a link span may open. Telegram's own
-// entities should never carry anything else, but a message from a
-// future client or a bot might, and this connector never turns an
-// unknown scheme into something the UI would treat as safe to open.
-var linkSchemes = map[string]bool{"http": true, "https": true, "mailto": true, "tg": true}
 
 // spansFromEntities reads a message's formatting entities into spans
 // over text: links, bold, italic, underline, strike, code, pre and
@@ -73,7 +65,7 @@ func plainSpan(ent tg.MessageEntityClass) (kind string, offset, length int, ok b
 // MessageEntityTextURL already carries its own URL, while
 // MessageEntityURL and MessageEntityEmail carry only a position, so
 // their link text is read out of text itself. It reports false for any
-// other entity, or for a link whose URL allowedLinkURL rejects.
+// other entity, or for a link whose URL domain.AllowedLinkURL rejects.
 func linkSpan(ent tg.MessageEntityClass, text string) (domain.Span, bool) {
 	switch e := ent.(type) {
 	case *tg.MessageEntityTextURL:
@@ -97,9 +89,12 @@ func linkSpan(ent tg.MessageEntityClass, text string) (domain.Span, bool) {
 
 // linkSpanAt builds a link span at the UTF-16 range
 // [offset, offset+length) for url, or reports false when
-// allowedLinkURL rejects its scheme.
+// domain.AllowedLinkURL rejects its scheme. Telegram's own entities
+// should never carry anything else, but a message from a future client
+// or a bot might, and this connector never turns an unknown scheme into
+// something the UI would treat as safe to open.
 func linkSpanAt(offset, length int, url string) (domain.Span, bool) {
-	if !allowedLinkURL(url) {
+	if !domain.AllowedLinkURL(url) {
 		return domain.Span{}, false
 	}
 
@@ -116,12 +111,4 @@ func entityText(text string, offset, length int) (string, bool) {
 	}
 
 	return text[start:end], true
-}
-
-// allowedLinkURL reports whether url's scheme is one linkSchemes allows
-// a link span to open.
-func allowedLinkURL(url string) bool {
-	scheme, _, ok := strings.Cut(url, ":")
-
-	return ok && linkSchemes[strings.ToLower(scheme)]
 }

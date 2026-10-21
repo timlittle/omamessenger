@@ -9,9 +9,10 @@
 // the messages model through send()'s own RPC result, a second
 // loadOlder() while one page is already loading is ignored, removing an
 // account closes one of its conversations if it was
-// left open and moves the list cursor off it, and the window Escape
-// chain dispatches to the right controller. XDG_DATA_HOME is set by the
-// test runner, so this never touches real data.
+// left open and moves the list cursor off it, the window Escape
+// chain dispatches to the right controller, and openLink hands its url
+// straight to openExternalLink. XDG_DATA_HOME is set by the test
+// runner, so this never touches real data.
 import QtQuick
 import Quickshell
 import "ui"
@@ -344,6 +345,15 @@ ShellRoot {
     windowController.run("escape");
     windowController.keepInBackground();
     if (!root.hidden) return Check.fail("keeping it in the background did not hide the window");
+
+    // openLink always hands its url to openExternalLink, the one place
+    // that checks it against Links.isAllowed before ever calling the
+    // real Qt.openUrlExternally (see ui/lib/Links.js's own node test
+    // for that check itself).
+    let openedUrl = "";
+    windowController.openExternalLink = (url) => { openedUrl = url; };
+    windowController.openLink("https://example.com/a");
+    if (openedUrl !== "https://example.com/a") return Check.fail("openLink did not hand its url to openExternalLink");
 
     console.log("PASS Controllers");
     Qt.exit(0);

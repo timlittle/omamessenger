@@ -133,6 +133,9 @@ Item {
   // voted asks the caller to cast optionIds as the user's vote in this
   // message's poll.
   signal voted(string id, var optionIds)
+  // linkOpenRequested asks the caller to open url: a link in this
+  // message's own text, or its link preview's URL.
+  signal linkOpenRequested(string url)
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
@@ -285,6 +288,7 @@ Item {
           onVideoMuteToggled: root.videoMuteToggled(root.message.id)
           onQuoteOpened: remoteId => root.quoteOpened(remoteId)
           onVoted: optionIds => root.voted(root.message.id, optionIds)
+          onLinkOpenRequested: url => root.linkOpenRequested(url)
         }
 
         MessageMeta {

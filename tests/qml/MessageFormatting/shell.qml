@@ -5,11 +5,12 @@
 // there a genuine anchor here": it only answers with a URL when the
 // rich text engine actually parsed one at that position, so this proves
 // the span reached real markup, not merely a string. It stops short of
-// firing a real click (QtTest's mouseClick), which would also run
-// MessageBubbleContent's own onLinkActivated handler straight into the
-// real Qt.openUrlExternally and out to this machine's own URL/mailto
-// handler - exactly what MessageHighlight's own test avoids for the
-// same reason (see its header comment).
+// firing a real click (QtTest's mouseClick) to prove that, since
+// linkAt already does; MessageBubbleContent's own onLinkActivated only
+// reports linkOpenRequested rather than opening anything itself (see
+// WindowController.openExternalLink, the one place that ever reaches
+// the real Qt.openUrlExternally), so there is nothing further a real
+// click here would prove.
 import QtQuick
 import Quickshell
 import "ui/components"

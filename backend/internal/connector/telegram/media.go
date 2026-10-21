@@ -29,7 +29,10 @@ func media(m tg.MessageMediaClass) *domain.Media {
 }
 
 // linkPreview is a web page preview, or nil until Telegram has one worth
-// showing.
+// showing. Its URL is dropped, never reported, when domain.AllowedLinkURL
+// rejects its scheme: Telegram resolves this itself, so it should never
+// carry anything else, but the UI opens it with no filter of its own, so
+// this connector never forwards a URL unchecked.
 func linkPreview(w tg.WebPageClass) *domain.Media {
 	page, ok := w.(*tg.WebPage)
 	if !ok {
@@ -42,8 +45,13 @@ func linkPreview(w tg.WebPageClass) *domain.Media {
 		return nil
 	}
 
+	url := page.URL
+	if !domain.AllowedLinkURL(url) {
+		url = ""
+	}
+
 	site, _ := page.GetSiteName()
-	out := &domain.Media{Kind: domain.MediaLink, URL: page.URL, SiteName: site, Title: title, Description: description}
+	out := &domain.Media{Kind: domain.MediaLink, URL: url, SiteName: site, Title: title, Description: description}
 	if photo, ok := page.GetPhoto(); ok {
 		if p, ok := photo.(*tg.Photo); ok {
 			out.Thumb = strippedThumb(p.Sizes)

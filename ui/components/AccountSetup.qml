@@ -54,6 +54,11 @@ Item {
   signal answered(string value)
   // cancelled closes setup.
   signal cancelled()
+  // linkOpenRequested asks the caller to open url, the hint text's own
+  // link. Reported rather than opened here directly, so the one
+  // allow-list check happens where every such request ends up (see
+  // WindowController.openExternalLink).
+  signal linkOpenRequested(string url)
 
   // _field describes the typed answer the stage asks for, or null.
   readonly property var _field: Setup.field(root.stage)
@@ -130,7 +135,7 @@ Item {
         linkColor: Theme.accent
         color: Util.alpha(Theme.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.body }
-        onLinkActivated: link => Qt.openUrlExternally(link)
+        onLinkActivated: link => root.linkOpenRequested(link)
       }
 
       ColumnLayout {

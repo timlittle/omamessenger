@@ -43,6 +43,22 @@ func TestMedia_LinkPreview(t *testing.T) {
 	}
 }
 
+// TestMedia_LinkPreviewDropsAURLWithADisallowedScheme guards against a
+// web page preview whose URL carries a scheme the UI must never open
+// unfiltered (see domain.AllowedLinkURL): the preview still shows its
+// title and description, but with no URL to open.
+func TestMedia_LinkPreviewDropsAURLWithADisallowedScheme(t *testing.T) {
+	t.Parallel()
+
+	page := &tg.WebPage{URL: "javascript:alert(1)"}
+	page.SetTitle("A page")
+
+	got := media(&tg.MessageMediaWebPage{Webpage: page})
+	if got == nil || got.URL != "" {
+		t.Fatalf("media = %+v, want the preview kept with its URL dropped", got)
+	}
+}
+
 // photo is a photo with a stripped preview and two sizes, the larger
 // progressive with a file size of its own (the last, full entry of a
 // progressive JPEG's prefix sizes). It returns a fresh value each time,

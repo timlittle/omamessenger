@@ -119,15 +119,25 @@ func mediaAndRef(msg *waE2E.Message) (*domain.Media, mediaRef, bool) {
 }
 
 // linkPreview is a web page preview attached to a text message, or nil
-// until WhatsApp found one worth showing.
+// until WhatsApp found one worth showing. Its URL, GetMatchedText(), is
+// the sender's own message text matched by WhatsApp's own link
+// detection, not a server-resolved value, so it is dropped, never
+// reported, when domain.AllowedLinkURL rejects its scheme: the UI opens
+// it with no filter of its own, so this connector never forwards a URL
+// unchecked.
 func linkPreview(m *waE2E.ExtendedTextMessage) *domain.Media {
 	title, description := m.GetTitle(), m.GetDescription()
 	if title == "" && description == "" {
 		return nil
 	}
 
+	url := m.GetMatchedText()
+	if !domain.AllowedLinkURL(url) {
+		url = ""
+	}
+
 	return &domain.Media{
-		Kind: domain.MediaLink, URL: m.GetMatchedText(),
+		Kind: domain.MediaLink, URL: url,
 		Title: title, Description: description, Thumb: thumb(m.GetJPEGThumbnail()),
 	}
 }

@@ -40,6 +40,21 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 			false,
 		},
 		{
+			// MatchedText is the sender's own message text, matched by
+			// WhatsApp's own link detection, not a server-resolved
+			// value: a sender can put anything there, so a scheme
+			// domain.AllowedLinkURL rejects must never reach the UI
+			// unfiltered. The preview itself is still shown, just with
+			// no URL to open.
+			"link preview with a disallowed scheme is kept but its URL is dropped",
+			&waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+				Text: strPtr("click this"), MatchedText: strPtr("javascript:alert(1)"), Title: strPtr("Example"),
+			}},
+			&domain.Media{Kind: domain.MediaLink, URL: "", Title: "Example"},
+			mediaRef{},
+			false,
+		},
+		{
 			"photo",
 			&waE2E.Message{ImageMessage: &waE2E.ImageMessage{
 				Width: u32(800), Height: u32(600), FileLength: u64(1024), Mimetype: strPtr("image/jpeg"),

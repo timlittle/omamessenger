@@ -227,6 +227,7 @@ Item {
       onQrRequested: root.accountController.useQr()
       onAnswered: value => root.accountController.answer(value)
       onCancelled: root.accountController.cancel()
+      onLinkOpenRequested: url => root.windowController.openLink(url)
     }
   }
 

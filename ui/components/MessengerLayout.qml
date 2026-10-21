@@ -120,7 +120,7 @@ Item {
     function onScroll(direction) { root._scrollConversation(direction) }
     function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
     function onLinksRequested(urls) {
-      if (urls.length === 1) Qt.openUrlExternally(urls[0]);
+      if (urls.length === 1) root.windowController.openLink(urls[0]);
       else root.windowController.openLinkChooser(urls);
     }
   }
@@ -276,6 +276,7 @@ Item {
       onMediaCopyRequested: id => root.conversationController.copyMedia(id)
       onMediaSaveRequested: id => root.conversationController.saveMedia(id)
       onMediaOpenExternalRequested: id => root.conversationController.openMediaExternal(id)
+      onLinkOpenRequested: url => root.windowController.openLink(url)
       onSend: (text, replyToId, mentions) => {
         if (root.composerController.editing) root.composerController.saveEdit(text);
         else root.conversationController.send(text, replyToId, mentions);

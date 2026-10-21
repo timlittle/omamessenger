@@ -69,6 +69,11 @@ Column {
   // voted asks the caller to cast optionIds as the user's vote in this
   // message's poll.
   signal voted(var optionIds)
+  // linkOpenRequested asks the caller to open url: a link in this
+  // message's own text, or its link preview's URL. Reported rather than
+  // opened here directly, so the one allow-list check happens where
+  // every such request ends up (see WindowController.openExternalLink).
+  signal linkOpenRequested(string url)
 
   // _mediaKind is which view media belongs in: "link", "photo", "video",
   // "voice", "file", or "" for no media. It is also an audio file the
@@ -118,7 +123,7 @@ Column {
     text: Format.messageHtml(body.caption, Theme.accent, Theme.muted, root.mentions, root.formatting)
     color: Theme.foreground
     font { family: Theme.font.family; pixelSize: Theme.font.body }
-    onLinkActivated: link => Qt.openUrlExternally(link)
+    onLinkActivated: link => root.linkOpenRequested(link)
   }
 
   // The widest line's unwrapped width. TextEdit's own implicit width
@@ -135,7 +140,7 @@ Column {
     width: Math.min(implicitWidth, root.maxTextWidth)
     visible: root._mediaKind === "link"
     preview: root.media ? root.media : ({})
-    onOpened: url => Qt.openUrlExternally(url)
+    onOpened: url => root.linkOpenRequested(url)
   }
 
   PhotoView {

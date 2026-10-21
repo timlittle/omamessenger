@@ -5,6 +5,7 @@ import "../lib/Keymap.js" as Keymap
 import "../lib/Palette.js" as Palette
 import "../lib/Rpc.js" as Rpc
 import "../lib/ErrorBanner.js" as ErrorBanner
+import "../lib/Links.js" as Links
 
 // Owns the command palette, closing and quitting (which ask first), and
 // the Escape chain. The palette runs commands through whichever
@@ -56,6 +57,20 @@ Item {
   // accountController adds accounts from the palette and is closed by the
   // Escape chain.
   property var accountController: null
+
+  // openExternalLink is the one place in this UI that ever calls
+  // Qt.openUrlExternally for a URL that came from a message, a link
+  // preview or a service's own text, rather than a "file://" path this
+  // UI built itself from something already on disk: every such caller
+  // reports a linkOpenRequested signal or calls openLink below, which
+  // always arrives here. Links.isAllowed checks url's scheme first, the
+  // same allow-list a message's own formatting span already checks, so
+  // a sender or a service can never make this open anything else.
+  // Overridable so a test can record what would have opened instead of
+  // truly opening it; tests/unit/openurl-coverage.test.cjs enforces that
+  // no other file calls Qt.openUrlExternally with anything but a local
+  // file path it built itself.
+  property var openExternalLink: (url) => { if (Links.isAllowed(url)) Qt.openUrlExternally(url); }
 
   // paletteOpen shows the command palette.
   property bool paletteOpen: false
@@ -237,6 +252,13 @@ Item {
     root.openPalette("links");
   }
 
+  // openLink opens url through openExternalLink: the single-link case
+  // of o on a message, and anywhere else a link from a message, a link
+  // preview or a service's own text is opened.
+  function openLink(url: string): void {
+    root.openExternalLink(url);
+  }
+
   // _paletteContext gathers whatever Palette.js's per-mode table needs
   // to compute paletteResults and paletteItems for the current mode;
   // see Palette.js for which fields each mode actually reads.
@@ -370,7 +392,7 @@ Item {
 
     root.closePalette();
     if (root.paletteMode === "conversations") root._openConversation(chosen);
-    else if (root.paletteMode === "links") Qt.openUrlExternally(chosen.url);
+    else if (root.paletteMode === "links") root.openLink(chosen.url);
     else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
     else if (root.paletteMode === "keyBindings") { /* informational only */ }
     else root.runCommand(chosen.action);

@@ -114,6 +114,9 @@ Item {
   // voted asks the caller to cast optionIds as the user's vote in a
   // message's poll.
   signal voted(string id, var optionIds)
+  // linkOpenRequested asks the caller to open url: a link in a
+  // message's own text, or its link preview's URL.
+  signal linkOpenRequested(string url)
   // send reports a message the user submitted, the id of the message it
   // answers (or "" when it answers nothing), and its resolved @-mentions.
   signal send(string text, string replyToId, var mentions)
@@ -312,6 +315,7 @@ Item {
         onMediaCopyRequested: id => root.mediaCopyRequested(id)
         onMediaSaveRequested: id => root.mediaSaveRequested(id)
         onMediaOpenExternalRequested: id => root.mediaOpenExternalRequested(id)
+        onLinkOpenRequested: url => root.linkOpenRequested(url)
       }
 
       onContentYChanged: root._checkLoadOlder()
