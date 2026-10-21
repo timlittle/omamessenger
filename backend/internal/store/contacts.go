@@ -27,12 +27,14 @@ func (s *Store) Contact(ctx context.Context, accountID, remoteID string) (domain
 	return c, wrap("contact", err)
 }
 
-// Contacts returns an account's contacts whose name contains query, ignoring
-// case, ordered by name.
+// Contacts returns an account's contacts whose name contains query,
+// ignoring case, ordered by name, capped at domain.MaxContactResults:
+// a service's own contact sync fully controls how many contacts an
+// account ends up with, with no limit of its own.
 func (s *Store) Contacts(ctx context.Context, accountID, query string) ([]domain.Contact, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+contactColumns+` FROM contacts
-		WHERE account_id=? AND name LIKE ? ESCAPE '\' ORDER BY name COLLATE NOCASE`,
-		accountID, likePattern(query))
+		WHERE account_id=? AND name LIKE ? ESCAPE '\' ORDER BY name COLLATE NOCASE LIMIT ?`,
+		accountID, likePattern(query), domain.MaxContactResults)
 	if err != nil {
 		return nil, wrap("contacts", err)
 	}

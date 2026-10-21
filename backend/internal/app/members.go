@@ -25,6 +25,13 @@ func (c *Commands) Members(ctx context.Context, conversationID string) ([]domain
 	if members == nil {
 		members = []domain.Member{}
 	}
+	// A group's own membership is reported by whichever service owns
+	// it, which a hostile or compromised group admin could inflate
+	// without bound; cap what reaches the mention picker (see
+	// domain.MaxGroupMembers).
+	if len(members) > domain.MaxGroupMembers {
+		members = members[:domain.MaxGroupMembers]
+	}
 
 	return members, err
 }

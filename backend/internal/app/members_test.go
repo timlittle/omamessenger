@@ -51,3 +51,28 @@ func TestMembers_UnknownConversation(t *testing.T) {
 		t.Error("Members(missing): want an error")
 	}
 }
+
+// TestMembers_CapsAnOversizedMemberList reproduces a service that
+// reports more members than domain.MaxGroupMembers for one
+// conversation: Members must never pass more than the cap through to
+// the mention picker.
+func TestMembers_CapsAnOversizedMemberList(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	group := f.conversation(t, "group", "Group", domain.KindGroup)
+
+	members := make([]domain.Member, domain.MaxGroupMembers+50)
+	for i := range members {
+		members[i] = domain.Member{ID: "u", Name: "x"}
+	}
+	f.members.members = members
+
+	got, err := f.commands.Members(t.Context(), group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != domain.MaxGroupMembers {
+		t.Errorf("Members returned %d, want exactly %d", len(got), domain.MaxGroupMembers)
+	}
+}

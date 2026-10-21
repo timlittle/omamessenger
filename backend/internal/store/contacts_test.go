@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -71,5 +72,32 @@ func TestContacts_SearchIgnoresCaseAndSortsByName(t *testing.T) {
 		if !slices.Equal(names, tt.want) {
 			t.Errorf("Contacts(%q) = %v, want %v", tt.query, names, tt.want)
 		}
+	}
+}
+
+// TestContacts_CapsAnOversizedResultSet reproduces an account whose
+// synced contact count, fully controlled by the service's own sync,
+// has no limit of its own: Contacts must never return more than
+// domain.MaxContactResults at once, however many a search matches.
+func TestContacts_CapsAnOversizedResultSet(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+
+	for i := 0; i < domain.MaxContactResults+50; i++ {
+		c := domain.Contact{AccountID: "wa", RemoteID: fmt.Sprintf("%d", i), Name: fmt.Sprintf("Contact %04d", i)}
+		if err := s.UpsertContact(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	contacts, err := s.Contacts(ctx, "wa", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contacts) != domain.MaxContactResults {
+		t.Errorf("Contacts returned %d, want exactly %d", len(contacts), domain.MaxContactResults)
 	}
 }

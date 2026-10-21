@@ -26,6 +26,19 @@ var STATUS_GLYPHS = { pending: '○', sent: '✓', delivered: '✓✓', read: '�
 // itself could otherwise produce.
 var MAX_RICH_TEXT_INPUT_LENGTH = 65536;
 
+// MAX_FORMATTING_SPANS and MAX_MENTIONS bound how many formatting spans
+// and mentions messageHtml ever turns into rich text, as defense in
+// depth behind the helper's own domain.MaxFormattingSpans and
+// domain.MaxMentions caps, applied once at ingest: a connector bug or
+// an older helper could still hand this file a longer list than that,
+// and styledHtml's own per-boundary work (see its own comment) must
+// stay bounded either way. Kept here independently, the same two-
+// independently-maintained-but-matching pair MAX_RICH_TEXT_INPUT_LENGTH's
+// own comment describes, since this file has no way to import a Go
+// constant.
+var MAX_FORMATTING_SPANS = 256;
+var MAX_MENTIONS = 64;
+
 // URL_PATTERN matches http(s) links in escaped text. Entities such as &amp;
 // may appear inside a link; any other '&' ends it.
 var URL_PATTERN = /https?:\/\/[^\s<"&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\s<"&]*)*/g;
@@ -60,18 +73,21 @@ function linkify(escaped, color) {
 // code, pre and spoiler - applied the same way on top of the escaped
 // text. A message with mentions or spans skips table rendering, since
 // neither is ordinary enough to coexist with a pipe table. text is cut
-// to MAX_RICH_TEXT_INPUT_LENGTH first, before any of this runs, so the
-// rich text this builds is always bounded too, whatever the message's
-// own length (see MAX_RICH_TEXT_INPUT_LENGTH's own comment).
+// to MAX_RICH_TEXT_INPUT_LENGTH, and mentions and spans to MAX_MENTIONS
+// and MAX_FORMATTING_SPANS, all before any of this runs, so the rich
+// text this builds is always bounded too, whatever the message's own
+// length or entity count (see each cap's own comment).
 function messageHtml(text, linkColor, tableBorderColor, mentions, spans) {
   const capped = text.length > MAX_RICH_TEXT_INPUT_LENGTH ? text.slice(0, MAX_RICH_TEXT_INPUT_LENGTH) : text;
+  const cappedMentions = mentions && mentions.length > MAX_MENTIONS ? mentions.slice(0, MAX_MENTIONS) : mentions;
+  const cappedSpans = spans && spans.length > MAX_FORMATTING_SPANS ? spans.slice(0, MAX_FORMATTING_SPANS) : spans;
 
-  if (spans && spans.length > 0) {
-    return styledHtml(capped, linkColor, mentions, spans);
+  if (cappedSpans && cappedSpans.length > 0) {
+    return styledHtml(capped, linkColor, cappedMentions, cappedSpans);
   }
 
-  if (mentions && mentions.length > 0) {
-    return mentionHtml(capped, linkColor, mentions);
+  if (cappedMentions && cappedMentions.length > 0) {
+    return mentionHtml(capped, linkColor, cappedMentions);
   }
 
   const borderColor = tableBorderColor ?? '#888888';
@@ -155,28 +171,71 @@ function styledRanges(text, mentions, spans) {
 // applied on top of it. It cuts text at every range's start and end, so
 // a stretch covered by more than one range - a bold word inside a link,
 // say - renders with every style active over it, rather than one tag
-// closing early and leaving the markup broken.
+// closing early and leaving the markup broken. Ranges are capped by
+// messageHtml's own caller before this ever runs, but it still sweeps
+// the sorted boundaries once, adding and dropping ranges from a running
+// active list as it goes, rather than re-filtering every range for
+// every one of the boundaries in between: a message built from many
+// overlapping spans does only as much work as the overlap actually
+// needs, not the square of its span count.
 function styledHtml(text, linkColor, mentions, spans) {
   const ranges = styledRanges(text, mentions, spans);
   if (ranges.length === 0) {
     return lineHtml(text, linkColor);
   }
 
-  const points = [0, text.length];
-  for (const r of ranges) {
-    points.push(r.start, r.end);
-  }
-  const bounds = [...new Set(points)].sort((a, b) => a - b);
+  const bounds = boundaryPoints(text, ranges);
+  const startingAt = rangesByBound(ranges, (r) => r.start);
+  const endingAt = rangesByBound(ranges, (r) => r.end);
 
   let html = '';
+  let active = [];
   for (let i = 0; i < bounds.length - 1; i++) {
     const start = bounds[i];
     const end = bounds[i + 1];
-    const active = ranges.filter((r) => r.start <= start && r.end >= end);
+
+    active = active.concat(startingAt.get(start) || []);
     html += styledSegment(text.slice(start, end), linkColor, active);
+
+    const leaving = endingAt.get(end);
+    if (leaving) {
+      active = active.filter((r) => !leaving.includes(r));
+    }
   }
 
   return html;
+}
+
+// boundaryPoints returns every distinct position ranges cuts text at -
+// every range's own start and end, plus text's own start and end -
+// sorted ascending once, so styledHtml's sweep never has to re-sort or
+// re-scan every range per segment.
+function boundaryPoints(text, ranges) {
+  const points = new Set([0, text.length]);
+  for (const r of ranges) {
+    points.add(r.start);
+    points.add(r.end);
+  }
+
+  return [...points].sort((a, b) => a - b);
+}
+
+// rangesByBound buckets ranges by boundAt(range), preserving each
+// bucket's own relative order, as a Map from that position to the
+// ranges starting or ending there: styledHtml's sweep looks up what to
+// add to or drop from its active list at each boundary in one map read
+// rather than a scan over every range.
+function rangesByBound(ranges, boundAt) {
+  const byBound = new Map();
+  for (const r of ranges) {
+    const at = boundAt(r);
+    if (!byBound.has(at)) {
+      byBound.set(at, []);
+    }
+    byBound.get(at).push(r);
+  }
+
+  return byBound;
 }
 
 // styledSegment renders one cut of text with every range active over

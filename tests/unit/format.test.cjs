@@ -361,6 +361,34 @@ test('messageHtml drops a span that no longer fits the text', () => {
   assert.equal(Format.messageHtml('hi', null, null, [], [{ kind: 'bold', start: 0, end: 10 }]), 'hi');
 });
 
+// MAX_FORMATTING_SPANS and MAX_MENTIONS back a defense-in-depth cap,
+// behind the helper's own domain.MaxFormattingSpans and
+// domain.MaxMentions caps applied at ingest: a connector bug or an
+// older helper could still hand this file an oversized list, and
+// rendering must stay bounded either way.
+
+test('messageHtml bounds an oversized span list to MAX_FORMATTING_SPANS, as defense in depth behind the helper\'s own ingest cap', () => {
+  const max = Format.MAX_FORMATTING_SPANS;
+  const text = 'x'.repeat(max + 20);
+  const spans = [];
+  for (let i = 0; i < text.length; i++) spans.push({ kind: 'bold', start: i, end: i + 1 });
+
+  const html = Format.messageHtml(text, null, null, [], spans);
+  const boldCount = (html.match(/<b>/g) || []).length;
+  assert.equal(boldCount, max);
+});
+
+test('messageHtml bounds an oversized mention list to MAX_MENTIONS, as defense in depth behind the helper\'s own ingest cap', () => {
+  const max = Format.MAX_MENTIONS;
+  const text = 'x'.repeat(max + 20);
+  const mentions = [];
+  for (let i = 0; i < text.length; i++) mentions.push({ offset: i, length: 1 });
+
+  const html = Format.messageHtml(text, null, null, mentions);
+  const boldCount = (html.match(/<b>/g) || []).length;
+  assert.equal(boldCount, max);
+});
+
 test('messageHtml ignores a span kind it does not recognise, showing plain text', () => {
   assert.equal(Format.messageHtml('text', null, null, [], [{ kind: 'blockquote', start: 0, end: 4 }]), 'text');
 });

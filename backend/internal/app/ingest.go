@@ -165,10 +165,13 @@ func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID st
 		return
 	}
 
+	// See save's own comment: an edit's new text, formatting, mentions,
+	// reactions and media are just as sender-controlled as a newly
+	// arrived message's, so they get the same caps.
+	m = domain.SanitizeIncoming(m)
+
 	updated, found, err := in.store.EditMessage(ctx, conv.ID, m.RemoteID, store.MessageEdit{
-		// See save's own comment: the service's edited text is just as
-		// sender-controlled as a newly arrived message's.
-		Text: domain.TruncateIncomingText(m.Text), Media: m.Media, Reactions: m.Reactions, Mentions: m.Mentions, MentionsMe: m.MentionsMe,
+		Text: m.Text, Media: m.Media, Reactions: m.Reactions, Mentions: m.Mentions, MentionsMe: m.MentionsMe,
 		Formatting: m.Formatting,
 	})
 	if err != nil || !found {
@@ -347,10 +350,12 @@ func (in *Ingest) save(ctx context.Context, accountID, remoteID string, m domain
 	if m.Created == 0 {
 		m.Created = time.Now().UnixMilli()
 	}
-	// A sender fully controls Text; an unbounded one could otherwise
-	// make the UI lay out an unbounded amount of rich text in one
-	// bubble (see ui/lib/Markdown.js and docs/decisions.md).
-	m.Text = domain.TruncateIncomingText(m.Text)
+	// A sender fully controls Text, Formatting, Mentions, Reactions and
+	// Media; any one of them left unbounded could otherwise make the UI
+	// lay out an unbounded amount of rich text, mentions, reactions or
+	// poll options in one bubble (see domain.SanitizeIncoming,
+	// ui/lib/Markdown.js and docs/decisions.md).
+	m = domain.SanitizeIncoming(m)
 
 	before = in.events.unreadTotal(ctx)
 	add := in.store.AddMessage
