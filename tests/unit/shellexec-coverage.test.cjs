@@ -1,18 +1,27 @@
 // Regression guard against a shell command string built by concatenating
-// an unquoted value into it. `Util.execDetached(["sh", "-c", "<string>"])`
-// hands that whole string to a shell, which splits on spaces, quotes and
-// operators the string happens to contain — the same way an attacker who
-// controls a chat name or a file path (from a photo or video someone
-// else sent, see ui/controllers/MediaController.qml's copyToClipboard)
-// could break out of the intended `wl-copy ... < path` and run something
-// else entirely. The known-good shape wraps every interpolated value in
+// an unquoted value into it. `Util.execDetached("<string>")` runs
+// <string> as a single command line under `bash -lc` (see Omarchy's own
+// Commons/Util.qml), which splits on spaces, quotes and operators the
+// string happens to contain — the same way an attacker who controls a
+// chat name or a file path (from a photo or video someone else sent, see
+// ui/controllers/MediaController.qml's copyToClipboard) could break out
+// of the intended `wl-copy ... < path` and run something else entirely.
+// The known-good shape wraps every interpolated value in
 // `Util.shellQuote(...)` before it joins the string; this check fails on
-// any concatenation that skips it.
+// any concatenation that skips it. It also catches the opposite mistake
+// that once shipped here: wrapping the whole string in an argv array
+// (`Util.execDetached(["sh", "-c", "<string>"])`) rather than passing it
+// directly - Util.execDetached takes one command string, not an argv
+// list, so a list was silently coerced to one unexecutable, comma-joined
+// word and copying anything failed every time with no error at all.
 //
 // This cannot judge whether a *literal* string segment is safe on its own
 // merit — only that every non-literal segment went through shellQuote
 // rather than being joined in raw. See tests/qml/MediaController for
-// proof that a real wl-copy invocation actually receives the quoted form.
+// proof that copyToClipboard dispatches exactly once; a real wl-copy
+// invocation receiving the quoted form is checked by hand (see
+// docs/decisions.md), since no automated test here touches the real,
+// user-visible clipboard.
 'use strict';
 
 const { test } = require('node:test');
@@ -22,11 +31,14 @@ const path = require('node:path');
 
 const UI_ROOT = path.resolve(__dirname, '../../ui');
 
-// SHELL_STRING_PATTERN finds an array literal that opens a shell with
-// `"sh", "-c",` followed by the expression that becomes the command
-// string: the one place a concatenated value is handed to a shell for
-// interpretation, rather than passed as its own separate argv word.
-const SHELL_STRING_PATTERN = /\[\s*"sh"\s*,\s*"-c"\s*,/g;
+// SHELL_STRING_PATTERN finds a call to Util.execDetached, whose single
+// argument becomes the command string a shell interprets.
+const SHELL_STRING_PATTERN = /Util\.execDetached\(/g;
+
+// ARGV_ARRAY_PATTERN matches the broken shape this file also rejects:
+// wrapping the command string in an argv-style array, which
+// Util.execDetached does not take.
+const ARGV_ARRAY_PATTERN = /^\s*\[\s*"sh"\s*,\s*"-c"\s*,[\s\S]*\]\s*$/;
 
 // qmlFiles walks dir and returns every ".qml" file under it.
 function qmlFiles(dir) {
@@ -42,11 +54,11 @@ function qmlFiles(dir) {
   return found;
 }
 
-// matchingBracket returns the index, in src, of the "]" that closes the
-// "[" already consumed up to startIndex (exclusive), skipping over
-// bracket characters that appear inside a double-quoted string so a
-// literal "]" in the command text never ends the scan early.
-function matchingBracket(src, startIndex) {
+// matchingParen returns the index, in src, of the ")" that closes the
+// "(" already consumed up to startIndex (exclusive), skipping over
+// parenthesis characters that appear inside a double-quoted string so a
+// literal ")" in the command text never ends the scan early.
+function matchingParen(src, startIndex) {
   let depth = 1;
   let inString = false;
   for (let i = startIndex; i < src.length; i++) {
@@ -57,10 +69,10 @@ function matchingBracket(src, startIndex) {
       continue;
     }
     if (c === '"') inString = true;
-    else if (c === '[') depth++;
-    else if (c === ']' && --depth === 0) return i;
+    else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return i;
   }
-  throw new Error('unbalanced brackets');
+  throw new Error('unbalanced parentheses');
 }
 
 // splitTerms splits expr on every top-level "+" (ignoring one nested
@@ -97,16 +109,17 @@ function isSafeTerm(term) {
   return /^Util\.shellQuote\(.*\)$/.test(term);
 }
 
-// findUnquoted returns one description per shell-string concatenation in
-// src that joins in a term that is not a literal or Util.shellQuote(...),
+// findUnquoted returns one description per Util.execDetached call in src
+// whose argument either wraps the command string in the broken argv-array
+// shape, or joins in a term that is not a literal or Util.shellQuote(...),
 // as "<file>:<line>".
 function findUnquoted(file, src) {
   const found = [];
   for (const match of src.matchAll(SHELL_STRING_PATTERN)) {
     const exprStart = match.index + match[0].length;
-    const closeIndex = matchingBracket(src, exprStart);
+    const closeIndex = matchingParen(src, exprStart);
     const expr = src.slice(exprStart, closeIndex);
-    const unsafe = splitTerms(expr).some((term) => term !== '' && !isSafeTerm(term));
+    const unsafe = ARGV_ARRAY_PATTERN.test(expr) || splitTerms(expr).some((term) => term !== '' && !isSafeTerm(term));
     if (unsafe) {
       const line = src.slice(0, match.index).split('\n').length;
       found.push(`${file}:${line}`);
@@ -124,14 +137,21 @@ test('every shell command string built for sh -c quotes its interpolated values 
     `name, file path or other value another person or service controls could break out of the intended command:\n  ${offenders.join('\n  ')}`);
 });
 
-test('a deliberately broken expectation is caught', () => {
-  const offenders = findUnquoted('fixture.qml', 'property var f: () => Util.execDetached(["sh", "-c", "wl-copy < " + path])');
+test('a deliberately broken expectation is caught: an unquoted interpolated value', () => {
+  const offenders = findUnquoted('fixture.qml', 'property var f: () => Util.execDetached("wl-copy < " + path)');
 
   assert.deepEqual(offenders, ['fixture.qml:1']);
 });
 
-test('the known-good wl-copy shape in MediaController.qml is not flagged', () => {
-  const src = fs.readFileSync(path.join(UI_ROOT, 'controllers/MediaController.qml'), 'utf8');
+test('a deliberately broken expectation is caught: the argv-array shape Util.execDetached does not take', () => {
+  const offenders = findUnquoted('fixture.qml', 'property var f: () => Util.execDetached(["sh", "-c", "wl-copy < " + Util.shellQuote(path)])');
 
-  assert.deepEqual(findUnquoted('controllers/MediaController.qml', src), []);
+  assert.deepEqual(offenders, ['fixture.qml:1']);
+});
+
+test('the known-good wl-copy shape in MediaController.qml and ConversationController.qml is not flagged', () => {
+  for (const file of ['controllers/MediaController.qml', 'controllers/ConversationController.qml']) {
+    const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
+    assert.deepEqual(findUnquoted(file, src), []);
+  }
 });

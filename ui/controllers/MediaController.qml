@@ -34,12 +34,16 @@ QtObject {
   // copyToClipboard puts path's content on the system clipboard as
   // mimeType, by shelling out to wl-copy the same way Omarchy's own
   // shell copies a value: Quickshell's own clipboard property only
-  // carries plain text, with nothing for an image or a video. The
-  // default calls the real wl-copy; a test overrides it with a
-  // recorder, so copying a photo or video can be proven to dispatch
-  // exactly once without ever touching the real, user-visible
-  // clipboard.
-  property var copyToClipboard: (path, mimeType) => Util.execDetached(["sh", "-c", "wl-copy --type " + Util.shellQuote(mimeType) + " < " + Util.shellQuote(path)])
+  // carries plain text, with nothing for an image or a video.
+  // Util.execDetached runs its argument as a single command string
+  // under "bash -lc", not an argv list (see Omarchy's own
+  // Commons/Util.qml); passing it a list silently failed to copy
+  // anything at all, since the whole list was coerced to one
+  // comma-joined, unexecutable word. The default calls the real
+  // wl-copy; a test overrides it with a recorder, so copying a photo
+  // or video can be proven to dispatch exactly once without ever
+  // touching the real, user-visible clipboard.
+  property var copyToClipboard: (path, mimeType) => Util.execDetached("wl-copy --type " + Util.shellQuote(mimeType) + " < " + Util.shellQuote(path))
 
   // openExternally hands a local file to the user's own application.
   // The default calls the real Qt.openUrlExternally; a test overrides

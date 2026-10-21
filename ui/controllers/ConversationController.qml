@@ -59,7 +59,10 @@ Item {
   // copyToClipboard puts a photo's or video's file on the system
   // clipboard, through media (see MediaController); a test overrides it
   // with a recorder rather than shelling out to wl-copy for real.
-  property var copyToClipboard: (path, mimeType) => Util.execDetached(["sh", "-c", "wl-copy --type " + Util.shellQuote(mimeType) + " < " + Util.shellQuote(path)])
+  // Util.execDetached runs its argument as a single command string
+  // under "bash -lc", not an argv list (see MediaController's own
+  // copyToClipboard for why a list silently copied nothing at all).
+  property var copyToClipboard: (path, mimeType) => Util.execDetached("wl-copy --type " + Util.shellQuote(mimeType) + " < " + Util.shellQuote(path))
 
   // mediaOpenCooldownMs is how long media (see MediaController) ignores
   // a repeat open of the same message after opening it; a test
