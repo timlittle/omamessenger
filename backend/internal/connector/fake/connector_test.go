@@ -342,6 +342,54 @@ func TestFetchMedia_WritesTheScriptedVoiceNote(t *testing.T) {
 	})
 }
 
+// TestFetchMedia_WritesTheScriptedGIFDocument confirms a real GIF
+// document downloads as genuine GIF bytes, not the photo placeholder:
+// the same class of bug TestFetchMedia_WritesTheScriptedVoiceNote
+// guards against, for the one other media kind whose decoder the UI
+// only ever trusts once the helper has confirmed the downloaded
+// bytes' own magic header (see app.DecodeAsForMedia).
+func TestFetchMedia_WritesTheScriptedGIFDocument(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		suite := fake.New()
+		stop := runFake(t, suite, sink)
+		defer stop()
+
+		waitConnected(sink)
+		seeded := sink.Messages()["tg:nadia"]
+		newest := seeded[len(seeded)-1]
+		if newest.Media == nil || newest.Media.Kind != domain.MediaVideo || !newest.Media.Animated {
+			t.Fatalf("Nadia's newest message = %+v, want a real GIF document", newest)
+		}
+
+		tg, ok := suite.Connectors()[1].(connector.MediaFetcher)
+		if !ok {
+			t.Fatal("fake connector does not download media")
+		}
+
+		path := filepath.Join(t.TempDir(), "download")
+		if err := tg.FetchMedia(t.Context(), conversation("tg-personal", "tg:nadia", domain.KindDirect), newest.RemoteID, path, false); err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil || len(got) == 0 {
+			t.Fatalf("downloaded %q, %v; want a file", got, err)
+		}
+
+		// "GIF8" is the magic header connector.SanitizeIfGIF itself
+		// checks for; a JPEG or Ogg placeholder would never match it.
+		if !bytes.HasPrefix(got, []byte("GIF8")) {
+			t.Errorf("downloaded GIF document does not start with GIF's own signature: %x", got[:min(4, len(got))])
+		}
+
+		isGIF, err := connector.SanitizeIfGIF(path)
+		if err != nil || !isGIF {
+			t.Errorf("SanitizeIfGIF(%q) = %t, %v, want true, nil", path, isGIF, err)
+		}
+	})
+}
+
 // TestFetchMedia_WritesRealOggThroughTheCachesTemporaryFile confirms the
 // voice note placeholder still lands correctly when FetchMedia is driven
 // the way app.Commands.FetchMedia actually calls it: through the cache

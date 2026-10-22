@@ -5,6 +5,9 @@
 // are covered in ui/lib node tests, the controller tests and backend/ Go
 // tests; this suite exists to prove the real keyboard, the real Panel and
 // the real helper still fit together):
+// - Ctrl+K jumps to Nadia, whose newest message is a real GIF document;
+//   one click fetches it and, once the helper's own byte check confirms
+//   it, InlineVideo switches from its thumbnail to a real AnimatedImage
 // - search for "ticket" finds Alex Chen, Enter opens it, its unread clears
 //   and the bar widget's count follows
 // - a draft survives the panel being destroyed and recreated
@@ -59,6 +62,10 @@ ShellRoot {
   property string expected: ""
   property int samUnread: -1
   readonly property string testRoot: String(Qt.resolvedUrl(".")).replace("file://", "")
+  // nadiaGifMessageId is Nadia's real GIF document's id, recorded once
+  // her chat has loaded so the click and animation checks can find its
+  // own delegate without depending on her list's exact newest position.
+  property string nadiaGifMessageId: ""
   // expectedTitle, _priorTitle, _newlineHeightBefore, _hidesBeforeChain
   // and _hidesBefore are scratch state for the keyboard-chrome journeys
   // appended after the message flows above.
@@ -69,6 +76,11 @@ ShellRoot {
   property int _hidesBefore: 0
   property var steps: [
     root.waitForList,
+    root.openNadiaGif,
+    root.waitForNadiaGifLoaded,
+    root.clickNadiaGif,
+    root.waitForNadiaGifAnimating,
+    root.closeNadia,
     root.searchTicket,
     root.waitForSearch,
     root.openMatch,
@@ -188,6 +200,83 @@ ShellRoot {
     // a search run any earlier could miss messages that are on their way.
     const accounts = helperService.accounts;
     return root.listModel().count === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
+  }
+
+  // openNadiaGif jumps to Nadia with Ctrl+K. Her newest seeded message
+  // is a real GIF document (see backend/internal/connector/fake's own
+  // placeholderGIF), so this is the one place a real click, the real
+  // helper and a real AnimatedImage are proven to fit together: every
+  // other detail of how InlineVideo decides to render one is already
+  // proved by its own component test (tests/qml/InlineVideo).
+  function openNadiaGif(): var {
+    // No Escape first here, unlike openMum and openSam further down:
+    // this is the suite's very first interaction, with nothing open
+    // yet, so Escape would hide the window instead of clearing
+    // anything (see Navigation.escapeAction's final "hide-window"
+    // fallback).
+    t.keyClick(Qt.Key_K, Qt.ControlModifier);
+    root.type("nadia");
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitForNadiaGifLoaded holds until Nadia's chat is open and her GIF
+  // message has loaded into the list, recording its id for the steps
+  // below, which must find the same delegate again after a click may
+  // have rebuilt it.
+  function waitForNadiaGifLoaded(): var {
+    if (root.title() !== "Nadia") return false;
+
+    const id = root.messageIdFor("[GIF]");
+    if (!id) return false;
+
+    root.nadiaGifMessageId = id;
+    return true;
+  }
+
+  // delegateFor returns the messageListView delegate for messageId, or
+  // null when it is not built (scrolled out of view, or not loaded).
+  function delegateFor(messageId: string): var {
+    const items = Check.find(root.panel(), "messageListView").contentItem.children;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].modelData && items[i].modelData.id === messageId) return items[i];
+    }
+    return null;
+  }
+
+  // clickNadiaGif clicks the GIF message's own bubble: before this,
+  // nothing has fetched or decoded anything at all (see
+  // InlineVideo.qml), so this single click is also what starts the
+  // fetch and the helper's own byte check.
+  function clickNadiaGif(): var {
+    const delegate = root.delegateFor(root.nadiaGifMessageId);
+    const video = delegate ? Check.find(delegate, "inlineVideo") : null;
+    if (!video) return Check.fail("Nadia's GIF message built no inlineVideo");
+
+    t.mouseClick(video);
+    return true;
+  }
+
+  // waitForNadiaGifAnimating holds until the click above has fetched
+  // the file and the helper has confirmed its bytes are a genuine GIF
+  // image (see app.Commands.DecodeAsForMedia), so InlineVideo has
+  // switched from its static thumbnail to the real AnimatedImage.
+  function waitForNadiaGifAnimating(): var {
+    const delegate = root.delegateFor(root.nadiaGifMessageId);
+    const image = delegate ? Check.find(delegate, "realGifImage") : null;
+    if (!image || !image.visible) return false;
+
+    const thumb = Check.find(delegate, "videoThumb");
+    if (thumb && thumb.visible)
+      return Check.fail("a real GIF message still shows its static thumbnail once animating");
+    return true;
+  }
+
+  // closeNadia returns to the list, so the rest of this suite's main
+  // journey continues from the same starting point it always has.
+  function closeNadia(): var {
+    t.keyClick(Qt.Key_Escape);
+    return true;
   }
 
   // searchTicket opens the unified palette with Ctrl+G and types a query,

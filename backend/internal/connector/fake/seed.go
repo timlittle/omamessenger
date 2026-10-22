@@ -49,22 +49,7 @@ func (s conversationScript) history(now time.Time) []domain.Message {
 // of history to keep that function's own branching within the house
 // style's complexity limit.
 func (s conversationScript) applyScriptedMedia(messages []domain.Message) {
-	if s.lastPhoto && s.count > 0 {
-		newest := &messages[s.count-1]
-		newest.Text = "[Photo]"
-		newest.Media = &domain.Media{Kind: domain.MediaPhoto, Width: photoWidth, Height: photoHeight}
-
-		if older := s.count - 1 - s.extraPhotoOffset; s.extraPhotoOffset > 0 && older >= 0 {
-			messages[older].Text = "[Photo]"
-			messages[older].Media = &domain.Media{Kind: domain.MediaPhoto, Width: 300, Height: 400}
-		}
-	}
-
-	if s.lastVoice && s.count > 0 {
-		newest := &messages[s.count-1]
-		newest.Text = "[Voice message]"
-		newest.Media = &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Duration: 5}
-	}
+	s.applyNewestMedia(messages)
 
 	if s.linkPreviewText != "" {
 		for i := range messages {
@@ -72,6 +57,42 @@ func (s conversationScript) applyScriptedMedia(messages []domain.Message) {
 				messages[i].Media = linkPreviewMedia()
 			}
 		}
+	}
+}
+
+// applyNewestMedia turns the newest message into a photo, a voice note
+// or a real GIF document when the script asks for one - at most one of
+// the three, since each overwrites the same message's text and media.
+// Split out of applyScriptedMedia to keep that function's own branching
+// within the house style's complexity limit.
+func (s conversationScript) applyNewestMedia(messages []domain.Message) {
+	if s.count == 0 {
+		return
+	}
+
+	newest := &messages[s.count-1]
+	switch {
+	case s.lastPhoto:
+		newest.Text = "[Photo]"
+		newest.Media = &domain.Media{Kind: domain.MediaPhoto, Width: photoWidth, Height: photoHeight}
+
+		if older := s.count - 1 - s.extraPhotoOffset; s.extraPhotoOffset > 0 && older >= 0 {
+			messages[older].Text = "[Photo]"
+			messages[older].Media = &domain.Media{Kind: domain.MediaPhoto, Width: 300, Height: 400}
+		}
+	case s.lastVoice:
+		newest.Text = "[Voice message]"
+		newest.Media = &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Duration: 5}
+	case s.lastGif:
+		newest.Text = "[GIF]"
+		// Kind and Animated match exactly what a real Telegram or
+		// WhatsApp GIF document normalizes to (see
+		// telegram/media.go's and whatsapp/normalize_media.go's own
+		// isGIFImage case): a classification hint only, never what
+		// the UI trusts to decode it - FetchMedia below writes a
+		// genuine GIF file, which app.DecodeAsForMedia confirms the
+		// same way it would a real sender's.
+		newest.Media = &domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Animated: true}
 	}
 }
 
@@ -154,6 +175,20 @@ func (s conversationScript) olderHistory(now time.Time) []domain.Message {
 func (a accountScript) isVoiceNote(convRemoteID, messageRemoteID string) bool {
 	for _, s := range a.conversations {
 		if s.remoteID == convRemoteID && s.lastVoice && s.count > 0 {
+			return messageRemoteID == fmt.Sprintf("seed-%s-%d", s.remoteID, s.count)
+		}
+	}
+
+	return false
+}
+
+// isGifDocument reports whether messageRemoteID names the real GIF
+// document applyScriptedMedia seeds as the newest message of the
+// conversation convRemoteID, the same way isVoiceNote tells FetchMedia
+// which placeholder bytes a scripted message needs.
+func (a accountScript) isGifDocument(convRemoteID, messageRemoteID string) bool {
+	for _, s := range a.conversations {
+		if s.remoteID == convRemoteID && s.lastGif && s.count > 0 {
 			return messageRemoteID == fmt.Sprintf("seed-%s-%d", s.remoteID, s.count)
 		}
 	}

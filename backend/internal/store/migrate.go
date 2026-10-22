@@ -126,6 +126,26 @@ var migrations = []string{
 	// update hint shows at most once per release.
 	`CREATE TABLE ui_state(id INTEGER PRIMARY KEY CHECK (id = 1), seen_whats_new_version TEXT NOT NULL DEFAULT '');
 	INSERT INTO ui_state(id) VALUES (1);`,
+	// A document a connector classified as a plain file before it
+	// learned to recognise a real GIF image by its mime type or name
+	// (see telegram/media.go's and whatsapp/normalize_media.go's own
+	// isGIFImage) is reclassified here the same way: MediaVideo,
+	// Animated, so it reaches the same inline view and the same
+	// decodeAs byte check on its next fetch as one received after
+	// that fix, rather than staying a plain file chip forever. Only a
+	// stored file name is available to judge this by - mime type was
+	// never persisted - which is exactly the fallback isGIFImage
+	// itself uses when a sender's mime type is missing. This never
+	// decides how the UI decodes anything: that still only ever comes
+	// from the downloaded bytes themselves (see
+	// app.Commands.DecodeAsForMedia), so a wrongly reclassified row
+	// can only ever fall back to opening externally, never animate
+	// unsafely.
+	`UPDATE messages
+		SET media = json_set(media, '$.kind', 'video', '$.animated', json('true'))
+		WHERE json_valid(media)
+			AND json_extract(media, '$.kind') = 'file'
+			AND lower(json_extract(media, '$.fileName')) LIKE '%.gif';`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

@@ -144,6 +144,31 @@ func TestSeed_DentistHasAVoiceMessage(t *testing.T) {
 	})
 }
 
+// TestSeed_NadiaHasAGIFDocument confirms Nadia's newest seeded message
+// carries a real GIF document, normalized exactly like a genuine
+// Telegram or WhatsApp one (see telegram/media.go's and
+// whatsapp/normalize_media.go's own isGIFImage case): MediaVideo,
+// Animated, with a ".gif" file name, so the real Panel has one to
+// download, decode-check and animate through the fake connector's own
+// helper process.
+func TestSeed_NadiaHasAGIFDocument(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		stop := runFake(t, fake.New(), sink)
+		synctest.Wait()
+		stop()
+
+		messages := sink.Messages()["tg:nadia"]
+		newest := messages[len(messages)-1]
+		if newest.Media == nil || newest.Media.Kind != domain.MediaVideo || !newest.Media.Animated {
+			t.Fatalf("Nadia's newest message = %+v, want an animated video (a real GIF document)", newest)
+		}
+		if newest.Media.FileName != "run.gif" {
+			t.Errorf("Nadia's GIF document = %+v, want a .gif file name", newest.Media)
+		}
+	})
+}
+
 // unread counts the messages still marked received.
 func unread(messages []domain.Message) int {
 	n := 0

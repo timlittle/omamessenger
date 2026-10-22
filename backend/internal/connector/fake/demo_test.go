@@ -120,3 +120,30 @@ func TestNewDemo_OneConversationHasAVoiceNote(t *testing.T) {
 		}
 	})
 }
+
+// TestNewDemo_OneConversationHasAGIFDocument confirms the demo seed
+// gives the recording a conversation whose newest message is a real
+// GIF document, so the media recording has one to open and watch
+// animate, the same way it already has one with a photo and a voice
+// note.
+func TestNewDemo_OneConversationHasAGIFDocument(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		stop := runFake(t, fake.NewDemo(), sink)
+		synctest.Wait()
+		stop()
+
+		found := false
+		for _, messages := range sink.Messages() {
+			for _, m := range messages {
+				if m.Media != nil && m.Media.Kind == domain.MediaVideo && m.Media.Animated {
+					found = true
+				}
+			}
+		}
+
+		if !found {
+			t.Error("no demo conversation carries a real GIF document")
+		}
+	})
+}

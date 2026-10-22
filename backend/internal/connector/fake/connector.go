@@ -238,9 +238,10 @@ func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, _ s
 	return len(older), nil
 }
 
-// FetchMedia writes a stand-in for a scripted photo or voice note to
-// path: a small, solid-colour JPEG for a photo, or a short silent Opus
-// clip for a voice note, each decoding like the real download would, so
+// FetchMedia writes a stand-in for a scripted photo, voice note or GIF
+// document to path: a small, solid-colour JPEG for a photo, a short
+// silent Opus clip for a voice note, or a tiny genuine animated GIF for
+// a real GIF document, each decoding like the real download would, so
 // the UI has something real to show or play rather than falling back to
 // its "unavailable" label. Which one a message is comes from the fake's
 // own script, never from path, which the cache names by content.
@@ -250,8 +251,11 @@ func (c *Connector) FetchMedia(_ context.Context, conv domain.Conversation, mess
 	}
 
 	data := placeholderPhoto()
-	if c.script.isVoiceNote(conv.RemoteID, messageRemoteID) {
+	switch {
+	case c.script.isVoiceNote(conv.RemoteID, messageRemoteID):
 		data = placeholderVoiceNote()
+	case c.script.isGifDocument(conv.RemoteID, messageRemoteID):
+		data = placeholderGIF()
 	}
 
 	return os.WriteFile(path, data, 0o600)

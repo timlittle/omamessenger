@@ -47,6 +47,12 @@ type conversationScript struct {
 	// than only through a fake controller's own data.
 	lastVoice bool
 
+	// lastGif makes the newest seeded message a real GIF document (not
+	// a video merely marked to play back like one), so the UI has one
+	// to drive through the real fetch and the helper's own byte check
+	// that confirms it is safe to animate (see app.DecodeAsForMedia).
+	lastGif bool
+
 	// linkPreviewText, when set, marks which seeded text carries a link
 	// preview, the way a messaging service would have fetched one from
 	// the page it links to.
@@ -108,6 +114,7 @@ var scripts = []accountScript{
 		conversations: []conversationScript{
 			{
 				remoteID: "tg:nadia", title: "Nadia", kind: domain.KindDirect, count: 10, unread: 2,
+				lastGif: true,
 				texts: []string{
 					"How was the trip?", "The gallery was lovely",
 					"The plan is set.\nMeet by the old gate.\nBring water.",

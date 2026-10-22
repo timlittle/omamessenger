@@ -13,7 +13,8 @@ import (
 // recording. One conversation carries both a loaded photo and a link
 // preview, so a single open shows both without scrolling; another's
 // newest message is a voice note, for the media recording to open and
-// play. Two accounts, one WhatsApp and one Telegram, so the rail shows
+// play, and a third's is a real GIF document, to show it animate once
+// clicked. Two accounts, one WhatsApp and one Telegram, so the rail shows
 // both services and the unified list mixes them, the way a real signed-in
 // setup would. Every conversation's texts slice is at least as long as
 // its message count, so history() never has to repeat a line by cycling
@@ -52,6 +53,7 @@ var demoScripts = []accountScript{
 		conversations: []conversationScript{
 			{
 				remoteID: "tg:design-team", title: "Design Team", kind: domain.KindGroup, members: 6, count: 4, unread: 2,
+				lastGif:      true,
 				groupSenders: []string{"Noah", "Mia"},
 				texts: []string{
 					"Can we push the review to Friday?",
