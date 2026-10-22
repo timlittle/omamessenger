@@ -105,3 +105,15 @@ function displayTextFor(text, spans, url) {
 
   return url;
 }
+
+// previewDisplayText returns what a link preview card showed for url,
+// for WindowController.openLink to compare against: url itself when the
+// message's own text shows it, otherwise the card's title (or a generic
+// label), since the sender sets a preview's URL apart from both the
+// text and the title, so a card whose URL appears nowhere visible must
+// be confirmed before it opens.
+function previewDisplayText(url, messageText, title) {
+  if (url && String(messageText || '').includes(url)) return url;
+
+  return title || 'Link preview';
+}

@@ -83,16 +83,13 @@ function hints(message, bindings) {
   return parts.join(' · ');
 }
 
-// links returns every URL the message's open key (o) can reach: the link
-// preview's own URL when it carries one, since that is what the mouse
-// opens, otherwise every http(s) link found in its text, in the order
-// they appear.
+// links returns every URL the message's open key (o) can reach: every
+// http(s) link found in its text, in the order they appear. A link
+// preview's own URL is never one of them: the sender sets it apart from
+// the text the bubble shows, so only a click on the card itself can
+// reach it, and that asks first when the text does not show it (see
+// Links.previewDisplayText).
 function links(message) {
-  const media = Timeline.media(message);
-  if (media && media.kind === 'link' && media.url) {
-    return [media.url];
-  }
-
   const text = message && message.text ? message.text : '';
   const found = text.match(LINK_PATTERN) || [];
   return found.map(stripTrailingPunctuation);

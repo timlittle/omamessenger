@@ -55,6 +55,18 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 			false,
 		},
 		{
+			// The sender's client writes MatchedText as well as the text,
+			// so a URL the text never shows is a disguise, not a preview
+			// of a link the message carries: it is dropped.
+			"link preview whose URL is not in the message text is kept but its URL is dropped",
+			&waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+				Text: strPtr("refund: https://www.paypal.com/refund"), MatchedText: strPtr("https://paypa1-refunds.example/login"), Title: strPtr("PayPal"),
+			}},
+			&domain.Media{Kind: domain.MediaLink, URL: "", Title: "PayPal"},
+			mediaRef{},
+			false,
+		},
+		{
 			"photo",
 			&waE2E.Message{ImageMessage: &waE2E.ImageMessage{
 				Width: u32(800), Height: u32(600), FileLength: u64(1024), Mimetype: strPtr("image/jpeg"),

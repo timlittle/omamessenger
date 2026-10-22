@@ -104,3 +104,14 @@ test('displayTextFor skips a span left dangling past the end of a shortened text
   const spans = [{ kind: 'link', start: 4, end: 999, url: 'https://example.com' }];
   assert.strictEqual(Links.displayTextFor('short', spans, 'https://example.com'), 'https://example.com');
 });
+
+test('previewDisplayText is the url itself only when the message text shows it', () => {
+  assert.equal(Links.previewDisplayText('https://a.example/x', 'see https://a.example/x', 'A'), 'https://a.example/x');
+  assert.equal(Links.previewDisplayText('https://evil.example/login', 'refund: https://www.paypal.com/refund', 'PayPal'), 'PayPal');
+  assert.equal(Links.previewDisplayText('https://evil.example/login', '', ''), 'Link preview');
+});
+
+test('a preview whose URL is not in its message text needs confirming', () => {
+  const shown = Links.previewDisplayText('https://evil.example/login', 'refund: https://www.paypal.com/refund', 'PayPal');
+  assert.ok(Links.needsConfirmation(shown, 'https://evil.example/login'));
+});

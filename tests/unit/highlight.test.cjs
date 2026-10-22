@@ -91,9 +91,12 @@ const hintsCases = [
   // A link preview is still "media" by Timeline.media's own test, so
   // Enter open keeps showing beside it exactly as it already did before
   // o existed; this only adds the new hint, it does not replace that one.
-  ['adds o open link for a message with a link preview',
-    message({ media: { kind: 'link', url: 'https://example.com', title: 'Example' } }),
+  ['adds o open link for a message with a link preview whose URL its text shows',
+    message({ text: 'https://example.com', media: { kind: 'link', url: 'https://example.com', title: 'Example' } }),
     'r reply · e react · d delete · Enter open · o open link'],
+  ['offers no open link key for a preview whose URL its text never shows',
+    message({ media: { kind: 'link', url: 'https://example.com', title: 'Example' } }),
+    'r reply · e react · d delete · Enter open'],
   ['adds o open link for a plain message whose text carries a URL',
     message({ text: 'see https://example.com/path for more' }),
     'r reply · e react · d delete · o open link'],
@@ -134,9 +137,11 @@ for (const [name, msg, want] of hintsCases) {
   });
 }
 
-test('links prefers the link preview\'s own URL over the text', () => {
+test('links never reaches a link preview URL the message text does not show', () => {
+  // The preview's URL is the sender's to set, independently of the text
+  // the bubble shows, so the open key only ever reaches visible links.
   const linked = message({ text: 'https://text.example/one', media: { kind: 'link', url: 'https://preview.example/two' } });
-  assert.deepEqual(Highlight.links(linked), ['https://preview.example/two']);
+  assert.deepEqual(Highlight.links(linked), ['https://text.example/one']);
 });
 
 test('links finds every URL in the text, in order, trimming trailing punctuation', () => {
@@ -149,10 +154,6 @@ test('links returns an empty list for a message with no link', () => {
   assert.deepEqual(Highlight.links(message({ media: { kind: 'photo', width: 1, height: 1 } })), []);
 });
 
-test('links reads a model row whose media is a JSON string, same as Timeline.media', () => {
-  const row = message({ media: JSON.stringify({ kind: 'link', url: 'https://example.com' }) });
-  assert.deepEqual(Highlight.links(row), ['https://example.com']);
-});
 
 test('primaryLink returns the first link, or "" for none', () => {
   assert.strictEqual(Highlight.primaryLink(message({ text: 'https://a.example https://b.example' })), 'https://a.example');
