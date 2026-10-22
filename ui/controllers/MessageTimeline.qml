@@ -230,12 +230,14 @@ Item {
   // mediaRisky returns the helper's own verdict on whether a message's
   // downloaded media is active or executable content that must be
   // confirmed before it opens externally (see media.fetch's risky in
-  // docs/api.md), or false before it has answered. Never computed here
+  // docs/api.md): false before it has answered for a row still here,
+  // and true once the row is gone, since a verdict that cannot be found
+  // is not one that said safe. Never computed here
   // from the message's own media object: only media.fetch's result,
   // through setMediaRisky, ever sets it, the same as mediaDecodeAs.
   function mediaRisky(id: string): bool {
     const row = root._snapshot().find((m) => m.id === id);
-    return row ? !!row.mediaRisky : false;
+    return row ? !!row.mediaRisky : true;
   }
 
   // setMediaRisky records the helper's own risky verdict for a

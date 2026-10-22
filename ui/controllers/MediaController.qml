@@ -65,6 +65,12 @@ QtObject {
   // message's cooldown never blocks another's.
   property var _lastOpenedAt: ({})
 
+  // _riskyVerdicts holds the helper's own risky verdict for each
+  // message id this controller downloaded, kept here rather than only
+  // on the message's row, which is gone once the list is cleared by a
+  // chat switch or a reconnect while a download is still in flight.
+  property var _riskyVerdicts: ({})
+
   // riskyConfirmOpen is true while a received file's "this can run
   // code" question is open, asking the user to confirm before it opens
   // externally, or to save it to Downloads instead (see
@@ -145,10 +151,21 @@ QtObject {
     const now = Date.now();
     if (!MediaOpen.canOpen(root._lastOpenedAt[id], now, root.cooldownMs)) return;
 
-    if (timeline.mediaRisky(id)) { root._askBeforeOpening(timeline, id, path); return; }
+    if (root._isRisky(timeline, id)) { root._askBeforeOpening(timeline, id, path); return; }
 
     root._lastOpenedAt[id] = now;
     root.openExternally(path);
+  }
+
+  // _isRisky reports whether id's media must be confirmed before it is
+  // opened: the helper's verdict from this controller's own download
+  // when there is one, otherwise the row's, and risky when neither is
+  // known, since a verdict that could not be found is not one that
+  // said safe.
+  function _isRisky(timeline: var, id: string): bool {
+    if (id in root._riskyVerdicts) return root._riskyVerdicts[id];
+
+    return timeline.mediaRisky(id);
   }
 
   // _askBeforeOpening opens the risky-open question for id, remembering
@@ -345,6 +362,7 @@ QtObject {
       timeline.setMediaPath(id, result.path);
       timeline.setMediaDecodeAs(id, result.decodeAs || "");
       timeline.setMediaPlayable(id, !!result.playable);
+      root._riskyVerdicts[id] = !!result.risky;
       timeline.setMediaRisky(id, !!result.risky);
       timeline.lastError = "";
       for (const waiter of waiting) waiter.done(result.path);

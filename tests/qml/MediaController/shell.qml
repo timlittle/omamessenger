@@ -87,7 +87,10 @@ ShellRoot {
       // r1 is a never-clicked undownloaded file, for the risky-open
       // question check, which answers its media.fetch itself rather
       // than reusing another check's own fixture.
-      { id: "r1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -3, media: { kind: "file", fileName: "invoice.html" }, mediaPath: "" }
+      { id: "r1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -3, media: { kind: "file", fileName: "invoice.html" }, mediaPath: "" },
+      // r2 is a never-clicked undownloaded file whose message list is
+      // cleared while its download is still in flight.
+      { id: "r2", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -4, media: { kind: "file", fileName: "invoice.pdf" }, mediaPath: "" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -222,6 +225,7 @@ ShellRoot {
     if (!root.checkFetchMediaAlwaysSendsAutoAndRetryMediaDoesNot()) return;
     if (!root.checkToggleVideoGatesOnPlayable()) return;
     if (!root.checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer()) return;
+    if (!root.checkRiskyVerdictSurvivesTheListBeingCleared()) return;
 
     console.log("PASS MediaController");
     Qt.exit(0);
@@ -282,6 +286,25 @@ ShellRoot {
     if (controller.riskyOpenConfirmOpen || root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/r1.html")
       return Check.fail("confirmRiskyOpen = " + JSON.stringify(root.openCalls) + ", want exactly one open of /tmp/r1.html");
 
+    return true;
+  }
+
+  // checkRiskyVerdictSurvivesTheListBeingCleared verifies a risky file
+  // still asks before opening when its message's row is gone by the
+  // time its download finishes, as after switching chats or the helper
+  // reconnecting mid-download: the helper's verdict comes with the
+  // download, not from a row that may no longer exist.
+  function checkRiskyVerdictSurvivesTheListBeingCleared(): bool {
+    root.openCalls = [];
+
+    controller.openMedia("r2");
+    controller.timeline.reset();
+    root.answerFetchSuccessRisky("r2", "/tmp/r2.svg");
+
+    if (root.openCalls.length !== 0) return Check.fail("a risky file opened without asking once its row was cleared: " + JSON.stringify(root.openCalls));
+    if (!controller.riskyOpenConfirmOpen) return Check.fail("riskyOpenConfirmOpen = false for a risky file whose row was cleared, want true");
+
+    controller.cancelRiskyOpen();
     return true;
   }
 
