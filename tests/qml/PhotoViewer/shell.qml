@@ -196,6 +196,11 @@ ShellRoot {
 
     const image = Check.find(viewer, "photoImage");
     if (image && image.visible) return Check.fail("a video still shows the plain photo Image");
+    // Hidden is not enough: an Image still decodes its source, and a
+    // video's file is the sender's own bytes, never sanitized as an
+    // image, so a crafted "video" that is really a PNG must never reach
+    // it at all.
+    if (image && String(image.source) !== "") return Check.fail("the photo Image still loads a video's own file: " + image.source);
 
     const player = Check.find(viewer, "fullVideoPlayer");
     if (!player || !player.visible) return Check.fail("a video shows no FullVideoPlayer");

@@ -108,8 +108,10 @@ Item {
       anchors.fill: parent
       visible: !root._isVideo
       // Always the helper's own downloaded file or an embedded base64
-      // thumb; never a remote URL.
-      source: root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
+      // thumb; never a remote URL. Empty for a video: a hidden Image
+      // still decodes its source, and a video's file is the sender's
+      // own bytes, never sanitized as an image.
+      source: root._isVideo ? "" : root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
       fillMode: Image.PreserveAspectFit
       // Bounded to the viewer's own stage, never the file's own
       // declared size (see PhotoView.qml's own sourceSize for why).
