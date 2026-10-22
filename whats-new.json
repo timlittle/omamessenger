@@ -13,6 +13,47 @@
         "A chat you have open no longer shows new messages as unread",
         "Safer handling of images, videos, links and files you receive"
       ]
+    },
+    {
+      "version": "0.3.4",
+      "date": "2026-10-18",
+      "changes": [
+        "See a photo, video or file's size and dimensions before you open it",
+        "Spell check: misspelled words are underlined as you type, with suggestions",
+        "See how many unread messages each service has, right from the bar",
+        "Videos open reliably even if you click them more than once",
+        "Telegram messages with links and formatting display correctly again"
+      ]
+    },
+    {
+      "version": "0.3.3",
+      "date": "2026-10-12",
+      "changes": [
+        "Telegram sign-in: see the two-step verification password hint when needed",
+        "Signing in to Telegram by QR code no longer gets stuck if the code refreshes",
+        "Reply quotes show the right sender's name instead of a generic placeholder",
+        "Fixed Ctrl+J not inserting a new line while writing a message",
+        "Links and images hidden in a message's text can no longer load on their own"
+      ]
+    },
+    {
+      "version": "0.3.2",
+      "date": "2026-10-09",
+      "changes": [
+        "WhatsApp: key exchange messages no longer show up as a strange blank message",
+        "Notifications keep your messages private from other programs on your computer"
+      ]
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-10-09",
+      "changes": [
+        "The first release: Telegram and WhatsApp accounts, signed in by QR code or phone",
+        "Send and receive photos, videos, voice notes and files, with replies and reactions",
+        "Search everything with Ctrl+K, including message text across every chat",
+        "Fully keyboard-driven, with a command palette (Ctrl+/) listing every shortcut",
+        "Desktop notifications, with pin, archive, snooze and an unread-only view"
+      ]
     }
   ]
 }
