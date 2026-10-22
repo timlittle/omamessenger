@@ -2,12 +2,16 @@ package app_test
 
 // ingest_caps_test.go covers Ingest's own caps on a sender-controlled
 // message's formatting spans, mentions, reactions and poll or link
-// preview media, split out of ingest_truncate_test.go to keep each
-// file focused on one kind of cap.
+// preview media, and on a sender-controlled display name (a contact's
+// name, a conversation's title, a typing indicator's name or a
+// corrected sender name), split out of ingest_truncate_test.go to keep
+// each file focused on one kind of cap.
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -107,6 +111,116 @@ func TestIncoming_CapsPollOptions(t *testing.T) {
 	}
 	if got := len(messages[0].Media.Poll.Options); got != domain.MaxPollOptions {
 		t.Errorf("stored %d poll options, want exactly %d", got, domain.MaxPollOptions)
+	}
+}
+
+// TestReacted_CapsReactions confirms a live reaction update gets the
+// same cap on its tally's own size and each chip's emoji text that a
+// newly arrived message's own Reactions already does, so a connector's
+// own reaction cache cannot be used to grow a conversation's chip list
+// past what the UI is ever meant to show.
+func TestReacted_CapsReactions(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "hi"))
+	f.published.take()
+
+	reactions := make([]domain.Reaction, domain.MaxReactions+10)
+	for i := range reactions {
+		reactions[i] = domain.Reaction{Emoji: "x", Count: 1}
+	}
+	f.ingest.Reacted(ctx, "wa", chat.RemoteID, "e1", reactions)
+
+	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("messages = %+v, %v; want one stored message", messages, err)
+	}
+	if got := len(messages[0].Reactions); got != domain.MaxReactions {
+		t.Errorf("stored %d reactions, want exactly %d", got, domain.MaxReactions)
+	}
+}
+
+// TestContact_CapsName confirms a contact's sender-controlled name is
+// capped before it is stored, the same cap SanitizeIncoming gives a
+// message's own SenderName.
+func TestContact_CapsName(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+
+	long := strings.Repeat("n", domain.MaxDisplayNameLength+10)
+	f.ingest.Contact(ctx, domain.Contact{AccountID: "wa", RemoteID: "c1", Name: long})
+
+	c, err := f.store.Contact(ctx, "wa", "c1")
+	if err != nil {
+		t.Fatalf("Contact = %v", err)
+	}
+	if n := domain.UTF16Len(c.Name); n != domain.MaxDisplayNameLength {
+		t.Errorf("stored contact name at %d units, want exactly %d", n, domain.MaxDisplayNameLength)
+	}
+}
+
+// TestConversation_CapsTitle confirms a conversation's sender-
+// controlled title (a group's own name) is capped before it is stored.
+func TestConversation_CapsTitle(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+
+	long := strings.Repeat("t", domain.MaxDisplayNameLength+10)
+	f.ingest.Conversation(ctx, domain.Conversation{AccountID: "wa", RemoteID: "r1", Title: long, Kind: domain.KindGroup})
+
+	conv, err := f.store.ConversationByRemote(ctx, "wa", "r1")
+	if err != nil {
+		t.Fatalf("ConversationByRemote = %v", err)
+	}
+	if n := domain.UTF16Len(conv.Title); n != domain.MaxDisplayNameLength {
+		t.Errorf("stored conversation title at %d units, want exactly %d", n, domain.MaxDisplayNameLength)
+	}
+}
+
+// TestTyping_CapsName confirms a typing indicator's sender-controlled
+// name is capped before it is published.
+func TestTyping_CapsName(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	long := strings.Repeat("n", domain.MaxDisplayNameLength+10)
+	f.ingest.Typing(t.Context(), "wa", chat.RemoteID, long, true)
+
+	got := f.published.last().(app.Typing)
+	if n := domain.UTF16Len(got.Name); n != domain.MaxDisplayNameLength {
+		t.Errorf("published typing name at %d units, want exactly %d", n, domain.MaxDisplayNameLength)
+	}
+}
+
+// TestSenderName_CapsTheCorrectedName confirms a sender-name
+// correction is capped before it reaches the store, the same cap
+// SanitizeIncoming gives a message's own SenderName.
+func TestSenderName_CapsTheCorrectedName(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	group := f.conversation(t, "group", "Weekend plans", domain.KindGroup)
+	f.ingest.Incoming(ctx, "wa", group.RemoteID, incoming("in-1", "Thanks"))
+
+	long := strings.Repeat("n", domain.MaxDisplayNameLength+10)
+	f.ingest.SenderName(ctx, "wa", "alex", long)
+
+	updated, err := f.store.Conversation(ctx, group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := domain.UTF16Len(updated.PreviewSender); n != domain.MaxDisplayNameLength {
+		t.Errorf("preview sender at %d units, want exactly %d", n, domain.MaxDisplayNameLength)
 	}
 }
 

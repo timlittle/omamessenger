@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -74,5 +75,28 @@ func TestMembers_CapsAnOversizedMemberList(t *testing.T) {
 	}
 	if len(got) != domain.MaxGroupMembers {
 		t.Errorf("Members returned %d, want exactly %d", len(got), domain.MaxGroupMembers)
+	}
+}
+
+// TestMembers_CapsAnOversizedMemberName reproduces a service that
+// reports a member whose own name has no limit of its own: Members
+// must cap it the same way SanitizeIncoming caps a message's own
+// SenderName, before it ever reaches the mention picker.
+func TestMembers_CapsAnOversizedMemberName(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	group := f.conversation(t, "group", "Group", domain.KindGroup)
+	f.members.members = []domain.Member{{ID: "u1", Name: strings.Repeat("n", domain.MaxDisplayNameLength+10)}}
+
+	got, err := f.commands.Members(t.Context(), group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("Members = %+v, want exactly one", got)
+	}
+	if n := domain.UTF16Len(got[0].Name); n != domain.MaxDisplayNameLength {
+		t.Errorf("member name at %d units, want exactly %d", n, domain.MaxDisplayNameLength)
 	}
 }

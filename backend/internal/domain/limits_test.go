@@ -122,6 +122,43 @@ func TestCapReactions_LeavesAShortListAlone(t *testing.T) {
 	}
 }
 
+// TestCapReactions_DropsAnOversizedEmoji confirms a reaction whose own
+// emoji text runs past MaxReactionEmojiLength is dropped outright
+// rather than truncated or kept, while a normal chip alongside it
+// survives.
+func TestCapReactions_DropsAnOversizedEmoji(t *testing.T) {
+	t.Parallel()
+
+	huge := strings.Repeat("x", domain.MaxReactionEmojiLength+1)
+	reactions := []domain.Reaction{{Emoji: "👍", Count: 3}, {Emoji: huge, Count: 1}}
+
+	got := domain.CapReactions(reactions)
+	if len(got) != 1 || got[0].Emoji != "👍" {
+		t.Errorf("CapReactions(%+v) = %+v, want only the thumbs-up chip kept", reactions, got)
+	}
+}
+
+// TestCapPoll_BoundsOptionsAndText confirms CapPoll gives a bare poll
+// - reported on its own by a live update, never wrapped in a message's
+// own media - the same caps CapMedia gives one carried as part of a
+// message.
+func TestCapPoll_BoundsOptionsAndText(t *testing.T) {
+	t.Parallel()
+
+	options := make([]domain.PollOption, domain.MaxPollOptions+10)
+	for i := range options {
+		options[i] = domain.PollOption{ID: "o", Text: strings.Repeat("a", domain.MaxPollOptionTextLength+10)}
+	}
+
+	got := domain.CapPoll(domain.Poll{Question: strings.Repeat("q", domain.MaxPollQuestionLength+10), Options: options})
+	if len(got.Options) != domain.MaxPollOptions {
+		t.Errorf("CapPoll kept %d options, want %d", len(got.Options), domain.MaxPollOptions)
+	}
+	if n := domain.UTF16Len(got.Question); n > domain.MaxPollQuestionLength {
+		t.Errorf("poll question is %d UTF-16 units, want at most %d", n, domain.MaxPollQuestionLength)
+	}
+}
+
 // TestCapMedia_NilIsUnchanged confirms a message with no media at all
 // is never given one.
 func TestCapMedia_NilIsUnchanged(t *testing.T) {
@@ -234,7 +271,9 @@ func TestCapMedia_NeverSplitsASurrogatePairAcrossTheCut(t *testing.T) {
 
 // TestCapMedia_LeavesOtherKindsAlone confirms a photo, video, file or
 // voice note - none of which carries a sender-controlled text field
-// this package bounds - passes through with no change at all.
+// this package bounds - passes through with no change at all, other
+// than the file name every kind shares (see
+// TestCapMedia_BoundsAFileNameForEveryKind).
 func TestCapMedia_LeavesOtherKindsAlone(t *testing.T) {
 	t.Parallel()
 
@@ -242,6 +281,68 @@ func TestCapMedia_LeavesOtherKindsAlone(t *testing.T) {
 	got := domain.CapMedia(media)
 	if got.Title != media.Title {
 		t.Error("CapMedia changed a photo's field it has no business bounding")
+	}
+}
+
+// TestCapMedia_BoundsAFileNameForEveryKind confirms a file name is
+// capped whichever kind carries it, not only one media.Kind: a sender
+// names their own attachment the same way whether it is a file, a
+// video, a voice note or a sticker.
+func TestCapMedia_BoundsAFileNameForEveryKind(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range []string{domain.MediaFile, domain.MediaVideo, domain.MediaVoice, domain.MediaSticker} {
+		media := &domain.Media{Kind: kind, FileName: strings.Repeat("f", domain.MaxFileNameLength+10)}
+		got := domain.CapMedia(media)
+		if len(got.FileName) > domain.MaxFileNameLength {
+			t.Errorf("CapMedia(%s) kept a file name of %d bytes, want at most %d", kind, len(got.FileName), domain.MaxFileNameLength)
+		}
+	}
+}
+
+// TestCapDisplayName_CutsAnOversizedName confirms a display name past
+// MaxDisplayNameLength is cut to it.
+func TestCapDisplayName_CutsAnOversizedName(t *testing.T) {
+	t.Parallel()
+
+	got := domain.CapDisplayName(strings.Repeat("a", domain.MaxDisplayNameLength+10))
+	if n := domain.UTF16Len(got); n != domain.MaxDisplayNameLength {
+		t.Errorf("CapDisplayName kept %d UTF-16 units, want exactly %d", n, domain.MaxDisplayNameLength)
+	}
+}
+
+// TestCapDisplayName_LeavesAShortNameAlone confirms a name already
+// within the cap passes through unchanged.
+func TestCapDisplayName_LeavesAShortNameAlone(t *testing.T) {
+	t.Parallel()
+
+	if got := domain.CapDisplayName("Alex"); got != "Alex" {
+		t.Errorf("CapDisplayName(%q) = %q, want it unchanged", "Alex", got)
+	}
+}
+
+// TestCapFileName_CutsAnOversizedNameOnAByteBoundary confirms a file
+// name past MaxFileNameLength bytes is cut to it without splitting a
+// multi-byte rune's own encoding across the cut.
+func TestCapFileName_CutsAnOversizedNameOnAByteBoundary(t *testing.T) {
+	t.Parallel()
+
+	got := domain.CapFileName(strings.Repeat("é", domain.MaxFileNameLength))
+	if len(got) > domain.MaxFileNameLength {
+		t.Errorf("CapFileName kept %d bytes, want at most %d", len(got), domain.MaxFileNameLength)
+	}
+	if !utf8.ValidString(got) {
+		t.Error("CapFileName split a multi-byte rune")
+	}
+}
+
+// TestCapFileName_LeavesAShortNameAlone confirms a file name already
+// within the cap passes through unchanged.
+func TestCapFileName_LeavesAShortNameAlone(t *testing.T) {
+	t.Parallel()
+
+	if got := domain.CapFileName("report.pdf"); got != "report.pdf" {
+		t.Errorf("CapFileName(%q) = %q, want it unchanged", "report.pdf", got)
 	}
 }
 
@@ -268,5 +369,33 @@ func TestSanitizeIncoming_AppliesEveryCapTogether(t *testing.T) {
 	}
 	if len(got.Reactions) != domain.MaxReactions {
 		t.Errorf("SanitizeIncoming kept %d reactions, want %d", len(got.Reactions), domain.MaxReactions)
+	}
+}
+
+// TestSanitizeIncoming_CapsSenderNameAndReplyQuoteSenderName confirms
+// a message's own SenderName and a reply quote's SenderName are both
+// capped the same way as any other sender-controlled display name,
+// and that a message with no reply quote is never given one.
+func TestSanitizeIncoming_CapsSenderNameAndReplyQuoteSenderName(t *testing.T) {
+	t.Parallel()
+
+	long := strings.Repeat("n", domain.MaxDisplayNameLength+10)
+	m := domain.Message{
+		Text:       "hi",
+		SenderName: long,
+		ReplyTo:    &domain.Reply{RemoteID: "r1", SenderName: long, Text: "quoted"},
+	}
+
+	got := domain.SanitizeIncoming(m)
+	if n := domain.UTF16Len(got.SenderName); n != domain.MaxDisplayNameLength {
+		t.Errorf("SanitizeIncoming kept SenderName at %d units, want exactly %d", n, domain.MaxDisplayNameLength)
+	}
+	if n := domain.UTF16Len(got.ReplyTo.SenderName); n != domain.MaxDisplayNameLength {
+		t.Errorf("SanitizeIncoming kept ReplyTo.SenderName at %d units, want exactly %d", n, domain.MaxDisplayNameLength)
+	}
+
+	withoutReply := domain.SanitizeIncoming(domain.Message{Text: "hi"})
+	if withoutReply.ReplyTo != nil {
+		t.Error("SanitizeIncoming invented a reply quote where there was none")
 	}
 }

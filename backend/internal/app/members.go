@@ -28,9 +28,13 @@ func (c *Commands) Members(ctx context.Context, conversationID string) ([]domain
 	// A group's own membership is reported by whichever service owns
 	// it, which a hostile or compromised group admin could inflate
 	// without bound; cap what reaches the mention picker (see
-	// domain.MaxGroupMembers).
+	// domain.MaxGroupMembers), and each member's own name the same way
+	// SanitizeIncoming caps a message's SenderName.
 	if len(members) > domain.MaxGroupMembers {
 		members = members[:domain.MaxGroupMembers]
+	}
+	for i, member := range members {
+		members[i].Name = domain.CapDisplayName(member.Name)
 	}
 
 	return members, err

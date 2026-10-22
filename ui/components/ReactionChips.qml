@@ -25,6 +25,12 @@ Item {
   // toggled asks the caller to add or remove emoji as the user's reaction.
   signal toggled(string emoji)
 
+  // maxChipTextWidth bounds one chip's own text, so a reaction whose
+  // emoji text the sender made unreasonably long (the helper already
+  // caps it; see domain.MaxReactionEmojiLength) still elides to a
+  // normal chip's width rather than stretching the whole row.
+  readonly property real maxChipTextWidth: Style.space(160)
+
   // visible guards reactions with "&&" rather than a separate normalizing
   // property: a message's reactions can be reset straight to a QML null
   // while its delegate is destroyed, bypassing whatever an intermediate
@@ -53,7 +59,7 @@ Item {
           : chipHover.containsMouse ? Style.hoverFill : Util.alpha(Theme.foreground, 0.06)
         border.width: chip.modelData.mine ? Theme.spacing.hairline : 0
         border.color: Theme.accent
-        width: chipText.implicitWidth + Theme.spacing.sm * 2
+        width: chipText.width + Theme.spacing.sm * 2
         height: chipText.implicitHeight + Theme.spacing.xxs * 2
 
         Ui.PanelToolTip {
@@ -66,6 +72,8 @@ Item {
           anchors.centerIn: parent
           text: chip.modelData.emoji + " " + chip.modelData.count
           textFormat: Text.PlainText
+          elide: Text.ElideRight
+          width: Math.min(implicitWidth, root.maxChipTextWidth)
           color: Theme.foreground
           font.family: Theme.font.family
           font.pixelSize: Theme.font.caption

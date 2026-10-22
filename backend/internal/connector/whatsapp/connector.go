@@ -49,11 +49,13 @@ type Connector struct {
 	// from the message_keys this connector persists instead.
 	sent map[string]*sentMessage
 
-	names         map[string]namedEntry        // contact, push and group names resolved so far, by remote id
-	groupMembers  map[string]int               // a group's last known member count, by remote id
-	chatKinds     map[string]string            // every conversation remote id this connector has reported, to its kind
-	reactions     map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji
-	undecryptable map[string]bool              // "<conversation remote id>/<message remote id>" still waiting on a placeholder (see live.go's handleUndecryptable)
+	names              map[string]namedEntry        // contact, push and group names resolved so far, by remote id
+	groupMembers       map[string]int               // a group's last known member count, by remote id
+	chatKinds          map[string]string            // every conversation remote id this connector has reported, to its kind
+	reactions          map[string]map[string]string // "<conversation remote id>/<message remote id>" to who reacted and with which emoji, bounded by maxReactionTargets (see react.go)
+	reactionOrder      []string                     // reactions' own keys in the order they were first tracked, so react.go's eviction always drops the oldest one first
+	undecryptable      map[string]bool              // "<conversation remote id>/<message remote id>" still waiting on a placeholder (see live.go's handleUndecryptable), bounded by maxUndecryptableTargets (see undecryptable.go)
+	undecryptableOrder []string                     // undecryptable's own keys in the order they were first tracked, so undecryptable.go's eviction always drops the oldest one first
 
 	// retryWaiters holds one channel per message remote id currently
 	// waiting on the primary phone's answer to a media retry request
@@ -458,61 +460,4 @@ func (c *Connector) knownChatIDs() []string {
 	}
 
 	return out
-}
-
-// reactTo records sender's reaction to a message as emoji, or clears it
-// when emoji is "", and returns the message's full, recomputed tally.
-func (c *Connector) reactTo(conversationRemoteID, messageRemoteID, sender, emoji string) []domain.Reaction {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.reactions == nil {
-		c.reactions = map[string]map[string]string{}
-	}
-
-	key := conversationRemoteID + "/" + messageRemoteID
-	bySender := c.reactions[key]
-	if bySender == nil {
-		bySender = map[string]string{}
-		c.reactions[key] = bySender
-	}
-
-	if emoji == "" {
-		delete(bySender, sender)
-	} else {
-		bySender[sender] = emoji
-	}
-
-	return reactionTally(bySender, "self")
-}
-
-// markUndecryptable records that the message named by
-// conversationRemoteID and messageRemoteID was stored only as a
-// placeholder, because whatsmeow could not decrypt it, so a later
-// redelivery of the same id can replace it instead of being silently
-// deduplicated away by the store (see resolveUndecryptable).
-func (c *Connector) markUndecryptable(conversationRemoteID, messageRemoteID string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.undecryptable == nil {
-		c.undecryptable = map[string]bool{}
-	}
-	c.undecryptable[conversationRemoteID+"/"+messageRemoteID] = true
-}
-
-// resolveUndecryptable reports whether the message named by
-// conversationRemoteID and messageRemoteID was waiting on a placeholder
-// (see markUndecryptable), forgetting it either way so a later message
-// that happens to reuse the same id is never treated as a replacement
-// again.
-func (c *Connector) resolveUndecryptable(conversationRemoteID, messageRemoteID string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	key := conversationRemoteID + "/" + messageRemoteID
-	found := c.undecryptable[key]
-	delete(c.undecryptable, key)
-
-	return found
 }

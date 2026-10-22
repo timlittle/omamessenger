@@ -7,6 +7,8 @@ package whatsapp
 
 import (
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 
 	"go.mau.fi/whatsmeow/types"
@@ -158,5 +160,101 @@ func TestReact_FailsForABadConversationID(t *testing.T) {
 	err := c.React(t.Context(), domain.Conversation{RemoteID: "not-a-jid"}, "M1", "👍")
 	if !errors.Is(err, errBadRemoteID) {
 		t.Errorf("React = %v, want errBadRemoteID", err)
+	}
+}
+
+func TestReactTo_AccumulatesPerSenderAndClears(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+
+	got := c.reactTo("conv", "msg", "nadia", "👍")
+	want := []domain.Reaction{{Emoji: "👍", Count: 1, Mine: false}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("reactTo(nadia) = %+v, want %+v", got, want)
+	}
+
+	got = c.reactTo("conv", "msg", "self", "👍")
+	want = []domain.Reaction{{Emoji: "👍", Count: 2, Mine: true}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("reactTo(self, same emoji) = %+v, want %+v", got, want)
+	}
+
+	got = c.reactTo("conv", "msg", "nadia", "")
+	want = []domain.Reaction{{Emoji: "👍", Count: 1, Mine: true}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("reactTo(nadia, cleared) = %+v, want %+v", got, want)
+	}
+}
+
+// TestReactTo_DropsAnOversizedEmoji confirms an implausibly long
+// ReactionMessage.Text is treated the same as clearing the reaction,
+// rather than stored and tallied verbatim: a sender can send arbitrary
+// text as a "reaction", and nothing upstream of this connector's own
+// cache would otherwise bound its length.
+func TestReactTo_DropsAnOversizedEmoji(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+
+	huge := strings.Repeat("x", domain.MaxReactionEmojiLength+1)
+	got := c.reactTo("conv", "msg", "nadia", huge)
+	if len(got) != 0 {
+		t.Errorf("reactTo(oversized emoji) = %+v, want no reaction tallied", got)
+	}
+}
+
+// TestReactTo_EvictsTheOldestMessageOnceFull confirms a sender naming
+// an endless stream of message ids cannot grow c.reactions forever: once
+// maxReactionTargets distinct messages are tracked, the oldest one's own
+// tally is forgotten to make room for a new one.
+func TestReactTo_EvictsTheOldestMessageOnceFull(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c.reactTo("conv", "first", "nadia", "👍")
+
+	for i := 0; i < maxReactionTargets; i++ {
+		c.reactTo("conv", "filler"+string(rune(i)), "nadia", "👍")
+	}
+
+	if len(c.reactions) > maxReactionTargets {
+		t.Fatalf("tracked %d messages, want at most %d", len(c.reactions), maxReactionTargets)
+	}
+	if _, tracked := c.reactions["conv/first"]; tracked {
+		t.Error("the oldest message was not evicted once the cache filled up")
+	}
+}
+
+// TestReactTo_RefusesAReactorPastTheCap confirms a message already at
+// maxReactorsPerMessage distinct reactors keeps every existing vote
+// rather than letting one more displace it.
+func TestReactTo_RefusesAReactorPastTheCap(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	for i := 0; i < maxReactorsPerMessage; i++ {
+		c.reactTo("conv", "msg", "reactor"+string(rune(i)), "👍")
+	}
+
+	got := c.reactTo("conv", "msg", "one-too-many", "👍")
+	if len(got) != 1 || got[0].Count != maxReactorsPerMessage {
+		t.Errorf("reactTo(past the reactor cap) count = %+v, want %d kept", got, maxReactorsPerMessage)
+	}
+}
+
+// TestReactTo_ForgetsAMessageOnceItsTallyIsEmpty confirms clearing the
+// only reaction a message had removes its entry from c.reactions
+// outright, rather than leaving an empty map behind that a sender could
+// otherwise pad the cache with by reacting then clearing repeatedly.
+func TestReactTo_ForgetsAMessageOnceItsTallyIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c.reactTo("conv", "msg", "nadia", "👍")
+	c.reactTo("conv", "msg", "nadia", "")
+
+	if _, tracked := c.reactions["conv/msg"]; tracked {
+		t.Error("an emptied message's tally was not forgotten")
 	}
 }

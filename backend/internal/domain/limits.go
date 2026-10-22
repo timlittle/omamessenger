@@ -1,5 +1,7 @@
 package domain
 
+import "unicode/utf8"
+
 // limits.go bounds every sender-controlled collection a message or its
 // media carries, so a connector that passes through whatever a service
 // reports can never make one message grow enough rich text, mentions,
@@ -28,6 +30,15 @@ const MaxMentions = 64
 // a handful of emoji; a chip beyond this adds nothing the space under a
 // message could still usefully show.
 const MaxReactions = 64
+
+// MaxReactionEmojiLength bounds one reaction chip's own emoji text, in
+// UTF-16 code units. Real emoji, including one combined from several
+// code points (a skin tone or gender modifier, a flag, a family), need
+// only a handful of units; a sender's own ReactionMessage.Text carries
+// whatever they put there, with no length limit of its own, so a chip
+// beyond this is dropped outright rather than truncated - cutting an
+// emoji mid-cluster would render as mojibake, not a shorter valid one.
+const MaxReactionEmojiLength = 32
 
 // MaxPollOptions bounds how many choices one poll carries. Telegram's
 // own clients cap a poll at 10 options; this leaves room for a future
@@ -66,6 +77,24 @@ const MaxGroupMembers = 5000
 // that floods the local contact sync with fabricated entries could
 // make one search return.
 const MaxContactResults = 1000
+
+// MaxDisplayNameLength bounds a sender-controlled display name, in
+// UTF-16 code units: a contact's own name, a push name, a group's
+// title, a message's SenderName, a reply quote's SenderName, or a
+// group member's own name. Generous for any real name or group title
+// - shown on a single line wherever it appears - while still bounding
+// what a hostile sender's own profile or group settings can make a
+// connector pass through unchanged.
+const MaxDisplayNameLength = 256
+
+// MaxFileNameLength bounds a sender-controlled file name, in bytes:
+// generous for any real attachment's own name, shown as a single line
+// in the file view, while still bounding what a hostile sender's own
+// metadata can make a connector pass through unchanged. A byte count,
+// not UTF-16 units, since a file name is a path component rather than
+// text meant to be measured the way a message's own Text is; CapFileName
+// still never splits the UTF-8 encoding of one rune across the cut.
+const MaxFileNameLength = 255
 
 // capRange is a [start, end) range over Text in UTF-16 code units, the
 // shape a formatting span's and a mention's own position share.
@@ -118,24 +147,64 @@ func CapMentions(mentions []Mention, textLen int) []Mention {
 	})
 }
 
-// CapReactions keeps at most MaxReactions of a message's reaction
-// chips.
+// CapReactions drops a reaction chip whose own emoji text runs past
+// MaxReactionEmojiLength, then keeps at most MaxReactions of what
+// remains. A connector folds a live reaction change into its message's
+// full tally itself (WhatsApp reports one person's reaction at a time,
+// never a conversation's own tally), so this is the one place that
+// tally is bounded before it ever reaches the UI, matching whatever
+// bound, if any, the connector's own cache already applies.
 func CapReactions(reactions []Reaction) []Reaction {
-	if len(reactions) <= MaxReactions {
-		return reactions
+	kept := make([]Reaction, 0, min(len(reactions), MaxReactions))
+	for _, r := range reactions {
+		if UTF16Len(r.Emoji) > MaxReactionEmojiLength {
+			continue
+		}
+
+		kept = append(kept, r)
+		if len(kept) == MaxReactions {
+			break
+		}
 	}
 
-	return reactions[:MaxReactions]
+	return kept
 }
 
-// CapMedia bounds a poll's options and text, or a link preview's own
-// text fields, in place, returning media unchanged for a nil media or
-// any other kind, neither of which carries a sender-controlled text
-// field this package bounds.
+// CapDisplayName cuts s to MaxDisplayNameLength, the one cap every
+// sender-controlled display name - a contact's name, a push name, a
+// group's title, a message's or reply quote's SenderName, a member's
+// own name - goes through once, wherever it enters the helper.
+func CapDisplayName(s string) string {
+	return capText(s, MaxDisplayNameLength)
+}
+
+// CapFileName cuts s to at most MaxFileNameLength bytes, never
+// splitting a rune's own UTF-8 encoding across the cut.
+func CapFileName(s string) string {
+	if len(s) <= MaxFileNameLength {
+		return s
+	}
+
+	cut := MaxFileNameLength
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+
+	return s[:cut]
+}
+
+// CapMedia bounds a poll's options and text, a link preview's own
+// text fields, or a file name, in place, returning media unchanged for
+// a nil media. FileName is capped for every kind that carries one
+// (file, video, voice note or sticker), not only one media.Kind, since
+// a sender names their own attachment the same way whichever kind it
+// is.
 func CapMedia(media *Media) *Media {
 	if media == nil {
 		return nil
 	}
+
+	media.FileName = CapFileName(media.FileName)
 
 	switch media.Kind {
 	case MediaPoll:
@@ -147,6 +216,17 @@ func CapMedia(media *Media) *Media {
 	}
 
 	return media
+}
+
+// CapPoll bounds poll's own question length and its option count and
+// each option's text length, the same cap CapMedia gives a poll
+// carried as part of a message. Ingest.PollUpdated calls this
+// directly for a poll reported changing on its own, without a full
+// message - a live vote or a tally update - the same way Ingest.Reacted
+// calls domain.CapReactions for a reaction tally reported the same way.
+func CapPoll(poll Poll) Poll {
+	capPoll(&poll)
+	return poll
 }
 
 // capPoll bounds a poll's own question length and its option count and
@@ -199,10 +279,14 @@ func SanitizeIncoming(m Message) Message {
 	m.Text = TruncateIncomingText(m.Text)
 	textLen := UTF16Len(m.Text)
 
+	m.SenderName = CapDisplayName(m.SenderName)
 	m.Formatting = CapSpans(m.Formatting, textLen)
 	m.Mentions = CapMentions(m.Mentions, textLen)
 	m.Reactions = CapReactions(m.Reactions)
 	m.Media = CapMedia(m.Media)
+	if m.ReplyTo != nil {
+		m.ReplyTo.SenderName = CapDisplayName(m.ReplyTo.SenderName)
+	}
 
 	return m
 }

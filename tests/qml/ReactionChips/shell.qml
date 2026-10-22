@@ -47,6 +47,7 @@ ShellRoot {
     if (!root.checkMineIsMarkedBeyondColour()) return;
     if (!root.checkClickingAChipToggles()) return;
     if (!root.checkHiddenWithNoReactions()) return;
+    if (!root.checkLongEmojiTextIsBounded()) return;
 
     console.log("PASS ReactionChips");
     Qt.exit(0);
@@ -81,6 +82,17 @@ ShellRoot {
   function checkHiddenWithNoReactions(): bool {
     chips.reactions = [];
     if (chips.visible) return Check.fail("chips still visible with no reactions");
+    return true;
+  }
+
+  function checkLongEmojiTextIsBounded(): bool {
+    chips.reactions = [{ emoji: "x".repeat(500), count: 1, mine: false }];
+    const texts = Check.texts(chips);
+    const long = texts.find((item) => item.text.startsWith("xxx"));
+    if (!long) return Check.fail("the long-emoji chip's text was not found");
+    if (long.width > chips.maxChipTextWidth) {
+      return Check.fail("chip text width " + long.width + " was not bounded to " + chips.maxChipTextWidth);
+    }
     return true;
   }
 }

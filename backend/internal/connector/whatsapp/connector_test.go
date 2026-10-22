@@ -11,7 +11,6 @@ package whatsapp
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"testing/synctest"
 
@@ -284,30 +283,6 @@ func TestLogout_IsANoOpWhenNothingIsRunning(t *testing.T) {
 	c := newTestConnector(newFakeDevice())
 	if err := c.Logout(t.Context()); err != nil {
 		t.Errorf("Logout with no connection = %v, want nil", err)
-	}
-}
-
-func TestReactTo_AccumulatesPerSenderAndClears(t *testing.T) {
-	t.Parallel()
-
-	c := New(domain.Account{ID: "wa"}, t.TempDir())
-
-	got := c.reactTo("conv", "msg", "nadia", "👍")
-	want := []domain.Reaction{{Emoji: "👍", Count: 1, Mine: false}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("reactTo(nadia) = %+v, want %+v", got, want)
-	}
-
-	got = c.reactTo("conv", "msg", "self", "👍")
-	want = []domain.Reaction{{Emoji: "👍", Count: 2, Mine: true}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("reactTo(self, same emoji) = %+v, want %+v", got, want)
-	}
-
-	got = c.reactTo("conv", "msg", "nadia", "")
-	want = []domain.Reaction{{Emoji: "👍", Count: 1, Mine: true}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("reactTo(nadia, cleared) = %+v, want %+v", got, want)
 	}
 }
 

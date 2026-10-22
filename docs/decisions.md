@@ -777,3 +777,57 @@ A review found `domain.TruncateIncomingText` capping a message's own `Text` at i
 | History page size | `app.MaxPageSize` = 200 | `Commands.Messages`, rejecting a larger request outright (pre-existing; confirmed, not changed) |
 
 `ui/lib/Format.js` gained its own `MAX_FORMATTING_SPANS` (256) and `MAX_MENTIONS` (64), matching the Go caps independently (the same two-independently-maintained-but-matching pair `MAX_RICH_TEXT_INPUT_LENGTH`'s own comment describes, since this file has no way to import a Go constant): `messageHtml` caps both before choosing which rendering path to take, as defence in depth behind the helper's own ingest cap for a connector bug or an older helper still handing it an oversized list. `styledHtml` itself was also rewritten as a single sweep over the sorted boundary points - adding each range to a running "active" list exactly once, at its own start, and dropping it exactly once, at its own end - rather than re-filtering every range for every boundary in between, so a message built from many overlapping spans no longer does quadratic work even within the capped range.
+
+## A reaction's own tally bypassed every ingest cap, through the connector's own cache
+
+The caps above covered a reaction tally once it reached `Ingest`, but not the two places a live reaction actually enters the helper. WhatsApp's `Connector.reactTo` (called from `handleReaction` in `live.go` and `React` in `react.go`) folded a sender's `ReactionMessage.Text` - any string, any length, naming any message id - straight into `c.reactions`, a `map[string]map[string]string` keyed by `"<conversation remote id>/<message remote id>"`, with nothing ever evicting an entry: a sender naming an endless stream of message ids, real or entirely fabricated, grew it forever, and the recomputed tally this builds went to `Ingest.Reacted` uncapped. `Ingest.Reacted` itself then called `store.SetReactions` with that tally exactly as given, never through `domain.SanitizeIncoming` or `CapReactions`, so neither the chip count nor one chip's own emoji text had any limit by the time it reached the store and the UI. `ui/components/ReactionChips.qml`'s chip `Text` had no `elide` and sized itself from `implicitWidth`, so an oversized emoji string would have stretched the chip itself rather than being cut off.
+
+Fixed in three places:
+
+- `domain.CapReactions` (`backend/internal/domain/limits.go`) now drops a reaction whose own emoji text exceeds `domain.MaxReactionEmojiLength` (32 UTF-16 units; dropped outright, never truncated, since cutting an emoji mid-cluster renders as mojibake) before capping the tally at `MaxReactions`, so both ends of a reaction chip are bounded by the one function. `Ingest.Reacted` (`backend/internal/app/ingest.go`) now runs every tally it is handed through `domain.CapReactions` before calling `store.SetReactions`, the same cap `SanitizeIncoming` already gives a reaction arriving as part of a message. `store.SetReactions` already only updates a message already known to the store (confirmed, not changed; see `TestSetReactions_IgnoresAMessageThatIsNotStored`), so a reaction naming a fabricated message id was already dropped at that layer - the fix closes the gap further up, where the connector's own cache was growing regardless of whether the store would ever keep the result.
+- WhatsApp's `reactTo` (moved into `backend/internal/connector/whatsapp/react.go`, alongside `React`) now treats an oversized emoji the same as an empty one (cleared), bounds `c.reactions` to `maxReactionTargets` (2000) distinct messages with FIFO eviction of the oldest once full, bounds one message's own reactor count to `maxReactorsPerMessage` (`domain.MaxGroupMembers`, refusing a new reactor past it rather than displacing an existing vote), and forgets a message's entry outright once its tally empties, so reacting then clearing repeatedly cannot pad the cache. Telegram's own `reactions()` (`normalize.go`) has no equivalent cache to bound: it rebuilds the tally from the server's own `tg.MessageReactions` on every update rather than accumulating one locally, so `Ingest.Reacted`'s own cap is the only one it needs.
+- `ui/components/ReactionChips.qml`'s chip `Text` now sets `elide: Text.ElideRight` and bounds its own width to `maxChipTextWidth` (`Style.space(160)`), so an oversized emoji string elides instead of stretching the chip.
+
+### Inventory: every connector-side map, cache or slice keyed or grown by sender-supplied data
+
+| Cache | Connector | Keyed by | Bound |
+| --- | --- | --- | --- |
+| `c.reactions` / `c.reactionOrder` | WhatsApp | conversation + message remote id, sender-chosen | Fixed above: `maxReactionTargets` = 2000 with FIFO eviction, `maxReactorsPerMessage` = `domain.MaxGroupMembers`, emptied entries forgotten |
+| `c.undecryptable` / `c.undecryptableOrder` | WhatsApp | conversation + message remote id, sender-chosen (a message that never decrypts, or never gets redelivered, stayed forever) | Fixed alongside the above (`backend/internal/connector/whatsapp/undecryptable.go`): `maxUndecryptableTargets` = 2000 with FIFO eviction |
+| `c.sent` | WhatsApp, Telegram | this account's own locally generated message id | Bounded by this account's own send rate, not a sender's; already deleted once delivery is confirmed (WhatsApp: `receipts.go`, once everyone has read it; Telegram: `live.go:226`) (pre-existing; confirmed, not changed) |
+| `c.names` | WhatsApp, Telegram | a contact, push or group name's remote id | Bounded by how many distinct people or groups this account has actually seen; a group's own member list feeding it is itself capped at `domain.MaxGroupMembers` on every fetch (pre-existing; confirmed, not changed) |
+| `c.groupMembers` | WhatsApp | a group's own remote id | Bounded by how many groups this account is actually in (pre-existing; confirmed, not changed) |
+| `c.chatKinds` | WhatsApp | a conversation's own remote id | Bounded by how many conversations WhatsApp actually reports for this account (pre-existing; confirmed, not changed) |
+| `c.remotes` | Telegram | a user or channel id Telegram itself assigned | Bounded the same way as `c.names` above (pre-existing; confirmed, not changed) |
+| `retryWaiters` / `onDemandWaiters` (`waiterTable`) | WhatsApp | a message or chat remote id, only while a call is actually waiting on it | Entry removed by the waiting call's own deferred `cleanup`, whether it succeeds, fails or times out, so nothing outlives the request that registered it (pre-existing; confirmed, not changed) |
+
+### Display names, titles and file names get the same treatment
+
+The previous review's table covered a message's own text, formatting, mentions, reactions, poll and link-preview text, but nothing capped a display name's own length: a contact's name, a push name, a group's title, a message's or reply quote's `SenderName`, a group member's own name, or a sender-chosen file name - each sender-controlled, each with no limit of its own. `domain.CapDisplayName` (`MaxDisplayNameLength`, 256 UTF-16 units) and `domain.CapFileName` (`MaxFileNameLength`, 255 bytes, cut on a rune boundary) are the two new sanitisers, applied once each, everywhere one of these enters the helper:
+
+| Field | Cap | Where enforced |
+| --- | --- | --- |
+| `Message.SenderName`, `Reply.SenderName` | `domain.MaxDisplayNameLength` = 256 UTF-16 units | `domain.SanitizeIncoming`, at ingest |
+| `Media.FileName` (every kind that carries one) | `domain.MaxFileNameLength` = 255 bytes | `domain.CapMedia`, at ingest |
+| `Contact.Name` | `domain.MaxDisplayNameLength` | `Ingest.Contact` |
+| `Conversation.Title` | `domain.MaxDisplayNameLength` | `Ingest.Conversation` |
+| `Typing`'s own `Name` | `domain.MaxDisplayNameLength` | `Ingest.Typing` |
+| A corrected sender name | `domain.MaxDisplayNameLength` | `Ingest.SenderName` |
+| `Member.Name` | `domain.MaxDisplayNameLength` | `app.Commands.Members`, alongside its own pre-existing member-count cap |
+
+### Inventory: every `connector.Sink` method that stores or publishes sender data
+
+| Method | Sender-controlled data | Sanitised through |
+| --- | --- | --- |
+| `Incoming`, `History` | text, formatting, mentions, reactions, media, sender name | `save` → `domain.SanitizeIncoming` |
+| `Edited` | same as above | `domain.SanitizeIncoming` |
+| `Reacted` | reaction tally | `domain.CapReactions` (fixed above) |
+| `PollUpdated` (`connector.PollUpdater`, optional) | a poll's own question, option count and option text, reported changing live without a full message | was not sanitised at all; now `domain.CapPoll` (new, reusing `CapMedia`'s own `capPoll`), the same caps a poll carried as part of a message already gets |
+| `Contact` | contact name | `domain.CapDisplayName` (fixed above) |
+| `Conversation` | conversation title | `domain.CapDisplayName` (fixed above) |
+| `Typing` | typing indicator's name | `domain.CapDisplayName` (fixed above) |
+| `SenderName` (`connector.SenderNamer`, optional) | corrected sender name | `domain.CapDisplayName` (fixed above) |
+| `Deleted` | only ids, never content | nothing to sanitise |
+| `Unread`, `Organized`, `OutgoingStatus`, `AccountStatus`, `AuthStep` | counts, booleans, ids or a connector-written fixed string (`AuthStep`'s hint; see "A sign-in hint is always a fixed, connector-written string" above) | nothing sender-controlled to sanitise |
+
+`PollUpdated` was the same shape of gap as `Reacted`: Telegram's `pollChanged` and `vote.go`, and WhatsApp's `handlePollVote`, each report a poll's options and tallies changing on their own, without a full message, and `Ingest.PollUpdated` passed that straight to `store.SetPoll` with no cap at all - a live vote update could carry as many options, or as long an option's own text, as a sender liked. `store.SetPoll` already only updates a message already known to the store (the same discipline `SetReactions` has), so this was purely an uncapped write, not also an unbounded cache the way the reaction tally was.

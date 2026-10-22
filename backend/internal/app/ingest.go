@@ -99,13 +99,22 @@ func (in *Ingest) AccountStatus(ctx context.Context, accountID, status, detail s
 	}
 }
 
-// Contact records a contact.
+// Contact records a contact. Name is sender-controlled - a service's
+// own contact sync, not something this account typed - so it gets the
+// same cap SanitizeIncoming gives a message's own SenderName (see
+// domain.CapDisplayName).
 func (in *Ingest) Contact(ctx context.Context, c domain.Contact) {
+	c.Name = domain.CapDisplayName(c.Name)
 	_ = in.store.UpsertContact(ctx, c) // see the Ingest comment on dropped errors
 }
 
-// Conversation records a conversation and publishes it.
+// Conversation records a conversation and publishes it. Title is
+// sender-controlled for a group (whoever last changed the group's own
+// name), so it gets the same cap SanitizeIncoming gives a message's
+// own SenderName.
 func (in *Ingest) Conversation(ctx context.Context, c domain.Conversation) {
+	c.Title = domain.CapDisplayName(c.Title)
+
 	conv, _, err := in.store.EnsureConversation(ctx, c)
 	if err != nil {
 		return
@@ -183,14 +192,20 @@ func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID st
 
 // Reacted updates a stored message's reaction chips after the service
 // reports they changed on their own, without a full edit. It never
-// notifies; the open conversation refreshes the message in place.
+// notifies; the open conversation refreshes the message in place. A
+// sender fully controls reactions the same way they control a
+// message's own text, so the tally gets the same cap
+// domain.SanitizeIncoming gives one arriving as part of a message (see
+// its own comment there), and SetReactions only ever updates a message
+// already known to the store, so a reaction to a fabricated id is
+// silently dropped rather than stored under one that does not exist.
 func (in *Ingest) Reacted(ctx context.Context, accountID, conversationRemoteID, messageRemoteID string, reactions []domain.Reaction) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
 	if err != nil {
 		return
 	}
 
-	updated, found, err := in.store.SetReactions(ctx, conv.ID, messageRemoteID, reactions)
+	updated, found, err := in.store.SetReactions(ctx, conv.ID, messageRemoteID, domain.CapReactions(reactions))
 	if err != nil || !found {
 		return
 	}
@@ -302,14 +317,16 @@ func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, 
 	in.retireOutgoingAttachment(ctx, m)
 }
 
-// Typing publishes a typing indicator for a known conversation.
+// Typing publishes a typing indicator for a known conversation. name
+// is sender-controlled (a group member's own display name), so it
+// gets the same cap SanitizeIncoming gives a message's own SenderName.
 func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, name string, active bool) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
 	if err != nil {
 		return
 	}
 
-	in.events.publish(ctx, EventTyping, Typing{ConversationID: conv.ID, Name: name, Active: active})
+	in.events.publish(ctx, EventTyping, Typing{ConversationID: conv.ID, Name: domain.CapDisplayName(name), Active: active})
 }
 
 // SenderName corrects senderRemoteID's name on every message already
@@ -317,9 +334,10 @@ func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, n
 // whose preview this changes, so a group whose preview still names
 // its newest message's sender by a stale, generic label picks up a
 // contact, push or business name that only resolved afterwards (see
-// connector.SenderNamer).
+// connector.SenderNamer). name is sender-controlled, so it gets the
+// same cap SanitizeIncoming gives a message's own SenderName.
 func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, name string) {
-	changed, err := in.store.RefreshSenderName(ctx, accountID, senderRemoteID, name)
+	changed, err := in.store.RefreshSenderName(ctx, accountID, senderRemoteID, domain.CapDisplayName(name))
 	if err != nil {
 		return
 	}
