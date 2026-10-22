@@ -55,10 +55,13 @@ Item {
   // cancelled closes setup.
   signal cancelled()
   // linkOpenRequested asks the caller to open url, the hint text's own
-  // link. Reported rather than opened here directly, so the one
-  // allow-list check happens where every such request ends up (see
-  // WindowController.openExternalLink).
-  signal linkOpenRequested(string url)
+  // link: always the same as its own visible text, since root.hint is
+  // always a fixed, connector-written string rather than a sender's
+  // own formatting (see the comment on the Text below). Reported
+  // rather than opened here directly, so the one allow-list check
+  // happens where every such request ends up (see
+  // WindowController.openLink).
+  signal linkOpenRequested(string url, string displayText)
 
   // _field describes the typed answer the stage asks for, or null.
   readonly property var _field: Setup.field(root.stage)
@@ -143,7 +146,7 @@ Item {
         linkColor: Theme.accent
         color: Util.alpha(Theme.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.body }
-        onLinkActivated: link => root.linkOpenRequested(link)
+        onLinkActivated: link => root.linkOpenRequested(link, link)
       }
 
       ColumnLayout {

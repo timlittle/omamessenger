@@ -120,7 +120,11 @@ Item {
     function onScroll(direction) { root._scrollConversation(direction) }
     function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
     function onLinksRequested(urls) {
-      if (urls.length === 1) root.windowController.openLink(urls[0]);
+      // Highlight.links only ever finds a bare, autolinked URL already
+      // in a message's own text, never a formatting span's own link,
+      // so its text is always the url itself and this never needs to
+      // ask first (see WindowController.openLink).
+      if (urls.length === 1) root.windowController.openLink(urls[0], urls[0]);
       else root.windowController.openLinkChooser(urls);
     }
   }
@@ -279,7 +283,7 @@ Item {
       onMediaCopyRequested: id => root.conversationController.copyMedia(id)
       onMediaSaveRequested: id => root.conversationController.saveMedia(id)
       onMediaOpenExternalRequested: id => root.conversationController.openMediaExternal(id)
-      onLinkOpenRequested: url => root.windowController.openLink(url)
+      onLinkOpenRequested: (url, displayText) => root.windowController.openLink(url, displayText)
       onSend: (text, replyToId, mentions) => {
         if (root.composerController.editing) root.composerController.saveEdit(text);
         else root.conversationController.send(text, replyToId, mentions);

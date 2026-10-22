@@ -73,6 +73,16 @@ Item {
   // file path it built itself.
   property var openExternalLink: (url) => { if (Links.isAllowed(url)) Qt.openUrlExternally(url); }
 
+  // linkConfirmOpen is true while asking whether to open a link whose
+  // own visible text does not read as the same destination as where
+  // it actually goes (see openLink and Links.needsConfirmation).
+  property bool linkConfirmOpen: false
+
+  // pendingLinkURL is the link linkConfirmOpen's own question is
+  // about, shown in full so the question answers exactly what the
+  // link's own href is.
+  property string pendingLinkURL: ""
+
   // paletteOpen shows the command palette.
   property bool paletteOpen: false
 
@@ -276,9 +286,60 @@ Item {
 
   // openLink opens url through openExternalLink: the single-link case
   // of o on a message, and anywhere else a link from a message, a link
-  // preview or a service's own text is opened.
-  function openLink(url: string): void {
+  // preview or a service's own text is opened. displayText is what
+  // the person actually saw for this link - the same text for a plain
+  // autolinked URL, but a formatting span's own text can read as
+  // something else entirely (see ui/lib/Links.js's displayTextFor) -
+  // and Links.needsConfirmation decides whether that calls for asking
+  // first rather than opening it straight away.
+  function openLink(url: string, displayText: string): void {
+    if (Links.needsConfirmation(displayText, url)) {
+      root.pendingLinkURL = url;
+      root.linkConfirmOpen = true;
+      return;
+    }
+
     root.openExternalLink(url);
+  }
+
+  // confirmedOpenLink opens the link linkConfirmOpen's own question is
+  // about, the person's deliberate choice once they have seen its real
+  // target.
+  function confirmedOpenLink(): void {
+    const url = root.pendingLinkURL;
+    root._closeLinkConfirm();
+    root.openExternalLink(url);
+  }
+
+  // cancelledLinkConfirm leaves linkConfirmOpen's own question's link
+  // unopened.
+  function cancelledLinkConfirm(): void {
+    root._closeLinkConfirm();
+  }
+
+  // copiedLinkConfirm puts linkConfirmOpen's own question's link on
+  // the clipboard instead of opening it, so a person who wants to
+  // check or share a suspicious link never has to open it to do so.
+  function copiedLinkConfirm(): void {
+    const url = root.pendingLinkURL;
+    root._closeLinkConfirm();
+    root._copyText(url);
+  }
+
+  // _closeLinkConfirm closes the link question and forgets which link
+  // it was about.
+  function _closeLinkConfirm(): void {
+    root.linkConfirmOpen = false;
+    root.pendingLinkURL = "";
+  }
+
+  // _copyText puts text on the system clipboard through
+  // _clipboardProxy, the one local, no-helper way QML has to write one
+  // plain string there.
+  function _copyText(text: string): void {
+    _clipboardProxy.text = text;
+    _clipboardProxy.selectAll();
+    _clipboardProxy.copy();
   }
 
   // _paletteContext gathers whatever Palette.js's per-mode table needs
@@ -436,7 +497,7 @@ Item {
 
     root.closePalette();
     if (root.paletteMode === "conversations") root._openConversation(chosen);
-    else if (root.paletteMode === "links") root.openLink(chosen.url);
+    else if (root.paletteMode === "links") root.openLink(chosen.url, chosen.url);
     else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
     else if (root.paletteMode === "keyBindings") { /* informational only */ }
     else root.runCommand(chosen.action);
@@ -561,6 +622,18 @@ Item {
       composerController: root.composerController,
       conversationController: root.conversationController
     });
+  }
+
+  // _clipboardProxy is kept only for _copyText: an otherwise-unused
+  // TextEdit, since QML has no bare clipboard write of its own.
+  // readOnly, so it never counts as a live editable field itself (see
+  // tests/qml/OverlayLifecycle) - selectAll() and copy() work on a
+  // read-only TextEdit's own text the same as on an editable one's.
+  TextEdit {
+    id: _clipboardProxy
+    visible: false
+    readOnly: true
+    textFormat: TextEdit.PlainText
   }
 
   // messageSearchTimer debounces the palette's "Messages" section so a

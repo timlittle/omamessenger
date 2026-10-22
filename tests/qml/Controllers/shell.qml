@@ -346,14 +346,38 @@ ShellRoot {
     windowController.keepInBackground();
     if (!root.hidden) return Check.fail("keeping it in the background did not hide the window");
 
-    // openLink always hands its url to openExternalLink, the one place
-    // that checks it against Links.isAllowed before ever calling the
-    // real Qt.openUrlExternally (see ui/lib/Links.js's own node test
-    // for that check itself).
+    // openLink hands its url straight to openExternalLink when
+    // displayText already reads as the same destination, the one
+    // place that checks it against Links.isAllowed before ever calling
+    // the real Qt.openUrlExternally (see ui/lib/Links.js's own node
+    // test for that check itself).
     let openedUrl = "";
     windowController.openExternalLink = (url) => { openedUrl = url; };
-    windowController.openLink("https://example.com/a");
+    windowController.openLink("https://example.com/a", "https://example.com/a");
     if (openedUrl !== "https://example.com/a") return Check.fail("openLink did not hand its url to openExternalLink");
+
+    // openLink asks first, rather than opening anything, when
+    // displayText does not read as the same destination as url: the
+    // Telegram "hidden link" case this question exists for.
+    openedUrl = "";
+    windowController.openLink("https://evil.example.com", "click here");
+    if (openedUrl) return Check.fail("openLink opened a mismatched link without asking first");
+    if (!windowController.linkConfirmOpen) return Check.fail("openLink did not open the link question for a mismatched link");
+    if (windowController.pendingLinkURL !== "https://evil.example.com")
+      return Check.fail("the link question's own target = " + windowController.pendingLinkURL + ", want the real url");
+
+    // Cancelling the question leaves it unopened and forgets the link.
+    windowController.cancelledLinkConfirm();
+    if (openedUrl) return Check.fail("cancelling the link question opened it anyway");
+    if (windowController.linkConfirmOpen || windowController.pendingLinkURL)
+      return Check.fail("cancelling the link question did not close it");
+
+    // Confirming it opens the real url, never the mismatched text.
+    windowController.openLink("https://evil.example.com", "click here");
+    windowController.confirmedOpenLink();
+    if (openedUrl !== "https://evil.example.com")
+      return Check.fail("confirming the link question opened " + JSON.stringify(openedUrl) + ", want the real url");
+    if (windowController.linkConfirmOpen) return Check.fail("confirming the link question did not close it");
 
     console.log("PASS Controllers");
     Qt.exit(0);

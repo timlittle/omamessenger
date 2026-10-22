@@ -197,6 +197,17 @@ Opening a received file the helper found to be active or executable content - a 
 | y | Open anyway |
 | n or Esc | Cancel |
 
+## Opening a mismatched link
+
+Opening a link whose own visible text does not read as the same destination as where it actually goes - a sender's own formatting can show one piece of text while linking somewhere else entirely - asks first, showing the real target in full. Cancel is the default, so a stray Enter never follows it; a plain link whose text is its own URL, or one from a link preview card, opens straight away as before.
+
+| Keys | Does |
+| --- | --- |
+| Enter or n | Cancel (the default) |
+| c | Copy the real link instead of opening it |
+| y | Open anyway |
+| Esc | Cancel |
+
 ## Media viewer
 
 Clicking a photo, or pressing Enter on a highlighted photo, video or GIF, opens it inside the window, sized to fit. A video or GIF plays with the same play/pause, seek and mute controls it has inline, just bigger; a real .gif file animates without needing the optional QtMultimedia module at all.

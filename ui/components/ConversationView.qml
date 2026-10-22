@@ -120,8 +120,10 @@ Item {
   // message's poll.
   signal voted(string id, var optionIds)
   // linkOpenRequested asks the caller to open url: a link in a
-  // message's own text, or its link preview's URL.
-  signal linkOpenRequested(string url)
+  // message's own text, or its link preview's URL. displayText is
+  // what the person actually saw for it (see MessageBubbleContent's
+  // own signal of the same name).
+  signal linkOpenRequested(string url, string displayText)
   // send reports a message the user submitted, the id of the message it
   // answers (or "" when it answers nothing), and its resolved @-mentions.
   signal send(string text, string replyToId, var mentions)
@@ -321,7 +323,7 @@ Item {
         onMediaCopyRequested: id => root.mediaCopyRequested(id)
         onMediaSaveRequested: id => root.mediaSaveRequested(id)
         onMediaOpenExternalRequested: id => root.mediaOpenExternalRequested(id)
-        onLinkOpenRequested: url => root.linkOpenRequested(url)
+        onLinkOpenRequested: (url, displayText) => root.linkOpenRequested(url, displayText)
       }
 
       onContentYChanged: root._checkLoadOlder()

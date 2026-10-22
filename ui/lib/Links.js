@@ -15,7 +15,12 @@
 // this helper names a downloaded file from its own sniffed content,
 // never a sender's claimed name (see docs/decisions.md), yet the path
 // can still hold any character a file name allows, so it is never
-// handed to a URL as a raw string either.
+// handed to a URL as a raw string either. needsConfirmation and
+// displayTextFor back WindowController.openLink's own question before
+// opening a link whose own visible text does not read as the same
+// destination as its href - a Telegram MessageEntityTextURL lets a
+// sender show one piece of text while actually linking somewhere else
+// entirely, which isAllowed's scheme check alone would never catch.
 
 .import "Format.js" as Format
 
@@ -40,4 +45,63 @@ function fileURL(path) {
   }
 
   return 'file://' + path.split('/').map(encodeURIComponent).join('/');
+}
+
+// normalizeTarget lowers text, trims it, and drops a leading scheme,
+// a leading "www." and a trailing slash, the one comparison
+// sameTarget applies to both a link's visible text and its href, so
+// neither difference alone counts as a mismatch.
+function normalizeTarget(text) {
+  return (text || '').trim().toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '');
+}
+
+// sameTarget reports whether displayText and url name the same
+// destination once normalizeTarget's own scheme, "www." and trailing
+// slash slack is allowed for.
+function sameTarget(displayText, url) {
+  return normalizeTarget(displayText) === normalizeTarget(url);
+}
+
+// isQueryMailto reports whether url is a mailto: link carrying a query
+// string ("?subject=", "?body=", "?attach=", ...): one of those can
+// silently prefill a recipient, subject, body or attachment a person
+// never typed, so it always needs confirming, whatever its own
+// visible text says.
+function isQueryMailto(url) {
+  return /^mailto:/i.test(url || '') && url.includes('?');
+}
+
+// needsConfirmation reports whether a link's own visible text could
+// mislead about where it actually goes: true for a mailto: link
+// carrying a query string (see isQueryMailto), or when displayText
+// does not name the same destination as url (see sameTarget). A plain
+// autolinked URL always has text identical to its own href, so it
+// already matches by the time this runs.
+function needsConfirmation(displayText, url) {
+  return isQueryMailto(url) || !sameTarget(displayText, url);
+}
+
+// displayTextFor returns the visible text a "link" formatting span in
+// spans rendered for url - the same slice of text its anchor was
+// built from - or url itself once no span matches: a plain autolinked
+// URL's own visible text is always the url itself, so reporting that
+// back is still accurate for one of those. Used once a link is
+// clicked, when only its own href is known, to recover what the
+// person actually saw before WindowController.openLink decides
+// whether that needs confirming.
+function displayTextFor(text, spans, url) {
+  for (const s of spans || []) {
+    if (s.kind !== 'link' || s.start < 0 || s.end > text.length || s.start >= s.end) {
+      continue;
+    }
+
+    if (Format.spanURL(s.url) === url) {
+      return text.slice(s.start, s.end);
+    }
+  }
+
+  return url;
 }

@@ -211,6 +211,17 @@ Item {
     onOpenChanged: root._refocusIfClosed(open)
   }
 
+  // Tests may build this layout without a window controller.
+  LinkOpenConfirm {
+    open: root.windowController?.linkConfirmOpen ?? false
+    target: root.windowController?.pendingLinkURL ?? ""
+    routeKey: root.routeKey
+    onConfirmedOpen: root.windowController.confirmedOpenLink()
+    onCopied: root.windowController.copiedLinkConfirm()
+    onCancelled: root.windowController.cancelledLinkConfirm()
+    onOpenChanged: root._refocusIfClosed(open)
+  }
+
   // Escape cancels the close question straight through WindowController,
   // never through CloseConfirm's own cancelled() signal, so this is the
   // one place that covers every way the question closes: the buttons, an
@@ -253,7 +264,7 @@ Item {
       onQrRequested: root.accountController.useQr()
       onAnswered: value => root.accountController.answer(value)
       onCancelled: root.accountController.cancel()
-      onLinkOpenRequested: url => root.windowController.openLink(url)
+      onLinkOpenRequested: (url, displayText) => root.windowController.openLink(url, displayText)
     }
   }
 
