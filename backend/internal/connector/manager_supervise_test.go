@@ -6,6 +6,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 )
 
 func TestSupervise_RestartsWithGrowingDelay(t *testing.T) {
@@ -29,8 +31,11 @@ func TestSupervise_RestartsWithGrowingDelay(t *testing.T) {
 			t.Errorf("starts = %v, want %v", starts, want)
 		}
 
-		if got := sink.Lines()[0]; got != "status a error broken" {
-			t.Errorf("first status = %q, want status a error broken", got)
+		// The connector's own error text never reaches the account's
+		// status: it can carry file paths, account ids or a service's own
+		// words, so the UI only ever sees a fixed sentence.
+		if got := sink.Lines()[0]; got != "status a error "+connector.ConnectionFailedDetail {
+			t.Errorf("first status = %q, want the fixed connection-failed detail", got)
 		}
 	})
 }
@@ -95,8 +100,8 @@ func TestSupervise_ResetsDelayAfterStableRun(t *testing.T) {
 			t.Errorf("starts = %v, want prefix %v", starts, want)
 		}
 
-		if got := sink.Lines()[0]; got != "status a error connector stopped unexpectedly" {
-			t.Errorf("first status = %q", got)
+		if got := sink.Lines()[0]; got != "status a error "+connector.ConnectionFailedDetail {
+			t.Errorf("first status = %q, want the fixed connection-failed detail", got)
 		}
 	})
 }

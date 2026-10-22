@@ -510,11 +510,7 @@ func supervise(ctx context.Context, c Connector, sink Sink) {
 			return
 		}
 
-		if err == nil {
-			err = errors.New("connector stopped unexpectedly")
-		}
-
-		sink.AccountStatus(ctx, accountID, domain.AccountError, err.Error())
+		sink.AccountStatus(ctx, accountID, domain.AccountError, accountErrorDetail(err))
 
 		if time.Since(started) >= stableRun {
 			attempt = 0
@@ -526,6 +522,24 @@ func supervise(ctx context.Context, c Connector, sink Sink) {
 
 		attempt++
 	}
+}
+
+// ConnectionFailedDetail is the account status detail shown when a
+// connector's run fails for any reason this package has no safer
+// wording for.
+const ConnectionFailedDetail = "Connection failed, retrying"
+
+// accountErrorDetail turns a connector run's error into the fixed
+// sentence its account status shows. The error itself never reaches
+// the UI or the store: a connector wraps its library's and the
+// service's own errors, which can carry file paths, account ids or the
+// service's own text.
+func accountErrorDetail(err error) string {
+	if errors.Is(err, errConnectorPanicked) {
+		return errConnectorPanicked.Error()
+	}
+
+	return ConnectionFailedDetail
 }
 
 // errConnectorPanicked reports a connector run that panicked. Its text
