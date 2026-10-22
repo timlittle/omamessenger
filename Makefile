@@ -279,10 +279,11 @@ $(ACTIONLINT):
 
 # zizmor is a Rust binary with no Go module, so this downloads the pinned
 # release tarball instead of `go install`-ing it, and checks it against
-# ZIZMOR_SHA256 before trusting it.
+# ZIZMOR_SHA256 before trusting it: set -e stops the recipe there on a
+# mismatch, rather than extracting and installing the download anyway.
 $(ZIZMOR):
 	mkdir -p $(TOOLS)
-	tmp=$$(mktemp -d -p build); trap 'rm -rf "$$tmp"' EXIT; \
+	set -e; tmp=$$(mktemp -d -p build); trap 'rm -rf "$$tmp"' EXIT; \
 	curl -fsSL -o "$$tmp/zizmor.tar.gz" "https://github.com/zizmorcore/zizmor/releases/download/$(ZIZMOR_VERSION)/zizmor-x86_64-unknown-linux-gnu.tar.gz"; \
 	echo "$(ZIZMOR_SHA256)  $$tmp/zizmor.tar.gz" | sha256sum -c -; \
 	tar -xzf "$$tmp/zizmor.tar.gz" -C "$$tmp" zizmor; \
