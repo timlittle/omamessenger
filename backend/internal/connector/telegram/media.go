@@ -195,10 +195,11 @@ func gifFileName(name string) string {
 // stickerMedia normalizes a sticker document: a static WebP is
 // fetchable the same way a photo is, with FileName set for
 // Connector.FetchMedia to download; a Lottie animation
-// ("application/x-tgsticker") or a WebM video sticker is never fetched,
+// ("application/x-tgsticker") or a WebM video sticker gets no FileName,
 // since this UI has nothing that can show either as a static image, so
-// FileName stays empty and the UI falls back to the thumbnail or the
-// sticker's own emoji.
+// the UI falls back to the thumbnail or the sticker's own emoji. The mime
+// type is the sender's claim, so FetchMedia still runs any sticker it is
+// asked for through imagesafe (see documentImageProfile).
 func stickerMedia(doc *tg.Document, d document) *domain.Media {
 	m := &domain.Media{
 		Kind: domain.MediaSticker, Width: d.width, Height: d.height,
@@ -280,8 +281,10 @@ func imageProfile(m tg.MessageMediaClass) (imagesafe.Profile, bool) {
 
 // documentImageProfile is imageProfile's own case for a document,
 // mirroring documentMedia's own dispatch order exactly so the two
-// never disagree about which document is which: a static WebP
-// sticker, or - once d.sticker and d.video are both ruled out, the
+// never disagree about which document is which: any sticker, whatever
+// mime type the sender claims for it, since the UI shows a fetched
+// sticker in a QML Image and imagesafe refuses bytes it cannot
+// validate, or - once d.sticker and d.video are both ruled out, the
 // same order documentMedia checks them in - a document isGIFImage
 // says is a genuine GIF file. A document carrying DocumentAttributeVideo
 // is written unchanged here regardless of its Animated attribute or
@@ -300,7 +303,7 @@ func documentImageProfile(dc tg.DocumentClass) (imagesafe.Profile, bool) {
 	d := describe(doc)
 	switch {
 	case d.sticker:
-		return stickerImageProfile(doc.MimeType)
+		return imagesafe.Thumbnail, true
 	case d.video:
 		return imagesafe.Profile{}, false
 	case isGIFImage(doc.MimeType, d.name):
@@ -308,16 +311,4 @@ func documentImageProfile(dc tg.DocumentClass) (imagesafe.Profile, bool) {
 	default:
 		return imagesafe.Profile{}, false
 	}
-}
-
-// stickerImageProfile is documentImageProfile's own case for a
-// sticker: only a static WebP is ever fetched as a file at all (see
-// stickerMedia), so a Lottie or WebM sticker's mime type never
-// reaches here with anything to sanitize in the first place.
-func stickerImageProfile(mimeType string) (imagesafe.Profile, bool) {
-	if mimeType != "image/webp" {
-		return imagesafe.Profile{}, false
-	}
-
-	return imagesafe.Thumbnail, true
 }

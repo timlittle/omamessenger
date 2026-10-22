@@ -122,6 +122,32 @@ func TestFetchMedia_SanitizesStickerAndGIFDocument(t *testing.T) {
 	}
 }
 
+// TestFetchMedia_SanitizesAStickerWhateverMimeTypeItClaims covers a
+// sticker whose sender-chosen mime type is not WebP: its bytes still go
+// through imagesafe, which refuses anything it cannot validate (here an
+// SVG), rather than being written to disk for a QML Image to decode.
+func TestFetchMedia_SanitizesAStickerWhateverMimeTypeItClaims(t *testing.T) {
+	t.Parallel()
+
+	doc := &tg.Document{
+		ID: 7, AccessHash: 8, FileReference: []byte("ref"), Size: 100, MimeType: "image/png",
+		Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeSticker{Alt: "😀", Stickerset: &tg.InputStickerSetEmpty{}}},
+	}
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
+		&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaDocument{Document: doc}},
+	}})
+	f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFilePartial{}, Bytes: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)})
+
+	path := filepath.Join(t.TempDir(), "out")
+	if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path, false); err == nil {
+		t.Fatal("FetchMedia() wrote a non-image sticker, want it refused by the sanitizer")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("an unsanitized sticker file was left on disk")
+	}
+}
+
 // TestFetchMedia_RefusesADeclaredSizeOverTheCap covers a document
 // whose own declared Size already exceeds the image profile's input
 // cap: FetchMedia must refuse before ever asking Telegram to download
