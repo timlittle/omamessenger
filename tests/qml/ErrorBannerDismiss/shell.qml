@@ -23,7 +23,8 @@ ShellRoot {
     root.checkBannerVisible,
     root.checkEscapeDismissesBannerOnly,
     root.triggerErrorAgain,
-    root.checkClickDismisses
+    root.checkClickDismisses,
+    root.checkToastSitsBottomRight
   ]
 
   // panel is the live Panel.
@@ -92,6 +93,20 @@ ShellRoot {
   function checkClickDismisses(): var {
     t.mouseClick(Check.find(root.panel(), "dismissErrorButton"));
     if (Check.find(root.panel(), "errorBanner").visible) return Check.fail("clicking the dismiss button did not clear the banner");
+    return true;
+  }
+
+  // checkToastSitsBottomRight shows the confirmation toast and checks it
+  // lands in the window's bottom-right corner, where it was meant to be,
+  // not the top-left corner anchors it cannot use would leave it in.
+  function checkToastSitsBottomRight(): var {
+    const toast = Check.find(root.panel(), "toast");
+    toast.text = "Copied to clipboard";
+    if (!toast.visible || toast.width <= 0) return false;
+
+    const area = toast.parent;
+    if (toast.x + toast.width < area.width * 0.75 || toast.y + toast.height < area.height * 0.75)
+      return Check.fail("toast at " + toast.x + "," + toast.y + " in a " + area.width + "x" + area.height + " window, want the bottom-right corner");
 
     console.log("PASS ErrorBannerDismiss");
     Qt.exit(0);

@@ -35,9 +35,10 @@ Item {
   ModalCard {
     id: modal
 
-    cardWidth: Style.space(440)
-    cardHeight: Style.space(420)
-    atTop: true
+    // Wide and tall enough to read several releases at once; ModalCard
+    // still narrows it to fit a small window.
+    cardWidth: Style.space(760)
+    cardHeight: Style.space(720)
     onOutsideClicked: root.closed()
 
     ColumnLayout {

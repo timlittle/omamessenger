@@ -447,14 +447,20 @@ Item {
       }
 
       // The confirmation toast floats above everything else in the
-      // window, near the bottom centre and just above the composer,
-      // rather than taking a row in the ColumnLayout above: it must
-      // never push the message list or the composer around as it comes
-      // and goes.
+      // window's bottom-right corner, where desktop toasts usually
+      // appear, just above the key hints row, rather than taking a row
+      // in the ColumnLayout above: it must never push the message list
+      // or the composer around as it comes and goes. It anchors to this
+      // Item, its parent, since anchors to anything but a parent or
+      // sibling are ignored and leave it in the top-left corner.
       Toast {
-        anchors.bottom: layout.bottom
-        anchors.bottomMargin: Theme.spacing.lg
-        anchors.horizontalCenter: layout.horizontalCenter
+        objectName: "toast"
+        anchors {
+          right: parent.right
+          bottom: parent.bottom
+          rightMargin: Theme.spacing.xl
+          bottomMargin: Style.space(24) + Theme.spacing.xl * 2
+        }
         text: windowController.toastText
         onDismissed: windowController.dismissToast()
       }
