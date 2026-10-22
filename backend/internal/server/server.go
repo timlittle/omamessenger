@@ -108,12 +108,23 @@ func (s *Server) answer(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.
 	_ = conn.Reply(ctx, req.ID, result)
 }
 
+// PanicLogLine formats the message call logs once it recovers from a
+// method's own panic: method and only the recovered value's own type,
+// never its content. r could be a connector's or the UI's own request
+// data formatted into an error, or carry message text directly, so
+// %v or %s on it must never reach a log (see errors.md and
+// notify.Desktop.recoverPanic, which gives its own recover the same
+// treatment).
+func PanicLogLine(method string, r any) string {
+	return fmt.Sprintf("panic in %s: %T", method, r)
+}
+
 // call runs the requested method. A panic becomes an internal error, so
 // one bad request cannot stop the helper.
 func (s *Server) call(ctx context.Context, req *jsonrpc2.Request) (result any, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			s.log.Printf("panic in %s: %v", req.Method, r)
+			s.log.Print(PanicLogLine(req.Method, r))
 			err = fmt.Errorf("panic in %s", req.Method)
 		}
 	}()

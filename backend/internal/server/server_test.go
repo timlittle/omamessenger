@@ -295,6 +295,26 @@ func TestMediaFetch_OmitsRiskyForEverydayMedia(t *testing.T) {
 	}
 }
 
+// TestPanicLogLine_NeverIncludesTheRecoveredValuesOwnContent confirms
+// the line call logs once it recovers from a method's own panic names
+// only the recovered value's own type, never whatever it actually
+// carried - which could be message text, a connector's own error text,
+// or any other request data a handler panicked with.
+func TestPanicLogLine_NeverIncludesTheRecoveredValuesOwnContent(t *testing.T) {
+	t.Parallel()
+
+	got := server.PanicLogLine("messages.send", "a message's own secret text")
+	if strings.Contains(got, "secret") {
+		t.Errorf("PanicLogLine leaked the recovered value's own content: %q", got)
+	}
+	if !strings.Contains(got, "messages.send") {
+		t.Errorf("PanicLogLine(%q) = %q, want it to name the method", "messages.send", got)
+	}
+	if !strings.Contains(got, "string") {
+		t.Errorf("PanicLogLine(%q) = %q, want the recovered value's own type", "messages.send", got)
+	}
+}
+
 func TestServer_WaitReturnsWhenTheUIDisconnects(t *testing.T) {
 	t.Parallel()
 
