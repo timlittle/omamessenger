@@ -97,6 +97,18 @@ func TestSanitizeWebP_RejectsTooManyFrames(t *testing.T) {
 	}
 }
 
+// TestSanitizeWebP_CapsTotalDecodedPixels covers an animated WebP whose
+// frames together decode to more pixels than the profile allows, the
+// same bound an animated GIF gets.
+func TestSanitizeWebP_CapsTotalDecodedPixels(t *testing.T) {
+	if _, ok := imagesafe.Sanitize(buildWebPAnimated(512, 512, 30), imagesafe.Thumbnail); !ok {
+		t.Error("Sanitize() refused a typical animated sticker")
+	}
+	if _, ok := imagesafe.Sanitize(buildWebPAnimated(1024, 1024, 1000), imagesafe.Thumbnail); ok {
+		t.Error("Sanitize() = ok for 1000 frames of a 1024x1024 canvas, want rejected")
+	}
+}
+
 // TestSanitizeWebP_RejectsTruncatedChunk covers a chunk whose declared
 // size runs past the end of the file.
 func TestSanitizeWebP_RejectsTruncatedChunk(t *testing.T) {

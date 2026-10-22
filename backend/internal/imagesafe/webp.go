@@ -52,7 +52,7 @@ func sanitizeWebP(data []byte, profile Profile) ([]byte, bool) {
 		}
 	}
 
-	if canvasWidth < 0 || !withinCaps(canvasWidth, canvasHeight, profile) {
+	if canvasWidth < 0 || !withinCaps(canvasWidth, canvasHeight, profile) || !withinTotal(canvasWidth, canvasHeight, frames, profile) {
 		return nil, false
 	}
 

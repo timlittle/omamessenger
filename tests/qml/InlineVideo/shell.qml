@@ -222,6 +222,13 @@ ShellRoot {
     // available, and shows no play mark once it is already animating.
     const realGifImage = Check.find(realGifVideo, "realGifImage");
     if (!realGifImage || !realGifImage.visible) return Check.fail("a real .gif file with in-window playback available shows no AnimatedImage");
+    if (realGifImage.cache) return Check.fail("a real .gif file caches every decoded frame");
+
+    // It animates only while it holds the single decoding slot, the
+    // same as every video: unselected, it stays still.
+    realGifVideo.playing = false;
+    if (realGifImage.playing) return Check.fail("a real .gif file kept animating once it was no longer the selected video");
+    realGifVideo.playing = true;
 
     const realGifThumb = Check.find(realGifVideo, "videoThumb");
     if (realGifThumb && realGifThumb.visible) return Check.fail("a real .gif file still shows its static thumbnail once its file is here");

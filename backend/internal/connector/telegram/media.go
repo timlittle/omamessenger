@@ -307,7 +307,7 @@ func documentImageProfile(dc tg.DocumentClass) (imagesafe.Profile, bool) {
 	case d.video:
 		return imagesafe.Profile{}, false
 	case isGIFImage(doc.MimeType, d.name):
-		return imagesafe.FullImage, true
+		return imagesafe.AnimatedGIF, true
 	default:
 		return imagesafe.Profile{}, false
 	}

@@ -79,6 +79,9 @@ Item {
     visible: root._isGifFile && root.path !== ""
     source: visible ? Links.fileURL(root.path) : ""
     playing: visible && root.windowActive
+    // Qt decodes the whole canvas for each frame; caching every one of
+    // them would hold the whole animation in memory at once.
+    cache: false
     fillMode: Image.PreserveAspectFit
     // Bounded to this player's own box (the viewer's full window
     // stage), never the file's own declared size (see PhotoView.qml's

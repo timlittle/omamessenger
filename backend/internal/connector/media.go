@@ -123,7 +123,7 @@ var gifMagic = []byte("GIF8")
 // sanitizer, whether malformed or over its caps, is removed and
 // reported as an error rather than left half-trusted on disk. Anything
 // whose header does not match, or whose size alone is already larger
-// than FullImage's own input cap, is left exactly as it was and
+// than AnimatedGIF's own input cap, is left exactly as it was and
 // reported false: a real video, which SanitizeIfGIF never reads in
 // full, let alone sanitizes.
 func SanitizeIfGIF(path string) (isGIF bool, err error) {
@@ -134,7 +134,7 @@ func SanitizeIfGIF(path string) (isGIF bool, err error) {
 	if !bytes.Equal(head, gifMagic) {
 		return false, nil
 	}
-	if size > imagesafe.FullImage.MaxInputLen {
+	if size > imagesafe.AnimatedGIF.MaxInputLen {
 		return false, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrMediaTooLarge, removeIfPresent(path)))
 	}
 
@@ -143,7 +143,7 @@ func SanitizeIfGIF(path string) (isGIF bool, err error) {
 		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
 	}
 
-	safe, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+	safe, ok := imagesafe.Sanitize(data, imagesafe.AnimatedGIF)
 	if !ok {
 		return false, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
 	}

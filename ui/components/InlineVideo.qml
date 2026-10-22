@@ -203,14 +203,18 @@ Item {
   // A real .gif file always animates through AnimatedImage, whether or
   // not QtMultimedia is even loaded (see _decoding above): this is the
   // one media kind that never touches the QtMultimedia-backed runtime
-  // at all.
+  // at all. It animates only while it is the one selected video
+  // (playing), so it shares the single decoding slot every video does,
+  // and it caches no frames, since Qt decodes the whole canvas for
+  // each one.
   AnimatedImage {
     id: realGif
     objectName: "realGifImage"
     anchors.fill: parent
     visible: !root._decoding && root._animated && root._realGifFile && root.path !== ""
     source: visible ? Links.fileURL(root.path) : ""
-    playing: visible && root.visible && root.windowActive
+    playing: visible && root.visible && root.windowActive && root.playing
+    cache: false
     fillMode: Image.PreserveAspectFit
     // Bounded to this bubble's own box, never the file's own declared
     // size (see PhotoView.qml's own sourceSize for why).

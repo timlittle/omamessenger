@@ -27,6 +27,11 @@ type Profile struct {
 	// any parsing: a cheap rejection for anything absurdly large to be
 	// a preview or sticker in the first place.
 	MaxInputLen int64
+	// MaxTotalPixels caps the canvas's pixel count multiplied by its
+	// frame count: Qt decodes the whole canvas for every frame of an
+	// animation, so this is the decoding work one loop costs, which a
+	// small, highly compressed file could otherwise make enormous.
+	MaxTotalPixels int64
 }
 
 // Thumbnail bounds a message's embedded preview and a downloaded
@@ -34,15 +39,21 @@ type Profile struct {
 // and StickerView.qml), so a declared size above a phone screen's own
 // pixel count already means the sender is lying, not sending a real
 // preview.
-var Thumbnail = Profile{MaxSide: 1024, MaxPixels: 1024 * 1024, MaxInputLen: 2 << 20}
+var Thumbnail = Profile{MaxSide: 1024, MaxPixels: 1024 * 1024, MaxInputLen: 2 << 20, MaxTotalPixels: 64_000_000}
 
-// FullImage bounds a downloaded photo, and a video a service marked as
-// a silent, looping "GIF" whose file is itself a real .gif (see
-// InlineVideo.qml's realGif). Generous enough for any photo a phone
-// camera takes - none shoot past a small fraction of 8192 pixels on a
-// side - but far short of the gigabyte-scale bitmap a crafted header
-// can otherwise make Qt allocate.
-var FullImage = Profile{MaxSide: 8192, MaxPixels: 40_000_000, MaxInputLen: 32 << 20}
+// FullImage bounds a downloaded or pasted still photo. Generous enough
+// for any photo a phone camera takes - none shoot past a small fraction
+// of 8192 pixels on a side - but far short of the gigabyte-scale bitmap
+// a crafted header can otherwise make Qt allocate. Its total allows a
+// single frame of that size and no more.
+var FullImage = Profile{MaxSide: 8192, MaxPixels: 40_000_000, MaxInputLen: 32 << 20, MaxTotalPixels: 40_000_000}
+
+// AnimatedGIF bounds a real GIF file shown animating (see
+// InlineVideo.qml's realGif): a message GIF is rarely past a phone
+// screen's width, so each frame is capped far below a photo, and the
+// whole animation to a few hundred frames of that, which Qt decodes on
+// the shell's own thread every loop.
+var AnimatedGIF = Profile{MaxSide: 2048, MaxPixels: 4_200_000, MaxInputLen: 32 << 20, MaxTotalPixels: 400_000_000}
 
 // format is one of the image formats this package knows how to
 // sanitize; every other byte stream is rejected outright, never
@@ -147,4 +158,10 @@ func withinCaps(width, height int64, profile Profile) bool {
 	}
 
 	return width*height <= profile.MaxPixels
+}
+
+// withinTotal reports whether frames frames of a width by height canvas
+// stay within profile's MaxTotalPixels.
+func withinTotal(width, height int64, frames int, profile Profile) bool {
+	return width*height*int64(max(frames, 1)) <= profile.MaxTotalPixels
 }

@@ -303,7 +303,7 @@ func imageProfile(ref mediaRef) (imagesafe.Profile, bool) {
 	case ref.Kind == mediaKindSticker:
 		return imagesafe.Thumbnail, true
 	case ref.Kind == mediaKindDocument && isGIFImage(ref.Mimetype, ref.FileName):
-		return imagesafe.FullImage, true
+		return imagesafe.AnimatedGIF, true
 	default:
 		return imagesafe.Profile{}, false
 	}

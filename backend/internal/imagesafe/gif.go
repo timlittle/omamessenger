@@ -33,7 +33,12 @@ func sanitizeGIF(data []byte, profile Profile) ([]byte, bool) {
 		return nil, false
 	}
 
-	return walkGIFBlocks(data, pos, &out, profile)
+	kept, frames, ok := walkGIFBlocks(data, pos, &out, profile)
+	if !ok || !withinTotal(width, height, frames, profile) {
+		return nil, false
+	}
+
+	return kept, true
 }
 
 // copyGIFScreen copies the logical screen descriptor and, when the
@@ -59,33 +64,35 @@ func copyGIFScreen(data []byte, out *bytes.Buffer) (pos int, ok bool) {
 
 // walkGIFBlocks copies every extension and image block from pos to
 // the trailer, dropping the ones gifExtension says to, until
-// gifMaxFrames image blocks or the trailer, whichever comes first.
-func walkGIFBlocks(data []byte, pos int, out *bytes.Buffer, profile Profile) ([]byte, bool) {
+// gifMaxFrames image blocks or the trailer, whichever comes first, and
+// returns how many image blocks it walked.
+func walkGIFBlocks(data []byte, pos int, out *bytes.Buffer, profile Profile) ([]byte, int, bool) {
 	frames := 0
 
 	for pos < len(data) {
 		switch data[pos] {
 		case 0x3B:
 			out.WriteByte(0x3B)
-			return finishGIF(out.Bytes())
+			kept, ok := finishGIF(out.Bytes())
+			return kept, frames, ok
 		case 0x21:
 			next, ok := copyGIFExtensionBlock(data, pos, out)
 			if !ok {
-				return nil, false
+				return nil, 0, false
 			}
 			pos = next
 		case 0x2C:
 			next, ok := copyGIFImageBlock(data, pos, out, profile, &frames)
 			if !ok {
-				return nil, false
+				return nil, 0, false
 			}
 			pos = next
 		default:
-			return nil, false
+			return nil, 0, false
 		}
 	}
 
-	return nil, false
+	return nil, 0, false
 }
 
 // copyGIFExtensionBlock copies the extension block at pos to out when

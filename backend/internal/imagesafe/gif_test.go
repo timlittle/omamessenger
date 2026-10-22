@@ -66,6 +66,41 @@ func TestSanitizeGIF_RejectsTooManyFrames(t *testing.T) {
 	}
 }
 
+// TestSanitizeGIF_CapsTotalDecodedPixels covers an animation whose
+// frames are each within the per-frame cap but which decodes, frame
+// after frame, to far more pixels than any real GIF: Qt decodes the
+// whole canvas for every frame, so frames times canvas is the work it
+// does per loop, and that is what the profile bounds.
+func TestSanitizeGIF_CapsTotalDecodedPixels(t *testing.T) {
+	tests := map[string]struct {
+		width, height, frames int
+		want                  bool
+	}{
+		"a typical message GIF":                         {480, 270, 60, true},
+		"many frames of a large canvas":                 {2000, 2000, 200, false},
+		"one large frame within the animated GIF limit": {2000, 2000, 1, true},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			src := buildGIF(tc.width, tc.height, tc.frames)
+			if _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); ok != tc.want {
+				t.Errorf("Sanitize(%dx%d x %d frames) ok = %v, want %v", tc.width, tc.height, tc.frames, ok, tc.want)
+			}
+		})
+	}
+}
+
+// TestSanitizeGIF_AnimatedGIFRejectsAPhotoSizedCanvas covers the
+// animated GIF profile's own per-frame cap, far below a still photo's.
+func TestSanitizeGIF_AnimatedGIFRejectsAPhotoSizedCanvas(t *testing.T) {
+	src := setGIFDimensions(buildGIF(4, 4, 1), 6000, 6000)
+
+	if _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); ok {
+		t.Fatal("Sanitize() = ok for a 6000x6000 animated GIF canvas, want rejected")
+	}
+}
+
 // TestSanitizeGIF_RejectsTruncatedFile covers a file cut off before
 // its trailer.
 func TestSanitizeGIF_RejectsTruncatedFile(t *testing.T) {
