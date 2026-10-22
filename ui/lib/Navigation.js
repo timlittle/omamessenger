@@ -34,18 +34,22 @@ function keyContext(state) {
   return 'list';
 }
 
-// escapeAction returns what Escape does: a visible helper-error notice
+// escapeAction returns what Escape does: a visible helper-error banner
 // clears first and alone, before anything else is checked, so dismissing
-// it never also closes whatever is open behind it. Below that it undoes
-// the innermost thing first (account setup, the photo viewer, the health
-// check report, the "What's new" overlay, palette, the reaction picker,
-// the delete question, dialog, search, composer, open conversation,
-// query, the all-unreads view) and hides the window only when there is
-// nothing left to undo. Inside the composer itself the order is: remove
-// a pending attachment, then cancel an edit or reply in progress, then
-// leave the composer.
+// it never also closes whatever is open behind it. The confirmation toast
+// (copying, saving, the update hint, …) clears next, but only while focus
+// is not in a text field - typing "Esc" to leave the composer or clear
+// search must not instead swallow a notice that happens to be showing.
+// Below that it undoes the innermost thing first (account setup, the
+// photo viewer, the health check report, the "What's new" overlay,
+// palette, the reaction picker, the delete question, dialog, search,
+// composer, open conversation, query, the all-unreads view) and hides the
+// window only when there is nothing left to undo. Inside the composer
+// itself the order is: remove a pending attachment, then cancel an edit
+// or reply in progress, then leave the composer.
 function escapeAction(state) {
   if (state.errorOpen) return 'dismiss-error';
+  if (state.toastOpen && !state.composeFocused && !state.searchFocused) return 'dismiss-toast';
   if (state.confirmOpen) return 'cancel-close';
   if (state.setupOpen) return 'close-setup';
   if (state.viewerOpen) return 'close-viewer';
@@ -97,7 +101,8 @@ function buildState(ctx) {
   const ui = ctx.service ? ctx.service.uiState : { pane: 'list', activeId: '' };
 
   return {
-    errorOpen: ctx.windowController ? (ctx.windowController.errorBannerText !== '' || ctx.windowController.noticeText !== '') : false,
+    errorOpen: ctx.windowController ? ctx.windowController.errorBannerText !== '' : false,
+    toastOpen: ctx.windowController ? ctx.windowController.toastText !== '' : false,
     confirmOpen: ctx.windowController ? ctx.windowController.confirmingClose : false,
     setupOpen: ctx.accountController ? (ctx.accountController.open || ctx.accountController.removing || ctx.accountController.renaming) : false,
     setupContext: ctx.accountController ? ctx.accountController.navContext : '',

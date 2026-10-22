@@ -103,6 +103,39 @@ test('keyContext ignores errorOpen: the banner is dismissed by Escape only, not 
   assert.strictEqual(Navigation.keyContext({ ...base, errorOpen: true, dialogOpen: true }), 'dialog');
 });
 
+// The confirmation toast (copying, saving, the update hint, …) is
+// dismissed by Escape too, but only while focus is not in a text field:
+// leaving the composer or clearing search must win there instead.
+
+test('escapeAction dismisses the toast when nothing has focus in a text field', () => {
+  assert.strictEqual(Navigation.escapeAction({ ...base, toastOpen: true }), 'dismiss-toast');
+  assert.strictEqual(Navigation.escapeAction({ ...base, toastOpen: true, paletteOpen: true }), 'dismiss-toast');
+});
+
+test('escapeAction leaves the toast showing and runs the text field\'s own Escape while composing', () => {
+  assert.strictEqual(
+    Navigation.escapeAction({ ...base, toastOpen: true, composeFocused: true, pane: 'conversation' }),
+    'leave-compose'
+  );
+});
+
+test('escapeAction leaves the toast showing and runs the text field\'s own Escape while searching', () => {
+  assert.strictEqual(Navigation.escapeAction({ ...base, toastOpen: true, searchFocused: true }), 'leave-search');
+});
+
+test('escapeAction dismisses a visible helper error before the toast', () => {
+  assert.strictEqual(Navigation.escapeAction({ ...base, errorOpen: true, toastOpen: true }), 'dismiss-error');
+});
+
+test('escapeAction falls through to the rest of the chain once the toast is clear', () => {
+  assert.strictEqual(Navigation.escapeAction({ ...base, toastOpen: false, dialogOpen: true }), 'close-dialog');
+});
+
+test('keyContext ignores toastOpen: the toast is dismissed by Escape only, not a key context of its own', () => {
+  assert.strictEqual(Navigation.keyContext({ ...base, toastOpen: true }), 'list');
+  assert.strictEqual(Navigation.keyContext({ ...base, toastOpen: true, dialogOpen: true }), 'dialog');
+});
+
 test('the close question takes keys before anything else', () => {
   const state = { confirmOpen: true, paletteOpen: true, dialogOpen: true, pane: 'conversation', activeId: 'c1' };
 
@@ -303,6 +336,7 @@ test('escapeAction: hide-window once the unread view is already off', () => {
 test('buildState defaults every field when no controller is given', () => {
   assert.deepEqual(Navigation.buildState({}), {
     errorOpen: false,
+    toastOpen: false,
     confirmOpen: false,
     setupOpen: false,
     setupContext: '',
@@ -332,7 +366,7 @@ test('buildState defaults every field when no controller is given', () => {
 test('buildState reads every field from the controller that owns it, including doctorOpen', () => {
   const ctx = {
     service: { uiState: { pane: 'conversation', activeId: 'ignored-without-conversationController' } },
-    windowController: { confirmingClose: true, doctorOpen: true, whatsNewOpen: true, paletteOpen: true, errorBannerText: 'could not send' },
+    windowController: { confirmingClose: true, doctorOpen: true, whatsNewOpen: true, paletteOpen: true, errorBannerText: 'could not send', toastText: 'Copied to clipboard' },
     accountController: { open: false, removing: true, navContext: 'removeAccount' },
     photoViewerController: { viewerOpen: true },
     reactionsController: { pickerOpen: true },
@@ -346,6 +380,7 @@ test('buildState reads every field from the controller that owns it, including d
 
   assert.deepEqual(Navigation.buildState(ctx), {
     errorOpen: true,
+    toastOpen: true,
     confirmOpen: true,
     setupOpen: true,
     setupContext: 'removeAccount',
@@ -372,12 +407,11 @@ test('buildState reads every field from the controller that owns it, including d
   });
 });
 
-test('buildState errorOpen is true for a brief notice too, not only an error', () => {
-  // A notice (such as "Copied to clipboard") shares the error banner's
-  // row and its Escape step, even though it is not an error itself.
-  const ctx = { windowController: { errorBannerText: '', noticeText: 'Copied to clipboard' } };
+test('buildState errorOpen reflects only errorBannerText, never the toast', () => {
+  const ctx = { windowController: { errorBannerText: '', toastText: 'Copied to clipboard' } };
 
-  assert.strictEqual(Navigation.buildState(ctx).errorOpen, true);
+  assert.strictEqual(Navigation.buildState(ctx).errorOpen, false);
+  assert.strictEqual(Navigation.buildState(ctx).toastOpen, true);
 });
 
 test('buildState falls back to service.uiState.pane when no conversationController is given', () => {

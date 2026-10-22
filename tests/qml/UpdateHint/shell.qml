@@ -1,12 +1,16 @@
 // Checks the one-time "Updated to vX" hint's wiring into
-// WindowController's noticeText: whether to show it at all is
+// WindowController's toastText: whether to show it at all is
 // WhatsNew.shouldShowHint's own job, proven exhaustively in
-// tests/unit/whatsnew.test.cjs; this only checks that service.showUpdateHint
-// and service.appVersion reach the banner, that it wins over an ordinary
-// confirmation notice while both are set, and that dismissing it (the
-// banner's own dismiss, which Escape also reaches) keeps it gone for the
-// rest of the run even though showUpdateHint itself never goes false on
-// its own.
+// tests/unit/whatsnew.test.cjs, and the priority between it and an
+// ordinary notice is Toast.pickText's own job, proven exhaustively in
+// tests/unit/toast.test.cjs. This only checks that service.showUpdateHint
+// and service.appVersion actually reach the toast, that an ordinary
+// confirmation notice (such as copying or saving, see
+// ConversationController.notice) reaches it too, and that dismissing it
+// (through the same Escape chain Toast.qml's own auto-dismiss and click
+// also reach, proven in tests/unit/navigation.test.cjs) keeps it gone for
+// the rest of the run even though showUpdateHint itself never goes false
+// on its own.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -72,29 +76,29 @@ ShellRoot {
   function checkHintShowsAndWins(): void {
     const want = WhatsNew.hintText(service.appVersion);
     service.showUpdateHint = true;
-    if (windowController.noticeText !== want)
-      return Check.fail("noticeText did not show the update hint: " + windowController.noticeText);
+    if (windowController.toastText !== want)
+      return Check.fail("toastText did not show the update hint: " + windowController.toastText);
 
     conversationController.timeline.notice = "Copied to clipboard";
-    if (windowController.noticeText !== want)
-      return Check.fail("an ordinary notice overrode the update hint: " + windowController.noticeText);
+    if (windowController.toastText !== want)
+      return Check.fail("an ordinary notice overrode the update hint: " + windowController.toastText);
 
     root.checkDismissSticks();
   }
 
-  // checkDismissSticks dismisses the banner through the same chain
-  // Escape uses (which clears every notice source at once, the same
-  // way dismissErrorBanner already clears every error source at once),
-  // then confirms the hint does not come back on a later, unrelated
-  // notice even though showUpdateHint itself is still true.
+  // checkDismissSticks dismisses the toast through the same chain Escape
+  // uses (which clears every toast source at once, the same way
+  // dismissErrorBanner already clears every error source at once), then
+  // confirms the hint does not come back on a later, unrelated notice
+  // even though showUpdateHint itself is still true.
   function checkDismissSticks(): void {
     windowController.run("escape");
-    if (windowController.noticeText !== "")
-      return Check.fail("escape left something showing: " + windowController.noticeText);
+    if (windowController.toastText !== "")
+      return Check.fail("escape left something showing: " + windowController.toastText);
 
     conversationController.timeline.notice = "Saved";
-    if (windowController.noticeText !== "Saved")
-      return Check.fail("the update hint came back after being dismissed: " + windowController.noticeText);
+    if (windowController.toastText !== "Saved")
+      return Check.fail("the update hint came back after being dismissed: " + windowController.toastText);
 
     stepper.pass();
   }

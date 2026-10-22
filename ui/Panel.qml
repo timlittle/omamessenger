@@ -373,27 +373,24 @@ Item {
           id: errorBanner
           objectName: "errorBanner"
           Layout.fillWidth: true
-          visible: windowController.bannerText.length > 0
+          visible: windowController.errorBannerText.length > 0
           spacing: Theme.spacing.sm
 
           Text {
             id: errorLine
             objectName: "errorLine"
             Layout.fillWidth: true
-            text: windowController.bannerText
+            text: windowController.errorBannerText
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            // A brief confirmation (Copied to clipboard, Saved to …) is
-            // never mistaken for an error: only an actual error turns
-            // this red, the same accent a real one always has.
-            color: windowController.bannerIsError ? Theme.urgent : Theme.foreground
+            color: Theme.urgent
             font.family: Theme.font.family
             font.pixelSize: Theme.font.bodySmall
 
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
-              onClicked: windowController.bannerIsError ? windowController.dismissErrorBanner() : windowController.dismissNotice()
+              onClicked: windowController.dismissErrorBanner()
             }
           }
 
@@ -402,9 +399,9 @@ Item {
             objectName: "dismissErrorButton"
             iconText: "×"
             tooltipText: "Dismiss"
-            foreground: windowController.bannerIsError ? Theme.urgent : Theme.foreground
+            foreground: Theme.urgent
             focusable: true
-            onClicked: windowController.bannerIsError ? windowController.dismissErrorBanner() : windowController.dismissNotice()
+            onClicked: windowController.dismissErrorBanner()
           }
         }
 
@@ -447,6 +444,19 @@ Item {
             active: root.service !== null && root.service.readReceipts === false
           }
         }
+      }
+
+      // The confirmation toast floats above everything else in the
+      // window, near the bottom centre and just above the composer,
+      // rather than taking a row in the ColumnLayout above: it must
+      // never push the message list or the composer around as it comes
+      // and goes.
+      Toast {
+        anchors.bottom: layout.bottom
+        anchors.bottomMargin: Theme.spacing.lg
+        anchors.horizontalCenter: layout.horizontalCenter
+        text: windowController.toastText
+        onDismissed: windowController.dismissToast()
       }
     }
   }
