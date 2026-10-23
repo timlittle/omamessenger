@@ -134,3 +134,20 @@ test('a block with sourceSize set is not flagged', () => {
 
   assert.deepEqual(findUnboundedImages('fixture.qml', src), []);
 });
+
+// A bounded sourceSize alone is not enough for the composer's own
+// attachment chip: a file picked from disk reaches it before
+// media.attach has sanitized anything, so deciding to show a preview
+// from the file's own name (what guessMediaKind used to do) would let
+// a crafted file reach an Image decoder before imagesafe ever runs
+// (see docs/decisions.md). This guards against that decision coming
+// back: every preview must be gated on a kind the helper itself
+// reported.
+test('no component decides an attachment preview from the file name alone', () => {
+  const offenders = qmlFiles(UI_ROOT)
+    .map((file) => path.relative(UI_ROOT, file))
+    .filter((file) => fs.readFileSync(path.join(UI_ROOT, file), 'utf8').includes('guessMediaKind'));
+
+  assert.deepEqual(offenders, [],
+    `${offenders.length} file(s) still decide a preview from the file name: ${offenders.join(', ')}`);
+});

@@ -1,7 +1,9 @@
 // Checks the composer: trimmed submit, whitespace ignored, cleared input,
 // a fixed placeholder that never names the conversation, the blocked banner and
 // placeholder shown while blocked, the reply banner and sending the
-// id it answers, cancelling a reply, the attachment chip, both the
+// id it answers, cancelling a reply, the attachment chip, the chip's
+// preview showing only for a reported kind of "photo" and never
+// guessed from the path's own extension, both the
 // banner and the chip showing together, the @-mention picker (shown
 // while typing "@" in a group, keyboard and mouse insertion, Escape
 // closing it without inserting, and the resolved mention reaching
@@ -84,6 +86,7 @@ ShellRoot {
     if (!root.checkReplyBanner()) return;
     if (!root.checkEditBanner()) return;
     if (!root.checkAttachment()) return;
+    if (!root.checkAttachmentPreview()) return;
     if (!root.checkBannerAndChipTogether()) return;
 
     composer.attachmentPath = "";
@@ -223,6 +226,40 @@ ShellRoot {
       return Check.fail("attachmentRemoveRequested fired " + root.removeRequests + " times, want 1");
 
     composer.attachmentPath = "";
+    return true;
+  }
+
+  // checkAttachmentPreview verifies the chip decides its thumbnail from
+  // attachmentKind alone, never from attachmentPath's own extension: a
+  // ".png" path with no reported kind shows the file glyph, not a
+  // decoded image, since the helper has not actually sanitized it as
+  // one; a reported kind of "photo" shows the preview, "video" shows
+  // the video glyph instead. It also checks attachmentName, not
+  // attachmentPath's own base name, is what the chip names once set,
+  // since a prepared attachment's path carries an internal id.
+  function checkAttachmentPreview(): bool {
+    const preview = Check.find(composer, "attachmentPreview");
+    if (!preview) return Check.fail("no attachmentPreview found");
+
+    composer.attachmentPath = "/tmp/evil.png";
+    composer.attachmentKind = "";
+    if (preview.visible) return Check.fail("a .png path with no reported kind showed a decoded preview");
+
+    composer.attachmentKind = "photo";
+    if (!preview.visible) return Check.fail("attachmentKind photo did not show the preview");
+
+    composer.attachmentPath = "/outgoing/m1-vacation.png";
+    composer.attachmentName = "vacation.png";
+    const name = Check.find(composer, "attachmentName");
+    if (!name || name.text !== "vacation.png")
+      return Check.fail("attachment name = " + (name && name.text) + ", want vacation.png, not the stored path's own base name");
+
+    composer.attachmentKind = "video";
+    if (preview.visible) return Check.fail("attachmentKind video still showed a decoded preview");
+
+    composer.attachmentPath = "";
+    composer.attachmentName = "";
+    composer.attachmentKind = "";
     return true;
   }
 

@@ -47,11 +47,26 @@ Item {
   property string _draftBeforeEdit: ""
 
   // attachmentPath is the file to send with the next message, or "" for
-  // none: set by attachFile (the composer's own file picker) or
-  // pasteImage (a clipboard image, through the helper), and read by
+  // none: set by attachFile (the composer's own file picker, through
+  // media.attach) or pasteImage (a clipboard image, through
+  // media.paste), once either finishes, and read by
   // ConversationController.send(). See Composer.qml for why the caller,
-  // not the composer, owns it.
+  // not the composer, owns it. It always names a file the helper has
+  // already copied into its own outgoing media area and, when it looks
+  // like a photo, sanitized with imagesafe: never the raw path the file
+  // picker itself returned.
   property string attachmentPath: ""
+
+  // attachmentName is attachmentPath's own display name, from the same
+  // round trip: "" for a pasted image, which has no name of its own
+  // (Composer.qml then falls back to attachmentPath's own base name).
+  property string attachmentName: ""
+
+  // attachmentKind is what media.attach or media.paste found
+  // attachmentPath really is - "photo", "video" or "file" - from the
+  // file's own bytes, never guessed from its name. Composer.qml shows
+  // a decoded preview only when this is "photo".
+  property string attachmentKind: ""
 
   // composeFocused mirrors whether the composer holds keyboard focus; the
   // caller sets it from the real text field so the Escape chain can read it.
@@ -200,16 +215,43 @@ Item {
     });
   }
 
-  // attachFile records a file the composer's own file picker chose, to
-  // send with the next message.
+  // attachFile asks the helper to copy path, a file the composer's own
+  // file picker chose, into the outgoing media area and sanitize it
+  // with imagesafe when it looks like a photo, before the chip ever
+  // shows a preview built from it (see docs/decisions.md): the same
+  // treatment a pasted image already gets, never a decision made from
+  // the file's own extension. media.attach answers asynchronously, so
+  // the open conversation is captured when it starts, the same
+  // staleness guard pasteImage uses below; an oversized or unsafe
+  // image is refused outright and reported the same way a failed send
+  // already is. attachmentPath, name and kind are set only once it
+  // succeeds, so the chip never shows anything for a refused file.
   function attachFile(path: string): void {
-    root.attachmentPath = path;
+    if (!root.service) return;
+
+    const conversationId = root.conversation ? root.conversation.activeId : "";
+    const isCurrent = Rpc.guard(() => root.conversation ? root.conversation.activeId : null, conversationId);
+    root.service.request("media.attach", { path: path }, function(error, result) {
+      if (!isCurrent()) return;
+      if (error) { root.conversation.timeline.lastError = Rpc.errorText(error); return; }
+
+      root.attachmentPath = result.path;
+      root.attachmentName = result.name;
+      root.attachmentKind = result.kind;
+    });
   }
 
   // removeAttachment clears whatever attachFile or pasteImage set, from
-  // the composer's chip or the Escape chain.
+  // the composer's chip, the Escape chain, or once a message carrying
+  // it has been handed to the service (see
+  // ConversationController.send). Its outgoing copy is not
+  // deleted here: with no message yet referring to it, the background
+  // sweep that already cleans up an abandoned paste removes it too,
+  // once its grace period passes (see cache.Outgoing.Sweep).
   function removeAttachment(): void {
     root.attachmentPath = "";
+    root.attachmentName = "";
+    root.attachmentKind = "";
   }
 
   // pasteImage asks the helper whether the clipboard holds an image; if
@@ -229,6 +271,8 @@ Item {
       if (!isCurrent()) return;
       if (error) { root.pasteFallbackRequested(); return; }
       root.attachmentPath = result.path;
+      root.attachmentName = "";
+      root.attachmentKind = result.kind || "";
     });
   }
 
@@ -240,6 +284,8 @@ Item {
     root.editTarget = null;
     root._draftBeforeEdit = "";
     root.attachmentPath = "";
+    root.attachmentName = "";
+    root.attachmentKind = "";
     root.spellMisspellings = [];
     root.spellSuggestions = [];
   }

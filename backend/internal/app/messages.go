@@ -138,9 +138,15 @@ func (c *Commands) olderFromService(ctx context.Context, conv domain.Conversatio
 // limit: an attachment to send with text as its caption, the local id
 // of a message in the same conversation this one answers, and the
 // "@name" tokens the composer inserted into text. Each is "" or nil
-// when the message has none.
+// when the message has none. AttachmentName overrides the attachment's
+// display name - needed when AttachmentPath already names a file
+// media.attach or media.paste prepared, whose own base name carries an
+// internal id rather than the name the user recognises (see
+// prepareAttachment); "" falls back to AttachmentPath's own base name,
+// right for a plain disk path.
 type SendOptions struct {
 	AttachmentPath string
+	AttachmentName string
 	ReplyToID      string
 	Mentions       []domain.Mention
 }
@@ -154,7 +160,7 @@ func (c *Commands) Send(ctx context.Context, conversationID, text string, opts S
 		id = newAttachmentID()
 	}
 
-	media, err := c.prepareAttachment(ctx, id, opts.AttachmentPath)
+	media, err := c.prepareAttachment(ctx, id, opts.AttachmentPath, opts.AttachmentName)
 	if err != nil {
 		return domain.Message{}, err
 	}

@@ -81,8 +81,23 @@ Item {
   // drives the banner and submit()'s send-or-save choice.
   property var editTarget: null
   // attachmentPath is the file to send with the next message, or "" for
-  // none. The chip above the text field shows it.
+  // none. The chip above the text field shows it. Set only once the
+  // caller's media.attach or media.paste round trip finishes (see
+  // ComposerController), so it always names a file the helper has
+  // already sanitized when it looks like a photo, never the raw path
+  // the file picker returned.
   property string attachmentPath: ""
+  // attachmentName is attachmentPath's own display name, from the same
+  // helper round trip: attachmentPath's own base name carries an
+  // internal id once it is inside the outgoing media area, not the
+  // name the user picked, so the chip falls back to it only when this
+  // is "" (a pasted image, which has no name of its own).
+  property string attachmentName: ""
+  // attachmentKind is what the helper found attachmentPath really is -
+  // "photo", "video" or "file" - from the file's own bytes, never
+  // guessed from its name. The chip shows a decoded preview only when
+  // this is "photo": the one kind the helper has already sanitized.
+  property string attachmentKind: ""
   // routeKey intercepts a key press before the input handles it; see the
   // file comment above for why this is a function property, not a signal.
   property var routeKey: null
@@ -382,9 +397,6 @@ Item {
   readonly property real _lineHeight: fontMetrics.height
   readonly property real _maxInputHeight: _lineHeight * maxVisibleLines + (root.input ? root.input.topPadding + root.input.bottomPadding : 0)
   readonly property bool _canSend: root.text.trim().length > 0 || root.attachmentPath !== ""
-  // _attachmentKind guesses the chip's thumbnail-or-name choice from the
-  // file name alone, before the helper ever sniffs its real content.
-  readonly property string _attachmentKind: root.attachmentPath !== "" ? Format.guessMediaKind(root.attachmentPath) : ""
 
   implicitWidth: Style.space(280)
   implicitHeight: layout.implicitHeight + 2 * Theme.spacing.xs
@@ -538,24 +550,29 @@ Item {
         color: Util.alpha(Theme.accent, 0.22)
 
         Image {
+          objectName: "attachmentPreview"
           anchors.fill: parent
-          visible: root._attachmentKind === "photo"
-          source: root._attachmentKind === "photo" ? Links.fileURL(root.attachmentPath) : ""
+          visible: root.attachmentKind === "photo"
+          source: root.attachmentKind === "photo" ? Links.fileURL(root.attachmentPath) : ""
           fillMode: Image.PreserveAspectCrop
           asynchronous: true
           // Bounded to this chip's own box, never the file's own
-          // declared size: an attachment can come from the clipboard,
-          // which another program controls, the same risk a received
-          // photo carries (see PhotoView.qml's own sourceSize and
-          // docs/decisions.md).
+          // declared size: attachmentPath can be a file media.attach
+          // or media.paste copied in from disk or the clipboard, each
+          // outside this UI's control, the same risk a received photo
+          // carries (see PhotoView.qml's own sourceSize and
+          // docs/decisions.md). attachmentKind itself is never a
+          // guess from the file's name - see ComposerController - so
+          // this never decodes a file the helper has not already
+          // sanitized.
           sourceSize.width: Style.space(32)
           sourceSize.height: Style.space(32)
         }
 
         Text {
           anchors.centerIn: parent
-          visible: root._attachmentKind !== "photo"
-          text: root._attachmentKind === "video" ? "▶" : "📄"
+          visible: root.attachmentKind !== "photo"
+          text: root.attachmentKind === "video" ? "▶" : "📄"
           textFormat: Text.PlainText
           color: Theme.accent
           font { family: Theme.font.family; pixelSize: Theme.font.icon }
@@ -565,7 +582,7 @@ Item {
       Text {
         objectName: "attachmentName"
         Layout.fillWidth: true
-        text: root.attachmentPath !== "" ? Format.baseName(root.attachmentPath) : ""
+        text: root.attachmentName !== "" ? root.attachmentName : (root.attachmentPath !== "" ? Format.baseName(root.attachmentPath) : "")
         textFormat: Text.PlainText
         elide: Text.ElideMiddle
         color: Theme.foreground

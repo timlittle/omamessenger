@@ -307,8 +307,9 @@ Item {
     const attachment = root.composer ? root.composer.attachmentPath : "";
     if (!root.activeId || (!text && !attachment)) return;
 
+    const attachmentName = root.composer ? root.composer.attachmentName : "";
     const params = { conversationId: root.activeId, text: text };
-    if (attachment) params.attachment = { path: attachment };
+    if (attachment) params.attachment = attachmentName ? { path: attachment, name: attachmentName } : { path: attachment };
     if (replyToId) params.replyTo = replyToId;
     if (mentions && mentions.length > 0) params.mentions = mentions;
 
@@ -318,7 +319,7 @@ Item {
       root.applyMessage(result);
     });
     if (root.composer) {
-      root.composer.attachmentPath = "";
+      root.composer.removeAttachment();
       root.composer.cancelReply();
     }
     highlight.clearJump();

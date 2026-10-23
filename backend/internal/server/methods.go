@@ -62,6 +62,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"media.save":                bind(mediaSave(c)),
 		"media.copy":                bind(mediaCopy(c)),
 		"media.paste":               bind(mediaPaste(c)),
+		"media.attach":              bind(mediaAttach(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
 		"whatsNew.getSeenVersion":   bind(whatsNewGetSeenVersion(c)),
 		"whatsNew.setSeenVersion":   bind(whatsNewSetSeenVersion(c)),
@@ -380,16 +381,23 @@ type sendParams struct {
 	Mentions       []domain.Mention  `json:"mentions,omitempty"`
 }
 
-// attachmentParams names a file to attach to an outgoing message.
+// attachmentParams names a file to attach to an outgoing message. Name
+// is optional and overrides the attachment's display name: the UI sets
+// it to media.attach's or media.paste's own result when Path is
+// already a file one of those prepared, whose base name carries an
+// internal id rather than the name the user picked; omitted, Send falls
+// back to Path's own base name, right for a plain disk path from an
+// older UI.
 type attachmentParams struct {
 	Path string `json:"path"`
+	Name string `json:"name,omitempty"`
 }
 
 // messagesSend sends a message.
 func messagesSend(c *app.Commands) func(context.Context, sendParams) (any, error) {
 	return func(ctx context.Context, p sendParams) (any, error) {
 		return c.Send(ctx, p.ConversationID, p.Text, app.SendOptions{
-			AttachmentPath: attachmentPath(p.Attachment), ReplyToID: p.ReplyTo, Mentions: p.Mentions,
+			AttachmentPath: attachmentPath(p.Attachment), AttachmentName: attachmentName(p.Attachment), ReplyToID: p.ReplyTo, Mentions: p.Mentions,
 		})
 	}
 }

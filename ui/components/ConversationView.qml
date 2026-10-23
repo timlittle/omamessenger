@@ -50,6 +50,12 @@ Item {
   // attachmentPath is the file to send with the next message, or "" for
   // none; see Composer.qml for why the caller owns it.
   property string attachmentPath: ""
+  // attachmentName is attachmentPath's own display name; see
+  // Composer.qml's own property of the same name.
+  property string attachmentName: ""
+  // attachmentKind is what the helper found attachmentPath really is;
+  // see Composer.qml's own property of the same name.
+  property string attachmentKind: ""
   // composeEnabled is false while the conversation can't accept input.
   property bool composeEnabled: true
   // historyUnavailable is true once scrolling back asked the service for
@@ -360,6 +366,8 @@ Item {
       enabled: root.composeEnabled && !root._blocked
       blocked: root._blocked
       attachmentPath: root.attachmentPath
+      attachmentName: root.attachmentName
+      attachmentKind: root.attachmentKind
       bindings: root.bindings
       routeKey: root.routeKey
       members: root.members

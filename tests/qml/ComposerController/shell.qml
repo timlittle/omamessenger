@@ -1,8 +1,11 @@
-// Checks ComposerController.pasteImage against a scripted service whose
-// media.paste reply is held back until the test fires it by hand: pasting
-// an image answers asynchronously, so a paste started in one conversation
-// must not attach, or fall back to a plain paste, in whatever conversation
-// is open by the time the helper replies. Also checks the editing wiring:
+// Checks ComposerController.pasteImage and attachFile against a scripted
+// service whose media.paste or media.attach reply is held back until the
+// test fires it by hand: both answer asynchronously, so one started in one
+// conversation must not attach, or fall back to a plain paste, in whatever
+// conversation is open by the time the helper replies. attachFile is also
+// checked for calling media.attach (never setting attachmentPath straight
+// from the picked path) and for showing a refused file as an error rather
+// than attaching it. Also checks the editing wiring:
 // compose.editLast (Up in an empty composer) loads the conversation's
 // last editable message, saveEdit (Enter while editing) calls
 // messages.edit with the right params, and cancelEdit (Esc while
@@ -141,12 +144,55 @@ ShellRoot {
       return;
     }
 
+    if (!root.checkAttachFile()) return;
     if (!root.checkEditFromUp()) return;
     if (!root.checkSaveEdit()) return;
     if (!root.checkCancelEdit()) return;
 
     console.log("PASS ComposerController");
     Qt.exit(0);
+  }
+
+  // checkAttachFile drives attachFile: it calls media.attach rather
+  // than setting attachmentPath straight from the picked path, a reply
+  // for the conversation still open attaches with the kind and name
+  // the helper reported, a reply for one that is not is dropped, and a
+  // refused file reports the error through the open conversation
+  // rather than attaching anything.
+  function checkAttachFile(): bool {
+    composer.attachFile("/pick/vacation.png");
+    const sameConversationReply = root.takePending();
+    if (!sameConversationReply) return Check.fail("attachFile did not call the service");
+    if (fakeService.lastMethod !== "media.attach")
+      return Check.fail("attachFile called " + fakeService.lastMethod + ", want media.attach");
+    if (fakeService.lastParams.path !== "/pick/vacation.png")
+      return Check.fail("media.attach params = " + JSON.stringify(fakeService.lastParams));
+
+    sameConversationReply(null, { path: "/outgoing/m1-vacation.png", name: "vacation.png", kind: "photo" });
+    if (composer.attachmentPath !== "/outgoing/m1-vacation.png" || composer.attachmentName !== "vacation.png" || composer.attachmentKind !== "photo")
+      return Check.fail("a reply for the conversation still open did not attach: " +
+        composer.attachmentPath + " " + composer.attachmentName + " " + composer.attachmentKind);
+
+    composer.removeAttachment();
+    composer.attachFile("/pick/leaked.png");
+    const switchedBeforeSuccess = root.takePending();
+    fakeConversation.activeId = "d";
+    switchedBeforeSuccess(null, { path: "/outgoing/m2-leaked.png", name: "leaked.png", kind: "photo" });
+    if (composer.attachmentPath !== "")
+      return Check.fail("a media.attach reply for a closed conversation attached to the one now open: " + composer.attachmentPath);
+
+    fakeConversation.activeId = "a";
+    fakeConversation.timeline.lastError = "";
+    composer.attachFile("/pick/evil.png");
+    const refused = root.takePending();
+    refused({ code: -32602, message: "the attached image could not be used" }, null);
+    if (composer.attachmentPath !== "")
+      return Check.fail("a refused file was still attached: " + composer.attachmentPath);
+    if (fakeConversation.timeline.lastError !== "The attached image could not be used.")
+      return Check.fail("a refused attach did not surface through the open conversation's error: " + fakeConversation.timeline.lastError);
+
+    fakeConversation.timeline.lastError = "";
+    return true;
   }
 
   // checkEditFromUp drives compose.editLast (Up in an empty composer):

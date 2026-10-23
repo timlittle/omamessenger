@@ -30,15 +30,23 @@ const MaxAttachmentSize = 2 << 30
 // it with every message costs nothing worth noticing.
 const thumbMaxSize = 48
 
-// prepareAttachment copies the file at path into the outgoing media
-// area under id and describes it as a domain.Media: a photo or video for
-// a kind the file's own bytes say it is, a file otherwise. An empty path
-// means the message has no attachment, so it returns nil media and no
-// error. When path names a real file the user picked from disk, rather
-// than one already inside the outgoing area such as a clipboard paste,
-// its path and modification time are remembered too, so a later retry
-// can re-copy it if the outgoing copy ever goes missing.
-func (c *Commands) prepareAttachment(ctx context.Context, id, path string) (*domain.Media, error) {
+// prepareAttachment turns path into the domain.Media for id's message.
+// name overrides the attachment's display name when set; "" falls back
+// to path's own base name, right for a genuine disk path but wrong for
+// one already inside the outgoing area, whose base name carries an
+// internal id (see reuseAttachment, which the caller supplies the real
+// name to instead). An empty path means the message has no attachment,
+// so it returns nil media and no error.
+//
+// A path already inside the outgoing media area - one media.attach or
+// media.paste already copied in, sanitizing it with imagesafe there if
+// it looked like a photo, never one the user picked straight from disk
+// - is moved into place instead of being copied and sanitized all over
+// again (see reuseAttachment). Only a genuine disk path is copied and
+// sanitized here, and remembers OriginalPath and OriginalModTime too,
+// so a later retry can re-copy it if the outgoing copy ever goes
+// missing.
+func (c *Commands) prepareAttachment(ctx context.Context, id, path, name string) (*domain.Media, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -56,7 +64,14 @@ func (c *Commands) prepareAttachment(ctx context.Context, id, path string) (*dom
 		return nil, fmt.Errorf("%w: files over 2 GB cannot be sent", ErrInvalidInput)
 	}
 
-	name := filepath.Base(path)
+	if name == "" {
+		name = filepath.Base(path)
+	}
+
+	if !c.attachedFromDisk(path) {
+		return c.reuseAttachment(id, path, name, info.Size())
+	}
+
 	stored, err := c.storeAttachment(ctx, id, name, path)
 	if err != nil {
 		return nil, err
@@ -68,8 +83,29 @@ func (c *Commands) prepareAttachment(ctx context.Context, id, path string) (*dom
 		return nil, err
 	}
 
-	if c.attachedFromDisk(path) {
-		media.OriginalPath, media.OriginalModTime = path, info.ModTime().UnixMilli()
+	media.OriginalPath, media.OriginalModTime = path, info.ModTime().UnixMilli()
+
+	return media, nil
+}
+
+// reuseAttachment moves path - a file media.attach or media.paste
+// already copied into the outgoing media area, sanitizing it with
+// imagesafe there if it looked like a photo - into its place under id,
+// without copying or sanitizing it again: both already happened once,
+// the moment it was attached or pasted. It carries no OriginalPath:
+// there is nothing further back to recopy from if this outgoing copy
+// goes missing, the same as an image pasted from the clipboard has
+// always had (see docs/decisions.md).
+func (c *Commands) reuseAttachment(id, path, name string, size int64) (*domain.Media, error) {
+	stored := c.outgoing.Path(id, name)
+	if err := os.Rename(path, stored); err != nil {
+		return nil, fmt.Errorf("reuse attachment: %w", err)
+	}
+
+	media := &domain.Media{Kind: sniffKind(stored), Path: stored, FileName: name, Size: size}
+	if media.Kind == domain.MediaPhoto {
+		media.Width, media.Height = imageDimensions(stored)
+		media.Thumb = photoThumb(stored)
 	}
 
 	return media, nil
@@ -77,8 +113,8 @@ func (c *Commands) prepareAttachment(ctx context.Context, id, path string) (*dom
 
 // attachedFromDisk reports whether path names a file outside the
 // outgoing media area: one the user picked from disk, worth
-// remembering for a retry to go back to, as opposed to an image
-// PasteImage already copied in from the clipboard, which has no
+// remembering for a retry to go back to, as opposed to one media.attach
+// or media.paste already copied into the outgoing area, which has no
 // original of its own.
 func (c *Commands) attachedFromDisk(path string) bool {
 	if c.outgoing == nil {

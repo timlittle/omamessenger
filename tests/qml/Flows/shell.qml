@@ -111,12 +111,18 @@ ShellRoot {
     root.openMum,
     root.waitForMumWithOlderHistory,
     root.waitForMumsPhoto,
-    root.attachAndSendToMum,
+    root.startAttachToMum,
+    root.waitForAttachmentChip,
+    root.sendAttachmentWithCaption,
     root.waitForAttachmentDelivered,
-    root.attachImageToMum,
+    root.startAttachImageToMum,
+    root.waitForAttachmentChip,
+    root.sendImageWithCaption,
     root.waitForImageDelivered,
     root.waitForFirstSentPhotoResolvedToCache,
-    root.attachSecondImageToMum,
+    root.startAttachSecondImageToMum,
+    root.waitForAttachmentChip,
+    root.sendSecondImageWithCaption,
     root.waitForSecondImageDelivered,
     root.waitForSecondSentPhotoResolvedToCache,
     root.leaveComposeForListReturn,
@@ -562,22 +568,40 @@ ShellRoot {
     return newest.mediaPath !== "" && newest.mediaPath.indexOf("/omamessenger/media/") >= 0;
   }
 
-  // attachAndSendToMum attaches a file from the test's own directory, the
-  // way the composer's file dialog would report it having been picked,
-  // then sends it with a caption. Driving a real file dialog headlessly
-  // is not possible, so this calls the signal the dialog's onAccepted
-  // handler would have emitted.
-  function attachAndSendToMum(): var {
+  // _pendingAttachmentName is the file name waitForAttachmentChip polls
+  // for: the composer's own media.attach round trip now finishes after
+  // fileAttached returns, so attaching and sending are their own steps
+  // rather than one, the chip's appearance confirmed before typing a
+  // caption and sending (see docs/decisions.md).
+  property string _pendingAttachmentName: ""
+
+  // startAttachToMum attaches a file from the test's own directory, the
+  // way the composer's file dialog would report it having been picked.
+  // Driving a real file dialog headlessly is not possible, so this
+  // calls the signal the dialog's onAccepted handler would have
+  // emitted; waitForAttachmentChip below holds until the helper's
+  // media.attach reply actually shows it in the chip.
+  function startAttachToMum(): var {
     const composer = Check.find(root.panel(), "composer");
     composer.fileAttached(root.testRoot + "/attachment.txt");
+    root._pendingAttachmentName = "attachment.txt";
+    return true;
+  }
 
+  // waitForAttachmentChip holds until the chip shows
+  // _pendingAttachmentName, once media.attach's reply has set it: the
+  // one wait step every attach-and-send pair below shares.
+  function waitForAttachmentChip(): var {
     const chip = Check.find(root.panel(), "attachmentChip");
-    if (!chip || !chip.visible) return Check.fail("attachment chip did not appear after fileAttached");
+    if (!chip || !chip.visible) return false;
 
     const name = Check.find(root.panel(), "attachmentName");
-    if (!name || name.text !== "attachment.txt")
-      return Check.fail("attachment chip name = " + (name && name.text) + ", want attachment.txt");
+    return !!name && name.text === root._pendingAttachmentName;
+  }
 
+  // sendAttachmentWithCaption types a caption for the file attached to
+  // Mum and sends it.
+  function sendAttachmentWithCaption(): var {
     root.type("see attached");
     t.keyClick(Qt.Key_Return);
     return true;
@@ -591,35 +615,38 @@ ShellRoot {
 
     return root.messageStatus("see attached") === "sent" || root.messageStatus("see attached") === "delivered";
   }
-  // attachImageToMum attaches a photo from the test's own directory, the
-  // way the composer's file dialog would report it having been picked,
-  // then sends it with a caption.
-  function attachImageToMum(): var {
-    return root.attachPhotoToMum("see this photo");
-  }
 
-  // attachSecondImageToMum sends a second photo to Mum, right after the
-  // first is delivered, so both are in flight close together the way
-  // sending several in a row really happens.
-  function attachSecondImageToMum(): var {
-    return root.attachPhotoToMum("see this photo too");
-  }
-
-  // attachPhotoToMum attaches the test's photo from disk, the way the
-  // composer's file dialog would report it having been picked, then
-  // sends it with caption.
-  function attachPhotoToMum(caption: string): var {
+  // startAttachImageToMum attaches a photo from the test's own
+  // directory, the way the composer's file dialog would report it
+  // having been picked; waitForAttachmentChip holds for its reply.
+  function startAttachImageToMum(): var {
     const composer = Check.find(root.panel(), "composer");
     composer.fileAttached(root.testRoot + "/photo.png");
+    root._pendingAttachmentName = "photo.png";
+    return true;
+  }
 
-    const chip = Check.find(root.panel(), "attachmentChip");
-    if (!chip || !chip.visible) return Check.fail("attachment chip did not appear after attaching the photo");
+  // sendImageWithCaption types the first photo's caption and sends it.
+  function sendImageWithCaption(): var {
+    root.type("see this photo");
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
 
-    const name = Check.find(root.panel(), "attachmentName");
-    if (!name || name.text !== "photo.png")
-      return Check.fail("attachment chip name = " + (name && name.text) + ", want photo.png");
+  // startAttachSecondImageToMum attaches the same test photo again,
+  // right after the first is delivered, so both are in flight close
+  // together the way sending several in a row really happens.
+  function startAttachSecondImageToMum(): var {
+    const composer = Check.find(root.panel(), "composer");
+    composer.fileAttached(root.testRoot + "/photo.png");
+    root._pendingAttachmentName = "photo.png";
+    return true;
+  }
 
-    root.type(caption);
+  // sendSecondImageWithCaption types the second photo's caption and
+  // sends it.
+  function sendSecondImageWithCaption(): var {
+    root.type("see this photo too");
     t.keyClick(Qt.Key_Return);
     return true;
   }

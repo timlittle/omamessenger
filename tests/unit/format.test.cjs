@@ -660,20 +660,6 @@ test('savedLocationLabel shows the path as-is with no home to fold', () => {
   assert.strictEqual(Format.savedLocationLabel('/home/alex/Downloads/run.gif', undefined), 'Saved to /home/alex/Downloads/run.gif');
 });
 
-const guessMediaKindCases = [
-  ['/tmp/photo.PNG', 'photo'],
-  ['/tmp/photo.jpg', 'photo'],
-  ['/tmp/clip.mp4', 'video'],
-  ['/tmp/notes.txt', 'file'],
-  ['/tmp/noextension', 'file']
-];
-
-for (const [path, want] of guessMediaKindCases) {
-  test(`guessMediaKind returns ${want} for ${path}`, () => {
-    assert.strictEqual(Format.guessMediaKind(path), want);
-  });
-}
-
 const mediaFailureReasonCases = [
   ['not-found', 'no longer available'],
   ['expired', 'no longer on the phone'],

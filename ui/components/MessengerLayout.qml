@@ -254,6 +254,8 @@ Item {
       replyTarget: root.composerController.replyTarget
       editTarget: root.composerController.editTarget
       attachmentPath: root.composerController.attachmentPath
+      attachmentName: root.composerController.attachmentName
+      attachmentKind: root.composerController.attachmentKind
       composeEnabled: root.conversationController.activeId !== ""
       historyUnavailable: root.conversationController.historyUnavailable
       voiceNotes: root.conversationController.voiceNotes
