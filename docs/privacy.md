@@ -18,6 +18,9 @@ OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with y
 | Apps menu entry | `~/.local/share/applications/io.github.omamessenger.desktop` | `0644`, no secrets | lets Omarchy's menu and **SUPER+ALT+SPACE** open OmaMessenger |
 | Network requests | Telegram's and WhatsApp's own servers; `github.com/timlittle/omamessenger/releases` only to download the helper the first time the window opens | — | no other network access |
 | Diagnostics | stderr, which `omarchy-shell` sends to the system journal | — | states, counts and safe categories only, never credentials, QR tokens, session keys, phone numbers or message text |
+| Desktop notifications | Omarchy's notification service, which keeps a copy of each in `~/.local/state/omarchy/notifications/` and passes it through a short-lived process other local programs can see | — | by default a notification says only "New message", with no sender or text; the **Notification detail** setting can show the sender, or the sender and text, which Omarchy then stores and exposes the same way |
+| Key bindings file | `~/.config/omamessenger/keys.conf` | as created | only when you run **Open key bindings file**; no messages or account data |
+| Saved photos and files | your downloads folder | `0600` | only when you press save on a message |
 
 Run `oma-messenger-service doctor`, or **Run health check** in the command palette, to check the data directory's permissions, the database, the media cache, the outgoing media area, each account's connection and whether a notification service is reachable, without exposing any of their contents: every line it prints is a state or a category, never a path, a name or a token, except for a plain count where it helps, such as how many failed messages are waiting in an over-limit outgoing media area.
 

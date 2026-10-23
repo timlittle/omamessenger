@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/app/policy"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -15,6 +16,7 @@ func TestIncoming_StoresPublishesAndNotifies(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	f.commands.ApplySettings(withDetail(app.DefaultSettings(), policy.DetailNameAndMessage))
 
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "First"))
 
@@ -513,5 +515,22 @@ func TestTyping_PublishesForKnownConversations(t *testing.T) {
 
 	if got := f.published.take(); !slices.Equal(got, []string{app.EventTyping}) {
 		t.Errorf("events = %v", got)
+	}
+}
+
+// TestIncoming_NotifiesWithNoNameOrTextByDefault confirms a notification
+// names no sender and shows no text until the user asks for more:
+// Omarchy's own notification service keeps a copy of every notification
+// where other local programs can read it.
+func TestIncoming_NotifiesWithNoNameOrTextByDefault(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+	f.ingest.Incoming(t.Context(), "wa", chat.RemoteID, incoming("in-1", "First"))
+
+	if got := f.notifier.all(); !slices.Equal(got, []string{"OmaMessenger: New message"}) {
+		t.Errorf("notifications = %v, want only the generic notice", got)
 	}
 }

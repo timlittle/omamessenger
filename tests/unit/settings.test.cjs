@@ -7,7 +7,7 @@ const { load } = require('./load.cjs');
 const Settings = load('lib/Settings.js');
 
 const DEFAULT_SETTINGS = {
-  notifications: true, notificationDetail: 'nameAndMessage', readReceipts: true,
+  notifications: true, notificationDetail: 'none', readReceipts: true,
   spellCheck: true, spellLanguage: 'auto',
 };
 

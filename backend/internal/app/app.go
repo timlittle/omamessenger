@@ -307,10 +307,13 @@ type Settings struct {
 	SpellLanguage string
 }
 
-// DefaultSettings apply until the UI sends the user's settings.
+// DefaultSettings apply until the UI sends the user's settings. A
+// notification names no sender and shows no text by default: Omarchy's
+// own notification service keeps a copy of each one where other local
+// programs can read it (see docs/decisions.md).
 func DefaultSettings() Settings {
 	return Settings{
-		Notifications: true, NotificationPreview: true, NotificationDetail: string(policy.DetailNameAndMessage),
+		Notifications: true, NotificationPreview: false, NotificationDetail: string(policy.DetailNone),
 		ReadReceipts: true,
 		SpellCheck:   true, SpellLanguage: "auto",
 	}

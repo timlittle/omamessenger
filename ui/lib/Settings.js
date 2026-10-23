@@ -7,7 +7,7 @@
 
 // DEFAULTS mirror the defaultValue of each setting in manifest.json.
 var DEFAULTS = {
-  notifications: true, notificationDetail: 'nameAndMessage', readReceipts: true,
+  notifications: true, notificationDetail: 'none', readReceipts: true,
   spellCheck: true, spellLanguage: 'auto',
 };
 

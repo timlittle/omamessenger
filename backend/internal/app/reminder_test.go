@@ -8,6 +8,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/app/policy"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -31,6 +33,7 @@ func TestRunReminders_FiresAtTheDueTimeAndNotNotBefore(t *testing.T) {
 		f := newFixture(t, false)
 		ctx, cancel := context.WithCancel(t.Context())
 		chat := f.conversation(t, "chat", "Climbing Crew", domain.KindDirect)
+		f.commands.ApplySettings(withDetail(app.DefaultSettings(), policy.DetailNameAndMessage))
 
 		due := time.Now().Add(time.Hour)
 		if _, err := f.commands.SetReminder(ctx, chat.ID, due.UnixMilli()); err != nil {

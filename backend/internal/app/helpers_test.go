@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/app/policy"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/spell"
@@ -577,4 +578,13 @@ func (s *fakeSignIn) SubmitAuth(_ context.Context, accountID, step, value string
 	s.answers = append(s.answers, accountID+" "+step+"="+value)
 
 	return nil
+}
+
+// withDetail returns s with its notification detail set to detail, for a
+// test that checks what a notification shows rather than the default,
+// which shows no name or text.
+func withDetail(s app.Settings, detail policy.Detail) app.Settings {
+	s.NotificationDetail = string(detail)
+
+	return s
 }

@@ -23,7 +23,7 @@
     "allowMultiple": false,
     "defaults": {
       "notifications": true,
-      "notificationDetail": "Name and message",
+      "notificationDetail": "Nothing",
       "readReceipts": true,
       "spellCheck": true,
       "spellLanguage": "Automatic"
@@ -45,8 +45,8 @@
           "Name only",
           "Nothing"
         ],
-        "defaultValue": "Name and message",
-        "description": "How much a notification reveals: the sender and message text, just who it is from, or a generic notice with neither."
+        "defaultValue": "Nothing",
+        "description": "How much a notification reveals: the sender and message text, just who it is from, or a generic notice with neither. Omarchy keeps a copy of every notification in its history, readable by other programs, so names and text are off by default."
       },
       {
         "key": "readReceipts",

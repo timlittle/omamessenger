@@ -16,7 +16,7 @@ Short clips of each feature are in [docs/demo.md](docs/demo.md).
 - Photos, video, files, voice notes, link previews, replies, reactions, polls and @-mentions
 - English spell check in the composer, with a picker for suggestions, adding a word, or ignoring it for the session
 - Pin, archive, hide and snooze conversations; failed sends retry themselves
-- Desktop notifications, and read receipts you can turn off to read and reply without the sender being told (see [docs/privacy.md](docs/privacy.md) for exactly what that does and does not hide)
+- Desktop notifications (by default just "New message"; see [docs/privacy.md](docs/privacy.md)), and read receipts you can turn off to read and reply without the sender being told (see [docs/privacy.md](docs/privacy.md) for exactly what that does and does not hide)
 - "What's new" in the command palette lists big changes release by release, with a quiet one-time hint after an update
 - About 120 MB in use, against about 2 GB for Telegram Desktop and WhatsApp Web together ([benchmark](docs/BENCHMARK.md))
 
