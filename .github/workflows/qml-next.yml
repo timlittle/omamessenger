@@ -1,0 +1,60 @@
+name: QML next
+
+# Checks the UI against the newest Qt and Quickshell, ahead of the
+# versions ci.yml pins. Weekly and on demand only: a failure here is an
+# early warning about a future release, often in Omarchy's own controls
+# this plugin cannot change, never a broken build of this repository.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+# The one job below declares its own minimal permissions, so the default
+# token grant is zero.
+permissions: {}
+
+jobs:
+  # Runs the same offscreen QML tests as ci.yml's "qml" job, but against
+  # whatever Qt and Quickshell Arch's rolling repos currently carry,
+  # instead of the pinned versions. It runs weekly and on demand, never
+  # on a push or pull request, so it can never show as a failed build:
+  # it exists to notice a future Qt or Quickshell release breaking this
+  # UI (as 6.12's new global "Color" type did, see docs/decisions.md)
+  # before it reaches the pin in ci.yml's required "qml" job. Omarchy
+  # stays at the same v4.0.4 checkout as the pinned job, so a failure here
+  # isolates to the Qt or Quickshell version rather than an unrelated
+  # Omarchy change.
+  qml-next:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: archlinux:base-devel
+    permissions:
+      contents: read
+    env:
+      OMARCHY_SHELL_DIR: /tmp/omarchy/shell
+    steps:
+      - name: Install current Quickshell, Qt 6, Go and Node
+        run: pacman -Syu --noconfirm --needed git go nodejs quickshell qt6-declarative qt6-multimedia qt6-multimedia-ffmpeg
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out Omarchy 4.0.4
+        # v4.0.4 resolves to this commit (git ls-remote --tags
+        # https://github.com/basecamp/omarchy v4.0.4); pinning the
+        # commit, not the tag, means a re-pushed or moved tag can never
+        # silently swap in different source.
+        run: |
+          omarchy_commit=c668141e9c42b13c80c9ca4ea108e11708c5e8a5
+          mkdir -p /tmp/omarchy
+          git -C /tmp/omarchy init -q
+          git -C /tmp/omarchy fetch -q --depth 1 https://github.com/basecamp/omarchy "$omarchy_commit"
+          git -C /tmp/omarchy checkout -q --detach "$omarchy_commit"
+          got=$(git -C /tmp/omarchy rev-parse HEAD)
+          if [ "$got" != "$omarchy_commit" ]; then
+            echo "omarchy checkout = $got, want $omarchy_commit" >&2
+            exit 1
+          fi
+      - name: Offscreen QML tests
+        run: make build test-qml
+      - name: Qt 6 qmllint
+        run: ./scripts/qml-imports.sh && /usr/lib/qt6/bin/qmllint -I build/qml --max-warnings 0 $(find ui -name '*.qml')
