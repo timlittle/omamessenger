@@ -87,6 +87,11 @@ function insertIndex(newestFirst, message) {
 // whether a downloaded file is active or executable content that must
 // be confirmed before it opens externally (see
 // MessageTimeline.setMediaRisky), starts false the same way.
+// mediaVerdictsKnown is whether media.fetch has actually answered for
+// this row in this session, so a caller reading mediaPath, mediaPlayable
+// or mediaRisky directly can tell a real verdict apart from its unset
+// default (see MessageTimeline.mediaVerdictsKnown); starts false, even
+// for a row whose mediaPath came already set.
 // mentionsMe is a plain boolean, which a ListModel role already
 // handles directly, so it needs no such encoding. retryAt, the
 // helper's next scheduled automatic retry for a failed outgoing
@@ -100,6 +105,7 @@ function row(message) {
     mediaDecodeAs: message.mediaDecodeAs ?? '',
     mediaPlayable: message.mediaPlayable ?? false,
     mediaRisky: message.mediaRisky ?? false,
+    mediaVerdictsKnown: message.mediaVerdictsKnown ?? false,
     mediaFailed: message.mediaFailed ?? false,
     mediaFailedReason: message.mediaFailedReason ?? '',
     reactions: JSON.stringify(message.reactions ?? []),

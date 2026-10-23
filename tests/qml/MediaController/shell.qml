@@ -90,7 +90,16 @@ ShellRoot {
       { id: "r1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -3, media: { kind: "file", fileName: "invoice.html" }, mediaPath: "" },
       // r2 is a never-clicked undownloaded file whose message list is
       // cleared while its download is still in flight.
-      { id: "r2", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -4, media: { kind: "file", fileName: "invoice.pdf" }, mediaPath: "" }
+      { id: "r2", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -4, media: { kind: "file", fileName: "invoice.pdf" }, mediaPath: "" },
+      // v8 and a1 carry a mediaPath already set, the same as a row
+      // loaded straight from messages.list would, but never fetched in
+      // this session: neither mediaPlayable nor the rest of media.fetch's
+      // verdicts for them are known yet, for the checks that toggleVideo
+      // and openMedia's voice/audio path must still call media.fetch
+      // before deciding, rather than trust those verdicts' unset
+      // defaults.
+      { id: "v8", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: -5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v8-cached.mp4" },
+      { id: "a1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Audio]", outgoing: false, status: "received", created: -6, media: { kind: "audio", duration: 9, fileName: "song.mp3" }, mediaPath: "/tmp/a1-cached.ogg" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -152,6 +161,22 @@ ShellRoot {
     }
     function select(id) { fakeVideoController.playingId = id; }
     function deselect(id) { if (fakeVideoController.playingId === id) fakeVideoController.playingId = ""; }
+  }
+
+  // fakeVoiceController stands in for the real VoiceNoteController, so
+  // checkOpenMediaRefetchesACachedVoiceOrAudioPathWithAnUnknownVerdict
+  // can tell a voice note or audio message that reached the in-window
+  // player apart from one that fell through to opening externally.
+  QtObject {
+    id: fakeVoiceController
+    property bool available: true
+    // calls records every {id, path, durationHintMs} toggle actually
+    // received.
+    property var calls: []
+
+    function toggle(id, path, durationHintMs) {
+      fakeVoiceController.calls.push({ id: id, path: path, durationHintMs: durationHintMs });
+    }
   }
 
   // viewer is wired up only for that one check: every other check above
@@ -224,11 +249,72 @@ ShellRoot {
     if (!root.checkSaveMediaShowsWhereItWentWithHomeFolded()) return;
     if (!root.checkFetchMediaAlwaysSendsAutoAndRetryMediaDoesNot()) return;
     if (!root.checkToggleVideoGatesOnPlayable()) return;
+    if (!root.checkToggleVideoRefetchesACachedPathWithAnUnknownVerdict()) return;
+    if (!root.checkOpenMediaRefetchesACachedVoiceOrAudioPathWithAnUnknownVerdict()) return;
     if (!root.checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer()) return;
     if (!root.checkRiskyVerdictSurvivesTheListBeingCleared()) return;
 
     console.log("PASS MediaController");
     Qt.exit(0);
+  }
+
+  // checkToggleVideoRefetchesACachedPathWithAnUnknownVerdict verifies
+  // the fix for a row loaded with mediaPath already set (as a previous
+  // session, or messages.list itself, could carry it) but no
+  // media.fetch answer yet in this one: toggleVideo must still call
+  // media.fetch before deciding, rather than trust mediaPlayable's
+  // unset "false" default and fall through to opening externally.
+  // Once that fetch answers playable, the video plays inline, never
+  // also opening externally.
+  function checkToggleVideoRefetchesACachedPathWithAnUnknownVerdict(): bool {
+    root.openCalls = [];
+    service.fetchRequests = [];
+    fakeVideoController.toggleCalls = [];
+    controller.videoController = fakeVideoController;
+
+    controller.toggleVideo("v8");
+    if (service.fetchRequests.length !== 1 || service.fetchRequests[0] !== "v8")
+      return Check.fail("toggleVideo did not call media.fetch for a cached path with no known verdict: " + JSON.stringify(service.fetchRequests));
+    if (root.openCalls.length !== 0)
+      return Check.fail("toggleVideo opened the cached path externally before media.fetch even answered: " + JSON.stringify(root.openCalls));
+
+    root.answerFetchSuccess("v8", "/tmp/v8-cached.mp4", true);
+
+    if (!fakeVideoController.toggleCalls.includes("v8"))
+      return Check.fail("a cached video did not play inline once media.fetch reported it playable");
+    if (root.openCalls.length !== 0)
+      return Check.fail("a cached, playable video also opened externally: " + JSON.stringify(root.openCalls));
+
+    controller.videoController = null;
+    return true;
+  }
+
+  // checkOpenMediaRefetchesACachedVoiceOrAudioPathWithAnUnknownVerdict
+  // verifies the same fix for openMedia's voice/audio path
+  // (_toggleVoice): an audio message (media.kind "audio") with a
+  // cached mediaPath but no media.fetch answer yet still calls
+  // media.fetch before deciding, and plays inline through the voice
+  // controller once it answers playable, exactly like a real voice
+  // note would.
+  function checkOpenMediaRefetchesACachedVoiceOrAudioPathWithAnUnknownVerdict(): bool {
+    root.openCalls = [];
+    service.fetchRequests = [];
+    fakeVoiceController.calls = [];
+    controller.voiceController = fakeVoiceController;
+
+    controller.openMedia("a1");
+    if (service.fetchRequests.length !== 1 || service.fetchRequests[0] !== "a1")
+      return Check.fail("opening a cached audio message with no known verdict did not call media.fetch: " + JSON.stringify(service.fetchRequests));
+
+    root.answerFetchSuccess("a1", "/tmp/a1-cached.ogg", true);
+
+    if (fakeVoiceController.calls.length !== 1 || fakeVoiceController.calls[0].id !== "a1")
+      return Check.fail("a cached audio message did not play inline once media.fetch reported it playable: " + JSON.stringify(fakeVoiceController.calls));
+    if (root.openCalls.length !== 0)
+      return Check.fail("a cached, playable audio message also opened externally: " + JSON.stringify(root.openCalls));
+
+    controller.voiceController = null;
+    return true;
   }
 
   // checkToggleVideoGatesOnPlayable verifies toggleVideo never selects

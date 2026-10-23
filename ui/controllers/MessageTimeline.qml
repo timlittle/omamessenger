@@ -102,22 +102,25 @@ Item {
 
   // upsert updates one message in place, or inserts it where its time puts
   // it when it is not loaded yet: new messages at the top, and older
-  // history fetched from the service further down. A cached mediaPath
-  // (and mediaFailed) normally carries over untouched, since the
-  // service's own update never carries one - but the moment this
-  // update is the message's attachment being retired into the download
-  // cache (see Timeline.mediaJustRetired), that cached path is dropped
-  // instead: it may point at the outgoing copy the helper just removed,
-  // and must be resolved again rather than shown as missing forever.
+  // history fetched from the service further down. A cached mediaPath,
+  // its verdicts (mediaDecodeAs, mediaPlayable, mediaRisky,
+  // mediaVerdictsKnown) and mediaFailed normally carry over untouched,
+  // since the service's own update never carries any of them - but the
+  // moment this update is the message's attachment being retired into
+  // the download cache (see Timeline.mediaJustRetired), all of them are
+  // dropped instead: the cached path may point at the outgoing copy the
+  // helper just removed, and must be resolved again rather than shown
+  // as missing forever.
   function upsert(message: var, isGroup: bool): void {
     const loaded = root._snapshot();
     const at = loaded.findIndex((m) => m.id === message.id);
     if (at !== -1) {
       const kept = Timeline.mediaJustRetired(loaded[at], message)
-        ? { mediaPath: "", mediaDecodeAs: "", mediaPlayable: false, mediaRisky: false, mediaFailed: false, mediaFailedReason: "" }
+        ? { mediaPath: "", mediaDecodeAs: "", mediaPlayable: false, mediaRisky: false, mediaVerdictsKnown: false, mediaFailed: false, mediaFailedReason: "" }
         : {
             mediaPath: loaded[at].mediaPath, mediaDecodeAs: loaded[at].mediaDecodeAs,
             mediaPlayable: loaded[at].mediaPlayable, mediaRisky: loaded[at].mediaRisky,
+            mediaVerdictsKnown: loaded[at].mediaVerdictsKnown,
             mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason
           };
       messagesModel.set(at, Timeline.row(Object.assign(kept, message)));
@@ -180,6 +183,21 @@ Item {
     return row ? row.mediaPlayable : false;
   }
 
+  // mediaVerdictsKnown returns whether media.fetch has actually
+  // answered for this row in this session, so decodeAs, playable and
+  // risky are its real verdicts rather than their unset defaults. A
+  // row can carry a cached mediaPath without this ever being true - it
+  // may have been loaded with one already set, rather than resolved
+  // through setMediaPath's own caller - and a caller that reads
+  // mediaPath directly must check this first rather than trust
+  // mediaPlayable's false default as "not playable" or mediaRisky's
+  // false default as "safe" (see MediaController.toggleVideo and
+  // _toggleVoice).
+  function mediaVerdictsKnown(id: string): bool {
+    const row = root._snapshot().find((m) => m.id === id);
+    return row ? !!row.mediaVerdictsKnown : false;
+  }
+
   // media returns a message's parsed photo or video media (kind, width,
   // height, duration, thumb), or null when it has none or is not loaded.
   function media(id: string): var {
@@ -221,10 +239,16 @@ Item {
 
   // setMediaPlayable records the helper's own verdict on whether a
   // message's downloaded video is safe to play in place, from
-  // media.fetch's result.
+  // media.fetch's result, and marks this row's verdicts known (see
+  // mediaVerdictsKnown): decodeAs, playable and risky are always set
+  // together from the one media.fetch answer, so this is the one place
+  // that needs to flip the flag.
   function setMediaPlayable(id: string, playable: bool): void {
     const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at !== -1) messagesModel.setProperty(at, "mediaPlayable", playable);
+    if (at === -1) return;
+
+    messagesModel.setProperty(at, "mediaPlayable", playable);
+    messagesModel.setProperty(at, "mediaVerdictsKnown", true);
   }
 
   // mediaRisky returns the helper's own verdict on whether a message's

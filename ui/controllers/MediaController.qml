@@ -201,16 +201,25 @@ QtObject {
   // toggleVideo selects, deselects or pauses id as the one video
   // playing right now, downloading it first if it is not on this
   // machine yet; does nothing with no videoController wired (an older
-  // caller that never set one up). A video media.fetch has not
-  // validated as playable (see Media.canPlayInline) never selects for
-  // in-window playback at all, even once downloaded: it opens
-  // externally instead, the same fallback a machine with no
+  // caller that never set one up). A cached path whose row has never
+  // had a media.fetch answer in this session - loaded with mediaPath
+  // already set, rather than resolved through downloadMedia - still
+  // goes through downloadMedia rather than straight to
+  // _selectOrOpenVideo: its decodeAs/playable/risky verdicts are
+  // otherwise read as their unset defaults, which would wrongly treat
+  // an unvalidated or risky video as safe (see
+  // MessageTimeline.mediaVerdictsKnown). media.fetch answers from the
+  // cache at once when the file is already there, so this costs
+  // nothing once the verdicts are actually known. A video media.fetch
+  // has not validated as playable (see Media.canPlayInline) never
+  // selects for in-window playback at all, even once downloaded: it
+  // opens externally instead, the same fallback a machine with no
   // QtMultimedia already takes.
   function toggleVideo(timeline: var, id: string): void {
     if (!root.videoController) return;
 
     const path = timeline.mediaPath(id);
-    if (path) { root._selectOrOpenVideo(timeline, id, path); return; }
+    if (path && timeline.mediaVerdictsKnown(id)) { root._selectOrOpenVideo(timeline, id, path); return; }
 
     root.downloadMedia(timeline, id, true, false, (downloaded) => root._selectOrOpenVideo(timeline, id, downloaded));
   }
@@ -285,12 +294,19 @@ QtObject {
     });
   }
 
-  // _toggleVoice plays or pauses a voice note, downloading it first if it
-  // has not been fetched yet; voice notes are small, so this is quick and
-  // happens the same way a photo's own missing full image would.
+  // _toggleVoice plays or pauses a voice note or audio message,
+  // downloading it first if it has not been fetched yet; both are
+  // small, so this is quick and happens the same way a photo's own
+  // missing full image would. A cached path whose row has never had a
+  // media.fetch answer in this session still goes through
+  // downloadMedia rather than straight to _selectOrOpenVoice, the same
+  // reasoning toggleVideo's own comment gives: media.fetch answers
+  // from the cache at once, so this costs nothing once the verdicts
+  // this message's playable (and risky) decision needs are actually
+  // known.
   function _toggleVoice(timeline: var, id: string, media: var): void {
     const path = timeline.mediaPath(id);
-    if (path) { root._selectOrOpenVoice(timeline, id, path, media); return; }
+    if (path && timeline.mediaVerdictsKnown(id)) { root._selectOrOpenVoice(timeline, id, path, media); return; }
 
     root.downloadMedia(timeline, id, true, false, (downloaded) => root._selectOrOpenVoice(timeline, id, downloaded, media));
   }
