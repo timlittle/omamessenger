@@ -8,12 +8,15 @@ package app_test
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/gif"
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -238,6 +241,43 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 			t.Fatalf("AudioPlayableForMedia() = %t, %v, want false, nil", playable, err)
 		}
 	})
+}
+
+// TestVideoPlayableForMedia_ReportsAMediaFetchErrorWhenTheFileCannotBeRead
+// covers failDecodeCheck's own main path, shared by DecodeAsForMedia,
+// VideoPlayableForMedia and AudioPlayableForMedia: a check that fails
+// not because the bytes are unsafe but because path itself could not
+// even be read - here, a cached file gone missing after FetchMedia
+// returned it - is classified and logged the same way a failed
+// download is, as a *MediaFetchError, never a bare I/O error leaking
+// the cache's own path to the UI.
+func TestVideoPlayableForMedia_ReportsAMediaFetchErrorWhenTheFileCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	missing := filepath.Join(t.TempDir(), "gone.mp4")
+	_, err := f.commands.VideoPlayableForMedia(ctx, "m1", missing)
+
+	var fetchErr *app.MediaFetchError
+	if !errors.As(err, &fetchErr) || fetchErr.Reason != app.MediaDownloadFailed {
+		t.Fatalf("VideoPlayableForMedia(unreadable path) = %v, want a *MediaFetchError with reason %q", err, app.MediaDownloadFailed)
+	}
+	if fetchErr.Error() == "" {
+		t.Error("MediaFetchError.Error() is empty, want the underlying read failure's own message")
+	}
+
+	if lines := f.logger.take(); len(lines) != 1 {
+		t.Errorf("logged lines = %v, want exactly one", lines)
+	}
 }
 
 // onePixelGIF returns a tiny, real GIF, for a test that needs bytes a

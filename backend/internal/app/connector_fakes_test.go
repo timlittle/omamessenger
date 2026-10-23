@@ -145,15 +145,24 @@ type fakeEditor struct {
 	mu     sync.Mutex
 	edited []string
 	err    error
+
+	// onEditMessage, when set, runs after recording the call and
+	// before EditMessage returns, for the same reason
+	// fakeBlocker.onSetBlocked does.
+	onEditMessage func()
 }
 
 func (e *fakeEditor) EditMessage(_ context.Context, _ domain.Conversation, messageRemoteID, newText string, _ []domain.Mention) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	e.edited = append(e.edited, messageRemoteID+" "+newText)
+	hook, err := e.onEditMessage, e.err
+	e.mu.Unlock()
 
-	return e.err
+	if hook != nil {
+		hook()
+	}
+
+	return err
 }
 
 // fakeBlocker records the blocks and unblocks it is asked for, as
@@ -162,15 +171,25 @@ type fakeBlocker struct {
 	mu      sync.Mutex
 	blocked []string
 	err     error
+
+	// onSetBlocked, when set, runs after recording the call and before
+	// SetBlocked returns, so a test can change store state out from
+	// under the caller - such as deleting the conversation - between
+	// the service call succeeding and the caller's own store write.
+	onSetBlocked func()
 }
 
 func (b *fakeBlocker) SetBlocked(_ context.Context, conv domain.Conversation, blocked bool) error {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	b.blocked = append(b.blocked, fmt.Sprintf("%s %t", conv.ID, blocked))
+	hook, err := b.onSetBlocked, b.err
+	b.mu.Unlock()
 
-	return b.err
+	if hook != nil {
+		hook()
+	}
+
+	return err
 }
 
 // fakeSpamReporter counts the spam reports it is asked for, failing
@@ -179,13 +198,22 @@ type fakeSpamReporter struct {
 	mu       sync.Mutex
 	reported int
 	err      error
+
+	// onReportSpam, when set, runs after recording the call and before
+	// ReportSpam returns, for the same reason fakeBlocker.onSetBlocked
+	// does.
+	onReportSpam func()
 }
 
 func (r *fakeSpamReporter) ReportSpam(_ context.Context, _ domain.Conversation) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	r.reported++
+	hook, err := r.onReportSpam, r.err
+	r.mu.Unlock()
 
-	return r.err
+	if hook != nil {
+		hook()
+	}
+
+	return err
 }

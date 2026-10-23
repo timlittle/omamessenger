@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"testing"
 
@@ -41,6 +42,38 @@ func TestContacts(t *testing.T) {
 
 	if _, err := f.commands.Contacts(ctx, "missing", ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("Contacts(unknown account) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestUnreadByService_GroupsByService confirms Commands.UnreadByService
+// - what server.hello's per-service breakdown reads - matches the same
+// grouping TestUnreadChanged_BreaksDownUnreadByService already proves
+// for the unread.changed event's own ByService field, called directly
+// rather than only read back off a published event.
+func TestUnreadByService_GroupsByService(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	if err := f.store.UpsertAccount(ctx, domain.Account{ID: "tg", Service: domain.ServiceTelegram, Name: "tg"}); err != nil {
+		t.Fatal(err)
+	}
+	tgChat, _, err := f.store.EnsureConversation(ctx, domain.Conversation{
+		ID: "tg-chat", AccountID: "tg", RemoteID: "r-tg-chat", Title: "TG Chat", Kind: domain.KindDirect,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f.ingest.Unread(ctx, "wa", chat.RemoteID, 2)
+	f.ingest.Unread(ctx, "tg", tgChat.RemoteID, 1)
+
+	got := f.commands.UnreadByService(ctx)
+	want := map[string]int{domain.ServiceWhatsApp: 2, domain.ServiceTelegram: 1}
+	if !maps.Equal(got, want) {
+		t.Errorf("UnreadByService() = %v, want %v", got, want)
 	}
 }
 

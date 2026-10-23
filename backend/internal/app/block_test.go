@@ -90,6 +90,77 @@ func TestBlockContact_ReportsAnUnsupportedServiceAsInvalidInput(t *testing.T) {
 	}
 }
 
+// TestBlockContact_FailsClearlyWhenTheConversationDisappearsMidBlock
+// covers BlockContact's own store write failing after the service has
+// already confirmed the block: here, because the conversation (and its
+// account) was removed in the moment between the two, which store.SetBlocked
+// reports as domain.ErrNotFound the same way any other now-missing row
+// would. A block the service accepted but could not be recorded locally
+// must still surface as an error, never look like it silently succeeded.
+func TestBlockContact_FailsClearlyWhenTheConversationDisappearsMidBlock(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.blocker.onSetBlocked = func() {
+		if err := f.store.DeleteAccount(ctx, "wa"); err != nil {
+			t.Error(err)
+		}
+	}
+
+	if _, err := f.commands.BlockContact(ctx, chat.ID, true); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("BlockContact(disappearing conversation) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestReportSpam_StopsBeforeStoringWhenTheBlockFails checks that a
+// connector failure blocking the contact - something other than the
+// service simply not supporting it - leaves the conversation neither
+// blocked nor hidden, the same guarantee TestBlockContact_NeverStoresAFailedBlock
+// gives BlockContact on its own.
+func TestReportSpam_StopsBeforeStoringWhenTheBlockFails(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.blocker.err = errors.New("offline")
+
+	if _, err := f.commands.ReportSpam(ctx, chat.ID); !errors.Is(err, f.blocker.err) {
+		t.Errorf("ReportSpam with a failing block = %v, want %v", err, f.blocker.err)
+	}
+
+	if f.spamReport.reported != 1 {
+		t.Errorf("spam reports = %d, want 1: the report itself still happened", f.spamReport.reported)
+	}
+
+	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || got.Blocked || got.Hidden {
+		t.Errorf("Conversation after a failed block = %+v, %v; want neither Blocked nor Hidden", got, err)
+	}
+}
+
+// TestReportSpam_FailsClearlyWhenTheConversationDisappearsAfterBlocking
+// mirrors TestBlockContact_FailsClearlyWhenTheConversationDisappearsMidBlock
+// for ReportSpam's own store write, which runs right after the same
+// service call.
+func TestReportSpam_FailsClearlyWhenTheConversationDisappearsAfterBlocking(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.blocker.onSetBlocked = func() {
+		if err := f.store.DeleteAccount(ctx, "wa"); err != nil {
+			t.Error(err)
+		}
+	}
+
+	if _, err := f.commands.ReportSpam(ctx, chat.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("ReportSpam(disappearing conversation) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestReportSpam_ReportsBlocksAndHides(t *testing.T) {
 	t.Parallel()
 

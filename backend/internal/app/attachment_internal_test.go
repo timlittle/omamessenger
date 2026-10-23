@@ -1,15 +1,20 @@
-// attachment_internal_test.go tests sanitizeAttachedPhoto directly,
-// an internal test rather than a black-box one because the generic
-// "could not be read" branch it covers needs a filesystem failure
-// Send's own public API has no way to engineer: storeAttachment
-// always leaves a real, freshly written file in place immediately
-// before describeAttachment reads it, so the only practical way to
-// reach connector.SanitizeOutgoingImageFile's catch-all error path is
-// to hand sanitizeAttachedPhoto something that is not a plain file at
-// all.
+// attachment_internal_test.go tests sanitizeAttachedPhoto, photoThumb,
+// imageDimensions and sniffKind directly, an internal test rather than
+// a black-box one because the one branch each has left to cover - the
+// file disappearing between Send's own os.Stat and the moment one of
+// these helpers opens it - needs a filesystem failure Send's own
+// public API has no way to engineer: every path these functions ever
+// see from Send or AttachFile was just written or renamed into place
+// immediately before, so it is always there. A path that simply never
+// existed reaches the same branch just as well, with no race to set up.
 package app
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/timlittle/omamessenger/backend/internal/domain"
+)
 
 // TestSanitizeAttachedPhoto_GenericReadFailure covers the one branch
 // neither "too large" nor "unsafe" names: anything else
@@ -20,5 +25,38 @@ func TestSanitizeAttachedPhoto_GenericReadFailure(t *testing.T) {
 
 	if err := sanitizeAttachedPhoto(t.TempDir()); err == nil {
 		t.Fatal("sanitizeAttachedPhoto(directory) succeeded, want an error")
+	}
+}
+
+// TestPhotoThumb_EmptyWhenTheFileCannotBeOpened covers photoThumb's own
+// read failure, never reached through Send or AttachFile: it only ever
+// runs on a path those just finished writing.
+func TestPhotoThumb_EmptyWhenTheFileCannotBeOpened(t *testing.T) {
+	t.Parallel()
+
+	if got := photoThumb(filepath.Join(t.TempDir(), "missing.png")); got != "" {
+		t.Errorf("photoThumb(missing file) = %q, want empty", got)
+	}
+}
+
+// TestImageDimensions_ZeroWhenTheFileCannotBeOpened mirrors
+// TestPhotoThumb_EmptyWhenTheFileCannotBeOpened for imageDimensions.
+func TestImageDimensions_ZeroWhenTheFileCannotBeOpened(t *testing.T) {
+	t.Parallel()
+
+	w, h := imageDimensions(filepath.Join(t.TempDir(), "missing.png"))
+	if w != 0 || h != 0 {
+		t.Errorf("imageDimensions(missing file) = %d,%d, want 0,0", w, h)
+	}
+}
+
+// TestSniffKind_FileWhenTheFileCannotBeOpened mirrors the same case for
+// sniffKind, which falls back to treating an unreadable path as a plain
+// file rather than guessing.
+func TestSniffKind_FileWhenTheFileCannotBeOpened(t *testing.T) {
+	t.Parallel()
+
+	if got := sniffKind(filepath.Join(t.TempDir(), "missing")); got != domain.MediaFile {
+		t.Errorf("sniffKind(missing file) = %q, want %q", got, domain.MediaFile)
 	}
 }

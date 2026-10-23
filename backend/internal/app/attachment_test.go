@@ -204,6 +204,97 @@ func TestSend_RejectsAnUnreadableAttachment(t *testing.T) {
 	}
 }
 
+// TestSend_RejectsAnAttachmentItCannotOpenEvenThoughStatSucceeds covers
+// storeAttachment's own read failure, distinct from the file being
+// missing outright: os.Stat only needs search permission on the
+// containing directory, so a file with every permission bit cleared
+// still stats successfully but fails to open for reading.
+func TestSend_RejectsAnAttachmentItCannotOpenEvenThoughStatSucceeds(t *testing.T) {
+	t.Parallel()
+	skipAsRoot(t)
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	path := writeTestFile(t, "locked.bin", []byte("secret"))
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) }) // let t.TempDir() clean it up
+
+	if _, err := f.commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path}); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("Send(unreadable attachment) = %v, want ErrInvalidInput", err)
+	}
+}
+
+// TestSend_RejectsAttachmentsWhenNoneAreAvailable covers prepareAttachment's
+// own guard for a helper built with no outgoing media area at all -
+// the test build's minimal wiring, say - rather than one merely empty.
+func TestSend_RejectsAttachmentsWhenNoneAreAvailable(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "messages.db"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.UpsertAccount(ctx, domain.Account{ID: "wa", Service: domain.ServiceWhatsApp, Name: "Personal"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.EnsureConversation(ctx, domain.Conversation{
+		ID: "chat", AccountID: "wa", RemoteID: "r-chat", Title: "Chat", Kind: domain.KindDirect,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	commands, _ := app.New(app.Deps{
+		Store: db, Dispatcher: &fakeDispatcher{}, Notifier: &fakeNotifier{}, Publisher: &fakePublisher{},
+		Clipboard: &fakeClipboard{},
+	})
+
+	path := writeTestFile(t, "photo.png", []byte("not even a real file, never read"))
+	if _, err := commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path}); !errors.Is(err, app.ErrInvalidInput) ||
+		!strings.Contains(err.Error(), "not available") {
+		t.Errorf("Send(attachment, no outgoing area) = %v, want ErrInvalidInput about attachments not being available", err)
+	}
+}
+
+// TestSend_FailsWhenTheOutgoingAreaIsFull covers storeAttachment's own
+// failure path - the outgoing media area refusing a copy because it is
+// already at its configured size limit - and confirms prepareAttachment
+// reports it rather than silently dropping the attachment.
+func TestSend_FailsWhenTheOutgoingAreaIsFull(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "messages.db"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.UpsertAccount(ctx, domain.Account{ID: "wa", Service: domain.ServiceWhatsApp, Name: "Personal"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.EnsureConversation(ctx, domain.Conversation{
+		ID: "chat", AccountID: "wa", RemoteID: "r-chat", Title: "Chat", Kind: domain.KindDirect,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	outgoing := cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 0, 4, storeExists(db))
+	commands, _ := app.New(app.Deps{
+		Store: db, Dispatcher: &fakeDispatcher{}, Notifier: &fakeNotifier{}, Publisher: &fakePublisher{},
+		Outgoing: outgoing, Clipboard: &fakeClipboard{},
+	})
+
+	path := writeTestFile(t, "notes.txt", []byte("more than four bytes of text"))
+	if _, err := commands.Send(ctx, "chat", "hi", app.SendOptions{AttachmentPath: path}); err == nil {
+		t.Error("Send(attachment, full outgoing area) succeeded, want an error")
+	}
+}
+
 func TestSend_RejectsAnAttachmentOverTheSizeLimit(t *testing.T) {
 	t.Parallel()
 

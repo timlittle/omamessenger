@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -173,6 +174,125 @@ func TestSaveMedia_CapsAnOverlongFileName(t *testing.T) {
 	stem := strings.TrimSuffix(filepath.Base(path), ".txt")
 	if len(stem) > 100 {
 		t.Errorf("SaveMedia stem length = %d, want at most 100", len(stem))
+	}
+}
+
+// TestSaveMedia_FallsBackToAFixedNameWhenThereIsNoFileNameAtAll
+// confirms sanitizedStem's own guard for media with no claimed file
+// name at all - an ordinary photo, say, which carries none - the same
+// as one that sanitizes away to nothing.
+func TestSaveMedia_FallsBackToAFixedNameWhenThereIsNoFileNameAtAll(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m := domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
+	}
+	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := f.commands.SaveMedia(ctx, "m1")
+	if err != nil || filepath.Base(path) != "file.txt" {
+		t.Fatalf("SaveMedia = %q, %v; want file.txt", path, err)
+	}
+}
+
+// TestSaveMedia_PropagatesAFetchFailure confirms a message whose media
+// fails to download at all is reported as that same failure, never
+// masked by a generic save error.
+func TestSaveMedia_PropagatesAFetchFailure(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m := domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}
+	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	f.media.err = errors.New("offline")
+
+	var fetchErr *app.MediaFetchError
+	if _, err := f.commands.SaveMedia(ctx, "m1"); !errors.As(err, &fetchErr) {
+		t.Errorf("SaveMedia(fetch failure) = %v, want a *MediaFetchError", err)
+	}
+}
+
+// TestSaveMedia_FailsWhenTheDownloadsDirectoryCannotBeCreated covers
+// SaveMedia's own os.MkdirAll failure: here, a plain file already
+// sitting where the downloads directory needs to be created.
+func TestSaveMedia_FailsWhenTheDownloadsDirectoryCannotBeCreated(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m := domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}
+	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	commands, _ := app.New(app.Deps{
+		Store: f.store, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
+		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
+		Outgoing: f.outgoing, Clipboard: f.clipboard,
+		DownloadsDir: filepath.Join(blocker, "downloads"),
+	})
+
+	if _, err := commands.SaveMedia(ctx, "m1"); err == nil {
+		t.Error("SaveMedia(downloads directory cannot be created) succeeded, want an error")
+	}
+}
+
+// TestSaveMedia_FailsWhenTheCopyCannotBeWritten covers copyFile's own
+// failure, propagated through SaveMedia: a downloads directory that
+// already exists but refuses a new file, here because every write
+// permission was removed from it after it was first created.
+func TestSaveMedia_FailsWhenTheCopyCannotBeWritten(t *testing.T) {
+	t.Parallel()
+	skipAsRoot(t)
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m := domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}
+	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+
+	readOnly := filepath.Join(t.TempDir(), "downloads")
+	if err := os.Mkdir(readOnly, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(readOnly, 0o700) }) // let t.TempDir() clean it up
+
+	commands, _ := app.New(app.Deps{
+		Store: f.store, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
+		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
+		Outgoing: f.outgoing, Clipboard: f.clipboard,
+		DownloadsDir: readOnly,
+	})
+
+	if _, err := commands.SaveMedia(ctx, "m1"); err == nil {
+		t.Error("SaveMedia(read-only downloads directory) succeeded, want an error")
 	}
 }
 

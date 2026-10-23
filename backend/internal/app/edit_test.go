@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -58,6 +59,31 @@ func TestEditMessage_RejectsEmptyText(t *testing.T) {
 
 	if _, err := f.commands.EditMessage(ctx, chat.ID, m.ID, "   "); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("EditMessage(blank) = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestEditMessage_RejectsTextOverTheLimit(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m := outgoingSentMessage(t, f, chat, "hi")
+
+	if _, err := f.commands.EditMessage(ctx, chat.ID, m.ID, strings.Repeat("a", domain.MaxTextLength+1)); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("EditMessage(too long) = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestEditMessage_RejectsAMissingMessage(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	if _, err := f.commands.EditMessage(ctx, chat.ID, "missing", "hi there"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("EditMessage(missing message) = %v, want ErrNotFound", err)
 	}
 }
 
@@ -165,6 +191,29 @@ func TestEditMessage_RevertsOnConnectorFailure(t *testing.T) {
 				t.Errorf("stored message after a failed edit = %+v, %v, want the original text restored", stored, err)
 			}
 		})
+	}
+}
+
+// TestEditMessage_RevertIsBestEffortWhenTheStoreCannotBeWrittenTo
+// covers revertEdit's own best-effort guard: a connector refusal whose
+// revert cannot even reach the store - here, because the database
+// closed in the moment between the optimistic update and the
+// connector's answer - still reports the connector's own refusal to
+// the caller, exactly as TestEditMessage_RevertsOnConnectorFailure
+// does, rather than failing on the revert itself or panicking.
+func TestEditMessage_RevertIsBestEffortWhenTheStoreCannotBeWrittenTo(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m := outgoingSentMessage(t, f, chat, "hi")
+
+	f.editor.err = errors.New("offline")
+	f.editor.onEditMessage = func() { _ = f.store.Close() } // already closed again in t.Cleanup; Close tolerates that
+
+	if _, err := f.commands.EditMessage(ctx, chat.ID, m.ID, "hi there"); !errors.Is(err, f.editor.err) {
+		t.Errorf("EditMessage = %v, want %v", err, f.editor.err)
 	}
 }
 
