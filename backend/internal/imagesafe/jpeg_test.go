@@ -42,6 +42,24 @@ func TestSanitizeJPEG_StripsAppAndComment(t *testing.T) {
 	}
 }
 
+// TestSanitizeJPEG_KeepsAGenuineAdobeSegment covers APP14 in its one
+// real shape, the fixed 12-byte "Adobe" block that tells a decoder how
+// the colour channels are encoded: dropping it decodes an RGB JPEG with
+// the wrong colours and makes a CMYK one undecodable. Anything larger
+// under that marker is still stripped (see above).
+func TestSanitizeJPEG_KeepsAGenuineAdobeSegment(t *testing.T) {
+	adobe := []byte{'A', 'd', 'o', 'b', 'e', 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x01}
+	src := insertJPEGSegment(buildJPEG(16, 16), 0xEE, adobe)
+
+	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	if !ok {
+		t.Fatal("Sanitize() = rejected, want accepted")
+	}
+	if !bytes.Contains(out, append([]byte{0xFF, 0xEE, 0x00, 0x0E}, adobe...)) {
+		t.Error("sanitized output dropped the Adobe APP14 segment")
+	}
+}
+
 // TestSanitizeJPEG_KeepsAPP0 covers the one APPn segment sanitizeJPEG
 // must not drop: plain JFIF, which carries no metadata a decoder
 // treats as text or a compressed stream.

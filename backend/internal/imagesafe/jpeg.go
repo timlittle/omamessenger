@@ -79,7 +79,7 @@ func walkJPEGHeader(data []byte, out *bytes.Buffer) (width, height int64, pos in
 		if !ok {
 			return 0, 0, 0, false
 		}
-		if jpegKeptMarkers[marker] || standalone {
+		if jpegKeptMarkers[marker] || standalone || isAdobeSegment(marker, data[pos:segEnd]) {
 			out.Write(data[pos:segEnd])
 		}
 		if jpegSOFMarkers[marker] && width < 0 {
@@ -95,6 +95,21 @@ func walkJPEGHeader(data []byte, out *bytes.Buffer) (width, height int64, pos in
 	}
 
 	return 0, 0, 0, false
+}
+
+// adobeSegmentLength is the full length, marker included, of APP14's
+// one real shape: "Adobe", a version, two flag words and the colour
+// transform byte.
+const adobeSegmentLength = 16
+
+// isAdobeSegment reports whether segment is an APP14 "Adobe" block of
+// exactly that fixed size. It is kept, unlike every other APPn but
+// JFIF, because its transform byte tells a decoder how the colour
+// channels are encoded: without it an RGB JPEG decodes with the wrong
+// colours and a CMYK one not at all. Its fixed size leaves no room to
+// carry anything else.
+func isAdobeSegment(marker byte, segment []byte) bool {
+	return marker == 0xEE && len(segment) == adobeSegmentLength && bytes.HasPrefix(segment[4:], []byte("Adobe"))
 }
 
 // nextJPEGMarker reads the marker starting at pos: its byte, the
