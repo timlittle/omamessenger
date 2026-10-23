@@ -279,7 +279,8 @@ Item {
   // preview or a service's own text is opened. displayText is what
   // the person actually saw for this link - the same text for a plain
   // autolinked URL, but a formatting span's own text can read as
-  // something else entirely (see ui/lib/Links.js's displayTextFor) -
+  // something else entirely (see ui/lib/Links.js's resolveClickedLink,
+  // the caller's own job to run before this, never this function's) -
   // and Links.needsConfirmation decides whether that calls for asking
   // first rather than opening it straight away.
   function openLink(url: string, displayText: string): void {

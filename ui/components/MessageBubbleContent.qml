@@ -80,10 +80,13 @@ Column {
   // what the person actually saw for it - identical to url for a link
   // preview or a plain autolinked URL, but a formatting span's own
   // text can read as something else entirely (see
-  // ui/lib/Links.js's displayTextFor). Reported rather than opened
-  // here directly, so the one allow-list check, and the one question
-  // about a mismatched link, happen where every such request ends up
-  // (see WindowController.openLink).
+  // ui/lib/Links.js's resolveClickedLink, which is what the body
+  // TextEdit's onLinkActivated below uses to recover it, by the
+  // clicked anchor's own position, never by matching its href against
+  // a span's URL). Reported rather than opened here directly, so the
+  // one allow-list check, and the one question about a mismatched
+  // link, happen where every such request ends up (see
+  // WindowController.openLink).
   signal linkOpenRequested(string url, string displayText)
 
   // _mediaKind is which view media belongs in: "link", "photo", "video",
@@ -124,16 +127,25 @@ Column {
     // come out are <a>, <b>, <i>, <u>, <s>, <span style="font-family:
     // monospace">, <br>, &nbsp; and a pipe table's own <table> cells,
     // each built from already-escaped text (see Format.js and
-    // Markdown.js). A link's href comes only from a formatting span
-    // whose scheme Format.spanURL allows (http, https, mailto, tg) or
-    // from an auto-linked bare URL already in the escaped text; no
-    // sender-controlled text ever reaches this as a literal "<img>" or
-    // any other element that could load a resource.
+    // Markdown.js). Every anchor's href is one of messageHtml's own
+    // private, numbered ones (see Format.linkHref), never the URL
+    // itself and never literal sender-controlled text, so nothing here
+    // can reach onLinkActivated below as anything but one of those.
     textFormat: TextEdit.RichText
     text: Format.messageHtml(body.caption, Theme.accent, Theme.muted, root.mentions, root.formatting)
     color: Theme.foreground
     font { family: Theme.font.family; pixelSize: Theme.font.body }
-    onLinkActivated: link => root.linkOpenRequested(link, Links.displayTextFor(body.caption, root.formatting, link))
+    // The href Qt hands back only names an anchor's own position (see
+    // Format.linkHref); resolveClickedLink reads back which URL and
+    // visible text that position actually belongs to, from the same
+    // text and formatting this TextEdit just rendered, rather than
+    // ever trusting the href to carry a URL that could be matched
+    // against a span. An href it cannot resolve is never opened
+    // unquestioned (see Links.js's own header comment).
+    onLinkActivated: href => {
+      const resolved = Links.resolveClickedLink(href, body.caption, root.mentions, root.formatting);
+      if (resolved) root.linkOpenRequested(resolved.url, resolved.displayText);
+    }
   }
 
   // The widest line's unwrapped width. TextEdit's own implicit width

@@ -16,11 +16,17 @@
 // never a sender's claimed name (see docs/decisions.md), yet the path
 // can still hold any character a file name allows, so it is never
 // handed to a URL as a raw string either. needsConfirmation and
-// displayTextFor back WindowController.openLink's own question before
-// opening a link whose own visible text does not read as the same
-// destination as its href - a Telegram MessageEntityTextURL lets a
-// sender show one piece of text while actually linking somewhere else
-// entirely, which isAllowed's scheme check alone would never catch.
+// resolveClickedLink back WindowController.openLink's own question
+// before opening a link whose own visible text does not read as the
+// same destination as its href - a Telegram MessageEntityTextURL lets
+// a sender show one piece of text while actually linking somewhere
+// else entirely, which isAllowed's scheme check alone would never
+// catch. resolveClickedLink exists because that is not even safe to
+// decide by matching a click's href against a span's own URL: two
+// spans can carry the very same URL with different visible text, so
+// every anchor messageHtml writes gets its own private, numbered href
+// instead (see Format.linkHref), naming exactly the anchor clicked
+// rather than one that merely shares its destination.
 
 .import "Format.js" as Format
 
@@ -84,26 +90,29 @@ function needsConfirmation(displayText, url) {
   return isQueryMailto(url) || !sameTarget(displayText, url);
 }
 
-// displayTextFor returns the visible text a "link" formatting span in
-// spans rendered for url - the same slice of text its anchor was
-// built from - or url itself once no span matches: a plain autolinked
-// URL's own visible text is always the url itself, so reporting that
-// back is still accurate for one of those. Used once a link is
-// clicked, when only its own href is known, to recover what the
-// person actually saw before WindowController.openLink decides
-// whether that needs confirming.
-function displayTextFor(text, spans, url) {
-  for (const s of spans || []) {
-    if (s.kind !== 'link' || s.start < 0 || s.end > text.length || s.start >= s.end) {
-      continue;
-    }
-
-    if (Format.spanURL(s.url) === url) {
-      return text.slice(s.start, s.end);
-    }
+// resolveClickedLink turns href - exactly what Qt's onLinkActivated
+// hands back for a click inside a message's own rich text - into
+// {url, displayText}: href names one of Format.messageHtml's own
+// anchors by position (see Format.linkHref), computed here from the
+// same text, mentions and spans the bubble rendered, never a URL to
+// match a span against, which is what let two spans sharing one URL
+// make a click on either report whichever span's text a lookup found
+// first (see this file's own header comment). An href this function
+// cannot resolve to one of those anchors - message fell out of step
+// with it, Qt's own report mangled - is never assumed safe: its own
+// scheme must still pass isAllowed, and even then it comes back with
+// an empty displayText, which sameTarget can never call a match for
+// any non-empty url, so the caller always asks rather than opening it
+// unquestioned. An href whose scheme isAllowed rejects resolves to
+// null instead, for the caller to refuse outright.
+function resolveClickedLink(href, text, mentions, spans) {
+  const anchors = Format.messageLinkAnchors(text, mentions, spans);
+  const index = Format.linkIndexFromHref(href);
+  if (index >= 0 && index < anchors.length) {
+    return anchors[index];
   }
 
-  return url;
+  return isAllowed(href) ? { url: href, displayText: '' } : null;
 }
 
 // previewDisplayText returns what a link preview card showed for url,

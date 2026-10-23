@@ -43,18 +43,59 @@ var MAX_MENTIONS = 64;
 // may appear inside a link; any other '&' ends it.
 var URL_PATTERN = /https?:\/\/[^\s<"&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\s<"&]*)*/g;
 
+// LINK_HREF_SCHEME marks an anchor href this file wrote itself, naming
+// that anchor's own position in the ordered list messageLinkAnchors
+// returns, rather than the URL it goes to. Qt's onLinkActivated hands a
+// click back only as the clicked anchor's own href: two anchors that
+// carry the same real URL would otherwise write that identical href
+// twice, and the one thing Qt reports could never tell them apart - the
+// gap a sender can abuse by giving two spans the same URL and different
+// visible text (see Links.js's own header comment). A private, numbered
+// href per anchor means a click always names its own exact anchor,
+// never one that merely happens to share its destination.
+var LINK_HREF_SCHEME = 'oma-link:';
+
+// linkHref returns the href this file writes for the index-th anchor in
+// an anchors list (see the anchors parameter throughout this file): a
+// value no sender-controlled text or URL can ever produce, since every
+// scheme this file allows a real link to use (see LINK_SCHEMES) is
+// checked before this runs and none of them is this one.
+function linkHref(index) {
+  return LINK_HREF_SCHEME + index;
+}
+
+// linkIndexFromHref returns the anchor index href names, or -1 when
+// href was never written by linkHref: a caller must never resolve an
+// unrecognised href to some anchor by accident, so this only ever
+// answers "exactly this one" or "none at all".
+function linkIndexFromHref(href) {
+  if (typeof href !== 'string' || !href.startsWith(LINK_HREF_SCHEME)) {
+    return -1;
+  }
+
+  const suffix = href.slice(LINK_HREF_SCHEME.length);
+  return /^\d+$/.test(suffix) ? Number(suffix) : -1;
+}
+
 // escapeHtml makes text safe to show as rich text.
 function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// linkify turns http(s) URLs in escaped text into links, in color when
-// given. Punctuation that ends a sentence stays outside the link.
-function linkify(escaped, color) {
+// linkify turns http(s) URLs in escaped text into anchors, in color
+// when given, appending one {url, displayText} entry to anchors for
+// each (see messageLinkAnchors): a plain autolinked URL's own visible
+// text is always the URL itself. Each anchor's href names its own
+// position in anchors (see linkHref) rather than carrying the URL
+// directly, the same private scheme every anchor this file writes
+// uses. Punctuation that ends a sentence stays outside the link.
+function linkify(escaped, color, anchors = []) {
   const style = color ? ` style="color:${color}"` : '';
   return escaped.replace(URL_PATTERN, (match) => {
     const [, url, trailing] = match.match(/^(.*?)([.,;:!?)]*)$/);
-    return `<a href="${url}"${style}>${url}</a>${trailing}`;
+    const href = linkHref(anchors.length);
+    anchors.push({ url, displayText: url });
+    return `<a href="${href}"${style}>${url}</a>${trailing}`;
   });
 }
 
@@ -76,26 +117,56 @@ function linkify(escaped, color) {
 // to MAX_RICH_TEXT_INPUT_LENGTH, and mentions and spans to MAX_MENTIONS
 // and MAX_FORMATTING_SPANS, all before any of this runs, so the rich
 // text this builds is always bounded too, whatever the message's own
-// length or entity count (see each cap's own comment).
+// length or entity count (see each cap's own comment). Every anchor
+// this writes gets a private, numbered href rather than its own URL
+// (see linkHref); messageLinkAnchors, called with the same text,
+// mentions and spans, is the one place that URL - and the anchor's own
+// visible text - can be read back for one, by that href's index, once
+// Qt reports a click (see Links.js's resolveClickedLink).
 function messageHtml(text, linkColor, tableBorderColor, mentions, spans) {
+  return renderMessage(text, linkColor, tableBorderColor, mentions, spans).html;
+}
+
+// messageLinkAnchors returns, in the same left-to-right order their
+// hrefs appear in messageHtml's own output for the same text, mentions
+// and spans, every anchor messageHtml wrote: {url, displayText} pairs,
+// where displayText is the whole formatting span's own visible text
+// for a span-backed link, even when styledHtml had to cut that span
+// into more than one adjoining anchor to nest another style inside it
+// (see styledSegment) - never just the clicked fragment. linkColor and
+// tableBorderColor never change which anchors exist or their order,
+// only their on-screen color, so this runs text through the same
+// render as messageHtml without them.
+function messageLinkAnchors(text, mentions, spans) {
+  return renderMessage(text, '', '', mentions, spans).anchors;
+}
+
+// renderMessage is messageHtml's and messageLinkAnchors' shared work:
+// the exact same href-writing, anchor-collecting sweep runs for both,
+// so an anchor's index can never fall out of step between the href
+// messageHtml wrote for it and the entry messageLinkAnchors names for
+// that same position.
+function renderMessage(text, linkColor, tableBorderColor, mentions, spans) {
   const capped = text.length > MAX_RICH_TEXT_INPUT_LENGTH ? text.slice(0, MAX_RICH_TEXT_INPUT_LENGTH) : text;
   const cappedMentions = mentions && mentions.length > MAX_MENTIONS ? mentions.slice(0, MAX_MENTIONS) : mentions;
   const cappedSpans = spans && spans.length > MAX_FORMATTING_SPANS ? spans.slice(0, MAX_FORMATTING_SPANS) : spans;
+  const anchors = [];
 
   if (cappedSpans && cappedSpans.length > 0) {
-    return styledHtml(capped, linkColor, cappedMentions, cappedSpans);
+    return { html: styledHtml(capped, linkColor, cappedMentions, cappedSpans, anchors), anchors };
   }
 
   if (cappedMentions && cappedMentions.length > 0) {
-    return mentionHtml(capped, linkColor, cappedMentions);
+    return { html: mentionHtml(capped, linkColor, cappedMentions, anchors), anchors };
   }
 
   const borderColor = tableBorderColor ?? '#888888';
-  return Markdown.splitTables(capped)
+  const html = Markdown.splitTables(capped)
     .map((part) => (part.kind === 'table'
-      ? Markdown.tableHtml(part.table, escapeHtml, (cell) => linkify(cell, linkColor), borderColor)
-      : lineHtml(part.text, linkColor)))
+      ? Markdown.tableHtml(part.table, escapeHtml, (cell) => linkify(cell, linkColor, anchors), borderColor)
+      : lineHtml(part.text, linkColor, anchors)))
     .join('');
+  return { html, anchors };
 }
 
 // LINK_SCHEMES are the URL schemes a formatting span's link may open;
@@ -177,11 +248,14 @@ function styledRanges(text, mentions, spans) {
 // active list as it goes, rather than re-filtering every range for
 // every one of the boundaries in between: a message built from many
 // overlapping spans does only as much work as the overlap actually
-// needs, not the square of its span count.
-function styledHtml(text, linkColor, mentions, spans) {
+// needs, not the square of its span count. anchors collects one
+// {url, displayText} entry per link anchor written, in the order
+// their hrefs appear in the returned html (see linkHref and
+// messageLinkAnchors).
+function styledHtml(text, linkColor, mentions, spans, anchors = []) {
   const ranges = styledRanges(text, mentions, spans);
   if (ranges.length === 0) {
-    return lineHtml(text, linkColor);
+    return lineHtml(text, linkColor, anchors);
   }
 
   const bounds = boundaryPoints(text, ranges);
@@ -195,7 +269,7 @@ function styledHtml(text, linkColor, mentions, spans) {
     const end = bounds[i + 1];
 
     active = active.concat(startingAt.get(start) || []);
-    html += styledSegment(text.slice(start, end), linkColor, active);
+    html += styledSegment(text, start, end, linkColor, active, anchors);
 
     const leaving = endingAt.get(end);
     if (leaving) {
@@ -238,15 +312,23 @@ function rangesByBound(ranges, boundAt) {
   return byBound;
 }
 
-// styledSegment renders one cut of text with every range active over
-// it, nesting bold, italic, underline and strike in STYLE_TAGS's fixed
-// order inside a link, which always wraps outermost, so two overlapping
-// styles always produce well-formed, matching tags regardless of the
-// order the caller listed them in. Code and pre share one monospace
-// look; spoiler and any other kind add no tag, showing as plain text.
-function styledSegment(text, linkColor, active) {
+// styledSegment renders text's [start, end) cut with every range active
+// over it, nesting bold, italic, underline and strike in STYLE_TAGS's
+// fixed order inside a link, which always wraps outermost, so two
+// overlapping styles always produce well-formed, matching tags
+// regardless of the order the caller listed them in. Code and pre
+// share one monospace look; spoiler and any other kind add no tag,
+// showing as plain text. A link's anchor gets a private, numbered href
+// (see linkHref) rather than its own URL, and anchors gets one more
+// {url, displayText} entry for it - displayText is the link range's
+// whole own text (text.slice(link.start, link.end)), not just this one
+// cut of it, so a link split into several adjoining anchors by a
+// nested style still reports its full visible text for any one of
+// them (see messageLinkAnchors).
+function styledSegment(text, start, end, linkColor, active, anchors = []) {
+  const segment = text.slice(start, end);
   const link = active.find((r) => r.kind === 'link');
-  let html = link ? plainHtml(text) : lineHtml(text, linkColor);
+  let html = link ? plainHtml(segment) : lineHtml(segment, linkColor, anchors);
 
   if (active.some((r) => r.kind === 'code' || r.kind === 'pre')) {
     html = `<span style="font-family:monospace">${html}</span>`;
@@ -260,7 +342,9 @@ function styledSegment(text, linkColor, active) {
 
   if (link) {
     const style = linkColor ? ` style="color:${linkColor}"` : '';
-    html = `<a href="${escapeHtml(link.url)}"${style}>${html}</a>`;
+    const href = linkHref(anchors.length);
+    anchors.push({ url: link.url, displayText: text.slice(link.start, link.end) });
+    html = `<a href="${href}"${style}>${html}</a>`;
   }
 
   return html;
@@ -269,8 +353,11 @@ function styledSegment(text, linkColor, active) {
 // mentionHtml renders text with each mention's span wrapped in <b>,
 // skipping ahead past a mention that no longer fits text (the message
 // was edited to something shorter after it was sent, for instance)
-// rather than mis-rendering around it.
-function mentionHtml(text, linkColor, mentions) {
+// rather than mis-rendering around it. anchors collects a {url,
+// displayText} entry for every autolinked bare URL found along the way
+// (see lineHtml and messageLinkAnchors); a mention is never a link
+// itself, so it adds none of its own.
+function mentionHtml(text, linkColor, mentions, anchors = []) {
   const ordered = [...mentions].sort((a, b) => a.offset - b.offset);
   let html = '';
   let pos = 0;
@@ -280,19 +367,20 @@ function mentionHtml(text, linkColor, mentions) {
       continue;
     }
 
-    html += lineHtml(text.slice(pos, m.offset), linkColor);
-    html += `<b>${lineHtml(text.slice(m.offset, m.offset + m.length), linkColor)}</b>`;
+    html += lineHtml(text.slice(pos, m.offset), linkColor, anchors);
+    html += `<b>${lineHtml(text.slice(m.offset, m.offset + m.length), linkColor, anchors)}</b>`;
     pos = m.offset + m.length;
   }
 
-  return html + lineHtml(text.slice(pos), linkColor);
+  return html + lineHtml(text.slice(pos), linkColor, anchors);
 }
 
 // lineHtml is messageHtml's handling for a stretch of text that is not a
 // table: escape it, link URLs, and keep its line breaks and runs of
-// spaces.
-function lineHtml(text, linkColor) {
-  return linkify(escapeHtml(text), linkColor).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
+// spaces. anchors collects one {url, displayText} entry per autolinked
+// URL (see linkify and messageLinkAnchors).
+function lineHtml(text, linkColor, anchors = []) {
+  return linkify(escapeHtml(text), linkColor, anchors).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
 }
 
 // singleLine collapses a message's line breaks and runs of whitespace

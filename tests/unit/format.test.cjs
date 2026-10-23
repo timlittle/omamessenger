@@ -7,6 +7,19 @@ const { load } = require('./load.cjs');
 
 const Format = load('lib/Format.js');
 
+// anchorsPlain copies an anchors list's {url, displayText} entries,
+// and the list itself, into plain native ones built in this file's own
+// realm: the vm context load() runs Format.js in gives every array and
+// object it builds a different [[Prototype]], which fails
+// deepStrictEqual's own prototype check against a literal written here
+// even when every property matches (see tests/unit/load.test.cjs's own
+// note on the same gap). Array.from, called on this file's own Array,
+// rebuilds the list itself in this realm too - anchors.map would not,
+// since it constructs its result through the source array's own realm.
+function anchorsPlain(anchors) {
+  return Array.from(anchors, (a) => ({ url: a.url, displayText: a.displayText }));
+}
+
 // Fixed nowMs for timezone-independent tests
 // 2026-10-06 12:00:00 UTC (but we use local time in Date constructor)
 const nowMs = new Date(2026, 9, 6, 12, 0).getTime();
@@ -25,19 +38,47 @@ for (const [name, input, want] of escapeHtmlCases) {
 }
 
 // linkify turns a bare URL into a clickable link; these cases share the
-// same regex-match shape across several URL contexts.
+// same regex-match shape across several URL contexts. The href it
+// writes is always a private "oma-link:<index>" (see
+// Format.linkHref), never the URL itself (see "resolveClickedLink
+// tells apart two spans..." in links.test.cjs for why), so each case
+// also checks the real URL came out the other side, in anchors.
 const linkifyCases = [
-  ['turns http URLs into links', 'Visit http://example.com for more', /<a href="http:\/\/example\.com">http:\/\/example\.com<\/a>/],
-  ['turns https URLs into links', 'Visit https://example.com for more', /<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>/],
-  ['handles URL with &amp; entity inside', 'https://example.com?a=1&amp;b=2', /<a href="https:\/\/example\.com\?a=1&amp;b=2">/],
-  ['strips trailing period from URL', 'see https://example.com/tickets.', /<a href="https:\/\/example\.com\/tickets">https:\/\/example\.com\/tickets<\/a>\./],
-  ['strips trailing comma from URL', 'visit https://example.com,', /<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>,/],
-  ['strips trailing parenthesis from URL', 'check (https://example.com)', /check \(<a href="https:\/\/example\.com">https:\/\/example\.com<\/a>\)/]
+  ['turns http URLs into links', 'Visit http://example.com for more', /<a href="oma-link:0">http:\/\/example\.com<\/a>/, 'http://example.com'],
+  ['turns https URLs into links', 'Visit https://example.com for more', /<a href="oma-link:0">https:\/\/example\.com<\/a>/, 'https://example.com'],
+  ['handles URL with &amp; entity inside', 'https://example.com?a=1&amp;b=2', /<a href="oma-link:0">https:\/\/example\.com\?a=1&amp;b=2<\/a>/, 'https://example.com?a=1&amp;b=2'],
+  ['strips trailing period from URL', 'see https://example.com/tickets.', /<a href="oma-link:0">https:\/\/example\.com\/tickets<\/a>\./, 'https://example.com/tickets'],
+  ['strips trailing comma from URL', 'visit https://example.com,', /<a href="oma-link:0">https:\/\/example\.com<\/a>,/, 'https://example.com'],
+  ['strips trailing parenthesis from URL', 'check (https://example.com)', /check \(<a href="oma-link:0">https:\/\/example\.com<\/a>\)/, 'https://example.com']
 ];
 
-for (const [name, input, want] of linkifyCases) {
+for (const [name, input, want, url] of linkifyCases) {
   test(`linkify ${name}`, () => {
-    assert.match(Format.linkify(input), want);
+    const anchors = [];
+    assert.match(Format.linkify(input, null, anchors), want);
+    assert.deepStrictEqual(anchorsPlain(anchors), [{ url, displayText: url }]);
+  });
+}
+
+test('linkHref and linkIndexFromHref round-trip an anchor\'s own position', () => {
+  assert.strictEqual(Format.linkHref(0), 'oma-link:0');
+  assert.strictEqual(Format.linkHref(7), 'oma-link:7');
+  assert.strictEqual(Format.linkIndexFromHref('oma-link:0'), 0);
+  assert.strictEqual(Format.linkIndexFromHref('oma-link:7'), 7);
+});
+
+const unknownHrefCases = [
+  ['a plain URL, never one of this file\'s own hrefs', 'https://example.com'],
+  ['a scheme with no digits after it', 'oma-link:'],
+  ['a non-numeric suffix', 'oma-link:abc'],
+  ['a negative index', 'oma-link:-1'],
+  ['missing entirely', null],
+  ['missing entirely', undefined]
+];
+
+for (const [name, href] of unknownHrefCases) {
+  test(`linkIndexFromHref returns -1 for ${name}`, () => {
+    assert.strictEqual(Format.linkIndexFromHref(href), -1);
   });
 }
 
@@ -45,10 +86,15 @@ test('linkify does not link plain text without http(s)', () => {
   assert.equal(Format.linkify('Visit example.com for more'), 'Visit example.com for more');
 });
 
-test('linkify handles multiple URLs', () => {
-  var result = Format.linkify('http://one.com and https://two.com');
-  var oneCount = (result.match(/<a href/g) || []).length;
-  assert.equal(oneCount, 2);
+test('linkify handles multiple URLs, each with its own numbered href', () => {
+  const anchors = [];
+  const result = Format.linkify('http://one.com and https://two.com', null, anchors);
+  assert.match(result, /<a href="oma-link:0">http:\/\/one\.com<\/a>/);
+  assert.match(result, /<a href="oma-link:1">https:\/\/two\.com<\/a>/);
+  assert.deepStrictEqual(anchorsPlain(anchors), [
+    { url: 'http://one.com', displayText: 'http://one.com' },
+    { url: 'https://two.com', displayText: 'https://two.com' }
+  ]);
 });
 
 const highlightUnchangedCases = [
@@ -228,7 +274,7 @@ test('messageHtml keeps blank lines and runs of spaces', () => {
 });
 
 test('messageHtml escapes and links before breaking lines', () => {
-  assert.equal(Format.messageHtml('<b>\nhttps://x.io'), '&lt;b&gt;<br><a href="https://x.io">https://x.io</a>');
+  assert.equal(Format.messageHtml('<b>\nhttps://x.io'), '&lt;b&gt;<br><a href="oma-link:0">https://x.io</a>');
 });
 
 test('messageHtml bolds a mention at its offset', () => {
@@ -246,7 +292,7 @@ test('messageHtml bolds more than one mention, in any order given', () => {
 
 test('messageHtml escapes and links around a mention', () => {
   const html = Format.messageHtml('<b> @Nadia https://x.io', '#89b4fa', null, [{ offset: 4, length: 6 }]);
-  assert.equal(html, '&lt;b&gt; <b>@Nadia</b> <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');
+  assert.equal(html, '&lt;b&gt; <b>@Nadia</b> <a href="oma-link:0" style="color:#89b4fa">https://x.io</a>');
 });
 
 test('messageHtml skips a mention that no longer fits the text', () => {
@@ -266,20 +312,34 @@ test('messageHtml with no mentions renders exactly as before', () => {
   assert.equal(Format.messageHtml('plain text', null, null, []), 'plain text');
 });
 
+test('messageLinkAnchors still finds an auto-linked URL around a mention', () => {
+  const text = '@Nadia see https://x.io';
+  const mentions = [{ offset: 0, length: 6 }];
+  const html = Format.messageHtml(text, null, null, mentions);
+  assert.equal(html, '<b>@Nadia</b> see <a href="oma-link:0">https://x.io</a>');
+  assert.deepStrictEqual(anchorsPlain(Format.messageLinkAnchors(text, mentions, [])), [{ url: 'https://x.io', displayText: 'https://x.io' }]);
+});
+
 // Formatting spans (a connector's links, bold, italic, underline, strike,
 // code, pre and spoiler runs) are rendered on top of the escaped text the
 // same way mentions are, through messageHtml's fifth argument.
 
-test('messageHtml renders a link span as an anchor, escaping its URL', () => {
-  const html = Format.messageHtml('see link here', null, null, [], [
-    { kind: 'link', start: 4, end: 8, url: 'https://example.com/a?x=1&y="2"' }
-  ]);
-  assert.equal(html, 'see <a href="https://example.com/a?x=1&amp;y=&quot;2&quot;">link</a> here');
+test('messageHtml renders a link span as an anchor with a private href, never its own URL', () => {
+  // A span's URL never reaches the href attribute at all any more (see
+  // Format.linkHref and messageLinkAnchors): resolving a click by
+  // matching an href against a span's URL is exactly what let two
+  // spans sharing one URL make a click on either report whichever
+  // span a lookup found first (see links.test.cjs).
+  const url = 'https://example.com/a?x=1&y="2"';
+  const spans = [{ kind: 'link', start: 4, end: 8, url }];
+  const html = Format.messageHtml('see link here', null, null, [], spans);
+  assert.equal(html, 'see <a href="oma-link:0">link</a> here');
+  assert.deepStrictEqual(anchorsPlain(Format.messageLinkAnchors('see link here', [], spans)), [{ url, displayText: 'link' }]);
 });
 
 test('messageHtml colours a link span the same way auto-linked URLs are', () => {
   const html = Format.messageHtml('link', '#89b4fa', null, [], [{ kind: 'link', start: 0, end: 4, url: 'https://x.io' }]);
-  assert.equal(html, '<a href="https://x.io" style="color:#89b4fa">link</a>');
+  assert.equal(html, '<a href="oma-link:0" style="color:#89b4fa">link</a>');
 });
 
 test('messageHtml drops a link span whose URL scheme is not allowed', () => {
@@ -290,8 +350,10 @@ test('messageHtml drops a link span whose URL scheme is not allowed', () => {
 const allowedSchemeCases = ['http://x.io', 'https://x.io', 'mailto:a@x.io', 'tg://resolve?domain=x'];
 for (const url of allowedSchemeCases) {
   test(`messageHtml allows a link span with scheme ${url.split(':')[0]}`, () => {
-    const html = Format.messageHtml('go', null, null, [], [{ kind: 'link', start: 0, end: 2, url }]);
-    assert.equal(html, `<a href="${url}">go</a>`);
+    const spans = [{ kind: 'link', start: 0, end: 2, url }];
+    const html = Format.messageHtml('go', null, null, [], spans);
+    assert.equal(html, '<a href="oma-link:0">go</a>');
+    assert.deepStrictEqual(anchorsPlain(Format.messageLinkAnchors('go', [], spans)), [{ url, displayText: 'go' }]);
   });
 }
 
@@ -337,13 +399,21 @@ test('messageHtml nests overlapping spans into well-formed, matching tags', () =
 test('messageHtml nests a bold span inside a link span', () => {
   // The link is cut into two adjacent anchors, one per active style
   // underneath it, rather than one tag that would have to close and
-  // reopen mid-way through; both anchors carry the same href, so the
-  // rendered link is one continuous clickable region either way.
-  const html = Format.messageHtml('a bold link', null, null, [], [
-    { kind: 'link', start: 2, end: 11, url: 'https://x.io' },
+  // reopen mid-way through; each gets its own private href (see
+  // Format.linkHref), so the rendered link is still one continuous
+  // clickable region, and messageLinkAnchors reports the span's whole
+  // own text - not just the fragment under either href - for both.
+  const url = 'https://x.io';
+  const spans = [
+    { kind: 'link', start: 2, end: 11, url },
     { kind: 'bold', start: 2, end: 6 }
+  ];
+  const html = Format.messageHtml('a bold link', null, null, [], spans);
+  assert.equal(html, 'a <a href="oma-link:0"><b>bold</b></a><a href="oma-link:1"> link</a>');
+  assert.deepStrictEqual(anchorsPlain(Format.messageLinkAnchors('a bold link', [], spans)), [
+    { url, displayText: 'bold link' },
+    { url, displayText: 'bold link' }
   ]);
-  assert.equal(html, 'a <a href="https://x.io"><b>bold</b></a><a href="https://x.io"> link</a>');
 });
 
 test('messageHtml renders sanely when a span overlaps a mention', () => {
@@ -418,7 +488,7 @@ test('singleLine collapses line breaks and runs of whitespace', () => {
 
 test('messageHtml colours links so they read on the theme', () => {
   assert.equal(Format.messageHtml('see https://x.io', '#89b4fa'),
-    'see <a href="https://x.io" style="color:#89b4fa">https://x.io</a>');
+    'see <a href="oma-link:0" style="color:#89b4fa">https://x.io</a>');
 });
 
 test('messageHtml renders a pipe table as a real table, not wrapped text', () => {
@@ -447,7 +517,8 @@ test('messageHtml escapes a table cell\'s markup', () => {
 test('messageHtml linkifies a URL inside a table cell', () => {
   const text = '| Link |\n| --- |\n| see https://x.io |';
   const html = Format.messageHtml(text, '#89b4fa');
-  assert.match(html, /<a href="https:\/\/x\.io" style="color:#89b4fa">https:\/\/x\.io<\/a>/);
+  assert.match(html, /<a href="oma-link:0" style="color:#89b4fa">https:\/\/x\.io<\/a>/);
+  assert.deepStrictEqual(anchorsPlain(Format.messageLinkAnchors(text, [], [])), [{ url: 'https://x.io', displayText: 'https://x.io' }]);
 });
 
 test('messageHtml does not touch plain text that merely contains a pipe', () => {

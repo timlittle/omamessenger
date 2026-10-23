@@ -6,6 +6,7 @@ const assert = require('node:assert');
 const { load } = require('./load.cjs');
 
 const Links = load('lib/Links.js');
+const Format = load('lib/Format.js');
 
 test('isAllowed accepts http, https, mailto and tg', () => {
   assert.strictEqual(Links.isAllowed('http://example.com'), true);
@@ -90,19 +91,58 @@ test('needsConfirmation is false for a plain mailto: link with no query string',
   assert.strictEqual(Links.needsConfirmation(url, url), false);
 });
 
-test('displayTextFor returns a matching link span\'s own visible text', () => {
+test('resolveClickedLink returns a span\'s own visible text and url for its own anchor', () => {
   const text = 'see click here for more';
   const spans = [{ kind: 'link', start: 4, end: 14, url: 'https://evil.example.com' }];
-  assert.strictEqual(Links.displayTextFor(text, spans, 'https://evil.example.com'), 'click here');
+  const href = Format.linkHref(0);
+  assert.deepEqual(Links.resolveClickedLink(href, text, [], spans), { url: 'https://evil.example.com', displayText: 'click here' });
 });
 
-test('displayTextFor falls back to url when no span matches it', () => {
-  assert.strictEqual(Links.displayTextFor('plain text', [], 'https://example.com'), 'https://example.com');
+test('resolveClickedLink tells apart two spans that carry the same url with different visible text', () => {
+  // The exact shape of the bypass this guards: a sender gives an
+  // honest-looking span (its own text is the url itself, so it would
+  // never need confirming on its own) and a disguise span the same
+  // url, different text. Matching a click by url alone, rather than by
+  // which anchor was actually touched, let a click on the disguise
+  // report the honest span's text instead and skip the question.
+  const url = 'https://evil.example/login';
+  const honestText = `see ${url} `;
+  const text = `${honestText}or go to Barclays here for your refund`;
+  const spans = [
+    { kind: 'link', start: 4, end: 4 + url.length, url },
+    { kind: 'link', start: text.indexOf('Barclays here'), end: text.indexOf('Barclays here') + 'Barclays here'.length, url }
+  ];
+
+  const honest = Links.resolveClickedLink(Format.linkHref(0), text, [], spans);
+  const disguise = Links.resolveClickedLink(Format.linkHref(1), text, [], spans);
+
+  assert.deepEqual(honest, { url, displayText: url });
+  assert.deepEqual(disguise, { url, displayText: 'Barclays here' });
+  assert.strictEqual(Links.needsConfirmation(honest.displayText, honest.url), false);
+  assert.strictEqual(Links.needsConfirmation(disguise.displayText, disguise.url), true);
 });
 
-test('displayTextFor skips a span left dangling past the end of a shortened text', () => {
-  const spans = [{ kind: 'link', start: 4, end: 999, url: 'https://example.com' }];
-  assert.strictEqual(Links.displayTextFor('short', spans, 'https://example.com'), 'https://example.com');
+test('resolveClickedLink fails closed for an href naming no anchor at all, asking when its scheme is allowed', () => {
+  const text = 'see https://good.example for more';
+  const resolved = Links.resolveClickedLink('https://sneaky.example/elsewhere', text, [], []);
+  assert.deepEqual(resolved, { url: 'https://sneaky.example/elsewhere', displayText: '' });
+  assert.strictEqual(Links.needsConfirmation(resolved.displayText, resolved.url), true);
+});
+
+test('resolveClickedLink refuses an href naming no anchor whose scheme is not allowed at all', () => {
+  assert.strictEqual(Links.resolveClickedLink('javascript:alert(1)', 'plain text', [], []), null);
+});
+
+test('resolveClickedLink refuses an href naming an index past the end of the anchors it rendered', () => {
+  const text = 'see https://good.example for more';
+  assert.strictEqual(Links.resolveClickedLink(Format.linkHref(5), text, [], []), null);
+});
+
+test('resolveClickedLink needs no confirmation for a plain auto-linked url', () => {
+  const text = 'see https://good.example for more';
+  const resolved = Links.resolveClickedLink(Format.linkHref(0), text, [], []);
+  assert.deepEqual(resolved, { url: 'https://good.example', displayText: 'https://good.example' });
+  assert.strictEqual(Links.needsConfirmation(resolved.displayText, resolved.url), false);
 });
 
 test('previewDisplayText is the url itself only when the message text shows it', () => {
