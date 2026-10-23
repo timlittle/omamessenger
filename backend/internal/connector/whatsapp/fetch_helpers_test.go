@@ -7,6 +7,7 @@ package whatsapp
 
 import (
 	"context"
+	"io"
 
 	"go.mau.fi/whatsmeow"
 )
@@ -38,7 +39,24 @@ func (d *fakeDevice) downloadMediaToFile(ctx context.Context, ref mediaRef, file
 		if _, writeErr := file.Write(data); writeErr != nil {
 			return writeErr
 		}
+		// Real whatsmeow then reads the whole file back, to check its
+		// MAC and decrypt it in place, so a file the connector opened
+		// for writing only fails here exactly as it would for real.
+		if readErr := readBack(file); readErr != nil {
+			return readErr
+		}
 	}
+
+	return err
+}
+
+// readBack seeks file to its start and reads all of it, the way real
+// whatsmeow re-reads a downloaded file before decrypting it.
+func readBack(file whatsmeow.File) error {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	_, err := io.Copy(io.Discard, file)
 
 	return err
 }

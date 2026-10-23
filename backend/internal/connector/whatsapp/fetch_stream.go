@@ -71,7 +71,7 @@ func streamOnce(ctx context.Context, dev device, ref mediaRef, path string, auto
 	downloadCtx, onWrite, stop := downloadDeadline(ctx, auto)
 	defer stop()
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("whatsapp: fetch media: %w", err)
 	}
