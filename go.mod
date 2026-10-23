@@ -13,7 +13,7 @@ toolchain go1.27.2
 
 require (
 	github.com/client9/gospell v0.9.2
-	github.com/godbus/dbus/v5 v5.2.3
+	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gotd/td v0.162.0
 	github.com/sourcegraph/jsonrpc2 v0.2.3
 	go.mau.fi/whatsmeow v0.0.0-20261007111105-c386243a72ba
