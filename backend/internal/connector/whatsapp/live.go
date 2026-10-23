@@ -76,9 +76,14 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 	}
 
 	m := c.improvedSenderName(message(ctx, dev, e.Info, e.Message))
-	saveMediaRef(ctx, media, remote, m.RemoteID, e.Message)
+	// An album's photo or video, or anything in a disappearing-message
+	// chat, arrives wrapped; its media and poll are read from the message
+	// inside, the same one its kind and text came from (see unwrap), as
+	// history sync already does.
+	inner := unwrap(e.Message)
+	saveMediaRef(ctx, media, remote, m.RemoteID, inner)
 	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe, timestamp: m.Created})
-	savePoll(ctx, media, remote, m.RemoteID, e.Message)
+	savePoll(ctx, media, remote, m.RemoteID, inner)
 
 	// A redelivery of a message first seen as an UndecryptableMessage
 	// (see handleUndecryptable) carries the same id: replace its
