@@ -8,3 +8,4 @@
 - Never commit helper binaries, databases, session files or test data taken from a real account
 - Database and session files are created with `0600`, their directories with `0700`
 - Installation stays user-scoped: no `sudo`, no writes to `/usr`, no changes to Omarchy's packaged source or system config
+- The app writes outside its data directory only on the user's own command: `~/.config/omamessenger/keys.conf` from "Open key bindings file", and a saved photo or file in the downloads folder
