@@ -52,7 +52,7 @@ While not writing, j/k move a highlighted message instead of scrolling by lines,
 | Ctrl+D, PageDown / Ctrl+U, PageUp | Page down / up |
 | G, End / g, Home | Jump to the newest / oldest message |
 | i or a | Start writing |
-| Enter | Open the highlighted message's photo, video, GIF or file in the full-size viewer (or your own application for a file), or play/pause its voice note; see Media viewer below |
+| Enter | Open the highlighted message's photo in the full-size viewer, or a file in your own application; play or pause its video, GIF or voice note in the chat (click a playing video for the full-size viewer); see Media viewer below |
 | Space | Play or pause the highlighted video inline, without opening the full-size viewer |
 | c | Copy the highlighted photo or video |
 | s | Save the highlighted photo or video to your downloads directory |

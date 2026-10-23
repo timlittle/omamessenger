@@ -66,7 +66,7 @@ function hints(message, bindings) {
   const media = Timeline.media(message);
   // A poll has nothing for the open key to open: voting is its own key,
   // added below, only while it is still open.
-  if (media && media.kind === 'voice') parts.push(`${key('message.open')} play`);
+  if (media && (media.kind === 'voice' || media.kind === 'video')) parts.push(`${key('message.open')} play`);
   else if (media && media.kind !== 'poll') parts.push(`${key('message.open')} open`);
   // Copy, save and open-externally only ever do something for a photo
   // or video (see Media.mimeFor and MessageDelegate's own hasMedia),

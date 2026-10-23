@@ -37,7 +37,7 @@ Item {
 
   objectName: "toast"
   visible: root._label !== ""
-  implicitWidth: Math.min(pill.implicitWidth, Style.space(420))
+  implicitWidth: Math.min(Math.max(pill.implicitWidth, Style.space(260)), Style.space(520))
   implicitHeight: pill.implicitHeight
   opacity: root._label !== "" ? 1 : 0
 
@@ -75,8 +75,8 @@ Item {
     color: Theme.popups.background
     border.color: Theme.popups.border
     border.width: Style.normalBorderWidth
-    implicitWidth: label.implicitWidth + Theme.spacing.lg * 2
-    implicitHeight: label.implicitHeight + Theme.spacing.sm * 2
+    implicitWidth: label.implicitWidth + Theme.spacing.xl * 2
+    implicitHeight: label.implicitHeight + Theme.spacing.md * 2
 
     Text {
       id: label
@@ -89,7 +89,9 @@ Item {
       textFormat: Text.PlainText
       color: Theme.popups.text
       font.family: Theme.font.family
-      font.pixelSize: Theme.font.bodySmall
+      // Large enough to catch the eye at a glance: it is the only sign
+      // a copy or save worked.
+      font.pixelSize: Theme.font.subtitle
     }
 
     MouseArea {

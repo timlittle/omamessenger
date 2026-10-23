@@ -134,8 +134,8 @@ ShellRoot {
   }
 
   // fakeVideoController stands in for the real VideoController's own
-  // QtMultimedia probe, so checkOpenMediaShowsAPlayableVideoInTheViewer
-  // can set it available without needing QtMultimedia to actually be
+  // QtMultimedia probe, so checkOpenMediaPlaysAVideoInline can set it
+  // available without needing QtMultimedia to actually be
   // loaded.
   QtObject {
     id: fakeVideoController
@@ -219,7 +219,7 @@ ShellRoot {
   // mediaOpenCooldownMs has actually passed.
   function finishAfterCooldown(): void {
     if (!root.checkCooldownClearsAfterItPasses()) return;
-    if (!root.checkOpenMediaShowsAPlayableVideoInTheViewer()) return;
+    if (!root.checkOpenMediaPlaysAVideoInline()) return;
     if (!root.checkCopyMediaShowsAConfirmation()) return;
     if (!root.checkSaveMediaShowsWhereItWentWithHomeFolded()) return;
     if (!root.checkFetchMediaAlwaysSendsAutoAndRetryMediaDoesNot()) return;
@@ -373,22 +373,25 @@ ShellRoot {
     return true;
   }
 
-  // checkOpenMediaShowsAPlayableVideoInTheViewer verifies opening a
-  // video whose playback can actually work in the in-app viewer (a
-  // videoController reporting QtMultimedia available, here faked)
-  // shows it there, through photoViewer.show, rather than falling
-  // through to the plain download-and-open-externally path every check
-  // above exercises. v2 already has a cached path from this file's own
-  // fixtures, so this needs no new media.fetch.
-  function checkOpenMediaShowsAPlayableVideoInTheViewer(): bool {
+  // checkOpenMediaPlaysAVideoInline verifies opening a video (Enter on
+  // a highlighted one) with a video controller present plays or pauses
+  // it in the chat, through the same toggle a click on it uses, rather
+  // than opening the full-size viewer or another application. v2
+  // already has a cached path from this file's own fixtures, so this
+  // needs no new media.fetch.
+  function checkOpenMediaPlaysAVideoInline(): bool {
     root.openCalls = [];
+    fakeVideoController.toggleCalls = [];
     controller.videoController = fakeVideoController;
     controller.photoViewer = viewer;
+    controller.timeline.setMediaPlayable("v2", true);
 
     controller.openMedia("v2");
 
-    if (viewer.viewerId !== "v2") return Check.fail("viewerId = " + viewer.viewerId + ", want v2 shown in the viewer");
-    if (root.openCalls.length !== 0) return Check.fail("a playable video also opened externally: " + JSON.stringify(root.openCalls));
+    if (!fakeVideoController.toggleCalls.includes("v2")) return Check.fail("opening a video did not play it in the chat");
+    if (viewer.viewerId === "v2") return Check.fail("opening a video showed it in the full-size viewer, want it played in the chat");
+    if (root.openCalls.length !== 0) return Check.fail("opening a video also opened it externally: " + JSON.stringify(root.openCalls));
+    fakeVideoController.playingId = "";
 
     viewer.close();
     controller.videoController = null;

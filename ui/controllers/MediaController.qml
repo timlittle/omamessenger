@@ -110,35 +110,23 @@ QtObject {
   // openMedia opens a message's photo, video, file or voice note. A photo
   // opens in the in-app viewer: Omarchy's window rule floats the external
   // image viewer small and keeps keyboard focus on this window, so its
-  // close keys never reach it. A voice note plays or pauses in place
-  // only once the helper has validated its downloaded bytes (see
-  // _toggleVoice); otherwise it falls through to the same "open in your
-  // own application" path a video or file already gets.
+  // close keys never reach it. A video or GIF plays or pauses in the
+  // chat, the same as clicking it (see toggleVideo); the full-size viewer
+  // is a click on one already playing, and x opens it externally. A
+  // voice note plays or pauses in place only once the helper has
+  // validated its downloaded bytes (see _toggleVoice); otherwise it falls
+  // through to the same "open in your own application" path a file gets.
   function openMedia(timeline: var, id: string): void {
     const media = timeline.media(id);
     const kind = Media.kindFor(media);
     if (kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
     if (kind === "voice") { root._toggleVoice(timeline, id, media); return; }
-    if (kind === "video" && root._playableInViewer(timeline, id) && root.photoViewer) { root.photoViewer.show(id); return; }
+    if (kind === "video" && root.videoController) { root.toggleVideo(timeline, id); return; }
 
     const path = timeline.mediaPath(id);
     if (path) { root._openIfAllowed(timeline, id, path); return; }
 
     root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(timeline, id, downloaded));
-  }
-
-  // _playableInViewer reports whether the in-app viewer (see
-  // photoViewer, which shows a video or GIF too) can actually play
-  // media: a real GIF file, confirmed only by the helper's own
-  // decodeAs verdict once downloaded (see Media.decodesAsGif), always
-  // can, through AnimatedImage; an ordinary video, or one a service
-  // marked to play back like one, needs videoController's own
-  // QtMultimedia probe to have succeeded. Without either, opening
-  // falls through to the plain download-and-open-externally path
-  // below instead, exactly as it did before the viewer could show a
-  // video at all.
-  function _playableInViewer(timeline: var, id: string): bool {
-    return Media.decodesAsGif(timeline.mediaDecodeAs(id)) || (!!root.videoController && root.videoController.available);
   }
 
   // _openIfAllowed hands path to openExternally unless this same
