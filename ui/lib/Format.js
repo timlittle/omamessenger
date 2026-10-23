@@ -580,9 +580,9 @@ function previewText(text) {
 }
 
 // MEDIA_LABELS are the texts the helper gives a photo, video, file,
-// voice note or sticker sent without a caption, so lists and
-// notifications have something to show.
-var MEDIA_LABELS = { photo: '[Photo]', video: '[Video]', file: '[File]', voice: '[Voice message]', sticker: '[Sticker]' };
+// voice note, audio message or sticker sent without a caption, so lists
+// and notifications have something to show.
+var MEDIA_LABELS = { photo: '[Photo]', video: '[Video]', file: '[File]', voice: '[Voice message]', audio: '[Audio]', sticker: '[Sticker]' };
 
 // caption is the text to show beside media: none when the text is only
 // the label standing in for the media the bubble already shows.
@@ -691,7 +691,7 @@ function mediaFailureReason(reason) {
 // MEDIA_KIND_NOUNS names the media a fetch failure happened for, in the
 // phrasing "This <noun> ...", with "file" as the safe catch-all for a
 // kind this map does not list.
-var MEDIA_KIND_NOUNS = { photo: 'photo', video: 'video', voice: 'voice message', sticker: 'sticker', file: 'file' };
+var MEDIA_KIND_NOUNS = { photo: 'photo', video: 'video', voice: 'voice message', audio: 'audio message', sticker: 'sticker', file: 'file' };
 
 // MEDIA_UNAVAILABLE_ENDINGS are the media.fetch reason categories that
 // mean the file is truly gone, each as the sentence ending for

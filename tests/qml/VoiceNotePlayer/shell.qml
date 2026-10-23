@@ -23,6 +23,7 @@ ShellRoot {
     if (!root.checkUnplayable()) return;
     if (!root.checkOpensExternallyHint()) return;
     if (!root.checkFallback()) return;
+    if (!root.checkAudioFileShowsItsOwnName()) return;
 
     console.log("PASS VoiceNotePlayer");
     Qt.exit(0);
@@ -133,6 +134,21 @@ ShellRoot {
     return true;
   }
 
+  // checkAudioFileShowsItsOwnName verifies an ordinary audio message
+  // (media.kind "audio", not a push-to-talk voice note) shows its own
+  // file name and a "Play audio message" tooltip, rather than the
+  // voice note's fixed "Voice message" label: both still play through
+  // this one player once media.fetch says they are safe to (see
+  // VoiceNotePlayer.qml's _isVoiceNote).
+  function checkAudioFileShowsItsOwnName(): bool {
+    const label = Check.find(audioPlayer, "voiceAccessibleLabel");
+    if (!label || label.text !== "song.mp3") return Check.fail("audio file label is \"" + (label ? label.text : "?") + "\", want its own file name");
+
+    const button = Check.find(audioPlayer, "voicePlayButton");
+    if (button.tooltipText !== "Play audio message") return Check.fail("audio file tooltip is \"" + button.tooltipText + "\", want \"Play audio message\"");
+    return true;
+  }
+
   // findText returns the first node whose text matches exactly.
   function findText(nodes, text) {
     return nodes.find((node) => node.text === text) ?? null;
@@ -157,6 +173,12 @@ ShellRoot {
         media: ({ kind: "voice", duration: 12, fileName: "voice-message.ogg" })
         available: false
         onOpened: root.opened.push("seen")
+      }
+
+      VoiceNotePlayer {
+        id: audioPlayer
+        media: ({ kind: "audio", duration: 180, fileName: "song.mp3" })
+        available: true
       }
     }
   }

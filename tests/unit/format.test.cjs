@@ -562,6 +562,7 @@ test('caption drops the label a photo, video, file or voice note stands in for',
   assert.strictEqual(Format.caption('[Video]', { kind: 'video' }), '');
   assert.strictEqual(Format.caption('[File]', { kind: 'file' }), '');
   assert.strictEqual(Format.caption('[Voice message]', { kind: 'voice' }), '');
+  assert.strictEqual(Format.caption('[Audio]', { kind: 'audio' }), '');
   assert.strictEqual(Format.caption('Sunset', { kind: 'photo' }), 'Sunset');
   assert.strictEqual(Format.caption('[Photo]', null), '[Photo]');
   assert.strictEqual(Format.caption('see x.io', { kind: 'link' }), 'see x.io');
@@ -686,6 +687,7 @@ const mediaUnavailableMessageCases = [
   ['video', 'expired', 'This video is no longer on the phone.'],
   ['photo', 'decrypt', 'This photo could not be verified.'],
   ['voice', 'not-found', 'This voice message is no longer available.'],
+  ['audio', 'not-found', 'This audio message is no longer available.'],
   ['sticker', 'not-found', 'This sticker is no longer available.'],
   ['document', 'not-found', 'This file is no longer available.'],
   ['video', 'download', ''],

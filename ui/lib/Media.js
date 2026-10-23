@@ -13,7 +13,11 @@
 // names explicitly, each with its own view. A kind in this list is
 // never re-guessed from its file name, so a future kind (such as a
 // poll) only needs adding here, not touching the fallback logic below.
-var KNOWN_KINDS = ['photo', 'video', 'link', 'voice', 'sticker', 'poll'];
+// "audio" is an ordinary audio message (not push-to-talk): it shares
+// "voice"'s inline player, gated the same way by media.fetch's own
+// playable verdict, but with its own file name and duration shown
+// instead of a voice note's fixed label (see VoiceNotePlayer.qml).
+var KNOWN_KINDS = ['photo', 'video', 'link', 'voice', 'audio', 'sticker', 'poll'];
 
 // NO_VOICE_NOTE is the voiceNotes default every view that reads
 // VoiceNoteController's playback state falls back to before a real one

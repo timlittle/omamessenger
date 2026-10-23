@@ -492,12 +492,13 @@ func messagesEdit(c *app.Commands) func(context.Context, editParams) (any, error
 // filename or "animated" flag (see docs/decisions.md). Playable is
 // set for an ordinary video (DecodeAs omitted) whose own container
 // and stream headers the helper has validated well enough to trust
-// its in-window video player with, or for a voice note whose own
-// bytes the helper has validated as a safe, single-stream audio
-// file; omitted (false) for anything else, including a video or
-// voice note that failed its own check, which the UI must then offer
-// only to open in the user's own application, never load into its
-// own player. Risky is true only when app.MediaRisk,
+// its in-window video player with, or for a voice note or an ordinary
+// audio message whose own bytes the helper has validated as a safe,
+// single-stream audio file; omitted (false) for anything else,
+// including a video, voice note or audio message that failed its own
+// check, which the UI must then offer only to open in the user's own
+// application, never load into its own player. Risky is true only
+// when app.MediaRisk,
 // sniffing path's own bytes, finds active or executable content - a
 // web page, a vector image or a script; omitted (false) for everyday
 // media, which is every message's media until proven otherwise. The
@@ -524,11 +525,11 @@ type mediaFetchParams struct {
 
 // mediaFetch downloads a message's media, or finds it already cached,
 // then asks the helper's own verdict on how to decode it and, for an
-// ordinary video or a voice note, whether it is safe to play in
-// place at all (see mediaResult.DecodeAs and mediaResult.Playable):
-// further steps, rather than folded into FetchMedia itself, since
-// none of them ever applies to anything but a video or voice note,
-// and none changes what was downloaded or where.
+// ordinary video, voice note or audio message, whether it is safe to
+// play in place at all (see mediaResult.DecodeAs and
+// mediaResult.Playable): further steps, rather than folded into
+// FetchMedia itself, since none of them ever applies to anything but
+// those kinds, and none changes what was downloaded or where.
 func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, error) {
 	return func(ctx context.Context, p mediaFetchParams) (any, error) {
 		path, err := c.FetchMedia(ctx, p.MessageID, p.Auto)

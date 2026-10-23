@@ -5,20 +5,25 @@ import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
 
-// A voice note in a message: a "Voice message" label (never just the
-// play glyph, which names nothing on its own), a play/pause button, a
-// progress bar and an elapsed/total time label. Reads
-// playback state (playing, positionMs, durationMs) as plain data, the
-// same way PhotoView reads a download's path, rather than calling a
-// controller itself; the caller owns starting, pausing and downloading.
-// When available is false (the optional QtMultimedia module this needs
+// A voice note or an ordinary audio message in a message: a label
+// (never just the play glyph, which names nothing on its own), a
+// play/pause button, a progress bar and an elapsed/total time label.
+// A voice note's label is the fixed "Voice message"; an audio message
+// (media.kind "audio") shows its own file name instead, the same name
+// FileView would, since both play through this one player once
+// media.fetch says they are safe to (see _isVoiceNote). Reads playback
+// state (playing, positionMs, durationMs) as plain data, the same way
+// PhotoView reads a download's path, rather than calling a controller
+// itself; the caller owns starting, pausing and downloading. When
+// available is false (the optional QtMultimedia module this needs
 // could not be loaded), this shows the same plain "open externally" row
 // FileView uses instead, so the rest of the timeline never breaks over a
 // dependency not every Omarchy install has.
 Item {
   id: root
 
-  // media is the message's voice media: duration and fileName.
+  // media is the message's voice or audio media: kind, duration and
+  // fileName.
   required property var media
   // path is where the voice note was downloaded, or "" until then.
   property string path: ""
@@ -76,6 +81,19 @@ Item {
   // gated external-open path instead of in-window playback (see
   // MediaController._selectOrOpenVoice).
   readonly property bool _opensExternally: !!root.path && !root.playable
+  // _isVoiceNote is true for a push-to-talk voice note, false for an
+  // ordinary audio message (media.kind "audio"): both play through
+  // this one player once media.fetch says they are safe to, but only a
+  // voice note gets the generic "Voice message" label below.
+  readonly property bool _isVoiceNote: root.media.kind !== "audio"
+  // _label is this player's top line: a voice note's fixed name, or
+  // an audio file's own name, falling back to a generic one if the
+  // message somehow carries none.
+  readonly property string _label: root._isVoiceNote ? "Voice message" : (root.media.fileName || "Audio message")
+  // _noun is the lower-case phrase the play button's own tooltip names
+  // ("Play voice message" / "Play audio message"), kept apart from
+  // _label, which is a title rather than a sentence fragment.
+  readonly property string _noun: root._isVoiceNote ? "voice message" : "audio message"
 
   implicitWidth: Style.space(280)
   implicitHeight: available ? playerRow.implicitHeight : fallbackRow.implicitHeight
@@ -100,7 +118,7 @@ Item {
         ? ("Unavailable" + (root._unavailableHint ? " — " + root._unavailableHint : ""))
         : root._tooLargeAuto ? "Tap to load"
         : root._opensExternally ? "Open in your own application"
-        : (root.playing ? "Pause voice message" : "Play voice message")
+        : (root.playing ? ("Pause " + root._noun) : ("Play " + root._noun))
       enabled: !root._unplayable
       focusable: true
       onClicked: root.opened()
@@ -113,7 +131,7 @@ Item {
       Text {
         objectName: "voiceAccessibleLabel"
         Layout.fillWidth: true
-        text: "Voice message"
+        text: root._label
         textFormat: Text.PlainText
         elide: Text.ElideRight
         color: Theme.foreground
@@ -180,7 +198,7 @@ Item {
 
       Text {
         Layout.fillWidth: true
-        text: "Voice message · open"
+        text: root._label + " · open"
         textFormat: Text.PlainText
         color: Theme.foreground
         font { family: Theme.font.family; pixelSize: Theme.font.bodySmall; weight: Font.DemiBold }

@@ -119,7 +119,7 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 		{
 			"ordinary audio",
 			&waE2E.Message{AudioMessage: &waE2E.AudioMessage{FileLength: u64(512)}},
-			&domain.Media{Kind: domain.MediaFile, FileName: "audio-message.ogg", Size: 512},
+			&domain.Media{Kind: domain.MediaAudio, FileName: "audio-message.ogg", Size: 512},
 			mediaRef{Kind: mediaKindAudio, FileLength: 512},
 			true,
 		},

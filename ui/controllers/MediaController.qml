@@ -107,20 +107,21 @@ QtObject {
     root.downloadMedia(timeline, id, false, false, () => {});
   }
 
-  // openMedia opens a message's photo, video, file or voice note. A photo
-  // opens in the in-app viewer: Omarchy's window rule floats the external
-  // image viewer small and keeps keyboard focus on this window, so its
-  // close keys never reach it. A video or GIF plays or pauses in the
-  // chat, the same as clicking it (see toggleVideo); the full-size viewer
-  // is a click on one already playing, and x opens it externally. A
-  // voice note plays or pauses in place only once the helper has
-  // validated its downloaded bytes (see _toggleVoice); otherwise it falls
-  // through to the same "open in your own application" path a file gets.
+  // openMedia opens a message's photo, video, file, voice note or audio
+  // message. A photo opens in the in-app viewer: Omarchy's window rule
+  // floats the external image viewer small and keeps keyboard focus on
+  // this window, so its close keys never reach it. A video or GIF
+  // plays or pauses in the chat, the same as clicking it (see
+  // toggleVideo); the full-size viewer is a click on one already
+  // playing, and x opens it externally. A voice note or audio message
+  // plays or pauses in place only once the helper has validated its
+  // downloaded bytes (see _toggleVoice); otherwise it falls through to
+  // the same "open in your own application" path a file gets.
   function openMedia(timeline: var, id: string): void {
     const media = timeline.media(id);
     const kind = Media.kindFor(media);
     if (kind === "photo") { if (root.photoViewer) root.photoViewer.show(id); return; }
-    if (kind === "voice") { root._toggleVoice(timeline, id, media); return; }
+    if (kind === "voice" || kind === "audio") { root._toggleVoice(timeline, id, media); return; }
     if (kind === "video" && root.videoController) { root.toggleVideo(timeline, id); return; }
 
     const path = timeline.mediaPath(id);

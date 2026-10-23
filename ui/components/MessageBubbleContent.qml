@@ -90,11 +90,11 @@ Column {
   signal linkOpenRequested(string url, string displayText)
 
   // _mediaKind is which view media belongs in: "link", "photo", "video",
-  // "voice", "file", or "" for no media, read only from the helper's
-  // own normalized media kind (see Media.js) - never guessed from a
-  // sender's claimed file name, which must never choose a decoder.
-  // Computed once here, rather than inline on each view's own visible
-  // binding, so the path below is never handed to a view other than
+  // "voice", "audio", "file", or "" for no media, read only from the
+  // helper's own normalized media kind (see Media.js) - never guessed
+  // from a sender's claimed file name, which must never choose a
+  // decoder. Computed once here, rather than inline on each view's own
+  // visible binding, so the path below is never handed to a view other than
   // the one that matches: an invisible sibling would otherwise still
   // try to load it, which is how a voice note's audio file once
   // reached the image view and failed to decode as a photo.
@@ -246,7 +246,10 @@ Column {
   VoiceNotePlayer {
     objectName: "voiceNotePlayer"
     width: Math.min(implicitWidth, root.maxTextWidth)
-    visible: root._mediaKind === "voice"
+    // An ordinary audio message plays through this same player as a
+    // voice note, gated by the same media.fetch playable verdict; only
+    // its label differs (see VoiceNotePlayer.qml).
+    visible: root._mediaKind === "voice" || root._mediaKind === "audio"
     media: root.media ? root.media : ({})
     path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
     failed: visible && !!(root.message && root.message.mediaFailed)

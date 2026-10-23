@@ -125,6 +125,8 @@ func MediaPlaceholder(kind string) string {
 		return "[Video]"
 	case MediaVoice:
 		return "[Voice message]"
+	case MediaAudio:
+		return "[Audio]"
 	case MediaSticker:
 		return "[Sticker]"
 	default:

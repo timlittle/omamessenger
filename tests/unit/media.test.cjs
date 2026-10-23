@@ -13,11 +13,12 @@ test('kindFor returns null for no media', () => {
   assert.strictEqual(Media.kindFor({}), null);
 });
 
-test('kindFor passes through photo, video, link, voice and sticker unchanged', () => {
+test('kindFor passes through photo, video, link, voice, audio and sticker unchanged', () => {
   assert.strictEqual(Media.kindFor({ kind: 'photo' }), 'photo');
   assert.strictEqual(Media.kindFor({ kind: 'video' }), 'video');
   assert.strictEqual(Media.kindFor({ kind: 'link' }), 'link');
   assert.strictEqual(Media.kindFor({ kind: 'voice' }), 'voice');
+  assert.strictEqual(Media.kindFor({ kind: 'audio' }), 'audio');
   assert.strictEqual(Media.kindFor({ kind: 'sticker' }), 'sticker');
 });
 
@@ -71,7 +72,7 @@ test('mimeFor names a photo as JPEG and a video as MP4', () => {
 });
 
 test('mimeFor is null for a kind with nothing sensible to copy', () => {
-  for (const kind of ['link', 'voice', 'sticker', 'poll', 'file']) {
+  for (const kind of ['link', 'voice', 'audio', 'sticker', 'poll', 'file']) {
     assert.strictEqual(Media.mimeFor({ kind }), null, kind);
   }
   assert.strictEqual(Media.mimeFor(null), null);

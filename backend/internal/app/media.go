@@ -158,22 +158,22 @@ func (c *Commands) VideoPlayableForMedia(ctx context.Context, messageID, path st
 	return playable, nil
 }
 
-// AudioPlayableForMedia reports whether messageID's voice note,
-// already downloaded to path by a prior FetchMedia, is safe for the
-// UI to hand to its own in-window audio player at all: its own
-// bytes, read in pure Go without ever shelling out (see
+// AudioPlayableForMedia reports whether messageID's voice note or
+// audio file, already downloaded to path by a prior FetchMedia, is
+// safe for the UI to hand to its own in-window audio player at all:
+// its own bytes, read in pure Go without ever shelling out (see
 // connector.AudioPlayable), describe a single-stream Ogg/Opus,
 // MP4/M4A or simple constant-bitrate MP3 file within audiosafe's own
-// duration limit. It is always false for anything but a voice note,
-// mirroring VideoPlayableForMedia: the sender's claimed file name
-// never chooses a decoder, only the downloaded bytes do (see
-// docs/decisions.md).
+// duration limit. It is always false for anything but a voice note or
+// an ordinary audio message, mirroring VideoPlayableForMedia: the
+// sender's claimed file name never chooses a decoder, only the
+// downloaded bytes do (see docs/decisions.md).
 func (c *Commands) AudioPlayableForMedia(ctx context.Context, messageID, path string) (bool, error) {
 	m, err := c.store.Message(ctx, messageID)
 	if err != nil {
 		return false, err
 	}
-	if m.Media == nil || m.Media.Kind != domain.MediaVoice {
+	if m.Media == nil || (m.Media.Kind != domain.MediaVoice && m.Media.Kind != domain.MediaAudio) {
 		return false, nil
 	}
 

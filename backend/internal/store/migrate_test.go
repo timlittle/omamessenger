@@ -74,7 +74,10 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "gif.db"))
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-1]); err != nil {
+	// The GIF migration is second-to-last, one before the audio
+	// migration appended after it; stop short of both so inserting the
+	// pre-fix rows below still finds them unreclassified.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-2]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,13 +110,69 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into a video.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-1]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-2]); err != nil {
 		t.Fatal(err)
 	}
 
 	gifAgain := readRawMedia(t, db, "m1")
 	if gifAgain != gif {
 		t.Errorf("re-running the migration changed an already-reclassified row: %+v, want %+v", gifAgain, gif)
+	}
+}
+
+// TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio confirms a
+// WhatsApp audio message stored before this connector told an ordinary
+// audio file apart from a voice note is reclassified by the migration
+// that catches it up: MediaAudio, so it reaches the UI's inline player
+// on its next fetch, the same as a message received after that fix,
+// rather than staying a plain file chip forever. A message whose file
+// name is not the helper's own fixed "audio-message.ogg" - including a
+// Telegram audio file, which only ever carries the sender's own name -
+// is left alone, since there is nothing safe to judge it by.
+func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
+	t.Parallel()
+
+	db := openRaw(t, filepath.Join(t.TempDir(), "audio.db"))
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-1]); err != nil {
+		t.Fatal(err)
+	}
+
+	insertRawMessage(t, db, "m1", `{"kind":"file","fileName":"audio-message.ogg","size":4096,"duration":30}`)
+	insertRawMessage(t, db, "m2", `{"kind":"file","fileName":"song.mp3","size":4096}`)
+	insertRawMessage(t, db, "m3", `{"kind":"voice","fileName":"voice-message.ogg","size":512}`)
+	insertRawMessage(t, db, "m4", "")
+
+	if err := migrate(t.Context(), db, migrations); err != nil {
+		t.Fatal(err)
+	}
+
+	audio := readRawMedia(t, db, "m1")
+	if audio.Kind != domain.MediaAudio || audio.FileName != "audio-message.ogg" || audio.Duration != 30 {
+		t.Errorf("reclassified WhatsApp audio message = %+v, want MediaAudio, audio-message.ogg, duration 30", audio)
+	}
+
+	telegramAudio := readRawMedia(t, db, "m2")
+	if telegramAudio.Kind != domain.MediaFile {
+		t.Errorf("a Telegram audio file named only by its sender = %+v, want kind file, left alone", telegramAudio)
+	}
+
+	voice := readRawMedia(t, db, "m3")
+	if voice.Kind != domain.MediaVoice {
+		t.Errorf("an already-correct voice note = %+v, want kind voice, unchanged", voice)
+	}
+
+	// Re-running the same step on an already-reclassified database must
+	// not touch it again: the migration only ever runs once per
+	// database through migrate's own version gate, but the UPDATE
+	// itself is idempotent too, since its WHERE clause no longer
+	// matches a row it already turned into audio.
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-1]); err != nil {
+		t.Fatal(err)
+	}
+
+	audioAgain := readRawMedia(t, db, "m1")
+	if audioAgain != audio {
+		t.Errorf("re-running the migration changed an already-reclassified row: %+v, want %+v", audioAgain, audio)
 	}
 }
 

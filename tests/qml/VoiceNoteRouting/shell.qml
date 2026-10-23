@@ -5,9 +5,10 @@
 // plain file row and opens only through the gated external-open path,
 // never the in-window voice player - the fix for a reviewed bug where a
 // sender's own name alone decided which decoder a bubble's audio
-// reached. A real photo, a real voice note and a plain, non-audio file
-// are checked the same way, so the fix narrows dispatch without
-// breaking any of them.
+// reached. A real photo, a real voice note, an ordinary audio message
+// (media.kind "audio", played through the same inline player) and a
+// plain, non-audio file are checked the same way, so the fix narrows
+// dispatch without breaking any of them.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -61,6 +62,16 @@ ShellRoot {
   }
 
   MessageDelegate {
+    id: audioDelegate
+    width: 400
+    annotation: root.noAnnotation
+    message: ({
+      id: "audio", outgoing: false, status: "received", created: 0, senderName: "", senderId: "s1",
+      text: "", media: { kind: "audio", duration: 180, fileName: "song.mp3" }
+    })
+  }
+
+  MessageDelegate {
     id: photoDelegate
     width: 400
     annotation: root.noAnnotation
@@ -90,6 +101,7 @@ ShellRoot {
   function run(): void {
     if (!root.checkDelegate(legacyVoiceDelegate, "fileView", "a legacy voice note stored as a file")) return;
     if (!root.checkDelegate(voiceDelegate, "voiceNotePlayer", "a real voice note")) return;
+    if (!root.checkDelegate(audioDelegate, "voiceNotePlayer", "an ordinary audio message")) return;
     if (!root.checkDelegate(photoDelegate, "photoView", "a real photo")) return;
     if (!root.checkDelegate(fileDelegate, "fileView", "a plain, non-audio file")) return;
     if (!root.checkControllerOpensLegacyFileExternally()) return;

@@ -175,12 +175,16 @@ func videoMedia(m *waE2E.VideoMessage) (*domain.Media, mediaRef, bool) {
 	return video, ref, true
 }
 
-// audioMedia is a voice note or other audio file, with its duration and
-// its reference for FetchMedia to download it later. A voice note (PTT,
-// "push to talk") gets its own kind so the UI can show an inline player
-// instead of the plain file row an ordinary audio message gets.
+// audioMedia is a voice note or an ordinary audio file, with its
+// duration and its reference for FetchMedia to download it later. A
+// voice note (PTT, "push to talk") gets MediaVoice; an ordinary audio
+// message gets MediaAudio. Both reach the UI's inline audio player,
+// gated the same way by media.fetch's own byte check (see
+// app.AudioPlayableForMedia and audiosafe) - MediaAudio only changes
+// the player's label from a voice note's fixed "Voice message" to the
+// file's own name.
 func audioMedia(m *waE2E.AudioMessage) (*domain.Media, mediaRef, bool) {
-	kind, name := domain.MediaFile, "audio-message.ogg"
+	kind, name := domain.MediaAudio, "audio-message.ogg"
 	if m.GetPTT() {
 		kind, name = domain.MediaVoice, "voice-message.ogg"
 	}

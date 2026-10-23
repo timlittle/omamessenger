@@ -291,7 +291,7 @@ func TestCapMedia_LeavesOtherKindsAlone(t *testing.T) {
 func TestCapMedia_BoundsAFileNameForEveryKind(t *testing.T) {
 	t.Parallel()
 
-	for _, kind := range []string{domain.MediaFile, domain.MediaVideo, domain.MediaVoice, domain.MediaSticker} {
+	for _, kind := range []string{domain.MediaFile, domain.MediaVideo, domain.MediaVoice, domain.MediaAudio, domain.MediaSticker} {
 		media := &domain.Media{Kind: kind, FileName: strings.Repeat("f", domain.MaxFileNameLength+10)}
 		got := domain.CapMedia(media)
 		if len(got.FileName) > domain.MaxFileNameLength {

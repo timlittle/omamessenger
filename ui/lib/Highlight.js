@@ -45,12 +45,12 @@ function newer(ids, currentId) {
 // key does to it right now. Reply, react and delete are always on
 // offer, since every message can take any of them; the rest only ever
 // apply to this particular message, so they only show when it actually
-// carries a photo, video, file or voice note, a link, a quote, is
-// itself a failed outgoing send, or is this account's own already-sent
-// text message, which Edit.isEditable accepts:
+// carries a photo, video, file, voice note or audio message, a link, a
+// quote, is itself a failed outgoing send, or is this account's own
+// already-sent text message, which Edit.isEditable accepts:
 //   "r reply · e react · d delete"
 //   "r reply · e react · d delete · Enter open"     (carries media)
-//   "r reply · e react · d delete · Enter play"     (carries a voice note)
+//   "r reply · e react · d delete · Enter play"     (carries a voice note or audio message)
 //   "r reply · e react · d delete · Enter open · c copy · s save · x open"
 //                                                    (carries a photo or video)
 //   "r reply · e react · d delete · o open link"    (carries a link)
@@ -66,7 +66,7 @@ function hints(message, bindings) {
   const media = Timeline.media(message);
   // A poll has nothing for the open key to open: voting is its own key,
   // added below, only while it is still open.
-  if (media && (media.kind === 'voice' || media.kind === 'video')) parts.push(`${key('message.open')} play`);
+  if (media && (media.kind === 'voice' || media.kind === 'audio' || media.kind === 'video')) parts.push(`${key('message.open')} play`);
   else if (media && media.kind !== 'poll') parts.push(`${key('message.open')} open`);
   // Copy, save and open-externally only ever do something for a photo
   // or video (see Media.mimeFor and MessageDelegate's own hasMedia),

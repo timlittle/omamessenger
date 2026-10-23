@@ -171,11 +171,11 @@ func TestVideoPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 // TestAudioPlayableForMedia_ChecksTheDownloadedBytes covers the three
 // outcomes server.mediaFetch depends on for audio, mirroring
 // TestVideoPlayableForMedia_ChecksTheDownloadedBytes: a voice note
-// whose bytes audiosafe accepts is reported playable; one that fails
-// that check is reported not playable, with no error; and anything
-// that is not a voice note at all - even one whose bytes happen to
-// pass audiosafe's own checks - is always reported not playable,
-// since the field has no meaning outside a voice note.
+// whose bytes audiosafe accepts is reported playable, the same as an
+// ordinary audio message's; one that fails that check is reported not
+// playable, with no error; and anything that is neither at all - even
+// one whose bytes happen to pass audiosafe's own checks - is always
+// reported not playable, since the field has no meaning there.
 func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 	t.Parallel()
 
@@ -186,6 +186,7 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 		{ID: "voice-good", ConversationID: chat.ID, RemoteID: "1", Text: "[Voice]", Created: 1, Media: &domain.Media{Kind: domain.MediaVoice}},
 		{ID: "voice-bad", ConversationID: chat.ID, RemoteID: "2", Text: "[Voice]", Created: 2, Media: &domain.Media{Kind: domain.MediaVoice}},
 		{ID: "photo", ConversationID: chat.ID, RemoteID: "3", Text: "[Photo]", Created: 3, Media: &domain.Media{Kind: domain.MediaPhoto}},
+		{ID: "audio-good", ConversationID: chat.ID, RemoteID: "4", Text: "[Audio]", Created: 4, Media: &domain.Media{Kind: domain.MediaAudio}},
 	} {
 		if _, _, err := f.store.AddMessage(ctx, m); err != nil {
 			t.Fatal(err)
@@ -205,6 +206,19 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 		}
 	})
 
+	t.Run("a well-formed audio file is reported playable", func(t *testing.T) {
+		f.media.data = onePlayableOggOpus()
+		path, err := f.commands.FetchMedia(ctx, "audio-good", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		playable, err := f.commands.AudioPlayableForMedia(ctx, "audio-good", path)
+		if err != nil || !playable {
+			t.Fatalf("AudioPlayableForMedia() = %t, %v, want true, nil", playable, err)
+		}
+	})
+
 	t.Run("a voice note whose bytes fail the check is not playable", func(t *testing.T) {
 		f.media.data = []byte("not an audio file at all")
 		path, err := f.commands.FetchMedia(ctx, "voice-bad", false)
@@ -218,7 +232,7 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 		}
 	})
 
-	t.Run("a non-voice message is always not playable", func(t *testing.T) {
+	t.Run("a non-audio message is always not playable", func(t *testing.T) {
 		playable, err := f.commands.AudioPlayableForMedia(ctx, "photo", "/does/not/matter")
 		if err != nil || playable {
 			t.Fatalf("AudioPlayableForMedia() = %t, %v, want false, nil", playable, err)

@@ -146,6 +146,25 @@ var migrations = []string{
 		WHERE json_valid(media)
 			AND json_extract(media, '$.kind') = 'file'
 			AND lower(json_extract(media, '$.fileName')) LIKE '%.gif';`,
+	// A WhatsApp audio message that arrived before this connector told
+	// an ordinary audio file apart from a voice note (see
+	// whatsapp/normalize_media.go's audioMedia) is reclassified here:
+	// MediaAudio, so it reaches the same inline player its push-to-talk
+	// sibling already gets on its next fetch, rather than staying a
+	// plain file chip forever. "audio-message.ogg" is the helper's own
+	// fixed name for this case, never a sender's choice, so matching it
+	// is safe the way matching a sender's own claimed file name would
+	// not be - audiosafe's byte check still decides whether the
+	// reclassified row actually plays, exactly as it already does for
+	// every "voice" or "audio" row. A Telegram audio document stored
+	// this way carries only the sender's own file name, with nothing
+	// that would safely tell it apart from an ordinary file, so it is
+	// left as it is.
+	`UPDATE messages
+		SET media = json_set(media, '$.kind', 'audio')
+		WHERE json_valid(media)
+			AND json_extract(media, '$.kind') = 'file'
+			AND json_extract(media, '$.fileName') = 'audio-message.ogg';`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

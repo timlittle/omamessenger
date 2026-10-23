@@ -102,11 +102,13 @@ func largest(sizes []tg.PhotoSizeClass) (kind string, w, h int, size int64) {
 	return kind, w, h, size
 }
 
-// document is what a document's attributes say it is.
+// document is what a document's attributes say it is. audio is true for
+// any DocumentAttributeAudio, voice note or not; voice narrows that to
+// one with its own Voice flag set.
 type document struct {
 	name                       string
-	video, voice, sticker      bool
-	animated                   bool
+	video, voice, audio        bool
+	sticker, animated          bool
 	emoji                      string
 	width, height, durationSec int
 }
@@ -121,7 +123,7 @@ func describe(doc *tg.Document) document {
 		case *tg.DocumentAttributeVideo:
 			d.video, d.width, d.height, d.durationSec = true, a.W, a.H, int(a.Duration)
 		case *tg.DocumentAttributeAudio:
-			d.voice, d.durationSec = a.Voice, a.Duration
+			d.audio, d.voice, d.durationSec = true, a.Voice, a.Duration
 		case *tg.DocumentAttributeFilename:
 			d.name = a.FileName
 		case *tg.DocumentAttributeSticker:
@@ -164,11 +166,29 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 		return &domain.Media{Kind: domain.MediaVideo, FileName: gifFileName(d.name), Size: doc.Size, Animated: true}
 	case d.voice:
 		return &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}
+	case d.audio:
+		// An audio message sent without its voice flag: the same
+		// inline player a voice note gets, gated by the same
+		// media.fetch byte check, but shown with its own file name
+		// and duration instead of a voice note's fixed label.
+		return &domain.Media{Kind: domain.MediaAudio, FileName: audioFileName(d.name), Size: doc.Size, Duration: d.durationSec}
 	case d.name == "":
 		return &domain.Media{Kind: domain.MediaFile, FileName: "file", Size: doc.Size}
 	default:
 		return &domain.Media{Kind: domain.MediaFile, FileName: d.name, Size: doc.Size}
 	}
+}
+
+// audioFileName names an audio document by the name Telegram's own
+// filename attribute carries, or a sensible default when there is
+// none: a classification hint for the UI's label only, never what
+// picks its decoder (see app.AudioPlayableForMedia and audiosafe).
+func audioFileName(name string) string {
+	if name == "" {
+		return "audio"
+	}
+
+	return name
 }
 
 // isGIFImage reports whether a document is a real GIF image, by its
@@ -226,6 +246,8 @@ func documentLabel(dc tg.DocumentClass) string {
 		return "[Video]"
 	case d.voice:
 		return "[Voice message]"
+	case d.audio:
+		return "[Audio]"
 	default:
 		return "[File]"
 	}

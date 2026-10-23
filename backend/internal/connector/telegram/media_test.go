@@ -94,6 +94,11 @@ func TestMedia_VideoFileAndVoice(t *testing.T) {
 	}}
 	file := &tg.Document{Size: 2048, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeFilename{FileName: "report.pdf"}}}
 	voice := &tg.Document{Size: 300, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeAudio{Voice: true, Duration: 5}}}
+	audio := &tg.Document{Size: 4096, Attributes: []tg.DocumentAttributeClass{
+		&tg.DocumentAttributeAudio{Duration: 180},
+		&tg.DocumentAttributeFilename{FileName: "song.mp3"},
+	}}
+	audioNoName := &tg.Document{Size: 4096, Attributes: []tg.DocumentAttributeClass{&tg.DocumentAttributeAudio{Duration: 180}}}
 	// gifImage is a real GIF image sent as a plain document (not through
 	// Telegram's own "send as animation" picker, which would carry
 	// DocumentAttributeAnimated and arrive as a silent MP4 instead): no
@@ -116,6 +121,11 @@ func TestMedia_VideoFileAndVoice(t *testing.T) {
 		"animated video (GIF)": {gif, domain.Media{Kind: domain.MediaVideo, Width: 480, Height: 270, Duration: 3, FileName: "clip.gif.mp4", Size: 500, Animated: true}},
 		"file":                 {file, domain.Media{Kind: domain.MediaFile, FileName: "report.pdf", Size: 2048}},
 		"voice":                {voice, domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: 300, Duration: 5}},
+		// An audio document without the voice flag reaches the same
+		// inline player a voice note gets, but keeps its own file name
+		// and duration rather than a voice note's fixed label.
+		"audio file":          {audio, domain.Media{Kind: domain.MediaAudio, FileName: "song.mp3", Size: 4096, Duration: 180}},
+		"audio file, no name": {audioNoName, domain.Media{Kind: domain.MediaAudio, FileName: "audio", Size: 4096, Duration: 180}},
 		// A genuine GIF image sent as a document gets the same video
 		// kind and animated flag as a service's own GIF playback, so it
 		// reaches the same inline view, but with its real ".gif" name
@@ -196,6 +206,7 @@ func TestMessageText_LabelsDocumentsByWhatTheyAre(t *testing.T) {
 	tests := map[string]tg.DocumentAttributeClass{
 		"[Video]":         &tg.DocumentAttributeVideo{},
 		"[Voice message]": &tg.DocumentAttributeAudio{Voice: true},
+		"[Audio]":         &tg.DocumentAttributeAudio{},
 		"[Sticker]":       &tg.DocumentAttributeSticker{},
 		"[File]":          &tg.DocumentAttributeFilename{FileName: "a.pdf"},
 	}

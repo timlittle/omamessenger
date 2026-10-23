@@ -29,20 +29,27 @@ const (
 // Media kinds a message can carry besides its text. MediaVoice is a voice
 // note (WhatsApp's push-to-talk audio, Telegram's voice message), kept
 // apart from MediaFile so the UI can offer an inline player instead of a
-// plain "open externally" file row. MediaSticker is a static image shown
-// borderless and unbubbled; an animated sticker (WhatsApp's animated
-// WebP, Telegram's Lottie or video stickers) still normalizes to this
-// kind, but a connector that cannot show one as a still image leaves
-// FileName empty so the UI never tries to fetch and decode it, falling
-// back to Thumb or Emoji instead (see Media's own doc comment).
-// MediaPoll carries no fetchable file at all: its question, options and
-// tallies live entirely in Media.Poll.
+// plain "open externally" file row. MediaAudio is an ordinary audio
+// message - WhatsApp's AudioMessage without its PTT flag, Telegram's
+// audio document without its voice flag - which the UI plays through
+// the same inline player a voice note gets, gated by the same
+// media.fetch playable check, but labelled with its own file name and
+// duration instead of a voice note's fixed "Voice message" label.
+// MediaSticker is a static image shown borderless and unbubbled; an
+// animated sticker (WhatsApp's animated WebP, Telegram's Lottie or
+// video stickers) still normalizes to this kind, but a connector that
+// cannot show one as a still image leaves FileName empty so the UI
+// never tries to fetch and decode it, falling back to Thumb or Emoji
+// instead (see Media's own doc comment). MediaPoll carries no fetchable
+// file at all: its question, options and tallies live entirely in
+// Media.Poll.
 const (
 	MediaLink    = "link"
 	MediaPhoto   = "photo"
 	MediaVideo   = "video"
 	MediaFile    = "file"
 	MediaVoice   = "voice"
+	MediaAudio   = "audio"
 	MediaSticker = "sticker"
 	MediaPoll    = "poll"
 )
