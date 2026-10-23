@@ -43,9 +43,13 @@ jobs:
     # zizmor wants the newer $/... form; actionlint v1.7.12 does not parse
     # it yet and fails the build on it, so this stays ./... until it does.
     uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository]
+    # A called workflow's jobs can never ask for more than this grants:
+    # release.yml's pin-checksums job opens a pull request, so this must
+    # include pull-requests: write or GitHub refuses to start the run.
     permissions:
       contents: write
       id-token: write
       attestations: write
+      pull-requests: write
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
