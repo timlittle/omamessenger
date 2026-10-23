@@ -115,10 +115,11 @@ func (c *Commands) reuseAttachment(id, path, name string, size int64) (*domain.M
 // outgoing media area: one the user picked from disk, worth
 // remembering for a retry to go back to, as opposed to one media.attach
 // or media.paste already copied into the outgoing area, which has no
-// original of its own.
+// original of its own. With no outgoing area at all it answers true, so
+// a file is never treated as already prepared and skips its own checks.
 func (c *Commands) attachedFromDisk(path string) bool {
 	if c.outgoing == nil {
-		return false
+		return true
 	}
 
 	return filepath.Dir(path) != filepath.Dir(c.outgoing.Path("x", "x"))
