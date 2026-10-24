@@ -333,6 +333,38 @@ ShellRoot {
     return !!banner && banner.visible;
   }
 
+  // editHighlighted leaves the composer with Escape, which moves the
+  // highlight onto the message just sent, then presses Shift+E,
+  // message.edit's real key, to load it back into the composer for
+  // editing.
+  function editHighlighted(): var {
+    root.showLabel("Esc  ·  E  →  edit");
+    t.keyClick(Qt.Key_Escape);
+    t.keyClick(Qt.Key_E, Qt.ShiftModifier);
+    return true;
+  }
+
+  // waitForEditBanner holds until the composer shows it is editing a
+  // message rather than writing a new one.
+  function waitForEditBanner(): var {
+    const banner = Check.find(root.panel(), "editBanner");
+    return !!banner && banner.visible;
+  }
+
+  // saveEditedMessage presses Enter to save the edit in progress,
+  // the same key that sends a new message.
+  function saveEditedMessage(): var {
+    root.showLabel("⏎  (save edit)");
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitForEditSaved holds until saving the edit has closed the banner.
+  function waitForEditSaved(): var {
+    const banner = Check.find(root.panel(), "editBanner");
+    return !banner || !banner.visible;
+  }
+
   // waitForPriyaChatReady holds until Priya's chat is open, her newest
   // photo has actually downloaded and decoded (not the blurred
   // placeholder, not a broken image), and her link preview card shows.
@@ -580,6 +612,33 @@ ShellRoot {
       root.holdFor(4),
       root.pickReaction,
       root.waitForReactionApplied,
+      root.holdFor(8)
+    ];
+    // Sends a message, then edits it: Esc, E loads it back into the
+    // composer (the same path Up in an empty composer reaches), and
+    // Enter saves the change.
+    case "editing": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(5),
+      root.openViaPalette("Ctrl+K  →  Priya", "priya"),
+      root.waitForTitle("Priya Patel"),
+      root.waitForComposerFocused,
+      root.holdFor(4),
+      root.composeMessage("Looking forward to it!"),
+      root.holdFor(5),
+      root.sendComposed("Looking forward to it!"),
+      root.waitForDelivered("Looking forward to it!"),
+      root.holdFor(6),
+      root.editHighlighted,
+      root.waitForEditBanner,
+      root.focusComposer,
+      root.waitForComposerFocused,
+      root.holdFor(4),
+      root.composeMessage(" (bring sunscreen)"),
+      root.holdFor(5),
+      root.saveEditedMessage,
+      root.waitForEditSaved,
       root.holdFor(8)
     ];
     default: return [() => root.fail("unknown scenario \"" + name + "\"")];

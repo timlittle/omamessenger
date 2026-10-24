@@ -25,3 +25,9 @@ Each clip shows one feature, recorded with the test build's sample accounts. `ma
 ## Replies and reactions
 
 ![Reply and react](demo/reply-reaction.gif)
+
+## Editing a message
+
+**Esc** then **E** loads a sent message back into the composer; **Enter** saves the change.
+
+![Edit a message](demo/editing.gif)
