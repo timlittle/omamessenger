@@ -170,7 +170,7 @@ Status: built.
 
 ## Real services
 
-Status: items 1–7 are built; item 8, the release, is in progress.
+Status: built, including the release (item 8).
 
 Do these after the UI. Connectors never reach real services in tests: use recorded or constructed library data with golden files, and fuzz every normalizer.
 
@@ -196,10 +196,7 @@ Do these after the UI. Connectors never reach real services in tests: use record
    - pin and archive
    - clicking a notification opens its chat
    - demo off once a real account exists (the demo mode was removed instead; fake accounts exist only in test builds)
-8. **Release:**
-   - document the privacy and account risks in the README
-   - bump the version and tag (version bumped to 0.3.0; not tagged yet)
-   - confirm `install-helper.sh` installs it on a clean machine
+8. **Release:** done. The privacy and account risks are documented in the README; release-please bumps the version and tags each release (see CONTRIBUTING.md's "Release" section for the checksum-pinning follow-up pull request each one needs); `install-helper.sh` installs a tagged release on a clean machine.
 
 ## After 0.3.0
 

@@ -1,6 +1,6 @@
 # OmaMessenger implementation spec
 
-Status: Telegram and WhatsApp connectors and the plugin UI are built; the 0.3.0 release is being prepared. Build plan: `docs/plan.md`.
+Status: Telegram and WhatsApp connectors and the plugin UI are built and released (current version in `manifest.json`); this is the original MVP scope, kept for reference. Build plan: `docs/plan.md`.
 
 ## Objective
 
