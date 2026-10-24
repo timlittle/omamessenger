@@ -35,10 +35,17 @@ Item {
   onPlayingChanged: root.playing ? player.play() : player.pause()
   onRateChanged: player.playbackRate = root.rate
 
+  MediaDevices {
+    id: devices
+  }
+
   MediaPlayer {
     id: player
 
-    audioOutput: AudioOutput {}
+    // Follows the system's default output as it changes, rather than
+    // the one Qt picked when the shell started: a headset connected
+    // later would otherwise never hear anything.
+    audioOutput: AudioOutput { device: devices.defaultAudioOutput }
     onMediaStatusChanged: if (player.mediaStatus === MediaPlayer.EndOfMedia) root.ended()
     onErrorOccurred: (error, errorString) => root.failed(error)
   }

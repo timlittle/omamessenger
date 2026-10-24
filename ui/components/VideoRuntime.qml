@@ -47,11 +47,17 @@ Item {
   onMutedChanged: audioOutput.muted = root.muted
   onLoopChanged: player.loops = root.loop ? MediaPlayer.Infinite : 1
 
+  MediaDevices {
+    id: devices
+  }
+
   MediaPlayer {
     id: player
 
     videoOutput: output
-    audioOutput: AudioOutput { id: audioOutput; muted: root.muted }
+    // Follows the system's default output as it changes (see
+    // VoiceNoteRuntime.qml).
+    audioOutput: AudioOutput { id: audioOutput; muted: root.muted; device: devices.defaultAudioOutput }
     onMediaStatusChanged: if (player.mediaStatus === MediaPlayer.EndOfMedia && !root.loop) root.ended()
     onErrorOccurred: (error, errorString) => root.failed(error)
   }
