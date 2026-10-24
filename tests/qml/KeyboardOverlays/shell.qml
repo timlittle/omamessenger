@@ -317,9 +317,30 @@ ShellRoot {
     return title && title.text === "Mum" && messages && messages.count > 0;
   }
 
-  // waitForHighlightAfterMum holds until a message is highlighted.
+  // waitForHighlightAfterMum holds until the highlighted message is the
+  // photo and keys go to the conversation, not the composer: the
+  // highlighted message's hint row only offers "c copy" for a photo or
+  // video. Waiting for any highlight at all raced Mum's history loading
+  // or the composer taking focus, so Enter sometimes went elsewhere.
   function waitForHighlightAfterMum(): var {
-    return root.anyVisible(root.panel(), "highlightBar");
+    if (!root.anyVisible(root.panel(), "highlightBar")) return false;
+
+    return /\bc copy\b/.test(root.highlightedHints(root.panel()));
+  }
+
+  // highlightedHints returns the hint row text of the highlighted
+  // message, the one shown at full opacity, or "" when none is. Walks
+  // data rather than children, so it reaches the message list's rows.
+  function highlightedHints(item: var): string {
+    if (!item) return "";
+    if (item.objectName === "highlightHints" && item.opacity > 0.5) return item.text;
+
+    const kids = item.data || item.children || [];
+    for (let i = 0; i < kids.length; i++) {
+      const found = root.highlightedHints(kids[i]);
+      if (found) return found;
+    }
+    return "";
   }
 
   // checkPhotoViewer presses Enter to open the highlighted (newest)
