@@ -10,12 +10,14 @@ Short clips of each feature are in [docs/demo.md](docs/demo.md).
 
 ## Features
 
-- One conversation list across every Telegram and WhatsApp account, filtered by service from the rail
+- One conversation list across every Telegram and WhatsApp account, filtered by service from the rail; give an account its own name, such as "Personal WhatsApp", once you have more than one for a service
 - Keyboard-first: every action has a shortcut, and **Ctrl+/** lists them all
 - Search across every conversation with **Ctrl+K**, and an unread view with **Ctrl+Shift+A**
-- Photos, video, files, voice notes, link previews, replies, reactions, polls and @-mentions
+- Photos, video, GIFs, files, voice notes, link previews, replies, reactions, polls and @-mentions; a photo, video or GIF opens full size, and copy, save or open with **c**, **s** or **x**
+- Edit or delete your own sent messages (**↑** in an empty message box, or **E** on a highlighted one, to edit)
 - English spell check in the composer, with a picker for suggestions, adding a word, or ignoring it for the session
-- Pin, archive, hide and snooze conversations; failed sends retry themselves
+- Pin, archive, hide, snooze and mark conversations read or unread; failed sends retry themselves; block a contact or report spam from the command palette
+- Received photos, videos, voice notes and files are sanitised and size-checked before anything opens them, with a confirmation first for a file that could run code or a link whose real destination does not match its own text
 - Desktop notifications (by default just "New message"; see [docs/privacy.md](docs/privacy.md)), and read receipts you can turn off to read and reply without the sender being told (see [docs/privacy.md](docs/privacy.md) for exactly what that does and does not hide)
 - "What's new" in the command palette lists big changes release by release, with a quiet one-time hint after an update
 - About 120 MB in use, against about 2 GB for Telegram Desktop and WhatsApp Web together ([benchmark](docs/BENCHMARK.md))

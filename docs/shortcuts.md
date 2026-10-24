@@ -42,6 +42,17 @@ Pin, hide and snooze are in the command palette, and are local to this computer 
 
 Ctrl+Shift+A shows the "Unread" view in place of the usual list: every unread conversation across every service and account, overriding whichever rail filter was active rather than narrowing it, the way Slack's own all-unreads view does. Opening a chat from it and reading it keeps that chat visible until you leave it or open another, so it never disappears from under the cursor. With nothing unread, it says "No unread conversations · Esc to leave".
 
+## Starting a new conversation
+
+Ctrl+N or Ctrl+Shift+K opens a dialog to choose an account and a contact to message.
+
+| Keys | Does |
+| --- | --- |
+| ↓ / ↑, Ctrl+J / Ctrl+K | Move the highlighted contact |
+| Ctrl+Tab | Switch to the next account |
+| Enter | Start a chat with the highlighted contact |
+| Esc | Cancel |
+
 ## Open conversation
 
 While not writing, j/k move a highlighted message instead of scrolling by lines, and the view follows it. The highlighted message shows a key-hint row naming what you can press for it.
