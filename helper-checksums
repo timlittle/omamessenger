@@ -8,5 +8,5 @@
 # for the new version until that follow-up pin lands.
 #
 # sha256  oma-messenger-service-<version>-linux-<arch>
-2a314e88af6c2ee2fb9d7daa36a6d832f2969731077ff2930e2e13c318a4e061  oma-messenger-service-0.3.4-linux-amd64
-2e5b2a07f8e4e4890488c4d6bda1fc99d2f1076a725f650532d90eeff1edbacb  oma-messenger-service-0.3.4-linux-arm64
+dfdee8cff5cf011ffaabeeae4be85dda8102535be00125e50da89848e0ebc48f  oma-messenger-service-0.3.5-linux-amd64
+ea14fe56b71e521a76a0bc5d9688b40ba0af91016745cc91a4c31b034ee2e240  oma-messenger-service-0.3.5-linux-arm64
