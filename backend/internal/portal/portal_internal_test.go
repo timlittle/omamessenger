@@ -7,12 +7,12 @@ import "testing"
 func TestDecodeFileURI_ReturnsThePathForAFileURI(t *testing.T) {
 	t.Parallel()
 
-	path, err := decodeFileURI("file:///home/tim/vacation.jpg")
+	path, err := decodeFileURI("file:///home/user/vacation.jpg")
 	if err != nil {
 		t.Fatalf("decodeFileURI: %v", err)
 	}
-	if path != "/home/tim/vacation.jpg" {
-		t.Errorf("path = %q, want /home/tim/vacation.jpg", path)
+	if path != "/home/user/vacation.jpg" {
+		t.Errorf("path = %q, want /home/user/vacation.jpg", path)
 	}
 }
 

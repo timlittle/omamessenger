@@ -55,7 +55,7 @@ func pickerWithFake(b *fakeBus) *portal.Picker {
 func TestPick_ReturnsTheLocalPathForAFileURI(t *testing.T) {
 	t.Parallel()
 
-	b := &fakeBus{uri: "file:///home/tim/vacation.jpg"}
+	b := &fakeBus{uri: "file:///home/user/vacation.jpg"}
 	p := pickerWithFake(b)
 
 	path, ok, err := p.Pick(context.Background(), "Attach a file", []portal.Filter{{Name: "Images", Globs: []string{"*.jpg"}}})
@@ -65,8 +65,8 @@ func TestPick_ReturnsTheLocalPathForAFileURI(t *testing.T) {
 	if !ok {
 		t.Fatal("ok = false, want true for a successful pick")
 	}
-	if path != "/home/tim/vacation.jpg" {
-		t.Errorf("path = %q, want /home/tim/vacation.jpg", path)
+	if path != "/home/user/vacation.jpg" {
+		t.Errorf("path = %q, want /home/user/vacation.jpg", path)
 	}
 	if b.gotTitle != "Attach a file" {
 		t.Errorf("title = %q, want %q", b.gotTitle, "Attach a file")

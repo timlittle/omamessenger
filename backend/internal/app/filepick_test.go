@@ -51,14 +51,14 @@ func TestPickFile_ReturnsThePathOnASuccessfulPick(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
-	f.filePicker.path, f.filePicker.ok = "/home/tim/vacation.jpg", true
+	f.filePicker.path, f.filePicker.ok = "/home/user/vacation.jpg", true
 
 	path, err := f.commands.PickFile(t.Context(), "attach", "Attach a file")
 	if err != nil {
 		t.Fatalf("PickFile: %v", err)
 	}
-	if path != "/home/tim/vacation.jpg" {
-		t.Errorf("path = %q, want /home/tim/vacation.jpg", path)
+	if path != "/home/user/vacation.jpg" {
+		t.Errorf("path = %q, want /home/user/vacation.jpg", path)
 	}
 
 	gotTitle, gotFilters := f.filePicker.lastPick()

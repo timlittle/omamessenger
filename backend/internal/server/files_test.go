@@ -9,12 +9,12 @@ func TestFilesPick_ReturnsThePathOnASuccessfulPick(t *testing.T) {
 	t.Parallel()
 
 	s := connect(t, false)
-	s.filePicker.path, s.filePicker.ok = "/home/tim/vacation.jpg", true
+	s.filePicker.path, s.filePicker.ok = "/home/user/vacation.jpg", true
 
 	got, err := call[struct {
 		Path string `json:"path"`
 	}](t, s, "files.pick", map[string]string{"purpose": "attach", "title": "Attach a file"})
-	if err != nil || got.Path != "/home/tim/vacation.jpg" {
+	if err != nil || got.Path != "/home/user/vacation.jpg" {
 		t.Errorf("files.pick = %+v, %v", got, err)
 	}
 	if s.filePicker.title != "Attach a file" {
