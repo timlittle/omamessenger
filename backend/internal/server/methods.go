@@ -55,6 +55,7 @@ func methods(c *app.Commands, version string) map[string]method {
 	maps.Copy(table, scheduledMethods(c))
 	maps.Copy(table, windowStateMethods(c))
 	maps.Copy(table, spellMethods(c))
+	maps.Copy(table, fileMethods(c))
 
 	if c.Faked() {
 		table["fake.inject"] = bind(fakeInject(c))

@@ -78,12 +78,15 @@ ShellRoot {
     }
   }
 
+  property int filePickerUnavailableCount: 0
+
   ComposerController {
     id: composer
     service: fakeService
     conversation: fakeConversation
 
     onPasteFallbackRequested: root.fallbackCount++
+    onFilePickerUnavailable: root.filePickerUnavailableCount++
   }
 
   Timer {
@@ -144,6 +147,7 @@ ShellRoot {
       return;
     }
 
+    if (!root.checkPickAttachFile()) return;
     if (!root.checkAttachFile()) return;
     if (!root.checkEditFromUp()) return;
     if (!root.checkSaveEdit()) return;
@@ -151,6 +155,57 @@ ShellRoot {
 
     console.log("PASS ComposerController");
     Qt.exit(0);
+  }
+
+  // checkPickAttachFile drives pickAttachFile, the attach button's
+  // primary path: it asks the helper for an attach-purpose files.pick
+  // first, and a successful reply's path flows straight into
+  // attachFile (media.attach) exactly as a direct call to it would -
+  // never attaching the raw picked path itself. A cancelled
+  // pick (files.pick answering with no path) calls neither further;
+  // one the portal could not show at all (an "unavailable" reason)
+  // reports filePickerUnavailable instead, the composer's own cue to
+  // fall back to its non-native dialog - never driven as a real
+  // dialog here (see ui-testing.md).
+  function checkPickAttachFile(): bool {
+    composer.pickAttachFile();
+    const pickReply = root.takePending();
+    if (!pickReply) return Check.fail("pickAttachFile did not call the service");
+    if (fakeService.lastMethod !== "files.pick")
+      return Check.fail("pickAttachFile called " + fakeService.lastMethod + ", want files.pick");
+    if (fakeService.lastParams.purpose !== "attach")
+      return Check.fail("files.pick params = " + JSON.stringify(fakeService.lastParams) + ", want purpose attach");
+
+    pickReply(null, { path: "/portal/vacation.png" });
+    const attachReply = root.takePending();
+    if (!attachReply) return Check.fail("a successful pick did not call the service again");
+    if (fakeService.lastMethod !== "media.attach")
+      return Check.fail("a successful pick called " + fakeService.lastMethod + ", want media.attach");
+    if (fakeService.lastParams.path !== "/portal/vacation.png")
+      return Check.fail("media.attach params = " + JSON.stringify(fakeService.lastParams) + ", want the picked path");
+
+    attachReply(null, { path: "/outgoing/m3-vacation.png", name: "vacation.png", kind: "photo" });
+    if (composer.attachmentPath !== "/outgoing/m3-vacation.png")
+      return Check.fail("a successful pick's own attach reply did not attach: " + composer.attachmentPath);
+
+    composer.removeAttachment();
+    fakeService.lastMethod = "";
+    composer.pickAttachFile();
+    const cancelledReply = root.takePending();
+    cancelledReply(null, {});
+    if (fakeService.lastMethod !== "files.pick")
+      return Check.fail("a cancelled pick called the service again: " + fakeService.lastMethod);
+
+    fakeService.lastMethod = "";
+    composer.pickAttachFile();
+    const unavailableReply = root.takePending();
+    unavailableReply({ code: -32603, message: "internal error", data: { reason: "unavailable" } }, null);
+    if (fakeService.lastMethod !== "files.pick")
+      return Check.fail("an unavailable portal called the service again: " + fakeService.lastMethod);
+    if (root.filePickerUnavailableCount !== 1)
+      return Check.fail("an unavailable portal did not report filePickerUnavailable");
+
+    return true;
   }
 
   // checkAttachFile drives attachFile: it calls media.attach rather

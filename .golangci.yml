@@ -171,6 +171,7 @@ linters:
             - github.com/timlittle/omamessenger/backend/internal/doctor$
             - github.com/timlittle/omamessenger/backend/internal/domain$
             - github.com/timlittle/omamessenger/backend/internal/notify$
+            - github.com/timlittle/omamessenger/backend/internal/portal$
             - github.com/timlittle/omamessenger/backend/internal/spell$
             - github.com/timlittle/omamessenger/backend/internal/store$
         server:
@@ -188,6 +189,12 @@ linters:
         notify:
           list-mode: strict
           files: ["**/backend/internal/notify/*.go", "!$test"]
+          allow:
+            - $gostd
+            - github.com/godbus/dbus/v5
+        portal:
+          list-mode: strict
+          files: ["**/backend/internal/portal/*.go", "!$test"]
           allow:
             - $gostd
             - github.com/godbus/dbus/v5

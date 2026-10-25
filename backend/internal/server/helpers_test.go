@@ -19,6 +19,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/portal"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -33,13 +34,14 @@ func storeExists(db *store.Store) cache.MessageExists {
 
 // session is a server connected to a test client over an in-memory pipe.
 type session struct {
-	client    *jsonrpc2.Conn
-	server    *server.Server
-	store     *store.Store
-	events    *notifications
-	ingest    *app.Ingest
-	accounts  *storeAccounts
-	clipboard *fakeClipboard
+	client     *jsonrpc2.Conn
+	server     *server.Server
+	store      *store.Store
+	events     *notifications
+	ingest     *app.Ingest
+	accounts   *storeAccounts
+	clipboard  *fakeClipboard
+	filePicker *fakeFilePicker
 }
 
 // connect serves a fresh application with one account, "wa", and a direct
@@ -50,13 +52,15 @@ func connect(t *testing.T, faked bool) *session {
 	db := openSeeded(t)
 	accounts := &storeAccounts{db: db}
 	clipboard := &fakeClipboard{}
+	filePicker := &fakeFilePicker{}
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: accounts,
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
 		Blocker: acceptAll{}, SpamReporter: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
-		Sounds: cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
-		Spell:  spell.New(t.TempDir(), func(string) string { return "" }),
+		Sounds:     cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
+		FilePicker: filePicker,
+		Spell:      spell.New(t.TempDir(), func(string) string { return "" }),
 	}
 	if faked {
 		deps.Fake = unreachableFake{}
@@ -65,6 +69,7 @@ func connect(t *testing.T, faked bool) *session {
 	s := newSession(t, db, deps)
 	s.accounts = accounts
 	s.clipboard = clipboard
+	s.filePicker = filePicker
 
 	return s
 }
@@ -493,4 +498,26 @@ type unreachableFake struct{}
 
 func (unreachableFake) Inject(context.Context, string) (domain.Message, error) {
 	return domain.Message{}, domain.ErrNotFound
+}
+
+// fakeFilePicker records the title and filters its Pick was given and
+// returns whatever path, ok and err a test scripted, standing in for
+// portal.Picker so no test here ever opens a real file-choosing
+// dialog over D-Bus. Its default zero value (ok false, err nil)
+// behaves like a cancelled pick.
+type fakeFilePicker struct {
+	title   string
+	filters []portal.Filter
+
+	path string
+	ok   bool
+	err  error
+}
+
+// Pick records title and filters and returns the fake's scripted
+// reply.
+func (f *fakeFilePicker) Pick(_ context.Context, title string, filters []portal.Filter) (string, bool, error) {
+	f.title, f.filters = title, filters
+
+	return f.path, f.ok, f.err
 }

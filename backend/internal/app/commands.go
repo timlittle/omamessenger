@@ -32,6 +32,7 @@ type Commands struct {
 	outgoing     OutgoingMedia
 	sounds       SoundStore
 	clipboard    ClipboardRunner
+	filePicker   FilePicker
 	fake         Injector
 	logger       Logger
 	spell        *spell.Checker

@@ -157,8 +157,12 @@ Item {
   // quoteOpened asks the caller to scroll to the message a reply quotes,
   // by the remote id the quote carries.
   signal quoteOpened(string remoteId)
-  // fileAttached reports a file the attach button's own picker chose.
+  // fileAttached reports a file the composer's own fallback dialog
+  // chose.
   signal fileAttached(string path)
+  // attachRequested asks the caller to run the portal's own file
+  // chooser for the composer's attach button (see Composer.qml).
+  signal attachRequested()
   // attachmentRemoveRequested asks the caller to clear attachmentPath.
   signal attachmentRemoveRequested()
   // spellSuggestionsRequested asks the caller to fetch replacement words
@@ -413,6 +417,7 @@ Item {
       onReplyCanceled: root.replyCanceled()
       onEditCanceled: root.editCanceled()
       onFileAttached: path => root.fileAttached(path)
+      onAttachRequested: root.attachRequested()
       onAttachmentRemoveRequested: root.attachmentRemoveRequested()
       onSpellSuggestionsRequested: word => root.spellSuggestionsRequested(word)
       onSpellWordAdded: word => root.spellWordAdded(word)

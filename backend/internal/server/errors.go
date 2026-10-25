@@ -29,6 +29,7 @@ var (
 // "internal error" so no internal detail or message content leaks.
 func rpcError(err error) *jsonrpc2.Error {
 	var mediaErr *app.MediaFetchError
+	var pickErr *app.FilePickError
 
 	switch {
 	case errors.Is(err, errUnknownMethod):
@@ -42,6 +43,8 @@ func rpcError(err error) *jsonrpc2.Error {
 	// gone missing) and still needs its reason category attached.
 	case errors.As(err, &mediaErr):
 		return mediaFetchRPCError(mediaErr)
+	case errors.As(err, &pickErr):
+		return filePickRPCError(pickErr)
 	case errors.Is(err, domain.ErrNotFound):
 		return &jsonrpc2.Error{Code: CodeNotFound, Message: "not found"}
 	default:
@@ -63,6 +66,26 @@ type mediaFetchErrorData struct {
 func mediaFetchRPCError(mediaErr *app.MediaFetchError) *jsonrpc2.Error {
 	rpcErr := &jsonrpc2.Error{Code: CodeInternal, Message: "internal error"}
 	rpcErr.SetError(mediaFetchErrorData{Reason: string(mediaErr.Reason)})
+
+	return rpcErr
+}
+
+// filePickErrorData is the only detail of a failed files.pick that
+// crosses the protocol: a safe reason category (see
+// app.FilePickError), so the UI knows to fall back to a different
+// file picker rather than the in-process GTK dialog that once crashed
+// the whole shell (see docs/decisions.md).
+type filePickErrorData struct {
+	Reason string `json:"reason"`
+}
+
+// filePickRPCError turns a *app.FilePickError into the internal-error
+// code every unexpected failure already uses, with its safe reason
+// category attached as the error's data field; nothing else about
+// what went wrong leaves the helper.
+func filePickRPCError(pickErr *app.FilePickError) *jsonrpc2.Error {
+	rpcErr := &jsonrpc2.Error{Code: CodeInternal, Message: "internal error"}
+	rpcErr.SetError(filePickErrorData{Reason: pickErr.Reason})
 
 	return rpcErr
 }

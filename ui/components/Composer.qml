@@ -206,8 +206,16 @@ Item {
   signal replyCanceled()
   // editCanceled reports that the user dismissed the editing banner.
   signal editCanceled()
-  // fileAttached reports a file the attach button's own picker chose.
+  // fileAttached reports a file openFallbackPicker's own dialog chose.
   signal fileAttached(string path)
+  // attachRequested asks the caller to run the portal's own file
+  // chooser over the helper (files.pick), out of process from the
+  // shared Omarchy shell, for the attach button and the command
+  // palette's "Attach a file" (see docs/decisions.md): never the
+  // in-process GTK dialog that once crashed the whole shell. The
+  // caller calls openFallbackPicker only if that call reports the
+  // portal unavailable.
+  signal attachRequested()
   // attachmentRemoveRequested asks the caller to clear attachmentPath,
   // from the chip's ✕ or Escape (handled by the caller's escape chain).
   signal attachmentRemoveRequested()
@@ -286,9 +294,19 @@ Item {
     root.input.cursorPosition = result.cursor
   }
 
-  // openFilePicker opens the attach button's file dialog, for the
-  // command palette's "Attach a file" command.
+  // openFilePicker asks the caller to run the portal's own file
+  // chooser, for the attach button and the command palette's "Attach
+  // a file" command; see attachRequested.
   function openFilePicker() {
+    root.attachRequested()
+  }
+
+  // openFallbackPicker opens this composer's own non-native file
+  // dialog, only once the caller has learned the portal could not be
+  // shown at all: never the first choice, and never the in-process
+  // GTK dialog that once crashed the whole shell (see
+  // docs/decisions.md).
+  function openFallbackPicker() {
     fileDialog.open()
   }
 
@@ -432,9 +450,16 @@ Item {
     font.pixelSize: Theme.font.body
   }
 
+  // fileDialog is the fallback attach dialog, opened only through
+  // openFallbackPicker once the portal's own file chooser has already
+  // been tried and reported unavailable: QtQuick's own non-native
+  // dialog (DontUseNativeDialog), never the native one, which runs
+  // GTK in this same shared shell process and once crashed it outright
+  // (see docs/decisions.md).
   FileDialog {
     id: fileDialog
     title: "Attach a file"
+    options: FileDialog.DontUseNativeDialog
     onAccepted: root.fileAttached(String(fileDialog.selectedFile).replace(/^file:\/\//, ""))
   }
 

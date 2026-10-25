@@ -11,6 +11,7 @@ import (
 
 	"github.com/timlittle/omamessenger/backend/internal/app/policy"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/portal"
 	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
@@ -185,6 +186,17 @@ type SignIn interface {
 	SubmitAuth(ctx context.Context, accountID, step, value string) error
 }
 
+// FilePicker opens a file-choosing dialog outside this process, so
+// picking a file never runs GTK inside the shared Omarchy shell (see
+// docs/decisions.md); *portal.Picker is the production implementation.
+// Pick returns ok false with no error when the user cancelled the
+// dialog, never confused with path "" being a real answer; err is
+// returned only when the dialog itself could not be shown at all,
+// such as no portal being reachable on the session bus.
+type FilePicker interface {
+	Pick(ctx context.Context, title string, filters []portal.Filter) (path string, ok bool, err error)
+}
+
 // NewAccount is what adding an account needs: the service, and whatever
 // options its provider's Prepare wants, such as Telegram's "apiId" and
 // "apiHash" from my.telegram.org.
@@ -255,6 +267,7 @@ type Deps struct {
 	Outgoing     OutgoingMedia
 	Sounds       SoundStore
 	Clipboard    ClipboardRunner
+	FilePicker   FilePicker
 	Fake         Injector
 	Logger       Logger
 	Spell        *spell.Checker
@@ -284,7 +297,7 @@ func New(d Deps) (*Commands, *Ingest) {
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
-		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, logger: d.Logger, spell: d.Spell,
+		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, filePicker: d.FilePicker, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},
 		reminders:    newReminders(d.Store, d.Notifier, events, state),

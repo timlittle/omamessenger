@@ -94,6 +94,13 @@ Item {
   // picker, for the command palette's "Attach a file" command.
   signal attachFileRequested()
 
+  // filePickerUnavailable asks the caller to fall back to the
+  // composer's own non-native dialog, once pickAttachFile has learned
+  // the portal could not show its own file chooser at all: never the
+  // in-process GTK dialog that once crashed the whole shell (see
+  // docs/decisions.md).
+  signal filePickerUnavailable()
+
   // submitRequested asks the caller to submit whatever the composer holds.
   signal submitRequested()
 
@@ -256,6 +263,28 @@ Item {
       root.attachmentKind = result.kind;
       root.attachmentSize = result.size || 0;
       root.attachmentLimit = result.limit || 0;
+    });
+  }
+
+  // pickAttachFile asks the helper to open the portal's own file
+  // chooser for the composer's attach button, out of process from the
+  // shared Omarchy shell (see docs/decisions.md): never the
+  // in-process GTK dialog that once crashed it. A cancelled pick
+  // (files.pick answering with no path) does nothing further; one the
+  // portal could not show at all asks the caller to fall back to the
+  // composer's own non-native dialog instead, never a second portal
+  // attempt or a GTK one.
+  function pickAttachFile(): void {
+    if (!root.service) return;
+
+    root.service.request("files.pick", { purpose: "attach", title: "Attach a file" }, function(error, result) {
+      if (error) {
+        if (Rpc.errorReason(error) === "unavailable") root.filePickerUnavailable();
+        return;
+      }
+      if (!result.path) return; // cancelled
+
+      root.attachFile(result.path);
     });
   }
 

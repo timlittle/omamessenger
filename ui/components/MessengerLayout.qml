@@ -152,6 +152,7 @@ Item {
     function onPasteFallbackRequested() {
       if (conversationView.composer.input) conversationView.composer.input.paste()
     }
+    function onFilePickerUnavailable() { conversationView.composer.openFallbackPicker() }
   }
 
   Connections {
@@ -307,6 +308,7 @@ Item {
       onEditCanceled: root.composerController.cancelEdit()
       onQuoteOpened: remoteId => root.conversationController.scrollToReply(remoteId)
       onFileAttached: path => root.composerController.attachFile(path)
+      onAttachRequested: root.composerController.pickAttachFile()
       onAttachmentRemoveRequested: root.composerController.removeAttachment()
       onSpellSuggestionsRequested: word => root.composerController.requestSpellSuggestions(word)
       onSpellWordAdded: word => root.composerController.addSpellingWord(word)

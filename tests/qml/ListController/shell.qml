@@ -344,17 +344,20 @@ ShellRoot {
     service: pinService
   }
 
-  // soundService backs the notification sound scenario: one chat with
-  // no custom sound of its own yet. The real file-picking dialog
-  // itself is never driven here - decisions.md already found
-  // QtQuick.Dialogs.FileDialog routes through xdg-desktop-portal, not
-  // reliable headless - so this checks only the wiring either side of
-  // it: chat.setNotificationSound captures the right conversation
-  // before it would open, and the helper call a picked file's own
-  // accept handler makes (_notificationSoundPicked, called directly,
-  // the same way other tests here call a controller's own private
-  // functions) carries that id and the path. The file's own validity
-  // is the helper's job, covered by the backend's own tests.
+  // soundService backs the notification sound scenario: two chats
+  // with no custom sound of their own yet. The real file-picking
+  // dialog is never driven here (see ui-testing.md): this checks only
+  // the wiring either side of it. filePickCalls records every
+  // files.pick request's own params, for confirming
+  // chat.setNotificationSound asks for one before ever touching
+  // conversations.setNotificationSound; filePickPath, left null by
+  // default, answers it with a path once a test sets one, the same
+  // way a picked file's own accept handler would
+  // (notificationSoundPicked, called directly for "n1" below, the
+  // same way other tests here call a controller's own private
+  // functions, to check conversations.setNotificationSound's own
+  // params without going through files.pick at all). The file's own
+  // validity is the helper's job, covered by the backend's own tests.
   QtObject {
     id: soundService
 
@@ -362,16 +365,24 @@ ShellRoot {
     property var accounts: []
     property var uiState: ({ railKey: "all", selectedId: "", activeId: "", query: "", drafts: {} })
     property var conversations: [
-      { id: "n1", title: "Needs A Sound", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, notificationSound: "" }
+      { id: "n1", title: "Needs A Sound", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, notificationSound: "" },
+      { id: "n2", title: "Also Needs A Sound", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, notificationSound: "" }
     ]
     property var setCalls: []
     property int resetCalls: 0
+    property var filePickCalls: []
+    property var filePickPath: null
 
     signal event(string name, var data)
 
     function request(method: string, params: var, callback: var): void {
       if (method === "conversations.list") {
         callback(null, soundService.conversations.map((c) => Object.assign({}, c)));
+        return;
+      }
+      if (method === "files.pick") {
+        soundService.filePickCalls.push({ purpose: params.purpose, title: params.title });
+        if (soundService.filePickPath !== null) callback(null, { path: soundService.filePickPath });
         return;
       }
       if (method === "conversations.setNotificationSound") {
@@ -786,12 +797,46 @@ ShellRoot {
     root.checkNotificationSound();
   }
 
+  // checkFilePickWiring confirms chat.setNotificationSound asks the
+  // helper to open a sound-purpose files.pick before ever touching
+  // conversations.setNotificationSound, and that a successful pick
+  // flows straight through to it with the right conversation and the
+  // picked path - the portal round trip itself, never driven as a
+  // real dialog here (see ui-testing.md). Uses "n2" so it leaves "n1"
+  // untouched for checkNotificationSound's own, separate check of
+  // notificationSoundPicked's own wiring.
+  function checkFilePickWiring(): bool {
+    soundList.selectId("n2");
+    soundService.filePickPath = "/tmp/portal-pick.ogg";
+    soundList.run("chat.setNotificationSound");
+
+    if (soundService.filePickCalls.length !== 1 || soundService.filePickCalls[0].purpose !== "sound") {
+      return Check.fail("chat.setNotificationSound did not ask for a sound-purpose file pick: " + JSON.stringify(soundService.filePickCalls));
+    }
+    if (JSON.stringify(soundService.setCalls) !== '["n2 /tmp/portal-pick.ogg"]') {
+      return Check.fail("a successful portal pick did not reach conversations.setNotificationSound with the picked path: "
+        + JSON.stringify(soundService.setCalls));
+    }
+
+    soundService.setCalls = [];
+    soundService.filePickCalls = [];
+    soundService.filePickPath = null;
+    return true;
+  }
+
   // checkNotificationSound drives chat.setNotificationSound (captures
   // the current conversation, then a picked path reaching
   // conversations.setNotificationSound with it once accepted) and
   // chat.resetNotificationSound (conversations.resetNotificationSound
-  // on whichever is current).
+  // on whichever is current). checkFilePickWiring, run first, confirms
+  // the portal round trip itself: chat.setNotificationSound asks for
+  // a sound-purpose files.pick before touching
+  // conversations.setNotificationSound at all, and a successful pick
+  // flows straight through to it with the picked path - never opening
+  // a real dialog (see ui-testing.md).
   function checkNotificationSound(): void {
+    if (!root.checkFilePickWiring()) return;
+
     soundList.selectId("n1");
     soundList.run("chat.setNotificationSound");
     soundList.notificationSoundPicked("/tmp/ping.ogg");

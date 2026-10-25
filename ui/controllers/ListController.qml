@@ -484,17 +484,32 @@ Item {
     });
   }
 
-  // _setNotificationSound opens a file picker restricted to audio
-  // files and, once one is chosen, asks the helper to validate and
-  // store it as whichever conversation is contextually current's own
-  // notification sound - the command palette's "Set notification
-  // sound…". Does nothing with no current conversation.
+  // _setNotificationSound asks the helper to open a file picker
+  // restricted to audio files, out of process from the shared Omarchy
+  // shell (files.pick, over the portal's own file chooser - see
+  // docs/decisions.md), and once one is chosen, asks the helper to
+  // validate and store it as whichever conversation is contextually
+  // current's own notification sound - the command palette's "Set
+  // notification sound…". Does nothing with no current conversation.
+  // A cancelled pick does nothing further; one the portal could not
+  // show at all falls back to soundFileDialog, this controller's own
+  // non-native dialog, never the in-process GTK one that once crashed
+  // the whole shell.
   function _setNotificationSound(): void {
     const id = root._currentId();
     if (!id || !root.findConversation(id)) return;
 
     root._notificationSoundTargetId = id;
-    soundFileDialog.open();
+    root.service.request("files.pick", { purpose: "sound", title: "Set notification sound" }, function(error, result) {
+      if (error) {
+        if (Rpc.errorReason(error) === "unavailable") soundFileDialog.open();
+        else root._notificationSoundTargetId = "";
+        return;
+      }
+      if (!result.path) { root._notificationSoundTargetId = ""; return; } // cancelled
+
+      root.notificationSoundPicked(result.path);
+    });
   }
 
   // notificationSoundPicked stores path as the conversation
@@ -739,14 +754,20 @@ Item {
 
   ListModel { id: listModel }
 
-  // soundFileDialog is the file picker "Set notification sound…"
-  // opens, restricted to the audio formats the helper's audiosafe
-  // check can actually validate; a file of another kind is still
-  // refused by the helper itself (see notificationSoundPicked), this
-  // is only to steer the picker.
+  // soundFileDialog is the fallback "Set notification sound…" picker,
+  // opened only through _setNotificationSound once the portal's own
+  // file chooser has already been tried and reported unavailable:
+  // QtQuick's own non-native dialog (DontUseNativeDialog), never the
+  // native one, which runs GTK in this same shared shell process and
+  // once crashed it outright (see docs/decisions.md). Restricted to
+  // the audio formats the helper's audiosafe check can actually
+  // validate; a file of another kind is still refused by the helper
+  // itself (see notificationSoundPicked), this is only to steer the
+  // picker.
   FileDialog {
     id: soundFileDialog
     title: "Set notification sound"
+    options: FileDialog.DontUseNativeDialog
     nameFilters: ["Audio files (*.wav *.ogg *.oga *.mp3 *.m4a *.aac)"]
     onAccepted: root.notificationSoundPicked(String(soundFileDialog.selectedFile).replace(/^file:\/\//, ""))
   }

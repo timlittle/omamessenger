@@ -88,6 +88,7 @@ type fixture struct {
 	outgoing   *cache.Outgoing
 	sounds     *cache.Sounds
 	clipboard  *fakeClipboard
+	filePicker *fakeFilePicker
 	logger     *fakeLogger
 	downloads  string
 }
@@ -120,8 +121,9 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
 		blocker: &fakeBlocker{}, spamReport: &fakeSpamReporter{}, limiter: &fakeLimiter{limits: map[string]int64{}},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
-		sounds: cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
-		logger: &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
+		sounds:     cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
+		filePicker: &fakeFilePicker{},
+		logger:     &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
 	}
 
 	deps := app.Deps{
@@ -130,7 +132,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
 		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members, Limiter: f.limiter,
-		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
+		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, FilePicker: f.filePicker, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 		DownloadsDir: f.downloads,
 	}

@@ -23,6 +23,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector/whatsapp"
 	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/notify"
+	"github.com/timlittle/omamessenger/backend/internal/portal"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
@@ -64,6 +65,10 @@ const outgoingSweepInterval = time.Hour
 // notify.Desktop is the only Notifier the helper wires; checked here,
 // next to where it is wired, rather than inside app.
 var _ app.Notifier = &notify.Desktop{}
+
+// portal.Picker is the only FilePicker the helper wires; checked here
+// for the same reason.
+var _ app.FilePicker = &portal.Picker{}
 
 // main runs the helper until the UI disconnects or it receives SIGTERM.
 // The actual work is in exitCode so os.Exit always runs after mainErr's
@@ -286,7 +291,7 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 	}, Log: d.logger}
 	deps := app.Deps{
 		Store: d.db, Notifier: notifier, Publisher: d.srv, Accounts: d.registry, Cache: d.caches.downloaded,
-		Outgoing: d.caches.outgoing, Sounds: d.caches.sounds, Clipboard: clipboard.Wayland{}, Logger: d.logger,
+		Outgoing: d.caches.outgoing, Sounds: d.caches.sounds, Clipboard: clipboard.Wayland{}, FilePicker: &portal.Picker{}, Logger: d.logger,
 		Spell:   spell.New(d.dataDir, d.env),
 		DataDir: d.dataDir, DBPath: d.dbPath, ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
 		DownloadsDir: d.downloadsDir,
