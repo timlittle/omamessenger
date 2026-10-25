@@ -54,6 +54,20 @@ Item {
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
+  // notice is a brief, non-error confirmation for something that just
+  // worked, shown in the toast pill the same way
+  // ConversationController.notice already is (see
+  // WindowController.toastText): blocking, unblocking or reporting a
+  // contact as spam, none of which otherwise leave any visible sign
+  // beyond the chat itself quietly changing or disappearing.
+  property string notice: ""
+
+  // clearNotice dismisses the brief confirmation banner, the same way
+  // ConversationController.clearNotice does for its own.
+  function clearNotice(): void {
+    root.notice = "";
+  }
+
   // showAll shows every chat the standard list would otherwise fold away:
   // older than a month, hidden by the user, or archived with the service,
   // each dimmed, unless they are unread or open.
@@ -449,6 +463,7 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.lastError = "";
       root._applyConversationUpdated(result);
+      root.notice = "Unblocked";
     });
   }
 
@@ -469,10 +484,16 @@ Item {
   // blockConfirmOpen's question named, then closes it. Which method it
   // calls follows blockConfirmKind: a plain block only blocks, while a
   // spam report blocks and hides the chat together, on the helper's own
-  // side (see app.Commands.ReportSpam).
+  // side (see app.Commands.ReportSpam). The chat simply changing or
+  // disappearing from the list is otherwise the only sign either
+  // worked, so this also raises a toast naming what happened: a spam
+  // report on WhatsApp only ever blocks, since its own API has no
+  // report of its own (see whatsapp/block.go), so that wording would
+  // promise something that did not happen there.
   function confirmBlock(): void {
     const id = root._blockConfirmId;
-    const method = root.blockConfirmKind === "spam" ? "conversations.reportSpam" : "contacts.block";
+    const kind = root.blockConfirmKind;
+    const method = kind === "spam" ? "conversations.reportSpam" : "contacts.block";
     root.blockConfirmOpen = false;
     root._blockConfirmId = "";
     if (!id) return;
@@ -481,6 +502,7 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.lastError = "";
       root._applyConversationUpdated(result);
+      root.notice = kind === "spam" && result.service !== "whatsapp" ? "Reported as spam and blocked" : "Blocked";
     });
   }
 

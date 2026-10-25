@@ -199,12 +199,15 @@ Item {
   // the window: the quiet update hint takes priority the one time it
   // has something to say, falling back to whatever a message action
   // just confirmed, such as copying or saving a photo or video (see
-  // ConversationController.notice). It never competes with an error:
-  // the two show in different places and can be visible at once.
+  // ConversationController.notice), or blocking, unblocking or
+  // reporting a chat as spam (see ListController.notice). It never
+  // competes with an error: the two show in different places and can
+  // be visible at once.
   readonly property string toastText: Toast.pickText(
     !root._updateHintDismissed && !!root.service && root.service.showUpdateHint,
     root.service ? WhatsNew.hintText(root.service.appVersion) : "",
-    root.conversationController ? root.conversationController.notice : ""
+    (root.conversationController ? root.conversationController.notice : "")
+      || (root.listController ? root.listController.notice : "")
   )
 
   // doctorOpen shows the health check report.
@@ -439,6 +442,7 @@ Item {
   function dismissToast(): void {
     root._updateHintDismissed = true;
     if (root.conversationController) root.conversationController.clearNotice();
+    if (root.listController) root.listController.clearNotice();
   }
 
   // setPaletteQuery filters the palette and highlights the best match.

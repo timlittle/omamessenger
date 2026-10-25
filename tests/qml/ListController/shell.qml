@@ -15,7 +15,10 @@
 // its reminder comes due, when it returns to the top marked "Reminder",
 // and setting or resetting a chat's own notification sound reaches
 // conversations.setNotificationSound or .resetNotificationSound with
-// the selected conversation.
+// the selected conversation, and blocking, unblocking or reporting a
+// contact as spam each raise their own toast notice naming what
+// happened, WhatsApp's own spam report reading as a plain block since
+// it has no report of its own.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -270,7 +273,7 @@ ShellRoot {
     property var accounts: []
     property var uiState: ({ railKey: "all", selectedId: "", activeId: "", query: "", drafts: {} })
     property var conversations: [
-      { id: "b1", title: "Spammer", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, blocked: false }
+      { id: "b1", title: "Spammer", service: "telegram", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, blocked: false }
     ]
     property var blockedIds: []
     property int spamReports: 0
@@ -302,6 +305,39 @@ ShellRoot {
   ListController {
     id: blockList
     service: blockService
+  }
+
+  // waSpamService backs the one WhatsApp-specific scenario in
+  // checkWhatsAppSpamNotice: a direct chat whose service is
+  // "whatsapp", not yet blocked.
+  QtObject {
+    id: waSpamService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", activeId: "", query: "", drafts: {} })
+    property var conversations: [
+      { id: "wa1", title: "WhatsApp Spammer", service: "whatsapp", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, blocked: false }
+    ]
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") {
+        callback(null, waSpamService.conversations.map((c) => Object.assign({}, c)));
+        return;
+      }
+      if (method === "conversations.reportSpam") {
+        const index = waSpamService.conversations.findIndex((c) => c.id === params.conversationId);
+        waSpamService.conversations[index] = Object.assign({}, waSpamService.conversations[index], { blocked: true, hidden: true });
+        callback(null, Object.assign({}, waSpamService.conversations[index]));
+      }
+    }
+  }
+
+  ListController {
+    id: waSpamList
+    service: waSpamService
   }
 
   // pinService backs the pin-reordering scenario: three pinned chats and
@@ -720,11 +756,19 @@ ShellRoot {
       Check.fail("the blocked chat's own row was not updated");
       return;
     }
+    if (blockList.notice !== "Blocked") {
+      Check.fail("confirming chat.block left notice \"" + blockList.notice + "\", want \"Blocked\"");
+      return;
+    }
 
     blockList.run("chat.unblock");
     if (JSON.stringify(blockService.blockedIds) !== '["b1 true","b1 false"]' || blockList.model.get(0).blocked) {
       Check.fail("chat.unblock did not unblock at once, with no confirmation needed: blockedIds "
         + JSON.stringify(blockService.blockedIds));
+      return;
+    }
+    if (blockList.notice !== "Unblocked") {
+      Check.fail("chat.unblock left notice \"" + blockList.notice + "\", want \"Unblocked\"");
       return;
     }
 
@@ -741,6 +785,28 @@ ShellRoot {
     }
     if (blockList.model.count !== 0) {
       Check.fail("reporting spam did not hide the conversation from the standard list: " + blockList.model.count);
+      return;
+    }
+    if (blockList.notice !== "Reported as spam and blocked") {
+      Check.fail("confirming chat.reportSpam on a Telegram chat left notice \"" + blockList.notice + "\", want \"Reported as spam and blocked\"");
+      return;
+    }
+
+    root.checkWhatsAppSpamNotice();
+  }
+
+  // checkWhatsAppSpamNotice confirms a spam report on a WhatsApp chat
+  // raises the plainer "Blocked" notice instead: WhatsApp's own API has
+  // no report of its own (see whatsapp/block.go), so this only ever
+  // blocks there, and a "Reported as spam" toast would promise
+  // something that did not happen.
+  function checkWhatsAppSpamNotice(): void {
+    waSpamList.selectId("wa1");
+    waSpamList.run("chat.reportSpam");
+    waSpamList.run("blockConfirm.accept");
+
+    if (waSpamList.notice !== "Blocked") {
+      Check.fail("confirming chat.reportSpam on a WhatsApp chat left notice \"" + waSpamList.notice + "\", want \"Blocked\"");
       return;
     }
 
