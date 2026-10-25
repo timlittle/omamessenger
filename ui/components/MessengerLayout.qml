@@ -45,6 +45,9 @@ Item {
   property var accountController: null
   // windowController is bound into the shortcut help sheet.
   property var windowController: null
+  // scheduledController owns queued "send later" messages, read for the
+  // open conversation's own pending list.
+  property var scheduledController: null
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides), passed to the list and conversation.
   property var bindings: Keymap.BINDINGS
@@ -273,6 +276,7 @@ Item {
       members: root.conversationController.groupMembers
       misspellings: root.composerController.spellMisspellings
       suggestions: root.composerController.spellSuggestions
+      scheduledMessages: root.scheduledController ? root.scheduledController.forConversation(root.conversationController.activeId) : []
       routeKey: root.routeKey
 
       onLoadOlder: root.conversationController.loadOlder()
@@ -306,6 +310,9 @@ Item {
       onAttachmentRemoveRequested: root.composerController.removeAttachment()
       onSpellSuggestionsRequested: word => root.composerController.requestSpellSuggestions(word)
       onSpellWordAdded: word => root.composerController.addSpellingWord(word)
+      onScheduledCancelRequested: id => { if (root.scheduledController) root.scheduledController.cancel(id) }
+      onScheduledSendNowRequested: id => { if (root.scheduledController) root.scheduledController.sendNow(id) }
+      onScheduledEditRequested: (id, text) => root.windowController.editScheduledMessage(id, text)
     }
   }
 

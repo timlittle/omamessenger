@@ -60,6 +60,17 @@ Item {
   // Escape chain.
   property var accountController: null
 
+  // scheduledController owns queued "send later" messages, read for the
+  // "Scheduled messages" command and driven by the composer's own
+  // "Send later…" command and a queued message's "Edit" button.
+  property var scheduledController: null
+
+  // _editingScheduledId is the queued message "Send later…" is about to
+  // replace, once the composer's own "Edit" button loaded it back in,
+  // or "" while the palette's custom-time prompt is queuing a fresh
+  // message instead.
+  property string _editingScheduledId: ""
+
   // openExternalLink is the one place in this UI that ever calls
   // Qt.openUrlExternally for a URL that came from a message, a link
   // preview or a service's own text, rather than a "file://" path this
@@ -231,6 +242,8 @@ Item {
       // instead of two. See docs/shortcuts.md.
       "search.focus": () => root.openPalette("conversations"),
       "chat.snoozeCustom": () => root.openPalette("snoozeCustom"),
+      "compose.sendLater": () => { root._editingScheduledId = ""; root.openPalette("sendLaterCustom"); },
+      "scheduled.show": () => root.openPalette("scheduledMessages"),
       "palette.down": () => root.movePalette(1),
       "palette.up": () => root.movePalette(-1),
       "palette.accept": () => root.acceptPalette(root.paletteIndex),
@@ -346,6 +359,7 @@ Item {
       keyBindingErrors: root._keyBindingErrors,
       service: root.service,
       messageResults: root.paletteMessageResults,
+      scheduledMessages: root.scheduledController ? root.scheduledController.all : [],
       now: Date.now()
     };
   }
@@ -489,8 +503,63 @@ Item {
     if (root.paletteMode === "conversations") root._openConversation(chosen);
     else if (root.paletteMode === "links") root.openLink(chosen.url, chosen.url);
     else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
+    else if (root.paletteMode === "sendLaterCustom") root._scheduleDraft(chosen.at);
+    else if (root.paletteMode === "scheduledMessages") root._openScheduledMessage(chosen);
     else if (root.paletteMode === "keyBindings") { /* informational only */ }
     else root.runCommand(chosen.action);
+  }
+
+  // _scheduleDraft queues the composer's current text to send at at
+  // (Unix milliseconds), picked from the "Send later…" command's own
+  // palette prompt: a fresh queued message, or the one
+  // _editingScheduledId names, loaded back in by a queued message's
+  // own "Edit" button. Either way it clears the composer, the same as
+  // sending for real does. Does nothing with no conversation open, no
+  // text typed, or an attachment pending: scheduling a message is text
+  // only in this first version (see docs/decisions.md).
+  function _scheduleDraft(at: real): void {
+    if (!root.composerController || !root.conversationController || !root.scheduledController) return;
+
+    const text = root.composerController.draft;
+    if (!text || root.composerController.attachmentPath) return;
+
+    const editingId = root._editingScheduledId;
+    root._editingScheduledId = "";
+    const onDone = (error) => {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.composerController.setDraft("");
+    };
+
+    if (editingId) root.scheduledController.edit(editingId, text, at, onDone);
+    else {
+      const conversationId = root.conversationController.activeId;
+      if (!conversationId) return;
+      root.scheduledController.schedule(conversationId, text, at, onDone);
+    }
+  }
+
+  // editScheduledMessage starts editing a queued message, from its own
+  // row's "Edit" button: its text loads into the composer, the same
+  // way editing a sent message already does, and "Send later…" opens
+  // at once to pick its new time. Accepting it calls
+  // ScheduledController.edit instead of schedule (see _scheduleDraft).
+  function editScheduledMessage(id: string, text: string): void {
+    if (!root.composerController) return;
+
+    root.composerController.setDraft(text);
+    root._editingScheduledId = id;
+    root.openPalette("sendLaterCustom");
+  }
+
+  // _openScheduledMessage opens the conversation a "Scheduled messages"
+  // row belongs to, so its own pending list shows it - Enter there is
+  // a lookup, not an action on the message itself, the same as opening
+  // a conversation found through the "Messages" search section.
+  function _openScheduledMessage(row: var): void {
+    if (!root.listController || !root.conversationController) return;
+
+    const conversation = root.listController.findConversation(row.conversationId);
+    if (conversation) root.conversationController.open(conversation);
   }
 
   // _openMessage opens the conversation a "Messages" row belongs to and

@@ -233,6 +233,16 @@ func (d *fakeDispatcher) Send(_ context.Context, _ domain.Conversation, m domain
 	return err
 }
 
+// sentTexts returns the text of every message given to Send so far, in
+// order, safe to call while another goroutine - a scheduler running
+// concurrently in a synctest test, say - may still be calling Send.
+func (d *fakeDispatcher) sentTexts() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return slices.Clone(d.sent)
+}
+
 // last returns the most recent message given to Send.
 func (d *fakeDispatcher) last() domain.Message {
 	d.mu.Lock()

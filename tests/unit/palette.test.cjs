@@ -147,6 +147,56 @@ test('results/items: "snoozeCustom" mode previews the typed time', () => {
   assert.deepEqual(Palette.items('snoozeCustom', results, ctx), [{ label: results[0].label, detail: '', keys: '' }]);
 });
 
+test('results/items: "sendLaterCustom" mode previews the typed time as a send time', () => {
+  const ctx = { query: '2h', now: Date.parse('2026-01-01T10:00:00Z') };
+
+  const results = Palette.results('sendLaterCustom', ctx);
+  assert.deepEqual(results, [{ at: Date.parse('2026-01-01T12:00:00Z') }]);
+  assert.deepEqual(Palette.items('sendLaterCustom', results, ctx), [{ label: 'Sends at 12:00', detail: '', keys: '' }]);
+});
+
+test('results/items: "sendLaterCustom" mode has nothing to show for unparsed text', () => {
+  const ctx = { query: 'not a time', now: Date.parse('2026-01-01T10:00:00Z') };
+
+  assert.deepEqual(Palette.results('sendLaterCustom', ctx), []);
+});
+
+test('results/items: "scheduledMessages" mode lists queued messages, matched against their text', () => {
+  const now = Date.parse('2026-01-01T10:00:00Z');
+  const ctx = {
+    query: '',
+    now,
+    scheduledMessages: [
+      { id: 's1', conversationId: 'a', text: 'see you soon', sendAt: Date.parse('2026-01-01T18:00:00Z') },
+      { id: 's2', conversationId: 'b', text: 'happy birthday', sendAt: Date.parse('2026-01-02T09:00:00Z') }
+    ]
+  };
+
+  const results = Palette.results('scheduledMessages', ctx);
+  assert.deepEqual(results.map((m) => m.id), ['s1', 's2']);
+
+  const items = Palette.items('scheduledMessages', results, ctx);
+  assert.deepEqual(items, [
+    { label: 'Sends at 18:00: see you soon', detail: '', keys: '', conversationId: 'a' },
+    { label: 'Sends at Tomorrow 09:00: happy birthday', detail: '', keys: '', conversationId: 'b' }
+  ]);
+});
+
+test('results/items: "scheduledMessages" mode narrows by the typed query', () => {
+  const now = Date.parse('2026-01-01T10:00:00Z');
+  const ctx = {
+    query: 'birthday',
+    now,
+    scheduledMessages: [
+      { id: 's1', conversationId: 'a', text: 'see you soon', sendAt: Date.parse('2026-01-01T18:00:00Z') },
+      { id: 's2', conversationId: 'b', text: 'happy birthday', sendAt: Date.parse('2026-01-02T09:00:00Z') }
+    ]
+  };
+
+  const results = Palette.results('scheduledMessages', ctx);
+  assert.deepEqual(results.map((m) => m.id), ['s2']);
+});
+
 test('results/items: "keyBindings" mode matches the bindings report, shown as-is', () => {
   const bindings = [{ action: 'chat.open', keys: ['Enter'], contexts: ['list'], label: 'Open chat', overridden: false }];
   const ctx = { query: 'open', bindings, keyBindingConflicts: [], keyBindingErrors: [] };

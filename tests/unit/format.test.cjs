@@ -717,6 +717,11 @@ for (const [name, date, want] of snoozeUntilLabelCases) {
   });
 }
 
+test('sendAtLabel prefixes the same clock-time wording with "Sends at"', () => {
+  assert.strictEqual(Format.sendAtLabel(new Date(2026, 9, 6, 18, 0).getTime(), nowMs), 'Sends at 18:00');
+  assert.strictEqual(Format.sendAtLabel(new Date(2026, 9, 7, 9, 0).getTime(), nowMs), 'Sends at Tomorrow 09:00');
+});
+
 const retryingLabelCases = [
   ['counts minutes under an hour away', nowMs + 2 * 60 * 1000, 'Retrying in 2 min'],
   ['rounds a sub-minute wait up to one minute', nowMs + 30 * 1000, 'Retrying in 1 min'],

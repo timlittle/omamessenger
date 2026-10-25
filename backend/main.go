@@ -246,14 +246,15 @@ type backgroundDeps struct {
 	logger   *log.Logger
 }
 
-// runBackground starts the helper's own background work - the reminder
-// and retry schedulers, the debounced read-receipt flush's shutdown
-// tie-in, and the outgoing media area's sweep - each in the given
-// WaitGroup, so serve's own deferred cleanup waits for all of them to
-// stop.
+// runBackground starts the helper's own background work - the
+// reminder, retry and scheduled-send schedulers, the debounced
+// read-receipt flush's shutdown tie-in, and the outgoing media area's
+// sweep - each in the given WaitGroup, so serve's own deferred cleanup
+// waits for all of them to stop.
 func runBackground(ctx context.Context, wg *sync.WaitGroup, d backgroundDeps) {
 	wg.Go(func() { d.commands.RunReminders(ctx) })
 	wg.Go(func() { d.commands.RunRetries(ctx) })
+	wg.Go(func() { d.commands.RunScheduledMessages(ctx) })
 	wg.Go(func() { d.ingest.Run(ctx) })
 	wg.Go(func() { d.outgoing.RunSweeper(ctx, outgoingSweepInterval, d.logger) })
 }

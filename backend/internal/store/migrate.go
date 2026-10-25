@@ -172,6 +172,19 @@ var migrations = []string{
 	// activity first", the rule that already orders unpinned chats,
 	// gives a pinned chat no stable position of its own to drag or move.
 	`ALTER TABLE conversations ADD COLUMN pin_order INTEGER NOT NULL DEFAULT 0;`,
+	// Messages the user queued to send at a chosen time instead of right
+	// away (see app.Commands.ScheduleMessage). Local to this computer
+	// only, like reminder_at above: a row here is removed, not updated
+	// to some "sent" state, once it is claimed and handed to the normal
+	// send path (see store/scheduled.go and docs/decisions.md), so there
+	// is no status column to add.
+	`CREATE TABLE scheduled_messages(
+		id TEXT PRIMARY KEY,
+		conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+		text TEXT NOT NULL,
+		send_at INTEGER NOT NULL,
+		created INTEGER NOT NULL);
+	CREATE INDEX scheduled_messages_due ON scheduled_messages(send_at);`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

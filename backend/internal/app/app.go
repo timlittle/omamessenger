@@ -267,6 +267,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	events := &events{store: d.Store, out: d.Publisher}
 	state := &uiState{settings: DefaultSettings()}
 	retries := newRetrier(d.Store)
+	scheduled := newScheduledSender(d.Store)
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
@@ -275,10 +276,12 @@ func New(d Deps) (*Commands, *Ingest) {
 		recentErrors: &errorHistory{},
 		reminders:    newReminders(d.Store, d.Notifier, events, state),
 		retries:      retries,
+		scheduled:    scheduled,
 		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 		downloadsDir: d.DownloadsDir,
 	}
 	retries.commands = commands
+	scheduled.commands = commands
 
 	// Spell checking starts at the same defaults as every other
 	// setting, so it behaves sensibly even if the UI is slow to call

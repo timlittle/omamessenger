@@ -194,6 +194,12 @@ var OWNERS = {
   // one chat.* action not owned by ListController, since the chat it
   // applies to is resolved only once the prompt is accepted.
   'chat.snoozeCustom': 'window',
+  // compose.sendLater opens the same kind of palette prompt, for when
+  // to send the composer's own text instead of which chat to snooze;
+  // scheduled.show lists what is already queued. Both open a palette
+  // mode WindowController owns, the same reasoning as chat.snoozeCustom.
+  'compose.sendLater': 'window',
+  'scheduled.show': 'window',
   'palette.down': 'window',
   'palette.up': 'window',
   'palette.accept': 'window',

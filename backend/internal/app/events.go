@@ -19,7 +19,19 @@ const (
 	EventAccountRemoved      = "account.removed"
 	EventAuthStep            = "auth.step"
 	EventNotificationClicked = "notification.clicked"
+	EventScheduledAdded      = "scheduledMessage.added"
+	EventScheduledUpdated    = "scheduledMessage.updated"
+	EventScheduledRemoved    = "scheduledMessage.removed"
 )
+
+// ScheduledRemoved is the data of a scheduledMessage.removed event: a
+// queued message that was cancelled, sent now, or just came due,
+// identified by its own id and the conversation it belonged to, since
+// by the time the UI sees this the row itself is already gone.
+type ScheduledRemoved struct {
+	ConversationID string `json:"conversationId"`
+	ScheduledID    string `json:"scheduledId"`
+}
 
 // UnreadChanged is the data of an unread.changed event. ByService is the
 // unread total for each service that has any, so the bar tooltip can

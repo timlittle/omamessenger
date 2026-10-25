@@ -215,6 +215,29 @@ type Message struct {
 	RetrySince    int64 `json:"-"`
 }
 
+// ScheduledMessage is a text message the user queued to send at a
+// chosen time instead of right away (see app.Commands.ScheduleMessage).
+// It is local to this computer only, like a conversation's Reminder,
+// and exists only until it is sent, edited into an ordinary message,
+// or cancelled: once its own SendAt comes due, or the user asks to
+// send it now, it is removed and handed to the normal send path, so
+// from that moment on it is an ordinary outgoing Message with that
+// path's own retry and failure handling, not a state of its own this
+// type has to track.
+type ScheduledMessage struct {
+	ID             string `json:"id"`
+	ConversationID string `json:"conversationId"`
+	Text           string `json:"text"`
+
+	// SendAt is when this message is due to send, in Unix milliseconds.
+	SendAt int64 `json:"sendAt"`
+
+	// Created is when the user queued this message, in Unix
+	// milliseconds, for the "Scheduled messages" list to show the
+	// oldest first among any due at the same time.
+	Created int64 `json:"created"`
+}
+
 // Reaction is one emoji reaction to a message: how many people picked
 // it, and whether the signed-in user is one of them.
 type Reaction struct {

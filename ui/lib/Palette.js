@@ -3,14 +3,16 @@
 .import "KeyBindings.js" as KeyBindings
 .import "Rail.js" as Rail
 .import "Snooze.js" as Snooze
+.import "Format.js" as Format
 
 // Fuzzy matching for the command palette, in the style of Telescope or
 // Alfred: the letters typed must appear in order, and matches at word
 // starts or in unbroken runs rank first.
 //
 // modeFor's MODES table also says what each of the palette's modes
-// ("commands", "conversations", "links", "snoozeCustom", "keyBindings")
-// matches against and how it turns a match into a row to show, so
+// ("commands", "conversations", "links", "snoozeCustom",
+// "sendLaterCustom", "scheduledMessages", "keyBindings") matches
+// against and how it turns a match into a row to show, so
 // WindowController.qml never branches on the mode string itself; adding
 // a mode is one entry in that table.
 
@@ -169,6 +171,29 @@ var MODES = {
   snoozeCustom: {
     results: (ctx) => Snooze.preview(ctx.query, ctx.now),
     items: (results) => results.map((r) => ({ label: r.label, detail: '', keys: '' }))
+  },
+  // sendLaterCustom previews the same typed time Snooze.parse already
+  // reads, just worded for when a message will send rather than when a
+  // chat wakes up; WindowController._scheduleDraft reads the one
+  // candidate's own "at" the same way setReminderOnCurrent reads
+  // snoozeCustom's.
+  sendLaterCustom: {
+    results: (ctx) => {
+      const at = Snooze.parse(ctx.query, ctx.now);
+      return at === null ? [] : [{ at }];
+    },
+    items: (results, ctx) => results.map((r) => ({ label: Format.sendAtLabel(r.at, ctx.now), detail: '', keys: '' }))
+  },
+  // scheduledMessages lists every message still queued, best match
+  // first against its own text, for the "Scheduled messages" command;
+  // WindowController._openScheduledMessage reads conversationId off
+  // whichever row Enter picks.
+  scheduledMessages: {
+    results: (ctx) => search(ctx.scheduledMessages || [], ctx.query, (m) => m.text),
+    items: (results, ctx) => results.map((m) => ({
+      label: `${Format.sendAtLabel(m.sendAt, ctx.now)}: ${Format.singleLine(m.text)}`,
+      detail: '', keys: '', conversationId: m.conversationId
+    }))
   },
   keyBindings: {
     results: (ctx) => search(KeyBindings.rows(ctx.bindings, ctx.keyBindingConflicts, ctx.keyBindingErrors), ctx.query, (r) => r.label),

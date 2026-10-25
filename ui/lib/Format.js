@@ -521,6 +521,14 @@ function snoozeUntilLabel(ms, nowMs) {
   return `${datePart} ${clock}`;
 }
 
+// sendAtLabel describes when a scheduled message will send: "Sends at
+// 18:00" for later today, otherwise "Sends at Tomorrow 09:00" or "Sends
+// at Mon 09:00", the same clock-time wording snoozeUntilLabel already
+// reads a future time with, just under this command's own prefix.
+function sendAtLabel(ms, nowMs) {
+  return `Sends at ${snoozeUntilLabel(ms, nowMs)}`;
+}
+
 // pad writes n with at least two digits.
 function pad(n) {
   return String(n).padStart(2, '0');

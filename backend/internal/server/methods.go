@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -71,6 +72,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"spell.suggest":             bind(spellSuggest(c)),
 		"spell.addWord":             bind(spellAddWord(c)),
 	}
+	maps.Copy(table, scheduledMethods(c))
 
 	if c.Faked() {
 		table["fake.inject"] = bind(fakeInject(c))

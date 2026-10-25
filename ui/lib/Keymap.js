@@ -70,6 +70,10 @@ var BINDINGS = [
   // manage that file rather than any key of their own, like account.add.
   { action: 'keys.openConfig', keys: [], contexts: ['global'], label: 'Open key bindings file', command: true },
   { action: 'keys.showBindings', keys: [], contexts: ['global'], label: 'Show key bindings', command: true },
+  // Lists every message still queued to send later, across every
+  // conversation; no key of its own, like helper.doctor, since it is a
+  // deliberate lookup rather than something to reach for by reflex.
+  { action: 'scheduled.show', keys: [], contexts: ['global'], label: 'Scheduled messages', command: true },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
@@ -171,6 +175,10 @@ var BINDINGS = [
   { action: 'compose.newline', keys: ['Shift+Enter', 'Ctrl+J'], contexts: ['compose'], label: 'New line', hint: true },
   { action: 'compose.attach', keys: ['Ctrl+V'], contexts: ['compose'], label: 'Paste a clipboard image as an attachment' },
   { action: 'compose.attachFile', keys: [], contexts: ['conversation', 'compose'], label: 'Attach a file', command: true },
+  // Queues the composer's own text to send at a chosen time instead of
+  // right away; see WindowController._scheduleDraft. Ctrl+L is free in
+  // every context this binds in.
+  { action: 'compose.sendLater', keys: ['Ctrl+L'], contexts: ['compose'], label: 'Send later…', command: true },
   // Up moves the caret while there is text, so this only ever fires once
   // the composer is empty and something is actually editable (see
   // Edit.upMeansEdit); otherwise ComposerController.run leaves the key

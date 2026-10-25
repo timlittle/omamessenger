@@ -93,6 +93,9 @@ Item {
   // suggestions are the last spell.suggest result, for whichever word
   // the spelling picker most recently asked about.
   property var suggestions: []
+  // scheduledMessages are this conversation's own queued "send later"
+  // messages, soonest due first; empty while none are queued.
+  property var scheduledMessages: []
 
   // loadOlder asks the caller to fetch messages before the oldest loaded
   // one. It fires on every scroll near the top, so the caller ignores it
@@ -164,6 +167,14 @@ Item {
   // spellWordAdded asks the caller to add word to the personal
   // dictionary.
   signal spellWordAdded(string word)
+  // scheduledCancelRequested asks the caller to cancel a queued message.
+  signal scheduledCancelRequested(string id)
+  // scheduledSendNowRequested asks the caller to send a queued message
+  // right away.
+  signal scheduledSendNowRequested(string id)
+  // scheduledEditRequested asks the caller to load a queued message
+  // back into the composer for editing.
+  signal scheduledEditRequested(string id, string text)
 
   // scrollBy moves the view by a number of lines; negative scrolls up.
   function scrollBy(lines: int): void {
@@ -344,6 +355,17 @@ Item {
 
       onContentYChanged: root._checkLoadOlder()
       onContentHeightChanged: root._checkLoadOlder()
+
+      // A BottomToTop ListView's header sits at the layout's end, which
+      // for this direction is the visual bottom: right above the
+      // composer, where a pending "send later" message belongs.
+      header: ScheduledList {
+        width: messageList.width
+        messages: root.scheduledMessages
+        onCancelRequested: id => root.scheduledCancelRequested(id)
+        onSendNowRequested: id => root.scheduledSendNowRequested(id)
+        onEditRequested: (id, text) => root.scheduledEditRequested(id, text)
+      }
 
       // A BottomToTop ListView's footer sits at the layout's end, which
       // for this direction is the visual top: right above the oldest

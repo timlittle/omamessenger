@@ -293,6 +293,11 @@ Item {
     service: root.service
   }
 
+  ScheduledController {
+    id: scheduledController
+    service: root.service
+  }
+
   WindowController {
     id: windowController
     objectName: "windowController"
@@ -306,6 +311,7 @@ Item {
     deleteController: deleteController
     dialogController: dialogController
     accountController: accountController
+    scheduledController: scheduledController
 
     onHideRequested: root._hide()
   }
@@ -422,6 +428,7 @@ Item {
           dialogController: dialogController
           accountController: accountController
           windowController: windowController
+          scheduledController: scheduledController
           bindings: root.bindings
           routeKey: root.routeKey
           focusDefault: () => keyArea.forceActiveFocus()
