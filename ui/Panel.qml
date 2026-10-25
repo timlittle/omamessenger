@@ -357,6 +357,28 @@ Item {
         if (root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
       }
 
+      // Qt never walks back up to whichever ancestor still declares
+      // focus: true once the item actually holding activeFocus is
+      // gone: destroying it (the composer's or the search field's
+      // own Loader deactivating) drops activeFocusItem to null, and
+      // disabling it outright (blocking the open chat's contact
+      // while its composer is focused) leaves it on the window's own
+      // content item instead, neither of which is a real key
+      // handler. Every other way out already hands focus back
+      // explicitly (see Overlays.qml's _refocusIfClosed and
+      // MessengerLayout.qml's own leave/search handlers), but
+      // neither of those two covers "the field itself is gone or
+      // inert"; this is the one catch-all that does, so every global
+      // and context shortcut keeps reaching keyArea no matter how
+      // focus was lost.
+      Connections {
+        target: keyArea.Window
+        function onActiveFocusItemChanged() {
+          const focused = keyArea.Window.activeFocusItem;
+          if (!focused || focused === keyArea.Window.contentItem) keyArea.forceActiveFocus();
+        }
+      }
+
       ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.spacing.md
