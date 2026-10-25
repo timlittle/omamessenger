@@ -11,8 +11,11 @@
 // every service, keeps the one just read visible while it is still open,
 // and drops it the moment the user moves on to another chat, archiving a
 // chat marks it read first, archiving every read chat asks before doing
-// it and skips pinned or unread ones, and snoozing a chat hides it until
-// its reminder comes due, when it returns to the top marked "Reminder".
+// it and skips pinned or unread ones, snoozing a chat hides it until
+// its reminder comes due, when it returns to the top marked "Reminder",
+// and setting or resetting a chat's own notification sound reaches
+// conversations.setNotificationSound or .resetNotificationSound with
+// the selected conversation.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -339,6 +342,57 @@ ShellRoot {
   ListController {
     id: pinList
     service: pinService
+  }
+
+  // soundService backs the notification sound scenario: one chat with
+  // no custom sound of its own yet. The real file-picking dialog
+  // itself is never driven here - decisions.md already found
+  // QtQuick.Dialogs.FileDialog routes through xdg-desktop-portal, not
+  // reliable headless - so this checks only the wiring either side of
+  // it: chat.setNotificationSound captures the right conversation
+  // before it would open, and the helper call a picked file's own
+  // accept handler makes (_notificationSoundPicked, called directly,
+  // the same way other tests here call a controller's own private
+  // functions) carries that id and the path. The file's own validity
+  // is the helper's job, covered by the backend's own tests.
+  QtObject {
+    id: soundService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", activeId: "", query: "", drafts: {} })
+    property var conversations: [
+      { id: "n1", title: "Needs A Sound", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false, notificationSound: "" }
+    ]
+    property var setCalls: []
+    property int resetCalls: 0
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") {
+        callback(null, soundService.conversations.map((c) => Object.assign({}, c)));
+        return;
+      }
+      if (method === "conversations.setNotificationSound") {
+        soundService.setCalls.push(params.conversationId + " " + params.path);
+        const index = soundService.conversations.findIndex((c) => c.id === params.conversationId);
+        soundService.conversations[index] = Object.assign({}, soundService.conversations[index], { notificationSound: "custom" });
+        callback(null, Object.assign({}, soundService.conversations[index]));
+        return;
+      }
+      if (method === "conversations.resetNotificationSound") {
+        soundService.resetCalls++;
+        const index = soundService.conversations.findIndex((c) => c.id === params.conversationId);
+        soundService.conversations[index] = Object.assign({}, soundService.conversations[index], { notificationSound: "" });
+        callback(null, Object.assign({}, soundService.conversations[index]));
+      }
+    }
+  }
+
+  ListController {
+    id: soundList
+    service: soundService
   }
 
   Timer {
@@ -726,6 +780,36 @@ ShellRoot {
     pinList.movePinTo("p2", 1);
     if (pinService.moveCalls.length !== 0) {
       Check.fail("movePinTo back to its own place should call nothing: " + JSON.stringify(pinService.moveCalls));
+      return;
+    }
+
+    root.checkNotificationSound();
+  }
+
+  // checkNotificationSound drives chat.setNotificationSound (captures
+  // the current conversation, then a picked path reaching
+  // conversations.setNotificationSound with it once accepted) and
+  // chat.resetNotificationSound (conversations.resetNotificationSound
+  // on whichever is current).
+  function checkNotificationSound(): void {
+    soundList.selectId("n1");
+    soundList.run("chat.setNotificationSound");
+    soundList.notificationSoundPicked("/tmp/ping.ogg");
+
+    if (JSON.stringify(soundService.setCalls) !== '["n1 /tmp/ping.ogg"]') {
+      Check.fail("picking a file did not call conversations.setNotificationSound with the selected chat and the picked path: "
+        + JSON.stringify(soundService.setCalls));
+      return;
+    }
+    if (soundList.findConversation("n1").notificationSound !== "custom") {
+      Check.fail("the row was not updated with the helper's own reply");
+      return;
+    }
+
+    soundList.run("chat.resetNotificationSound");
+    if (soundService.resetCalls !== 1 || soundList.findConversation("n1").notificationSound !== "") {
+      Check.fail("chat.resetNotificationSound did not clear the conversation's own sound: resetCalls "
+        + soundService.resetCalls + ", row " + JSON.stringify(soundList.findConversation("n1")));
       return;
     }
 

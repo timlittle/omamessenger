@@ -148,6 +148,18 @@ type OutgoingMedia interface {
 	Remove(ctx context.Context, id, fileName string) error
 }
 
+// SoundStore stores a validated copy of every custom notification sound
+// this helper plays, one file per key: a conversation's own id, or a
+// fixed name for a service's or the global default sound (see
+// notificationsound.go). Every key always overwrites its own file in
+// place, so a caller replacing one never needs to remove the old copy
+// first.
+type SoundStore interface {
+	Store(ctx context.Context, key string, r io.Reader) (string, error)
+	Path(key string) string
+	Remove(ctx context.Context, key string) error
+}
+
 // ClipboardRunner reads and writes the Wayland clipboard. Quickshell's
 // QML cannot read clipboard image data, or put an image or video on the
 // clipboard at all, itself, so the helper shells out to wl-paste and
@@ -241,6 +253,7 @@ type Deps struct {
 	Members      MemberLister
 	Limiter      AttachmentLimiter
 	Outgoing     OutgoingMedia
+	Sounds       SoundStore
 	Clipboard    ClipboardRunner
 	Fake         Injector
 	Logger       Logger
@@ -271,7 +284,7 @@ func New(d Deps) (*Commands, *Ingest) {
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
-		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger, spell: d.Spell,
+		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},
 		reminders:    newReminders(d.Store, d.Notifier, events, state),

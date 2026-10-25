@@ -24,6 +24,9 @@
     "defaults": {
       "notifications": true,
       "notificationDetail": "Nothing",
+      "defaultNotificationSound": "",
+      "whatsappNotificationSound": "",
+      "telegramNotificationSound": "",
       "readReceipts": true,
       "spellCheck": true,
       "spellLanguage": "Automatic"
@@ -47,6 +50,27 @@
         ],
         "defaultValue": "Nothing",
         "description": "How much a notification reveals: the sender and message text, just who it is from, or a generic notice with neither. Omarchy keeps a copy of every notification in its history, readable by other programs, so names and text are off by default."
+      },
+      {
+        "key": "defaultNotificationSound",
+        "type": "path",
+        "label": "Default notification sound",
+        "defaultValue": "",
+        "description": "A sound file (WAV, Ogg or MP3) to play for an arriving message, when neither the service below nor the conversation itself (the command palette's \"Set notification sound…\") has its own. Blank or \"default\" plays nothing, matching OmaMessenger's own long-standing silence; \"none\" also plays nothing, but stops a per-service sound below from being asked for either. Omarchy's own notification popups never play a sound themselves, so this is the only way to get one. The file is validated before it is ever played; one that fails is treated as no sound rather than shown as an error here."
+      },
+      {
+        "key": "whatsappNotificationSound",
+        "type": "path",
+        "label": "WhatsApp notification sound",
+        "defaultValue": "",
+        "description": "Overrides the default notification sound above for every WhatsApp conversation that has not set its own. Blank or \"default\" inherits the setting above; \"none\" silences WhatsApp specifically, even when the default above has a sound."
+      },
+      {
+        "key": "telegramNotificationSound",
+        "type": "path",
+        "label": "Telegram notification sound",
+        "defaultValue": "",
+        "description": "The same as the WhatsApp setting above, for Telegram."
       },
       {
         "key": "readReceipts",

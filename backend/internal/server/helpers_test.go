@@ -55,7 +55,8 @@ func connect(t *testing.T, faked bool) *session {
 		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
 		Blocker: acceptAll{}, SpamReporter: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
-		Spell: spell.New(t.TempDir(), func(string) string { return "" }),
+		Sounds: cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
+		Spell:  spell.New(t.TempDir(), func(string) string { return "" }),
 	}
 	if faked {
 		deps.Fake = unreachableFake{}

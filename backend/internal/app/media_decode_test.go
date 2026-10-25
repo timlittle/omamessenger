@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/audiosafe/audiosafetest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -197,7 +198,7 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 	}
 
 	t.Run("a well-formed voice note is reported playable", func(t *testing.T) {
-		f.media.data = onePlayableOggOpus()
+		f.media.data = audiosafetest.ValidOpusFixture()
 		path, err := f.commands.FetchMedia(ctx, "voice-good", false)
 		if err != nil {
 			t.Fatal(err)
@@ -210,7 +211,7 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 	})
 
 	t.Run("a well-formed audio file is reported playable", func(t *testing.T) {
-		f.media.data = onePlayableOggOpus()
+		f.media.data = audiosafetest.ValidOpusFixture()
 		path, err := f.commands.FetchMedia(ctx, "audio-good", false)
 		if err != nil {
 			t.Fatal(err)

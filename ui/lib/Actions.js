@@ -42,6 +42,8 @@ var OWNERS = {
   'chat.block': 'list',
   'chat.unblock': 'list',
   'chat.reportSpam': 'list',
+  'chat.setNotificationSound': 'list',
+  'chat.resetNotificationSound': 'list',
   'blockConfirm.accept': 'list',
   'blockConfirm.cancel': 'list',
 

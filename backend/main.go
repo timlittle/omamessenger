@@ -216,16 +216,18 @@ func serve(ctx context.Context, cfg config, s streams, env func(string) string) 
 	return nil
 }
 
-// mediaCaches are the two directories the helper keeps media in:
-// downloaded media, pruned once it grows past a limit, and outgoing
-// attachments, kept until their message is sent or deleted.
+// mediaCaches are the directories the helper keeps media in: downloaded
+// media, pruned once it grows past a limit; outgoing attachments, kept
+// until their message is sent or deleted; and validated copies of
+// custom notification sounds, one per conversation or service.
 type mediaCaches struct {
 	downloaded *cache.Cache
 	outgoing   *cache.Outgoing
+	sounds     *cache.Sounds
 }
 
-// newMediaCaches builds both of the helper's media areas under dir,
-// the outgoing one backed by db to tell a real pending or failed
+// newMediaCaches builds every one of the helper's media areas under
+// dir, the outgoing one backed by db to tell a real pending or failed
 // message's copy from an orphan Sweep may remove.
 func newMediaCaches(dir string, db *store.Store) mediaCaches {
 	exists := func(ctx context.Context, id string) (bool, error) { return db.MessageExists(ctx, id) }
@@ -233,6 +235,7 @@ func newMediaCaches(dir string, db *store.Store) mediaCaches {
 	return mediaCaches{
 		downloaded: cache.New(filepath.Join(dir, "media"), mediaCacheLimit),
 		outgoing:   cache.NewOutgoing(filepath.Join(dir, "media", "outgoing"), outgoingOrphanGrace, outgoingSizeLimit, exists),
+		sounds:     cache.NewSounds(filepath.Join(dir, "sounds")),
 	}
 }
 
@@ -283,7 +286,7 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 	}, Log: d.logger}
 	deps := app.Deps{
 		Store: d.db, Notifier: notifier, Publisher: d.srv, Accounts: d.registry, Cache: d.caches.downloaded,
-		Outgoing: d.caches.outgoing, Clipboard: clipboard.Wayland{}, Logger: d.logger,
+		Outgoing: d.caches.outgoing, Sounds: d.caches.sounds, Clipboard: clipboard.Wayland{}, Logger: d.logger,
 		Spell:   spell.New(d.dataDir, d.env),
 		DataDir: d.dataDir, DBPath: d.dbPath, ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
 		DownloadsDir: d.downloadsDir,

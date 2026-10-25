@@ -145,6 +145,9 @@ func (in *Ingest) Incoming(ctx context.Context, accountID, conversationRemoteID 
 
 	if policy.ShouldNotify(arrival) {
 		in.notifier.Notify(policy.Notification(arrival))
+		in.events.publish(ctx, EventNotificationSound, NotificationSound{
+			ConversationID: conv.ID, Service: conv.Service, HasCustomSound: conv.NotificationSound == "custom",
+		})
 	}
 }
 

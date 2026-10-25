@@ -22,6 +22,7 @@ const (
 	EventScheduledAdded      = "scheduledMessage.added"
 	EventScheduledUpdated    = "scheduledMessage.updated"
 	EventScheduledRemoved    = "scheduledMessage.removed"
+	EventNotificationSound   = "notification.sound"
 )
 
 // ScheduledRemoved is the data of a scheduledMessage.removed event: a
@@ -58,6 +59,20 @@ type Typing struct {
 // AccountRemoved is the data of an account.removed event.
 type AccountRemoved struct {
 	AccountID string `json:"accountId"`
+}
+
+// NotificationSound is the data of a notification.sound event: a hint,
+// sent only once Ingest has already decided to show a desktop
+// notification for an arriving message (so a muted, missed or
+// already-read one never sends this at all), that the UI should decide
+// whether to play a sound for conversationID. It carries no sender
+// name, text or file path - only the service, so the UI knows which of
+// its own manifest settings to weigh alongside the conversation's own
+// choice (see ui/lib/NotificationSound.js).
+type NotificationSound struct {
+	ConversationID string `json:"conversationId"`
+	Service        string `json:"service"`
+	HasCustomSound bool   `json:"hasCustomSound"`
 }
 
 // AuthStep is the data of an auth.step event: what an account's sign-in

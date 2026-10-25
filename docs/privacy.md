@@ -12,6 +12,7 @@ OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with y
 | Telegram sessions and API keys | `$XDG_DATA_HOME/omamessenger/telegram/` | files `0600`, directory `0700` | signed-in Telegram accounts |
 | WhatsApp sessions and media references | `$XDG_DATA_HOME/omamessenger/whatsapp/` | files `0600`, directory `0700` | signed-in WhatsApp accounts |
 | Cached photos, video and files | `$XDG_DATA_HOME/omamessenger/media/` | files `0600`, directory `0700` | avoids re-downloading media already seen |
+| Custom notification sounds | `$XDG_DATA_HOME/omamessenger/sounds/` | files `0600`, directory `0700` | a validated copy of a sound file picked for a chat, a service or the global default, never the original path or file you chose |
 | Your personal spell-check dictionary | `$XDG_DATA_HOME/omamessenger/spelling/` | files `0600`, directory `0700` | words added to the dictionary through the composer's spelling picker |
 | The installed helper binary | `$XDG_DATA_HOME/omamessenger/bin/` | executable, directory `0700` | the helper release pinned in `helper-version` |
 | Plugin source (this checkout) | `~/.config/omarchy/plugins/io.github.omamessenger/` | as installed, read-only at runtime | the QML UI and manifest Omarchy loads; no session or message data is ever written here |
@@ -19,6 +20,7 @@ OmaMessenger is an unofficial Telegram client: it uses Telegram's own API with y
 | Network requests | Telegram's and WhatsApp's own servers; `github.com/timlittle/omamessenger/releases` only to download the helper the first time the window opens | — | no other network access |
 | Diagnostics | stderr, which `omarchy-shell` sends to the system journal | — | states, counts and safe categories only, never credentials, QR tokens, session keys, phone numbers or message text |
 | Desktop notifications | Omarchy's notification service, which keeps a copy of each in `~/.local/state/omarchy/notifications/` and passes it through a short-lived process other local programs can see | — | by default a notification says only "New message", with no sender or text; the **Notification detail** setting can show the sender, or the sender and text, which Omarchy then stores and exposes the same way |
+| Notification sound | played by this plugin itself, not Omarchy's notification service, which never plays one | — | a chat's own sound (**Set notification sound…**), falling back to a service's or the global default manifest setting; muted chats never sound; a chosen file is validated before it is ever played, and never named in a notification, an event or a log line |
 | Key bindings file | `~/.config/omamessenger/keys.conf` | as created | only when you run **Open key bindings file**; no messages or account data |
 | Saved photos and files | your downloads folder | `0600` | only when you press save on a message |
 

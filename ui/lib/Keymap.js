@@ -117,6 +117,12 @@ var BINDINGS = [
   { action: 'chat.block', keys: [], contexts: ['list', 'conversation'], label: 'Block contact', command: true },
   { action: 'chat.unblock', keys: [], contexts: ['list', 'conversation'], label: 'Unblock contact', command: true },
   { action: 'chat.reportSpam', keys: [], contexts: ['list', 'conversation'], label: 'Report as spam', command: true },
+  // Palette-only, like chat.block: picking a sound file is a deliberate
+  // lookup, not a key-reachable toggle. "Reset" only ever does
+  // something on a chat that already has one, the same as
+  // chat.unblock only doing something on one already blocked.
+  { action: 'chat.setNotificationSound', keys: [], contexts: ['list', 'conversation'], label: 'Set notification sound…', command: true },
+  { action: 'chat.resetNotificationSound', keys: [], contexts: ['list', 'conversation'], label: 'Reset notification sound', command: true },
   // "a" is free in the list context (the conversation context already
   // uses it for compose.focus), so the key works for the selected chat
   // and the command palette reaches the open one too, since a palette

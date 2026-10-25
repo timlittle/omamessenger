@@ -15,7 +15,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked,c.notification_sound`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -225,6 +225,26 @@ func (s *Store) SetMuted(ctx context.Context, id string, muted bool) error {
 	}
 
 	return requireRow("set muted", res)
+}
+
+// SetNotificationSound records whether a conversation has its own
+// custom notification sound: hasCustom true stores "custom", false
+// stores "" (inherit the service's or the global default). The sound's
+// own bytes live outside the database, in the helper's sound store,
+// keyed by this conversation's id (see cache.Sounds); this column only
+// ever says whether one is there to look up.
+func (s *Store) SetNotificationSound(ctx context.Context, id string, hasCustom bool) error {
+	sound := ""
+	if hasCustom {
+		sound = "custom"
+	}
+
+	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET notification_sound=? WHERE id=?`, sound, id)
+	if err != nil {
+		return wrap("set notification sound", err)
+	}
+
+	return requireRow("set notification sound", res)
 }
 
 // pinOrderForNewPin is the pin_order a conversation gets the moment it
@@ -526,7 +546,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked, &c.NotificationSound,
 	}, extra...)
 	err := row.Scan(dest...)
 

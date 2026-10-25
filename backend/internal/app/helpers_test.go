@@ -61,26 +61,6 @@ func onePlayableMP4() []byte {
 	return moov
 }
 
-// onePlayableOggOpus returns a minimal, well-formed single-page
-// Ogg/Opus file - for a test that needs bytes audiosafe actually
-// accepts rather than an arbitrary placeholder: one page, marked
-// both the first and last of its logical bitstream, whose payload
-// opens with the "OpusHead" packet magic and whose granule position
-// implies a five-second stream.
-func onePlayableOggOpus() []byte {
-	payload := []byte("OpusHead further opus header bytes here")
-
-	hdr := make([]byte, 27)
-	copy(hdr[0:4], "OggS")
-	hdr[5] = 0x06 // BOS | EOS: the one page is the whole stream
-	binary.LittleEndian.PutUint64(hdr[6:14], 48_000*5)
-	binary.LittleEndian.PutUint32(hdr[14:18], 1) // serial
-	hdr[26] = 1                                  // one segment table entry
-
-	hdr = append(hdr, byte(len(payload)))
-	return append(hdr, payload...)
-}
-
 // fixture is an application over a real database with fake connectors,
 // notifications and UI.
 type fixture struct {
@@ -106,6 +86,7 @@ type fixture struct {
 	members    *fakeMemberLister
 	limiter    *fakeLimiter
 	outgoing   *cache.Outgoing
+	sounds     *cache.Sounds
 	clipboard  *fakeClipboard
 	logger     *fakeLogger
 	downloads  string
@@ -139,6 +120,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
 		blocker: &fakeBlocker{}, spamReport: &fakeSpamReporter{}, limiter: &fakeLimiter{limits: map[string]int64{}},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
+		sounds: cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
 		logger: &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
 	}
 
@@ -148,7 +130,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
 		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members, Limiter: f.limiter,
-		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
+		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 		DownloadsDir: f.downloads,
 	}

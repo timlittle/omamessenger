@@ -185,6 +185,13 @@ var migrations = []string{
 		send_at INTEGER NOT NULL,
 		created INTEGER NOT NULL);
 	CREATE INDEX scheduled_messages_due ON scheduled_messages(send_at);`,
+	// "" (the default) inherits whichever notification sound applies at
+	// the service or global default level; "custom" means this
+	// conversation has its own, stored by the helper under its own id
+	// (see cache.Sounds and app.Commands.SetNotificationSound) rather
+	// than kept in this column, which only ever records that one has
+	// been set, never a path (issue #19).
+	`ALTER TABLE conversations ADD COLUMN notification_sound TEXT NOT NULL DEFAULT '';`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

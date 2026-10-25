@@ -30,6 +30,7 @@ type Commands struct {
 	members      MemberLister
 	limiter      AttachmentLimiter
 	outgoing     OutgoingMedia
+	sounds       SoundStore
 	clipboard    ClipboardRunner
 	fake         Injector
 	logger       Logger

@@ -74,11 +74,12 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "gif.db"))
-	// The GIF migration is fourth-to-last, before the audio migration,
-	// the pin_order column and the scheduled_messages table, all
-	// appended after it; stop short of all four so inserting the
-	// pre-fix rows below still finds them unreclassified.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-4]); err != nil {
+	// The GIF migration is fifth-to-last, before the audio migration,
+	// the pin_order column, the scheduled_messages table and the
+	// notification_sound column, all appended after it; stop short of
+	// all five so inserting the pre-fix rows below still finds them
+	// unreclassified.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-5]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -111,7 +112,7 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into a video.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-4]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-5]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,10 +135,10 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "audio.db"))
-	// The audio migration is third-to-last, before the pin_order column
-	// and the scheduled_messages table both appended after it; stop
-	// short of all three.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-3]); err != nil {
+	// The audio migration is fourth-to-last, before the pin_order
+	// column, the scheduled_messages table and the notification_sound
+	// column, all appended after it; stop short of all four.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-4]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -170,7 +171,7 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into audio.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-3]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-4]); err != nil {
 		t.Fatal(err)
 	}
 

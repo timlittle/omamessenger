@@ -6,6 +6,7 @@ import "lib/Keymap.js" as Keymap
 import "lib/KeyBindings.js" as KeyBindings
 import "lib/WhatsNew.js" as WhatsNew
 import "lib/Links.js" as Links
+import "lib/NotificationSound.js" as NotificationSound
 import "service"
 
 // Owns the helper process and everything that must survive the panel
@@ -72,6 +73,37 @@ Item {
   // applySettings, kept so toggleReadReceipts can resend every other
   // setting unchanged alongside the one it flips.
   property var _lastSettings: ({})
+
+  // _defaultSound, _whatsappSound and _telegramSound are the three
+  // manifest notification sound settings (see applySettings), kept
+  // here since the UI, not the helper, decides which one applies to an
+  // arriving message (see lib/NotificationSound.js): a conversation's
+  // own custom sound, read from the notification.sound event itself,
+  // always wins over these first.
+  property string _defaultSound: ""
+  property string _whatsappSound: ""
+  property string _telegramSound: ""
+
+  // soundPlayer plays a notification sound's own file:// URL. Null
+  // uses the real engine loaded through _soundRuntime below; tests
+  // replace it with a fake so nothing ever reaches the live desktop's
+  // audio output (see ui-testing.md).
+  property var soundPlayer: null
+
+  // doNotDisturbCheck lets a test replace the do-not-disturb check
+  // with a fake, callback-based function, so nothing in a test ever
+  // shells out to omarchy-shell; null uses doNotDisturb below, the
+  // real, read-only check against Omarchy's own shell.
+  property var doNotDisturbCheck: null
+
+  // _soundRuntimeSource is the sound effect engine _soundRuntime
+  // loads: NotificationSoundRuntime.qml by default, overridable so a
+  // test can point it at a broken or missing file instead, to drive
+  // the same Loader.Error path a machine without QtMultimedia would
+  // hit, without needing QtMultimedia to actually be missing from the
+  // machine running the test (see VoiceNoteController.qml's own
+  // runtimeSource, the same pattern).
+  property url _soundRuntimeSource: Qt.resolvedUrl("components/NotificationSoundRuntime.qml")
 
   // shell is the host facade Omarchy injects after creating this service,
   // used to summon the panel open on a conversation when a notification is
@@ -150,6 +182,9 @@ Item {
     root._lastSettings = settings ?? {};
     const merged = Settings.withDefaults(settings, root.readReceipts);
     root.readReceipts = merged.readReceipts;
+    root._defaultSound = merged.defaultNotificationSound;
+    root._whatsappSound = merged.whatsappNotificationSound;
+    root._telegramSound = merged.telegramNotificationSound;
     root.request("settings.apply", merged, function() {});
   }
 
@@ -219,8 +254,59 @@ Item {
     else if (name === "auth.step") appState.applyAuthStep(data);
     else if (name === "unread.changed") appState.applyUnreadChanged(data);
     else if (name === "notification.clicked") root._openOnNotificationClick(data);
+    else if (name === "notification.sound") root._playNotificationSound(data);
 
     root.event(name, data);
+  }
+
+  // _playNotificationSound decides, from data and this plugin's own
+  // settings, whether an arriving message should play a sound at all
+  // (see lib/NotificationSound.js), checking first whether Omarchy's
+  // own do-not-disturb is on right now: its own notification popups
+  // already go quiet under it, so this plugin's sound must too,
+  // rather than sounding through it. The helper never sends this
+  // event for a muted, missed or already-read arrival (see
+  // backend/internal/app/ingest.go), so this never has to check that
+  // itself.
+  function _playNotificationSound(data: var): void {
+    if (!data || typeof data.conversationId !== "string") return;
+
+    const check = root.doNotDisturbCheck ?? doNotDisturb.check;
+    check(function(active) {
+      if (!active) root._resolveAndPlaySound(data);
+    });
+  }
+
+  // _resolveAndPlaySound asks the helper for a validated, playable
+  // copy of whichever sound lib/NotificationSound.js's precedence
+  // picked, once _playNotificationSound has already confirmed
+  // do-not-disturb is not on.
+  function _resolveAndPlaySound(data: var): void {
+    const serviceSound = data.service === "telegram" ? root._telegramSound : root._whatsappSound;
+    const decision = NotificationSound.resolve(!!data.hasCustomSound, serviceSound, root._defaultSound);
+    if (decision.source === "silent") return;
+
+    const params = decision.source === "conversation"
+      ? { conversationId: data.conversationId }
+      : { service: decision.source === "default" ? "default" : data.service, path: decision.path };
+
+    root.request("sounds.fetch", params, function(error, result) {
+      if (error || !result || !result.path) return;
+      root._playSoundFile(result.path);
+    });
+  }
+
+  // _playSoundFile hands path's file:// URL (percent-encoded, like
+  // every other local file this UI opens - see lib/Links.js) to
+  // soundPlayer, or the loaded runtime engine when nothing overrides
+  // it and QtMultimedia is actually available on this machine; losing
+  // one sound while the engine is still loading, or on a machine
+  // without QtMultimedia at all, is not worth failing anything over.
+  function _playSoundFile(path: string): void {
+    const player = root.soundPlayer ?? (soundRuntime.status === Loader.Ready ? soundRuntime.item : null);
+    if (!player) return;
+
+    player.play(Links.fileURL(path));
   }
 
   // _openOnNotificationClick summons the panel open on the conversation a
@@ -252,6 +338,25 @@ Item {
     transport: helperProcess
 
     onEvent: function(name, data) { root._handleEvent(name, data); }
+  }
+
+  // soundRuntime loads the actual sound effect engine, kept in its own
+  // file because it imports the optional QtMultimedia module (not
+  // every Omarchy install has it): importing it here directly, in a
+  // service that always loads, would make the whole UI fail to load on
+  // a machine without it, instead of just losing a notification sound.
+  // Living in Service, rather than a controller, means a sound can
+  // still play while the panel is hidden or closed - exactly when a
+  // notification matters most.
+  Loader {
+    id: soundRuntime
+    source: root._soundRuntimeSource
+  }
+
+  // doNotDisturb is the real, read-only check against Omarchy's own
+  // shell; see ui/service/DoNotDisturb.qml.
+  DoNotDisturb {
+    id: doNotDisturb
   }
 
   // keysFile holds ~/.config/omamessenger/keys.conf's overrides. Watched

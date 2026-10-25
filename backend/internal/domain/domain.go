@@ -134,6 +134,14 @@ type Conversation struct {
 	// conversation has the one contact a block applies to.
 	Blocked bool `json:"blocked"`
 
+	// NotificationSound is "" to inherit whichever notification sound
+	// applies at the service or global default level, or "custom" once
+	// this conversation has its own (see app.Commands.SetNotificationSound).
+	// The sound's own bytes never cross the protocol; the UI asks for a
+	// playable copy with sounds.fetch only once it decides this
+	// conversation's own sound should actually play.
+	NotificationSound string `json:"notificationSound,omitempty"`
+
 	// ReminderAt is when a snoozed conversation comes back, in Unix
 	// milliseconds, or 0 for none. It is local to this computer only:
 	// never reported to or read from the service.

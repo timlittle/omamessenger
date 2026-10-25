@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Dialogs
 import "../lib/Rail.js" as Rail
 import "../lib/Selection.js" as Selection
 import "../lib/ListSync.js" as ListSync
@@ -12,7 +13,9 @@ import "../lib/Pin.js" as Pin
 // conversations.setPinned, conversations.movePin,
 // conversations.setArchived, conversations.setHidden,
 // conversations.setReminder, conversations.markUnread, contacts.block,
-// contacts.unblock and conversations.reportSpam.
+// contacts.unblock, conversations.reportSpam,
+// conversations.setNotificationSound and
+// conversations.resetNotificationSound.
 // The list itself is a ListModel kept in sync in place with ListSync, so
 // opening or scrolling never resets because of an unrelated event.
 //
@@ -90,6 +93,12 @@ Item {
   // meantime cannot alter what confirming it actually does.
   property string _blockConfirmId: ""
 
+  // _notificationSoundTargetId is the conversation soundFileDialog's
+  // file picker applies to, captured when it was opened so a list
+  // change while the (asynchronous, possibly portal-backed) dialog is
+  // still open cannot alter what accepting it actually does.
+  property string _notificationSoundTargetId: ""
+
   // _all holds every conversation the helper reported, unfiltered by the
   // rail or a search.
   property var _all: []
@@ -137,6 +146,8 @@ Item {
       "chat.reportSpam": () => root._askReportSpam(),
       "blockConfirm.accept": () => root.confirmBlock(),
       "blockConfirm.cancel": () => root.cancelBlock(),
+      "chat.setNotificationSound": () => root._setNotificationSound(),
+      "chat.resetNotificationSound": () => root._resetNotificationSound(),
       "chat.snoozeLaterToday": () => root.setReminderOnCurrent(Snooze.laterToday(Date.now())),
       "chat.snoozeTomorrow": () => root.setReminderOnCurrent(Snooze.tomorrow(Date.now())),
       "chat.snoozeNextWeek": () => root.setReminderOnCurrent(Snooze.nextWeek(Date.now())),
@@ -473,6 +484,54 @@ Item {
     });
   }
 
+  // _setNotificationSound opens a file picker restricted to audio
+  // files and, once one is chosen, asks the helper to validate and
+  // store it as whichever conversation is contextually current's own
+  // notification sound - the command palette's "Set notification
+  // sound…". Does nothing with no current conversation.
+  function _setNotificationSound(): void {
+    const id = root._currentId();
+    if (!id || !root.findConversation(id)) return;
+
+    root._notificationSoundTargetId = id;
+    soundFileDialog.open();
+  }
+
+  // notificationSoundPicked stores path as the conversation
+  // _setNotificationSound captured's own notification sound: the
+  // entry point soundFileDialog's onAccepted calls once the user
+  // picks a file, the same way movePinTo above is the entry point a
+  // pinned row's drag handler calls. An invalid file (not a format
+  // the helper's audiosafe check accepts) reports through lastError,
+  // the same as any other refused request.
+  function notificationSoundPicked(path: string): void {
+    const id = root._notificationSoundTargetId;
+    root._notificationSoundTargetId = "";
+    if (!id) return;
+
+    root.service.request("conversations.setNotificationSound", { conversationId: id, path: path }, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
+      root._applyConversationUpdated(result);
+    });
+  }
+
+  // _resetNotificationSound clears whichever conversation is
+  // contextually current's own notification sound, the command
+  // palette's "Reset notification sound", so it goes back to
+  // inheriting whichever one applies at the service or global default
+  // level.
+  function _resetNotificationSound(): void {
+    const id = root._currentId();
+    if (!id || !root.findConversation(id)) return;
+
+    root.service.request("conversations.resetNotificationSound", { conversationId: id }, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
+      root._applyConversationUpdated(result);
+    });
+  }
+
   // cancelBlock leaves the conversation blockConfirmOpen's question
   // named as it is.
   function cancelBlock(): void {
@@ -679,6 +738,18 @@ Item {
   Component.onCompleted: root._start()
 
   ListModel { id: listModel }
+
+  // soundFileDialog is the file picker "Set notification sound…"
+  // opens, restricted to the audio formats the helper's audiosafe
+  // check can actually validate; a file of another kind is still
+  // refused by the helper itself (see notificationSoundPicked), this
+  // is only to steer the picker.
+  FileDialog {
+    id: soundFileDialog
+    title: "Set notification sound"
+    nameFilters: ["Audio files (*.wav *.ogg *.oga *.mp3 *.m4a *.aac)"]
+    onAccepted: root.notificationSoundPicked(String(soundFileDialog.selectedFile).replace(/^file:\/\//, ""))
+  }
 
   Connections {
     target: root.service

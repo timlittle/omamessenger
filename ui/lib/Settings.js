@@ -9,6 +9,7 @@
 var DEFAULTS = {
   notifications: true, notificationDetail: 'none', readReceipts: true,
   spellCheck: true, spellLanguage: 'auto',
+  defaultNotificationSound: '', whatsappNotificationSound: '', telegramNotificationSound: '',
 };
 
 // DETAIL_LABELS maps manifest.json's notificationDetail option labels,
@@ -55,7 +56,19 @@ function withDefaults(settings, currentReadReceipts) {
     readReceipts: typeof given.readReceipts === 'boolean' ? given.readReceipts : readReceiptsFallback,
     spellCheck: typeof given.spellCheck === 'boolean' ? given.spellCheck : DEFAULTS.spellCheck,
     spellLanguage: resolveLanguage(given),
+    defaultNotificationSound: resolveSound(given.defaultNotificationSound),
+    whatsappNotificationSound: resolveSound(given.whatsappNotificationSound),
+    telegramNotificationSound: resolveSound(given.telegramNotificationSound),
   };
+}
+
+// resolveSound passes a manifest sound setting straight through: a
+// path, or the sentinels "default" and "none" (see
+// ui/lib/NotificationSound.js, which gives those two their meaning).
+// Anything not a string at all falls back to "", the same blank
+// default manifest.json itself gives every one of these three settings.
+function resolveSound(value) {
+  return typeof value === 'string' ? value : '';
 }
 
 // resolveLanguage picks the spellLanguage value to send: the manifest's

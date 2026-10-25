@@ -20,7 +20,7 @@ func TestIncoming_StoresPublishesAndNotifies(t *testing.T) {
 
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "First"))
 
-	want := []string{app.EventMessageAdded, app.EventConversationUpdated, app.EventUnreadChanged}
+	want := []string{app.EventMessageAdded, app.EventConversationUpdated, app.EventUnreadChanged, app.EventNotificationSound}
 	if got := f.published.take(); !slices.Equal(got, want) {
 		t.Errorf("events = %v, want %v", got, want)
 	}

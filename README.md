@@ -71,6 +71,18 @@ Choose **Add an account** in the window or the command palette. Scan the QR code
 
 Ctrl+/ lists every command and its shortcut. The full reference, including the conversation list, composer and photo viewer, is in [docs/shortcuts.md](docs/shortcuts.md). To remap a shortcut, see [docs/shortcuts.md](docs/shortcuts.md#remapping-keys) for `~/.config/omamessenger/keys.conf`, or run `make keys` to print the effective bindings for a bug report.
 
+## Notifications
+
+By default, a notification says only "New message": the **Notification detail** setting can show the sender, or the sender and text (see [docs/privacy.md](docs/privacy.md) for why that is off by default).
+
+Omarchy's own notification popups never play a sound, so OmaMessenger plays its own, through three settings that combine, most specific first:
+
+1. A conversation's own sound, picked with the command palette's **Set notification sound…** (**Reset notification sound** clears it).
+2. **WhatsApp notification sound** / **Telegram notification sound**, a plugin setting for every chat on that service without one of its own.
+3. **Default notification sound**, a plugin setting for everything else.
+
+Each of the two plugin settings accepts a path to a WAV, Ogg or MP3 file, or the special values "default" (inherit the level below) and "none" (silence at and below this level, even if a lower one has a sound); left blank, a plugin setting behaves the same as "default". A muted chat never plays a sound, whatever these settings say. A chosen file is validated before it is ever played; an invalid one is treated as no sound rather than shown as an error. Turning on Omarchy's own do-not-disturb silences this plugin's sound too, checked with a quick, read-only query each time, right before playing.
+
 ## Data and privacy
 
 Accounts, sessions and messages stay on this computer, in `${XDG_DATA_HOME:-~/.local/share}/omamessenger/`, readable only by you. The helper talks only to Telegram's and WhatsApp's servers, and to GitHub once to download itself. Both connections are unofficial clients, which the services can restrict. Details, including every file it writes, are in [docs/privacy.md](docs/privacy.md).

@@ -4,7 +4,14 @@
 // itself; XDG_DATA_HOME is set by the test runner, so this never touches
 // real data. Also checks, with a fake shell facade and no helper
 // involved, that a notification.clicked event summons this plugin with
-// the clicked conversation's id, and is tolerated with no shell at all.
+// the clicked conversation's id, and is tolerated with no shell at all;
+// and, with a fake sound player (so nothing ever reaches the live
+// desktop's audio output), that a notification.sound event resolves a
+// service-level sound setting through the real helper's sounds.fetch
+// and hands its file:// URL to the player, unless a fake
+// do-not-disturb check reports "on", in which case nothing plays -
+// checked with a fake so this never shells out to the real
+// omarchy-shell.
 import QtQuick
 import Quickshell
 import "ui"
@@ -16,6 +23,8 @@ ShellRoot {
   property var conversations: []
   property string pendingConversationId: ""
   property int listAttempts: 0
+  property int soundCheckAttempts: 0
+  property int dndCheckAttempts: 0
 
   // notificationClickForwarded records whether Service's event signal
   // relayed a notification.clicked, as the panel would rely on.
@@ -33,6 +42,14 @@ ShellRoot {
     }
   })
 
+  // fakeSoundPlayer stands in for Service's real, QtMultimedia-backed
+  // player: a plain object recording every URL it was asked to play,
+  // so this test never touches a real audio device.
+  property var fakeSoundPlayer: ({
+    played: [],
+    play: function(url) { root.fakeSoundPlayer.played.push(url); }
+  })
+
   // succeed reports a pass and stops the test.
   function succeed(): void {
     console.log("PASS Service");
@@ -45,6 +62,62 @@ ShellRoot {
   // than treating that race as a failure.
   function onReady(): void {
     root.listConversations();
+    root.checkNotificationSound();
+  }
+
+  // checkNotificationSound drives Service's real notification.sound
+  // handling: a service-level sound setting (standing in for the
+  // manifest's "WhatsApp notification sound"), a fake player so
+  // nothing reaches the live desktop, and a real round trip through
+  // sounds.fetch against the demo helper, which validates and copies
+  // ping.ogg (this test's own fixture, the same tiny file
+  // VoiceNoteController's own tests use) before this ever hands its
+  // path to the player.
+  function checkNotificationSound(): void {
+    service.soundPlayer = root.fakeSoundPlayer;
+    service._whatsappSound = String(Qt.resolvedUrl("ping.ogg")).replace("file://", "");
+    service._handleEvent("notification.sound", { conversationId: "conv-9", service: "whatsapp", hasCustomSound: false });
+    root.pollNotificationSound();
+  }
+
+  // pollNotificationSound retries until sounds.fetch's reply has made
+  // its way to fakeSoundPlayer.play, or gives up.
+  function pollNotificationSound(): void {
+    if (root.fakeSoundPlayer.played.length > 0) {
+      const url = root.fakeSoundPlayer.played[0];
+      if (!url.startsWith("file://")) Check.fail("soundPlayer.play got " + url + ", want a file:// URL");
+      else root.checkDoNotDisturbSuppressesSound();
+      return;
+    }
+
+    root.soundCheckAttempts++;
+    if (root.soundCheckAttempts >= 50) return Check.fail("notification.sound never reached soundPlayer.play");
+
+    soundCheckTimer.start();
+  }
+
+  // checkDoNotDisturbSuppressesSound replaces the real, shelling-out
+  // check with a fake reporting "on", fires another notification.sound
+  // event, and confirms nothing more reaches fakeSoundPlayer.play: a
+  // do-not-disturb check reporting on must suppress the sound, the
+  // same way Omarchy's own notification popups already go quiet
+  // under it.
+  function checkDoNotDisturbSuppressesSound(): void {
+    service.doNotDisturbCheck = function(callback) { callback(true); };
+    service._handleEvent("notification.sound", { conversationId: "conv-9", service: "whatsapp", hasCustomSound: false });
+    root.pollDoNotDisturb();
+  }
+
+  // pollDoNotDisturb waits a few ticks for a (wrongly) in-flight play
+  // to land, then fails if one did: fakeSoundPlayer.played must still
+  // hold only the one entry from before do-not-disturb was faked on.
+  function pollDoNotDisturb(): void {
+    root.dndCheckAttempts++;
+    if (root.dndCheckAttempts < 5) { dndCheckTimer.start(); return; }
+
+    if (root.fakeSoundPlayer.played.length !== 1)
+      Check.fail("a do-not-disturb check reporting \"on\" did not suppress the sound: played = "
+        + JSON.stringify(root.fakeSoundPlayer.played));
   }
 
   // listConversations checks for the eleven conversations the README
@@ -149,6 +222,21 @@ ShellRoot {
     id: retryTimer
     interval: 200
     onTriggered: root.listConversations()
+  }
+
+  // soundCheckTimer retries pollNotificationSound while sounds.fetch's
+  // round trip is still in flight.
+  Timer {
+    id: soundCheckTimer
+    interval: 100
+    onTriggered: root.pollNotificationSound()
+  }
+
+  // dndCheckTimer paces pollDoNotDisturb's short wait.
+  Timer {
+    id: dndCheckTimer
+    interval: 50
+    onTriggered: root.pollDoNotDisturb()
   }
 
   // A deliberately unreachable deadline: it only fires, and fails the

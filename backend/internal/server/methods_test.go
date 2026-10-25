@@ -10,6 +10,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/timlittle/omamessenger/backend/internal/audiosafe/audiosafetest"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -96,6 +97,28 @@ func TestMethods_RoundTrip(t *testing.T) {
 	muted, err := call[domain.Conversation](t, s, "conversations.setMuted", map[string]any{"conversationId": "chat", "muted": true})
 	if err != nil || !muted.Muted {
 		t.Errorf("conversations.setMuted = %+v, %v", muted, err)
+	}
+
+	soundPath := filepath.Join(t.TempDir(), "ping.ogg")
+	if err := os.WriteFile(soundPath, audiosafetest.ValidOpusFixture(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	withSound, err := call[domain.Conversation](t, s, "conversations.setNotificationSound", map[string]any{"conversationId": "chat", "path": soundPath})
+	if err != nil || withSound.NotificationSound != "custom" {
+		t.Errorf("conversations.setNotificationSound = %+v, %v", withSound, err)
+	}
+
+	fetched, err := call[struct {
+		Path string `json:"path"`
+	}](t, s, "sounds.fetch", map[string]any{"conversationId": "chat"})
+	if err != nil || fetched.Path == "" {
+		t.Errorf("sounds.fetch = %+v, %v", fetched, err)
+	}
+
+	withoutSound, err := call[domain.Conversation](t, s, "conversations.resetNotificationSound", map[string]any{"conversationId": "chat"})
+	if err != nil || withoutSound.NotificationSound != "" {
+		t.Errorf("conversations.resetNotificationSound = %+v, %v", withoutSound, err)
 	}
 
 	pinned, err := call[domain.Conversation](t, s, "conversations.setPinned", map[string]any{"conversationId": "chat", "pinned": true})
