@@ -197,6 +197,20 @@ var migrations = []string{
 	// that destroys it without the user asking to close it can reopen it
 	// on the next start.
 	`ALTER TABLE ui_state ADD COLUMN window_open INTEGER NOT NULL DEFAULT 0;`,
+	// Every conversation pinned before the pin_order column above
+	// existed shares its bare default, 0: MovePin's own swap had
+	// nothing to swap, since exchanging 0 for 0 leaves both at 0, so
+	// the first real move a user with old pins made looked like it did
+	// nothing at all. This gives each one a distinct order instead, by
+	// the same recency order the list already showed them in, so the
+	// migration itself reorders nothing visible; only a later move can.
+	`UPDATE conversations SET pin_order = (
+			SELECT rank FROM (
+				SELECT id, ROW_NUMBER() OVER (ORDER BY last_activity DESC, id) AS rank
+				FROM conversations WHERE pinned = 1
+			) ranked
+			WHERE ranked.id = conversations.id)
+		WHERE pinned = 1;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

@@ -74,12 +74,13 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "gif.db"))
-	// The GIF migration is sixth-from-last, before the audio migration,
-	// the pin_order column, the scheduled_messages table, the
-	// notification_sound column and the window-open column, all
-	// appended after it; stop short of all six so inserting the
-	// pre-fix rows below still finds them unreclassified.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-6]); err != nil {
+	// The GIF migration is seventh-from-last, before the audio
+	// migration, the pin_order column, the scheduled_messages table,
+	// the notification_sound column, the window-open column and the
+	// pin_order backfill, all appended after it; stop short of all
+	// seven so inserting the pre-fix rows below still finds them
+	// unreclassified.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-7]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -112,7 +113,7 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into a video.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-6]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-7]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,11 +136,11 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "audio.db"))
-	// The audio migration is fifth-from-last, before the pin_order
+	// The audio migration is sixth-from-last, before the pin_order
 	// column, the scheduled_messages table, the notification_sound
-	// column and the window-open column, all appended after it; stop
-	// short of all five.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-5]); err != nil {
+	// column, the window-open column and the pin_order backfill, all
+	// appended after it; stop short of all six.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-6]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,7 +173,7 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into audio.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-5]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-6]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -180,6 +181,104 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	if audioAgain != audio {
 		t.Errorf("re-running the migration changed an already-reclassified row: %+v, want %+v", audioAgain, audio)
 	}
+}
+
+// TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering
+// confirms the migration added after pin_order's own column gives every
+// already-pinned conversation a distinct order, by the recency order
+// they already displayed in. Before this, a conversation pinned by an
+// older build carried the column's bare default, 0, same as every
+// other conversation pinned back then: MovePin's swap had nothing to
+// swap, since exchanging 0 for 0 leaves both at 0, so the first real
+// move a user with old pins made did nothing at all.
+func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t *testing.T) {
+	t.Parallel()
+
+	db := openRaw(t, filepath.Join(t.TempDir(), "pin-backfill.db"))
+	// Stop one short of the full set: the backfill is the very last
+	// migration, appended after pin_order's own column, scheduled
+	// messages, the notification sound column and the window-open
+	// column.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-1]); err != nil {
+		t.Fatal(err)
+	}
+
+	insertRawAccount(t, db, "wa")
+	insertRawConversation(t, db, "older", "wa", true, 0, 1000)
+	insertRawConversation(t, db, "newer", "wa", true, 0, 2000)
+	insertRawConversation(t, db, "unpinned", "wa", false, 0, 3000)
+
+	if err := migrate(t.Context(), db, migrations); err != nil {
+		t.Fatal(err)
+	}
+
+	olderOrder := readRawPinOrder(t, db, "older")
+	newerOrder := readRawPinOrder(t, db, "newer")
+	unpinnedOrder := readRawPinOrder(t, db, "unpinned")
+
+	if olderOrder == newerOrder {
+		t.Fatalf("two conversations pinned before ordering existed still share pin_order %d", olderOrder)
+	}
+	if newerOrder >= olderOrder {
+		t.Errorf("newer pin_order = %d, older = %d; want the more recently active one to sort first", newerOrder, olderOrder)
+	}
+	if unpinnedOrder != 0 {
+		t.Errorf("an unpinned conversation's pin_order = %d, want 0, untouched", unpinnedOrder)
+	}
+
+	// Re-running the backfill must not reshuffle an already-distinct
+	// order: it is idempotent, like the GIF and audio reclassifications
+	// above, since recomputing the same recency ranking over rows whose
+	// relative order has not changed yields the same ranks.
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-1]); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readRawPinOrder(t, db, "older"); got != olderOrder {
+		t.Errorf("re-running the backfill changed older's pin_order: %d, want %d", got, olderOrder)
+	}
+	if got := readRawPinOrder(t, db, "newer"); got != newerOrder {
+		t.Errorf("re-running the backfill changed newer's pin_order: %d, want %d", got, newerOrder)
+	}
+}
+
+// insertRawAccount inserts a minimal account row, bypassing the store's
+// own API, which this package's migration tests run before a full
+// migration they are testing has even applied.
+func insertRawAccount(t *testing.T, db *sql.DB, id string) {
+	t.Helper()
+
+	if _, err := db.ExecContext(t.Context(), `INSERT INTO accounts(id,service,name) VALUES(?,'whatsapp',?)`, id, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// insertRawConversation inserts a minimal conversation row with an
+// explicit pinned flag, pin_order and last_activity, the exact shape an
+// older build left behind: every already-pinned conversation sharing
+// pin_order's bare column default.
+func insertRawConversation(t *testing.T, db *sql.DB, id, accountID string, pinned bool, pinOrder, lastActivity int) {
+	t.Helper()
+
+	_, err := db.ExecContext(t.Context(),
+		`INSERT INTO conversations(id,account_id,remote_id,kind,title,pinned,pin_order,last_activity)
+			VALUES(?,?,?,'direct',?,?,?,?)`,
+		id, accountID, id, id, pinned, pinOrder, lastActivity)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// readRawPinOrder reads one conversation's stored pin_order directly.
+func readRawPinOrder(t *testing.T, db *sql.DB, id string) int {
+	t.Helper()
+
+	var order int
+	if err := db.QueryRowContext(t.Context(), `SELECT pin_order FROM conversations WHERE id=?`, id).Scan(&order); err != nil {
+		t.Fatal(err)
+	}
+
+	return order
 }
 
 // insertRawMessage inserts a minimal message row with the given media

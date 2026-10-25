@@ -5,6 +5,9 @@
 // are covered in ui/lib node tests, the controller tests and backend/ Go
 // tests; this suite exists to prove the real keyboard, the real Panel and
 // the real helper still fit together):
+// - the command palette pins the list's first two rows, then a real
+//   Ctrl+Shift+Down swaps them: real keyboard coverage for both "Pin or
+//   unpin chat" and chat.movePinDown
 // - Ctrl+K jumps to Nadia, whose newest message is a real GIF document;
 //   one click fetches it and, once the helper's own byte check confirms
 //   it, InlineVideo switches from its thumbnail to a real AnimatedImage
@@ -66,6 +69,10 @@ ShellRoot {
   // her chat has loaded so the click and animation checks can find its
   // own delegate without depending on her list's exact newest position.
   property string nadiaGifMessageId: ""
+  // pinIdTop and pinIdSecond are the two rows pinTopTwoChats pins, for
+  // the checks either side of moving one of them.
+  property string pinIdTop: ""
+  property string pinIdSecond: ""
   // expectedTitle, _priorTitle, _newlineHeightBefore, _hidesBeforeChain
   // and _hidesBefore are scratch state for the keyboard-chrome journeys
   // appended after the message flows above.
@@ -76,6 +83,12 @@ ShellRoot {
   property int _hidesBefore: 0
   property var steps: [
     root.waitForList,
+    root.pinTopTwoChats,
+    root.waitPinTopTwoChats,
+    root.movePinnedRowDown,
+    root.waitPinnedRowsSwapped,
+    root.unpinBothChats,
+    root.waitBothUnpinned,
     root.openNadiaGif,
     root.waitForNadiaGifLoaded,
     root.clickNadiaGif,
@@ -206,6 +219,88 @@ ShellRoot {
     // a search run any earlier could miss messages that are on their way.
     const accounts = helperService.accounts;
     return root.listModel().count === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
+  }
+
+  // pinTopTwoChats pins the list's first two rows from the keyboard,
+  // through the real command palette, recording their ids first since
+  // pinning the first one moves it to the top of its own pinned group
+  // (where it already sits, as the only one so far) before the second
+  // is pinned the same way. This is the suite's only coverage of
+  // "Pin or unpin chat" and of chat.movePinUp/Down reaching a real key
+  // at all - every other detail of how a move reorders the pinned
+  // group is covered by ui/lib/Pin.js and the backend's own store and
+  // app tests.
+  function pinTopTwoChats(): var {
+    root.pinIdTop = root.listModel().get(0).id;
+    t.keyClick(Qt.Key_G);
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    for (const ch of "pin or unpin") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return);
+
+    t.keyClick(Qt.Key_J);
+    root.pinIdSecond = root.rowIndexId(1);
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    for (const ch of "pin or unpin") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // rowIndexId returns the id of the row currently at index, straight
+  // from the list model.
+  function rowIndexId(index: int): string {
+    return root.listModel().get(index).id;
+  }
+
+  // waitPinTopTwoChats holds until both rows pinTopTwoChats named are
+  // pinned and sorted to the top, in the order they were pinned.
+  function waitPinTopTwoChats(): var {
+    const model = root.listModel();
+    return model.get(0).id === root.pinIdTop && model.get(0).pinned
+      && model.get(1).id === root.pinIdSecond && model.get(1).pinned;
+  }
+
+  // movePinnedRowDown selects the top pinned row with g (cursor.top)
+  // and moves it down one place with the real Ctrl+Shift+Down: the
+  // report this covers found neither this nor dragging actually
+  // reordered anything, because every conversation pinned by an older
+  // build shared pin_order's bare column default (see the migration
+  // added for it), so the swap this makes had nothing to swap.
+  function movePinnedRowDown(): var {
+    t.keyClick(Qt.Key_G);
+    t.keyClick(Qt.Key_Down, Qt.ControlModifier | Qt.ShiftModifier);
+    return true;
+  }
+
+  // waitPinnedRowsSwapped holds until the move above has swapped the
+  // two pinned rows' positions.
+  function waitPinnedRowsSwapped(): var {
+    const model = root.listModel();
+    return model.get(0).id === root.pinIdSecond && model.get(1).id === root.pinIdTop;
+  }
+
+  // unpinBothChats undoes the pins above, through the same command
+  // palette entry: the rest of this suite relies on recency sorting
+  // the list the same way it always has, with nothing pinned ahead of
+  // it, the same as every journey below already assumes.
+  function unpinBothChats(): var {
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    for (const ch of "pin or unpin") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return);
+
+    t.keyClick(Qt.Key_G);
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    for (const ch of "pin or unpin") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitBothUnpinned holds until both rows are unpinned again.
+  function waitBothUnpinned(): var {
+    const model = root.listModel();
+    for (let i = 0; i < model.count; i++) {
+      if ((model.get(i).id === root.pinIdTop || model.get(i).id === root.pinIdSecond) && model.get(i).pinned) return false;
+    }
+    return true;
   }
 
   // openNadiaGif jumps to Nadia with Ctrl+K. Her newest seeded message
