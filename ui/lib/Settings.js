@@ -8,7 +8,7 @@
 // DEFAULTS mirror the defaultValue of each setting in manifest.json.
 var DEFAULTS = {
   notifications: true, notificationDetail: 'none', readReceipts: true,
-  spellCheck: true, spellLanguage: 'auto',
+  spellCheck: true, spellLanguage: 'auto', reopenAfterRestart: true,
   defaultNotificationSound: '', whatsappNotificationSound: '', telegramNotificationSound: '',
 };
 
@@ -69,6 +69,16 @@ function withDefaults(settings, currentReadReceipts) {
 // default manifest.json itself gives every one of these three settings.
 function resolveSound(value) {
   return typeof value === 'string' ? value : '';
+}
+
+// reopenAfterRestart resolves the "Reopen after restart" setting: true
+// unless the user turned it off in Omarchy's bar editor. It is read
+// straight off the raw settings object rather than through withDefaults,
+// since it is this UI's own choice and is never one of the fields
+// withDefaults prepares for settings.apply to send the helper.
+function reopenAfterRestart(settings) {
+  var given = settings ?? {};
+  return typeof given.reopenAfterRestart === 'boolean' ? given.reopenAfterRestart : DEFAULTS.reopenAfterRestart;
 }
 
 // resolveLanguage picks the spellLanguage value to send: the manifest's

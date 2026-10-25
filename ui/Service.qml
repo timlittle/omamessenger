@@ -69,6 +69,12 @@ Item {
   // palette's "Toggle read receipts" command knows which way to flip.
   property bool readReceipts: true
 
+  // reopenAfterRestart mirrors the "Reopen after restart" setting: off
+  // skips reopening the window after a shell restart or plugin reload
+  // tears it down without the user asking to close it first (see
+  // ui/service/WindowReopen.qml).
+  property bool reopenAfterRestart: true
+
   // _lastSettings is the plugin settings object last given to
   // applySettings, kept so toggleReadReceipts can resend every other
   // setting unchanged alongside the one it flips.
@@ -147,6 +153,12 @@ Item {
   // has been applied to the state above.
   signal event(string name, var data)
 
+  // windowShown is whether the window is showing right now, as opposed
+  // to the stored state markWindowOpen and markWindowClosed keep for the
+  // next start: toggleFromBar uses it to tell a click that closes the
+  // window from one that opens it.
+  property bool windowShown: false
+
   // request sends method with params and calls callback(error, result)
   // once the helper replies.
   function request(method: string, params: var, callback: var): void {
@@ -185,7 +197,41 @@ Item {
     root._defaultSound = merged.defaultNotificationSound;
     root._whatsappSound = merged.whatsappNotificationSound;
     root._telegramSound = merged.telegramNotificationSound;
+    root.reopenAfterRestart = Settings.reopenAfterRestart(settings);
     root.request("settings.apply", merged, function() {});
+  }
+
+  // markWindowOpen records that the window is now open, so if a shell
+  // restart or plugin reload destroys it without the user asking first,
+  // the next Service start reopens it.
+  function markWindowOpen(): void {
+    root.windowShown = true;
+    root.request("ui.setWindowOpen", { open: true }, function() {});
+  }
+
+  // noteWindowHidden records that the window went away without saying
+  // whether the user meant it, as when the host hides it while
+  // reloading plugins: the stored state is left alone, so a reload or
+  // restart still reopens it.
+  function noteWindowHidden(): void {
+    root.windowShown = false;
+  }
+
+  // toggleFromBar opens or closes the window for a click on the bar
+  // icon through shell, recording a click that closes it as the user
+  // deliberately closing it.
+  function toggleFromBar(shell: var, pluginId: string): void {
+    if (root.windowShown) root.markWindowClosed();
+    if (shell && typeof shell.toggle === "function") shell.toggle(pluginId, "{}");
+  }
+
+  // markWindowClosed records that the user deliberately closed the
+  // window, the opposite of markWindowOpen, so it stays shut after a
+  // later restart. See docs/decisions.md for how a deliberate close is
+  // told apart from the window being torn down.
+  function markWindowClosed(): void {
+    root.windowShown = false;
+    root.request("ui.setWindowOpen", { open: false }, function() {});
   }
 
   // toggleReadReceipts flips incognito read receipts and tells the
@@ -223,6 +269,7 @@ Item {
 
       appState.applyHello(result);
       root._checkWhatsNew();
+      windowReopen.check();
       root.request("accounts.list", {}, function(listError, accounts) {
         if (listError) return;
         appState.accounts = accounts;
@@ -322,6 +369,13 @@ Item {
 
   AppState {
     id: appState
+  }
+
+  WindowReopen {
+    id: windowReopen
+    request: root.request
+    shell: root.shell
+    reopenAfterRestart: root.reopenAfterRestart
   }
 
   HelperProcess {

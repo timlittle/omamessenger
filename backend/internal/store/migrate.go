@@ -192,6 +192,11 @@ var migrations = []string{
 	// than kept in this column, which only ever records that one has
 	// been set, never a path (issue #19).
 	`ALTER TABLE conversations ADD COLUMN notification_sound TEXT NOT NULL DEFAULT '';`,
+	// Whether the window was last left open rather than deliberately
+	// closed (see store.WindowOpen), so a shell restart or plugin reload
+	// that destroys it without the user asking to close it can reopen it
+	// on the next start.
+	`ALTER TABLE ui_state ADD COLUMN window_open INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

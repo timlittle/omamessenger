@@ -100,7 +100,9 @@ Item {
     onEntered: root._showTooltip()
     onExited: if (root.bar) root.bar.hideTooltip(root)
     onClicked: {
-      if (root.bar && root.bar.shell) root.bar.shell.toggle(root.pluginId, "{}");
+      if (!root.bar || !root.bar.shell) return;
+      if (root.service && typeof root.service.toggleFromBar === "function") root.service.toggleFromBar(root.bar.shell, root.pluginId);
+      else root.bar.shell.toggle(root.pluginId, "{}");
     }
   }
 }

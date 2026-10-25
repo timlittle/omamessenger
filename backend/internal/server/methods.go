@@ -2,28 +2,11 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"maps"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
-
-// method decodes a request's params and runs it.
-type method func(ctx context.Context, params json.RawMessage) (any, error)
-
-// bind adapts a handler taking typed params to a method.
-func bind[P any](handle func(ctx context.Context, p P) (any, error)) method {
-	return func(ctx context.Context, raw json.RawMessage) (any, error) {
-		var p P
-		if err := json.Unmarshal(raw, &p); err != nil {
-			return nil, fmt.Errorf("%w: %w", errBadParams, err)
-		}
-
-		return handle(ctx, p)
-	}
-}
 
 // methods is the protocol's method table. fake.inject exists only in test
 // builds with fake connectors, so a real helper answers it as an unknown
@@ -68,11 +51,10 @@ func methods(c *app.Commands, version string) map[string]method {
 		"whatsNew.setSeenVersion":   bind(whatsNewSetSeenVersion(c)),
 		"settings.apply":            bind(settingsApply(c)),
 		"helper.doctor":             bind(helperDoctor(c)),
-		"spell.check":               bind(spellCheck(c)),
-		"spell.suggest":             bind(spellSuggest(c)),
-		"spell.addWord":             bind(spellAddWord(c)),
 	}
 	maps.Copy(table, scheduledMethods(c))
+	maps.Copy(table, windowStateMethods(c))
+	maps.Copy(table, spellMethods(c))
 
 	if c.Faked() {
 		table["fake.inject"] = bind(fakeInject(c))

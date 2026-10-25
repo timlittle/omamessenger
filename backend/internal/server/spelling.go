@@ -6,6 +6,17 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/app"
 )
 
+// spellMethods are the spell.check, spell.suggest and spell.addWord
+// entries of the protocol's method table, split out of methods() itself
+// to keep that function within this codebase's line limit.
+func spellMethods(c *app.Commands) map[string]method {
+	return map[string]method{
+		"spell.check":   bind(spellCheck(c)),
+		"spell.suggest": bind(spellSuggest(c)),
+		"spell.addWord": bind(spellAddWord(c)),
+	}
+}
+
 // spellCheckParams names the text to spell-check.
 type spellCheckParams struct {
 	Text string `json:"text"`

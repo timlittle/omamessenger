@@ -45,3 +45,43 @@ func TestSetSeenWhatsNewVersion_RoundTrips(t *testing.T) {
 		t.Errorf("SeenWhatsNewVersion = %q, %v, want \"0.3.6\", nil", version, err)
 	}
 }
+
+// TestWindowOpen_FalseBeforeAnySet confirms a fresh database reports the
+// window was not left open, so a fresh install never auto-reopens it.
+func TestWindowOpen_FalseBeforeAnySet(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+
+	open, err := s.WindowOpen(t.Context())
+	if err != nil || open {
+		t.Errorf("WindowOpen = %v, %v, want false, nil", open, err)
+	}
+}
+
+// TestSetWindowOpen_RoundTrips confirms a recorded state is read back,
+// both ways.
+func TestSetWindowOpen_RoundTrips(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+
+	if err := s.SetWindowOpen(ctx, true); err != nil {
+		t.Fatalf("SetWindowOpen(true): %v", err)
+	}
+
+	open, err := s.WindowOpen(ctx)
+	if err != nil || !open {
+		t.Errorf("WindowOpen = %v, %v, want true, nil", open, err)
+	}
+
+	if err := s.SetWindowOpen(ctx, false); err != nil {
+		t.Fatalf("SetWindowOpen(false): %v", err)
+	}
+
+	open, err = s.WindowOpen(ctx)
+	if err != nil || open {
+		t.Errorf("WindowOpen = %v, %v, want false, nil", open, err)
+	}
+}

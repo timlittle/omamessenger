@@ -85,3 +85,18 @@ test('withDefaults passes through a spellLanguage helper value already in that f
 test('withDefaults falls back to the manifest default for an unknown spellLanguage', () => {
   assert.strictEqual(Settings.withDefaults({ spellLanguage: 'Klingon' }).spellLanguage, 'auto');
 });
+
+test('reopenAfterRestart defaults to true when nothing was changed', () => {
+  assert.strictEqual(Settings.reopenAfterRestart({}), true);
+  assert.strictEqual(Settings.reopenAfterRestart(undefined), true);
+});
+
+test('reopenAfterRestart keeps the value the user changed', () => {
+  assert.strictEqual(Settings.reopenAfterRestart({ reopenAfterRestart: false }), false);
+  assert.strictEqual(Settings.reopenAfterRestart({ reopenAfterRestart: true }), true);
+});
+
+test('reopenAfterRestart is never one of withDefaults own fields, since it never reaches settings.apply', () => {
+  const merged = Settings.withDefaults({ reopenAfterRestart: false });
+  assert.strictEqual('reopenAfterRestart' in merged, false);
+});

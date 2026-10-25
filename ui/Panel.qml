@@ -68,7 +68,10 @@ Item {
   // open shows the window and, if the payload names a conversation,
   // opens it. Omarchy calls this every time the panel is summoned, even
   // while it is already open, so it always resets keyboard focus and
-  // only focuses an already-visible window rather than reshowing it.
+  // only focuses an already-visible window rather than reshowing it. It
+  // also records the window as open, so a shell restart or plugin
+  // reload that later destroys it without the user asking to close it
+  // knows to bring it back.
   function open(payloadJson: string): void {
     const alreadyVisible = window.visible;
     root.closingFromHost = false;
@@ -78,6 +81,7 @@ Item {
     // is the one moment this starts without the user clicking anything.
     if (root.service && root.service.status === "missing") root.service.installHelper();
     window.visible = true;
+    if (root.service) root.service.markWindowOpen();
     keyArea.forceActiveFocus();
 
     const conversationId = root._conversationIdFrom(payloadJson);
@@ -101,11 +105,18 @@ Item {
     }
   }
 
-  // close hides the window on the host's request, without reporting back.
+  // close hides the window on the host's request, without reporting
+  // back. It records nothing about whether the user meant to close it:
+  // the host also calls this for every panel while reloading plugins
+  // (reloadPlugins hides them all first), so a deliberate close is only
+  // ever recorded where this plugin's own code acts on the user's
+  // request (the close question below, and Service.toggleFromBar): see
+  // docs/decisions.md.
   function close(): void {
     root.closingFromHost = true;
     window.visible = false;
     root.closingFromHost = false;
+    if (root.service) root.service.noteWindowHidden();
   }
 
   // routeKey matches a key press to an action for the current context and
@@ -204,6 +215,7 @@ Item {
     if (root.closingFromHost) return;
 
     if (root.hidingByChoice) {
+      if (root.service) root.service.markWindowClosed();
       if (root.shell && typeof root.shell.hide === "function") root.shell.hide("io.github.omamessenger");
       return;
     }

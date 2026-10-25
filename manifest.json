@@ -29,7 +29,8 @@
       "telegramNotificationSound": "",
       "readReceipts": true,
       "spellCheck": true,
-      "spellLanguage": "Automatic"
+      "spellLanguage": "Automatic",
+      "reopenAfterRestart": true
     },
     "schema": [
       {
@@ -38,6 +39,13 @@
         "label": "Notifications",
         "description": "Show a desktop notification for new messages.",
         "defaultValue": true
+      },
+      {
+        "key": "reopenAfterRestart",
+        "type": "boolean",
+        "label": "Reopen after restart",
+        "defaultValue": true,
+        "description": "If OmaMessenger's window was open when Omarchy's shell restarted or reloaded, open it again once the plugin starts back up."
       },
       {
         "key": "notificationDetail",
