@@ -80,6 +80,13 @@ var BINDINGS = [
   { action: 'pane.conversation', keys: ['Tab'], contexts: ['list'], label: 'Go to conversation' },
   { action: 'chat.mute', keys: ['m'], contexts: ['list', 'conversation'], label: 'Mute or unmute chat', command: true },
   { action: 'chat.pin', keys: [], contexts: ['list', 'conversation'], label: 'Pin or unpin chat', command: true },
+  // Reordering only ever does something on a chat that is already
+  // pinned (see ListController._movePin), the same as chat.unblock only
+  // doing something on one already blocked; Ctrl+Shift+Up/Down are free
+  // ones close to Alt+Up/Down (chat.prev/chat.next) and Alt+Shift+Up/Down
+  // (unread.prev/unread.next), without colliding with either.
+  { action: 'chat.movePinUp', keys: ['Ctrl+Shift+Up'], contexts: ['list', 'conversation'], label: 'Move pin up', command: true },
+  { action: 'chat.movePinDown', keys: ['Ctrl+Shift+Down'], contexts: ['list', 'conversation'], label: 'Move pin down', command: true },
   { action: 'chat.archive', keys: [], contexts: ['list', 'conversation'], label: 'Archive or unarchive chat', command: true },
   { action: 'chat.hide', keys: [], contexts: ['list', 'conversation'], label: 'Hide or unhide chat', command: true },
   // Palette-only: flagging a chat unread again is a deliberate lookup,

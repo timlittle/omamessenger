@@ -5,13 +5,14 @@ import "../lib/ListSync.js" as ListSync
 import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
 import "../lib/Snooze.js" as Snooze
+import "../lib/Pin.js" as Pin
 
 // Owns the rail filter, search and the visible conversation list: the
 // only controller that calls conversations.list, conversations.setMuted,
-// conversations.setPinned, conversations.setArchived,
-// conversations.setHidden, conversations.setReminder,
-// conversations.markUnread, contacts.block, contacts.unblock and
-// conversations.reportSpam.
+// conversations.setPinned, conversations.movePin,
+// conversations.setArchived, conversations.setHidden,
+// conversations.setReminder, conversations.markUnread, contacts.block,
+// contacts.unblock and conversations.reportSpam.
 // The list itself is a ListModel kept in sync in place with ListSync, so
 // opening or scrolling never resets because of an unrelated event.
 //
@@ -121,6 +122,8 @@ Item {
       "cursor.bottom": () => root._select(Selection.edge(root.visibleIds(), "bottom")),
       "chat.mute": () => root._toggleMute(),
       "chat.pin": () => root._togglePin(),
+      "chat.movePinUp": () => root._movePin("up"),
+      "chat.movePinDown": () => root._movePin("down"),
       "chat.archive": () => root._toggleArchive(),
       "chat.hide": () => root._toggleHidden(),
       "chat.markUnread": () => root._markCurrentUnread(),
@@ -254,6 +257,56 @@ Item {
   // current, the same way _toggleMute does.
   function _togglePin(): void {
     root._setOnCurrent("conversations.setPinned", "pinned");
+  }
+
+  // _movePin moves whichever conversation is contextually current one
+  // place up or down among the pinned conversations, through the
+  // helper's own adjacent swap. A no-op, with no request at all, on a
+  // conversation that is not pinned: there is nothing to move it
+  // against. Drag reordering (see ConversationList.qml's own
+  // DragHandler) calls this exact method too, through movePinTo below,
+  // so a keyboard move and a drag always persist the same way.
+  function _movePin(direction: string): void {
+    const id = root._currentId();
+    const conversation = id ? root.findConversation(id) : null;
+    if (!conversation || !conversation.pinned) return;
+
+    root._requestMovePin(id, direction, null);
+  }
+
+  // movePinTo drags conversationId toIndex places within the pinned
+  // group, by repeating the same adjacent-swap request a keyboard move
+  // makes, one step at a time (see ui/lib/Pin.js's planMove, the pure
+  // function that works out the direction and how many steps a drop at
+  // toIndex needs from pinnedIds, the pinned conversations in their
+  // current, server-given order). Dropped back on its own starting
+  // place, or outside the pinned group, this does nothing. Each step
+  // waits for the previous one's reply before asking for the next,
+  // since the helper answers requests concurrently and two swaps fired
+  // at once could each read the same pre-swap order.
+  function movePinTo(conversationId: string, toIndex: int): void {
+    const pinnedIds = root._all.filter((c) => c.pinned).map((c) => c.id);
+    const plan = Pin.planMove(pinnedIds, conversationId, toIndex);
+    root._stepMovePin(conversationId, plan.direction, plan.count);
+  }
+
+  // _requestMovePin is movePin's own single request, shared by the
+  // keyboard command and by _stepMovePin's chained steps.
+  function _requestMovePin(id: string, direction: string, then: var): void {
+    root.service.request("conversations.movePin", { conversationId: id, direction: direction }, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
+      root._applyConversationUpdated(result);
+      if (then) then();
+    });
+  }
+
+  // _stepMovePin asks for one adjacent swap, then, once it lands, asks
+  // for the next: movePinTo's own chain, one request in flight at a time.
+  function _stepMovePin(id: string, direction: string, remaining: int): void {
+    if (remaining <= 0) return;
+
+    root._requestMovePin(id, direction, () => root._stepMovePin(id, direction, remaining - 1));
   }
 
   // _toggleArchive archives or unarchives whichever conversation is

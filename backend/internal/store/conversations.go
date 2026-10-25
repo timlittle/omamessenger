@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -14,7 +15,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -108,7 +109,7 @@ func (s *Store) ConversationByRemote(ctx context.Context, accountID, remoteID st
 const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match, NULL AS match_message_id, NULL AS match_sender
 	` + conversationFrom + `
 	WHERE :query = '' OR c.title LIKE :pattern ESCAPE '\'
-	ORDER BY c.pinned DESC, c.last_activity DESC, c.id`
+	ORDER BY c.pinned DESC, c.pin_order ASC, c.last_activity DESC, c.id`
 
 // conversationsByTitleOrMessage lists conversations whose title matches
 // pattern or that have a message matching fts. A title match ranks above
@@ -226,15 +227,140 @@ func (s *Store) SetMuted(ctx context.Context, id string, muted bool) error {
 	return requireRow("set muted", res)
 }
 
-// SetPinned pins or unpins a conversation, which decides whether it leads
-// the conversation list ahead of everything else.
+// pinOrderForNewPin is the pin_order a conversation gets the moment it
+// is newly pinned: one past whatever the highest among the other pinned
+// conversations already is, so a new pin always joins the bottom of the
+// pinned group rather than disturbing anyone else's place in it. The
+// CASE guards against reassigning it to a conversation that was already
+// pinned, whose own place the caller must leave exactly where the user
+// left it.
+const pinOrderForNewPin = `CASE WHEN pinned=0 THEN (SELECT COALESCE(MAX(pin_order),0)+1 FROM conversations WHERE pinned=1) ELSE pin_order END`
+
+// setOrganizedPinned and setOrganizedUnpinned are SetOrganized's own two
+// branches: pinning assigns pin_order the same way SetPinned does, and
+// unpinning always clears it.
+const (
+	setOrganizedPinned   = `UPDATE conversations SET pinned=?,archived=?,pin_order=` + pinOrderForNewPin + ` WHERE id=? AND (pinned<>? OR archived<>?)`
+	setOrganizedUnpinned = `UPDATE conversations SET pinned=?,archived=?,pin_order=0 WHERE id=? AND (pinned<>? OR archived<>?)`
+)
+
+// SetPinned pins or unpins a conversation, which decides whether it
+// leads the conversation list ahead of everything else, and where among
+// the other pinned conversations: unlimited, each such conversation
+// keeps its own place until moved (see MovePin). Pinning one already
+// pinned leaves its place alone; unpinning always clears it, so a later
+// pin starts fresh at the bottom rather than resuming an old place a
+// still-pinned conversation may have taken over since.
 func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE conversations SET pinned=? WHERE id=?`, boolInt(pinned), id)
+	query := `UPDATE conversations SET pinned=1, pin_order=` + pinOrderForNewPin + ` WHERE id=?`
+	if !pinned {
+		query = `UPDATE conversations SET pinned=0, pin_order=0 WHERE id=?`
+	}
+
+	res, err := s.db.ExecContext(ctx, query, id)
 	if err != nil {
 		return wrap("set pinned", err)
 	}
 
 	return requireRow("set pinned", res)
+}
+
+// MovePin moves a pinned conversation one place up or down among the
+// other pinned conversations, swapping its pin_order with whichever
+// pinned neighbor already sits there. It is a no-op, returning "" for
+// neighborID, at either edge of the pinned group: moving up from the
+// top, or down from the bottom. id must name a currently pinned
+// conversation, or this returns domain.ErrNotFound: moving a
+// conversation that is not pinned at all is meaningless, the same way
+// WhatsApp's own app has no such gesture for an unpinned chat.
+func (s *Store) MovePin(ctx context.Context, id string, up bool) (neighborID string, _ error) {
+	ids, err := s.pinnedOrder(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	index := slices.Index(ids, id)
+	if index < 0 {
+		return "", fmt.Errorf("move pin: %w", domain.ErrNotFound)
+	}
+
+	step := 1
+	if up {
+		step = -1
+	}
+
+	neighbor := index + step
+	if neighbor < 0 || neighbor >= len(ids) {
+		return "", nil
+	}
+
+	neighborID = ids[neighbor]
+
+	return neighborID, s.swapPinOrder(ctx, id, neighborID)
+}
+
+// pinnedOrder lists pinned conversation ids in the order the list shows
+// them: lowest pin_order first, the same tiebreakers conversationsByTitle
+// uses for any that ever share one.
+func (s *Store) pinnedOrder(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id FROM conversations WHERE pinned=1 ORDER BY pin_order ASC, last_activity DESC, id`)
+	if err != nil {
+		return nil, wrap("pinned order", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, wrap("pinned order", err)
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, wrap("pinned order", rows.Err())
+}
+
+// swapPinOrder exchanges a and b's pin_order, reading both and writing
+// the swap in one transaction so a concurrent change to either between
+// the read and the write can never produce a half-done swap.
+func (s *Store) swapPinOrder(ctx context.Context, a, b string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return wrap("swap pin order", err)
+	}
+
+	// Rollback after a successful Commit is a no-op that returns
+	// sql.ErrTxDone, so its error carries no information.
+	defer func() { _ = tx.Rollback() }()
+
+	aOrder, err := pinOrderOf(ctx, tx, a)
+	if err != nil {
+		return wrap("swap pin order", err)
+	}
+
+	bOrder, err := pinOrderOf(ctx, tx, b)
+	if err != nil {
+		return wrap("swap pin order", err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE conversations SET pin_order = CASE id WHEN ? THEN ? WHEN ? THEN ? END WHERE id IN (?,?)`,
+		a, bOrder, b, aOrder, a, b); err != nil {
+		return wrap("swap pin order", err)
+	}
+
+	return wrap("swap pin order", tx.Commit())
+}
+
+// pinOrderOf reads one conversation's current pin_order within tx, for
+// swapPinOrder.
+func pinOrderOf(ctx context.Context, tx *sql.Tx, id string) (int, error) {
+	var order int
+	err := tx.QueryRowContext(ctx, `SELECT pin_order FROM conversations WHERE id=?`, id).Scan(&order)
+
+	return order, err
 }
 
 // SetArchived archives or unarchives a conversation, which decides whether
@@ -318,10 +444,17 @@ func (s *Store) PendingReminders(ctx context.Context) ([]domain.Conversation, er
 
 // SetOrganized sets a conversation's pinned and archived state, as a
 // dialog sync reports it. changed is false when both already matched.
+// Pinning it for the first time sends it to the bottom of the pinned
+// group, the same as SetPinned; a sync that reports a conversation
+// still pinned leaves its place exactly where the user left it, since
+// nothing but MovePin ever changes a still-pinned conversation's order.
 func (s *Store) SetOrganized(ctx context.Context, id string, pinned, archived bool) (bool, error) {
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE conversations SET pinned=?,archived=? WHERE id=? AND (pinned<>? OR archived<>?)`,
-		boolInt(pinned), boolInt(archived), id, boolInt(pinned), boolInt(archived))
+	query := setOrganizedPinned
+	if !pinned {
+		query = setOrganizedUnpinned
+	}
+
+	res, err := s.db.ExecContext(ctx, query, boolInt(pinned), boolInt(archived), id, boolInt(pinned), boolInt(archived))
 	if err != nil {
 		return false, wrap("set organized", err)
 	}
@@ -393,7 +526,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked,
 	}, extra...)
 	err := row.Scan(dest...)
 

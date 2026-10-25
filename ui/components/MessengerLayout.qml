@@ -232,6 +232,7 @@ Item {
 
       onQueryEdited: text => root.listController.setQuery(text)
       onActivated: id => root._openRow(id)
+      onPinReordered: (id, toIndex) => root.listController.movePinTo(id, toIndex)
       onAddAccountRequested: root.accountController.begin()
       onShowAllToggled: root.listController.setShowAll(!root.listController.showAll)
       onUnreadViewLeft: root.listController.setUnreadView(false)

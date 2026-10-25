@@ -46,6 +46,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"conversations.markUnread":  bind(conversationsMarkUnread(c)),
 		"conversations.setMuted":    bind(conversationsSetMuted(c)),
 		"conversations.setPinned":   bind(conversationsSetPinned(c)),
+		"conversations.movePin":     bind(conversationsMovePin(c)),
 		"conversations.setArchived": bind(conversationsSetArchived(c)),
 		"conversations.setHidden":   bind(conversationsSetHidden(c)),
 		"conversations.setReminder": bind(conversationsSetReminder(c)),
@@ -263,19 +264,6 @@ type mutedParams struct {
 func conversationsSetMuted(c *app.Commands) func(context.Context, mutedParams) (any, error) {
 	return func(ctx context.Context, p mutedParams) (any, error) {
 		return c.SetMuted(ctx, p.ConversationID, p.Muted)
-	}
-}
-
-// pinnedParams pins or unpins a conversation.
-type pinnedParams struct {
-	ConversationID string `json:"conversationId"`
-	Pinned         bool   `json:"pinned"`
-}
-
-// conversationsSetPinned pins or unpins a conversation.
-func conversationsSetPinned(c *app.Commands) func(context.Context, pinnedParams) (any, error) {
-	return func(ctx context.Context, p pinnedParams) (any, error) {
-		return c.SetPinned(ctx, p.ConversationID, p.Pinned)
 	}
 }
 

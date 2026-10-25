@@ -275,11 +275,16 @@ function unreadConversations(conversations, keepId) {
 }
 
 // compareConversations orders conversations the way the list shows them:
-// pinned ones first, then newest activity first. Pass to Array.sort or
-// ListSync.upsertById.
+// pinned ones first, by their own pinOrder (lowest first, the way a
+// conversations.movePin places them), then unpinned ones by newest
+// activity first. Pass to Array.sort or ListSync.upsertById.
 function compareConversations(a, b) {
   if (a.pinned !== b.pinned) {
     return a.pinned ? -1 : 1;
+  }
+
+  if (a.pinned) {
+    return (a.pinOrder ?? 0) - (b.pinOrder ?? 0);
   }
 
   return b.lastActivity - a.lastActivity;

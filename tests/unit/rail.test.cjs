@@ -579,13 +579,16 @@ test('dueFirst moves due reminders to the front, keeping relative order otherwis
   assert.deepEqual(Rail.dueFirst([a, b, c, d], now).map((x) => x.id), ['b', 'd', 'a', 'c']);
 });
 
-test('compareConversations puts pinned conversations first, then newest activity', () => {
+test('compareConversations puts pinned conversations first, by their own pin order, then unpinned ones by newest activity', () => {
   const a = { id: 'a', pinned: false, lastActivity: 200 };
-  const b = { id: 'b', pinned: true, lastActivity: 100 };
+  const b = { id: 'b', pinned: true, pinOrder: 2, lastActivity: 100 };
   const c = { id: 'c', pinned: false, lastActivity: 300 };
-  const d = { id: 'd', pinned: true, lastActivity: 400 };
+  const d = { id: 'd', pinned: true, pinOrder: 1, lastActivity: 400 };
 
   const sorted = [a, b, c, d].sort(Rail.compareConversations).map((x) => x.id);
 
+  // d leads b despite its own older activity, because pin order - not
+  // activity - decides among pinned conversations; among the unpinned
+  // ones, newest activity still leads.
   assert.deepEqual(sorted, ['d', 'b', 'c', 'a']);
 });

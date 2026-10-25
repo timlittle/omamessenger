@@ -16,7 +16,7 @@ Short clips of each feature are in [docs/demo.md](docs/demo.md).
 - Photos, video, GIFs, files, voice notes, link previews, replies, reactions, polls and @-mentions; a photo, video or GIF opens full size, and copy, save or open with **c**, **s** or **x**
 - Edit or delete your own sent messages (**↑** in an empty message box, or **E** on a highlighted one, to edit)
 - English spell check in the composer, with a picker for suggestions, adding a word, or ignoring it for the session
-- Pin, archive, hide, snooze and mark conversations read or unread; failed sends retry themselves; block a contact or report spam from the command palette
+- Pin any number of conversations and reorder them by dragging or with **Ctrl+Shift+↑ / ↓**; archive, hide, snooze and mark conversations read or unread; failed sends retry themselves; block a contact or report spam from the command palette
 - Received photos, videos, voice notes and files are sanitised and size-checked before anything opens them, with a confirmation first for a file that could run code or a link whose real destination does not match its own text
 - Desktop notifications (by default just "New message"; see [docs/privacy.md](docs/privacy.md)), and read receipts you can turn off to read and reply without the sender being told (see [docs/privacy.md](docs/privacy.md) for exactly what that does and does not hide)
 - "What's new" in the command palette lists big changes release by release, with a quiet one-time hint after an update

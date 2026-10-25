@@ -103,6 +103,13 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("conversations.setPinned = %+v, %v", pinned, err)
 	}
 
+	// "chat" is the only pinned conversation, so moving it is a no-op;
+	// this only checks the method reaches app.Commands.MovePin at all.
+	moved, err := call[domain.Conversation](t, s, "conversations.movePin", map[string]any{"conversationId": "chat", "direction": "up"})
+	if err != nil || moved.ID != "chat" {
+		t.Errorf("conversations.movePin = %+v, %v", moved, err)
+	}
+
 	archived, err := call[domain.Conversation](t, s, "conversations.setArchived", map[string]any{"conversationId": "chat", "archived": true})
 	if err != nil || !archived.Archived {
 		t.Errorf("conversations.setArchived = %+v, %v", archived, err)

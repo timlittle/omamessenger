@@ -135,6 +135,47 @@ func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned 
 	return conv, pinError(c.organizer.SetPinned(ctx, conv, pinned))
 }
 
+// MovePin moves a pinned conversation one place up or down among the
+// other pinned conversations, through the store's own adjacent swap,
+// then publishes both conversations' new summaries so every open view
+// agrees: unlike SetPinned, nothing here ever reaches a service, since
+// a service's own notion of pin order (WhatsApp's own app order, say) is
+// never something this computer's local reordering is meant to drive.
+// direction must be "up" or "down"; anything else is ErrInvalidInput.
+func (c *Commands) MovePin(ctx context.Context, conversationID, direction string) (domain.Conversation, error) {
+	up, err := parsePinDirection(direction)
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+
+	neighborID, err := c.store.MovePin(ctx, conversationID, up)
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+
+	if neighborID != "" {
+		if _, err := c.events.publishConversation(ctx, neighborID); err != nil {
+			return domain.Conversation{}, err
+		}
+	}
+
+	return c.events.publishConversation(ctx, conversationID)
+}
+
+// parsePinDirection turns the protocol's "up" or "down" into the up bool
+// store.MovePin takes, rejecting anything else as invalid input safe to
+// show the user.
+func parsePinDirection(direction string) (bool, error) {
+	switch direction {
+	case "up":
+		return true, nil
+	case "down":
+		return false, nil
+	default:
+		return false, fmt.Errorf(`%w: direction must be "up" or "down"`, ErrInvalidInput)
+	}
+}
+
 // pinError turns a connector's pin limit refusal into ErrInvalidInput
 // with a safe message the UI can show; anything else, such as a network
 // failure, is returned unchanged so it becomes a fixed internal error.

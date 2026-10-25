@@ -230,6 +230,97 @@ func TestSetPinned_ReportsAPinLimitAsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestMovePin_SwapsAndPublishesBothConversations(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	first := f.conversation(t, "first", "First", domain.KindDirect)
+	second := f.conversation(t, "second", "Second", domain.KindDirect)
+
+	if _, err := f.commands.SetPinned(ctx, first.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.commands.SetPinned(ctx, second.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	f.published.take() // ignore the two pins' own events
+	pinsBeforeMove := len(f.organizer.pinned)
+
+	got, err := f.commands.MovePin(ctx, second.ID, "up")
+	if err != nil || got.ID != second.ID {
+		t.Fatalf("MovePin(second, up) = %+v, %v", got, err)
+	}
+
+	// Moving never asks a service anything, unlike SetPinned: it is
+	// local reordering only.
+	if len(f.organizer.pinned) != pinsBeforeMove {
+		t.Errorf("organizer saw pins %v, want none added by MovePin", f.organizer.pinned)
+	}
+
+	published := f.published.take()
+	if len(published) != 2 {
+		t.Fatalf("events published = %v, want one per conversation swapped", published)
+	}
+
+	movedFirst, err := f.store.Conversation(ctx, first.ID)
+	if err != nil || movedFirst.PinOrder <= 0 {
+		t.Fatalf("Conversation(first) after MovePin = %+v, %v", movedFirst, err)
+	}
+	movedSecond, err := f.store.Conversation(ctx, second.ID)
+	if err != nil || movedSecond.PinOrder >= movedFirst.PinOrder {
+		t.Errorf("Conversation(second) after MovePin = %+v, want PinOrder before first (%d)", movedSecond, movedFirst.PinOrder)
+	}
+}
+
+func TestMovePin_NoopAtTheEdgePublishesOnlyItself(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, err := f.commands.SetPinned(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	f.published.take()
+
+	got, err := f.commands.MovePin(ctx, chat.ID, "up")
+	if err != nil || got.ID != chat.ID {
+		t.Fatalf("MovePin(chat, up) at the top = %+v, %v", got, err)
+	}
+
+	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
+		t.Errorf("events = %v, want exactly one: a no-op move has no neighbor to publish", got)
+	}
+}
+
+func TestMovePin_RejectsAnUnknownDirection(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, err := f.commands.SetPinned(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.commands.MovePin(ctx, chat.ID, "sideways"); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("MovePin(sideways) = %v, want ErrInvalidInput", err)
+	}
+}
+
+func TestMovePin_ReportsNotFoundForAnUnpinnedConversation(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+
+	if _, err := f.commands.MovePin(ctx, chat.ID, "up"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("MovePin(not pinned) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestSetArchived_StoresThenTellsTheService(t *testing.T) {
 	t.Parallel()
 

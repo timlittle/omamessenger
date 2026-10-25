@@ -301,6 +301,46 @@ ShellRoot {
     service: blockService
   }
 
+  // pinService backs the pin-reordering scenario: three pinned chats and
+  // one plain one, to check chat.movePinUp/chat.movePinDown and
+  // movePinTo (the drag handler's own entry point) each reach
+  // conversations.movePin with the right arguments, the detailed
+  // reordering itself already being proven exhaustively by the pure
+  // ui/lib/Pin.js tests and the backend's own store and app tests.
+  QtObject {
+    id: pinService
+
+    property string status: "ready"
+    property var accounts: []
+    property var uiState: ({ railKey: "all", selectedId: "", activeId: "", query: "", drafts: {} })
+    property var conversations: [
+      { id: "p1", title: "First Pinned", lastActivity: Date.now(), unread: 0, pinned: true, pinOrder: 1, archived: false, hidden: false },
+      { id: "p2", title: "Second Pinned", lastActivity: Date.now(), unread: 0, pinned: true, pinOrder: 2, archived: false, hidden: false },
+      { id: "p3", title: "Third Pinned", lastActivity: Date.now(), unread: 0, pinned: true, pinOrder: 3, archived: false, hidden: false },
+      { id: "p4", title: "Not Pinned", lastActivity: Date.now(), unread: 0, pinned: false, archived: false, hidden: false }
+    ]
+    property var moveCalls: []
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      if (method === "conversations.list") {
+        callback(null, pinService.conversations.map((c) => Object.assign({}, c)));
+        return;
+      }
+      if (method === "conversations.movePin") {
+        pinService.moveCalls.push(params.conversationId + " " + params.direction);
+        const conversation = pinService.conversations.find((c) => c.id === params.conversationId);
+        callback(null, Object.assign({}, conversation));
+      }
+    }
+  }
+
+  ListController {
+    id: pinList
+    service: pinService
+  }
+
   Timer {
     running: true
     interval: 0
@@ -636,6 +676,56 @@ ShellRoot {
     }
     if (blockList.model.count !== 0) {
       Check.fail("reporting spam did not hide the conversation from the standard list: " + blockList.model.count);
+      return;
+    }
+
+    root.checkMovePin();
+  }
+
+  // checkMovePin drives chat.movePinUp/chat.movePinDown on a pinned and
+  // on a not-pinned chat, then movePinTo, the entry point a pinned
+  // row's drag handler calls once it drops - see
+  // ConversationList.qml's own DragHandler and ListColumn.qml's
+  // pinReordered, which MessengerLayout wires straight to it.
+  function checkMovePin(): void {
+    pinList.selectId("p2");
+    pinList.run("chat.movePinUp");
+    if (JSON.stringify(pinService.moveCalls) !== '["p2 up"]') {
+      Check.fail("chat.movePinUp on a pinned chat did not call conversations.movePin(up): " + JSON.stringify(pinService.moveCalls));
+      return;
+    }
+
+    pinService.moveCalls = [];
+    pinList.selectId("p4");
+    pinList.run("chat.movePinDown");
+    if (pinService.moveCalls.length !== 0) {
+      Check.fail("chat.movePinDown on a chat that is not pinned should call nothing: " + JSON.stringify(pinService.moveCalls));
+      return;
+    }
+
+    // p1, p2, p3 is the pinned order conversations.list reported; moving
+    // p1 down to index 2 takes two adjacent swaps, each asking the
+    // helper to move it one more step down.
+    pinService.moveCalls = [];
+    pinList.movePinTo("p1", 2);
+    if (JSON.stringify(pinService.moveCalls) !== '["p1 down","p1 down"]') {
+      Check.fail("movePinTo(p1, 2) did not chain two downward moves: " + JSON.stringify(pinService.moveCalls));
+      return;
+    }
+
+    // Moving p3 up to index 0 takes two steps the other way.
+    pinService.moveCalls = [];
+    pinList.movePinTo("p3", 0);
+    if (JSON.stringify(pinService.moveCalls) !== '["p3 up","p3 up"]') {
+      Check.fail("movePinTo(p3, 0) did not chain two upward moves: " + JSON.stringify(pinService.moveCalls));
+      return;
+    }
+
+    // Dropped back on its own place, nothing is asked for at all.
+    pinService.moveCalls = [];
+    pinList.movePinTo("p2", 1);
+    if (pinService.moveCalls.length !== 0) {
+      Check.fail("movePinTo back to its own place should call nothing: " + JSON.stringify(pinService.moveCalls));
       return;
     }
 

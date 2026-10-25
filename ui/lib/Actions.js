@@ -25,6 +25,8 @@ var OWNERS = {
   'cursor.bottom': 'list',
   'chat.mute': 'list',
   'chat.pin': 'list',
+  'chat.movePinUp': 'list',
+  'chat.movePinDown': 'list',
   'chat.archive': 'list',
   'chat.hide': 'list',
   'chat.markUnread': 'list',

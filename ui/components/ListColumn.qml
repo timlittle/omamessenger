@@ -56,6 +56,9 @@ ColumnLayout {
   signal queryEdited(string text)
   // activated reports a row the user picked to open.
   signal activated(string id)
+  // pinReordered reports a pinned row dropped after a drag, naming
+  // where it landed (see ConversationList.pinDropped).
+  signal pinReordered(string id, int toIndex)
   // addAccountRequested asks the caller to start adding an account, from
   // the empty state's button.
   signal addAccountRequested()
@@ -159,6 +162,7 @@ ColumnLayout {
     unreadView: root.unreadView
 
     onActivated: id => root.activated(id)
+    onPinDropped: (id, toIndex) => root.pinReordered(id, toIndex)
   }
 
   // Chats the standard list folds away (older than a month, hidden by the

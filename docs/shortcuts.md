@@ -31,8 +31,11 @@ Ctrl+K and Ctrl+G both open the same palette, so there is one search to reach fo
 | Enter, i, l or o | Open the selected conversation |
 | m | Mute / unmute |
 | a | Archive and mark read |
+| Ctrl+Shift+↑ / ↓ | Move pin up / down (only on a chat that is already pinned) |
 
 Pin, hide and snooze are in the command palette, and are local to this computer only. Archiving syncs to the service, like mute and pin.
+
+Any number of chats can be pinned; a service with its own limit (WhatsApp's own app allows three) stops that one service's copy from agreeing, but never unpins it here. Pinned chats keep their own order, newest pin at the bottom: **Move pin up** / **Move pin down** (command palette, or Ctrl+Shift+↑ / ↓) move the selected or open chat one place within the pinned group, or drag a pinned row with the mouse to reorder it directly.
 
 **Archive all read conversations** (command palette only) archives every conversation in the current list with no unread messages, except pinned ones, after asking "Archive N read conversations?" since it is a bulk action: Enter or y confirms, n or Esc cancels.
 

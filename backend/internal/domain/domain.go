@@ -118,9 +118,15 @@ type Conversation struct {
 	Unread        int    `json:"unread"`
 	Muted         bool   `json:"muted"`
 	Pinned        bool   `json:"pinned"`
-	Archived      bool   `json:"archived"`
-	Hidden        bool   `json:"hidden"`
-	LastActivity  int64  `json:"lastActivity"`
+
+	// PinOrder is where a pinned conversation sits among the others
+	// pinned, lowest first; 0, and meaningless, while Pinned is false.
+	// Reordering it is the only thing that ever changes it: pinning or
+	// unpinning a conversation never touches another one's.
+	PinOrder     int   `json:"pinOrder"`
+	Archived     bool  `json:"archived"`
+	Hidden       bool  `json:"hidden"`
+	LastActivity int64 `json:"lastActivity"`
 
 	// Blocked is true once the account's contact behind a direct
 	// conversation has been blocked (see app.Commands.BlockContact and

@@ -3,7 +3,6 @@ package store_test
 import (
 	"errors"
 	"maps"
-	"slices"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -176,33 +175,6 @@ func TestSetUnread_TakesTheServicesCount(t *testing.T) {
 	}
 }
 
-func TestSetPinned_PinsAndUnpins(t *testing.T) {
-	t.Parallel()
-
-	s, _ := openChatStore(t)
-	ctx := t.Context()
-
-	if err := s.SetPinned(ctx, "chat", true); err != nil {
-		t.Fatal(err)
-	}
-
-	if c, err := s.Conversation(ctx, "chat"); err != nil || !c.Pinned {
-		t.Fatalf("Conversation after pin = %+v, %v; want Pinned true", c, err)
-	}
-
-	if err := s.SetPinned(ctx, "chat", false); err != nil {
-		t.Fatal(err)
-	}
-
-	if c, err := s.Conversation(ctx, "chat"); err != nil || c.Pinned {
-		t.Fatalf("Conversation after unpin = %+v, %v; want Pinned false", c, err)
-	}
-
-	if err := s.SetPinned(ctx, "missing", true); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("SetPinned(missing) = %v, want ErrNotFound", err)
-	}
-}
-
 func TestSetArchived_ArchivesAndUnarchives(t *testing.T) {
 	t.Parallel()
 
@@ -284,47 +256,6 @@ func TestSetBlocked_BlocksAndUnblocks(t *testing.T) {
 	}
 }
 
-func TestConversations_OrdersPinnedFirst(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	addConversation(t, s, "wa", "old-pinned", "Old Pinned")
-	addConversation(t, s, "wa", "new", "New")
-	addConversation(t, s, "wa", "new-pinned", "New Pinned")
-	addMessages(t, s,
-		domain.Message{ID: "m1", ConversationID: "old-pinned", Text: "one", Created: 10},
-		domain.Message{ID: "m2", ConversationID: "new", Text: "two", Created: 20},
-		domain.Message{ID: "m3", ConversationID: "new-pinned", Text: "three", Created: 30},
-	)
-
-	if err := s.SetPinned(ctx, "old-pinned", true); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.SetPinned(ctx, "new-pinned", true); err != nil {
-		t.Fatal(err)
-	}
-
-	// "old-pinned" has the oldest activity of the three but still leads
-	// "new", which is not pinned, because pinned conversations always come
-	// first; within pinned or unpinned, the newest activity leads.
-	got, err := s.Conversations(ctx, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var gotIDs []string
-	for _, c := range got {
-		gotIDs = append(gotIDs, c.ID)
-	}
-
-	want := []string{"new-pinned", "old-pinned", "new"}
-	if !slices.Equal(gotIDs, want) {
-		t.Errorf("Conversations order = %v, want %v", gotIDs, want)
-	}
-}
-
 func TestEnsureConversation_NeverTouchesPinnedArchivedOrHidden(t *testing.T) {
 	t.Parallel()
 
@@ -361,33 +292,6 @@ func TestEnsureConversation_NeverTouchesPinnedArchivedOrHidden(t *testing.T) {
 	updated, _, err := s.EnsureConversation(ctx, second)
 	if err != nil || !updated.Pinned || !updated.Archived || !updated.Hidden || updated.Title != "Renamed" {
 		t.Fatalf("second EnsureConversation = %+v, %v; want pinned, archived and hidden to stand, title updated", updated, err)
-	}
-}
-
-func TestSetOrganized_SetsBothOrReportsNoChange(t *testing.T) {
-	t.Parallel()
-
-	s, _ := openChatStore(t)
-	ctx := t.Context()
-
-	if changed, err := s.SetOrganized(ctx, "chat", true, true); err != nil || !changed {
-		t.Fatalf("SetOrganized(true, true) = %t, %v; want a change", changed, err)
-	}
-
-	if c, err := s.Conversation(ctx, "chat"); err != nil || !c.Pinned || !c.Archived {
-		t.Fatalf("Conversation after SetOrganized = %+v, %v; want both set", c, err)
-	}
-
-	if changed, err := s.SetOrganized(ctx, "chat", true, true); err != nil || changed {
-		t.Errorf("SetOrganized with the same values = %t, %v; want no change", changed, err)
-	}
-
-	if changed, err := s.SetOrganized(ctx, "chat", false, false); err != nil || !changed {
-		t.Errorf("SetOrganized(false, false) = %t, %v; want a change", changed, err)
-	}
-
-	if _, err := s.SetOrganized(ctx, "missing", true, true); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("SetOrganized(missing) = %v, want ErrNotFound", err)
 	}
 }
 

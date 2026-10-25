@@ -165,6 +165,13 @@ var migrations = []string{
 		WHERE json_valid(media)
 			AND json_extract(media, '$.kind') = 'file'
 			AND json_extract(media, '$.fileName') = 'audio-message.ogg';`,
+	// Where a pinned conversation sits among the others pinned, lowest
+	// first; 0 for a conversation that is not pinned, which never reads
+	// this column (see store.SetPinned and store.MovePin). Unlimited
+	// pinning (issue #14) needs an explicit order because "newest
+	// activity first", the rule that already orders unpinned chats,
+	// gives a pinned chat no stable position of its own to drag or move.
+	`ALTER TABLE conversations ADD COLUMN pin_order INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it
