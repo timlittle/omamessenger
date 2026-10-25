@@ -193,16 +193,16 @@ Item {
   // true until the next restart.
   property bool _updateHintDismissed: false
 
-  // toastText is a brief, non-error confirmation for something that
-  // just worked, shown in the toast pill above the composer (see
-  // ui/components/Toast.qml) rather than the error banner at the top of
-  // the window: the quiet update hint takes priority the one time it
-  // has something to say, falling back to whatever a message action
-  // just confirmed, such as copying or saving a photo or video (see
-  // ConversationController.notice), or blocking, unblocking or
-  // reporting a chat as spam (see ListController.notice). It never
-  // competes with an error: the two show in different places and can
-  // be visible at once.
+  // toastText is a brief, non-error heads-up, shown in the toast pill
+  // above the composer (see ui/components/Toast.qml) rather than the
+  // error banner at the top of the window: the quiet update hint takes
+  // priority the one time it has something to say, falling back to
+  // whatever a message action just confirmed, such as copying or
+  // saving a photo or video, or "Play notification sound" finding
+  // nothing to play (see ConversationController.notice), or blocking,
+  // unblocking or reporting a chat as spam (see ListController.notice).
+  // It never competes with an error: the two show in different places
+  // and can be visible at once.
   readonly property string toastText: Toast.pickText(
     !root._updateHintDismissed && !!root.service && root.service.showUpdateHint,
     root.service ? WhatsNew.hintText(root.service.appVersion) : "",

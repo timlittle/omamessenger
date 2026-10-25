@@ -4,13 +4,15 @@ import qs.Commons
 import "../theme"
 import "../lib/Toast.js" as ToastLogic
 
-// A small, rounded confirmation pill: where copying, saving and the
-// "Updated to vX" hint now show, instead of the easily-missed banner at
-// the top of the window (see docs/decisions.md). It fades in whenever
-// text is set, auto-dismisses itself after dismissDelayMs, and pauses
-// that countdown while the pointer is over it so reading it does not
-// race its own timer. Errors keep using Panel's own banner; this is
-// only ever good news, so it never needs the urgent colour.
+// A small, rounded confirmation pill: where copying, saving, the
+// "Updated to vX" hint and a quiet heads-up such as "Play notification
+// sound" finding nothing to play now show, instead of the easily-missed
+// banner at the top of the window (see docs/decisions.md). It fades in
+// whenever text is set, auto-dismisses itself after dismissDelayMs, and
+// pauses that countdown while the pointer is over it so reading it does
+// not race its own timer. Errors keep using Panel's own banner; this is
+// never a failure the user needs to act on, so it never needs the
+// urgent colour.
 Item {
   id: root
 

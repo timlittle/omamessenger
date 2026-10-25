@@ -621,8 +621,19 @@ Item {
   // _previewNotificationSound plays the open conversation's own
   // notification sound on demand, through Service's exact precedence
   // and do-not-disturb check; does nothing with no conversation open.
+  // When nothing is actually heard, it says why in the toast instead
+  // of leaving the command looking like it did nothing: no sound
+  // applies at all, or do-not-disturb is on.
   function _previewNotificationSound(): void {
-    if (root.service && root.conversation) root.service.playNotificationSoundForConversation(root.conversation);
+    if (!root.service || !root.conversation) return;
+
+    root.service.playNotificationSoundForConversation(root.conversation, function(outcome) {
+      if (outcome === "silent") {
+        timeline.notice = "No notification sound set for this chat · set one with Set notification sound…";
+      } else if (outcome === "doNotDisturb") {
+        timeline.notice = "Do not disturb is on";
+      }
+    });
   }
 
   // _hasCopyableMedia reports whether the highlighted message carries a

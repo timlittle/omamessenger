@@ -245,14 +245,18 @@ Item {
   // do-not-disturb check _playNotificationSound runs for a real
   // arrival: the command palette's "Play notification sound", so
   // trying a sound choice never needs a real message to arrive first.
-  function playNotificationSoundForConversation(conversation: var): void {
+  // outcome, if given, is called with "played", "silent" (nothing
+  // applies: no custom, service or default sound) or "doNotDisturb",
+  // so the caller can say why nothing was heard rather than leaving
+  // the command looking like it did nothing at all.
+  function playNotificationSoundForConversation(conversation: var, outcome: var): void {
     if (!conversation || typeof conversation.id !== "string") return;
 
     root._playNotificationSound({
       conversationId: conversation.id,
       service: conversation.service,
       hasCustomSound: conversation.notificationSound === "custom"
-    });
+    }, outcome);
   }
 
   // openKeyConfigFile is the palette's "Open key bindings file" command:
@@ -329,24 +333,30 @@ Item {
   // rather than sounding through it. The helper never sends this
   // event for a muted, missed or already-read arrival (see
   // backend/internal/app/ingest.go), so this never has to check that
-  // itself.
-  function _playNotificationSound(data: var): void {
+  // itself. outcome, if given, is called the same way
+  // playNotificationSoundForConversation's own does.
+  function _playNotificationSound(data: var, outcome: var): void {
     if (!data || typeof data.conversationId !== "string") return;
 
     const check = root.doNotDisturbCheck ?? doNotDisturb.check;
     check(function(active) {
-      if (!active) root._resolveAndPlaySound(data);
+      if (active) { if (outcome) outcome("doNotDisturb"); return; }
+      root._resolveAndPlaySound(data, outcome);
     });
   }
 
   // _resolveAndPlaySound asks the helper for a validated, playable
   // copy of whichever sound lib/NotificationSound.js's precedence
   // picked, once _playNotificationSound has already confirmed
-  // do-not-disturb is not on.
-  function _resolveAndPlaySound(data: var): void {
+  // do-not-disturb is not on. outcome, if given, is called the same
+  // way playNotificationSoundForConversation's own does; a failed
+  // sounds.fetch round trip calls nothing further, the same as before
+  // this was added, since that is the helper misbehaving rather than
+  // "nothing is set".
+  function _resolveAndPlaySound(data: var, outcome: var): void {
     const serviceSound = data.service === "telegram" ? root._telegramSound : root._whatsappSound;
     const decision = NotificationSound.resolve(!!data.hasCustomSound, serviceSound, root._defaultSound);
-    if (decision.source === "silent") return;
+    if (decision.source === "silent") { if (outcome) outcome("silent"); return; }
 
     const params = decision.source === "conversation"
       ? { conversationId: data.conversationId }
@@ -355,6 +365,7 @@ Item {
     root.request("sounds.fetch", params, function(error, result) {
       if (error || !result || !result.path) return;
       root._playSoundFile(result.path);
+      if (outcome) outcome("played");
     });
   }
 

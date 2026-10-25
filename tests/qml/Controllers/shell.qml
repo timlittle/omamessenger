@@ -11,7 +11,9 @@
 // palette's "Play notification sound" reaches the open conversation and
 // plays through Service's exact precedence and do-not-disturb check
 // (checked with a fake player, same as tests/qml/Service's own
-// notification.sound check, so nothing reaches the live desktop),
+// notification.sound check, so nothing reaches the live desktop), the
+// same command says why in its own notice when nothing is set to play
+// or do-not-disturb is on, rather than looking like it did nothing,
 // removing an account closes one of its conversations if it was
 // left open and moves the list cursor off it, the window Escape
 // chain dispatches to the right controller, and openLink hands its url
@@ -305,12 +307,71 @@ ShellRoot {
       const url = root.fakeSoundPlayer.played[0];
       if (!url.startsWith("file://"))
         return Check.fail("chat.playNotificationSound gave soundPlayer.play " + url + ", want a file:// URL");
-      return root.checkRemoveAccountClosesOpenConversation();
+      return root.checkPlayNotificationSoundWithNoneSet();
     }
 
     stepper.attempts++;
     if (stepper.attempts >= 100) return Check.fail("chat.playNotificationSound never reached soundPlayer.play");
     stepper.retry(root.waitForPlayedNotificationSound);
+  }
+
+  // checkPlayNotificationSoundWithNoneSet clears every sound source
+  // NotificationSound.resolve could pick (the conversation's own,
+  // Mum's service and the manifest default), runs the command again,
+  // and confirms the open conversation's own notice says so: the
+  // report this covers found the command did nothing at all, with
+  // nothing telling the user why.
+  function checkPlayNotificationSoundWithNoneSet(): void {
+    root.fakeSoundPlayer.played = [];
+    service._defaultSound = "";
+
+    conversationController.run("chat.playNotificationSound");
+    stepper.attempts = 0;
+    root.waitForNoSoundSetNotice();
+  }
+
+  // waitForNoSoundSetNotice holds until the open conversation's own
+  // notice names the missing sound, confirming nothing played either.
+  function waitForNoSoundSetNotice(): void {
+    if (conversationController.notice.indexOf("No notification sound set for this chat") === 0) {
+      if (root.fakeSoundPlayer.played.length > 0)
+        return Check.fail("chat.playNotificationSound played a sound despite nothing being set: " + JSON.stringify(root.fakeSoundPlayer.played));
+      return root.checkPlayNotificationSoundWithDoNotDisturb();
+    }
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("chat.playNotificationSound with nothing set never set its own notice, got " + JSON.stringify(conversationController.notice));
+    stepper.retry(root.waitForNoSoundSetNotice);
+  }
+
+  // checkPlayNotificationSoundWithDoNotDisturb restores a default
+  // sound (so a missing one cannot also explain this), fakes
+  // do-not-disturb on the same way tests/qml/Service's own check
+  // does, runs the command again, and confirms the notice names that
+  // instead of a sound reaching the fake player.
+  function checkPlayNotificationSoundWithDoNotDisturb(): void {
+    service._defaultSound = String(Qt.resolvedUrl("ping.ogg")).replace("file://", "");
+    service.doNotDisturbCheck = function(callback) { callback(true); };
+    root.fakeSoundPlayer.played = [];
+
+    conversationController.run("chat.playNotificationSound");
+    stepper.attempts = 0;
+    root.waitForDoNotDisturbNotice();
+  }
+
+  // waitForDoNotDisturbNotice holds until the open conversation's own
+  // notice says do-not-disturb is on, confirming nothing played either.
+  function waitForDoNotDisturbNotice(): void {
+    if (conversationController.notice === "Do not disturb is on") {
+      if (root.fakeSoundPlayer.played.length > 0)
+        return Check.fail("chat.playNotificationSound played a sound despite do-not-disturb being on: " + JSON.stringify(root.fakeSoundPlayer.played));
+      service.doNotDisturbCheck = null;
+      return root.checkRemoveAccountClosesOpenConversation();
+    }
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("chat.playNotificationSound under do-not-disturb never set its own notice, got " + JSON.stringify(conversationController.notice));
+    stepper.retry(root.waitForDoNotDisturbNotice);
   }
 
   // checkRemoveAccountClosesOpenConversation opens a conversation that
