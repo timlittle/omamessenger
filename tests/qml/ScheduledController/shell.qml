@@ -41,6 +41,34 @@ ShellRoot {
     service: fakeService
   }
 
+  // alreadyReadyService starts "ready" rather than transitioning into
+  // it: the state a fresh Panel's controllers are built into every
+  // time Omarchy destroys and recreates the panel on hide, since the
+  // helper itself (owned by Service.qml) was already running. A
+  // controller that only loads on a status *change* would stay
+  // permanently empty here, hiding every message queued before this
+  // particular panel instance existed - the report's "no way to see
+  // scheduled messages" after reopening the window.
+  QtObject {
+    id: alreadyReadyService
+
+    property string status: "ready"
+    property var pending: null
+    property string lastMethod: ""
+
+    signal event(string name, var data)
+
+    function request(method: string, params: var, callback: var): void {
+      alreadyReadyService.lastMethod = method;
+      alreadyReadyService.pending = callback;
+    }
+  }
+
+  ScheduledController {
+    id: scheduledAlreadyReady
+    service: alreadyReadyService
+  }
+
   Timer {
     running: true
     interval: 0
@@ -55,6 +83,8 @@ ShellRoot {
   }
 
   function run(): void {
+    if (!root.checkLoadsAlreadyReadyService()) return;
+
     // Becoming ready loads the full list at once.
     fakeService.status = "ready";
     const loadCallback = root.takePending();
@@ -79,6 +109,24 @@ ShellRoot {
 
     console.log("PASS ScheduledController");
     Qt.exit(0);
+  }
+
+  // checkLoadsAlreadyReadyService confirms a controller built against a
+  // service that is already "ready" (never changing into it) still
+  // loads the queued list, rather than waiting forever for a status
+  // change that will never come.
+  function checkLoadsAlreadyReadyService(): bool {
+    if (alreadyReadyService.lastMethod !== "messages.listScheduled") {
+      Check.fail("a controller built against an already-ready service called " + alreadyReadyService.lastMethod + ", want messages.listScheduled");
+      return false;
+    }
+
+    alreadyReadyService.pending(null, { messages: [{ id: "r1", conversationId: "a", text: "already queued", sendAt: 9000, created: 1 }] });
+    if (scheduledAlreadyReady.all.length !== 1) {
+      Check.fail("an already-ready service's reply was not applied: " + JSON.stringify(scheduledAlreadyReady.all));
+      return false;
+    }
+    return true;
   }
 
   // checkForConversation confirms forConversation filters by id.

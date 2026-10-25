@@ -73,7 +73,7 @@ var BINDINGS = [
   // Lists every message still queued to send later, across every
   // conversation; no key of its own, like helper.doctor, since it is a
   // deliberate lookup rather than something to reach for by reflex.
-  { action: 'scheduled.show', keys: [], contexts: ['global'], label: 'Scheduled messages', command: true },
+  { action: 'scheduled.show', keys: [], contexts: ['global'], label: 'Scheduled messages', command: true, keywords: ['send later'] },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },

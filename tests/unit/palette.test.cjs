@@ -338,6 +338,18 @@ test('commands mode: real "read" query ranks the chat\'s own read-state commands
   assert.ok(react > archiveAllRead, 'a scattered match like message.react must rank below every exact-word match');
 });
 
+// The report this covers found "Scheduled messages" unreachable by the
+// one other word someone would type for it ("send later", the
+// composer's own button label): its own label never says that, so it
+// needs the keyword the same way "Mark as unread" needs "read".
+test('commands mode: the real command list finds "Scheduled messages" by "scheduled" or "send later"', () => {
+  const byScheduled = Palette.results('commands', { query: 'scheduled' }).map((c) => c.action);
+  assert.ok(byScheduled.includes('scheduled.show'));
+
+  const bySendLater = Palette.results('commands', { query: 'send later' }).map((c) => c.action);
+  assert.ok(bySendLater.includes('scheduled.show'));
+});
+
 // The real command list for "unread": "Mark as unread" must come first,
 // ahead of the global unread-navigation commands that also contain the
 // literal word "unread" ("Show/Next/Previous unread conversation(s)"),

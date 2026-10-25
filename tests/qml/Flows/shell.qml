@@ -17,7 +17,8 @@
 // - Ctrl+K jumps to Sam, whose first send fails, and t retries it
 // - typing a draft and pressing Ctrl+L opens "Send later…" with its
 //   named suggestions already listed, and accepting one queues the
-//   message, shown naming when it will send
+//   message, shown naming when it will send; a real click on its own
+//   Cancel button then removes it from view again
 // - a message arriving in Sam's chat while the window is hidden stays unread
 // - Ctrl+N, cycling every account, "Ben", Enter opens a new chat with Ben
 // - Ctrl+K to Mum, whose short stored history makes the helper fetch older
@@ -113,6 +114,8 @@ ShellRoot {
     root.waitForSendLaterSuggestions,
     root.pickSendLaterSuggestion,
     root.waitForScheduledMessage,
+    root.cancelScheduledMessage,
+    root.waitForScheduledMessageGone,
     root.leaveComposeAfterSendLater,
     root.waitComposeLeftAfterSendLater,
     root.focusComposeEmptyForEditLast,
@@ -522,6 +525,23 @@ ShellRoot {
 
     const timeline = Check.find(root.panel(), "messageListView");
     return !!timeline && Check.texts(timeline).some((item) => item.text.indexOf("Sends at") === 0);
+  }
+
+  // cancelScheduledMessage clicks the queued message's own Cancel
+  // button, real mouse input into the real ScheduledList this panel
+  // built: the report this covers found no way back out of a message
+  // once scheduled.
+  function cancelScheduledMessage(): var {
+    t.mouseClick(Check.find(root.panel(), "scheduledCancelButton"));
+    return true;
+  }
+
+  // waitForScheduledMessageGone holds until the cancelled message has
+  // left the open conversation, the queued list's own Cancel having
+  // actually reached the helper and come back.
+  function waitForScheduledMessageGone(): var {
+    const timeline = Check.find(root.panel(), "messageListView");
+    return !!timeline && !Check.texts(timeline).some((item) => item.text.indexOf("Sends at") === 0);
   }
 
   // leaveComposeAfterSendLater returns to the state the next journey

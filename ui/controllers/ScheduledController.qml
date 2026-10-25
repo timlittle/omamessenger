@@ -40,6 +40,20 @@ Item {
     });
   }
 
+  // _start loads the queued list if the service is already ready, the
+  // same check ListController.qml's own _start runs: Omarchy destroys
+  // and recreates the whole panel, this controller included, every
+  // time the window hides, while the helper itself (owned by
+  // Service.qml) keeps running underneath it. Without this, a fresh
+  // controller built against an already-ready service would wait
+  // forever for a status *change* that already happened before it
+  // existed, leaving every message queued in an earlier panel's
+  // lifetime invisible - the report's "no way to see scheduled
+  // messages" after reopening the window.
+  function _start(): void {
+    if (root.service && root.service.status === "ready") root.load();
+  }
+
   // forConversation returns conversationId's own scheduled messages,
   // soonest due first, for the open chat's own pending list.
   function forConversation(conversationId: string): var {
@@ -100,6 +114,13 @@ Item {
   function _remove(id: string): void {
     root.all = root.all.filter((m) => m.id !== id);
   }
+
+  // Omarchy may hand over the service after this controller is
+  // created, or replace it, so _start runs whenever it arrives too
+  // (see ListController.qml's own onServiceChanged for the same
+  // reasoning).
+  onServiceChanged: root._start()
+  Component.onCompleted: root._start()
 
   Connections {
     target: root.service
