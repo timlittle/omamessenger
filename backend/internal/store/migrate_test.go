@@ -204,9 +204,9 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	}
 
 	insertRawAccount(t, db, "wa")
-	insertRawConversation(t, db, "older", "wa", true, 0, 1000)
-	insertRawConversation(t, db, "newer", "wa", true, 0, 2000)
-	insertRawConversation(t, db, "unpinned", "wa", false, 0, 3000)
+	insertRawConversation(t, db, rawConversation{id: "older", accountID: "wa", pinned: true, lastActivity: 1000})
+	insertRawConversation(t, db, rawConversation{id: "newer", accountID: "wa", pinned: true, lastActivity: 2000})
+	insertRawConversation(t, db, rawConversation{id: "unpinned", accountID: "wa", pinned: false, lastActivity: 3000})
 
 	if err := migrate(t.Context(), db, migrations); err != nil {
 		t.Fatal(err)
@@ -253,17 +253,24 @@ func insertRawAccount(t *testing.T, db *sql.DB, id string) {
 	}
 }
 
-// insertRawConversation inserts a minimal conversation row with an
-// explicit pinned flag, pin_order and last_activity, the exact shape an
-// older build left behind: every already-pinned conversation sharing
-// pin_order's bare column default.
-func insertRawConversation(t *testing.T, db *sql.DB, id, accountID string, pinned bool, pinOrder, lastActivity int) {
+// rawConversation is one row insertRawConversation writes directly,
+// bypassing the store's own API: the exact shape an older build left
+// behind, every already-pinned conversation sharing pin_order's bare
+// column default, so there is no field for it here at all.
+type rawConversation struct {
+	id, accountID string
+	pinned        bool
+	lastActivity  int
+}
+
+// insertRawConversation inserts a minimal conversation row from c.
+func insertRawConversation(t *testing.T, db *sql.DB, c rawConversation) {
 	t.Helper()
 
 	_, err := db.ExecContext(t.Context(),
 		`INSERT INTO conversations(id,account_id,remote_id,kind,title,pinned,pin_order,last_activity)
-			VALUES(?,?,?,'direct',?,?,?,?)`,
-		id, accountID, id, id, pinned, pinOrder, lastActivity)
+			VALUES(?,?,?,'direct',?,?,0,?)`,
+		c.id, c.accountID, c.id, c.id, c.pinned, c.lastActivity)
 	if err != nil {
 		t.Fatal(err)
 	}
