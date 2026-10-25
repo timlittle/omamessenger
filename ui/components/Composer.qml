@@ -225,6 +225,10 @@ Item {
   // spellWordAdded asks the caller to add word to the personal
   // dictionary.
   signal spellWordAdded(string word)
+  // sendLaterRequested asks the caller to open the "Send later…"
+  // prompt, from the clock button beside Send: the same prompt
+  // Ctrl+L opens (see Keymap.js's compose.sendLater).
+  signal sendLaterRequested()
 
   // A binding from text straight to the input would break the moment
   // the input's own typing changes it back (see the property's own
@@ -869,6 +873,25 @@ Item {
             }
           }
         }
+      }
+
+      // sendLaterButton opens the "Send later…" prompt for whatever is
+      // already typed: the one visible entry point for it besides
+      // Ctrl+L, since nothing else in the composer hints that
+      // scheduling a message is possible at all. Only enabled with
+      // text typed, like Send itself needing something to send,
+      // though unlike Send an attachment alone is not enough:
+      // scheduling is text only (see WindowController._scheduleDraft).
+      Ui.Button {
+        id: sendLaterButton
+        objectName: "sendLaterButton"
+        Layout.alignment: Qt.AlignBottom
+        text: "🕐"
+        tooltipText: "Send later…"
+        focusable: true
+        enabled: root.enabled && root.text.trim().length > 0
+        opacity: root.writing ? 1.0 : root.dimmedOpacity
+        onClicked: root.sendLaterRequested()
       }
 
       Ui.Button {

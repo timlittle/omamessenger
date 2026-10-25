@@ -90,3 +90,22 @@ test('preview names when a valid custom time would wake the chat', () => {
   assert.strictEqual(got[0].at, new Date(2026, 9, 6, 18, 0).getTime());
   assert.strictEqual(got[0].label, 'Snooze until 18:00');
 });
+
+test('sendLaterPresets names an hour, this evening, tomorrow and next Monday', () => {
+  const got = Snooze.sendLaterPresets(nowMs);
+
+  assert.deepEqual(got, [
+    { label: 'In 1 hour', at: nowMs + 60 * 60 * 1000 },
+    { label: 'Tonight', at: new Date(2026, 9, 6, 20, 0).getTime() },
+    { label: 'Tomorrow morning', at: new Date(2026, 9, 7, 9, 0).getTime() },
+    { label: 'Monday morning', at: new Date(2026, 9, 12, 9, 0).getTime() }
+  ]);
+});
+
+test('sendLaterPresets moves "Tonight" to tomorrow once 20:00 has already passed', () => {
+  const lateEvening = new Date(2026, 9, 6, 21, 0).getTime();
+  const got = Snooze.sendLaterPresets(lateEvening);
+
+  assert.strictEqual(got[1].label, 'Tonight');
+  assert.strictEqual(got[1].at, new Date(2026, 9, 7, 20, 0).getTime());
+});

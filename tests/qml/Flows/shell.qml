@@ -15,6 +15,9 @@
 //   and the bar widget's count follows
 // - a draft survives the panel being destroyed and recreated
 // - Ctrl+K jumps to Sam, whose first send fails, and t retries it
+// - typing a draft and pressing Ctrl+L opens "Send later…" with its
+//   named suggestions already listed, and accepting one queues the
+//   message, shown naming when it will send
 // - a message arriving in Sam's chat while the window is hidden stays unread
 // - Ctrl+N, cycling every account, "Ben", Enter opens a new chat with Ben
 // - Ctrl+K to Mum, whose short stored history makes the helper fetch older
@@ -105,6 +108,13 @@ ShellRoot {
     root.waitForSamFailed,
     root.retryWithT,
     root.waitForSamDelivered,
+    root.focusComposeAndTypeForSendLater,
+    root.openSendLaterPalette,
+    root.waitForSendLaterSuggestions,
+    root.pickSendLaterSuggestion,
+    root.waitForScheduledMessage,
+    root.leaveComposeAfterSendLater,
+    root.waitComposeLeftAfterSendLater,
     root.focusComposeEmptyForEditLast,
     root.pressUpForEditLast,
     root.waitUpEditLastLoaded,
@@ -468,6 +478,64 @@ ShellRoot {
   // waitForSamDelivered holds until the retried message is delivered.
   function waitForSamDelivered(): var {
     return root.messageStatus("are you there") === "delivered";
+  }
+
+  // focusComposeAndTypeForSendLater focuses the composer and types a
+  // draft, the state Ctrl+L needs something queue-able to act on: the
+  // report this covers found no visible way to send later at all, and
+  // the one key for it, Ctrl+L, opened an empty, suggestion-less
+  // palette.
+  function focusComposeAndTypeForSendLater(): var {
+    t.keyClick(Qt.Key_I);
+    root.type("see you at 6");
+    return true;
+  }
+
+  // openSendLaterPalette opens the "Send later…" prompt with the real
+  // Ctrl+L, the composer's own shortcut.
+  function openSendLaterPalette(): var {
+    t.keyClick(Qt.Key_L, Qt.ControlModifier);
+    return true;
+  }
+
+  // waitForSendLaterSuggestions holds until the prompt lists its four
+  // named quick choices, best match first with nothing typed - exactly
+  // what the report found missing.
+  function waitForSendLaterSuggestions(): var {
+    const list = Check.find(root.panel(), "paletteList");
+    const items = list ? list.model : [];
+    return items.length === 4 && items[0].label === "In 1 hour";
+  }
+
+  // pickSendLaterSuggestion accepts the first suggestion with Enter.
+  function pickSendLaterSuggestion(): var {
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitForScheduledMessage holds until the queued message shows in the
+  // open conversation naming when it will send, and the composer's own
+  // draft has cleared, the same as a real send does.
+  function waitForScheduledMessage(): var {
+    const composer = Check.find(root.panel(), "composerInput");
+    if (!composer || composer.text !== "") return false;
+
+    const timeline = Check.find(root.panel(), "messageListView");
+    return !!timeline && Check.texts(timeline).some((item) => item.text.indexOf("Sends at") === 0);
+  }
+
+  // leaveComposeAfterSendLater returns to the state the next journey
+  // (editing the last message from an empty, focused composer) expects,
+  // the same way retryWithT's own Escape already leaves it.
+  function leaveComposeAfterSendLater(): var {
+    t.keyClick(Qt.Key_Escape);
+    return true;
+  }
+
+  // waitComposeLeftAfterSendLater holds until that Escape has taken
+  // effect.
+  function waitComposeLeftAfterSendLater(): var {
+    return !root.composerFocused();
   }
 
   // focusComposeEmptyForEditLast focuses the composer with the real "i"

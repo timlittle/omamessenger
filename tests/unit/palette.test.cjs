@@ -161,6 +161,23 @@ test('results/items: "sendLaterCustom" mode has nothing to show for unparsed tex
   assert.deepEqual(Palette.results('sendLaterCustom', ctx), []);
 });
 
+test('results/items: "sendLaterCustom" mode lists the named presets before anything is typed', () => {
+  const ctx = { query: '', now: Date.parse('2026-01-01T10:00:00Z') };
+
+  const results = Palette.results('sendLaterCustom', ctx);
+  assert.deepEqual(results.map((r) => r.label), ['In 1 hour', 'Tonight', 'Tomorrow morning', 'Monday morning']);
+
+  const items = Palette.items('sendLaterCustom', results, ctx);
+  assert.deepEqual(items[0], { label: 'In 1 hour', detail: '11:00', keys: '' });
+});
+
+test('results/items: "sendLaterCustom" mode narrows the presets by name', () => {
+  const ctx = { query: 'tomorrow', now: Date.parse('2026-01-01T10:00:00Z') };
+
+  const results = Palette.results('sendLaterCustom', ctx);
+  assert.deepEqual(results.map((r) => r.label), ['Tomorrow morning']);
+});
+
 test('results/items: "scheduledMessages" mode lists queued messages, matched against their text', () => {
   const now = Date.parse('2026-01-01T10:00:00Z');
   const ctx = {

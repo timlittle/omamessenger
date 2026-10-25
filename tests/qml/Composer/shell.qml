@@ -31,6 +31,7 @@ ShellRoot {
   property var testSuggestions: []
   property var spellSuggestionRequests: []
   property var spellWordAdditions: []
+  property int sendLaterRequests: 0
 
   FloatingWindow {
     implicitWidth: 400
@@ -52,6 +53,7 @@ ShellRoot {
       onAttachmentRemoveRequested: root.removeRequests++
       onSpellSuggestionsRequested: word => root.spellSuggestionRequests.push(word)
       onSpellWordAdded: word => root.spellWordAdditions.push(word)
+      onSendLaterRequested: root.sendLaterRequests++
     }
   }
 
@@ -89,6 +91,7 @@ ShellRoot {
     if (!root.checkAttachmentPreview()) return;
     if (!root.checkAttachmentSizeAndHint()) return;
     if (!root.checkBannerAndChipTogether()) return;
+    if (!root.checkSendLaterButton()) return;
 
     composer.attachmentPath = "";
     composer.replyTo = null;
@@ -319,6 +322,33 @@ ShellRoot {
     if (JSON.stringify(root.sentReplyIds) !== '["m3"]')
       return Check.fail("submitted replyToId " + JSON.stringify(root.sentReplyIds) + " alongside an attachment, want [\"m3\"]");
 
+    return true;
+  }
+
+  // checkSendLaterButton verifies the clock button beside Send: it has
+  // a tooltip naming what it does, stays disabled with nothing typed
+  // (an attachment alone is not enough, unlike Send), and clicking it
+  // with text typed reports sendLaterRequested exactly once.
+  function checkSendLaterButton(): bool {
+    const button = Check.find(composer, "sendLaterButton");
+    if (!button) return Check.fail("no sendLaterButton found");
+    if (button.tooltipText !== "Send later…")
+      return Check.fail("sendLaterButton tooltip = \"" + button.tooltipText + "\", want \"Send later…\"");
+
+    composer.text = "";
+    composer.attachmentPath = "/tmp/report.pdf";
+    if (button.enabled) return Check.fail("sendLaterButton enabled with an attachment but no text");
+    composer.attachmentPath = "";
+
+    composer.text = "later please";
+    if (!button.enabled) return Check.fail("sendLaterButton not enabled with text typed");
+
+    root.sendLaterRequests = 0;
+    button.clicked();
+    if (root.sendLaterRequests !== 1)
+      return Check.fail("sendLaterRequested fired " + root.sendLaterRequests + " times, want 1");
+
+    composer.text = "";
     return true;
   }
 

@@ -315,6 +315,7 @@ Item {
       onScheduledCancelRequested: id => { if (root.scheduledController) root.scheduledController.cancel(id) }
       onScheduledSendNowRequested: id => { if (root.scheduledController) root.scheduledController.sendNow(id) }
       onScheduledEditRequested: (id, text) => root.windowController.editScheduledMessage(id, text)
+      onSendLaterRequested: root.windowController.run("compose.sendLater")
     }
   }
 

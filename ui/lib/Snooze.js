@@ -53,6 +53,22 @@ function parse(text, nowMs) {
   return parseDuration(trimmed, nowMs) ?? parseWeekdayClock(trimmed, nowMs) ?? parseClock(trimmed, nowMs);
 }
 
+// sendLaterPresets names the four quick choices the "Send later…"
+// prompt offers before anything is typed: an hour from now, this
+// evening, tomorrow morning and next Monday morning. Each reuses the
+// same parsing or preset this file already has for snoozing, rather
+// than a second copy of "in an hour" or "9am the next day": "Tonight"
+// is exactly what typing "20:00" would mean right now, today if that
+// has not passed yet or tomorrow if it has (see parseClock).
+function sendLaterPresets(nowMs) {
+  return [
+    { label: 'In 1 hour', at: parseDuration('1h', nowMs) },
+    { label: 'Tonight', at: parseClock('20:00', nowMs) },
+    { label: 'Tomorrow morning', at: tomorrow(nowMs) },
+    { label: 'Monday morning', at: nextWeek(nowMs) }
+  ];
+}
+
 // preview returns parse's result as the one row the command palette
 // shows while typing a custom time: [] while text does not parse yet,
 // otherwise one row naming when it would wake the chat.

@@ -172,17 +172,23 @@ var MODES = {
     results: (ctx) => Snooze.preview(ctx.query, ctx.now),
     items: (results) => results.map((r) => ({ label: r.label, detail: '', keys: '' }))
   },
-  // sendLaterCustom previews the same typed time Snooze.parse already
-  // reads, just worded for when a message will send rather than when a
-  // chat wakes up; WindowController._scheduleDraft reads the one
-  // candidate's own "at" the same way setReminderOnCurrent reads
-  // snoozeCustom's.
+  // sendLaterCustom lists Snooze.sendLaterPresets' four named choices,
+  // matched against whatever has been typed so far (every one shows
+  // with an empty query, the same as the palette's own command list
+  // does), plus a preview row for a typed custom time Snooze.parse
+  // reads ("18:00", "2h", "mon 9:00"), worded for when a message will
+  // send rather than when a chat wakes up. WindowController
+  // ._scheduleDraft reads whichever row Enter picks's own "at" the
+  // same way setReminderOnCurrent reads snoozeCustom's.
   sendLaterCustom: {
     results: (ctx) => {
-      const at = Snooze.parse(ctx.query, ctx.now);
-      return at === null ? [] : [{ at }];
+      const presets = search(Snooze.sendLaterPresets(ctx.now), ctx.query, (p) => p.label);
+      const typed = Snooze.parse(ctx.query, ctx.now);
+      return typed === null ? presets : presets.concat([{ at: typed }]);
     },
-    items: (results, ctx) => results.map((r) => ({ label: Format.sendAtLabel(r.at, ctx.now), detail: '', keys: '' }))
+    items: (results, ctx) => results.map((r) => r.label
+      ? { label: r.label, detail: Format.snoozeUntilLabel(r.at, ctx.now), keys: '' }
+      : { label: Format.sendAtLabel(r.at, ctx.now), detail: '', keys: '' })
   },
   // scheduledMessages lists every message still queued, best match
   // first against its own text, for the "Scheduled messages" command;

@@ -179,6 +179,9 @@ Item {
   // scheduledEditRequested asks the caller to load a queued message
   // back into the composer for editing.
   signal scheduledEditRequested(string id, string text)
+  // sendLaterRequested asks the caller to open the "Send later…"
+  // prompt, from the composer's own clock button.
+  signal sendLaterRequested()
 
   // scrollBy moves the view by a number of lines; negative scrolls up.
   function scrollBy(lines: int): void {
@@ -421,6 +424,7 @@ Item {
       onAttachmentRemoveRequested: root.attachmentRemoveRequested()
       onSpellSuggestionsRequested: word => root.spellSuggestionsRequested(word)
       onSpellWordAdded: word => root.spellWordAdded(word)
+      onSendLaterRequested: root.sendLaterRequested()
     }
   }
 
