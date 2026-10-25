@@ -94,14 +94,14 @@ The highlight starts on the newest message when the conversation opens or when y
 | Shift+Enter or Ctrl+J | Start a new line instead of sending |
 | Ctrl+V | Paste a clipboard image as an attachment |
 | Ctrl+. | Open spelling suggestions for the misspelled word the caret is in |
-| Ctrl+L | Send later… |
+| Ctrl+L, or the clock button beside Send | Send later… |
 | Esc | While editing, cancel and restore the composer to what it held before |
 
 Alt+Shift+↓ / ↑ still jump to the next / previous unread conversation while writing, landing there in writing mode too (see Global); Ctrl+J means a new line here instead.
 
 **Editing a sent message**: press ↑ in an empty composer, or E on a highlighted message, to load your own most recently sent text-only message into the composer, with a banner reading "Editing message · Esc to cancel". Enter saves the change through the service; Esc cancels and restores whatever the composer held before. Only a message you sent, with no attachment, that the service has already confirmed can be edited.
 
-**Send later** (Ctrl+L, or the command palette): queues whatever text is in the composer to send at a chosen time instead of right away, asking for that time the same way **Snooze until…** does - a duration (`2h`, `30m`), a clock time (`18:00`) or a weekday and clock time (`mon 9:00`). The helper sends it at that time even if the window is closed, or sends it as soon as it next starts if that time already passed while it was not running. Text only in this first version; nothing happens if an attachment is pending. A queued message shows in its own chat, above the composer, with a clock mark and "Sends at …"; its own buttons send it now, load it back into the composer to edit (its text and time, through the same Ctrl+L prompt), or cancel it outright. **Scheduled messages** (command palette only) lists every message still queued, across every conversation; picking one opens its chat. A send that fails once its time comes is retried automatically, exactly like any other failed send.
+**Send later** (Ctrl+L, the clock button beside Send, or the command palette): queues whatever text is in the composer to send at a chosen time instead of right away. The prompt lists four named choices before anything is typed - In 1 hour, Tonight, Tomorrow morning, Monday morning - narrowed by whatever is typed, or type a custom time the same way **Snooze until…** does: a duration (`2h`, `30m`), a clock time (`18:00`) or a weekday and clock time (`mon 9:00`). The helper sends it at that time even if the window is closed, or sends it as soon as it next starts if that time already passed while it was not running. Text only in this first version; nothing happens if an attachment is pending, which is also why the clock button stays disabled with no text typed. A queued message shows in its own chat, above the composer, with a clock mark and "Sends at …"; its own buttons send it now, load it back into the composer to edit (its text and time, through the same Ctrl+L prompt), or cancel it outright. **Scheduled messages** (command palette only) lists every message still queued, across every conversation; picking one opens its chat. A send that fails once its time comes is retried automatically, exactly like any other failed send.
 
 ### Voting in a poll
 
