@@ -165,10 +165,10 @@ test('results/items: "sendLaterCustom" mode lists the named presets before anyth
   const ctx = { query: '', now: Date.parse('2026-01-01T10:00:00Z') };
 
   const results = Palette.results('sendLaterCustom', ctx);
-  assert.deepEqual(results.map((r) => r.label), ['In 1 hour', 'Tonight', 'Tomorrow morning', 'Monday morning']);
+  assert.deepEqual(results.map((r) => r.label), ['In 5 minutes', 'In 30 minutes', 'In 1 hour', 'Tonight', 'Tomorrow morning', 'Monday morning']);
 
   const items = Palette.items('sendLaterCustom', results, ctx);
-  assert.deepEqual(items[0], { label: 'In 1 hour', detail: '11:00', keys: '' });
+  assert.deepEqual(items[0], { label: 'In 5 minutes', detail: '10:05', keys: '' });
 });
 
 test('results/items: "sendLaterCustom" mode narrows the presets by name', () => {

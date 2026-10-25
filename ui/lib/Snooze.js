@@ -40,12 +40,13 @@ function nextWeek(nowMs) {
   return atHour(addDays(nowMs, daysUntilMonday), DEFAULT_HOUR, 0);
 }
 
-// parse reads a custom snooze time: a duration ("2h", "30m", "1h30m"), a
-// clock time ("18:00", today if still ahead or else tomorrow), or a
-// weekday and clock time ("mon 9:00", the next one to arrive). Returns
+// parse reads a custom snooze time: a duration ("2h", "30m", "1h30m",
+// "5 min", "5 minutes", or any of those with a leading "in "), a clock
+// time ("18:00", today if still ahead or else tomorrow), or a weekday
+// and clock time ("mon 9:00", the next one to arrive). Returns
 // milliseconds, or null when text matches none of them.
 function parse(text, nowMs) {
-  const trimmed = (text ?? '').trim().toLowerCase();
+  const trimmed = (text ?? '').trim().toLowerCase().replace(/^in\s+/, '');
   if (trimmed === '') {
     return null;
   }
@@ -53,15 +54,18 @@ function parse(text, nowMs) {
   return parseDuration(trimmed, nowMs) ?? parseWeekdayClock(trimmed, nowMs) ?? parseClock(trimmed, nowMs);
 }
 
-// sendLaterPresets names the four quick choices the "Send later…"
-// prompt offers before anything is typed: an hour from now, this
-// evening, tomorrow morning and next Monday morning. Each reuses the
-// same parsing or preset this file already has for snoozing, rather
-// than a second copy of "in an hour" or "9am the next day": "Tonight"
-// is exactly what typing "20:00" would mean right now, today if that
-// has not passed yet or tomorrow if it has (see parseClock).
+// sendLaterPresets names the six quick choices the "Send later…"
+// prompt offers before anything is typed: five and thirty minutes from
+// now, an hour from now, this evening, tomorrow morning and next
+// Monday morning. Each reuses the same parsing or preset this file
+// already has for snoozing, rather than a second copy of "in five
+// minutes" or "9am the next day": "Tonight" is exactly what typing
+// "20:00" would mean right now, today if that has not passed yet or
+// tomorrow if it has (see parseClock).
 function sendLaterPresets(nowMs) {
   return [
+    { label: 'In 5 minutes', at: parseDuration('5m', nowMs) },
+    { label: 'In 30 minutes', at: parseDuration('30m', nowMs) },
     { label: 'In 1 hour', at: parseDuration('1h', nowMs) },
     { label: 'Tonight', at: parseClock('20:00', nowMs) },
     { label: 'Tomorrow morning', at: tomorrow(nowMs) },
@@ -81,9 +85,11 @@ function preview(text, nowMs) {
   return [{ at, label: `Snooze until ${Format.snoozeUntilLabel(at, nowMs)}` }];
 }
 
-// parseDuration reads "2h", "30m" or "1h30m" as that long from now.
+// parseDuration reads "2h", "30m", "1h30m", "5 min" or "5 minutes" (the
+// hour and minute units each spelled any of their usual short or long
+// forms, with or without a space before them) as that long from now.
 function parseDuration(text, nowMs) {
-  const match = text.match(/^(?:(\d+)h)?(?:(\d+)m)?$/);
+  const match = text.match(/^(?:(\d+)\s*h(?:ours?|rs?)?)?\s*(?:(\d+)\s*m(?:in(?:ute)?s?)?)?$/);
   if (!match || (!match[1] && !match[2])) {
     return null;
   }

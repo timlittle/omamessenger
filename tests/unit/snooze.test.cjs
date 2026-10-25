@@ -44,6 +44,19 @@ test('parse reads a combined hours and minutes duration', () => {
   assert.strictEqual(Snooze.parse('1h30m', nowMs), nowMs + 90 * 60 * 1000);
 });
 
+test('parse reads "5 min" and "5 minutes" the same as "5m"', () => {
+  assert.strictEqual(Snooze.parse('5 min', nowMs), nowMs + 5 * 60 * 1000);
+  assert.strictEqual(Snooze.parse('5 minutes', nowMs), nowMs + 5 * 60 * 1000);
+  assert.strictEqual(Snooze.parse('5 minute', nowMs), nowMs + 5 * 60 * 1000);
+  assert.strictEqual(Snooze.parse('5 mins', nowMs), nowMs + 5 * 60 * 1000);
+});
+
+test('parse reads a leading "in " the same as the duration alone', () => {
+  assert.strictEqual(Snooze.parse('in 5m', nowMs), nowMs + 5 * 60 * 1000);
+  assert.strictEqual(Snooze.parse('in 5 minutes', nowMs), nowMs + 5 * 60 * 1000);
+  assert.strictEqual(Snooze.parse('in 2h', nowMs), nowMs + 2 * 60 * 60 * 1000);
+});
+
 test('parse reads a clock time still ahead today', () => {
   assert.strictEqual(Snooze.parse('18:00', nowMs), new Date(2026, 9, 6, 18, 0).getTime());
 });
@@ -91,10 +104,12 @@ test('preview names when a valid custom time would wake the chat', () => {
   assert.strictEqual(got[0].label, 'Snooze until 18:00');
 });
 
-test('sendLaterPresets names an hour, this evening, tomorrow and next Monday', () => {
+test('sendLaterPresets names five and thirty minutes, an hour, this evening, tomorrow and next Monday', () => {
   const got = Snooze.sendLaterPresets(nowMs);
 
   assert.deepEqual(got, [
+    { label: 'In 5 minutes', at: nowMs + 5 * 60 * 1000 },
+    { label: 'In 30 minutes', at: nowMs + 30 * 60 * 1000 },
     { label: 'In 1 hour', at: nowMs + 60 * 60 * 1000 },
     { label: 'Tonight', at: new Date(2026, 9, 6, 20, 0).getTime() },
     { label: 'Tomorrow morning', at: new Date(2026, 9, 7, 9, 0).getTime() },
@@ -106,6 +121,6 @@ test('sendLaterPresets moves "Tonight" to tomorrow once 20:00 has already passed
   const lateEvening = new Date(2026, 9, 6, 21, 0).getTime();
   const got = Snooze.sendLaterPresets(lateEvening);
 
-  assert.strictEqual(got[1].label, 'Tonight');
-  assert.strictEqual(got[1].at, new Date(2026, 9, 7, 20, 0).getTime());
+  assert.strictEqual(got[3].label, 'Tonight');
+  assert.strictEqual(got[3].at, new Date(2026, 9, 7, 20, 0).getTime());
 });

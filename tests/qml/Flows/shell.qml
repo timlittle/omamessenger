@@ -501,13 +501,13 @@ ShellRoot {
     return true;
   }
 
-  // waitForSendLaterSuggestions holds until the prompt lists its four
+  // waitForSendLaterSuggestions holds until the prompt lists its six
   // named quick choices, best match first with nothing typed - exactly
   // what the report found missing.
   function waitForSendLaterSuggestions(): var {
     const list = Check.find(root.panel(), "paletteList");
     const items = list ? list.model : [];
-    return items.length === 4 && items[0].label === "In 1 hour";
+    return items.length === 6 && items[0].label === "In 5 minutes";
   }
 
   // pickSendLaterSuggestion accepts the first suggestion with Enter.
