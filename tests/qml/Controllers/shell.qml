@@ -283,24 +283,50 @@ ShellRoot {
     root.waitForAccountRemoved(platformTeam.id);
   }
 
-  // waitForAccountRemoved holds until the removed account's conversations
-  // are gone from the list, then checks the open conversation closed
-  // instead of lingering on a deleted account, with the list cursor
-  // moved off it too rather than left dangling on a row that no longer
-  // exists.
+  // waitForAccountRemoved holds until the list, the open conversation and
+  // the list cursor have all caught up with the one "account.removed"
+  // event removing tg-work causes (see ListController._dropAccount and
+  // AccountController._accountRemoved): each is read from a different
+  // controller, so this waits for all three together rather than assuming
+  // that the list settling means the others already have too.
   function waitForAccountRemoved(removedId: string): void {
-    if (listController.all.some((c) => c.accountId === "tg-work")) {
-      stepper.attempts++;
-      if (stepper.attempts >= 100) return Check.fail("tg-work was never removed from the list");
-      return stepper.retry(() => root.waitForAccountRemoved(removedId));
+    const listSettled = !listController.all.some((c) => c.accountId === "tg-work");
+    const conversationSettled = conversationController.activeId === "" && conversationController.pane === "list";
+    const cursorSettled = listController.selectedId !== removedId;
+
+    if (listSettled && conversationSettled && cursorSettled) {
+      stepper.attempts = 0;
+      return root.waitForQuiescentBeforeEscape();
     }
 
-    if (conversationController.activeId !== "" || conversationController.pane !== "list")
-      return Check.fail("removing the account left the conversation open: activeId=" + conversationController.activeId);
-    if (listController.selectedId === removedId)
-      return Check.fail("the list cursor is still on a conversation from the removed account");
+    stepper.attempts++;
+    if (stepper.attempts >= 100) {
+      return Check.fail("removing the account never settled: list=" + listSettled +
+        " conversation=" + conversationSettled + " cursor=" + cursorSettled);
+    }
+    stepper.retry(() => root.waitForAccountRemoved(removedId));
+  }
 
-    root.checkEscapeChain();
+  // waitForQuiescentBeforeEscape holds until no error banner, toast or
+  // close question is showing. Navigation.escapeAction undoes whichever
+  // of those is innermost before it ever reaches the command palette
+  // (see Navigation.js's own precedence order), so starting the escape
+  // chain right after the account removal above, while one of them might
+  // still be settling, could make the first Escape dismiss that instead
+  // of closing the palette this chain is about to open.
+  function waitForQuiescentBeforeEscape(): void {
+    if (!windowController.errorBannerText && !windowController.toastText && !windowController.confirmingClose) {
+      stepper.attempts = 0;
+      return root.checkEscapeChain();
+    }
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100) {
+      return Check.fail("a banner, toast or close question was still showing before the escape chain: error=" +
+        JSON.stringify(windowController.errorBannerText) + " toast=" + JSON.stringify(windowController.toastText) +
+        " confirm=" + windowController.confirmingClose);
+    }
+    stepper.retry(root.waitForQuiescentBeforeEscape);
   }
 
   // checkEscapeChain walks every step Navigation.escapeAction defines,

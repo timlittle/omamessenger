@@ -123,6 +123,27 @@ pid_list() {
     printf '%s\n' "$out"
 }
 
+# wait_for_pids is pid_list for a process this script just launched
+# through a desktop launcher that detaches it (so there is no pid of its
+# own to wait on): it polls, the way wait_gone polls for a process to go
+# away, until pgrep finds one or ten seconds pass, instead of trusting
+# the single pgrep call pid_list makes to land after the launcher has
+# actually started it.
+wait_for_pids() {
+    desc="$1"
+    shift
+    for _ in $(seq 1 50); do
+        out=$(pgrep "$@" | tr '\n' ',' | sed 's/,$//') || true
+        if [ -n "$out" ]; then
+            printf '%s\n' "$out"
+            return 0
+        fi
+        sleep 0.2
+    done
+    printf 'run-benchmark: no running process found for %s\n' "$desc" >&2
+    exit 1
+}
+
 # process_tree prints pid $1 plus every descendant it can reach through
 # pgrep -P, comma separated, so a launched app's own helper processes are
 # counted alongside it.
@@ -243,7 +264,7 @@ sample_whatsapp() {
         log "Launching WhatsApp Web in your default Chromium profile"
         "${OMARCHY_LAUNCH_WEBAPP:-omarchy-launch-webapp}" https://web.whatsapp.com/ >/dev/null 2>&1 &
         sleep "$settle"
-        whatsapp_pids=$(pid_list "chromium" -x "$chromium_bin")
+        whatsapp_pids=$(wait_for_pids "chromium" -x "$chromium_bin")
         whatsapp_note="your logged-in default profile (BENCH_WHATSAPP_PROFILE=1)"
     else
         log "Launching a disposable Chromium instance for WhatsApp Web (signed out)"
