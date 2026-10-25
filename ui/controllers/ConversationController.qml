@@ -213,7 +213,8 @@ Item {
       "unread.prev": () => root._stepUnread(-1),
       "openConfirm.save": () => root.saveRiskyToDownloads(),
       "openConfirm.accept": () => root.confirmRiskyOpen(),
-      "openConfirm.cancel": () => root.cancelRiskyOpen()
+      "openConfirm.cancel": () => root.cancelRiskyOpen(),
+      "chat.playNotificationSound": () => root._previewNotificationSound()
     };
 
     const handler = handlers[action];
@@ -615,6 +616,13 @@ Item {
   // kind.
   function _openExternalHighlighted(): void {
     if (root._hasCopyableMedia()) root.openMediaExternal(highlight.highlightedId);
+  }
+
+  // _previewNotificationSound plays the open conversation's own
+  // notification sound on demand, through Service's exact precedence
+  // and do-not-disturb check; does nothing with no conversation open.
+  function _previewNotificationSound(): void {
+    if (root.service && root.conversation) root.service.playNotificationSoundForConversation(root.conversation);
   }
 
   // _hasCopyableMedia reports whether the highlighted message carries a

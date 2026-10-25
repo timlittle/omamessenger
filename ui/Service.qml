@@ -240,6 +240,21 @@ Item {
     root.applySettings(Object.assign({}, root._lastSettings, { readReceipts: !root.readReceipts }));
   }
 
+  // playNotificationSoundForConversation previews conversation's own
+  // notification sound, through the exact same precedence and
+  // do-not-disturb check _playNotificationSound runs for a real
+  // arrival: the command palette's "Play notification sound", so
+  // trying a sound choice never needs a real message to arrive first.
+  function playNotificationSoundForConversation(conversation: var): void {
+    if (!conversation || typeof conversation.id !== "string") return;
+
+    root._playNotificationSound({
+      conversationId: conversation.id,
+      service: conversation.service,
+      hasCustomSound: conversation.notificationSound === "custom"
+    });
+  }
+
   // openKeyConfigFile is the palette's "Open key bindings file" command:
   // it seeds keys.conf with a commented template the first time it is
   // asked for (never overwriting one that already exists), then opens

@@ -7,8 +7,12 @@
 // Tab unaccepted rather than swallow it), opening a conversation marks it
 // read and loads its messages newest first, sending a message reaches
 // the messages model through send()'s own RPC result, a second
-// loadOlder() while one page is already loading is ignored, removing an
-// account closes one of its conversations if it was
+// loadOlder() while one page is already loading is ignored, the command
+// palette's "Play notification sound" reaches the open conversation and
+// plays through Service's exact precedence and do-not-disturb check
+// (checked with a fake player, same as tests/qml/Service's own
+// notification.sound check, so nothing reaches the live desktop),
+// removing an account closes one of its conversations if it was
 // left open and moves the list cursor off it, the window Escape
 // chain dispatches to the right controller, and openLink hands its url
 // straight to openExternalLink. XDG_DATA_HOME is set by the test
@@ -24,6 +28,15 @@ ShellRoot {
 
   property int uiStateChanges: 0
   property bool hidden: false
+
+  // fakeSoundPlayer stands in for Service's real, QtMultimedia-backed
+  // player, the same fake tests/qml/Service uses: a plain object
+  // recording every URL it was asked to play, so checkPlayNotificationSound
+  // never touches a real audio device.
+  property var fakeSoundPlayer: ({
+    played: [],
+    play: function(url) { root.fakeSoundPlayer.played.push(url); }
+  })
 
   // findByTitle returns the row with title from a ListModel, or null.
   function findByTitle(model: var, title: string): var {
@@ -259,12 +272,45 @@ ShellRoot {
   // applied to the messages model.
   function waitForSendApplied(): void {
     for (let i = 0; i < conversationController.messages.count; i++) {
-      if (conversationController.messages.get(i).text === "integration test") return root.checkRemoveAccountClosesOpenConversation();
+      if (conversationController.messages.get(i).text === "integration test") return root.checkPlayNotificationSound();
     }
 
     stepper.attempts++;
     if (stepper.attempts >= 100) return Check.fail("send()'s RPC result never reached the messages model");
     stepper.retry(root.waitForSendApplied);
+  }
+
+  // checkPlayNotificationSound runs the command palette's "Play
+  // notification sound" with Mum (opened by checkSend above) still the
+  // open conversation, and starts waiting for it to reach the fake
+  // player: the command previews the open chat's own sound through
+  // Service's exact precedence and do-not-disturb check, the same path
+  // a real arrival takes (see Service.playNotificationSoundForConversation),
+  // so this is wiring plus one real round trip through the demo
+  // helper's sounds.fetch, not a re-check of the precedence decision
+  // itself, which tests/qml/Service already proves exhaustively.
+  function checkPlayNotificationSound(): void {
+    service.soundPlayer = root.fakeSoundPlayer;
+    service._defaultSound = String(Qt.resolvedUrl("ping.ogg")).replace("file://", "");
+
+    conversationController.run("chat.playNotificationSound");
+    stepper.attempts = 0;
+    root.waitForPlayedNotificationSound();
+  }
+
+  // waitForPlayedNotificationSound holds until sounds.fetch's reply has
+  // made its way to fakeSoundPlayer.play, or gives up.
+  function waitForPlayedNotificationSound(): void {
+    if (root.fakeSoundPlayer.played.length > 0) {
+      const url = root.fakeSoundPlayer.played[0];
+      if (!url.startsWith("file://"))
+        return Check.fail("chat.playNotificationSound gave soundPlayer.play " + url + ", want a file:// URL");
+      return root.checkRemoveAccountClosesOpenConversation();
+    }
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100) return Check.fail("chat.playNotificationSound never reached soundPlayer.play");
+    stepper.retry(root.waitForPlayedNotificationSound);
   }
 
   // checkRemoveAccountClosesOpenConversation opens a conversation that

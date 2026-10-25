@@ -123,6 +123,14 @@ var BINDINGS = [
   // chat.unblock only doing something on one already blocked.
   { action: 'chat.setNotificationSound', keys: [], contexts: ['list', 'conversation'], label: 'Set notification sound…', command: true },
   { action: 'chat.resetNotificationSound', keys: [], contexts: ['list', 'conversation'], label: 'Reset notification sound', command: true },
+  // Previews the open chat's own notification sound on demand, through
+  // the exact same precedence and do-not-disturb check a real arriving
+  // message takes (see Service.playNotificationSoundForConversation),
+  // so trying a sound choice never needs a real message to arrive
+  // first. Conversation-only, unlike chat.setNotificationSound above:
+  // there is no "selected" sound to preview from the list, only the
+  // one chat actually open.
+  { action: 'chat.playNotificationSound', keys: [], contexts: ['conversation'], label: 'Play notification sound', command: true },
   // "a" is free in the list context (the conversation context already
   // uses it for compose.focus), so the key works for the selected chat
   // and the command palette reaches the open one too, since a palette

@@ -44,6 +44,10 @@ var OWNERS = {
   'chat.reportSpam': 'list',
   'chat.setNotificationSound': 'list',
   'chat.resetNotificationSound': 'list',
+  // chat.playNotificationSound previews the sound the open chat itself
+  // would use, so ConversationController owns it: the one controller
+  // that already knows which conversation that is.
+  'chat.playNotificationSound': 'conversation',
   'blockConfirm.accept': 'list',
   'blockConfirm.cancel': 'list',
 
