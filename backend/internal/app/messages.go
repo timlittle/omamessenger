@@ -155,12 +155,17 @@ type SendOptions struct {
 // service. If the service refuses it, the message is returned as
 // failed, ready to retry; that is not an error.
 func (c *Commands) Send(ctx context.Context, conversationID, text string, opts SendOptions) (domain.Message, error) {
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return domain.Message{}, err
+	}
+
 	id := ""
 	if opts.AttachmentPath != "" {
 		id = newAttachmentID()
 	}
 
-	media, err := c.prepareAttachment(ctx, id, opts.AttachmentPath, opts.AttachmentName)
+	media, err := c.prepareAttachment(ctx, id, conv.AccountID, opts.AttachmentPath, opts.AttachmentName)
 	if err != nil {
 		return domain.Message{}, err
 	}
@@ -168,11 +173,6 @@ func (c *Commands) Send(ctx context.Context, conversationID, text string, opts S
 	text, err = captionText(text, media)
 	if err != nil {
 		return domain.Message{}, fmt.Errorf("%w: %w", ErrInvalidInput, err)
-	}
-
-	conv, err := c.store.Conversation(ctx, conversationID)
-	if err != nil {
-		return domain.Message{}, err
 	}
 
 	replyTo, err := c.resolveReplyTo(ctx, conv.ID, opts.ReplyToID)

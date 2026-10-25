@@ -3,8 +3,10 @@ package server_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -16,6 +18,8 @@ type attachResult struct {
 	Kind   string `json:"kind"`
 	Width  int    `json:"width"`
 	Height int    `json:"height"`
+	Size   int64  `json:"size"`
+	Limit  int64  `json:"limit"`
 }
 
 // TestMediaAttach_CopiesAndSanitizesAPickedPhoto confirms a photo
@@ -85,6 +89,85 @@ func TestMediaAttach_RejectsAMissingFile(t *testing.T) {
 
 	if _, err := call[attachResult](t, s, "media.attach", map[string]string{"path": path}); code(err) != -32602 {
 		t.Errorf("media.attach(missing file) code = %d, want invalid params", code(err))
+	}
+}
+
+// TestMediaAttach_ReportsSizeAndTheDefaultLimit confirms a plain file
+// comes back with its own byte count and the 2 GB default limit that
+// applies when no connector reports one of its own, for the composer's
+// chip to compare against.
+func TestMediaAttach_ReportsSizeAndTheDefaultLimit(t *testing.T) {
+	t.Parallel()
+
+	s := connect(t, false)
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	attached, err := call[attachResult](t, s, "media.attach", map[string]string{"path": path})
+	if err != nil || attached.Size != 5 || attached.Limit != app.MaxAttachmentSize {
+		t.Errorf("media.attach(file) size/limit = %d/%d, %v, want 5/%d", attached.Size, attached.Limit, err, app.MaxAttachmentSize)
+	}
+}
+
+// TestMediaAttach_RejectsOverTheAccountsLimit confirms a file larger
+// than the open conversation's own account reports through its
+// connector is refused at media.attach time, naming the limit, rather
+// than only being caught later at messages.send.
+func TestMediaAttach_RejectsOverTheAccountsLimit(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithLimiter(t, fakeLimiter{limits: map[string]int64{"wa file": 10}})
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(path, []byte("more than ten bytes of text"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := call[attachResult](t, s, "media.attach", map[string]string{"path": path, "accountId": "wa"})
+	if code(err) != -32602 {
+		t.Errorf("media.attach(over account limit) code = %d, want invalid params", code(err))
+	}
+	if err == nil || !strings.Contains(err.Error(), "10 B") {
+		t.Errorf("media.attach(over account limit) err = %v, want it to mention the 10 B limit", err)
+	}
+}
+
+// TestMediaAttach_AllowsUnderTheAccountsLimit confirms a file within
+// the open conversation's own account limit is still accepted, so the
+// per-account check only ever narrows what the default allows, never
+// widens it.
+func TestMediaAttach_AllowsUnderTheAccountsLimit(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithLimiter(t, fakeLimiter{limits: map[string]int64{"wa file": 1024}})
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	attached, err := call[attachResult](t, s, "media.attach", map[string]string{"path": path, "accountId": "wa"})
+	if err != nil || attached.Limit != 1024 {
+		t.Errorf("media.attach(under account limit) = %+v, %v, want limit 1024", attached, err)
+	}
+}
+
+// TestAccountsList_ReportsAttachmentLimit confirms accounts.list
+// carries each account's own attachment limit, for the composer's hint
+// before the user has picked a file at all.
+func TestAccountsList_ReportsAttachmentLimit(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithLimiter(t, fakeLimiter{limits: map[string]int64{"wa file": 1024}})
+
+	type accountResult struct {
+		ID              string `json:"id"`
+		AttachmentLimit int64  `json:"attachmentLimit"`
+	}
+
+	accounts, err := call[[]accountResult](t, s, "accounts.list", nil)
+	if err != nil || len(accounts) != 1 || accounts[0].AttachmentLimit != 1024 {
+		t.Errorf("accounts.list = %+v, %v, want one account with attachmentLimit 1024", accounts, err)
 	}
 }
 

@@ -98,12 +98,13 @@ type namedEntry struct {
 }
 
 var (
-	_ connector.Connector      = (*Connector)(nil)
-	_ connector.Authenticator  = (*Connector)(nil)
-	_ connector.LogoutOnRemove = (*Connector)(nil)
-	_ connector.MediaFetcher   = (*Connector)(nil)
-	_ connector.Organizer      = (*Connector)(nil)
-	_ connector.HistoryLoader  = (*Connector)(nil)
+	_ connector.Connector         = (*Connector)(nil)
+	_ connector.Authenticator     = (*Connector)(nil)
+	_ connector.LogoutOnRemove    = (*Connector)(nil)
+	_ connector.MediaFetcher      = (*Connector)(nil)
+	_ connector.Organizer         = (*Connector)(nil)
+	_ connector.HistoryLoader     = (*Connector)(nil)
+	_ connector.AttachmentLimiter = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose session is kept in

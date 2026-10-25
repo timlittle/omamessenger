@@ -257,6 +257,9 @@ Item {
       attachmentPath: root.composerController.attachmentPath
       attachmentName: root.composerController.attachmentName
       attachmentKind: root.composerController.attachmentKind
+      attachmentSize: root.composerController.attachmentSize
+      attachmentLimit: root.composerController.attachmentLimit
+      attachmentLimitHint: root.composerController.attachmentLimitHint
       composeEnabled: root.conversationController.activeId !== ""
       historyUnavailable: root.conversationController.historyUnavailable
       voiceNotes: root.conversationController.voiceNotes

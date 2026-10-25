@@ -6,6 +6,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
+import "../lib/Attachments.js" as Attachments
 import "../lib/Format.js" as Format
 import "../lib/Keymap.js" as Keymap
 import "../lib/Links.js" as Links
@@ -98,6 +99,27 @@ Item {
   // guessed from its name. The chip shows a decoded preview only when
   // this is "photo": the one kind the helper has already sanitized.
   property string attachmentKind: ""
+  // attachmentSize is attachmentPath's own byte count, from the same
+  // helper round trip: 0 while no attachment is set. The chip shows it
+  // alongside attachmentLimit once it sits close to or over that limit.
+  property real attachmentSize: 0
+  // attachmentLimit is the cap attachmentPath was checked against, in
+  // bytes: the account's own connector limit for attachmentKind, or
+  // the helper's default when none is known. 0 while no attachment is
+  // set.
+  property real attachmentLimit: 0
+  // attachmentLimitHint is the open conversation's own account limit,
+  // shown as "Up to 2 GB" near the attach button before any file is
+  // picked; "" while it is not known yet.
+  property string attachmentLimitHint: ""
+  // _attachmentSizeLabel is the chip's size-and-limit text, computed
+  // once attachmentSize sits close to or over attachmentLimit; "" for
+  // an ordinary small attachment, which shows nothing extra.
+  readonly property string _attachmentSizeLabel: Attachments.attachmentSizeLabel(root.attachmentSize, root.attachmentLimit)
+  // _attachmentOverLimit is true once attachmentSize is actually over
+  // attachmentLimit, for the chip's size label to show in the same
+  // urgent colour the error banner uses, rather than merely muted.
+  readonly property bool _attachmentOverLimit: root.attachmentLimit > 0 && root.attachmentSize > root.attachmentLimit
   // routeKey intercepts a key press before the input handles it; see the
   // file comment above for why this is a function property, not a signal.
   property var routeKey: null
@@ -579,15 +601,36 @@ Item {
         }
       }
 
-      Text {
-        objectName: "attachmentName"
+      ColumnLayout {
         Layout.fillWidth: true
-        text: root.attachmentName !== "" ? root.attachmentName : (root.attachmentPath !== "" ? Format.baseName(root.attachmentPath) : "")
-        textFormat: Text.PlainText
-        elide: Text.ElideMiddle
-        color: Theme.foreground
-        font.family: Theme.font.family
-        font.pixelSize: Theme.font.bodySmall
+        spacing: 0
+
+        Text {
+          objectName: "attachmentName"
+          Layout.fillWidth: true
+          text: root.attachmentName !== "" ? root.attachmentName : (root.attachmentPath !== "" ? Format.baseName(root.attachmentPath) : "")
+          textFormat: Text.PlainText
+          elide: Text.ElideMiddle
+          color: Theme.foreground
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.bodySmall
+        }
+
+        // attachmentSizeLabel names the file's size against its own
+        // limit, but only once Attachments.attachmentSizeLabel decides
+        // it is worth a heads-up (near or over it); an ordinary small
+        // attachment shows nothing here at all.
+        Text {
+          objectName: "attachmentSizeLabel"
+          Layout.fillWidth: true
+          visible: root._attachmentSizeLabel !== ""
+          text: root._attachmentSizeLabel
+          textFormat: Text.PlainText
+          elide: Text.ElideRight
+          color: root._attachmentOverLimit ? Theme.urgent : Util.alpha(Theme.foreground, 0.6)
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.caption
+        }
       }
 
       Ui.Button {
@@ -631,7 +674,7 @@ Item {
         objectName: "attachButton"
         Layout.alignment: Qt.AlignBottom
         text: "📎"
-        tooltipText: "Attach a file"
+        tooltipText: root.attachmentLimitHint !== "" ? "Attach a file · " + root.attachmentLimitHint : "Attach a file"
         focusable: true
         enabled: root.enabled
         onClicked: root.openFilePicker()

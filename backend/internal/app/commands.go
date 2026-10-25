@@ -28,6 +28,7 @@ type Commands struct {
 	blocker      Blocker
 	spamReporter SpamReporter
 	members      MemberLister
+	limiter      AttachmentLimiter
 	outgoing     OutgoingMedia
 	clipboard    ClipboardRunner
 	fake         Injector

@@ -87,6 +87,7 @@ ShellRoot {
     if (!root.checkEditBanner()) return;
     if (!root.checkAttachment()) return;
     if (!root.checkAttachmentPreview()) return;
+    if (!root.checkAttachmentSizeAndHint()) return;
     if (!root.checkBannerAndChipTogether()) return;
 
     composer.attachmentPath = "";
@@ -260,6 +261,44 @@ ShellRoot {
     composer.attachmentPath = "";
     composer.attachmentName = "";
     composer.attachmentKind = "";
+    return true;
+  }
+
+  // checkAttachmentSizeAndHint verifies the chip's size label: hidden
+  // for an attachment well under its limit, shown naming the limit
+  // once it is over it, and the attach button's tooltip carrying
+  // attachmentLimitHint when the open conversation's account has one,
+  // falling back to the plain tooltip when it does not.
+  function checkAttachmentSizeAndHint(): bool {
+    const sizeLabel = Check.find(composer, "attachmentSizeLabel");
+    if (!sizeLabel) return Check.fail("no attachmentSizeLabel found");
+
+    composer.attachmentPath = "/tmp/notes.txt";
+    composer.attachmentKind = "file";
+    composer.attachmentSize = 1024;
+    composer.attachmentLimit = 2 * 1024 * 1024 * 1024;
+    if (sizeLabel.visible) return Check.fail("size label shown for an attachment well under its limit: " + sizeLabel.text);
+
+    composer.attachmentSize = 3 * 1024 * 1024 * 1024;
+    if (!sizeLabel.visible) return Check.fail("size label hidden for an attachment over its limit");
+    if (sizeLabel.text.indexOf("over") < 0 || sizeLabel.text.indexOf("2.0 GB") < 0)
+      return Check.fail("size label = \"" + sizeLabel.text + "\", want it to name the 2.0 GB limit as exceeded");
+
+    composer.attachmentPath = "";
+    composer.attachmentKind = "";
+    composer.attachmentSize = 0;
+    composer.attachmentLimit = 0;
+
+    const attachButton = Check.find(composer, "attachButton");
+    if (!attachButton) return Check.fail("no attachButton found");
+    if (attachButton.tooltipText !== "Attach a file")
+      return Check.fail("attachButton tooltip = \"" + attachButton.tooltipText + "\" with no hint, want the plain \"Attach a file\"");
+
+    composer.attachmentLimitHint = "Up to 2.0 GB";
+    if (attachButton.tooltipText.indexOf("Up to 2.0 GB") < 0)
+      return Check.fail("attachButton tooltip = \"" + attachButton.tooltipText + "\", want it to carry the hint");
+
+    composer.attachmentLimitHint = "";
     return true;
   }
 

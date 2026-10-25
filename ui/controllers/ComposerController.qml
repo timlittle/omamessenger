@@ -1,5 +1,6 @@
 import QtQuick
 import "../lib/Actions.js" as Actions
+import "../lib/Attachments.js" as Attachments
 import "../lib/Edit.js" as Edit
 import "../lib/Format.js" as Format
 import "../lib/Rpc.js" as Rpc
@@ -67,6 +68,20 @@ Item {
   // file's own bytes, never guessed from its name. Composer.qml shows
   // a decoded preview only when this is "photo".
   property string attachmentKind: ""
+
+  // attachmentSize is attachmentPath's own byte count, from the same
+  // media.attach round trip; 0 for a pasted image, which the helper's
+  // reply names no size for, or while no attachment is set.
+  property real attachmentSize: 0
+  // attachmentLimit is the cap attachmentPath was checked against, in
+  // bytes; 0 for a pasted image, or while no attachment is set.
+  property real attachmentLimit: 0
+
+  // attachmentLimitHint is the open conversation's own account limit,
+  // shown as "Up to 2 GB" near the attach button before any file is
+  // picked; "" while no conversation is open or its account's limit
+  // is not known yet.
+  readonly property string attachmentLimitHint: Attachments.attachmentLimitHint(root._openConversationAttachmentLimit())
 
   // composeFocused mirrors whether the composer holds keyboard focus; the
   // caller sets it from the real text field so the Escape chain can read it.
@@ -230,15 +245,39 @@ Item {
     if (!root.service) return;
 
     const conversationId = root.conversation ? root.conversation.activeId : "";
+    const accountId = root._openConversationAccountId();
     const isCurrent = Rpc.guard(() => root.conversation ? root.conversation.activeId : null, conversationId);
-    root.service.request("media.attach", { path: path }, function(error, result) {
+    root.service.request("media.attach", { path: path, accountId: accountId }, function(error, result) {
       if (!isCurrent()) return;
       if (error) { root.conversation.timeline.lastError = Rpc.errorText(error); return; }
 
       root.attachmentPath = result.path;
       root.attachmentName = result.name;
       root.attachmentKind = result.kind;
+      root.attachmentSize = result.size || 0;
+      root.attachmentLimit = result.limit || 0;
     });
+  }
+
+  // _openConversationAccountId is the open conversation's own account
+  // id, read for media.attach's accountId param, or "" while no
+  // conversation is open.
+  function _openConversationAccountId(): string {
+    if (!root.conversation || !root.conversation.conversation) return "";
+
+    return root.conversation.conversation.accountId;
+  }
+
+  // _openConversationAttachmentLimit reads the open conversation's own
+  // account's attachmentLimit out of service.accounts, for
+  // attachmentLimitHint, or 0 while there is no conversation open or
+  // its account is not known yet.
+  function _openConversationAttachmentLimit(): real {
+    const accountId = root._openConversationAccountId();
+    if (!accountId || !root.service) return 0;
+
+    const account = (root.service.accounts || []).find((a) => a.id === accountId);
+    return account ? (account.attachmentLimit || 0) : 0;
   }
 
   // removeAttachment clears whatever attachFile or pasteImage set, from
@@ -252,6 +291,8 @@ Item {
     root.attachmentPath = "";
     root.attachmentName = "";
     root.attachmentKind = "";
+    root.attachmentSize = 0;
+    root.attachmentLimit = 0;
   }
 
   // pasteImage asks the helper whether the clipboard holds an image; if
@@ -273,6 +314,8 @@ Item {
       root.attachmentPath = result.path;
       root.attachmentName = "";
       root.attachmentKind = result.kind || "";
+      root.attachmentSize = 0;
+      root.attachmentLimit = 0;
     });
   }
 
@@ -286,6 +329,8 @@ Item {
     root.attachmentPath = "";
     root.attachmentName = "";
     root.attachmentKind = "";
+    root.attachmentSize = 0;
+    root.attachmentLimit = 0;
     root.spellMisspellings = [];
     root.spellSuggestions = [];
   }

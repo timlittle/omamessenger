@@ -244,6 +244,25 @@ func (m *Manager) Members(ctx context.Context, conv domain.Conversation) ([]doma
 	return lister.Members(ctx, conv)
 }
 
+// AttachmentLimit reports the largest attachment of kind accountID's
+// connector currently accepts, and whether it reported one at all.
+// False means the caller's own default applies: there is no running
+// connector for the account right now, or its connector has no limit
+// narrower than the backstop that already applies regardless.
+func (m *Manager) AttachmentLimit(accountID, kind string) (int64, bool) {
+	c, err := m.connectorFor(accountID)
+	if err != nil {
+		return 0, false
+	}
+
+	limiter, ok := c.(AttachmentLimiter)
+	if !ok {
+		return 0, false
+	}
+
+	return limiter.AttachmentLimit(kind), true
+}
+
 // LoadOlder asks the conversation's connector for older history, if it
 // keeps any; one that does not finds nothing.
 func (m *Manager) LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error) {

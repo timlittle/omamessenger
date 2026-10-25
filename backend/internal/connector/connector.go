@@ -199,6 +199,20 @@ type MemberLister interface {
 	Members(ctx context.Context, conv domain.Conversation) ([]domain.Member, error)
 }
 
+// AttachmentLimiter is a Connector that knows the largest attachment of
+// a given kind ("photo", "video" or "file") its service currently
+// accepts from this account, when that is narrower than the 2 GiB
+// backstop every Send already enforces regardless (see
+// app.MaxAttachmentSize). Telegram's own limit depends on whether the
+// signed-in account has Premium; WhatsApp's depends on the
+// attachment's kind. A connector without this interface is assumed to
+// accept up to that backstop and nothing narrower.
+type AttachmentLimiter interface {
+	// AttachmentLimit is the largest attachment of kind this account's
+	// service accepts to send, in bytes.
+	AttachmentLimit(kind string) int64
+}
+
 // LogoutOnRemove is a Connector that can tell its service to unlink this
 // device before Remove deletes its local session, so removing the
 // account here also removes it from the list of devices linked on the

@@ -11,6 +11,7 @@ import (
 	_ "image/gif" // registers GIF decoding for image.DecodeConfig
 	"image/jpeg"
 	_ "image/png" // registers PNG decoding for image.DecodeConfig
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,9 +21,12 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// MaxAttachmentSize is the largest file Send accepts as an attachment.
-// Telegram, the only service this helper sends media through today,
-// refuses more than this for a non-Premium account.
+// MaxAttachmentSize is the largest attachment Send accepts for an
+// account whose connector reports no limit of its own (see
+// AttachmentLimit): Telegram's own free-account cap, the lower of the
+// two services' document limits (see connector/telegram/limits.go and
+// connector/whatsapp/limits.go), so a connector that reports nothing
+// still gets a real-world figure rather than an unbounded one.
 const MaxAttachmentSize = 2 << 30
 
 // thumbMaxSize bounds an outgoing photo's inline preview, in pixels on
@@ -30,13 +34,76 @@ const MaxAttachmentSize = 2 << 30
 // it with every message costs nothing worth noticing.
 const thumbMaxSize = 48
 
-// prepareAttachment turns path into the domain.Media for id's message.
-// name overrides the attachment's display name when set; "" falls back
-// to path's own base name, right for a genuine disk path but wrong for
-// one already inside the outgoing area, whose base name carries an
-// internal id (see reuseAttachment, which the caller supplies the real
-// name to instead). An empty path means the message has no attachment,
-// so it returns nil media and no error.
+// AttachmentLimit is the largest attachment of kind ("photo", "video"
+// or "file") accountID's connector accepts, in bytes: whatever its own
+// connector reports through the AttachmentLimiter Deps.Limiter wraps,
+// or MaxAttachmentSize when there is none running for the account, or
+// its connector reports no limit of its own.
+func (c *Commands) AttachmentLimit(accountID, kind string) int64 {
+	if c.limiter == nil {
+		return MaxAttachmentSize
+	}
+
+	if limit, ok := c.limiter.AttachmentLimit(accountID, kind); ok && limit > 0 {
+		return limit
+	}
+
+	return MaxAttachmentSize
+}
+
+// attachmentTooLarge reports an attachment refused for being larger
+// than limit, the cap that applies to its kind, naming both the kind
+// and the limit so the user knows what would fit.
+func attachmentTooLarge(kind string, limit int64) error {
+	return fmt.Errorf("%w: %s over %s cannot be sent", ErrInvalidInput, kindLabel(kind), humanSize(limit))
+}
+
+// kindLabel is how an attachment's kind reads in a sentence about
+// every file of that kind.
+func kindLabel(kind string) string {
+	switch kind {
+	case domain.MediaPhoto:
+		return "photos"
+	case domain.MediaVideo:
+		return "videos"
+	default:
+		return "files"
+	}
+}
+
+// humanSize renders a byte count the way a file manager would:
+// whole-number units where the value lands exactly on one ("2 GB"),
+// one decimal place otherwise ("1.9 GB"), so an exact limit such as
+// Telegram's 2 GiB cap reads as a round number rather than "2.0 GB".
+func humanSize(bytes int64) string {
+	units := []string{"B", "KB", "MB", "GB"}
+	size := float64(bytes)
+	unit := 0
+	for size >= 1024 && unit < len(units)-1 {
+		size /= 1024
+		unit++
+	}
+
+	if unit == 0 {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	if size == math.Trunc(size) {
+		return fmt.Sprintf("%d %s", int64(size), units[unit])
+	}
+
+	return fmt.Sprintf("%.1f %s", size, units[unit])
+}
+
+// prepareAttachment turns path into the domain.Media for id's message,
+// sent from accountID: refused with an invalid-input error naming the
+// limit when path is larger than AttachmentLimit allows for its own
+// kind and accountID's connector. name overrides the attachment's
+// display name when set; "" falls back to path's own base name, right
+// for a genuine disk path but wrong for one already inside the
+// outgoing area, whose base name carries an internal id (see
+// reuseAttachment, which the caller supplies the real name to
+// instead). An empty path means the message has no attachment, so it
+// returns nil media and no error.
 //
 // A path already inside the outgoing media area - one media.attach or
 // media.paste already copied in, sanitizing it with imagesafe there if
@@ -46,7 +113,7 @@ const thumbMaxSize = 48
 // sanitized here, and remembers OriginalPath and OriginalModTime too,
 // so a later retry can re-copy it if the outgoing copy ever goes
 // missing.
-func (c *Commands) prepareAttachment(ctx context.Context, id, path, name string) (*domain.Media, error) {
+func (c *Commands) prepareAttachment(ctx context.Context, id, accountID, path, name string) (*domain.Media, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -60,8 +127,9 @@ func (c *Commands) prepareAttachment(ctx context.Context, id, path, name string)
 		return nil, fmt.Errorf("%w: the attached file could not be read", ErrInvalidInput)
 	}
 
-	if info.Size() > MaxAttachmentSize {
-		return nil, fmt.Errorf("%w: files over 2 GB cannot be sent", ErrInvalidInput)
+	kind := sniffKind(path)
+	if limit := c.AttachmentLimit(accountID, kind); info.Size() > limit {
+		return nil, attachmentTooLarge(kind, limit)
 	}
 
 	if name == "" {

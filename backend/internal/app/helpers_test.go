@@ -104,6 +104,7 @@ type fixture struct {
 	blocker    *fakeBlocker
 	spamReport *fakeSpamReporter
 	members    *fakeMemberLister
+	limiter    *fakeLimiter
 	outgoing   *cache.Outgoing
 	clipboard  *fakeClipboard
 	logger     *fakeLogger
@@ -136,7 +137,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		published: &fakePublisher{}, injector: &fakeInjector{}, members: &fakeMemberLister{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
-		blocker: &fakeBlocker{}, spamReport: &fakeSpamReporter{},
+		blocker: &fakeBlocker{}, spamReport: &fakeSpamReporter{}, limiter: &fakeLimiter{limits: map[string]int64{}},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		logger: &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
 	}
@@ -146,7 +147,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
-		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members,
+		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members, Limiter: f.limiter,
 		Outgoing: f.outgoing, Clipboard: f.clipboard, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
 		DownloadsDir: f.downloads,

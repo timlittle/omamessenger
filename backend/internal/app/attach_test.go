@@ -20,7 +20,7 @@ func TestAttachFile_CopiesAndSanitizesAValidImage(t *testing.T) {
 	f := newFixture(t, false)
 	path := writeTestPNG(t, "vacation.png", 5, 4)
 
-	got, err := f.commands.AttachFile(t.Context(), path)
+	got, err := f.commands.AttachFile(t.Context(), path, "")
 	if err != nil {
 		t.Fatalf("AttachFile() error = %v", err)
 	}
@@ -47,7 +47,7 @@ func TestAttachFile_RejectsAnOversizedImage(t *testing.T) {
 	oversized := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 33*1024*1024)...)
 	path := writeTestFile(t, "huge.png", oversized)
 
-	if _, err := f.commands.AttachFile(t.Context(), path); !errors.Is(err, app.ErrInvalidInput) {
+	if _, err := f.commands.AttachFile(t.Context(), path, ""); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("AttachFile(oversized image) = %v, want ErrInvalidInput", err)
 	}
 }
@@ -61,7 +61,7 @@ func TestAttachFile_AcceptsANonImageFileAsAPlainFile(t *testing.T) {
 	f := newFixture(t, false)
 	path := writeTestFile(t, "notes.txt", []byte("plain text file"))
 
-	got, err := f.commands.AttachFile(t.Context(), path)
+	got, err := f.commands.AttachFile(t.Context(), path, "")
 	if err != nil {
 		t.Fatalf("AttachFile() error = %v", err)
 	}
@@ -80,7 +80,7 @@ func TestAttachFile_RejectsAMissingFile(t *testing.T) {
 	f := newFixture(t, false)
 	path := filepath.Join(t.TempDir(), "missing")
 
-	if _, err := f.commands.AttachFile(t.Context(), path); !errors.Is(err, app.ErrInvalidInput) {
+	if _, err := f.commands.AttachFile(t.Context(), path, ""); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("AttachFile(missing file) = %v, want ErrInvalidInput", err)
 	}
 }
@@ -92,8 +92,45 @@ func TestAttachFile_RejectsAnEmptyPath(t *testing.T) {
 
 	f := newFixture(t, false)
 
-	if _, err := f.commands.AttachFile(t.Context(), ""); !errors.Is(err, app.ErrInvalidInput) {
+	if _, err := f.commands.AttachFile(t.Context(), "", ""); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("AttachFile(\"\") = %v, want ErrInvalidInput", err)
+	}
+}
+
+// TestAttachFile_ReportsSizeAndTheAccountsLimit confirms AttachFile's
+// result carries the file's own byte count and the limit it was
+// checked against, reading a kind-specific limit from accountID's
+// connector when one is reported, so the chip can show both without a
+// second round trip.
+func TestAttachFile_ReportsSizeAndTheAccountsLimit(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.limiter.limits["wa file"] = 1024
+	path := writeTestFile(t, "notes.txt", []byte("hello"))
+
+	got, err := f.commands.AttachFile(t.Context(), path, "wa")
+	if err != nil {
+		t.Fatalf("AttachFile() error = %v", err)
+	}
+
+	if got.Size != 5 || got.Limit != 1024 {
+		t.Errorf("AttachFile() size/limit = %d/%d, want 5/1024", got.Size, got.Limit)
+	}
+}
+
+// TestAttachFile_RejectsOverTheAccountsLimit confirms AttachFile
+// refuses a file over the open conversation's own account limit at
+// attach time, before the composer ever shows a chip for it.
+func TestAttachFile_RejectsOverTheAccountsLimit(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.limiter.limits["wa file"] = 4
+	path := writeTestFile(t, "notes.txt", []byte("hello"))
+
+	if _, err := f.commands.AttachFile(t.Context(), path, "wa"); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("AttachFile(over account limit) = %v, want ErrInvalidInput", err)
 	}
 }
 
@@ -111,7 +148,7 @@ func TestSend_ReusesAnAttachedFileWithoutCopyingOrSanitizingItAgain(t *testing.T
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	disk := writeTestPNG(t, "vacation.png", 5, 4)
 
-	attached, err := f.commands.AttachFile(ctx, disk)
+	attached, err := f.commands.AttachFile(ctx, disk, "")
 	if err != nil {
 		t.Fatalf("AttachFile() error = %v", err)
 	}

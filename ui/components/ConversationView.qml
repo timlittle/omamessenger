@@ -56,6 +56,16 @@ Item {
   // attachmentKind is what the helper found attachmentPath really is;
   // see Composer.qml's own property of the same name.
   property string attachmentKind: ""
+  // attachmentSize is attachmentPath's own byte count; see Composer.qml's
+  // own property of the same name.
+  property real attachmentSize: 0
+  // attachmentLimit is the cap attachmentPath was checked against; see
+  // Composer.qml's own property of the same name.
+  property real attachmentLimit: 0
+  // attachmentLimitHint is the open conversation's own account limit,
+  // shown before any file is picked; see Composer.qml's own property
+  // of the same name.
+  property string attachmentLimitHint: ""
   // composeEnabled is false while the conversation can't accept input.
   property bool composeEnabled: true
   // historyUnavailable is true once scrolling back asked the service for
@@ -368,6 +378,9 @@ Item {
       attachmentPath: root.attachmentPath
       attachmentName: root.attachmentName
       attachmentKind: root.attachmentKind
+      attachmentSize: root.attachmentSize
+      attachmentLimit: root.attachmentLimit
+      attachmentLimitHint: root.attachmentLimitHint
       bindings: root.bindings
       routeKey: root.routeKey
       members: root.members

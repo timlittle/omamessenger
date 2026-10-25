@@ -91,6 +91,38 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 	return s
 }
 
+// fakeLimiter reports a scripted attachment limit for an account and
+// kind, for a test that needs a connector-reported limit narrower than
+// app.MaxAttachmentSize. limits maps "<accountId> <kind>" to the limit
+// to report; a lookup that misses answers (0, false), the same as a
+// connector with no limit of its own.
+type fakeLimiter struct {
+	limits map[string]int64
+}
+
+func (l fakeLimiter) AttachmentLimit(accountID, kind string) (int64, bool) {
+	limit, ok := l.limits[accountID+" "+kind]
+	return limit, ok
+}
+
+// connectWithLimiter serves an application like connect, but wired
+// with limiter as its AttachmentLimiter, for the tests that confirm
+// media.attach and accounts.list both reflect a connector-reported
+// attachment limit narrower than app.MaxAttachmentSize.
+func connectWithLimiter(t *testing.T, limiter app.AttachmentLimiter) *session {
+	t.Helper()
+
+	db := openSeeded(t)
+	deps := app.Deps{
+		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
+		Blocker: acceptAll{}, SpamReporter: acceptAll{}, Limiter: limiter,
+		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
+	}
+
+	return newSession(t, db, deps)
+}
+
 // connectWithMediaSave serves an application like connect, but wired
 // with a MediaFetcher, MediaCache and a downloads directory, for the
 // tests that drive media.save all the way through the server. It

@@ -45,20 +45,22 @@ type Connector struct {
 	sink    connector.Sink
 	waiting bool
 	self    int64             // this account's own user id, set once Run signs in
+	premium bool              // whether the signed-in account has Telegram Premium, set alongside self
 	remotes map[string]string // "user:42" to the full remote id with its access hash
 	sent    map[string]string // "<remote id>/<message id>" to our message id
 	names   map[string]string // a user's remote id to the best real name learned for them
 }
 
 var (
-	_ connector.Connector        = (*Connector)(nil)
-	_ connector.Authenticator    = (*Connector)(nil)
-	_ connector.HistoryLoader    = (*Connector)(nil)
-	_ connector.MediaFetcher     = (*Connector)(nil)
-	_ connector.MessageRefresher = (*Connector)(nil)
-	_ connector.Organizer        = (*Connector)(nil)
-	_ connector.Reactor          = (*Connector)(nil)
-	_ connector.MemberLister     = (*Connector)(nil)
+	_ connector.Connector         = (*Connector)(nil)
+	_ connector.Authenticator     = (*Connector)(nil)
+	_ connector.HistoryLoader     = (*Connector)(nil)
+	_ connector.MediaFetcher      = (*Connector)(nil)
+	_ connector.MessageRefresher  = (*Connector)(nil)
+	_ connector.Organizer         = (*Connector)(nil)
+	_ connector.Reactor           = (*Connector)(nil)
+	_ connector.MemberLister      = (*Connector)(nil)
+	_ connector.AttachmentLimiter = (*Connector)(nil)
 )
 
 // New returns the connector for an account whose credentials and session
@@ -111,7 +113,7 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 		}
 
 		c.connected(client.API(), sink)
-		c.setSelf(self.ID)
+		c.setSelf(self.ID, self.Premium)
 		sink.AccountStatus(ctx, c.account.ID, domain.AccountConnected, "Signed in as "+ownName(self))
 		defer c.disconnected()
 
@@ -420,12 +422,14 @@ func (c *Connector) session() (*tg.Client, connector.Sink, error) {
 }
 
 // setSelf records this account's own Telegram user id, read by message()
-// to flag a message that mentions it.
-func (c *Connector) setSelf(id int64) {
+// to flag a message that mentions it, and whether it has Telegram
+// Premium, read by AttachmentLimit.
+func (c *Connector) setSelf(id int64, premium bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.self = id
+	c.premium = premium
 }
 
 // selfUserID is this account's own Telegram user id, or 0 before Run
@@ -435,6 +439,15 @@ func (c *Connector) selfUserID() int64 {
 	defer c.mu.Unlock()
 
 	return c.self
+}
+
+// isPremium reports whether the signed-in account has Telegram
+// Premium, or false before Run has signed in.
+func (c *Connector) isPremium() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.premium
 }
 
 // setWaiting records whether sign-in is waiting for the user.

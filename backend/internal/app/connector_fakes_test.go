@@ -217,3 +217,25 @@ func (r *fakeSpamReporter) ReportSpam(_ context.Context, _ domain.Conversation) 
 
 	return err
 }
+
+// fakeLimiter reports a scripted attachment limit for an account and
+// kind, recording each one it is asked about. limits maps
+// "<accountId> <kind>" to the limit to report; a lookup that misses
+// answers (0, false), the same as a connector with no limit of its
+// own, so a test only ever has to set the kinds it cares about.
+type fakeLimiter struct {
+	mu     sync.Mutex
+	limits map[string]int64
+	asked  []string
+}
+
+func (l *fakeLimiter) AttachmentLimit(accountID, kind string) (int64, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	key := accountID + " " + kind
+	l.asked = append(l.asked, key)
+	limit, ok := l.limits[key]
+
+	return limit, ok
+}

@@ -104,6 +104,19 @@ type MemberLister interface {
 	Members(ctx context.Context, conv domain.Conversation) ([]domain.Member, error)
 }
 
+// AttachmentLimiter reports the largest attachment an account's
+// connector currently accepts, through its service, when it knows one
+// narrower than MaxAttachmentSize, the backstop that applies
+// regardless.
+type AttachmentLimiter interface {
+	// AttachmentLimit is the limit accountID's connector reports for
+	// kind ("photo", "video" or "file"), and whether it reported one
+	// at all; false means there is no connector running for the
+	// account right now, or its connector has none narrower than
+	// MaxAttachmentSize.
+	AttachmentLimit(accountID, kind string) (int64, bool)
+}
+
 // MediaCache keeps downloaded media, filling a file the first time it is
 // asked for, or taking in one already on disk - a sent attachment, say -
 // so it needs no download at all. Three methods, not the usual one or
@@ -226,6 +239,7 @@ type Deps struct {
 	Blocker      Blocker
 	SpamReporter SpamReporter
 	Members      MemberLister
+	Limiter      AttachmentLimiter
 	Outgoing     OutgoingMedia
 	Clipboard    ClipboardRunner
 	Fake         Injector
@@ -255,7 +269,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	retries := newRetrier(d.Store)
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
 		outgoing: d.Outgoing, clipboard: d.Clipboard, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},
