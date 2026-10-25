@@ -60,6 +60,49 @@ func TestSync_ListsEveryChatBeforeLoadingHistory(t *testing.T) {
 	}
 }
 
+// TestSync_RecoversAChatTheLiveUpdateNeverReached reproduces how an
+// already-missed new chat is recovered: once updates.getDifference can
+// no longer replay it (the account's own update state has already
+// moved past it), the dialog sync every run starts with is what
+// notices Telegram still lists a chat this helper has never stored and
+// creates it, with its unread message, exactly the way a reconnect or
+// a helper restart runs it. The dialog here carries no prior c.learn
+// and nothing of it has been seen before, matching an unknown private
+// chat whose unread "hello" never reached the helper live.
+func TestSync_RecoversAChatTheLiveUpdateNeverReached(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
+	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
+		Dialogs: []tg.DialogClass{
+			&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, TopMessage: 9, UnreadCount: 1},
+		},
+		Messages: []tg.MessageClass{
+			&tg.Message{ID: 9, PeerID: &tg.PeerUser{UserID: 42}, Message: "hello"},
+		},
+		Users: []tg.UserClass{nadia()},
+	})
+	f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessages{
+		Messages: []tg.MessageClass{&tg.Message{ID: 9, PeerID: &tg.PeerUser{UserID: 42}, Message: "hello"}},
+	})
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	if err := c.sync(t.Context(), tg.NewClient(f), &sink); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{
+		"conversation user:42:99 Nadia", "organized user:42:99 false false",
+		"history user:42:99 9", "unread user:42:99 1",
+		"history user:42:99 9", "unread user:42:99 1",
+	}
+	if got := sink.Lines(); !slices.Equal(got, want) {
+		t.Errorf("events = %q, want %q: a chat Telegram still lists must be created and stored even if this helper never saw it live", got, want)
+	}
+}
+
 func TestSync_ReportsOrganizedForPinnedAndArchivedDialogs(t *testing.T) {
 	t.Parallel()
 

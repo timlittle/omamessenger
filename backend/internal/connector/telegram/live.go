@@ -95,10 +95,15 @@ func (c *Connector) handleReceiptUpdates(d tg.UpdateDispatcher, sink connector.S
 }
 
 // editMessage reports a message changed after it was sent, dropping the
-// update when its conversation is not known to us.
+// update when its conversation is not known to us: unlike a brand-new
+// message (see newMessage), there is no message here to attach a
+// placeholder conversation to, and the edit is harmless to lose since
+// the live update for the message it edits, now guaranteed not to be
+// dropped itself, either already created that conversation or will.
 func (c *Connector) editMessage(ctx context.Context, sink connector.Sink, m tg.MessageClass, te tg.Entities) {
 	msg, ok := m.(*tg.Message)
 	if !ok {
+		logDropped("not a text message")
 		return
 	}
 
@@ -108,6 +113,7 @@ func (c *Connector) editMessage(ctx context.Context, sink connector.Sink, m tg.M
 	if !ok {
 		remote, known := c.lookup(shortKey(msg.PeerID))
 		if !known {
+			logDropped("edit for an unresolved conversation")
 			return
 		}
 		conv.RemoteID = remote
@@ -177,26 +183,23 @@ func (c *Connector) unread(ctx context.Context, sink connector.Sink, key string,
 }
 
 // newMessage reports a message, first reporting its conversation so a
-// brand-new chat is not dropped. Our own messages from other devices are
+// brand-new chat - even one from a sender neither the update's own
+// entities nor anything learned before names - is never dropped (see
+// resolveConversation). Our own messages from other devices are
 // history: they never notify.
 func (c *Connector) newMessage(ctx context.Context, sink connector.Sink, m tg.MessageClass, te tg.Entities) {
 	msg, ok := m.(*tg.Message)
 	if !ok {
+		logDropped("not a text message")
 		return
 	}
 
 	e := fromUpdate(te)
 	c.learnNames(ctx, sink, e)
-	conv, ok := peerConversation(c.account.ID, msg.PeerID, e)
+	conv, ok := c.resolveConversation(ctx, sink, msg.PeerID, e)
 	if !ok {
-		remote, known := c.lookup(shortKey(msg.PeerID))
-		if !known {
-			return
-		}
-		conv.RemoteID = remote
-	} else {
-		c.learn(conv.RemoteID)
-		sink.Conversation(ctx, conv)
+		logDropped("unresolved peer")
+		return
 	}
 
 	if msg.Out {
@@ -205,6 +208,38 @@ func (c *Connector) newMessage(ctx context.Context, sink connector.Sink, m tg.Me
 	}
 
 	sink.Incoming(ctx, c.account.ID, conv.RemoteID, c.resolvedMessage(msg, e, c.selfUserID()))
+}
+
+// resolveConversation returns the conversation a live message's peer
+// belongs to, reporting it through sink the first time this run sees
+// it: from the update's own entities first, then this connector's
+// cache of peers already learned, then, as a last resort, a
+// placeholder built from the bare peer alone (see
+// placeholderConversation), so a sender this account has never
+// resolved still gets a conversation rather than a silently dropped
+// message. It reports false only for a peer type placeholderConversation
+// does not recognise either, which tg.PeerClass's three kinds never are.
+func (c *Connector) resolveConversation(ctx context.Context, sink connector.Sink, peer tg.PeerClass, e entities) (domain.Conversation, bool) {
+	if conv, ok := peerConversation(c.account.ID, peer, e); ok {
+		c.learn(conv.RemoteID)
+		sink.Conversation(ctx, conv)
+
+		return conv, true
+	}
+
+	if remote, known := c.lookup(shortKey(peer)); known {
+		return domain.Conversation{RemoteID: remote}, true
+	}
+
+	conv, ok := placeholderConversation(c.account.ID, peer)
+	if !ok {
+		return domain.Conversation{}, false
+	}
+
+	c.learn(conv.RemoteID)
+	sink.Conversation(ctx, conv)
+
+	return conv, true
 }
 
 // readUpTo marks our messages in a conversation read, up to Telegram's

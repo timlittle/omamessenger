@@ -63,6 +63,7 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, dev 
 // is history: it never notifies.
 func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	if isSystemJID(e.Info.Chat) {
+		logDropped("system jid")
 		return
 	}
 

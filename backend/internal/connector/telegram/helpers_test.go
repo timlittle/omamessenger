@@ -7,6 +7,8 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"log"
+	"os"
 	"sync"
 	"testing"
 
@@ -17,6 +19,21 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
+
+// captureLog redirects the standard logger to a buffer for the rest of
+// t, restoring stderr when it ends, the same way whatsapp's own
+// diagnostics_test.go does. It is not run in parallel with anything
+// else in this package that logs, so nothing else can write into the
+// buffer while it is captured.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	return &buf
+}
 
 // tinyJPEG returns a tiny, real JPEG, for a test that needs bytes
 // imagesafe actually accepts rather than an arbitrary placeholder: a

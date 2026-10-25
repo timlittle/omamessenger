@@ -102,6 +102,46 @@ func peerConversation(accountID string, peer tg.PeerClass, e entities) (domain.C
 	return c, true
 }
 
+// unknownGroupName is what a group or channel conversation is named
+// when placeholderConversation has nothing else to go on; its real
+// title arrives with the next dialog sync or a message that does
+// carry the chat's entity.
+const unknownGroupName = "Telegram group"
+
+// placeholderConversation builds a conversation for a peer that
+// neither the update's own entities nor anything this connector has
+// learned before names: a stranger's very first message must still
+// create a conversation and be stored rather than vanish, even though
+// its title, and, for a user or channel, its access hash are not
+// known yet. A dialog sync or a later message that does carry the
+// entity corrects the title once Telegram resolves it (see
+// Connector.rememberName); nothing here corrects a conversation
+// already created this way, so the one accepted risk is a second,
+// fully-resolved conversation for the same peer turning up later -
+// preferred over losing the message outright. It reports false only
+// for a peer type this connector does not otherwise recognise.
+func placeholderConversation(accountID string, peer tg.PeerClass) (domain.Conversation, bool) {
+	switch p := peer.(type) {
+	case *tg.PeerUser:
+		return domain.Conversation{
+			AccountID: accountID, Kind: domain.KindDirect, Title: unknownUserName,
+			RemoteID: remoteID(&tg.InputPeerUser{UserID: p.UserID}),
+		}, true
+	case *tg.PeerChat:
+		return domain.Conversation{
+			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName,
+			RemoteID: remoteID(&tg.InputPeerChat{ChatID: p.ChatID}),
+		}, true
+	case *tg.PeerChannel:
+		return domain.Conversation{
+			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName,
+			RemoteID: remoteID(&tg.InputPeerChannel{ChannelID: p.ChannelID}),
+		}, true
+	default:
+		return domain.Conversation{}, false
+	}
+}
+
 // message turns a Telegram message into ours. Outgoing messages from
 // history count as sent; whether they were read is not known here.
 // selfID is this account's own user id, for flagging a message that

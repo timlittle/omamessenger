@@ -101,12 +101,18 @@ func (c *Connector) syncPushnames(ctx context.Context, sink connector.Sink, name
 // history_ondemand.go).
 func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, src syncSource, sc *waHistorySync.Conversation) (string, int) {
 	jid, err := types.ParseJID(sc.GetID())
-	if err != nil || jid.IsEmpty() || isSystemJID(jid) {
+	if err != nil || jid.IsEmpty() {
+		logDropped("unparseable chat id")
+		return "", 0
+	}
+	if isSystemJID(jid) {
+		logDropped("system jid")
 		return "", 0
 	}
 
 	conv, ok := conversationFromSync(c.account.ID, sc, time.Now())
 	if !ok {
+		logDropped("unparseable chat id")
 		return "", 0
 	}
 	conv.RemoteID = chatID(ctx, src.dev, src.media, jid)

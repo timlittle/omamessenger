@@ -79,6 +79,7 @@ func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialog
 
 		conv, ok := conversation(c.account.ID, dialog, e, time.Now())
 		if !ok {
+			logDropped("dialog peer unresolved")
 			continue
 		}
 
@@ -162,10 +163,18 @@ func (c *Connector) history(ctx context.Context, api *tg.Client, sink connector.
 	c.learnNames(ctx, sink, e)
 	found := 0
 	for _, m := range messages.GetMessages() {
-		if msg, ok := m.(*tg.Message); ok {
-			sink.History(ctx, c.account.ID, p.conv.RemoteID, c.resolvedMessage(msg, e, c.selfUserID()))
-			found++
+		msg, ok := m.(*tg.Message)
+		if !ok {
+			// A group's own system notice (someone added, a title or
+			// photo changed, and the like) or an already-deleted
+			// placeholder: neither carries anything a person wrote, so
+			// it is skipped rather than shown as history.
+			logDropped("not a text message")
+			continue
 		}
+
+		sink.History(ctx, c.account.ID, p.conv.RemoteID, c.resolvedMessage(msg, e, c.selfUserID()))
+		found++
 	}
 
 	return found, nil

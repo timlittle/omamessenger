@@ -8,10 +8,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 )
 
 // captureLog redirects the standard logger to a buffer for the rest of
@@ -235,5 +237,21 @@ func TestLogContentlessDrop_IsAnOrdinaryDropForAnyoneElse(t *testing.T) {
 	}
 	if strings.Contains(got, "system chat") {
 		t.Errorf("log output = %q, want no mention of the system chat for an ordinary contact", got)
+	}
+}
+
+// TestHandleMessage_LogsWhenSkippingASystemChat confirms a status
+// broadcast or other system JID is skipped with a category line, never
+// silently (see live.go's handleContent).
+func TestHandleMessage_LogsWhenSkippingASystemChat(t *testing.T) {
+	buf := captureLog(t)
+
+	c, dev, sink, media := handlerMediaFixture(t)
+	c.handleMessage(t.Context(), sink, dev, media, &events.Message{
+		Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: types.StatusBroadcastJID}, ID: "M9", Timestamp: time.Unix(1, 0)}, Message: &waE2E.Message{Conversation: strPtr("someone's status")},
+	})
+
+	if got := buf.String(); !strings.Contains(got, "whatsapp: dropped message (reason=system jid)") {
+		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
 	}
 }

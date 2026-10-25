@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/gotd/td/tg"
@@ -58,13 +59,111 @@ func TestNewMessage_UsesAKnownPeerWhenTheUpdateOmitsIt(t *testing.T) {
 	c := New(domain.Account{ID: "tg"}, "")
 	msg := &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi"}
 
-	c.newMessage(t.Context(), &sink, msg, tg.Entities{})
-	c.learn("user:42:99")
+	c.newMessage(t.Context(), &sink, msg, tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
 	c.newMessage(t.Context(), &sink, msg, tg.Entities{})
 
-	want := []string{"incoming user:42:99 7"}
+	want := []string{
+		"conversation user:42:99 Nadia", "incoming user:42:99 7",
+		"incoming user:42:99 7",
+	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
-		t.Errorf("events = %q, want %q: unknown peers are dropped, known ones used", got, want)
+		t.Errorf("events = %q, want %q: a peer learned from entities is reused once a later update omits them", got, want)
+	}
+}
+
+// TestNewMessage_UnresolvedPeerGetsAPlaceholderConversation reproduces
+// the bug where a brand-new private chat's first message from a
+// stranger never reached the helper: Telegram delivers it either as an
+// UpdateShortMessage, which carries no entities at all, or as an
+// UpdateNewMessage whose sender is missing from the update's own
+// entities because this account has never resolved them before. Either
+// way, by the time it reaches newMessage, it looks the same: a message
+// whose peer is in neither this call's entities nor this connector's
+// own cache of peers already learned (tg.Entities{} and no prior
+// c.learn, exactly as a never-before-seen sender's short message or
+// bare UpdateNewMessage arrives). Before the fix, newMessage returned
+// without reporting anything; now it must still create the
+// conversation and store the message under a placeholder name.
+func TestNewMessage_UnresolvedPeerGetsAPlaceholderConversation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		peer tg.PeerClass
+		want []string
+	}{
+		{
+			"unknown user (a short message, or UpdateNewMessage missing its sender)",
+			&tg.PeerUser{UserID: 42},
+			[]string{"conversation user:42:0 Telegram user", "incoming user:42:0 7"},
+		},
+		{
+			"unknown chat", &tg.PeerChat{ChatID: 7},
+			[]string{"conversation chat:7 Telegram group", "incoming chat:7 7"},
+		},
+		{
+			"unknown channel", &tg.PeerChannel{ChannelID: 5},
+			[]string{"conversation channel:5:0 Telegram group", "incoming channel:5:0 7"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var sink connectortest.Sink
+			c := New(domain.Account{ID: "tg"}, "")
+			msg := &tg.Message{ID: 7, PeerID: tt.peer, Message: "hello"}
+
+			c.newMessage(t.Context(), &sink, msg, tg.Entities{})
+
+			if got := sink.Lines(); !slices.Equal(got, tt.want) {
+				t.Errorf("events = %q, want %q: an unresolved peer must still be stored", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNewMessage_EntitiesResolveTheSameUnknownSenderDifferentWays locks
+// in that a brand-new sender's first message is stored identically
+// whichever of the two live shapes Telegram uses: an UpdateNewMessage
+// whose entities already carry the sender (the common case, when
+// Telegram judges the client needs it), and one that omits them, which
+// falls back to the placeholder covered above.
+func TestNewMessage_EntitiesResolveTheSameUnknownSenderDifferentWays(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		entities tg.Entities
+		want     []string
+	}{
+		{
+			"sender in the update's own entities",
+			tg.Entities{Users: map[int64]*tg.User{42: nadia()}},
+			[]string{"conversation user:42:99 Nadia", "incoming user:42:99 7"},
+		},
+		{
+			"sender missing from the update's entities",
+			tg.Entities{},
+			[]string{"conversation user:42:0 Telegram user", "incoming user:42:0 7"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var sink connectortest.Sink
+			c := New(domain.Account{ID: "tg"}, "")
+			msg := &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "hello"}
+
+			c.newMessage(t.Context(), &sink, msg, tt.entities)
+
+			if got := sink.Lines(); !slices.Equal(got, tt.want) {
+				t.Errorf("events = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -307,5 +406,75 @@ func TestHandleUpdates_RoutesEachKindOfUpdate(t *testing.T) {
 	}
 	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
+	}
+}
+
+// TestHandleUpdates_GetDifferenceRecoveredNewMessageCreatesTheConversation
+// drives the exact envelope gotd's own update manager hands to this
+// connector's dispatcher once it has forced updates.getDifference to
+// recover a message from a sender it had never seen before: a single
+// *tg.Updates whose Updates holds the UpdateNewMessage and whose Users
+// carries the recovered sender's full entity, mirroring gotd's own
+// TestShortMessageRecoveredDifferenceCarriesSender. This is also the
+// shape a missed new chat is recovered in after a reconnect, since
+// gotd dispatches a channel or pts gap's catch-up the same way; proving
+// it here proves that path too.
+func TestHandleUpdates_GetDifferenceRecoveredNewMessageCreatesTheConversation(t *testing.T) {
+	t.Parallel()
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+
+	d := tg.NewUpdateDispatcher()
+	c.handleUpdates(d, &sink)
+	err := d.Handle(t.Context(), &tg.Updates{
+		Updates: []tg.UpdateClass{
+			&tg.UpdateNewMessage{Message: &tg.Message{ID: 10, PeerID: &tg.PeerUser{UserID: 42}, Message: "hello"}},
+		},
+		Users: []tg.UserClass{nadia()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want2 := []string{"conversation user:42:99 Nadia", "incoming user:42:99 10"}
+	if got := sink.Lines(); !slices.Equal(got, want2) {
+		t.Errorf("events = %q, want %q: a getDifference-recovered new chat must be created and stored", got, want2)
+	}
+}
+
+// TestNewMessage_LogsAndNeverStoresAServiceMessage confirms a message
+// that is not actually text (a group's own system notice, or an
+// already-deleted placeholder) is skipped with a category line, never
+// silently, and that the line names only the reason, never the peer or
+// text.
+func TestNewMessage_LogsAndNeverStoresAServiceMessage(t *testing.T) {
+	buf := captureLog(t)
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	c.newMessage(t.Context(), &sink, &tg.MessageEmpty{ID: 9}, tg.Entities{})
+
+	if got := sink.Lines(); len(got) != 0 {
+		t.Errorf("events = %q, want none", got)
+	}
+
+	if got := buf.String(); !strings.Contains(got, "telegram: dropped message (reason=not a text message)") {
+		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
+	}
+}
+
+// TestEditMessage_LogsWhenItsConversationIsNeverResolved confirms an
+// edit for a conversation this connector never learned is dropped with
+// a category line.
+func TestEditMessage_LogsWhenItsConversationIsNeverResolved(t *testing.T) {
+	buf := captureLog(t)
+
+	var sink connectortest.Sink
+	c := New(domain.Account{ID: "tg"}, "")
+	c.editMessage(t.Context(), &sink, &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "fixed"}, tg.Entities{})
+
+	if got := buf.String(); !strings.Contains(got, "telegram: dropped message (reason=edit for an unresolved conversation)") {
+		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
 	}
 }

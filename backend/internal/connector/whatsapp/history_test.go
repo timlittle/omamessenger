@@ -9,6 +9,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"go.mau.fi/whatsmeow/proto/waCommon"
@@ -308,6 +309,20 @@ func TestHandleHistorySync_SkipsSystemConversations(t *testing.T) {
 	}
 }
 
+// TestHandleHistorySync_LogsWhenSkippingASystemConversation confirms a
+// skipped system JID logs a category line, never silently.
+func TestHandleHistorySync_LogsWhenSkippingASystemConversation(t *testing.T) {
+	buf := captureLog(t)
+
+	c, dev, sink, media := handlerMediaFixture(t)
+	e := historySyncEvent(&waHistorySync.Conversation{ID: strPtr("status@broadcast")})
+	c.handleHistorySync(t.Context(), sink, dev, media, e)
+
+	if got := buf.String(); !strings.Contains(got, "whatsapp: dropped message (reason=system jid)") {
+		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
+	}
+}
+
 func TestHandleHistorySync_ShowsTheOfficialWhatsAppAccountWhenItHasAMessage(t *testing.T) {
 	t.Parallel()
 
@@ -481,5 +496,20 @@ func TestHandleHistorySync_DropsAConversationWithAnUnparseableID(t *testing.T) {
 
 	if len(sink.Lines()) != 0 {
 		t.Errorf("events = %q, want none for an unparseable id", sink.Lines())
+	}
+}
+
+// TestHandleHistorySync_LogsWhenDroppingAConversationWithAnUnparseableID
+// confirms a synced conversation this connector cannot even name logs
+// a category line, never silently.
+func TestHandleHistorySync_LogsWhenDroppingAConversationWithAnUnparseableID(t *testing.T) {
+	buf := captureLog(t)
+
+	c, dev, sink, media := handlerMediaFixture(t)
+	conv := &waHistorySync.Conversation{Name: strPtr("Nameless")}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
+
+	if got := buf.String(); !strings.Contains(got, "whatsapp: dropped message (reason=unparseable chat id)") {
+		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
 	}
 }
