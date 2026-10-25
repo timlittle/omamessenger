@@ -11,19 +11,13 @@ import (
 	"strconv"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
-	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// accountResult is accounts.list's own view of one account: the
-// stored domain.Account, plus the largest file its connector accepts
-// right now (see app.Commands.AttachmentLimit), for the composer's
-// hint before the user has even picked a file.
-type accountResult struct {
-	domain.Account
-	AttachmentLimit int64 `json:"attachmentLimit"`
-}
-
-// accountsList lists the signed-in accounts.
+// accountsList lists the signed-in accounts, each with its connector's
+// current attachment limit (see app.AccountView): the same per-account
+// shape every account.updated event carries, so the composer's hint
+// never depends on which of the two ways an account's data last
+// arrived.
 func accountsList(c *app.Commands) func(context.Context, none) (any, error) {
 	return func(ctx context.Context, _ none) (any, error) {
 		accounts, err := c.Accounts(ctx)
@@ -31,9 +25,9 @@ func accountsList(c *app.Commands) func(context.Context, none) (any, error) {
 			return nil, err
 		}
 
-		results := make([]accountResult, len(accounts))
+		results := make([]app.AccountView, len(accounts))
 		for i, a := range accounts {
-			results[i] = accountResult{Account: a, AttachmentLimit: c.AttachmentLimit(a.ID, domain.MediaFile)}
+			results[i] = c.ViewAccount(a)
 		}
 
 		return results, nil

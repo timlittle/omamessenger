@@ -448,12 +448,36 @@ func TestAccountStatus_RecordsAndPublishes(t *testing.T) {
 	f.ingest.AccountStatus(t.Context(), "wa", domain.AccountConnected, "Ready")
 	f.ingest.AccountStatus(t.Context(), "missing", domain.AccountError, "ignored")
 
-	if a := f.published.last(); a.(domain.Account).Status != domain.AccountConnected {
+	if a := f.published.last(); a.(app.AccountView).Status != domain.AccountConnected {
 		t.Errorf("published %+v", a)
 	}
 
 	if got := f.published.take(); !slices.Equal(got, []string{app.EventAccountUpdated}) {
 		t.Errorf("events = %v", got)
+	}
+}
+
+// TestAccountStatus_PublishesAttachmentLimit confirms a reconnect's own
+// account.updated event still carries the account's attachment limit,
+// the same shape accounts.list reports: WhatsApp's own reconnect cycle
+// fires this far more often than Telegram's, and a bare domain.Account
+// here (no such field at all) silently wiped the composer's attach
+// hint the next time one arrived - the report this covers found no
+// "Up to …" tooltip for WhatsApp, but a working one for Telegram.
+func TestAccountStatus_PublishesAttachmentLimit(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.limiter.limits["wa "+domain.MediaFile] = 123456
+
+	f.ingest.AccountStatus(t.Context(), "wa", domain.AccountConnected, "Ready")
+
+	view, ok := f.published.last().(app.AccountView)
+	if !ok {
+		t.Fatalf("published %T, want app.AccountView", f.published.last())
+	}
+	if view.AttachmentLimit != 123456 {
+		t.Errorf("AttachmentLimit = %d, want 123456", view.AttachmentLimit)
 	}
 }
 

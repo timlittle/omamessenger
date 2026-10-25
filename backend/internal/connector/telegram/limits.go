@@ -1,5 +1,7 @@
 package telegram
 
+import "github.com/timlittle/omamessenger/backend/internal/connector"
+
 // limits.go sizes an outgoing attachment before it is ever uploaded.
 // Telegram's own FAQ ("How large a file can I send over Telegram?",
 // https://telegram.org/faq#q-how-do-i-send-files) and its Premium
@@ -13,6 +15,12 @@ package telegram
 // attachmentLimit is the largest file Telegram accepts from an account
 // without Premium.
 const attachmentLimit int64 = 2 << 30
+
+// Connector satisfies connector.AttachmentLimiter: checked at compile
+// time since nothing else here calls AttachmentLimit through that
+// interface, so a signature drift would otherwise only show up as a
+// missing composer hint, never a build failure.
+var _ connector.AttachmentLimiter = (*Connector)(nil)
 
 // premiumAttachmentLimit is the largest file Telegram accepts from an
 // account with Premium.

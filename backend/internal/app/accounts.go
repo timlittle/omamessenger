@@ -24,7 +24,7 @@ func (c *Commands) AddAccount(ctx context.Context, a NewAccount) (domain.Account
 		return domain.Account{}, addAccountError(err)
 	}
 
-	c.events.publish(ctx, EventAccountUpdated, account)
+	c.events.publish(ctx, EventAccountUpdated, c.ViewAccount(account))
 
 	return account, nil
 }
@@ -85,7 +85,7 @@ func (c *Commands) SetAccountAlias(ctx context.Context, accountID, alias string)
 		return domain.Account{}, err
 	}
 
-	c.events.publish(ctx, EventAccountUpdated, account)
+	c.events.publish(ctx, EventAccountUpdated, c.ViewAccount(account))
 
 	return account, nil
 }

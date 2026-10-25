@@ -40,11 +40,28 @@ const thumbMaxSize = 48
 // or MaxAttachmentSize when there is none running for the account, or
 // its connector reports no limit of its own.
 func (c *Commands) AttachmentLimit(accountID, kind string) int64 {
-	if c.limiter == nil {
+	return attachmentLimitFor(c.limiter, accountID, kind)
+}
+
+// ViewAccount wraps account with its connector's current attachment
+// limit (see AccountView): accounts.list's own per-account shape,
+// read directly rather than through viewAccount so server/accounts.go
+// never needs its own copy of the same lookup.
+func (c *Commands) ViewAccount(account domain.Account) AccountView {
+	return viewAccount(c.limiter, account)
+}
+
+// attachmentLimitFor is AttachmentLimit's own lookup, shared with
+// viewAccount so an account.updated event reports the same limit
+// AttachmentLimit itself would for the same account and kind, rather
+// than repeating its fallback rule (MaxAttachmentSize once limiter is
+// nil or reports nothing) a second time.
+func attachmentLimitFor(limiter AttachmentLimiter, accountID, kind string) int64 {
+	if limiter == nil {
 		return MaxAttachmentSize
 	}
 
-	if limit, ok := c.limiter.AttachmentLimit(accountID, kind); ok && limit > 0 {
+	if limit, ok := limiter.AttachmentLimit(accountID, kind); ok && limit > 0 {
 		return limit
 	}
 

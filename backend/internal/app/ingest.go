@@ -35,6 +35,7 @@ type Ingest struct {
 	events     *events
 	ui         *uiState
 	retries    *retrier
+	limiter    AttachmentLimiter
 
 	mu            sync.Mutex
 	pendingRead   *time.Timer
@@ -93,7 +94,7 @@ func (in *Ingest) AccountStatus(ctx context.Context, accountID, status, detail s
 		return
 	}
 
-	in.events.publish(ctx, EventAccountUpdated, account)
+	in.events.publish(ctx, EventAccountUpdated, viewAccount(in.limiter, account))
 
 	if status == domain.AccountConnected {
 		in.retries.accountReconnected(accountID)

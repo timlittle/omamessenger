@@ -61,6 +61,27 @@ type AccountRemoved struct {
 	AccountID string `json:"accountId"`
 }
 
+// AccountView is the data of an account.updated event, and
+// accounts.list's own per-account shape: a stored domain.Account
+// enriched with its connector's current attachment limit, for the
+// composer's "Up to …" hint before a file is picked. Every place that
+// publishes account.updated uses this, not a bare domain.Account, so a
+// reconnect's own update - which WhatsApp's connector fires far more
+// often than Telegram's - never silently wipes the limit the UI
+// already had for the account (see viewAccount).
+type AccountView struct {
+	domain.Account
+	AttachmentLimit int64 `json:"attachmentLimit"`
+}
+
+// viewAccount wraps account with limiter's current attachment limit
+// for it (see AccountView), the same lookup and fallback
+// AttachmentLimit itself runs, so every account.updated event reports
+// exactly what accounts.list would for the same account right now.
+func viewAccount(limiter AttachmentLimiter, account domain.Account) AccountView {
+	return AccountView{Account: account, AttachmentLimit: attachmentLimitFor(limiter, account.ID, domain.MediaFile)}
+}
+
 // NotificationSound is the data of a notification.sound event: a hint,
 // sent only once Ingest has already decided to show a desktop
 // notification for an arriving message (so a muted, missed or

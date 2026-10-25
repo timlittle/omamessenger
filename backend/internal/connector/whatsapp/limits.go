@@ -11,11 +11,20 @@ package whatsapp
 // cap is the one that actually applies to those two kinds; a plain
 // file keeps the larger document cap.
 
-import "github.com/timlittle/omamessenger/backend/internal/domain"
+import (
+	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/domain"
+)
 
 // mediaAttachmentLimit is the largest photo or video WhatsApp accepts
 // sent as media, rather than as a document.
 const mediaAttachmentLimit int64 = 16 << 20
+
+// Connector satisfies connector.AttachmentLimiter: checked at compile
+// time since nothing else here calls AttachmentLimit through that
+// interface, so a signature drift would otherwise only show up as a
+// missing composer hint, never a build failure.
+var _ connector.AttachmentLimiter = (*Connector)(nil)
 
 // documentAttachmentLimit is the largest file WhatsApp accepts sent
 // through the document picker.
