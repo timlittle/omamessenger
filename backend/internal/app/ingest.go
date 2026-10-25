@@ -77,9 +77,10 @@ func (in *Ingest) Run(ctx context.Context) {
 }
 
 var (
-	_ connector.Sink        = (*Ingest)(nil)
-	_ connector.SenderNamer = (*Ingest)(nil)
-	_ connector.PollUpdater = (*Ingest)(nil)
+	_ connector.Sink             = (*Ingest)(nil)
+	_ connector.SenderNamer      = (*Ingest)(nil)
+	_ connector.PollUpdater      = (*Ingest)(nil)
+	_ connector.RemoteIDUpgrader = (*Ingest)(nil)
 )
 
 // AccountStatus records and publishes an account's connection state. A
@@ -350,6 +351,25 @@ func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, nam
 			continue
 		}
 	}
+}
+
+// ConversationRemoteIDChanged upgrades a conversation already
+// reported under oldRemoteID to a connector's better-resolved
+// newRemoteID, in place: see connector.RemoteIDUpgrader. When a
+// conversation already exists under newRemoteID, oldRemoteID's
+// messages are merged into it instead and the oldRemoteID
+// conversation is removed, so the two never end up duplicated.
+// Dropped, publishing nothing, when oldRemoteID is not known - the
+// common case for a connector's own idempotent check against a peer
+// that never actually needed correcting (see the Ingest comment on
+// dropped errors).
+func (in *Ingest) ConversationRemoteIDChanged(ctx context.Context, accountID, oldRemoteID, newRemoteID string) {
+	conv, err := in.store.UpgradeConversationRemoteID(ctx, accountID, oldRemoteID, newRemoteID)
+	if err != nil {
+		return
+	}
+
+	in.events.publish(ctx, EventConversationUpdated, conv)
 }
 
 // AuthStep publishes what an account's sign-in needs from the user.

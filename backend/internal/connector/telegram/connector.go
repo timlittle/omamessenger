@@ -49,6 +49,11 @@ type Connector struct {
 	remotes map[string]string // "user:42" to the full remote id with its access hash
 	sent    map[string]string // "<remote id>/<message id>" to our message id
 	names   map[string]string // a user's remote id to the best real name learned for them
+
+	// resolving tracks resolvePlaceholderHash's background goroutines,
+	// so Run can wait for them to finish before it returns rather than
+	// only asking them to stop (see concurrency.md).
+	resolving sync.WaitGroup
 }
 
 var (
@@ -101,7 +106,7 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	})
 	c.handleUpdates(dispatcher, sink)
 
-	return client.Run(ctx, func(ctx context.Context) error {
+	err = client.Run(ctx, func(ctx context.Context) error {
 		sink.AccountStatus(ctx, c.account.ID, domain.AccountConnecting, "")
 		if err := c.authorize(ctx, client, dispatcher, sink); err != nil {
 			return err
@@ -123,6 +128,15 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 
 		return gaps.Run(ctx, client.API(), self.ID, updates.AuthOptions{})
 	})
+
+	// Every resolvePlaceholderHash goroutine this run started derives
+	// its own timeout from ctx, so once client.Run has returned - ctx
+	// already done, one way or another - none of them can still be
+	// waiting on Telegram; this only waits out whatever is still
+	// unwinding.
+	c.resolving.Wait()
+
+	return err
 }
 
 // newGapManager builds the update manager for this account, backed by
@@ -192,14 +206,17 @@ func (c *Connector) SubmitAuth(ctx context.Context, step, value string) error {
 }
 
 // Send sends a message, uploading its attachment first when it has one,
-// and reports it sent with Telegram's id.
+// and reports it sent with Telegram's id. A conversation whose peer is
+// still an unresolved user placeholder is resolved first (see
+// resolveSendPeer), rather than ever sent to with a guessed or zero
+// access hash.
 func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain.Message) error {
 	api, sink, err := c.session()
 	if err != nil {
 		return err
 	}
 
-	peer, err := inputPeer(conv.RemoteID)
+	peer, remote, err := c.resolveSendPeer(ctx, sink, api, conv.RemoteID)
 	if err != nil {
 		return err
 	}
@@ -210,9 +227,9 @@ func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain
 	}
 
 	if id, ok := sentID(result); ok {
-		remote := fmt.Sprint(id)
-		c.remember(conv.RemoteID, remote, m.ID)
-		sink.OutgoingStatus(ctx, m.ID, remote, domain.StatusSent)
+		remoteMsgID := fmt.Sprint(id)
+		c.remember(remote, remoteMsgID, m.ID)
+		sink.OutgoingStatus(ctx, m.ID, remoteMsgID, domain.StatusSent)
 	}
 
 	return nil

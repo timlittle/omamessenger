@@ -83,7 +83,18 @@ func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialog
 			continue
 		}
 
-		c.learn(conv.RemoteID)
+		previous := c.learnResolved(ctx, sink, conv.RemoteID)
+		// A full sync runs on every connect, including the very first
+		// one after a helper restart, when nothing is cached from any
+		// earlier run for learnResolved's own comparison above to
+		// catch. Asking again here, whenever that comparison did not
+		// already cover the same rename, is what makes a stale
+		// placeholder from before this run - or before this fix -
+		// found and merged too, idempotently: see reportUpgrade's own
+		// comment on why this is always safe to ask unconditionally.
+		if placeholder, ok := placeholderRemoteID(dialog.Peer); ok && placeholder != conv.RemoteID && placeholder != previous {
+			c.reportUpgrade(ctx, sink, placeholder, conv.RemoteID)
+		}
 		sink.Conversation(ctx, conv)
 		sink.Organized(ctx, c.account.ID, conv.RemoteID, dialog.Pinned, dialog.FolderID == archiveFolderID)
 		if msg, ok := top[shortKey(dialog.Peer)+"/"+strconv.Itoa(dialog.TopMessage)]; ok {
@@ -201,13 +212,57 @@ func (c *Connector) syncContacts(ctx context.Context, api *tg.Client, sink conne
 	return nil
 }
 
-// learn records a conversation's full remote id under its short peer key,
-// for updates that name a peer without its access hash.
+// learn records a conversation's full remote id under its short peer
+// key, for updates that name a peer without its access hash, such as
+// a read receipt or typing notice. It does not detect or report an
+// upgrade over a different id already learned for the same peer;
+// learnResolved does that for the paths that actually resolve a
+// peer's canonical id, so a placeholder's bare peer is never silently
+// replaced without telling the store.
 func (c *Connector) learn(remote string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.remotes[peerKey(remote)] = remote
+}
+
+// learnResolved records remote the same way learn does, additionally
+// reporting the change through sink when this replaces a different
+// remote id already learned this run for the same peer: almost
+// always a placeholder's bare peer (see placeholderConversation) now
+// replaced by its real access hash, resolved from a dialog sync, a
+// later message's or edit's own entities, or resolvePlaceholderHash's
+// background lookup (see resolve.go). previous is whatever was
+// cached before this call, "" the first time this run learns the
+// peer, for a caller such as listDialogs that also checks for a
+// stale placeholder from an earlier run and must not report the same
+// upgrade twice.
+func (c *Connector) learnResolved(ctx context.Context, sink connector.Sink, remote string) (previous string) {
+	c.mu.Lock()
+	key := peerKey(remote)
+	previous = c.remotes[key]
+	c.remotes[key] = remote
+	c.mu.Unlock()
+
+	if previous != "" && previous != remote {
+		c.reportUpgrade(ctx, sink, previous, remote)
+	}
+
+	return previous
+}
+
+// reportUpgrade asks sink, when it implements connector.RemoteIDUpgrader,
+// to adopt newRemote as a conversation's remote id in place of
+// oldRemote (see connector.RemoteIDUpgrader). It is a safe no-op when
+// sink does not implement it, such as a test fake with no need to
+// track it, or when no conversation actually has oldRemote: the store
+// itself drops that case silently, so this can be called defensively,
+// such as by every dialog a sync lists, without first checking
+// whether oldRemote was ever really a placeholder.
+func (c *Connector) reportUpgrade(ctx context.Context, sink connector.Sink, oldRemote, newRemote string) {
+	if upgrader, ok := sink.(connector.RemoteIDUpgrader); ok {
+		upgrader.ConversationRemoteIDChanged(ctx, c.account.ID, oldRemote, newRemote)
+	}
 }
 
 // lookup returns the full remote id for a short peer key, if known.

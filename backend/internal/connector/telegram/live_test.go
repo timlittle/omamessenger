@@ -478,3 +478,51 @@ func TestEditMessage_LogsWhenItsConversationIsNeverResolved(t *testing.T) {
 		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
 	}
 }
+
+// TestNewMessage_UpgradesAPlaceholderWhenALaterMessageResolvesTheSender
+// confirms a placeholder created for a stranger's first message, with
+// no entities to name them, is upgraded through
+// connector.RemoteIDUpgrader as soon as a later message from the same
+// person does carry their entity, rather than ending up as a second,
+// duplicate conversation once the real one is reported.
+func TestNewMessage_UpgradesAPlaceholderWhenALaterMessageResolvesTheSender(t *testing.T) {
+	t.Parallel()
+
+	sink := &recordingSink{Sink: &connectortest.Sink{}}
+	c := New(domain.Account{ID: "tg"}, "")
+
+	c.newMessage(t.Context(), sink, &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi"}, tg.Entities{})
+	if len(sink.remoteIDs) != 0 {
+		t.Fatalf("remoteIDs after the placeholder = %+v, want none yet", sink.remoteIDs)
+	}
+
+	c.newMessage(t.Context(), sink, &tg.Message{ID: 8, PeerID: &tg.PeerUser{UserID: 42}, Message: "it's Nadia"},
+		tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
+
+	want := []remoteIDChangeCall{{"tg", "user:42:0", "user:42:99"}}
+	if !slices.Equal(sink.remoteIDs, want) {
+		t.Errorf("remoteIDs = %+v, want %+v", sink.remoteIDs, want)
+	}
+}
+
+// TestEditMessage_UpgradesACachedPlaceholderWhenItsEntitiesResolve
+// confirms an edit whose own entities resolve a peer this connector
+// had only ever cached as a placeholder also reports the upgrade,
+// the same as a brand-new message's own resolution does: an edit is
+// just as able to be the first live update that actually carries the
+// sender's entity.
+func TestEditMessage_UpgradesACachedPlaceholderWhenItsEntitiesResolve(t *testing.T) {
+	t.Parallel()
+
+	sink := &recordingSink{Sink: &connectortest.Sink{}}
+	c := New(domain.Account{ID: "tg"}, "")
+	c.learn("user:42:0")
+
+	edit := &tg.Message{ID: 7, PeerID: &tg.PeerUser{UserID: 42}, Message: "fixed"}
+	c.editMessage(t.Context(), sink, edit, tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
+
+	want := []remoteIDChangeCall{{"tg", "user:42:0", "user:42:99"}}
+	if !slices.Equal(sink.remoteIDs, want) {
+		t.Errorf("remoteIDs = %+v, want %+v", sink.remoteIDs, want)
+	}
+}

@@ -100,6 +100,10 @@ func (c *Connector) handleReceiptUpdates(d tg.UpdateDispatcher, sink connector.S
 // placeholder conversation to, and the edit is harmless to lose since
 // the live update for the message it edits, now guaranteed not to be
 // dropped itself, either already created that conversation or will.
+// When the peer does resolve fully here, learnResolved reports an
+// upgrade over whatever weaker id - almost always a placeholder - was
+// cached for it before, the same as a brand-new message's own
+// resolution does.
 func (c *Connector) editMessage(ctx context.Context, sink connector.Sink, m tg.MessageClass, te tg.Entities) {
 	msg, ok := m.(*tg.Message)
 	if !ok {
@@ -119,6 +123,7 @@ func (c *Connector) editMessage(ctx context.Context, sink connector.Sink, m tg.M
 		conv.RemoteID = remote
 	}
 
+	c.learnResolved(ctx, sink, conv.RemoteID)
 	sink.Edited(ctx, c.account.ID, conv.RemoteID, c.resolvedMessage(msg, e, c.selfUserID()))
 }
 
@@ -219,9 +224,15 @@ func (c *Connector) newMessage(ctx context.Context, sink connector.Sink, m tg.Me
 // resolved still gets a conversation rather than a silently dropped
 // message. It reports false only for a peer type placeholderConversation
 // does not recognise either, which tg.PeerClass's three kinds never are.
+// The first branch's resolution reports an upgrade over any weaker id
+// already cached for the same peer (see learnResolved); the
+// placeholder branch instead starts a background lookup for a user
+// peer's real access hash (see resolvePlaceholderHash), so the
+// placeholder this creates is corrected, and safe to reply to, as
+// soon as that finds it rather than only on the next reconnect.
 func (c *Connector) resolveConversation(ctx context.Context, sink connector.Sink, peer tg.PeerClass, e entities) (domain.Conversation, bool) {
 	if conv, ok := peerConversation(c.account.ID, peer, e); ok {
-		c.learn(conv.RemoteID)
+		c.learnResolved(ctx, sink, conv.RemoteID)
 		sink.Conversation(ctx, conv)
 
 		return conv, true
@@ -238,6 +249,10 @@ func (c *Connector) resolveConversation(ctx context.Context, sink connector.Sink
 
 	c.learn(conv.RemoteID)
 	sink.Conversation(ctx, conv)
+
+	if u, ok := peer.(*tg.PeerUser); ok {
+		c.resolvePlaceholderHash(ctx, sink, u.UserID)
+	}
 
 	return conv, true
 }

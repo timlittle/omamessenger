@@ -524,6 +524,85 @@ func (s *Store) UnreadByService(ctx context.Context) (map[string]int, error) {
 	return byService, wrap("unread by service", rows.Err())
 }
 
+// UpgradeConversationRemoteID changes a conversation's remote id in
+// place, keeping its local id, messages and settings, for a connector
+// that resolves a better id for a conversation already stored under
+// an older one - such as Telegram learning a placeholder peer's real
+// access hash, whether moments after creating it or only on a later
+// reconnect's full resync. If a conversation already exists under
+// newRemoteID, oldRemoteID's messages are moved into it instead and
+// the oldRemoteID conversation is removed, so the two never end up
+// duplicated; a message the target already has under the same remote
+// id is kept once, under the target, never duplicated. It changes
+// nothing and reports domain.ErrNotFound when no conversation has
+// oldRemoteID - the common, harmless case for a connector that checks
+// a peer which never actually needed a placeholder. The format of
+// either id is not this package's concern: it only ever compares and
+// moves between two opaque strings a connector gives it.
+func (s *Store) UpgradeConversationRemoteID(ctx context.Context, accountID, oldRemoteID, newRemoteID string) (domain.Conversation, error) {
+	if oldRemoteID == newRemoteID {
+		return s.ConversationByRemote(ctx, accountID, oldRemoteID)
+	}
+
+	old, err := s.ConversationByRemote(ctx, accountID, oldRemoteID)
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+
+	target, err := s.ConversationByRemote(ctx, accountID, newRemoteID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return s.renameConversationRemoteID(ctx, old.ID, newRemoteID)
+	}
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+
+	return s.mergeConversations(ctx, old.ID, target.ID)
+}
+
+// renameConversationRemoteID points a conversation at a new remote id,
+// for UpgradeConversationRemoteID's simple case: nothing is stored
+// under the new id yet.
+func (s *Store) renameConversationRemoteID(ctx context.Context, id, remoteID string) (domain.Conversation, error) {
+	if _, err := s.db.ExecContext(ctx, `UPDATE conversations SET remote_id=? WHERE id=?`, remoteID, id); err != nil {
+		return domain.Conversation{}, wrap("rename conversation remote id", err)
+	}
+
+	return s.Conversation(ctx, id)
+}
+
+// mergeConversations moves fromID's messages into intoID and removes
+// fromID, for UpgradeConversationRemoteID's duplicate case. A message
+// fromID has under a remote id intoID already has is left behind:
+// moving it would violate the unique index on (conversation_id,
+// remote_id), so UPDATE OR IGNORE skips just that row, and it is
+// discarded along with fromID itself once the delete below cascades
+// onto whatever messages the move could not place.
+func (s *Store) mergeConversations(ctx context.Context, fromID, intoID string) (domain.Conversation, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Conversation{}, wrap("merge conversations", err)
+	}
+	// Rollback after a successful Commit is a no-op that returns
+	// sql.ErrTxDone, so its error carries no information.
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE OR IGNORE messages SET conversation_id=? WHERE conversation_id=?`, intoID, fromID); err != nil {
+		return domain.Conversation{}, wrap("merge conversations", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM conversations WHERE id=?`, fromID); err != nil {
+		return domain.Conversation{}, wrap("merge conversations", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.Conversation{}, wrap("merge conversations", err)
+	}
+
+	return s.Conversation(ctx, intoID)
+}
+
 // scanConversation reads one row selected with conversationColumns.
 func scanConversation(row scanner) (domain.Conversation, error) {
 	return scanConversationWith(row)

@@ -142,6 +142,26 @@ func placeholderConversation(accountID string, peer tg.PeerClass) (domain.Conver
 	}
 }
 
+// placeholderRemoteID is the remote id placeholderConversation would
+// have given peer: the same peer, with a user's or channel's access
+// hash forced to 0. Sync calls this for every dialog it lists so a
+// stale placeholder conversation, created before Telegram's hash for
+// that peer was known - whether moments ago or in a run before this
+// fix shipped - is found and upgraded (see sync.go). A chat has no
+// placeholder shape of its own to upgrade from: placeholderConversation
+// gives it the exact same id ("chat:<id>") a full resolution does,
+// so there is nothing for this to ever tell apart.
+func placeholderRemoteID(peer tg.PeerClass) (string, bool) {
+	switch p := peer.(type) {
+	case *tg.PeerUser:
+		return remoteID(&tg.InputPeerUser{UserID: p.UserID}), true
+	case *tg.PeerChannel:
+		return remoteID(&tg.InputPeerChannel{ChannelID: p.ChannelID}), true
+	default:
+		return "", false
+	}
+}
+
 // message turns a Telegram message into ours. Outgoing messages from
 // history count as sent; whether they were read is not known here.
 // selfID is this account's own user id, for flagging a message that

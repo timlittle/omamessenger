@@ -1,7 +1,13 @@
 // These tests use package store, not store_test, because inspecting the
-// query plan and timing a search are not reachable through the public
-// API: they look at how Conversations' SQL executes, not just what it
-// returns.
+// query plan and timing a search, and forcing the database-level
+// failures below, are not reachable through the public API: they look
+// at how Conversations' SQL executes, not just what it returns, and at
+// what renameConversationRemoteID and mergeConversations do when the
+// database itself refuses a write - a state UpgradeConversationRemoteID
+// itself can never actually reach, since it already checked for
+// exactly the conflict each forces, but still a failure these two
+// internal helpers must report correctly rather than panic on or
+// silently swallow.
 package store
 
 import (
@@ -69,6 +75,76 @@ func TestConversations_SearchScalesToThousandsOfMessages(t *testing.T) {
 	}
 	if len(got) == 0 {
 		t.Error("Conversations(ticket) found no match, want the seeded messages to match")
+	}
+}
+
+// TestRenameConversationRemoteID_ReportsADatabaseConflict confirms
+// renameConversationRemoteID reports a real database error rather
+// than succeeding or panicking when the remote id it is asked to
+// write already belongs to another conversation of the same account
+// - a UNIQUE constraint violation UpgradeConversationRemoteID's own
+// caller-facing checks already prevent it from ever reaching in
+// practice, but renameConversationRemoteID must still handle it
+// correctly on its own.
+func TestRenameConversationRemoteID_ReportsADatabaseConflict(t *testing.T) {
+	t.Parallel()
+
+	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "data", "messages.db"), nil)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	account := domain.Account{ID: "wa", Service: domain.ServiceWhatsApp, Name: "wa"}
+	if err := s.UpsertAccount(t.Context(), account); err != nil {
+		t.Fatalf("UpsertAccount: %v", err)
+	}
+
+	a, _, err := s.EnsureConversation(t.Context(), domain.Conversation{AccountID: "wa", RemoteID: "a", Title: "A"})
+	if err != nil {
+		t.Fatalf("EnsureConversation(a): %v", err)
+	}
+	b, _, err := s.EnsureConversation(t.Context(), domain.Conversation{AccountID: "wa", RemoteID: "b", Title: "B"})
+	if err != nil {
+		t.Fatalf("EnsureConversation(b): %v", err)
+	}
+
+	if _, err := s.renameConversationRemoteID(t.Context(), a.ID, b.RemoteID); err == nil {
+		t.Error("renameConversationRemoteID onto an id already taken succeeded, want an error")
+	}
+}
+
+// TestMergeConversations_ReportsADatabaseConflict confirms
+// mergeConversations reports a real database error, rather than
+// succeeding or panicking, when the conversation it is asked to move
+// messages into does not actually exist: UpgradeConversationRemoteID's
+// own caller-facing checks always look it up first, so this forces the
+// same foreign key failure directly, on the helper that would actually
+// hit it if that invariant were ever broken.
+func TestMergeConversations_ReportsADatabaseConflict(t *testing.T) {
+	t.Parallel()
+
+	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "data", "messages.db"), nil)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	account := domain.Account{ID: "wa", Service: domain.ServiceWhatsApp, Name: "wa"}
+	if err := s.UpsertAccount(t.Context(), account); err != nil {
+		t.Fatalf("UpsertAccount: %v", err)
+	}
+
+	conv, _, err := s.EnsureConversation(t.Context(), domain.Conversation{AccountID: "wa", RemoteID: "a", Title: "A"})
+	if err != nil {
+		t.Fatalf("EnsureConversation: %v", err)
+	}
+	if _, _, err := s.AddMessage(t.Context(), domain.Message{ConversationID: conv.ID, Text: "hi", Created: 1}); err != nil {
+		t.Fatalf("AddMessage: %v", err)
+	}
+
+	if _, err := s.mergeConversations(t.Context(), conv.ID, "missing"); err == nil {
+		t.Error("mergeConversations into a nonexistent conversation succeeded, want an error")
 	}
 }
 

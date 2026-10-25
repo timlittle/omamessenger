@@ -290,3 +290,70 @@ func TestLoadOlder_Fails(t *testing.T) {
 func errOf(_ int, err error) error {
 	return err
 }
+
+// TestSync_UpgradesAPlaceholderAlreadyCachedThisRun confirms a sync
+// that resolves a peer this run had already learned only as a
+// placeholder - a stranger's first message arriving before any sync
+// could resolve it - reports the upgrade exactly once, through
+// connector.RemoteIDUpgrader, rather than leaving the store's own
+// copy stuck under the placeholder's bare id.
+func TestSync_UpgradesAPlaceholderAlreadyCachedThisRun(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
+	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
+		Dialogs:  []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, TopMessage: 9}},
+		Messages: []tg.MessageClass{&tg.Message{ID: 9, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi"}},
+		Users:    []tg.UserClass{nadia()},
+	})
+	f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessagesNotModified{})
+
+	sink := &recordingSink{Sink: &connectortest.Sink{}}
+	c := New(domain.Account{ID: "tg"}, "")
+	c.learn("user:42:0")
+
+	if err := c.sync(t.Context(), tg.NewClient(f), sink); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []remoteIDChangeCall{{"tg", "user:42:0", "user:42:99"}}
+	if !slices.Equal(sink.remoteIDs, want) {
+		t.Errorf("remoteIDs = %+v, want %+v, reported exactly once", sink.remoteIDs, want)
+	}
+}
+
+// TestSync_UpgradesAPlaceholderFromAnEarlierRunUnconditionally
+// confirms a sync started with an empty in-memory cache - exactly
+// what every helper restart leaves it with - still finds and
+// reports a stale placeholder's upgrade, by checking for its guessed
+// shape unconditionally rather than relying only on what this run's
+// own cache happens to hold (see placeholderRemoteID and sync.go's
+// own comment): this is the mechanism that merges a placeholder left
+// over from a run before this fix shipped, idempotently, on every
+// connect.
+func TestSync_UpgradesAPlaceholderFromAnEarlierRunUnconditionally(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.ContactsGetContactsRequest{}, &tg.ContactsContactsNotModified{})
+	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
+		Dialogs:  []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}, TopMessage: 9}},
+		Messages: []tg.MessageClass{&tg.Message{ID: 9, PeerID: &tg.PeerUser{UserID: 42}, Message: "hi"}},
+		Users:    []tg.UserClass{nadia()},
+	})
+	f.reply(&tg.MessagesGetHistoryRequest{}, &tg.MessagesMessagesNotModified{})
+
+	// A fresh connector, as a restart gives one: nothing cached yet.
+	sink := &recordingSink{Sink: &connectortest.Sink{}}
+	c := New(domain.Account{ID: "tg"}, "")
+
+	if err := c.sync(t.Context(), tg.NewClient(f), sink); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []remoteIDChangeCall{{"tg", "user:42:0", "user:42:99"}}
+	if !slices.Equal(sink.remoteIDs, want) {
+		t.Errorf("remoteIDs = %+v, want %+v", sink.remoteIDs, want)
+	}
+}

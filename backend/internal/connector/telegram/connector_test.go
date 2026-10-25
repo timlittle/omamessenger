@@ -137,6 +137,68 @@ func TestSend_Fails(t *testing.T) {
 	}
 }
 
+// TestSend_ToAnUnresolvedPlaceholderFailsWithoutSending confirms a
+// send to a placeholder conversation whose user is still nowhere in
+// the account's recent dialogs is refused with errUnresolvedPeer and
+// never reaches Telegram as a send at all, rather than going out with
+// a zero access hash.
+func TestSend_ToAnUnresolvedPlaceholderFailsWithoutSending(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{})
+
+	c := connectedTo(f, &connectortest.Sink{})
+	err := c.Send(t.Context(), domain.Conversation{RemoteID: "user:42:0"}, domain.Message{ID: "m1", Text: "hi"})
+	if !errors.Is(err, errUnresolvedPeer) {
+		t.Errorf("Send error = %v, want errUnresolvedPeer", err)
+	}
+
+	for _, req := range f.sent() {
+		if _, ok := req.(*tg.MessagesSendMessageRequest); ok {
+			t.Error("a send request reached Telegram for an unresolved peer")
+		}
+	}
+}
+
+// TestSend_ResolvesAPlaceholderFirstThenSends confirms a send to a
+// placeholder conversation whose user does resolve first finds its
+// real access hash, sends to that peer, and reports the upgrade so
+// the store's own copy of the conversation is corrected at the same
+// moment, rather than staying stuck as a duplicate-prone placeholder.
+func TestSend_ResolvesAPlaceholderFirstThenSends(t *testing.T) {
+	t.Parallel()
+
+	f := newFakeTelegram()
+	f.reply(&tg.MessagesGetDialogsRequest{}, &tg.MessagesDialogs{
+		Dialogs: []tg.DialogClass{&tg.Dialog{Peer: &tg.PeerUser{UserID: 42}}},
+		Users:   []tg.UserClass{nadia()},
+	})
+	f.reply(&tg.MessagesSendMessageRequest{}, &tg.UpdateShortSentMessage{ID: 80})
+
+	sink := &recordingSink{Sink: &connectortest.Sink{}}
+	c := connectedTo(f, sink)
+
+	if err := c.Send(t.Context(), domain.Conversation{RemoteID: "user:42:0"}, domain.Message{ID: "m1", Text: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+
+	req, ok := f.sent()[1].(*tg.MessagesSendMessageRequest)
+	if !ok {
+		t.Fatalf("second request = %T, want MessagesSendMessageRequest", f.sent()[1])
+	}
+
+	peer, ok := req.Peer.(*tg.InputPeerUser)
+	if !ok || peer.AccessHash != 99 {
+		t.Errorf("request.Peer = %+v, want access hash 99", req.Peer)
+	}
+
+	want := []remoteIDChangeCall{{"tg", "user:42:0", "user:42:99"}}
+	if !slices.Equal(sink.remoteIDs, want) {
+		t.Errorf("remoteIDs = %+v, want %+v", sink.remoteIDs, want)
+	}
+}
+
 func TestMarkRead_UsesTheChannelCallForChannels(t *testing.T) {
 	t.Parallel()
 

@@ -315,6 +315,25 @@ type SenderNamer interface {
 	SenderName(ctx context.Context, accountID, senderRemoteID, name string)
 }
 
+// RemoteIDUpgrader is a Sink that can also upgrade a conversation's
+// remote id in place, when a connector resolves a better one for a
+// conversation it already reported under an older id - such as
+// Telegram learning a placeholder peer's real access hash, resolved
+// after the fact rather than known when the conversation was first
+// created. It is optional the same way SenderNamer is: a connector
+// that can resolve a better id this way type-asserts the Sink it was
+// given for this, and skips the report when it is not implemented,
+// such as by a test fake that has no need to track it.
+type RemoteIDUpgrader interface {
+	// ConversationRemoteIDChanged upgrades a stored conversation's
+	// remote id from oldRemoteID to newRemoteID, within account,
+	// keeping its local id and messages. When a conversation already
+	// exists under newRemoteID, oldRemoteID's messages are merged into
+	// it instead and the oldRemoteID conversation is removed, so the
+	// two never end up duplicated.
+	ConversationRemoteIDChanged(ctx context.Context, accountID, oldRemoteID, newRemoteID string)
+}
+
 // PollUpdater is a Sink that can also report a poll's options and
 // tallies changing without a full edit to the message's text, such as
 // someone else voting live or this account's own vote being accepted.

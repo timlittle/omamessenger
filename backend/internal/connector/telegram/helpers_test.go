@@ -193,17 +193,30 @@ type senderNameCall struct {
 	accountID, senderRemoteID, name string
 }
 
+// remoteIDChangeCall records one call to recordingSink.ConversationRemoteIDChanged.
+type remoteIDChangeCall struct {
+	accountID, oldRemoteID, newRemoteID string
+}
+
 // recordingSink wraps connectortest.Sink, additionally implementing
-// connector.SenderNamer, so a test can confirm a name this connector
-// learns is also reported as a correction for messages already stored
-// under a weaker one, which connectortest.Sink alone has no need to
-// support since most tests here check only what was reported.
+// connector.SenderNamer and connector.RemoteIDUpgrader, so a test can
+// confirm a name this connector learns is also reported as a
+// correction for messages already stored under a weaker one, and that
+// a placeholder's remote id resolving to its real one is reported as
+// an upgrade, neither of which connectortest.Sink alone has any need
+// to support since most tests here check only what was reported.
 type recordingSink struct {
 	*connectortest.Sink
 	senderNames []senderNameCall
+	remoteIDs   []remoteIDChangeCall
 }
 
 // SenderName records the call.
 func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string) {
 	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name})
+}
+
+// ConversationRemoteIDChanged records the call.
+func (s *recordingSink) ConversationRemoteIDChanged(_ context.Context, accountID, oldRemoteID, newRemoteID string) {
+	s.remoteIDs = append(s.remoteIDs, remoteIDChangeCall{accountID, oldRemoteID, newRemoteID})
 }
