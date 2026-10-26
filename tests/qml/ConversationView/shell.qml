@@ -56,6 +56,15 @@ ShellRoot {
     onTriggered: root.pollLoadOlder()
   }
 
+  // scheduledPollTimer waits for a newly queued message's header row to
+  // lay itself out before checkScheduledMessageStaysInView looks at it.
+  Timer {
+    id: scheduledPollTimer
+    interval: 25
+    repeat: true
+    onTriggered: root.pollScheduledHeader()
+  }
+
   // Checks run once Quickshell has finished loading; Qt.exit() is ignored
   // before then.
   Timer {
@@ -131,9 +140,7 @@ ShellRoot {
     if (!root.checkScrollPageClamp()) return;
     if (!root.checkHistoryUnavailableNote()) return;
     if (!root.checkBlockedWiring()) return;
-
-    console.log("PASS ConversationView");
-    Qt.exit(0);
+    root.startScheduledMessageCheck();
   }
 
   // checkBlockedWiring verifies that a blocked conversation reaches the
@@ -275,6 +282,64 @@ ShellRoot {
     if (!listView.itemAtIndex(listView.count - 1))
       return Check.fail("the oldest message's delegate is not visible after scrolling past it with k");
     return true;
+  }
+
+  // startScheduledMessageCheck queues a message while already at the
+  // newest one, then polls until its header row has actually laid
+  // itself out, to check it against the visible viewport: a ListView
+  // header's own height growing needs a frame to settle, unlike the
+  // synchronous scrolling the earlier checks poke directly.
+  function startScheduledMessageCheck(): void {
+    view.scrollToNewest();
+    view.scheduledMessages = [{ id: "s1", text: "see you soon", sendAt: Date.now() + 60000 }];
+    root.pollAttempts = 0;
+    scheduledPollTimer.start();
+  }
+
+  // pollScheduledHeader waits for the header's delegate to be realized
+  // (height > 0) before checking it, giving up after two seconds.
+  function pollScheduledHeader(): void {
+    root.pollAttempts += 1;
+    const listView = Check.find(view, "messageListView");
+    const headerItem = listView.headerItem;
+    if (headerItem && headerItem.height > 0) {
+      scheduledPollTimer.stop();
+      root.finishScheduledMessageCheck(listView, headerItem);
+      return;
+    }
+    if (root.pollAttempts < 80) return;
+
+    scheduledPollTimer.stop();
+    Check.fail("the scheduled message's header never laid itself out");
+  }
+
+  // finishScheduledMessageCheck checks the newly queued message's row
+  // is inside the visible list at once (the report this covers found
+  // it left below the clipped viewport, scrolled past it, until the
+  // conversation was closed and reopened), then that a conversation
+  // scrolled away into older history is not yanked back down just
+  // because a message was scheduled elsewhere.
+  function finishScheduledMessageCheck(listView, headerItem): void {
+    const headerRect = Check.rect(headerItem, view);
+    const listRect = Check.rect(listView, view);
+    if (Check.overlapArea(headerRect, listRect, 0) <= 0) {
+      Check.fail("the scheduled message's row is outside the visible list: header "
+        + JSON.stringify(headerRect) + " list " + JSON.stringify(listRect));
+      return;
+    }
+
+    view.scheduledMessages = [];
+    view.scrollToOldest();
+    const before = listView.contentY;
+    view.scheduledMessages = [{ id: "s2", text: "see you soon", sendAt: Date.now() + 60000 }];
+    if (listView.contentY !== before) {
+      Check.fail("scheduling a message while scrolled into history moved contentY from " + before + " to " + listView.contentY);
+      return;
+    }
+
+    view.scheduledMessages = [];
+    console.log("PASS ConversationView");
+    Qt.exit(0);
   }
 
   // checkScrollPageClamp verifies Ctrl+D/Ctrl+U paging clamps the same way

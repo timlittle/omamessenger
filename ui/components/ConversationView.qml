@@ -97,6 +97,16 @@ Item {
   // messages, soonest due first; empty while none are queued.
   property var scheduledMessages: []
 
+  // _stickToNewest is captured right before scheduledMessages changes:
+  // whether the view is already showing the newest message (see
+  // messageList's header below). A ListView header's own height
+  // growing, unlike a genuine new message landing in the model, is
+  // not something the view repositions for on its own, so a message
+  // scheduled while already at the bottom was left just out of the
+  // clipped viewport until the conversation was closed and reopened,
+  // which lays out fresh (see docs/decisions.md).
+  property bool _stickToNewest: false
+
   // loadOlder asks the caller to fetch messages before the oldest loaded
   // one. It fires on every scroll near the top, so the caller ignores it
   // while a page is loading or when there is nothing older.
@@ -221,6 +231,11 @@ Item {
   function focusComposer(): void {
     composer.focusInput()
   }
+
+  // Captured before scheduledMessages' own change reaches the header
+  // below, since messageList.atYEnd already reflects the header's new
+  // height by the time any handler reacting to the resize itself runs.
+  onScheduledMessagesChanged: root._stickToNewest = messageList.atYEnd
 
   // A binding from draft to the composer would break the first time the
   // composer clears itself after sending, so the draft is copied in on
@@ -372,6 +387,13 @@ Item {
         onCancelRequested: id => root.scheduledCancelRequested(id)
         onSendNowRequested: id => root.scheduledSendNowRequested(id)
         onEditRequested: (id, text) => root.scheduledEditRequested(id, text)
+
+        // Re-pin the view once this header's own height has actually
+        // grown and settled, but only when root._stickToNewest said
+        // the view was already at the bottom before scheduledMessages
+        // changed: a user scrolled back into older history must not
+        // be yanked down just because a message was scheduled.
+        onHeightChanged: if (root._stickToNewest) messageList.positionViewAtBeginning()
       }
 
       // A BottomToTop ListView's footer sits at the layout's end, which

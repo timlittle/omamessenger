@@ -518,13 +518,23 @@ ShellRoot {
 
   // waitForScheduledMessage holds until the queued message shows in the
   // open conversation naming when it will send, and the composer's own
-  // draft has cleared, the same as a real send does.
+  // draft has cleared, the same as a real send does. It checks the row
+  // is actually inside the visible list, not just present somewhere in
+  // the tree: a report this covers found it laid out below the clipped
+  // viewport, invisible until the conversation was closed and reopened.
   function waitForScheduledMessage(): var {
     const composer = Check.find(root.panel(), "composerInput");
     if (!composer || composer.text !== "") return false;
 
     const timeline = Check.find(root.panel(), "messageListView");
-    return !!timeline && Check.texts(timeline).some((item) => item.text.indexOf("Sends at") === 0);
+    if (!timeline || !Check.texts(timeline).some((item) => item.text.indexOf("Sends at") === 0)) return false;
+
+    const headerItem = timeline.headerItem;
+    if (!headerItem || headerItem.height === 0) return false;
+
+    const headerRect = Check.rect(headerItem, root.panel());
+    const listRect = Check.rect(timeline, root.panel());
+    return Check.overlapArea(headerRect, listRect, 0) > 0;
   }
 
   // cancelScheduledMessage clicks the queued message's own Cancel
