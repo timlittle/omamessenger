@@ -94,3 +94,23 @@ func TestGifThumb_IsAValidJPEGStillAtTheSameSize(t *testing.T) {
 		t.Errorf("gifThumb() still = %dx%d, want %dx%d", cfg.Width, cfg.Height, gifWidth, gifHeight)
 	}
 }
+
+// TestPlaceholderGIF_IsARichMovingScene guards against the GIF sliding
+// back into a few flat bands that read as a rendering glitch in a demo
+// recording: the frames must use a broad palette, for smooth gradients,
+// and consecutive frames must differ, so it visibly animates.
+func TestPlaceholderGIF_IsARichMovingScene(t *testing.T) {
+	t.Parallel()
+
+	decoded, err := gif.DecodeAll(bytes.NewReader(placeholderGIF()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if n := len(decoded.Image[0].Palette); n < 128 {
+		t.Errorf("placeholderGIF() palette has %d colours, want at least 128", n)
+	}
+	if bytes.Equal(decoded.Image[0].Pix, decoded.Image[1].Pix) {
+		t.Error("placeholderGIF() frames 0 and 1 are identical, want the water to move")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"math"
+	"sort"
 )
 
 // Fixed size and frame count for the procedural stand-in GIF every
@@ -19,54 +20,45 @@ import (
 const (
 	gifWidth   = 320
 	gifHeight  = 200
-	gifFrames  = 20
-	gifHorizon = gifHeight * 3 / 5
+	gifFrames  = 24
+	gifHorizon = gifHeight / 2
 
-	gifSunCoreRadius = 13
-	gifSunHaloRadius = 22
+	// gifScale converts the photo's tuning, drafted 480 pixels wide (see
+	// photo.go's scale), to this width, so the GIF draws the same scene.
+	gifScale = float64(gifWidth) / 480.0
 )
 
-// gifSkyTop, gifSkyMid and so on index gifPalette's own entries by what
-// they paint, so the drawing functions below read as names rather than
-// raw numbers.
-const (
-	gifSkyTop = iota
-	gifSkyMid
-	gifSkyHorizon
-	gifSunCore
-	gifSunHalo
-	gifWaterMid
-	gifWaterDeep
-	gifRipple
-)
-
-// placeholderGIF renders a tiny, genuine animated GIF: a sun low over
-// calm water, its ripples sliding past, in the demo theme's own
-// Catppuccin colours (see tests/demo/theme/colors.toml). It replaces
-// what this fixture used to be, a dot bouncing on a near-black square,
-// which read as broken rather than merely a placeholder once it showed
-// up in a promo recording. It is a stand-in for a real GIF document a
-// sender attached, not a video a service marked to play back like one,
-// so this is the one scripted media FetchMedia ever writes whose bytes
-// are an actual GIF header - the exact shape app.DecodeAsForMedia's
-// SanitizeIfGIF check must confirm before the UI ever animates it (see
+// placeholderGIF renders a genuine animated GIF: the same sunset over a
+// mountain lake as placeholderPhoto, with the reflection rippling and
+// sunlight glinting on the water in a seamless loop. A few flat bands
+// read as a rendering glitch in a demo recording, so each frame is
+// painted in full colour and dithered onto one shared 256-colour
+// palette. It is a stand-in for a real GIF document a sender attached,
+// not a video a service marked to play back like one, so this is the
+// one scripted media FetchMedia ever writes whose bytes are an actual
+// GIF header - the exact shape app.DecodeAsForMedia's SanitizeIfGIF
+// check must confirm before the UI ever animates it (see
 // docs/decisions.md). Generated fresh each run, the same reasoning
 // placeholderPhoto gives for not shipping a committed image file.
 func placeholderGIF() []byte {
-	palette := gifPalette()
+	scenes := make([]*image.RGBA, gifFrames)
+	for i := range gifFrames {
+		scenes[i] = gifScene(2 * math.Pi * float64(i) / gifFrames)
+	}
+	palette := gifPalette(scenes[0])
 
 	g := &gif.GIF{}
-	for i := range gifFrames {
-		frame := image.NewPaletted(image.Rect(0, 0, gifWidth, gifHeight), palette)
-		paintGifFrame(frame, i)
+	for _, scene := range scenes {
+		frame := image.NewPaletted(scene.Bounds(), palette)
+		draw.FloydSteinberg.Draw(frame, frame.Bounds(), scene, image.Point{})
 		g.Image = append(g.Image, frame)
-		g.Delay = append(g.Delay, 10)
+		g.Delay = append(g.Delay, 8)
 	}
 
 	var buf bytes.Buffer
 	// gif.EncodeAll only fails for an empty GIF or a frame whose palette
-	// exceeds 256 colours, neither of which this fixed, small,
-	// fixed-length loop above can ever produce.
+	// exceeds 256 colours, neither of which the fixed loop above can
+	// ever produce.
 	if err := gif.EncodeAll(&buf, g); err != nil {
 		panic("fake: placeholderGIF failed to encode: " + err.Error())
 	}
@@ -74,118 +66,144 @@ func placeholderGIF() []byte {
 	return buf.Bytes()
 }
 
-// gifThumb renders the same scene placeholderGIF animates, at its very
-// first frame, as a small JPEG, and returns it already base64-encoded:
-// the still preview an unplayed GIF bubble shows (see
-// domain.Media.Thumb), the same shape a real Telegram or WhatsApp GIF
-// document's own thumbnail arrives in. Unlike a sender-supplied
-// thumbnail, these bytes are entirely this package's own, so there is
-// nothing here for imagesafe to sanitize away.
+// gifThumb renders the scene placeholderGIF animates, at its first
+// frame, as a JPEG, and returns it already base64-encoded: the still
+// preview an unplayed GIF bubble shows (see domain.Media.Thumb), the
+// same shape a real Telegram or WhatsApp GIF document's own thumbnail
+// arrives in. Unlike a sender-supplied thumbnail, these bytes are
+// entirely this package's own, so there is nothing here for imagesafe to
+// sanitize away.
 func gifThumb() string {
-	frame := image.NewPaletted(image.Rect(0, 0, gifWidth, gifHeight), gifPalette())
-	paintGifFrame(frame, 0)
-
 	var buf bytes.Buffer
-	_ = jpeg.Encode(&buf, frame, &jpeg.Options{Quality: 85}) // encoding a fixed in-memory image never fails
+	_ = jpeg.Encode(&buf, gifScene(0), &jpeg.Options{Quality: 85}) // encoding a fixed in-memory image never fails
 	return base64.StdEncoding.EncodeToString(buf.Bytes())
 }
 
-// gifPalette is the fixed set of colours placeholderGIF and gifThumb
-// paint with, taken from the demo theme's own Catppuccin palette: a
-// night sky fading toward the horizon, a warm sun, and the water's
-// darker mirror plus a highlight for its ripples.
-func gifPalette() color.Palette {
-	return color.Palette{
-		color.RGBA{R: 0x1e, G: 0x1e, B: 0x2e, A: 0xff}, // gifSkyTop
-		color.RGBA{R: 0x31, G: 0x32, B: 0x44, A: 0xff}, // gifSkyMid
-		color.RGBA{R: 0x45, G: 0x47, B: 0x5a, A: 0xff}, // gifSkyHorizon
-		color.RGBA{R: 0xf9, G: 0xe2, B: 0xaf, A: 0xff}, // gifSunCore
-		color.RGBA{R: 0x89, G: 0xb4, B: 0xfa, A: 0xff}, // gifSunHalo
-		color.RGBA{R: 0x24, G: 0x25, B: 0x34, A: 0xff}, // gifWaterMid
-		color.RGBA{R: 0x10, G: 0x10, B: 0x19, A: 0xff}, // gifWaterDeep
-		color.RGBA{R: 0xcd, G: 0xd6, B: 0xf4, A: 0xff}, // gifRipple
+// gifScene paints one full-colour frame at phase (radians): the photo's
+// sky, sun and mountains, then water whose ripples and glints move with
+// phase. Every moving term repeats over 2π, so the loop has no seam.
+func gifScene(phase float64) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, gifWidth, gifHeight))
+	paintGifSky(img)
+	paintGifSun(img)
+	paintGifMountains(img)
+	paintGifWater(img, phase)
+	return img
+}
+
+// paintGifSky fills the top half with placeholderPhoto's own sunset
+// gradient, deep blue fading to warm orange at the horizon.
+func paintGifSky(img *image.RGBA) {
+	top := color.RGBA{R: 40, G: 60, B: 110, A: 255}
+	horizon := color.RGBA{R: 250, G: 170, B: 110, A: 255}
+
+	for y := range gifHorizon {
+		c := lerpColor(top, horizon, float64(y)/gifHorizon)
+		draw.Draw(img, image.Rect(0, y, gifWidth, y+1), &image.Uniform{C: c}, image.Point{}, draw.Src)
 	}
 }
 
-// paintGifFrame draws frame step's own moment in the loop: a static sky
-// and sun, with the water's ripple highlights sliding down to suggest a
-// gentle, endless swell.
-func paintGifFrame(img *image.Paletted, step int) {
-	paintGifSky(img)
-	paintGifSun(img)
-	paintGifWater(img, step)
-}
+// paintGifSun blends a soft-edged disc low on the right, where the
+// photo's own setting sun sits.
+func paintGifSun(img *image.RGBA) {
+	cx, cy, radius := gifWidth*0.72, gifHorizon*0.92, 42.0*gifScale
+	sun := color.RGBA{R: 255, G: 225, B: 150, A: 255}
 
-// paintGifSky fills the sky in three flat bands, darkest at the top and
-// lightest at the horizon: a paletted image has no room for a smooth
-// gradient's many shades, so a few flat steps stand in for one.
-func paintGifSky(img *image.Paletted) {
-	drawBand(img, 0, gifHorizon/3, gifSkyTop)
-	drawBand(img, gifHorizon/3, gifHorizon*2/3, gifSkyMid)
-	drawBand(img, gifHorizon*2/3, gifHorizon, gifSkyHorizon)
-}
-
-// paintGifSun draws a fixed, two-tone disc low in the sky: a bright
-// core ringed by a softer halo, standing in for the many shades a full
-// gradient would need.
-func paintGifSun(img *image.Paletted) {
-	cx, cy := gifWidth*7/10, gifHorizon*9/10
-
-	for y := cy - gifSunHaloRadius; y <= cy+gifSunHaloRadius; y++ {
-		for x := cx - gifSunHaloRadius; x <= cx+gifSunHaloRadius; x++ {
-			paintGifSunPixel(img, x, y, cx, cy)
+	for y := range gifHorizon {
+		for x := range gifWidth {
+			d := math.Hypot(float64(x)-cx, float64(y)-cy)
+			t := math.Min(1, math.Max(0, 1-d/radius)*1.3)
+			img.SetRGBA(x, y, lerpColor(img.RGBAAt(x, y), sun, t))
 		}
 	}
 }
 
-// paintGifSunPixel sets (x, y) to the sun's core or halo colour when it
-// falls within the matching radius of (cx, cy), split out of
-// paintGifSun to keep that function's own loop body within the house
-// style's indentation limit.
-func paintGifSunPixel(img *image.Paletted, x, y, cx, cy int) {
-	if !inBounds(img, x, y) {
-		return
+// paintGifMountains draws the photo's three ridgelines, each closer and
+// darker than the last.
+func paintGifMountains(img *image.RGBA) {
+	layers := []struct {
+		fill                   color.RGBA
+		baseY                  float64
+		amplitude, freq, phase float64
+	}{
+		{color.RGBA{R: 80, G: 100, B: 130, A: 255}, gifHorizon - 10*gifScale, 18 * gifScale, 0.018 / gifScale, 0.6},
+		{color.RGBA{R: 55, G: 75, B: 100, A: 255}, gifHorizon, 28 * gifScale, 0.026 / gifScale, 2.1},
+		{color.RGBA{R: 30, G: 45, B: 65, A: 255}, gifHorizon + 15*gifScale, 36 * gifScale, 0.034 / gifScale, 4.0},
 	}
 
-	d := dist(x, y, cx, cy)
-	if d <= gifSunCoreRadius {
-		img.SetColorIndex(x, y, gifSunCore)
-		return
-	}
-	if d <= gifSunHaloRadius {
-		img.SetColorIndex(x, y, gifSunHalo)
-	}
-}
-
-// paintGifWater fills the bottom of the frame with the water's own
-// darker mirror of the sky, then draws three ripple highlights that
-// slide down the frame as step advances and wrap back to the top, the
-// one thing that visibly differs between consecutive frames.
-func paintGifWater(img *image.Paletted, step int) {
-	mid := gifHorizon + (gifHeight-gifHorizon)/2
-	drawBand(img, gifHorizon, mid, gifWaterMid)
-	drawBand(img, mid, gifHeight, gifWaterDeep)
-
-	span := gifHeight - gifHorizon
-	for i := range 3 {
-		y := gifHorizon + (step*3+i*span/3)%span
-		drawBand(img, y, min(y+2, gifHeight), gifRipple)
+	for _, l := range layers {
+		for x := range gifWidth {
+			wave := math.Sin(float64(x)*l.freq+l.phase) + math.Sin(float64(x)*l.freq*2.3+l.phase*1.7)
+			peak := int(l.baseY - l.amplitude*wave/2)
+			draw.Draw(img, image.Rect(x, peak, x+1, gifHorizon+3), &image.Uniform{C: l.fill}, image.Point{}, draw.Src)
+		}
 	}
 }
 
-// drawBand fills img's full width, from y=from up to (not including)
-// y=to, with gifPalette's colour at index: the one shape every band of
-// sky, water or ripple in this scene is made of.
-func drawBand(img *image.Paletted, from, to, index int) {
-	draw.Draw(img, image.Rect(0, from, gifWidth, to), &image.Uniform{C: img.Palette[index]}, image.Point{}, draw.Src)
+// paintGifWater fills the bottom half with a tinted mirror of the scene
+// above, its rows swaying sideways a little more the nearer they are,
+// so the reflection ripples, plus a band of glints under the sun.
+func paintGifWater(img *image.RGBA, phase float64) {
+	water := color.RGBA{R: 50, G: 70, B: 90, A: 255}
+
+	for y := gifHorizon; y < gifHeight; y++ {
+		depth := float64(y-gifHorizon) / float64(gifHeight-gifHorizon)
+		srcY := max(2*gifHorizon-y-1, 0)
+		sway := int(math.Round((1 + 3*depth) * math.Sin(float64(y)*0.45-2*phase)))
+		for x := range gifWidth {
+			srcX := min(max(x+sway, 0), gifWidth-1)
+			c := lerpColor(img.RGBAAt(srcX, srcY), water, 0.35+0.2*depth)
+			img.SetRGBA(x, y, gifGlint(c, x, y, phase))
+		}
+	}
 }
 
-// dist returns the straight-line distance between (x, y) and (cx, cy).
-func dist(x, y, cx, cy int) float64 {
-	return math.Hypot(float64(x-cx), float64(y-cy))
+// gifGlint brightens (x, y) where a moving sparkle pattern crosses the
+// column of water under the sun, the light catching on the ripples.
+func gifGlint(c color.RGBA, x, y int, phase float64) color.RGBA {
+	spread := math.Abs(float64(x)-gifWidth*0.72) / (30 * gifScale)
+	if spread > 1 {
+		return c
+	}
+
+	sparkle := math.Sin(float64(x)*0.9+float64(y)*1.7+3*phase) * math.Sin(float64(y)*0.6-phase)
+	if sparkle < 0.55 {
+		return c
+	}
+	glint := color.RGBA{R: 255, G: 235, B: 190, A: 255}
+	return lerpColor(c, glint, (sparkle-0.55)/0.45*(1-spread))
 }
 
-// inBounds reports whether (x, y) lies within img's own bounds.
-func inBounds(img *image.Paletted, x, y int) bool {
-	return image.Pt(x, y).In(img.Bounds())
+// gifPalette picks the 256 colours the GIF is dithered onto: the most
+// common colours in scene, each rounded to 5 bits a channel so a smooth
+// gradient's near-identical neighbours count as one.
+func gifPalette(scene *image.RGBA) color.Palette {
+	counts := map[color.RGBA]int{}
+	for i := 0; i < len(scene.Pix); i += 4 {
+		c := color.RGBA{R: scene.Pix[i] &^ 7, G: scene.Pix[i+1] &^ 7, B: scene.Pix[i+2] &^ 7, A: 255}
+		counts[c]++
+	}
+
+	colours := make([]color.RGBA, 0, len(counts))
+	for c := range counts {
+		colours = append(colours, c)
+	}
+	sort.Slice(colours, func(i, j int) bool {
+		if counts[colours[i]] != counts[colours[j]] {
+			return counts[colours[i]] > counts[colours[j]]
+		}
+		return gifColourKey(colours[i]) < gifColourKey(colours[j])
+	})
+
+	palette := make(color.Palette, 0, 256)
+	for _, c := range colours[:min(len(colours), 255)] {
+		palette = append(palette, c)
+	}
+	return append(palette, color.RGBA{R: 255, G: 235, B: 190, A: 255})
+}
+
+// gifColourKey orders colours with equal counts the same way every run,
+// so the palette, and the GIF's bytes, never depend on map order.
+func gifColourKey(c color.RGBA) uint32 {
+	return uint32(c.R)<<16 | uint32(c.G)<<8 | uint32(c.B)
 }
