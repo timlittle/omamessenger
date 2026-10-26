@@ -30,7 +30,7 @@ Ctrl+K and Ctrl+G both open the same palette, so there is one search to reach fo
 | j / k | Move the selection down / up |
 | Enter, i, l or o | Open the selected conversation |
 | m | Mute / unmute |
-| a | Archive and mark read |
+| Shift+A | Archive and mark read |
 | Ctrl+Shift+↑ / ↓ | Move pin up / down (only on a chat that is already pinned) |
 
 Pin, hide and snooze are in the command palette, and are local to this computer only. Archiving syncs to the service, like mute and pin.

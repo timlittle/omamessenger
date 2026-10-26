@@ -139,11 +139,16 @@ var BINDINGS = [
   // there is no "selected" sound to preview from the list, only the
   // one chat actually open.
   { action: 'chat.playNotificationSound', keys: [], contexts: ['conversation'], label: 'Play notification sound', command: true },
-  // "a" is free in the list context (the conversation context already
-  // uses it for compose.focus), so the key works for the selected chat
-  // and the command palette reaches the open one too, since a palette
+  // A plain "a" once archived the selected chat with no warning and no
+  // way back, which a report found happening from a stray keypress
+  // while the user was really typing somewhere else; Shift+A needs a
+  // deliberate second key held down, the same reason message.edit below
+  // already answers only to Shift+E rather than a bare "e". The key is
+  // free in the list context (the conversation context already uses
+  // plain "a" for compose.focus), so it still reaches the selected chat
+  // and, through the command palette, the open one too, since a palette
   // command runs through its owning controller regardless of context.
-  { action: 'chat.archiveRead', keys: ['a'], contexts: ['list'], label: 'Archive and mark read', command: true },
+  { action: 'chat.archiveRead', keys: ['A'], contexts: ['list'], label: 'Archive and mark read', command: true },
   // Archiving every read chat at once is bulk, so it is palette-only and
   // asks for confirmation first (see the archiveConfirm bindings below).
   { action: 'list.archiveAllRead', keys: [], contexts: ['global'], label: 'Archive all read conversations', command: true },
