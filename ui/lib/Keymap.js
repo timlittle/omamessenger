@@ -148,6 +148,16 @@ var BINDINGS = [
   // plain "a" for compose.focus), so it still reaches the selected chat
   // and, through the command palette, the open one too, since a palette
   // command runs through its owning controller regardless of context.
+  // Shift+A toggles on an already-archived chat too - unarchiving it
+  // at once, with no question - the same way the palette's own
+  // "Archive or unarchive chat" (chat.archive) does; see
+  // ListController._archiveAndMarkRead. The label stays "Archive and
+  // mark read" rather than naming the toggle too: mentioning
+  // "unarchive" here made this command itself rank above "Mark as
+  // unread" for a bare "unread" query, through nothing more than
+  // Palette.js's own fuzzy subsequence match, which this is not worth
+  // reopening for - the toggle is documented in docs/shortcuts.md and
+  // discoverable the moment it is tried on an archived chat.
   { action: 'chat.archiveRead', keys: ['A'], contexts: ['list'], label: 'Archive and mark read', command: true },
   // Archiving every read chat at once is bulk, so it is palette-only and
   // asks for confirmation first (see the archiveConfirm bindings below).
@@ -209,8 +219,10 @@ var BINDINGS = [
   { action: 'compose.attachFile', keys: [], contexts: ['conversation', 'compose'], label: 'Attach a file', command: true },
   // Queues the composer's own text to send at a chosen time instead of
   // right away; see WindowController._scheduleDraft. Ctrl+L is free in
-  // every context this binds in.
-  { action: 'compose.sendLater', keys: ['Ctrl+L'], contexts: ['compose'], label: 'Send later…', command: true },
+  // every context this binds in. Hinted, like compose.spellSuggestions,
+  // since the clock button beside Send was the only visible sign this
+  // existed at all - a report found it undiscoverable from the keyboard.
+  { action: 'compose.sendLater', keys: ['Ctrl+L'], contexts: ['compose'], label: 'Send later', hint: true, command: true },
   // Up moves the caret while there is text, so this only ever fires once
   // the composer is empty and something is actually editable (see
   // Edit.upMeansEdit); otherwise ComposerController.run leaves the key

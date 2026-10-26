@@ -592,6 +592,21 @@ Item {
     else if (which === "edit") root.editScheduledMessage(message.id, message.text);
   }
 
+  // runScheduledActionOn runs which ("sendNow", "edit" or "cancel") on
+  // scheduledId directly: the same three outcomes _runScheduledAction's
+  // own palette picker reaches, skipping the picker since the caller -
+  // Panel.routeKey, for the open chat's own highlighted queued message
+  // (see ConversationController.highlightedScheduledId) - already knows
+  // exactly which one. Does nothing if scheduledId is no longer queued.
+  function runScheduledActionOn(scheduledId: string, which: string): void {
+    if (!root.scheduledController) return;
+
+    const message = root.scheduledController.all.find((m) => m.id === scheduledId);
+    if (!message) return;
+
+    root._applyScheduledAction(message, which);
+  }
+
   // editScheduledMessage starts editing a queued message, from its own
   // row's "Edit" button: its text loads into the composer, the same
   // way editing a sent message already does, and "Send later…" opens

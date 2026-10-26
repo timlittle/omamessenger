@@ -714,6 +714,38 @@ ShellRoot {
       return;
     }
 
+    root.checkArchiveReadTogglesAnAlreadyArchivedChat();
+  }
+
+  // checkArchiveReadTogglesAnAlreadyArchivedChat confirms Shift+A
+  // (chat.archiveRead) unarchives a1 - already archived by the bulk
+  // question above - at once, with no question and no extra mark-read
+  // call, the same as the command palette's own "Archive or unarchive
+  // chat" toggle: archiving always asks, but a1 is already on the other
+  // side of that question by now.
+  function checkArchiveReadTogglesAnAlreadyArchivedChat(): void {
+    archiveService.markReadCalls = 0;
+    const archivedIdsBefore = archiveService.archivedIds.length;
+    archiveList.selectId("a1");
+    archiveList.run("chat.archiveRead");
+
+    if (archiveList.archiveOneOpen) {
+      Check.fail("chat.archiveRead asked before unarchiving an already-archived chat");
+      return;
+    }
+    if (archiveList.findConversation("a1").archived) {
+      Check.fail("chat.archiveRead did not unarchive the already-archived chat");
+      return;
+    }
+    if (archiveService.markReadCalls !== 0) {
+      Check.fail("unarchiving should not mark the chat read: markReadCalls " + archiveService.markReadCalls);
+      return;
+    }
+    if (archiveService.archivedIds.length !== archivedIdsBefore + 1) {
+      Check.fail("unarchiving should make exactly one conversations.setArchived call");
+      return;
+    }
+
     root.checkSnooze();
   }
 

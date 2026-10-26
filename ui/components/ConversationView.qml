@@ -23,6 +23,11 @@ Item {
   // highlightedId is the message id j/k move through, by id rather than
   // index, or "" when nothing is highlighted.
   property string highlightedId: ""
+  // highlightedScheduledId is the id of the open chat's own queued
+  // "send later" message j/k currently point at, once they have moved
+  // past the newest message into the queue, or "" otherwise; see
+  // ScheduledList's own highlightedId.
+  property string highlightedScheduledId: ""
   // bindings are the effective key bindings (defaults merged with the
   // user's keys.conf overrides), passed to each message delegate's
   // hint row and to the composer's mode hint.
@@ -384,6 +389,8 @@ Item {
       header: ScheduledList {
         width: messageList.width
         messages: root.scheduledMessages
+        highlightedId: root.highlightedScheduledId
+        bindings: root.bindings
         onCancelRequested: id => root.scheduledCancelRequested(id)
         onSendNowRequested: id => root.scheduledSendNowRequested(id)
         onEditRequested: (id, text) => root.scheduledEditRequested(id, text)

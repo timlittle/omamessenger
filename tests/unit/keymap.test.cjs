@@ -209,6 +209,14 @@ test('the palette offers the spelling suggestions shortcut', () => {
   assert.ok(Keymap.commands().some((c) => c.action === 'compose.spellSuggestions'));
 });
 
+test('bindingsFor hints Send later in the compose context, so the clock button is not the only sign it exists', () => {
+  const compose = Keymap.bindingsFor('compose');
+  const sendLater = compose.find((b) => b.action === 'compose.sendLater');
+
+  assert.ok(sendLater, 'compose.sendLater should be hinted in the compose context');
+  assert.strictEqual(Keymap.display(sendLater.keys[0]) + ' ' + sendLater.label, 'Ctrl+L Send later');
+});
+
 test('bindingsFor hints the photo viewer steps without offering them as commands', () => {
   const actions = Keymap.bindingsFor('viewer').map((b) => b.action);
 

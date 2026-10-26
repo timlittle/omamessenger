@@ -254,6 +254,7 @@ Item {
       messages: root.conversationController.messages
       annotations: root.conversationController.annotations
       highlightedId: root.conversationController.highlightedId
+      highlightedScheduledId: root.conversationController.highlightedScheduledId
       bindings: root.bindings
       draft: root.composerController.draft
       replyTarget: root.composerController.replyTarget

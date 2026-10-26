@@ -18,8 +18,14 @@
 // the composer with Escape resets the highlight to the newest message,
 // idempotently; that leaving the composer with Escape after
 // openMessage's command-palette jump instead returns to the jumped-to
-// message; and that moving the highlight afterwards drops that memory,
-// so a later Escape goes back to the newest message again.
+// message; that moving the highlight afterwards drops that memory,
+// so a later Escape goes back to the newest message again; and that
+// Shift+E loads the oldest loaded message (this account's own, already
+// sent, so it is editable) for editing, both on its own and right after
+// another quick plain key, through the real listController.guardTyping
+// path (see checkShiftEEditsHighlightedMessage), the same the real
+// Panel.routeKey calls - not just the local dispatch below, which used
+// to skip it.
 import QtQuick
 import QtTest
 import Quickshell
@@ -68,12 +74,13 @@ ShellRoot {
 
     // request answers synchronously, so every check below runs without
     // waiting on a real helper: a first page of five messages (m3
-    // failed, m4 carrying a photo), one older message (m6) once asked
-    // for, and a retried message's status flipped to delivered.
+    // failed, m4 carrying a photo), one older, editable, own message
+    // (m6) once asked for, and a retried message's status flipped to
+    // delivered.
     function request(method: string, params: var, callback: var): void {
       if (method === "messages.list") {
         if (params.before) {
-          callback(null, { hasMore: false, messages: [service.fakeMessage("m6", service.base - 5000, {})] });
+          callback(null, { hasMore: false, messages: [service.fakeMessage("m6", service.base - 5000, { outgoing: true, remoteId: "rm6" })] });
           return;
         }
         callback(null, { hasMore: true, messages: [
@@ -101,13 +108,24 @@ ShellRoot {
         return;
       }
 
+      if (method === "conversations.list") {
+        callback(null, []);
+        return;
+      }
+
       callback(null, {});
     }
+  }
+
+  ListController {
+    id: listController
+    service: service
   }
 
   ConversationController {
     id: conversationController
     service: service
+    listController: listController
     composer: composerController
     photoViewer: photoViewerController
   }
@@ -134,10 +152,14 @@ ShellRoot {
     service: service
     conversationController: conversationController
     composerController: composerController
+    reactionsController: reactionsController
   }
 
   // routeKey is the same dispatch Panel.routeKey does: match the active
-  // context, then hand the action to whichever controller owns it.
+  // context, run a plain key past listController.guardTyping the same
+  // way Panel does (see checkShiftEEditsHighlightedMessage, the reason
+  // listController exists here at all), then hand the action to
+  // whichever controller owns it.
   function routeKey(key: int, modifiers: int, text: string): bool {
     const context = Navigation.keyContext({
       confirmOpen: windowController.confirmingClose,
@@ -151,6 +173,12 @@ ShellRoot {
       pane: conversationController.pane
     });
     const action = Keymap.match(context, key, modifiers, text);
+
+    const isPlainKey = /^[\x20-\x7e]$/.test(text) && (modifiers & Keymap.MOD.Ctrl) === 0 && (modifiers & Keymap.MOD.Alt) === 0;
+    if (isPlainKey && (context === "list" || context === "conversation") && listController.guardTyping(action)) {
+      return true;
+    }
+
     if (!action) return false;
 
     const controllers = [conversationController, composerController, reactionsController, photoViewerController, windowController];
@@ -339,6 +367,40 @@ ShellRoot {
     t.keyClick(Qt.Key_K);
     if (conversationController.highlightedId !== "m6")
       return Check.fail("k past the true oldest message moved the highlight: got " + conversationController.highlightedId);
+
+    root.checkShiftEEditsHighlightedMessage();
+  }
+
+  // checkShiftEEditsHighlightedMessage checks Shift+E loads m6 - this
+  // account's own already-sent text message - into the composer for
+  // editing, both on its own and right after another quick plain key
+  // (e, opening the reaction picker, then closed again): a report found
+  // "Shift+E does nothing" on an installed build. The real cause turned
+  // out to be the first version of the typing guard (see
+  // ui/lib/TypingGuard.js's git history and docs/decisions.md), which
+  // held back *any* non-navigation action - message.edit included -
+  // whenever any plain key had landed within 300ms before it; that
+  // version never shipped past this repository's own next commit, which
+  // narrowed suppression to GUARDED_ACTIONS (archive, mute, pin, hide,
+  // block, delete, mark read/unread), a list message.edit was never on.
+  // Reproducing both shapes here against the current code confirms the
+  // fix already holds and keeps it from regressing.
+  function checkShiftEEditsHighlightedMessage(): void {
+    t.keyClick(Qt.Key_E, Qt.ShiftModifier);
+    if (!composerController.editTarget || composerController.editTarget.id !== "m6")
+      return Check.fail("Shift+E did not load m6 for editing: " + JSON.stringify(composerController.editTarget));
+    composerController.cancelEdit();
+
+    t.keyClick(Qt.Key_E);
+    if (!reactionsController.pickerOpen || reactionsController.pickerTarget !== "m6")
+      return Check.fail("setup: e did not open the reaction picker for m6");
+    t.keyClick(Qt.Key_Escape);
+    if (reactionsController.pickerOpen) return Check.fail("setup: Escape did not close the reaction picker");
+
+    t.keyClick(Qt.Key_E, Qt.ShiftModifier);
+    if (!composerController.editTarget || composerController.editTarget.id !== "m6")
+      return Check.fail("Shift+E right after another quick key did not load m6 for editing: " + JSON.stringify(composerController.editTarget));
+    composerController.cancelEdit();
 
     root.checkNewerClamp();
   }

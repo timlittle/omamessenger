@@ -4,11 +4,15 @@ import "../lib/Timeline.js" as Timeline
 
 // Owns the highlighted message in an open conversation: the id j/k move
 // through, by id rather than index, so loading older history or a new
-// message arriving never moves it to a different message. Split out of
-// ConversationController to keep that file within the size guideline.
-// Every function here reads a timeline passed in by the caller, rather
-// than holding one itself, since ConversationController's timeline is
-// reset for each conversation it opens.
+// message arriving never moves it to a different message. j/k also
+// reach past the newest loaded message into the open chat's own queued
+// "send later" messages, when there are any (see highlightedScheduledId,
+// moveNewer and moveOlder) - a report found those otherwise undiscoverable
+// from the keyboard at all. Split out of ConversationController to keep
+// that file within the size guideline. Every function here reads a
+// timeline passed in by the caller, rather than holding one itself,
+// since ConversationController's timeline is reset for each conversation
+// it opens.
 //
 // QtObject rather than Item: it holds no child objects.
 QtObject {
@@ -17,6 +21,14 @@ QtObject {
   // highlightedId is the message id j/k move through. It starts on the
   // newest message each time a conversation (re)loads.
   property string highlightedId: ""
+
+  // highlightedScheduledId is the id of the open chat's own queued
+  // "send later" message j/k currently point at, once they have moved
+  // past the newest message into the queue (see moveNewer/moveOlder);
+  // "" while the highlight is on an ordinary message instead - the two
+  // are mutually exclusive, so a message delegate's own highlighted
+  // cue and this one are never both true for the same key press.
+  property string highlightedScheduledId: ""
 
   // _pendingId is a message id openMessage asked to land on, applied once
   // the conversation's initial page has loaded (see applyInitial): the
@@ -47,6 +59,7 @@ QtObject {
   // there changes nothing.
   function reset(timeline: var): void {
     root.highlightedId = timeline.newestId();
+    root.highlightedScheduledId = "";
     root._jumpId = "";
   }
 
@@ -54,6 +67,7 @@ QtObject {
   // conversation that is closing or being switched away from.
   function clear(): void {
     root.highlightedId = "";
+    root.highlightedScheduledId = "";
     root._jumpId = "";
   }
 
@@ -74,6 +88,7 @@ QtObject {
     const target = Highlight.afterWriting(timeline.ids(), root._jumpId);
     if (target && target === root._jumpId) {
       root.highlightedId = target;
+      root.highlightedScheduledId = "";
       root.scrollRequested(target);
       return;
     }
@@ -98,6 +113,7 @@ QtObject {
 
     if (pending && timeline.find(pending)) {
       root.highlightedId = pending;
+      root.highlightedScheduledId = "";
       root._jumpId = pending;
       root.scrollRequested(pending);
       return;
@@ -106,13 +122,29 @@ QtObject {
     root.reset(timeline);
   }
 
-  // moveOlder moves the highlight one message toward older, stopping at
-  // the oldest loaded message rather than overscrolling: it returns true
-  // there instead, so the caller can fetch more history, leaving the
-  // highlight where it is until that page arrives. An actual move drops
-  // any remembered command-palette jump target: the user has now moved
-  // the highlight themselves.
-  function moveOlder(timeline: var): bool {
+  // moveOlder moves the highlight one message toward older: back out of
+  // the open chat's own queued "send later" messages onto the newest
+  // loaded message first, when it was there (see scheduledIds, soonest
+  // due first - the same list moveNewer below moved into), then through
+  // the loaded messages themselves, stopping at the oldest rather than
+  // overscrolling - it returns true there instead, so the caller can
+  // fetch more history, leaving the highlight where it is until that
+  // page arrives. An actual move drops any remembered command-palette
+  // jump target: the user has now moved the highlight themselves.
+  function moveOlder(timeline: var, scheduledIds: var): bool {
+    if (root.highlightedScheduledId) {
+      const index = scheduledIds.indexOf(root.highlightedScheduledId);
+      if (index > 0) {
+        root.highlightedScheduledId = scheduledIds[index - 1];
+        return false;
+      }
+
+      root.highlightedScheduledId = "";
+      root.highlightedId = timeline.newestId();
+      root.scrollRequested(root.highlightedId);
+      return false;
+    }
+
     const ids = timeline.ids();
     if (ids.length === 0) return false;
     if (Highlight.atOldest(ids, root.highlightedId)) return true;
@@ -124,13 +156,31 @@ QtObject {
   }
 
   // moveNewer moves the highlight one message toward newer, stopping at
-  // the newest loaded message the same way moveOlder stops at the oldest,
-  // and drops any remembered jump target the same way moveOlder does.
-  function moveNewer(timeline: var): void {
+  // the newest loaded message, then into scheduledIds - the open chat's
+  // own queued "send later" messages, soonest due first - if there are
+  // any, clamping at the last one there rather than overscrolling, the
+  // same way it clamps within the loaded messages; drops any remembered
+  // jump target the same way moveOlder does.
+  function moveNewer(timeline: var, scheduledIds: var): void {
+    if (root.highlightedScheduledId) {
+      const index = scheduledIds.indexOf(root.highlightedScheduledId);
+      if (index >= 0 && index < scheduledIds.length - 1) root.highlightedScheduledId = scheduledIds[index + 1];
+      return;
+    }
+
     const ids = timeline.ids();
-    if (ids.length === 0) return;
+    if (ids.length === 0) {
+      if (scheduledIds.length > 0) { root.highlightedId = ""; root.highlightedScheduledId = scheduledIds[0]; }
+      return;
+    }
 
     const next = Highlight.newer(ids, root.highlightedId);
+    if (next === root.highlightedId && scheduledIds.length > 0) {
+      root.highlightedId = "";
+      root.highlightedScheduledId = scheduledIds[0];
+      return;
+    }
+
     if (next !== root.highlightedId) root._jumpId = "";
     root.highlightedId = next;
     root.scrollRequested(root.highlightedId);

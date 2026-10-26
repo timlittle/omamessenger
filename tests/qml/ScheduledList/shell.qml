@@ -1,9 +1,14 @@
 // Checks ScheduledList: each queued message shows its own send time and
-// text, the list takes no space with nothing queued, and each row's
-// send-now, edit and cancel buttons report the right message id. What
-// counts as the send-time label is Format.sendAtLabel's own job,
-// already proven in tests/unit/format.test.cjs; this only checks the
-// component shows it and wires its buttons.
+// text, the list takes no space with nothing queued, each row's
+// send-now, edit and cancel buttons report the right message id, and
+// highlightedId marks exactly one row with an accent outline and its
+// own key-hint row, naming send now/edit/cancel - a report found
+// those otherwise undiscoverable from the keyboard at all. What counts
+// as the send-time label is Format.sendAtLabel's own job, and the hint
+// text itself is ScheduledAction.hints' own job, already proven in
+// tests/unit/format.test.cjs and tests/unit/scheduledaction.test.cjs;
+// this only checks the component shows what each returns and wires its
+// buttons.
 import QtQuick
 import QtTest
 import Quickshell
@@ -52,11 +57,36 @@ ShellRoot {
 
   function run(): void {
     if (!root.checkRowsShowTimeAndText()) return;
+    if (!root.checkHighlightedRowShowsOutlineAndHints()) return;
     if (!root.checkHiddenWithNothingQueued()) return;
     if (!root.checkButtonsReportTheRightMessage()) return;
 
     console.log("PASS ScheduledList");
     Qt.exit(0);
+  }
+
+  // checkHighlightedRowShowsOutlineAndHints checks highlightedId marks
+  // exactly the row it names with an accent outline and its own
+  // key-hint row, naming send now, edit and cancel - the other row
+  // shows neither.
+  function checkHighlightedRowShowsOutlineAndHints(): bool {
+    list.highlightedId = "s1";
+
+    const s1 = Check.find(list, "scheduledRow-s1");
+    const s2 = Check.find(list, "scheduledRow-s2");
+    if (!s1 || !s2) return Check.fail("setup: could not find both queued rows");
+    if (s1.border.width <= s2.border.width) return Check.fail("the highlighted row's outline is not thicker than an ordinary row's own border");
+    if (s1.color === s2.color) return Check.fail("the highlighted row's own tint is not a different colour from an ordinary row's own background");
+
+    const s1Hint = Check.find(s1, "scheduledHighlightHints");
+    const s2Hint = Check.find(s2, "scheduledHighlightHints");
+    if (!s1Hint || s1Hint.opacity !== 1) return Check.fail("the highlighted row does not show its key-hint row");
+    if (!s2Hint || s2Hint.opacity !== 0) return Check.fail("a row that is not highlighted shows its key-hint row anyway");
+    if (s1Hint.text !== "Enter send now · e edit · d cancel")
+      return Check.fail("the highlighted row's key-hint text is \"" + s1Hint.text + "\"");
+
+    list.highlightedId = "";
+    return true;
   }
 
   function checkRowsShowTimeAndText(): bool {

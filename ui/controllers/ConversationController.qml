@@ -51,6 +51,11 @@ Item {
   // the message list to show.
   property var videoController: null
 
+  // scheduledController owns the open conversation's own queued "send
+  // later" messages, read so the highlight (see highlightedScheduledId)
+  // can move past the newest loaded message into them.
+  property var scheduledController: null
+
   // openExternally hands a local file to the user's own application,
   // through media (see MediaController); a test overrides it with a
   // recorder rather than letting a video or file open for real.
@@ -76,6 +81,14 @@ Item {
   // moves it to a different message; see MessageHighlight, which owns
   // it, for the rest of the story.
   readonly property alias highlightedId: highlight.highlightedId
+
+  // highlightedScheduledId is the id of the open chat's own queued
+  // "send later" message j/k currently point at, once they have moved
+  // past the newest loaded message into the queue (see
+  // MessageHighlight and ScheduledList.qml); "" while the highlight is
+  // on an ordinary message instead, which is mutually exclusive with
+  // this.
+  readonly property alias highlightedScheduledId: highlight.highlightedScheduledId
 
   // messages is the loaded timeline, newest first.
   readonly property alias messages: timeline.model
@@ -194,7 +207,7 @@ Item {
       "pane.conversation": () => root._showPane(),
       "pane.list": () => root._hidePane(),
       "message.highlightOlder": () => root._highlightOlder(),
-      "message.highlightNewer": () => highlight.moveNewer(timeline),
+      "message.highlightNewer": () => highlight.moveNewer(timeline, root._scheduledIds()),
       "message.open": () => root._openHighlighted(),
       "message.openLink": () => highlight.openLink(timeline),
       "message.goToQuote": () => highlight.goToQuote(timeline),
@@ -574,7 +587,36 @@ Item {
   // overscrolling, leaving the highlight where it is until that page
   // arrives.
   function _highlightOlder(): void {
-    if (highlight.moveOlder(timeline)) root.loadOlder();
+    if (highlight.moveOlder(timeline, root._scheduledIds())) root.loadOlder();
+  }
+
+  // _scheduledIds returns the open conversation's own queued "send
+  // later" messages' ids, soonest due first, for the highlight to move
+  // into once past the newest loaded message (see MessageHighlight);
+  // empty with no conversation open or nothing queued for it.
+  function _scheduledIds(): var {
+    if (!root.scheduledController || !root.activeId) return [];
+    return root.scheduledController.forConversation(root.activeId).map((m) => m.id);
+  }
+
+  // _reconcileHighlightedScheduled moves the highlight off a queued row
+  // that just stopped being queued - sent now or cancelled, by this
+  // computer or another client signed into the same account - onto
+  // whichever is now soonest due, or back to the newest loaded message
+  // once none are left, rather than leaving it pointing at a row that
+  // no longer exists. Run whenever scheduledController's own list
+  // changes (see the Connections below); a no-op while the highlight is
+  // not on a queued row, or still is on one.
+  function _reconcileHighlightedScheduled(): void {
+    if (!root.highlightedScheduledId) return;
+
+    const ids = root._scheduledIds();
+    if (ids.includes(root.highlightedScheduledId)) return;
+
+    if (ids.length > 0) { highlight.highlightedScheduledId = ids[0]; return; }
+
+    highlight.highlightedScheduledId = "";
+    highlight.highlightedId = timeline.newestId();
   }
 
   // _openHighlighted opens the highlighted message's photo, video or
@@ -804,6 +846,19 @@ Item {
       root.conversation = root.listController.findConversation(root.activeId);
       if (root.conversation)
         root.service.request("ui.setFocus", { conversationId: root.activeId, windowActive: root.windowActive }, function() {});
+    }
+  }
+
+  // The highlight follows a queued row it was pointing at wherever it
+  // goes - including off the end, once that row is no longer queued
+  // (see _reconcileHighlightedScheduled): sent now or cancelled from
+  // the keyboard answers synchronously in a test, but for real this is
+  // the helper's own asynchronous reply, or another client's.
+  Connections {
+    target: root.scheduledController
+
+    function onAllChanged() {
+      root._reconcileHighlightedScheduled();
     }
   }
 }

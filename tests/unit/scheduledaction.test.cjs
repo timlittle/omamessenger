@@ -27,3 +27,16 @@ test('resolve offers a picker over every one with more than one queued', () => {
   ];
   assert.deepEqual(ScheduledAction.resolve(messages), { kind: 'many', messages });
 });
+
+test('hints names the three keys for a highlighted queued row, reading their effective bindings', () => {
+  assert.strictEqual(ScheduledAction.hints(), 'Enter send now · e edit · d cancel');
+});
+
+test('hints reads a keys.conf override the same way Highlight.hints does', () => {
+  const bindings = [
+    { action: 'message.open', keys: ['Space'], contexts: ['conversation'], label: 'x' },
+    { action: 'message.react', keys: ['q'], contexts: ['conversation'], label: 'x' },
+    { action: 'message.delete', keys: ['z'], contexts: ['conversation'], label: 'x' }
+  ];
+  assert.strictEqual(ScheduledAction.hints(bindings), 'Space send now · q edit · z cancel');
+});

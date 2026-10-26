@@ -106,25 +106,25 @@ Item {
     });
   }
 
-  // _typingGuardState tracks the previous plain, non-navigation key
-  // this controller let through or suppressed, for guardTyping's own
-  // burst check (see ui/lib/TypingGuard.js); {} until the first one.
+  // _typingGuardState tracks the burst this controller's guardTyping
+  // reads and advances on every plain key (see ui/lib/TypingGuard.js);
+  // {} until the first one, or after resetBurst.
   property var _typingGuardState: ({})
 
   // guardTyping reports whether action - matched in the list or
   // conversation context, or "" when the key matched nothing at all -
   // should be held back because it looks like someone typing into the
-  // wrong place rather than reaching for a shortcut: a guarded,
+  // wrong place rather than reaching for a shortcut: either a guarded,
   // conversation-changing action (see TypingGuard.GUARDED_ACTIONS)
-  // arriving right on the heels of another plain key, matched or not
-  // (see TypingGuard.next). Holding it back shows a toast naming the
-  // key that actually starts writing, so the same burst lands in the
-  // composer next time instead of silently changing something here
-  // again. Everything else - navigation, a mode switch, an opener, an
-  // unmatched key - always runs, but still updates the tracked state,
-  // so a run of ordinary letters still counts towards holding back a
-  // guarded action the moment one follows; see Panel.routeKey, the one
-  // caller.
+  // arriving right on the heels of another plain key, or any action at
+  // all once the burst itself looks like an ordinary typed word (see
+  // TypingGuard.next and docs/decisions.md). Holding it back shows a
+  // toast naming the key that actually starts writing, so the same
+  // burst lands in the composer next time instead of silently
+  // changing or opening something here again. Every call still
+  // advances the tracked burst, even one this returns false for, so a
+  // run of ordinary letters keeps building towards holding back
+  // whatever follows; see Panel.routeKey, the one caller.
   function guardTyping(action: string): bool {
     const result = TypingGuard.next(action, Date.now(), root._typingGuardState, TypingGuard.NAVIGATION_ACTIONS, TypingGuard.GUARDED_ACTIONS);
     root._typingGuardState = result.state;
@@ -134,6 +134,15 @@ Item {
     root.notice = "Press " + Keymap.keyFor('compose.focus', bindings) + " to write a message";
 
     return true;
+  }
+
+  // resetBurst drops whatever guardTyping has tracked so far, for
+  // Escape - which this guard is never even called for (see
+  // Panel.routeKey's own isPlainKey check) - so a deliberate Esc then
+  // a shortcut never inherits a burst that started before it, purely
+  // because not enough real time happened to pass in between.
+  function resetBurst(): void {
+    root._typingGuardState = TypingGuard.reset();
   }
 
   // showAll shows every chat the standard list would otherwise fold away:
@@ -481,12 +490,20 @@ Item {
 
   // _archiveAndMarkRead asks to mark whichever conversation is
   // contextually current read, then archive it (see archiveOneOpen's
-  // doc comment): the same question a plain archive now asks, since
-  // this is never a toggle, only ever archiving.
+  // doc comment), the same question a plain archive now asks - unless
+  // it is already archived, when Shift+A unarchives it at once instead,
+  // with no question: unarchiving only ever reverses something already
+  // confirmed, the same asymmetry _toggleArchive already has, so this
+  // is a toggle after all once the chat is on the other side of it.
   function _archiveAndMarkRead(): void {
     const id = root._currentId();
     const conversation = id ? root.findConversation(id) : null;
     if (!conversation) return;
+
+    if (conversation.archived) {
+      root._doArchive(id, conversation.title, false);
+      return;
+    }
 
     root._askArchiveOne(id, conversation.title, "archiveRead");
   }

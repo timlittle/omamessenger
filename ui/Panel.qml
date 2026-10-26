@@ -131,28 +131,51 @@ Item {
     const context = Navigation.keyContext(root._navState());
     const action = Keymap.match(context, key, modifiers, text, root.bindings);
 
+    // Escape drops whatever the typing guard below has tracked so
+    // far: a deliberate Esc, then a shortcut typed quickly afterwards
+    // on purpose, must never inherit a burst that started before it
+    // just because not enough real time happened to pass in between
+    // (see ui/lib/TypingGuard.js and docs/decisions.md).
+    if (action === "escape") listController.resetBurst();
+
     // A plain, printable letter arriving right on the heels of another
     // one, while the list or an open conversation has focus, outside
     // the composer, can mean someone is typing into the wrong place
     // (see ui/lib/TypingGuard.js); listController.guardTyping holds
-    // back only the few actions that are worth delaying by one
-    // keypress (archive, mute, pin, hide, block, delete, mark
-    // read/unread), never a mode switch, an opener or navigation, and
-    // shows a toast naming the key that actually starts writing. This
-    // runs even when action is "" (the key matched nothing at all, the
-    // shape an ordinary typed word takes): an unmatched key can never
-    // itself be held back, but still counts towards a later guarded
-    // one arriving too soon after it. Ctrl- or Alt-held shortcuts are
-    // never plain letters, so they always go through regardless; nor
-    // is Escape, Enter, Tab or Backspace, whose own key.text is a
-    // single, non-printable control character rather than "", not
-    // just text.length !== 1 alone.
+    // back a guarded, conversation-changing action (archive, mute,
+    // pin, hide, block, delete, mark read/unread) the moment any plain
+    // key preceded it, and holds back *any* action once the burst
+    // itself looks like an ordinary typed word rather than a chosen
+    // shortcut - never a burst made up only of navigation keys, which
+    // is just fast scrolling - showing a toast naming the key that
+    // actually starts writing. This runs even when action is "" (the
+    // key matched nothing at all, the shape an ordinary typed word
+    // takes): an unmatched key can never itself be held back, but
+    // still counts towards holding back whatever follows it too soon
+    // after. Ctrl- or Alt-held shortcuts are never plain letters, so
+    // they always go through regardless; nor is Escape, Enter, Tab or
+    // Backspace, whose own key.text is a single, non-printable control
+    // character rather than "", not just text.length !== 1 alone.
     const isPlainKey = /^[\x20-\x7e]$/.test(text) && (modifiers & Keymap.MOD.Ctrl) === 0 && (modifiers & Keymap.MOD.Alt) === 0;
     if (isPlainKey && (context === "list" || context === "conversation") && listController.guardTyping(action)) {
       return true;
     }
 
     if (!action) return false;
+
+    // The open chat's own highlighted queued "send later" message (see
+    // ConversationController.highlightedScheduledId and
+    // ScheduledList.qml) answers to the same three keys a highlighted
+    // message does - Enter, react's "e" and delete's "d" - for send
+    // now, edit and cancel instead, since there is no message there to
+    // open, react to or delete. Checked after the typing guard above,
+    // so a mistyped burst still cannot reach it either.
+    const scheduledId = conversationController.highlightedScheduledId;
+    const scheduledRemap = { "message.open": "sendNow", "message.react": "edit", "message.delete": "cancel" };
+    if (scheduledId && scheduledRemap[action]) {
+      windowController.runScheduledActionOn(scheduledId, scheduledRemap[action]);
+      return true;
+    }
 
     const controllers = [listController, conversationController, composerController, photoViewerController,
       reactionsController, pollsController, deleteController, dialogController, accountController, windowController];
@@ -276,6 +299,7 @@ Item {
     photoViewer: photoViewerController
     voiceController: voiceNoteController
     videoController: videoController
+    scheduledController: scheduledController
   }
 
   VoiceNoteController {
