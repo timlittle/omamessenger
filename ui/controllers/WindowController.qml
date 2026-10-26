@@ -3,6 +3,7 @@ import "../lib/Navigation.js" as Navigation
 import "../lib/Actions.js" as Actions
 import "../lib/Keymap.js" as Keymap
 import "../lib/Palette.js" as Palette
+import "../lib/ScheduledAction.js" as ScheduledAction
 import "../lib/Rpc.js" as Rpc
 import "../lib/ErrorBanner.js" as ErrorBanner
 import "../lib/Links.js" as Links
@@ -70,6 +71,11 @@ Item {
   // or "" while the palette's custom-time prompt is queuing a fresh
   // message instead.
   property string _editingScheduledId: ""
+
+  // _scheduledAction is which of "sendNow", "edit" or "cancel" the
+  // "scheduledMessagesForChat" picker is about to apply to whichever
+  // row Enter picks, set by _runScheduledAction below.
+  property string _scheduledAction: ""
 
   // openExternalLink is the one place in this UI that ever calls
   // Qt.openUrlExternally for a URL that came from a message, a link
@@ -247,6 +253,9 @@ Item {
       "chat.snoozeCustom": () => root.openPalette("snoozeCustom"),
       "compose.sendLater": () => { root._editingScheduledId = ""; root.openPalette("sendLaterCustom"); },
       "scheduled.show": () => root.openPalette("scheduledMessages"),
+      "scheduled.sendNow": () => root._runScheduledAction("sendNow"),
+      "scheduled.edit": () => root._runScheduledAction("edit"),
+      "scheduled.cancel": () => root._runScheduledAction("cancel"),
       "palette.down": () => root.movePalette(1),
       "palette.up": () => root.movePalette(-1),
       "palette.accept": () => root.acceptPalette(root.paletteIndex),
@@ -363,6 +372,7 @@ Item {
       service: root.service,
       messageResults: root.paletteMessageResults,
       scheduledMessages: root.scheduledController ? root.scheduledController.all : [],
+      conversationId: root.conversationController ? root.conversationController.activeId : "",
       now: Date.now()
     };
   }
@@ -509,6 +519,7 @@ Item {
     else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
     else if (root.paletteMode === "sendLaterCustom") root._scheduleDraft(chosen.at);
     else if (root.paletteMode === "scheduledMessages") root._openScheduledMessage(chosen);
+    else if (root.paletteMode === "scheduledMessagesForChat") root._applyScheduledAction(chosen, "");
     else if (root.paletteMode === "keyBindings") { /* informational only */ }
     else root.runCommand(chosen.action);
   }
@@ -540,6 +551,45 @@ Item {
       if (!conversationId) return;
       root.scheduledController.schedule(conversationId, text, at, onDone);
     }
+  }
+
+  // _runScheduledAction runs "Send scheduled message now" / "Edit
+  // scheduled message" / "Cancel scheduled message": action is
+  // "sendNow", "edit" or "cancel". With nothing queued in the open
+  // chat it says so in the toast instead of looking like the command
+  // did nothing (see "Play notification sound"'s own fix); with
+  // exactly one it acts on it directly; with more than one it opens a
+  // picker over that chat's own queued messages for _applyScheduledAction
+  // to read once Enter picks one (see acceptPalette).
+  function _runScheduledAction(action: string): void {
+    if (!root.scheduledController || !root.conversationController) return;
+
+    const conversationId = root.conversationController.activeId;
+    if (!conversationId) return;
+
+    const outcome = ScheduledAction.resolve(root.scheduledController.forConversation(conversationId));
+    if (outcome.kind === "none") {
+      root.conversationController.timeline.notice = "No scheduled message in this chat · Ctrl+L to send later";
+      return;
+    }
+    if (outcome.kind === "one") { root._applyScheduledAction(outcome.message, action); return; }
+
+    root._scheduledAction = action;
+    root.openPalette("scheduledMessagesForChat");
+  }
+
+  // _applyScheduledAction runs action (defaulting to the one
+  // _runScheduledAction stashed in _scheduledAction, for the picker's
+  // own accept) on message: send it now, load it into the composer to
+  // edit (the same round trip a queued message's own "Edit" button
+  // uses), or cancel it outright.
+  function _applyScheduledAction(message: var, action: string): void {
+    const which = action !== "" ? action : root._scheduledAction;
+    root._scheduledAction = "";
+
+    if (which === "sendNow") root.scheduledController.sendNow(message.id);
+    else if (which === "cancel") root.scheduledController.cancel(message.id);
+    else if (which === "edit") root.editScheduledMessage(message.id, message.text);
   }
 
   // editScheduledMessage starts editing a queued message, from its own

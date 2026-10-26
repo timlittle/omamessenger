@@ -206,6 +206,13 @@ var OWNERS = {
   // mode WindowController owns, the same reasoning as chat.snoozeCustom.
   'compose.sendLater': 'window',
   'scheduled.show': 'window',
+  // The three commands below act on the open chat's own queued
+  // message, resolved through WindowController._runScheduledAction;
+  // with more than one queued it opens the same kind of palette
+  // picker chat.snoozeCustom and compose.sendLater already do.
+  'scheduled.sendNow': 'window',
+  'scheduled.edit': 'window',
+  'scheduled.cancel': 'window',
   'palette.down': 'window',
   'palette.up': 'window',
   'palette.accept': 'window',

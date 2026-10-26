@@ -172,7 +172,7 @@ var MODES = {
     results: (ctx) => Snooze.preview(ctx.query, ctx.now),
     items: (results) => results.map((r) => ({ label: r.label, detail: '', keys: '' }))
   },
-  // sendLaterCustom lists Snooze.sendLaterPresets' four named choices,
+  // sendLaterCustom lists Snooze.sendLaterPresets' six named choices,
   // matched against whatever has been typed so far (every one shows
   // with an empty query, the same as the palette's own command list
   // does), plus a preview row for a typed custom time Snooze.parse
@@ -193,13 +193,29 @@ var MODES = {
   // scheduledMessages lists every message still queued, best match
   // first against its own text, for the "Scheduled messages" command;
   // WindowController._openScheduledMessage reads conversationId off
-  // whichever row Enter picks.
+  // whichever row Enter picks. id and text ride along unused by that
+  // command, so scheduledMessagesForChat below can reuse this same
+  // shape for "Send scheduled message now" / "Edit scheduled message"
+  // / "Cancel scheduled message", which need to act on the chosen
+  // message itself rather than just open its chat.
   scheduledMessages: {
     results: (ctx) => search(ctx.scheduledMessages || [], ctx.query, (m) => m.text),
     items: (results, ctx) => results.map((m) => ({
       label: `${Format.sendAtLabel(m.sendAt, ctx.now)}: ${Format.singleLine(m.text)}`,
-      detail: '', keys: '', conversationId: m.conversationId
+      detail: '', keys: '', conversationId: m.conversationId, id: m.id, text: m.text
     }))
+  },
+  // scheduledMessagesForChat is scheduledMessages narrowed to the open
+  // chat's own queued messages: the picker
+  // ScheduledAction.resolve offers when it has more than one, for
+  // WindowController._runScheduledAction to act on whichever one Enter
+  // picks (see acceptPalette).
+  scheduledMessagesForChat: {
+    results: (ctx) => search(
+      (ctx.scheduledMessages || []).filter((m) => m.conversationId === ctx.conversationId),
+      ctx.query, (m) => m.text
+    ),
+    items: (results, ctx) => MODES.scheduledMessages.items(results, ctx)
   },
   keyBindings: {
     results: (ctx) => search(KeyBindings.rows(ctx.bindings, ctx.keyBindingConflicts, ctx.keyBindingErrors), ctx.query, (r) => r.label),

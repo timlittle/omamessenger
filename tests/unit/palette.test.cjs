@@ -194,8 +194,8 @@ test('results/items: "scheduledMessages" mode lists queued messages, matched aga
 
   const items = Palette.items('scheduledMessages', results, ctx);
   assert.deepEqual(items, [
-    { label: 'Sends at 18:00: see you soon', detail: '', keys: '', conversationId: 'a' },
-    { label: 'Sends at Tomorrow 09:00: happy birthday', detail: '', keys: '', conversationId: 'b' }
+    { label: 'Sends at 18:00: see you soon', detail: '', keys: '', conversationId: 'a', id: 's1', text: 'see you soon' },
+    { label: 'Sends at Tomorrow 09:00: happy birthday', detail: '', keys: '', conversationId: 'b', id: 's2', text: 'happy birthday' }
   ]);
 });
 
@@ -212,6 +212,26 @@ test('results/items: "scheduledMessages" mode narrows by the typed query', () =>
 
   const results = Palette.results('scheduledMessages', ctx);
   assert.deepEqual(results.map((m) => m.id), ['s2']);
+});
+
+test('results/items: "scheduledMessagesForChat" mode narrows to the open conversation', () => {
+  const now = Date.parse('2026-01-01T10:00:00Z');
+  const ctx = {
+    query: '',
+    now,
+    conversationId: 'a',
+    scheduledMessages: [
+      { id: 's1', conversationId: 'a', text: 'see you soon', sendAt: Date.parse('2026-01-01T18:00:00Z') },
+      { id: 's2', conversationId: 'b', text: 'happy birthday', sendAt: Date.parse('2026-01-02T09:00:00Z') },
+      { id: 's3', conversationId: 'a', text: 'call you later', sendAt: Date.parse('2026-01-03T09:00:00Z') }
+    ]
+  };
+
+  const results = Palette.results('scheduledMessagesForChat', ctx);
+  assert.deepEqual(results.map((m) => m.id), ['s1', 's3']);
+
+  const items = Palette.items('scheduledMessagesForChat', results, ctx);
+  assert.deepEqual(items.map((i) => i.id), ['s1', 's3']);
 });
 
 test('results/items: "keyBindings" mode matches the bindings report, shown as-is', () => {

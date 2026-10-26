@@ -78,6 +78,17 @@ ShellRoot {
     listController: listController
   }
 
+  ComposerController {
+    id: composerController
+    service: service
+    conversation: conversationController
+  }
+
+  ScheduledController {
+    id: scheduledController
+    service: service
+  }
+
   DialogController {
     id: dialogController
     service: service
@@ -90,6 +101,8 @@ ShellRoot {
     service: service
     listController: listController
     conversationController: conversationController
+    composerController: composerController
+    scheduledController: scheduledController
     dialogController: dialogController
 
     onHideRequested: root.hidden = true
@@ -366,12 +379,99 @@ ShellRoot {
       if (root.fakeSoundPlayer.played.length > 0)
         return Check.fail("chat.playNotificationSound played a sound despite do-not-disturb being on: " + JSON.stringify(root.fakeSoundPlayer.played));
       service.doNotDisturbCheck = null;
-      return root.checkRemoveAccountClosesOpenConversation();
+      return root.checkScheduledActionWithNone();
     }
 
     stepper.attempts++;
     if (stepper.attempts >= 100) return Check.fail("chat.playNotificationSound under do-not-disturb never set its own notice, got " + JSON.stringify(conversationController.notice));
     stepper.retry(root.waitForDoNotDisturbNotice);
+  }
+
+  // checkScheduledActionWithNone runs "Cancel scheduled message" with
+  // Mum (still the open conversation) having nothing queued, and
+  // confirms it says so in the open conversation's own notice rather
+  // than looking like it did nothing, the same pattern
+  // checkPlayNotificationSoundWithNoneSet already proved for a
+  // different command.
+  function checkScheduledActionWithNone(): void {
+    windowController.run("scheduled.cancel");
+    stepper.attempts = 0;
+    root.waitForNoScheduledMessageNotice();
+  }
+
+  function waitForNoScheduledMessageNotice(): void {
+    if (conversationController.notice.indexOf("No scheduled message") === 0)
+      return root.checkScheduledActionWithOne();
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
+      return Check.fail("scheduled.cancel with nothing queued never set its own notice, got " + JSON.stringify(conversationController.notice));
+    stepper.retry(root.waitForNoScheduledMessageNotice);
+  }
+
+  // checkScheduledActionWithOne queues exactly one message for Mum,
+  // then runs "Cancel scheduled message": with only one queued, it
+  // acts on it directly, with no palette picker involved.
+  function checkScheduledActionWithOne(): void {
+    scheduledController.schedule(conversationController.activeId, "see you soon", Date.now() + 60 * 60000, () => {
+      windowController.run("scheduled.cancel");
+      stepper.attempts = 0;
+      root.waitForScheduledCancelled();
+    });
+  }
+
+  function waitForScheduledCancelled(): void {
+    if (scheduledController.forConversation(conversationController.activeId).length === 0)
+      return root.checkScheduledActionWithMany();
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
+      return Check.fail("scheduled.cancel with one queued message did not remove it: " + JSON.stringify(scheduledController.all));
+    stepper.retry(root.waitForScheduledCancelled);
+  }
+
+  // checkScheduledActionWithMany queues two messages for Mum, then runs
+  // "Send scheduled message now": with more than one queued, it opens
+  // a palette picker over just this chat's own messages rather than
+  // acting on either one by itself.
+  function checkScheduledActionWithMany(): void {
+    const conversationId = conversationController.activeId;
+    scheduledController.schedule(conversationId, "first message", Date.now() + 60 * 60000, () => {
+      scheduledController.schedule(conversationId, "second message", Date.now() + 2 * 60 * 60000, () => {
+        windowController.run("scheduled.sendNow");
+        stepper.attempts = 0;
+        root.waitForScheduledPicker();
+      });
+    });
+  }
+
+  function waitForScheduledPicker(): void {
+    if (windowController.paletteOpen && windowController.paletteMode === "scheduledMessagesForChat") {
+      if (windowController.paletteItems.length !== 2)
+        return Check.fail("scheduled.sendNow's picker listed " + windowController.paletteItems.length + " rows, want 2");
+
+      windowController.acceptPalette(0);
+      stepper.attempts = 0;
+      return root.waitForScheduledSendNowApplied();
+    }
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
+      return Check.fail("scheduled.sendNow with two queued messages did not open the scheduledMessagesForChat picker");
+    stepper.retry(root.waitForScheduledPicker);
+  }
+
+  // waitForScheduledSendNowApplied holds until accepting the picker's
+  // first row sent that message right away, leaving only the other one
+  // still queued.
+  function waitForScheduledSendNowApplied(): void {
+    const left = scheduledController.forConversation(conversationController.activeId);
+    if (left.length === 1) return root.checkRemoveAccountClosesOpenConversation();
+
+    stepper.attempts++;
+    if (stepper.attempts >= 100)
+      return Check.fail("accepting the scheduled message picker left " + left.length + " messages queued, want 1");
+    stepper.retry(root.waitForScheduledSendNowApplied);
   }
 
   // checkRemoveAccountClosesOpenConversation opens a conversation that

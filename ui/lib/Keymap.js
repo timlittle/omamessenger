@@ -74,6 +74,14 @@ var BINDINGS = [
   // conversation; no key of its own, like helper.doctor, since it is a
   // deliberate lookup rather than something to reach for by reflex.
   { action: 'scheduled.show', keys: [], contexts: ['global'], label: 'Scheduled messages', command: true, keywords: ['send later'] },
+  // Act on the open chat's own queued message: directly with only one,
+  // or through a picker of that chat's own queued messages with more
+  // than one (see WindowController._runScheduledAction and
+  // ScheduledAction.resolve). No key of their own, like scheduled.show
+  // above - a deliberate lookup, not something to reach for by reflex.
+  { action: 'scheduled.sendNow', keys: [], contexts: ['conversation'], label: 'Send scheduled message now', command: true, keywords: ['send later', 'scheduled'] },
+  { action: 'scheduled.edit', keys: [], contexts: ['conversation'], label: 'Edit scheduled message', command: true, keywords: ['send later', 'scheduled'] },
+  { action: 'scheduled.cancel', keys: [], contexts: ['conversation'], label: 'Cancel scheduled message', command: true, keywords: ['send later', 'scheduled'] },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
