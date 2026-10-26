@@ -516,6 +516,27 @@ ShellRoot {
     return !!button && button.text === "⏸";
   }
 
+  // waitForDesignTeamGifReady holds until Design Team's chat is open and
+  // its newest message's GIF bubble shows its still thumbnail (see
+  // backend/internal/connector/fake/seed.go's own gifThumb), so there is
+  // a real picture on screen, not an empty box, before the next step
+  // clicks it to play.
+  function waitForDesignTeamGifReady(): var {
+    if (root.title() !== "Design Team") return false;
+
+    const thumb = Check.find(root.panel(), "videoThumb");
+    return !!thumb && thumb.visible;
+  }
+
+  // waitForDesignTeamGifAnimating holds until the GIF has been fetched
+  // and the helper has confirmed its bytes are a genuine GIF image (see
+  // app.Commands.DecodeAsForMedia), so the bubble has switched from its
+  // static thumbnail to the real, playing AnimatedImage.
+  function waitForDesignTeamGifAnimating(): var {
+    const image = Check.find(root.panel(), "realGifImage");
+    return !!image && image.visible;
+  }
+
   // openPaletteAndType returns a step that opens Ctrl+K and types query,
   // leaving the palette open for a message search's debounce to answer.
   function openPaletteAndType(label: string, query: string): var {
@@ -653,7 +674,16 @@ ShellRoot {
       root.waitForComposerBlurred,
       root.openHighlighted("⏎  →  play voice"),
       root.waitForVoicePlaying,
-      root.holdFor(8)
+      root.holdFor(6),
+      root.openViaPalette("Ctrl+K  →  Design Team", "design"),
+      root.waitForDesignTeamGifReady,
+      root.waitForComposerFocused,
+      root.holdFor(3),
+      root.pressKey("Esc  (scroll)", Qt.Key_Escape, Qt.NoModifier),
+      root.waitForComposerBlurred,
+      root.openHighlighted("⏎  →  play GIF"),
+      root.waitForDesignTeamGifAnimating,
+      root.holdFor(6)
     ];
     case "reply-reaction": return [
       root.waitForReady,

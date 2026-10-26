@@ -18,9 +18,9 @@ Each clip shows one feature, recorded with the test build's sample accounts. `ma
 
 ![Command palette search](demo/palette-search.gif)
 
-## Photos and voice notes
+## Photos, voice notes and GIFs
 
-![Photo and voice note](demo/media.gif)
+![Photo, voice note and GIF](demo/media.gif)
 
 ## Replies and reactions
 
