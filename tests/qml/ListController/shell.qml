@@ -1003,6 +1003,26 @@ ShellRoot {
       return;
     }
 
+    // Opening something or switching into writing mode is never held
+    // back, even right on the heels of a guarded action: this is what
+    // distinguishes "mistyped burst" from "someone chaining real
+    // shortcuts fast" (see docs/decisions.md).
+    archiveList.guardTyping("chat.mute");
+    if (archiveList.guardTyping("compose.focus")) {
+      Check.fail("a mode switch must never be suppressed, even right after a guarded action");
+      return;
+    }
+
+    // An unmatched key - the shape an ordinary typed letter takes once
+    // it hits a context where it is not bound to anything - still
+    // counts towards the next burst, even though it never does
+    // anything itself.
+    archiveList.guardTyping("");
+    if (!archiveList.guardTyping("chat.mute")) {
+      Check.fail("a guarded action right after an unmatched key must still be suppressed");
+      return;
+    }
+
     console.log("PASS ListController");
     Qt.exit(0);
   }

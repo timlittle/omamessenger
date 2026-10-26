@@ -325,15 +325,17 @@ ShellRoot {
 
   // typeBurstInList presses three plain keys with no pause between
   // them, in the list context with nothing open: m (mute), Shift+A
-  // (chat.archiveRead) and o (chat.open). This is the one place a real
-  // burst of fast keystrokes can prove TypingGuard actually intercepts
-  // Panel's own real key router, the way a report found a stray "a"
-  // once silently archiving a chat (see docs/decisions.md) - every
-  // other detail of the burst window and which actions are exempt is
-  // proved by tests/unit/typingguard.test.cjs, and the wiring into
-  // ListController.guardTyping by tests/qml/ListController. m, the
-  // first key, still runs; Shift+A and o land in the same burst and
-  // must not.
+  // (chat.archiveRead) and z (bound to nothing in the list context,
+  // the shape an ordinary typed letter takes). This is the one place a
+  // real burst of fast keystrokes can prove TypingGuard actually
+  // intercepts Panel's own real key router, the way a report found a
+  // stray "a" once silently archiving a chat (see docs/decisions.md) -
+  // every other detail of the burst window and which actions are
+  // guarded is proved by tests/unit/typingguard.test.cjs, and the
+  // wiring into ListController.guardTyping by tests/qml/ListController.
+  // m, the first key, still runs (mute is guarded, but nothing came
+  // before it); Shift+A is guarded and lands in the same burst as m, so
+  // it must not; z matches no action at all either way.
   function typeBurstInList(): var {
     // g first, moving the cursor onto row 0: unpinBothChats leaves the
     // selection on whichever chat it last unpinned, not on row 0, once
@@ -342,14 +344,13 @@ ShellRoot {
     root._burstTitle = root.listModel().get(0).title;
     t.keyClick(Qt.Key_M);
     t.keyClick(Qt.Key_A, Qt.ShiftModifier);
-    t.keyClick(Qt.Key_O);
+    t.keyClick(Qt.Key_Z);
     return true;
   }
 
   // waitForBurstGuarded holds until the burst above's first key (mute)
-  // has taken effect, then checks neither of the two that followed it
-  // in the same burst did: the row must not be archived, and nothing
-  // must have opened.
+  // has taken effect, then checks the guarded one that followed it in
+  // the same burst did not: the row must not be archived.
   function waitForBurstGuarded(): var {
     const idx = root.rowIndex(root._burstTitle);
     if (idx < 0) return false;
@@ -358,7 +359,6 @@ ShellRoot {
     if (!row.muted) return false;
 
     if (row.archived) return Check.fail("a burst of typed letters in the list archived a chat");
-    if (root.title() !== "") return Check.fail("a burst of typed letters in the list opened a chat");
 
     return true;
   }

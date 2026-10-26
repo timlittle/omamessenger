@@ -111,17 +111,22 @@ Item {
   // burst check (see ui/lib/TypingGuard.js); {} until the first one.
   property var _typingGuardState: ({})
 
-  // guardTyping reports whether action, just matched in the list or
-  // conversation context, looks like someone typing into the wrong
-  // place rather than reaching for a shortcut: a second plain key
-  // arriving right on the heels of the one before it (see
-  // TypingGuard.next). Suppressing it shows a toast naming the key that
-  // actually starts writing, so the same burst lands in the composer
-  // next time instead of silently doing something here again.
-  // Navigation (scrolling, moving the highlight) is exempt and never
-  // suppressed; see Panel.routeKey, the one caller.
+  // guardTyping reports whether action - matched in the list or
+  // conversation context, or "" when the key matched nothing at all -
+  // should be held back because it looks like someone typing into the
+  // wrong place rather than reaching for a shortcut: a guarded,
+  // conversation-changing action (see TypingGuard.GUARDED_ACTIONS)
+  // arriving right on the heels of another plain key, matched or not
+  // (see TypingGuard.next). Holding it back shows a toast naming the
+  // key that actually starts writing, so the same burst lands in the
+  // composer next time instead of silently changing something here
+  // again. Everything else - navigation, a mode switch, an opener, an
+  // unmatched key - always runs, but still updates the tracked state,
+  // so a run of ordinary letters still counts towards holding back a
+  // guarded action the moment one follows; see Panel.routeKey, the one
+  // caller.
   function guardTyping(action: string): bool {
-    const result = TypingGuard.next(action, Date.now(), root._typingGuardState, TypingGuard.NAVIGATION_ACTIONS);
+    const result = TypingGuard.next(action, Date.now(), root._typingGuardState, TypingGuard.NAVIGATION_ACTIONS, TypingGuard.GUARDED_ACTIONS);
     root._typingGuardState = result.state;
     if (result.allow) return false;
 

@@ -130,22 +130,29 @@ Item {
   function routeKey(key: int, modifiers: int, text: string): bool {
     const context = Navigation.keyContext(root._navState());
     const action = Keymap.match(context, key, modifiers, text, root.bindings);
-    if (!action) return false;
 
-    // A plain, printable letter typed in quick succession while the
-    // list or an open conversation has focus, outside the composer,
-    // looks like someone typing into the wrong place rather than
-    // reaching for a shortcut (see ui/lib/TypingGuard.js):
-    // listController.guardTyping suppresses it and shows a toast naming
-    // the key that actually starts writing. Ctrl- or Alt-held shortcuts
-    // are never plain letters, so they, and navigation, always go
-    // through regardless; nor is Escape, Enter, Tab or Backspace, whose
-    // own key.text is a single, non-printable control character rather
-    // than "", not just text.length !== 1 alone.
+    // A plain, printable letter arriving right on the heels of another
+    // one, while the list or an open conversation has focus, outside
+    // the composer, can mean someone is typing into the wrong place
+    // (see ui/lib/TypingGuard.js); listController.guardTyping holds
+    // back only the few actions that are worth delaying by one
+    // keypress (archive, mute, pin, hide, block, delete, mark
+    // read/unread), never a mode switch, an opener or navigation, and
+    // shows a toast naming the key that actually starts writing. This
+    // runs even when action is "" (the key matched nothing at all, the
+    // shape an ordinary typed word takes): an unmatched key can never
+    // itself be held back, but still counts towards a later guarded
+    // one arriving too soon after it. Ctrl- or Alt-held shortcuts are
+    // never plain letters, so they always go through regardless; nor
+    // is Escape, Enter, Tab or Backspace, whose own key.text is a
+    // single, non-printable control character rather than "", not
+    // just text.length !== 1 alone.
     const isPlainKey = /^[\x20-\x7e]$/.test(text) && (modifiers & Keymap.MOD.Ctrl) === 0 && (modifiers & Keymap.MOD.Alt) === 0;
     if (isPlainKey && (context === "list" || context === "conversation") && listController.guardTyping(action)) {
       return true;
     }
+
+    if (!action) return false;
 
     const controllers = [listController, conversationController, composerController, photoViewerController,
       reactionsController, pollsController, deleteController, dialogController, accountController, windowController];

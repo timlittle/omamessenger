@@ -260,13 +260,16 @@ ShellRoot {
 
   // armBurstWait and waitPastBurstWindow pause for slightly longer than
   // TypingGuard's own burst window (see ui/lib/TypingGuard.js) between
-  // "e" above and "d" below: both are plain, independent single-key
-  // shortcuts in the conversation context, and Stepper's own 100ms
-  // retry interval alone is not enough to tell them apart from a burst
-  // of mistyped letters. A real user choosing two different shortcuts
-  // this close together is exactly what the guard is less sure about
-  // too; this test keeps them a deliberate, realistic interval apart
-  // rather than asking the guard to special-case it.
+  // "e" (message.react, never held back) and "d" (message.delete, one
+  // of the few actions the guard can hold back) below, and again
+  // between the "d" that cancels and the "d" that reopens the delete
+  // question: TypingGuard only ever holds back a short, named list of
+  // conversation-changing actions, but any plain key - "e" included -
+  // still counts towards a later guarded one arriving too soon after
+  // it, and Stepper's own 100ms retry interval alone is not enough of
+  // a gap for that. This test keeps two such presses a deliberate,
+  // realistic interval apart rather than asking the guard to
+  // special-case a test's own fast, fixed cadence.
   function armBurstWait(): var {
     root._burstWaitUntil = Date.now() + 350;
     return true;
