@@ -110,7 +110,7 @@ func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, a
 // mutation into the archive patch SetArchived sends above, the same as
 // WhatsApp's own app does, so a WhatsApp conversation is never both
 // pinned and archived at once (see connector.ArchiveUnpinner).
-func (c *Connector) UnpinsOnArchive() bool {
+func (*Connector) UnpinsOnArchive() bool {
 	return true
 }
 
