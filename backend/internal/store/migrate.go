@@ -211,6 +211,17 @@ var migrations = []string{
 			) ranked
 			WHERE ranked.id = conversations.id)
 		WHERE pinned = 1;`,
+	// A pin SetArchived cleared locally to match a service that
+	// unpins on archive (see docs/decisions.md), remembered so
+	// unarchiving can restore it: pinned_before_archive and
+	// pin_order_before_archive hold what pinned and pin_order were
+	// the moment this account's own service required that unpin,
+	// and are both cleared again once restored (see
+	// RememberPinnedBeforeArchive and RestorePinnedFromArchive).
+	// Meaningless, and left at their default of 0, for a
+	// conversation that was not pinned when it was archived.
+	`ALTER TABLE conversations ADD COLUMN pinned_before_archive INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE conversations ADD COLUMN pin_order_before_archive INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

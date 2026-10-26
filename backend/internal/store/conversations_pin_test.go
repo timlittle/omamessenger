@@ -356,3 +356,158 @@ func TestSetOrganized_UnpinningClearsOrder(t *testing.T) {
 		t.Errorf("Conversation after an unpinning sync = %+v, %v; want PinOrder 0", got, err)
 	}
 }
+
+// TestRestorePinnedFromArchive_GivesBackThePinArchivingCleared
+// reproduces archiving a pinned WhatsApp chat (which unpins it there
+// too) and then unarchiving it: the user expects the pin back, not a
+// chat that quietly stays unpinned forever once archived once.
+func TestRestorePinnedFromArchive_GivesBackThePinArchivingCleared(t *testing.T) {
+	t.Parallel()
+
+	s, chat := openChatStore(t)
+	ctx := t.Context()
+
+	if err := s.SetPinned(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	pinnedBefore, err := s.Conversation(ctx, chat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The same sequence Commands.SetArchived runs for a service that
+	// unpins on archive: remember the pin, then clear it, then archive.
+	if err := s.RememberPinnedBeforeArchive(ctx, chat.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPinned(ctx, chat.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetArchived(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetArchived(ctx, chat.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := s.RestorePinnedFromArchive(ctx, chat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored {
+		t.Error("RestorePinnedFromArchive = false, want true: the chat was pinned when it was archived")
+	}
+
+	got, err := s.Conversation(ctx, chat.ID)
+	if err != nil || !got.Pinned || got.PinOrder != pinnedBefore.PinOrder {
+		t.Errorf("Conversation after restoring = %+v, %v; want Pinned true and PinOrder %d", got, err, pinnedBefore.PinOrder)
+	}
+
+	// Restoring is one-shot: unpinning, then archiving and unarchiving
+	// again with nothing pinned this time, must not resurrect the
+	// earlier pin a second time.
+	if err := s.SetPinned(ctx, chat.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RememberPinnedBeforeArchive(ctx, chat.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetArchived(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetArchived(ctx, chat.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	restoredAgain, err := s.RestorePinnedFromArchive(ctx, chat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredAgain {
+		t.Error("RestorePinnedFromArchive = true on a second round, want false: the chat was not pinned this time")
+	}
+}
+
+// TestRestorePinnedFromArchive_ReportsNothingForAConversationThatWasNeverPinned
+// confirms the common case - a conversation archived without ever
+// having been pinned - restores nothing and leaves it unpinned.
+func TestRestorePinnedFromArchive_ReportsNothingForAConversationThatWasNeverPinned(t *testing.T) {
+	t.Parallel()
+
+	s, chat := openChatStore(t)
+	ctx := t.Context()
+
+	if err := s.RememberPinnedBeforeArchive(ctx, chat.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetArchived(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetArchived(ctx, chat.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	restored, err := s.RestorePinnedFromArchive(ctx, chat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored {
+		t.Error("RestorePinnedFromArchive = true, want false: the chat was never pinned")
+	}
+
+	if got, err := s.Conversation(ctx, chat.ID); err != nil || got.Pinned {
+		t.Errorf("Conversation after restoring nothing = %+v, %v; want Pinned false", got, err)
+	}
+}
+
+func TestRestorePinnedFromArchive_ReportsNotFoundForAMissingConversation(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	if _, err := s.RestorePinnedFromArchive(ctx, "missing"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("RestorePinnedFromArchive(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRememberPinnedBeforeArchive_ReportsNotFoundForAMissingConversation(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	if err := s.RememberPinnedBeforeArchive(ctx, "missing"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("RememberPinnedBeforeArchive(missing) = %v, want ErrNotFound", err)
+	}
+}
+
+// TestRememberPinnedBeforeArchive_ReportsAClosedStore confirms a
+// database failure, not just a missing row, surfaces as an error
+// rather than being silently swallowed.
+func TestRememberPinnedBeforeArchive_ReportsAClosedStore(t *testing.T) {
+	t.Parallel()
+
+	s, chat := openChatStore(t)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RememberPinnedBeforeArchive(t.Context(), chat.ID); err == nil {
+		t.Error("RememberPinnedBeforeArchive on a closed store succeeded, want an error")
+	}
+}
+
+// TestRestorePinnedFromArchive_ReportsAClosedStore mirrors the above
+// for RestorePinnedFromArchive's own read.
+func TestRestorePinnedFromArchive_ReportsAClosedStore(t *testing.T) {
+	t.Parallel()
+
+	s, chat := openChatStore(t)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.RestorePinnedFromArchive(t.Context(), chat.ID); err == nil {
+		t.Error("RestorePinnedFromArchive on a closed store succeeded, want an error")
+	}
+}

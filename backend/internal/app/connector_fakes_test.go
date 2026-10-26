@@ -43,12 +43,17 @@ func (r *fakeRefresher) RefreshMessages(ctx context.Context, conv domain.Convers
 }
 
 // fakeOrganizer records the pins and archives it is asked for, as
-// "<conversationId> <value>", failing with err when it is set.
+// "<conversationId> <value>", failing with err when it is set. pinErr,
+// when set, fails only SetPinned, distinctly from err, so a test can
+// script SetArchived succeeding while a separate SetPinned call (such
+// as Commands.SetArchived's own re-pin after a restored unarchive)
+// still fails.
 type fakeOrganizer struct {
 	mu       sync.Mutex
 	pinned   []string
 	archived []string
 	err      error
+	pinErr   error
 }
 
 func (o *fakeOrganizer) SetPinned(_ context.Context, conv domain.Conversation, pinned bool) error {
@@ -56,6 +61,10 @@ func (o *fakeOrganizer) SetPinned(_ context.Context, conv domain.Conversation, p
 	defer o.mu.Unlock()
 
 	o.pinned = append(o.pinned, fmt.Sprintf("%s %t", conv.ID, pinned))
+
+	if o.pinErr != nil {
+		return o.pinErr
+	}
 
 	return o.err
 }

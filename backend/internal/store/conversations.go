@@ -394,6 +394,56 @@ func (s *Store) SetArchived(ctx context.Context, id string, archived bool) error
 	return requireRow("set archived", res)
 }
 
+// RememberPinnedBeforeArchive copies a conversation's current pinned
+// and pin_order into pinned_before_archive and pin_order_before_archive,
+// so RestorePinnedFromArchive can give the pin back on unarchive: called
+// by Commands.SetArchived right before it clears the local pin to match
+// a service whose own archive always unpins too (see
+// connector.ArchiveUnpinner and docs/decisions.md), which must happen
+// first, since SetPinned(ctx, id, false) immediately after would
+// otherwise clear pin_order to 0 before this ever reads it.
+func (s *Store) RememberPinnedBeforeArchive(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE conversations SET pinned_before_archive=pinned, pin_order_before_archive=pin_order WHERE id=?`, id)
+	if err != nil {
+		return wrap("remember pinned before archive", err)
+	}
+
+	return requireRow("remember pinned before archive", res)
+}
+
+// RestorePinnedFromArchive gives a conversation back the pin it had the
+// moment it was last archived (see RememberPinnedBeforeArchive),
+// reporting whether it actually had one to restore so the caller knows
+// whether to also ask the service to re-pin it: WhatsApp's own archive
+// unpins a chat there too, which a person does not expect to lose for
+// good just for archiving and later bringing it back (see
+// docs/decisions.md). Both before-archive columns are cleared either
+// way, so a later archive always starts this bookkeeping fresh rather
+// than reapplying a stale value from further back.
+func (s *Store) RestorePinnedFromArchive(ctx context.Context, id string) (restored bool, _ error) {
+	var wasPinned bool
+	var order int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT pinned_before_archive, pin_order_before_archive FROM conversations WHERE id=?`, id).Scan(&wasPinned, &order)
+	if err != nil {
+		return false, wrap("restore pinned from archive", err)
+	}
+
+	query := `UPDATE conversations SET pinned_before_archive=0, pin_order_before_archive=0 WHERE id=?`
+	args := []any{id}
+	if wasPinned {
+		query = `UPDATE conversations SET pinned=1, pin_order=?, pinned_before_archive=0, pin_order_before_archive=0 WHERE id=?`
+		args = []any{order, id}
+	}
+
+	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+		return false, wrap("restore pinned from archive", err)
+	}
+
+	return wasPinned, nil
+}
+
 // SetHidden hides or unhides a conversation from the standard list. This
 // is local to this computer only: nothing here is ever reported to or
 // read from the service.

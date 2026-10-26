@@ -211,8 +211,12 @@ func (c *Commands) pinError(pinned bool, err error) error {
 // conversation both pinned and archived, a combination the real
 // service never has, and that stale local pin would stay stuck forever
 // once the service call below fails, since nothing else would ever
-// come along to correct it (see docs/decisions.md). The local change
-// always stands even if the service call fails; that failure is
+// come along to correct it (see docs/decisions.md). That pin is
+// remembered first (RememberPinnedBeforeArchive) so unarchiving can
+// give it back: a person archiving, then later bringing a chat back,
+// does not expect the pin they had on it to be gone for good just
+// because the service's own archive always unpins too. The local
+// change always stands even if the service call fails; that failure is
 // reported back as a safe message the UI can show, through
 // archiveError, rather than the generic internal error.
 func (c *Commands) SetArchived(ctx context.Context, conversationID string, archived bool) (domain.Conversation, error) {
@@ -221,8 +225,8 @@ func (c *Commands) SetArchived(ctx context.Context, conversationID string, archi
 		return domain.Conversation{}, err
 	}
 
-	if archived && c.archiveUnpinner.ArchiveUnpins(conv.AccountID) {
-		if err := c.store.SetPinned(ctx, conversationID, false); err != nil {
+	if archived {
+		if err := c.unpinForArchive(ctx, conv); err != nil {
 			return domain.Conversation{}, err
 		}
 	}
@@ -231,12 +235,67 @@ func (c *Commands) SetArchived(ctx context.Context, conversationID string, archi
 		return domain.Conversation{}, err
 	}
 
+	restoredPin, err := c.restorePinForUnarchive(ctx, conversationID, archived)
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+
 	conv, err = c.events.publishConversation(ctx, conversationID)
 	if err != nil {
 		return conv, err
 	}
 
-	return conv, c.archiveError(archived, c.organizer.SetArchived(ctx, conv, archived))
+	serviceErr := c.organizer.SetArchived(ctx, conv, archived)
+	if restoredPin && serviceErr == nil {
+		c.rePinAfterUnarchive(ctx, conv)
+	}
+
+	return conv, c.archiveError(archived, serviceErr)
+}
+
+// unpinForArchive clears conv's local pin before SetArchived archives
+// it, for a service whose own archive always unpins too (see
+// ArchiveUnpinner): otherwise the list would show a conversation both
+// pinned and archived, a combination the real service never has. The
+// pin is remembered first (RememberPinnedBeforeArchive) so unarchiving
+// can restore it later; a service that does not require this is left
+// alone entirely.
+func (c *Commands) unpinForArchive(ctx context.Context, conv domain.Conversation) error {
+	if !c.archiveUnpinner.ArchiveUnpins(conv.AccountID) {
+		return nil
+	}
+
+	if err := c.store.RememberPinnedBeforeArchive(ctx, conv.ID); err != nil {
+		return err
+	}
+
+	return c.store.SetPinned(ctx, conv.ID, false)
+}
+
+// restorePinForUnarchive gives conversationID back the pin archiving
+// took away (see RestorePinnedFromArchive), reporting whether it
+// actually restored one so SetArchived knows whether to also ask the
+// service to re-pin it; a no-op, reporting false, while archiving
+// rather than unarchiving.
+func (c *Commands) restorePinForUnarchive(ctx context.Context, conversationID string, archived bool) (bool, error) {
+	if archived {
+		return false, nil
+	}
+
+	return c.store.RestorePinnedFromArchive(ctx, conversationID)
+}
+
+// rePinAfterUnarchive asks conv's service to re-pin it, once its own
+// unarchive already succeeded, so the pin SetArchived already restored
+// locally (see RestorePinnedFromArchive) agrees with the service too.
+// Best effort, like MarkRead's own chat-read mutation: the local pin
+// stands either way, and a later resync corrects any miss, so a
+// failure here is only logged, with its safe, precise class, never
+// returned to the caller.
+func (c *Commands) rePinAfterUnarchive(ctx context.Context, conv domain.Conversation) {
+	if err := c.organizer.SetPinned(ctx, conv, true); err != nil {
+		c.logger.Printf("conversations: re-pin after unarchive failed (error_class=%s)", organizeFailureClass(err))
+	}
 }
 
 // archiveError turns a service failure that followed SetArchived's own

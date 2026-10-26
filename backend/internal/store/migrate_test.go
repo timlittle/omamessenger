@@ -74,13 +74,13 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "gif.db"))
-	// The GIF migration is seventh-from-last, before the audio
+	// The GIF migration is eighth-from-last, before the audio
 	// migration, the pin_order column, the scheduled_messages table,
-	// the notification_sound column, the window-open column and the
-	// pin_order backfill, all appended after it; stop short of all
-	// seven so inserting the pre-fix rows below still finds them
-	// unreclassified.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-7]); err != nil {
+	// the notification_sound column, the window-open column, the
+	// pin_order backfill and the before-archive pin columns, all
+	// appended after it; stop short of all eight so inserting the
+	// pre-fix rows below still finds them unreclassified.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-8]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -113,7 +113,7 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into a video.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-7]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-8]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -136,11 +136,12 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "audio.db"))
-	// The audio migration is sixth-from-last, before the pin_order
+	// The audio migration is seventh-from-last, before the pin_order
 	// column, the scheduled_messages table, the notification_sound
-	// column, the window-open column and the pin_order backfill, all
-	// appended after it; stop short of all six.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-6]); err != nil {
+	// column, the window-open column, the pin_order backfill and the
+	// before-archive pin columns, all appended after it; stop short of
+	// all seven.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-7]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -173,7 +174,7 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into audio.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-6]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-7]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -195,11 +196,11 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "pin-backfill.db"))
-	// Stop one short of the full set: the backfill is the very last
-	// migration, appended after pin_order's own column, scheduled
-	// messages, the notification sound column and the window-open
-	// column.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-1]); err != nil {
+	// Stop one short of the backfill: it is second-from-last, appended
+	// after pin_order's own column, scheduled messages, the
+	// notification sound column and the window-open column, and ahead
+	// of only the before-archive pin columns appended after it.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-2]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -230,7 +231,7 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	// order: it is idempotent, like the GIF and audio reclassifications
 	// above, since recomputing the same recency ranking over rows whose
 	// relative order has not changed yields the same ranks.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-1]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-2]); err != nil {
 		t.Fatal(err)
 	}
 
