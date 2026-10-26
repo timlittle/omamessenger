@@ -27,6 +27,8 @@ ShellRoot {
   // records just before deleting one, for waitForMessageDeleted to
   // compare against.
   property int _messagesBeforeDelete: 0
+  // _burstWaitUntil is armBurstWait's own deadline, for waitPastBurstWindow.
+  property real _burstWaitUntil: 0
 
   property var steps: [
     root.waitForList,
@@ -41,7 +43,11 @@ ShellRoot {
     root.checkDoctorBlocksConversationKeys,
     root.closeDoctorReport,
     root.checkReactionPicker,
+    root.armBurstWait,
+    root.waitPastBurstWindow,
     root.cancelDeleteConfirm,
+    root.armBurstWait,
+    root.waitPastBurstWindow,
     root.checkDeleteConfirm,
     root.waitForMessageDeleted,
     root.checkShortcutAfterDelete,
@@ -250,6 +256,24 @@ ShellRoot {
     if (picker.visible) return Check.fail("Escape did not close the reaction picker");
 
     return root.checkShortcutStillWorks("closing the reaction picker");
+  }
+
+  // armBurstWait and waitPastBurstWindow pause for slightly longer than
+  // TypingGuard's own burst window (see ui/lib/TypingGuard.js) between
+  // "e" above and "d" below: both are plain, independent single-key
+  // shortcuts in the conversation context, and Stepper's own 100ms
+  // retry interval alone is not enough to tell them apart from a burst
+  // of mistyped letters. A real user choosing two different shortcuts
+  // this close together is exactly what the guard is less sure about
+  // too; this test keeps them a deliberate, realistic interval apart
+  // rather than asking the guard to special-case it.
+  function armBurstWait(): var {
+    root._burstWaitUntil = Date.now() + 350;
+    return true;
+  }
+
+  function waitPastBurstWindow(): var {
+    return Date.now() >= root._burstWaitUntil;
   }
 
   // cancelDeleteConfirm presses "d" to open the delete question for the

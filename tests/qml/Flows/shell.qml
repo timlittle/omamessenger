@@ -80,6 +80,9 @@ ShellRoot {
   // expectedTitle, _priorTitle, _newlineHeightBefore, _hidesBeforeChain
   // and _hidesBefore are scratch state for the keyboard-chrome journeys
   // appended after the message flows above.
+  // _burstTitle is the row typeBurstInList's own burst targets, for
+  // waitForBurstGuarded and the two steps that restore it afterward.
+  property string _burstTitle: ""
   property string expectedTitle: ""
   property string _priorTitle: ""
   property real _newlineHeightBefore: 0
@@ -93,6 +96,10 @@ ShellRoot {
     root.waitPinnedRowsSwapped,
     root.unpinBothChats,
     root.waitBothUnpinned,
+    root.typeBurstInList,
+    root.waitForBurstGuarded,
+    root.unmuteBurstRow,
+    root.waitForBurstRowUnmuted,
     root.openNadiaGif,
     root.waitForNadiaGifLoaded,
     root.clickNadiaGif,
@@ -314,6 +321,62 @@ ShellRoot {
       if ((model.get(i).id === root.pinIdTop || model.get(i).id === root.pinIdSecond) && model.get(i).pinned) return false;
     }
     return true;
+  }
+
+  // typeBurstInList presses three plain keys with no pause between
+  // them, in the list context with nothing open: m (mute), Shift+A
+  // (chat.archiveRead) and o (chat.open). This is the one place a real
+  // burst of fast keystrokes can prove TypingGuard actually intercepts
+  // Panel's own real key router, the way a report found a stray "a"
+  // once silently archiving a chat (see docs/decisions.md) - every
+  // other detail of the burst window and which actions are exempt is
+  // proved by tests/unit/typingguard.test.cjs, and the wiring into
+  // ListController.guardTyping by tests/qml/ListController. m, the
+  // first key, still runs; Shift+A and o land in the same burst and
+  // must not.
+  function typeBurstInList(): var {
+    // g first, moving the cursor onto row 0: unpinBothChats leaves the
+    // selection on whichever chat it last unpinned, not on row 0, once
+    // both are unpinned and the list resorts by recency alone.
+    t.keyClick(Qt.Key_G);
+    root._burstTitle = root.listModel().get(0).title;
+    t.keyClick(Qt.Key_M);
+    t.keyClick(Qt.Key_A, Qt.ShiftModifier);
+    t.keyClick(Qt.Key_O);
+    return true;
+  }
+
+  // waitForBurstGuarded holds until the burst above's first key (mute)
+  // has taken effect, then checks neither of the two that followed it
+  // in the same burst did: the row must not be archived, and nothing
+  // must have opened.
+  function waitForBurstGuarded(): var {
+    const idx = root.rowIndex(root._burstTitle);
+    if (idx < 0) return false;
+
+    const row = root.listModel().get(idx);
+    if (!row.muted) return false;
+
+    if (row.archived) return Check.fail("a burst of typed letters in the list archived a chat");
+    if (root.title() !== "") return Check.fail("a burst of typed letters in the list opened a chat");
+
+    return true;
+  }
+
+  // unmuteBurstRow restores the row typeBurstInList muted, through the
+  // command palette, so nothing else in this suite notices it was ever
+  // touched.
+  function unmuteBurstRow(): var {
+    t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+    for (const ch of "mute or unmute") t.keyClick(ch);
+    t.keyClick(Qt.Key_Return);
+    return true;
+  }
+
+  // waitForBurstRowUnmuted holds until the row above is unmuted again.
+  function waitForBurstRowUnmuted(): var {
+    const idx = root.rowIndex(root._burstTitle);
+    return idx >= 0 && !root.listModel().get(idx).muted;
   }
 
   // openNadiaGif jumps to Nadia with Ctrl+K. Her newest seeded message

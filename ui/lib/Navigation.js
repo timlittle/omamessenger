@@ -113,7 +113,7 @@ function buildState(ctx) {
     reactionPickerOpen: ctx.reactionsController ? ctx.reactionsController.pickerOpen : false,
     pollVoteOpen: ctx.pollsController ? ctx.pollsController.voteTarget !== '' : false,
     deleteConfirmOpen: ctx.deleteController ? ctx.deleteController.open : false,
-    archiveConfirmOpen: ctx.listController ? ctx.listController.archiveAllOpen : false,
+    archiveConfirmOpen: ctx.listController ? !!(ctx.listController.archiveAllOpen || ctx.listController.archiveOneOpen) : false,
     blockConfirmOpen: ctx.listController ? ctx.listController.blockConfirmOpen : false,
     openConfirmOpen: ctx.conversationController ? ctx.conversationController.riskyOpenConfirmOpen : false,
     dialogOpen: ctx.dialogController ? ctx.dialogController.open : false,

@@ -152,6 +152,11 @@ var BINDINGS = [
   // Archiving every read chat at once is bulk, so it is palette-only and
   // asks for confirmation first (see the archiveConfirm bindings below).
   { action: 'list.archiveAllRead', keys: [], contexts: ['global'], label: 'Archive all read conversations', command: true },
+  // Reverses whichever of archive, unarchive, mute, pin, hide or block
+  // the toast's own "u to undo" is currently offering (see
+  // ui/lib/Undo.js); does nothing once there is none, so "u" is always
+  // safe to press. Free in both contexts.
+  { action: 'chat.undo', keys: ['u'], contexts: ['list', 'conversation'], label: 'Undo last action', command: true },
   { action: 'chat.snoozeLaterToday', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until later today', command: true },
   { action: 'chat.snoozeTomorrow', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until tomorrow', command: true },
   { action: 'chat.snoozeNextWeek', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until next week', command: true },

@@ -35,6 +35,7 @@ var OWNERS = {
   'list.archiveAllRead': 'list',
   'archiveAll.accept': 'list',
   'archiveAll.cancel': 'list',
+  'chat.undo': 'list',
   'chat.snoozeLaterToday': 'list',
   'chat.snoozeTomorrow': 'list',
   'chat.snoozeNextWeek': 'list',

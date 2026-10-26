@@ -407,6 +407,12 @@ test('buildState reads every field from the controller that owns it, including d
   });
 });
 
+test('buildState archiveConfirmOpen is true for either the bulk or the single archive question', () => {
+  assert.strictEqual(Navigation.buildState({ listController: { archiveAllOpen: true, archiveOneOpen: false } }).archiveConfirmOpen, true);
+  assert.strictEqual(Navigation.buildState({ listController: { archiveAllOpen: false, archiveOneOpen: true } }).archiveConfirmOpen, true);
+  assert.strictEqual(Navigation.buildState({ listController: { archiveAllOpen: false, archiveOneOpen: false } }).archiveConfirmOpen, false);
+});
+
 test('buildState errorOpen reflects only errorBannerText, never the toast', () => {
   const ctx = { windowController: { errorBannerText: '', toastText: 'Copied to clipboard' } };
 

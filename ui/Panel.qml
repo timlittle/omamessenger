@@ -132,6 +132,21 @@ Item {
     const action = Keymap.match(context, key, modifiers, text, root.bindings);
     if (!action) return false;
 
+    // A plain, printable letter typed in quick succession while the
+    // list or an open conversation has focus, outside the composer,
+    // looks like someone typing into the wrong place rather than
+    // reaching for a shortcut (see ui/lib/TypingGuard.js):
+    // listController.guardTyping suppresses it and shows a toast naming
+    // the key that actually starts writing. Ctrl- or Alt-held shortcuts
+    // are never plain letters, so they, and navigation, always go
+    // through regardless; nor is Escape, Enter, Tab or Backspace, whose
+    // own key.text is a single, non-printable control character rather
+    // than "", not just text.length !== 1 alone.
+    const isPlainKey = /^[\x20-\x7e]$/.test(text) && (modifiers & Keymap.MOD.Ctrl) === 0 && (modifiers & Keymap.MOD.Alt) === 0;
+    if (isPlainKey && (context === "list" || context === "conversation") && listController.guardTyping(action)) {
+      return true;
+    }
+
     const controllers = [listController, conversationController, composerController, photoViewerController,
       reactionsController, pollsController, deleteController, dialogController, accountController, windowController];
     const owner = controllers.find((c) => c.handles(action));

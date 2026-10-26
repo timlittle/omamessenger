@@ -7,6 +7,9 @@ import "../lib/Actions.js" as Actions
 import "../lib/Rpc.js" as Rpc
 import "../lib/Snooze.js" as Snooze
 import "../lib/Pin.js" as Pin
+import "../lib/Undo.js" as Undo
+import "../lib/TypingGuard.js" as TypingGuard
+import "../lib/Keymap.js" as Keymap
 
 // Owns the rail filter, search and the visible conversation list: the
 // only controller that calls conversations.list, conversations.setMuted,
@@ -63,9 +66,69 @@ Item {
   property string notice: ""
 
   // clearNotice dismisses the brief confirmation banner, the same way
-  // ConversationController.clearNotice does for its own.
+  // ConversationController.clearNotice does for its own, and with it
+  // whatever action it was offering to undo (see pendingUndo): once the
+  // "u to undo" hint is no longer shown, "u" no longer does anything,
+  // rather than silently reversing something the user may no longer
+  // even remember doing.
   function clearNotice(): void {
     root.notice = "";
+    root.pendingUndo = null;
+  }
+
+  // pendingUndo is the service call that would reverse whichever of
+  // archive, mute, pin, hide or block the notice above just confirmed
+  // happened (see ui/lib/Undo.js); only the newest such action is ever
+  // kept, so "u" always reverses the last one, never something further
+  // back, and null once there is nothing left to undo.
+  property var pendingUndo: null
+
+  // _offerUndo shows descriptor's own notice and remembers how to
+  // reverse it, replacing whatever the previous action had offered.
+  function _offerUndo(descriptor: var): void {
+    root.pendingUndo = descriptor;
+    root.notice = descriptor.notice;
+  }
+
+  // undo reverses whichever action _offerUndo last recorded, through
+  // the exact same request its own opposite command would send, then
+  // forgets it: pressing "u" again does nothing further until another
+  // action offers a new one.
+  function undo(): void {
+    const descriptor = root.pendingUndo;
+    if (!descriptor) return;
+
+    root.pendingUndo = null;
+    root.service.request(descriptor.method, descriptor.params, function(error, result) {
+      if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.lastError = "";
+      if (result) root._applyConversationUpdated(result);
+    });
+  }
+
+  // _typingGuardState tracks the previous plain, non-navigation key
+  // this controller let through or suppressed, for guardTyping's own
+  // burst check (see ui/lib/TypingGuard.js); {} until the first one.
+  property var _typingGuardState: ({})
+
+  // guardTyping reports whether action, just matched in the list or
+  // conversation context, looks like someone typing into the wrong
+  // place rather than reaching for a shortcut: a second plain key
+  // arriving right on the heels of the one before it (see
+  // TypingGuard.next). Suppressing it shows a toast naming the key that
+  // actually starts writing, so the same burst lands in the composer
+  // next time instead of silently doing something here again.
+  // Navigation (scrolling, moving the highlight) is exempt and never
+  // suppressed; see Panel.routeKey, the one caller.
+  function guardTyping(action: string): bool {
+    const result = TypingGuard.next(action, Date.now(), root._typingGuardState, TypingGuard.NAVIGATION_ACTIONS);
+    root._typingGuardState = result.state;
+    if (result.allow) return false;
+
+    const bindings = Keymap.effectiveBindings(root.service);
+    root.notice = "Press " + Keymap.keyFor('compose.focus', bindings) + " to write a message";
+
+    return true;
   }
 
   // showAll shows every chat the standard list would otherwise fold away:
@@ -95,6 +158,24 @@ Item {
   // archive, captured when it was asked so a list change in the
   // meantime cannot alter what Enter actually does.
   property var _archiveAllIds: []
+
+  // archiveOneOpen shows the question asking whether to archive a
+  // single conversation: a stray key once archived a pinned chat with
+  // no warning at all (see docs/decisions.md), so archiving always
+  // asks first now; unarchiving never does, since it only ever reverses
+  // something already confirmed. It shares archiveAllOpen's own key
+  // context and accept/cancel actions below (see confirmArchiveAllRead
+  // and cancelArchiveAllRead): the two are never open at once.
+  property bool archiveOneOpen: false
+  // archiveOneTitle names the conversation the question applies to.
+  property string archiveOneTitle: ""
+  // _archiveOneId and _archiveOneKind are the conversation and the
+  // action archiveOneOpen's question would run once confirmed:
+  // "toggle" for plain chat.archive, "archiveRead" for chat.archiveRead,
+  // which marks the chat read first. Captured when asked, the same
+  // reasoning as _archiveAllIds above.
+  property string _archiveOneId: ""
+  property string _archiveOneKind: "toggle"
 
   // blockConfirmOpen shows the question asking whether to block a
   // contact or report one as spam; blockConfirmKind says which ("block"
@@ -160,6 +241,7 @@ Item {
       "chat.reportSpam": () => root._askReportSpam(),
       "blockConfirm.accept": () => root.confirmBlock(),
       "blockConfirm.cancel": () => root.cancelBlock(),
+      "chat.undo": () => root.undo(),
       "chat.setNotificationSound": () => root._setNotificationSound(),
       "chat.resetNotificationSound": () => root._resetNotificationSound(),
       "chat.snoozeLaterToday": () => root.setReminderOnCurrent(Snooze.laterToday(Date.now())),
@@ -275,13 +357,13 @@ Item {
   // _toggleMute mutes or unmutes whichever conversation is contextually
   // current: the open conversation if one is showing, else the list cursor.
   function _toggleMute(): void {
-    root._setOnCurrent("conversations.setMuted", "muted");
+    root._setOnCurrent("conversations.setMuted", "muted", "Muted", "Unmuted");
   }
 
   // _togglePin pins or unpins whichever conversation is contextually
   // current, the same way _toggleMute does.
   function _togglePin(): void {
-    root._setOnCurrent("conversations.setPinned", "pinned");
+    root._setOnCurrent("conversations.setPinned", "pinned", "Pinned", "Unpinned");
   }
 
   // _movePin moves whichever conversation is contextually current one
@@ -335,16 +417,28 @@ Item {
   }
 
   // _toggleArchive archives or unarchives whichever conversation is
-  // contextually current, the same way _toggleMute does.
+  // contextually current. Archiving always asks first (see
+  // archiveOneOpen's doc comment); unarchiving applies at once, the
+  // same way _toggleMute's own toggle does, since it only reverses
+  // something already confirmed.
   function _toggleArchive(): void {
-    root._setOnCurrent("conversations.setArchived", "archived");
+    const id = root._currentId();
+    const conversation = id ? root.findConversation(id) : null;
+    if (!conversation) return;
+
+    if (!conversation.archived) {
+      root._askArchiveOne(id, conversation.title, "toggle");
+      return;
+    }
+
+    root._doArchive(id, conversation.title, false);
   }
 
   // _toggleHidden hides or unhides whichever conversation is contextually
   // current, the same way _toggleMute does. Hiding never reaches the
   // service: it is local to this computer only.
   function _toggleHidden(): void {
-    root._setOnCurrent("conversations.setHidden", "hidden");
+    root._setOnCurrent("conversations.setHidden", "hidden", "Hid", "Unhid");
   }
 
   // _markCurrentUnread flags whichever conversation is contextually
@@ -380,25 +474,38 @@ Item {
     });
   }
 
-  // _archiveAndMarkRead marks whichever conversation is contextually
-  // current read, then archives it, reusing the same two methods the
-  // separate mark-read and archive commands already call. Marking read
-  // first, and waiting for it, means the archive call's own conversation
-  // snapshot (which this applies to the model) already reflects it,
-  // rather than racing a markRead reply that could land after it.
+  // _archiveAndMarkRead asks to mark whichever conversation is
+  // contextually current read, then archive it (see archiveOneOpen's
+  // doc comment): the same question a plain archive now asks, since
+  // this is never a toggle, only ever archiving.
   function _archiveAndMarkRead(): void {
     const id = root._currentId();
-    if (!id || !root.findConversation(id)) return;
+    const conversation = id ? root.findConversation(id) : null;
+    if (!conversation) return;
 
-    root.service.request("conversations.markRead", { conversationId: id }, function(error) {
+    root._askArchiveOne(id, conversation.title, "archiveRead");
+  }
+
+  // _askArchiveOne shows the question asking whether to archive id,
+  // naming title and remembering kind: "toggle" for a plain archive, or
+  // "archiveRead" to mark it read first, once confirmed (see
+  // confirmArchiveAllRead below, which this shares its dialog with).
+  function _askArchiveOne(id: string, title: string, kind: string): void {
+    root._archiveOneId = id;
+    root.archiveOneTitle = title;
+    root._archiveOneKind = kind;
+    root.archiveOneOpen = true;
+  }
+
+  // _doArchive sends the conversations.setArchived request for id,
+  // applies the reply and offers to undo it: the one request every
+  // archive or unarchive path below ends at, confirmed or not.
+  function _doArchive(id: string, title: string, archived: bool): void {
+    root.service.request("conversations.setArchived", { conversationId: id, archived: archived }, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.lastError = "";
-
-      root.service.request("conversations.setArchived", { conversationId: id, archived: true }, function(error2, result) {
-        if (error2) { root.lastError = Rpc.errorText(error2); return; }
-        root.lastError = "";
-        root._applyConversationUpdated(result);
-      });
+      root._applyConversationUpdated(result);
+      root._offerUndo(Undo.describeToggle("conversations.setArchived", "archived", id, archived, "Archived", "Unarchived", title));
     });
   }
 
@@ -414,9 +521,33 @@ Item {
     root.archiveAllOpen = true;
   }
 
-  // confirmArchiveAllRead archives every conversation the question
-  // named, then closes it.
+  // confirmArchiveAllRead runs whichever archive question is open:
+  // archiveOneOpen's single conversation, marking it read first when
+  // _archiveOneKind is "archiveRead", or else the bulk question's own
+  // list, archiving every conversation it named. Either way it closes
+  // the question first.
   function confirmArchiveAllRead(): void {
+    if (root.archiveOneOpen) {
+      const id = root._archiveOneId;
+      const title = root.archiveOneTitle;
+      const kind = root._archiveOneKind;
+      root.archiveOneOpen = false;
+      root._archiveOneId = "";
+      if (!id) return;
+
+      if (kind === "archiveRead") {
+        root.service.request("conversations.markRead", { conversationId: id }, function(error) {
+          if (error) { root.lastError = Rpc.errorText(error); return; }
+          root.lastError = "";
+          root._doArchive(id, title, true);
+        });
+        return;
+      }
+
+      root._doArchive(id, title, true);
+      return;
+    }
+
     const ids = root._archiveAllIds;
     root.archiveAllOpen = false;
     root._archiveAllIds = [];
@@ -430,8 +561,16 @@ Item {
     }
   }
 
-  // cancelArchiveAllRead leaves every conversation as it is.
+  // cancelArchiveAllRead leaves every conversation as it is, closing
+  // whichever archive question confirmArchiveAllRead above would have
+  // run.
   function cancelArchiveAllRead(): void {
+    if (root.archiveOneOpen) {
+      root.archiveOneOpen = false;
+      root._archiveOneId = "";
+      return;
+    }
+
     root.archiveAllOpen = false;
     root._archiveAllIds = [];
   }
@@ -489,10 +628,15 @@ Item {
   // worked, so this also raises a toast naming what happened: a spam
   // report on WhatsApp only ever blocks, since its own API has no
   // report of its own (see whatsapp/block.go), so that wording would
-  // promise something that did not happen there.
+  // promise something that did not happen there. A plain block offers
+  // "u to undo" (see Undo.describeBlock); a spam report does not, since
+  // it also hides the chat and there is nothing sensible left here to
+  // undo it against.
   function confirmBlock(): void {
     const id = root._blockConfirmId;
     const kind = root.blockConfirmKind;
+    const conversation = id ? root.findConversation(id) : null;
+    const title = conversation ? conversation.title : "";
     const method = kind === "spam" ? "conversations.reportSpam" : "contacts.block";
     root.blockConfirmOpen = false;
     root._blockConfirmId = "";
@@ -502,7 +646,13 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.lastError = "";
       root._applyConversationUpdated(result);
-      root.notice = kind === "spam" && result.service !== "whatsapp" ? "Reported as spam and blocked" : "Blocked";
+
+      if (kind === "spam") {
+        root.notice = result.service !== "whatsapp" ? "Reported as spam and blocked" : "Blocked";
+        return;
+      }
+
+      root._offerUndo(Undo.describeBlock(id, title));
     });
   }
 
@@ -603,18 +753,24 @@ Item {
 
   // _setOnCurrent flips boolean field on whichever conversation is
   // contextually current: the open conversation if one is showing, else
-  // the list cursor, by calling method with {conversationId, <field>}.
-  function _setOnCurrent(method: string, field: string): void {
+  // the list cursor, by calling method with {conversationId, <field>},
+  // then offers to undo it: labelOn/labelOff name the action in the
+  // toast, matching whichever direction the flip just took (see
+  // ui/lib/Undo.js).
+  function _setOnCurrent(method: string, field: string, labelOn: string, labelOff: string): void {
     const id = root._currentId();
     const conversation = id ? root.findConversation(id) : null;
     if (!conversation) return;
 
+    const newValue = !conversation[field];
+    const title = conversation.title;
     const params = { conversationId: id };
-    params[field] = !conversation[field];
+    params[field] = newValue;
     root.service.request(method, params, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.lastError = "";
       root._applyConversationUpdated(result);
+      root._offerUndo(Undo.describeToggle(method, field, id, newValue, labelOn, labelOff, title));
     });
   }
 

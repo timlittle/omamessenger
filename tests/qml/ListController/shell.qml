@@ -10,8 +10,8 @@
 // view overrides the rail filter with every unread, non-muted chat across
 // every service, keeps the one just read visible while it is still open,
 // and drops it the moment the user moves on to another chat, archiving a
-// chat marks it read first, archiving every read chat asks before doing
-// it and skips pinned or unread ones, snoozing a chat hides it until
+// chat asks first and marks it read, archiving every read chat asks before
+// doing it and skips pinned or unread ones, snoozing a chat hides it until
 // its reminder comes due, when it returns to the top marked "Reminder",
 // and setting or resetting a chat's own notification sound reaches
 // conversations.setNotificationSound or .resetNotificationSound with
@@ -638,11 +638,45 @@ ShellRoot {
     archiveList.selectId("a1");
     archiveList.run("chat.archiveRead");
 
+    if (!archiveList.archiveOneOpen || archiveList.archiveOneTitle !== "Plain Read") {
+      Check.fail("chat.archiveRead did not ask before archiving: open " + archiveList.archiveOneOpen
+        + ", title " + archiveList.archiveOneTitle);
+      return;
+    }
+
+    archiveList.run("archiveAll.cancel");
+    if (archiveList.archiveOneOpen || archiveService.archivedIds.length !== 0) {
+      Check.fail("cancelling the single archive question must not mark read or archive anything");
+      return;
+    }
+
+    archiveList.run("chat.archiveRead");
+    archiveList.run("archiveAll.accept");
+
     if (archiveService.markReadCalls !== 1 || JSON.stringify(archiveService.archivedIds) !== '["a1"]') {
-      Check.fail("chat.archiveRead did not mark read then archive the selected chat: markReadCalls "
+      Check.fail("confirming chat.archiveRead did not mark read then archive the selected chat: markReadCalls "
         + archiveService.markReadCalls + ", archivedIds " + JSON.stringify(archiveService.archivedIds));
       return;
     }
+
+    // "u" undoes the archive through conversations.setArchived with
+    // archived false, the same call unarchiving directly would make.
+    archiveList.run("chat.undo");
+    if (JSON.stringify(archiveService.archivedIds) !== '["a1","a1"]' || archiveList.findConversation("a1").archived) {
+      Check.fail("chat.undo after an archive did not unarchive a1: archivedIds " + JSON.stringify(archiveService.archivedIds));
+      return;
+    }
+
+    // Archiving it again, resetting the counters above, so the rest of
+    // this scenario can continue exactly as it did before undo existed.
+    // The first archive already moved the cursor off a1, onto its
+    // neighbour, the moment it dropped out of the standard list (see
+    // _foldIfNeeded), so the cursor is put back on it explicitly.
+    archiveService.archivedIds = [];
+    archiveService.markReadCalls = 0;
+    archiveList.selectId("a1");
+    archiveList.run("chat.archiveRead");
+    archiveList.run("archiveAll.accept");
 
     const idsAfterSingle = [];
     for (let i = 0; i < archiveList.model.count; i++) idsAfterSingle.push(archiveList.model.get(i).id);
@@ -756,13 +790,28 @@ ShellRoot {
       Check.fail("the blocked chat's own row was not updated");
       return;
     }
-    if (blockList.notice !== "Blocked") {
-      Check.fail("confirming chat.block left notice \"" + blockList.notice + "\", want \"Blocked\"");
+    if (blockList.notice !== "Blocked Spammer · u to undo") {
+      Check.fail("confirming chat.block left notice \"" + blockList.notice + "\", want the undo notice");
       return;
     }
 
-    blockList.run("chat.unblock");
+    // "u" undoes the block exactly through contacts.unblock, the same
+    // call chat.unblock itself makes.
+    blockList.run("chat.undo");
     if (JSON.stringify(blockService.blockedIds) !== '["b1 true","b1 false"]' || blockList.model.get(0).blocked) {
+      Check.fail("chat.undo after a block did not unblock through contacts.unblock: blockedIds "
+        + JSON.stringify(blockService.blockedIds));
+      return;
+    }
+
+    // Blocking again, so the rest of the scenario can drive chat.unblock
+    // itself the way it always has.
+    blockList.run("chat.block");
+    blockList.run("blockConfirm.accept");
+    blockList.clearNotice();
+
+    blockList.run("chat.unblock");
+    if (JSON.stringify(blockService.blockedIds) !== '["b1 true","b1 false","b1 true","b1 false"]' || blockList.model.get(0).blocked) {
       Check.fail("chat.unblock did not unblock at once, with no confirmation needed: blockedIds "
         + JSON.stringify(blockService.blockedIds));
       return;
@@ -921,6 +970,36 @@ ShellRoot {
     if (soundService.resetCalls !== 1 || soundList.findConversation("n1").notificationSound !== "") {
       Check.fail("chat.resetNotificationSound did not clear the conversation's own sound: resetCalls "
         + soundService.resetCalls + ", row " + JSON.stringify(soundList.findConversation("n1")));
+      return;
+    }
+
+    root.checkTypingGuard();
+  }
+
+  // checkTypingGuard confirms guardTyping's own wiring: a second plain
+  // action right on the heels of the first is suppressed and raises the
+  // "press i to write" toast, while a navigation action immediately
+  // afterwards is never suppressed. The decision itself (the burst
+  // window, which actions count as navigation) is proven exhaustively
+  // in tests/unit/typingguard.test.cjs; this only checks the key
+  // reaching guardTyping at all.
+  function checkTypingGuard(): void {
+    if (archiveList.guardTyping("chat.mute")) {
+      Check.fail("the first plain action of a burst must never be suppressed");
+      return;
+    }
+
+    if (!archiveList.guardTyping("chat.pin")) {
+      Check.fail("a second plain action right after the first must be suppressed as a likely mistype");
+      return;
+    }
+    if (!archiveList.notice.startsWith("Press ") || !archiveList.notice.endsWith("to write a message")) {
+      Check.fail("a suppressed burst must show the write-a-message toast, got \"" + archiveList.notice + "\"");
+      return;
+    }
+
+    if (archiveList.guardTyping("cursor.down")) {
+      Check.fail("navigation must never be suppressed, even right after a burst");
       return;
     }
 

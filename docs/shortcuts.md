@@ -30,10 +30,17 @@ Ctrl+K and Ctrl+G both open the same palette, so there is one search to reach fo
 | j / k | Move the selection down / up |
 | Enter, i, l or o | Open the selected conversation |
 | m | Mute / unmute |
-| Shift+A | Archive and mark read |
+| Shift+A | Archive and mark read, after asking "Archive …?" first |
+| u | Undo the last archive, unarchive, mute, pin, unpin, hide or block (see below) |
 | Ctrl+Shift+↑ / ↓ | Move pin up / down (only on a chat that is already pinned) |
 
 Pin, hide and snooze are in the command palette, and are local to this computer only. Archiving syncs to the service, like mute and pin.
+
+Archiving a chat, from Shift+A or the command palette's "Archive or unarchive chat", always asks "Archive *chat*?" first (Enter or y confirms, n or Esc cancels): a plain "a" once archived the selected chat with no warning and no way back, so the single key needs Shift held too, the same reason a bare "e" does not edit a message (see Open conversation below). Unarchiving never asks, since it only ever reverses something already confirmed.
+
+**Undo** (u): after archiving, unarchiving, muting, unmuting, pinning, unpinning, hiding, unhiding or blocking a chat, a toast names what happened and ends "· u to undo" for a few seconds; pressing u reverses exactly that, through the same service call its opposite action would make (unblocking, for a block). Only the most recent such action can be undone, and only while its own toast is still showing: dismissing it, by any means, also closes the undo window. Unblocking, and a spam report, offer no undo of their own, since the former only ever reverses a block already confirmed once and the latter also hides the chat.
+
+If several plain letter keys arrive within about 300ms of each other while the list or an open conversation has focus (outside the composer), OmaMessenger treats it as typing landed in the wrong place rather than a burst of shortcuts, and does nothing with any of them beyond the first: a toast reads "Press i to write a message". Moving the selection or the highlighted message (j/k, the arrows) is never affected, however fast it repeats.
 
 Any number of chats can be pinned; a service with its own limit (WhatsApp's own app allows three) stops that one service's copy from agreeing, but never unpins it here. Pinned chats keep their own order, newest pin at the bottom: **Move pin up** / **Move pin down** (command palette, or Ctrl+Shift+↑ / ↓) move the selected or open chat one place within the pinned group, or drag a pinned row with the mouse to reorder it directly.
 
