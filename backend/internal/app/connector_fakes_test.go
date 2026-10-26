@@ -69,6 +69,25 @@ func (o *fakeOrganizer) SetArchived(_ context.Context, conv domain.Conversation,
 	return o.err
 }
 
+// fakeArchiveUnpinner reports unpins for whichever account ids it is
+// told to, standing in for WhatsApp's own connector.
+type fakeArchiveUnpinner struct {
+	mu       sync.Mutex
+	unpins   map[string]bool
+	accounts []string
+}
+
+// ArchiveUnpins reports whether accountID should unpin on archive, and
+// records that it was asked.
+func (a *fakeArchiveUnpinner) ArchiveUnpins(accountID string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.accounts = append(a.accounts, accountID)
+
+	return a.unpins[accountID]
+}
+
 // fakeMemberLister reports a scripted member list, failing with err
 // when it is set.
 type fakeMemberLister struct {

@@ -313,7 +313,7 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 	}
 
 	d.registry.manager = manager
-	deps.Dispatcher, deps.SignIn, deps.History, deps.Media, deps.Refresher, deps.Organizer, deps.Reactor, deps.Voter, deps.Deleter, deps.Editor, deps.Blocker, deps.SpamReporter, deps.Members, deps.Limiter = manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager
+	deps.Dispatcher, deps.SignIn, deps.History, deps.Media, deps.Refresher, deps.Organizer, deps.ArchiveUnpinner, deps.Reactor, deps.Voter, deps.Deleter, deps.Editor, deps.Blocker, deps.SpamReporter, deps.Members, deps.Limiter = manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager, manager
 	commands, ingest := app.New(deps)
 
 	return commands, ingest, manager, nil

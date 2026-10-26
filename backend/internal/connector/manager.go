@@ -346,6 +346,23 @@ func (m *Manager) SetArchived(ctx context.Context, conv domain.Conversation, arc
 	return organizer.SetArchived(ctx, conv, archived)
 }
 
+// ArchiveUnpins reports whether accountID's own connector unpins a
+// conversation automatically when it archives it (see
+// ArchiveUnpinner), so Commands.SetArchived knows whether to unpin
+// locally too, in the same call, rather than leaving that only to the
+// service's own round trip; false when there is no connector running
+// for the account right now, or its connector does not.
+func (m *Manager) ArchiveUnpins(accountID string) bool {
+	c, err := m.connectorFor(accountID)
+	if err != nil {
+		return false
+	}
+
+	unpinner, ok := c.(ArchiveUnpinner)
+
+	return ok && unpinner.UnpinsOnArchive()
+}
+
 // React asks the conversation's connector to set or clear the user's
 // reaction to a message, failing with ErrNoReactions when it does not
 // support them.

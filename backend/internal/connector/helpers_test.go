@@ -207,6 +207,17 @@ func (c *withOrganizer) SetArchived(_ context.Context, _ domain.Conversation, ar
 	return nil
 }
 
+// withArchiveUnpinner is a connector that organizes and also unpins a
+// conversation when it archives it, the capability WhatsApp's own
+// connector reports; see connector.ArchiveUnpinner.
+type withArchiveUnpinner struct {
+	withOrganizer
+}
+
+func (c *withArchiveUnpinner) UnpinsOnArchive() bool {
+	return true
+}
+
 // withReactor is a connector that reacts to messages, recording what it
 // was asked to set.
 type withReactor struct {

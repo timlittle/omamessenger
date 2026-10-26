@@ -498,6 +498,17 @@ func TestHandlePinAndArchive_ApplyToAPhoneKeyedConversationAddressedByLID(t *tes
 	}
 }
 
+func TestConnector_UnpinsOnArchive(t *testing.T) {
+	t.Parallel()
+
+	_, _, c := connectedFixture(t)
+	if !c.UnpinsOnArchive() {
+		t.Error("UnpinsOnArchive() = false, want true: WhatsApp always unpins a chat it archives")
+	}
+
+	var _ connector.ArchiveUnpinner = c
+}
+
 func TestSetArchived_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		dev, _, c := connectedFixture(t)

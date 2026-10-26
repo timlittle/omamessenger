@@ -63,6 +63,15 @@ type Organizer interface {
 	SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error
 }
 
+// ArchiveUnpinner reports whether archiving a conversation also unpins
+// it with the account's own service, so SetArchived knows to unpin it
+// locally in the same call too, rather than only once the service's own
+// round trip reports it back - a correction that never arrives at all
+// if that call fails (see docs/decisions.md).
+type ArchiveUnpinner interface {
+	ArchiveUnpins(accountID string) bool
+}
+
 // Reactor sets or clears the signed-in user's own reaction to a message,
 // through its service.
 type Reactor interface {
@@ -245,32 +254,33 @@ type Injector interface {
 
 // Deps are the application's dependencies. Fake is nil outside test builds.
 type Deps struct {
-	Store        *store.Store
-	Dispatcher   Dispatcher
-	Notifier     Notifier
-	Publisher    Publisher
-	SignIn       SignIn
-	Accounts     Accounts
-	History      HistoryLoader
-	Media        MediaFetcher
-	Cache        MediaCache
-	Refresher    MessageRefresher
-	Organizer    Organizer
-	Reactor      Reactor
-	Voter        Voter
-	Deleter      Deleter
-	Editor       Editor
-	Blocker      Blocker
-	SpamReporter SpamReporter
-	Members      MemberLister
-	Limiter      AttachmentLimiter
-	Outgoing     OutgoingMedia
-	Sounds       SoundStore
-	Clipboard    ClipboardRunner
-	FilePicker   FilePicker
-	Fake         Injector
-	Logger       Logger
-	Spell        *spell.Checker
+	Store           *store.Store
+	Dispatcher      Dispatcher
+	Notifier        Notifier
+	Publisher       Publisher
+	SignIn          SignIn
+	Accounts        Accounts
+	History         HistoryLoader
+	Media           MediaFetcher
+	Cache           MediaCache
+	Refresher       MessageRefresher
+	Organizer       Organizer
+	ArchiveUnpinner ArchiveUnpinner
+	Reactor         Reactor
+	Voter           Voter
+	Deleter         Deleter
+	Editor          Editor
+	Blocker         Blocker
+	SpamReporter    SpamReporter
+	Members         MemberLister
+	Limiter         AttachmentLimiter
+	Outgoing        OutgoingMedia
+	Sounds          SoundStore
+	Clipboard       ClipboardRunner
+	FilePicker      FilePicker
+	Fake            Injector
+	Logger          Logger
+	Spell           *spell.Checker
 
 	// DataDir, DBPath, ExecutableName and HelperVersion are read only by
 	// Doctor, to stat the data directory's and database's permissions
@@ -296,7 +306,7 @@ func New(d Deps) (*Commands, *Ingest) {
 	scheduled := newScheduledSender(d.Store)
 
 	commands := &Commands{
-		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
+		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, archiveUnpinner: d.ArchiveUnpinner, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
 		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, filePicker: d.FilePicker, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors: &errorHistory{},

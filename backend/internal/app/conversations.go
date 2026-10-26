@@ -187,20 +187,66 @@ func pinError(err error) error {
 	return err
 }
 
-// SetArchived files a conversation away, or brings it back, then tells its
-// service. The local change stands even if the service call fails; that
-// failure is returned so the caller can tell the user.
+// SetArchived files a conversation away, or brings it back, then tells
+// its service. Archiving a conversation this account had pinned also
+// unpins it here first, for any service whose own archiving does the
+// same (see ArchiveUnpinner): otherwise the list would show a
+// conversation both pinned and archived, a combination the real
+// service never has, and that stale local pin would stay stuck forever
+// once the service call below fails, since nothing else would ever
+// come along to correct it (see docs/decisions.md). The local change
+// always stands even if the service call fails; that failure is
+// reported back as a safe message the UI can show, through
+// archiveError, rather than the generic internal error.
 func (c *Commands) SetArchived(ctx context.Context, conversationID string, archived bool) (domain.Conversation, error) {
+	conv, err := c.store.Conversation(ctx, conversationID)
+	if err != nil {
+		return domain.Conversation{}, err
+	}
+
+	if archived && c.archiveUnpinner.ArchiveUnpins(conv.AccountID) {
+		if err := c.store.SetPinned(ctx, conversationID, false); err != nil {
+			return domain.Conversation{}, err
+		}
+	}
+
 	if err := c.store.SetArchived(ctx, conversationID, archived); err != nil {
 		return domain.Conversation{}, err
 	}
 
-	conv, err := c.events.publishConversation(ctx, conversationID)
+	conv, err = c.events.publishConversation(ctx, conversationID)
 	if err != nil {
 		return conv, err
 	}
 
-	return conv, c.organizer.SetArchived(ctx, conv, archived)
+	return conv, c.archiveError(archived, c.organizer.SetArchived(ctx, conv, archived))
+}
+
+// archiveError turns a service failure that followed SetArchived's own
+// already-applied local change into ErrInvalidInput with a safe
+// message the UI can show, after logging the failure's coarse, safe
+// class to stderr: unlike a request that never touched the store, the
+// user already has the result they asked for here, so even a failure
+// this package cannot name more precisely is safe to describe in those
+// terms, rather than the fixed internal error a request that changed
+// nothing at all would get. Nil passes through unchanged.
+func (c *Commands) archiveError(archived bool, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	class := "other"
+	if errors.Is(err, context.DeadlineExceeded) {
+		class = "timeout"
+	}
+	c.logger.Printf("conversations: set archived failed (archived=%t, error_class=%s)", archived, class)
+
+	verb := "archived"
+	if !archived {
+		verb = "unarchived"
+	}
+
+	return fmt.Errorf("%w: %s here, but the service did not accept the change", ErrInvalidInput, verb)
 }
 
 // SetReminder snoozes a conversation until at (Unix milliseconds), or

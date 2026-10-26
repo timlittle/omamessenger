@@ -144,6 +144,18 @@ type Organizer interface {
 	SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error
 }
 
+// ArchiveUnpinner is an Organizer whose own service never leaves a
+// conversation both pinned and archived at once: archiving one there
+// unpins it too, the way WhatsApp's own app does (see
+// whatsapp/organize.go). Telegram keeps a separate pinned list per
+// folder and does not implement this; Manager.ArchiveUnpins answers
+// false for any connector that does not.
+type ArchiveUnpinner interface {
+	// UnpinsOnArchive reports whether archiving a conversation also
+	// unpins it with this connector's service.
+	UnpinsOnArchive() bool
+}
+
 // ErrDeleteUnsupported reports a delete a Deleter's service refuses: a
 // message too old or not this account's own to revoke, or "for me"
 // asked in a channel that only ever deletes for everyone.

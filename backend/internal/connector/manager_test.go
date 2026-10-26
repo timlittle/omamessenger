@@ -325,6 +325,32 @@ func TestSetArchived_AsksConnectorsThatOrganize(t *testing.T) {
 	})
 }
 
+func TestArchiveUnpins_ReportsWhicheverTheConnectorSays(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		wa := &withArchiveUnpinner{withOrganizer: withOrganizer{fakeConnector: fakeConnector{id: "wa"}}}
+		tg := &withOrganizer{fakeConnector: fakeConnector{id: "tg"}}
+		m, _ := startManager(t, ctx, wa, tg, &fakeConnector{id: "plain"})
+		stopManager(t, cancel, m)
+
+		if !m.ArchiveUnpins("wa") {
+			t.Error("ArchiveUnpins(wa) = false, want true")
+		}
+
+		if m.ArchiveUnpins("tg") {
+			t.Error("ArchiveUnpins(tg) = true, want false: it organizes but does not unpin on archive")
+		}
+
+		if m.ArchiveUnpins("plain") {
+			t.Error("ArchiveUnpins(plain) = true, want false: it does not organize at all")
+		}
+
+		if m.ArchiveUnpins("nobody") {
+			t.Error("ArchiveUnpins(nobody) = true, want false: no connector is running for it")
+		}
+	})
+}
+
 func TestReact_AsksConnectorsThatSupportReactions(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())

@@ -3,6 +3,7 @@ package app_test
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -346,6 +347,70 @@ func TestSetArchived_StoresThenTellsTheService(t *testing.T) {
 	}
 }
 
+// TestSetArchived_UnpinsLocallyForAServiceThatRequiresIt reproduces a
+// report where a pinned WhatsApp chat got archived and the list then
+// showed it both pinned and archived at once, a combination the real
+// service never has. WhatsApp's own archive always unpins too (see
+// whatsapp/organize.go), so the local store must do the same in the
+// same call, rather than only once the service's own round trip
+// reports it back: that correction never arrives if the service call
+// fails, which is exactly how the stale pin got stuck in the report.
+func TestSetArchived_UnpinsLocallyForAServiceThatRequiresIt(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, err := f.commands.SetPinned(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	f.published.take()
+	f.archiveUnpinner.unpins["wa"] = true
+
+	// The service call itself fails, the way a rejected app-state patch
+	// did in the report: the local pin must still clear, since the
+	// service never has a conversation both pinned and archived.
+	f.organizer.err = errors.New("offline")
+
+	got, err := f.commands.SetArchived(ctx, chat.ID, true)
+	if !errors.Is(err, app.ErrInvalidInput) {
+		t.Fatalf("SetArchived = %v, want ErrInvalidInput", err)
+	}
+	if got.Pinned || !got.Archived {
+		t.Errorf("SetArchived result = %+v, want pinned false and archived true", got)
+	}
+
+	if stored, err := f.store.Conversation(ctx, chat.ID); err != nil || stored.Pinned || !stored.Archived {
+		t.Errorf("Conversation after SetArchived = %+v, %v; want pinned false and archived true", stored, err)
+	}
+}
+
+// TestSetArchived_LeavesAPinAloneForAServiceThatDoesNotRequireUnpinning
+// confirms Telegram's own kind of service, whose own connector does not
+// implement ArchiveUnpinner, keeps a locally pinned chat pinned once it
+// is archived: Telegram keeps a separate pinned list per archive
+// folder, so there is nothing here to correct.
+func TestSetArchived_LeavesAPinAloneForAServiceThatDoesNotRequireUnpinning(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, err := f.commands.SetPinned(ctx, chat.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	f.published.take()
+
+	got, err := f.commands.SetArchived(ctx, chat.ID, true)
+	if err != nil || !got.Pinned || !got.Archived {
+		t.Fatalf("SetArchived = %+v, %v, want pinned true and archived true", got, err)
+	}
+
+	if !slices.Contains(f.archiveUnpinner.accounts, "wa") {
+		t.Errorf("archiveUnpinner asked = %v, want it asked about wa", f.archiveUnpinner.accounts)
+	}
+}
+
 func TestSetHidden_StoresAndPublishesWithNoServiceCall(t *testing.T) {
 	t.Parallel()
 
@@ -458,7 +523,14 @@ func TestSetReminder_StoresAndPublishesWithNoServiceCall(t *testing.T) {
 	}
 }
 
-func TestSetArchived_ReportsAServiceFailure(t *testing.T) {
+// TestSetArchived_ReportsAServiceFailureAsSafeInvalidInput checks the
+// fix for a report where archiving, then unarchiving, a chat whose
+// service rejected the change surfaced only as the generic "internal
+// error" banner, with nothing in the helper's own log saying why: any
+// failure from the organizer here, once the local change already
+// stands, must become a safe message naming what happened instead of
+// the fixed internal error a request that changed nothing at all gets.
+func TestSetArchived_ReportsAServiceFailureAsSafeInvalidInput(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
@@ -466,11 +538,26 @@ func TestSetArchived_ReportsAServiceFailure(t *testing.T) {
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	f.organizer.err = errors.New("offline")
 
-	if _, err := f.commands.SetArchived(ctx, chat.ID, true); !errors.Is(err, f.organizer.err) {
-		t.Errorf("SetArchived with a failing service = %v, want %v", err, f.organizer.err)
+	_, err := f.commands.SetArchived(ctx, chat.ID, true)
+	if !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("SetArchived with a failing service = %v, want ErrInvalidInput", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "archived here") {
+		t.Errorf("SetArchived error = %q, want it to say the change was made here", err.Error())
 	}
 
 	if got, err := f.store.Conversation(ctx, chat.ID); err != nil || !got.Archived {
 		t.Errorf("Conversation after a failed SetArchived = %+v, %v; want Archived true", got, err)
+	}
+
+	if lines := f.logger.take(); len(lines) != 1 || !strings.Contains(lines[0], "set archived failed") {
+		t.Errorf("logged = %v, want one line naming the failure", lines)
+	}
+
+	// Unarchiving a failure wording says "unarchived", not "archived".
+	f.organizer.err = errors.New("offline again")
+	_, err = f.commands.SetArchived(ctx, chat.ID, false)
+	if err == nil || !strings.Contains(err.Error(), "unarchived here") {
+		t.Errorf("SetArchived(false) with a failing service = %v, want it to say unarchived", err)
 	}
 }

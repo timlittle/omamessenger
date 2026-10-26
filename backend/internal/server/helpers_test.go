@@ -55,7 +55,7 @@ func connect(t *testing.T, faked bool) *session {
 	filePicker := &fakeFilePicker{}
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: accounts,
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, ArchiveUnpinner: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
 		Blocker: acceptAll{}, SpamReporter: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
 		Sounds:     cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
@@ -86,7 +86,7 @@ func connectWithMedia(t *testing.T, media app.MediaFetcher, mediaCache app.Media
 	clipboard := &fakeClipboard{}
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, ArchiveUnpinner: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
 		Media: media, Cache: mediaCache,
 	}
@@ -121,7 +121,7 @@ func connectWithLimiter(t *testing.T, limiter app.AttachmentLimiter) *session {
 	db := openSeeded(t)
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, ArchiveUnpinner: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
 		Blocker: acceptAll{}, SpamReporter: acceptAll{}, Limiter: limiter,
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
 	}
@@ -141,7 +141,7 @@ func connectWithMediaSave(t *testing.T, media app.MediaFetcher, mediaCache app.M
 	downloads := filepath.Join(t.TempDir(), "downloads")
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, ArchiveUnpinner: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
 		Media: media, Cache: mediaCache, DownloadsDir: downloads,
 	}
@@ -160,7 +160,7 @@ func connectWithHistory(t *testing.T, history app.HistoryLoader) *session {
 	db := openSeeded(t)
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: &storeAccounts{db: db},
-		SignIn: acceptAll{}, Organizer: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
+		SignIn: acceptAll{}, Organizer: acceptAll{}, ArchiveUnpinner: acceptAll{}, Reactor: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{},
 		History: history,
 	}
@@ -390,6 +390,8 @@ func (acceptAll) SubmitAuth(context.Context, string, string, string) error { ret
 // SetPinned and SetArchived accept any pin or archive change.
 func (acceptAll) SetPinned(context.Context, domain.Conversation, bool) error   { return nil }
 func (acceptAll) SetArchived(context.Context, domain.Conversation, bool) error { return nil }
+
+func (acceptAll) ArchiveUnpins(string) bool { return false }
 
 // React accepts any reaction change.
 func (acceptAll) React(context.Context, domain.Conversation, string, string) error { return nil }

@@ -12,38 +12,39 @@ import (
 
 // Commands are the actions the UI can take.
 type Commands struct {
-	store        *store.Store
-	dispatcher   Dispatcher
-	signIn       SignIn
-	accounts     Accounts
-	history      HistoryLoader
-	media        MediaFetcher
-	cache        MediaCache
-	refresher    MessageRefresher
-	organizer    Organizer
-	reactor      Reactor
-	voter        Voter
-	deleter      Deleter
-	editor       Editor
-	blocker      Blocker
-	spamReporter SpamReporter
-	members      MemberLister
-	limiter      AttachmentLimiter
-	outgoing     OutgoingMedia
-	sounds       SoundStore
-	clipboard    ClipboardRunner
-	filePicker   FilePicker
-	fake         Injector
-	logger       Logger
-	spell        *spell.Checker
-	events       *events
-	ui           *uiState
-	ingest       *Ingest
-	refreshed    *attemptedRefresh
-	recentErrors *errorHistory
-	reminders    *reminders
-	retries      *retrier
-	scheduled    *scheduledSender
+	store           *store.Store
+	dispatcher      Dispatcher
+	signIn          SignIn
+	accounts        Accounts
+	history         HistoryLoader
+	media           MediaFetcher
+	cache           MediaCache
+	refresher       MessageRefresher
+	organizer       Organizer
+	archiveUnpinner ArchiveUnpinner
+	reactor         Reactor
+	voter           Voter
+	deleter         Deleter
+	editor          Editor
+	blocker         Blocker
+	spamReporter    SpamReporter
+	members         MemberLister
+	limiter         AttachmentLimiter
+	outgoing        OutgoingMedia
+	sounds          SoundStore
+	clipboard       ClipboardRunner
+	filePicker      FilePicker
+	fake            Injector
+	logger          Logger
+	spell           *spell.Checker
+	events          *events
+	ui              *uiState
+	ingest          *Ingest
+	refreshed       *attemptedRefresh
+	recentErrors    *errorHistory
+	reminders       *reminders
+	retries         *retrier
+	scheduled       *scheduledSender
 
 	// dataDir, dbPath, execName and helperVersion are read only by
 	// Doctor; see Deps.

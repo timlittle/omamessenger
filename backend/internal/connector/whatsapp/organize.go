@@ -105,6 +105,15 @@ func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, a
 	return c.reportOrganized(ctx, sink, dev, jid, conv.RemoteID)
 }
 
+// UnpinsOnArchive reports that WhatsApp's own archive always unpins
+// too: appstate.BuildArchive already bundles the matching unpin
+// mutation into the archive patch SetArchived sends above, the same as
+// WhatsApp's own app does, so a WhatsApp conversation is never both
+// pinned and archived at once (see connector.ArchiveUnpinner).
+func (c *Connector) UnpinsOnArchive() bool {
+	return true
+}
+
 // reportOrganized reports remoteID's current pinned and archived
 // state, read straight from whatsmeow's own chat settings store for
 // jid (see device.chatSettings): a read failure here should not arise,

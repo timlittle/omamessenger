@@ -7,6 +7,7 @@ import (
 
 	"github.com/gotd/td/tg"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -323,6 +324,19 @@ func TestSetArchived_MovesTheDialogToFolder1(t *testing.T) {
 	req, ok = f.sent()[1].(*tg.FoldersEditPeerFoldersRequest)
 	if !ok || len(req.FolderPeers) != 1 || req.FolderPeers[0].FolderID != 0 {
 		t.Errorf("request = %+v, want one peer in folder 0", f.sent()[1])
+	}
+}
+
+// TestConnector_DoesNotUnpinOnArchive confirms Telegram's own Connector
+// never satisfies connector.ArchiveUnpinner: Telegram keeps a separate
+// pinned list per folder, so archiving a chat there leaves its pin
+// alone, unlike WhatsApp (see whatsapp/organize.go).
+func TestConnector_DoesNotUnpinOnArchive(t *testing.T) {
+	t.Parallel()
+
+	var c any = New(domain.Account{ID: "tg"}, "")
+	if _, ok := c.(connector.ArchiveUnpinner); ok {
+		t.Error("telegram Connector implements ArchiveUnpinner, want it not to")
 	}
 }
 

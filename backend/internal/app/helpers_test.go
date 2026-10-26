@@ -64,33 +64,34 @@ func onePlayableMP4() []byte {
 // fixture is an application over a real database with fake connectors,
 // notifications and UI.
 type fixture struct {
-	store      *store.Store
-	commands   *app.Commands
-	ingest     *app.Ingest
-	dispatcher *fakeDispatcher
-	notifier   *fakeNotifier
-	published  *fakePublisher
-	injector   *fakeInjector
-	accounts   *fakeAccounts
-	signIn     *fakeSignIn
-	history    *fakeHistory
-	media      *fakeMedia
-	refresher  *fakeRefresher
-	organizer  *fakeOrganizer
-	reactor    *fakeReactor
-	voter      *fakeVoter
-	deleter    *fakeDeleter
-	editor     *fakeEditor
-	blocker    *fakeBlocker
-	spamReport *fakeSpamReporter
-	members    *fakeMemberLister
-	limiter    *fakeLimiter
-	outgoing   *cache.Outgoing
-	sounds     *cache.Sounds
-	clipboard  *fakeClipboard
-	filePicker *fakeFilePicker
-	logger     *fakeLogger
-	downloads  string
+	store           *store.Store
+	commands        *app.Commands
+	ingest          *app.Ingest
+	dispatcher      *fakeDispatcher
+	notifier        *fakeNotifier
+	published       *fakePublisher
+	injector        *fakeInjector
+	accounts        *fakeAccounts
+	signIn          *fakeSignIn
+	history         *fakeHistory
+	media           *fakeMedia
+	refresher       *fakeRefresher
+	organizer       *fakeOrganizer
+	archiveUnpinner *fakeArchiveUnpinner
+	reactor         *fakeReactor
+	voter           *fakeVoter
+	deleter         *fakeDeleter
+	editor          *fakeEditor
+	blocker         *fakeBlocker
+	spamReport      *fakeSpamReporter
+	members         *fakeMemberLister
+	limiter         *fakeLimiter
+	outgoing        *cache.Outgoing
+	sounds          *cache.Sounds
+	clipboard       *fakeClipboard
+	filePicker      *fakeFilePicker
+	logger          *fakeLogger
+	downloads       string
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -118,7 +119,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{}, members: &fakeMemberLister{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
-		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
+		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, archiveUnpinner: &fakeArchiveUnpinner{unpins: map[string]bool{}}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
 		blocker: &fakeBlocker{}, spamReport: &fakeSpamReporter{}, limiter: &fakeLimiter{limits: map[string]int64{}},
 		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		sounds:     cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
@@ -130,7 +131,7 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
 		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
-		Refresher: f.refresher, Organizer: f.organizer, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
+		Refresher: f.refresher, Organizer: f.organizer, ArchiveUnpinner: f.archiveUnpinner, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
 		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members, Limiter: f.limiter,
 		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, FilePicker: f.filePicker, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
@@ -160,7 +161,7 @@ func appOver(t *testing.T, db *store.Store) (*app.Commands, *app.Ingest, *fakeDi
 		Store: db, Dispatcher: dispatcher, Notifier: notifier, Publisher: &fakePublisher{},
 		Accounts: &fakeAccounts{store: db}, SignIn: &fakeSignIn{}, History: &fakeHistory{}, Media: &fakeMedia{},
 		Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20), Refresher: &fakeRefresher{},
-		Organizer: &fakeOrganizer{}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{}, Editor: &fakeEditor{},
+		Organizer: &fakeOrganizer{}, ArchiveUnpinner: &fakeArchiveUnpinner{unpins: map[string]bool{}}, Reactor: &fakeReactor{}, Deleter: &fakeDeleter{}, Editor: &fakeEditor{},
 		Blocker: &fakeBlocker{}, SpamReporter: &fakeSpamReporter{},
 		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: &fakeClipboard{}, Logger: &fakeLogger{},
 	}
