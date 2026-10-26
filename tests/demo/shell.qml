@@ -19,6 +19,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "ui"
+import "ui/theme"
 import "ui/lib/Timeline.js" as Timeline
 import "Check.js" as Check
 
@@ -880,6 +881,34 @@ ShellRoot {
     }
   }
 
+  // windowFill stands in for the window's own background colour, which
+  // the grab of keyArea leaves out: without it every area the columns do
+  // not paint themselves came out black instead of the theme background.
+  Rectangle {
+    id: windowFill
+
+    z: -1
+    anchors.fill: parent
+    color: Theme.background
+  }
+
+  // columnsFill does the same inside the columns' own texture layer (see
+  // the Timer below), which offscreen starts opaque black rather than
+  // clear, so the fill behind keyArea never shows through it. It hangs
+  // under the rail, the first column, rather than in the columns'
+  // RowLayout itself, where it would take a column of its own; the rail's
+  // later siblings paint over it, so it only shows where nothing else does.
+  Rectangle {
+    id: columnsFill
+
+    property Item columns: null
+
+    z: -1
+    width: columns ? columns.width : 0
+    height: columns ? columns.height : 0
+    color: Theme.background
+  }
+
   // keyLabel is the recording's own keystroke overlay: reparented onto
   // the Panel's window once it exists, so it shows up in every grabbed
   // frame. Nothing like it exists in the real UI.
@@ -965,10 +994,15 @@ ShellRoot {
     onTriggered: {
       root.panel().open("{}");
       keyLabel.parent = Check.find(root.panel(), "keyArea");
+      windowFill.parent = keyLabel.parent;
       root._photoViewer = Check.find(root.panel(), "photoViewer");
 
       const rail = Check.find(root.panel(), "serviceRail");
-      if (rail && rail.parent) rail.parent.layer.enabled = true;
+      if (rail && rail.parent) {
+        columnsFill.columns = rail.parent;
+        columnsFill.parent = rail;
+        rail.parent.layer.enabled = true;
+      }
 
       root.runStep();
     }
