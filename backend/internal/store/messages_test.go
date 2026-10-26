@@ -436,3 +436,53 @@ func TestAddMessage_RoundTripsAnAttachmentsOriginalFile(t *testing.T) {
 		t.Fatalf("stored media = %+v, %v; want the original path and modtime kept", got.Media, err)
 	}
 }
+
+// TestMessage_SanitizesStoredThumbnail confirms a message's thumbnail
+// is checked against imagesafe's own bound every time it is read back,
+// not only once by the migration that repairs what a previous version
+// already wrote to disk (see docs/decisions.md): a thumbnail whose
+// declared size is far over the bound, or that is not valid base64 at
+// all, is cleared to "", while an ordinary one is returned unchanged.
+// This is the defence that still catches a thumbnail a future write
+// path forgets to sanitize before storing it, exactly the way AddMessage
+// here never itself checks what it is handed.
+func TestMessage_SanitizesStoredThumbnail(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	clean := fakeThumb(t, 8, 8)
+	oversized := fakeThumb(t, 2000, 10)
+
+	addMessages(t, s,
+		domain.Message{ID: "clean", ConversationID: "chat", Text: "a", Created: 1, Media: &domain.Media{Kind: domain.MediaSticker, Thumb: clean}},
+		domain.Message{ID: "oversized", ConversationID: "chat", Text: "b", Created: 2, Media: &domain.Media{Kind: domain.MediaSticker, Thumb: oversized}},
+		domain.Message{ID: "invalid", ConversationID: "chat", Text: "c", Created: 3, Media: &domain.Media{Kind: domain.MediaSticker, Thumb: "not valid base64 at all!!"}},
+	)
+
+	if got, err := s.Message(ctx, "clean"); err != nil || got.Media.Thumb != clean {
+		t.Errorf("clean thumbnail = %q, %v; want %q, unchanged", got.Media.Thumb, err, clean)
+	}
+	if got, err := s.Message(ctx, "oversized"); err != nil || got.Media.Thumb != "" {
+		t.Errorf("oversized thumbnail = %q, %v; want cleared", got.Media.Thumb, err)
+	}
+	if got, err := s.Message(ctx, "invalid"); err != nil || got.Media.Thumb != "" {
+		t.Errorf("invalid-base64 thumbnail = %q, %v; want cleared", got.Media.Thumb, err)
+	}
+
+	// Messages, the paging the UI's timeline calls, must give the exact
+	// same guarantee: this is the read path a review named directly.
+	page, _, err := s.Messages(ctx, "chat", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range page {
+		if m.ID == "oversized" && m.Media.Thumb != "" {
+			t.Errorf("Messages kept an oversized thumbnail for %q: %q", m.ID, m.Media.Thumb)
+		}
+		if m.ID == "invalid" && m.Media.Thumb != "" {
+			t.Errorf("Messages kept an invalid-base64 thumbnail for %q: %q", m.ID, m.Media.Thumb)
+		}
+	}
+}

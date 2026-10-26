@@ -427,6 +427,9 @@ func scanMessage(row scanner) (domain.Message, error) {
 		if err := json.Unmarshal([]byte(media), m.Media); err != nil {
 			return m, err
 		}
+		// Re-checked on every read, not just once by a migration: see
+		// sanitizedThumb and docs/decisions.md.
+		m.Media.Thumb = sanitizedThumb(m.Media.Thumb)
 		m.Media.OriginalPath, m.Media.OriginalModTime = originalPath, originalModTime
 	}
 

@@ -3,9 +3,15 @@
 package store
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"hash/crc32"
+	"image"
+	"image/png"
 	"path/filepath"
 	"testing"
 
@@ -30,7 +36,7 @@ func TestMigrate_FailedStepKeepsLastGoodVersion(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "messages.db"))
-	steps := []string{`CREATE TABLE good(id INTEGER)`, `CREATE TABLE broken(`}
+	steps := []migrationStep{{sql: `CREATE TABLE good(id INTEGER)`}, {sql: `CREATE TABLE broken(`}}
 
 	if err := migrate(t.Context(), db, steps); err == nil {
 		t.Fatal("migrate with a broken step succeeded")
@@ -74,13 +80,14 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "gif.db"))
-	// The GIF migration is eighth-from-last, before the audio
+	// The GIF migration is ninth-from-last, before the audio
 	// migration, the pin_order column, the scheduled_messages table,
 	// the notification_sound column, the window-open column, the
-	// pin_order backfill and the before-archive pin columns, all
-	// appended after it; stop short of all eight so inserting the
-	// pre-fix rows below still finds them unreclassified.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-8]); err != nil {
+	// pin_order backfill, the before-archive pin columns and the
+	// legacy thumbnail repair, all appended after it; stop short of
+	// all nine so inserting the pre-fix rows below still finds them
+	// unreclassified.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-9]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -113,7 +120,7 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into a video.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-8]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-9].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -136,12 +143,12 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "audio.db"))
-	// The audio migration is seventh-from-last, before the pin_order
+	// The audio migration is eighth-from-last, before the pin_order
 	// column, the scheduled_messages table, the notification_sound
-	// column, the window-open column, the pin_order backfill and the
-	// before-archive pin columns, all appended after it; stop short of
-	// all seven.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-7]); err != nil {
+	// column, the window-open column, the pin_order backfill, the
+	// before-archive pin columns and the legacy thumbnail repair, all
+	// appended after it; stop short of all eight.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-8]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -174,7 +181,7 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into audio.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-7]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-8].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -196,11 +203,12 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "pin-backfill.db"))
-	// Stop one short of the backfill: it is second-from-last, appended
-	// after pin_order's own column, scheduled messages, the
+	// Stop three short of the full set: the backfill is third-from-last,
+	// appended after pin_order's own column, scheduled messages, the
 	// notification sound column and the window-open column, and ahead
-	// of only the before-archive pin columns appended after it.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-2]); err != nil {
+	// of the before-archive pin columns and the legacy thumbnail repair
+	// appended after it.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-3]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,7 +239,7 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	// order: it is idempotent, like the GIF and audio reclassifications
 	// above, since recomputing the same recency ranking over rows whose
 	// relative order has not changed yields the same ranks.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-2]); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-3].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -240,6 +248,138 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	}
 	if got := readRawPinOrder(t, db, "newer"); got != newerOrder {
 		t.Errorf("re-running the backfill changed newer's pin_order: %d, want %d", got, newerOrder)
+	}
+}
+
+// TestMigrate_SanitizesLegacyThumbnails confirms the migration that
+// repairs a thumbnail stored before imagesafe.Sanitize existed: one
+// not valid base64 at all, and one whose declared dimensions are far
+// over imagesafe.Thumbnail's own bound - the decompression-bomb shape
+// this exists to catch - are both cleared to "", while one that merely
+// carries a chunk the sanitizer strips is kept, re-encoded to a
+// smaller, still-valid image of the same dimensions, so a normal
+// user's existing preview is not lost just for upgrading (see
+// docs/decisions.md).
+func TestMigrate_SanitizesLegacyThumbnails(t *testing.T) {
+	t.Parallel()
+
+	db := openRaw(t, filepath.Join(t.TempDir(), "legacy-thumbs.db"))
+	// The thumbnail repair is the very last migration, appended after
+	// the pin_order backfill above.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-1]); err != nil {
+		t.Fatal(err)
+	}
+
+	clean := fakePNGThumb(8, 8)
+	stripped := fakePNGThumbWithChunk(8, 8, "zTXt", bytes.Repeat([]byte{'a'}, 200))
+	oversized := fakePNGThumb(2000, 10)
+	const invalid = "not valid base64 at all!!"
+
+	insertRawMessage(t, db, "clean", `{"kind":"sticker","thumb":"`+clean+`"}`)
+	insertRawMessage(t, db, "stripped", `{"kind":"sticker","thumb":"`+stripped+`"}`)
+	insertRawMessage(t, db, "oversized", `{"kind":"sticker","thumb":"`+oversized+`"}`)
+	insertRawMessage(t, db, "invalid", `{"kind":"sticker","thumb":"`+invalid+`"}`)
+	insertRawMessage(t, db, "none", `{"kind":"file","fileName":"a.txt"}`)
+
+	if err := migrate(t.Context(), db, migrations); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readRawMedia(t, db, "clean").Thumb; got != clean {
+		t.Errorf("clean thumbnail = %q, want unchanged %q", got, clean)
+	}
+
+	strippedGot := readRawMedia(t, db, "stripped").Thumb
+	if strippedGot == "" || strippedGot == stripped {
+		t.Fatalf("stripped thumbnail = %q, want re-encoded, neither empty nor unchanged", strippedGot)
+	}
+	requireDecodesTo(t, strippedGot, 8, 8)
+
+	if got := readRawMedia(t, db, "oversized").Thumb; got != "" {
+		t.Errorf("oversized thumbnail = %q, want cleared", got)
+	}
+	if got := readRawMedia(t, db, "invalid").Thumb; got != "" {
+		t.Errorf("invalid-base64 thumbnail = %q, want cleared", got)
+	}
+	if got := readRawMedia(t, db, "none").Thumb; got != "" {
+		t.Errorf("media with no thumbnail = %q, want left alone", got)
+	}
+
+	// Idempotent: re-running the repair directly, bypassing migrate's
+	// own version gate the same way the GIF, audio and pin-order tests
+	// above do, must not touch an already-repaired row again.
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sanitizeLegacyThumbnails(t.Context(), tx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readRawMedia(t, db, "stripped").Thumb; got != strippedGot {
+		t.Errorf("re-running the repair changed an already-repaired thumbnail: %q, want %q", got, strippedGot)
+	}
+}
+
+// fakePNGThumb returns a plain, solid-colour PNG of the given size,
+// base64-encoded exactly as domain.Media.Thumb stores one.
+func fakePNGThumb(width, height int) string {
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height)))
+
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
+// fakePNGThumbWithChunk returns fakePNGThumb's image with one extra
+// chunk spliced in right after IHDR - exactly where a sender-supplied
+// zTXt or iCCP chunk sits in a real file - so sanitizing it actually
+// strips something rather than leaving it byte-for-byte unchanged.
+func fakePNGThumbWithChunk(width, height int, kind string, payload []byte) string {
+	data, err := base64.StdEncoding.DecodeString(fakePNGThumb(width, height))
+	if err != nil {
+		panic(err) // unreachable: fakePNGThumb's own output is always valid base64
+	}
+
+	const ihdrEnd = 8 + 8 + 13 + 4 // signature + length/type + IHDR body + CRC
+	var out bytes.Buffer
+	out.Write(data[:ihdrEnd])
+	writeTestPNGChunk(&out, kind, payload)
+	out.Write(data[ihdrEnd:])
+
+	return base64.StdEncoding.EncodeToString(out.Bytes())
+}
+
+// writeTestPNGChunk appends one well-formed PNG chunk - length, type,
+// payload and a correct CRC - to out.
+func writeTestPNGChunk(out *bytes.Buffer, kind string, payload []byte) {
+	var length [4]byte
+	binary.BigEndian.PutUint32(length[:], uint32(len(payload)))
+	out.Write(length[:])
+	out.WriteString(kind)
+	out.Write(payload)
+
+	var crc [4]byte
+	binary.BigEndian.PutUint32(crc[:], crc32.ChecksumIEEE(append([]byte(kind), payload...)))
+	out.Write(crc[:])
+}
+
+// requireDecodesTo fails the test unless thumb, base64-encoded, decodes
+// to an image of exactly width by height: sanitizing a thumbnail must
+// never change what it depicts, only strip what rendering never reads.
+func requireDecodesTo(t *testing.T, thumb string, width, height int) {
+	t.Helper()
+
+	data, err := base64.StdEncoding.DecodeString(thumb)
+	if err != nil {
+		t.Fatalf("thumbnail is not valid base64: %v", err)
+	}
+
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width != width || cfg.Height != height {
+		t.Fatalf("decoded = %+v, %v; want %dx%d", cfg, err, width, height)
 	}
 }
 

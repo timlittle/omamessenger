@@ -1,7 +1,11 @@
 package store_test
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
+	"image"
+	"image/png"
 	"path/filepath"
 	"testing"
 
@@ -95,4 +99,18 @@ func ids(messages []domain.Message) []string {
 	}
 
 	return out
+}
+
+// fakeThumb returns a plain, solid-colour PNG of the given size,
+// base64-encoded exactly as domain.Media.Thumb stores one: a real,
+// valid preview a test can plant on a message.
+func fakeThumb(t *testing.T, width, height int) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatalf("encode fake thumbnail: %v", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
 }

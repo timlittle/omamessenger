@@ -81,6 +81,7 @@ linters:
             - $gostd
             - modernc.org/sqlite
             - github.com/timlittle/omamessenger/backend/internal/domain$
+            - github.com/timlittle/omamessenger/backend/internal/imagesafe$
         imagesafe:
           list-mode: strict
           files: ["**/backend/internal/imagesafe/*.go", "!$test"]
