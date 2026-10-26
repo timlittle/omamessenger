@@ -6,6 +6,8 @@ A keyboard-first messaging client for [Omarchy](https://omarchy.org), for Telegr
 
 OmaMessenger is an Omarchy plugin. The window runs inside `omarchy-shell`, and Hyprland manages it like any other app; a Go helper it starts handles the messaging underneath.
 
+> **Unofficial clients.** OmaMessenger is not made or endorsed by Telegram or WhatsApp. WhatsApp support uses an unofficial library, and WhatsApp may restrict or ban an account that uses one; Telegram can rate-limit or restrict accounts too. Consider trying it with an account you could afford to lose first. See [docs/privacy.md](docs/privacy.md).
+
 Short clips of each feature are in [docs/demo.md](docs/demo.md).
 
 ## Features
