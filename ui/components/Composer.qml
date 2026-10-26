@@ -81,6 +81,11 @@ Item {
   // into text itself (see ComposerController.startEdit); this only
   // drives the banner and submit()'s send-or-save choice.
   property var editTarget: null
+  // scheduledEditing is true while the caller has loaded a queued "send
+  // later" message's own text in here to change it (see
+  // ComposerController.editingScheduled); drives the banner below and,
+  // together with editTarget, keeps the two never showing together.
+  property bool scheduledEditing: false
   // attachmentPath is the file to send with the next message, or "" for
   // none. The chip above the text field shows it. Set only once the
   // caller's media.attach or media.paste round trip finishes (see
@@ -206,6 +211,9 @@ Item {
   signal replyCanceled()
   // editCanceled reports that the user dismissed the editing banner.
   signal editCanceled()
+  // scheduledEditCanceled reports that the user dismissed the queued
+  // message's own editing banner, leaving it queued unchanged.
+  signal scheduledEditCanceled()
   // fileAttached reports a file openFallbackPicker's own dialog chose.
   signal fileAttached(string path)
   // attachRequested asks the caller to run the portal's own file
@@ -583,6 +591,40 @@ Item {
         tooltipText: "Cancel editing"
         focusable: true
         onClicked: root.editCanceled()
+      }
+    }
+
+    RowLayout {
+      id: scheduledEditBanner
+      objectName: "scheduledEditBanner"
+      Layout.fillWidth: true
+      visible: root.scheduledEditing
+      spacing: Theme.spacing.xs
+
+      Rectangle {
+        Layout.preferredWidth: Theme.spacing.xxs
+        Layout.fillHeight: true
+        radius: width / 2
+        color: Theme.accent
+      }
+
+      Text {
+        objectName: "scheduledEditBannerText"
+        Layout.fillWidth: true
+        elide: Text.ElideRight
+        text: "Editing scheduled message · Esc to cancel"
+        textFormat: Text.PlainText
+        color: Util.alpha(Theme.foreground, 0.7)
+        font.family: Theme.font.family
+        font.pixelSize: Theme.font.bodySmall
+      }
+
+      Ui.Button {
+        objectName: "scheduledEditCancel"
+        text: "✕"
+        tooltipText: "Cancel editing"
+        focusable: true
+        onClicked: root.scheduledEditCanceled()
       }
     }
 

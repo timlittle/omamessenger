@@ -259,6 +259,7 @@ Item {
       draft: root.composerController.draft
       replyTarget: root.composerController.replyTarget
       editTarget: root.composerController.editTarget
+      scheduledEditing: root.composerController.editingScheduled
       attachmentPath: root.composerController.attachmentPath
       attachmentName: root.composerController.attachmentName
       attachmentKind: root.composerController.attachmentKind
@@ -297,7 +298,14 @@ Item {
       onMediaOpenExternalRequested: id => root.conversationController.openMediaExternal(id)
       onLinkOpenRequested: (url, displayText) => root.windowController.openLink(url, displayText)
       onSend: (text, replyToId, mentions) => {
-        if (root.composerController.editing) root.composerController.saveEdit(text);
+        // Enter while editing a queued message's own text must never
+        // send it as a new message right now: there is still a time to
+        // pick, through the same Ctrl+L prompt that key already opens,
+        // so Enter here does exactly the same thing instead - the "keep
+        // consistent" outcome the "Edit" button's own Enter always
+        // reached, back when it opened that prompt immediately.
+        if (root.composerController.editingScheduled) root.windowController.run("compose.sendLater");
+        else if (root.composerController.editing) root.composerController.saveEdit(text);
         else root.conversationController.send(text, replyToId, mentions);
       }
       onDraftEdited: text => {
@@ -307,6 +315,7 @@ Item {
       onReplyRequested: id => root.composerController.startReply(id)
       onReplyCanceled: root.composerController.cancelReply()
       onEditCanceled: root.composerController.cancelEdit()
+      onScheduledEditCanceled: root.composerController.cancelScheduledEdit()
       onQuoteOpened: remoteId => root.conversationController.scrollToReply(remoteId)
       onFileAttached: path => root.composerController.attachFile(path)
       onAttachRequested: root.composerController.pickAttachFile()

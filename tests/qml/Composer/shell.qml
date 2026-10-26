@@ -1,7 +1,9 @@
 // Checks the composer: trimmed submit, whitespace ignored, cleared input,
 // a fixed placeholder that never names the conversation, the blocked banner and
 // placeholder shown while blocked, the reply banner and sending the
-// id it answers, cancelling a reply, the attachment chip, the chip's
+// id it answers, cancelling a reply, the editing banner for a sent
+// message and the separate one for a queued "send later" message being
+// edited (never shown together), the attachment chip, the chip's
 // preview showing only for a reported kind of "photo" and never
 // guessed from the path's own extension, both the
 // banner and the chip showing together, the @-mention picker (shown
@@ -26,6 +28,7 @@ ShellRoot {
   property var routeKeyCalls: []
   property int cancelCount: 0
   property int editCancelCount: 0
+  property int scheduledEditCancelCount: 0
   property var attached: []
   property int removeRequests: 0
   property var testMisspellings: []
@@ -50,6 +53,7 @@ ShellRoot {
       }
       onReplyCanceled: root.cancelCount += 1
       onEditCanceled: root.editCancelCount += 1
+      onScheduledEditCanceled: root.scheduledEditCancelCount += 1
       onFileAttached: path => root.attached.push(path)
       onAttachmentRemoveRequested: root.removeRequests++
       onSpellSuggestionsRequested: word => root.spellSuggestionRequests.push(word)
@@ -88,6 +92,7 @@ ShellRoot {
     if (!root.checkBlocked()) return;
     if (!root.checkReplyBanner()) return;
     if (!root.checkEditBanner()) return;
+    if (!root.checkScheduledEditBanner()) return;
     if (!root.checkAttachment()) return;
     if (!root.checkAttachmentPreview()) return;
     if (!root.checkAttachmentSizeAndHint()) return;
@@ -201,6 +206,33 @@ ShellRoot {
     if (root.editCancelCount !== 1) return Check.fail("editCanceled fired " + root.editCancelCount + " times, want 1");
 
     composer.editTarget = null;
+    return true;
+  }
+
+  // checkScheduledEditBanner verifies the queued message's own editing
+  // banner shows its fixed text while scheduledEditing is true, never
+  // at the same time as the sent-message editBanner, and that
+  // cancelling it reports scheduledEditCanceled.
+  function checkScheduledEditBanner(): bool {
+    const banner = Check.find(composer, "scheduledEditBanner");
+    if (banner.visible) return Check.fail("scheduled editing banner shown with no scheduled edit in progress");
+
+    composer.scheduledEditing = true;
+    if (!banner.visible) return Check.fail("scheduled editing banner not shown while editing a queued message");
+    if (Check.find(composer, "editBanner").visible)
+      return Check.fail("the sent-message editing banner showed at the same time as the scheduled one");
+
+    const bannerText = Check.find(composer, "scheduledEditBannerText");
+    if (bannerText.text.indexOf("Esc to cancel") < 0)
+      return Check.fail("scheduled editing banner text \"" + bannerText.text + "\" does not mention Esc to cancel");
+
+    const cancelButton = Check.find(composer, "scheduledEditCancel");
+    root.scheduledEditCancelCount = 0;
+    cancelButton.clicked();
+    if (root.scheduledEditCancelCount !== 1)
+      return Check.fail("scheduledEditCanceled fired " + root.scheduledEditCancelCount + " times, want 1");
+
+    composer.scheduledEditing = false;
     return true;
   }
 

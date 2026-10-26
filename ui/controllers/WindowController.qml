@@ -66,12 +66,6 @@ Item {
   // "Send later…" command and a queued message's "Edit" button.
   property var scheduledController: null
 
-  // _editingScheduledId is the queued message "Send later…" is about to
-  // replace, once the composer's own "Edit" button loaded it back in,
-  // or "" while the palette's custom-time prompt is queuing a fresh
-  // message instead.
-  property string _editingScheduledId: ""
-
   // _scheduledAction is which of "sendNow", "edit" or "cancel" the
   // "scheduledMessagesForChat" picker is about to apply to whichever
   // row Enter picks, set by _runScheduledAction below.
@@ -251,7 +245,7 @@ Item {
       // instead of two. See docs/shortcuts.md.
       "search.focus": () => root.openPalette("conversations"),
       "chat.snoozeCustom": () => root.openPalette("snoozeCustom"),
-      "compose.sendLater": () => { root._editingScheduledId = ""; root.openPalette("sendLaterCustom"); },
+      "compose.sendLater": () => root.openPalette("sendLaterCustom"),
       "scheduled.show": () => root.openPalette("scheduledMessages"),
       "scheduled.sendNow": () => root._runScheduledAction("sendNow"),
       "scheduled.edit": () => root._runScheduledAction("edit"),
@@ -526,22 +520,24 @@ Item {
 
   // _scheduleDraft queues the composer's current text to send at at
   // (Unix milliseconds), picked from the "Send later…" command's own
-  // palette prompt: a fresh queued message, or the one
-  // _editingScheduledId names, loaded back in by a queued message's
-  // own "Edit" button. Either way it clears the composer, the same as
-  // sending for real does. Does nothing with no conversation open, no
-  // text typed, or an attachment pending: scheduling a message is text
-  // only in this first version (see docs/decisions.md).
+  // palette prompt: a fresh queued message, or, while
+  // composerController.editingScheduled, the one its own scheduledEditId
+  // names - startScheduledEdit loaded it back in, from the keyboard's e
+  // on a highlighted queued row or the mouse's own "Edit" button.
+  // Either way it clears the composer, the same as sending for real
+  // does. Does nothing with no conversation open, no text typed, or an
+  // attachment pending: scheduling a message is text only in this first
+  // version (see docs/decisions.md).
   function _scheduleDraft(at: real): void {
     if (!root.composerController || !root.conversationController || !root.scheduledController) return;
 
     const text = root.composerController.draft;
     if (!text || root.composerController.attachmentPath) return;
 
-    const editingId = root._editingScheduledId;
-    root._editingScheduledId = "";
+    const editingId = root.composerController.scheduledEditId;
     const onDone = (error) => {
       if (error) { root.lastError = Rpc.errorText(error); return; }
+      root.composerController.clearScheduledEdit();
       root.composerController.setDraft("");
     };
 
@@ -607,17 +603,23 @@ Item {
     root._applyScheduledAction(message, which);
   }
 
-  // editScheduledMessage starts editing a queued message, from its own
-  // row's "Edit" button: its text loads into the composer, the same
-  // way editing a sent message already does, and "Send later…" opens
-  // at once to pick its new time. Accepting it calls
-  // ScheduledController.edit instead of schedule (see _scheduleDraft).
+  // editScheduledMessage starts editing a queued message - from the
+  // keyboard's e on a highlighted queued row (Panel.routeKey's own
+  // remap) or the mouse's own "Edit" button, both of which call this
+  // same function. Its text loads into the composer, focused and ready
+  // to type into, the same way editing a sent message already does
+  // (see ComposerController.startScheduledEdit); it does not jump
+  // straight to the "Send later…" time prompt any more - that left the
+  // loaded text unreachable, since the prompt took over the keyboard at
+  // once. Ctrl+L (compose.sendLater) opens that prompt once the text is
+  // right, reading scheduledEditId to reschedule it instead of queuing
+  // a fresh message (see _scheduleDraft); Esc cancels and leaves it
+  // queued unchanged (see ComposerController.cancelScheduledEdit).
   function editScheduledMessage(id: string, text: string): void {
     if (!root.composerController) return;
 
-    root.composerController.setDraft(text);
-    root._editingScheduledId = id;
-    root.openPalette("sendLaterCustom");
+    root.composerController.startScheduledEdit(id, text);
+    root.composerController.composeFocusRequested();
   }
 
   // _openScheduledMessage opens the conversation a "Scheduled messages"
@@ -721,6 +723,7 @@ Item {
       "leave-search": () => { if (root.listController) root.listController.leaveSearch(); },
       "leave-unread-view": () => { if (root.listController) root.listController.setUnreadView(false); },
       "clear-attachment": () => { if (root.composerController) root.composerController.removeAttachment(); },
+      "cancel-scheduled-edit": () => { if (root.composerController) root.composerController.cancelScheduledEdit(); },
       "cancel-edit": () => { if (root.composerController) root.composerController.cancelEdit(); },
       "cancel-reply": () => { if (root.composerController) root.composerController.cancelReply(); },
       "leave-compose": () => root._leaveCompose(),

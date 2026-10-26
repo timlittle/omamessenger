@@ -52,6 +52,10 @@ Item {
   // editTarget is the message the composer is about to save new text
   // for: {id}, or null while not editing.
   property var editTarget: null
+  // scheduledEditing is true while the composer holds a queued "send
+  // later" message's own text, loaded back in to change it (see
+  // ComposerController.editingScheduled).
+  property bool scheduledEditing: false
   // attachmentPath is the file to send with the next message, or "" for
   // none; see Composer.qml for why the caller owns it.
   property string attachmentPath: ""
@@ -169,6 +173,9 @@ Item {
   signal replyCanceled()
   // editCanceled asks the caller to clear the edit in progress.
   signal editCanceled()
+  // scheduledEditCanceled asks the caller to clear the queued message's
+  // own edit in progress, leaving it queued unchanged.
+  signal scheduledEditCanceled()
   // quoteOpened asks the caller to scroll to the message a reply quotes,
   // by the remote id the quote carries.
   signal quoteOpened(string remoteId)
@@ -444,10 +451,12 @@ Item {
       members: root.members
       misspellings: root.misspellings
       suggestions: root.suggestions
+      scheduledEditing: root.scheduledEditing
       onSubmitted: (text, replyToId, mentions) => root.send(text, replyToId, mentions)
       onTextChanged: root.draftEdited(composer.text)
       onReplyCanceled: root.replyCanceled()
       onEditCanceled: root.editCanceled()
+      onScheduledEditCanceled: root.scheduledEditCanceled()
       onFileAttached: path => root.fileAttached(path)
       onAttachRequested: root.attachRequested()
       onAttachmentRemoveRequested: root.attachmentRemoveRequested()

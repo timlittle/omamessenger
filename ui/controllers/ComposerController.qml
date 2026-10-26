@@ -47,6 +47,26 @@ Item {
   // cancelEdit so cancelling an edit never loses what was being typed.
   property string _draftBeforeEdit: ""
 
+  // scheduledEditId is the queued "send later" message the composer is
+  // about to replace, once startScheduledEdit has loaded it back in, or
+  // "" while not editing one. WindowController.editScheduledMessage sets
+  // this (the keyboard's e on a highlighted queued row and the mouse's
+  // own "Edit" button both call it, so the two stay identical): it loads
+  // the text here first, with the composer focused and writing, instead
+  // of jumping straight to the "Send later…" time prompt the way it used
+  // to - that left the text itself unreachable, the report this fixes.
+  property string scheduledEditId: ""
+
+  // editingScheduled is true while scheduledEditId names a queued
+  // message, for the banner, the Escape chain and WindowController's own
+  // compose.sendLater and message.send handling.
+  readonly property bool editingScheduled: root.scheduledEditId !== ""
+
+  // _draftBeforeScheduledEdit is the draft startScheduledEdit overwrote,
+  // restored by cancelScheduledEdit the same way _draftBeforeEdit is for
+  // a sent message's own edit.
+  property string _draftBeforeScheduledEdit: ""
+
   // attachmentPath is the file to send with the next message, or "" for
   // none: set by attachFile (the composer's own file picker, through
   // media.attach) or pasteImage (a clipboard image, through
@@ -214,6 +234,41 @@ Item {
     root._draftBeforeEdit = "";
   }
 
+  // startScheduledEdit loads a queued "send later" message's text back
+  // into the draft so its own words can be changed, cancelling any sent
+  // message edit or reply in progress first (the three banners never
+  // show together). The composer is left holding focus in writing mode;
+  // the caller still has to pick a time afterwards, through Ctrl+L
+  // (compose.sendLater), which reads scheduledEditId to reschedule it
+  // instead of queuing a fresh message.
+  function startScheduledEdit(id: string, text: string): void {
+    root.cancelEdit();
+    root.cancelReply();
+    root._draftBeforeScheduledEdit = root.draft;
+    root.scheduledEditId = id;
+    root.setDraft(text);
+  }
+
+  // cancelScheduledEdit clears the queued message editing in progress
+  // and restores whatever draft startScheduledEdit overwrote, leaving
+  // the queued message itself unchanged - Esc while editing one.
+  function cancelScheduledEdit(): void {
+    if (!root.editingScheduled) return;
+
+    root.scheduledEditId = "";
+    root.setDraft(root._draftBeforeScheduledEdit);
+    root._draftBeforeScheduledEdit = "";
+  }
+
+  // clearScheduledEdit drops scheduledEditId once WindowController has
+  // actually rescheduled it with the composer's current text, without
+  // restoring the draft startScheduledEdit overwrote: the caller is
+  // about to clear the composer itself, the same as a normal send does.
+  function clearScheduledEdit(): void {
+    root.scheduledEditId = "";
+    root._draftBeforeScheduledEdit = "";
+  }
+
   // saveEdit sends editTarget's new text through messages.edit, clearing
   // the edit target first: Composer.submit() has already emptied the
   // composer by the time this runs, so there is nothing left to restore
@@ -355,6 +410,8 @@ Item {
     root.replyTarget = null;
     root.editTarget = null;
     root._draftBeforeEdit = "";
+    root.scheduledEditId = "";
+    root._draftBeforeScheduledEdit = "";
     root.attachmentPath = "";
     root.attachmentName = "";
     root.attachmentKind = "";

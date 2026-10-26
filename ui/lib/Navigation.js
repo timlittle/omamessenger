@@ -45,8 +45,9 @@ function keyContext(state) {
 // palette, the reaction picker, the delete question, dialog, search,
 // composer, open conversation, query, the all-unreads view) and hides the
 // window only when there is nothing left to undo. Inside the composer
-// itself the order is: remove a pending attachment, then cancel an edit
-// or reply in progress, then leave the composer.
+// itself the order is: remove a pending attachment, then cancel a
+// queued message's own edit in progress, then cancel a sent message's
+// edit or reply in progress, then leave the composer.
 function escapeAction(state) {
   if (state.errorOpen) return 'dismiss-error';
   if (state.toastOpen && !state.composeFocused && !state.searchFocused) return 'dismiss-toast';
@@ -69,6 +70,7 @@ function escapeAction(state) {
 
   if (state.composeFocused) {
     if (state.hasAttachment) return 'clear-attachment';
+    if (state.scheduledEditing) return 'cancel-scheduled-edit';
     if (state.editing) return 'cancel-edit';
     if (state.replying) return 'cancel-reply';
     return 'leave-compose';
@@ -122,6 +124,7 @@ function buildState(ctx) {
     hasAttachment: ctx.composerController ? ctx.composerController.attachmentPath !== '' : false,
     replying: ctx.composerController ? ctx.composerController.replying : false,
     editing: ctx.composerController ? ctx.composerController.editing : false,
+    scheduledEditing: ctx.composerController ? ctx.composerController.editingScheduled : false,
     pane: ctx.conversationController ? ctx.conversationController.pane : ui.pane,
     activeId: ui.activeId,
     query: ctx.listController ? ctx.listController.query : '',
