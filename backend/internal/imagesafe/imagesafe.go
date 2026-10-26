@@ -145,6 +145,19 @@ func Sanitize(data []byte, profile Profile) (out []byte, ok bool) {
 	}
 }
 
+// LooksLikeImage reports whether data's own leading bytes are one of
+// the formats Sanitize recognizes (PNG, JPEG, GIF or WebP), with none
+// of Sanitize's other checks run at all: a cheap pre-filter for a
+// caller deciding whether a file already on disk is an image in the
+// first place - the one kind of downloaded media Qt's own decoders
+// read directly - before treating anything that fails that question
+// as some other, unrelated kind of file it must leave alone, rather
+// than an image that merely failed Sanitize outright (see
+// docs/decisions.md).
+func LooksLikeImage(data []byte) bool {
+	return detectFormat(data) != formatUnknown
+}
+
 // withinCaps reports whether a width and height both fit profile: each
 // side within MaxSide, and their product within MaxPixels. Width and
 // height come in as int64 so a caller reading a 24- or 32-bit field

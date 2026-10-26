@@ -27,6 +27,35 @@ func TestSanitize_RejectsUnknownFormat(t *testing.T) {
 	}
 }
 
+// TestLooksLikeImage_MatchesOnlyRecognizedFormats covers every format
+// Sanitize recognizes, plus the same unrecognized cases
+// TestSanitize_RejectsUnknownFormat does: LooksLikeImage must agree
+// with Sanitize about which is which, even though it runs none of
+// Sanitize's own structural or size checks.
+func TestLooksLikeImage_MatchesOnlyRecognizedFormats(t *testing.T) {
+	cases := map[string]struct {
+		data []byte
+		want bool
+	}{
+		"png":             {buildPNG(2, 2), true},
+		"jpeg":            {buildJPEG(2, 2), true},
+		"gif":             {buildGIF(2, 2, 1), true},
+		"webp":            {buildWebPSimple(2, 2), true},
+		"empty":           {[]byte{}, false},
+		"plain text":      {[]byte("not an image at all"), false},
+		"bmp magic":       {[]byte{'B', 'M', 0, 0, 0, 0}, false},
+		"truncated magic": {[]byte{0x89, 'P', 'N'}, false},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := imagesafe.LooksLikeImage(tc.data); got != tc.want {
+				t.Errorf("LooksLikeImage(%s) = %t, want %t", name, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestSanitize_RejectsOverInputLenCap covers data that is itself
 // larger than a profile ever allows, before any format parsing runs.
 func TestSanitize_RejectsOverInputLenCap(t *testing.T) {
