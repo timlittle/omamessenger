@@ -887,7 +887,7 @@ Item {
         objectName: "sendLaterButton"
         Layout.alignment: Qt.AlignBottom
         text: "🕐"
-        tooltipText: "Send later…"
+        tooltipText: "Send later (" + Keymap.keyFor("compose.sendLater", root.bindings) + ")"
         focusable: true
         enabled: root.enabled && root.text.trim().length > 0
         opacity: root.writing ? 1.0 : root.dimmedOpacity

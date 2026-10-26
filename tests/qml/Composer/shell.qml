@@ -14,6 +14,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "ui/components"
+import "ui/lib/Keymap.js" as Keymap
 import "Check.js" as Check
 
 ShellRoot {
@@ -325,15 +326,24 @@ ShellRoot {
     return true;
   }
 
-  // checkSendLaterButton verifies the clock button beside Send: it has
-  // a tooltip naming what it does, stays disabled with nothing typed
-  // (an attachment alone is not enough, unlike Send), and clicking it
-  // with text typed reports sendLaterRequested exactly once.
+  // checkSendLaterButton verifies the clock button beside Send: its
+  // tooltip names what it does and the actual bound key for
+  // compose.sendLater, read live off bindings rather than a hardcoded
+  // "Ctrl+L" (keys.conf lets a person remap it), stays disabled with
+  // nothing typed (an attachment alone is not enough, unlike Send),
+  // and clicking it with text typed reports sendLaterRequested
+  // exactly once.
   function checkSendLaterButton(): bool {
     const button = Check.find(composer, "sendLaterButton");
     if (!button) return Check.fail("no sendLaterButton found");
-    if (button.tooltipText !== "Send later…")
-      return Check.fail("sendLaterButton tooltip = \"" + button.tooltipText + "\", want \"Send later…\"");
+    if (button.tooltipText !== "Send later (Ctrl+L)")
+      return Check.fail("sendLaterButton tooltip = \"" + button.tooltipText + "\", want \"Send later (Ctrl+L)\"");
+
+    const rebound = composer.bindings.map((b) => b.action === "compose.sendLater" ? Object.assign({}, b, { keys: ["Ctrl+Alt+L"] }) : b);
+    composer.bindings = rebound;
+    if (button.tooltipText !== "Send later (Ctrl+Alt+L)")
+      return Check.fail("sendLaterButton tooltip did not follow a remapped key, got \"" + button.tooltipText + "\"");
+    composer.bindings = Keymap.BINDINGS;
 
     composer.text = "";
     composer.attachmentPath = "/tmp/report.pdf";
