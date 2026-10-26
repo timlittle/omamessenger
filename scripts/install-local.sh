@@ -51,6 +51,15 @@ if [[ "$check_only" == true ]]; then
     exit 0
 fi
 
+# omarchy-restart-shell refuses to run while the screen is locked. Copying
+# first would still make Omarchy reload the plugin, leaving the running
+# shell with a mix of old and new QML until the next restart, so refuse
+# before touching the installed copy instead.
+if "${OMARCHY_SESSION_LOCKED:-omarchy-hyprland-session-locked}"; then
+    printf 'The session is locked: unlock it and run this again. Nothing was installed.\n' >&2
+    exit 1
+fi
+
 mkdir -p "$target_dir"
 "${RSYNC:-rsync}" -a --delete "$staging_dir/" "$target_dir/"
 "${OMARCHY:-omarchy}" plugin enable "$plugin_id"

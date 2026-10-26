@@ -11,11 +11,12 @@ const { spawnSync } = require('node:child_process');
 const repo = path.resolve(__dirname, '../..');
 const desktopValidate = spawnSync('desktop-file-validate', ['--version']).error == null;
 
-// stub writes an executable that does nothing but exit 0, standing in
-// for the real `omarchy` and `rsync` so the test never touches either.
-function stub(dir, name) {
+// stub writes an executable that does nothing but exit with status
+// (0 by default), standing in for the real `omarchy` and `rsync` so the
+// test never touches either.
+function stub(dir, name, status = 0) {
   const file = path.join(dir, name);
-  fs.writeFileSync(file, '#!/bin/sh\nexit 0\n');
+  fs.writeFileSync(file, `#!/bin/sh\nexit ${status}\n`);
   fs.chmodSync(file, 0o755);
 }
 
@@ -37,6 +38,8 @@ function sandbox(t) {
   // The script restarts the shell: these must never reach the real desktop.
   stub(stubBin, 'omarchy-restart-shell');
   stub(stubBin, 'omarchy-shell');
+  // An unlocked session by default; a test swaps in a locked one.
+  stub(stubBin, 'session-locked', 1);
   const env = {
     ...process.env,
     HOME: home,
@@ -45,8 +48,9 @@ function sandbox(t) {
     OMARCHY_RESTART_SHELL: path.join(stubBin, 'omarchy-restart-shell'),
     OMARCHY_SHELL: path.join(stubBin, 'omarchy-shell'),
     OMA_RELOAD_SETTLE: '0',
+    OMARCHY_SESSION_LOCKED: path.join(stubBin, 'session-locked'),
   };
-  return { env, desktopFile: path.join(data, 'applications', 'io.github.omamessenger.desktop') };
+  return { env, stubBin, desktopFile: path.join(data, 'applications', 'io.github.omamessenger.desktop') };
 }
 
 test('installing the plugin adds an apps-menu entry', (t) => {
@@ -76,4 +80,18 @@ test('installing the plugin twice leaves one, unchanged entry', (t) => {
   assert.equal(run().status, 0);
   const second = fs.readFileSync(desktopFile, 'utf8');
   assert.equal(first, second);
+});
+
+test('installing while the session is locked copies nothing', (t) => {
+  const { env, stubBin, desktopFile } = sandbox(t);
+  stub(stubBin, 'session-locked', 0);
+  const marker = path.join(stubBin, 'rsync-ran');
+  fs.writeFileSync(path.join(stubBin, 'rsync'), `#!/bin/sh\ntouch '${marker}'\n`);
+
+  const install = spawnSync(path.join(repo, 'scripts/install-local.sh'), [], { encoding: 'utf8', env });
+
+  assert.notEqual(install.status, 0);
+  assert.match(install.stderr, /locked/);
+  assert.ok(!fs.existsSync(marker), 'rsync ran while the session was locked');
+  assert.ok(!fs.existsSync(desktopFile));
 });
