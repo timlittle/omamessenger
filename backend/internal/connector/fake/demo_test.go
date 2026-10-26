@@ -147,3 +147,33 @@ func TestNewDemo_OneConversationHasAGIFDocument(t *testing.T) {
 		}
 	})
 }
+
+// TestNewDemo_GIFDocumentCarriesAThumb confirms the demo's GIF
+// document also carries a thumb and a declared size, so the recorded
+// clip shows a real picture in the unplayed bubble instead of an empty
+// box before the GIF step clicks to play it.
+func TestNewDemo_GIFDocumentCarriesAThumb(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		stop := runFake(t, fake.NewDemo(), sink)
+		synctest.Wait()
+		stop()
+
+		found := false
+		for _, messages := range sink.Messages() {
+			for _, m := range messages {
+				if m.Media == nil || m.Media.Kind != domain.MediaVideo || !m.Media.Animated {
+					continue
+				}
+				if m.Media.Thumb == "" || m.Media.Width <= 0 || m.Media.Height <= 0 {
+					t.Errorf("GIF document = %+v, want a thumb and a positive declared size", m.Media)
+				}
+				found = true
+			}
+		}
+
+		if !found {
+			t.Error("no demo conversation carries a real GIF document")
+		}
+	})
+}

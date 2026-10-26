@@ -169,6 +169,28 @@ func TestSeed_NadiaHasAGIFDocument(t *testing.T) {
 	})
 }
 
+// TestSeed_NadiaGifCarriesAThumb confirms the GIF document also carries
+// a thumb and a declared size, the way a real sender's one always
+// does, so the unplayed bubble (InlineVideo.qml) has a still image to
+// show instead of an empty box before anyone clicks to play it.
+func TestSeed_NadiaGifCarriesAThumb(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sink := &connectortest.Sink{}
+		stop := runFake(t, fake.New(), sink)
+		synctest.Wait()
+		stop()
+
+		messages := sink.Messages()["tg:nadia"]
+		media := messages[len(messages)-1].Media
+		if media.Thumb == "" {
+			t.Error("Nadia's GIF document carries no thumb")
+		}
+		if media.Width <= 0 || media.Height <= 0 {
+			t.Errorf("Nadia's GIF document = %dx%d, want a positive declared size", media.Width, media.Height)
+		}
+	})
+}
+
 // unread counts the messages still marked received.
 func unread(messages []domain.Message) int {
 	n := 0

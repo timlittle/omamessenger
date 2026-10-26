@@ -91,8 +91,15 @@ func (s conversationScript) applyNewestMedia(messages []domain.Message) {
 		// isGIFImage case): a classification hint only, never what
 		// the UI trusts to decode it - FetchMedia below writes a
 		// genuine GIF file, which app.DecodeAsForMedia confirms the
-		// same way it would a real sender's.
-		newest.Media = &domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Animated: true}
+		// same way it would a real sender's. Width, Height and Thumb
+		// match the real GIF document's own size: without a thumb the
+		// unplayed bubble (InlineVideo.qml) has nothing to show before
+		// a click, exactly as a real GIF document always arrives with
+		// one.
+		newest.Media = &domain.Media{
+			Kind: domain.MediaVideo, FileName: "run.gif", Animated: true,
+			Width: gifWidth, Height: gifHeight, Thumb: gifThumb(),
+		}
 	}
 }
 
