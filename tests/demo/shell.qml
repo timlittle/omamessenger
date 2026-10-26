@@ -194,6 +194,24 @@ ShellRoot {
     };
   }
 
+  // openCommandPaletteAndType returns a step that opens Ctrl+/, the
+  // command palette, and types query, leaving it open so the next step
+  // can hold on the filtered list before accepting a row.
+  function openCommandPaletteAndType(label: string, query: string): var {
+    return function() {
+      root.showLabel(label);
+      t.keyClick(Qt.Key_Slash, Qt.ControlModifier);
+      root.typeText(query);
+      return true;
+    };
+  }
+
+  // waitForPaletteOpen holds until the command palette overlay is open.
+  function waitForPaletteOpen(): var {
+    const palette = Check.find(root.panel(), "commandPalette");
+    return !!palette && palette.visible;
+  }
+
   // waitForTitle returns a step that holds until the open conversation's
   // title is exactly want.
   function waitForTitle(want: string): var {
@@ -363,6 +381,55 @@ ShellRoot {
   function waitForEditSaved(): var {
     const banner = Check.find(root.panel(), "editBanner");
     return !banner || !banner.visible;
+  }
+
+  // waitForPinnedCount returns a step that holds until exactly count
+  // conversation rows show the "Pinned" label: each row delegate carries
+  // its own pin glyph and label, so this counts the visible ones rather
+  // than finding just the first (Check.find stops at the first match by
+  // objectName).
+  function waitForPinnedCount(count: int): var {
+    return function() {
+      const list = Check.find(root.panel(), "conversationListView");
+      if (!list) return false;
+      const pinned = Check.texts(list).filter((node) => node.text === "Pinned" && node.visible);
+      return pinned.length === count;
+    };
+  }
+
+  // waitForPinOrder returns a step that holds until the list's pinned
+  // rows, which always sort as one contiguous group ahead of everything
+  // else, show exactly titles in that order - proof a pin move actually
+  // landed.
+  function waitForPinOrder(titles: var): var {
+    return function() {
+      const model = Check.find(root.panel(), "conversationListView").model;
+      const current = [];
+      for (let i = 0; i < model.count && model.get(i).pinned; i++) current.push(model.get(i).title);
+      if (current.length !== titles.length) return false;
+      return titles.every((title, i) => current[i] === title);
+    };
+  }
+
+  // waitForScheduledMessage holds until the composer has cleared its
+  // draft and a queued message's "Sends at …" row shows above it - proof
+  // Ctrl+L queued the message rather than sending it right away.
+  function waitForScheduledMessage(): var {
+    const input = Check.find(root.panel(), "composerInput");
+    if (!input || input.text !== "") return false;
+
+    // Scoped to "keyArea" (the same real Item captureFrame grabs,
+    // under which every overlay nests): Check.texts walks .children
+    // only, which a FloatingWindow's own top level does not populate,
+    // unlike an ordinary Item further down the tree.
+    const keyArea = Check.find(root.panel(), "keyArea");
+    return !!keyArea && Check.texts(keyArea).some((node) => String(node.text).indexOf("Sends at") === 0);
+  }
+
+  // waitForWhatsNewOpen holds until the "What's new" overlay is open.
+  function waitForWhatsNewOpen(): var {
+    const overlay = Check.find(root.panel(), "whatsNewOverlay");
+    return !!overlay && overlay.open;
   }
 
   // waitForPriyaChatReady holds until Priya's chat is open, her newest
@@ -639,6 +706,99 @@ ShellRoot {
       root.holdFor(5),
       root.saveEditedMessage,
       root.waitForEditSaved,
+      root.holdFor(8)
+    ];
+    // Opens the command palette on its own (not through Ctrl+K's
+    // conversation switcher), holds on the full command list, then
+    // filters it down to one action and runs it - showing every action
+    // is a searchable command, not just conversations.
+    case "command-palette": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(5),
+      root.openViaPalette("Ctrl+K  →  Priya", "priya"),
+      root.waitForTitle("Priya Patel"),
+      root.waitForComposerFocused,
+      root.holdFor(4),
+      root.pressKey("Ctrl+/  →  commands", Qt.Key_Slash, Qt.ControlModifier),
+      root.waitForPaletteOpen,
+      root.holdFor(6),
+      root.composeMessage("pin"),
+      root.waitForMessageRow("pin or"),
+      root.holdFor(5),
+      root.acceptHighlighted("⏎  →  pin chat"),
+      root.waitForPinnedCount(1),
+      root.holdFor(8)
+    ];
+    // Ctrl+L queues the typed message instead of sending it: the
+    // palette's own six named presets (Snooze.sendLaterPresets) list
+    // "In 5 minutes" first, so accepting the palette's default row is
+    // enough to schedule it. The queued row shows above the composer.
+    case "send-later": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(5),
+      root.openViaPalette("Ctrl+K  →  Design Team", "design"),
+      root.waitForTitle("Design Team"),
+      root.waitForComposerFocused,
+      root.holdFor(3),
+      root.composeMessage("Count me in!"),
+      root.holdFor(5),
+      root.pressKey("Ctrl+L  →  send later", Qt.Key_L, Qt.ControlModifier),
+      root.waitForMessageRow("in 5 minutes"),
+      root.holdFor(6),
+      root.acceptHighlighted("⏎  →  in 5 minutes"),
+      root.waitForScheduledMessage,
+      root.holdFor(10)
+    ];
+    // Pins two chats from the command palette (chat.pin has no key of
+    // its own) and reorders them with Ctrl+Shift+Up, the keyboard move
+    // that asks the helper for one adjacent swap (see ui/lib/Pin.js).
+    case "pins": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(5),
+      root.openViaPalette("Ctrl+K  →  Priya", "priya"),
+      root.waitForTitle("Priya Patel"),
+      root.waitForComposerFocused,
+      root.holdFor(3),
+      root.openCommandPaletteAndType("Ctrl+/  →  \"pin or…\"", "pin or"),
+      root.waitForMessageRow("pin or"),
+      root.holdFor(4),
+      root.acceptHighlighted("⏎  →  pin"),
+      root.waitForPinnedCount(1),
+      root.holdFor(5),
+      root.openViaPalette("Ctrl+K  →  Design Team", "design"),
+      root.waitForTitle("Design Team"),
+      root.waitForComposerFocused,
+      root.holdFor(3),
+      root.openCommandPaletteAndType("Ctrl+/  →  \"pin or…\"", "pin or"),
+      root.waitForMessageRow("pin or"),
+      root.holdFor(4),
+      root.acceptHighlighted("⏎  →  pin"),
+      root.waitForPinnedCount(2),
+      root.holdFor(6),
+      root.pressKey("Ctrl+Shift+↑  →  move pin", Qt.Key_Up, Qt.ControlModifier | Qt.ShiftModifier),
+      root.waitForPinOrder(["Design Team", "Priya Patel"]),
+      root.holdFor(10)
+    ];
+    // "What's new", one of the many commands with no key of its own,
+    // opens the release notes overlay; j scrolls to the previous
+    // release the same way it scrolls the conversation list.
+    case "whats-new": return [
+      root.waitForReady,
+      root.startCapturing,
+      root.holdFor(5),
+      root.pressKey("Ctrl+/  →  commands", Qt.Key_Slash, Qt.ControlModifier),
+      root.waitForPaletteOpen,
+      root.holdFor(4),
+      root.composeMessage("whats new"),
+      root.waitForMessageRow("what's new"),
+      root.holdFor(5),
+      root.acceptHighlighted("⏎  →  what's new"),
+      root.waitForWhatsNewOpen,
+      root.holdFor(6),
+      root.pressKey("j  →  older release", Qt.Key_J, Qt.NoModifier),
       root.holdFor(8)
     ];
     default: return [() => root.fail("unknown scenario \"" + name + "\"")];

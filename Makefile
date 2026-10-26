@@ -176,7 +176,7 @@ test-qml: build-fake ## Run the offscreen QML tests in tests/qml/ against the te
 # DEMO_SCENARIOS are the short recordings docs/demo/ gets, one feature
 # each, in docs/demo.md order: tests/demo/shell.qml picks which of them to
 # run from OMA_DEMO_SCENARIO.
-DEMO_SCENARIOS := list-and-send keyboard-nav palette-search media reply-reaction editing
+DEMO_SCENARIOS := list-and-send keyboard-nav palette-search media reply-reaction editing command-palette send-later pins whats-new
 
 # Prepares tests/demo/shell.qml's root the same isolated way test-qml
 # prepares each of its roots (see above), then for each name in
