@@ -141,7 +141,12 @@ type device interface {
 	// app-state collection up with the server: every page it has, not
 	// only the single conflicting response sendAppState's own one-time
 	// retry already applies (see appstate.go's sendAppStateRecovering).
-	fetchAppState(ctx context.Context, name appstate.WAPatchName) error
+	// fullSync discards that local copy first and rebuilds it from the
+	// server's own snapshot, the one thing an incremental catch-up
+	// cannot do: fix a copy whose hash or a mutation's own MAC no
+	// longer agrees with the server at all, rather than one that is
+	// simply a page or two behind.
+	fetchAppState(ctx context.Context, name appstate.WAPatchName, fullSync bool) error
 
 	// chatSettings is jid's pinned and archived state exactly as
 	// whatsmeow has it cached locally (store.ChatSettingsStore),
@@ -440,10 +445,15 @@ func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) e
 
 // fetchAppState resyncs name's own app-state collection from the
 // server, walking every page it has: a plain, incremental catch-up
-// (fullSync and onlyIfNotSynced both false), the same call a
-// notification-triggered background resync makes.
-func (d *waDevice) fetchAppState(ctx context.Context, name appstate.WAPatchName) error {
-	return d.cli.FetchAppState(ctx, name, false, false)
+// when fullSync is false, the same call a notification-triggered
+// background resync makes; fullSync instead resets this device's own
+// stored version for name first, so whatsmeow asks for a fresh
+// snapshot and rebuilds the hash from it, rather than trying to keep
+// extending a local copy that may itself be the problem.
+// onlyIfNotSynced is always false: both callers want a catch-up now,
+// not only when nothing has ever synced.
+func (d *waDevice) fetchAppState(ctx context.Context, name appstate.WAPatchName, fullSync bool) error {
+	return d.cli.FetchAppState(ctx, name, fullSync, false)
 }
 
 // chatSettings reads jid's pinned and archived state out of

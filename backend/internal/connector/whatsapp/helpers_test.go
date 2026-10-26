@@ -139,12 +139,17 @@ type fakeDevice struct {
 	appStatePatches  []appstate.PatchInfo
 	settings         map[string]chatSettingsEntry
 
-	// fetchAppStateErr scripts fetchAppState, and fetchAppStateCalls
-	// records which patch names it was asked to catch up, so
-	// appstate_test.go can check sendAppStateRecovering asks for a
-	// catch-up only after a rejection, and retries the patch afterwards.
-	fetchAppStateErr   error
-	fetchAppStateCalls []appstate.WAPatchName
+	// fetchAppStateErr scripts an incremental fetchAppState call and
+	// fetchAppStateFullSyncErr a full-sync one; fetchAppStateCalls
+	// records every call made, each with the patch name asked for and
+	// whether it was a full sync, so appstate_test.go can check
+	// sendAppStateRecovering asks for a catch-up only after a
+	// rejection, retries the patch afterwards, and falls back to a
+	// full sync only once an incremental catch-up still did not fix
+	// it.
+	fetchAppStateErr         error
+	fetchAppStateFullSyncErr error
+	fetchAppStateCalls       []fetchAppStateCall
 
 	// mediaRetryErr scripts sendMediaRetryReceipt, and mediaRetryCalls
 	// records what it was asked to send; retry_test.go drives these.
@@ -211,6 +216,12 @@ type markReadCall struct {
 	ids    []types.MessageID
 	chat   types.JID
 	sender types.JID
+}
+
+// fetchAppStateCall records one call to fetchAppState.
+type fetchAppStateCall struct {
+	name     appstate.WAPatchName
+	fullSync bool
 }
 
 // newFakeDevice returns a fake with an open QR channel and no session.

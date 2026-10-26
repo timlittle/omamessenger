@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -200,6 +201,33 @@ func TestDeleteMessages_DeletesForMeWithoutAMediaStore(t *testing.T) {
 	}
 	if len(dev.appStatePatches) != 1 {
 		t.Fatalf("patches sent = %d, want 1", len(dev.appStatePatches))
+	}
+}
+
+// TestDeleteMessages_RecoversADeleteForMePatchAfterACatchUp confirms
+// delete-for-me's app-state patch goes through the same catch-up and
+// retry as pin, archive and mark-read (see appstate.go's
+// sendAppStateRecovering), rather than failing outright the first time
+// WhatsApp's server rejects it.
+func TestDeleteMessages_RecoversADeleteForMePatchAfterACatchUp(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	dev.appStateErr = whatsmeow.ErrAppStateUpdate
+	dev.appStateErrCount = 1
+
+	if err := c.DeleteMessages(t.Context(), directChat, []string{"M1"}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.fetchAppStateCalls) != 1 {
+		t.Errorf("fetchAppState calls = %v, want one catch-up", dev.fetchAppStateCalls)
+	}
+	if len(dev.appStatePatches) != 2 {
+		t.Errorf("patches sent = %d, want the delete-for-me patch retried once after the catch-up", len(dev.appStatePatches))
 	}
 }
 

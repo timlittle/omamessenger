@@ -66,14 +66,18 @@ func (d *fakeDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo)
 	return err
 }
 
-// fetchAppState records name in fetchAppStateCalls and reports
-// fetchAppStateErr, standing in for whatsmeow's own catch-up fetch
+// fetchAppState records the call in fetchAppStateCalls and reports
+// fetchAppStateErr for an incremental catch-up or fetchAppStateFullSyncErr
+// for a full sync, standing in for whatsmeow's own catch-up fetch
 // without ever reaching WhatsApp's servers.
-func (d *fakeDevice) fetchAppState(_ context.Context, name appstate.WAPatchName) error {
+func (d *fakeDevice) fetchAppState(_ context.Context, name appstate.WAPatchName, fullSync bool) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	d.fetchAppStateCalls = append(d.fetchAppStateCalls, name)
+	d.fetchAppStateCalls = append(d.fetchAppStateCalls, fetchAppStateCall{name: name, fullSync: fullSync})
+	if fullSync {
+		return d.fetchAppStateFullSyncErr
+	}
 
 	return d.fetchAppStateErr
 }
@@ -186,6 +190,36 @@ func TestSetPinned_SendsTheUnpinPatch(t *testing.T) {
 	}
 }
 
+// TestSetPinned_AddressesTheMigratedChatByItsLID confirms a chat
+// first known by its phone JID, once whatsmeow's own LID store has
+// since learned that chat's LID, gets its pin patch addressed by that
+// LID instead, the same fix sendChatReadState already has for the
+// chat-read mutation (see markread_test.go's own version of this
+// test): WhatsApp's server rejects a pin or archive patch every time
+// while it is still addressed by a chat's now-superseded phone JID.
+func TestSetPinned_AddressesTheMigratedChatByItsLID(t *testing.T) {
+	t.Parallel()
+
+	dev, sink, c := connectedFixture(t)
+	lid := types.NewJID("98765432109", types.HiddenUserServer)
+	dev.lidPhones = map[string]types.JID{lid.String(): directPeer}
+	dev.setChatSettings(lid.String(), false, false)
+
+	if err := c.SetPinned(t.Context(), directChat, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.appStatePatches) != 1 {
+		t.Fatalf("patches sent = %d, want 1", len(dev.appStatePatches))
+	}
+	if index := dev.appStatePatches[0].Mutations[0].Index; len(index) != 2 || index[1] != lid.String() {
+		t.Errorf("index = %v, want the chat addressed by its LID %s", index, lid.String())
+	}
+	if !sink.Has("organized " + directChat.RemoteID + " true false") {
+		t.Errorf("events = %q, want the pin reported under the conversation's own remote id even though the patch itself was sent by LID", sink.Lines())
+	}
+}
+
 func TestSetPinned_RefusesAFourthPin(t *testing.T) {
 	t.Parallel()
 
@@ -200,6 +234,32 @@ func TestSetPinned_RefusesAFourthPin(t *testing.T) {
 	}
 	if len(dev.appStatePatches) != 0 {
 		t.Errorf("patches sent = %d, want none once the limit refuses it", len(dev.appStatePatches))
+	}
+}
+
+// TestSetPinned_CountsALIDAddressedPinnedChatTowardTheLimit confirms
+// pinnedCount still recognises a conversation WhatsApp's chat settings
+// have pinned once its chat settings are keyed by its LID rather than
+// its phone JID, the form they end up under once SetPinned itself
+// starts addressing a migrated chat that way (see
+// TestSetPinned_AddressesTheMigratedChatByItsLID).
+func TestSetPinned_CountsALIDAddressedPinnedChatTowardTheLimit(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c := connectedFixture(t)
+	for _, number := range []string{"15550000001", "15550000002"} {
+		seedPinnedChat(c, dev, remoteID(types.NewJID(number, types.DefaultUserServer)))
+	}
+
+	thirdRemote := remoteID(types.NewJID("15550000003", types.DefaultUserServer))
+	thirdLID := types.NewJID("98765432108", types.HiddenUserServer)
+	dev.lidPhones = map[string]types.JID{thirdLID.String(): types.NewJID("15550000003", types.DefaultUserServer)}
+	c.noteChat(thirdRemote, domain.KindDirect)
+	dev.setChatSettings(thirdLID.String(), true, false)
+
+	err := c.SetPinned(t.Context(), directChat, true)
+	if !errors.Is(err, connector.ErrPinLimit) {
+		t.Errorf("SetPinned past the limit = %v, want ErrPinLimit once the LID-addressed pin is counted", err)
 	}
 }
 
@@ -311,6 +371,28 @@ func TestSetArchived_SendsTheUnarchivePatchWithoutRepinning(t *testing.T) {
 	}
 	if !sink.Has("organized " + directChat.RemoteID + " false false") {
 		t.Errorf("events = %q, want pinned left false and archived now false", sink.Lines())
+	}
+}
+
+// TestSetArchived_AddressesTheMigratedChatByItsLID is SetArchived's
+// own version of TestSetPinned_AddressesTheMigratedChatByItsLID.
+func TestSetArchived_AddressesTheMigratedChatByItsLID(t *testing.T) {
+	t.Parallel()
+
+	dev, sink, c := connectedFixture(t)
+	lid := types.NewJID("98765432109", types.HiddenUserServer)
+	dev.lidPhones = map[string]types.JID{lid.String(): directPeer}
+	dev.setChatSettings(lid.String(), true, false)
+
+	if err := c.SetArchived(t.Context(), directChat, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if index := dev.appStatePatches[0].Mutations[0].Index; len(index) != 2 || index[1] != lid.String() {
+		t.Errorf("index = %v, want the chat addressed by its LID %s", index, lid.String())
+	}
+	if !sink.Has("organized " + directChat.RemoteID + " false true") {
+		t.Errorf("events = %q, want the archive reported under the conversation's own remote id even though the patch itself was sent by LID", sink.Lines())
 	}
 }
 

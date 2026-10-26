@@ -9,7 +9,6 @@ package whatsapp
 // is what makes it still work right after a restart or a re-pair.
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -210,8 +209,8 @@ func TestMarkRead_RecoversFromARejectedChatPatchAfterACatchUp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(dev.fetchAppStateCalls) != 1 || dev.fetchAppStateCalls[0] != appstate.WAPatchRegularLow {
-		t.Errorf("fetchAppState calls = %v, want one catch-up for %s", dev.fetchAppStateCalls, appstate.WAPatchRegularLow)
+	if len(dev.fetchAppStateCalls) != 1 || dev.fetchAppStateCalls[0] != (fetchAppStateCall{name: appstate.WAPatchRegularLow, fullSync: false}) {
+		t.Errorf("fetchAppState calls = %v, want one incremental catch-up for %s", dev.fetchAppStateCalls, appstate.WAPatchRegularLow)
 	}
 	if len(dev.appStatePatches) != 2 {
 		t.Errorf("app state patches sent = %d, want the chat-read patch sent twice", len(dev.appStatePatches))
@@ -412,34 +411,6 @@ func TestSendChatReadState_KeepsThePhoneJIDWhenNoLIDIsKnown(t *testing.T) {
 	mutation := dev.appStatePatches[0].Mutations[0]
 	if index := mutation.Index; len(index) != 2 || index[1] != directChat.RemoteID {
 		t.Errorf("index = %v, want the chat still addressed by its phone JID %s", index, directChat.RemoteID)
-	}
-}
-
-// TestChatPatchFailureClass_SortsEveryAppStateErrorIntoItsSafeCategory
-// confirms the category logMarkRead reports for a failed chat-read
-// patch never reflects anything beyond these four safe words.
-func TestChatPatchFailureClass_SortsEveryAppStateErrorIntoItsSafeCategory(t *testing.T) {
-	t.Parallel()
-
-	tests := map[string]struct {
-		err  error
-		want string
-	}{
-		"no app-state key yet":   {appstate.ErrKeyNotFound, "key"},
-		"the server rejected it": {whatsmeow.ErrAppStateUpdate, "rejected"},
-		"a timed-out context":    {context.DeadlineExceeded, "timeout"},
-		"a cancelled context":    {context.Canceled, "timeout"},
-		"a plain network error":  {errors.New("dial tcp: connection refused"), "other"},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := chatPatchFailureClass(tt.err); got != tt.want {
-				t.Errorf("chatPatchFailureClass(%v) = %q, want %q", tt.err, got, tt.want)
-			}
-		})
 	}
 }
 

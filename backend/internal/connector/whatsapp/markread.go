@@ -14,12 +14,10 @@ package whatsapp
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"time"
 
-	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 
@@ -150,32 +148,10 @@ func sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat 
 	patch := appstate.BuildMarkChatAsRead(target, true, time.UnixMilli(key.timestamp), targetKey(target, key, messageID))
 	if err := sendAppStateRecovering(ctx, dev, patch); err != nil {
 		result.status = chatPatchFailed
-		result.failureClass = chatPatchFailureClass(err)
+		result.failureClass = appStateErrClass(err)
 	}
 
 	return result
-}
-
-// chatPatchFailureClass categorizes why sending the chat-read app-state
-// patch failed, safe to log alongside chat_patch=failed: "key" when
-// whatsmeow has no app-state key to encrypt it with yet, which happens
-// when the account has not finished its post-pairing app-state sync;
-// "rejected" when WhatsApp's own server reported the patch invalid;
-// "timeout" for a context that ran out waiting on either; and "other"
-// for anything else, such as a plain network failure. Never the error's
-// own text, which whatsmeow does not guarantee free of a JID or similar
-// detail.
-func chatPatchFailureClass(err error) string {
-	switch {
-	case errors.Is(err, appstate.ErrKeyNotFound):
-		return "key"
-	case errors.Is(err, whatsmeow.ErrAppStateUpdate):
-		return "rejected"
-	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
-		return "timeout"
-	default:
-		return "other"
-	}
 }
 
 // logMarkRead reports one MarkRead call's shape: how many read receipts
