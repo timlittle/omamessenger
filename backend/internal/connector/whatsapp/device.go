@@ -137,6 +137,12 @@ type device interface {
 	// change, so WhatsApp's own record of the chat agrees with it.
 	sendAppState(ctx context.Context, patch appstate.PatchInfo) error
 
+	// fetchAppState catches this device's own local copy of the named
+	// app-state collection up with the server: every page it has, not
+	// only the single conflicting response sendAppState's own one-time
+	// retry already applies (see appstate.go's sendAppStateRecovering).
+	fetchAppState(ctx context.Context, name appstate.WAPatchName) error
+
 	// chatSettings is jid's pinned and archived state exactly as
 	// whatsmeow has it cached locally (store.ChatSettingsStore),
 	// synced from WhatsApp's own app state: the single source of truth
@@ -430,6 +436,14 @@ func (d *waDevice) sendMediaRetryReceipt(ctx context.Context, info *types.Messag
 // background.
 func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
 	return d.cli.SendAppState(ctx, patch)
+}
+
+// fetchAppState resyncs name's own app-state collection from the
+// server, walking every page it has: a plain, incremental catch-up
+// (fullSync and onlyIfNotSynced both false), the same call a
+// notification-triggered background resync makes.
+func (d *waDevice) fetchAppState(ctx context.Context, name appstate.WAPatchName) error {
+	return d.cli.FetchAppState(ctx, name, false, false)
 }
 
 // chatSettings reads jid's pinned and archived state out of

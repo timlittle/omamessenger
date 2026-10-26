@@ -121,7 +121,8 @@ func (c *Commands) SetMuted(ctx context.Context, conversationID string, muted bo
 // SetPinned pins or unpins a conversation, then tells its service so a
 // pin made here, or synced back from another device, agrees everywhere.
 // The local change stands even if the service call fails; that failure is
-// returned so the caller can tell the user.
+// reported back as a safe message the UI can show, through pinError,
+// rather than the generic internal error.
 func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned bool) (domain.Conversation, error) {
 	if err := c.store.SetPinned(ctx, conversationID, pinned); err != nil {
 		return domain.Conversation{}, err
@@ -132,7 +133,7 @@ func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned 
 		return conv, err
 	}
 
-	return conv, pinError(c.organizer.SetPinned(ctx, conv, pinned))
+	return conv, c.pinError(pinned, c.organizer.SetPinned(ctx, conv, pinned))
 }
 
 // MovePin moves a pinned conversation one place up or down among the
@@ -177,14 +178,30 @@ func parsePinDirection(direction string) (bool, error) {
 }
 
 // pinError turns a connector's pin limit refusal into ErrInvalidInput
-// with a safe message the UI can show; anything else, such as a network
-// failure, is returned unchanged so it becomes a fixed internal error.
-func pinError(err error) error {
+// with a safe message naming the limit; any other failure, once the
+// local pin already stands, gets the same treatment archiveError gives
+// SetArchived's own service failures: a safe message naming what
+// happened, logged with its safe, precise class, rather than the fixed
+// internal error a request that changed nothing at all would get. Nil
+// passes through unchanged.
+func (c *Commands) pinError(pinned bool, err error) error {
+	if err == nil {
+		return nil
+	}
+
 	if errors.Is(err, connector.ErrPinLimit) {
 		return fmt.Errorf("%w: this service limits how many conversations can stay pinned", ErrInvalidInput)
 	}
 
-	return err
+	class := organizeFailureClass(err)
+	c.logger.Printf("conversations: set pinned failed (pinned=%t, error_class=%s)", pinned, class)
+
+	verb := "pinned"
+	if !pinned {
+		verb = "unpinned"
+	}
+
+	return fmt.Errorf("%w: %s here, but the service did not accept the change", ErrInvalidInput, verb)
 }
 
 // SetArchived files a conversation away, or brings it back, then tells
@@ -235,10 +252,7 @@ func (c *Commands) archiveError(archived bool, err error) error {
 		return nil
 	}
 
-	class := "other"
-	if errors.Is(err, context.DeadlineExceeded) {
-		class = "timeout"
-	}
+	class := organizeFailureClass(err)
 	c.logger.Printf("conversations: set archived failed (archived=%t, error_class=%s)", archived, class)
 
 	verb := "archived"
@@ -247,6 +261,29 @@ func (c *Commands) archiveError(archived bool, err error) error {
 	}
 
 	return fmt.Errorf("%w: %s here, but the service did not accept the change", ErrInvalidInput, verb)
+}
+
+// organizeFailureClass categorizes why a pin, archive or mark-read
+// change's service call failed, safe to log: "timeout" for a context
+// that ran out, "sync" when a connector reports its own local copy of
+// whatever state the service needs was not ready yet
+// (connector.ErrOrganizeSyncIncomplete, such as WhatsApp's app-state
+// sync never finishing after pairing), "rejected" when a connector
+// reports the service explicitly refused the change
+// (connector.ErrOrganizeRejected), and "other" for anything else, such
+// as a plain network failure. Never the error's own text, which a
+// connector does not guarantee free of an id or similar detail.
+func organizeFailureClass(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "timeout"
+	case errors.Is(err, connector.ErrOrganizeSyncIncomplete):
+		return "sync"
+	case errors.Is(err, connector.ErrOrganizeRejected):
+		return "rejected"
+	default:
+		return "other"
+	}
 }
 
 // SetReminder snoozes a conversation until at (Unix milliseconds), or

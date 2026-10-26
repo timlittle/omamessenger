@@ -148,7 +148,7 @@ func sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat 
 	// (see lidFormOf's own doc comment).
 	target := lidFormOf(ctx, dev, chat)
 	patch := appstate.BuildMarkChatAsRead(target, true, time.UnixMilli(key.timestamp), targetKey(target, key, messageID))
-	if err := dev.sendAppState(ctx, patch); err != nil {
+	if err := sendAppStateRecovering(ctx, dev, patch); err != nil {
 		result.status = chatPatchFailed
 		result.failureClass = chatPatchFailureClass(err)
 	}

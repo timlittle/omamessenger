@@ -130,6 +130,20 @@ type Voter interface {
 // allows.
 var ErrPinLimit = errors.New("connector: pin limit reached")
 
+// ErrOrganizeSyncIncomplete reports a pin, archive or mark-read change
+// an Organizer's service refused because this account's own local copy
+// of whatever state the service needs to encrypt or apply that kind of
+// change is not ready yet - for example, WhatsApp's app-state sync keys
+// never finished arriving after pairing. It is safe to show the user:
+// retrying once the account has had more time to sync should succeed.
+var ErrOrganizeSyncIncomplete = errors.New("connector: service sync state not ready yet")
+
+// ErrOrganizeRejected reports a pin, archive or mark-read change an
+// Organizer's service explicitly refused for a reason this connector
+// could not resolve on its own, such as a sync conflict already retried
+// once. It is safe to show the user, but carries no detail about why.
+var ErrOrganizeRejected = errors.New("connector: service rejected the change")
+
 // Organizer is a Connector that keeps a conversation pinned or archived in
 // step with the service, so a change made here, or made on another
 // device and synced back, agrees everywhere. The two methods are kept

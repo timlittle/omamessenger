@@ -185,6 +185,39 @@ func TestMarkRead_SendsTheChatReadAppStatePatch(t *testing.T) {
 	}
 }
 
+// TestMarkRead_RecoversFromARejectedChatPatchAfterACatchUp reproduces a
+// real account's own app-state patches all failing the same way: the
+// server rejected the chat-read mutation once, and the fix is to catch
+// this device's own local copy up (fetchAppState) and send it again
+// before giving up (see appstate.go's sendAppStateRecovering).
+func TestMarkRead_RecoversFromARejectedChatPatchAfterACatchUp(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice()
+	dev.appStateErr = whatsmeow.ErrAppStateUpdate
+	dev.appStateErrCount = 1
+	var sink connectortest.Sink
+	c := newConnectorWithMedia(dev, &sink, media)
+
+	conv := directChat
+	conv.Unread = 1
+	if err := c.MarkRead(t.Context(), conv); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.fetchAppStateCalls) != 1 || dev.fetchAppStateCalls[0] != appstate.WAPatchRegularLow {
+		t.Errorf("fetchAppState calls = %v, want one catch-up for %s", dev.fetchAppStateCalls, appstate.WAPatchRegularLow)
+	}
+	if len(dev.appStatePatches) != 2 {
+		t.Errorf("app state patches sent = %d, want the chat-read patch sent twice", len(dev.appStatePatches))
+	}
+}
+
 func TestMarkRead_IgnoresAFailedAppStatePatch(t *testing.T) {
 	t.Parallel()
 

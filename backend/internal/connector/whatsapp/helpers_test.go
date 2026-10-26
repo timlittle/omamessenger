@@ -118,20 +118,33 @@ type fakeDevice struct {
 	// appStateErr and appStateBlocks script sendAppState, which
 	// organize_test.go drives to check pin and archive changes without
 	// reaching WhatsApp's servers; appStatePatches records what was
-	// sent. settings is this fake's chat settings store, mirroring
-	// whatsmeow's own (store.ChatSettingsStore): a successful
-	// sendAppState applies its patch's mutations to it synchronously,
-	// exactly as a real SendAppState updates its store before
-	// returning (see device.go and docs/decisions.md), and a test may
-	// also seed it directly to stand in for a chat WhatsApp already
+	// sent. appStateErrCount, when positive, limits appStateErr to
+	// failing exactly that many calls before this fake starts
+	// succeeding (and clears appStateErr once the countdown finishes),
+	// standing in for a rejection sendAppStateRecovering's own retry
+	// resolves after a catch-up; left at its zero value, appStateErr
+	// fails every call, as it always did. settings is this fake's chat
+	// settings store, mirroring whatsmeow's own (store.ChatSettingsStore):
+	// a successful sendAppState applies its patch's mutations to it
+	// synchronously, exactly as a real SendAppState updates its store
+	// before returning (see device.go and docs/decisions.md), and a test
+	// may also seed it directly to stand in for a chat WhatsApp already
 	// had pinned or archived from before this connector ever saw it.
 	// sendAppState itself, along with applyAppState, chatSettings and
 	// setChatSettings, is defined in organize_test.go, beside the pin
 	// and archive tests that are the reason all four exist at all.
-	appStateErr     error
-	appStateBlocks  bool
-	appStatePatches []appstate.PatchInfo
-	settings        map[string]chatSettingsEntry
+	appStateErr      error
+	appStateErrCount int
+	appStateBlocks   bool
+	appStatePatches  []appstate.PatchInfo
+	settings         map[string]chatSettingsEntry
+
+	// fetchAppStateErr scripts fetchAppState, and fetchAppStateCalls
+	// records which patch names it was asked to catch up, so
+	// appstate_test.go can check sendAppStateRecovering asks for a
+	// catch-up only after a rejection, and retries the patch afterwards.
+	fetchAppStateErr   error
+	fetchAppStateCalls []appstate.WAPatchName
 
 	// mediaRetryErr scripts sendMediaRetryReceipt, and mediaRetryCalls
 	// records what it was asked to send; retry_test.go drives these.

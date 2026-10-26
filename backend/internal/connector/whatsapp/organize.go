@@ -73,8 +73,8 @@ func (c *Connector) SetPinned(ctx context.Context, conv domain.Conversation, pin
 
 	patchCtx, cancel := context.WithTimeout(ctx, organizeTimeout)
 	defer cancel()
-	if err := dev.sendAppState(patchCtx, appstate.BuildPin(jid, pinned)); err != nil {
-		return fmt.Errorf("whatsapp: set pinned: %w", err)
+	if err := sendAppStateRecovering(patchCtx, dev, appstate.BuildPin(jid, pinned)); err != nil {
+		return fmt.Errorf("whatsapp: set pinned: %w", classifyAppStateErr(err))
 	}
 
 	return c.reportOrganized(ctx, sink, dev, jid, conv.RemoteID)
@@ -98,8 +98,8 @@ func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, a
 
 	patchCtx, cancel := context.WithTimeout(ctx, organizeTimeout)
 	defer cancel()
-	if err := dev.sendAppState(patchCtx, appstate.BuildArchive(jid, archived, time.Time{}, nil)); err != nil {
-		return fmt.Errorf("whatsapp: set archived: %w", err)
+	if err := sendAppStateRecovering(patchCtx, dev, appstate.BuildArchive(jid, archived, time.Time{}, nil)); err != nil {
+		return fmt.Errorf("whatsapp: set archived: %w", classifyAppStateErr(err))
 	}
 
 	return c.reportOrganized(ctx, sink, dev, jid, conv.RemoteID)

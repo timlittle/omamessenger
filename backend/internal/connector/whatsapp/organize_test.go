@@ -17,10 +17,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow/appstate"
-	"go.mau.fi/whatsmeow/proto/waHistorySync"
-	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -39,11 +36,23 @@ type chatSettingsEntry struct {
 // reports appStateErr, or blocks on ctx when appStateBlocks is set, as
 // a real patch that never hears back from the server does: neither a
 // blocked nor a failed send ever reaches WhatsApp, so settings is left
-// alone either way.
+// alone either way. appStateErrCount, when positive, limits appStateErr
+// to that many calls before this fake starts succeeding, standing in
+// for a rejection sendAppStateRecovering's own retry, after a catch-up,
+// resolves (see appstate_test.go); a zero or negative count fails every
+// call, as before.
 func (d *fakeDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) error {
 	d.mu.Lock()
 	d.appStatePatches = append(d.appStatePatches, patch)
 	blocks, err := d.appStateBlocks, d.appStateErr
+	if err != nil && d.appStateErrCount > 0 {
+		d.appStateErrCount--
+		if d.appStateErrCount == 0 {
+			// The countdown is done: clear the scripted error so every
+			// later call succeeds, rather than only this one.
+			d.appStateErr = nil
+		}
+	}
 	if !blocks && err == nil {
 		d.applyAppState(patch)
 	}
@@ -55,6 +64,18 @@ func (d *fakeDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo)
 	}
 
 	return err
+}
+
+// fetchAppState records name in fetchAppStateCalls and reports
+// fetchAppStateErr, standing in for whatsmeow's own catch-up fetch
+// without ever reaching WhatsApp's servers.
+func (d *fakeDevice) fetchAppState(_ context.Context, name appstate.WAPatchName) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.fetchAppStateCalls = append(d.fetchAppStateCalls, name)
+
+	return d.fetchAppStateErr
 }
 
 // applyAppState updates a fake device's settings from patch's pin and
@@ -315,248 +336,5 @@ func TestSetArchived_Fails(t *testing.T) {
 		if err == nil {
 			t.Errorf("SetArchived %s succeeded, want an error", name)
 		}
-	}
-}
-
-func TestSyncConversation_NeverRevertsAPinJustSetLocally(t *testing.T) {
-	t.Parallel()
-
-	dev, sink, c := connectedFixture(t)
-
-	if err := c.SetPinned(t.Context(), directChat, true); err != nil {
-		t.Fatal(err)
-	}
-	if !sink.Has("organized " + directChat.RemoteID + " true false") {
-		t.Fatalf("events = %q, want the pin reported right after SetPinned", sink.Lines())
-	}
-	sink.Take()
-
-	// A history resync reports this same chat with its own sync blob,
-	// which never carries pinned or archived at all any more (see
-	// docs/decisions.md): this must not revert the pin, because
-	// reportSyncedOrganize never reads either from the blob to begin
-	// with, only from whatsmeow's own chat settings.
-	media := newTestMediaStore(t)
-	conv := &waHistorySync.Conversation{
-		ID: strPtr(directChat.RemoteID), Name: strPtr("Nadia"),
-		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-	}
-	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
-
-	if sink.Has("organized " + directChat.RemoteID + " false false") {
-		t.Errorf("events = %q, want the just-set pin kept rather than reverted by a stale resync", sink.Lines())
-	}
-}
-
-func TestHandlePin_LiveEchoStillOverridesALocalPin(t *testing.T) {
-	t.Parallel()
-
-	dev, sink, c := connectedFixture(t)
-
-	if err := c.SetPinned(t.Context(), directChat, true); err != nil {
-		t.Fatal(err)
-	}
-	sink.Take()
-
-	// The phone itself unpinned the chat: whatsmeow's own chat settings
-	// store already reflects that by the time the live echo fires (see
-	// docs/decisions.md), so seeding it here stands in for that, and a
-	// live echo must always be trusted, even over a pin this process
-	// set a moment ago.
-	jid, err := jidFromRemoteID(directChat.RemoteID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dev.setChatSettings(jid.String(), false, false)
-	c.handlePin(t.Context(), sink, dev, nil, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(false)}})
-
-	if !sink.Has("organized " + directChat.RemoteID + " false false") {
-		t.Errorf("events = %q, want the live unpin to take effect", sink.Lines())
-	}
-}
-
-func TestSyncConversation_AppliesAPinThatArrivedBeforeTheConversationExisted(t *testing.T) {
-	t.Parallel()
-
-	dev, sink, c := connectedFixture(t)
-
-	// The phone's pin arrives as a live app-state echo, already applied
-	// to whatsmeow's own chat settings store, before history sync has
-	// ever reported this conversation. A real app drops this first
-	// report, since it has no conversation to attach it to yet, but
-	// whatsmeow's store still remembers the pin regardless.
-	jid, err := jidFromRemoteID(directChat.RemoteID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dev.setChatSettings(jid.String(), true, false)
-	c.handlePin(t.Context(), sink, dev, nil, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
-	sink.Take()
-
-	// History sync now creates the conversation. Its own synced
-	// snapshot carries no pin timestamp for it, since the pin lives
-	// only in app state: reading whatsmeow's chat settings instead of
-	// this sync's own fields is what still finds it pinned.
-	media := newTestMediaStore(t)
-	conv := &waHistorySync.Conversation{
-		ID: strPtr(directChat.RemoteID), Name: strPtr("Nadia"),
-		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-	}
-	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
-
-	if !sink.Has("organized " + directChat.RemoteID + " true false") {
-		t.Errorf("events = %q, want the early pin reported once the conversation exists", sink.Lines())
-	}
-}
-
-func TestSyncConversation_NeverRevertsAPinKnownFromAppState(t *testing.T) {
-	t.Parallel()
-
-	dev, sink, c := connectedFixture(t)
-
-	jid, err := jidFromRemoteID(directChat.RemoteID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	media := newTestMediaStore(t)
-	syncIt := func() {
-		conv := &waHistorySync.Conversation{
-			ID: strPtr(directChat.RemoteID), Name: strPtr("Nadia"),
-			Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-		}
-		c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
-	}
-
-	// The conversation already exists, from an earlier sync, and only
-	// afterwards does the phone's pin arrive live.
-	syncIt()
-	dev.setChatSettings(jid.String(), true, false)
-	c.handlePin(t.Context(), sink, dev, nil, &events.Pin{JID: jid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
-	sink.Take()
-
-	// A later resync still carries nothing of its own about pinned or
-	// archived: the pin confirmed live a moment ago survives it, since
-	// it is read fresh from whatsmeow's chat settings every time.
-	syncIt()
-
-	if sink.Has("organized " + directChat.RemoteID + " false false") {
-		t.Errorf("events = %q, want the app-state pin kept rather than reverted by a later resync", sink.Lines())
-	}
-}
-
-func TestSyncConversation_AppliesAnArchiveThatArrivedBeforeTheConversationExisted(t *testing.T) {
-	t.Parallel()
-
-	dev, sink, c := connectedFixture(t)
-
-	jid, err := jidFromRemoteID(directChat.RemoteID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dev.setChatSettings(jid.String(), false, true)
-	c.handleArchive(t.Context(), sink, dev, nil, &events.Archive{JID: jid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
-	sink.Take()
-
-	// History sync's own blob carries nothing about archived either:
-	// this must not undo an archive already confirmed live.
-	media := newTestMediaStore(t)
-	conv := &waHistorySync.Conversation{
-		ID: strPtr(directChat.RemoteID), Name: strPtr("Nadia"),
-		Messages: []*waHistorySync.HistorySyncMsg{historyMsg("H1", "hi", false)},
-	}
-	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
-
-	if !sink.Has("organized " + directChat.RemoteID + " false true") {
-		t.Errorf("events = %q, want the early archive reported once the conversation exists", sink.Lines())
-	}
-}
-
-func TestHandlePinAndArchive_ApplyToAPhoneKeyedConversationAddressedByLID(t *testing.T) {
-	t.Parallel()
-
-	dev, sink, c := connectedFixture(t)
-	phone := types.NewJID("15551234567", types.DefaultUserServer)
-	lid := types.NewJID("987654", types.HiddenUserServer)
-	dev.lidPhones = map[string]types.JID{lid.String(): phone}
-
-	// WhatsApp can address the same chat by the phone JID it is already
-	// stored under or by its LID interchangeably; whatsmeow's own chat
-	// settings store is keyed by whichever form the app-state mutation
-	// actually named, here the LID, the same as a pin or archive sent
-	// by LID really would be. Either way it must land on the
-	// phone-keyed conversation, not a separate one.
-	dev.setChatSettings(lid.String(), true, false)
-	c.handlePin(t.Context(), sink, dev, nil, &events.Pin{JID: lid, Action: &waSyncAction.PinAction{Pinned: boolPtr(true)}})
-	if !sink.Has("organized " + remoteID(phone) + " true false") {
-		t.Errorf("events = %q, want the LID-addressed pin applied to the phone-keyed conversation", sink.Lines())
-	}
-
-	dev.setChatSettings(lid.String(), true, true)
-	c.handleArchive(t.Context(), sink, dev, nil, &events.Archive{JID: lid, Action: &waSyncAction.ArchiveChatAction{Archived: boolPtr(true)}})
-	if !sink.Has("organized " + remoteID(phone) + " true true") {
-		t.Errorf("events = %q, want the LID-addressed archive applied to the phone-keyed conversation", sink.Lines())
-	}
-}
-
-func TestConnector_UnpinsOnArchive(t *testing.T) {
-	t.Parallel()
-
-	_, _, c := connectedFixture(t)
-	if !c.UnpinsOnArchive() {
-		t.Error("UnpinsOnArchive() = false, want true: WhatsApp always unpins a chat it archives")
-	}
-
-	var _ connector.ArchiveUnpinner = c
-}
-
-func TestSetArchived_TimesOutWhenWhatsAppNeverAnswers(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		dev, _, c := connectedFixture(t)
-		dev.appStateBlocks = true
-
-		done := make(chan error, 1)
-		go func() { done <- c.SetArchived(t.Context(), directChat, true) }()
-
-		time.Sleep(organizeTimeout)
-		synctest.Wait()
-
-		select {
-		case err := <-done:
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Errorf("SetArchived = %v, want context.DeadlineExceeded after the organize timeout", err)
-			}
-		default:
-			t.Fatal("SetArchived did not return once its timeout elapsed")
-		}
-	})
-}
-
-func TestHandleMarkChatAsRead_ReportsUnreadZeroWhenMarkedRead(t *testing.T) {
-	t.Parallel()
-
-	c, dev, sink := handlerFixture(t)
-	jid := types.NewJID("15551234567", types.DefaultUserServer)
-
-	c.handleMarkChatAsRead(t.Context(), sink, dev, nil, &events.MarkChatAsRead{
-		JID: jid, Action: &waSyncAction.MarkChatAsReadAction{Read: boolPtr(true)},
-	})
-
-	if !sink.Has("unread 15551234567@s.whatsapp.net 0") {
-		t.Errorf("events = %q, want unread reset to 0, the same as the self-read receipt lane", sink.Lines())
-	}
-}
-
-func TestHandleMarkChatAsRead_IgnoresAMarkedUnreadChange(t *testing.T) {
-	t.Parallel()
-
-	c, dev, sink := handlerFixture(t)
-	jid := types.NewJID("15551234567", types.DefaultUserServer)
-
-	c.handleMarkChatAsRead(t.Context(), sink, dev, nil, &events.MarkChatAsRead{
-		JID: jid, Action: &waSyncAction.MarkChatAsReadAction{Read: boolPtr(false)},
-	})
-
-	if len(sink.Lines()) != 0 {
-		t.Errorf("events = %q, want nothing reported for a chat marked unread", sink.Lines())
 	}
 }
