@@ -78,17 +78,28 @@ Item {
     border.color: Theme.popups.border
     border.width: Style.normalBorderWidth
     implicitWidth: label.implicitWidth + Theme.spacing.xl * 2
-    implicitHeight: label.implicitHeight + Theme.spacing.md * 2
+    // label.contentHeight, not implicitHeight: once a long notice wraps
+    // at label's own bounded width below, implicitHeight still reports
+    // the natural single-line height (it is defined to ignore an
+    // explicitly set width), while contentHeight is the real, wrapped
+    // height the pill actually has to make room for.
+    implicitHeight: label.contentHeight + Theme.spacing.md * 2
 
     Text {
       id: label
       objectName: "toastLabel"
       anchors.centerIn: parent
+      // Bounded by the pill's own final width (itself clamped to
+      // Style.space(520) above, never by this), so a long notice wraps
+      // inside the pill instead of overflowing it on both sides.
+      width: Math.min(label.implicitWidth, parent.width - Theme.spacing.xl * 2)
       text: root._label
       // A notice is always this plugin's own words, never a service's,
       // but PlainText is free insurance against auto-detected rich
       // text the same way every other label in this window keeps it.
       textFormat: Text.PlainText
+      wrapMode: Text.WordWrap
+      horizontalAlignment: Text.AlignHCenter
       color: Theme.popups.text
       font.family: Theme.font.family
       // Large enough to catch the eye at a glance: it is the only sign

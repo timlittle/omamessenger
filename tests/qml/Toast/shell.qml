@@ -1,12 +1,15 @@
 // Checks Toast: hidden until it has text, shown with a checkmark glyph
 // paired with the text (never colour alone), auto-dismissing itself once
-// dismissDelayMs elapses, and dismissing on a click without waiting for
-// that timer. The priority between the update hint and an ordinary
-// notice, and the Escape chain's own gating on focus, are controller-level
-// wiring proven in tests/qml/UpdateHint instead.
+// dismissDelayMs elapses, dismissing on a click without waiting for that
+// timer, and a long notice wrapping inside the pill rather than
+// overflowing its rounded border, at the documented minimum window size.
+// The priority between the update hint and an ordinary notice, and the
+// Escape chain's own gating on focus, are controller-level wiring proven
+// in tests/qml/UpdateHint instead.
 import QtQuick
 import QtTest
 import Quickshell
+import qs.Commons
 import "ui/components"
 import "Check.js" as Check
 
@@ -44,6 +47,18 @@ ShellRoot {
       dismissDelayMs: 60000
       onDismissed: root.clickDismissCount++
     }
+
+    // longToast carries a real, long notice (see
+    // ConversationController's own "No notification sound…" wording)
+    // in a window resized to the documented minimum before it is
+    // checked, for checkLongMessageFitsPill below.
+    Toast {
+      id: longToast
+      anchors.horizontalCenter: parent.horizontalCenter
+      y: 200
+      text: "No notification sound set for this chat · set one with Set notification sound…"
+      dismissDelayMs: 60000
+    }
   }
 
   TestCase {
@@ -79,6 +94,31 @@ ShellRoot {
       return Check.fail("toast label has no glyph paired with its text: " + label.text);
     if (label.textFormat !== Text.PlainText)
       return Check.fail("toast label textFormat is " + label.textFormat + ", want PlainText");
+
+    root.checkLongMessageFitsPill();
+  }
+
+  // checkLongMessageFitsPill resizes the window to the documented
+  // minimum (see tests/qml/Flows' own checkMinimumSize) and confirms a
+  // long notice's painted text stays inside its own pill: the report
+  // this covers found it running past the rounded border on both
+  // sides, since the label had no width or wrap constraint of its own
+  // and simply painted at its full natural width regardless of how
+  // narrow the pill around it was clamped to.
+  function checkLongMessageFitsPill(): void {
+    win.width = Style.space(760);
+    win.height = Style.space(540);
+
+    const pill = Check.find(longToast, "toastPill");
+    const label = Check.find(longToast, "toastLabel");
+    if (!pill || !label) return Check.fail("no toastPill or toastLabel found for the long notice");
+
+    if (pill.width <= 0 || pill.height <= 0)
+      return Check.fail("the pill rendered at " + pill.width + "x" + pill.height + " for a long notice");
+    if (label.contentWidth > pill.width - 1)
+      return Check.fail("the label painted " + label.contentWidth + " wide, wider than its own pill's " + pill.width);
+    if (label.contentHeight <= label.font.pixelSize)
+      return Check.fail("a notice this long did not wrap onto more than one line");
 
     root.checkClickDismiss();
   }
