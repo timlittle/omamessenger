@@ -24,17 +24,22 @@ func TestValidate_WebM(t *testing.T) {
 		data []byte
 		want bool
 	}{
-		"ordinary vp9 video, no audio": {
+		"vp9 video, no audio": {
+			// None of WebM's video codecs declare their coded
+			// dimensions anywhere this package can read without
+			// decoding sample data (see limits.go), so every one of
+			// them is refused, not just codecs this package has never
+			// heard of.
 			webmFixture(webmParams{width: 1280, height: 720, durationTicks: 5000}),
-			true,
+			false,
 		},
 		"vp8 video with vorbis audio": {
 			webmFixture(webmParams{videoCodec: "V_VP8", audioCodec: "A_VORBIS", width: 640, height: 480, durationTicks: 5000}),
-			true,
+			false,
 		},
 		"av1 video with opus audio": {
 			webmFixture(webmParams{videoCodec: "V_AV1", audioCodec: "A_OPUS", width: 1920, height: 1080, durationTicks: 5000}),
-			true,
+			false,
 		},
 		"unsupported video codec": {
 			webmFixture(webmParams{videoCodec: "V_THEORA", width: 1280, height: 720, durationTicks: 5000}),

@@ -4,25 +4,39 @@
 // its bytes ever reach that player. It never shells out to ffprobe
 // and never reads a file's actual sample data: only the handful of
 // MP4/MOV (ISO base media) boxes or WebM/Matroska (EBML) elements
-// that name a video's codec, dimensions, duration, track count and
-// audio codec, each read through a single bounded os.File.ReadAt, so
-// a crafted header can never make this package read or allocate more
-// than a few hundred bytes regardless of how large the file on disk
-// actually is.
+// that name a video's codec, container-declared dimensions, duration,
+// track count and audio codec, plus - for the one video codec this
+// package accepts - the codec configuration FFmpeg actually decodes
+// from (H.264's own SPS, inside avcC; see h264sps.go), each read
+// through a single bounded os.File.ReadAt, so a crafted header can
+// never make this package read or allocate more than a few hundred
+// bytes regardless of how large the file on disk actually is.
+//
+// A container's own width and height fields are never trusted on
+// their own: FFmpeg decodes at whatever size the video bitstream
+// itself declares, which a sender can set independently of those
+// fields, so Validate additionally requires the two to agree exactly
+// for an MP4/MOV file (see isoTrackAllowed). WebM/Matroska's own
+// video codecs (VP8, VP9, AV1) declare their coded dimensions only
+// inside their compressed bitstream, with no equivalent configuration
+// box this package could read instead, so every WebM file with a
+// video track is refused - not because the codec is unknown, but
+// because it cannot be bound without decoding sample data, which is
+// out of scope here (see docs/decisions.md).
 //
 // Validate reports an error only for an actual failure to read the
 // file at all (missing, or permission denied); a file whose
 // container or headers fail any check - wrong format, an unsupported
-// codec, oversized dimensions, too long a duration, too many video
-// tracks, an absurd declared sample count, or audio in a codec
-// outside the allowed list - is reported simply as not playable, the
-// same way imagesafe reports a bad image: this is attacker-controlled
-// data, not a program fault. A file with an audio track in an
-// unsupported codec is refused outright rather than muted: this
-// package only answers "is this safe to decode", never rewrites a
-// file's bytes the way imagesafe does, so there is no way to strip or
-// mute a track without re-muxing the file, which is out of scope here
-// (see docs/decisions.md).
+// or unbounded codec, oversized or mismatched dimensions, too long a
+// duration, too many video tracks, an absurd declared sample count,
+// or audio in a codec outside the allowed list - is reported simply
+// as not playable, the same way imagesafe reports a bad image: this
+// is attacker-controlled data, not a program fault. A file with an
+// audio track in an unsupported codec is refused outright rather than
+// muted: this package only answers "is this safe to decode", never
+// rewrites a file's bytes the way imagesafe does, so there is no way
+// to strip or mute a track without re-muxing the file, which is out
+// of scope here (see docs/decisions.md).
 package videosafe
 
 import (
@@ -42,11 +56,11 @@ const (
 )
 
 // Validate reports whether path is a video this shell may safely
-// hand to QtMultimedia: an MP4/MOV container with H.264, VP9 or AV1
-// video and, if present, AAC or Opus audio; or a WebM/Matroska
-// container with VP8, VP9 or AV1 video and, if present, AAC, Opus or
-// Vorbis audio - in either case within the dimension, duration,
-// track-count and sample-count limits in limits.go.
+// hand to QtMultimedia: an MP4/MOV container with H.264 video whose
+// own SPS agrees with the container's declared dimensions, and, if
+// present, AAC or Opus audio - within the dimension, duration,
+// track-count and sample-count limits in limits.go. A WebM/Matroska
+// file is never reported playable: see the package doc comment.
 func Validate(path string) (playable bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {

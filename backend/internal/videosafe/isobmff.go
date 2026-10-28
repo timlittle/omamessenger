@@ -27,7 +27,7 @@ func isoBMFFPlayable(c *cursor) bool {
 	videoTracks := 0
 	sawValidVideo := false
 	for _, trak := range c.children(moov.off, moov.len, "trak") {
-		kind, codec, width, height, sampleCount, trackDuration, ok := c.trackInfo(trak.off, trak.len)
+		track, trackDuration, ok := c.trackInfo(trak.off, trak.len)
 		if !ok {
 			return false
 		}
@@ -35,7 +35,7 @@ func isoBMFFPlayable(c *cursor) bool {
 			duration = trackDuration
 		}
 
-		isVideo, allowed := isoTrackAllowed(isoTrack{kind: kind, codec: codec, width: width, height: height, sampleCount: sampleCount}, videoTracks)
+		isVideo, allowed := isoTrackAllowed(track, videoTracks)
 		if !allowed {
 			return false
 		}
@@ -48,33 +48,29 @@ func isoBMFFPlayable(c *cursor) bool {
 	return sawValidVideo && duration > 0 && duration <= maxDuration.Seconds()
 }
 
-// isoTrack is one track's own handler, codec, dimensions and sample
-// count, already read by trackInfo, for isoTrackAllowed to judge.
+// isoTrack is one track's own handler, codec, dimensions, declared
+// SPS dimensions and sample count, already read by trackInfo, for
+// isoTrackAllowed to judge.
 type isoTrack struct {
 	kind        string
 	codec       string
 	width       int
 	height      int
+	spsWidth    int
+	spsHeight   int
+	spsOK       bool
 	sampleCount uint32
 }
 
 // isoTrackAllowed judges t: isVideo reports whether t.kind is "vide"
 // (so the caller counts it toward maxVideoTracks), and ok reports
-// whether it passes every limit that applies to its own kind - an
-// allowed codec and, for a video track, its dimensions and sample
-// count - or allows it through unjudged for any kind that is
-// neither, such as a hint or subtitle track this package has no
-// opinion on at all.
+// whether it passes every limit that applies to its own kind, or
+// allows it through unjudged for any kind that is neither, such as a
+// hint or subtitle track this package has no opinion on at all.
 func isoTrackAllowed(t isoTrack, videoTracks int) (isVideo, ok bool) {
 	switch t.kind {
 	case "vide":
-		if videoTracks >= maxVideoTracks || !allowedISOVideoCodec[t.codec] {
-			return true, false
-		}
-		if t.width <= 0 || t.height <= 0 || t.width > maxDimension || t.height > maxDimension {
-			return true, false
-		}
-		return true, t.sampleCount <= maxSampleCount
+		return true, isoVideoTrackAllowed(t, videoTracks)
 	case "soun":
 		return false, allowedISOAudioCodec[t.codec]
 	default:
@@ -82,20 +78,42 @@ func isoTrackAllowed(t isoTrack, videoTracks int) (isVideo, ok bool) {
 	}
 }
 
+// isoVideoTrackAllowed reports whether a video track passes every
+// limit this package applies to one: an allowed codec, a
+// container-declared width and height within the cap, and - since
+// the container's own fields are never what the decoder actually
+// uses - a fully parseable SPS (see h264sps.go) whose own coded
+// width and height agree with those container fields exactly. A
+// mismatch, or an SPS this package could not parse at all, is
+// refused rather than trusted either way.
+func isoVideoTrackAllowed(t isoTrack, videoTracks int) bool {
+	if videoTracks >= maxVideoTracks || !allowedISOVideoCodec[t.codec] {
+		return false
+	}
+	if t.width <= 0 || t.height <= 0 || t.width > maxDimension || t.height > maxDimension {
+		return false
+	}
+	if !t.spsOK || t.spsWidth != t.width || t.spsHeight != t.height {
+		return false
+	}
+	return t.sampleCount <= maxSampleCount
+}
+
 // trackInfo extracts trak's handler type ("vide" or "soun"), its
 // first sample entry's codec fourcc, a video track's declared width
-// and height, its declared sample count (from stsz/stz2, read as a
-// single field, never allocated) and its own duration in seconds
-// (from mdhd). ok is false once any box this needs is missing or too
-// short to read, so a track whose header was cut off is never
-// silently treated as safe.
-func (c *cursor) trackInfo(trakOff, trakLen int64) (kind, codec string, width, height int, sampleCount uint32, duration float64, ok bool) {
+// and height, its codec configuration's own declared width and
+// height (avcC's SPS, for an avc1 track), its declared sample count
+// (from stsz/stz2, read as a single field, never allocated) and its
+// own duration in seconds (from mdhd). ok is false once any box this
+// needs is missing or too short to read, so a track whose header was
+// cut off is never silently treated as safe.
+func (c *cursor) trackInfo(trakOff, trakLen int64) (track isoTrack, duration float64, ok bool) {
 	mdia, found := c.firstChild(trakOff, trakLen, "mdia")
 	if !found {
 		return
 	}
 
-	kind, ok = c.handlerType(mdia.off, mdia.len)
+	track.kind, ok = c.handlerType(mdia.off, mdia.len)
 	if !ok {
 		return
 	}
@@ -116,19 +134,22 @@ func (c *cursor) trackInfo(trakOff, trakLen int64) (kind, codec string, width, h
 		return
 	}
 
-	codec, ok = c.sampleEntryCodec(stbl.off, stbl.len)
+	track.codec, ok = c.sampleEntryCodec(stbl.off, stbl.len)
 	if !ok {
 		return
 	}
 
-	if kind == "vide" {
-		width, height, ok = c.sampleEntryDims(stbl.off, stbl.len)
+	if track.kind == "vide" {
+		track.width, track.height, ok = c.sampleEntryDims(stbl.off, stbl.len)
 		if !ok {
 			return
 		}
+		if track.codec == "avc1" {
+			track.spsWidth, track.spsHeight, track.spsOK = c.avcSPSDims(stbl.off, stbl.len)
+		}
 	}
 
-	sampleCount, ok = c.sampleCount(stbl.off, stbl.len)
+	track.sampleCount, ok = c.sampleCount(stbl.off, stbl.len)
 	return
 }
 

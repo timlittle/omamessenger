@@ -45,9 +45,13 @@ const defaultTimecodeScale = 1_000_000
 // matroskaPlayable reports whether c's file is a playable WebM or
 // Matroska file under this package's limits: one Segment holding an
 // Info element with a duration within maxDuration, and a Tracks
-// element with at least one video TrackEntry, each within
-// maxVideoTracks using an allowed codec and within the dimension
-// limits, and any audio TrackEntry using an allowed codec.
+// element with at least one video TrackEntry using an allowed codec,
+// and any audio TrackEntry using an allowed codec. No WebM video
+// codec is currently allowed (see limits.go), so in practice a video
+// TrackEntry of any kind always fails this and the file is reported
+// not playable; width and height are still read and validated for
+// structural correctness, but never fed into the codec judgment
+// itself, since there is nothing left for them to decide there.
 func matroskaPlayable(c *cursor) bool {
 	seg, ok := c.firstElement(0, c.size, idSegment)
 	if !ok {
@@ -63,20 +67,18 @@ func matroskaPlayable(c *cursor) bool {
 		return false
 	}
 
-	videoTracks := 0
 	sawValidVideo := false
 	for _, entry := range c.elements(tracks.off, tracks.off+tracks.len, idTrackEntry) {
-		kind, codec, width, height, ok := c.trackEntryInfo(entry)
+		kind, codec, _, _, ok := c.trackEntryInfo(entry)
 		if !ok {
 			return false
 		}
 
-		isVideo, allowed := matroskaTrackAllowed(kind, codec, width, height, videoTracks)
+		isVideo, allowed := matroskaTrackAllowed(kind, codec)
 		if !allowed {
 			return false
 		}
 		if isVideo {
-			videoTracks++
 			sawValidVideo = true
 		}
 	}
@@ -85,18 +87,18 @@ func matroskaPlayable(c *cursor) bool {
 }
 
 // matroskaTrackAllowed judges one TrackEntry already read by
-// trackEntryInfo: isVideo reports whether kind is trackTypeVideo (so
-// the caller counts it toward maxVideoTracks), and ok reports whether
-// it passes every limit that applies to its own kind - an allowed
-// codec and, for a video track, its dimensions - or allows it through
-// unjudged for any kind that is neither.
-func matroskaTrackAllowed(kind int, codec string, width, height, videoTracks int) (isVideo, ok bool) {
+// trackEntryInfo: isVideo reports whether kind is trackTypeVideo, and
+// ok reports whether it passes every limit that applies to its own
+// kind, or allows it through unjudged for any kind that is neither.
+// A video track is never allowed: none of WebM's video codecs (VP8,
+// VP9, AV1) declare their own coded dimensions anywhere but inside
+// their compressed bitstream, which this package never decodes, so
+// none of them can be bound the way an MP4/MOV avc1 track's SPS is
+// (see h264sps.go and docs/decisions.md).
+func matroskaTrackAllowed(kind int, codec string) (isVideo, ok bool) {
 	switch kind {
 	case trackTypeVideo:
-		if videoTracks >= maxVideoTracks || !allowedMatroskaVideoCodec[codec] {
-			return true, false
-		}
-		return true, width > 0 && height > 0 && width <= maxDimension && height <= maxDimension
+		return true, false
 	case trackTypeAudio:
 		return false, allowedMatroskaAudioCodec[codec]
 	default:

@@ -11,6 +11,7 @@ package videosafe_test
 import (
 	"encoding/binary"
 	"math"
+	"math/bits"
 )
 
 // The EBML element IDs and TrackType values webmFixture's own helpers
@@ -123,8 +124,14 @@ func mp4MediaHeaderV1(timescale uint32, duration uint64) []byte {
 // own size+type header (8 bytes, type set to codec), then enough of
 // VisualSampleEntry's fixed fields to put width and height at their
 // real offset - this package's own sampleEntryDims reads exactly this
-// layout.
+// layout. For "avc1", the entry also carries a real avcC box with a
+// matching SPS, since Validate now requires the two to agree: see
+// mp4AVCSampleDescription.
 func mp4SampleDescription(codec string, width, height uint16) []byte {
+	if codec == "avc1" {
+		return mp4AVCSampleDescription(width, height)
+	}
+
 	buf := make([]byte, 8+44)
 	binary.BigEndian.PutUint32(buf[4:8], 1) // entry_count
 	binary.BigEndian.PutUint32(buf[8:12], 44)
@@ -132,6 +139,198 @@ func mp4SampleDescription(codec string, width, height uint16) []byte {
 	binary.BigEndian.PutUint16(buf[8+32:8+34], width)
 	binary.BigEndian.PutUint16(buf[8+34:8+36], height)
 	return buf
+}
+
+// mp4AVCSampleDescription builds an stsd body holding one avc1
+// sample entry at its full, real VisualSampleEntry fixed-field length
+// (78 bytes - this package's own avcSPSDims refuses anything
+// shorter), followed by an avcC box whose single SPS decodes to
+// exactly width and height, through buildAVCSPS.
+func mp4AVCSampleDescription(width, height uint16) []byte {
+	entryBody := make([]byte, 78)
+	binary.BigEndian.PutUint16(entryBody[24:26], width)
+	binary.BigEndian.PutUint16(entryBody[26:28], height)
+	entryBody = append(entryBody, mp4Box("avcC", buildAVCDecoderConfig(int(width), int(height)))...)
+	entry := mp4Box("avc1", entryBody)
+
+	buf := make([]byte, 8, 8+len(entry))
+	binary.BigEndian.PutUint32(buf[4:8], 1) // entry_count
+	return append(buf, entry...)
+}
+
+// buildCustomAVCFixture builds a minimal, well-formed MP4 whose avc1
+// sample entry declares containerWidth/containerHeight directly and
+// whose avcC box body is exactly avccBody, letting a test construct
+// a container/SPS mismatch directly rather than through
+// mp4AVCSampleDescription's own automatic match.
+func buildCustomAVCFixture(containerWidth, containerHeight uint16, avccBody []byte) []byte {
+	entryBody := make([]byte, 78)
+	binary.BigEndian.PutUint16(entryBody[24:26], containerWidth)
+	binary.BigEndian.PutUint16(entryBody[26:28], containerHeight)
+	entryBody = append(entryBody, mp4Box("avcC", avccBody)...)
+	entry := mp4Box("avc1", entryBody)
+
+	stsdBody := make([]byte, 8, 8+len(entry))
+	binary.BigEndian.PutUint32(stsdBody[4:8], 1) // entry_count
+	stsdBody = append(stsdBody, entry...)
+
+	stsz := mp4Box("stsz", mp4SampleSize(0))
+	stbl := mp4Box("stbl", append(mp4Box("stsd", stsdBody), stsz...))
+	minf := mp4Box("minf", stbl)
+	mdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
+	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("vide")...))
+	mdia := mp4Box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
+	trak := mp4Box("trak", mdia)
+
+	mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
+	moov := mp4Box("moov", append(append([]byte{}, mvhd...), trak...))
+	out := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
+	return append(out, moov...)
+}
+
+// duplicateSPSAVCConfig builds an AVCDecoderConfigurationRecord that
+// declares two sequence parameter sets, both the same bytes a single
+// SPS for width/height would be: enough to check that Validate
+// refuses any count other than exactly one, regardless of whether
+// the declared sets happen to agree with each other.
+func duplicateSPSAVCConfig(width, height int) []byte {
+	sps := buildAVCSPS(width, height)
+	spsLen := make([]byte, 2)
+	binary.BigEndian.PutUint16(spsLen, uint16(len(sps)))
+
+	buf := []byte{1, 66, 0, 30, 0xFF, 0x02} // declares two sequence parameter sets
+	buf = append(buf, spsLen...)
+	buf = append(buf, sps...)
+	buf = append(buf, spsLen...)
+	return append(buf, sps...)
+}
+
+// buildAVCDecoderConfig builds an AVCDecoderConfigurationRecord
+// (avcC's own body) declaring exactly one SPS, from buildAVCSPS, and
+// no picture parameter sets: this package's own avcDecoderConfigSPSDims
+// never reads past the one SPS it requires.
+func buildAVCDecoderConfig(width, height int) []byte {
+	sps := buildAVCSPS(width, height)
+
+	buf := []byte{1, 66, 0, 30, 0xFF, 0x01} // version, profile, compat, level and lengthSizeMinusOne, then one declared SPS
+	spsLen := make([]byte, 2)
+	binary.BigEndian.PutUint16(spsLen, uint16(len(sps)))
+	buf = append(buf, spsLen...)
+	return append(buf, sps...)
+}
+
+// buildAVCSPS builds a single baseline-profile H.264 sequence
+// parameter set NAL unit (NAL header byte included) that decodes,
+// through this package's own parseSPSDims, to exactly width and
+// height: frame_mbs_only_flag set, and frame cropping applied only
+// when the macroblock padding on each axis is evenly divisible by the
+// 4:2:0 chroma crop unit (2), the one shape a real encoder would ever
+// produce. A caller after an exact match (any width and height built
+// from mp4Fixture's own dimensions, always chosen to fit this) gets
+// one; a caller testing a rejected dimension or edge case does not
+// need one to exercise what it is actually testing.
+func buildAVCSPS(width, height int) []byte {
+	mbWidth := max((width+15)/16, 1)
+	mbHeightUnits := max((height+15)/16, 1)
+
+	w := &spsBitWriter{}
+	w.u(8, 66) // profile_idc: Baseline, no chroma extension fields
+	w.u(8, 0)  // constraint flags + reserved
+	w.u(8, 30) // level_idc
+	w.ue(0)    // seq_parameter_set_id
+	w.ue(0)    // log2_max_frame_num_minus4
+	w.ue(0)    // pic_order_cnt_type
+	w.ue(0)    // log2_max_pic_order_cnt_lsb_minus4
+	w.ue(0)    // max_num_ref_frames
+	w.u(1, 0)  // gaps_in_frame_num_value_allowed_flag
+	w.ue(uint32(mbWidth - 1))
+	w.ue(uint32(mbHeightUnits - 1))
+	w.u(1, 1) // frame_mbs_only_flag
+	w.u(1, 0) // direct_8x8_inference_flag
+
+	padRight := mbWidth*16 - width
+	padBottom := mbHeightUnits*16 - height
+	if padRight%2 == 0 && padBottom%2 == 0 && (padRight > 0 || padBottom > 0) {
+		w.u(1, 1) // frame_cropping_flag
+		w.ue(0)
+		w.ue(uint32(padRight / 2))
+		w.ue(0)
+		w.ue(uint32(padBottom / 2))
+	} else {
+		w.u(1, 0) // frame_cropping_flag
+	}
+
+	return append([]byte{0x67}, addEmulationPrevention(w.bytes())...)
+}
+
+// addEmulationPrevention inserts H.264's own emulation-prevention
+// byte (0x03) after every two 0x00 bytes immediately followed by a
+// byte of 0x03 or less, the exact inverse of this package's own
+// removeEmulationPrevention, so a fixture built from arbitrary bits
+// round-trips through the real parser exactly as a genuine encoder's
+// output would.
+func addEmulationPrevention(b []byte) []byte {
+	out := make([]byte, 0, len(b)+4)
+	zeroRun := 0
+	for _, v := range b {
+		if zeroRun >= 2 && v <= 0x03 {
+			out = append(out, 0x03)
+			zeroRun = 0
+		}
+		out = append(out, v)
+		if v == 0 {
+			zeroRun++
+		} else {
+			zeroRun = 0
+		}
+	}
+	return out
+}
+
+// spsBitWriter builds an H.264 RBSP one bit at a time, the test
+// package's own inverse of the production bitReader, for buildAVCSPS
+// to encode exactly the fields parseSPSDims reads.
+type spsBitWriter struct {
+	bitCount int
+	buf      []byte
+}
+
+// u appends v's own low n bits, most significant bit first.
+func (w *spsBitWriter) u(n int, v uint32) {
+	for i := n - 1; i >= 0; i-- {
+		w.bit((v >> i) & 1)
+	}
+}
+
+// ue appends v Exp-Golomb-coded (H.264's own ue(v)).
+func (w *spsBitWriter) ue(v uint32) {
+	codeNum := v + 1
+	leadingZeros := bits.Len32(codeNum) - 1
+	for range leadingZeros {
+		w.bit(0)
+	}
+	w.bit(1)
+	for i := leadingZeros - 1; i >= 0; i-- {
+		w.bit((codeNum >> i) & 1)
+	}
+}
+
+// bit appends a single bit, growing buf by a byte whenever the
+// current one is full.
+func (w *spsBitWriter) bit(b uint32) {
+	if w.bitCount%8 == 0 {
+		w.buf = append(w.buf, 0)
+	}
+	if b != 0 {
+		w.buf[len(w.buf)-1] |= 1 << (7 - w.bitCount%8)
+	}
+	w.bitCount++
+}
+
+// bytes returns every byte written so far, zero-padded to a whole
+// byte if needed.
+func (w *spsBitWriter) bytes() []byte {
+	return w.buf
 }
 
 // mp4SampleSize builds a minimal stsz body: version/flags,

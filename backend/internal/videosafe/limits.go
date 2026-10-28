@@ -41,16 +41,44 @@ const maxBoxBudget = 10_000
 // crafted size can never make it allocate an arbitrarily large buffer.
 const maxStringElement = 256
 
+// maxSPSLength bounds an H.264 SPS NAL unit's own declared length,
+// read from avcC before any of it is allocated: a real SPS is a
+// handful of bytes, so a far larger declared length is already
+// malformed, or an attempt to make this package read more than the
+// small, fixed amount of header data it ever needs.
+const maxSPSLength = 256
+
+// maxExpGolombPrefix bounds how many leading zero bits an exp-Golomb
+// field's own prefix may declare before this package gives up on it:
+// every field this package actually decodes (a dimension in
+// macroblocks, a small count) fits comfortably under this, and a
+// crafted SPS claiming more is rejected rather than risked for an
+// integer overflow computing its value.
+const maxExpGolombPrefix = 16
+
+// avcVisualSampleEntryFixedFields is the byte length of
+// ISO/IEC 14496-12's VisualSampleEntry fixed fields (reserved,
+// data_reference_index, width, height and the rest, up to but not
+// including any child boxes such as avcC): fixed by the standard,
+// never read from the file itself, so this package can safely skip
+// straight past them to look for avcC.
+const avcVisualSampleEntryFixedFields = 78
+
 // allowedISOVideoCodec names every MP4/MOV sample entry type (the
 // sample description box's own 4-byte format, never a sender's mime
-// type or file extension) this package accepts: H.264 (avc1, the
-// common case, and avc3, which carries its parameter sets in-band
-// rather than in the sample entry itself), VP9 and AV1.
+// type or file extension) this package accepts: H.264 (avc1 only).
+// avc3 is refused even though QtMultimedia can decode it: it allows a
+// stream to carry (or switch) its own parameter sets in-band, inside
+// sample data this package never reads, so there is no way to bound
+// the dimensions FFmpeg will actually decode at. VP9 and AV1 (vp09,
+// av01) are refused for the same underlying reason: their own
+// configuration boxes (vpcC, av1C) do not carry a video's coded
+// dimensions at all - those live only in the compressed bitstream
+// itself, which this package never decodes - so a container claiming
+// either codec can never be bound here and is always reported as not
+// playable (see docs/decisions.md).
 var allowedISOVideoCodec = map[string]bool{
 	"avc1": true,
-	"avc3": true,
-	"vp09": true,
-	"av01": true,
 }
 
 // allowedISOAudioCodec names every MP4/MOV audio sample entry type
@@ -62,13 +90,8 @@ var allowedISOAudioCodec = map[string]bool{
 	"Opus": true,
 }
 
-// allowedMatroskaVideoCodec names every WebM/Matroska CodecID this
-// package accepts for a video track: VP8, VP9 and AV1.
-var allowedMatroskaVideoCodec = map[string]bool{
-	"V_VP8": true,
-	"V_VP9": true,
-	"V_AV1": true,
-}
+// No WebM/Matroska video codec is accepted for a video track - see
+// matroskaTrackAllowed in matroska.go and docs/decisions.md for why.
 
 // allowedMatroskaAudioCodec names every WebM/Matroska CodecID this
 // package accepts for an audio track: AAC, Opus and Vorbis.

@@ -44,12 +44,25 @@ func TestValidate_MP4(t *testing.T) {
 			true,
 		},
 		"vp9 video with aac audio": {
+			// vp09's own configuration box (vpcC) never carries coded
+			// dimensions - only the compressed bitstream does - so this
+			// package can never bind what FFmpeg would actually decode
+			// at and refuses the codec outright.
 			mp4Fixture(mp4Params{videoCodec: "vp09", audioCodec: "mp4a", width: 640, height: 480, durationUnit: 5000}),
-			true,
+			false,
 		},
 		"av1 video with opus audio": {
+			// Same reasoning as vp09: av01's own configuration carries
+			// no bound-able dimensions either.
 			mp4Fixture(mp4Params{videoCodec: "av01", audioCodec: "Opus", width: 1920, height: 1080, durationUnit: 5000}),
-			true,
+			false,
+		},
+		"avc3 video, in-band parameter sets": {
+			// avc3 may carry (or switch) its own SPS in-band, inside
+			// sample data this package never reads, so it is refused
+			// even though its sample entry otherwise looks like avc1's.
+			mp4Fixture(mp4Params{videoCodec: "avc3", width: 1280, height: 720, durationUnit: 5000}),
+			false,
 		},
 		"unsupported video codec": {
 			mp4Fixture(mp4Params{videoCodec: "hev1", width: 1280, height: 720, durationUnit: 5000}),
@@ -128,6 +141,58 @@ func TestValidate_MP4TooManyVideoTracks(t *testing.T) {
 	}
 	if got {
 		t.Error("Validate() = true for a file declaring more video tracks than allowed, want false")
+	}
+}
+
+// TestValidate_MP4SPSDimensions covers the exact gap the differential
+// security review found: a container whose sample entry declares one
+// set of dimensions while its avcC configuration's own SPS - what
+// FFmpeg actually decodes at - declares another. Validate must reject
+// the mismatch rather than trust the container field, reject more
+// than one declared SPS (whose choice between them this package can
+// never bound, since it never reads sample data), and reject a
+// declared count of zero.
+func TestValidate_MP4SPSDimensions(t *testing.T) {
+	t.Parallel()
+
+	matchingSPS := buildAVCDecoderConfig(1280, 720)
+	hugeSPS := buildAVCDecoderConfig(16000, 16000)
+
+	cases := map[string]struct {
+		data []byte
+		want bool
+	}{
+		"container and SPS dimensions agree": {
+			buildCustomAVCFixture(1280, 720, matchingSPS),
+			true,
+		},
+		"small container, SPS declares dimensions far beyond the cap": {
+			buildCustomAVCFixture(320, 240, hugeSPS),
+			false,
+		},
+		"declares two sequence parameter sets": {
+			buildCustomAVCFixture(1280, 720, duplicateSPSAVCConfig(1280, 720)),
+			false,
+		},
+		"declares zero sequence parameter sets": {
+			buildCustomAVCFixture(1280, 720, []byte{1, 66, 0, 30, 0xFF, 0x00}),
+			false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeFixture(t, "sps.mp4", tc.data)
+			got, err := videosafe.Validate(path)
+			if err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if got != tc.want {
+				t.Errorf("Validate() = %t, want %t", got, tc.want)
+			}
+		})
 	}
 }
 

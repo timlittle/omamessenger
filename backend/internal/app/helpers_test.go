@@ -19,6 +19,13 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
+// avcDecoderConfig640x480 is an AVCDecoderConfigurationRecord whose
+// one SPS decodes, through videosafe's own parser, to exactly
+// 640x480 - videosafe now requires that to agree with the sample
+// entry's own fields - generated from the same encoding
+// videosafe/helpers_test.go's buildAVCDecoderConfig uses.
+var avcDecoderConfig640x480 = []byte{0x01, 0x42, 0x00, 0x1E, 0xFF, 0x01, 0x00, 0x08, 0x67, 0x42, 0x00, 0x1E, 0xF8, 0x14, 0x07, 0xA0}
+
 // onePlayableMP4 returns a minimal, well-formed MP4 file - an
 // ordinary H.264 video at 640x480 - for a test that needs bytes
 // videosafe actually accepts rather than an arbitrary placeholder:
@@ -40,12 +47,13 @@ func onePlayableMP4() []byte {
 		return buf
 	}
 
-	sampleDescription := make([]byte, 8+44)
+	entryBody := append(make([]byte, 78), box("avcC", avcDecoderConfig640x480)...)
+	binary.BigEndian.PutUint16(entryBody[24:26], 640)
+	binary.BigEndian.PutUint16(entryBody[26:28], 480)
+
+	sampleDescription := make([]byte, 8)
 	binary.BigEndian.PutUint32(sampleDescription[4:8], 1) // entry_count
-	binary.BigEndian.PutUint32(sampleDescription[8:12], 44)
-	copy(sampleDescription[12:16], "avc1")
-	binary.BigEndian.PutUint16(sampleDescription[40:42], 640)
-	binary.BigEndian.PutUint16(sampleDescription[42:44], 480)
+	sampleDescription = append(sampleDescription, box("avc1", entryBody)...)
 
 	mdhd := box("mdhd", mediaHeader(1000, 5000))
 	hdlr := box("hdlr", append(make([]byte, 8), []byte("vide")...))
