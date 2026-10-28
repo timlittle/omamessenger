@@ -4,11 +4,22 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
+
+// MaxSpellMisspellings bounds how many entries CheckSpelling ever
+// returns from one spell.check call. Composer.qml draws one underline
+// rectangle per entry and rebuilds them on every keystroke and caret
+// move, so a huge pasted string full of unrecognised words - a long
+// run of gibberish, or text in a language the loaded dictionary does
+// not cover - must never make it do unbounded layout work. Documented
+// in docs/api.md as an additive, non-breaking limit on spell.check's
+// result.
+const MaxSpellMisspellings = 200
 
 // Commands are the actions the UI can take.
 type Commands struct {
@@ -173,13 +184,45 @@ func (c *Commands) ApplySettings(s Settings) {
 
 // CheckSpelling finds misspelled words in text; see spell.Checker.Check.
 // It returns nil without error when no spell checker was wired in, so a
-// test build that does not need one is not forced to provide one.
+// test build that does not need one is not forced to provide one. text
+// is capped to domain.MaxTextLength first, the same limit messages.send
+// enforces on outgoing text, and the result to MaxSpellMisspellings, so
+// a huge pasted clipboard string can never make this scan an unbounded
+// amount of text or hand the UI an unbounded highlight list.
 func (c *Commands) CheckSpelling(ctx context.Context, text string) ([]spell.Misspelling, error) {
 	if c.spell == nil {
 		return nil, nil
 	}
 
-	return c.spell.Check(ctx, text)
+	found, err := c.spell.Check(ctx, capTextLength(text, domain.MaxTextLength))
+	if err != nil {
+		return nil, err
+	}
+
+	if len(found) > MaxSpellMisspellings {
+		found = found[:MaxSpellMisspellings]
+	}
+
+	return found, nil
+}
+
+// capTextLength cuts text to at most max Unicode code points, the same
+// unit domain.MaxTextLength counts in, never splitting one across the
+// cut.
+func capTextLength(text string, max int) string {
+	if utf8.RuneCountInString(text) <= max {
+		return text
+	}
+
+	count := 0
+	for i := range text {
+		if count == max {
+			return text[:i]
+		}
+		count++
+	}
+
+	return text
 }
 
 // SuggestSpelling returns replacement words for a misspelled word; see

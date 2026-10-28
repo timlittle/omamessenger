@@ -87,6 +87,17 @@ const MaxContactResults = 1000
 // connector pass through unchanged.
 const MaxDisplayNameLength = 256
 
+// MaxStickerEmojiLength bounds a sticker's own Emoji fallback text, in
+// UTF-16 code units, the same reasoning as MaxReactionEmojiLength: a
+// real emoji, even one combined from several code points, needs only a
+// handful of units, but WhatsApp's StickerMessage.Emojis and
+// Telegram's DocumentAttributeSticker.Alt carry whatever the sender put
+// there, with no length limit of their own. ui/components/StickerView.qml
+// renders this as a single, unwrapped line whenever the sticker has no
+// thumbnail or downloaded image, so an unbounded value stalls the
+// shell's layout pass the same way an unbounded reaction chip would.
+const MaxStickerEmojiLength = 32
+
 // MaxFileNameLength bounds a sender-controlled file name, in bytes:
 // generous for any real attachment's own name, shown as a single line
 // in the file view, while still bounding what a hostile sender's own
@@ -213,6 +224,10 @@ func CapMedia(media *Media) *Media {
 		media.SiteName = capText(media.SiteName, MaxLinkPreviewFieldLength)
 		media.Title = capText(media.Title, MaxLinkPreviewFieldLength)
 		media.Description = capText(media.Description, MaxLinkPreviewDescriptionLength)
+	case MediaSticker:
+		if UTF16Len(media.Emoji) > MaxStickerEmojiLength {
+			media.Emoji = ""
+		}
 	}
 
 	return media

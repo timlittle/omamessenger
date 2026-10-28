@@ -74,10 +74,19 @@ Item {
   Text {
     objectName: "stickerEmoji"
     anchors.centerIn: parent
+    width: root._size
+    horizontalAlignment: Text.AlignHCenter
     visible: !root._hasImage
     text: root.sticker.emoji || "🏷️"
     // The sticker's emoji fallback is sender-controlled: PlainText.
+    // domain.CapMedia already bounds it to MaxStickerEmojiLength, but
+    // this wraps and elides too, as defence in depth against a
+    // connector bug or an older helper still handing over something
+    // uncapped: never one unwrapped line at this font size again.
     textFormat: Text.PlainText
+    wrapMode: Text.Wrap
+    maximumLineCount: 2
+    elide: Text.ElideRight
     font.pixelSize: root._size * 0.6
   }
 

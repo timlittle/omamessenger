@@ -12,6 +12,38 @@
 // sending a request on every keystroke.
 var DEBOUNCE_MS = 300;
 
+// MAX_RENDERED_MISSPELLINGS bounds how many misspellings Composer ever
+// turns into underline rectangles, matching the helper's own
+// app.MaxSpellMisspellings result cap independently (the same two-
+// independently-maintained-but-matching pair Format.js's own
+// MAX_RICH_TEXT_INPUT_LENGTH describes, since this file has no way to
+// import a Go constant). Composer rebuilds its overlay on every
+// keystroke and caret move, so this is defence in depth behind the
+// helper's own cap for a connector bug, an older helper, or a result
+// kept from before the cap existed.
+var MAX_RENDERED_MISSPELLINGS = 200;
+
+// MAX_COMPOSER_TEXT_LENGTH bounds how much text the composer's own
+// input holds, in Unicode code points, matching domain.MaxTextLength:
+// the same cap messages.send enforces on outgoing text and spell.check
+// now enforces on what it scans. A pasted clipboard string has no
+// length limit of its own (unlike typing, which is naturally slow), so
+// the composer must not hold more than a send could ever accept.
+var MAX_COMPOSER_TEXT_LENGTH = 4096;
+
+// capComposerText cuts text to MAX_COMPOSER_TEXT_LENGTH Unicode code
+// points, counted the way the string iterator already does (so a
+// surrogate pair is never split across the cut), leaving anything
+// already within the cap untouched.
+function capComposerText(text) {
+  if (text.length <= MAX_COMPOSER_TEXT_LENGTH) return text;
+
+  const codePoints = Array.from(text);
+  if (codePoints.length <= MAX_COMPOSER_TEXT_LENGTH) return text;
+
+  return codePoints.slice(0, MAX_COMPOSER_TEXT_LENGTH).join('');
+}
+
 // misspellingAtCaret returns the misspelling range the caret sits
 // inside (start <= caret <= end), or null when it is not inside any of
 // them. A caret exactly at a range's start or end counts as inside it,

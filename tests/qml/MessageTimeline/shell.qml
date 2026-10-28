@@ -203,6 +203,7 @@ ShellRoot {
     }
 
     if (!root.checkUpsertDropsStaleMediaPathOnRetire()) return;
+    if (!root.checkUpsertDropsMediaOnIdentityChange()) return;
     root.checkLoadOlderDropsStaleReply();
   }
 
@@ -235,6 +236,38 @@ ShellRoot {
     timeline.upsert(Object.assign(root.message("mt1", 91), { outgoing: true, status: "sent" }), false);
     if (timeline.mediaPath("mt1") !== "/data/omamessenger/media/outgoing/mt1.txt") {
       return Check.fail("upsert dropped mediaPath for a message with no media: " + timeline.mediaPath("mt1"));
+    }
+
+    return true;
+  }
+
+  // checkUpsertDropsMediaOnIdentityChange reproduces a service's own
+  // end-to-end encrypted edit swapping a message's media for a
+  // different kind, or for different bytes of the same kind: upsert
+  // must drop the cached mediaPath and every verdict either way, since
+  // they describe the bytes the edit just replaced, never the ones now
+  // shown. A caption-only edit that leaves the same media alone must
+  // keep whatever mediaPath is already there. Returns false, having
+  // already called Check.fail, on the first thing that does not hold.
+  function checkUpsertDropsMediaOnIdentityChange(): bool {
+    timeline.upsert(Object.assign(root.message("me1", 95), { media: { kind: "voice", fileName: "note.ogg", duration: 5 } }), false);
+    timeline.setMediaPath("me1", "/data/omamessenger/media/me1.ogg");
+    timeline.setMediaPlayable("me1", true);
+
+    timeline.upsert(Object.assign(root.message("me1", 95), { edited: true, media: { kind: "photo", fileName: "note.ogg", width: 800, height: 600 } }), false);
+    if (timeline.mediaPath("me1") !== "") {
+      return Check.fail("upsert kept a stale mediaPath across an edit that changed the media kind: " + timeline.mediaPath("me1"));
+    }
+    if (timeline.mediaVerdictsKnown("me1")) {
+      return Check.fail("upsert kept stale media verdicts across an edit that changed the media kind");
+    }
+
+    timeline.upsert(root.photoMessage("me2", 96), false);
+    timeline.setMediaPath("me2", "/data/omamessenger/media/me2.jpg");
+
+    timeline.upsert(Object.assign(root.photoMessage("me2", 96), { edited: true, text: "new caption" }), false);
+    if (timeline.mediaPath("me2") !== "/data/omamessenger/media/me2.jpg") {
+      return Check.fail("upsert dropped mediaPath for a caption-only edit that left the same media alone: " + timeline.mediaPath("me2"));
     }
 
     return true;

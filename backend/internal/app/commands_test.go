@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -150,6 +151,48 @@ func TestCheckSpelling_EnabledByDefault(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Word != "wrongg" {
 		t.Fatalf("CheckSpelling = %+v, want one misspelling of %q", got, "wrongg")
+	}
+}
+
+// TestCheckSpelling_CapsOverlongText confirms text past
+// domain.MaxTextLength is cut down before it ever reaches the
+// dictionary, so a huge pasted clipboard string cannot make one
+// spell.check call scan an unbounded amount of text: a misspelling
+// placed only past the cap must not be found.
+func TestCheckSpelling_CapsOverlongText(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+
+	text := strings.Repeat("a ", domain.MaxTextLength) + "wrongg"
+	got, err := f.commands.CheckSpelling(t.Context(), text)
+	if err != nil {
+		t.Fatalf("CheckSpelling: %v", err)
+	}
+	for _, m := range got {
+		if m.Word == "wrongg" {
+			t.Errorf("CheckSpelling found a misspelling past domain.MaxTextLength: %+v", got)
+		}
+	}
+}
+
+// TestCheckSpelling_CapsMisspellingCount confirms a result is never
+// longer than the small constant it is capped at, however many
+// distinct misspelled words a huge pasted string contains: Composer.qml
+// draws one highlight per entry, so an unbounded result would make it
+// do unbounded layout work on every keystroke.
+func TestCheckSpelling_CapsMisspellingCount(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+
+	text := strings.TrimSpace(strings.Repeat("zqx ", 500))
+	got, err := f.commands.CheckSpelling(t.Context(), text)
+	if err != nil {
+		t.Fatalf("CheckSpelling: %v", err)
+	}
+	if len(got) != app.MaxSpellMisspellings {
+		t.Errorf("CheckSpelling returned %d misspellings, want exactly %d", len(got), app.MaxSpellMisspellings)
 	}
 }
 

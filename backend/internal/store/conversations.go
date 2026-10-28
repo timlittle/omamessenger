@@ -119,10 +119,16 @@ const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match,
 // hits picks the newest one per conversation, which becomes the ranking
 // signal and the Match snippet, MatchMessageID and MatchSender, read
 // through an external-content FTS5 table kept in step with messages by
-// triggers (see migrate.go).
+// triggers (see migrate.go). The snippet comes from FTS5's own
+// snippet() aux function, bounded to 32 tokens around the match
+// (FTS5's own max is 64) rather than a message's whole text - up to
+// domain.MaxIncomingTextLength, 64 KiB, with no limit of its own on how
+// long a single matched word's surrounding text can be - which would
+// otherwise make the command palette's "Messages" row lay out far more
+// than a search result ever needs to show.
 const conversationsByTitleOrMessage = `WITH matched AS (
 		SELECT m.conversation_id AS conversation_id, m.id AS message_id, m.sender_name AS sender_name,
-			m.text AS snippet, bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
+			snippet(messages_fts, 0, '', '', '…', 32) AS snippet, bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
 		FROM messages_fts
 		JOIN messages m ON m.rowid = messages_fts.rowid
 		WHERE messages_fts MATCH :fts

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -484,5 +485,29 @@ func TestMessage_SanitizesStoredThumbnail(t *testing.T) {
 		if m.ID == "invalid" && m.Media.Thumb != "" {
 			t.Errorf("Messages kept an invalid-base64 thumbnail for %q: %q", m.ID, m.Media.Thumb)
 		}
+	}
+}
+
+// TestMessage_CapsAStoredStickerEmoji confirms a sticker's own Emoji
+// fallback, stored uncapped by a release before MaxStickerEmojiLength
+// existed, is capped on every read, the same defence scanMessage
+// already gives a legacy thumbnail (see sanitizedThumb).
+func TestMessage_CapsAStoredStickerEmoji(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	huge := strings.Repeat("x", domain.MaxStickerEmojiLength+1)
+	addMessages(t, s,
+		domain.Message{ID: "short", ConversationID: "chat", Text: "a", Created: 1, Media: &domain.Media{Kind: domain.MediaSticker, Emoji: "🎉"}},
+		domain.Message{ID: "huge", ConversationID: "chat", Text: "b", Created: 2, Media: &domain.Media{Kind: domain.MediaSticker, Emoji: huge}},
+	)
+
+	if got, err := s.Message(ctx, "short"); err != nil || got.Media.Emoji != "🎉" {
+		t.Errorf("short emoji = %q, %v; want %q, unchanged", got.Media.Emoji, err, "🎉")
+	}
+	if got, err := s.Message(ctx, "huge"); err != nil || got.Media.Emoji != "" {
+		t.Errorf("oversized emoji = %q, %v; want dropped", got.Media.Emoji, err)
 	}
 }

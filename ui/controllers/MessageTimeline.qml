@@ -105,17 +105,21 @@ Item {
   // history fetched from the service further down. A cached mediaPath,
   // its verdicts (mediaDecodeAs, mediaPlayable, mediaRisky,
   // mediaVerdictsKnown) and mediaFailed normally carry over untouched,
-  // since the service's own update never carries any of them - but the
-  // moment this update is the message's attachment being retired into
-  // the download cache (see Timeline.mediaJustRetired), all of them are
-  // dropped instead: the cached path may point at the outgoing copy the
-  // helper just removed, and must be resolved again rather than shown
-  // as missing forever.
+  // since the service's own update never carries any of them - but
+  // they are dropped instead the moment this update is either the
+  // message's attachment being retired into the download cache (see
+  // Timeline.mediaJustRetired) or an edit that swaps its media for a
+  // different kind or different bytes of the same kind (see
+  // Timeline.mediaIdentityChanged): in both cases the cached path and
+  // verdicts describe bytes that are no longer this row's own, and
+  // must be resolved and checked again rather than reused or shown as
+  // missing forever.
   function upsert(message: var, isGroup: bool): void {
     const loaded = root._snapshot();
     const at = loaded.findIndex((m) => m.id === message.id);
     if (at !== -1) {
-      const kept = Timeline.mediaJustRetired(loaded[at], message)
+      const mediaReplaced = Timeline.mediaJustRetired(loaded[at], message) || Timeline.mediaIdentityChanged(loaded[at], message);
+      const kept = mediaReplaced
         ? { mediaPath: "", mediaDecodeAs: "", mediaPlayable: false, mediaRisky: false, mediaVerdictsKnown: false, mediaFailed: false, mediaFailedReason: "" }
         : {
             mediaPath: loaded[at].mediaPath, mediaDecodeAs: loaded[at].mediaDecodeAs,

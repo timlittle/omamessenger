@@ -430,6 +430,11 @@ func scanMessage(row scanner) (domain.Message, error) {
 		// Re-checked on every read, not just once by a migration: see
 		// sanitizedThumb and docs/decisions.md.
 		m.Media.Thumb = sanitizedThumb(m.Media.Thumb)
+		// domain.CapMedia bounds a sticker's own Emoji fallback and
+		// every other sender-controlled field it covers; a row an
+		// older release stored before that cap existed is repaired
+		// here, every time, the same reasoning as the thumbnail above.
+		m.Media = domain.CapMedia(m.Media)
 		m.Media.OriginalPath, m.Media.OriginalModTime = originalPath, originalModTime
 	}
 

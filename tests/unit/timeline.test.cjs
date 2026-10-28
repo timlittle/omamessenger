@@ -419,3 +419,42 @@ test('mediaJustRetired is false for an unrelated update, such as a reaction, tha
   const update = { outgoing: true, media: { kind: 'photo' }, status: 'sent' };
   assert.strictEqual(Timeline.mediaJustRetired(oldRow, update), false);
 });
+
+test('mediaIdentityChanged is true when an edit changes the media kind, such as a voice note edited into a photo', () => {
+  const oldRow = { media: JSON.stringify({ kind: 'voice', fileName: 'note.ogg', duration: 5 }) };
+  const update = { media: { kind: 'photo', fileName: 'note.ogg', width: 800, height: 600 } };
+  assert.strictEqual(Timeline.mediaIdentityChanged(oldRow, update), true);
+});
+
+test('mediaIdentityChanged is true when the same kind points at different bytes', () => {
+  const oldRow = { media: JSON.stringify({ kind: 'photo', fileName: 'a.jpg', width: 100, height: 100, size: 1000 }) };
+  const update = { media: { kind: 'photo', fileName: 'b.jpg', width: 400, height: 400, size: 9000 } };
+  assert.strictEqual(Timeline.mediaIdentityChanged(oldRow, update), true);
+});
+
+test('mediaIdentityChanged is false for a caption-only edit that leaves the same media alone', () => {
+  const sameMedia = { kind: 'photo', fileName: 'a.jpg', width: 100, height: 100, size: 1000 };
+  const oldRow = { media: JSON.stringify(sameMedia) };
+  const update = { text: 'new caption', media: { ...sameMedia } };
+  assert.strictEqual(Timeline.mediaIdentityChanged(oldRow, update), false);
+});
+
+test('mediaIdentityChanged is false for an unrelated update with no media at all', () => {
+  const oldRow = { media: '' };
+  const update = { text: 'hello' };
+  assert.strictEqual(Timeline.mediaIdentityChanged(oldRow, update), false);
+});
+
+test('mediaIdentityChanged is true when media is added where there was none, or removed entirely', () => {
+  const oldRow = { media: '' };
+  assert.strictEqual(Timeline.mediaIdentityChanged(oldRow, { media: { kind: 'photo', fileName: 'a.jpg' } }), true);
+
+  const withMedia = { media: JSON.stringify({ kind: 'photo', fileName: 'a.jpg' }) };
+  assert.strictEqual(Timeline.mediaIdentityChanged(withMedia, { media: null }), true);
+});
+
+test('mediaIdentityChanged is false for a poll update that only changes tallies, never media.kind', () => {
+  const oldRow = { media: JSON.stringify({ kind: 'poll', poll: { question: 'q', options: [] } }) };
+  const update = { media: { kind: 'poll', poll: { question: 'q', options: [{ id: 'o1', votes: 3 }] } } };
+  assert.strictEqual(Timeline.mediaIdentityChanged(oldRow, update), false);
+});

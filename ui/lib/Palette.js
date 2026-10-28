@@ -77,7 +77,12 @@ function conversationOrder(conversations) {
 // who sent it, which conversation it is in and a snippet to show, kept
 // in the order the search already ranked them. A row with no
 // matchMessageId only matched by its title, so it belongs in the
-// "Conversations" section instead, not here.
+// "Conversations" section instead, not here. The helper's own snippet()
+// window already bounds match to a handful of words around the hit,
+// but Format.previewText caps it again here, the same cap the
+// conversation list's own preview already gets, as defence in depth
+// against a longer value from an older helper or a single very long
+// matched word.
 function messageRows(conversations) {
   return (conversations ?? [])
     .filter((c) => c.matchMessageId)
@@ -87,7 +92,7 @@ function messageRows(conversations) {
       sender: c.matchSender || '',
       conversationTitle: c.title,
       service: c.service,
-      snippet: c.match || ''
+      snippet: Format.previewText(c.match || '')
     }));
 }
 

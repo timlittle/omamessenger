@@ -300,6 +300,36 @@ func TestCapMedia_BoundsAFileNameForEveryKind(t *testing.T) {
 	}
 }
 
+// TestCapMedia_DropsAnOversizedStickerEmoji confirms a sticker's own
+// Emoji fallback text, which neither service bounds, is dropped
+// outright once it runs past MaxStickerEmojiLength - the same
+// drop-rather-than-truncate treatment CapReactions already gives an
+// oversized reaction chip, and for the same reason: cutting an emoji
+// mid-cluster renders as mojibake, not a shorter valid one.
+func TestCapMedia_DropsAnOversizedStickerEmoji(t *testing.T) {
+	t.Parallel()
+
+	huge := strings.Repeat("x", domain.MaxStickerEmojiLength+1)
+	media := &domain.Media{Kind: domain.MediaSticker, Emoji: huge}
+
+	got := domain.CapMedia(media)
+	if got.Emoji != "" {
+		t.Errorf("CapMedia kept an oversized sticker emoji of %d units, want it dropped", domain.UTF16Len(got.Emoji))
+	}
+}
+
+// TestCapMedia_LeavesAShortStickerEmojiAlone confirms a sticker emoji
+// within the cap passes through unchanged.
+func TestCapMedia_LeavesAShortStickerEmojiAlone(t *testing.T) {
+	t.Parallel()
+
+	media := &domain.Media{Kind: domain.MediaSticker, Emoji: "🎉"}
+	got := domain.CapMedia(media)
+	if got.Emoji != "🎉" {
+		t.Errorf("CapMedia(%+v).Emoji = %q, want it unchanged", media, got.Emoji)
+	}
+}
+
 // TestCapDisplayName_CutsAnOversizedName confirms a display name past
 // MaxDisplayNameLength is cut to it.
 func TestCapDisplayName_CutsAnOversizedName(t *testing.T) {

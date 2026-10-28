@@ -415,13 +415,21 @@ Item {
 
   // _recomputeOverlay rebuilds _overlayRects from _effectiveMisspellings,
   // deferred with Qt.callLater since the text layout is not settled in
-  // the same tick a text or misspellings change arrives in.
+  // the same tick a text or misspellings change arrives in. Capped to
+  // SpellCheck.MAX_RENDERED_MISSPELLINGS and built with push rather than
+  // repeated concat, so a huge misspelling list - the helper already
+  // bounds its own result, but an older helper or a connector bug could
+  // still hand over more - costs linear work here too, not quadratic,
+  // and never creates an unbounded number of underline delegates.
   function _recomputeOverlay() {
     Qt.callLater(function() {
       if (!root.input) return // the input was destroyed before this deferred call ran
 
-      let rects = []
-      for (const m of root._effectiveMisspellings) rects = rects.concat(root._rectsForRange(m.start, m.end))
+      const limited = root._effectiveMisspellings.slice(0, SpellCheck.MAX_RENDERED_MISSPELLINGS)
+      const rects = []
+      for (const m of limited) {
+        for (const r of root._rectsForRange(m.start, m.end)) rects.push(r)
+      }
       root._overlayRects = rects
     })
   }
@@ -795,6 +803,19 @@ Item {
             placeholderText: root.blocked ? "Blocked" : "Message"
 
             onTextChanged: {
+              // A pasted clipboard string has no length limit of its
+              // own, unlike typing, so it is capped here to the same
+              // length messages.send would accept: assigning the
+              // capped text re-enters this handler once more, already
+              // within the cap, so the rest of it only ever runs on
+              // text that fits.
+              const capped = SpellCheck.capComposerText(text)
+              if (capped !== text) {
+                area.text = capped
+                area.cursorPosition = capped.length
+                return
+              }
+
               if (root.text !== text) root.text = text
               root._updateMentionQuery()
               root._closeSpellPicker()

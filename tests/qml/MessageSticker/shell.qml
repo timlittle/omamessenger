@@ -19,6 +19,7 @@ ShellRoot {
     if (!root.checkStickerWithThumbShowsImage()) return;
     if (!root.checkStickerHasNoBubbleFill()) return;
     if (!root.checkMentionsMeShowsGlyph()) return;
+    if (!root.checkOversizedEmojiStaysBounded()) return;
 
     console.log("PASS MessageSticker");
     Qt.exit(0);
@@ -51,6 +52,21 @@ ShellRoot {
     if (!bubble) return Check.fail("no bubble found for the sticker message");
     if (String(bubble.color) !== "#00000000" && bubble.color.a !== 0)
       return Check.fail("sticker bubble.color = " + bubble.color + ", want fully transparent");
+    return true;
+  }
+
+  // checkOversizedEmojiStaysBounded covers StickerView's own defence in
+  // depth: domain.CapMedia already bounds a sticker's emoji before it
+  // ever reaches the UI, but a connector bug or an older helper could
+  // still hand over something uncapped, so the fallback text must wrap
+  // and elide rather than lay out as one unbounded line.
+  function checkOversizedEmojiStaysBounded(): bool {
+    const emoji = Check.find(stickerHugeEmoji, "stickerEmoji");
+    if (!emoji || !emoji.visible) return Check.fail("stickerEmoji not shown for the oversized-emoji sticker");
+    if (emoji.wrapMode !== Text.Wrap) return Check.fail("stickerEmoji wrapMode = " + emoji.wrapMode + ", want Text.Wrap");
+    if (emoji.maximumLineCount !== 2) return Check.fail("stickerEmoji maximumLineCount = " + emoji.maximumLineCount + ", want 2");
+    if (emoji.elide !== Text.ElideRight) return Check.fail("stickerEmoji elide = " + emoji.elide + ", want Text.ElideRight");
+    if (emoji.contentWidth > emoji.width + 1) return Check.fail("stickerEmoji contentWidth " + emoji.contentWidth + " exceeds its bounded width " + emoji.width);
     return true;
   }
 
@@ -91,6 +107,16 @@ ShellRoot {
         message: ({
           id: "s2", outgoing: false, status: "received", created: 0, senderName: "", text: "[Sticker]",
           media: { kind: "sticker", emoji: "😀", thumb: "Zm9v" }
+        })
+      }
+
+      MessageDelegate {
+        id: stickerHugeEmoji
+        width: 600
+        annotation: root.noAnnotation
+        message: ({
+          id: "s3", outgoing: false, status: "received", created: 0, senderName: "", text: "[Sticker]",
+          media: { kind: "sticker", emoji: "x".repeat(500) }
         })
       }
 

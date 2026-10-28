@@ -79,3 +79,24 @@ test('DEBOUNCE_MS is a positive number of milliseconds', () => {
   assert.equal(typeof SpellCheck.DEBOUNCE_MS, 'number');
   assert.ok(SpellCheck.DEBOUNCE_MS > 0);
 });
+
+test('capComposerText leaves text within the cap unchanged', () => {
+  assert.equal(SpellCheck.capComposerText('hello'), 'hello');
+});
+
+test('capComposerText cuts text past MAX_COMPOSER_TEXT_LENGTH to exactly that many code points', () => {
+  const huge = 'a'.repeat(SpellCheck.MAX_COMPOSER_TEXT_LENGTH + 500);
+  const got = SpellCheck.capComposerText(huge);
+  assert.equal(got.length, SpellCheck.MAX_COMPOSER_TEXT_LENGTH);
+  assert.equal(got, 'a'.repeat(SpellCheck.MAX_COMPOSER_TEXT_LENGTH));
+});
+
+test('capComposerText never splits a surrogate pair across the cut', () => {
+  // Each emoji below is one code point but two UTF-16 units, so a
+  // length-based cut landing mid-pair would otherwise produce a lone
+  // surrogate.
+  const huge = '\u{1F600}'.repeat(SpellCheck.MAX_COMPOSER_TEXT_LENGTH + 10);
+  const got = SpellCheck.capComposerText(huge);
+  assert.equal(Array.from(got).length, SpellCheck.MAX_COMPOSER_TEXT_LENGTH);
+  assert.equal(got, '\u{1F600}'.repeat(SpellCheck.MAX_COMPOSER_TEXT_LENGTH));
+});

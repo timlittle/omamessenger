@@ -3,6 +3,7 @@ package store_test
 import (
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -155,6 +156,34 @@ func TestConversations_RanksBestOrMostRecentMatchFirst(t *testing.T) {
 
 	if got[0].Match != "ticket updated again" {
 		t.Errorf("match = %q, want the newest matching message", got[0].Match)
+	}
+}
+
+// TestConversations_BoundsAMatchedMessagesSnippet confirms a message's
+// own text, which has no length limit of its own (see
+// domain.MaxIncomingTextLength, 64 KiB), never reaches the command
+// palette's "Messages" section in full: Match must stay a short window
+// around the match, not the whole message.
+func TestConversations_BoundsAMatchedMessagesSnippet(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	huge := strings.Repeat("filler ", 2000) + "ticket " + strings.Repeat("more ", 2000)
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", Text: huge, Created: 1})
+
+	got, err := s.Conversations(t.Context(), "ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("Conversations(ticket) = %v, want one match", got)
+	}
+	if len(got[0].Match) >= len(huge) {
+		t.Errorf("Match is %d bytes, the full message's own %d: want a bounded window instead", len(got[0].Match), len(huge))
+	}
+	if !strings.Contains(got[0].Match, "ticket") {
+		t.Errorf("Match = %q, want it to still contain the matched word", got[0].Match)
 	}
 }
 

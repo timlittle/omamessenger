@@ -17,6 +17,7 @@ import QtTest
 import Quickshell
 import "ui/components"
 import "ui/lib/Keymap.js" as Keymap
+import "ui/lib/SpellCheck.js" as SpellCheck
 import "Check.js" as Check
 
 ShellRoot {
@@ -98,12 +99,35 @@ ShellRoot {
     if (!root.checkAttachmentSizeAndHint()) return;
     if (!root.checkBannerAndChipTogether()) return;
     if (!root.checkSendLaterButton()) return;
+    if (!root.checkOversizedTextIsCapped()) return;
 
     composer.attachmentPath = "";
     composer.replyTo = null;
     composer.members = [{ id: "u1", name: "Nadia" }, { id: "u2", name: "Ben" }];
     composer.input.forceActiveFocus();
     mentionFocusTimer.start();
+  }
+
+  // checkOversizedTextIsCapped covers the input's own paste guard: a
+  // pasted clipboard string has no length limit of its own, so once it
+  // lands in the TextArea it must be cut to the same length
+  // messages.send would accept, exactly as if it had been typed that
+  // short to begin with.
+  function checkOversizedTextIsCapped(): bool {
+    composer.input.text = "a".repeat(SpellCheck.MAX_COMPOSER_TEXT_LENGTH + 500);
+
+    if (composer.input.text.length !== SpellCheck.MAX_COMPOSER_TEXT_LENGTH) {
+      return Check.fail("composer input held " + composer.input.text.length + " characters, want capped to " +
+        SpellCheck.MAX_COMPOSER_TEXT_LENGTH);
+    }
+    if (composer.text.length !== SpellCheck.MAX_COMPOSER_TEXT_LENGTH) {
+      return Check.fail("composer.text held " + composer.text.length + " characters, want capped to " +
+        SpellCheck.MAX_COMPOSER_TEXT_LENGTH);
+    }
+
+    composer.input.text = "";
+    composer.text = "";
+    return true;
   }
 
   // checkSubmit verifies trimming, whitespace-only text being ignored,
@@ -400,6 +424,7 @@ ShellRoot {
   function runFocusedChecks(): void {
     if (!root.checkMentionPicker()) return;
     if (!root.checkSpellCheck()) return;
+    if (!root.checkOversizedMisspellingListStaysBounded()) return;
 
     console.log("PASS Composer");
     Qt.exit(0);
@@ -579,5 +604,34 @@ ShellRoot {
   function spellUnderlineDrawn(): bool {
     t.wait(50);
     return composer._overlayRects.length > 0;
+  }
+
+  // checkOversizedMisspellingListStaysBounded covers _recomputeOverlay's
+  // own defence in depth: the helper already caps spell.check's result
+  // (app.MaxSpellMisspellings), but a connector bug or an older helper
+  // could still hand this component more, and it must never turn that
+  // into an unbounded number of underline rectangles or delegates.
+  function checkOversizedMisspellingListStaysBounded(): bool {
+    const input = composer.input;
+    input.text = "";
+    input.text = "a".repeat(1000);
+
+    const huge = [];
+    for (let i = 0; i < SpellCheck.MAX_RENDERED_MISSPELLINGS + 300; i++) {
+      huge.push({ start: i, end: i + 1, word: "a" });
+    }
+    root.testMisspellings = huge;
+
+    t.wait(50);
+    // Each misspelling draws one rect, or two when its own range wraps
+    // across a line break (see _rectsForRange), so the bound is twice
+    // MAX_RENDERED_MISSPELLINGS, not exactly it.
+    if (composer._overlayRects.length > SpellCheck.MAX_RENDERED_MISSPELLINGS * 2) {
+      return Check.fail("overlay drew " + composer._overlayRects.length + " rects for " + huge.length +
+        " misspellings, want at most " + (SpellCheck.MAX_RENDERED_MISSPELLINGS * 2));
+    }
+
+    root.testMisspellings = [];
+    return true;
   }
 }

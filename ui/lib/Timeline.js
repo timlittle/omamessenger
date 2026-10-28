@@ -29,6 +29,33 @@ function mediaJustRetired(oldRow, message) {
   return !!message.outgoing && !!message.media && !CONFIRMED_STATUSES.has(oldRow.status) && CONFIRMED_STATUSES.has(message.status);
 }
 
+// MEDIA_IDENTITY_KEYS are the fields that, together with Kind, identify
+// which attachment a message's media points at: enough to tell a
+// caption edit (same attachment, same kind) apart from an edit that
+// swaps in different media altogether.
+var MEDIA_IDENTITY_KEYS = ['kind', 'fileName', 'size', 'width', 'height', 'duration', 'thumb', 'url'];
+
+// mediaIdentityChanged reports whether message's own media is a
+// different attachment from oldRow's own stored media - a different
+// kind, or the same kind pointing at different bytes (by
+// MEDIA_IDENTITY_KEYS) - so upsert knows a cached mediaPath and its
+// verdicts describe bytes this edit just replaced, not the ones now
+// shown, and must never be kept across it. A service's end-to-end
+// encrypted edit can change a message's media kind entirely (a voice
+// note edited into a photo, say), and the helper's own download cache
+// and safety checks are keyed by this message's id, not by its
+// media's own identity, so nothing on that side alone stops this UI
+// from reusing an older, unrelated file's path and verdicts if it is
+// not cleared here.
+function mediaIdentityChanged(oldRow, message) {
+  const before = media(oldRow);
+  const after = message.media ?? null;
+  if (!before && !after) return false;
+  if (!before || !after) return true;
+
+  return MEDIA_IDENTITY_KEYS.some((key) => (before[key] ?? null) !== (after[key] ?? null));
+}
+
 // annotateAt returns the annotation for one message. Its older neighbour
 // is the next index, because the list is shown bottom to top.
 function annotateAt(newestFirst, index, isGroup, nowMs) {

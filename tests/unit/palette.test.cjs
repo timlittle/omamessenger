@@ -5,6 +5,7 @@ const assert = require('node:assert');
 const { load } = require('./load.cjs');
 
 const Palette = load('lib/Palette.js');
+const Format = load('lib/Format.js');
 
 const items = ['New message', 'Next unread conversation', 'Show WhatsApp', 'Mute or unmute chat', 'Quit OmaMessenger'];
 const titles = (list) => list.map((s) => s);
@@ -107,6 +108,18 @@ test('messageRows: falls back to an empty sender or snippet', () => {
   assert.deepEqual(Palette.messageRows(conversations), [
     { conversationId: 'a', messageId: 'm1', sender: '', conversationTitle: 'Alpha', service: undefined, snippet: '' }
   ]);
+});
+
+// messageRows: caps an oversized snippet, as defence in depth behind
+// the helper's own bounded snippet() window, the same cap
+// Format.previewText already gives a conversation row's own preview.
+test('messageRows: caps an oversized snippet to MAX_PREVIEW_LENGTH', () => {
+  const huge = 'x'.repeat(500);
+  const conversations = [{ id: 'a', title: 'Alpha', matchMessageId: 'm1', match: huge }];
+
+  const got = Palette.messageRows(conversations);
+  assert.equal(got[0].snippet.length, Format.MAX_PREVIEW_LENGTH);
+  assert.equal(got[0].snippet, huge.slice(0, Format.MAX_PREVIEW_LENGTH));
 });
 
 test('results/items: "conversations" mode matches the list and appends the "Messages" section', () => {
