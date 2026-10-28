@@ -239,6 +239,49 @@ func TestSetPinned_ReportsAServiceFailureAsSafeInvalidInput(t *testing.T) {
 	}
 }
 
+// TestSetPinned_ShowsANoticeInsteadOfAFailureWhenTheServiceIsLocalOnly
+// confirms that connector.ErrOrganizeLocalOnly - WhatsApp's own
+// app-state verification permanently failing for this account, see
+// docs/decisions.md - is never shown as a failure: the local pin
+// already stands, and a one-time account.notice event replaces the
+// usual "did not accept the change" banner.
+func TestSetPinned_ShowsANoticeInsteadOfAFailureWhenTheServiceIsLocalOnly(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.organizer.err = connector.ErrOrganizeLocalOnly
+
+	got, err := f.commands.SetPinned(ctx, chat.ID, true)
+	if err != nil {
+		t.Fatalf("SetPinned with a local-only service = %v, want no error", err)
+	}
+	if !got.Pinned {
+		t.Errorf("Conversation = %+v, want Pinned true: the local change still stands", got)
+	}
+
+	notice, ok := f.published.lastOf(app.EventAccountNotice).(app.AccountNotice)
+	if !ok {
+		t.Fatalf("events = %v, want an account.notice", f.published.take())
+	}
+	if notice.AccountID != chat.AccountID || !strings.Contains(notice.Message, "WhatsApp") {
+		t.Errorf("notice = %+v, want it to name the account and explain why", notice)
+	}
+	if lines := f.logger.take(); len(lines) != 0 {
+		t.Errorf("logged = %v, want nothing logged here: the connector already logged this once", lines)
+	}
+
+	// A second pin for the same account must not repeat the notice.
+	f.published.take()
+	if _, err := f.commands.SetPinned(ctx, chat.ID, false); err != nil {
+		t.Fatalf("second SetPinned = %v, want no error", err)
+	}
+	if got := f.published.take(); slices.Contains(got, app.EventAccountNotice) {
+		t.Errorf("events = %v, want no repeated account.notice", got)
+	}
+}
+
 func TestSetPinned_ReportsAPinLimitAsInvalidInput(t *testing.T) {
 	t.Parallel()
 

@@ -206,3 +206,36 @@ func TestDeleteMessages_MapsConnectorFailures(t *testing.T) {
 		})
 	}
 }
+
+// TestDeleteMessages_RemovesTheMessageLocallyWhenTheServiceIsLocalOnly
+// confirms connector.ErrOrganizeLocalOnly - WhatsApp's own
+// "delete for me" app-state patch found permanently unsyncable, see
+// docs/decisions.md - still deletes the message from this account's
+// own view, with a one-time notice in place of a failure: unlike
+// every other connector failure above, this one is not a refusal at
+// all.
+func TestDeleteMessages_RemovesTheMessageLocallyWhenTheServiceIsLocalOnly(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m := sentMessage(t, f, chat)
+	f.deleter.err = connector.ErrOrganizeLocalOnly
+
+	if err := f.commands.DeleteMessages(ctx, chat.ID, []string{m.ID}, false); err != nil {
+		t.Fatalf("DeleteMessages with a local-only service = %v, want no error", err)
+	}
+
+	if _, err := f.store.Message(ctx, m.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Message after a local-only delete = %v, want it removed", err)
+	}
+
+	notice, ok := f.published.lastOf(app.EventAccountNotice).(app.AccountNotice)
+	if !ok {
+		t.Fatalf("events = %v, want an account.notice", f.published.take())
+	}
+	if notice.AccountID != chat.AccountID {
+		t.Errorf("notice = %+v, want it to name the account", notice)
+	}
+}

@@ -73,6 +73,17 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 )
 
+// errAppStateUnverifiable wraps whatsmeow.ErrAppStateUpdate when
+// sendAppStateRecovering's own incremental AND full-sync catch-up
+// fetches both failed because the local copy is corrupt (see
+// fetchAppStateErrClass), and the patch was still rejected after both:
+// this account's own collection can never be reconciled with the
+// server, not merely behind by a page or two, so repeating the same
+// recovery again later costs real time and traffic for no gain (see
+// organizehealth.go, upstream whatsmeow#1301). sendOrganizePatch is
+// the only thing that checks for this.
+var errAppStateUnverifiable = errors.New("whatsapp: app state collection cannot be verified")
+
 // sendAppStateRecovering sends patch through dev, and, when WhatsApp's
 // server rejects it, works through two rounds of catching this
 // account's own app-state up before giving up: first an incremental
@@ -84,21 +95,30 @@ import (
 // timeout or a missing app-state key, is returned at once, since
 // neither round can fix it; the final rejection, if both rounds still
 // leave one, is logged with the server's own code and reason text
-// before it is returned.
+// before it is returned, additionally wrapping errAppStateUnverifiable
+// when both catch-up fetches failed on a corrupt local copy rather
+// than merely falling behind.
 func sendAppStateRecovering(ctx context.Context, dev device, patch appstate.PatchInfo) error {
 	err := dev.sendAppState(ctx, patch)
 	if !errors.Is(err, whatsmeow.ErrAppStateUpdate) {
 		return err
 	}
 
-	err = appStateCatchUp(ctx, dev, patch, false, err)
+	var incrementalClass string
+	incrementalClass, err = appStateCatchUp(ctx, dev, patch, false, err)
 	if !errors.Is(err, whatsmeow.ErrAppStateUpdate) {
 		return err
 	}
 
-	err = appStateCatchUp(ctx, dev, patch, true, err)
-	if errors.Is(err, whatsmeow.ErrAppStateUpdate) {
-		logAppStateRejected(patch.Type, err)
+	var fullClass string
+	fullClass, err = appStateCatchUp(ctx, dev, patch, true, err)
+	if !errors.Is(err, whatsmeow.ErrAppStateUpdate) {
+		return err
+	}
+
+	logAppStateRejected(patch.Type, err)
+	if incrementalClass == appStateClassCorrupt && fullClass == appStateClassCorrupt {
+		return errors.Join(err, errAppStateUnverifiable)
 	}
 
 	return err
@@ -110,16 +130,39 @@ func sendAppStateRecovering(ctx context.Context, dev device, patch appstate.Patc
 // that made this attempt necessary; it is what appStateCatchUp
 // returns unchanged when the fetch itself fails, since the caller
 // already has nothing more useful to report, after logging that
-// fetch's own error by its safe class (see fetchAppStateErrClass):
-// previously swallowed entirely, which left no trace of why even an
-// incremental catch-up could not run at all.
-func appStateCatchUp(ctx context.Context, dev device, patch appstate.PatchInfo, fullSync bool, rejection error) error {
-	if err := dev.fetchAppState(ctx, patch.Type, fullSync); err != nil {
-		logAppStateFetchFailed(patch.Type, fullSync, err)
-		return rejection
+// fetch's own error by its safe class (see fetchAppStateErrClass),
+// which this also returns, so sendAppStateRecovering can tell a
+// corrupt local copy apart from merely falling behind.
+func appStateCatchUp(ctx context.Context, dev device, patch appstate.PatchInfo, fullSync bool, rejection error) (class string, err error) {
+	if fetchErr := dev.fetchAppState(ctx, patch.Type, fullSync); fetchErr != nil {
+		logAppStateFetchFailed(patch.Type, fullSync, fetchErr)
+		return fetchAppStateErrClass(fetchErr), rejection
 	}
 
-	return dev.sendAppState(ctx, patch)
+	return "", dev.sendAppState(ctx, patch)
+}
+
+// sendOrganizePatch sends patch through dev, the one choke point every
+// app-state write this connector makes goes through (SetPinned,
+// SetArchived, the chat-read mutation and delete-for-me): it skips
+// WhatsApp's server entirely, reporting connector.ErrOrganizeLocalOnly
+// at once, once patch.Type has already been found permanently
+// unverifiable (see Connector.setOrganizeLocalOnly), and otherwise
+// sends it through sendAppStateRecovering's own catch-up-and-retry,
+// recording that discovery - and persisting it, see organizehealth.go -
+// the first time one of those attempts comes back unverifiable rather
+// than merely rejected.
+func (c *Connector) sendOrganizePatch(ctx context.Context, dev device, patch appstate.PatchInfo) error {
+	if c.organizeLocalOnly(patch.Type) {
+		return connector.ErrOrganizeLocalOnly
+	}
+
+	err := classifyAppStateErr(sendAppStateRecovering(ctx, dev, patch))
+	if errors.Is(err, connector.ErrOrganizeLocalOnly) {
+		c.setOrganizeLocalOnly(ctx, patch.Type, true)
+	}
+
+	return err
 }
 
 // classifyAppStateErr joins a generic connector.Err* sentinel into err
@@ -134,6 +177,8 @@ func classifyAppStateErr(err error) error {
 	switch {
 	case err == nil:
 		return nil
+	case errors.Is(err, errAppStateUnverifiable):
+		return errors.Join(connector.ErrOrganizeLocalOnly, err)
 	case errors.Is(err, appstate.ErrKeyNotFound):
 		return errors.Join(connector.ErrOrganizeSyncIncomplete, err)
 	case errors.Is(err, whatsmeow.ErrAppStateUpdate):
@@ -142,6 +187,14 @@ func classifyAppStateErr(err error) error {
 		return err
 	}
 }
+
+// appStateClassCorrupt is fetchAppStateErrClass's category for a
+// catch-up fetch that failed because this account's own locally
+// cached copy no longer agrees with the server at all: sendAppStateRecovering's
+// own cue to try a full resync next, and sendOrganizePatch's cue, when
+// both rounds come back this way, that no amount of catching up will
+// ever fix it (see this file's own doc comment).
+const appStateClassCorrupt = "corrupt"
 
 // appStateErrClass categorizes why sending an app-state patch failed,
 // safe to log alongside it: "key" when whatsmeow has no app-state key
@@ -181,7 +234,7 @@ func fetchAppStateErrClass(err error) string {
 		errors.Is(err, appstate.ErrMismatchingContentMAC),
 		errors.Is(err, appstate.ErrMismatchingIndexMAC),
 		errors.Is(err, appstate.ErrMissingPreviousSetValueOperation):
-		return "corrupt"
+		return appStateClassCorrupt
 	case errors.Is(err, appstate.ErrKeyNotFound):
 		return "key"
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):

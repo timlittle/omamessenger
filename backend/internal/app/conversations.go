@@ -133,7 +133,7 @@ func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned 
 		return conv, err
 	}
 
-	return conv, c.pinError(pinned, c.organizer.SetPinned(ctx, conv, pinned))
+	return conv, c.pinError(ctx, conv.AccountID, pinned, c.organizer.SetPinned(ctx, conv, pinned))
 }
 
 // MovePin moves a pinned conversation one place up or down among the
@@ -183,9 +183,16 @@ func parsePinDirection(direction string) (bool, error) {
 // SetArchived's own service failures: a safe message naming what
 // happened, logged with its safe, precise class, rather than the fixed
 // internal error a request that changed nothing at all would get. Nil
-// passes through unchanged.
-func (c *Commands) pinError(pinned bool, err error) error {
+// passes through unchanged, as does connector.ErrOrganizeLocalOnly
+// once organizeLocalOnlyHandled has shown its own one-time notice for
+// accountID instead: that is never reported as a failure at all (see
+// organizenotice.go).
+func (c *Commands) pinError(ctx context.Context, accountID string, pinned bool, err error) error {
 	if err == nil {
+		return nil
+	}
+
+	if c.organizeLocalOnlyHandled(ctx, accountID, err) {
 		return nil
 	}
 
@@ -250,7 +257,7 @@ func (c *Commands) SetArchived(ctx context.Context, conversationID string, archi
 		c.rePinAfterUnarchive(ctx, conv)
 	}
 
-	return conv, c.archiveError(archived, serviceErr)
+	return conv, c.archiveError(ctx, conv.AccountID, archived, serviceErr)
 }
 
 // unpinForArchive clears conv's local pin before SetArchived archives
@@ -293,9 +300,12 @@ func (c *Commands) restorePinForUnarchive(ctx context.Context, conversationID st
 // failure here is only logged, with its safe, precise class, never
 // returned to the caller.
 func (c *Commands) rePinAfterUnarchive(ctx context.Context, conv domain.Conversation) {
-	if err := c.organizer.SetPinned(ctx, conv, true); err != nil {
-		c.logger.Printf("conversations: re-pin after unarchive failed (error_class=%s)", organizeFailureClass(err))
+	err := c.organizer.SetPinned(ctx, conv, true)
+	if err == nil || c.organizeLocalOnlyHandled(ctx, conv.AccountID, err) {
+		return
 	}
+
+	c.logger.Printf("conversations: re-pin after unarchive failed (error_class=%s)", organizeFailureClass(err))
 }
 
 // archiveError turns a service failure that followed SetArchived's own
@@ -305,9 +315,16 @@ func (c *Commands) rePinAfterUnarchive(ctx context.Context, conv domain.Conversa
 // user already has the result they asked for here, so even a failure
 // this package cannot name more precisely is safe to describe in those
 // terms, rather than the fixed internal error a request that changed
-// nothing at all would get. Nil passes through unchanged.
-func (c *Commands) archiveError(archived bool, err error) error {
+// nothing at all would get. Nil passes through unchanged, as does
+// connector.ErrOrganizeLocalOnly once organizeLocalOnlyHandled has
+// shown its own one-time notice for accountID instead (see pinError's
+// own doc comment).
+func (c *Commands) archiveError(ctx context.Context, accountID string, archived bool, err error) error {
 	if err == nil {
+		return nil
+	}
+
+	if c.organizeLocalOnlyHandled(ctx, accountID, err) {
 		return nil
 	}
 
@@ -329,9 +346,15 @@ func (c *Commands) archiveError(archived bool, err error) error {
 // (connector.ErrOrganizeSyncIncomplete, such as WhatsApp's app-state
 // sync never finishing after pairing), "rejected" when a connector
 // reports the service explicitly refused the change
-// (connector.ErrOrganizeRejected), and "other" for anything else, such
-// as a plain network failure. Never the error's own text, which a
-// connector does not guarantee free of an id or similar detail.
+// (connector.ErrOrganizeRejected), "local" when a connector reports
+// the change could never be synced at all right now
+// (connector.ErrOrganizeLocalOnly) - every caller of this is expected
+// to have already handled that one through organizeLocalOnlyHandled
+// and never reach here with it, this class exists only so a caller
+// that forgets still logs something sensible rather than "other" -
+// and "other" for anything else, such as a plain network failure.
+// Never the error's own text, which a connector does not guarantee
+// free of an id or similar detail.
 func organizeFailureClass(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
@@ -340,6 +363,8 @@ func organizeFailureClass(err error) string {
 		return "sync"
 	case errors.Is(err, connector.ErrOrganizeRejected):
 		return "rejected"
+	case errors.Is(err, connector.ErrOrganizeLocalOnly):
+		return "local"
 	default:
 		return "other"
 	}

@@ -13,8 +13,10 @@ import (
 	"errors"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/appstate"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector/connectortest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -250,6 +252,70 @@ func TestRun_RefusesASecondConcurrentRun(t *testing.T) {
 		cancel()
 		synctest.Wait()
 		drain(t, done)
+	})
+}
+
+// TestRun_RechecksOrganizeHealthDailyAndClearsAFlagThatVerifies
+// confirms Run's own background recheck (see organizehealth.go) is
+// actually wired up and running for the life of the connection: once
+// WAPatchRegularLow is flagged unverifiable mid-run, exactly the way
+// sendOrganizePatch would after a real pin or archive discovers it,
+// the recheck's own daily tick clears it the moment an incremental
+// fetch succeeds, without needing a restart.
+func TestRun_RechecksOrganizeHealthDailyAndClearsAFlagThatVerifies(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dev := newFakeDevice()
+		dev.paired = true
+		c := newTestConnector(dev)
+		var sink connectortest.Sink
+
+		done := make(chan error, 1)
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() { done <- c.Run(ctx, &sink) }()
+		synctest.Wait()
+
+		c.setOrganizeLocalOnly(t.Context(), appstate.WAPatchRegularLow, true)
+
+		time.Sleep(organizeHealthCheckInterval)
+		synctest.Wait()
+
+		if c.organizeLocalOnly(appstate.WAPatchRegularLow) {
+			t.Error("organizeLocalOnly after the daily recheck = true, want it cleared once the incremental fetch succeeds")
+		}
+
+		cancel()
+		synctest.Wait()
+		drain(t, done)
+	})
+}
+
+// TestRun_StopsItsBackgroundRecheckWhenItReturns confirms Run's own
+// background recheck goroutine is stopped, not leaked, the moment Run
+// itself returns: a flag set right as the context is cancelled must
+// never still be read by a goroutine trying to use dev after Run's own
+// deferred disconnect and close have already torn it down.
+func TestRun_StopsItsBackgroundRecheckWhenItReturns(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		dev := newFakeDevice()
+		dev.paired = true
+		c := newTestConnector(dev)
+		var sink connectortest.Sink
+
+		done := make(chan error, 1)
+		ctx, cancel := context.WithCancel(t.Context())
+		go func() { done <- c.Run(ctx, &sink) }()
+		synctest.Wait()
+
+		cancel()
+		synctest.Wait()
+		drain(t, done)
+
+		// Run has returned; waitForStop's own wg.Wait() already
+		// blocked for the recheck goroutine to notice ctx is done and
+		// return, so nothing is left running against the closed dev.
+		if !dev.closed || dev.disconnects == 0 {
+			t.Error("Run did not tear down the device after returning")
+		}
 	})
 }
 

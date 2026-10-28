@@ -231,6 +231,54 @@ func TestDeleteMessages_RecoversADeleteForMePatchAfterACatchUp(t *testing.T) {
 	}
 }
 
+// TestDeleteMessages_ReportsLocalOnlyOnceRegularHighIsUnverifiable
+// confirms delete-for-me reports connector.ErrOrganizeLocalOnly and
+// skips WhatsApp's server once its own patch type, WAPatchRegularHigh,
+// is flagged unverifiable - tracked separately from pin, archive and
+// mark-read's WAPatchRegularLow (see organize.go's own doc comment on
+// why delete-for-me uses a different app-state collection), which the
+// second assertion below confirms: flagging regular_low alone leaves
+// delete-for-me unaffected.
+func TestDeleteMessages_ReportsLocalOnlyOnceRegularHighIsUnverifiable(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	c.loadOrganizeHealth(appstate.WAPatchRegularHigh, true)
+
+	err := c.DeleteMessages(t.Context(), directChat, []string{"M1"}, false)
+	if !errors.Is(err, connector.ErrOrganizeLocalOnly) {
+		t.Errorf("DeleteMessages = %v, want connector.ErrOrganizeLocalOnly", err)
+	}
+	if len(dev.appStatePatches) != 0 {
+		t.Errorf("patches sent = %d, want none once regular_high is flagged unverifiable", len(dev.appStatePatches))
+	}
+}
+
+// TestDeleteMessages_IsUnaffectedByRegularLowBeingUnverifiable confirms
+// delete-for-me still reaches WhatsApp's server when only pin,
+// archive and mark-read's own patch type is flagged unverifiable,
+// since delete-for-me is a different app-state collection (see the
+// test above).
+func TestDeleteMessages_IsUnaffectedByRegularLowBeingUnverifiable(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c, media := connectedMediaFixture(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "M1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	c.loadOrganizeHealth(appstate.WAPatchRegularLow, true)
+
+	if err := c.DeleteMessages(t.Context(), directChat, []string{"M1"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(dev.appStatePatches) != 1 {
+		t.Errorf("patches sent = %d, want 1, unaffected by regular_low alone", len(dev.appStatePatches))
+	}
+}
+
 func TestDeleteMessages_FailsForABadConversationID(t *testing.T) {
 	t.Parallel()
 

@@ -200,7 +200,9 @@ Item {
   // whatever a message action just confirmed, such as copying or
   // saving a photo or video, or "Play notification sound" finding
   // nothing to play (see ConversationController.notice), or blocking,
-  // unblocking or reporting a chat as spam (see ListController.notice).
+  // unblocking or reporting a chat as spam (see ListController.notice),
+  // and finally to an account.notice the helper sent on its own (see
+  // Service.accountNotice) once nothing else is confirming anything.
   // It never competes with an error: the two show in different places
   // and can be visible at once.
   readonly property string toastText: Toast.pickText(
@@ -208,6 +210,7 @@ Item {
     root.service ? WhatsNew.hintText(root.service.appVersion) : "",
     (root.conversationController ? root.conversationController.notice : "")
       || (root.listController ? root.listController.notice : "")
+      || (root.service ? root.service.accountNotice : "")
   )
 
   // doctorOpen shows the health check report.
@@ -447,6 +450,12 @@ Item {
     root._updateHintDismissed = true;
     if (root.conversationController) root.conversationController.clearNotice();
     if (root.listController) root.listController.clearNotice();
+    // Guarded by typeof, not just truthiness: a handful of other test
+    // harnesses script `service` as a bare QtObject standing in for
+    // just the properties they need, with no clearAccountNotice of
+    // its own, unlike conversationController and listController above,
+    // which are always the real components.
+    if (root.service && typeof root.service.clearAccountNotice === "function") root.service.clearAccountNotice();
   }
 
   // setPaletteQuery filters the palette and highlights the best match.

@@ -23,6 +23,7 @@ const (
 	EventScheduledUpdated    = "scheduledMessage.updated"
 	EventScheduledRemoved    = "scheduledMessage.removed"
 	EventNotificationSound   = "notification.sound"
+	EventAccountNotice       = "account.notice"
 )
 
 // ScheduledRemoved is the data of a scheduledMessage.removed event: a
@@ -94,6 +95,19 @@ type NotificationSound struct {
 	ConversationID string `json:"conversationId"`
 	Service        string `json:"service"`
 	HasCustomSound bool   `json:"hasCustomSound"`
+}
+
+// AccountNotice is the data of an account.notice event: a safe,
+// one-time heads-up about something an account's service cannot do
+// right now, shown in the UI's existing toast rather than any error
+// banner - WhatsApp's own app-state verification permanently failing
+// for pin, archive, mark-read and delete-for-me is the only case
+// today (see connector.ErrOrganizeLocalOnly and docs/decisions.md).
+// Commands publishes it once per account per helper run, the first
+// time it discovers the condition (see organizeLocalOnlyHandled).
+type AccountNotice struct {
+	AccountID string `json:"accountId"`
+	Message   string `json:"message"`
 }
 
 // AuthStep is the data of an auth.step event: what an account's sign-in

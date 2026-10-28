@@ -14,6 +14,7 @@ package whatsapp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types"
 
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -72,7 +74,7 @@ func (c *Connector) MarkRead(ctx context.Context, conv domain.Conversation) erro
 		receipts += len(ids)
 	}
 
-	patch := sendChatReadState(readCtx, dev, media, chat, conv.RemoteID)
+	patch := c.sendChatReadState(readCtx, dev, media, chat, conv.RemoteID)
 	logMarkRead(receipts, len(pending), patch)
 
 	return nil
@@ -101,12 +103,18 @@ func markReadFrom(ctx context.Context, dev device, chat types.JID, senderRemoteI
 
 // The chat_patch values logMarkRead reports for sendChatReadState's
 // outcome: sent once WhatsApp accepted the mutation, failed once it
-// did not, and skipped when there was no saved message to name it by
-// at all.
+// did not, skipped when there was no saved message to name it by at
+// all, and localOnly when this account's own regular_low collection
+// has already been found permanently unverifiable (see
+// connector.ErrOrganizeLocalOnly), so this mutation was never sent at
+// all - not a failure, since the per-message receipts markReadFrom
+// already sent still clear this chat's unread count and update
+// WhatsApp's own server-side progress regardless.
 const (
-	chatPatchSent    = "sent"
-	chatPatchFailed  = "failed"
-	chatPatchSkipped = "skipped"
+	chatPatchSent      = "sent"
+	chatPatchFailed    = "failed"
+	chatPatchSkipped   = "skipped"
+	chatPatchLocalOnly = "local_only"
 )
 
 // chatPatchResult is what sendChatReadState's app-state mutation
@@ -131,8 +139,11 @@ type chatPatchResult struct {
 // than failing the whole MarkRead call, the same as Telegram's own read
 // reporting, since the per-message receipts already sent still update
 // WhatsApp's server-side progress either way, and a later resync
-// corrects any miss.
-func sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat types.JID, convRemoteID string) chatPatchResult {
+// corrects any miss. It goes through sendOrganizePatch, the same choke
+// point SetPinned and SetArchived use, so it skips WhatsApp's server
+// entirely, reporting chatPatchLocalOnly, once this account's own
+// regular_low collection has already been found unverifiable.
+func (c *Connector) sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat types.JID, convRemoteID string) chatPatchResult {
 	messageID, key, found, err := media.latestMessageKey(ctx, convRemoteID)
 	if err != nil || !found {
 		return chatPatchResult{status: chatPatchSkipped}
@@ -146,7 +157,12 @@ func sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat 
 	// (see lidFormOf's own doc comment).
 	target := lidFormOf(ctx, dev, chat)
 	patch := appstate.BuildMarkChatAsRead(target, true, time.UnixMilli(key.timestamp), targetKey(target, key, messageID))
-	if err := sendAppStateRecovering(ctx, dev, patch); err != nil {
+	if err := c.sendOrganizePatch(ctx, dev, patch); err != nil {
+		if errors.Is(err, connector.ErrOrganizeLocalOnly) {
+			result.status = chatPatchLocalOnly
+			return result
+		}
+
 		result.status = chatPatchFailed
 		result.failureClass = appStateErrClass(err)
 	}

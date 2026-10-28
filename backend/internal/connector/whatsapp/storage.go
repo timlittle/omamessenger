@@ -85,6 +85,11 @@ func openMediaStoreDSN(ctx context.Context, dsn string) (*mediaStore, error) {
 		return nil, err
 	}
 
+	if err := ensureOrganizeHealthTable(ctx, db); err != nil {
+		_ = db.Close() // same as above
+		return nil, err
+	}
+
 	return &mediaStore{db: db}, nil
 }
 

@@ -309,11 +309,12 @@ func New(d Deps) (*Commands, *Ingest) {
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, archiveUnpinner: d.ArchiveUnpinner, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
 		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, filePicker: d.FilePicker, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
-		recentErrors: &errorHistory{},
-		reminders:    newReminders(d.Store, d.Notifier, events, state),
-		retries:      retries,
-		scheduled:    scheduled,
-		dataDir:      d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
+		recentErrors:    &errorHistory{},
+		reminders:       newReminders(d.Store, d.Notifier, events, state),
+		retries:         retries,
+		scheduled:       scheduled,
+		organizeNotices: &organizeNotices{},
+		dataDir:         d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 		downloadsDir: d.DownloadsDir,
 	}
 	retries.commands = commands

@@ -280,6 +280,43 @@ func TestSetArchived_ReportsAServiceFailureAsSafeInvalidInput(t *testing.T) {
 	}
 }
 
+// TestSetArchived_ShowsANoticeInsteadOfAFailureWhenTheServiceIsLocalOnly
+// is SetArchived's own version of
+// TestSetPinned_ShowsANoticeInsteadOfAFailureWhenTheServiceIsLocalOnly.
+func TestSetArchived_ShowsANoticeInsteadOfAFailureWhenTheServiceIsLocalOnly(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.organizer.err = connector.ErrOrganizeLocalOnly
+
+	got, err := f.commands.SetArchived(ctx, chat.ID, true)
+	if err != nil {
+		t.Fatalf("SetArchived with a local-only service = %v, want no error", err)
+	}
+	if !got.Archived {
+		t.Errorf("Conversation = %+v, want Archived true: the local change still stands", got)
+	}
+
+	notice, ok := f.published.lastOf(app.EventAccountNotice).(app.AccountNotice)
+	if !ok {
+		t.Fatalf("events = %v, want an account.notice", f.published.take())
+	}
+	if notice.AccountID != chat.AccountID {
+		t.Errorf("notice = %+v, want it to name the account", notice)
+	}
+
+	// A second archive for the same account must not repeat the notice.
+	f.published.take()
+	if _, err := f.commands.SetArchived(ctx, chat.ID, false); err != nil {
+		t.Fatalf("second SetArchived = %v, want no error", err)
+	}
+	if got := f.published.take(); slices.Contains(got, app.EventAccountNotice) {
+		t.Errorf("events = %v, want no repeated account.notice", got)
+	}
+}
+
 // TestSetArchived_LogsThePreciseFailureClass checks organizeFailureClass
 // through the public API: a connector's own ErrOrganizeSyncIncomplete
 // (its local sync state was not ready yet, such as WhatsApp's app-state

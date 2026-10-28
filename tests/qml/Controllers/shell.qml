@@ -612,6 +612,23 @@ ShellRoot {
       return Check.fail("confirming the link question opened " + JSON.stringify(openedUrl) + ", want the real url");
     if (windowController.linkConfirmOpen) return Check.fail("confirming the link question did not close it");
 
+    // account.notice (see docs/api.md) reaches the toast through
+    // Service's own accountNotice property, falling back behind
+    // whatever a conversation or list action is already confirming
+    // (dismissToast clears any leftover from earlier steps first), and
+    // dismissing the toast clears it so it never reappears on its own
+    // once shown.
+    windowController.dismissToast();
+    service._handleEvent("account.notice", {
+      accountId: "wa",
+      message: "WhatsApp can't sync pins, archive and read state for this account yet, so they're kept on this computer."
+    });
+    if (windowController.toastText !== "WhatsApp can't sync pins, archive and read state for this account yet, so they're kept on this computer.")
+      return Check.fail("toastText = " + JSON.stringify(windowController.toastText) + ", want the account notice");
+    windowController.dismissToast();
+    if (windowController.toastText || service.accountNotice)
+      return Check.fail("dismissToast did not clear the account notice");
+
     console.log("PASS Controllers");
     Qt.exit(0);
   }

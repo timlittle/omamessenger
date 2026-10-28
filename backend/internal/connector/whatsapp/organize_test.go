@@ -293,6 +293,26 @@ func TestSetPinned_WrapsAWhatsAppError(t *testing.T) {
 	}
 }
 
+// TestSetPinned_ReportsLocalOnlyOnceRegularLowIsUnverifiable confirms
+// SetPinned reports connector.ErrOrganizeLocalOnly, through
+// sendOrganizePatch, once this account's regular_low collection is
+// already flagged unverifiable (see organizehealth_test.go for that
+// flag's own tests), skipping WhatsApp's server entirely rather than
+// sending anything.
+func TestSetPinned_ReportsLocalOnlyOnceRegularLowIsUnverifiable(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c := connectedFixture(t)
+	c.loadOrganizeHealth(appstate.WAPatchRegularLow, true)
+
+	if err := c.SetPinned(t.Context(), directChat, true); !errors.Is(err, connector.ErrOrganizeLocalOnly) {
+		t.Errorf("SetPinned = %v, want connector.ErrOrganizeLocalOnly", err)
+	}
+	if len(dev.appStatePatches) != 0 {
+		t.Errorf("appStatePatches = %d, want none sent once regular_low is flagged unverifiable", len(dev.appStatePatches))
+	}
+}
+
 func TestSetPinned_Fails(t *testing.T) {
 	t.Parallel()
 
@@ -404,6 +424,23 @@ func TestSetArchived_WrapsAWhatsAppError(t *testing.T) {
 
 	if err := c.SetArchived(t.Context(), directChat, true); !errors.Is(err, dev.appStateErr) {
 		t.Errorf("SetArchived = %v, want it to wrap the device's error", err)
+	}
+}
+
+// TestSetArchived_ReportsLocalOnlyOnceRegularLowIsUnverifiable is
+// SetArchived's own version of
+// TestSetPinned_ReportsLocalOnlyOnceRegularLowIsUnverifiable.
+func TestSetArchived_ReportsLocalOnlyOnceRegularLowIsUnverifiable(t *testing.T) {
+	t.Parallel()
+
+	dev, _, c := connectedFixture(t)
+	c.loadOrganizeHealth(appstate.WAPatchRegularLow, true)
+
+	if err := c.SetArchived(t.Context(), directChat, true); !errors.Is(err, connector.ErrOrganizeLocalOnly) {
+		t.Errorf("SetArchived = %v, want connector.ErrOrganizeLocalOnly", err)
+	}
+	if len(dev.appStatePatches) != 0 {
+		t.Errorf("appStatePatches = %d, want none sent once regular_low is flagged unverifiable", len(dev.appStatePatches))
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"sync"
 
+	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/types/events"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
@@ -56,6 +57,15 @@ type Connector struct {
 	reactionOrder      []string                     // reactions' own keys in the order they were first tracked, so react.go's eviction always drops the oldest one first
 	undecryptable      map[string]bool              // "<conversation remote id>/<message remote id>" still waiting on a placeholder (see live.go's handleUndecryptable), bounded by maxUndecryptableTargets (see undecryptable.go)
 	undecryptableOrder []string                     // undecryptable's own keys in the order they were first tracked, so undecryptable.go's eviction always drops the oldest one first
+
+	// organizeUnsyncable marks, per app-state patch type, whether this
+	// account's own copy of that collection has been found permanently
+	// unverifiable (see appstate.go's sendOrganizePatch): once true,
+	// SetPinned, SetArchived, the chat-read patch and delete-for-me
+	// skip WhatsApp's server entirely for that patch type and report
+	// connector.ErrOrganizeLocalOnly at once, until a background
+	// recheck (see organizehealth.go) finds it verifies again.
+	organizeUnsyncable map[appstate.WAPatchName]bool
 
 	// retryWaiters holds one channel per message remote id currently
 	// waiting on the primary phone's answer to a media retry request
@@ -148,6 +158,10 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	}
 	defer func() { _ = media.close() }() // same as the session close above
 
+	if unsyncable, err := media.organizeUnsyncable(ctx, appstate.WAPatchRegularLow); err == nil {
+		c.loadOrganizeHealth(appstate.WAPatchRegularLow, unsyncable)
+	}
+
 	sink.AccountStatus(ctx, c.account.ID, domain.AccountConnecting, "")
 
 	stopped := make(chan error, 1)
@@ -168,12 +182,33 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	c.connected(dev, sink, media)
 	defer c.disconnected()
 
+	return c.waitForStop(ctx, dev, stopped)
+}
+
+// waitForStop runs the background organize-health recheck (see
+// organizehealth.go) alongside Run's own wait for ctx to be cancelled
+// or the connection to end for good, through a context derived from
+// ctx that is cancelled the moment this returns for either reason, so
+// the recheck never outlives dev, which Run's own deferred close and
+// disconnect tear down right after this returns.
+func (c *Connector) waitForStop(ctx context.Context, dev device, stopped <-chan error) error {
+	runCtx, cancel := context.WithCancel(ctx)
+
+	var wg sync.WaitGroup
+	wg.Go(func() { c.runOrganizeHealthCheck(runCtx, dev) })
+
+	var result error
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		result = ctx.Err()
 	case err := <-stopped:
-		return err
+		result = err
 	}
+
+	cancel()
+	wg.Wait()
+
+	return result
 }
 
 // connectOrPair connects a session that is already paired, or pairs a

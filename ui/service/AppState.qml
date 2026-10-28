@@ -23,6 +23,13 @@ QtObject {
   // again after the panel is recreated.
   property var pendingAuth: null
 
+  // accountNotice is the most recent account.notice event's own
+  // message, or "" once dismissed: a safe, one-time heads-up (today,
+  // WhatsApp's own app-state verification failing for an account, see
+  // docs/decisions.md) that WindowController.toastText falls back to,
+  // never the error banner.
+  property string accountNotice: ""
+
   // version is the helper's protocol version, from hello.
   property int version: 0
 
@@ -99,5 +106,10 @@ QtObject {
   function applyUnreadChanged(data: var): void {
     root.unreadTotal = data.total || 0;
     root.unreadByService = data.byService || {};
+  }
+
+  // applyAccountNotice records an account.notice event's own message.
+  function applyAccountNotice(data: var): void {
+    root.accountNotice = (data && data.message) || "";
   }
 }

@@ -240,6 +240,62 @@ func TestMarkRead_IgnoresAFailedAppStatePatch(t *testing.T) {
 	}
 }
 
+// TestMarkRead_StillSendsReceiptsOnceRegularLowIsUnverifiable confirms
+// MarkRead's per-message read receipts, which are not regular_low
+// writes, still go out even once this account's regular_low collection
+// is flagged unverifiable (see organizehealth_test.go): only the
+// chat-read app-state patch is skipped.
+func TestMarkRead_StillSendsReceiptsOnceRegularLowIsUnverifiable(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice()
+	var sink connectortest.Sink
+	c := newConnectorWithMedia(dev, &sink, media)
+	c.loadOrganizeHealth(appstate.WAPatchRegularLow, true)
+
+	conv := directChat
+	conv.Unread = 1
+	if err := c.MarkRead(t.Context(), conv); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(dev.markReadCalls) != 1 {
+		t.Errorf("markRead calls = %d, want the per-message receipt still sent", len(dev.markReadCalls))
+	}
+	if len(dev.appStatePatches) != 0 {
+		t.Errorf("app state patches = %d, want the chat-read patch skipped entirely", len(dev.appStatePatches))
+	}
+}
+
+// TestSendChatReadState_ReportsLocalOnlyOnceRegularLowIsUnverifiable
+// confirms sendChatReadState itself reports chatPatchLocalOnly, rather
+// than chatPatchFailed, once regular_low is flagged unverifiable.
+func TestSendChatReadState_ReportsLocalOnlyOnceRegularLowIsUnverifiable(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), directChat.RemoteID, "m1", messageKey{senderID: remoteID(directPeer), fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	dev := newFakeDevice()
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+	c.loadOrganizeHealth(appstate.WAPatchRegularLow, true)
+
+	got := c.sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	if got.status != chatPatchLocalOnly {
+		t.Errorf("sendChatReadState = %+v, want status %q", got, chatPatchLocalOnly)
+	}
+	if len(dev.appStatePatches) != 0 {
+		t.Errorf("appStatePatches = %d, want none sent", len(dev.appStatePatches))
+	}
+}
+
 func TestMarkRead_NoopWithNothingUnread(t *testing.T) {
 	t.Parallel()
 
@@ -318,8 +374,9 @@ func TestSendChatReadState_ReportsSkippedWithNoSavedMessage(t *testing.T) {
 
 	media := newTestMediaStore(t)
 	dev := newFakeDevice()
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
 
-	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	got := c.sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
 	if got.status != chatPatchSkipped {
 		t.Errorf("sendChatReadState = %+v, want status %q", got, chatPatchSkipped)
 	}
@@ -343,8 +400,9 @@ func TestSendChatReadState_ReportsNoTimestampForAPreMigrationRow(t *testing.T) {
 	}
 
 	dev := newFakeDevice()
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
 
-	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	got := c.sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
 	if got.status != chatPatchSent || got.hasTimestamp {
 		t.Errorf("sendChatReadState = %+v, want it sent with hasTimestamp false", got)
 	}
@@ -368,8 +426,9 @@ func TestSendChatReadState_AddressesTheMigratedChatByItsLID(t *testing.T) {
 
 	dev := newFakeDevice()
 	dev.lidPhones = map[string]types.JID{lid.String(): directPeer}
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
 
-	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	got := c.sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
 	if got.status != chatPatchSent {
 		t.Fatalf("sendChatReadState = %+v, want it sent", got)
 	}
@@ -402,8 +461,9 @@ func TestSendChatReadState_KeepsThePhoneJIDWhenNoLIDIsKnown(t *testing.T) {
 	}
 
 	dev := newFakeDevice() // lidPhones deliberately left unset
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
 
-	got := sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
+	got := c.sendChatReadState(t.Context(), dev, media, directPeer, directChat.RemoteID)
 	if got.status != chatPatchSent {
 		t.Fatalf("sendChatReadState = %+v, want it sent", got)
 	}

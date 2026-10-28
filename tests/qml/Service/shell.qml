@@ -164,6 +164,19 @@ ShellRoot {
       return Check.fail("Service did not forward notification.clicked through its event signal");
   }
 
+  // checkAccountNotice exercises Service's account.notice handling
+  // directly, needing no helper connection: the event's own message
+  // lands on accountNotice, and clearAccountNotice (dismissToast's own
+  // call, see tests/qml/Controllers) forgets it again.
+  function checkAccountNotice(): void {
+    service._handleEvent("account.notice", { accountId: "wa", message: "kept on this computer" });
+    if (service.accountNotice !== "kept on this computer")
+      return Check.fail("accountNotice = " + JSON.stringify(service.accountNotice) + ", want the event's own message");
+
+    service.clearAccountNotice();
+    if (service.accountNotice) return Check.fail("clearAccountNotice did not clear it");
+  }
+
   // checkReadReceiptsToggle flips incognito read receipts through the
   // real Service and helper round trip: readReceipts starts true, and
   // toggleReadReceipts (the palette's "Toggle read receipts" command)
@@ -208,12 +221,15 @@ ShellRoot {
     }
   }
 
-  // Runs once at startup: the notification-click check needs no helper
-  // connection, so it does not wait for ready.
+  // Runs once at startup: the notification-click and account-notice
+  // checks need no helper connection, so neither waits for ready.
   Timer {
     running: true
     interval: 0
-    onTriggered: root.checkNotificationClicked()
+    onTriggered: {
+      root.checkNotificationClicked();
+      root.checkAccountNotice();
+    }
   }
 
   // retryTimer re-lists conversations while the demo connectors are still

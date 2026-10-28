@@ -45,6 +45,7 @@ type Commands struct {
 	reminders       *reminders
 	retries         *retrier
 	scheduled       *scheduledSender
+	organizeNotices *organizeNotices
 
 	// dataDir, dbPath, execName and helperVersion are read only by
 	// Doctor; see Deps.

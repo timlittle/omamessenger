@@ -75,7 +75,7 @@ func (c *Connector) DeleteMessages(ctx context.Context, conv domain.Conversation
 		if forEveryone {
 			err = sendRevoke(ctx, dev, chat, key, id)
 		} else {
-			err = deleteForMe(ctx, dev, chat, key, id)
+			err = c.deleteForMe(ctx, dev, chat, key, id)
 		}
 		if err != nil {
 			return err
@@ -116,19 +116,19 @@ func sendRevoke(ctx context.Context, dev device, chat types.JID, key messageKey,
 
 // deleteForMe removes a message from this account's own view of chat,
 // on every linked device, without telling whoever sent it. It goes
-// through sendAppStateRecovering, the same catch-up-and-retry this
-// connector's other app-state patches use (see appstate.go's own doc
-// comment), and addresses chat by its LID once whatsmeow's own LID
+// through sendOrganizePatch, the same choke point every other
+// app-state patch this connector sends uses (see appstate.go's own
+// doc comment), and addresses chat by its LID once whatsmeow's own LID
 // store has learned one, for the same reason organize.go's SetPinned
 // does: WhatsApp's server rejects a mutation addressed by a migrated
 // chat's now-superseded phone JID.
-func deleteForMe(ctx context.Context, dev device, chat types.JID, key messageKey, messageRemoteID string) error {
+func (c *Connector) deleteForMe(ctx context.Context, dev device, chat types.JID, key messageKey, messageRemoteID string) error {
 	patchCtx, cancel := context.WithTimeout(ctx, deleteTimeout)
 	defer cancel()
 
 	target := lidFormOf(ctx, dev, chat)
 	patch := buildDeleteForMe(target, messageRemoteID, key.fromMe, key.senderID)
-	if err := sendAppStateRecovering(patchCtx, dev, patch); err != nil {
+	if err := c.sendOrganizePatch(patchCtx, dev, patch); err != nil {
 		return fmt.Errorf("whatsapp: delete: %w", err)
 	}
 

@@ -144,6 +144,19 @@ var ErrOrganizeSyncIncomplete = errors.New("connector: service sync state not re
 // once. It is safe to show the user, but carries no detail about why.
 var ErrOrganizeRejected = errors.New("connector: service rejected the change")
 
+// ErrOrganizeLocalOnly reports a pin, archive, mark-read or delete
+// change that already stands locally but was never sent to the
+// service, because the service's own synced copy of whatever state it
+// needs to apply that kind of change can never be verified right now -
+// for example, an account whose server-side chat indexes moved to a
+// newer addressing scheme permanently fails its own low-level
+// integrity check (see WhatsApp's connector and docs/decisions.md).
+// Unlike ErrOrganizeRejected, retrying costs real time and traffic for
+// no gain until the underlying condition clears on its own, so a
+// caller that sees this should show a one-time explanatory notice
+// instead of a repeated failure.
+var ErrOrganizeLocalOnly = errors.New("connector: service cannot verify its own synced copy, keeping the change local")
+
 // Organizer is a Connector that keeps a conversation pinned or archived in
 // step with the service, so a change made here, or made on another
 // device and synced back, agrees everywhere. The two methods are kept

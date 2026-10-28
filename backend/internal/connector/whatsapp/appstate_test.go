@@ -112,6 +112,51 @@ func TestSendAppStateRecovering_ReturnsTheOriginalRejectionWhenBothCatchUpsFail(
 	}
 }
 
+// TestSendAppStateRecovering_WrapsUnverifiableWhenBothCatchUpsFindCorruption
+// reproduces the real failure a corrupted account's logs showed: an
+// incremental AND a full-sync fetch both finding the local copy
+// corrupt, with the retried patch still rejected afterwards. This is
+// sendOrganizePatch's own cue that no amount of catching up will ever
+// fix it (see classifyAppStateErr).
+func TestSendAppStateRecovering_WrapsUnverifiableWhenBothCatchUpsFindCorruption(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.appStateErr = whatsmeow.ErrAppStateUpdate
+	dev.fetchAppStateErr = appstate.ErrMismatchingLTHash
+	dev.fetchAppStateFullSyncErr = appstate.ErrMismatchingLTHash
+
+	err := sendAppStateRecovering(t.Context(), dev, testPatch())
+	if !errors.Is(err, errAppStateUnverifiable) {
+		t.Errorf("sendAppStateRecovering = %v, want it to wrap errAppStateUnverifiable when both catch-ups find corruption", err)
+	}
+	if !errors.Is(err, whatsmeow.ErrAppStateUpdate) {
+		t.Errorf("sendAppStateRecovering = %v, want it to still wrap the original rejection too", err)
+	}
+}
+
+// TestSendAppStateRecovering_DoesNotWrapUnverifiableWhenOnlyOneCatchUpFindsCorruption
+// confirms a plain network failure on the full-sync round, after an
+// incremental fetch found corruption, is not mistaken for this
+// account's collection being permanently unverifiable: only the two
+// together are that specific.
+func TestSendAppStateRecovering_DoesNotWrapUnverifiableWhenOnlyOneCatchUpFindsCorruption(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.appStateErr = whatsmeow.ErrAppStateUpdate
+	dev.fetchAppStateErr = appstate.ErrMismatchingLTHash
+	dev.fetchAppStateFullSyncErr = errors.New("network down")
+
+	err := sendAppStateRecovering(t.Context(), dev, testPatch())
+	if errors.Is(err, errAppStateUnverifiable) {
+		t.Errorf("sendAppStateRecovering = %v, want no errAppStateUnverifiable when only one catch-up found corruption", err)
+	}
+	if !errors.Is(err, whatsmeow.ErrAppStateUpdate) {
+		t.Errorf("sendAppStateRecovering = %v, want the original rejection", err)
+	}
+}
+
 // TestSendAppStateRecovering_LogsTheServerCodeAndTextWhenEveryAttemptFails
 // is not run with t.Parallel so capturing the log output stays
 // reliable (see diagnostics_test.go's captureLog).
@@ -272,6 +317,7 @@ func TestClassifyAppStateErr_SortsEachFailureIntoItsGenericCategory(t *testing.T
 		"nil passes through unchanged":        {err: nil, wantJoin: nil},
 		"a missing app-state key":             {err: appstate.ErrKeyNotFound, wantJoin: connector.ErrOrganizeSyncIncomplete},
 		"a server rejection":                  {err: whatsmeow.ErrAppStateUpdate, wantJoin: connector.ErrOrganizeRejected},
+		"an unverifiable collection":          {err: errAppStateUnverifiable, wantJoin: connector.ErrOrganizeLocalOnly},
 		"anything else is returned unchanged": {err: errors.New("offline"), wantJoin: nil},
 	} {
 		t.Run(name, func(t *testing.T) {

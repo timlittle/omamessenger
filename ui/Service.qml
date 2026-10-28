@@ -63,6 +63,11 @@ Item {
   // pendingAuth is the sign-in step an account is waiting on, or null.
   readonly property var pendingAuth: appState.pendingAuth
 
+  // accountNotice is the most recent account.notice event's own
+  // message, or "" once dismissed (see WindowController.toastText and
+  // clearAccountNotice).
+  readonly property string accountNotice: appState.accountNotice
+
   // readReceipts mirrors the last readReceipts value sent to the helper,
   // true until applySettings or toggleReadReceipts says otherwise: off
   // means incognito mode, so the footer can show it quietly and the
@@ -317,12 +322,20 @@ Item {
   function _handleEvent(name: string, data: var): void {
     if (name === "account.updated") appState.applyAccountUpdated(data);
     else if (name === "account.removed") appState.applyAccountRemoved(data);
+    else if (name === "account.notice") appState.applyAccountNotice(data);
     else if (name === "auth.step") appState.applyAuthStep(data);
     else if (name === "unread.changed") appState.applyUnreadChanged(data);
     else if (name === "notification.clicked") root._openOnNotificationClick(data);
     else if (name === "notification.sound") root._playNotificationSound(data);
 
     root.event(name, data);
+  }
+
+  // clearAccountNotice forgets the current account notice, so it does
+  // not reappear once the toast has shown and dismissed it (see
+  // WindowController.dismissToast).
+  function clearAccountNotice(): void {
+    appState.accountNotice = "";
   }
 
   // _playNotificationSound decides, from data and this plugin's own
