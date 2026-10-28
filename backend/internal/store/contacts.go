@@ -44,10 +44,18 @@ func (s *Store) Contacts(ctx context.Context, accountID, query string) ([]domain
 	return contacts, wrap("contacts", err)
 }
 
-// scanContact reads one row selected with contactColumns.
+// scanContact reads one row selected with contactColumns. Name is
+// sender-controlled - a service's own contact sync, not something this
+// account typed - so it gets the same domain.CapDisplayName cap on
+// every read that app.Ingest.Contact already gives it on arrival,
+// repairing a row an older release stored before that cap existed.
 func scanContact(row scanner) (domain.Contact, error) {
 	var c domain.Contact
-	err := row.Scan(&c.AccountID, &c.RemoteID, &c.Name)
+	if err := row.Scan(&c.AccountID, &c.RemoteID, &c.Name); err != nil {
+		return c, err
+	}
 
-	return c, err
+	c.Name = domain.CapDisplayName(c.Name)
+
+	return c, nil
 }

@@ -422,44 +422,74 @@ func scanMessage(row scanner) (domain.Message, error) {
 		return m, err
 	}
 
-	if media != "" {
+	raw := messageRawColumns{media, replyTo, reactions, mentions, formatting, originalPath, originalModTime}
+	if err := decodeMessageColumns(&m, raw); err != nil {
+		return m, err
+	}
+
+	// A row an older release stored before domain.SanitizeIncoming's
+	// caps existed - a message's own text, sender name, reactions,
+	// mentions, formatting spans or media - comes back exactly as the
+	// sender sent it, with no bound of its own, unless it is repaired
+	// here on every read. This is the same reasoning sanitizedThumb
+	// above already gives a stored thumbnail: the cap is a property of
+	// what leaves the store, not of when the row was written, and
+	// calling the one function app.Ingest also calls for a newly
+	// arriving message means the two paths can never drift apart (see
+	// docs/decisions.md).
+	return domain.SanitizeIncoming(m), nil
+}
+
+// messageRawColumns holds scanMessage's own JSON-in-a-column fields -
+// media, a reply quote, reactions, mentions and formatting spans -
+// exactly as stored, bundled into one value so decodeMessageColumns
+// can take it as a single argument instead of one per column.
+// originalPath and originalModTime are media's own plain columns,
+// carried alongside its JSON since they are local-only fields (see
+// domain.Media's own comment) rather than something json.Unmarshal
+// can fill in for it.
+type messageRawColumns struct {
+	media, replyTo, reactions, mentions, formatting string
+	originalPath                                    string
+	originalModTime                                 int64
+}
+
+// decodeMessageColumns unmarshals raw's own JSON-in-a-column fields
+// into m, in place.
+func decodeMessageColumns(m *domain.Message, raw messageRawColumns) error {
+	if raw.media != "" {
 		m.Media = &domain.Media{}
-		if err := json.Unmarshal([]byte(media), m.Media); err != nil {
-			return m, err
+		if err := json.Unmarshal([]byte(raw.media), m.Media); err != nil {
+			return err
 		}
 		// Re-checked on every read, not just once by a migration: see
 		// sanitizedThumb and docs/decisions.md.
 		m.Media.Thumb = sanitizedThumb(m.Media.Thumb)
-		// domain.CapMedia bounds a sticker's own Emoji fallback and
-		// every other sender-controlled field it covers; a row an
-		// older release stored before that cap existed is repaired
-		// here, every time, the same reasoning as the thumbnail above.
-		m.Media = domain.CapMedia(m.Media)
-		m.Media.OriginalPath, m.Media.OriginalModTime = originalPath, originalModTime
+		m.Media.OriginalPath, m.Media.OriginalModTime = raw.originalPath, raw.originalModTime
 	}
 
-	if replyTo != "" {
+	if raw.replyTo != "" {
 		m.ReplyTo = &domain.Reply{}
-		if err := json.Unmarshal([]byte(replyTo), m.ReplyTo); err != nil {
-			return m, err
+		if err := json.Unmarshal([]byte(raw.replyTo), m.ReplyTo); err != nil {
+			return err
 		}
 	}
 
-	if reactions != "" {
-		if err := json.Unmarshal([]byte(reactions), &m.Reactions); err != nil {
-			return m, err
+	if raw.reactions != "" {
+		if err := json.Unmarshal([]byte(raw.reactions), &m.Reactions); err != nil {
+			return err
 		}
 	}
 
 	var err error
-	m.Mentions, err = decodeMentions(mentions)
+	m.Mentions, err = decodeMentions(raw.mentions)
 	if err != nil {
-		return m, err
+		return err
 	}
 
-	m.Formatting, err = decodeFormatting(formatting)
+	m.Formatting, err = decodeFormatting(raw.formatting)
 
-	return m, err
+	return err
 }
 
 // encodeMedia stores media as JSON, or "" for none.

@@ -288,8 +288,10 @@ func capText(s string, max int) string {
 // collection a message or its media carries, so a hostile sender can
 // never grow a single message past what the UI can safely render.
 // app.Ingest calls this for both a newly arrived message and one the
-// service reports edited, so neither path can diverge from the other's
-// caps.
+// service reports edited, and store.scanMessage calls it again on
+// every read, so a row an older release stored before these caps
+// existed is repaired every time it is read back, not only for a
+// message ingested since - no path can diverge from another's caps.
 func SanitizeIncoming(m Message) Message {
 	m.Text = TruncateIncomingText(m.Text)
 	textLen := UTF16Len(m.Text)

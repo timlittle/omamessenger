@@ -230,6 +230,7 @@ ShellRoot {
   function run(): void {
     if (!root.checkGroupSender()) return;
     if (!root.checkSenderNameRendersLiterally()) return;
+    if (!root.checkSenderNameElidesAnOversizedName()) return;
     if (!root.checkOutgoingReadGlyph()) return;
     if (!root.checkEditedLabel()) return;
     if (!root.checkFailedRetry()) return;
@@ -280,6 +281,24 @@ ShellRoot {
     if (!name) return Check.fail("sender name not found");
     if (name.textFormat !== Text.PlainText) return Check.fail("sender name textFormat is " + name.textFormat + ", want PlainText");
     if (name.text !== hostile) return Check.fail("sender name was not shown literally: " + name.text);
+    return true;
+  }
+
+  // checkSenderNameElidesAnOversizedName verifies the sender name text
+  // has a bounded width and elides rather than laying out an unbounded
+  // single line: the helper already caps this field's own length (see
+  // domain.CapDisplayName), but this is defence in depth against a
+  // legacy row, or a future bug, still handing the UI an oversized one.
+  function checkSenderNameElidesAnOversizedName(): bool {
+    const oversized = "Alex ".repeat(200);
+    delegate.message = { id: "m17b", senderId: "s1", senderName: oversized, text: "hi", outgoing: false, status: "delivered", created: root.now };
+    delegate.annotation = { showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false };
+
+    const name = Check.find(delegate, "senderName");
+    if (!name) return Check.fail("sender name not found");
+    if (name.elide !== Text.ElideRight) return Check.fail("senderName elide = " + name.elide + ", want Text.ElideRight");
+    if (name.width > delegate.width) return Check.fail("senderName width " + name.width + " exceeds the delegate's own " + delegate.width);
+    if (!name.truncated) return Check.fail("an oversized sender name was not actually elided");
     return true;
   }
 

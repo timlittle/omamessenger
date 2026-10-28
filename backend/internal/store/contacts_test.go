@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -99,5 +100,39 @@ func TestContacts_CapsAnOversizedResultSet(t *testing.T) {
 	}
 	if len(contacts) != domain.MaxContactResults {
 		t.Errorf("Contacts returned %d, want exactly %d", len(contacts), domain.MaxContactResults)
+	}
+}
+
+// TestContact_CapsAStoredNameOnRead confirms a contact's own Name,
+// stored uncapped by a release before domain.MaxDisplayNameLength
+// existed - or by any other path that skips the app layer's own
+// CapDisplayName call (see app.Ingest.Contact) - is capped on every
+// read, from both Contact and Contacts.
+func TestContact_CapsAStoredNameOnRead(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+
+	huge := strings.Repeat("x", domain.MaxDisplayNameLength+1)
+	if err := s.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "1", Name: huge}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Contact(ctx, "wa", "1")
+	if err != nil {
+		t.Fatalf("Contact: %v", err)
+	}
+	if domain.UTF16Len(got.Name) != domain.MaxDisplayNameLength {
+		t.Errorf("Contact.Name length = %d, want %d", domain.UTF16Len(got.Name), domain.MaxDisplayNameLength)
+	}
+
+	contacts, err := s.Contacts(ctx, "wa", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contacts) != 1 || domain.UTF16Len(contacts[0].Name) != domain.MaxDisplayNameLength {
+		t.Errorf("Contacts()[0].Name length = %d, want %d", domain.UTF16Len(contacts[0].Name), domain.MaxDisplayNameLength)
 	}
 }
