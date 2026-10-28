@@ -101,6 +101,31 @@ func TestCacheRevalidate_ContinuesPastOneFileSFailure(t *testing.T) {
 	}
 }
 
+// TestCacheRevalidate_RemovesAFileItsCheckCouldNotEvenRead covers the
+// bug this fixes: a check reporting an error - it could not even read
+// the file - must still have Revalidate remove it, never leave it on
+// disk just because it was never actually checked (see
+// RevalidateCheck).
+func TestCacheRevalidate_RemovesAFileItsCheckCouldNotEvenRead(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.jpg")
+	mustWriteFile(t, path, "a")
+
+	c := cache.New(dir, 1<<20)
+	err := c.Revalidate(func(string) (bool, error) {
+		return false, errors.New("could not read it")
+	})
+	if err == nil {
+		t.Fatal("Revalidate() = nil, want the check's own failure reported")
+	}
+
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("unreadable file stat = %v, want it removed", statErr)
+	}
+}
+
 // TestOutgoingRevalidate_RemovesWhatCheckRejects covers Revalidate's
 // own job on the outgoing attachment area: the same contract Cache's
 // own Revalidate has, over Outgoing's directory instead.

@@ -16,10 +16,14 @@ import (
 func TestMediaSave_CopiesTheFetchedFileIntoDownloads(t *testing.T) {
 	t.Parallel()
 
+	// A plain file, not a photo: this test covers media.save's own copy
+	// behaviour, and a file carries no image check (see
+	// app.servedPath), so the fake connector's own placeholder bytes
+	// can stand in for the fetched media unchanged.
 	s, downloads := connectWithMediaSave(t, fakeMediaWriter{content: []byte("a photo")}, cache.New(t.TempDir(), 1<<20))
 	msg := domain.Message{
-		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Photo]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaPhoto},
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
 	}
 	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
 		t.Fatal(err)

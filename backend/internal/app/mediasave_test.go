@@ -18,9 +18,13 @@ func TestSaveMedia_CopiesIntoTheDownloadsDirectory(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	// A plain file, not a photo: SaveMedia's own filesystem behaviour is
+	// what this test covers, and a file carries no image check (see
+	// app.servedPath), so the fake connector's plain-text placeholder
+	// can stand in for the downloaded media unchanged.
 	m := domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaPhoto},
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
 	}
 	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
 		t.Fatal(err)
@@ -47,8 +51,8 @@ func TestSaveMedia_NeverOverwritesAnEarlierSave(t *testing.T) {
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 	m := domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaPhoto},
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
 	}
 	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
 		t.Fatal(err)
@@ -234,9 +238,12 @@ func TestSaveMedia_FailsWhenTheDownloadsDirectoryCannotBeCreated(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	// A plain file, so the fetch that must succeed before this test's
+	// own mkdir failure is reached never has to pass a photo's image
+	// check (see app.servedPath).
 	m := domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaPhoto},
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
 	}
 	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
 		t.Fatal(err)
@@ -270,9 +277,12 @@ func TestSaveMedia_FailsWhenTheCopyCannotBeWritten(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	// A plain file, so the fetch that must succeed before this test's
+	// own write failure is reached never has to pass a photo's image
+	// check (see app.servedPath).
 	m := domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaPhoto},
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
 	}
 	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
 		t.Fatal(err)

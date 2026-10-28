@@ -67,10 +67,13 @@ func revalidateLegacyMedia(caches mediaCaches, logger *log.Logger) {
 
 // revalidateArea runs area's own sweep once its own format marker is
 // older than legacyMediaFormatVersion, or missing entirely, and
-// records the current version once it has finished - even when the
-// sweep itself reported a problem with one file, so a single bad file
-// never leaves every other file in the area unchecked on every future
-// start too.
+// records the current version only once the sweep actually finished
+// clean: a run that could not even remove a file it rejected (see
+// cache.RevalidateCheck) must never be marked current, or that file
+// would be trusted from then on simply because this run failed to get
+// rid of it. Logging the failure and trying again on the next start
+// is the safe fallback, even though a file that keeps failing the
+// same way would then be re-offered to check every start.
 func revalidateArea(area legacyMediaArea, logger *log.Logger) {
 	version, err := area.formatVersion()
 	if err != nil {
@@ -80,7 +83,8 @@ func revalidateArea(area legacyMediaArea, logger *log.Logger) {
 	}
 
 	if err := area.revalidate(area.check); err != nil {
-		logger.Printf("media: %s: revalidating legacy files failed", area.name)
+		logger.Printf("media: %s: revalidating legacy files failed; trying again next start", area.name)
+		return
 	}
 
 	if err := area.setFormatVersion(legacyMediaFormatVersion); err != nil {

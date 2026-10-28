@@ -92,6 +92,7 @@ type fixture struct {
 	filePicker      *fakeFilePicker
 	logger          *fakeLogger
 	downloads       string
+	mediaDir        string
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -125,12 +126,13 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		sounds:     cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
 		filePicker: &fakeFilePicker{},
 		logger:     &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
+		mediaDir: filepath.Join(t.TempDir(), "media"),
 	}
 
 	deps := app.Deps{
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
-		Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), 1<<20),
+		Media: f.media, Cache: cache.New(f.mediaDir, 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, ArchiveUnpinner: f.archiveUnpinner, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
 		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members, Limiter: f.limiter,
 		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, FilePicker: f.filePicker, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),

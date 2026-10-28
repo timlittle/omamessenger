@@ -34,12 +34,13 @@ const imageSniffLen = 16
 // and kept, rewritten in place when sanitizing changes it, or
 // reported false, for the caller to remove, when it fails outright:
 // exactly the vulnerability this sweep exists to close (see
-// docs/decisions.md). A read failure is reported as an error, never
-// treated as safe to leave alone.
+// docs/decisions.md). A read failure removes path too, rather than
+// ever leaving a file this sweep could not even look at trusted for
+// another run.
 func RevalidateDownloadedImage(path string) (keep bool, err error) {
 	head, size, err := peekFile(path, imageSniffLen)
 	if err != nil {
-		return false, fmt.Errorf("connector: revalidate downloaded image: %w", err)
+		return false, fmt.Errorf("connector: revalidate downloaded image: %w", errors.Join(err, removeIfPresent(path)))
 	}
 	if !imagesafe.LooksLikeImage(head) {
 		return true, nil
@@ -55,7 +56,7 @@ func RevalidateDownloadedImage(path string) (keep bool, err error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false, fmt.Errorf("connector: revalidate downloaded image: %w", err)
+		return false, fmt.Errorf("connector: revalidate downloaded image: %w", errors.Join(err, removeIfPresent(path)))
 	}
 
 	return sanitizeInPlace(path, data, profile)
@@ -75,11 +76,12 @@ func RevalidateDownloadedImage(path string) (keep bool, err error) {
 // one gets; a failure there means it is reported false, for the
 // caller to remove, falling back to re-copying it from the original
 // file it was attached from, when there still is one (see
-// app.restoreAttachment).
+// app.restoreAttachment). A read failure removes path too, the same
+// as RevalidateDownloadedImage.
 func RevalidateOutgoingImage(path string) (keep bool, err error) {
 	head, _, err := peekFile(path, imageSniffLen)
 	if err != nil {
-		return false, fmt.Errorf("connector: revalidate outgoing image: %w", err)
+		return false, fmt.Errorf("connector: revalidate outgoing image: %w", errors.Join(err, removeIfPresent(path)))
 	}
 	if !imagesafe.LooksLikeImage(head) {
 		return true, nil

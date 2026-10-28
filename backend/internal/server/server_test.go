@@ -277,7 +277,10 @@ func TestMediaFetch_ReportsRiskyForActiveContent(t *testing.T) {
 func TestMediaFetch_OmitsRiskyForEverydayMedia(t *testing.T) {
 	t.Parallel()
 
-	s := connectWithMedia(t, fakeMediaWriter{content: []byte("a photo")}, cache.New(t.TempDir(), 1<<20))
+	// A photo's bytes must pass imagesafe on every fetch (see
+	// app.servedPath), so this needs a real PNG rather than the usual
+	// arbitrary placeholder.
+	s := connectWithMedia(t, fakeMediaWriter{content: pngBytes(t, 2, 2)}, cache.New(t.TempDir(), 1<<20))
 	msg := domain.Message{
 		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Photo]", Created: 1,
 		Media: &domain.Media{Kind: domain.MediaPhoto},

@@ -142,6 +142,48 @@ func TestRevalidateLegacyMedia_RunsOnceAndRecordsItsOwnMarker(t *testing.T) {
 	assertPresent(t, laterBad)
 }
 
+// TestRevalidateLegacyMedia_RemovesAFileItCannotReadButLeavesTheMarkerUnset
+// covers the fix for a read failure during the sweep: a legacy file
+// that cannot even be opened - here, every permission bit cleared -
+// is removed rather than kept just because this run failed to look at
+// it, but the error that removal itself resolves still counts as the
+// sweep not completing clean, so its area's format marker is left
+// unset: the next start tries again, rather than ever trusting a
+// start that hit an error as proof the area is now fully checked (see
+// revalidateArea's own doc comment).
+func TestRevalidateLegacyMedia_RemovesAFileItCannotReadButLeavesTheMarkerUnset(t *testing.T) {
+	t.Parallel()
+	skipAsRootInMain(t)
+
+	caches, dataDir := newTestMediaCaches(t)
+	path := filepath.Join(dataDir, "media", "unreadable.jpg")
+	mustWrite(t, path, onePixelPNG())
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) }) // let t.TempDir() clean it up
+
+	revalidateLegacyMedia(caches, log.New(os.Stderr, "", 0))
+
+	assertGone(t, path)
+
+	version, err := caches.downloaded.FormatVersion()
+	if err != nil || version != 0 {
+		t.Errorf("downloaded FormatVersion() = %d, %v, want 0, nil (unset, so the next start retries)", version, err)
+	}
+}
+
+// skipAsRootInMain skips a test that relies on file permissions
+// refusing access: root bypasses them, so as root (as CI's container
+// runs) the failure the test expects can never happen.
+func skipAsRootInMain(t *testing.T) {
+	t.Helper()
+
+	if os.Geteuid() == 0 {
+		t.Skip("file permissions do not restrict root")
+	}
+}
+
 func mustWrite(t *testing.T, path string, data []byte) {
 	t.Helper()
 

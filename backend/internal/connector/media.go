@@ -155,6 +155,51 @@ func SanitizeIfGIF(path string) (isGIF bool, err error) {
 	return true, nil
 }
 
+// EnsureImageSafe re-examines path - a photo or sticker about to be
+// handed to the UI's own Image, whatever wrote it - against
+// imagesafe's own sanitizer under profile, regardless of whether it
+// was ever checked before: this is the one guarantee app.Commands
+// relies on at the serving boundary, so an older release's cache
+// entry, a file an edit left behind from a different media kind, or
+// an outgoing copy a retry recopied without sanitizing all land on
+// the same check, never trusted just because of how or when they
+// reached disk (see docs/decisions.md). path is rewritten in place
+// when sanitizing changes it, exactly like a fresh download's own
+// SaveImageMedia; a file that is not one of the formats
+// imagesafe.Sanitize recognizes (PNG, JPEG, GIF or WebP), fails its
+// own checks outright, or cannot even be read is removed and reported
+// as an error - never kept on disk and never served - so a caller
+// that catches the error can simply refuse or retry, never fall back
+// to the very bytes this was asked to rule out.
+func EnsureImageSafe(path string, profile imagesafe.Profile) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("connector: ensure image safe: %w", errors.Join(err, removeIfPresent(path)))
+	}
+	if info.Size() > profile.MaxInputLen {
+		return fmt.Errorf("connector: ensure image safe: %w", errors.Join(ErrMediaTooLarge, removeIfPresent(path)))
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("connector: ensure image safe: %w", errors.Join(err, removeIfPresent(path)))
+	}
+
+	safe, ok := imagesafe.Sanitize(data, profile)
+	if !ok {
+		return fmt.Errorf("connector: ensure image safe: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
+	}
+	if bytes.Equal(safe, data) {
+		return nil
+	}
+
+	if err := os.WriteFile(path, safe, 0o600); err != nil { //nolint:gosec // deliberate: path is a media cache or outgoing path app.Commands already wrote, never built from untrusted input
+		return fmt.Errorf("connector: ensure image safe: %w", err)
+	}
+
+	return nil
+}
+
 // VideoPlayable reports whether path, an ordinary video FetchMedia has
 // already written to disk unchanged (never one SanitizeIfGIF already
 // confirmed is actually a GIF image), is safe to hand to the UI's own

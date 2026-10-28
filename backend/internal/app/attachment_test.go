@@ -37,12 +37,22 @@ func writeTestFile(t *testing.T, name string, data []byte) string {
 func writeTestPNG(t *testing.T, name string, width, height int) string {
 	t.Helper()
 
+	return writeTestFile(t, name, testPNGBytes(t, width, height))
+}
+
+// testPNGBytes returns the bytes of a tiny, real PNG of the given
+// size, for a test whose photo or sticker fetch must pass imagesafe's
+// own sanitizer (see app.servedPath) rather than an arbitrary
+// placeholder.
+func testPNGBytes(t *testing.T, width, height int) []byte {
+	t.Helper()
+
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
 		t.Fatal(err)
 	}
 
-	return writeTestFile(t, name, buf.Bytes())
+	return buf.Bytes()
 }
 
 func TestSend_WithAttachment_StoresMediaAndCopiesTheFile(t *testing.T) {

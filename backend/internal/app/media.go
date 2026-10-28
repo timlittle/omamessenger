@@ -12,6 +12,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // MediaFetchReason categorizes why a message's media could not be
@@ -82,20 +83,108 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto bool) 
 		return "", fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
 	}
 
-	if path, ok := c.localAttachment(m); ok {
-		return path, nil
-	}
-
-	if m.RemoteID == "" || c.media == nil || c.cache == nil {
-		return "", fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
-	}
-
 	conv, err := c.store.Conversation(ctx, m.ConversationID)
 	if err != nil {
 		return "", err
 	}
 
-	return c.download(ctx, conv, m, auto)
+	if path, ok := c.localAttachment(m); ok {
+		return c.servedPath(ctx, conv, m, path, false)
+	}
+
+	return c.fetchAndServe(ctx, conv, m, auto)
+}
+
+// fetchAndServe downloads m's media from its service, for FetchMedia's
+// own use once it has found nothing local to serve already, and runs
+// servedPath's own guarantee over whatever comes back, the same as
+// any other path FetchMedia returns.
+func (c *Commands) fetchAndServe(ctx context.Context, conv domain.Conversation, m domain.Message, auto bool) (string, error) {
+	if m.RemoteID == "" || c.media == nil || c.cache == nil {
+		return "", fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
+	}
+
+	path, err := c.download(ctx, conv, m, auto)
+	if err != nil {
+		return "", err
+	}
+
+	return c.servedPath(ctx, conv, m, path, true)
+}
+
+// imageSafeProfile returns the imagesafe.Profile a message of kind
+// must pass before FetchMedia ever hands its file to the UI's own
+// Image, and true: a photo's full-size profile, or a sticker's far
+// smaller thumbnail one, since a sticker is always drawn small (see
+// imagesafe.Thumbnail). An animated "GIF" video is covered by
+// DecodeAsForMedia's own call to connector.SanitizeIfGIF instead,
+// already run on every fetch the same way; every other kind already
+// gets its own kind-specific check (VideoPlayableForMedia,
+// AudioPlayableForMedia, MediaRisk), so ok is false for anything else
+// here.
+func imageSafeProfile(kind string) (profile imagesafe.Profile, ok bool) {
+	switch kind {
+	case domain.MediaPhoto:
+		return imagesafe.FullImage, true
+	case domain.MediaSticker:
+		return imagesafe.Thumbnail, true
+	default:
+		return imagesafe.Profile{}, false
+	}
+}
+
+// servedPath is the one guarantee FetchMedia relies on before it ever
+// hands path back: for a photo or sticker, path must pass
+// connector.EnsureImageSafe under its kind's own profile, whatever
+// wrote it and however long ago, since neither a cache hit nor an
+// outgoing message's own local copy is trusted just because it is
+// already on disk (see docs/decisions.md). refetchable is true once
+// for a download recoverUnsafeImage can retry from the service when
+// that check fails; false for an outgoing message's own copy, which
+// has nowhere else to come from. Every other media kind passes
+// straight through unchecked here: it already has its own per-fetch
+// check elsewhere.
+func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m domain.Message, path string, refetchable bool) (string, error) {
+	profile, ok := imageSafeProfile(m.Media.Kind)
+	if !ok {
+		return path, nil
+	}
+
+	if err := connector.EnsureImageSafe(path, profile); err != nil {
+		return c.recoverUnsafeImage(ctx, conv, m, err, refetchable)
+	}
+
+	return path, nil
+}
+
+// recoverUnsafeImage responds to servedPath's own check failing,
+// which already removed the file it rejected: a download gets exactly
+// one fresh retry from the service, since a connector sanitizes a
+// photo or sticker itself the moment it writes one (see
+// connector.SaveImageMedia), so a retry through the same path is
+// expected to come back clean. Anything else - an outgoing message's
+// own local copy, with nowhere further to come from, or a retry that
+// fails the same check again - is classified and logged the same way
+// any other failed fetch is (see failDecodeCheck), and never served.
+// profile is recomputed from m's own kind rather than passed in,
+// since servedPath already confirmed imageSafeProfile finds one for
+// this message before ever calling here.
+func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversation, m domain.Message, checkErr error, refetchable bool) (string, error) {
+	if !refetchable {
+		return "", c.failDecodeCheck(ctx, m, checkErr)
+	}
+
+	path, err := c.download(ctx, conv, m, false)
+	if err != nil {
+		return "", err
+	}
+
+	profile, _ := imageSafeProfile(m.Media.Kind)
+	if err := connector.EnsureImageSafe(path, profile); err != nil {
+		return "", c.failDecodeCheck(ctx, m, err)
+	}
+
+	return path, nil
 }
 
 // DecodeAsForMedia reports how the UI must decode messageID's video,
@@ -230,20 +319,35 @@ func (c *Commands) download(ctx context.Context, conv domain.Conversation, m dom
 // every other kind, chosen only once fill's downloaded bytes exist, so
 // a file, voice note or sticker's cache name is never again picked
 // from the sender's own file name the way it used to be (see
-// docs/decisions.md).
+// docs/decisions.md). Either way the name is built from cacheIdentity,
+// never m.ID alone, so an edit that changes m's own media kind is
+// never served whatever an earlier kind already had cached under the
+// same id.
 func (c *Commands) fetchIntoCache(ctx context.Context, m domain.Message, fill func(context.Context, string) error) (string, error) {
 	if name, ok := fixedMediaName(m); ok {
 		return c.cache.Fetch(ctx, name, fill)
 	}
 
-	return c.cache.FetchNamed(ctx, m.ID, fill, func(part string) (string, error) {
+	id := cacheIdentity(m)
+	return c.cache.FetchNamed(ctx, id, fill, func(part string) (string, error) {
 		contentType, err := sniffContentType(part)
 		if err != nil {
 			return "", err
 		}
 
-		return m.ID + extensionFor(contentType), nil
+		return id + extensionFor(contentType), nil
 	})
+}
+
+// cacheIdentity names m's own slot in the downloaded media cache: its
+// id combined with its own media kind, so an edit that turns one kind
+// of message into another - a voice note replaced by a sticker, say -
+// never reuses whatever an earlier kind already had cached under the
+// same id (see docs/decisions.md). Every cache name this package
+// builds for m, fixed or sniffed, is derived from this same pair,
+// never the id alone.
+func cacheIdentity(m domain.Message) string {
+	return m.ID + "." + m.Media.Kind
 }
 
 // fetchFailureReason classifies a media download failure: err is what
@@ -355,9 +459,9 @@ func (c *Commands) localAttachment(m domain.Message) (string, bool) {
 func fixedMediaName(m domain.Message) (name string, ok bool) {
 	switch m.Media.Kind {
 	case domain.MediaPhoto:
-		return m.ID + ".jpg", true
+		return cacheIdentity(m) + ".jpg", true
 	case domain.MediaVideo:
-		return m.ID + ".mp4", true
+		return cacheIdentity(m) + ".mp4", true
 	default:
 		return "", false
 	}

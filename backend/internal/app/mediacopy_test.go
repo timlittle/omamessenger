@@ -17,9 +17,13 @@ func TestCopyMedia_WritesTheDownloadedFileToTheClipboard(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	// A plain file, not a photo: this test covers the sniffed-MIME-type
+	// behaviour, and a file carries no image check (see
+	// app.servedPath), so the fake connector's plain-text placeholder
+	// can stand in for the downloaded media unchanged.
 	m := domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaPhoto},
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
 	}
 	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
 		t.Fatal(err)
@@ -61,9 +65,12 @@ func TestCopyMedia_ReportsAClipboardFailure(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	// A plain file, so the fetch that must succeed before this test's
+	// own clipboard failure is reached never has to pass a photo's
+	// image check (see app.servedPath).
 	m := domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaPhoto},
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
 	}
 	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
 		t.Fatal(err)

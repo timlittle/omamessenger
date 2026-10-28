@@ -12,7 +12,7 @@ import (
 // media however they like, but the cache must name it from what the
 // downloaded bytes actually are, never that claim. A genuine PDF kept
 // under a name claiming to be an executable is still cached as
-// "<id>.pdf", not "<id>-invoice.pdf.exe".
+// "<id>.file.pdf", not "<id>-invoice.pdf.exe".
 func TestFetchMedia_NamesAFileBySniffedContentNeverTheSendersClaim(t *testing.T) {
 	t.Parallel()
 
@@ -28,8 +28,8 @@ func TestFetchMedia_NamesAFileBySniffedContentNeverTheSendersClaim(t *testing.T)
 
 	f.media.data = []byte("%PDF-1.4\nreal pdf bytes, whatever the sender's own file name claims\n")
 	path, err := f.commands.FetchMedia(ctx, "m1", false)
-	if err != nil || filepath.Base(path) != "m1.pdf" {
-		t.Fatalf("FetchMedia() = %q, %v; want m1.pdf", path, err)
+	if err != nil || filepath.Base(path) != "m1.file.pdf" {
+		t.Fatalf("FetchMedia() = %q, %v; want m1.file.pdf", path, err)
 	}
 }
 
@@ -51,16 +51,16 @@ func TestFetchMedia_FallsBackToBinForContentItDoesNotRecognise(t *testing.T) {
 
 	f.media.data = []byte("MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00") // a Windows executable header
 	path, err := f.commands.FetchMedia(ctx, "m1", false)
-	if err != nil || filepath.Base(path) != "m1.bin" {
-		t.Fatalf("FetchMedia() = %q, %v; want m1.bin", path, err)
+	if err != nil || filepath.Base(path) != "m1.file.bin" {
+		t.Fatalf("FetchMedia() = %q, %v; want m1.file.bin", path, err)
 	}
 }
 
 // TestFetchMedia_RecognisesSVGContentEvenClaimedAsSomethingElse
 // confirms the SVG heuristic runs for this naming choice, not only for
 // MediaRisk's own classification (see mediarisk_test.go): an SVG image
-// is cached as "<id>.svg", never the generic "<id>.xml" every other
-// XML document gets.
+// is cached as "<id>.file.svg", never the generic "<id>.file.xml"
+// every other XML document gets.
 func TestFetchMedia_RecognisesSVGContentEvenClaimedAsSomethingElse(t *testing.T) {
 	t.Parallel()
 
@@ -76,8 +76,8 @@ func TestFetchMedia_RecognisesSVGContentEvenClaimedAsSomethingElse(t *testing.T)
 
 	f.media.data = []byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>`)
 	path, err := f.commands.FetchMedia(ctx, "m1", false)
-	if err != nil || filepath.Base(path) != "m1.svg" {
-		t.Fatalf("FetchMedia() = %q, %v; want m1.svg", path, err)
+	if err != nil || filepath.Base(path) != "m1.file.svg" {
+		t.Fatalf("FetchMedia() = %q, %v; want m1.file.svg", path, err)
 	}
 }
 
@@ -98,8 +98,8 @@ func TestFetchMedia_VoiceNoteAlsoNamesBySniffedContent(t *testing.T) {
 
 	f.media.data = []byte("OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00")
 	path, err := f.commands.FetchMedia(ctx, "m1", false)
-	if err != nil || filepath.Base(path) != "m1.ogg" {
-		t.Fatalf("FetchMedia() = %q, %v; want m1.ogg", path, err)
+	if err != nil || filepath.Base(path) != "m1.voice.ogg" {
+		t.Fatalf("FetchMedia() = %q, %v; want m1.voice.ogg", path, err)
 	}
 }
 

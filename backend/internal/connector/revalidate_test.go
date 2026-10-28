@@ -260,3 +260,64 @@ func TestRevalidateDownloadedImage_ReportsAnUnreadableFile(t *testing.T) {
 		t.Errorf("error = %v, want it to wrap os.ErrNotExist", err)
 	}
 }
+
+// TestRevalidateDownloadedImage_RemovesAFileItCannotRead covers the
+// other half of the same guard: a file that exists but cannot even be
+// opened - here, every permission bit cleared - is removed rather
+// than left trusted on disk just because this sweep failed to look at
+// it (see docs/decisions.md).
+func TestRevalidateDownloadedImage_RemovesAFileItCannotRead(t *testing.T) {
+	t.Parallel()
+	skipAsRoot(t)
+
+	path := filepath.Join(t.TempDir(), "m1.jpg")
+	if err := os.WriteFile(path, onePixelPNG(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := connector.RevalidateDownloadedImage(path); err == nil {
+		t.Fatal("RevalidateDownloadedImage() = nil error, want one for a file that cannot be read")
+	}
+
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("unreadable file stat = %v, want it removed", err)
+	}
+}
+
+// TestRevalidateOutgoingImage_RemovesAFileItCannotRead mirrors
+// TestRevalidateDownloadedImage_RemovesAFileItCannotRead for the
+// outgoing attachment area's own half of the sweep.
+func TestRevalidateOutgoingImage_RemovesAFileItCannotRead(t *testing.T) {
+	t.Parallel()
+	skipAsRoot(t)
+
+	path := filepath.Join(t.TempDir(), "m1-photo.jpg")
+	if err := os.WriteFile(path, onePixelPNG(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := connector.RevalidateOutgoingImage(path); err == nil {
+		t.Fatal("RevalidateOutgoingImage() = nil error, want one for a file that cannot be read")
+	}
+
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("unreadable file stat = %v, want it removed", err)
+	}
+}
+
+// skipAsRoot skips a test that relies on file permissions refusing
+// access: root bypasses them, so as root (as CI's container runs) the
+// failure the test expects can never happen.
+func skipAsRoot(t *testing.T) {
+	t.Helper()
+
+	if os.Geteuid() == 0 {
+		t.Skip("file permissions do not restrict root")
+	}
+}

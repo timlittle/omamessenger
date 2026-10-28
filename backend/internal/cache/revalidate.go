@@ -9,11 +9,14 @@ import (
 )
 
 // RevalidateCheck decides what Revalidate should do with one file
-// already in a media area: true to leave it in place, unchanged or
-// already rewritten by check itself; false to have Revalidate remove
-// it. An error means path could not even be read, which Revalidate
-// reports but still treats like any other file to move past, rather
-// than stopping the rest of the sweep.
+// already in a media area: true, with a nil error, to leave it in
+// place, unchanged or already rewritten by check itself. Anything
+// else - false, or an error because path could not even be read -
+// has Revalidate remove it: a file this sweep could not even look at
+// is never kept just because it failed to be checked, any more than
+// one it could check and rejected. Revalidate reports the error but
+// still moves on to the rest of the sweep, rather than stopping over
+// one bad file.
 type RevalidateCheck func(path string) (keep bool, err error)
 
 // Revalidate calls check for every finished file already in the
@@ -59,7 +62,9 @@ func revalidateDir(dir string, check RevalidateCheck) error {
 
 // revalidateEntry offers one directory entry to check, skipping a
 // fill still in progress and the area's own format marker, and
-// removes it when check reports keep=false.
+// removes it unless check reports keep=true with no error: a check
+// that failed to even read the file is never treated as a reason to
+// leave it alone (see RevalidateCheck).
 func revalidateEntry(dir string, e os.DirEntry, check RevalidateCheck) error {
 	name := e.Name()
 	if !e.Type().IsRegular() || strings.HasSuffix(name, partSuffix) || name == formatMarkerName {
@@ -68,12 +73,16 @@ func revalidateEntry(dir string, e os.DirEntry, check RevalidateCheck) error {
 
 	path := filepath.Join(dir, name)
 	keep, err := check(path)
-	if err != nil {
-		return fmt.Errorf("cache: revalidate: %w", err)
-	}
-	if keep {
+	if keep && err == nil {
 		return nil
 	}
 
-	return removeIfPresent(path)
+	if removeErr := removeIfPresent(path); removeErr != nil {
+		return fmt.Errorf("cache: revalidate: %w", errors.Join(err, removeErr))
+	}
+	if err != nil {
+		return fmt.Errorf("cache: revalidate: %w", err)
+	}
+
+	return nil
 }

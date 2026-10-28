@@ -174,6 +174,10 @@ func TestOutgoingStatus_KeepsEveryPhotoRecoverableWhenConfirmedInOrder(t *testin
 		f.ingest.OutgoingStatus(ctx, m.ID, fmt.Sprintf("remote-%d", i), domain.StatusSent)
 	}
 
+	// The evicted photo's re-download must pass imagesafe just like
+	// any other photo fetch (see app.servedPath), so the fake connector
+	// returns a real PNG here rather than its usual remote-id placeholder.
+	f.media.data = testPNGBytes(t, 1, 1)
 	assertEveryPhotoRecoverable(t, f, sent[:])
 	if !slices.Equal(f.media.fetched, []string{"remote-0"}) {
 		t.Errorf("redownloaded %v, want only the first photo sent and confirmed", f.media.fetched)
@@ -221,6 +225,10 @@ func TestOutgoingStatus_KeepsEveryPhotoRecoverableWhenConfirmedOutOfOrder(t *tes
 	f.ingest.OutgoingStatus(ctx, sent[1].ID, "remote-1", domain.StatusSent)
 	f.ingest.OutgoingStatus(ctx, sent[0].ID, "remote-0", domain.StatusSent)
 
+	// The evicted photo's re-download must pass imagesafe just like
+	// any other photo fetch (see app.servedPath), so the fake connector
+	// returns a real PNG here rather than its usual remote-id placeholder.
+	f.media.data = testPNGBytes(t, 1, 1)
 	assertEveryPhotoRecoverable(t, f, sent[:])
 	if !slices.Equal(f.media.fetched, []string{"remote-2"}) {
 		t.Errorf("redownloaded %v, want only the photo confirmed first (remote-2) evicted", f.media.fetched)

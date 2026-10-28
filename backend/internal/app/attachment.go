@@ -419,7 +419,14 @@ func (c *Commands) restoreAttachment(ctx context.Context, m *domain.Message) err
 // under id from the file media says it was originally attached from,
 // when that file still exists and still looks like the same one: same
 // size and modification time. Anything else - no original to go back
-// to, the file gone, or changed - reports errAttachmentUnavailable.
+// to, the file gone, or changed - reports errAttachmentUnavailable. A
+// photo recopied this way goes through sanitizeAttachedPhoto before
+// it is ever trusted again, the same check prepareAttachment already
+// gives a fresh attachment: without it, a photo a retry recopies -
+// the one way an attachment ever reaches the outgoing area outside
+// describeAttachment's own call to it - would reach FetchMedia's
+// servedPath check as the very first thing to fail it, rather than
+// already sanitized like every other outgoing photo.
 func (c *Commands) recopyFromOriginal(ctx context.Context, id string, media *domain.Media) error {
 	if media.OriginalPath == "" {
 		return errAttachmentUnavailable
@@ -430,7 +437,17 @@ func (c *Commands) recopyFromOriginal(ctx context.Context, id string, media *dom
 		return errAttachmentUnavailable
 	}
 
-	if _, err := c.storeAttachment(ctx, id, media.FileName, media.OriginalPath); err != nil {
+	stored, err := c.storeAttachment(ctx, id, media.FileName, media.OriginalPath)
+	if err != nil {
+		return errAttachmentUnavailable
+	}
+
+	if media.Kind != domain.MediaPhoto {
+		return nil
+	}
+
+	if err := sanitizeAttachedPhoto(stored); err != nil {
+		_ = os.Remove(stored) // best effort: the attachment is refused either way, and a stale file here is cleaned up on the next prune regardless
 		return errAttachmentUnavailable
 	}
 

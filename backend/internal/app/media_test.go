@@ -36,13 +36,18 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 		}
 	}
 
+	// A photo's bytes must pass imagesafe on every fetch (see
+	// app.servedPath), so the fake connector's usual stand-in - the
+	// message's own remote id, as plain text - is swapped for a real
+	// PNG here, unlike the file case below.
+	f.media.data = testPNGBytes(t, 2, 2)
 	path, err := f.commands.FetchMedia(ctx, "m1", false)
-	if err != nil || filepath.Base(path) != "m1.jpg" {
-		t.Fatalf("FetchMedia = %q, %v; want m1.jpg in the cache", path, err)
+	if err != nil || filepath.Base(path) != "m1.photo.jpg" {
+		t.Fatalf("FetchMedia = %q, %v; want m1.photo.jpg in the cache", path, err)
 	}
 
-	if got, _ := os.ReadFile(path); string(got) != "40" {
-		t.Errorf("cached %q, want the downloaded media", got)
+	if got, _ := os.ReadFile(path); !bytes.Equal(got, f.media.data) {
+		t.Errorf("cached %q, want the downloaded media unchanged by the safety check", got)
 	}
 
 	if _, err := f.commands.FetchMedia(ctx, "m1", false); err != nil || !slices.Equal(f.media.fetched, []string{"40"}) {
@@ -50,12 +55,15 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 	}
 
 	// "41", the fake connector's default content for this message, is
-	// plain ASCII text, so the file is cached as "m2.txt": its own
+	// plain ASCII text, so the file is cached as "m2.file.txt": its own
 	// sniffed content, never the sender's claimed "../notes.pdf" (see
 	// TestFetchMedia_NamesAFileBySniffedContentNeverTheSendersClaim for
 	// the case that matters more - a disguised, dangerous extension).
-	if path, err := f.commands.FetchMedia(ctx, "m2", false); err != nil || filepath.Base(path) != "m2.txt" {
-		t.Errorf("FetchMedia(file) = %q, %v; want m2.txt, named from its own sniffed content", path, err)
+	// A file, unlike a photo, carries no image check, so the plain text
+	// default works here unchanged.
+	f.media.data = nil
+	if path, err := f.commands.FetchMedia(ctx, "m2", false); err != nil || filepath.Base(path) != "m2.file.txt" {
+		t.Errorf("FetchMedia(file) = %q, %v; want m2.file.txt, named from its own sniffed content", path, err)
 	}
 }
 
@@ -80,8 +88,8 @@ func TestFetchMedia_CachesEveryVideoWithAnMp4Extension(t *testing.T) {
 	}
 
 	path, err := f.commands.FetchMedia(ctx, "m1", false)
-	if err != nil || filepath.Base(path) != "m1.mp4" {
-		t.Fatalf("FetchMedia = %q, %v; want m1.mp4 in the cache", path, err)
+	if err != nil || filepath.Base(path) != "m1.video.mp4" {
+		t.Fatalf("FetchMedia = %q, %v; want m1.video.mp4 in the cache", path, err)
 	}
 }
 
@@ -163,8 +171,12 @@ func TestFetchMedia_OutgoingPhotoFallsBackToDownloadIfTheLocalCopyIsGone(t *test
 		t.Fatal(err)
 	}
 
+	// The re-download must pass imagesafe just like any other photo
+	// fetch (see app.servedPath), so the fake connector returns a real
+	// PNG here rather than its usual remote-id placeholder.
+	f.media.data = testPNGBytes(t, 2, 2)
 	got, err := f.commands.FetchMedia(ctx, sent.ID, false)
-	if err != nil || filepath.Base(got) != sent.ID+".jpg" {
+	if err != nil || filepath.Base(got) != sent.ID+".photo.jpg" {
 		t.Fatalf("FetchMedia() = %q, %v; want the service's copy once the local one is gone", got, err)
 	}
 	if !slices.Equal(f.media.fetched, []string{"99"}) {
@@ -322,5 +334,178 @@ func TestFetchMedia_ReportsATooLargeFileTheCacheRefusedAfterDownloading(t *testi
 	lines := logger.take()
 	if len(lines) != 1 || !strings.Contains(lines[0], "reason=too-large") {
 		t.Errorf("logged %v, want one line mentioning reason=too-large", lines)
+	}
+}
+
+// TestFetchMedia_RemovesAnUnsafeLegacyCacheFileAndRefetches reproduces
+// the security review's regression finding: a photo cached by an
+// older release, before imagesafe covered photos at all, whose bytes
+// are not even one of the formats imagesafe recognizes (SVG, here,
+// not PNG/JPEG/GIF/WebP). FetchMedia must never hand that file to the
+// UI just because it is already on disk under the name a fresh fetch
+// would use today: it removes it and downloads a fresh, sanitized
+// copy instead.
+func TestFetchMedia_RemovesAnUnsafeLegacyCacheFileAndRefetches(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	legacy := filepath.Join(f.mediaDir, "m1.photo.jpg")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = testPNGBytes(t, 2, 2)
+	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	if err != nil {
+		t.Fatalf("FetchMedia() = %v, want the unsafe legacy file replaced by a fresh, safe download", err)
+	}
+
+	got, readErr := os.ReadFile(path)
+	if readErr != nil || !bytes.Equal(got, f.media.data) {
+		t.Errorf("served %q, %v; want the freshly downloaded, sanitized photo", got, readErr)
+	}
+	if !slices.Equal(f.media.fetched, []string{"40"}) {
+		t.Errorf("fetched = %v, want exactly one re-download", f.media.fetched)
+	}
+}
+
+// TestFetchMedia_NeverServesAnUnsafeFileWhenNoSafeReplacementExists
+// covers the other half: when even the retry fails the same image
+// check, FetchMedia fails safely - a *MediaFetchError, never a path -
+// rather than falling back to the unsafe bytes it already rejected
+// once.
+func TestFetchMedia_NeverServesAnUnsafeFileWhenNoSafeReplacementExists(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	legacy := filepath.Join(f.mediaDir, "m1.photo.jpg")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`)
+	if err := os.WriteFile(legacy, svg, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// The fake connector's retry returns the same unrecognized bytes,
+	// so neither the legacy file nor the retry ever passes.
+	f.media.data = svg
+
+	var fetchErr *app.MediaFetchError
+	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	if path != "" || !errors.As(err, &fetchErr) {
+		t.Fatalf("FetchMedia() = %q, %v; want a *MediaFetchError and no path", path, err)
+	}
+
+	if _, statErr := os.Stat(legacy); !os.IsNotExist(statErr) {
+		t.Errorf("legacy file stat = %v, want it removed rather than left trusted", statErr)
+	}
+}
+
+// TestFetchMedia_RemovesAnUnsafeStickerCacheFileAndRefetches mirrors
+// TestFetchMedia_RemovesAnUnsafeLegacyCacheFileAndRefetches for a
+// sticker: cached under whatever extension its sender's claimed file
+// name sniffed to (see cache.FetchNamed), never a fixed one, so the
+// legacy file sits under "<id>.sticker.svg" here rather than
+// "<id>.photo.jpg".
+func TestFetchMedia_RemovesAnUnsafeStickerCacheFileAndRefetches(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Sticker]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaSticker},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	legacy := filepath.Join(f.mediaDir, "m1.sticker.svg")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = testPNGBytes(t, 1, 1)
+	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	if err != nil {
+		t.Fatalf("FetchMedia() = %v, want the unsafe legacy sticker replaced by a fresh, safe download", err)
+	}
+
+	got, readErr := os.ReadFile(path)
+	if readErr != nil || !bytes.Equal(got, f.media.data) {
+		t.Errorf("served %q, %v; want the freshly downloaded, sanitized sticker", got, readErr)
+	}
+}
+
+// TestFetchMedia_EditingKindNeverReusesTheOldKindsCachedFile
+// reproduces the sharp-edges finding: a "voice note" whose actual
+// downloaded bytes are an image is cached unchecked, since a voice
+// note carries no image check at all (see app.servedPath). The
+// sender then edits the message into a photo - WhatsApp's edit is
+// end-to-end encrypted, so any kind change is possible. The edited
+// fetch must never reuse the voice note's own cached file: its cache
+// identity includes the media kind (see cacheIdentity), so it is a
+// clean cache miss, and the fresh attempt - even offered the very
+// same unrecognized bytes again - is still caught by the photo's own
+// check.
+func TestFetchMedia_EditingKindNeverReusesTheOldKindsCachedFile(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`)
+	f.media.data = svg
+	voiceMsg := incoming("e1", "[Voice message]")
+	voiceMsg.Media = &domain.Media{Kind: domain.MediaVoice, FileName: "voice.ogg"}
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, voiceMsg)
+
+	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("Messages() = %+v, %v; want exactly one", messages, err)
+	}
+	localID := messages[0].ID
+
+	voicePath, err := f.commands.FetchMedia(ctx, localID, false)
+	if err != nil {
+		t.Fatalf("FetchMedia(voice) = %v", err)
+	}
+
+	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{
+		RemoteID: "e1", Text: "look", Media: &domain.Media{Kind: domain.MediaPhoto},
+	})
+
+	if _, err := f.commands.FetchMedia(ctx, localID, false); err == nil {
+		t.Fatal("FetchMedia(edited to photo) succeeded, want the unsafe bytes rejected")
+	}
+
+	if _, statErr := os.Stat(voicePath); statErr != nil {
+		t.Errorf("the voice note's own cached file was touched: %v, want it left alone", statErr)
 	}
 }
