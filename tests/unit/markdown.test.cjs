@@ -172,6 +172,37 @@ test('tableHtml right-aligns a column whose separator ends with a colon', () => 
   assert.match(html, /text-align:right/);
 });
 
+// joinTables joins several well-formed pipe tables with a blank line
+// between each, so splitTables sees them as distinct tables rather than
+// one run-on block.
+function joinTables(tables) {
+  return tables.join('\n\n');
+}
+
+test('splitTables renders every table normally while the running total stays within budget', () => {
+  const tables = [buildTable(2, 2), buildTable(2, 2), buildTable(2, 2)];
+  const parts = Markdown.splitTables(joinTables(tables));
+  assert.equal(parts.filter((p) => p.kind === 'table').length, 3);
+});
+
+test('splitTables falls back to plain text once a message\'s own table count exceeds the cap', () => {
+  const tables = Array.from({ length: 11 }, () => buildTable(1, 1));
+  const parts = Markdown.splitTables(joinTables(tables));
+
+  assert.equal(parts.filter((p) => p.kind === 'table').length, 10);
+  assert.ok(parts.some((p) => p.kind === 'text' && p.text.includes('r0c0')),
+    'the table over the count cap must fall back to plain text');
+});
+
+test('splitTables falls back to plain text once a message\'s own total cell count exceeds the cap, even under the table-count cap', () => {
+  const tables = [buildTable(20, 50), buildTable(20, 50)];
+  const parts = Markdown.splitTables(joinTables(tables));
+
+  assert.equal(parts.filter((p) => p.kind === 'table').length, 1);
+  assert.ok(parts.some((p) => p.kind === 'text' && p.text.includes('r0c0')),
+    'the second table, which pushes the total past the cell cap, must fall back to plain text');
+});
+
 test('tableHtml fits the width of whatever holds it', () => {
   const parts = Markdown.splitTables(TABLE_TEXT);
   const html = Markdown.tableHtml(parts[0].table, identity, identity, '#888888');

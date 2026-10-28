@@ -23,19 +23,35 @@ var SEPARATOR_CELL = /^:?-+:?$/;
 var MAX_TABLE_ROWS = 50;
 var MAX_TABLE_COLUMNS = 20;
 
+// MAX_TABLES_PER_MESSAGE and MAX_TOTAL_TABLE_CELLS bound how many
+// tables, and how many cells across all of them, one message ever
+// turns into HTML tables. MAX_TABLE_ROWS and MAX_TABLE_COLUMNS only
+// bound a single table on its own, so a message built of many small
+// tables could still add up to tens of thousands of cells - and as
+// many QTextTableCell frames for Qt to lay out - well within each
+// table's own cap. Once either total would be exceeded, every further
+// table in the same message falls back to plain text, the same way a
+// single table over its own cap already does, rather than letting the
+// cells and tables already counted keep growing unbounded.
+var MAX_TABLES_PER_MESSAGE = 10;
+var MAX_TOTAL_TABLE_CELLS = 2000;
+
 // splitTables breaks text into an ordered list of parts, each either
 // { kind: 'text', text } or { kind: 'table', table }. A table is only
 // recognized when a header row is immediately followed by a matching
 // separator row, so a stray "|" in ordinary prose is never mistaken for
-// one.
+// one, and only while the message's running table and cell totals stay
+// within MAX_TABLES_PER_MESSAGE and MAX_TOTAL_TABLE_CELLS.
 function splitTables(text) {
   const lines = text.split('\n');
   const parts = [];
   let plain = [];
+  let tableCount = 0;
+  let cellCount = 0;
 
   for (let i = 0; i < lines.length;) {
     const found = tryParseTable(lines, i);
-    if (!found) {
+    if (!found || !withinTableBudget(found.table, tableCount, cellCount)) {
       plain.push(lines[i]);
       i++;
       continue;
@@ -45,6 +61,8 @@ function splitTables(text) {
       plain = [];
     }
     parts.push({ kind: 'table', table: found.table });
+    tableCount++;
+    cellCount += tableCellCount(found.table);
     i = found.next;
   }
 
@@ -52,6 +70,20 @@ function splitTables(text) {
     parts.push({ kind: 'text', text: plain.join('\n') });
   }
   return parts;
+}
+
+// tableCellCount counts a parsed table's cells, header row included,
+// the unit MAX_TOTAL_TABLE_CELLS bounds.
+function tableCellCount(table) {
+  return (table.rows.length + 1) * table.header.length;
+}
+
+// withinTableBudget reports whether adding table to a message that
+// already has tableCount tables and cellCount cells would still fit
+// MAX_TABLES_PER_MESSAGE and MAX_TOTAL_TABLE_CELLS.
+function withinTableBudget(table, tableCount, cellCount) {
+  return tableCount < MAX_TABLES_PER_MESSAGE
+    && cellCount + tableCellCount(table) <= MAX_TOTAL_TABLE_CELLS;
 }
 
 // tryParseTable checks whether a table starts at lines[start], and if so
