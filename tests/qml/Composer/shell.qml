@@ -37,6 +37,7 @@ ShellRoot {
   property var spellSuggestionRequests: []
   property var spellWordAdditions: []
   property int sendLaterRequests: 0
+  property var truncatedLimits: []
 
   FloatingWindow {
     implicitWidth: 400
@@ -60,6 +61,7 @@ ShellRoot {
       onSpellSuggestionsRequested: word => root.spellSuggestionRequests.push(word)
       onSpellWordAdded: word => root.spellWordAdditions.push(word)
       onSendLaterRequested: root.sendLaterRequests++
+      onTextTruncated: limit => root.truncatedLimits.push(limit)
     }
   }
 
@@ -112,8 +114,12 @@ ShellRoot {
   // pasted clipboard string has no length limit of its own, so once it
   // lands in the TextArea it must be cut to the same length
   // messages.send would accept, exactly as if it had been typed that
-  // short to begin with.
+  // short to begin with. It also covers textTruncated: a paste over
+  // the limit reports it exactly once, typing further while still
+  // pinned at the cap reports nothing more, and deleting below the cap
+  // then pasting over it again reports it once more.
   function checkOversizedTextIsCapped(): bool {
+    root.truncatedLimits = [];
     composer.input.text = "a".repeat(SpellCheck.MAX_COMPOSER_TEXT_LENGTH + 500);
 
     if (composer.input.text.length !== SpellCheck.MAX_COMPOSER_TEXT_LENGTH) {
@@ -124,9 +130,29 @@ ShellRoot {
       return Check.fail("composer.text held " + composer.text.length + " characters, want capped to " +
         SpellCheck.MAX_COMPOSER_TEXT_LENGTH);
     }
+    if (JSON.stringify(root.truncatedLimits) !== "[" + SpellCheck.MAX_COMPOSER_TEXT_LENGTH + "]") {
+      return Check.fail("textTruncated fired " + JSON.stringify(root.truncatedLimits) + " for the paste, want exactly one [" +
+        SpellCheck.MAX_COMPOSER_TEXT_LENGTH + "]");
+    }
+
+    // Typing more while already pinned at the cap must not fire a
+    // second toast for every rejected keystroke.
+    composer.input.text = composer.input.text + "more text past the limit"
+    if (JSON.stringify(root.truncatedLimits) !== "[" + SpellCheck.MAX_COMPOSER_TEXT_LENGTH + "]") {
+      return Check.fail("textTruncated fired again while still pinned at the cap: " + JSON.stringify(root.truncatedLimits));
+    }
+
+    // Deleting back under the cap, then pasting over it again, is a
+    // fresh cut event and reports once more.
+    composer.input.text = composer.input.text.slice(0, composer.input.text.length - 10)
+    composer.input.text = composer.input.text + "a".repeat(20)
+    if (JSON.stringify(root.truncatedLimits) !== "[" + SpellCheck.MAX_COMPOSER_TEXT_LENGTH + "," + SpellCheck.MAX_COMPOSER_TEXT_LENGTH + "]") {
+      return Check.fail("a fresh cut after shrinking below the cap did not report again: " + JSON.stringify(root.truncatedLimits));
+    }
 
     composer.input.text = "";
     composer.text = "";
+    root.truncatedLimits = [];
     return true;
   }
 

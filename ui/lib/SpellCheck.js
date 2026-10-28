@@ -44,6 +44,22 @@ function capComposerText(text) {
   return codePoints.slice(0, MAX_COMPOSER_TEXT_LENGTH).join('');
 }
 
+// formatThousands writes a non-negative integer with "," every three
+// digits ("4096" -> "4,096"), for truncationNoticeText below: locale-
+// free, like every other number this UI formats, so it reads the same
+// for everyone rather than depending on the system's own locale.
+function formatThousands(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// truncationNoticeText is the toast Composer shows once its own
+// paste-or-type guard actually cuts the draft to limit characters
+// (MAX_COMPOSER_TEXT_LENGTH), so a silent cut always comes with a
+// word naming the real cap, not a magic number baked into the UI text.
+function truncationNoticeText(limit) {
+  return `Message cut to the ${formatThousands(limit)}-character limit`;
+}
+
 // misspellingAtCaret returns the misspelling range the caret sits
 // inside (start <= caret <= end), or null when it is not inside any of
 // them. A caret exactly at a range's start or end counts as inside it,

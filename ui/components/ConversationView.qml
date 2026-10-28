@@ -204,6 +204,10 @@ Item {
   // sendLaterRequested asks the caller to open the "Send later…"
   // prompt, from the composer's own clock button.
   signal sendLaterRequested()
+  // textTruncated reports that the composer's own guard just cut the
+  // draft down to limit characters; see Composer.qml's own signal of
+  // the same name.
+  signal textTruncated(int limit)
 
   // scrollBy moves the view by a number of lines; negative scrolls up.
   function scrollBy(lines: int): void {
@@ -463,6 +467,7 @@ Item {
       onSpellSuggestionsRequested: word => root.spellSuggestionsRequested(word)
       onSpellWordAdded: word => root.spellWordAdded(word)
       onSendLaterRequested: root.sendLaterRequested()
+      onTextTruncated: limit => root.textTruncated(limit)
     }
   }
 

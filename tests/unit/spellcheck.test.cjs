@@ -100,3 +100,16 @@ test('capComposerText never splits a surrogate pair across the cut', () => {
   assert.equal(Array.from(got).length, SpellCheck.MAX_COMPOSER_TEXT_LENGTH);
   assert.equal(got, '\u{1F600}'.repeat(SpellCheck.MAX_COMPOSER_TEXT_LENGTH));
 });
+
+test('formatThousands inserts a comma every three digits', () => {
+  assert.equal(SpellCheck.formatThousands(4096), '4,096');
+  assert.equal(SpellCheck.formatThousands(100), '100');
+  assert.equal(SpellCheck.formatThousands(1234567), '1,234,567');
+});
+
+test('truncationNoticeText names the real limit with its thousands separator', () => {
+  assert.equal(
+    SpellCheck.truncationNoticeText(SpellCheck.MAX_COMPOSER_TEXT_LENGTH),
+    'Message cut to the 4,096-character limit'
+  );
+});

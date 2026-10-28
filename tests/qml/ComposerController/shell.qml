@@ -16,6 +16,7 @@
 import QtQuick
 import Quickshell
 import "ui/controllers"
+import "ui/lib/SpellCheck.js" as SpellCheck
 import "Check.js" as Check
 
 ShellRoot {
@@ -63,6 +64,7 @@ ShellRoot {
       model: fakeConversation._timelineMessages,
       snapshot: () => fakeConversation._timelineMessages,
       lastError: "",
+      notice: "",
       messageById: (id) => fakeConversation._timelineMessages.find((m) => m.id === id) ?? null
     })
 
@@ -152,6 +154,7 @@ ShellRoot {
     if (!root.checkEditFromUp()) return;
     if (!root.checkSaveEdit()) return;
     if (!root.checkCancelEdit()) return;
+    if (!root.checkTextTruncated()) return;
 
     console.log("PASS ComposerController");
     Qt.exit(0);
@@ -299,6 +302,23 @@ ShellRoot {
     if (composer.draft !== "") return Check.fail("cancelEdit did not restore the draft it overwrote: " + composer.draft);
     if (fakeService.lastMethod !== "") return Check.fail("cancelEdit called the service: " + fakeService.lastMethod);
 
+    return true;
+  }
+
+  // checkTextTruncated drives textTruncated, what Composer's own paste
+  // or type guard fires once it actually cuts the draft: it must turn
+  // straight into the open conversation's own notice (the same field
+  // WindowController.toastText already shows), naming the real limit
+  // with its thousands separator rather than a raw number.
+  function checkTextTruncated(): bool {
+    fakeConversation.timeline.notice = "";
+    composer.textTruncated(SpellCheck.MAX_COMPOSER_TEXT_LENGTH);
+
+    const want = SpellCheck.truncationNoticeText(SpellCheck.MAX_COMPOSER_TEXT_LENGTH);
+    if (fakeConversation.timeline.notice !== want)
+      return Check.fail("textTruncated set notice to \"" + fakeConversation.timeline.notice + "\", want \"" + want + "\"");
+
+    fakeConversation.timeline.notice = "";
     return true;
   }
 }

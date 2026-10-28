@@ -187,6 +187,17 @@ Item {
   // input's own coordinates, recomputed by _recomputeOverlay.
   property var _overlayRects: []
 
+  // _truncatedAtLength is the exact length (TextArea.text's own UTF-16
+  // units) the input was cut to the last time its onTextChanged guard
+  // actually cut it, or -1 while the text is not currently pinned at
+  // the cap by a cut. textTruncated fires only when this is -1,
+  // tracking a cut "session" rather than every character the guard
+  // rejects while the user keeps typing or pasting past an already-cut
+  // text: it resets once the text actually shrinks below where the
+  // last cut left it (a deletion), so pasting over the limit again
+  // later fires the signal again.
+  property int _truncatedAtLength: -1
+
   // writing is true while the text input holds keyboard focus: typing
   // and scrolling the conversation look identical otherwise, bar the
   // blinking text cursor, so the mode hint, the input and Send all read
@@ -237,6 +248,14 @@ Item {
   // prompt, from the clock button beside Send: the same prompt
   // Ctrl+L opens (see Keymap.js's compose.sendLater).
   signal sendLaterRequested()
+  // textTruncated reports that a paste or further typing just made the
+  // input's own guard actually cut the draft down to limit characters
+  // (SpellCheck.MAX_COMPOSER_TEXT_LENGTH), so the caller can show a
+  // toast naming the cap: see qml.md, a component never shows this
+  // itself, only reports the intent. Fired once per cut (see
+  // _truncatedAtLength below), not on every further keystroke while
+  // the text stays pinned at the limit.
+  signal textTruncated(int limit)
 
   // A binding from text straight to the input would break the moment
   // the input's own typing changes it back (see the property's own
@@ -813,8 +832,11 @@ Item {
               if (capped !== text) {
                 area.text = capped
                 area.cursorPosition = capped.length
+                if (root._truncatedAtLength < 0) root.textTruncated(SpellCheck.MAX_COMPOSER_TEXT_LENGTH)
+                root._truncatedAtLength = capped.length
                 return
               }
+              if (root._truncatedAtLength >= 0 && text.length < root._truncatedAtLength) root._truncatedAtLength = -1
 
               if (root.text !== text) root.text = text
               root._updateMentionQuery()

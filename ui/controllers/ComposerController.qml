@@ -483,6 +483,20 @@ Item {
     });
   }
 
+  // textTruncated shows a brief toast once Composer's own paste-or-type
+  // guard actually cut the draft down to limit characters: Composer is
+  // a view and never calls the helper or shows anything itself (see
+  // qml.md), so this is the one place that turns its signal into the
+  // same notice banner WindowController.toastText already shows for
+  // every other brief confirmation (see ConversationController.notice).
+  // Does nothing with no conversation open, which the signal cannot
+  // fire from anyway (Composer.active is false with none open).
+  function textTruncated(limit: int): void {
+    if (!root.conversation) return;
+
+    root.conversation.timeline.notice = SpellCheck.truncationNoticeText(limit);
+  }
+
   // addSpellingWord adds word to the user's personal dictionary and
   // re-checks the composer's text at once, so its underline clears
   // without waiting for the next edit.
