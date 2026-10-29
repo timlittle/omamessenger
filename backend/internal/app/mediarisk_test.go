@@ -1,6 +1,8 @@
 package app_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,6 +35,74 @@ func TestMediaRisk_FlagsActiveContentEvenWhenSafelyNamed(t *testing.T) {
 				t.Errorf("MediaRisk(%q) = false, want true", path)
 			}
 		})
+	}
+}
+
+// TestMediaRisk_FlagsSVGFromContentAlone reproduces the security
+// review's own confirmed finding: a real SVG almost never starts with
+// an "<?xml" line the way TestMediaRisk_FlagsActiveContentEvenWhenSafelyNamed's
+// own fixture happens to, which is the one shape Go's sniffer reports
+// as XML at all. Named here so neither the extension nor a sniffed
+// "text/xml" result can be doing the work - only the content itself,
+// the signal a sender cannot forge, decides this.
+func TestMediaRisk_FlagsSVGFromContentAlone(t *testing.T) {
+	t.Parallel()
+
+	path := writeMediaFixture(t, "payload.txt", []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`))
+	if !app.MediaRisk(path) {
+		t.Errorf("MediaRisk(%q) = false, want true for a bare SVG with no extension or xml prolog to give it away", path)
+	}
+}
+
+// TestMediaRisk_FlagsGzippedSVGFromContentAlone covers ".svgz": a
+// gzip-compressed SVG, which Go's own sniffer only ever reports as
+// generic gzip content, never looking inside to see what is actually
+// compressed.
+func TestMediaRisk_FlagsGzippedSVGFromContentAlone(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	path := writeMediaFixture(t, "payload.dat", buf.Bytes())
+	if !app.MediaRisk(path) {
+		t.Errorf("MediaRisk(%q) = false, want true for a gzip-compressed SVG", path)
+	}
+}
+
+// TestMediaRisk_FlagsAGenericXMLDocument confirms a plain XML document
+// - not itself an SVG, but still something a browser can be made to
+// run a script from, via an XSLT processing instruction - gets the
+// same confirmation an HTML page or an SVG already does.
+func TestMediaRisk_FlagsAGenericXMLDocument(t *testing.T) {
+	t.Parallel()
+
+	path := writeMediaFixture(t, "data.dat", []byte(`<?xml version="1.0"?><records><record>1</record></records>`))
+	if !app.MediaRisk(path) {
+		t.Errorf("MediaRisk(%q) = false, want true for a generic XML document", path)
+	}
+}
+
+// TestMediaRisk_FlagsAMIMEWebArchive covers ".mht"/".mhtml": a
+// multipart MIME message whose root part is the same active "text/html"
+// page a browser would otherwise be confirmed before opening, which
+// Go's own sniffer has no entry for at all and would otherwise report
+// as plain text.
+func TestMediaRisk_FlagsAMIMEWebArchive(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/related; boundary=\"----boundary\"\r\n\r\n" +
+		"------boundary\r\nContent-Type: text/html\r\n\r\n<html><body>hi</body></html>\r\n------boundary--\r\n")
+	path := writeMediaFixture(t, "saved-page.dat", data)
+	if !app.MediaRisk(path) {
+		t.Errorf("MediaRisk(%q) = false, want true for a MIME web archive", path)
 	}
 }
 

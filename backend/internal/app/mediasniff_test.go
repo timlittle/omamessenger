@@ -81,6 +81,32 @@ func TestFetchMedia_RecognisesSVGContentEvenClaimedAsSomethingElse(t *testing.T)
 	}
 }
 
+// TestFetchMedia_RecognisesABareSVGWithNoXMLProlog confirms the SVG
+// heuristic no longer depends on Go's own sniffer having already
+// called the content XML in the first place: a real SVG almost never
+// opens with an "<?xml" line, unlike TestFetchMedia_RecognisesSVGContentEvenClaimedAsSomethingElse's
+// own fixture, which is the one shape that reaches here already
+// labelled "text/xml".
+func TestFetchMedia_RecognisesABareSVGWithNoXMLProlog(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile, FileName: "photo.jpg"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`)
+	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	if err != nil || filepath.Base(path) != "m1.file.svg" {
+		t.Fatalf("FetchMedia() = %q, %v; want m1.file.svg", path, err)
+	}
+}
+
 // TestFetchMedia_VoiceNoteAlsoNamesBySniffedContent confirms the fix
 // applies to every kind but a photo or video, not only MediaFile.
 func TestFetchMedia_VoiceNoteAlsoNamesBySniffedContent(t *testing.T) {

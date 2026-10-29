@@ -18,7 +18,8 @@ import (
 // so a future allow-list change can be checked against the same list
 // rather than a new one.
 var riskyExtensions = map[string]bool{
-	"html": true, "htm": true, "xhtml": true, "svg": true,
+	"html": true, "htm": true, "xhtml": true, "svg": true, "svgz": true,
+	"xml": true, "mht": true, "mhtml": true,
 	"desktop": true, "sh": true, "bash": true, "py": true, "pl": true,
 	"rb": true, "jar": true, "exe": true, "msi": true, "appimage": true,
 	"run": true, "bin": true, "js": true, "mjs": true, "hta": true,
@@ -32,6 +33,7 @@ var riskyExtensions = map[string]bool{
 // never reaches that map at all.
 var riskyContentTypes = map[string]bool{
 	"text/html": true, "application/xhtml+xml": true, "image/svg+xml": true,
+	svgzContentType: true, "text/xml": true, mhtmlContentType: true,
 	"application/x-sh": true, "application/x-shellscript": true, "text/x-shellscript": true,
 	"application/x-python": true, "text/x-python": true,
 	"application/x-executable": true, "application/x-sharedlib": true,
