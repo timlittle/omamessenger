@@ -7,8 +7,7 @@ package app_test
 
 import (
 	"bytes"
-	"encoding/base64"
-	"image"
+	"errors"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -44,12 +43,17 @@ func TestSend_WithAttachment_SniffsAVideoFromItsOwnBytes(t *testing.T) {
 	}
 }
 
-// TestSend_WithAttachment_ExtremeAspectRatioStillGetsADecodableThumb
-// covers shrink's own floor: a photo so much wider than it is tall
-// that scaling its short side down by the same factor as its long one
-// would round to zero pixels still gets a real, decodable thumbnail,
-// because scaledSize never returns less than one.
-func TestSend_WithAttachment_ExtremeAspectRatioStillGetsADecodableThumb(t *testing.T) {
+// TestSend_WithAttachment_RejectsExtremeAspectRatio covers the shape a
+// decode-bomb thumbnail needs: a photo so much wider than it is tall
+// that imagesafe.FullImage's own MaxAspectRatio rejects it before
+// sanitizeAttachedPhoto ever reads its pixels, the same as a photo
+// received from a contact (see docs/decisions.md). This used to reach
+// shrink's own floor-at-one-pixel behaviour and succeed with a
+// degenerate thumbnail; it is refused outright now, since nothing
+// about the user merely choosing to attach a file from disk makes an
+// extreme aspect ratio any less of a decode-bomb shape once sent on
+// to whoever reads the message.
+func TestSend_WithAttachment_RejectsExtremeAspectRatio(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
@@ -57,26 +61,8 @@ func TestSend_WithAttachment_ExtremeAspectRatioStillGetsADecodableThumb(t *testi
 	f.conversation(t, "chat", "Chat", domain.KindDirect)
 	path := writeTestPNG(t, "wide.png", 2000, 1)
 
-	m, err := f.commands.Send(ctx, "chat", "wide", app.SendOptions{AttachmentPath: path})
-	if err != nil {
-		t.Fatalf("Send() error = %v", err)
-	}
-
-	if m.Media.Thumb == "" {
-		t.Fatal("Media.Thumb is empty, want a thumbnail even for an extreme aspect ratio")
-	}
-
-	raw, err := base64.StdEncoding.DecodeString(m.Media.Thumb)
-	if err != nil {
-		t.Fatalf("Thumb is not valid base64: %v", err)
-	}
-
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
-	if err != nil {
-		t.Fatalf("Thumb is not a decodable image: %v", err)
-	}
-	if cfg.Height != 1 {
-		t.Errorf("Thumb height = %d, want the short side floored to 1 pixel, not 0", cfg.Height)
+	if _, err := f.commands.Send(ctx, "chat", "wide", app.SendOptions{AttachmentPath: path}); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("Send(extreme aspect ratio) = %v, want ErrInvalidInput", err)
 	}
 }
 

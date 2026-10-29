@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
+import "../lib/ImageBounds.js" as ImageBounds
 import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
 
@@ -83,11 +84,12 @@ Item {
     // them would hold the whole animation in memory at once.
     cache: false
     fillMode: Image.PreserveAspectFit
-    // Bounded to this player's own box (the viewer's full window
-    // stage), never the file's own declared size (see PhotoView.qml's
-    // own sourceSize for why).
-    sourceSize.width: Math.max(1, root.width)
-    sourceSize.height: Math.max(1, root.height)
+    // Fit inside this player's own box (the viewer's full window
+    // stage), computed from the video's own known width and height
+    // (see PhotoView.qml's own sourceSize for why the box alone is
+    // not enough).
+    sourceSize.width: ImageBounds.boundedSourceSize(root.width, root.height, root.video.width, root.video.height).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root.width, root.height, root.video.width, root.video.height).height
   }
 
   Loader {

@@ -4,6 +4,7 @@ import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
+import "../lib/ImageBounds.js" as ImageBounds
 import "../lib/Keymap.js" as Keymap
 import "../lib/Links.js" as Links
 
@@ -113,10 +114,11 @@ Item {
       // own bytes, never sanitized as an image.
       source: root._isVideo ? "" : root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
       fillMode: Image.PreserveAspectFit
-      // Bounded to the viewer's own stage, never the file's own
-      // declared size (see PhotoView.qml's own sourceSize for why).
-      sourceSize.width: Math.max(1, stage.width)
-      sourceSize.height: Math.max(1, stage.height)
+      // Fit inside the viewer's own stage, computed from the photo's
+      // own known width and height (see PhotoView.qml's own
+      // sourceSize for why the stage alone is not enough).
+      sourceSize.width: ImageBounds.boundedSourceSize(stage.width, stage.height, root.photo ? root.photo.width : 0, root.photo ? root.photo.height : 0).width
+      sourceSize.height: ImageBounds.boundedSourceSize(stage.width, stage.height, root.photo ? root.photo.width : 0, root.photo ? root.photo.height : 0).height
       asynchronous: true
       // Scaling a tiny preview up smoothly keeps it a soft blur, same as
       // the bubble's own photo view.

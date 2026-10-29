@@ -10,6 +10,19 @@
 // content and is not checked here. A composer's attachment preview is
 // checked like any other image: its content can come from the
 // clipboard, which another program controls.
+//
+// A bounded sourceSize alone is not the real rule, only a floor: Qt's
+// own PreserveAspectFit/Crop scaling covers a sourceSize box by
+// scaling to the image's longer side, so a sourceSize set to a plain
+// box value - exactly what "sourceSize is present" lets through -
+// still lets a very thin, very long image make Qt decode far more
+// than the box's own area once the real file's ratio disagrees with
+// the box's (see docs/decisions.md). Every file the security review
+// named as a sink for that shape (FIT_BOUND_FILES below) is held to
+// the real fix instead: its sourceSize must come from
+// ImageBounds.boundedSourceSize, computed from the media's own known
+// width and height, which can only ever shrink to fit inside the box,
+// never cover it.
 'use strict';
 
 const { test } = require('node:test');
@@ -29,6 +42,20 @@ const IMAGE_BLOCK = /\b(Image|AnimatedImage)\s*\{/g;
 // a QR code this UI rendered. A block naming one of these is never
 // "received content", however its source expression is built.
 const LOCAL_SOURCE_MARKERS = ['qrSource'];
+
+// FIT_BOUND_FILES are the files the security review's own regression
+// report named as this decode-bomb shape's sinks: every Image or
+// AnimatedImage in them must fit its sourceSize inside its box using
+// ImageBounds.boundedSourceSize, not merely set some sourceSize (see
+// docs/decisions.md).
+const FIT_BOUND_FILES = new Set([
+  'components/PhotoView.qml',
+  'components/InlineVideo.qml',
+  'components/StickerView.qml',
+  'components/LinkPreview.qml',
+  'components/PhotoViewer.qml',
+  'components/FullVideoPlayer.qml',
+]);
 
 // qmlFiles walks dir and returns every ".qml" file under it.
 function qmlFiles(dir) {
@@ -72,12 +99,25 @@ function showsReceivedContent(block) {
   return bindsRemoteBytes && !LOCAL_SOURCE_MARKERS.some((marker) => block.includes(marker));
 }
 
+// isUnbounded reports whether block fails the sourceSize rule that
+// applies to it: a FIT_BOUND_FILES file must compute its sourceSize
+// with ImageBounds.boundedSourceSize, so it only ever shrinks to fit
+// inside its box; any other file need only set some sourceSize, the
+// floor every received-content image has always had.
+function isUnbounded(file, block) {
+  if (FIT_BOUND_FILES.has(file)) {
+    return !block.includes('ImageBounds.boundedSourceSize(');
+  }
+
+  return !block.includes('sourceSize');
+}
+
 // findUnboundedImages returns one "<file>:<line>" description per
-// Image or AnimatedImage in src that shows received content with no
-// sourceSize set.
+// Image or AnimatedImage in src that shows received content without
+// the sourceSize rule that applies to file (see isUnbounded).
 function findUnboundedImages(file, src) {
   return findImageBlocks(src)
-    .filter((block) => showsReceivedContent(block.text) && !block.text.includes('sourceSize'))
+    .filter((block) => showsReceivedContent(block.text) && isUnbounded(file, block.text))
     .map((block) => `${file}:${block.line} (${block.type})`);
 }
 
@@ -123,7 +163,7 @@ test('a deliberately broken expectation is caught', () => {
   assert.deepEqual(findUnboundedImages('fixture.qml', src), ['fixture.qml:2 (Image)']);
 });
 
-test('a block with sourceSize set is not flagged', () => {
+test('a block with sourceSize set is not flagged, outside the files the review named', () => {
   const src = `
     Image {
       source: thumb ? "data:image/jpeg;base64," + thumb : ""
@@ -133,6 +173,34 @@ test('a block with sourceSize set is not flagged', () => {
   `;
 
   assert.deepEqual(findUnboundedImages('fixture.qml', src), []);
+});
+
+// A plain sourceSize, set to the box alone, is exactly what the
+// regression had: Qt's own covering scale can still blow it up for an
+// extreme aspect ratio, so a file the review actually named must use
+// ImageBounds.boundedSourceSize instead.
+test('a named sink with a plain, box-only sourceSize is still flagged', () => {
+  const src = `
+    Image {
+      source: thumb ? "data:image/jpeg;base64," + thumb : ""
+      sourceSize.width: root.implicitWidth
+      sourceSize.height: root.implicitHeight
+    }
+  `;
+
+  assert.deepEqual(findUnboundedImages('components/PhotoView.qml', src), ['components/PhotoView.qml:2 (Image)']);
+});
+
+test('a named sink using ImageBounds.boundedSourceSize is not flagged', () => {
+  const src = `
+    Image {
+      source: thumb ? "data:image/jpeg;base64," + thumb : ""
+      sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.photo.width, root.photo.height).width
+      sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.photo.width, root.photo.height).height
+    }
+  `;
+
+  assert.deepEqual(findUnboundedImages('components/PhotoView.qml', src), []);
 });
 
 // A bounded sourceSize alone is not enough for the composer's own

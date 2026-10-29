@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "../theme"
+import "../lib/ImageBounds.js" as ImageBounds
 import "../lib/Links.js" as Links
 
 // A photo in a message, at its shape. It shows its blurred preview until
@@ -96,13 +97,18 @@ Item {
     // thumb; never a remote URL.
     source: root.path && !root._loadFailed ? Links.fileURL(root.path) : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
     fillMode: Image.PreserveAspectFit
-    // Bounded to this bubble's own box, never the file's own declared
-    // size: the helper's imagesafe package already caps what a photo
-    // or sticker can declare, but a bounded sourceSize means Qt never
-    // even tries to allocate a bitmap larger than what is actually
-    // drawn, for a received image specifically (see docs/decisions.md).
-    sourceSize.width: root.implicitWidth
-    sourceSize.height: root.implicitHeight
+    // Fit inside this bubble's own box, computed from the photo's own
+    // known width and height rather than the box alone: Qt's own
+    // PreserveAspectFit/Crop scaling covers a sourceSize box by
+    // scaling to the image's longer side, so a sourceSize that does
+    // not share the real image's own ratio can still make Qt decode
+    // many times the box's own area (see ImageBounds.js and
+    // docs/decisions.md). The helper's imagesafe package also caps
+    // every declared size and ratio before this ever runs, but this
+    // bound holds even for a received file whose metadata and real
+    // bytes disagree.
+    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.photo.width, root.photo.height).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.photo.width, root.photo.height).height
     asynchronous: true
     // Scaling a tiny preview up smoothly keeps it a soft blur.
     smooth: true

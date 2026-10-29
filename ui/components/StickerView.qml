@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import "../theme"
+import "../lib/ImageBounds.js" as ImageBounds
 import "../lib/Links.js" as Links
 
 // A sticker in a message: a small, borderless static image, never
@@ -13,8 +14,8 @@ import "../lib/Links.js" as Links
 Item {
   id: root
 
-  // sticker is the message's sticker media: kind, thumb (base64) and
-  // emoji.
+  // sticker is the message's sticker media: kind, thumb (base64),
+  // width, height and emoji.
   required property var sticker
   // path is where the full image was downloaded, or "" until then.
   property string path: ""
@@ -63,10 +64,11 @@ Item {
     // thumb; never a remote URL.
     source: root.path ? Links.fileURL(root.path) : (root.sticker.thumb ? "data:image/png;base64," + root.sticker.thumb : "")
     fillMode: Image.PreserveAspectFit
-    // Bounded to this sticker's own fixed box (see PhotoView.qml's own
-    // sourceSize for why).
-    sourceSize.width: root._size
-    sourceSize.height: root._size
+    // Fit inside this sticker's own fixed box, computed from the
+    // sticker's own known width and height (see PhotoView.qml's own
+    // sourceSize for why the box alone is not enough).
+    sourceSize.width: ImageBounds.boundedSourceSize(root._size, root._size, root.sticker.width, root.sticker.height).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root._size, root._size, root.sticker.width, root.sticker.height).height
     asynchronous: true
     smooth: true
   }

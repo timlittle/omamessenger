@@ -32,28 +32,56 @@ type Profile struct {
 	// animation, so this is the decoding work one loop costs, which a
 	// small, highly compressed file could otherwise make enormous.
 	MaxTotalPixels int64
+	// MaxAspectRatio caps how much longer one side may be than the
+	// other - the longer side divided by the shorter - so a very thin,
+	// very long image cannot pass MaxSide and MaxPixels on its own
+	// declared shape and still force Qt's own sourceSize scaling to
+	// decode far more than either cap alone suggests: a box asks Qt to
+	// cover it by scaling to the image's longer side, so a 1x1024
+	// thumbnail asked to fill a 320x400 box decodes around 320x327680,
+	// about 105 megapixels, even though 1024 pixels is well under every
+	// other cap here (see docs/decisions.md). Zero means no limit.
+	MaxAspectRatio float64
 }
+
+// maxRealisticAspectRatio bounds every profile's own MaxAspectRatio:
+// the most extreme shape a genuine photo actually has. A panorama
+// stitched from several frames can reach about 10:1 and a tall phone
+// screenshot is only about 1:2.2, so 16:1 clears every real shape with
+// headroom to spare, while still catching the far more extreme shape
+// (1024:1 and beyond) a decode-bomb thumbnail needs to turn a bounded
+// sourceSize box into a huge decode (see Profile.MaxAspectRatio).
+const maxRealisticAspectRatio = 16
 
 // Thumbnail bounds a message's embedded preview and a downloaded
 // sticker: both are always drawn small (see ui/components/PhotoView.qml
 // and StickerView.qml), so a declared size above a phone screen's own
 // pixel count already means the sender is lying, not sending a real
 // preview.
-var Thumbnail = Profile{MaxSide: 1024, MaxPixels: 1024 * 1024, MaxInputLen: 2 << 20, MaxTotalPixels: 64_000_000}
+var Thumbnail = Profile{
+	MaxSide: 1024, MaxPixels: 1024 * 1024, MaxInputLen: 2 << 20,
+	MaxTotalPixels: 64_000_000, MaxAspectRatio: maxRealisticAspectRatio,
+}
 
 // FullImage bounds a downloaded or pasted still photo. Generous enough
 // for any photo a phone camera takes - none shoot past a small fraction
 // of 8192 pixels on a side - but far short of the gigabyte-scale bitmap
 // a crafted header can otherwise make Qt allocate. Its total allows a
 // single frame of that size and no more.
-var FullImage = Profile{MaxSide: 8192, MaxPixels: 40_000_000, MaxInputLen: 32 << 20, MaxTotalPixels: 40_000_000}
+var FullImage = Profile{
+	MaxSide: 8192, MaxPixels: 40_000_000, MaxInputLen: 32 << 20,
+	MaxTotalPixels: 40_000_000, MaxAspectRatio: maxRealisticAspectRatio,
+}
 
 // AnimatedGIF bounds a real GIF file shown animating (see
 // InlineVideo.qml's realGif): a message GIF is rarely past a phone
 // screen's width, so each frame is capped far below a photo, and the
 // whole animation to a few hundred frames of that, which Qt decodes on
 // the shell's own thread every loop.
-var AnimatedGIF = Profile{MaxSide: 2048, MaxPixels: 4_200_000, MaxInputLen: 32 << 20, MaxTotalPixels: 400_000_000}
+var AnimatedGIF = Profile{
+	MaxSide: 2048, MaxPixels: 4_200_000, MaxInputLen: 32 << 20,
+	MaxTotalPixels: 400_000_000, MaxAspectRatio: maxRealisticAspectRatio,
+}
 
 // format is one of the image formats this package knows how to
 // sanitize; every other byte stream is rejected outright, never
@@ -159,9 +187,10 @@ func LooksLikeImage(data []byte) bool {
 }
 
 // withinCaps reports whether a width and height both fit profile: each
-// side within MaxSide, and their product within MaxPixels. Width and
-// height come in as int64 so a caller reading a 24- or 32-bit field
-// straight off the wire never overflows int before this check runs.
+// side within MaxSide, their product within MaxPixels, and their
+// ratio within MaxAspectRatio. Width and height come in as int64 so a
+// caller reading a 24- or 32-bit field straight off the wire never
+// overflows int before this check runs.
 func withinCaps(width, height int64, profile Profile) bool {
 	if width <= 0 || height <= 0 {
 		return false
@@ -169,8 +198,25 @@ func withinCaps(width, height int64, profile Profile) bool {
 	if width > int64(profile.MaxSide) || height > int64(profile.MaxSide) {
 		return false
 	}
+	if width*height > profile.MaxPixels {
+		return false
+	}
 
-	return width*height <= profile.MaxPixels
+	return withinAspectRatio(width, height, profile.MaxAspectRatio)
+}
+
+// withinAspectRatio reports whether width and height's ratio - the
+// longer side divided by the shorter - stays within maxRatio. A
+// maxRatio of zero means no limit, so a caller that never sets
+// MaxAspectRatio keeps its old, unbounded behaviour.
+func withinAspectRatio(width, height int64, maxRatio float64) bool {
+	if maxRatio <= 0 {
+		return true
+	}
+
+	longer, shorter := max(width, height), min(width, height)
+
+	return float64(longer) <= float64(shorter)*maxRatio
 }
 
 // withinTotal reports whether frames frames of a width by height canvas

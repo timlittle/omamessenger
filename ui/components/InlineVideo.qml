@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import "../theme"
 import "../lib/Format.js" as Format
+import "../lib/ImageBounds.js" as ImageBounds
 import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
 
@@ -192,10 +193,11 @@ Item {
     visible: !root._decoding && !(root._animated && root._realGifFile && root.path)
     source: root.video.thumb ? "data:image/jpeg;base64," + root.video.thumb : ""
     fillMode: Image.PreserveAspectFit
-    // Bounded to this bubble's own box, never the file's own declared
-    // size (see PhotoView.qml's own sourceSize for why).
-    sourceSize.width: root.implicitWidth
-    sourceSize.height: root.implicitHeight
+    // Fit inside this bubble's own box, computed from the video's own
+    // known width and height (see PhotoView.qml's own sourceSize for
+    // why the box alone is not enough).
+    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.video.width, root.video.height).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.video.width, root.video.height).height
     asynchronous: true
     smooth: true
   }
@@ -216,10 +218,11 @@ Item {
     playing: visible && root.visible && root.windowActive && root.playing
     cache: false
     fillMode: Image.PreserveAspectFit
-    // Bounded to this bubble's own box, never the file's own declared
-    // size (see PhotoView.qml's own sourceSize for why).
-    sourceSize.width: root.implicitWidth
-    sourceSize.height: root.implicitHeight
+    // Fit inside this bubble's own box, computed from the video's own
+    // known width and height (see PhotoView.qml's own sourceSize for
+    // why the box alone is not enough).
+    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.video.width, root.video.height).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.video.width, root.video.height).height
   }
 
   Rectangle {

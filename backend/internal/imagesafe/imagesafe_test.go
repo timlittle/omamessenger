@@ -66,3 +66,56 @@ func TestSanitize_RejectsOverInputLenCap(t *testing.T) {
 		t.Fatal("Sanitize() = ok, want rejected for data over MaxInputLen")
 	}
 }
+
+// TestSanitize_RejectsExtremeAspectRatio covers the decode-bomb shape
+// a very thin, very long image makes: Qt's own sourceSize scaling
+// covers a box by scaling to an image's longer side, so even a tiny,
+// well-formed thumbnail that is 1 pixel wide and 1024 pixels tall can
+// make the UI decode on the order of 100 megapixels once it is scaled
+// to fit a normal message bubble (see docs/decisions.md). Every real
+// profile's own MaxAspectRatio must catch this shape even though
+// every other cap - side, pixel count and input length - still
+// passes it.
+func TestSanitize_RejectsExtremeAspectRatio(t *testing.T) {
+	cases := map[string]struct {
+		data    []byte
+		profile imagesafe.Profile
+	}{
+		"png thumbnail":  {buildPNG(1, 1024), imagesafe.Thumbnail},
+		"jpeg thumbnail": {buildJPEG(4, 1024), imagesafe.Thumbnail},
+		"gif thumbnail":  {buildGIF(1, 1024, 1), imagesafe.Thumbnail},
+		"webp thumbnail": {buildWebPSimple(1, 1024), imagesafe.Thumbnail},
+		"png full image": {buildPNG(1, 8192), imagesafe.FullImage},
+		"png animated":   {buildPNG(1, 2048), imagesafe.AnimatedGIF},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, ok := imagesafe.Sanitize(tc.data, tc.profile); ok {
+				t.Fatalf("Sanitize(%s) = ok, want rejected for an extreme aspect ratio", name)
+			}
+		})
+	}
+}
+
+// TestSanitize_AcceptsRealisticAspectRatios covers the aspect ratios
+// a genuine photo actually has - a tall phone screenshot and a wide
+// panorama - so MaxAspectRatio's own cap never rejects real content,
+// only the decode-bomb shape above.
+func TestSanitize_AcceptsRealisticAspectRatios(t *testing.T) {
+	cases := map[string]struct {
+		data    []byte
+		profile imagesafe.Profile
+	}{
+		"tall phone screenshot, about 1:2.2": {buildPNG(1080, 2400), imagesafe.FullImage},
+		"wide panorama, about 10:1":          {buildPNG(2000, 200), imagesafe.FullImage},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, ok := imagesafe.Sanitize(tc.data, tc.profile); !ok {
+				t.Fatalf("Sanitize(%s) = rejected, want accepted as a realistic photo", name)
+			}
+		})
+	}
+}
