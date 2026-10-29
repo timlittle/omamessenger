@@ -179,6 +179,76 @@ func TestSanitizeGIF_RejectsMissingLZWByte(t *testing.T) {
 	}
 }
 
+// TestSanitizeGIF_RaisesAZeroDelayOnALargeCanvas covers the GIF
+// regression.md describes: a sender-chosen delay of zero on every
+// frame of a canvas at the animated profile's own cap, which would
+// otherwise let AnimatedImage decode that canvas back to back,
+// nonstop, for as long as the GIF plays. Sanitize must raise every
+// frame's delay so decoding it never runs faster than
+// gifMaxDecodeRate pixels of canvas a second.
+func TestSanitizeGIF_RaisesAZeroDelayOnALargeCanvas(t *testing.T) {
+	src := buildGIFWithDelays(2048, 2048, []int{0, 0, 0, 0, 0})
+
+	out, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF)
+	if !ok {
+		t.Fatal("Sanitize() = rejected, want accepted")
+	}
+
+	delays, err := gifFrameDelays(out)
+	if err != nil {
+		t.Fatalf("decoding sanitized output: %v", err)
+	}
+
+	const wantDelay = 14 // the minimum centisecond delay a 2048x2048 canvas needs to stay under gifMaxDecodeRate
+	for i, d := range delays {
+		if d < wantDelay {
+			t.Errorf("frame %d delay = %d cs, want at least %d", i, d, wantDelay)
+		}
+	}
+}
+
+// TestSanitizeGIF_LeavesASingleFrameUntouched covers a genuine still
+// GIF - one frame, no Graphics Control extension at all, the shape
+// Go's own gif.Encode produces for a non-animated image - confirming
+// Sanitize leaves it exactly as it arrived: it never repeats, so it
+// carries none of the decode-rate risk gifMinDelayCS exists to bound,
+// and synthesizing a delay for it would only make an already-safe
+// file pointlessly different from what was sent.
+func TestSanitizeGIF_LeavesASingleFrameUntouched(t *testing.T) {
+	src := buildGIFWithDelays(2048, 2048, []int{0})
+
+	out, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF)
+	if !ok {
+		t.Fatal("Sanitize() = rejected, want accepted")
+	}
+	if !bytes.Equal(out, src) {
+		t.Error("Sanitize() rewrote a single, non-animated frame, want it left exactly as it was")
+	}
+}
+
+// TestSanitizeGIF_LeavesNormalDelaysUnchangedOnASmallCanvas covers an
+// ordinary small GIF's own real delay: nothing here should raise or
+// otherwise touch a delay the rate bound and the browser convention
+// already have no objection to.
+func TestSanitizeGIF_LeavesNormalDelaysUnchangedOnASmallCanvas(t *testing.T) {
+	src := buildGIFWithDelays(8, 8, []int{10, 10, 10})
+
+	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	if !ok {
+		t.Fatal("Sanitize() = rejected, want accepted")
+	}
+
+	delays, err := gifFrameDelays(out)
+	if err != nil {
+		t.Fatalf("decoding sanitized output: %v", err)
+	}
+	for i, d := range delays {
+		if d != 10 {
+			t.Errorf("frame %d delay = %d cs, want it unchanged at 10", i, d)
+		}
+	}
+}
+
 // assertDecodesGIF fails t if data does not decode as a GIF.
 func assertDecodesGIF(t *testing.T, data []byte) {
 	t.Helper()

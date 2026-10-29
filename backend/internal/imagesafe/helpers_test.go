@@ -109,6 +109,34 @@ func buildGIF(width, height, frameCount int) []byte {
 	return buf.Bytes()
 }
 
+// buildGIFWithDelays encodes an animation of the given size, one
+// frame per entry in delays, each frame's own Graphics Control
+// extension carrying that entry as its delay time in centiseconds -
+// for a test that needs a delay buildGIF's own fixed 10cs cannot
+// cover, such as zero.
+func buildGIFWithDelays(width, height int, delays []int) []byte {
+	g := &gif.GIF{LoopCount: 0}
+	palette := []color.Color{color.RGBA{R: 255, A: 255}, color.RGBA{B: 255, A: 255}}
+	for _, d := range delays {
+		frame := image.NewPaletted(image.Rect(0, 0, width, height), palette)
+		g.Image = append(g.Image, frame)
+		g.Delay = append(g.Delay, d)
+	}
+	var buf bytes.Buffer
+	_ = gif.EncodeAll(&buf, g)
+	return buf.Bytes()
+}
+
+// gifFrameDelays returns data's own frame delays, in centiseconds, in
+// order, by decoding it the way AnimatedImage's own GIF reader would.
+func gifFrameDelays(data []byte) ([]int, error) {
+	g, err := gif.DecodeAll(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	return g.Delay, nil
+}
+
 // insertGIFExtension returns src with one extension block - introducer,
 // label and its sub-blocks - inserted right after the header, logical
 // screen descriptor and any global color table, exactly where a
