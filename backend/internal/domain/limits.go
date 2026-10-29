@@ -107,6 +107,14 @@ const MaxStickerEmojiLength = 32
 // still never splits the UTF-8 encoding of one rune across the cut.
 const MaxFileNameLength = 255
 
+// MaxPreviewLength bounds a conversation's own Preview, in UTF-16 code
+// units: ui/lib/Format.js's previewText only ever shows the first 200
+// characters of it, prefixed in a group by the sender's own name, so a
+// margin above that covers every prefix the UI adds without ever
+// needing to store or send a message's full text, which a sender fully
+// controls (see store.bumpConversation and store.scanConversationWith).
+const MaxPreviewLength = 300
+
 // capRange is a [start, end) range over Text in UTF-16 code units, the
 // shape a formatting span's and a mention's own position share.
 type capRange struct {
@@ -187,6 +195,16 @@ func CapReactions(reactions []Reaction) []Reaction {
 // own name - goes through once, wherever it enters the helper.
 func CapDisplayName(s string) string {
 	return capText(s, MaxDisplayNameLength)
+}
+
+// CapPreview cuts s to MaxPreviewLength, the one cap a conversation's
+// own Preview goes through: once when store.bumpConversation first
+// stores it, and again on every later read (see
+// store.scanConversationWith), so a row a release before this cap
+// existed already wrote in full is repaired the same way CapDisplayName
+// repairs a legacy Title or PreviewSender.
+func CapPreview(s string) string {
+	return capText(s, MaxPreviewLength)
 }
 
 // CapFileName cuts s to at most MaxFileNameLength bytes, never

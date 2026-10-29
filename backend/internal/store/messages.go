@@ -206,8 +206,13 @@ func originalAttachment(media *domain.Media) (path string, modTime int64) {
 // bumpConversation counts m as unread when countUnread is set and it is
 // incoming and not yet read, and makes it the preview when it is the
 // newest message. Older history arriving later leaves the preview alone.
+// The stored preview is capped to domain.MaxPreviewLength: m.Text itself
+// can be up to domain.MaxIncomingTextLength, far more than the one line
+// a conversation row ever shows, and scanConversationWith only re-caps
+// it for a row already stored too large, not a new one.
 func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message, countUnread bool) error {
 	unread := boolInt(countUnread && !m.Outgoing && m.Status != domain.StatusRead)
+	preview := domain.CapPreview(m.Text)
 	res, err := tx.ExecContext(ctx, `UPDATE conversations SET
 			unread=unread+?,
 			preview=CASE WHEN ?>=last_activity THEN ? ELSE preview END,
@@ -215,7 +220,7 @@ func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message, countUn
 			preview_out=CASE WHEN ?>=last_activity THEN ? ELSE preview_out END,
 			last_activity=MAX(last_activity,?)
 		WHERE id=?`,
-		unread, m.Created, m.Text, m.Created, m.SenderName, m.Created, boolInt(m.Outgoing),
+		unread, m.Created, preview, m.Created, m.SenderName, m.Created, boolInt(m.Outgoing),
 		m.Created, m.ConversationID)
 	if err != nil {
 		return err

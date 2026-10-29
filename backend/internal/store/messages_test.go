@@ -46,6 +46,28 @@ func TestAddMessage_UpdatesPreviewAndUnread(t *testing.T) {
 	}
 }
 
+// TestAddMessage_CapsTheStoredPreview confirms bumpConversation caps
+// the preview it stores to domain.MaxPreviewLength: a message's own
+// Text can be far longer (up to domain.MaxIncomingTextLength), but the
+// conversation row never needs more than the one line the UI shows.
+func TestAddMessage_CapsTheStoredPreview(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	huge := strings.Repeat("a", domain.MaxPreviewLength+1000)
+	addMessages(t, s, domain.Message{ID: "huge", ConversationID: "chat", Text: huge, Created: 1})
+
+	chat, err := s.Conversation(ctx, "chat")
+	if err != nil {
+		t.Fatalf("Conversation: %v", err)
+	}
+	if n := domain.UTF16Len(chat.Preview); n != domain.MaxPreviewLength {
+		t.Errorf("Preview length = %d, want %d", n, domain.MaxPreviewLength)
+	}
+}
+
 func TestAddHistoryMessage_NeverCountsTowardsUnread(t *testing.T) {
 	t.Parallel()
 

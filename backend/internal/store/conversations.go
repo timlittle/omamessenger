@@ -467,7 +467,12 @@ func scanConversationMatch(row scanner) (domain.Conversation, error) {
 // same domain.CapDisplayName cap on every read that app.Ingest already
 // gives them on arrival, repairing a row an older release stored
 // before that cap existed, the same reasoning store.scanMessage gives
-// a legacy sender name (see domain.SanitizeIncoming).
+// a legacy sender name (see domain.SanitizeIncoming). Preview is
+// sender-controlled too - a message's own text, with bumpConversation
+// the only writer - so it gets the matching domain.CapPreview cap here
+// as well: a release before that cap existed could still store a
+// message's full, unbounded text as the preview, and this is what
+// repairs that row on every read, not only for a preview set since.
 func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error) {
 	var c domain.Conversation
 	dest := append([]any{
@@ -480,6 +485,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 
 	c.Title = domain.CapDisplayName(c.Title)
 	c.PreviewSender = domain.CapDisplayName(c.PreviewSender)
+	c.Preview = domain.CapPreview(c.Preview)
 
 	return c, nil
 }

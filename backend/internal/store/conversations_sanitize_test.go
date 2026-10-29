@@ -1,11 +1,12 @@
 package store_test
 
 // conversations_sanitize_test.go confirms a conversation's own
-// sender-controlled display text - its Title, its PreviewSender and a
-// search result's MatchSender - is capped on every read, even when the
-// row was stored uncapped by a release before domain.MaxDisplayNameLength
-// existed, or by any other path that skips the app layer's own
-// CapDisplayName call. See store.scanConversationWith.
+// sender-controlled display text - its Title, its Preview, its
+// PreviewSender and a search result's MatchSender - is capped on every
+// read, even when the row was stored uncapped by a release before
+// domain.MaxDisplayNameLength or domain.MaxPreviewLength existed, or by
+// any other path that skips the app layer's own CapDisplayName or
+// CapPreview call. See store.scanConversationWith.
 
 import (
 	"strings"
@@ -60,6 +61,39 @@ func TestConversation_CapsAStoredPreviewSenderOnRead(t *testing.T) {
 	}
 	if domain.UTF16Len(got.PreviewSender) != domain.MaxDisplayNameLength {
 		t.Errorf("PreviewSender length = %d, want %d", domain.UTF16Len(got.PreviewSender), domain.MaxDisplayNameLength)
+	}
+}
+
+// TestConversation_CapsAStoredPreviewOnRead confirms a conversation's
+// own Preview is capped on every read, even when it was set to a
+// message's full, unbounded text by a path that does not go through
+// bumpConversation's own domain.CapPreview call: refreshAfterDeletion
+// falls a conversation's preview back to its newest remaining
+// message's raw text column, the same way a release before
+// domain.MaxPreviewLength existed stored bumpConversation's own preview
+// uncapped.
+func TestConversation_CapsAStoredPreviewOnRead(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	huge := strings.Repeat("a", domain.MaxPreviewLength+1000)
+	addMessages(t, s,
+		domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", Text: huge, Created: 1},
+		domain.Message{ID: "m2", ConversationID: "chat", RemoteID: "2", Text: "short", Created: 2},
+	)
+
+	if _, err := s.DeleteMessages(ctx, "wa", []string{"r-chat"}, []string{"2"}); err != nil {
+		t.Fatalf("DeleteMessages: %v", err)
+	}
+
+	got, err := s.Conversation(ctx, "chat")
+	if err != nil {
+		t.Fatalf("Conversation: %v", err)
+	}
+	if n := domain.UTF16Len(got.Preview); n != domain.MaxPreviewLength {
+		t.Errorf("Preview length = %d, want %d", n, domain.MaxPreviewLength)
 	}
 }
 

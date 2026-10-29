@@ -351,6 +351,27 @@ func TestCapDisplayName_LeavesAShortNameAlone(t *testing.T) {
 	}
 }
 
+// TestCapPreview_CutsAnOversizedPreview confirms a preview past
+// MaxPreviewLength is cut to it, on a rune boundary.
+func TestCapPreview_CutsAnOversizedPreview(t *testing.T) {
+	t.Parallel()
+
+	got := domain.CapPreview(strings.Repeat("a", domain.MaxPreviewLength+10))
+	if n := domain.UTF16Len(got); n != domain.MaxPreviewLength {
+		t.Errorf("CapPreview kept %d UTF-16 units, want exactly %d", n, domain.MaxPreviewLength)
+	}
+}
+
+// TestCapPreview_LeavesAShortPreviewAlone confirms a preview already
+// within the cap passes through unchanged.
+func TestCapPreview_LeavesAShortPreviewAlone(t *testing.T) {
+	t.Parallel()
+
+	if got := domain.CapPreview("hello"); got != "hello" {
+		t.Errorf("CapPreview(%q) = %q, want it unchanged", "hello", got)
+	}
+}
+
 // TestCapFileName_CutsAnOversizedNameOnAByteBoundary confirms a file
 // name past MaxFileNameLength bytes is cut to it without splitting a
 // multi-byte rune's own encoding across the cut.
