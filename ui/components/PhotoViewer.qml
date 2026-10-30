@@ -72,6 +72,19 @@ Item {
   // plays through FullVideoPlayer instead of the plain Image below.
   readonly property bool _isVideo: !!root.photo && root.photo.kind === "video"
 
+  // _haveFile is whether the full image, rather than its thumbnail,
+  // is the one actually shown right now - the same condition image's
+  // own source binding below uses.
+  readonly property bool _haveFile: !root._isVideo && !!root.path
+  // _verifiedWidth and _verifiedHeight are the real, decoder-confirmed
+  // size to bound the image's own decode by (see
+  // ImageBounds.verifiedDimensions): never root.photo.width/height,
+  // the sender's own claim, which a differential review found makes
+  // this viewer's own near-full-screen stage decode many times its
+  // own area when it disagrees with either file's real shape.
+  readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.photo, root._haveFile).width
+  readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.photo, root._haveFile).height
+
   objectName: "photoViewer"
   anchors.fill: parent
   visible: root.open
@@ -116,9 +129,13 @@ Item {
       fillMode: Image.PreserveAspectFit
       // Fit inside the viewer's own stage, computed from the photo's
       // own known width and height (see PhotoView.qml's own
-      // sourceSize for why the stage alone is not enough).
-      sourceSize.width: ImageBounds.boundedSourceSize(stage.width, stage.height, root.photo ? root.photo.width : 0, root.photo ? root.photo.height : 0).width
-      sourceSize.height: ImageBounds.boundedSourceSize(stage.width, stage.height, root.photo ? root.photo.width : 0, root.photo ? root.photo.height : 0).height
+      // sourceSize for why the stage alone is not enough). Reads the
+      // real, verified size (root._verifiedWidth/Height), never a
+      // sender's own claim: this viewer's stage is the one box a
+      // differential review found a lying claim still makes Qt cover
+      // many times over (see docs/decisions.md).
+      sourceSize.width: ImageBounds.boundedSourceSize(stage.width, stage.height, root._verifiedWidth, root._verifiedHeight).width
+      sourceSize.height: ImageBounds.boundedSourceSize(stage.width, stage.height, root._verifiedWidth, root._verifiedHeight).height
       asynchronous: true
       // Scaling a tiny preview up smoothly keeps it a soft blur, same as
       // the bubble's own photo view.

@@ -30,7 +30,7 @@ func TestSanitizeJPEG_StripsAppAndComment(t *testing.T) {
 			bomb := bytes.Repeat([]byte{0x42}, 32*1024)
 			src := insertJPEGSegment(original, c.marker, bomb)
 
-			out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+			out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 			if !ok {
 				t.Fatal("Sanitize() = rejected, want stripped and accepted")
 			}
@@ -51,7 +51,7 @@ func TestSanitizeJPEG_KeepsAGenuineAdobeSegment(t *testing.T) {
 	adobe := []byte{'A', 'd', 'o', 'b', 'e', 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x01}
 	src := insertJPEGSegment(buildJPEG(16, 16), 0xEE, adobe)
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -66,7 +66,7 @@ func TestSanitizeJPEG_KeepsAGenuineAdobeSegment(t *testing.T) {
 func TestSanitizeJPEG_KeepsAPP0(t *testing.T) {
 	src := insertJPEGSegment(buildJPEG(16, 16), 0xE0, []byte("JFIF\x01\x01\x00\x00\x01\x00\x01\x00\x00"))
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -81,7 +81,7 @@ func TestSanitizeJPEG_RejectsTruncatedSegment(t *testing.T) {
 	src := insertJPEGSegment(buildJPEG(16, 16), 0xE1, bytes.Repeat([]byte{1}, 100))
 	truncated := src[:len(src)-80]
 
-	if _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a truncated file, want rejected")
 	}
 }
@@ -100,7 +100,7 @@ func TestSanitizeJPEG_RejectsOversizedDimensions(t *testing.T) {
 	src[sof+5], src[sof+6] = 0xEA, 0x60
 	src[sof+7], src[sof+8] = 0xEA, 0x60
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a 60000x60000 header, want rejected")
 	}
 }
@@ -110,7 +110,7 @@ func TestSanitizeJPEG_RejectsOversizedDimensions(t *testing.T) {
 func TestSanitizeJPEG_RejectsMissingSOF(t *testing.T) {
 	src := []byte{0xFF, 0xD8, 0xFF, 0xDA, 0x00, 0x02, 0xFF, 0xD9}
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a file with no SOF, want rejected")
 	}
 }
@@ -120,7 +120,7 @@ func TestSanitizeJPEG_RejectsMissingSOF(t *testing.T) {
 func TestSanitizeJPEG_RejectsShortSOF(t *testing.T) {
 	src := []byte{0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x03, 0x08, 0xFF, 0xD9}
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a truncated SOF, want rejected")
 	}
 }
@@ -128,7 +128,7 @@ func TestSanitizeJPEG_RejectsShortSOF(t *testing.T) {
 // TestSanitizeJPEG_RejectsShortMarker covers a file cut off right
 // after the SOI, with no complete marker to read next.
 func TestSanitizeJPEG_RejectsShortMarker(t *testing.T) {
-	if _, ok := imagesafe.Sanitize([]byte{0xFF, 0xD8, 0xFF}, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize([]byte{0xFF, 0xD8, 0xFF}, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a file with only SOI, want rejected")
 	}
 }
@@ -165,7 +165,7 @@ func FuzzSanitizeJPEG(f *testing.F) {
 	f.Add(seed[:len(seed)-4])
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		out, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+		out, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
 		if !ok {
 			if out != nil {
 				t.Fatal("rejected input returned non-nil output")

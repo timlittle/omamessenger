@@ -23,12 +23,16 @@ const (
 // and XMP metadata chunks and adjusting VP8X's own flags to match,
 // after checking the canvas dimensions - read from VP8X when present,
 // otherwise straight from the VP8 or VP8L bitstream header - and every
-// animation frame's own dimensions against profile. Nothing here
-// decodes the actual image data: Go has no WebP decoder to confirm
-// against, so correctness rests entirely on the chunk and bitstream
-// headers being well-formed, which is checked at every step. ok is
-// false for anything structurally wrong or over profile's caps.
-func sanitizeWebP(data []byte, profile Profile) ([]byte, bool) {
+// animation frame's own dimensions against profile, and returns that
+// canvas size alongside the rebuilt bytes: the one size a caller may
+// need to bound a later decode by (see connector.EnsureImageSafe),
+// taken on trust here rather than confirmed by a decode the way PNG,
+// JPEG and GIF each get from finishPNG, finishJPEG and
+// writeGIFBlocks's own trailer check - Go has no WebP decoder to
+// confirm against - but still the real header field a later, unrelated
+// claim about this image's size must never override. ok is false for
+// anything structurally wrong or over profile's caps.
+func sanitizeWebP(data []byte, profile Profile) (out []byte, width, height int, ok bool) {
 	var body bytes.Buffer
 	canvasWidth, canvasHeight := int64(-1), int64(-1)
 	frames := 0
@@ -36,13 +40,13 @@ func sanitizeWebP(data []byte, profile Profile) ([]byte, bool) {
 	for pos := 12; pos < len(data); {
 		fourCC, payload, next, ok := readRIFFChunk(data, pos)
 		if !ok {
-			return nil, false
+			return nil, 0, 0, false
 		}
 		pos = next
 
 		kept, w, h, ok := webpChunk(fourCC, payload, profile, &frames)
 		if !ok {
-			return nil, false
+			return nil, 0, 0, false
 		}
 		if w >= 0 && canvasWidth < 0 {
 			canvasWidth, canvasHeight = w, h
@@ -53,10 +57,10 @@ func sanitizeWebP(data []byte, profile Profile) ([]byte, bool) {
 	}
 
 	if canvasWidth < 0 || !withinCaps(canvasWidth, canvasHeight, profile) || !withinTotal(canvasWidth, canvasHeight, frames, profile) {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
-	return assembleWebP(body.Bytes()), true
+	return assembleWebP(body.Bytes()), int(canvasWidth), int(canvasHeight), true
 }
 
 // webpChunk decides what one top-level chunk contributes: the bytes

@@ -27,7 +27,7 @@ var ErrUnsafeImage = errors.New("connector: image failed safety check")
 // which is why every connector's FetchMedia routes exactly these
 // kinds through here rather than SaveMedia (see docs/decisions.md).
 func SaveImageMedia(path string, data []byte, profile imagesafe.Profile) error {
-	safe, ok := imagesafe.Sanitize(data, profile)
+	safe, _, _, ok := imagesafe.Sanitize(data, profile)
 	if !ok {
 		return fmt.Errorf("connector: save image media: %w", ErrUnsafeImage)
 	}
@@ -48,7 +48,7 @@ func SaveImageMedia(path string, data []byte, profile imagesafe.Profile) error {
 // is checked against the same full-size profile a downloaded photo
 // is, never trusted just because the user chose to paste it.
 func SanitizeOutgoingImage(data []byte) ([]byte, error) {
-	safe, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+	safe, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
 	if !ok {
 		return nil, fmt.Errorf("connector: sanitize outgoing image: %w", ErrUnsafeImage)
 	}
@@ -143,7 +143,7 @@ func SanitizeIfGIF(path string) (isGIF bool, err error) {
 		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
 	}
 
-	safe, ok := imagesafe.Sanitize(data, imagesafe.AnimatedGIF)
+	safe, _, _, ok := imagesafe.Sanitize(data, imagesafe.AnimatedGIF)
 	if !ok {
 		return false, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
 	}
@@ -170,34 +170,40 @@ func SanitizeIfGIF(path string) (isGIF bool, err error) {
 // own checks outright, or cannot even be read is removed and reported
 // as an error - never kept on disk and never served - so a caller
 // that catches the error can simply refuse or retry, never fall back
-// to the very bytes this was asked to rule out.
-func EnsureImageSafe(path string, profile imagesafe.Profile) error {
+// to the very bytes this was asked to rule out. width and height are
+// the file's own real dimensions, as imagesafe.Sanitize's own parse
+// of it just confirmed them, for app.Commands to hand on to the UI in
+// place of whatever size a message's own metadata claims (see
+// docs/decisions.md): a sender's claimed width and height need not
+// match what the served file actually decodes to, and only this
+// check ever reads the file itself.
+func EnsureImageSafe(path string, profile imagesafe.Profile) (width, height int, err error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("connector: ensure image safe: %w", errors.Join(err, removeIfPresent(path)))
+		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", errors.Join(err, removeIfPresent(path)))
 	}
 	if info.Size() > profile.MaxInputLen {
-		return fmt.Errorf("connector: ensure image safe: %w", errors.Join(ErrMediaTooLarge, removeIfPresent(path)))
+		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", errors.Join(ErrMediaTooLarge, removeIfPresent(path)))
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("connector: ensure image safe: %w", errors.Join(err, removeIfPresent(path)))
+		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", errors.Join(err, removeIfPresent(path)))
 	}
 
-	safe, ok := imagesafe.Sanitize(data, profile)
+	safe, width, height, ok := imagesafe.Sanitize(data, profile)
 	if !ok {
-		return fmt.Errorf("connector: ensure image safe: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
+		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
 	}
 	if bytes.Equal(safe, data) {
-		return nil
+		return width, height, nil
 	}
 
 	if err := os.WriteFile(path, safe, 0o600); err != nil { //nolint:gosec // deliberate: path is a media cache or outgoing path app.Commands already wrote, never built from untrusted input
-		return fmt.Errorf("connector: ensure image safe: %w", err)
+		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", err)
 	}
 
-	return nil
+	return width, height, nil
 }
 
 // VideoPlayable reports whether path, an ordinary video FetchMedia has

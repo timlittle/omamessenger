@@ -33,7 +33,7 @@ func TestSanitizePNG_StripsCompressedMetadata(t *testing.T) {
 			bomb := make([]byte, 64*1024)
 			src := insertPNGChunk(original, c.kind, bomb)
 
-			out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+			out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 			if !ok {
 				t.Fatalf("Sanitize() = rejected, want stripped and accepted")
 			}
@@ -54,7 +54,7 @@ func TestSanitizePNG_StripsCompressedMetadata(t *testing.T) {
 func TestSanitizePNG_RejectsOversizedDimensions(t *testing.T) {
 	src := setPNGDimensions(buildPNG(4, 4), 100000, 100000)
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a 100000x100000 header, want rejected")
 	}
 }
@@ -69,7 +69,7 @@ func TestSanitizePNG_RejectsBadCRC(t *testing.T) {
 	crcPos := len(src) - lengthOfTrailingChunks(src) - 4
 	src[crcPos] ^= 0xFF
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a chunk with a bad CRC, want rejected")
 	}
 }
@@ -80,7 +80,7 @@ func TestSanitizePNG_RejectsTruncatedChunk(t *testing.T) {
 	src := buildPNG(8, 8)
 	truncated := src[:len(src)-10]
 
-	if _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a truncated file, want rejected")
 	}
 }
@@ -91,7 +91,7 @@ func TestSanitizePNG_RejectsTruncatedChunk(t *testing.T) {
 func TestSanitizePNG_KeepsRenderingChunks(t *testing.T) {
 	src := insertPNGChunk(buildPNG(8, 8), "gAMA", []byte{0, 0, 0x9a, 0x9a})
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -110,7 +110,7 @@ func TestSanitizePNG_RejectsMissingIHDR(t *testing.T) {
 	writeChunk(&out, "tEXt", []byte("no IHDR here"))
 	out.Write(src[8:])
 
-	if _, ok := imagesafe.Sanitize(out.Bytes(), imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(out.Bytes(), imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a file with no IHDR first, want rejected")
 	}
 }
@@ -123,7 +123,7 @@ func TestSanitizePNG_RejectsHugeChunkLength(t *testing.T) {
 	out := append([]byte{}, src...)
 	binary.BigEndian.PutUint32(out[8:12], 0xFFFFFFFF)
 
-	if _, ok := imagesafe.Sanitize(out, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(out, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a chunk declaring a 4-gigabyte length, want rejected")
 	}
 }
@@ -183,7 +183,7 @@ func FuzzSanitizePNG(f *testing.F) {
 	f.Add(seed[:len(seed)-4])
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		out, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+		out, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
 		if !ok {
 			if out != nil {
 				t.Fatal("rejected input returned non-nil output")

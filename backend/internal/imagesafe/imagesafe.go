@@ -146,17 +146,23 @@ func isWebP(data []byte) bool {
 
 // Sanitize returns data with every chunk or segment its format does
 // not need for rendering removed, after checking its declared
-// dimensions against profile. ok is false when data is not a format
-// this package recognizes, is structurally broken (a bad length, a
-// failed checksum, a truncated chunk), or declares a size profile
-// rejects; out is always nil in that case, so a caller cannot
-// accidentally use a partially-checked result. Nothing is logged here:
-// callers log only the safe category they already have (see
-// app.MediaFetchReason), never these bytes or this function's own
-// reasoning.
-func Sanitize(data []byte, profile Profile) (out []byte, ok bool) {
+// dimensions against profile, together with those dimensions: the
+// image's own real width and height, read from its header (and, for
+// every format but WebP, confirmed again by actually decoding the
+// rebuilt bytes - see finishPNG, finishJPEG and writeGIFBlocks's own
+// trailer check), never whatever size an unrelated caller - a
+// message's own claimed photo size, say - might otherwise assume
+// matches it (see docs/decisions.md). ok is false when data is not a
+// format this package recognizes, is structurally broken (a bad
+// length, a failed checksum, a truncated chunk), or declares a size
+// profile rejects; out, width and height are all zero in that case,
+// so a caller cannot accidentally use a partially-checked result.
+// Nothing is logged here: callers log only the safe category they
+// already have (see app.MediaFetchReason), never these bytes or this
+// function's own reasoning.
+func Sanitize(data []byte, profile Profile) (out []byte, width, height int, ok bool) {
 	if int64(len(data)) > profile.MaxInputLen || len(data) == 0 {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
 	switch detectFormat(data) {
@@ -169,7 +175,7 @@ func Sanitize(data []byte, profile Profile) (out []byte, ok bool) {
 	case formatWebP:
 		return sanitizeWebP(data, profile)
 	default:
-		return nil, false
+		return nil, 0, 0, false
 	}
 }
 

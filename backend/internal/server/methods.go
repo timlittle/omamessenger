@@ -409,6 +409,15 @@ type mediaResult struct {
 	DecodeAs string `json:"decodeAs,omitempty"`
 	Playable bool   `json:"playable,omitempty"`
 	Risky    bool   `json:"risky,omitempty"`
+	// Width and Height are the fetched photo's or sticker's own real
+	// dimensions, confirmed by the helper's own parse of the served
+	// file (see connector.EnsureImageSafe), never the message's own
+	// claimed size: the UI must size its decode of path from these,
+	// not from a photo's or sticker's width/height field, which need
+	// not match what this file actually decodes to (see
+	// docs/decisions.md). Omitted for every other media kind.
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
 }
 
 // mediaFetchParams names the message whose media to fetch. Auto is
@@ -431,24 +440,27 @@ type mediaFetchParams struct {
 // those kinds, and none changes what was downloaded or where.
 func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, error) {
 	return func(ctx context.Context, p mediaFetchParams) (any, error) {
-		path, err := c.FetchMedia(ctx, p.MessageID, p.Auto)
+		path, width, height, err := c.FetchMedia(ctx, p.MessageID, p.Auto)
 		if err != nil {
 			return mediaResult{}, err
 		}
 
 		decodeAs, err := c.DecodeAsForMedia(ctx, p.MessageID, path)
 		if err != nil {
-			return mediaResult{Path: path, DecodeAs: decodeAs}, err
+			return mediaResult{Path: path, DecodeAs: decodeAs, Width: width, Height: height}, err
 		}
 
 		videoPlayable, err := c.VideoPlayableForMedia(ctx, p.MessageID, path)
 		if err != nil {
-			return mediaResult{Path: path, DecodeAs: decodeAs}, err
+			return mediaResult{Path: path, DecodeAs: decodeAs, Width: width, Height: height}, err
 		}
 
 		audioPlayable, err := c.AudioPlayableForMedia(ctx, p.MessageID, path)
 
-		return mediaResult{Path: path, DecodeAs: decodeAs, Playable: videoPlayable || audioPlayable, Risky: app.MediaRisk(path)}, err
+		return mediaResult{
+			Path: path, DecodeAs: decodeAs, Playable: videoPlayable || audioPlayable,
+			Risky: app.MediaRisk(path), Width: width, Height: height,
+		}, err
 	}
 }
 

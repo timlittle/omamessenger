@@ -29,38 +29,41 @@ var pngKeptChunks = map[string]bool{
 
 // sanitizePNG rebuilds data's chunk stream keeping only pngKeptChunks,
 // after checking the dimensions IHDR declares against profile and
-// every chunk's own length and CRC. ok is false for anything
-// structurally wrong: a short header, a chunk that overruns the
-// buffer, a CRC that does not match, or dimensions over profile's
-// caps.
-func sanitizePNG(data []byte, profile Profile) ([]byte, bool) {
-	width, height, ok := pngDimensions(data)
-	if !ok || !withinCaps(width, height, profile) {
-		return nil, false
+// every chunk's own length and CRC, and returns those dimensions
+// alongside the rebuilt bytes: the real, decoder-confirmed size a
+// caller may need to bound a later decode by (see
+// connector.EnsureImageSafe), never the size any later, unrelated
+// metadata might claim instead. ok is false for anything structurally
+// wrong: a short header, a chunk that overruns the buffer, a CRC that
+// does not match, or dimensions over profile's caps.
+func sanitizePNG(data []byte, profile Profile) (out []byte, width, height int, ok bool) {
+	w, h, ok := pngDimensions(data)
+	if !ok || !withinCaps(w, h, profile) {
+		return nil, 0, 0, false
 	}
 
-	var out bytes.Buffer
-	out.Write(pngSignature)
+	var buf bytes.Buffer
+	buf.Write(pngSignature)
 
 	pos := len(pngSignature)
 	for i := 0; i < pngMaxChunks && pos < len(data); i++ {
 		kind, body, next, ok := readPNGChunk(data, pos)
 		if !ok {
-			return nil, false
+			return nil, 0, 0, false
 		}
 		if pngKeptChunks[kind] {
-			writePNGChunk(&out, kind, body)
+			writePNGChunk(&buf, kind, body)
 		}
 
 		pos = next
 		if kind == "IEND" {
-			return finishPNG(out.Bytes(), width, height)
+			return finishPNG(buf.Bytes(), w, h)
 		}
 	}
 
 	// The walk ran out of either bytes or its chunk budget without ever
 	// seeing IEND: not a complete PNG, so nothing is trusted.
-	return nil, false
+	return nil, 0, 0, false
 }
 
 // pngDimensions reads width and height straight out of data's IHDR
@@ -118,12 +121,13 @@ func writePNGChunk(out *bytes.Buffer, kind string, body []byte) {
 // pngDimensions found, before trusting it as sanitizePNG's result:
 // the chunk walk above never ran a real decoder, so this is the one
 // check that the stripped stream is not just well-formed but actually
-// renders.
-func finishPNG(out []byte, width, height int64) ([]byte, bool) {
+// renders. width and height are returned back out, verified by this
+// same decode, once that confirmation passes.
+func finishPNG(out []byte, width, height int64) ([]byte, int, int, bool) {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(out))
 	if err != nil || int64(cfg.Width) != width || int64(cfg.Height) != height {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
-	return out, true
+	return out, cfg.Width, cfg.Height, true
 }

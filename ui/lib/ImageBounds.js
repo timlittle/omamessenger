@@ -43,3 +43,34 @@ function boundedSourceSize(boxWidth, boxHeight, mediaWidth, mediaHeight) {
 
   return { width, height };
 }
+
+// verifiedDimensions returns the real, decoder-confirmed width and
+// height a caller must feed boundedSourceSize instead of media's own
+// claimed width/height: a later differential review found that field
+// is exactly what a sender controls, and a claim that disagrees with
+// the real file's own shape reproduces the same decode-bomb
+// boundedSourceSize exists to close, just reached through the
+// metadata rather than the box (see docs/decisions.md). haveFile is
+// true once media's full photo or sticker has been downloaded and
+// sanitized - the moment MediaController records media.fetch's own
+// verified size as verifiedWidth/verifiedHeight, fields the message
+// protocol never sends and so cannot collide with anything a sender
+// claims. Before that, only the thumbnail's own verified
+// thumbWidth/thumbHeight - set the same way, from the thumbnail bytes
+// themselves - are safe to read. media's own width/height are never
+// read here at all: they stay the sender's unverified claim for as
+// long as the message exists, kept only for display (see
+// ui/lib/Format.js's photoSize) and for telling one attachment apart
+// from another. Returns {width: 0, height: 0}, which
+// boundedSourceSize already treats as "use the box", when media is
+// missing or carries no verified size yet.
+function verifiedDimensions(media, haveFile) {
+  if (!media) {
+    return { width: 0, height: 0 };
+  }
+  if (haveFile) {
+    return { width: media.verifiedWidth || 0, height: media.verifiedHeight || 0 };
+  }
+
+  return { width: media.thumbWidth || 0, height: media.thumbHeight || 0 };
+}

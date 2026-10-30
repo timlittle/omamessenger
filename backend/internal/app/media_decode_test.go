@@ -41,7 +41,7 @@ func TestDecodeAsForMedia_NeverTrustsAFileNameOrAttribute(t *testing.T) {
 	}
 
 	f.media.data = []byte("a plain silent mp4, whatever the filename and attributes claim")
-	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	path, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestDecodeAsForMedia_SanitizesAGenuineGIFAndReportsIt(t *testing.T) {
 	}
 
 	f.media.data = onePixelGIF()
-	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	path, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestVideoPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 
 	t.Run("a well-formed video is reported playable", func(t *testing.T) {
 		f.media.data = onePlayableMP4()
-		path, err := f.commands.FetchMedia(ctx, "video-good", false)
+		path, _, _, err := f.commands.FetchMedia(ctx, "video-good", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,7 +153,7 @@ func TestVideoPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 
 	t.Run("a video whose headers fail the check is not playable", func(t *testing.T) {
 		f.media.data = []byte("not a video at all")
-		path, err := f.commands.FetchMedia(ctx, "video-bad", false)
+		path, _, _, err := f.commands.FetchMedia(ctx, "video-bad", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -199,7 +199,7 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 
 	t.Run("a well-formed voice note is reported playable", func(t *testing.T) {
 		f.media.data = audiosafetest.ValidOpusFixture()
-		path, err := f.commands.FetchMedia(ctx, "voice-good", false)
+		path, _, _, err := f.commands.FetchMedia(ctx, "voice-good", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,7 +212,7 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 
 	t.Run("a well-formed audio file is reported playable", func(t *testing.T) {
 		f.media.data = audiosafetest.ValidOpusFixture()
-		path, err := f.commands.FetchMedia(ctx, "audio-good", false)
+		path, _, _, err := f.commands.FetchMedia(ctx, "audio-good", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -225,7 +225,7 @@ func TestAudioPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 
 	t.Run("a voice note whose bytes fail the check is not playable", func(t *testing.T) {
 		f.media.data = []byte("not an audio file at all")
-		path, err := f.commands.FetchMedia(ctx, "voice-bad", false)
+		path, _, _, err := f.commands.FetchMedia(ctx, "voice-bad", false)
 		if err != nil {
 			t.Fatal(err)
 		}

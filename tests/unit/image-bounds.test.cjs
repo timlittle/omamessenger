@@ -60,3 +60,46 @@ test('a deliberately broken expectation is caught', () => {
 
   assert.notDeepEqual(got, { width: 320, height: 400 });
 });
+
+// verifiedDimensions: a differential review found every caller above
+// fed boundedSourceSize a message's own claimed media.width/height,
+// which a sender fully controls and need not match what the actual
+// file decodes to - a lying claim produces the same decode-bomb shape
+// these tests already cover, just reached a different way. The fix is
+// never reading that claim for sizing a decode: once the full file is
+// fetched, MediaController records the helper's own verified size as
+// verifiedWidth/verifiedHeight (fields the message protocol never
+// sends, so they cannot collide with mediaIdentityChanged's own use
+// of width/height to tell one attachment from another - see
+// ui/lib/Timeline.js); before that, only the thumbnail's own verified
+// thumbWidth/thumbHeight, never the claim, is safe to use.
+
+test('verifiedDimensions reads the full file size once it is fetched', () => {
+  const media = { width: 400, height: 300, verifiedWidth: 390, verifiedHeight: 290, thumbWidth: 40, thumbHeight: 30 };
+
+  assert.deepEqual(ImageBounds.verifiedDimensions(media, true), { width: 390, height: 290 });
+});
+
+test('verifiedDimensions reads the thumbnail size before the full file is fetched', () => {
+  const media = { width: 400, height: 300, verifiedWidth: 390, verifiedHeight: 290, thumbWidth: 40, thumbHeight: 30 };
+
+  assert.deepEqual(ImageBounds.verifiedDimensions(media, false), { width: 40, height: 30 });
+});
+
+test('verifiedDimensions never falls back to a claimed size nothing has verified yet', () => {
+  // No verifiedWidth/verifiedHeight or thumbWidth/thumbHeight at all:
+  // a message with no thumbnail, or whose full file has not been
+  // fetched yet. width/height must never be read here - they are the
+  // sender's own claim for as long as the message exists - so this
+  // must report unknown (0, 0), which boundedSourceSize already
+  // treats as "use the box", not the claim.
+  const media = { width: 100000, height: 1 };
+
+  assert.deepEqual(ImageBounds.verifiedDimensions(media, true), { width: 0, height: 0 });
+  assert.deepEqual(ImageBounds.verifiedDimensions(media, false), { width: 0, height: 0 });
+});
+
+test('verifiedDimensions reports unknown for no media at all', () => {
+  assert.deepEqual(ImageBounds.verifiedDimensions(null, true), { width: 0, height: 0 });
+  assert.deepEqual(ImageBounds.verifiedDimensions(undefined, false), { width: 0, height: 0 });
+});

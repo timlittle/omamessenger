@@ -469,7 +469,7 @@ func decodeMessageColumns(m *domain.Message, raw messageRawColumns) error {
 		}
 		// Re-checked on every read, not just once by a migration: see
 		// sanitizedThumb and docs/decisions.md.
-		m.Media.Thumb = sanitizedThumb(m.Media.Thumb)
+		m.Media.Thumb, m.Media.ThumbWidth, m.Media.ThumbHeight = sanitizedThumb(m.Media.Thumb)
 		m.Media.OriginalPath, m.Media.OriginalModTime = raw.originalPath, raw.originalModTime
 	}
 

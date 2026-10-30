@@ -260,7 +260,11 @@ func documentLabel(dc tg.DocumentClass) string {
 // using fixed quantization tables, so this is already this
 // connector's own bytes rather than a sender's; running it through
 // imagesafe anyway costs little and means every thumbnail this UI
-// ever shows took the same path (see docs/decisions.md).
+// ever shows took the same path (see docs/decisions.md). Its own
+// verified dimensions are not needed here: store.sanitizedThumb
+// re-derives them from these same bytes on every read regardless of
+// how they were written, the one place
+// domain.Media.ThumbWidth/ThumbHeight are ever actually set.
 func strippedThumb(sizes []tg.PhotoSizeClass) string {
 	for _, size := range sizes {
 		s, ok := size.(*tg.PhotoStrippedSize)
@@ -273,7 +277,7 @@ func strippedThumb(sizes []tg.PhotoSizeClass) string {
 			continue
 		}
 
-		safe, ok := imagesafe.Sanitize(jpeg, imagesafe.Thumbnail)
+		safe, _, _, ok := imagesafe.Sanitize(jpeg, imagesafe.Thumbnail)
 		if !ok {
 			return ""
 		}

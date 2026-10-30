@@ -14,7 +14,7 @@ import (
 func TestSanitizeWebP_StripsMetadataChunks(t *testing.T) {
 	src := buildWebPExtended(64, 64, true, true, true)
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.Thumbnail)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.Thumbnail)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want stripped and accepted")
 	}
@@ -31,7 +31,7 @@ func TestSanitizeWebP_StripsMetadataChunks(t *testing.T) {
 func TestSanitizeWebP_ClearsVP8XFlags(t *testing.T) {
 	src := buildWebPExtended(64, 64, true, true, true)
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.Thumbnail)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.Thumbnail)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -51,12 +51,12 @@ func TestSanitizeWebP_ClearsVP8XFlags(t *testing.T) {
 // no VP8X chunk at all.
 func TestSanitizeWebP_SimpleFormatDimensions(t *testing.T) {
 	small := buildWebPSimple(64, 64)
-	if _, ok := imagesafe.Sanitize(small, imagesafe.Thumbnail); !ok {
+	if _, _, _, ok := imagesafe.Sanitize(small, imagesafe.Thumbnail); !ok {
 		t.Fatal("Sanitize() = rejected, want accepted for a 64x64 simple WebP")
 	}
 
 	huge := buildWebPSimple(9000, 9000)
-	if _, ok := imagesafe.Sanitize(huge, imagesafe.Thumbnail); ok {
+	if _, _, _, ok := imagesafe.Sanitize(huge, imagesafe.Thumbnail); ok {
 		t.Fatal("Sanitize() = ok for a 9000x9000 simple WebP, want rejected")
 	}
 }
@@ -66,7 +66,7 @@ func TestSanitizeWebP_SimpleFormatDimensions(t *testing.T) {
 func TestSanitizeWebP_RejectsOversizedCanvas(t *testing.T) {
 	src := buildWebPExtended(50000, 50000, false, false, false)
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a 50000x50000 canvas, want rejected")
 	}
 }
@@ -82,7 +82,7 @@ func TestSanitizeWebP_RejectsOversizedFrame(t *testing.T) {
 	frameHeader := src[anmf+8:]
 	frameHeader[6], frameHeader[7], frameHeader[8] = 0xFF, 0xFF, 0xFF
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for an oversized animation frame, want rejected")
 	}
 }
@@ -92,7 +92,7 @@ func TestSanitizeWebP_RejectsOversizedFrame(t *testing.T) {
 func TestSanitizeWebP_RejectsTooManyFrames(t *testing.T) {
 	src := buildWebPAnimated(8, 8, 1100)
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for 1100 animation frames, want rejected")
 	}
 }
@@ -101,10 +101,10 @@ func TestSanitizeWebP_RejectsTooManyFrames(t *testing.T) {
 // frames together decode to more pixels than the profile allows, the
 // same bound an animated GIF gets.
 func TestSanitizeWebP_CapsTotalDecodedPixels(t *testing.T) {
-	if _, ok := imagesafe.Sanitize(buildWebPAnimated(512, 512, 30), imagesafe.Thumbnail); !ok {
+	if _, _, _, ok := imagesafe.Sanitize(buildWebPAnimated(512, 512, 30), imagesafe.Thumbnail); !ok {
 		t.Error("Sanitize() refused a typical animated sticker")
 	}
-	if _, ok := imagesafe.Sanitize(buildWebPAnimated(1024, 1024, 1000), imagesafe.Thumbnail); ok {
+	if _, _, _, ok := imagesafe.Sanitize(buildWebPAnimated(1024, 1024, 1000), imagesafe.Thumbnail); ok {
 		t.Error("Sanitize() = ok for 1000 frames of a 1024x1024 canvas, want rejected")
 	}
 }
@@ -115,7 +115,7 @@ func TestSanitizeWebP_RejectsTruncatedChunk(t *testing.T) {
 	src := buildWebPExtended(64, 64, true, false, false)
 	truncated := src[:len(src)-5]
 
-	if _, ok := imagesafe.Sanitize(truncated, imagesafe.Thumbnail); ok {
+	if _, _, _, ok := imagesafe.Sanitize(truncated, imagesafe.Thumbnail); ok {
 		t.Fatal("Sanitize() = ok for a truncated file, want rejected")
 	}
 }
@@ -126,7 +126,7 @@ func TestSanitizeWebP_RejectsTruncatedChunk(t *testing.T) {
 func TestSanitizeWebP_KeepsAnimation(t *testing.T) {
 	src := buildWebPAnimated(32, 32, 2)
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -140,12 +140,12 @@ func TestSanitizeWebP_KeepsAnimation(t *testing.T) {
 // VP8's.
 func TestSanitizeWebP_LosslessDimensions(t *testing.T) {
 	small := buildWebPLossless(64, 64)
-	if _, ok := imagesafe.Sanitize(small, imagesafe.Thumbnail); !ok {
+	if _, _, _, ok := imagesafe.Sanitize(small, imagesafe.Thumbnail); !ok {
 		t.Fatal("Sanitize() = rejected, want accepted for a 64x64 lossless WebP")
 	}
 
 	huge := buildWebPLossless(9000, 9000)
-	if _, ok := imagesafe.Sanitize(huge, imagesafe.Thumbnail); ok {
+	if _, _, _, ok := imagesafe.Sanitize(huge, imagesafe.Thumbnail); ok {
 		t.Fatal("Sanitize() = ok for a 9000x9000 lossless WebP, want rejected")
 	}
 }
@@ -164,7 +164,7 @@ func TestSanitizeWebP_RejectsBadBitstreamSignatures(t *testing.T) {
 
 	for name, data := range map[string][]byte{"VP8": badVP8, "VP8L": badVP8L} {
 		t.Run(name, func(t *testing.T) {
-			if _, ok := imagesafe.Sanitize(data, imagesafe.Thumbnail); ok {
+			if _, _, _, ok := imagesafe.Sanitize(data, imagesafe.Thumbnail); ok {
 				t.Fatalf("Sanitize() = ok for a bad %s signature, want rejected", name)
 			}
 		})
@@ -181,7 +181,7 @@ func TestSanitizeWebP_DropsUnknownChunk(t *testing.T) {
 	withUnknown.Write(chunk("JUNK", []byte("whatever")))
 	withUnknown.Write(src[12:])
 
-	out, ok := imagesafe.Sanitize(withUnknown.Bytes(), imagesafe.Thumbnail)
+	out, _, _, ok := imagesafe.Sanitize(withUnknown.Bytes(), imagesafe.Thumbnail)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -196,7 +196,7 @@ func TestSanitizeWebP_RejectsTruncatedTopLevelChunk(t *testing.T) {
 	src := buildWebPSimple(32, 32)
 	truncated := src[:14] // past the RIFF/WEBP header, short of a full chunk header
 
-	if _, ok := imagesafe.Sanitize(truncated, imagesafe.Thumbnail); ok {
+	if _, _, _, ok := imagesafe.Sanitize(truncated, imagesafe.Thumbnail); ok {
 		t.Fatal("Sanitize() = ok for a truncated chunk header, want rejected")
 	}
 }
@@ -212,7 +212,7 @@ func FuzzSanitizeWebP(f *testing.F) {
 	f.Add(seed[:len(seed)-3])
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		out, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+		out, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
 		if !ok && out != nil {
 			t.Fatal("rejected input returned non-nil output")
 		}

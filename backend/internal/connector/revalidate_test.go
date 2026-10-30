@@ -137,7 +137,7 @@ func TestRevalidateDownloadedImage_RewritesAFileSanitizeStrips(t *testing.T) {
 	if bytes.Contains(got, []byte("legacy metadata")) {
 		t.Error("stripped chunk's own text is still on disk")
 	}
-	if _, ok := imagesafe.Sanitize(got, imagesafe.FullImage); !ok {
+	if _, _, _, ok := imagesafe.Sanitize(got, imagesafe.FullImage); !ok {
 		t.Error("rewritten file no longer sanitizes cleanly")
 	}
 }

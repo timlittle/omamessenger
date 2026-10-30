@@ -278,13 +278,17 @@ func stickerMedia(m *waE2E.StickerMessage) (*domain.Media, mediaRef, bool) {
 // thumbnail is exactly the untrusted image bytes the review that
 // found this package's own reason for existing was about (see
 // docs/decisions.md), so nothing unsanitized ever reaches the UI as a
-// thumbnail either.
+// thumbnail either. Its own verified dimensions are not needed here:
+// store.sanitizedThumb re-derives them from these same bytes on every
+// read regardless of how they were written, the one place
+// domain.Media.ThumbWidth/ThumbHeight are ever actually set (see
+// docs/decisions.md).
 func thumb(data []byte) string {
 	if len(data) == 0 {
 		return ""
 	}
 
-	safe, ok := imagesafe.Sanitize(data, imagesafe.Thumbnail)
+	safe, _, _, ok := imagesafe.Sanitize(data, imagesafe.Thumbnail)
 	if !ok {
 		return ""
 	}

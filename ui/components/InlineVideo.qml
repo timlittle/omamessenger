@@ -122,6 +122,17 @@ Item {
   // still deserves to animate, and through AnimatedImage specifically:
   // see _decoding below.
   readonly property bool _realGifFile: Media.decodesAsGif(root.decodeAs)
+  // _verifiedWidth and _verifiedHeight are the thumbnail's own real,
+  // decoder-confirmed size (see ImageBounds.verifiedDimensions), for
+  // the static thumb Image below to bound its decode by: never
+  // root.video.width/height, the sender's own claim, which a
+  // differential review found need not match the thumbnail's real
+  // shape. A video's full file is never shown through a plain Image
+  // at all - only AnimatedImage, measured not to amplify a mismatch
+  // this way (see docs/decisions.md) - so this always reads the
+  // thumbnail's own verified size, never the full file's.
+  readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.video, false).width
+  readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.video, false).height
   // _aspect is height over width, square when the size is unknown.
   readonly property real _aspect: root.video.width > 0 ? root.video.height / root.video.width : 1
   // _decoding is true while this bubble should actually hold the
@@ -193,11 +204,12 @@ Item {
     visible: !root._decoding && !(root._animated && root._realGifFile && root.path)
     source: root.video.thumb ? "data:image/jpeg;base64," + root.video.thumb : ""
     fillMode: Image.PreserveAspectFit
-    // Fit inside this bubble's own box, computed from the video's own
-    // known width and height (see PhotoView.qml's own sourceSize for
-    // why the box alone is not enough).
-    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.video.width, root.video.height).width
-    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.video.width, root.video.height).height
+    // Fit inside this bubble's own box, computed from the thumbnail's
+    // own verified width and height (see PhotoView.qml's own
+    // sourceSize for why the box alone is not enough): never
+    // root.video.width/height, the sender's own claim.
+    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedWidth, root._verifiedHeight).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedWidth, root._verifiedHeight).height
     asynchronous: true
     smooth: true
   }

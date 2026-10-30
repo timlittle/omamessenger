@@ -67,9 +67,11 @@ func TestEnsureImageSafe_KeepsAnAlreadySafeFileUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := connector.EnsureImageSafe(path, imagesafe.FullImage); err != nil {
+	width, height, err := connector.EnsureImageSafe(path, imagesafe.FullImage)
+	if err != nil {
 		t.Fatalf("EnsureImageSafe() = %v, want nil", err)
 	}
+	wantDims(t, width, height, 1, 1)
 
 	got, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(got, data) {
@@ -89,9 +91,11 @@ func TestEnsureImageSafe_RewritesAFileSanitizeStrips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := connector.EnsureImageSafe(path, imagesafe.FullImage); err != nil {
+	width, height, err := connector.EnsureImageSafe(path, imagesafe.FullImage)
+	if err != nil {
 		t.Fatalf("EnsureImageSafe() = %v, want nil", err)
 	}
+	wantDims(t, width, height, 2, 2)
 
 	got, err := os.ReadFile(path)
 	if err != nil {
@@ -117,7 +121,7 @@ func TestEnsureImageSafe_RemovesWhatFailsSanitizing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := connector.EnsureImageSafe(path, imagesafe.Thumbnail); !errors.Is(err, connector.ErrUnsafeImage) {
+	if _, _, err := connector.EnsureImageSafe(path, imagesafe.Thumbnail); !errors.Is(err, connector.ErrUnsafeImage) {
 		t.Fatalf("EnsureImageSafe() = %v, want %v", err, connector.ErrUnsafeImage)
 	}
 
@@ -138,7 +142,7 @@ func TestEnsureImageSafe_RejectsAFileOverTheProfilesInputCap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := connector.EnsureImageSafe(path, imagesafe.Thumbnail); !errors.Is(err, connector.ErrMediaTooLarge) {
+	if _, _, err := connector.EnsureImageSafe(path, imagesafe.Thumbnail); !errors.Is(err, connector.ErrMediaTooLarge) {
 		t.Fatalf("EnsureImageSafe() = %v, want %v", err, connector.ErrMediaTooLarge)
 	}
 
@@ -154,7 +158,7 @@ func TestEnsureImageSafe_ReportsAMissingFile(t *testing.T) {
 
 	path := filepath.Join(t.TempDir(), "missing.jpg")
 
-	if err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
+	if _, _, err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
 		t.Fatal("EnsureImageSafe() = nil, want an error for a file that cannot be read")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("error = %v, want it to wrap os.ErrNotExist", err)
@@ -177,7 +181,7 @@ func TestEnsureImageSafe_RemovesAFileItCannotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
+	if _, _, err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
 		t.Fatal("EnsureImageSafe() = nil, want an error for a file that cannot be read")
 	}
 
@@ -199,7 +203,7 @@ func TestEnsureImageSafe_ReportsAWriteFailureWhenRewriting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
+	if _, _, err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
 		t.Fatal("EnsureImageSafe() = nil, want an error for a rewrite that cannot be written")
 	}
 }
@@ -235,7 +239,7 @@ func TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := imagesafe.Sanitize(safe, imagesafe.FullImage); !ok {
+		if _, _, _, ok := imagesafe.Sanitize(safe, imagesafe.FullImage); !ok {
 			t.Error("the file on disk is not sanitized, valid GIF bytes")
 		}
 	})

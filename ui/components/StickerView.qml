@@ -39,6 +39,18 @@ Item {
   // _hasImage is true once there is something to draw: a downloaded
   // image or a thumbnail. False means only the emoji fallback applies.
   readonly property bool _hasImage: root.path !== "" || !!root.sticker.thumb
+
+  // _haveFile is whether the full image, rather than its thumbnail,
+  // is the one actually shown right now - the same condition image's
+  // own source binding below uses.
+  readonly property bool _haveFile: root.path !== ""
+  // _verifiedWidth and _verifiedHeight are the real, decoder-confirmed
+  // size to bound the image's own decode by (see
+  // ImageBounds.verifiedDimensions): never root.sticker.width/height,
+  // the sender's own claim, which a differential review found need
+  // not match either file's real shape.
+  readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.sticker, root._haveFile).width
+  readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.sticker, root._haveFile).height
   // _tooLargeAuto is true once the automatic fetch this sticker's own
   // visibility asked for was refused only for being over its own,
   // small cap: never a permanent failure, so a click still asks for
@@ -66,9 +78,11 @@ Item {
     fillMode: Image.PreserveAspectFit
     // Fit inside this sticker's own fixed box, computed from the
     // sticker's own known width and height (see PhotoView.qml's own
-    // sourceSize for why the box alone is not enough).
-    sourceSize.width: ImageBounds.boundedSourceSize(root._size, root._size, root.sticker.width, root.sticker.height).width
-    sourceSize.height: ImageBounds.boundedSourceSize(root._size, root._size, root.sticker.width, root.sticker.height).height
+    // sourceSize for why the box alone is not enough). Reads the
+    // real, verified size (root._verifiedWidth/Height), never
+    // root.sticker.width/height, a sender's own claim.
+    sourceSize.width: ImageBounds.boundedSourceSize(root._size, root._size, root._verifiedWidth, root._verifiedHeight).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root._size, root._size, root._verifiedWidth, root._verifiedHeight).height
     asynchronous: true
     smooth: true
   }

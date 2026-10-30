@@ -298,6 +298,68 @@ func TestMediaFetch_OmitsRiskyForEverydayMedia(t *testing.T) {
 	}
 }
 
+// TestMediaFetch_ReportsVerifiedDimensionsForAPhoto confirms
+// media.fetch's additive width and height fields are the downloaded
+// file's own real, decoder-confirmed size (see
+// connector.EnsureImageSafe), never the message's own claimed
+// Media.Width/Height, which a sender fully controls and need not
+// match what the served file actually decodes to (see
+// docs/decisions.md).
+func TestMediaFetch_ReportsVerifiedDimensionsForAPhoto(t *testing.T) {
+	t.Parallel()
+
+	// A photo's bytes must pass imagesafe on every fetch (see
+	// app.servedPath), so this needs a real PNG rather than the usual
+	// arbitrary placeholder.
+	s := connectWithMedia(t, fakeMediaWriter{content: pngBytes(t, 3, 5)}, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Photo]", Created: 1,
+		// A claimed size wildly unlike the real 3x5 PNG this test
+		// downloads: exactly the mismatch the UI must never size a
+		// decode from.
+		Media: &domain.Media{Kind: domain.MediaPhoto, Width: 100000, Height: 1},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := call[struct {
+		Width  int `json:"width"`
+		Height int `json:"height"`
+	}](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Width != 3 || got.Height != 5 {
+		t.Errorf("media.fetch dimensions = %dx%d, want the file's own real 3x5", got.Width, got.Height)
+	}
+}
+
+// TestMediaFetch_OmitsDimensionsForEverydayMedia confirms a file,
+// which never goes through imagesafe's own parse, carries no width or
+// height in media.fetch's result, so the UI's own JSON for the common
+// case stays unchanged.
+func TestMediaFetch_OmitsDimensionsForEverydayMedia(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithMedia(t, fakeMediaWriter{content: []byte("plain file bytes")}, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile, FileName: "a.txt"},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := call[json.RawMessage](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "width") || strings.Contains(string(raw), "height") {
+		t.Errorf("media.fetch result = %s, want no width or height field for a file", raw)
+	}
+}
+
 // TestPanicLogLine_NeverIncludesTheRecoveredValuesOwnContent confirms
 // the line call logs once it recovers from a method's own panic names
 // only the recovered value's own type, never whatever it actually

@@ -356,3 +356,13 @@ func startManager(t *testing.T, ctx context.Context, connectors ...connector.Con
 
 	return m, sink
 }
+
+// wantDims fails t unless width and height equal wantWidth and wantHeight,
+// for a test confirming EnsureImageSafe's own verified dimensions.
+func wantDims(t *testing.T, width, height, wantWidth, wantHeight int) {
+	t.Helper()
+
+	if width != wantWidth || height != wantHeight {
+		t.Errorf("dimensions = %dx%d, want %dx%d", width, height, wantWidth, wantHeight)
+	}
+}

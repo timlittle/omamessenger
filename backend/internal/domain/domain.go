@@ -285,6 +285,15 @@ type Media struct {
 	Thumb       string `json:"thumb,omitempty"`
 	Width       int    `json:"width,omitempty"`
 	Height      int    `json:"height,omitempty"`
+	// ThumbWidth and ThumbHeight are Thumb's own real, verified
+	// dimensions (see store.sanitizedThumb), filled in on every read
+	// from the thumbnail bytes themselves, never from Width/Height
+	// above: a sender's claimed photo or sticker size need not match
+	// what the thumbnail actually decodes to, and the UI must size its
+	// decode of Thumb from these while Width/Height still describe a
+	// full file that may not be downloaded yet (see docs/decisions.md).
+	ThumbWidth  int    `json:"thumbWidth,omitempty"`
+	ThumbHeight int    `json:"thumbHeight,omitempty"`
 	Duration    int    `json:"duration,omitempty"`
 	FileName    string `json:"fileName,omitempty"`
 	Size        int64  `json:"size,omitempty"`

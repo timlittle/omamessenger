@@ -103,7 +103,7 @@ func RevalidateOutgoingImage(path string) (keep bool, err error) {
 // hand and does not need SanitizeOutgoingImageFile's own file-opening
 // and size-checking a second time.
 func sanitizeInPlace(path string, data []byte, profile imagesafe.Profile) (keep bool, err error) {
-	safe, ok := imagesafe.Sanitize(data, profile)
+	safe, _, _, ok := imagesafe.Sanitize(data, profile)
 	if !ok {
 		return false, nil
 	}

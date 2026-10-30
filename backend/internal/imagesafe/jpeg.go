@@ -43,26 +43,30 @@ var jpegSOFMarkers = map[byte]bool{
 
 // sanitizeJPEG rebuilds data's marker stream keeping only
 // jpegKeptMarkers, after checking the first start-of-frame segment's
-// declared dimensions against profile. ok is false for anything
-// structurally wrong: a segment whose length overruns the buffer, no
+// declared dimensions against profile, and returns those dimensions,
+// confirmed by finishJPEG's own decode, alongside the rebuilt bytes:
+// the real size a caller may need to bound a later decode by (see
+// connector.EnsureImageSafe), never the size any later, unrelated
+// metadata might claim instead. ok is false for anything structurally
+// wrong: a segment whose length overruns the buffer, no
 // start-of-frame found, or dimensions over profile's caps.
-func sanitizeJPEG(data []byte, profile Profile) ([]byte, bool) {
+func sanitizeJPEG(data []byte, profile Profile) (out []byte, width, height int, ok bool) {
 	if len(data) < 2 {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
-	var out bytes.Buffer
-	out.Write(data[0:2]) // SOI
+	var buf bytes.Buffer
+	buf.Write(data[0:2]) // SOI
 
-	width, height, pos, ok := walkJPEGHeader(data, &out)
-	if !ok || !withinCaps(width, height, profile) {
-		return nil, false
+	w, h, pos, ok := walkJPEGHeader(data, &buf)
+	if !ok || !withinCaps(w, h, profile) {
+		return nil, 0, 0, false
 	}
-	if !copyJPEGRemainder(data, pos, &out) {
-		return nil, false
+	if !copyJPEGRemainder(data, pos, &buf) {
+		return nil, 0, 0, false
 	}
 
-	return finishJPEG(out.Bytes(), width, height)
+	return finishJPEG(buf.Bytes(), w, h)
 }
 
 // walkJPEGHeader copies every header segment up to and including the
@@ -181,11 +185,13 @@ func copyJPEGRemainder(data []byte, pos int, out *bytes.Buffer) bool {
 
 // finishJPEG confirms out still decodes, and to the same dimensions
 // jpegDimensions found, before trusting it as sanitizeJPEG's result.
-func finishJPEG(out []byte, width, height int64) ([]byte, bool) {
+// width and height are returned back out, verified by this same
+// decode, once that confirmation passes.
+func finishJPEG(out []byte, width, height int64) ([]byte, int, int, bool) {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(out))
 	if err != nil || int64(cfg.Width) != width || int64(cfg.Height) != height {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
-	return out, true
+	return out, cfg.Width, cfg.Height, true
 }

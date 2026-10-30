@@ -20,7 +20,7 @@ func TestSanitize_RejectsUnknownFormat(t *testing.T) {
 
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, ok := imagesafe.Sanitize(data, imagesafe.FullImage); ok {
+			if _, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage); ok {
 				t.Fatalf("Sanitize(%q) = ok, want rejected", name)
 			}
 		})
@@ -62,7 +62,7 @@ func TestSanitize_RejectsOverInputLenCap(t *testing.T) {
 	data := buildPNG(4, 4)
 	profile := imagesafe.Profile{MaxSide: 8, MaxPixels: 64, MaxInputLen: int64(len(data) - 1)}
 
-	if _, ok := imagesafe.Sanitize(data, profile); ok {
+	if _, _, _, ok := imagesafe.Sanitize(data, profile); ok {
 		t.Fatal("Sanitize() = ok, want rejected for data over MaxInputLen")
 	}
 }
@@ -91,7 +91,7 @@ func TestSanitize_RejectsExtremeAspectRatio(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, ok := imagesafe.Sanitize(tc.data, tc.profile); ok {
+			if _, _, _, ok := imagesafe.Sanitize(tc.data, tc.profile); ok {
 				t.Fatalf("Sanitize(%s) = ok, want rejected for an extreme aspect ratio", name)
 			}
 		})
@@ -113,7 +113,7 @@ func TestSanitize_AcceptsRealisticAspectRatios(t *testing.T) {
 
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, ok := imagesafe.Sanitize(tc.data, tc.profile); !ok {
+			if _, _, _, ok := imagesafe.Sanitize(tc.data, tc.profile); !ok {
 				t.Fatalf("Sanitize(%s) = rejected, want accepted as a realistic photo", name)
 			}
 		})

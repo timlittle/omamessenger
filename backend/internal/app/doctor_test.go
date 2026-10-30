@@ -203,7 +203,7 @@ func TestDoctor_RecordsTheSafeCategoryOfARecentMediaFetchFailure(t *testing.T) {
 	}
 
 	f.media.err = domain.ErrMediaExpired
-	if _, err := f.commands.FetchMedia(ctx, "m1", false); err == nil {
+	if _, _, _, err := f.commands.FetchMedia(ctx, "m1", false); err == nil {
 		t.Fatal("FetchMedia with a failing connector succeeded")
 	}
 

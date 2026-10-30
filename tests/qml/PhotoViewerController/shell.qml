@@ -26,7 +26,13 @@ ShellRoot {
     // initialMessages is the page messages.list answers with, newest and
     // oldest mixed on purpose: insertIndex places each by its own time.
     property var initialMessages: [
-      { id: "p1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Photo]", outgoing: false, status: "received", created: 40, media: { kind: "photo", width: 400, height: 300, thumb: "" }, mediaPath: "/tmp/p1.jpg" },
+      // p1's media carries verifiedWidth/verifiedHeight alongside its
+      // mediaPath, exactly as a real fetch leaves them (see
+      // MediaController._applyVerifiedSize): both set together is
+      // what "already downloaded" actually looks like, and what
+      // PhotoViewerController.show checks before deciding not to ask
+      // the helper again.
+      { id: "p1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Photo]", outgoing: false, status: "received", created: 40, media: { kind: "photo", width: 400, height: 300, verifiedWidth: 400, verifiedHeight: 300, thumb: "" }, mediaPath: "/tmp/p1.jpg" },
       { id: "p2", conversationId: "c1", senderId: "s", senderName: "S", text: "[Photo]", outgoing: false, status: "received", created: 30, media: { kind: "photo", width: 200, height: 200, thumb: "" }, mediaPath: "" },
       { id: "v1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: 20, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
       { id: "p3", conversationId: "c1", senderId: "s", senderName: "S", text: "[Photo]", outgoing: false, status: "received", created: 10, media: { kind: "photo", width: 100, height: 100, thumb: "" }, mediaPath: "" }
@@ -73,11 +79,15 @@ ShellRoot {
     onTriggered: root.run()
   }
 
-  // answerFetch resolves a held media.fetch call with a downloaded path.
-  function answerFetch(id, path) {
+  // answerFetch resolves a held media.fetch call with a downloaded
+  // path and its own verified width/height, exactly as a real
+  // media.fetch answers for a photo (see docs/api.md): the shape
+  // PhotoViewerController.show checks before deciding a later show()
+  // needs no new fetch.
+  function answerFetch(id, path, width, height) {
     const callback = service.pendingFetch[id];
     delete service.pendingFetch[id];
-    callback(null, { path: path });
+    callback(null, { path: path, width: width || 1, height: height || 1 });
   }
 
   function run(): void {

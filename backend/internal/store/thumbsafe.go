@@ -21,23 +21,29 @@ import (
 // when sanitizing it changes nothing, a re-encoded, stripped version
 // when it does, or "" when thumb fails outright: not valid base64, not
 // a recognized image format, or over the bound - never the original
-// bytes in that case.
-func sanitizedThumb(thumb string) string {
+// bytes in that case. width and height are the thumbnail's own real
+// dimensions, as imagesafe.Sanitize's own parse of it just confirmed
+// them, for domain.Media.ThumbWidth/ThumbHeight: the UI must size its
+// own decode of this same thumb from these, never from a message's
+// claimed photo or sticker size, which need not match what the
+// thumbnail bytes actually decode to (see docs/decisions.md). Both
+// are zero whenever thumb is "".
+func sanitizedThumb(thumb string) (safe string, width, height int) {
 	if thumb == "" {
-		return ""
+		return "", 0, 0
 	}
 
 	data, err := base64.StdEncoding.DecodeString(thumb)
 	if err != nil {
-		return ""
+		return "", 0, 0
 	}
 
-	safe, ok := imagesafe.Sanitize(data, imagesafe.Thumbnail)
+	out, w, h, ok := imagesafe.Sanitize(data, imagesafe.Thumbnail)
 	if !ok {
-		return ""
+		return "", 0, 0
 	}
 
-	return base64.StdEncoding.EncodeToString(safe)
+	return base64.StdEncoding.EncodeToString(out), w, h
 }
 
 // thumbRow is one candidate row sanitizeLegacyThumbnails considers: its
@@ -68,12 +74,12 @@ func repairMediaThumb(media string) (repaired string, changed bool) {
 		return media, false
 	}
 
-	safe := sanitizedThumb(m.Thumb)
-	if safe == m.Thumb {
+	safe, width, height := sanitizedThumb(m.Thumb)
+	if safe == m.Thumb && width == m.ThumbWidth && height == m.ThumbHeight {
 		return media, false
 	}
 
-	m.Thumb = safe
+	m.Thumb, m.ThumbWidth, m.ThumbHeight = safe, width, height
 	out, err := json.Marshal(&m)
 	if err != nil {
 		return media, false

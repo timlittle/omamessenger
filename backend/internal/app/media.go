@@ -57,39 +57,45 @@ func (e *MediaFetchError) Unwrap() error {
 	return e.err
 }
 
-// FetchMedia returns the path of a message's photo, video, file or voice
-// note. An outgoing message's own attachment is already on this
-// machine, so its local copy is returned at once, with no remote id
-// needed; anything else is downloaded from the service the first time,
-// then kept in the media cache. auto is true for a fetch the UI made on
-// its own, with no click from the user - today, only an animated "GIF"
-// video autoplaying as soon as it is shown - which every connector
-// bounds to a far smaller size than a deliberate click is trusted
-// with (see connector.MaxBytes); SaveMedia, always a deliberate action,
-// passes false. A download failure is always logged with its safe
-// reason category and returned as a *MediaFetchError, so nothing fails
-// silently (see docs/decisions.md).
-func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto bool) (string, error) {
+// FetchMedia returns the path of a message's photo, video, file or
+// voice note, together with width and height when it is a photo or
+// sticker: its own real dimensions, as connector.EnsureImageSafe's
+// own parse of the served file just confirmed them, for the UI to
+// size its decode from in place of the message's own claimed size,
+// which need not match what the served file actually decodes to (see
+// docs/decisions.md). Both are zero for every other media kind. An
+// outgoing message's own attachment is already on this machine, so
+// its local copy is returned at once, with no remote id needed;
+// anything else is downloaded from the service the first time, then
+// kept in the media cache. auto is true for a fetch the UI made on
+// its own, with no click from the user - today, only an animated
+// "GIF" video autoplaying as soon as it is shown - which every
+// connector bounds to a far smaller size than a deliberate click is
+// trusted with (see connector.MaxBytes); SaveMedia, always a
+// deliberate action, passes false. A download failure is always
+// logged with its safe reason category and returned as a
+// *MediaFetchError, so nothing fails silently (see docs/decisions.md).
+func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto bool) (path string, width, height int, err error) {
 	if strings.TrimSpace(messageID) == "" {
-		return "", fmt.Errorf("%w: messageId is required", ErrInvalidInput)
+		return "", 0, 0, fmt.Errorf("%w: messageId is required", ErrInvalidInput)
 	}
 
 	m, err := c.store.Message(ctx, messageID)
 	if err != nil {
-		return "", err
+		return "", 0, 0, err
 	}
 
 	if m.Media == nil || m.Media.Kind == domain.MediaLink {
-		return "", fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
+		return "", 0, 0, fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
 	}
 
 	conv, err := c.store.Conversation(ctx, m.ConversationID)
 	if err != nil {
-		return "", err
+		return "", 0, 0, err
 	}
 
-	if path, ok := c.localAttachment(m); ok {
-		return c.servedPath(ctx, conv, m, path, false)
+	if local, ok := c.localAttachment(m); ok {
+		return c.servedPath(ctx, conv, m, local, false)
 	}
 
 	return c.fetchAndServe(ctx, conv, m, auto)
@@ -99,17 +105,17 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto bool) 
 // own use once it has found nothing local to serve already, and runs
 // servedPath's own guarantee over whatever comes back, the same as
 // any other path FetchMedia returns.
-func (c *Commands) fetchAndServe(ctx context.Context, conv domain.Conversation, m domain.Message, auto bool) (string, error) {
+func (c *Commands) fetchAndServe(ctx context.Context, conv domain.Conversation, m domain.Message, auto bool) (path string, width, height int, err error) {
 	if m.RemoteID == "" || c.media == nil || c.cache == nil {
-		return "", fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
+		return "", 0, 0, fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
 	}
 
-	path, err := c.download(ctx, conv, m, auto)
+	downloaded, err := c.download(ctx, conv, m, auto)
 	if err != nil {
-		return "", err
+		return "", 0, 0, err
 	}
 
-	return c.servedPath(ctx, conv, m, path, true)
+	return c.servedPath(ctx, conv, m, downloaded, true)
 }
 
 // imageSafeProfile returns the imagesafe.Profile a message of kind
@@ -144,17 +150,18 @@ func imageSafeProfile(kind string) (profile imagesafe.Profile, ok bool) {
 // has nowhere else to come from. Every other media kind passes
 // straight through unchecked here: it already has its own per-fetch
 // check elsewhere.
-func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m domain.Message, path string, refetchable bool) (string, error) {
+func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m domain.Message, path string, refetchable bool) (string, int, int, error) {
 	profile, ok := imageSafeProfile(m.Media.Kind)
 	if !ok {
-		return path, nil
+		return path, 0, 0, nil
 	}
 
-	if err := connector.EnsureImageSafe(path, profile); err != nil {
+	width, height, err := connector.EnsureImageSafe(path, profile)
+	if err != nil {
 		return c.recoverUnsafeImage(ctx, conv, m, err, refetchable)
 	}
 
-	return path, nil
+	return path, width, height, nil
 }
 
 // recoverUnsafeImage responds to servedPath's own check failing,
@@ -169,22 +176,23 @@ func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m d
 // profile is recomputed from m's own kind rather than passed in,
 // since servedPath already confirmed imageSafeProfile finds one for
 // this message before ever calling here.
-func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversation, m domain.Message, checkErr error, refetchable bool) (string, error) {
+func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversation, m domain.Message, checkErr error, refetchable bool) (string, int, int, error) {
 	if !refetchable {
-		return "", c.failDecodeCheck(ctx, m, checkErr)
+		return "", 0, 0, c.failDecodeCheck(ctx, m, checkErr)
 	}
 
 	path, err := c.download(ctx, conv, m, false)
 	if err != nil {
-		return "", err
+		return "", 0, 0, err
 	}
 
 	profile, _ := imageSafeProfile(m.Media.Kind)
-	if err := connector.EnsureImageSafe(path, profile); err != nil {
-		return "", c.failDecodeCheck(ctx, m, err)
+	width, height, err := connector.EnsureImageSafe(path, profile)
+	if err != nil {
+		return "", 0, 0, c.failDecodeCheck(ctx, m, err)
 	}
 
-	return path, nil
+	return path, width, height, nil
 }
 
 // DecodeAsForMedia reports how the UI must decode messageID's video,

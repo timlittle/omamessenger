@@ -27,7 +27,7 @@ func TestFetchMedia_NamesAFileBySniffedContentNeverTheSendersClaim(t *testing.T)
 	}
 
 	f.media.data = []byte("%PDF-1.4\nreal pdf bytes, whatever the sender's own file name claims\n")
-	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	path, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil || filepath.Base(path) != "m1.file.pdf" {
 		t.Fatalf("FetchMedia() = %q, %v; want m1.file.pdf", path, err)
 	}
@@ -50,7 +50,7 @@ func TestFetchMedia_FallsBackToBinForContentItDoesNotRecognise(t *testing.T) {
 	}
 
 	f.media.data = []byte("MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00") // a Windows executable header
-	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	path, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil || filepath.Base(path) != "m1.file.bin" {
 		t.Fatalf("FetchMedia() = %q, %v; want m1.file.bin", path, err)
 	}
@@ -75,7 +75,7 @@ func TestFetchMedia_RecognisesSVGContentEvenClaimedAsSomethingElse(t *testing.T)
 	}
 
 	f.media.data = []byte(`<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>`)
-	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	path, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil || filepath.Base(path) != "m1.file.svg" {
 		t.Fatalf("FetchMedia() = %q, %v; want m1.file.svg", path, err)
 	}
@@ -101,7 +101,7 @@ func TestFetchMedia_RecognisesABareSVGWithNoXMLProlog(t *testing.T) {
 	}
 
 	f.media.data = []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`)
-	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	path, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil || filepath.Base(path) != "m1.file.svg" {
 		t.Fatalf("FetchMedia() = %q, %v; want m1.file.svg", path, err)
 	}
@@ -123,7 +123,7 @@ func TestFetchMedia_VoiceNoteAlsoNamesBySniffedContent(t *testing.T) {
 	}
 
 	f.media.data = []byte("OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00")
-	path, err := f.commands.FetchMedia(ctx, "m1", false)
+	path, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil || filepath.Base(path) != "m1.voice.ogg" {
 		t.Fatalf("FetchMedia() = %q, %v; want m1.voice.ogg", path, err)
 	}
@@ -147,12 +147,12 @@ func TestFetchMedia_SniffedNameIsCachedAndNeverReDownloaded(t *testing.T) {
 	}
 
 	f.media.data = []byte("%PDF-1.4\n")
-	first, err := f.commands.FetchMedia(ctx, "m1", false)
+	first, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	second, err := f.commands.FetchMedia(ctx, "m1", false)
+	second, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
 	if err != nil || second != first || len(f.media.fetched) != 1 {
 		t.Errorf("second FetchMedia() = %q, %v, fetched %v; want the cached file reused", second, err, f.media.fetched)
 	}

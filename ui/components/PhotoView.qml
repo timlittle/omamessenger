@@ -64,6 +64,20 @@ Item {
   // forever.
   readonly property bool _tooLargeAuto: root.failed && root.failedReason === "too-large" && !root.path
 
+  // _haveFile is whether the full image, rather than its thumbnail,
+  // is the one actually shown right now - the same condition image's
+  // own source binding below uses - so _verifiedWidth/_verifiedHeight
+  // read the right one of the two verified sizes ImageBounds.
+  // verifiedDimensions can return.
+  readonly property bool _haveFile: !!root.path && !root._loadFailed
+  // _verifiedWidth and _verifiedHeight are the real, decoder-confirmed
+  // size to bound the image's own decode by (see
+  // ImageBounds.verifiedDimensions): never root.photo.width/height,
+  // the sender's own claim, which a differential review found need
+  // not match either file's real shape.
+  readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.photo, root._haveFile).width
+  readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.photo, root._haveFile).height
+
   // _unavailable is true once the full image is known not to be coming
   // for good (it failed to load, or its fetch itself failed for a
   // reason other than the automatic-fetch cap) and there is no thumb
@@ -98,17 +112,19 @@ Item {
     source: root.path && !root._loadFailed ? Links.fileURL(root.path) : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
     fillMode: Image.PreserveAspectFit
     // Fit inside this bubble's own box, computed from the photo's own
-    // known width and height rather than the box alone: Qt's own
+    // verified width and height rather than the box alone: Qt's own
     // PreserveAspectFit/Crop scaling covers a sourceSize box by
     // scaling to the image's longer side, so a sourceSize that does
     // not share the real image's own ratio can still make Qt decode
     // many times the box's own area (see ImageBounds.js and
-    // docs/decisions.md). The helper's imagesafe package also caps
-    // every declared size and ratio before this ever runs, but this
-    // bound holds even for a received file whose metadata and real
-    // bytes disagree.
-    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.photo.width, root.photo.height).width
-    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.photo.width, root.photo.height).height
+    // docs/decisions.md). ImageBounds.verifiedDimensions reads the
+    // thumbnail's own confirmed size while the full image is still
+    // downloading, and the full file's own confirmed size once it is
+    // here - never root.photo.width/height, the sender's own claim,
+    // which a differential review found need not match either file's
+    // real shape.
+    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedWidth, root._verifiedHeight).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedWidth, root._verifiedHeight).height
     asynchronous: true
     // Scaling a tiny preview up smoothly keeps it a soft blur.
     smooth: true
