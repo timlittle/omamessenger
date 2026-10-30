@@ -107,6 +107,22 @@ const MaxStickerEmojiLength = 32
 // still never splits the UTF-8 encoding of one rune across the cut.
 const MaxFileNameLength = 255
 
+// MaxInlineThumbLen bounds a message's own embedded preview
+// (Media.Thumb), in bytes of its base64 text, the one piece of a
+// message's media a connector embeds directly in the message itself
+// rather than something media.fetch downloads only once the user asks
+// for it. The open conversation's shell keeps every loaded message's
+// own Thumb in memory for as long as it stays open (see
+// ui/controllers/MessageTimeline.qml), so a sender flooding a chat can
+// make it hold one of these per message, unbounded, for however many
+// it sends - unlike a downloaded sticker's own bytes, which land on
+// disk, not the shell's memory, and still pass imagesafe.Thumbnail's
+// own, much larger bound first, at the connector. Real previews are a
+// handful of kilobytes; 64 KiB of base64 text is generous for one
+// while keeping a flood of them far short of what imagesafe.Thumbnail
+// alone would still let through.
+const MaxInlineThumbLen = 64 << 10
+
 // MaxPreviewLength bounds a conversation's own Preview, in UTF-16 code
 // units: ui/lib/Format.js's previewText only ever shows the first 200
 // characters of it, prefixed in a group by the sender's own name, so a
@@ -234,6 +250,9 @@ func CapMedia(media *Media) *Media {
 	}
 
 	media.FileName = CapFileName(media.FileName)
+	if len(media.Thumb) > MaxInlineThumbLen {
+		media.Thumb = ""
+	}
 
 	switch media.Kind {
 	case MediaPoll:

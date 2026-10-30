@@ -7,6 +7,15 @@ import "../lib/Rpc.js" as Rpc
 // out of ConversationController to keep that file within the size
 // guideline; it is still controller code, not a view, so it calls
 // service.request directly.
+//
+// messagesModel is capped at Timeline.MAX_LOADED_ROWS: upsert windows out
+// the oldest loaded rows once a live message pushes past it (see
+// Timeline.windowNewest), so a sender flooding the open chat, or a long
+// session left open, can never make this grow, or cost more per event,
+// without bound. _order (every loaded message's {id, created}, mirroring
+// messagesModel's own order) and _index (those same ids mapped to their
+// position) are the small, cheap side records every lookup below uses
+// instead of scanning messagesModel itself.
 Item {
   id: root
 
@@ -39,6 +48,18 @@ Item {
   // _loadingMore guards messages.list so only one older page loads at once.
   property bool _loadingMore: false
 
+  // _order is every loaded message's {id, created}, newest first, kept
+  // in lockstep with messagesModel's own order: a cheap stand-in for a
+  // full row whenever only placement (Timeline.insertIndex) or the id
+  // index (see _index, reindex) is needed.
+  property var _order: []
+
+  // _index maps a loaded message's id to its position in both _order
+  // and messagesModel, rebuilt by Timeline.reindex whenever either
+  // changes shape, so upsert, remove and every lookup below are O(1)
+  // instead of scanning the whole model.
+  property var _index: ({})
+
   // initialLoaded fires once loadInitial's page has been applied to the
   // model, for whoever resets the highlighted message to the newest one
   // each time a conversation (re)opens.
@@ -50,6 +71,8 @@ Item {
   // lingering over this one until something else happens to clear it.
   function reset(): void {
     messagesModel.clear();
+    root._order = [];
+    root._index = ({});
     root.hasMore = true;
     root.historyUnavailable = false;
     root.annotations = [];
@@ -87,7 +110,7 @@ Item {
     if (root._loadingMore || !root.hasMore || messagesModel.count === 0) return;
 
     root._loadingMore = true;
-    const before = messagesModel.get(messagesModel.count - 1).id;
+    const before = root._order[root._order.length - 1].id;
     service.request("messages.list", { conversationId: conversationId, before: before, limit: 50 }, function(error, result) {
       root._loadingMore = false;
       if (error) { root.lastError = Rpc.errorText(error); return; }
@@ -102,59 +125,57 @@ Item {
 
   // upsert updates one message in place, or inserts it where its time puts
   // it when it is not loaded yet: new messages at the top, and older
-  // history fetched from the service further down. A cached mediaPath,
-  // its verdicts (mediaDecodeAs, mediaPlayable, mediaRisky,
-  // mediaVerdictsKnown) and mediaFailed normally carry over untouched,
-  // since the service's own update never carries any of them - but
-  // they are dropped instead the moment this update is either the
-  // message's attachment being retired into the download cache (see
-  // Timeline.mediaJustRetired) or an edit that swaps its media for a
-  // different kind or different bytes of the same kind (see
-  // Timeline.mediaIdentityChanged): in both cases the cached path and
-  // verdicts describe bytes that are no longer this row's own, and
-  // must be resolved and checked again rather than reused or shown as
-  // missing forever.
-  function upsert(message: var, isGroup: bool): void {
-    const loaded = root._snapshot();
-    const at = loaded.findIndex((m) => m.id === message.id);
-    if (at !== -1) {
-      const mediaReplaced = Timeline.mediaJustRetired(loaded[at], message) || Timeline.mediaIdentityChanged(loaded[at], message);
-      const kept = mediaReplaced
-        ? { mediaPath: "", mediaDecodeAs: "", mediaPlayable: false, mediaRisky: false, mediaVerdictsKnown: false, mediaFailed: false, mediaFailedReason: "" }
-        : {
-            mediaPath: loaded[at].mediaPath, mediaDecodeAs: loaded[at].mediaDecodeAs,
-            mediaPlayable: loaded[at].mediaPlayable, mediaRisky: loaded[at].mediaRisky,
-            mediaVerdictsKnown: loaded[at].mediaVerdictsKnown,
-            mediaFailed: loaded[at].mediaFailed, mediaFailedReason: loaded[at].mediaFailedReason
-          };
-      messagesModel.set(at, Timeline.row(Object.assign(kept, message)));
+  // history fetched from the service further down. Once inserting would
+  // push past Timeline.MAX_LOADED_ROWS, the oldest loaded rows are
+  // dropped and hasMore is forced true, since they are still in the
+  // helper's own store and loadOlder can page them back in - except
+  // protectId (the highlighted message, when there is one), which is
+  // never dropped, so a flood can never pull the user's own place out
+  // from under them. See Timeline.mergeRow for how a cached mediaPath
+  // and its verdicts carry over, or do not, across an update.
+  function upsert(message: var, isGroup: bool, protectId: string): void {
+    const result = Timeline.applyUpsert(root._order, root._index, message, Timeline.MAX_LOADED_ROWS, protectId);
+    root._order = result.order;
+    root._index = result.index;
+
+    if (result.update) {
+      const merged = Timeline.mergeRow(messagesModel.get(result.at), message);
+      messagesModel.set(result.at, Timeline.row(merged));
     } else {
-      messagesModel.insert(Timeline.insertIndex(loaded, message), Timeline.row(message));
+      messagesModel.insert(result.at, Timeline.row(message));
+      if (result.evicted > 0) {
+        messagesModel.remove(result.order.length, result.evicted);
+        root.hasMore = true;
+      }
     }
 
-    root._recomputeAnnotations(isGroup);
+    root._reannotateTouched(result.touched, isGroup);
   }
 
   // remove drops a message from the model by id, doing nothing when it is
   // not loaded: the service already removed it, so there is nothing left
   // to find.
   function remove(id: string, isGroup: bool): void {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at === -1) return;
+    const result = Timeline.applyRemove(root._order, root._index, id);
+    if (!result.removed) return;
 
-    messagesModel.remove(at);
-    root._recomputeAnnotations(isGroup);
+    root._order = result.order;
+    root._index = result.index;
+    messagesModel.remove(result.at);
+    root._reannotateTouched(result.touched, isGroup);
   }
 
   // messageById returns a loaded message's full data, or null when it is
   // not loaded.
   function messageById(id: string): var {
-    return root._snapshot().find((m) => m.id === id) ?? null;
+    const at = root._index[id];
+    return at !== undefined ? messagesModel.get(at) : null;
   }
 
   // localIdForRemote returns the loaded message id whose remote id is
   // remoteId, or "" when it is not loaded: the user has not scrolled to
-  // it, or the service has not assigned it one yet.
+  // it, or the service has not assigned it one yet. Not part of the
+  // live-event hot path (see upsert), so a full scan is fine here.
   function localIdForRemote(remoteId: string): string {
     const row = root._snapshot().find((m) => m.remoteId === remoteId);
     return row ? row.id : "";
@@ -162,8 +183,8 @@ Item {
 
   // mediaPath returns where a message's downloaded media is, or "".
   function mediaPath(id: string): string {
-    const row = root._snapshot().find((m) => m.id === id);
-    return row ? row.mediaPath : "";
+    const at = root._index[id];
+    return at !== undefined ? messagesModel.get(at).mediaPath : "";
   }
 
   // mediaDecodeAs returns the helper's own verdict on how to decode a
@@ -172,8 +193,8 @@ Item {
   // video. Never computed here from the message's own media object:
   // only media.fetch's result, through setMediaDecodeAs, ever sets it.
   function mediaDecodeAs(id: string): string {
-    const row = root._snapshot().find((m) => m.id === id);
-    return row ? row.mediaDecodeAs : "";
+    const at = root._index[id];
+    return at !== undefined ? messagesModel.get(at).mediaDecodeAs : "";
   }
 
   // mediaPlayable returns the helper's own verdict on whether a
@@ -183,8 +204,8 @@ Item {
   // computed here from the message's own media object: only
   // media.fetch's result, through setMediaPlayable, ever sets it.
   function mediaPlayable(id: string): bool {
-    const row = root._snapshot().find((m) => m.id === id);
-    return row ? row.mediaPlayable : false;
+    const at = root._index[id];
+    return at !== undefined ? !!messagesModel.get(at).mediaPlayable : false;
   }
 
   // mediaVerdictsKnown returns whether media.fetch has actually
@@ -198,15 +219,15 @@ Item {
   // false default as "safe" (see MediaController.toggleVideo and
   // _toggleVoice).
   function mediaVerdictsKnown(id: string): bool {
-    const row = root._snapshot().find((m) => m.id === id);
-    return row ? !!row.mediaVerdictsKnown : false;
+    const at = root._index[id];
+    return at !== undefined ? !!messagesModel.get(at).mediaVerdictsKnown : false;
   }
 
   // media returns a message's parsed photo or video media (kind, width,
   // height, duration, thumb), or null when it has none or is not loaded.
   function media(id: string): var {
-    const row = root._snapshot().find((m) => m.id === id);
-    return row ? Timeline.media(row) : null;
+    const at = root._index[id];
+    return at !== undefined ? Timeline.media(messagesModel.get(at)) : null;
   }
 
   // photoNeighbor returns the id of the nearest other loaded message with
@@ -214,31 +235,30 @@ Item {
   // < 0 toward older ones. It returns "" when id is not loaded or there is
   // no such neighbour.
   function photoNeighbor(id: string, delta: int): string {
-    const loaded = root._snapshot();
-    const at = loaded.findIndex((m) => m.id === id);
-    if (at === -1) return "";
+    const at = root._index[id];
+    if (at === undefined) return "";
 
     // The array is newest-first, so moving toward newer messages steps
     // backward through it.
     const step = delta > 0 ? -1 : 1;
-    for (let i = at + step; i >= 0 && i < loaded.length; i += step) {
-      const candidate = Timeline.media(loaded[i]);
-      if (candidate && candidate.kind === "photo") return loaded[i].id;
+    for (let i = at + step; i >= 0 && i < messagesModel.count; i += step) {
+      const candidate = Timeline.media(messagesModel.get(i));
+      if (candidate && candidate.kind === "photo") return messagesModel.get(i).id;
     }
     return "";
   }
 
   // setMediaPath records where a message's downloaded media is.
   function setMediaPath(id: string, path: string): void {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at !== -1) messagesModel.setProperty(at, "mediaPath", path);
+    const at = root._index[id];
+    if (at !== undefined) messagesModel.setProperty(at, "mediaPath", path);
   }
 
   // setMediaDecodeAs records the helper's own verdict on how to decode
   // a message's downloaded video, from media.fetch's result.
   function setMediaDecodeAs(id: string, decodeAs: string): void {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at !== -1) messagesModel.setProperty(at, "mediaDecodeAs", decodeAs);
+    const at = root._index[id];
+    if (at !== undefined) messagesModel.setProperty(at, "mediaDecodeAs", decodeAs);
   }
 
   // setMediaPlayable records the helper's own verdict on whether a
@@ -248,8 +268,8 @@ Item {
   // together from the one media.fetch answer, so this is the one place
   // that needs to flip the flag.
   function setMediaPlayable(id: string, playable: bool): void {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at === -1) return;
+    const at = root._index[id];
+    if (at === undefined) return;
 
     messagesModel.setProperty(at, "mediaPlayable", playable);
     messagesModel.setProperty(at, "mediaVerdictsKnown", true);
@@ -264,15 +284,15 @@ Item {
   // from the message's own media object: only media.fetch's result,
   // through setMediaRisky, ever sets it, the same as mediaDecodeAs.
   function mediaRisky(id: string): bool {
-    const row = root._snapshot().find((m) => m.id === id);
-    return row ? !!row.mediaRisky : true;
+    const at = root._index[id];
+    return at !== undefined ? !!messagesModel.get(at).mediaRisky : true;
   }
 
   // setMediaRisky records the helper's own risky verdict for a
   // message's downloaded media, from media.fetch's result.
   function setMediaRisky(id: string, risky: bool): void {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at !== -1) messagesModel.setProperty(at, "mediaRisky", risky);
+    const at = root._index[id];
+    if (at !== undefined) messagesModel.setProperty(at, "mediaRisky", risky);
   }
 
   // setMediaFailed records whether a message's last media fetch failed,
@@ -282,8 +302,8 @@ Item {
   // alongside failed so the voice note player can name it; it is
   // ignored, and left as whatever it was, when failed is false.
   function setMediaFailed(id: string, failed: bool, reason: string): void {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at === -1) return;
+    const at = root._index[id];
+    if (at === undefined) return;
 
     messagesModel.setProperty(at, "mediaFailed", failed);
     messagesModel.setProperty(at, "mediaFailedReason", failed ? reason : "");
@@ -293,19 +313,19 @@ Item {
   // highlighted message: the highlight is always one of these ids, never
   // an index, so a reorder or a new page never moves it to the wrong one.
   function ids(): var {
-    return root._snapshot().map((m) => m.id);
+    return root._order.map((o) => o.id);
   }
 
   // newestId returns the newest loaded message's id, or "" when none is
   // loaded, for resetting the highlight when a conversation (re)loads.
   function newestId(): string {
-    return messagesModel.count > 0 ? messagesModel.get(0).id : "";
+    return root._order.length > 0 ? root._order[0].id : "";
   }
 
   // find returns a loaded message by id, or null when it is not loaded.
   function find(id: string): var {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    return at === -1 ? null : messagesModel.get(at);
+    const at = root._index[id];
+    return at !== undefined ? messagesModel.get(at) : null;
   }
 
   // snapshot returns every loaded message as a plain array, newest
@@ -323,47 +343,87 @@ Item {
   // an existing ListModel row, rather than at its first insert, silently
   // leaves the role empty.
   function setReactions(id: string, reactions: var): void {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at !== -1) messagesModel.setProperty(at, "reactions", JSON.stringify(reactions));
+    const at = root._index[id];
+    if (at !== undefined) messagesModel.setProperty(at, "reactions", JSON.stringify(reactions));
   }
 
   // setMedia replaces a message's media in place, the same way
   // setReactions does for its own role, for a poll's instant local vote
   // feedback before the server's message.updated event confirms it.
   function setMedia(id: string, media: var): void {
-    const at = root._snapshot().findIndex((m) => m.id === id);
-    if (at !== -1) messagesModel.setProperty(at, "media", JSON.stringify(media));
+    const at = root._index[id];
+    if (at !== undefined) messagesModel.setProperty(at, "media", JSON.stringify(media));
   }
 
   // _appendOlder adds a messages.list page to the newest-first model,
   // each message where its time puts it: older history the helper fetched
   // for this page may already have arrived as events, so the page is not
   // always older than what is shown. Messages already shown are skipped.
+  // Capped the same way upsert is: a long run of loadOlder pages must
+  // never grow past Timeline.MAX_LOADED_ROWS either, but unlike a live
+  // message's own overflow, paging further back once the cap is reached
+  // would only fetch and immediately discard rows, so hasMore is forced
+  // false instead of true.
   function _appendOlder(page: var, isGroup: bool): void {
     const loaded = root._snapshot();
     const shown = new Set(loaded.map((m) => m.id));
+    const order = root._order.slice();
     for (const m of page.slice().reverse()) {
       if (shown.has(m.id)) continue;
 
       const at = Timeline.insertIndex(loaded, m);
       loaded.splice(at, 0, m);
+      order.splice(at, 0, { id: m.id, created: m.created });
       messagesModel.insert(at, Timeline.row(m));
+      shown.add(m.id);
     }
-    root._recomputeAnnotations(isGroup);
+
+    const windowed = Timeline.windowNewest(order, Timeline.MAX_LOADED_ROWS, "");
+    const evicted = order.length - windowed.length;
+    if (evicted > 0) {
+      messagesModel.remove(windowed.length, evicted);
+      loaded.length = windowed.length;
+      root.hasMore = false;
+    }
+
+    root._order = windowed;
+    root._index = Timeline.reindex(windowed);
+    root.annotations = Timeline.annotate(loaded, isGroup, Date.now());
   }
 
-  // _snapshot copies the loaded messages, newest first.
+  // _snapshot copies the loaded messages, newest first. Only ever used
+  // off the live-event hot path (see upsert, remove): _appendOlder's own
+  // bulk page load, and the rare lookups (localIdForRemote, snapshot)
+  // that need every row's full data rather than just its id and
+  // position.
   function _snapshot(): var {
     const out = [];
     for (let i = 0; i < messagesModel.count; i++) out.push(messagesModel.get(i));
     return out;
   }
 
-  // _recomputeAnnotations rebuilds the day separators and grouping from
-  // the current message list. isGroup is read from the caller each time,
-  // since this component holds no conversation state of its own.
-  function _recomputeAnnotations(isGroup: bool): void {
-    root.annotations = Timeline.annotate(root._snapshot(), isGroup, Date.now());
+  // _reannotateTouched recomputes the annotation at each of indices
+  // (every position upsert or remove just marked as possibly wrong - see
+  // Timeline.applyUpsert and applyRemove) and nothing else, so a live
+  // event's own annotation cost stays proportional to the one or two
+  // rows it actually touched, not every loaded message: the Date and
+  // toDateString pair a full Timeline.annotate() pass builds for every
+  // row is the expensive part a flood must never pay again and again
+  // for rows nothing changed about.
+  function _reannotateTouched(indices: var, isGroup: bool): void {
+    if (indices.length === 0) return;
+
+    const nowMs = Date.now();
+    const next = root.annotations.slice();
+    const count = messagesModel.count;
+    for (const i of indices) {
+      if (i < 0 || i >= count) continue;
+
+      const msg = messagesModel.get(i);
+      const older = (i + 1 < count) ? messagesModel.get(i + 1) : null;
+      next[i] = Timeline.annotateForPair(msg, older, isGroup, nowMs);
+    }
+    root.annotations = next;
   }
 
   ListModel { id: messagesModel }

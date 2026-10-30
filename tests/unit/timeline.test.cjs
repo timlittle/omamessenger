@@ -458,3 +458,178 @@ test('mediaIdentityChanged is false for a poll update that only changes tallies,
   const update = { media: { kind: 'poll', poll: { question: 'q', options: [{ id: 'o1', votes: 3 }] } } };
   assert.strictEqual(Timeline.mediaIdentityChanged(oldRow, update), false);
 });
+
+// windowNewest: capping how many loaded rows the shell keeps.
+
+test('windowNewest leaves a list at or under the cap alone', () => {
+  const rows = [{ id: 'a' }, { id: 'b' }];
+  assert.strictEqual(Timeline.windowNewest(rows, 2, ''), rows);
+  assert.strictEqual(Timeline.windowNewest(rows, 5, ''), rows);
+});
+
+test('windowNewest drops the oldest rows, at the back of a newest-first list, past the cap', () => {
+  const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+  const result = Timeline.windowNewest(rows, 2, '');
+  assert.deepEqual(result.map((r) => r.id), ['a', 'b']);
+});
+
+test('windowNewest never drops the protected id, even past the cap', () => {
+  const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+  const result = Timeline.windowNewest(rows, 2, 'd');
+  assert.deepEqual(result.map((r) => r.id), ['a', 'b', 'c', 'd']);
+});
+
+test('windowNewest with no protected id loaded behaves as an ordinary cap', () => {
+  const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const result = Timeline.windowNewest(rows, 2, 'not-loaded');
+  assert.deepEqual(result.map((r) => r.id), ['a', 'b']);
+});
+
+// reindex: building an id -> position map from a newest-first list.
+
+test('reindex maps every id to its position', () => {
+  const order = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  assert.deepEqual(Timeline.reindex(order), { a: 0, b: 1, c: 2 });
+});
+
+test('reindex of an empty list is an empty map', () => {
+  assert.deepEqual(Timeline.reindex([]), {});
+});
+
+// mergeRow: the media-field carry-over logic upsert applies to an
+// existing row, pulled out of MessageTimeline.qml so it can be tested
+// directly and reused for a flood of updates.
+
+test('mergeRow keeps a resolved mediaPath and verdicts across an unrelated update', () => {
+  const oldRow = { status: 'sent', mediaPath: '/m/a.jpg', mediaPlayable: true, mediaVerdictsKnown: true };
+  const merged = Timeline.mergeRow(oldRow, { id: 'a', status: 'sent', text: 'edited' });
+  assert.strictEqual(merged.mediaPath, '/m/a.jpg');
+  assert.strictEqual(merged.mediaPlayable, true);
+  assert.strictEqual(merged.text, 'edited');
+});
+
+test('mergeRow drops a stale mediaPath the moment an outgoing photo is first confirmed sent', () => {
+  const oldRow = { status: 'pending', mediaPath: '/m/outgoing/a.jpg' };
+  const merged = Timeline.mergeRow(oldRow, { outgoing: true, media: { kind: 'photo' }, status: 'sent' });
+  assert.strictEqual(merged.mediaPath, '');
+});
+
+// applyUpsert and applyRemove: the decisions MessageTimeline.upsert and
+// .remove apply to the model - placement, the id index and which rows
+// an annotation must be recomputed for - kept pure so a flood can be
+// proven fast without any QML involved.
+
+test('applyUpsert updates an existing row in place and marks it and its newer neighbour touched', () => {
+  let order = [{ id: 'b', created: 20 }, { id: 'a', created: 10 }];
+  let index = Timeline.reindex(order);
+
+  const result = Timeline.applyUpsert(order, index, { id: 'a', created: 10, text: 'edited' }, 100, '');
+  assert.strictEqual(result.update, true);
+  assert.strictEqual(result.at, 1);
+  assert.deepEqual(result.touched.slice().sort(), [0, 1]);
+  assert.strictEqual(result.evicted, 0);
+});
+
+test('applyUpsert inserts a brand new message by time and marks the insertion point and its newer neighbour touched', () => {
+  const order = [{ id: 'b', created: 20 }, { id: 'a', created: 10 }];
+  const index = Timeline.reindex(order);
+
+  const result = Timeline.applyUpsert(order, index, { id: 'c', created: 30 }, 100, '');
+  assert.strictEqual(result.update, false);
+  assert.strictEqual(result.at, 0);
+  assert.deepEqual(result.order.map((r) => r.id), ['c', 'b', 'a']);
+  assert.deepEqual(result.index, { c: 0, b: 1, a: 2 });
+  assert.deepEqual(result.touched, [0]);
+  assert.strictEqual(result.evicted, 0);
+});
+
+test('applyUpsert evicts the oldest row once a new one pushes past the cap, and marks the new oldest touched too', () => {
+  const order = [{ id: 'b', created: 20 }, { id: 'a', created: 10 }];
+  const index = Timeline.reindex(order);
+
+  const result = Timeline.applyUpsert(order, index, { id: 'c', created: 30 }, 2, '');
+  assert.strictEqual(result.evicted, 1);
+  assert.deepEqual(result.order.map((r) => r.id), ['c', 'b']);
+  assert.deepEqual(result.index, { c: 0, b: 1 });
+  assert.ok(result.touched.includes(1), 'expected the new oldest row to be marked touched: ' + JSON.stringify(result.touched));
+});
+
+test('applyUpsert never evicts the protected id even once the cap is reached', () => {
+  const order = [{ id: 'b', created: 20 }, { id: 'a', created: 10 }];
+  const index = Timeline.reindex(order);
+
+  const result = Timeline.applyUpsert(order, index, { id: 'c', created: 30 }, 2, 'a');
+  assert.strictEqual(result.evicted, 0);
+  assert.deepEqual(result.order.map((r) => r.id), ['c', 'b', 'a']);
+});
+
+test('applyRemove drops a loaded row and marks its newer neighbour touched', () => {
+  const order = [{ id: 'c', created: 30 }, { id: 'b', created: 20 }, { id: 'a', created: 10 }];
+  const index = Timeline.reindex(order);
+
+  const result = Timeline.applyRemove(order, index, 'b');
+  assert.strictEqual(result.removed, true);
+  assert.strictEqual(result.at, 1);
+  assert.deepEqual(result.order.map((r) => r.id), ['c', 'a']);
+  assert.deepEqual(result.touched, [0]);
+});
+
+test('applyRemove does nothing for an id that is not loaded', () => {
+  const order = [{ id: 'a', created: 10 }];
+  const index = Timeline.reindex(order);
+
+  const result = Timeline.applyRemove(order, index, 'missing');
+  assert.strictEqual(result.removed, false);
+  assert.strictEqual(result.order, order);
+  assert.deepEqual(result.touched, []);
+});
+
+test('applyRemove of the only loaded row touches nothing, since it had no newer neighbour', () => {
+  const order = [{ id: 'a', created: 10 }];
+  const index = Timeline.reindex(order);
+
+  const result = Timeline.applyRemove(order, index, 'a');
+  assert.deepEqual(result.order, []);
+  assert.deepEqual(result.touched, []);
+});
+
+// annotateForPair: the per-row half of annotate(), so a caller that
+// only touched one or two rows need not walk every loaded message.
+
+test('annotateForPair matches annotateAt for every row of a mixed list', () => {
+  const msgs = [
+    { id: 'm3', created: new Date(2026, 9, 6, 14, 0).getTime(), senderId: 'alice', outgoing: false },
+    { id: 'm2', created: new Date(2026, 9, 6, 13, 55).getTime(), senderId: 'alice', outgoing: false },
+    { id: 'm1', created: new Date(2026, 9, 5, 10, 0).getTime(), senderId: 'bob', outgoing: true }
+  ];
+  for (let i = 0; i < msgs.length; i++) {
+    const viaPair = Timeline.annotateForPair(msgs[i], msgs[i + 1] ?? null, true, nowMs);
+    const viaAt = Timeline.annotateAt(msgs, i, true, nowMs);
+    assert.deepEqual(viaPair, viaAt, `mismatch at index ${i}`);
+  }
+});
+
+// A flood of live messages must cost roughly the same per message
+// however many have already arrived: MAX_LOADED_ROWS keeps the index
+// rebuild applyUpsert does on every insert bounded by a small constant,
+// not by how many of the 50,000 have already landed.
+
+test('applyUpsert handles a flood of 50000 new messages within a generous time bound', () => {
+  let order = [];
+  let index = {};
+  const start = Date.now();
+
+  for (let i = 0; i < 50000; i++) {
+    const result = Timeline.applyUpsert(order, index, { id: `m${i}`, created: i }, Timeline.MAX_LOADED_ROWS, '');
+    order = result.order;
+    index = result.index;
+  }
+
+  const elapsedMs = Date.now() - start;
+  assert.ok(elapsedMs < 8000, `50000 upserts took ${elapsedMs}ms, want well under 8000ms`);
+  assert.strictEqual(order.length, Timeline.MAX_LOADED_ROWS);
+  assert.strictEqual(order[0].id, 'm49999');
+  assert.strictEqual(order[order.length - 1].id, `m${50000 - Timeline.MAX_LOADED_ROWS}`);
+  assert.strictEqual(Object.keys(index).length, Timeline.MAX_LOADED_ROWS);
+  assert.strictEqual(index['m49999'], 0);
+});

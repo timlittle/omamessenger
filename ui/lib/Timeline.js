@@ -59,8 +59,18 @@ function mediaIdentityChanged(oldRow, message) {
 // annotateAt returns the annotation for one message. Its older neighbour
 // is the next index, because the list is shown bottom to top.
 function annotateAt(newestFirst, index, isGroup, nowMs) {
-  const msg = newestFirst[index];
-  const older = newestFirst[index + 1] ?? null;
+  return annotateForPair(newestFirst[index], newestFirst[index + 1] ?? null, isGroup, nowMs);
+}
+
+// annotateForPair is annotateAt's own per-row logic, taking a message
+// and its older neighbour (or null when it has none) directly rather
+// than an array and an index: the only two rows a caller that just
+// touched one or two loaded messages - a live upsert or remove - needs
+// to recompute, without walking every other loaded row to get there.
+// The expensive part for a large loaded list is the Date/toDateString
+// pair sameDay builds for every row annotate() visits; this is how
+// MessageTimeline avoids paying that for rows nothing changed about.
+function annotateForPair(msg, older, isGroup, nowMs) {
   const showDay = !older || !sameDay(msg.created, older.created);
 
   return {
@@ -74,6 +84,130 @@ function annotateAt(newestFirst, index, isGroup, nowMs) {
 // GROUP_WINDOW_MS is how close together messages from one author must be
 // to sit together without extra spacing.
 var GROUP_WINDOW_MS = 5 * 60 * 1000;
+
+// MAX_LOADED_ROWS bounds how many messages MessageTimeline keeps
+// loaded for the open conversation at once, however long it has stayed
+// open and however many messages a sender floods it with: every event
+// (message.added, message.updated, message.removed) costs work bounded
+// by this constant, not by how many messages have ever arrived (see
+// docs/decisions.md). 2000 rows is deep enough to scroll back through
+// 40 loadOlder pages of 50 before the cap is ever felt in ordinary use,
+// while keeping one event's worst case - a handful of small object
+// copies and an id -> position rebuild - a small, fixed amount of work
+// no flood can grow.
+var MAX_LOADED_ROWS = 2000;
+
+// windowNewest drops rows past cap from the oldest end - the back of a
+// newest-first array - so a flood of live messages, or a long run of
+// loadOlder pages, never grows past a fixed bound. protectId, when it
+// names a row still loaded, is never dropped, and neither is anything
+// newer than it: this is how a window never pulls the highlighted
+// message out from under the user (see qml.md: rows identified by id).
+// rows is never mutated.
+function windowNewest(rows, cap, protectId) {
+  if (rows.length <= cap) return rows;
+
+  const protectAt = protectId ? rows.findIndex((r) => r.id === protectId) : -1;
+  const keep = protectAt === -1 ? cap : Math.max(cap, protectAt + 1);
+  return rows.slice(0, keep);
+}
+
+// reindex builds an id -> position map from order, a newest-first list
+// of {id, created} pairs (or full rows, which also carry an id).
+// MAX_LOADED_ROWS keeps order a small constant size no matter how many
+// events have arrived, so this never grows with a flood's size.
+// Object.create(null) skips the prototype chain a flood's own ids
+// could otherwise collide with (an id of "constructor", say) and is
+// measurably cheaper to fill than a literal {} for a map rebuilt this
+// often.
+function reindex(order) {
+  const index = Object.create(null);
+  for (let i = 0; i < order.length; i++) index[order[i].id] = i;
+  return index;
+}
+
+// mergeRow builds the row upsert writes for message when id is already
+// loaded: a cached mediaPath, its verdicts (mediaDecodeAs, mediaPlayable,
+// mediaRisky, mediaVerdictsKnown) and mediaFailed normally carry over
+// from oldRow untouched, since the service's own update never carries
+// any of them - but they are dropped instead the moment this update is
+// either the message's attachment being retired into the download
+// cache (see mediaJustRetired) or an edit that swaps its media for a
+// different kind or different bytes of the same kind (see
+// mediaIdentityChanged): in both cases the cached path and verdicts
+// describe bytes that are no longer this row's own, and must be
+// resolved and checked again rather than reused or shown as missing
+// forever.
+function mergeRow(oldRow, message) {
+  const mediaReplaced = mediaJustRetired(oldRow, message) || mediaIdentityChanged(oldRow, message);
+  const kept = mediaReplaced
+    ? { mediaPath: '', mediaDecodeAs: '', mediaPlayable: false, mediaRisky: false, mediaVerdictsKnown: false, mediaFailed: false, mediaFailedReason: '' }
+    : {
+        mediaPath: oldRow.mediaPath, mediaDecodeAs: oldRow.mediaDecodeAs,
+        mediaPlayable: oldRow.mediaPlayable, mediaRisky: oldRow.mediaRisky,
+        mediaVerdictsKnown: oldRow.mediaVerdictsKnown,
+        mediaFailed: oldRow.mediaFailed, mediaFailedReason: oldRow.mediaFailedReason
+      };
+
+  return Object.assign({}, kept, message);
+}
+
+// applyUpsert decides how message changes a loaded timeline, without
+// touching any QML model: order is the timeline's {id, created} pairs,
+// newest first, kept in step with the real rows by whoever calls this
+// (see MessageTimeline.qml); index maps those same ids to their
+// position in order, so finding an existing message is O(1) instead of
+// a scan. cap bounds how many rows order may hold afterward (see
+// windowNewest); protectId, when loaded, is never evicted to make room.
+//
+// Returns update (true for an existing message, false for a new one),
+// at (the row's final position), the new order and index to keep
+// instead of the old ones, evicted (how many rows the cap just
+// dropped, usually 0) and touched (every position whose annotation may
+// now be wrong, for the caller to recompute - see annotateForPair).
+//
+// order and index are consumed, not copied: a flood calling this once
+// per message would otherwise pay for an extra O(MAX_LOADED_ROWS) copy
+// on top of the splice and reindex every insert already costs, and
+// MessageTimeline.qml's own caller never keeps the old order or index
+// around after the call to notice. Either call this only with values
+// you are ready to replace with the result, or pass copies of your own.
+function applyUpsert(order, index, message, cap, protectId) {
+  const at = index[message.id];
+  if (at !== undefined) {
+    order[at] = { id: message.id, created: message.created };
+    return { update: true, at, order, index, evicted: 0, touched: at > 0 ? [at - 1, at] : [at] };
+  }
+
+  const insertAt = insertIndex(order, message);
+  order.splice(insertAt, 0, { id: message.id, created: message.created });
+
+  const windowed = windowNewest(order, cap, protectId);
+  const evicted = order.length - windowed.length;
+  const nextIndex = reindex(windowed);
+
+  const touched = insertAt > 0 ? [insertAt - 1, insertAt] : [insertAt];
+  if (evicted > 0 && windowed.length > 0) touched.push(windowed.length - 1);
+
+  return { update: false, at: insertAt, order: windowed, index: nextIndex, evicted, touched };
+}
+
+// applyRemove decides how dropping id changes a loaded timeline, the
+// same shape of state applyUpsert takes and returns, and the same
+// consumed-not-copied contract. removed is false, with order and
+// index unchanged, when id is not loaded: the service already removed
+// it, so there is nothing left to find. touched is the id that was
+// immediately newer than the removed row, if any, since its own
+// annotation depends on comparing itself to whichever row sits after
+// it, and that is now a different message.
+function applyRemove(order, index, id) {
+  const at = index[id];
+  if (at === undefined) return { removed: false, at: -1, order, index, touched: [] };
+
+  order.splice(at, 1);
+
+  return { removed: true, at, order, index: reindex(order), touched: at > 0 ? [at - 1] : [] };
+}
 
 // sameDay reports whether two timestamps fall on the same local calendar day.
 function sameDay(msA, msB) {

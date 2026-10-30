@@ -330,6 +330,39 @@ func TestCapMedia_LeavesAShortStickerEmojiAlone(t *testing.T) {
 	}
 }
 
+// TestCapMedia_DropsAnOversizedThumb confirms an inline preview past
+// MaxInlineThumbLen is dropped outright, the same drop-rather-than-
+// truncate treatment an oversized sticker emoji gets: truncated base64
+// decodes to nothing usable either. This is the cap that keeps a flood
+// of messages from making the shell hold ever more thumbnail bytes for
+// the open conversation (see docs/decisions.md), far tighter than a
+// downloaded sticker's own imagesafe.Thumbnail bound, which still
+// applies first, at the connector.
+func TestCapMedia_DropsAnOversizedThumb(t *testing.T) {
+	t.Parallel()
+
+	huge := strings.Repeat("a", domain.MaxInlineThumbLen+1)
+	media := &domain.Media{Kind: domain.MediaPhoto, Thumb: huge}
+
+	got := domain.CapMedia(media)
+	if got.Thumb != "" {
+		t.Errorf("CapMedia kept an oversized thumbnail of %d bytes, want it dropped", len(got.Thumb))
+	}
+}
+
+// TestCapMedia_LeavesAShortThumbAlone confirms a preview within the
+// cap passes through unchanged, for every kind that carries one, not
+// only a sticker's.
+func TestCapMedia_LeavesAShortThumbAlone(t *testing.T) {
+	t.Parallel()
+
+	media := &domain.Media{Kind: domain.MediaVoice, Thumb: "c2hvcnQ="}
+	got := domain.CapMedia(media)
+	if got.Thumb != "c2hvcnQ=" {
+		t.Errorf("CapMedia(%+v).Thumb = %q, want it unchanged", media, got.Thumb)
+	}
+}
+
 // TestCapDisplayName_CutsAnOversizedName confirms a display name past
 // MaxDisplayNameLength is cut to it.
 func TestCapDisplayName_CutsAnOversizedName(t *testing.T) {

@@ -269,8 +269,9 @@ type Reply struct {
 // photo, a video, a file, a voice note or a sticker. Thumb is a small
 // preview image in base64 (JPEG for every kind but a sticker, which
 // carries whatever format its service's own thumbnail used), sent with
-// the message; a full photo, video, file or voice note is fetched only
-// when the user wants it. Duration is in seconds and Size in bytes; a
+// the message and bounded to MaxInlineThumbLen by CapMedia; a full
+// photo, video, file or voice note is fetched only when the user wants
+// it. Duration is in seconds and Size in bytes; a
 // voice note always carries Duration, for its player's elapsed time
 // label before playback has started. Emoji is a sticker's associated
 // emoji, shown when neither Thumb nor a fetchable FileName can: a

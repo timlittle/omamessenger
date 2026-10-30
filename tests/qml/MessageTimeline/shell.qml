@@ -6,9 +6,13 @@
 // reads a loaded message's photo or video back; photoNeighbor() steps
 // between the photos in the loaded history, skipping messages without one;
 // ids() lists the loaded messages for moving a highlight; initialLoaded()
-// fires once loadInitial's page has landed; and loadOlder()'s reply is
+// fires once loadInitial's page has landed; loadOlder()'s reply is
 // dropped, not applied, once its guard says the conversation it was for
-// is no longer the one open.
+// is no longer the one open; a flood of live messages past
+// Timeline.MAX_LOADED_ROWS windows out the oldest loaded rows rather than
+// growing without bound; and a protected id (the highlighted message)
+// stays loaded through that same windowing - the wiring this test checks,
+// not windowNewest's own decision, already proven in tests/unit/timeline.test.cjs.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -58,6 +62,13 @@ ShellRoot {
   // staleActiveId is whichever conversation is "open" for staleTimeline's
   // guards to check against, moved by hand to simulate switching.
   property string staleActiveId: "a"
+
+  // windowTimeline is its own, empty MessageTimeline for the windowing
+  // and id-stability checks below, so flooding it with thousands of
+  // messages never disturbs timeline's own, already-asserted state.
+  MessageTimeline {
+    id: windowTimeline
+  }
 
   MessageTimeline {
     id: staleTimeline
@@ -204,7 +215,66 @@ ShellRoot {
 
     if (!root.checkUpsertDropsStaleMediaPathOnRetire()) return;
     if (!root.checkUpsertDropsMediaOnIdentityChange()) return;
+    if (!root.checkWindowingCapsLoadedRows()) return;
+    if (!root.checkWindowingProtectsHighlightedId()) return;
     root.checkLoadOlderDropsStaleReply();
+  }
+
+  // checkWindowingCapsLoadedRows floods windowTimeline with more live
+  // messages than Timeline.MAX_LOADED_ROWS, one at a time through
+  // upsert() exactly as a real message.added event would, and confirms
+  // the model never grows past the cap, keeps the newest message on
+  // top, and comes back asking for more history: the oldest rows were
+  // windowed out, not lost, so scrolling back can still re-page them
+  // from the helper (see MessageTimeline.upsert). Returns false, having
+  // already called Check.fail, on the first thing that does not hold.
+  function checkWindowingCapsLoadedRows(): bool {
+    const cap = Timeline.MAX_LOADED_ROWS;
+    for (let i = 0; i < cap + 50; i++) {
+      windowTimeline.upsert(root.message("w" + i, i), false, "");
+    }
+
+    if (windowTimeline.model.count !== cap) {
+      return Check.fail("flooding past the cap left " + windowTimeline.model.count + " rows loaded, want " + cap);
+    }
+    if (windowTimeline.newestId() !== "w" + (cap + 49)) {
+      return Check.fail("windowing lost the newest message: newestId() = " + windowTimeline.newestId());
+    }
+    if (!windowTimeline.hasMore) {
+      return Check.fail("windowing out loaded rows must leave hasMore true, so scrolling back re-pages them");
+    }
+    if (windowTimeline.find("w0") !== null) {
+      return Check.fail("the oldest message should have been windowed out of the model");
+    }
+
+    return true;
+  }
+
+  // checkWindowingProtectsHighlightedId reproduces a user's highlight
+  // sitting on an old message while the chat keeps receiving live
+  // messages in the background: windowing must never evict the
+  // protected id, so the highlight never silently points at a message
+  // that is no longer loaded (qml.md: rows identified by id, never an
+  // index). Returns false, having already called Check.fail, on the
+  // first thing that does not hold.
+  function checkWindowingProtectsHighlightedId(): bool {
+    const loadedIds = windowTimeline.ids();
+    const protect = loadedIds[loadedIds.length - 1]; // the oldest row still loaded, and so the first windowing would otherwise drop
+    const cap = Timeline.MAX_LOADED_ROWS;
+    const before = windowTimeline.model.count;
+
+    for (let i = 0; i < 50; i++) {
+      windowTimeline.upsert(root.message("p" + i, cap + 1000 + i), false, protect);
+    }
+
+    if (windowTimeline.find(protect) === null) {
+      return Check.fail("windowing evicted the protected id " + protect + " it was told to keep");
+    }
+    if (windowTimeline.model.count !== before + 50) {
+      return Check.fail("protecting the oldest loaded row should keep every one of the 50 new messages too: count = " + windowTimeline.model.count + ", want " + (before + 50));
+    }
+
+    return true;
   }
 
   // checkUpsertDropsStaleMediaPathOnRetire reproduces the helper

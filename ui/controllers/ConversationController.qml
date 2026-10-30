@@ -690,7 +690,7 @@ Item {
   // Reactions and the composer's own send both land here.
   function applyMessage(message: var): void {
     if (message.conversationId !== root.activeId) return;
-    timeline.upsert(message, root.isGroup);
+    timeline.upsert(message, root.isGroup, highlight.highlightedId);
   }
 
   // _removeMessage drops a deleted message from the timeline, ignoring
