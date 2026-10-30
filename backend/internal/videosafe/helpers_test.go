@@ -456,10 +456,10 @@ func mp4SampleSizeTable(samples [][]byte) []byte {
 // one of count samples lives in chunk 1, sample description index 1.
 func mp4SampleToChunk(count uint32) []byte {
 	buf := make([]byte, 8+12)
-	binary.BigEndian.PutUint32(buf[4:8], 1)     // entry_count
-	binary.BigEndian.PutUint32(buf[8:12], 1)    // first_chunk
+	binary.BigEndian.PutUint32(buf[4:8], 1)       // entry_count
+	binary.BigEndian.PutUint32(buf[8:12], 1)      // first_chunk
 	binary.BigEndian.PutUint32(buf[12:16], count) // samples_per_chunk
-	binary.BigEndian.PutUint32(buf[16:20], 1)   // sample_description_index
+	binary.BigEndian.PutUint32(buf[16:20], 1)     // sample_description_index
 	return buf
 }
 
@@ -484,6 +484,148 @@ func concatBytes(parts ...[]byte) []byte {
 		out = append(out, p...)
 	}
 	return out
+}
+
+// avcCustomLayoutParams lets a test build an avc1 track whose
+// stsz/stco/co64/stsc/stz2 boxes are given directly, rather than
+// derived from real sample bytes the way mp4AVCVideoWithSamples
+// always builds them: for exercising avcsamples.go's own layout
+// mismatches and bounds checks (a declared size exceeding the file, a
+// missing table, too few chunks for the declared samples) that a
+// byte-accurate fixture could never reach on its own. Any field left
+// nil omits that box entirely.
+type avcCustomLayoutParams struct {
+	width, height int
+	stsz          []byte
+	stz2          []byte
+	stco          []byte
+	co64          []byte
+	stsc          []byte
+	mdat          []byte
+}
+
+// mp4AVCVideoCustomLayout builds a minimal, well-formed MP4 with one
+// avc1 video track whose stbl box carries exactly the layout boxes
+// p names, plus a trailing mdat box when p.mdat is set. A chunk
+// offset inside p.stco/p.co64 is a placeholder until a test patches
+// it in place with patchStcoOffset, patchStcoOffsets or
+// patchCo64Offset, once the real file's own layout is known.
+func mp4AVCVideoCustomLayout(p avcCustomLayoutParams) []byte {
+	entryBody := make([]byte, 78)
+	binary.BigEndian.PutUint16(entryBody[24:26], uint16(p.width))
+	binary.BigEndian.PutUint16(entryBody[26:28], uint16(p.height))
+	entryBody = append(entryBody, mp4Box("avcC", buildAVCDecoderConfig(p.width, p.height))...)
+	entry := mp4Box("avc1", entryBody)
+
+	stsdBody := make([]byte, 8, 8+len(entry))
+	binary.BigEndian.PutUint32(stsdBody[4:8], 1) // entry_count
+	stsdBody = append(stsdBody, entry...)
+
+	stblBody := mp4Box("stsd", stsdBody)
+	type namedBox struct {
+		boxType string
+		body    []byte
+	}
+	for _, b := range []namedBox{{"stsz", p.stsz}, {"stz2", p.stz2}, {"stco", p.stco}, {"co64", p.co64}, {"stsc", p.stsc}} {
+		if b.body != nil {
+			stblBody = append(stblBody, mp4Box(b.boxType, b.body)...)
+		}
+	}
+
+	stbl := mp4Box("stbl", stblBody)
+	minf := mp4Box("minf", stbl)
+	mdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
+	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("vide")...))
+	mdia := mp4Box("mdia", concatBytes(mdhd, hdlr, minf))
+	trak := mp4Box("trak", mdia)
+	mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
+	moov := mp4Box("moov", concatBytes(mvhd, trak))
+	ftyp := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
+
+	out := concatBytes(ftyp, moov)
+	if p.mdat != nil {
+		out = append(out, mp4Box("mdat", p.mdat)...)
+	}
+	return out
+}
+
+// stszBody builds a variable-size stsz box body (sample_size 0) with
+// the given per-sample sizes, independent of any real sample bytes -
+// for a test that needs stsz to declare a size no sample in the file
+// actually has.
+func stszBody(sizes ...uint32) []byte {
+	buf := make([]byte, 12+4*len(sizes))
+	binary.BigEndian.PutUint32(buf[8:12], uint32(len(sizes)))
+	for i, s := range sizes {
+		binary.BigEndian.PutUint32(buf[12+i*4:16+i*4], s)
+	}
+	return buf
+}
+
+// fixedStszBody builds a fixed-size stsz box body: sample_size is
+// set to size (every sample is exactly that many bytes), the one
+// shape stszBody's own zero sample_size never builds.
+func fixedStszBody(size, sampleCount uint32) []byte {
+	buf := make([]byte, 12)
+	binary.BigEndian.PutUint32(buf[4:8], size)
+	binary.BigEndian.PutUint32(buf[8:12], sampleCount)
+	return buf
+}
+
+// stcoBody builds an stco box body (32-bit chunk offsets).
+func stcoBody(offsets ...uint32) []byte {
+	buf := make([]byte, 8+4*len(offsets))
+	binary.BigEndian.PutUint32(buf[4:8], uint32(len(offsets)))
+	for i, o := range offsets {
+		binary.BigEndian.PutUint32(buf[8+i*4:12+i*4], o)
+	}
+	return buf
+}
+
+// co64Body builds a co64 box body (64-bit chunk offsets).
+func co64Body(offsets ...uint64) []byte {
+	buf := make([]byte, 8+8*len(offsets))
+	binary.BigEndian.PutUint32(buf[4:8], uint32(len(offsets)))
+	for i, o := range offsets {
+		binary.BigEndian.PutUint64(buf[8+i*8:16+i*8], o)
+	}
+	return buf
+}
+
+// stscBody builds an stsc box body from (firstChunk, samplesPerChunk)
+// pairs, one entry per pair, sample_description_index fixed at 1.
+func stscBody(entries ...[2]uint32) []byte {
+	buf := make([]byte, 8+12*len(entries))
+	binary.BigEndian.PutUint32(buf[4:8], uint32(len(entries)))
+	for i, e := range entries {
+		binary.BigEndian.PutUint32(buf[8+i*12:12+i*12], e[0])
+		binary.BigEndian.PutUint32(buf[12+i*12:16+i*12], e[1])
+		binary.BigEndian.PutUint32(buf[16+i*12:20+i*12], 1)
+	}
+	return buf
+}
+
+// patchStcoOffsets finds the one stco box built with as many
+// placeholder (zero) offsets as len(offsets) and overwrites them in
+// place with the real ones, the same trick patchStcoOffset already
+// uses for a single chunk, generalized to however many a test needs.
+func patchStcoOffsets(data []byte, offsets []int64) {
+	idx := bytes.Index(data, []byte("stco"))
+	body := data[idx+4:]
+	binary.BigEndian.PutUint32(body[4:8], uint32(len(offsets)))
+	for i, off := range offsets {
+		binary.BigEndian.PutUint32(body[8+i*4:12+i*4], uint32(off))
+	}
+}
+
+// patchCo64Offset finds the one co64 box built with a single
+// placeholder offset and overwrites it in place with the real one,
+// co64's own 64-bit-wide counterpart to patchStcoOffset.
+func patchCo64Offset(data []byte, offset int64) {
+	idx := bytes.Index(data, []byte("co64"))
+	body := data[idx+4:]
+	binary.BigEndian.PutUint32(body[4:8], 1) // entry_count
+	binary.BigEndian.PutUint64(body[8:16], uint64(offset))
 }
 
 // webmParams names everything webmFixture varies between test cases.
