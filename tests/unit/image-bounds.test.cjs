@@ -103,3 +103,14 @@ test('verifiedDimensions reports unknown for no media at all', () => {
   assert.deepEqual(ImageBounds.verifiedDimensions(null, true), { width: 0, height: 0 });
   assert.deepEqual(ImageBounds.verifiedDimensions(undefined, false), { width: 0, height: 0 });
 });
+
+test('verifiedDimensions never falls back to the thumbnail size once the full file is shown but not yet verified', () => {
+  // haveFile true asks for the full-file stage's own verified size.
+  // Without an explicit verifiedWidth/verifiedHeight, this must report
+  // unknown (0, 0) - never fall back to the thumbnail's own verified
+  // size, which describes a different, smaller decode of the same
+  // attachment, and never to width/height, the sender's claim.
+  const media = { width: 400, height: 300, thumbWidth: 40, thumbHeight: 30 };
+
+  assert.deepEqual(ImageBounds.verifiedDimensions(media, true), { width: 0, height: 0 });
+});

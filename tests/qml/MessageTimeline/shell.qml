@@ -215,6 +215,7 @@ ShellRoot {
 
     if (!root.checkUpsertDropsStaleMediaPathOnRetire()) return;
     if (!root.checkUpsertDropsMediaOnIdentityChange()) return;
+    if (!root.checkUpsertKeepsVerifiedDimensionsAcrossUnrelatedUpdate()) return;
     if (!root.checkWindowingCapsLoadedRows()) return;
     if (!root.checkWindowingProtectsHighlightedId()) return;
     root.checkLoadOlderDropsStaleReply();
@@ -338,6 +339,36 @@ ShellRoot {
     timeline.upsert(Object.assign(root.photoMessage("me2", 96), { edited: true, text: "new caption" }), false);
     if (timeline.mediaPath("me2") !== "/data/omamessenger/media/me2.jpg") {
       return Check.fail("upsert dropped mediaPath for a caption-only edit that left the same media alone: " + timeline.mediaPath("me2"));
+    }
+
+    return true;
+  }
+
+  // checkUpsertKeepsVerifiedDimensionsAcrossUnrelatedUpdate reproduces
+  // the gap docs/decisions.md described: MediaController.setMedia
+  // records media.fetch's own verified size as verifiedWidth/
+  // verifiedHeight on a loaded photo (see ui/lib/ImageBounds.js); an
+  // unrelated message.updated echo - a reaction, in this test - must
+  // not lose that verified size, since the attachment itself has not
+  // changed, even though the service's own echo never carries these
+  // UI-only fields at all. An edit that swaps in different media must
+  // still clear them, exactly as it already clears mediaPath. Returns
+  // false, having already called Check.fail, on the first thing that
+  // does not hold.
+  function checkUpsertKeepsVerifiedDimensionsAcrossUnrelatedUpdate(): bool {
+    timeline.upsert(root.photoMessage("mv1", 97), false);
+    timeline.setMedia("mv1", Object.assign({}, timeline.media("mv1"), { verifiedWidth: 390, verifiedHeight: 290 }));
+
+    timeline.upsert(Object.assign(root.photoMessage("mv1", 97), { reactions: [{ emoji: "👍", count: 1, mine: true }] }), false);
+    const afterReaction = timeline.media("mv1");
+    if (!afterReaction || afterReaction.verifiedWidth !== 390 || afterReaction.verifiedHeight !== 290) {
+      return Check.fail("upsert lost verified dimensions across an unrelated reaction update: " + JSON.stringify(afterReaction));
+    }
+
+    timeline.upsert(Object.assign(root.message("mv1", 97), { edited: true, media: { kind: "photo", width: 10, height: 10, fileName: "different.jpg" } }), false);
+    const afterEdit = timeline.media("mv1");
+    if (!afterEdit || afterEdit.verifiedWidth || afterEdit.verifiedHeight) {
+      return Check.fail("upsert kept stale verified dimensions across an edit that changed the media: " + JSON.stringify(afterEdit));
     }
 
     return true;

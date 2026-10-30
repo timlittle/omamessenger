@@ -128,16 +128,17 @@ function reindex(order) {
 
 // mergeRow builds the row upsert writes for message when id is already
 // loaded: a cached mediaPath, its verdicts (mediaDecodeAs, mediaPlayable,
-// mediaRisky, mediaVerdictsKnown) and mediaFailed normally carry over
-// from oldRow untouched, since the service's own update never carries
-// any of them - but they are dropped instead the moment this update is
-// either the message's attachment being retired into the download
-// cache (see mediaJustRetired) or an edit that swaps its media for a
-// different kind or different bytes of the same kind (see
-// mediaIdentityChanged): in both cases the cached path and verdicts
-// describe bytes that are no longer this row's own, and must be
-// resolved and checked again rather than reused or shown as missing
-// forever.
+// mediaRisky, mediaVerdictsKnown), mediaFailed and the media's own
+// verifiedWidth/verifiedHeight (see carryVerifiedDimensions) normally
+// carry over from oldRow untouched, since the service's own update
+// never carries any of them - but they are dropped instead the moment
+// this update is either the message's attachment being retired into
+// the download cache (see mediaJustRetired) or an edit that swaps its
+// media for a different kind or different bytes of the same kind (see
+// mediaIdentityChanged): in both cases the cached path, verdicts and
+// verified size describe bytes that are no longer this row's own, and
+// must be resolved and checked again rather than reused or shown as
+// missing forever.
 function mergeRow(oldRow, message) {
   const mediaReplaced = mediaJustRetired(oldRow, message) || mediaIdentityChanged(oldRow, message);
   const kept = mediaReplaced
@@ -149,7 +150,31 @@ function mergeRow(oldRow, message) {
         mediaFailed: oldRow.mediaFailed, mediaFailedReason: oldRow.mediaFailedReason
       };
 
-  return Object.assign({}, kept, message);
+  const merged = Object.assign({}, kept, message);
+  if (!mediaReplaced && message.media) merged.media = carryVerifiedDimensions(oldRow, message.media);
+  return merged;
+}
+
+// carryVerifiedDimensions returns newMedia - message's own media, as
+// the service's message.updated echo sent it - with oldRow's own
+// verifiedWidth/verifiedHeight (see MediaController.setMedia) added
+// back onto it, when oldRow had them. The echo is always the sender's
+// original, unverified claim; it never carries these fields, since
+// they are MediaController's own record of media.fetch's answer, not
+// anything the message protocol sends (see ImageBounds.verifiedDimensions
+// and docs/decisions.md's "Known residual gap", now closed). Without
+// this, an unrelated update that keeps the same attachment - a
+// reaction, a delivery-status change, a caption edit - would silently
+// erase the full-file display stage's own verified size, the same way
+// a cached mediaPath would be lost if mergeRow did not keep it too.
+// Only called once mergeRow has already decided the media identity has
+// not changed, so newMedia is always the same attachment oldRow's own
+// media described.
+function carryVerifiedDimensions(oldRow, newMedia) {
+  const before = media(oldRow);
+  if (!before || (!before.verifiedWidth && !before.verifiedHeight)) return newMedia;
+
+  return Object.assign({ verifiedWidth: before.verifiedWidth || 0, verifiedHeight: before.verifiedHeight || 0 }, newMedia);
 }
 
 // applyUpsert decides how message changes a loaded timeline, without

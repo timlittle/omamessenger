@@ -514,6 +514,50 @@ test('mergeRow drops a stale mediaPath the moment an outgoing photo is first con
   assert.strictEqual(merged.mediaPath, '');
 });
 
+test('mergeRow keeps media.fetch\'s verified dimensions across an unrelated update, the same way mediaPath is kept', () => {
+  // The known residual gap docs/decisions.md described: once
+  // MediaController.setMedia records media.fetch's own verified size,
+  // the next message.updated echo (a reaction, a status change, a
+  // caption edit) used to rebuild the whole media field from the
+  // server's own echo - the sender's unverified claim - silently
+  // losing verifiedWidth/verifiedHeight even though the attachment
+  // itself never changed.
+  const oldRow = {
+    status: 'sent',
+    media: JSON.stringify({ kind: 'photo', width: 400, height: 300, verifiedWidth: 390, verifiedHeight: 290 })
+  };
+  const merged = Timeline.mergeRow(oldRow, {
+    id: 'a',
+    status: 'sent',
+    reactions: [{ emoji: '👍', senderId: 'bob' }],
+    media: { kind: 'photo', width: 400, height: 300 }
+  });
+
+  assert.deepEqual(merged.media, { kind: 'photo', width: 400, height: 300, verifiedWidth: 390, verifiedHeight: 290 });
+});
+
+test('mergeRow clears verified dimensions together with mediaPath when the media identity changes', () => {
+  const oldRow = {
+    status: 'sent',
+    mediaPath: '/m/a.jpg',
+    media: JSON.stringify({ kind: 'photo', width: 400, height: 300, verifiedWidth: 390, verifiedHeight: 290 })
+  };
+  const merged = Timeline.mergeRow(oldRow, {
+    id: 'a',
+    status: 'sent',
+    media: { kind: 'photo', width: 10, height: 10, fileName: 'different.jpg' }
+  });
+
+  assert.strictEqual(merged.mediaPath, '');
+  assert.deepEqual(merged.media, { kind: 'photo', width: 10, height: 10, fileName: 'different.jpg' });
+});
+
+test('mergeRow leaves an update with no media field at all untouched', () => {
+  const oldRow = { status: 'sent', text: 'hi' };
+  const merged = Timeline.mergeRow(oldRow, { id: 'a', status: 'read', text: 'hi' });
+  assert.strictEqual(merged.media, undefined);
+});
+
 // applyUpsert and applyRemove: the decisions MessageTimeline.upsert and
 // .remove apply to the model - placement, the id index and which rows
 // an annotation must be recomputed for - kept pure so a flood can be
