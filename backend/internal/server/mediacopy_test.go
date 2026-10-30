@@ -14,14 +14,15 @@ import (
 func TestMediaCopy_WritesTheFetchedFileToTheClipboard(t *testing.T) {
 	t.Parallel()
 
-	// A plain file, not a photo: this test covers media.copy's own
-	// clipboard write, and a file carries no image check (see
-	// app.servedPath), so the fake connector's own placeholder bytes
-	// can stand in for the fetched media unchanged.
-	s := connectWithMedia(t, fakeMediaWriter{content: []byte("a photo")}, cache.New(t.TempDir(), 1<<20))
+	// A genuine photo: app.CopyMedia now refuses to copy anything whose
+	// sniffed bytes do not match the message's own kind (see
+	// docs/decisions.md), so this test's own fixture must be a real,
+	// decodable image rather than an arbitrary placeholder.
+	photo := pngBytes(t, 2, 2)
+	s := connectWithMedia(t, fakeMediaWriter{content: photo}, cache.New(t.TempDir(), 1<<20))
 	msg := domain.Message{
-		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[File]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaFile},
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
 	}
 	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
 		t.Fatal(err)
@@ -31,7 +32,7 @@ func TestMediaCopy_WritesTheFetchedFileToTheClipboard(t *testing.T) {
 		t.Fatalf("media.copy = %v", err)
 	}
 
-	if string(s.clipboard.written) != "a photo" {
+	if string(s.clipboard.written) != string(photo) {
 		t.Errorf("clipboard got %q, want the fetched media", s.clipboard.written)
 	}
 }

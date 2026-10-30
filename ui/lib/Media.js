@@ -102,3 +102,23 @@ function mimeFor(media) {
 
   return null;
 }
+
+// copyable reports whether media's full file may actually be copied
+// to the clipboard right now: mimeFor already limits this to a photo
+// or a video, and a video additionally needs the helper's own verdict
+// that it can be decoded at all (see canPlayInline), never only the
+// sender's own claim that the message is a video. The helper's own
+// media.copy independently refuses to put anything on the clipboard
+// that does not match this (see docs/decisions.md); this is what
+// keeps the UI from even offering an action that call would refuse.
+function copyable(media, decodeAs, playable) {
+  if (!mimeFor(media)) {
+    return false;
+  }
+
+  if (media.kind === 'video') {
+    return canPlayInline(decodeAs, playable);
+  }
+
+  return true;
+}

@@ -2,33 +2,31 @@ package app_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// TestCopyMedia_WritesTheDownloadedFileToTheClipboard confirms a
-// message's media is fetched (if need be) and its own bytes, sniffed
-// fresh rather than trusted from the message, land on the clipboard
-// under that sniffed MIME type.
-func TestCopyMedia_WritesTheDownloadedFileToTheClipboard(t *testing.T) {
+// TestCopyMedia_WritesAPhotoToTheClipboard confirms a photo message
+// whose downloaded bytes genuinely sniff as an image is copied, under
+// that sniffed MIME type rather than any claim the message itself
+// carries.
+func TestCopyMedia_WritesAPhotoToTheClipboard(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	// A plain file, not a photo: this test covers the sniffed-MIME-type
-	// behaviour, and a file carries no image check (see
-	// app.servedPath), so the fake connector's plain-text placeholder
-	// can stand in for the downloaded media unchanged.
-	m := domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaFile},
-	}
-	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}); err != nil {
 		t.Fatal(err)
 	}
 
+	f.media.data = testPNGBytes(t, 4, 4)
 	if err := f.commands.CopyMedia(ctx, "m1"); err != nil {
 		t.Fatalf("CopyMedia() = %v", err)
 	}
@@ -36,8 +34,125 @@ func TestCopyMedia_WritesTheDownloadedFileToTheClipboard(t *testing.T) {
 	if len(f.clipboard.written) != 1 {
 		t.Fatalf("clipboard.written = %+v, want exactly one write", f.clipboard.written)
 	}
-	if string(f.clipboard.written[0].data) != "40" {
-		t.Errorf("wrote %q, want the downloaded media's own bytes", f.clipboard.written[0].data)
+	if !strings.HasPrefix(f.clipboard.written[0].mimeType, "image/") {
+		t.Errorf("wrote mimeType %q, want an image/* type", f.clipboard.written[0].mimeType)
+	}
+}
+
+// TestCopyMedia_WritesAPlayableVideoToTheClipboard confirms a video
+// message whose downloaded bytes pass videosafe's own check is
+// copied.
+func TestCopyMedia_WritesAPlayableVideoToTheClipboard(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = onePlayableMP4()
+	if err := f.commands.CopyMedia(ctx, "m1"); err != nil {
+		t.Fatalf("CopyMedia() = %v", err)
+	}
+
+	if len(f.clipboard.written) != 1 {
+		t.Fatalf("clipboard.written = %+v, want exactly one write", f.clipboard.written)
+	}
+	if !strings.HasPrefix(f.clipboard.written[0].mimeType, "video/") {
+		t.Errorf("wrote mimeType %q, want a video/* type", f.clipboard.written[0].mimeType)
+	}
+}
+
+// TestCopyMedia_RejectsAVideoMessageThatIsActuallyText reproduces the
+// security review's own exploit scenario: a contact's modified client
+// claims a message is a video, but its downloaded bytes are plain
+// text. The old code sniffed the bytes correctly but copied them
+// anyway, under whatever MIME type it found; this must now be refused
+// rather than putting the bytes on the clipboard under either type.
+func TestCopyMedia_RejectsAVideoMessageThatIsActuallyText(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = []byte(strings.Repeat("this is not a video, just text\n", 100))
+	if err := f.commands.CopyMedia(ctx, "m1"); !errors.Is(err, app.ErrInvalidInput) {
+		t.Fatalf("CopyMedia() = %v, want ErrInvalidInput", err)
+	}
+	if len(f.clipboard.written) != 0 {
+		t.Errorf("clipboard.written = %+v, want nothing written", f.clipboard.written)
+	}
+}
+
+// TestCopyMedia_RejectsAKindItNeverOffersToCopy confirms the server
+// side enforces the same allow-list the UI's own copy action is
+// limited to (photo, sticker, video) rather than trusting that no
+// client ever asks for anything else: a plain file, never offered a
+// copy action in this UI at all, is refused here too.
+func TestCopyMedia_RejectsAKindItNeverOffersToCopy(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = []byte("%PDF-1.4\nreal pdf bytes\n")
+	if err := f.commands.CopyMedia(ctx, "m1"); !errors.Is(err, app.ErrInvalidInput) {
+		t.Fatalf("CopyMedia() = %v, want ErrInvalidInput", err)
+	}
+	if len(f.clipboard.written) != 0 {
+		t.Errorf("clipboard.written = %+v, want nothing written", f.clipboard.written)
+	}
+}
+
+// TestCopyMedia_RejectsAFileOverTheCopyCap confirms a copy this large
+// is refused before it ever reaches the clipboard, whatever its
+// content: wl-copy holds its own offer in memory for as long as it
+// stands, so a cap here is not merely redundant with imagesafe's or
+// videosafe's own limits.
+func TestCopyMedia_RejectsAFileOverTheCopyCap(t *testing.T) {
+	t.Parallel()
+
+	// The cache itself must allow a file this large through, so this
+	// test's own padding is actually what MaxCopyBytes rejects, not
+	// newFixture's own, much smaller cache limit.
+	f := newFixtureWithCacheSize(t, false, 2*app.MaxCopyBytes)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	data := onePlayableMP4()
+	padding := make([]byte, app.MaxCopyBytes)
+	f.media.data = append(data, padding...)
+
+	if err := f.commands.CopyMedia(ctx, "m1"); !errors.Is(err, app.ErrInvalidInput) {
+		t.Fatalf("CopyMedia() = %v, want ErrInvalidInput", err)
+	}
+	if len(f.clipboard.written) != 0 {
+		t.Errorf("clipboard.written = %+v, want nothing written", f.clipboard.written)
 	}
 }
 
@@ -65,16 +180,13 @@ func TestCopyMedia_ReportsAClipboardFailure(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	// A plain file, so the fetch that must succeed before this test's
-	// own clipboard failure is reached never has to pass a photo's
-	// image check (see app.servedPath).
-	m := domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaFile},
-	}
-	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}); err != nil {
 		t.Fatal(err)
 	}
+	f.media.data = testPNGBytes(t, 4, 4)
 	f.clipboard.writeErr = errors.New("wl-copy failed")
 
 	if err := f.commands.CopyMedia(ctx, "m1"); !errors.Is(err, f.clipboard.writeErr) {

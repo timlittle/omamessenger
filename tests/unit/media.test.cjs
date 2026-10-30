@@ -104,3 +104,30 @@ test('canPlayInline is true for an ordinary video only once playable is true', (
   assert.strictEqual(Media.canPlayInline('', false), false);
   assert.strictEqual(Media.canPlayInline('', undefined), false);
 });
+
+test('copyable is true for a photo regardless of decodeAs or playable', () => {
+  assert.strictEqual(Media.copyable({ kind: 'photo' }, '', false), true);
+  assert.strictEqual(Media.copyable({ kind: 'photo' }, 'gif', true), true);
+});
+
+test('copyable is true for a video only once the helper confirms it can play, never from the sender\'s own claim alone', () => {
+  // Guards the bug this fixes: the UI used to offer copy for any
+  // message merely claiming to be a video, never checking the
+  // helper's own verdict the way the view that actually plays it
+  // already does (see docs/decisions.md).
+  assert.strictEqual(Media.copyable({ kind: 'video' }, '', true), true);
+  assert.strictEqual(Media.copyable({ kind: 'video' }, '', false), false);
+  assert.strictEqual(Media.copyable({ kind: 'video' }, '', undefined), false);
+});
+
+test('copyable is true for a video the helper confirms is a genuine GIF, regardless of playable', () => {
+  assert.strictEqual(Media.copyable({ kind: 'video' }, 'gif', false), true);
+});
+
+test('copyable is false for every kind mimeFor already refuses', () => {
+  for (const kind of ['link', 'voice', 'audio', 'sticker', 'poll', 'file']) {
+    assert.strictEqual(Media.copyable({ kind }, '', true), false, kind);
+  }
+  assert.strictEqual(Media.copyable(null, '', true), false);
+  assert.strictEqual(Media.copyable(undefined, '', true), false);
+});

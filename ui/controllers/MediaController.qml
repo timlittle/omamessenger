@@ -250,13 +250,21 @@ QtObject {
   // copyMedia asks the helper to copy a message's photo or video to
   // the clipboard (see media.copy in docs/api.md), fetching it first
   // if need be; does nothing for any other media kind, which has
-  // nothing sensible to copy as (see Media.mimeFor). The helper runs
-  // wl-copy itself, with a fixed argv and the file on stdin, rather
-  // than this controller building a shell command string: a chat name
-  // or file name reaching that command line was the exact class of
-  // bug a security review found here (see docs/decisions.md).
+  // nothing sensible to copy as (see Media.mimeFor), or for a video
+  // the helper's own verdict (decodeAs, playable) does not yet confirm
+  // can actually be decoded (see Media.copyable) - never only the
+  // sender's own claim that the message is a video, the same
+  // distinction InlineVideo already draws before decoding one in
+  // place. The helper's own media.copy independently refuses to put
+  // anything mismatched on the clipboard regardless (see
+  // docs/decisions.md): this is what keeps the UI from even offering
+  // an action that call would refuse. The helper runs wl-copy itself,
+  // with a fixed argv and the file on stdin, rather than this
+  // controller building a shell command string: a chat name or file
+  // name reaching that command line was the exact class of bug a
+  // security review found here (see docs/decisions.md).
   function copyMedia(timeline: var, id: string): void {
-    if (!Media.mimeFor(timeline.media(id))) return;
+    if (!Media.copyable(timeline.media(id), timeline.mediaDecodeAs(id), timeline.mediaPlayable(id))) return;
 
     root.service.request("media.copy", { messageId: id }, function(error, result) {
       if (error) {
