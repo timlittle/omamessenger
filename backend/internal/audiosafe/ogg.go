@@ -48,13 +48,17 @@ type oggWalkState struct {
 }
 
 // validateOgg reports whether c's file is a single-bitstream Opus
-// stream within maxDuration: every page shares one bitstream serial
-// number (a second, distinct serial would mean a multiplexed or
-// chained stream - which could carry video - so that rejects the
-// whole file outright), the first page is marked BOS and its payload
-// opens with opusHeadMagic, and the highest granule position any
-// page reports, divided by Opus's fixed 48kHz granule rate, is
-// greater than zero and no more than maxDuration.
+// stream within maxDuration: every page in the file, to its very
+// last byte, shares one bitstream serial number (a second, distinct
+// serial would mean a multiplexed or chained stream - which could
+// carry video - so that rejects the whole file outright, even when
+// it appears only after the first stream's own EOS page: FFmpeg's
+// own Ogg demuxer still opens a chained stream that starts there, so
+// this package must keep reading to the end of the file rather than
+// stop at the first EOS it sees), the first page is marked BOS and
+// its payload opens with opusHeadMagic, and the highest granule
+// position any page reports, divided by Opus's fixed 48kHz granule
+// rate, is greater than zero and no more than maxDuration.
 func validateOgg(c *cursor) bool {
 	var st oggWalkState
 
@@ -72,11 +76,11 @@ func validateOgg(c *cursor) bool {
 		st.trackGranule(hdr.granule)
 
 		off = payloadOff + sumSegments(segments)
-		if hdr.headerType&oggHeaderEOS != 0 {
-			break
-		}
 	}
 
+	if off != c.size {
+		return false
+	}
 	if !st.sawOpusHead || st.maxGranule == 0 {
 		return false
 	}

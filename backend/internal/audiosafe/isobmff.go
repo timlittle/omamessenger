@@ -14,20 +14,26 @@ package audiosafe
 import "encoding/binary"
 
 // validateISOBMFFAudio reports whether c's file is a playable
-// MP4/M4A under this package's limits: one moov box holding exactly
-// one audio track in an allowed codec, no video track at all, and a
-// duration (the longest of the movie's own mvhd and the audio
+// MP4/M4A under this package's limits: no fragmented-MP4 moof/mfra
+// box anywhere at the top level, one moov box holding exactly one
+// audio track in an allowed codec and no other track of any kind,
+// and a duration (the longest of the movie's own mvhd and the audio
 // track's own mdhd) within maxDuration.
 func validateISOBMFFAudio(c *cursor) bool {
-	moov, ok := c.firstChild(0, c.size, "moov")
+	moov, ok := c.topLevelMoov()
 	if !ok {
 		return false
 	}
 
 	duration, _ := c.boxDuration(moov.off, moov.len, "mvhd")
 
+	traks, ok := c.children(moov.off, moov.len, "trak")
+	if !ok {
+		return false
+	}
+
 	audioTracks := 0
-	for _, trak := range c.children(moov.off, moov.len, "trak") {
+	for _, trak := range traks {
 		kind, codec, trackDuration, ok := c.audioTrackInfo(trak.off, trak.len)
 		if !ok {
 			return false
@@ -48,13 +54,37 @@ func validateISOBMFFAudio(c *cursor) bool {
 	return audioTracks == 1 && duration > 0 && duration <= maxDuration.Seconds()
 }
 
-// isoAudioTrackAllowed judges one track's handler type and codec,
-// the same shape videosafe's own isoTrackAllowed judges a video
-// track: a video track ("vide") is always rejected outright, since
-// no audio file this package accepts may carry one at all; an audio
-// track ("soun") is allowed only the first time, in one of
-// allowedISOAudioCodec's own codecs; any other kind (hint, subtitle,
-// ...) passes through unjudged, this package having no opinion on it.
+// topLevelMoov walks every top-level box in the file once, both to
+// find moov and to refuse a fragmented MP4 outright: see videosafe's
+// own topLevelMoov, which this mirrors, and docs/decisions.md.
+func (c *cursor) topLevelMoov() (moov span, ok bool) {
+	var found bool
+	for off := int64(0); off < c.size; {
+		typ, body, next, headerOK := c.boxHeader(off, c.size)
+		if !headerOK {
+			return span{}, false
+		}
+		if typ == "moof" || typ == "mfra" {
+			return span{}, false
+		}
+		if typ == "moov" && !found {
+			moov, found = body, true
+		}
+		off = next
+	}
+	return moov, found
+}
+
+// isoAudioTrackAllowed judges one track's handler type and codec: a
+// video track ("vide") is always rejected outright, since no audio
+// file this package accepts may carry one at all; an audio track
+// ("soun") is allowed only the first time, in one of
+// allowedISOAudioCodec's own codecs. Any other kind - hint, subtitle,
+// timed metadata, or anything else - is refused outright: FFmpeg's
+// own mov demuxer opens and decodes every track whose codec fourcc it
+// recognizes regardless of the track's own declared handler type (see
+// docs/decisions.md), so a track this package has not itself judged
+// is never safe to let through unjudged, the way it once was.
 func isoAudioTrackAllowed(kind, codec string, audioTracksSoFar int) (isAudio, ok bool) {
 	switch kind {
 	case "vide":
@@ -62,7 +92,7 @@ func isoAudioTrackAllowed(kind, codec string, audioTracksSoFar int) (isAudio, ok
 	case "soun":
 		return true, audioTracksSoFar == 0 && allowedISOAudioCodec[codec]
 	default:
-		return false, true
+		return false, false
 	}
 }
 
@@ -258,21 +288,21 @@ func (c *cursor) firstChild(containerOff, containerLen int64, want string) (span
 }
 
 // children returns every immediate child of the given type within
-// [containerOff, containerOff+containerLen); it stops, returning
-// whatever it already found, at the first malformed box, the same
-// way a truncated file naturally yields fewer tracks than it claims.
-func (c *cursor) children(containerOff, containerLen int64, want string) []span {
+// [containerOff, containerOff+containerLen). ok is false once any
+// box in that range - matching or not - is malformed: see videosafe's
+// own children, which this mirrors, and docs/decisions.md.
+func (c *cursor) children(containerOff, containerLen int64, want string) ([]span, bool) {
 	limit := containerOff + containerLen
 	var out []span
 	for off := containerOff; off < limit; {
 		typ, body, next, ok := c.boxHeader(off, limit)
 		if !ok {
-			return out
+			return nil, false
 		}
 		if typ == want {
 			out = append(out, body)
 		}
 		off = next
 	}
-	return out
+	return out, true
 }

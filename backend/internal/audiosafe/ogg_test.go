@@ -28,6 +28,21 @@ func TestValidate_Ogg(t *testing.T) {
 		"not actually opus":          {oggOpusFixture(oggOpusParams{skipOpusHead: true, granule: 48_000 * 60}), false},
 		"duration over the cap":      {oggOpusFixture(oggOpusParams{granule: 48_000 * 60 * 31}), false},
 		"no granule position at all": {oggOpusFixture(oggOpusParams{granule: 0}), false},
+		"chained stream after the first one's own EOS": {
+			// The exact gap a differential security review found: the
+			// old code broke out of its own page loop the moment it saw
+			// the first stream's EOS page, so a second, distinct
+			// bitstream appended right after it - which could carry
+			// video - was never even read, let alone judged. FFmpeg's
+			// own Ogg demuxer still opens a chained stream that starts
+			// there, so this package must keep reading to the end of
+			// the file.
+			append(
+				oggPage(0x02|0x04, 48_000*60, 1, 0, []byte("OpusHead further opus header bytes here")),
+				oggPage(0x02|0x04, 48_000*60, 2, 0, []byte("OpusHead further opus header bytes here"))...,
+			),
+			false,
+		},
 	}
 
 	for name, tc := range cases {
@@ -85,6 +100,10 @@ func FuzzValidateOgg(f *testing.F) {
 	f.Add(oggOpusFixture(oggOpusParams{pageCount: 2, secondSerial: true, granule: 48_000 * 60}))
 	f.Add(oggOpusFixture(oggOpusParams{skipOpusHead: true, granule: 48_000 * 60}))
 	f.Add(oggOpusFixture(oggOpusParams{granule: 48_000 * 60})[:20])
+	f.Add(append(
+		oggPage(0x02|0x04, 48_000*60, 1, 0, []byte("OpusHead further opus header bytes here")),
+		oggPage(0x02|0x04, 48_000*60, 2, 0, []byte("OpusHead further opus header bytes here"))...,
+	))
 	f.Add([]byte("OggS"))
 	f.Add([]byte{})
 

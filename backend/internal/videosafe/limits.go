@@ -16,10 +16,20 @@ const maxDimension = 1920
 const maxDuration = 10 * time.Minute
 
 // maxVideoTracks bounds how many video tracks a single file may
-// declare. A plain video or a "GIF" video never has more than one;
-// a small allowance covers an unusual file with, say, a thumbnail
-// track without opening the door to an unbounded list.
-const maxVideoTracks = 3
+// declare, and is 1: a differential security review found that
+// FFmpeg's own mov demuxer opens and decodes every track whose codec
+// fourcc it recognizes, regardless of whether this package judged it
+// or counted it toward anything, so a second "unjudged" track -
+// nominally a thumbnail, or any other kind - was never actually safe
+// to allow through. A playable file now declares exactly the tracks
+// this package has validated: one video track, and at most one audio
+// track (see maxAudioTracks); any other track of any kind refuses
+// the whole file (see isoTrackAllowed and docs/decisions.md).
+const maxVideoTracks = 1
+
+// maxAudioTracks bounds how many audio tracks a single file may
+// declare: at most one, the same reasoning maxVideoTracks documents.
+const maxAudioTracks = 1
 
 // maxSampleCount bounds a single track's own declared sample count
 // (MP4's stsz/stz2 sample_count field), read as one 32-bit value and

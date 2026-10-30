@@ -70,7 +70,10 @@ func TestValidate_MP4AudioTooLong(t *testing.T) {
 // box extending to the end of its container, a box too short to even
 // hold a header, a box whose declared size cannot fit in its
 // container, an mdhd using version 1 (64-bit timestamps), a
-// truncated hdlr box, and a truncated stsd box.
+// truncated hdlr box, a truncated stsd box, a hint track alongside a
+// valid audio track (refused: FFmpeg's own mov demuxer still opens
+// whatever that track's own codec fourcc implies, regardless of its
+// handler type), and a fragmented MP4 (a moof or mfra box anywhere).
 func TestValidate_MP4BoxHeaderVariants(t *testing.T) {
 	t.Parallel()
 
@@ -121,6 +124,8 @@ func TestValidate_MP4BoxHeaderVariants(t *testing.T) {
 			append(append([]byte{}, mvhd...), mp4Box("trak", mp4Box("mdia", mp4Box("mdhd", []byte{0, 0})))...))...),
 		"hint track alongside a valid audio track": append(mp4Box("ftyp", []byte("isom")), mp4Box("moov",
 			append(append(append([]byte{}, mvhd...), trak...), mp4Trak("hint", "", 1000, 5000)...))...),
+		"fragmented MP4: a moof box alongside a valid moov": append(append(mp4Box("ftyp", []byte("isom")), mp4Box("moov", moovBody)...), mp4Box("moof", []byte("fragment"))...),
+		"fragmented MP4: an mfra box alongside a valid moov": append(append(mp4Box("ftyp", []byte("isom")), mp4Box("moov", moovBody)...), mp4Box("mfra", []byte("fragment index"))...),
 	}
 
 	for name, data := range cases {
@@ -137,7 +142,6 @@ func TestValidate_MP4BoxHeaderVariants(t *testing.T) {
 				"extended 64-bit size":                     true,
 				"size zero to container end":               true,
 				"no mvhd at all, trak duration carries it": true,
-				"hint track alongside a valid audio track": true,
 			}
 			if wantTrue[name] {
 				if !got {

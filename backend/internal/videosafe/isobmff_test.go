@@ -393,6 +393,92 @@ func TestValidate_MP4SampleCountFallback(t *testing.T) {
 	}
 }
 
+// TestValidate_MP4ExtraOrUnvalidatedTracks covers the gap a
+// differential security review found: FFmpeg's own mov demuxer opens
+// and decodes every track whose codec fourcc it recognizes, whatever
+// this package's own handler-type judgment made of it, and still
+// parses a track that follows a malformed one rather than stopping
+// there. A playable file must now declare exactly the tracks this
+// package has validated and nothing else.
+func TestValidate_MP4ExtraOrUnvalidatedTracks(t *testing.T) {
+	t.Parallel()
+
+	videoTrak := mp4Trak(trakParams{handler: "vide", codec: "avc1", width: 1280, height: 720, timescale: 1000, durationUnit: 5000})
+	audioTrak := mp4Trak(trakParams{handler: "soun", codec: "mp4a", timescale: 1000, durationUnit: 5000})
+	hintTrak := mp4Trak(trakParams{handler: "hint", codec: "xxxx", timescale: 1000, durationUnit: 5000})
+	malformedTrak := mp4Box("trak", []byte("not a mdia box"))
+
+	moovWith := func(traks ...[]byte) []byte {
+		mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
+		body := append([]byte{}, mvhd...)
+		for _, trak := range traks {
+			body = append(body, trak...)
+		}
+		out := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
+		return append(out, mp4Box("moov", body)...)
+	}
+
+	cases := map[string]struct {
+		data []byte
+		want bool
+	}{
+		"video and one audio track, the baseline this still allows": {
+			moovWith(videoTrak, audioTrak),
+			true,
+		},
+		"video track with an extra hint track": {
+			moovWith(videoTrak, hintTrak),
+			false,
+		},
+		"video track with two audio tracks": {
+			moovWith(videoTrak, audioTrak, mp4Trak(trakParams{handler: "soun", codec: "mp4a", timescale: 1000, durationUnit: 5000})),
+			false,
+		},
+		"video track followed by a malformed trak": {
+			moovWith(videoTrak, malformedTrak),
+			false,
+		},
+		"video track followed by a trak header declaring a size past its container": {
+			// The exact gap the review found in this package's own
+			// children(): a box header that cannot even be read must
+			// refuse the whole file, never silently fall back to just
+			// the tracks already found before it - FFmpeg's own mov
+			// demuxer shrinks an oversized box to fit rather than stop,
+			// and still parses whatever follows it.
+			func() []byte {
+				oversizedTrakHeader := make([]byte, 8)
+				binary.BigEndian.PutUint32(oversizedTrakHeader[0:4], 999_999)
+				copy(oversizedTrakHeader[4:8], "trak")
+				return moovWith(videoTrak, oversizedTrakHeader)
+			}(),
+			false,
+		},
+		"fragmented MP4: a moof box alongside a valid moov": {
+			append(moovWith(videoTrak), mp4Box("moof", []byte("fragment"))...),
+			false,
+		},
+		"fragmented MP4: an mfra box alongside a valid moov": {
+			append(moovWith(videoTrak), mp4Box("mfra", []byte("fragment index"))...),
+			false,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeFixture(t, "tracks.mp4", tc.data)
+			got, err := videosafe.Validate(path)
+			if err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if got != tc.want {
+				t.Errorf("Validate() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 // mp4ManyVideoTracks builds an moov box with n independent video
 // traks, each otherwise identical to mp4Fixture's own, so a count
 // above maxVideoTracks can be exercised directly.

@@ -14,23 +14,29 @@ package videosafe
 import "encoding/binary"
 
 // isoBMFFPlayable reports whether c's file is a playable MP4/MOV
-// under this package's limits: one moov box holding at least one
-// video track, every video track within maxVideoTracks using an
-// allowed codec and within the dimension and sample-count limits, any
-// audio track using an allowed codec, and an overall duration (the
-// longest of the movie's own mvhd and every track's own mdhd) within
-// maxDuration.
+// under this package's limits: no fragmented-MP4 moof/mfra box
+// anywhere at the top level, one moov box holding exactly the tracks
+// this package has validated - one video track within the dimension
+// and sample-count limits, and at most one audio track using an
+// allowed codec, no other track of any kind - and an overall duration
+// (the longest of the movie's own mvhd and every track's own mdhd)
+// within maxDuration.
 func isoBMFFPlayable(c *cursor) bool {
-	moov, ok := c.firstChild(0, c.size, "moov")
+	moov, ok := c.topLevelMoov()
 	if !ok {
 		return false
 	}
 
 	duration, _ := c.boxDuration(moov.off, moov.len, "mvhd")
 
-	videoTracks := 0
+	traks, ok := c.children(moov.off, moov.len, "trak")
+	if !ok {
+		return false
+	}
+
+	videoTracks, audioTracks := 0, 0
 	sawValidVideo := false
-	for _, trak := range c.children(moov.off, moov.len, "trak") {
+	for _, trak := range traks {
 		track, trackDuration, ok := c.trackInfo(trak.off, trak.len)
 		if !ok {
 			return false
@@ -39,7 +45,7 @@ func isoBMFFPlayable(c *cursor) bool {
 			duration = trackDuration
 		}
 
-		isVideo, allowed := isoTrackAllowed(track, videoTracks)
+		isVideo, isAudio, allowed := isoTrackAllowed(track, videoTracks, audioTracks)
 		if !allowed {
 			return false
 		}
@@ -47,9 +53,39 @@ func isoBMFFPlayable(c *cursor) bool {
 			videoTracks++
 			sawValidVideo = true
 		}
+		if isAudio {
+			audioTracks++
+		}
 	}
 
 	return sawValidVideo && duration > 0 && duration <= maxDuration.Seconds()
+}
+
+// topLevelMoov walks every top-level box in the file once, both to
+// find moov and to refuse a fragmented MP4 outright: a moof or mfra
+// box anywhere means sample data lives in additional movie fragments
+// this package never reads, which FFmpeg's own mov demuxer still
+// opens and decodes (see docs/decisions.md), so a file carrying
+// either is never reported playable regardless of what its moov box
+// alone declares. ok is false once a top-level box is malformed, the
+// same "cannot read it, cannot trust it" rule every other check in
+// this package already applies.
+func (c *cursor) topLevelMoov() (moov span, ok bool) {
+	var found bool
+	for off := int64(0); off < c.size; {
+		typ, body, next, headerOK := c.boxHeader(off, c.size)
+		if !headerOK {
+			return span{}, false
+		}
+		if typ == "moof" || typ == "mfra" {
+			return span{}, false
+		}
+		if typ == "moov" && !found {
+			moov, found = body, true
+		}
+		off = next
+	}
+	return moov, found
 }
 
 // isoTrack is one track's own handler, codec, dimensions, declared
@@ -67,19 +103,23 @@ type isoTrack struct {
 	sampleCount uint32
 }
 
-// isoTrackAllowed judges t: isVideo reports whether t.kind is "vide"
-// (so the caller counts it toward maxVideoTracks), and ok reports
-// whether it passes every limit that applies to its own kind, or
-// allows it through unjudged for any kind that is neither, such as a
-// hint or subtitle track this package has no opinion on at all.
-func isoTrackAllowed(t isoTrack, videoTracks int) (isVideo, ok bool) {
+// isoTrackAllowed judges t: isVideo and isAudio report which of the
+// caller's own counters to advance, and ok reports whether t passes
+// every limit that applies to its own kind. A track of any other
+// kind - hint, subtitle, timed metadata, or anything else - is
+// refused outright: FFmpeg's own mov demuxer opens and decodes every
+// track whose codec fourcc it recognizes regardless of the track's
+// own declared handler type (see docs/decisions.md), so a track this
+// package has not itself judged is never safe to let through
+// unjudged, the way it once was.
+func isoTrackAllowed(t isoTrack, videoTracks, audioTracks int) (isVideo, isAudio, ok bool) {
 	switch t.kind {
 	case "vide":
-		return true, isoVideoTrackAllowed(t, videoTracks)
+		return true, false, isoVideoTrackAllowed(t, videoTracks)
 	case "soun":
-		return false, allowedISOAudioCodec[t.codec]
+		return false, true, audioTracks < maxAudioTracks && allowedISOAudioCodec[t.codec]
 	default:
-		return false, true
+		return false, false, false
 	}
 }
 
@@ -358,21 +398,25 @@ func (c *cursor) firstChild(containerOff, containerLen int64, want string) (span
 }
 
 // children returns every immediate child of the given type within
-// [containerOff, containerOff+containerLen); it stops, returning
-// whatever it already found, at the first malformed box, the same way
-// a truncated file naturally yields fewer tracks than it claims.
-func (c *cursor) children(containerOff, containerLen int64, want string) []span {
+// [containerOff, containerOff+containerLen). ok is false once any
+// box in that range - matching or not - is malformed: FFmpeg's own
+// mov demuxer shrinks an oversized child box to fit its parent rather
+// than stop there, and still parses the track that follows it, so
+// this package must judge every track the file declares, never
+// silently treat a malformed one partway through as "no more tracks"
+// (see docs/decisions.md).
+func (c *cursor) children(containerOff, containerLen int64, want string) ([]span, bool) {
 	limit := containerOff + containerLen
 	var out []span
 	for off := containerOff; off < limit; {
 		typ, body, next, ok := c.boxHeader(off, limit)
 		if !ok {
-			return out
+			return nil, false
 		}
 		if typ == want {
 			out = append(out, body)
 		}
 		off = next
 	}
-	return out
+	return out, true
 }
