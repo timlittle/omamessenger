@@ -58,49 +58,53 @@ func gifMinDelayCS(raw uint16, canvasPixels int64) uint16 {
 // sanitizeGIF rebuilds data's block stream, dropping its Comment and
 // Plain Text extensions outright and any Application extension except
 // the Netscape looping one AnimatedImage needs, after checking the
-// logical screen's and every frame's own dimensions against profile.
-// ok is false for anything structurally wrong or over profile's caps.
-// A file of more than one frame also gets every Graphics Control
-// extension's own delay raised to gifMinDelayCS's bound (see
-// writeGIFBlocks): countGIFFrames learns the frame count first,
-// since a single still frame - true of every real, non-animated GIF,
-// and never rewritten by this package before this bound existed -
-// never repeats, so it carries none of the risk a delay bound exists
-// to close and is left exactly as it arrived.
-func sanitizeGIF(data []byte, profile Profile) ([]byte, bool) {
+// logical screen's and every frame's own dimensions against profile,
+// and returns that logical screen's own width and height alongside
+// the rebuilt bytes: the real size a caller may need to bound a later
+// decode by (see connector.EnsureImageSafe), never the size any
+// later, unrelated metadata might claim instead. ok is false for
+// anything structurally wrong or over profile's caps. A file of more
+// than one frame also gets every Graphics Control extension's own
+// delay raised to gifMinDelayCS's bound (see writeGIFBlocks):
+// countGIFFrames learns the frame count first, since a single still
+// frame - true of every real, non-animated GIF, and never rewritten
+// by this package before this bound existed - never repeats, so it
+// carries none of the risk a delay bound exists to close and is left
+// exactly as it arrived.
+func sanitizeGIF(data []byte, profile Profile) (out []byte, width, height int, ok bool) {
 	if len(data) < 13 {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
-	width, height := int64(leUint16(data[6:8])), int64(leUint16(data[8:10]))
-	if !withinCaps(width, height, profile) {
-		return nil, false
+	w64, h64 := int64(leUint16(data[6:8])), int64(leUint16(data[8:10]))
+	if !withinCaps(w64, h64, profile) {
+		return nil, 0, 0, false
 	}
 
 	screenEnd, ok := gifScreenEnd(data)
 	if !ok {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
 	frames, ok := countGIFFrames(data, screenEnd, profile)
-	if !ok || !withinTotal(width, height, frames, profile) {
-		return nil, false
+	if !ok || !withinTotal(w64, h64, frames, profile) {
+		return nil, 0, 0, false
 	}
 
-	var out bytes.Buffer
-	out.Write(data[0:6]) // "GIF87a" or "GIF89a"
-	pos, ok := copyGIFScreen(data, &out)
+	var buf bytes.Buffer
+	buf.Write(data[0:6]) // "GIF87a" or "GIF89a"
+	pos, ok := copyGIFScreen(data, &buf)
 	if !ok {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
-	w := &gifWriter{profile: profile, canvasPixels: width * height}
-	kept, ok := writeGIFBlocks(data, pos, &out, w, frames > 1)
+	gw := &gifWriter{profile: profile, canvasPixels: w64 * h64}
+	kept, ok := writeGIFBlocks(data, pos, &buf, gw, frames > 1)
 	if !ok {
-		return nil, false
+		return nil, 0, 0, false
 	}
 
-	return kept, true
+	return kept, int(w64), int(h64), true
 }
 
 // gifScreenEnd returns the position right after the logical screen
@@ -208,7 +212,9 @@ func writeGIFBlocks(data []byte, pos int, out *bytes.Buffer, w *gifWriter, anima
 			out.WriteByte(0x3B)
 			return finishGIF(out.Bytes())
 		case 0x21:
-			w.noteExtension(data, pos)
+			if !w.noteExtension(data, pos) {
+				return nil, false
+			}
 			next, ok := copyGIFExtensionBlock(data, pos, out, w.canvasPixels, animated)
 			if !ok {
 				return nil, false
@@ -230,11 +236,21 @@ func writeGIFBlocks(data []byte, pos int, out *bytes.Buffer, w *gifWriter, anima
 
 // noteExtension records in w whether the extension block at pos is a
 // Graphics Control extension, for writeFrame to check once it reaches
-// the image block this extension, if any, belongs to.
-func (w *gifWriter) noteExtension(data []byte, pos int) {
-	if pos+1 < len(data) && data[pos+1] == 0xF9 {
-		w.sawGCE = true
+// the image block this extension, if any, belongs to. ok is false
+// when this is a second Graphics Control extension seen for the same
+// frame: no genuine encoder ever emits two, and this package has no
+// way to know which of the two Qt's own reader would actually honour,
+// so writeGIFBlocks rejects the whole file rather than guess.
+func (w *gifWriter) noteExtension(data []byte, pos int) (ok bool) {
+	if pos+1 >= len(data) || data[pos+1] != 0xF9 {
+		return true
 	}
+	if w.sawGCE {
+		return false
+	}
+
+	w.sawGCE = true
+	return true
 }
 
 // writeFrame writes the image block at pos to out, first
@@ -291,26 +307,14 @@ func copyGIFExtensionBlock(data []byte, pos int, out *bytes.Buffer, canvasPixels
 
 // writeGraphicsControl copies the Graphics Control extension at pos
 // to out, with its own delay time raised to gifMinDelayCS's bound for
-// canvasPixels. gifExtension has already confirmed this block parses,
-// so gifSubBlocks cannot fail here. A block whose first sub-block is
-// shorter than the 4 bytes a well-formed Graphics Control extension
-// always has (packed fields, a 2-byte delay, a transparent colour
-// index) is copied unchanged instead: it carries no delay to raise,
-// and GIF's own trailing fields may still be extended by a future
-// version.
+// canvasPixels. gifExtension has already confirmed this block is
+// exactly one four-byte sub-block followed by the terminator -
+// isCanonicalGraphicsControl's own shape, the only one Qt's reader
+// can ever agree with this package about - so gifSubBlocks cannot
+// fail here and there is always a block to rewrite.
 func writeGraphicsControl(data []byte, pos int, canvasPixels int64, out *bytes.Buffer) {
 	_, blocks, _ := gifSubBlocks(data, pos+2)
 	out.Write(data[pos : pos+2]) // introducer and the 0xF9 label
-
-	if len(blocks) == 0 || len(blocks[0]) < 3 {
-		for _, b := range blocks {
-			out.WriteByte(byte(len(b)))
-			out.Write(b)
-		}
-		out.WriteByte(0)
-
-		return
-	}
 
 	block := bytes.Clone(blocks[0])
 	delay := gifMinDelayCS(leUint16(block[1:3]), canvasPixels)
@@ -318,10 +322,6 @@ func writeGraphicsControl(data []byte, pos int, canvasPixels int64, out *bytes.B
 
 	out.WriteByte(byte(len(block)))
 	out.Write(block)
-	for _, b := range blocks[1:] {
-		out.WriteByte(byte(len(b)))
-		out.Write(b)
-	}
 	out.WriteByte(0)
 }
 
@@ -343,8 +343,9 @@ func copyGIFImageBlock(data []byte, pos int, out *bytes.Buffer, profile Profile,
 
 // gifExtension reads the extension block at pos (introducer, label
 // and its size-prefixed sub-blocks) and says whether it is one
-// writeGIFBlocks should keep: every Graphics Control extension, since
-// a frame's delay and transparency need it, and only the Netscape
+// writeGIFBlocks should keep: a Graphics Control extension, since a
+// frame's delay and transparency need it, but only when it has the
+// one shape isCanonicalGraphicsControl accepts, and only the Netscape
 // looping Application extension, never a Comment, a Plain Text block
 // or any other Application extension, which carry nothing rendering
 // needs and are exactly where a GIF can smuggle arbitrary text (an
@@ -362,12 +363,31 @@ func gifExtension(data []byte, pos int) (end int, keep, ok bool) {
 
 	switch label {
 	case 0xF9:
-		return end, true, true
+		return end, true, isCanonicalGraphicsControl(blocks)
 	case 0xFF:
 		return end, isNetscapeLoop(blocks), true
 	default:
 		return end, false, true
 	}
+}
+
+// isCanonicalGraphicsControl reports whether blocks is the one shape
+// every genuine encoder emits for a Graphics Control extension -
+// exactly one four-byte sub-block (packed fields, a two-byte delay
+// time, a transparent colour index) and nothing else. Qt's own GIF
+// reader does not honour a sub-block's own length prefix here: it
+// always reads exactly five raw bytes after the introducer and label
+// (the four-byte sub-block's own length byte, then its four data
+// bytes), then resumes parsing from wherever that leaves it. A block
+// shaped any other way - a shorter or longer first sub-block, or more
+// than one - makes Qt and this package disagree about where the
+// extension actually ends, and so about every block that follows it:
+// exactly the gap a crafted frame-timing block can hide unlimited,
+// unchecked frames in (see docs/decisions.md). Rejecting anything
+// else outright, rather than passing it through unchanged, closes
+// that gap instead of only patching its one easiest shape.
+func isCanonicalGraphicsControl(blocks [][]byte) bool {
+	return len(blocks) == 1 && len(blocks[0]) == 4
 }
 
 // isNetscapeLoop reports whether an Application extension's first

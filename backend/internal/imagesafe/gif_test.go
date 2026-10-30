@@ -19,7 +19,7 @@ func TestSanitizeGIF_StripsCommentAndUnknownApplication(t *testing.T) {
 
 	for name, src := range map[string][]byte{"comment": withComment, "application": withXMP} {
 		t.Run(name, func(t *testing.T) {
-			out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+			out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 			if !ok {
 				t.Fatal("Sanitize() = rejected, want stripped and accepted")
 			}
@@ -37,7 +37,7 @@ func TestSanitizeGIF_StripsCommentAndUnknownApplication(t *testing.T) {
 func TestSanitizeGIF_KeepsNetscapeLoop(t *testing.T) {
 	src := buildGIF(8, 8, 3)
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -51,7 +51,7 @@ func TestSanitizeGIF_KeepsNetscapeLoop(t *testing.T) {
 func TestSanitizeGIF_RejectsOversizedDimensions(t *testing.T) {
 	src := setGIFDimensions(buildGIF(4, 4, 1), 50000, 50000)
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a 50000x50000 header, want rejected")
 	}
 }
@@ -61,7 +61,7 @@ func TestSanitizeGIF_RejectsOversizedDimensions(t *testing.T) {
 func TestSanitizeGIF_RejectsTooManyFrames(t *testing.T) {
 	src := buildGIF(4, 4, 1100)
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for 1100 frames, want rejected")
 	}
 }
@@ -84,7 +84,7 @@ func TestSanitizeGIF_CapsTotalDecodedPixels(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			src := buildGIF(tc.width, tc.height, tc.frames)
-			if _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); ok != tc.want {
+			if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); ok != tc.want {
 				t.Errorf("Sanitize(%dx%d x %d frames) ok = %v, want %v", tc.width, tc.height, tc.frames, ok, tc.want)
 			}
 		})
@@ -96,7 +96,7 @@ func TestSanitizeGIF_CapsTotalDecodedPixels(t *testing.T) {
 func TestSanitizeGIF_AnimatedGIFRejectsAPhotoSizedCanvas(t *testing.T) {
 	src := setGIFDimensions(buildGIF(4, 4, 1), 6000, 6000)
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); ok {
 		t.Fatal("Sanitize() = ok for a 6000x6000 animated GIF canvas, want rejected")
 	}
 }
@@ -107,7 +107,7 @@ func TestSanitizeGIF_RejectsTruncatedFile(t *testing.T) {
 	src := buildGIF(8, 8, 2)
 	truncated := src[:len(src)-5]
 
-	if _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a truncated file, want rejected")
 	}
 }
@@ -118,7 +118,7 @@ func TestSanitizeGIF_RejectsTruncatedFile(t *testing.T) {
 func TestSanitizeGIF_KeepsGlobalColorTable(t *testing.T) {
 	src := addGIFGlobalColorTable(buildGIF(8, 8, 1))
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -135,7 +135,7 @@ func TestSanitizeGIF_RejectsTruncatedGlobalColorTable(t *testing.T) {
 	src := addGIFGlobalColorTable(buildGIF(8, 8, 1))
 	truncated := src[:14] // the flag is set, but the 6-byte table is cut short
 
-	if _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a truncated global colour table, want rejected")
 	}
 }
@@ -147,7 +147,7 @@ func TestSanitizeGIF_RejectsUnknownBlock(t *testing.T) {
 	src := buildGIF(4, 4, 1)
 	src[13] = 0x99 // first block after the logical screen descriptor
 
-	if _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for an unrecognized block byte, want rejected")
 	}
 }
@@ -158,7 +158,7 @@ func TestSanitizeGIF_RejectsTruncatedExtensionLabel(t *testing.T) {
 	src := buildGIF(4, 4, 1)
 	truncated := append(append([]byte{}, src[:13]...), 0x21)
 
-	if _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a truncated extension, want rejected")
 	}
 }
@@ -174,7 +174,7 @@ func TestSanitizeGIF_RejectsMissingLZWByte(t *testing.T) {
 	}
 	truncated := src[:lzwPos] // past the descriptor and its colour table, no LZW byte
 
-	if _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
+	if _, _, _, ok := imagesafe.Sanitize(truncated, imagesafe.FullImage); ok {
 		t.Fatal("Sanitize() = ok for a descriptor with no LZW byte, want rejected")
 	}
 }
@@ -189,7 +189,7 @@ func TestSanitizeGIF_RejectsMissingLZWByte(t *testing.T) {
 func TestSanitizeGIF_RaisesAZeroDelayOnALargeCanvas(t *testing.T) {
 	src := buildGIFWithDelays(2048, 2048, []int{0, 0, 0, 0, 0})
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -217,7 +217,7 @@ func TestSanitizeGIF_RaisesAZeroDelayOnALargeCanvas(t *testing.T) {
 func TestSanitizeGIF_LeavesASingleFrameUntouched(t *testing.T) {
 	src := buildGIFWithDelays(2048, 2048, []int{0})
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -233,7 +233,7 @@ func TestSanitizeGIF_LeavesASingleFrameUntouched(t *testing.T) {
 func TestSanitizeGIF_LeavesNormalDelaysUnchangedOnASmallCanvas(t *testing.T) {
 	src := buildGIFWithDelays(8, 8, []int{10, 10, 10})
 
-	out, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
 	if !ok {
 		t.Fatal("Sanitize() = rejected, want accepted")
 	}
@@ -258,6 +258,81 @@ func assertDecodesGIF(t *testing.T, data []byte) {
 	}
 }
 
+// TestSanitizeGIF_RejectsNonCanonicalGraphicsControl covers the
+// differential between Go's own sub-block framing and Qt's GIF
+// reader (see docs/decisions.md): Qt always reads exactly five raw
+// bytes after a Graphics Control extension's label, ignoring the
+// sub-block length byte entirely, so a block shaped any other way
+// than one four-byte sub-block makes Qt and this package disagree
+// about where the extension ends - the gap a crafted frame-timing
+// block can hide unchecked frames in. A shape this package has never
+// seen before must be rejected outright, not passed through
+// unchanged.
+func TestSanitizeGIF_RejectsNonCanonicalGraphicsControl(t *testing.T) {
+	tests := map[string][][]byte{
+		"first sub-block shorter than four bytes": {{0x00}, {0, 10, 0, 0, 0}},
+		"first sub-block longer than four bytes":  {{0x00, 10, 0, 0, 0, 0}},
+		"two four-byte sub-blocks":                {{0x00, 10, 0, 0}, {0x00, 20, 0, 0}},
+	}
+
+	for name, blocks := range tests {
+		t.Run(name, func(t *testing.T) {
+			src := insertGIFExtension(buildGIF(8, 8, 2), 0xF9, blocks)
+
+			if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+				t.Fatal("Sanitize() = accepted a non-canonical Graphics Control extension, want rejected")
+			}
+		})
+	}
+}
+
+// TestSanitizeGIF_RejectsASecondGraphicsControlForOneFrame covers two
+// Graphics Control extensions in a row before the same image block: no
+// genuine encoder ever emits this, and this package has no way to
+// know which of the two Qt's own reader would actually honour, so it
+// is rejected outright rather than guessed at.
+func TestSanitizeGIF_RejectsASecondGraphicsControlForOneFrame(t *testing.T) {
+	src := insertGIFExtension(buildGIF(8, 8, 2), 0xF9, [][]byte{{0x00, 10, 0, 0}})
+
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); ok {
+		t.Fatal("Sanitize() = accepted a second Graphics Control extension for one frame, want rejected")
+	}
+}
+
+// TestSanitizeGIF_OutputFrameCountMatchesWhatTheLimitsSaw is a
+// differential check against the crafted inputs the frame-timing
+// differential covers: for every input Sanitize accepts, Go's own
+// gif.DecodeAll - the only decoder available to check against in this
+// package's own tests - must read back exactly the frame count
+// countGIFFrames already bounded, so the canonical form this package
+// writes can never carry more frames than its own limits counted.
+func TestSanitizeGIF_OutputFrameCountMatchesWhatTheLimitsSaw(t *testing.T) {
+	tests := map[string]struct{ width, height, frames int }{
+		"a typical message GIF": {480, 270, 60},
+		"a single still frame":  {8, 8, 1},
+		"many small frames":     {4, 4, 30},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			src := buildGIF(tc.width, tc.height, tc.frames)
+
+			out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+			if !ok {
+				t.Fatal("Sanitize() = rejected, want accepted")
+			}
+
+			g, err := gif.DecodeAll(bytes.NewReader(out))
+			if err != nil {
+				t.Fatalf("decoding sanitized output: %v", err)
+			}
+			if len(g.Image) != tc.frames {
+				t.Errorf("decoded %d frames, want exactly %d", len(g.Image), tc.frames)
+			}
+		})
+	}
+}
+
 // FuzzSanitizeGIF feeds arbitrary bytes, and small mutations of a
 // real animated GIF, to make sure nothing ever panics and nothing is
 // ever returned as "ok" without decoding.
@@ -267,9 +342,10 @@ func FuzzSanitizeGIF(f *testing.F) {
 	f.Add(insertGIFExtension(seed, 0xFE, [][]byte{bytes.Repeat([]byte{1}, 200)}))
 	f.Add([]byte{})
 	f.Add(seed[:len(seed)-3])
+	f.Add(insertGIFExtension(seed, 0xF9, [][]byte{{0x00}, {0, 10, 0, 0, 0}}))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		out, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+		out, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
 		if !ok {
 			if out != nil {
 				t.Fatal("rejected input returned non-nil output")
