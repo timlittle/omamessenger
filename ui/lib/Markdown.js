@@ -103,8 +103,16 @@ function tryParseTable(lines, start) {
     return null;
   }
 
+  // Stops scanning the moment the row count is already known to be
+  // over MAX_TABLE_ROWS, rather than walking every further body row
+  // first and only checking the cap once the whole run is counted:
+  // a message built of lines that each look like a fresh table start
+  // (every line reads as both a valid header and a valid separator)
+  // would otherwise make this scan, and the one after it from the
+  // next line, and the one after that, cost time quadratic in the
+  // message's own length.
   let end = start + 2;
-  while (end < lines.length && isBodyRow(lines[end])) {
+  while (end < lines.length && end - (start + 2) <= MAX_TABLE_ROWS && isBodyRow(lines[end])) {
     end++;
   }
   if (end - (start + 2) > MAX_TABLE_ROWS) {

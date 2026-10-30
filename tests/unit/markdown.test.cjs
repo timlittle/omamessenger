@@ -208,3 +208,80 @@ test('tableHtml fits the width of whatever holds it', () => {
   const html = Markdown.tableHtml(parts[0].table, identity, identity, '#888888');
   assert.match(html, /width="100%"/);
 });
+
+// REGRESSION_TEXT mixes several "normal" shapes splitTables already has
+// its own dedicated test for (a plain table, text around a table,
+// ragged rows padded or trimmed to the header's width, every alignment
+// marker, several small tables in one message) into one message, so a
+// change meant only to bound tryParseTable's own scan cannot quietly
+// change what any of them render as.
+const REGRESSION_TEXT = [
+  'before the first table',
+  '| Job | When | Who |',
+  '| --- | --- | --- |',
+  '| 06:30 check | Daily | Nadia |',
+  '| extra only | 3 cells not 2 | too many | dropped |',
+  '',
+  'between tables',
+  '',
+  '| A | B | C | D |',
+  '| :-- | --: | :-: | -- |',
+  '| 1 | 2 | 3 | 4 |',
+  '| short |',
+  '',
+  'after the last table',
+].join('\n');
+
+test('splitTables renders the same output on ordinary input before and after bounding the row scan', () => {
+  const parts = Markdown.splitTables(REGRESSION_TEXT);
+
+  assert.deepEqual(parts, [
+    { kind: 'text', text: 'before the first table' },
+    {
+      kind: 'table',
+      table: {
+        header: ['Job', 'When', 'Who'],
+        aligns: ['', '', ''],
+        rows: [
+          ['06:30 check', 'Daily', 'Nadia'],
+          ['extra only', '3 cells not 2', 'too many'],
+        ],
+      },
+    },
+    { kind: 'text', text: '\nbetween tables\n' },
+    {
+      kind: 'table',
+      table: {
+        header: ['A', 'B', 'C', 'D'],
+        aligns: ['left', 'right', 'center', ''],
+        rows: [
+          ['1', '2', '3', '4'],
+          ['short', '', '', ''],
+        ],
+      },
+    },
+    { kind: 'text', text: '\nafter the last table' },
+  ]);
+});
+
+// ADVERSARIAL_TABLE_TEXT is the shape a WhatsApp contact fully controls
+// and can reach the helper's own 64 KiB message cap with
+// (domain.MaxMessageTextLength): "-|-" is simultaneously a valid
+// one-column header and a valid separator row, so every one of its
+// about 16,384 lines once looked like a fresh table start to
+// splitTables, and tryParseTable rescanned the whole remaining run from
+// every single one of them before giving up (see Markdown.js's own
+// history, and docs/decisions.md).
+const ADVERSARIAL_TABLE_TEXT = '-|-\n'.repeat(16384);
+
+test('splitTables stays fast on a long run of lines that each look like a fresh table start', () => {
+  const start = Date.now();
+  const parts = Markdown.splitTables(ADVERSARIAL_TABLE_TEXT);
+  const elapsed = Date.now() - start;
+
+  // Generous: a linear scan of 16,384 lines, each capped at a little
+  // over MAX_TABLE_ROWS of work, finishes in a few milliseconds. The
+  // quadratic version this guards against took seconds.
+  assert.ok(elapsed < 2000, `splitTables took ${elapsed}ms on an adversarial 64 KiB message, want well under 2000ms`);
+  assert.ok(parts.length > 0, 'splitTables returned nothing for the adversarial message');
+});
