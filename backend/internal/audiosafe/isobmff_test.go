@@ -124,8 +124,26 @@ func TestValidate_MP4BoxHeaderVariants(t *testing.T) {
 			append(append([]byte{}, mvhd...), mp4Box("trak", mp4Box("mdia", mp4Box("mdhd", []byte{0, 0})))...))...),
 		"hint track alongside a valid audio track": append(mp4Box("ftyp", []byte("isom")), mp4Box("moov",
 			append(append(append([]byte{}, mvhd...), trak...), mp4Trak("hint", "", 1000, 5000)...))...),
-		"fragmented MP4: a moof box alongside a valid moov": append(append(mp4Box("ftyp", []byte("isom")), mp4Box("moov", moovBody)...), mp4Box("moof", []byte("fragment"))...),
+		"fragmented MP4: a moof box alongside a valid moov":  append(append(mp4Box("ftyp", []byte("isom")), mp4Box("moov", moovBody)...), mp4Box("moof", []byte("fragment"))...),
 		"fragmented MP4: an mfra box alongside a valid moov": append(append(mp4Box("ftyp", []byte("isom")), mp4Box("moov", moovBody)...), mp4Box("mfra", []byte("fragment index"))...),
+		"a good audio track followed by a trak header declaring a size past its container": func() []byte {
+			// The exact gap a differential security review found in
+			// this package's own children(): a box header that cannot
+			// even be read must refuse the whole file, never silently
+			// fall back to just the tracks already found before it.
+			oversizedTrakHeader := make([]byte, 8)
+			binary.BigEndian.PutUint32(oversizedTrakHeader[0:4], 999_999)
+			copy(oversizedTrakHeader[4:8], "trak")
+			moov := mp4Box("moov", append(append([]byte{}, moovBody...), oversizedTrakHeader...))
+			return append(mp4Box("ftyp", []byte("isom")), moov...)
+		}(),
+		"audio track with mdia but no minf": append(mp4Box("ftyp", []byte("isom")), mp4Box("moov",
+			append(append([]byte{}, mvhd...), mp4Box("trak", mp4Box("mdia",
+				append(mp4Box("mdhd", mp4MediaHeader(1000, 5000)), mp4Box("hdlr", append(make([]byte, 8), []byte("soun")...))...)))...))...),
+		"audio track with minf but no stbl": append(mp4Box("ftyp", []byte("isom")), mp4Box("moov",
+			append(append([]byte{}, mvhd...), mp4Box("trak", mp4Box("mdia",
+				append(append(mp4Box("mdhd", mp4MediaHeader(1000, 5000)), mp4Box("hdlr", append(make([]byte, 8), []byte("soun")...))...),
+					mp4Box("minf", mp4Box("vmhd", []byte{}))...)))...))...),
 	}
 
 	for name, data := range cases {
