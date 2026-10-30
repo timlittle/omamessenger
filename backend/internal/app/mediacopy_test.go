@@ -131,24 +131,25 @@ func TestCopyMedia_RejectsAKindItNeverOffersToCopy(t *testing.T) {
 func TestCopyMedia_RejectsAFileOverTheCopyCap(t *testing.T) {
 	t.Parallel()
 
-	// The cache itself must allow a file this large through, so this
-	// test's own padding is actually what MaxCopyBytes rejects, not
-	// newFixture's own, much smaller cache limit.
-	f := newFixtureWithCacheSize(t, false, 2*app.MaxCopyBytes)
+	// An outgoing attachment's own local copy, not a download: it
+	// never passes through the media cache at all (see
+	// app.FetchMedia), so this test's own padding is actually what
+	// MaxCopyBytes rejects, not some other cache's own, smaller limit.
+	f := newFixture(t, false)
 	ctx := t.Context()
-	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-	if _, _, err := f.store.AddMessage(ctx, domain.Message{
-		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Video]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaVideo},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	f.conversation(t, "chat", "Chat", domain.KindDirect)
 
 	data := onePlayableMP4()
 	padding := make([]byte, app.MaxCopyBytes)
-	f.media.data = append(data, padding...)
+	data = append(data, padding...)
+	path := writeTestFile(t, "clip.mp4", data)
 
-	if err := f.commands.CopyMedia(ctx, "m1"); !errors.Is(err, app.ErrInvalidInput) {
+	sent, err := f.commands.Send(ctx, "chat", "a clip", app.SendOptions{AttachmentPath: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.commands.CopyMedia(ctx, sent.ID); !errors.Is(err, app.ErrInvalidInput) {
 		t.Fatalf("CopyMedia() = %v, want ErrInvalidInput", err)
 	}
 	if len(f.clipboard.written) != 0 {

@@ -61,19 +61,40 @@ func (c *Commands) CopyMedia(ctx context.Context, messageID string) error {
 		return err
 	}
 
+	contentType, err := c.copyableMediaType(ctx, m, path)
+	if err != nil {
+		return err
+	}
+
+	return c.writeMediaToClipboard(ctx, path, contentType)
+}
+
+// copyableMediaType sniffs path's own downloaded bytes and confirms
+// they are safe to copy for m's own kind (see copyableContentType),
+// returning the sniffed MIME type to copy under. err is
+// errUnsafeMediaCopy when the content does not match, never a bare
+// "false" a caller could mistake for some other failure.
+func (c *Commands) copyableMediaType(ctx context.Context, m domain.Message, path string) (string, error) {
 	contentType, err := sniffContentType(path)
 	if err != nil {
-		return fmt.Errorf("media: copy: %w", err)
+		return "", fmt.Errorf("media: copy: %w", err)
 	}
 
 	allowed, err := c.copyableContentType(ctx, m, path, contentType)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if !allowed {
-		return errUnsafeMediaCopy
+		return "", errUnsafeMediaCopy
 	}
 
+	return contentType, nil
+}
+
+// writeMediaToClipboard puts path's own bytes on the clipboard under
+// contentType, refusing anything over MaxCopyBytes before ever
+// opening the file to read it.
+func (c *Commands) writeMediaToClipboard(ctx context.Context, path, contentType string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("media: copy: %w", err)

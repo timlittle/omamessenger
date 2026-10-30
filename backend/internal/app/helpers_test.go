@@ -107,23 +107,9 @@ type fixture struct {
 	mediaDir        string
 }
 
-// newFixture builds an application with one WhatsApp account "wa",
-// and a media cache capped at 1 MiB, small enough that a test can
-// reach cache.ErrTooLargeForCache without downloading anything truly
-// large. With faked set, it has fake connectors that can inject
-// messages.
+// newFixture builds an application with one WhatsApp account "wa". With
+// faked set, it has fake connectors that can inject messages.
 func newFixture(t *testing.T, faked bool) *fixture {
-	t.Helper()
-
-	return newFixtureWithCacheSize(t, faked, 1<<20)
-}
-
-// newFixtureWithCacheSize is newFixture's own body, parameterized by
-// the media cache's own byte limit: a test whose own download must
-// pass that cache - CopyMedia's MaxCopyBytes check, in particular,
-// needs a cache that does not itself refuse a file that large first -
-// calls this directly instead.
-func newFixtureWithCacheSize(t *testing.T, faked bool, cacheMax int64) *fixture {
 	t.Helper()
 
 	dataDir := t.TempDir()
@@ -158,7 +144,7 @@ func newFixtureWithCacheSize(t *testing.T, faked bool, cacheMax int64) *fixture 
 	deps := app.Deps{
 		Store: db, Dispatcher: f.dispatcher, Notifier: f.notifier, Publisher: f.published,
 		Accounts: f.accounts, SignIn: f.signIn, History: f.history,
-		Media: f.media, Cache: cache.New(f.mediaDir, cacheMax),
+		Media: f.media, Cache: cache.New(f.mediaDir, 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, ArchiveUnpinner: f.archiveUnpinner, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
 		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members, Limiter: f.limiter,
 		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, FilePicker: f.filePicker, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
