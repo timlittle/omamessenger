@@ -408,6 +408,11 @@ ShellRoot {
     property int resetCalls: 0
     property var filePickCalls: []
     property var filePickPath: null
+    // filePickError, left null by default, answers files.pick with
+    // this error instead of a path once a test sets one - checkSoundFileDialogLifetime's
+    // own way of reaching the portal-unavailable fallback without a
+    // real portal.
+    property var filePickError: null
 
     signal event(string name, var data)
 
@@ -418,6 +423,7 @@ ShellRoot {
       }
       if (method === "files.pick") {
         soundService.filePickCalls.push({ purpose: params.purpose, title: params.title });
+        if (soundService.filePickError !== null) { callback(soundService.filePickError, null); return; }
         if (soundService.filePickPath !== null) callback(null, { path: soundService.filePickPath });
         return;
       }
@@ -437,9 +443,20 @@ ShellRoot {
     }
   }
 
-  ListController {
-    id: soundList
-    service: soundService
+  // soundList alone gets a real window: checkSoundFileDialogLifetime
+  // drives the fallback FileDialog's own open/reject cycle, which
+  // (unlike every other check in this file) needs an actual window to
+  // attach to, the way Composer's own fallback dialog test does.
+  FloatingWindow {
+    implicitWidth: 10
+    implicitHeight: 10
+    visible: true
+
+    ListController {
+      id: soundList
+      anchors.fill: parent
+      service: soundService
+    }
   }
 
   Timer {
@@ -1004,6 +1021,42 @@ ShellRoot {
         + soundService.resetCalls + ", row " + JSON.stringify(soundList.findConversation("n1")));
       return;
     }
+
+    root.checkSoundFileDialogLifetime();
+  }
+
+  // checkSoundFileDialogLifetime covers the fallback "Set notification
+  // sound…" dialog's own lifetime fix: Qt's non-native FileDialog
+  // (opened only once the portal's own file chooser reports
+  // "unavailable") embeds a hidden, focusable fileNameTextField that
+  // keeps reading the Wayland clipboard for as long as the dialog
+  // object exists, so the whole dialog must be destroyed the moment
+  // it closes, not merely hidden. FileDialog exposes no public
+  // property reaching into that content (it is not a Dialog/Popup
+  // itself, just a thin wrapper that may show one), so the only thing
+  // a test can observe from here is the wrapper object's own
+  // lifetime: soundFileDialogLoader's item exists only while picking,
+  // and destroying it takes everything created inside it - including
+  // that field - down with it. Still never driven as a real dialog
+  // for picking a file (see ui-testing.md and soundService's own
+  // comment).
+  function checkSoundFileDialogLifetime(): void {
+    const loader = Check.find(soundList, "soundFileDialogLoader");
+    if (!loader) { Check.fail("no soundFileDialogLoader found"); return; }
+    if (loader.item) { Check.fail("soundFileDialogLoader already has an item before the dialog was ever opened"); return; }
+
+    soundService.filePickCalls = [];
+    soundService.filePickError = { code: -32603, message: "internal error", data: { reason: "unavailable" } };
+    soundList.selectId("n1");
+    soundList.run("chat.setNotificationSound");
+    soundService.filePickError = null;
+
+    if (!loader.item) { Check.fail("soundFileDialogLoader has no item once the portal reported unavailable"); return; }
+
+    // Closing without picking anything must destroy the whole dialog,
+    // not merely hide it, so the field inside goes with it.
+    loader.item.reject();
+    if (loader.item) { Check.fail("soundFileDialogLoader kept its item after the dialog was closed"); return; }
 
     root.checkTypingGuard();
   }

@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Dialogs
 import "../lib/Rail.js" as Rail
@@ -207,6 +208,12 @@ Item {
   // change while the (asynchronous, possibly portal-backed) dialog is
   // still open cannot alter what accepting it actually does.
   property string _notificationSoundTargetId: ""
+
+  // _soundFileDialogActive gates soundFileDialogLoader: true only
+  // while the fallback "Set notification sound…" dialog is open, so
+  // its hidden text fields are created fresh on each pick and
+  // destroyed the moment it closes (see soundFileDialogLoader).
+  property bool _soundFileDialogActive: false
 
   // _all holds every conversation the helper reported, unfiltered by the
   // rail or a search.
@@ -696,7 +703,7 @@ Item {
     root._notificationSoundTargetId = id;
     root.service.request("files.pick", { purpose: "sound", title: "Set notification sound" }, function(error, result) {
       if (error) {
-        if (Rpc.errorReason(error) === "unavailable") soundFileDialog.open();
+        if (Rpc.errorReason(error) === "unavailable") root._soundFileDialogActive = true;
         else root._notificationSoundTargetId = "";
         return;
       }
@@ -954,22 +961,38 @@ Item {
 
   ListModel { id: listModel }
 
-  // soundFileDialog is the fallback "Set notification sound…" picker,
-  // opened only through _setNotificationSound once the portal's own
-  // file chooser has already been tried and reported unavailable:
-  // QtQuick's own non-native dialog (DontUseNativeDialog), never the
-  // native one, which runs GTK in this same shared shell process and
-  // once crashed it outright (see docs/decisions.md). Restricted to
-  // the audio formats the helper's audiosafe check can actually
-  // validate; a file of another kind is still refused by the helper
-  // itself (see notificationSoundPicked), this is only to steer the
-  // picker.
-  FileDialog {
-    id: soundFileDialog
-    title: "Set notification sound"
-    options: FileDialog.DontUseNativeDialog
-    nameFilters: ["Audio files (*.wav *.ogg *.oga *.mp3 *.m4a *.aac)"]
-    onAccepted: root.notificationSoundPicked(String(soundFileDialog.selectedFile).replace(/^file:\/\//, ""))
+  // soundFileDialogLoader creates the fallback "Set notification
+  // sound…" picker only while _soundFileDialogActive is true, set by
+  // _setNotificationSound once the portal's own file chooser has
+  // already been tried and reported unavailable: QtQuick's own
+  // non-native dialog (DontUseNativeDialog), never the native one,
+  // which runs GTK in this same shared shell process and once crashed
+  // it outright (see docs/decisions.md). Restricted to the audio
+  // formats the helper's audiosafe check can actually validate; a
+  // file of another kind is still refused by the helper itself (see
+  // notificationSoundPicked), this is only to steer the picker. Qt's
+  // own dialog content embeds editable text fields that are created
+  // when the dialog object is, not deferred until it opens, and
+  // otherwise stay alive reading the Wayland clipboard until this
+  // controller itself is destroyed; gating the whole dialog behind
+  // this Loader tears those fields down the moment it closes.
+  Loader {
+    id: soundFileDialogLoader
+    objectName: "soundFileDialogLoader"
+    active: root._soundFileDialogActive
+    // item has no declared type for qmllint to check against, so it
+    // is cast explicitly here.
+    onLoaded: (item as FileDialog).open()
+    sourceComponent: FileDialog {
+      title: "Set notification sound"
+      options: FileDialog.DontUseNativeDialog
+      nameFilters: ["Audio files (*.wav *.ogg *.oga *.mp3 *.m4a *.aac)"]
+      onAccepted: {
+        root.notificationSoundPicked(String(selectedFile).replace(/^file:\/\//, ""))
+        root._soundFileDialogActive = false
+      }
+      onRejected: root._soundFileDialogActive = false
+    }
   }
 
   Connections {

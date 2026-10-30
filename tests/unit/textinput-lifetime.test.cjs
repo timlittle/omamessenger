@@ -99,9 +99,12 @@ function isGated(src, index) {
 
 // findUngatedUsages returns one description per occurrence of
 // componentName used as an object type anywhere in src that is not
-// inside a gated Loader block, as "<file>:<line>".
+// inside a gated Loader block, as "<file>:<line>". componentName may
+// appear bare or namespaced ("Dialogs.FileDialog {"), the same as
+// FIELD_PATTERN allows for TextField and friends, since a type that
+// comes from a module import is as likely to be qualified as not.
 function findUngatedUsages(file, src, componentName) {
-  const pattern = new RegExp(`(?<![\\w.])${componentName}\\s*\\{`, 'g');
+  const pattern = new RegExp(`(?<![\\w.])(?:[A-Za-z][\\w.]*\\.)?${componentName}\\s*\\{`, 'g');
   const found = [];
   for (const match of src.matchAll(pattern)) {
     if (isGated(src, match.index)) continue;
@@ -110,6 +113,40 @@ function findUngatedUsages(file, src, componentName) {
   }
   return found;
 }
+
+// KNOWN_CONTAINER_TYPES names component types that never declare a
+// TextField, TextArea or TextInput in this codebase's own sources -
+// either because they come from Qt itself or from Omarchy's shell - but
+// are known, by reading their own implementation, to hold one alive
+// for as long as the container object exists, not only while it is
+// shown:
+//
+//   - QtQuick.Dialogs' non-native dialogs (DontUseNativeDialog) are
+//     QML, not a native window: FileDialog and FolderDialog each embed
+//     FolderBreadcrumbBar's own editable breadcrumb field
+//     (/usr/lib/qt6/qml/QtQuick/Dialogs/quickimpl/qml/FolderBreadcrumbBar.qml),
+//     FileDialog additionally has fileNameTextField
+//     (.../FileDialog.qml), ColorDialog has ColorInputs' hex field
+//     (.../ColorInputs.qml), FontDialog has FontDialogContent's family
+//     field (.../FontDialogContent.qml), and MessageDialog has its own
+//     detailedTextArea (.../MessageDialog.qml)
+//   - Omarchy's Ui.SearchableDropdown, Ui.NumberField and
+//     Ui.MultiSelect each wrap a TextField or TextInput internally
+//     (/usr/share/omarchy/shell/Ui)
+//
+// Each is checked exactly like a direct field declaration: a usage must
+// sit inside a gated Loader, because the field inside is created when
+// the container itself is, never deferred until the container opens.
+const KNOWN_CONTAINER_TYPES = [
+  'FileDialog',
+  'FolderDialog',
+  'ColorDialog',
+  'FontDialog',
+  'MessageDialog',
+  'SearchableDropdown',
+  'NumberField',
+  'MultiSelect',
+];
 
 // fieldSelfGated reports whether every TextField, TextArea and
 // TextInput declaration in src sits inside a gated Loader block within
@@ -150,6 +187,42 @@ test('every TextField, TextArea and TextInput outside the allow-list is only eve
     `state: a field that exists while its overlay is closed can read a foreign Wayland clipboard offer with no ` +
     `size or time limit. Either add the component to this test's ALLOWLIST with a one-line reason it is always ` +
     `on screen, or load it through a Loader whose active binds to the overlay's own open state:\n  ${offenders.join('\n  ')}`);
+});
+
+test('every Qt dialog and known third-party text-input container is only ever instantiated behind a gated Loader', () => {
+  const files = qmlFiles(UI_ROOT).map((file) => path.relative(UI_ROOT, file));
+
+  const offenders = [];
+  for (const file of files) {
+    const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
+    for (const containerType of KNOWN_CONTAINER_TYPES) {
+      offenders.push(...findUngatedUsages(file, src, containerType));
+    }
+  }
+
+  assert.deepEqual(offenders, [],
+    `${offenders.length} usage(s) of a Qt dialog or other known text-input-holding container outside a Loader ` +
+    `gated on its own open state: the field inside is created when the container is, not when it opens, so it ` +
+    `keeps reading a foreign Wayland clipboard offer after the dialog closes unless the whole container is torn ` +
+    `down with it:\n  ${offenders.join('\n  ')}`);
+});
+
+test('a deliberately broken expectation is caught for a known container type', () => {
+  const offenders = findUngatedUsages('fixture.qml', 'Item {\n  FileDialog {\n    title: "x"\n  }\n}\n', 'FileDialog');
+
+  assert.deepEqual(offenders, ['fixture.qml:2']);
+});
+
+test('a namespaced known container type is matched the same as a bare one', () => {
+  const offenders = findUngatedUsages('fixture.qml', 'Item {\n  Dialogs.FileDialog {\n    title: "x"\n  }\n}\n', 'FileDialog');
+
+  assert.deepEqual(offenders, ['fixture.qml:2']);
+});
+
+test('a gated known container type is not flagged', () => {
+  const src = 'Item {\n  Loader {\n    active: root.picking\n    sourceComponent: FileDialog {\n      title: "x"\n    }\n  }\n}\n';
+
+  assert.deepEqual(findUngatedUsages('fixture.qml', src, 'FileDialog'), []);
 });
 
 test('a deliberately broken expectation is caught', () => {

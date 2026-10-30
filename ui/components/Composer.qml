@@ -72,6 +72,13 @@ Item {
   // input existed yet (just as active turned true, say): the Loader's
   // own onLoaded consumes it once there is something to focus.
   property bool _focusPending: false
+  // _fileDialogActive gates fileDialogLoader: true only while the
+  // fallback file dialog is open, so its hidden text fields (Qt's own
+  // fileNameTextField and breadcrumb field) are created fresh on each
+  // pick and destroyed the moment it closes, rather than staying alive
+  // reading the Wayland clipboard until the composer itself is (see
+  // openFallbackPicker and fileDialogLoader).
+  property bool _fileDialogActive: false
   // replyTo is the message being answered: {id, senderName, text}, or
   // null when the user is not replying to anything.
   property var replyTo: null
@@ -336,9 +343,10 @@ Item {
   // dialog, only once the caller has learned the portal could not be
   // shown at all: never the first choice, and never the in-process
   // GTK dialog that once crashed the whole shell (see
-  // docs/decisions.md).
+  // docs/decisions.md). It only sets _fileDialogActive; fileDialogLoader
+  // creates the dialog and opens it.
   function openFallbackPicker() {
-    fileDialog.open()
+    root._fileDialogActive = true
   }
 
   // _openSpellPickerAt opens the spelling picker for whichever
@@ -489,17 +497,34 @@ Item {
     font.pixelSize: Theme.font.body
   }
 
-  // fileDialog is the fallback attach dialog, opened only through
-  // openFallbackPicker once the portal's own file chooser has already
-  // been tried and reported unavailable: QtQuick's own non-native
-  // dialog (DontUseNativeDialog), never the native one, which runs
-  // GTK in this same shared shell process and once crashed it outright
-  // (see docs/decisions.md).
-  FileDialog {
-    id: fileDialog
-    title: "Attach a file"
-    options: FileDialog.DontUseNativeDialog
-    onAccepted: root.fileAttached(String(fileDialog.selectedFile).replace(/^file:\/\//, ""))
+  // fileDialogLoader creates the fallback attach dialog only while
+  // _fileDialogActive is true, opened only through openFallbackPicker
+  // once the portal's own file chooser has already been tried and
+  // reported unavailable: QtQuick's own non-native dialog
+  // (DontUseNativeDialog), never the native one, which runs GTK in
+  // this same shared shell process and once crashed it outright (see
+  // docs/decisions.md). Qt's own dialog content embeds editable text
+  // fields (a file-name field and the folder breadcrumb's own field)
+  // that are created when the dialog object is, not deferred until it
+  // opens, and otherwise stay alive reading the Wayland clipboard
+  // until the composer itself is destroyed; gating the whole dialog
+  // behind this Loader tears those fields down the moment it closes.
+  Loader {
+    id: fileDialogLoader
+    objectName: "fileDialogLoader"
+    active: root._fileDialogActive
+    // item has no declared type for qmllint to check against (see
+    // root.input's own comment above), so it is cast explicitly here.
+    onLoaded: (item as FileDialog).open()
+    sourceComponent: FileDialog {
+      title: "Attach a file"
+      options: FileDialog.DontUseNativeDialog
+      onAccepted: {
+        root.fileAttached(String(selectedFile).replace(/^file:\/\//, ""))
+        root._fileDialogActive = false
+      }
+      onRejected: root._fileDialogActive = false
+    }
   }
 
   ColumnLayout {
