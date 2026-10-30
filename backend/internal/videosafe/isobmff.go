@@ -1,10 +1,14 @@
 package videosafe
 
 // isobmff.go walks an MP4/MOV (ISO base media file format) box tree
-// far enough to answer Validate's question and no further: it never
-// reads a box's sample data, only the moov/trak/mdia/minf/stbl boxes
-// that name a track's handler, codec, dimensions, duration and sample
-// count. Every box body a caller does not ask for is skipped by
+// far enough to answer Validate's question and no further: mostly the
+// moov/trak/mdia/minf/stbl boxes that name a track's handler, codec,
+// dimensions, duration and sample count, never a box's actual sample
+// data - except for an avc1 video track's own samples, which
+// avcVideoTrackChecks (h264sps.go) and avcsamples.go read far enough
+// to refuse an in-band parameter set, the one piece of sample data
+// this package cannot safely leave unread (see docs/decisions.md).
+// Every other box body a caller does not ask for is skipped by
 // arithmetic on its declared size, never read.
 
 import "encoding/binary"
@@ -59,6 +63,7 @@ type isoTrack struct {
 	spsWidth    int
 	spsHeight   int
 	spsOK       bool
+	inBandOK    bool
 	sampleCount uint32
 }
 
@@ -85,7 +90,12 @@ func isoTrackAllowed(t isoTrack, videoTracks int) (isVideo, ok bool) {
 // uses - a fully parseable SPS (see h264sps.go) whose own coded
 // width and height agree with those container fields exactly. A
 // mismatch, or an SPS this package could not parse at all, is
-// refused rather than trusted either way.
+// refused rather than trusted either way. Agreeing with the avcC SPS
+// is still not enough on its own: inBandOK additionally requires that
+// none of the track's own samples carry a second, untrusted parameter
+// set FFmpeg would still honor (see avcsamples.go and
+// docs/decisions.md) - the exact gap a differential security review
+// found this package's SPS check alone did not close.
 func isoVideoTrackAllowed(t isoTrack, videoTracks int) bool {
 	if videoTracks >= maxVideoTracks || !allowedISOVideoCodec[t.codec] {
 		return false
@@ -96,17 +106,21 @@ func isoVideoTrackAllowed(t isoTrack, videoTracks int) bool {
 	if !t.spsOK || t.spsWidth != t.width || t.spsHeight != t.height {
 		return false
 	}
+	if !t.inBandOK {
+		return false
+	}
 	return t.sampleCount <= maxSampleCount
 }
 
 // trackInfo extracts trak's handler type ("vide" or "soun"), its
 // first sample entry's codec fourcc, a video track's declared width
 // and height, its codec configuration's own declared width and
-// height (avcC's SPS, for an avc1 track), its declared sample count
-// (from stsz/stz2, read as a single field, never allocated) and its
-// own duration in seconds (from mdhd). ok is false once any box this
-// needs is missing or too short to read, so a track whose header was
-// cut off is never silently treated as safe.
+// height (avcC's SPS, for an avc1 track, plus the in-band sample scan
+// avcVideoTrackChecks runs for it), its declared sample count (from
+// stsz/stz2, read as a single field, never allocated outside that
+// scan) and its own duration in seconds (from mdhd). ok is false once
+// any box this needs is missing or too short to read, so a track
+// whose header was cut off is never silently treated as safe.
 func (c *cursor) trackInfo(trakOff, trakLen int64) (track isoTrack, duration float64, ok bool) {
 	mdia, found := c.firstChild(trakOff, trakLen, "mdia")
 	if !found {
@@ -138,18 +152,20 @@ func (c *cursor) trackInfo(trakOff, trakLen int64) (track isoTrack, duration flo
 	if !ok {
 		return
 	}
-
-	if track.kind == "vide" {
-		track.width, track.height, ok = c.sampleEntryDims(stbl.off, stbl.len)
-		if !ok {
-			return
-		}
-		if track.codec == "avc1" {
-			track.spsWidth, track.spsHeight, track.spsOK = c.avcSPSDims(stbl.off, stbl.len)
-		}
+	track.sampleCount, ok = c.sampleCount(stbl.off, stbl.len)
+	if !ok {
+		return
 	}
 
-	track.sampleCount, ok = c.sampleCount(stbl.off, stbl.len)
+	track.inBandOK = true
+	if track.kind != "vide" {
+		return
+	}
+	track.width, track.height, ok = c.sampleEntryDims(stbl.off, stbl.len)
+	if !ok || track.codec != "avc1" {
+		return
+	}
+	track.spsWidth, track.spsHeight, track.spsOK, track.inBandOK, ok = c.avcVideoTrackChecks(stbl, track.sampleCount)
 	return
 }
 

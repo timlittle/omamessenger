@@ -2,15 +2,20 @@
 // container and stream headers describe something the shell's
 // QtMultimedia-backed player may be trusted to decode, before any of
 // its bytes ever reach that player. It never shells out to ffprobe
-// and never reads a file's actual sample data: only the handful of
-// MP4/MOV (ISO base media) boxes or WebM/Matroska (EBML) elements
-// that name a video's codec, container-declared dimensions, duration,
-// track count and audio codec, plus - for the one video codec this
-// package accepts - the codec configuration FFmpeg actually decodes
-// from (H.264's own SPS, inside avcC; see h264sps.go), each read
-// through a single bounded os.File.ReadAt, so a crafted header can
-// never make this package read or allocate more than a few hundred
-// bytes regardless of how large the file on disk actually is.
+// and, for everything but one case, never reads a file's actual
+// sample data: only the handful of MP4/MOV (ISO base media) boxes or
+// WebM/Matroska (EBML) elements that name a video's codec,
+// container-declared dimensions, duration, track count and audio
+// codec, plus - for the one video codec this package accepts - the
+// codec configuration FFmpeg actually decodes from (H.264's own SPS,
+// inside avcC; see h264sps.go), each read through a single bounded
+// os.File.ReadAt, so a crafted header can never make this package
+// read or allocate more than a few hundred bytes regardless of how
+// large the file on disk actually is. The one exception is an avc1
+// track's own sample data (avcsamples.go), read and bounded against
+// the file's own size rather than a fixed constant, because avcC's
+// SPS alone does not bind what FFmpeg will decode at: an in-band
+// parameter set inside a sample overrides it (see docs/decisions.md).
 //
 // A container's own width and height fields are never trusted on
 // their own: FFmpeg decodes at whatever size the video bitstream

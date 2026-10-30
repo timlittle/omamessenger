@@ -48,6 +48,12 @@ const maxStringElement = 256
 // small, fixed amount of header data it ever needs.
 const maxSPSLength = 256
 
+// maxPPSLength bounds a PPS NAL unit's own length, found in-band
+// inside an avc1 sample, before this package reads any of it to check
+// which sequence parameter set it names: the same reasoning as
+// maxSPSLength, since a real PPS is just as small.
+const maxPPSLength = 256
+
 // maxExpGolombPrefix bounds how many leading zero bits an exp-Golomb
 // field's own prefix may declare before this package gives up on it:
 // every field this package actually decodes (a dimension in

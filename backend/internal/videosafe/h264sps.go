@@ -11,6 +11,21 @@ package videosafe
 
 import "encoding/binary"
 
+// avcDecoderConfig is every field this package reads from an avcC
+// box's own one trusted SPS: the coded width and height it decodes
+// to, its own declared seq_parameter_set_id, its raw encoded NAL
+// bytes (NAL header included, emulation prevention left in place, so
+// it can be compared byte for byte against a sample's own copy), and
+// lengthSizeMinusOne+1 - the byte width avcC declares for every
+// sample's own NAL length prefixes, which avcsamples.go needs to walk
+// a sample's NAL units at all.
+type avcDecoderConfig struct {
+	width, height int
+	spsID         uint32
+	sps           []byte
+	lengthSize    int
+}
+
 // avcSPSDims reads trak's stbl box for its video sample entry's avcC
 // configuration, and from it the single SPS the entry's own
 // numOfSequenceParameterSets field must declare, returning the coded
@@ -20,22 +35,35 @@ import "encoding/binary"
 // this package cannot read all the way through is never treated as
 // safe just because its container-declared dimensions looked fine.
 func (c *cursor) avcSPSDims(stblOff, stblLen int64) (int, int, bool) {
+	cfg, ok := c.avcConfigDetails(stblOff, stblLen)
+	if !ok {
+		return 0, 0, false
+	}
+	return cfg.width, cfg.height, true
+}
+
+// avcConfigDetails reads trak's stbl box for its video sample entry's
+// avcC configuration, the same search avcSPSDims does, returning
+// every field avcsamples.go's own in-band NAL scan needs in addition
+// to the coded width and height: the SPS's own id, its raw bytes, and
+// avcC's own declared NAL length-prefix width.
+func (c *cursor) avcConfigDetails(stblOff, stblLen int64) (avcDecoderConfig, bool) {
 	stsd, found := c.firstChild(stblOff, stblLen, "stsd")
 	if !found || stsd.len < 8 {
-		return 0, 0, false
+		return avcDecoderConfig{}, false
 	}
 
 	_, entry, _, ok := c.boxHeader(stsd.off+8, stsd.off+stsd.len)
 	if !ok || entry.len < avcVisualSampleEntryFixedFields {
-		return 0, 0, false
+		return avcDecoderConfig{}, false
 	}
 
 	avcc, found := c.firstChild(entry.off+avcVisualSampleEntryFixedFields, entry.len-avcVisualSampleEntryFixedFields, "avcC")
 	if !found {
-		return 0, 0, false
+		return avcDecoderConfig{}, false
 	}
 
-	return c.avcDecoderConfigSPSDims(avcc)
+	return c.readAVCDecoderConfig(avcc)
 }
 
 // avcDecoderConfigSPSDims reads avcc as an AVCDecoderConfigurationRecord
@@ -44,34 +72,72 @@ func (c *cursor) avcSPSDims(stblOff, stblLen int64) (int, int, bool) {
 // equal exactly one, then that one SPS's own 16-bit length and bytes,
 // bounded by maxSPSLength before any of it is read.
 func (c *cursor) avcDecoderConfigSPSDims(avcc span) (int, int, bool) {
-	if avcc.len < 8 {
+	cfg, ok := c.readAVCDecoderConfig(avcc)
+	if !ok {
 		return 0, 0, false
+	}
+	return cfg.width, cfg.height, true
+}
+
+// readAVCDecoderConfig reads avcc as an AVCDecoderConfigurationRecord,
+// the same bytes avcDecoderConfigSPSDims always read, additionally
+// keeping the SPS's own id and raw bytes and avcC's own declared NAL
+// length-prefix width (lengthSizeMinusOne+1) for avcsamples.go's own
+// in-band scan.
+func (c *cursor) readAVCDecoderConfig(avcc span) (avcDecoderConfig, bool) {
+	if avcc.len < 8 {
+		return avcDecoderConfig{}, false
 	}
 
 	var hdr [6]byte
 	if !c.readAt(hdr[:], avcc.off) {
-		return 0, 0, false
+		return avcDecoderConfig{}, false
 	}
 	if hdr[5]&0x1f != 1 {
-		return 0, 0, false
+		return avcDecoderConfig{}, false
 	}
+	lengthSize := int(hdr[4]&0x03) + 1
 
 	var lengthField [2]byte
 	if !c.readAt(lengthField[:], avcc.off+6) {
-		return 0, 0, false
+		return avcDecoderConfig{}, false
 	}
 
 	spsLen := int64(binary.BigEndian.Uint16(lengthField[:]))
 	if spsLen <= 0 || spsLen > maxSPSLength || 8+spsLen > avcc.len {
-		return 0, 0, false
+		return avcDecoderConfig{}, false
 	}
 
 	sps := make([]byte, spsLen)
 	if !c.readAt(sps, avcc.off+8) {
-		return 0, 0, false
+		return avcDecoderConfig{}, false
 	}
 
-	return parseSPSDims(sps)
+	width, height, spsID, ok := parseSPSFields(sps)
+	if !ok {
+		return avcDecoderConfig{}, false
+	}
+	return avcDecoderConfig{width: width, height: height, spsID: spsID, sps: sps, lengthSize: lengthSize}, true
+}
+
+// avcVideoTrackChecks reads an avc1 video track's own avcC
+// configuration - the SPS-derived dimensions isoVideoTrackAllowed
+// already required - and, when the track has any samples at all,
+// walks every one of them for an in-band parameter set FFmpeg would
+// still honor even though this package never trusted it (see
+// avcsamples.go and docs/decisions.md). ok is false whenever avcC
+// itself cannot be fully read, the same "cannot read it, cannot trust
+// it" rule every other check in this package already applies;
+// inBandOK is a separate verdict, since a track can have a perfectly
+// good avcC and still fail the sample scan.
+func (c *cursor) avcVideoTrackChecks(stbl span, sampleCount uint32) (spsWidth, spsHeight int, spsOK, inBandOK, ok bool) {
+	cfg, found := c.avcConfigDetails(stbl.off, stbl.len)
+	if !found {
+		return 0, 0, false, false, false
+	}
+
+	inBandOK = c.avcSamplesSafe(stbl, sampleCount, cfg)
+	return cfg.width, cfg.height, true, inBandOK, true
 }
 
 // highProfileChromaFields reports whether profileIDC is one of the
@@ -115,36 +181,48 @@ func chromaSubsampling(chromaArrayType uint32) (subWidthC, subHeightC uint32) {
 // that uses one is treated the same as any other it cannot fully
 // read - not playable, never guessed at.
 func parseSPSDims(nal []byte) (int, int, bool) {
+	width, height, _, ok := parseSPSFields(nal)
+	return width, height, ok
+}
+
+// parseSPSFields decodes nal exactly as parseSPSDims does, and
+// additionally returns the SPS's own seq_parameter_set_id: the id
+// avcC's one trusted SPS declares, which avcsamples.go's own in-band
+// scan compares every picture parameter set found inside a sample
+// against (see avcNALAllowed).
+func parseSPSFields(nal []byte) (width, height int, spsID uint32, ok bool) {
 	if len(nal) < 1 || nal[0]&0x1f != 7 {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 
 	r := &bitReader{data: removeEmulationPrevention(nal[1:])}
 
 	profileIDC, ok := r.u(8)
 	if !ok {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	if _, ok = r.u(8); !ok { // constraint flags + reserved
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	if _, ok = r.u(8); !ok { // level_idc
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
-	if _, ok = r.ue(); !ok { // seq_parameter_set_id
-		return 0, 0, false
+	spsID, ok = r.ue() // seq_parameter_set_id
+	if !ok {
+		return 0, 0, 0, false
 	}
 
 	chromaArrayType, ok := chromaArrayTypeOf(r, profileIDC)
 	if !ok {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 
 	if !skipToPicSize(r) {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 
-	return picSizeFromSPS(r, chromaArrayType)
+	width, height, ok = picSizeFromSPS(r, chromaArrayType)
+	return width, height, spsID, ok
 }
 
 // chromaArrayTypeOf reads the chroma-related fields a high-profile

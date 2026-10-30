@@ -9,6 +9,7 @@ package videosafe_test
 // real-world sample file checked into the repository.
 
 import (
+	"bytes"
 	"encoding/binary"
 	"math"
 	"math/bits"
@@ -351,6 +352,138 @@ func mp4Box(boxType string, body []byte) []byte {
 	copy(buf[4:8], boxType)
 	copy(buf[8:], body)
 	return buf
+}
+
+// avcLengthSize is the NAL length-prefix width every fixture in this
+// file builds its avcC configuration with (buildAVCDecoderConfig's
+// own lengthSizeMinusOne byte, 0xFF, encodes a width of 4).
+const avcLengthSize = 4
+
+// avcSample length-prefixes each of nalUnits with avcLengthSize bytes
+// and concatenates them, exactly the shape a real avc1 sample's own
+// bytes take: one or more NAL units, each preceded by its own length.
+func avcSample(nalUnits ...[]byte) []byte {
+	var out []byte
+	for _, nal := range nalUnits {
+		lenBuf := make([]byte, avcLengthSize)
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(nal)))
+		out = append(out, lenBuf...)
+		out = append(out, nal...)
+	}
+	return out
+}
+
+// buildAVCSliceNAL returns a minimal NAL unit of the given type
+// (never 7, 8, 13 or 15 - this package's own in-band checks only
+// judge those), just long enough to exercise avcNALAllowed's "pass
+// through unjudged" default case.
+func buildAVCSliceNAL(nalType byte) []byte {
+	return []byte{nalType, 0x01, 0x02, 0x03}
+}
+
+// buildAVCPPS builds a minimal picture parameter set NAL unit (type
+// 8) declaring pic_parameter_set_id 0 and the given
+// seq_parameter_set_id, the two fields ppsReferencesSPS reads.
+func buildAVCPPS(seqParameterSetID uint32) []byte {
+	w := &spsBitWriter{}
+	w.ue(0) // pic_parameter_set_id
+	w.ue(seqParameterSetID)
+	return append([]byte{0x68}, addEmulationPrevention(w.bytes())...)
+}
+
+// avcVideoSamplesParams names everything mp4AVCVideoWithSamples
+// varies: the avcC SPS's own width and height, and each sample's own
+// already-length-prefixed bytes (see avcSample).
+type avcVideoSamplesParams struct {
+	width, height int
+	samples       [][]byte
+}
+
+// mp4AVCVideoWithSamples builds a minimal, well-formed MP4 with one
+// avc1 video track whose avcC matches width/height, real sample data
+// in mdat (one chunk holding every sample, in order, exactly as
+// avcsamples.go's own sampleSpans expects to find it through
+// stsz/stco/stsc) and no audio track. This is the one fixture shape
+// in this package that reaches avcsamples.go's own in-band NAL scan
+// at all: every other fixture here uses zero samples, which the scan
+// always passes vacuously.
+func mp4AVCVideoWithSamples(p avcVideoSamplesParams) []byte {
+	entryBody := make([]byte, 78)
+	binary.BigEndian.PutUint16(entryBody[24:26], uint16(p.width))
+	binary.BigEndian.PutUint16(entryBody[26:28], uint16(p.height))
+	entryBody = append(entryBody, mp4Box("avcC", buildAVCDecoderConfig(p.width, p.height))...)
+	entry := mp4Box("avc1", entryBody)
+
+	stsdBody := make([]byte, 8, 8+len(entry))
+	binary.BigEndian.PutUint32(stsdBody[4:8], 1) // entry_count
+	stsdBody = append(stsdBody, entry...)
+
+	stbl := mp4Box("stbl", concatBytes(
+		mp4Box("stsd", stsdBody),
+		mp4Box("stsz", mp4SampleSizeTable(p.samples)),
+		mp4Box("stsc", mp4SampleToChunk(uint32(len(p.samples)))),
+		mp4Box("stco", make([]byte, 12)), // entry_count and offset patched below
+	))
+	minf := mp4Box("minf", stbl)
+	mdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
+	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("vide")...))
+	mdia := mp4Box("mdia", concatBytes(mdhd, hdlr, minf))
+	trak := mp4Box("trak", mdia)
+
+	mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
+	moov := mp4Box("moov", concatBytes(mvhd, trak))
+	ftyp := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
+
+	patchStcoOffset(moov, int64(len(ftyp)+len(moov)+8)) // mdat's own body starts right after its 8-byte header
+	mdat := mp4Box("mdat", concatBytes(p.samples...))
+
+	return concatBytes(ftyp, moov, mdat)
+}
+
+// mp4SampleSizeTable builds an stsz body with sample_size 0 (a
+// per-sample table follows) and each sample's own byte length, the
+// exact shape avcsamples.go's own sampleSizeTable reads.
+func mp4SampleSizeTable(samples [][]byte) []byte {
+	buf := make([]byte, 12+4*len(samples))
+	binary.BigEndian.PutUint32(buf[8:12], uint32(len(samples)))
+	for i, s := range samples {
+		binary.BigEndian.PutUint32(buf[12+i*4:16+i*4], uint32(len(s)))
+	}
+	return buf
+}
+
+// mp4SampleToChunk builds an stsc body with a single entry: every
+// one of count samples lives in chunk 1, sample description index 1.
+func mp4SampleToChunk(count uint32) []byte {
+	buf := make([]byte, 8+12)
+	binary.BigEndian.PutUint32(buf[4:8], 1)     // entry_count
+	binary.BigEndian.PutUint32(buf[8:12], 1)    // first_chunk
+	binary.BigEndian.PutUint32(buf[12:16], count) // samples_per_chunk
+	binary.BigEndian.PutUint32(buf[16:20], 1)   // sample_description_index
+	return buf
+}
+
+// patchStcoOffset finds the one stco box mp4AVCVideoWithSamples built
+// (with a placeholder entry_count of 0) inside moov's own bytes and
+// sets it to one chunk at offset, in place: simpler than threading
+// the final mdat offset through every box builder above, since
+// nothing else in moov's own layout depends on this box's value.
+func patchStcoOffset(moov []byte, offset int64) {
+	idx := bytes.Index(moov, []byte("stco"))
+	body := moov[idx+4:]
+	binary.BigEndian.PutUint32(body[4:8], 1) // entry_count
+	binary.BigEndian.PutUint32(body[8:12], uint32(offset))
+}
+
+// concatBytes concatenates every byte slice in parts into one, for
+// the box builders above to assemble a body from several children
+// without repeating append chains.
+func concatBytes(parts ...[]byte) []byte {
+	var out []byte
+	for _, p := range parts {
+		out = append(out, p...)
+	}
+	return out
 }
 
 // webmParams names everything webmFixture varies between test cases.

@@ -354,22 +354,33 @@ func TestValidate_MP4BoxHeaderVariants(t *testing.T) {
 }
 
 // TestValidate_MP4SampleCountFallback covers stbl's less common stz2
-// box, read the same way as stsz, and a box too short to hold even
-// its own sample_count field.
+// box, read the same way as stsz for the simple sample-count bound.
+// stz2's own per-sample table only ever needs to be exercised on an
+// audio track here: a video track's own sample count additionally
+// drives the in-band NAL scan in avcsamples.go, which does not
+// support stz2's variable-width table (see its own doc comment) and
+// so always refuses a track that uses one with any samples at all -
+// a video track with zero samples (as every other fixture in this
+// file uses) never reaches that scan regardless of which box the
+// track's audio sibling happens to use.
 func TestValidate_MP4SampleCountFallback(t *testing.T) {
 	t.Parallel()
 
 	withStz2 := func() []byte {
 		mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
-		mdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
-		hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("vide")...))
-		stsd := mp4Box("stsd", mp4SampleDescription("avc1", 1280, 720))
+		videoTrak := mp4Trak(trakParams{handler: "vide", codec: "avc1", width: 1280, height: 720, timescale: 1000, durationUnit: 5000})
+
+		audioMdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
+		audioHdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("soun")...))
+		audioStsd := mp4Box("stsd", mp4SampleDescription("mp4a", 0, 0))
 		stz2 := mp4Box("stz2", mp4SampleSize(42))
-		stbl := mp4Box("stbl", append(append([]byte{}, stsd...), stz2...))
-		minf := mp4Box("minf", stbl)
-		mdia := mp4Box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
-		trak := mp4Box("trak", mdia)
-		return mp4Box("moov", append(append([]byte{}, mvhd...), trak...))
+		audioStbl := mp4Box("stbl", append(append([]byte{}, audioStsd...), stz2...))
+		audioMinf := mp4Box("minf", audioStbl)
+		audioMdia := mp4Box("mdia", append(append(append([]byte{}, audioMdhd...), audioHdlr...), audioMinf...))
+		audioTrak := mp4Box("trak", audioMdia)
+
+		moovBody := append(append(append([]byte{}, mvhd...), videoTrak...), audioTrak...)
+		return mp4Box("moov", moovBody)
 	}()
 
 	path := writeFixture(t, "stz2.mp4", withStz2)
@@ -378,7 +389,7 @@ func TestValidate_MP4SampleCountFallback(t *testing.T) {
 		t.Fatalf("Validate() error = %v, want nil", err)
 	}
 	if !got {
-		t.Error("Validate() = false for a valid file using stz2 instead of stsz, want true")
+		t.Error("Validate() = false for a valid file whose audio track uses stz2 instead of stsz, want true")
 	}
 }
 
