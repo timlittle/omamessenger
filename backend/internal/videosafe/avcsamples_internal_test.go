@@ -136,7 +136,7 @@ func TestSampleToChunkTable_EdgeCases(t *testing.T) {
 	// failPast 16 lets the header and entry_count field (ending at 16)
 	// succeed, then fails the rows' own bulk read.
 	entriesHeader := make([]byte, 8)
-	entriesHeader[7] = 1 // entry_count = 1
+	entriesHeader[7] = 1 // declares one stsc entry
 	entriesReadFails := box("stsc", append(entriesHeader, make([]byte, 12)...))
 	run("entries bulk read fails", entriesReadFails, 16)
 }

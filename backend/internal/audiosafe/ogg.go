@@ -22,12 +22,11 @@ import (
 const oggPageHeaderLen = 27
 
 // oggHeaderBOS is the header_type flag marking a page as the first of
-// its logical bitstream.
+// its logical bitstream. validateOgg no longer has a matching
+// end-of-stream flag to check: it now reads every page to the file's
+// own end rather than stopping at the first stream's own EOS page
+// (see docs/decisions.md), so that flag is never tested on its own.
 const oggHeaderBOS = 0x02
-
-// oggHeaderEOS is the header_type flag marking a page as the last of
-// its logical bitstream.
-const oggHeaderEOS = 0x04
 
 // opusHeadMagic is the eight-byte packet magic that opens an Opus
 // stream's first page (RFC 7845 section 5.1), read from the page's

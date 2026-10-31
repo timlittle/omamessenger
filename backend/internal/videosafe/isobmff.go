@@ -27,38 +27,59 @@ func isoBMFFPlayable(c *cursor) bool {
 		return false
 	}
 
-	duration, _ := c.boxDuration(moov.off, moov.len, "mvhd")
-
 	traks, ok := c.children(moov.off, moov.len, "trak")
 	if !ok {
 		return false
 	}
 
-	videoTracks, audioTracks := 0, 0
-	sawValidVideo := false
+	var tally trackTally
+	tally.duration, _ = c.boxDuration(moov.off, moov.len, "mvhd")
 	for _, trak := range traks {
-		track, trackDuration, ok := c.trackInfo(trak.off, trak.len)
-		if !ok {
+		if !c.addTrak(trak, &tally) {
 			return false
-		}
-		if trackDuration > duration {
-			duration = trackDuration
-		}
-
-		isVideo, isAudio, allowed := isoTrackAllowed(track, videoTracks, audioTracks)
-		if !allowed {
-			return false
-		}
-		if isVideo {
-			videoTracks++
-			sawValidVideo = true
-		}
-		if isAudio {
-			audioTracks++
 		}
 	}
 
-	return sawValidVideo && duration > 0 && duration <= maxDuration.Seconds()
+	return tally.sawValidVideo && tally.duration > 0 && tally.duration <= maxDuration.Seconds()
+}
+
+// trackTally accumulates isoBMFFPlayable's own running state across
+// every trak it judges: the longest duration seen so far, and how
+// many video and audio tracks have already passed isoTrackAllowed.
+type trackTally struct {
+	duration                 float64
+	videoTracks, audioTracks int
+	sawValidVideo            bool
+}
+
+// addTrak judges one trak (trackInfo, then isoTrackAllowed) and folds
+// the result into t: a longer duration, and one more video or audio
+// track counted toward maxVideoTracks/maxAudioTracks. ok is false the
+// moment the track cannot be read at all or fails every limit that
+// applies to its own kind - isoBMFFPlayable's own cue to refuse the
+// whole file - split out from it only to keep its own branching
+// within this package's complexity limit.
+func (c *cursor) addTrak(trak span, t *trackTally) bool {
+	track, trackDuration, ok := c.trackInfo(trak.off, trak.len)
+	if !ok {
+		return false
+	}
+	if trackDuration > t.duration {
+		t.duration = trackDuration
+	}
+
+	isVideo, isAudio, allowed := isoTrackAllowed(track, t.videoTracks, t.audioTracks)
+	if !allowed {
+		return false
+	}
+	if isVideo {
+		t.videoTracks++
+		t.sawValidVideo = true
+	}
+	if isAudio {
+		t.audioTracks++
+	}
+	return true
 }
 
 // topLevelMoov walks every top-level box in the file once, both to
@@ -140,7 +161,7 @@ func isoVideoTrackAllowed(t isoTrack, videoTracks int) bool {
 	if videoTracks >= maxVideoTracks || !allowedISOVideoCodec[t.codec] {
 		return false
 	}
-	if t.width <= 0 || t.height <= 0 || t.width > maxDimension || t.height > maxDimension {
+	if !dimensionsWithinCap(t.width, t.height) {
 		return false
 	}
 	if !t.spsOK || t.spsWidth != t.width || t.spsHeight != t.height {
@@ -150,6 +171,14 @@ func isoVideoTrackAllowed(t isoTrack, videoTracks int) bool {
 		return false
 	}
 	return t.sampleCount <= maxSampleCount
+}
+
+// dimensionsWithinCap reports whether width and height are both
+// positive and no larger than maxDimension: the one check both a
+// video track's container-declared size and its SPS-derived one must
+// pass.
+func dimensionsWithinCap(width, height int) bool {
+	return width > 0 && height > 0 && width <= maxDimension && height <= maxDimension
 }
 
 // trackInfo extracts trak's handler type ("vide" or "soun"), its
@@ -201,12 +230,30 @@ func (c *cursor) trackInfo(trakOff, trakLen int64) (track isoTrack, duration flo
 	if track.kind != "vide" {
 		return
 	}
-	track.width, track.height, ok = c.sampleEntryDims(stbl.off, stbl.len)
-	if !ok || track.codec != "avc1" {
-		return
-	}
-	track.spsWidth, track.spsHeight, track.spsOK, track.inBandOK, ok = c.avcVideoTrackChecks(stbl, track.sampleCount)
+	ok = c.videoTrackFields(stbl, &track)
 	return
+}
+
+// videoTrackFields fills a video track's own declared width and
+// height and, for an avc1 codec, every field avcVideoTrackChecks adds
+// (spsWidth, spsHeight, spsOK, inBandOK): the part of trackInfo that
+// only applies once a track's own kind is "vide", split out to keep
+// trackInfo's own branching within this package's complexity limit.
+// ok is false once the dimensions themselves cannot be read; a
+// non-avc1 codec is otherwise left for isoVideoTrackAllowed's own
+// codec check to refuse.
+func (c *cursor) videoTrackFields(stbl span, track *isoTrack) bool {
+	var ok bool
+	track.width, track.height, ok = c.sampleEntryDims(stbl.off, stbl.len)
+	if !ok {
+		return false
+	}
+	if track.codec != "avc1" {
+		return true
+	}
+
+	track.spsWidth, track.spsHeight, track.spsOK, track.inBandOK, ok = c.avcVideoTrackChecks(stbl, track.sampleCount)
+	return ok
 }
 
 // handlerType reads mdia's hdlr box, reporting the track's handler
