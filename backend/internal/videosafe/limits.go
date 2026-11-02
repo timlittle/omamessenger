@@ -52,8 +52,57 @@ const maxAVCChunkCount = maxSampleCount
 // covers at least one chunk holding at least one sample once
 // sampleToChunkTable has validated it, so a layout can never
 // legitimately need more rows than maxSampleCount allows samples
-// either.
+// either. Despite their "AVC" names, maxAVCChunkCount and
+// maxAVCStscEntries now bound every accepted track's own stco/co64
+// and stsc tables, video and audio alike (see sampleTablesConsistent
+// in sampletables.go): a security review found the audio track's own
+// sample tables were never read at all, let alone bounded.
 const maxAVCStscEntries = maxSampleCount
+
+// maxSTTSEntries bounds how many rows a track's own stts table may
+// declare, tied to maxSampleCount: a real stts entry run-length-
+// encodes at least one sample per row, so a table can never
+// legitimately need more rows than maxSampleCount allows samples.
+const maxSTTSEntries = maxSampleCount
+
+// maxCttsEntries bounds how many rows a track's own ctts table may
+// declare, the same reasoning maxSTTSEntries documents: a ctts entry
+// also run-length-encodes at least one sample per row.
+const maxCttsEntries = maxSampleCount
+
+// maxStssEntries bounds how many rows a track's own stss table may
+// declare: at most one entry per sample, since a sync sample is
+// itself one specific sample number and a table can never name more
+// of them than the track has samples.
+const maxStssEntries = maxSampleCount
+
+// maxSbgpEntries bounds how many rows a track's own sbgp table may
+// declare, the same reasoning maxSTTSEntries documents: a
+// sample-to-group entry also run-length-encodes at least one sample
+// per row.
+const maxSbgpEntries = maxSampleCount
+
+// maxSampleGroupEntries bounds how many descriptions a track's own
+// sgpd table may declare. Unlike the tables above, a sample group
+// description does not correspond to a sample at all - it is a
+// distinct, reusable description a track's own sbgp table then refers
+// samples to - so there is no sample-count relationship to tie this
+// to; real encoders write a small, fixed handful (one, for AAC's own
+// encoder-delay "roll" grouping), and this cap is generous next to
+// that while still bounding the walk sgpdConsistent does.
+const maxSampleGroupEntries = 65_536
+
+// maxELSTEntries bounds how many entries a track's own edts/elst box
+// may declare: a real encoder writes at most one, trimming an AAC
+// track's own encoder-delay priming samples, and this package has no
+// way to judge what a second, independent edit would mean for the
+// sample data it has already bound to the first. This is this
+// package's own "allow only a single in-range entry" bound on an
+// edit list (see docs/decisions.md): a security review found FFmpeg's
+// own mov_build_index rebuilds its sample index a second time
+// whenever an edit list is present, roughly doubling the cost of
+// whatever the sample tables above already declare.
+const maxELSTEntries = 1
 
 // avcSampleCancelCheckInterval bounds how many of an avc1 track's own
 // samples avcSamplesSafe scans between checks of the caller's own

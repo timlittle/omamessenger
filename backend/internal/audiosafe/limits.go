@@ -36,6 +36,56 @@ const maxBoxBudget = 10_000
 // without bound.
 const maxCoverArtDepth = 16
 
+// maxSampleCount bounds this package's one audio track's own declared
+// sample count (MP4's stsz/stz2 sample_count field), read as one
+// 32-bit value and never used to allocate anything: mirrors
+// videosafe's own maxSampleCount, and closes the exact gap a security
+// review found - this package read an audio track's own sample count
+// but never checked it against anything at all (see
+// docs/decisions.md).
+const maxSampleCount = 10_000_000
+
+// maxChunkCount bounds how many chunk offsets (stco/co64 entries) the
+// one audio track's own sample layout may declare, tied to
+// maxSampleCount the same way videosafe's own maxAVCChunkCount is: a
+// valid stsc table assigns at least one sample to every chunk a
+// layout actually uses, so a layout can never legitimately need more
+// chunks than maxSampleCount already allows samples.
+const maxChunkCount = maxSampleCount
+
+// maxStscEntries bounds how many sample-to-chunk rows (stsc entries)
+// the one audio track's own sample layout may declare, the same
+// reasoning maxChunkCount documents.
+const maxStscEntries = maxSampleCount
+
+// maxSTTSEntries, maxCttsEntries, maxStssEntries and maxSbgpEntries
+// bound how many rows the one audio track's own stts, ctts, stss and
+// sbgp tables may each declare, tied to maxSampleCount the same way
+// videosafe's own matching constants are: each of these tables
+// run-length-encodes at least one sample per row (or, for stss, names
+// at most one sample per row), so none can legitimately need more
+// rows than maxSampleCount allows samples.
+const (
+	maxSTTSEntries = maxSampleCount
+	maxCttsEntries = maxSampleCount
+	maxStssEntries = maxSampleCount
+	maxSbgpEntries = maxSampleCount
+)
+
+// maxSampleGroupEntries bounds how many descriptions the one audio
+// track's own sgpd table may declare: mirrors videosafe's own
+// maxSampleGroupEntries and its own reasoning - a sample group
+// description does not correspond to a sample at all, so there is no
+// sample-count relationship to tie this to, and real encoders write a
+// small, fixed handful (one, for AAC's own encoder-delay "roll"
+// grouping).
+const maxSampleGroupEntries = 65_536
+
+// maxELSTEntries bounds how many entries the one audio track's own
+// edts/elst box may declare: mirrors videosafe's own maxELSTEntries
+// and its own "allow only a single in-range entry" reasoning.
+const maxELSTEntries = 1
+
 // opusGranuleRate is Opus's own fixed sample rate for its granule
 // position timestamps (RFC 7845): every Opus stream's granule
 // position counts 48kHz samples regardless of the stream's actual

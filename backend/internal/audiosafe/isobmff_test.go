@@ -149,7 +149,8 @@ func TestValidate_MP4BoxHeaderVariants(t *testing.T) {
 	mdhdV1 := mp4Box("mdhd", mp4MediaHeaderV1(1000, 5000))
 	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("soun")...))
 	stsd := mp4Box("stsd", mp4SampleDescription("mp4a"))
-	stbl := mp4Box("stbl", stsd)
+	stsz := mp4Box("stsz", mp4SampleSize(0))
+	stbl := mp4Box("stbl", append(stsd, stsz...))
 	minf := mp4Box("minf", stbl)
 	mdiaV1 := mp4Box("mdia", append(append(append([]byte{}, mdhdV1...), hdlr...), minf...))
 	trakV1 := mp4Box("trak", mdiaV1)
@@ -281,6 +282,22 @@ func FuzzValidateMP4Audio(f *testing.F) {
 	f.Add([]byte{})
 	f.Add(mp4AudioFixtureWithMoovExtra(mp4Box("cmov", []byte("fake compressed movie data"))))
 	f.Add(mp4AudioFixtureWithStblExtra(mp4Box("zzzz", []byte("unexpected"))))
+
+	// A security review found this package never checked its one
+	// audio track's own sample count against anything, nor any of its
+	// other sample tables or its edit list (see sampletables.go,
+	// samplegrouptables.go and docs/decisions.md); these seeds cover
+	// the shapes that closed it.
+	f.Add(func() []byte {
+		p := baselineAudioTables()
+		p.stts = sttsBody(85_000_000, 1024)
+		return mp4AudioTrackWithTables(p)
+	}())
+	f.Add(func() []byte {
+		p := baselineAudioTables()
+		p.edts = edtsWith(elstBody(2, 5000))
+		return mp4AudioTrackWithTables(p)
+	}())
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := writeFixture(t, "fuzz.m4a", data)

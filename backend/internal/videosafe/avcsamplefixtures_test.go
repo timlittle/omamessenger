@@ -171,6 +171,12 @@ type avcCustomLayoutParams struct {
 	stco          []byte
 	co64          []byte
 	stsc          []byte
+	stts          []byte
+	ctts          []byte
+	stss          []byte
+	sbgp          []byte
+	sgpd          []byte
+	edts          []byte
 	mdat          []byte
 }
 
@@ -196,7 +202,18 @@ func mp4AVCVideoCustomLayout(p avcCustomLayoutParams) []byte {
 		boxType string
 		body    []byte
 	}
-	for _, b := range []namedBox{{"stsz", p.stsz}, {"stz2", p.stz2}, {"stco", p.stco}, {"co64", p.co64}, {"stsc", p.stsc}} {
+	for _, b := range []namedBox{
+		{"stsz", p.stsz},
+		{"stz2", p.stz2},
+		{"stco", p.stco},
+		{"co64", p.co64},
+		{"stsc", p.stsc},
+		{"stts", p.stts},
+		{"ctts", p.ctts},
+		{"stss", p.stss},
+		{"sbgp", p.sbgp},
+		{"sgpd", p.sgpd},
+	} {
 		if b.body != nil {
 			stblBody = append(stblBody, mp4Box(b.boxType, b.body)...)
 		}
@@ -207,7 +224,11 @@ func mp4AVCVideoCustomLayout(p avcCustomLayoutParams) []byte {
 	mdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
 	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("vide")...))
 	mdia := mp4Box("mdia", concatBytes(mdhd, hdlr, minf))
-	trak := mp4Box("trak", mdia)
+	trakBody := append([]byte{}, mdia...)
+	if p.edts != nil {
+		trakBody = append(trakBody, p.edts...)
+	}
+	trak := mp4Box("trak", trakBody)
 	mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
 	moov := mp4Box("moov", concatBytes(mvhd, trak))
 	ftyp := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))

@@ -259,10 +259,7 @@ func isoVideoTrackAllowed(t isoTrack, videoTracks int) bool {
 	if !t.spsOK || t.spsWidth != t.width || t.spsHeight != t.height {
 		return false
 	}
-	if !t.inBandOK {
-		return false
-	}
-	return t.sampleCount <= maxSampleCount
+	return t.inBandOK
 }
 
 // dimensionsWithinCap reports whether width and height are both
@@ -295,10 +292,11 @@ func (c *cursor) trackInfo(ctx context.Context, trakOff, trakLen int64) (track i
 		return
 	}
 
-	duration, ok = c.boxDuration(mdia.off, mdia.len, "mdhd")
+	timescale, rawDuration, ok := c.boxTimescaleDuration(mdia.off, mdia.len, "mdhd")
 	if !ok {
 		return
 	}
+	duration = durationSeconds(timescale, rawDuration)
 
 	track.codec, ok = c.sampleEntryCodec(stbl.off, stbl.len)
 	if !ok {
@@ -308,13 +306,48 @@ func (c *cursor) trackInfo(ctx context.Context, trakOff, trakLen int64) (track i
 	if !ok {
 		return
 	}
-
-	track.inBandOK = true
-	if track.kind != "vide" {
+	if !c.trackTablesAndEditsOK(trakOff, trakLen, stbl, track.sampleCount, timescale) {
+		ok = false
 		return
 	}
-	ok = c.videoTrackFields(ctx, stbl, &track)
+
+	track.inBandOK = true
+	ok = c.trackKindFieldsOK(ctx, track.kind, stbl, &track)
 	return
+}
+
+// trackTablesAndEditsOK reports whether a track's own sample count is
+// within maxSampleCount, its sample tables (stsz/stz2, stco/co64,
+// stsc, stts, ctts, stss, sgpd and sbgp - see sampletables.go) all
+// agree with each other and with that count, and its own edit list
+// (if any) declares at most one in-range entry - every bound that
+// used to apply to the video track alone, through isoVideoTrackAllowed,
+// now applied here to every track this package reads regardless of
+// kind: a security review found the audio track's own sampleCount,
+// read a few lines above, was never checked against anything at all.
+func (c *cursor) trackTablesAndEditsOK(trakOff, trakLen int64, stbl span, sampleCount, timescale uint32) bool {
+	if sampleCount > maxSampleCount {
+		return false
+	}
+	if !c.sampleTablesConsistent(stbl, sampleCount) {
+		return false
+	}
+	return c.editListAllowed(trakOff, trakLen, timescale)
+}
+
+// trackKindFieldsOK reads and validates whatever this package checks
+// beyond a track's own codec, sample count and sample tables, specific
+// to its kind: a video track's own avcC/SPS agreement and in-band NAL
+// scan (see videoTrackFields). A track of neither kind is refused by
+// isoTrackAllowed regardless of what this reports, so there is
+// nothing to check for it here.
+func (c *cursor) trackKindFieldsOK(ctx context.Context, kind string, stbl span, track *isoTrack) bool {
+	switch kind {
+	case "vide":
+		return c.videoTrackFields(ctx, stbl, track)
+	default:
+		return true
+	}
 }
 
 // trackChildBoxes walks trak down through mdia, minf and stbl,
@@ -391,39 +424,54 @@ func (c *cursor) handlerType(mdiaOff, mdiaLen int64) (string, bool) {
 }
 
 // boxDuration reads a duration-carrying box's own timescale and
-// duration fields: mvhd (movie-level) and mdhd (track-level) share
-// the exact same layout up to those two fields, which is all this
-// package ever needs from either one.
+// duration fields and converts them to seconds (see
+// boxTimescaleDuration): mvhd (movie-level) and mdhd (track-level)
+// share the exact same layout up to those two fields, which is all
+// this package ever needs from either one, whenever the raw
+// timescale itself does not also matter to the caller.
 func (c *cursor) boxDuration(containerOff, containerLen int64, boxType string) (float64, bool) {
+	timescale, duration, ok := c.boxTimescaleDuration(containerOff, containerLen, boxType)
+	if !ok {
+		return 0, false
+	}
+	return durationSeconds(timescale, duration), true
+}
+
+// boxTimescaleDuration reads a duration-carrying box's own raw
+// timescale and duration fields, never converted to seconds: the part
+// of boxDuration a caller that also needs the raw timescale (see
+// trackInfo's own edit-list check) reuses directly, rather than
+// recovering it by multiplying boxDuration's own result back out.
+func (c *cursor) boxTimescaleDuration(containerOff, containerLen int64, boxType string) (timescale uint32, duration uint64, ok bool) {
 	box, found := c.firstChild(containerOff, containerLen, boxType)
 	if !found {
-		return 0, false
+		return 0, 0, false
 	}
 
 	var version [1]byte
 	if !c.readAt(version[:], box.off) {
-		return 0, false
+		return 0, 0, false
 	}
 
 	if version[0] == 1 {
 		if box.len < 32 {
-			return 0, false
+			return 0, 0, false
 		}
 		var buf [32]byte
 		if !c.readAt(buf[:], box.off) {
-			return 0, false
+			return 0, 0, false
 		}
-		return durationSeconds(binary.BigEndian.Uint32(buf[20:24]), binary.BigEndian.Uint64(buf[24:32])), true
+		return binary.BigEndian.Uint32(buf[20:24]), binary.BigEndian.Uint64(buf[24:32]), true
 	}
 
 	if box.len < 20 {
-		return 0, false
+		return 0, 0, false
 	}
 	var buf [20]byte
 	if !c.readAt(buf[:], box.off) {
-		return 0, false
+		return 0, 0, false
 	}
-	return durationSeconds(binary.BigEndian.Uint32(buf[12:16]), uint64(binary.BigEndian.Uint32(buf[16:20]))), true
+	return binary.BigEndian.Uint32(buf[12:16]), uint64(binary.BigEndian.Uint32(buf[16:20])), true
 }
 
 // durationSeconds converts a timescale (units per second) and a

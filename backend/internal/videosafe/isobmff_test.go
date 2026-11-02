@@ -356,6 +356,22 @@ func FuzzValidateMP4(f *testing.F) {
 	}())
 	f.Add(buildCustomAVCFixture(1280, 720, append(buildAVCDecoderConfig(1280, 720), 0x11, 0x22, 0x33, 0x44)))
 
+	// A security review found neither an audio track's own sample
+	// count nor any track's stts/ctts/stss/sgpd/sbgp tables, nor a
+	// trak's own edit list, were ever checked against each other at
+	// all (see sampletables.go and docs/decisions.md); these seeds
+	// cover the shapes that closed it.
+	f.Add(func() []byte {
+		p := baselineAudioTables()
+		p.stts = sttsBody([2]uint32{85_000_000, 1024})
+		return mp4AudioTrackWithTables(p)
+	}())
+	f.Add(func() []byte {
+		p := baselineAudioTables()
+		p.edts = edtsWith(elstBody(2, 5000))
+		return mp4AudioTrackWithTables(p)
+	}())
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := writeFixture(t, "fuzz.mp4", data)
 		if _, err := videosafe.Validate(path); err != nil {
@@ -420,45 +436,10 @@ func TestValidate_MP4BoxHeaderVariants(t *testing.T) {
 	}
 }
 
-// TestValidate_MP4SampleCountFallback covers stbl's less common stz2
-// box, read the same way as stsz for the simple sample-count bound.
-// stz2's own per-sample table only ever needs to be exercised on an
-// audio track here: a video track's own sample count additionally
-// drives the in-band NAL scan in avcsamples.go, which does not
-// support stz2's variable-width table (see its own doc comment) and
-// so always refuses a track that uses one with any samples at all -
-// a video track with zero samples (as every other fixture in this
-// file uses) never reaches that scan regardless of which box the
-// track's audio sibling happens to use.
-func TestValidate_MP4SampleCountFallback(t *testing.T) {
-	t.Parallel()
-
-	withStz2 := func() []byte {
-		mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
-		videoTrak := mp4Trak(trakParams{handler: "vide", codec: "avc1", width: 1280, height: 720, timescale: 1000, durationUnit: 5000})
-
-		audioMdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
-		audioHdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("soun")...))
-		audioStsd := mp4Box("stsd", mp4SampleDescription("mp4a", 0, 0))
-		stz2 := mp4Box("stz2", mp4SampleSize(42))
-		audioStbl := mp4Box("stbl", append(append([]byte{}, audioStsd...), stz2...))
-		audioMinf := mp4Box("minf", audioStbl)
-		audioMdia := mp4Box("mdia", append(append(append([]byte{}, audioMdhd...), audioHdlr...), audioMinf...))
-		audioTrak := mp4Box("trak", audioMdia)
-
-		moovBody := append(append(append([]byte{}, mvhd...), videoTrak...), audioTrak...)
-		return mp4Box("moov", moovBody)
-	}()
-
-	path := writeFixture(t, "stz2.mp4", withStz2)
-	got, err := videosafe.Validate(path)
-	if err != nil {
-		t.Fatalf("Validate() error = %v, want nil", err)
-	}
-	if !got {
-		t.Error("Validate() = false for a valid file whose audio track uses stz2 instead of stsz, want true")
-	}
-}
+// TestValidate_MP4AudioStz2Refused moved to sampletables_test.go,
+// once this file's own file-length limit needed the room: it covers
+// the same audio-track sample-table consistency this security fix
+// added everywhere else in that file.
 
 // TestValidate_MP4ExtraOrUnvalidatedTracks covers the gap a
 // differential security review found: FFmpeg's own mov demuxer opens

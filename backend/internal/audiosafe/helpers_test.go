@@ -258,7 +258,8 @@ func mp4AudioTrakWithEntries(codec string, timescale, durationUnit, entryCount u
 	mdhd := mp4Box("mdhd", mp4MediaHeader(timescale, durationUnit))
 	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("soun")...))
 	stsd := mp4Box("stsd", mp4SampleDescriptionMultiEntry(codec, entryCount))
-	stbl := mp4Box("stbl", stsd)
+	stsz := mp4Box("stsz", mp4SampleSize(0))
+	stbl := mp4Box("stbl", append(stsd, stsz...))
 	minf := mp4Box("minf", stbl)
 	mdia := mp4Box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
 	return mp4Box("trak", mdia)
@@ -276,7 +277,8 @@ func mp4Trak(handler, codec string, timescale, durationUnit uint32) []byte {
 	mdhd := mp4Box("mdhd", mp4MediaHeader(timescale, durationUnit))
 	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte(handler)...))
 	stsd := mp4Box("stsd", mp4SampleDescription(codec))
-	stbl := mp4Box("stbl", stsd)
+	stsz := mp4Box("stsz", mp4SampleSize(0))
+	stbl := mp4Box("stbl", append(stsd, stsz...))
 	minf := mp4Box("minf", stbl)
 	mdia := mp4Box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
 	return mp4Box("trak", mdia)
@@ -361,10 +363,22 @@ func mp4AudioMdia(timescale, durationUnit uint32) []byte {
 	return mp4Box("mdia", mp4AudioMdiaBody(timescale, durationUnit))
 }
 
-// mp4AudioStbl builds a minimal stbl box for an audio track: just
-// its own stsd sample entry, with no extra box of its own.
+// mp4AudioStbl builds a minimal stbl box for an audio track: its own
+// stsd sample entry and an stsz box declaring zero samples, with no
+// extra box of its own.
 func mp4AudioStbl(codec string) []byte {
-	return mp4Box("stbl", mp4Box("stsd", mp4SampleDescription(codec)))
+	stsd := mp4Box("stsd", mp4SampleDescription(codec))
+	stsz := mp4Box("stsz", mp4SampleSize(0))
+	return mp4Box("stbl", append(stsd, stsz...))
+}
+
+// mp4SampleSize builds a minimal stsz body: version/flags, sample_size
+// (0, meaning "see the per-sample table") and sample_count, the only
+// field this package reads. Mirrors videosafe's own mp4SampleSize.
+func mp4SampleSize(sampleCount uint32) []byte {
+	buf := make([]byte, 12)
+	binary.BigEndian.PutUint32(buf[8:12], sampleCount)
+	return buf
 }
 
 // mp4MediaHeader builds an mvhd/mdhd body (version 0): 4 bytes of

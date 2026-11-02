@@ -222,35 +222,96 @@ func (c *cursor) audioTrackInfo(trakOff, trakLen int64) (kind, codec string, dur
 		return "", "", 0, false
 	}
 
-	duration, ok = c.boxDuration(mdia.off, mdia.len, "mdhd")
+	timescale, rawDuration, ok := c.boxTimescaleDuration(mdia.off, mdia.len, "mdhd")
 	if !ok {
 		return "", "", 0, false
 	}
+	duration = durationSeconds(timescale, rawDuration)
 
 	if kind != "soun" {
 		return kind, "", duration, true
 	}
 
-	codec, ok = c.soundCodec(mdia)
+	codec, ok = c.soundTrackFields(mdia, trakOff, trakLen, timescale)
 	return kind, codec, duration, ok
 }
 
-// soundCodec reads a "soun" track's own minf and stbl boxes, checking
-// each against this package's own allowlist as it goes (see
-// onlyChildrenAllowed), and returns its first sample entry's codec
-// fourcc: the part of audioTrackInfo that only runs once the track's
-// handler type is already known to be "soun".
-func (c *cursor) soundCodec(mdia span) (string, bool) {
-	minf, found := c.firstChild(mdia.off, mdia.len, "minf")
-	if !found || !c.onlyChildrenAllowed(minf.off, minf.len, allowedMinfChild) {
-		return "", false
-	}
-	stbl, found := c.firstChild(minf.off, minf.len, "stbl")
-	if !found || !c.onlyChildrenAllowed(stbl.off, stbl.len, allowedStblChild) {
+// soundTrackFields reads a "soun" track's own minf and stbl boxes,
+// checking each against this package's own allowlist as it goes (see
+// onlyChildrenAllowed), its codec fourcc, and its own sample count,
+// sample tables (see sampleTablesConsistent) and trak-level edit list
+// (see editListAllowed): the part of audioTrackInfo that only runs
+// once the track's handler type is already known to be "soun". A
+// security review found this package read none of these beyond the
+// codec fourcc alone - not an audio track's own sample count, any of
+// its other sample tables, or its edit list (see docs/decisions.md).
+func (c *cursor) soundTrackFields(mdia span, trakOff, trakLen int64, timescale uint32) (string, bool) {
+	stbl, ok := c.soundStbl(mdia)
+	if !ok {
 		return "", false
 	}
 
-	return c.sampleEntryCodec(stbl.off, stbl.len)
+	codec, ok := c.sampleEntryCodec(stbl.off, stbl.len)
+	if !ok {
+		return "", false
+	}
+	if !c.soundTablesOK(trakOff, trakLen, stbl, timescale) {
+		return "", false
+	}
+	return codec, true
+}
+
+// soundStbl finds mdia's own minf and stbl boxes, checking each
+// against this package's own allowlist as it goes: split out of
+// soundTrackFields to keep its own branching within this package's
+// complexity limit.
+func (c *cursor) soundStbl(mdia span) (span, bool) {
+	minf, found := c.firstChild(mdia.off, mdia.len, "minf")
+	if !found || !c.onlyChildrenAllowed(minf.off, minf.len, allowedMinfChild) {
+		return span{}, false
+	}
+	stbl, found := c.firstChild(minf.off, minf.len, "stbl")
+	if !found || !c.onlyChildrenAllowed(stbl.off, stbl.len, allowedStblChild) {
+		return span{}, false
+	}
+	return stbl, true
+}
+
+// soundTablesOK reports whether the sound track's own sample count is
+// within maxSampleCount, its sample tables all agree with each other
+// and with that count (see sampleTablesConsistent), and its own edit
+// list (if any) declares at most one in-range entry: split out of
+// soundTrackFields to keep its own branching within this package's
+// complexity limit.
+func (c *cursor) soundTablesOK(trakOff, trakLen int64, stbl span, timescale uint32) bool {
+	sampleCount, ok := c.sampleCount(stbl.off, stbl.len)
+	if !ok || sampleCount > maxSampleCount {
+		return false
+	}
+	if !c.sampleTablesConsistent(stbl, sampleCount) {
+		return false
+	}
+	return c.editListAllowed(trakOff, trakLen, timescale)
+}
+
+// sampleCount reads stbl's stsz or stz2 box for its declared
+// sample_count field alone, at the same 8-byte offset in either box,
+// never the per-sample entries that may follow it: mirrors
+// videosafe's own sampleCount.
+func (c *cursor) sampleCount(stblOff, stblLen int64) (uint32, bool) {
+	for _, boxType := range []string{"stsz", "stz2"} {
+		box, found := c.firstChild(stblOff, stblLen, boxType)
+		if !found || box.len < 12 {
+			continue
+		}
+
+		var buf [12]byte
+		if !c.readAt(buf[:], box.off) {
+			continue
+		}
+		return binary.BigEndian.Uint32(buf[8:12]), true
+	}
+	return 0, false
 }
 
 // handlerType reads mdia's hdlr box, reporting the track's handler
@@ -273,39 +334,53 @@ func (c *cursor) handlerType(mdiaOff, mdiaLen int64) (string, bool) {
 }
 
 // boxDuration reads a duration-carrying box's own timescale and
-// duration fields: mvhd (movie-level) and mdhd (track-level) share
-// the exact same layout up to those two fields, the same reasoning
-// videosafe's own boxDuration documents.
+// duration fields and converts them to seconds (see
+// boxTimescaleDuration): mvhd (movie-level) and mdhd (track-level)
+// share the exact same layout up to those two fields, the same
+// reasoning videosafe's own boxDuration documents.
 func (c *cursor) boxDuration(containerOff, containerLen int64, boxType string) (float64, bool) {
+	timescale, duration, ok := c.boxTimescaleDuration(containerOff, containerLen, boxType)
+	if !ok {
+		return 0, false
+	}
+	return durationSeconds(timescale, duration), true
+}
+
+// boxTimescaleDuration reads a duration-carrying box's own raw
+// timescale and duration fields, never converted to seconds: the part
+// of boxDuration a caller that also needs the raw timescale (see
+// audioTrackInfo's own edit-list check) reuses directly, mirroring
+// videosafe's own boxTimescaleDuration.
+func (c *cursor) boxTimescaleDuration(containerOff, containerLen int64, boxType string) (timescale uint32, duration uint64, ok bool) {
 	box, found := c.firstChild(containerOff, containerLen, boxType)
 	if !found {
-		return 0, false
+		return 0, 0, false
 	}
 
 	var version [1]byte
 	if !c.readAt(version[:], box.off) {
-		return 0, false
+		return 0, 0, false
 	}
 
 	if version[0] == 1 {
 		if box.len < 32 {
-			return 0, false
+			return 0, 0, false
 		}
 		var buf [32]byte
 		if !c.readAt(buf[:], box.off) {
-			return 0, false
+			return 0, 0, false
 		}
-		return durationSeconds(binary.BigEndian.Uint32(buf[20:24]), binary.BigEndian.Uint64(buf[24:32])), true
+		return binary.BigEndian.Uint32(buf[20:24]), binary.BigEndian.Uint64(buf[24:32]), true
 	}
 
 	if box.len < 20 {
-		return 0, false
+		return 0, 0, false
 	}
 	var buf [20]byte
 	if !c.readAt(buf[:], box.off) {
-		return 0, false
+		return 0, 0, false
 	}
-	return durationSeconds(binary.BigEndian.Uint32(buf[12:16]), uint64(binary.BigEndian.Uint32(buf[16:20]))), true
+	return binary.BigEndian.Uint32(buf[12:16]), uint64(binary.BigEndian.Uint32(buf[16:20])), true
 }
 
 // durationSeconds converts a timescale (units per second) and a
