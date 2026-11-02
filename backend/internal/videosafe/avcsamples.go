@@ -85,8 +85,10 @@ func (c *cursor) scanAVCSamples(ctx context.Context, samples []span, cfg avcDeco
 // scanAVCSample reads one sample's full bytes - bounded against the
 // file's own size before anything is allocated, the same bound
 // sampleSpans already placed each sample's own offset and length
-// within - and walks its length-prefixed NAL units in memory,
-// refusing it outright at the first one avcNALAllowed refuses.
+// within - refuses it outright if its own leading bytes are shaped
+// like an AVCDecoderConfigurationRecord (see
+// sampleShapedLikeAVCDecoderConfig), and otherwise walks its
+// length-prefixed NAL units (see avcSampleNALsAllowed).
 func (c *cursor) scanAVCSample(sample span, cfg avcDecoderConfig) bool {
 	if sample.off < 0 || sample.len < 0 || sample.len > c.size-sample.off {
 		return false
@@ -96,7 +98,19 @@ func (c *cursor) scanAVCSample(sample span, cfg avcDecoderConfig) bool {
 	if !c.readAt(buf, sample.off) {
 		return false
 	}
+	if sampleShapedLikeAVCDecoderConfig(buf) {
+		return false
+	}
+	return avcSampleNALsAllowed(buf, cfg)
+}
 
+// avcSampleNALsAllowed walks buf - one sample's full bytes, already
+// confirmed not shaped like a replacement AVCDecoderConfigurationRecord
+// - as a run of cfg's own length-prefixed NAL units, refusing outright
+// at the first one avcNALAllowed refuses: split out of scanAVCSample
+// only to keep that function's own branching within this package's
+// complexity limit.
+func avcSampleNALsAllowed(buf []byte, cfg avcDecoderConfig) bool {
 	for len(buf) > 0 {
 		if int64(len(buf)) < int64(cfg.lengthSize) {
 			return false
@@ -125,6 +139,63 @@ func readNALLength(buf []byte) int64 {
 	return int64(v)
 }
 
+// sampleShapedLikeAVCDecoderConfig reports whether sample's leading
+// bytes parse as a structurally consistent AVCDecoderConfigurationRecord
+// - configurationVersion 1, a zero profile-compatibility byte, the
+// length-size reserved bits all set, and SPS/PPS parameter-set lists
+// whose own declared lengths stay within sample end to end - the exact
+// shape FFmpeg's own H.264 decoder treats as a signal to replace its
+// trusted SPS/PPS sets with whatever the sample itself declares,
+// regardless of the track's own avcC or how this package's own
+// length-prefixed NAL scan would otherwise read the same bytes (see
+// docs/decisions.md). A sample matching it is refused outright by
+// scanAVCSample before that NAL scan ever runs: the two would
+// otherwise read the same bytes two different, disagreeing ways.
+func sampleShapedLikeAVCDecoderConfig(sample []byte) bool {
+	if len(sample) < 7 || sample[0] != 1 || sample[2] != 0 || sample[4]&0xFC != 0xFC {
+		return false
+	}
+
+	rest, ok := skipAVCCInSampleParameterSetList(sample[5:], 0x1f)
+	if !ok {
+		return false
+	}
+	_, ok = skipAVCCInSampleParameterSetList(rest, 0xff)
+	return ok
+}
+
+// skipAVCCInSampleParameterSetList reads one AVCDecoderConfigurationRecord
+// parameter-set list from the front of buf - a one-byte count masked
+// by countMask, then that many 2-byte-length-prefixed entries - and
+// returns the bytes left after it. ok is false once the count is zero
+// or any entry's own declared length would run past buf's end: the
+// same structural check FFmpeg's own decoder applies to a sample's
+// leading bytes before treating it as a replacement parameter-set
+// record rather than ordinary NAL data.
+func skipAVCCInSampleParameterSetList(buf []byte, countMask byte) ([]byte, bool) {
+	if len(buf) < 1 {
+		return nil, false
+	}
+	count := buf[0] & countMask
+	buf = buf[1:]
+	if count == 0 {
+		return nil, false
+	}
+
+	for i := byte(0); i < count; i++ {
+		if len(buf) < 2 {
+			return nil, false
+		}
+		n := int(binary.BigEndian.Uint16(buf))
+		buf = buf[2:]
+		if n > len(buf) {
+			return nil, false
+		}
+		buf = buf[n:]
+	}
+	return buf, true
+}
+
 // avcNALAllowed reports whether nal - one sample's own NAL unit, NAL
 // header byte included, length prefix already stripped - is safe to
 // leave for FFmpeg to decode. An in-band sequence parameter set (NAL
@@ -136,15 +207,24 @@ func readNALLength(buf []byte) int64 {
 // SPS (types 13 and 15) has no avcC equivalent to ever match, so both
 // are always refused. A picture parameter set (type 8) is refused
 // once it names a seq_parameter_set_id other than cfg's own: this
-// package only ever trusts the one SPS id it already validated.
-// Every other NAL type passes through unjudged: this package has no
-// opinion on ordinary slice data.
+// package only ever trusts the one SPS id it already validated. Type
+// 0 (unspecified) and types 24-31 (reserved/unspecified, outside the
+// specification's own NAL unit table) are refused outright: a
+// security review found type 0 in particular left a gap - the exact
+// NAL type a sample's leading bytes read as once sampleShapedLikeAVCDecoderConfig's
+// own check does not catch it first - with nothing in this package
+// ever judging what such a NAL actually carries. Every other, defined
+// NAL type passes through unjudged: this package has no opinion on
+// ordinary slice data.
 func avcNALAllowed(nal []byte, cfg avcDecoderConfig) bool {
 	if len(nal) == 0 {
 		return false
 	}
 
-	switch nal[0] & 0x1f {
+	nalType := nal[0] & 0x1f
+	switch nalType {
+	case 0:
+		return false
 	case 7:
 		return len(nal) <= maxSPSLength && bytes.Equal(nal, cfg.sps)
 	case 13, 15:
@@ -152,7 +232,7 @@ func avcNALAllowed(nal []byte, cfg avcDecoderConfig) bool {
 	case 8:
 		return len(nal) <= maxPPSLength && ppsReferencesSPS(nal, cfg.spsID)
 	default:
-		return true
+		return nalType < 24
 	}
 }
 

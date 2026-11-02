@@ -66,10 +66,22 @@ type avcVideoSamplesParams struct {
 // at all: every other fixture here uses zero samples, which the scan
 // always passes vacuously.
 func mp4AVCVideoWithSamples(p avcVideoSamplesParams) []byte {
+	return mp4AVCVideoFixtureWithAVCC(p.width, p.height, buildAVCDecoderConfig(p.width, p.height), p.samples)
+}
+
+// mp4AVCVideoFixtureWithAVCC builds the same fixture shape as
+// mp4AVCVideoWithSamples, but with avcC's own body given directly
+// rather than always built from width/height through
+// buildAVCDecoderConfig: for a test that needs a track declaring a
+// NAL length-prefix width other than 4 bytes (see
+// buildAVCDecoderConfigWithLengthSize), the exact shape the "a sample
+// shaped like avcC itself" exploit in avcsamples_test.go needs a 1-
+// or 2-byte prefix to reach.
+func mp4AVCVideoFixtureWithAVCC(width, height int, avccBody []byte, samples [][]byte) []byte {
 	entryBody := make([]byte, 78)
-	binary.BigEndian.PutUint16(entryBody[24:26], uint16(p.width))
-	binary.BigEndian.PutUint16(entryBody[26:28], uint16(p.height))
-	entryBody = append(entryBody, mp4Box("avcC", buildAVCDecoderConfig(p.width, p.height))...)
+	binary.BigEndian.PutUint16(entryBody[24:26], uint16(width))
+	binary.BigEndian.PutUint16(entryBody[26:28], uint16(height))
+	entryBody = append(entryBody, mp4Box("avcC", avccBody)...)
 	entry := mp4Box("avc1", entryBody)
 
 	stsdBody := make([]byte, 8, 8+len(entry))
@@ -78,8 +90,8 @@ func mp4AVCVideoWithSamples(p avcVideoSamplesParams) []byte {
 
 	stbl := mp4Box("stbl", concatBytes(
 		mp4Box("stsd", stsdBody),
-		mp4Box("stsz", mp4SampleSizeTable(p.samples)),
-		mp4Box("stsc", mp4SampleToChunk(uint32(len(p.samples)))),
+		mp4Box("stsz", mp4SampleSizeTable(samples)),
+		mp4Box("stsc", mp4SampleToChunk(uint32(len(samples)))),
 		mp4Box("stco", make([]byte, 12)), // entry_count and offset patched below
 	))
 	minf := mp4Box("minf", stbl)
@@ -93,7 +105,7 @@ func mp4AVCVideoWithSamples(p avcVideoSamplesParams) []byte {
 	ftyp := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
 
 	patchStcoOffset(moov, int64(len(ftyp)+len(moov)+8)) // mdat's own body starts right after its 8-byte header
-	mdat := mp4Box("mdat", concatBytes(p.samples...))
+	mdat := mp4Box("mdat", concatBytes(samples...))
 
 	return concatBytes(ftyp, moov, mdat)
 }
