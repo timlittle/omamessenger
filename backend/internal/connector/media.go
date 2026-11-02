@@ -2,6 +2,7 @@ package connector
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -216,9 +217,12 @@ func EnsureImageSafe(path string, profile imagesafe.Profile) (width, height int,
 // allowed audio codec too. False, with no error, covers every way a
 // video fails that check - the sender's own bytes turned out to be
 // something this UI must never be trusted to decode in place - while
-// an error here means path itself could not be read at all.
-func VideoPlayable(path string) (bool, error) {
-	playable, err := videosafe.Validate(path)
+// an error here means path itself could not be read at all. ctx lets
+// the caller give up on the check - the UI closing the conversation
+// before a fetch finishes, say - without waiting out whatever is left
+// of it (see videosafe.ValidateContext).
+func VideoPlayable(ctx context.Context, path string) (bool, error) {
+	playable, err := videosafe.ValidateContext(ctx, path)
 	if err != nil {
 		return false, fmt.Errorf("connector: video playable: %w", err)
 	}

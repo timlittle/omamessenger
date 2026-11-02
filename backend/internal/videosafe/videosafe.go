@@ -45,6 +45,7 @@
 package videosafe
 
 import (
+	"context"
 	"fmt"
 	"os"
 )
@@ -65,8 +66,21 @@ const (
 // own SPS agrees with the container's declared dimensions, and, if
 // present, AAC or Opus audio - within the dimension, duration,
 // track-count and sample-count limits in limits.go. A WebM/Matroska
-// file is never reported playable: see the package doc comment.
+// file is never reported playable: see the package doc comment. It
+// runs with context.Background(); a caller able to cancel this check
+// - the helper's own media.fetch handler, say - should call
+// ValidateContext instead.
 func Validate(path string) (playable bool, err error) {
+	return ValidateContext(context.Background(), path)
+}
+
+// ValidateContext is Validate, with ctx passed on to the one part of
+// this check whose cost scales with the file rather than a small,
+// fixed box budget: an avc1 track's own in-band sample scan (see
+// avcsamples.go). Cancelling ctx makes that scan stop early and
+// report the file not playable, the same as any other failed check;
+// it is never treated as a reason to call the file safe.
+func ValidateContext(ctx context.Context, path string) (playable bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return false, fmt.Errorf("videosafe: validate: %w", err)
@@ -85,7 +99,7 @@ func Validate(path string) (playable bool, err error) {
 
 	switch detectContainer(c) {
 	case containerISOBMFF:
-		return isoBMFFPlayable(c), nil
+		return isoBMFFPlayable(ctx, c), nil
 	case containerMatroska:
 		return matroskaPlayable(c), nil
 	default:

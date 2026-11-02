@@ -172,6 +172,58 @@ func TestVideoPlayableForMedia_ChecksTheDownloadedBytes(t *testing.T) {
 	})
 }
 
+// TestVideoPlayableForMedia_CachesTheVerdictPerFile covers the fix for
+// a GIF-as-video bubble re-fetching the same cache file on every
+// scroll into view: once VideoPlayableForMedia has computed a verdict
+// for path, a second call with the same path, size and modification
+// time must serve that same verdict again without re-running
+// videosafe's own sample scan. This is proved by silently replacing
+// path's own bytes, between the two calls, with something videosafe
+// would refuse on its own - keeping the file's size and modification
+// time exactly as they were - so only a cache that trusts (path,
+// size, modTime) without re-reading the bytes could still report the
+// first call's true a second time.
+func TestVideoPlayableForMedia_CachesTheVerdictPerFile(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "video-good", ConversationID: chat.ID, RemoteID: "1", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = onePlayableMP4()
+	path, _, _, err := f.commands.FetchMedia(ctx, "video-good", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	playable, err := f.commands.VideoPlayableForMedia(ctx, "video-good", path)
+	if err != nil || !playable {
+		t.Fatalf("VideoPlayableForMedia() first call = %t, %v, want true, nil", playable, err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, bytes.Repeat([]byte{0}, int(info.Size())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+
+	playable, err = f.commands.VideoPlayableForMedia(ctx, "video-good", path)
+	if err != nil || !playable {
+		t.Fatalf("VideoPlayableForMedia() second call, same path/size/modTime but different bytes, = %t, %v, want the cached true, nil", playable, err)
+	}
+}
+
 // TestAudioPlayableForMedia_ChecksTheDownloadedBytes covers the three
 // outcomes server.mediaFetch depends on for audio, mirroring
 // TestVideoPlayableForMedia_ChecksTheDownloadedBytes: a voice note

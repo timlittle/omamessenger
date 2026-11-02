@@ -9,7 +9,10 @@ package videosafe
 // file reads is checked against the handful of bytes avcC or the SPS
 // itself declare before anything is allocated or read.
 
-import "encoding/binary"
+import (
+	"context"
+	"encoding/binary"
+)
 
 // avcDecoderConfig is every field this package reads from an avcC
 // box's own one trusted SPS: the coded width and height it decodes
@@ -130,13 +133,13 @@ func (c *cursor) readAVCDecoderConfig(avcc span) (avcDecoderConfig, bool) {
 // it" rule every other check in this package already applies;
 // inBandOK is a separate verdict, since a track can have a perfectly
 // good avcC and still fail the sample scan.
-func (c *cursor) avcVideoTrackChecks(stbl span, sampleCount uint32) (spsWidth, spsHeight int, spsOK, inBandOK, ok bool) {
+func (c *cursor) avcVideoTrackChecks(ctx context.Context, stbl span, sampleCount uint32) (spsWidth, spsHeight int, spsOK, inBandOK, ok bool) {
 	cfg, found := c.avcConfigDetails(stbl.off, stbl.len)
 	if !found {
 		return 0, 0, false, false, false
 	}
 
-	inBandOK = c.avcSamplesSafe(stbl, sampleCount, cfg)
+	inBandOK = c.avcSamplesSafe(ctx, stbl, sampleCount, cfg)
 	return cfg.width, cfg.height, true, inBandOK, true
 }
 

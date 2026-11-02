@@ -38,6 +38,31 @@ const maxAudioTracks = 1
 // resource cost this package itself ever pays.
 const maxSampleCount = 10_000_000
 
+// maxAVCChunkCount bounds how many chunk offsets (stco/co64 entries)
+// an avc1 track's own sample layout may declare. A valid stsc table
+// assigns at least one sample to every chunk a layout actually uses
+// (see sampleToChunkTable's own validation), so a layout can never
+// legitimately need more chunks than maxSampleCount already allows
+// samples; any more is refused before avcsamples.go allocates the
+// offsets table at all.
+const maxAVCChunkCount = maxSampleCount
+
+// maxAVCStscEntries bounds how many sample-to-chunk rows (stsc
+// entries) an avc1 track's own sample layout may declare: each row
+// covers at least one chunk holding at least one sample once
+// sampleToChunkTable has validated it, so a layout can never
+// legitimately need more rows than maxSampleCount allows samples
+// either.
+const maxAVCStscEntries = maxSampleCount
+
+// avcSampleCancelCheckInterval bounds how many of an avc1 track's own
+// samples avcSamplesSafe scans between checks of the caller's own
+// context: often enough that a cancelled fetch stops within a small
+// fraction of a second even at maxSampleCount, cheap enough next to
+// scanning a sample's own bytes that checking every single one would
+// buy nothing.
+const avcSampleCancelCheckInterval = 4096
+
 // maxBoxBudget bounds how many container boxes or EBML elements a
 // single Validate call will ever read the header of, across every
 // nesting level combined, so a file built from a long chain of tiny,

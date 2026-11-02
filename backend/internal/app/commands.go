@@ -57,6 +57,7 @@ type Commands struct {
 	retries         *retrier
 	scheduled       *scheduledSender
 	organizeNotices *organizeNotices
+	videoVerdicts   *videoVerdicts
 
 	// dataDir, dbPath, execName and helperVersion are read only by
 	// Doctor; see Deps.

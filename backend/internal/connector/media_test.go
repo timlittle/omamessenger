@@ -383,7 +383,7 @@ func TestVideoPlayable_ChecksTheFilesOwnHeaders(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		playable, err := connector.VideoPlayable(path)
+		playable, err := connector.VideoPlayable(t.Context(), path)
 		if err != nil || !playable {
 			t.Fatalf("VideoPlayable() = %t, %v, want true, nil", playable, err)
 		}
@@ -397,7 +397,7 @@ func TestVideoPlayable_ChecksTheFilesOwnHeaders(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		playable, err := connector.VideoPlayable(path)
+		playable, err := connector.VideoPlayable(t.Context(), path)
 		if err != nil || playable {
 			t.Fatalf("VideoPlayable() = %t, %v, want false, nil", playable, err)
 		}
@@ -406,7 +406,7 @@ func TestVideoPlayable_ChecksTheFilesOwnHeaders(t *testing.T) {
 	t.Run("a missing file is reported as an error", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := connector.VideoPlayable(filepath.Join(t.TempDir(), "missing.mp4"))
+		_, err := connector.VideoPlayable(t.Context(), filepath.Join(t.TempDir(), "missing.mp4"))
 		if err == nil {
 			t.Fatal("VideoPlayable() on a missing file succeeded")
 		}

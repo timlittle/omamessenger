@@ -357,6 +357,95 @@ func TestValidate_MP4InBandSampleBoundsExceeded(t *testing.T) {
 	})
 }
 
+// TestValidate_MP4InBandMalformedStscRows covers every way a crafted
+// stsc table can depart from ISO/IEC 14496-12's own shape - out of
+// order, a duplicated first_chunk, one that does not start at chunk
+// 1, or a zero samples_per_chunk row - each of which the layout
+// walker's old, unbounded rescan let through (and a zero row let an
+// attacker defeat its own early-break optimization with; see
+// avcsamples.go's own doc comment). Every one must be refused
+// outright, the same "cannot read it, cannot trust it" rule every
+// other malformed table in this package already gets.
+func TestValidate_MP4InBandMalformedStscRows(t *testing.T) {
+	t.Parallel()
+
+	sample := avcSample(buildAVCSliceNAL(5))
+
+	cases := map[string][2]uint32{
+		"zero samples_per_chunk": {1, 0},
+	}
+	for name, entry := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			p := avcCustomLayoutParams{
+				width: 1280, height: 720,
+				stsz: stszBody(uint32(len(sample))),
+				stco: stcoBody(0),
+				stsc: stscBody(entry),
+				mdat: sample,
+			}
+			data := mp4AVCVideoCustomLayout(p)
+			patchStcoOffset(data, int64(len(data)-len(p.mdat)))
+
+			assertPlayable(t, data, false, name)
+		})
+	}
+
+	t.Run("does not start at chunk 1", func(t *testing.T) {
+		t.Parallel()
+
+		p := avcCustomLayoutParams{
+			width: 1280, height: 720,
+			stsz: stszBody(uint32(len(sample))),
+			stco: stcoBody(0),
+			stsc: stscBody([2]uint32{2, 1}),
+			mdat: sample,
+		}
+		data := mp4AVCVideoCustomLayout(p)
+		patchStcoOffset(data, int64(len(data)-len(p.mdat)))
+
+		assertPlayable(t, data, false, "stsc not starting at chunk 1")
+	})
+
+	t.Run("out of order", func(t *testing.T) {
+		t.Parallel()
+
+		s1 := avcSample(buildAVCSliceNAL(5))
+		s2 := avcSample(buildAVCSliceNAL(1))
+		mdat := concatBytes(s1, s2)
+
+		p := avcCustomLayoutParams{
+			width: 1280, height: 720,
+			stsz: stszBody(uint32(len(s1)), uint32(len(s2))),
+			stco: stcoBody(0, 0),
+			stsc: stscBody([2]uint32{2, 1}, [2]uint32{1, 1}), // chunk 2 declared before chunk 1
+			mdat: mdat,
+		}
+		data := mp4AVCVideoCustomLayout(p)
+		base := int64(len(data) - len(mdat))
+		patchStcoOffsets(data, []int64{base, base + int64(len(s1))})
+
+		assertPlayable(t, data, false, "stsc rows out of order")
+	})
+
+	t.Run("duplicate first_chunk", func(t *testing.T) {
+		t.Parallel()
+
+		p := avcCustomLayoutParams{
+			width: 1280, height: 720,
+			stsz: stszBody(uint32(len(sample))),
+			stco: stcoBody(0),
+			stsc: stscBody([2]uint32{1, 1}, [2]uint32{1, 1}),
+			mdat: sample,
+		}
+		data := mp4AVCVideoCustomLayout(p)
+		patchStcoOffset(data, int64(len(data)-len(p.mdat)))
+
+		assertPlayable(t, data, false, "duplicate first_chunk rows")
+	})
+}
+
 // assertPlayable runs Validate on data and reports a test failure
 // naming what scenario was being checked when the result did not
 // match want.
@@ -402,6 +491,18 @@ func FuzzValidateMP4InBandSamples(f *testing.F) {
 		samples: [][]byte{avcSample(buildAVCPPS(0), buildAVCSliceNAL(5))},
 	}))
 	f.Add(ordinary[:len(ordinary)-2]) // truncated partway through the last sample
+
+	malformedStscSample := avcSample(buildAVCSliceNAL(5))
+	malformedStscParams := avcCustomLayoutParams{
+		width: 1280, height: 720,
+		stsz: stszBody(uint32(len(malformedStscSample))),
+		stco: stcoBody(0),
+		stsc: stscBody([2]uint32{1, 0}), // zero samples_per_chunk: refused outright, not just skipped
+		mdat: malformedStscSample,
+	}
+	malformedStscData := mp4AVCVideoCustomLayout(malformedStscParams)
+	patchStcoOffset(malformedStscData, int64(len(malformedStscData)-len(malformedStscParams.mdat)))
+	f.Add(malformedStscData)
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := writeFixture(t, "fuzz-inband.mp4", data)

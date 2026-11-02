@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
@@ -238,6 +239,12 @@ func (c *Commands) DecodeAsForMedia(ctx context.Context, messageID, path string)
 // for it too, which is exactly right - the UI already knows to play a
 // "gif" decodeAs result through an image engine instead, and never
 // consults this field for one.
+// A GIF playing as a video re-fetches the same cache file every time
+// its bubble scrolls back into view, with no click, so
+// VideoPlayableForMedia consults videoVerdicts first: videosafe's own
+// sample scan is the one part of this check whose cost scales with
+// the file, and re-running it on every fetch of a file nothing has
+// touched since buys nothing.
 func (c *Commands) VideoPlayableForMedia(ctx context.Context, messageID, path string) (bool, error) {
 	m, err := c.store.Message(ctx, messageID)
 	if err != nil {
@@ -247,12 +254,64 @@ func (c *Commands) VideoPlayableForMedia(ctx context.Context, messageID, path st
 		return false, nil
 	}
 
-	playable, err := connector.VideoPlayable(path)
+	info, statErr := os.Stat(path)
+	if statErr == nil {
+		if playable, ok := c.videoVerdicts.lookup(path, info); ok {
+			return playable, nil
+		}
+	}
+
+	playable, err := connector.VideoPlayable(ctx, path)
 	if err != nil {
 		return false, c.failDecodeCheck(ctx, m, err)
 	}
 
+	if statErr == nil {
+		c.videoVerdicts.store(path, info, playable)
+	}
 	return playable, nil
+}
+
+// videoVerdicts caches VideoPlayableForMedia's own verdict for a
+// file, keyed by its path together with the size and modification
+// time os.Stat reported when that verdict was computed: either one
+// changing invalidates the entry, so a retried download that replaces
+// the bytes at the same cache path is never served a stale verdict.
+type videoVerdicts struct {
+	mu      sync.Mutex
+	entries map[string]videoVerdict
+}
+
+// videoVerdict is one cached entry in a videoVerdicts: the file size
+// and modification time its own playable verdict was computed from.
+type videoVerdict struct {
+	size     int64
+	modTime  time.Time
+	playable bool
+}
+
+// lookup reports v's own cached verdict for path, when one exists and
+// info - path's current os.Stat result - still has the same size and
+// modification time it was computed from.
+func (v *videoVerdicts) lookup(path string, info os.FileInfo) (playable, ok bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	entry, found := v.entries[path]
+	if !found || entry.size != info.Size() || !entry.modTime.Equal(info.ModTime()) {
+		return false, false
+	}
+	return entry.playable, true
+}
+
+// store records playable as path's own verdict in v, keyed by info's
+// size and modification time so a later change to the file at the
+// same path invalidates it.
+func (v *videoVerdicts) store(path string, info os.FileInfo, playable bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	v.entries[path] = videoVerdict{size: info.Size(), modTime: info.ModTime(), playable: playable}
 }
 
 // AudioPlayableForMedia reports whether messageID's voice note or

@@ -29,6 +29,7 @@ package videosafe
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 )
 
@@ -37,12 +38,16 @@ import (
 // honor. A track with no samples at all is vacuously safe: there is
 // nothing to scan. sampleCount above maxSampleCount, or a track whose
 // sample layout cannot be fully determined from stsz, stco/co64 and
-// stsc, is refused rather than skipped.
-func (c *cursor) avcSamplesSafe(stbl span, sampleCount uint32, cfg avcDecoderConfig) bool {
+// stsc, is refused rather than skipped. ctx is polled between samples
+// (see avcSampleCancelCheckInterval) so a caller that no longer wants
+// the answer is not held up by however much of the scan remains;
+// cancellation refuses the track the same way any other failed check
+// does, never reports it safe.
+func (c *cursor) avcSamplesSafe(ctx context.Context, stbl span, sampleCount uint32, cfg avcDecoderConfig) bool {
 	if sampleCount == 0 {
 		return true
 	}
-	if sampleCount > maxSampleCount {
+	if sampleCount > maxSampleCount || ctx.Err() != nil {
 		return false
 	}
 
@@ -50,9 +55,22 @@ func (c *cursor) avcSamplesSafe(stbl span, sampleCount uint32, cfg avcDecoderCon
 	if !ok {
 		return false
 	}
+	return c.scanAVCSamples(ctx, samples, cfg)
+}
 
+// scanAVCSamples walks every one of samples in turn, refusing at the
+// first one scanAVCSample refuses or once their running total length
+// would exceed the file's own size, and polling ctx every
+// avcSampleCancelCheckInterval samples - split out of avcSamplesSafe
+// only to keep that function's own branching within this package's
+// complexity limit.
+func (c *cursor) scanAVCSamples(ctx context.Context, samples []span, cfg avcDecoderConfig) bool {
 	var totalBytes int64
-	for _, sample := range samples {
+	for i, sample := range samples {
+		if i%avcSampleCancelCheckInterval == 0 && ctx.Err() != nil {
+			return false
+		}
+
 		totalBytes += sample.len
 		if totalBytes < 0 || totalBytes > c.size {
 			return false
@@ -188,19 +206,37 @@ func (c *cursor) sampleSpans(stbl span, sampleCount uint32) ([]span, bool) {
 
 // layoutSamples places sizes (one per sample, in order) into chunks
 // at chunkOffsets, exactly the way ISO/IEC 14496-12's stsc table
-// assigns consecutive samples to consecutive chunks. ok is false once
-// the tables disagree on how many samples exist: every chunk used up
-// before every size is placed, or the reverse.
+// assigns consecutive samples to consecutive chunks. It walks
+// chunkOffsets and entries together in a single linear merge, each
+// index only ever moving forward, rather than rescanning entries from
+// the start for every chunk: entries is already validated sorted,
+// gapless from chunk 1 and never zero (see sampleToChunkTable), which
+// is what lets entryIdx advance monotonically and bounds this whole
+// function's cost to one pass over each table combined - never the
+// product of their lengths a crafted file with many chunks and many
+// stsc rows could otherwise force (see this file's own doc comment).
+// ok is false once the tables disagree on how many samples exist:
+// every chunk used up before every size is placed, the reverse, or no
+// stsc entry at all covers a chunk samples still need placing into.
 func layoutSamples(sizes []uint32, chunkOffsets []int64, entries []stscEntry) ([]span, bool) {
 	spans := make([]span, 0, len(sizes))
 	sampleIdx := 0
+	entryIdx := 0
 
 	for chunkIdx, chunkOff := range chunkOffsets {
 		if sampleIdx >= len(sizes) {
 			break
 		}
 
-		remaining := samplesInChunk(entries, uint32(chunkIdx+1))
+		chunkNum := uint32(chunkIdx + 1)
+		for entryIdx+1 < len(entries) && entries[entryIdx+1].firstChunk <= chunkNum {
+			entryIdx++
+		}
+		if entryIdx >= len(entries) {
+			return nil, false
+		}
+
+		remaining := entries[entryIdx].samplesPerChunk
 		off := chunkOff
 		for i := uint32(0); i < remaining && sampleIdx < len(sizes); i++ {
 			spans = append(spans, span{off: off, len: int64(sizes[sampleIdx])})
@@ -215,27 +251,41 @@ func layoutSamples(sizes []uint32, chunkOffsets []int64, entries []stscEntry) ([
 	return spans, true
 }
 
-// samplesInChunk returns the sample count stsc's own entries assign
-// to chunkNum (1-based): the last entry whose own first_chunk is at
-// or before chunkNum, exactly how ISO/IEC 14496-12 defines the table.
-func samplesInChunk(entries []stscEntry, chunkNum uint32) uint32 {
-	var count uint32
-	for _, e := range entries {
-		if e.firstChunk > chunkNum {
-			break
-		}
-		count = e.samplesPerChunk
+// stscEntriesValid reports whether entries is a well-formed stsc
+// table: empty, or starting at chunk 1 with strictly increasing
+// first_chunk values (no row out of order or duplicated) and every
+// row's own samples_per_chunk greater than zero. This is the shape
+// ISO/IEC 14496-12 itself defines, and the one precondition
+// layoutSamples' own linear merge relies on to only ever move forward
+// through this table once; a table that does not hold it is refused
+// by sampleToChunkTable before layoutSamples ever sees it.
+func stscEntriesValid(entries []stscEntry) bool {
+	if len(entries) == 0 {
+		return true
 	}
-	return count
+	if entries[0].firstChunk != 1 || entries[0].samplesPerChunk == 0 {
+		return false
+	}
+	for i := 1; i < len(entries); i++ {
+		if entries[i].firstChunk <= entries[i-1].firstChunk || entries[i].samplesPerChunk == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // sampleSizeTable reads stbl's stsz box for exactly sampleCount
 // sample sizes: either one fixed size repeated (stsz's own
 // sample_size field, when non-zero) or that many individual 32-bit
 // entries. ok is false once stsz's own declared sample_count
-// disagrees with sampleCount, or it is missing entirely - including
-// when the track uses stz2's own variable-width table instead, which
-// this package does not support.
+// disagrees with sampleCount, it is missing entirely - including when
+// the track uses stz2's own variable-width table instead, which this
+// package does not support - or, for the fixed-size case, sampleCount
+// repetitions of fixedSize would already add up to more bytes than
+// the file itself holds: fixedSize and sampleCount are each just one
+// field, so unlike the per-sample table below, nothing about this box
+// otherwise forces fixedSizeTable's allocation to be proportional to
+// anything real in the file (see this file's own doc comment).
 func (c *cursor) sampleSizeTable(stblOff, stblLen int64, sampleCount uint32) ([]uint32, bool) {
 	stsz, found := c.firstChild(stblOff, stblLen, "stsz")
 	if !found || stsz.len < 12 {
@@ -251,6 +301,9 @@ func (c *cursor) sampleSizeTable(stblOff, stblLen int64, sampleCount uint32) ([]
 	}
 
 	if fixedSize := binary.BigEndian.Uint32(hdr[4:8]); fixedSize != 0 {
+		if int64(fixedSize)*int64(sampleCount) > c.size {
+			return nil, false
+		}
 		return fixedSizeTable(fixedSize, sampleCount), true
 	}
 	return c.sampleSizeEntries(stsz, sampleCount)
@@ -303,7 +356,8 @@ func (c *cursor) chunkOffsetTable(stblOff, stblLen int64) ([]int64, bool) {
 
 // offsetEntries reads box's own entry_count field and that many
 // width-byte (4 or 8) big-endian offsets right after it, bounded by
-// the box's own declared length before any of it is allocated.
+// the box's own declared length before any of it is allocated, and by
+// maxAVCChunkCount before even that length is checked.
 func (c *cursor) offsetEntries(box span, width int64) ([]int64, bool) {
 	if box.len < 8 {
 		return nil, false
@@ -314,6 +368,9 @@ func (c *cursor) offsetEntries(box span, width int64) ([]int64, bool) {
 		return nil, false
 	}
 	count := binary.BigEndian.Uint32(countBuf[:])
+	if count > maxAVCChunkCount {
+		return nil, false
+	}
 
 	need := int64(count) * width
 	if box.len < 8+need {
@@ -347,8 +404,9 @@ func readFileOffset(buf []byte, width int64) int64 {
 // sampleToChunkTable reads stbl's stsc box for every entry: its own
 // entry_count field, then that many 12-byte rows (first_chunk,
 // samples_per_chunk, sample_description_index - the third field this
-// package never needs), bounded by the box's own declared length
-// before any of it is allocated.
+// package never needs), bounded by maxAVCStscEntries and the box's
+// own declared length before any of it is allocated, and validated
+// (see stscEntriesValid) before it is ever handed to layoutSamples.
 func (c *cursor) sampleToChunkTable(stblOff, stblLen int64) ([]stscEntry, bool) {
 	stsc, found := c.firstChild(stblOff, stblLen, "stsc")
 	if !found || stsc.len < 8 {
@@ -360,6 +418,9 @@ func (c *cursor) sampleToChunkTable(stblOff, stblLen int64) ([]stscEntry, bool) 
 		return nil, false
 	}
 	count := binary.BigEndian.Uint32(countBuf[:])
+	if count > maxAVCStscEntries {
+		return nil, false
+	}
 
 	need := int64(count) * 12
 	if stsc.len < 8+need {
@@ -378,6 +439,9 @@ func (c *cursor) sampleToChunkTable(stblOff, stblLen int64) ([]stscEntry, bool) 
 			firstChunk:      binary.BigEndian.Uint32(row[0:4]),
 			samplesPerChunk: binary.BigEndian.Uint32(row[4:8]),
 		}
+	}
+	if !stscEntriesValid(entries) {
+		return nil, false
 	}
 	return entries, true
 }

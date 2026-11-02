@@ -314,6 +314,7 @@ func New(d Deps) (*Commands, *Ingest) {
 		retries:         retries,
 		scheduled:       scheduled,
 		organizeNotices: &organizeNotices{},
+		videoVerdicts:   &videoVerdicts{entries: map[string]videoVerdict{}},
 		dataDir:         d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 		downloadsDir: d.DownloadsDir,
 	}

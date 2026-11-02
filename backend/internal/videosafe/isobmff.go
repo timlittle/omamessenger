@@ -11,7 +11,10 @@ package videosafe
 // Every other box body a caller does not ask for is skipped by
 // arithmetic on its declared size, never read.
 
-import "encoding/binary"
+import (
+	"context"
+	"encoding/binary"
+)
 
 // isoBMFFPlayable reports whether c's file is a playable MP4/MOV
 // under this package's limits: no fragmented-MP4 moof/mfra box
@@ -20,8 +23,11 @@ import "encoding/binary"
 // and sample-count limits, and at most one audio track using an
 // allowed codec, no other track of any kind - and an overall duration
 // (the longest of the movie's own mvhd and every track's own mdhd)
-// within maxDuration.
-func isoBMFFPlayable(c *cursor) bool {
+// within maxDuration. ctx is passed on to addTrak, so a cancelled
+// caller does not wait out an avc1 track's own in-band sample scan,
+// the one part of this walk whose cost scales with the file rather
+// than a small, fixed box budget (see avcsamples.go).
+func isoBMFFPlayable(ctx context.Context, c *cursor) bool {
 	moov, ok := c.topLevelMoov()
 	if !ok {
 		return false
@@ -35,7 +41,7 @@ func isoBMFFPlayable(c *cursor) bool {
 	var tally trackTally
 	tally.duration, _ = c.boxDuration(moov.off, moov.len, "mvhd")
 	for _, trak := range traks {
-		if !c.addTrak(trak, &tally) {
+		if !c.addTrak(ctx, trak, &tally) {
 			return false
 		}
 	}
@@ -59,8 +65,8 @@ type trackTally struct {
 // applies to its own kind - isoBMFFPlayable's own cue to refuse the
 // whole file - split out from it only to keep its own branching
 // within this package's complexity limit.
-func (c *cursor) addTrak(trak span, t *trackTally) bool {
-	track, trackDuration, ok := c.trackInfo(trak.off, trak.len)
+func (c *cursor) addTrak(ctx context.Context, trak span, t *trackTally) bool {
+	track, trackDuration, ok := c.trackInfo(ctx, trak.off, trak.len)
 	if !ok {
 		return false
 	}
@@ -190,7 +196,7 @@ func dimensionsWithinCap(width, height int) bool {
 // scan) and its own duration in seconds (from mdhd). ok is false once
 // any box this needs is missing or too short to read, so a track
 // whose header was cut off is never silently treated as safe.
-func (c *cursor) trackInfo(trakOff, trakLen int64) (track isoTrack, duration float64, ok bool) {
+func (c *cursor) trackInfo(ctx context.Context, trakOff, trakLen int64) (track isoTrack, duration float64, ok bool) {
 	mdia, found := c.firstChild(trakOff, trakLen, "mdia")
 	if !found {
 		return
@@ -230,7 +236,7 @@ func (c *cursor) trackInfo(trakOff, trakLen int64) (track isoTrack, duration flo
 	if track.kind != "vide" {
 		return
 	}
-	ok = c.videoTrackFields(stbl, &track)
+	ok = c.videoTrackFields(ctx, stbl, &track)
 	return
 }
 
@@ -242,7 +248,7 @@ func (c *cursor) trackInfo(trakOff, trakLen int64) (track isoTrack, duration flo
 // ok is false once the dimensions themselves cannot be read; a
 // non-avc1 codec is otherwise left for isoVideoTrackAllowed's own
 // codec check to refuse.
-func (c *cursor) videoTrackFields(stbl span, track *isoTrack) bool {
+func (c *cursor) videoTrackFields(ctx context.Context, stbl span, track *isoTrack) bool {
 	var ok bool
 	track.width, track.height, ok = c.sampleEntryDims(stbl.off, stbl.len)
 	if !ok {
@@ -252,7 +258,7 @@ func (c *cursor) videoTrackFields(stbl span, track *isoTrack) bool {
 		return true
 	}
 
-	track.spsWidth, track.spsHeight, track.spsOK, track.inBandOK, ok = c.avcVideoTrackChecks(stbl, track.sampleCount)
+	track.spsWidth, track.spsHeight, track.spsOK, track.inBandOK, ok = c.avcVideoTrackChecks(ctx, stbl, track.sampleCount)
 	return ok
 }
 
