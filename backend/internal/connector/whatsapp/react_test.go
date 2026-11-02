@@ -204,6 +204,31 @@ func TestReactTo_DropsAnOversizedEmoji(t *testing.T) {
 	}
 }
 
+// TestReactTo_DropsAnOversizedMessageRemoteID confirms a
+// ReactionMessage.Key.ID past domain.MaxRemoteIDLength is never
+// tracked in c.reactions: that id is read straight from the reacting
+// sender's own message, with no length limit of its own before this
+// runs, and a real message id this connector would ever recognise
+// again is always far shorter (see normalize.go's remoteID and
+// device.go's generateMessageID), so nothing legitimate is ever
+// dropped, while a sender naming an implausibly long id, repeated for
+// as many distinct "messages" as maxReactionTargets allows, could
+// otherwise grow the cache's own keys without limit.
+func TestReactTo_DropsAnOversizedMessageRemoteID(t *testing.T) {
+	t.Parallel()
+
+	c := New(domain.Account{ID: "wa"}, t.TempDir())
+
+	huge := strings.Repeat("m", domain.MaxRemoteIDLength+1)
+	got := c.reactTo("conv", huge, "nadia", "👍")
+	if len(got) != 0 {
+		t.Errorf("reactTo(oversized message id) = %+v, want no reaction tallied", got)
+	}
+	if _, tracked := c.reactions["conv/"+huge]; tracked {
+		t.Error("an oversized message id was tracked in c.reactions")
+	}
+}
+
 // TestReactTo_EvictsTheOldestMessageOnceFull confirms a sender naming
 // an endless stream of message ids cannot grow c.reactions forever: once
 // maxReactionTargets distinct messages are tracked, the oldest one's own
