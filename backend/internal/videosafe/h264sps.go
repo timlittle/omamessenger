@@ -206,37 +206,56 @@ func parseSPSFields(nal []byte) (width, height int, spsID uint32, ok bool) {
 
 	r := &bitReader{data: removeEmulationPrevention(nal[1:])}
 
-	profileIDC, ok := r.u(8)
+	profileIDC, levelIDC, spsID, ok := readSPSHeader(r)
+	if !ok {
+		return 0, 0, 0, false
+	}
+
+	width, height, ok = parseSPSBody(r, profileIDC, levelIDC)
+	return width, height, spsID, ok
+}
+
+// readSPSHeader reads an SPS's own leading fields, before any
+// profile-dependent branching: profile_idc, the constraint-flags and
+// reserved byte (never used for anything), level_idc, and
+// seq_parameter_set_id.
+func readSPSHeader(r *bitReader) (profileIDC, levelIDC, spsID uint32, ok bool) {
+	profileIDC, ok = r.u(8)
 	if !ok {
 		return 0, 0, 0, false
 	}
 	if _, ok = r.u(8); !ok { // constraint flags + reserved
 		return 0, 0, 0, false
 	}
-	levelIDC, ok := r.u(8)
+	levelIDC, ok = r.u(8)
 	if !ok {
 		return 0, 0, 0, false
 	}
 	spsID, ok = r.ue() // seq_parameter_set_id
-	if !ok {
-		return 0, 0, 0, false
-	}
+	return profileIDC, levelIDC, spsID, ok
+}
 
+// parseSPSBody reads everything in an SPS after its own header
+// fields - chroma format and bit depth, every field skipToPicSize
+// finds, and finally the coded and cropped picture size - and applies
+// every bound h264BoundsOK checks against profileIDC's chroma fields
+// and levelIDC.
+func parseSPSBody(r *bitReader, profileIDC, levelIDC uint32) (width, height int, ok bool) {
 	chromaArrayType, eightBit, ok := chromaArrayTypeOf(r, profileIDC)
 	if !ok || chromaArrayType != 1 || !eightBit {
-		return 0, 0, 0, false
+		return 0, 0, false
 	}
 
 	maxNumRefFrames, ok := skipToPicSize(r)
 	if !ok {
-		return 0, 0, 0, false
+		return 0, 0, false
 	}
 
 	codedWidth, codedHeight, width, height, ok := picSizeFromSPS(r, chromaArrayType)
 	if !ok || !h264BoundsOK(levelIDC, codedWidth, codedHeight, maxNumRefFrames) {
-		return 0, 0, 0, false
+		return 0, 0, false
 	}
-	return width, height, spsID, true
+	return width, height, true
 }
 
 // h264BoundsOK reports whether a coded frame size of codedWidth by
@@ -424,39 +443,63 @@ func picSizeFromSPS(r *bitReader, chromaArrayType uint32) (codedWidth, codedHeig
 	if !ok {
 		return 0, 0, 0, 0, false
 	}
-	frameMbsOnlyFlag, ok := r.u(1)
+	frameMbsOnlyFlag, ok := readFrameMbsFields(r)
 	if !ok {
-		return 0, 0, 0, 0, false
-	}
-	if frameMbsOnlyFlag == 0 {
-		if _, ok = r.u(1); !ok { // mb_adaptive_frame_field_flag
-			return 0, 0, 0, 0, false
-		}
-	}
-	if _, ok = r.u(1); !ok { // direct_8x8_inference_flag
 		return 0, 0, 0, 0, false
 	}
 
 	codedWidth = int(picWidthInMbsMinus1+1) * 16
 	codedHeight = int((2-frameMbsOnlyFlag)*(picHeightInMapUnitsMinus1+1)) * 16
 
-	cropLeft, cropRight, cropTop, cropBottom, ok := frameCrop(r)
+	width, height, ok = croppedPicSize(r, codedWidth, codedHeight, chromaArrayType, frameMbsOnlyFlag)
 	if !ok {
 		return 0, 0, 0, 0, false
+	}
+	return codedWidth, codedHeight, width, height, true
+}
+
+// readFrameMbsFields reads frame_mbs_only_flag and, only when it is
+// clear, the mb_adaptive_frame_field_flag bit right after it, then
+// direct_8x8_inference_flag either way - the fields between the
+// picture-size fields and any frame cropping.
+func readFrameMbsFields(r *bitReader) (frameMbsOnlyFlag uint32, ok bool) {
+	frameMbsOnlyFlag, ok = r.u(1)
+	if !ok {
+		return 0, false
+	}
+	if frameMbsOnlyFlag == 0 {
+		if _, ok = r.u(1); !ok { // mb_adaptive_frame_field_flag
+			return 0, false
+		}
+	}
+	if _, ok = r.u(1); !ok { // direct_8x8_inference_flag
+		return 0, false
+	}
+	return frameMbsOnlyFlag, true
+}
+
+// croppedPicSize reads frame cropping and returns the cropped width
+// and height, refusing outright once a crop removes maxCropSlack
+// pixels or more from either axis: see picSizeFromSPS's own doc
+// comment for why.
+func croppedPicSize(r *bitReader, codedWidth, codedHeight int, chromaArrayType, frameMbsOnlyFlag uint32) (width, height int, ok bool) {
+	cropLeft, cropRight, cropTop, cropBottom, ok := frameCrop(r)
+	if !ok {
+		return 0, 0, false
 	}
 
 	cropUnitX, cropUnitY := frameCropUnits(chromaArrayType, frameMbsOnlyFlag)
 	width = codedWidth - int(cropUnitX*(cropLeft+cropRight))
 	height = codedHeight - int(cropUnitY*(cropTop+cropBottom))
 	if width <= 0 || height <= 0 {
-		return 0, 0, 0, 0, false
+		return 0, 0, false
 	}
 
 	maxVerticalSlack := maxCropSlack * int(2-frameMbsOnlyFlag)
 	if codedWidth-width >= maxCropSlack || codedHeight-height >= maxVerticalSlack {
-		return 0, 0, 0, 0, false
+		return 0, 0, false
 	}
-	return codedWidth, codedHeight, width, height, true
+	return width, height, true
 }
 
 // frameCrop reads frame_cropping_flag and, when set, the four crop
