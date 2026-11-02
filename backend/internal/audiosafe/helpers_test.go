@@ -1,12 +1,14 @@
 package audiosafe_test
 
-// helpers_test.go builds minimal, well-formed Ogg/Opus, MP4/M4A and
-// MP3 byte streams for the table and fuzz tests in this package to
-// start from and mutate, the same reasoning videosafe's own
+// helpers_test.go builds minimal, well-formed Ogg/Opus and MP4/M4A
+// byte streams for the table and fuzz tests in this package to start
+// from and mutate, the same reasoning videosafe's own
 // helpers_test.go documents: each builder takes only the handful of
 // fields this package actually reads, so a test can construct
 // exactly the file it wants to check without a real-world sample
-// file checked into the repository.
+// file checked into the repository. mp3_test.go keeps its own small
+// fixture builders, since MP3 is refused outright and no longer
+// needs more than a handful of bytes shaped like one.
 
 import (
 	"encoding/binary"
@@ -334,145 +336,4 @@ func mp4Box(boxType string, body []byte) []byte {
 	copy(buf[4:8], boxType)
 	copy(buf[8:], body)
 	return buf
-}
-
-// mp3Fixture returns a well-formed constant-bitrate MPEG-1 Layer III
-// stream: frameCount frames at bitrateKbps/sampleRateHz, each frame's
-// body zero-filled past its own 4-byte header, which is all this
-// package ever reads.
-func mp3Fixture(bitrateKbps, sampleRateHz, frameCount int) []byte {
-	var out []byte
-	for i := 0; i < frameCount; i++ {
-		out = append(out, mp3Frame(bitrateKbps, sampleRateHz)...)
-	}
-	return out
-}
-
-// mp3Frame builds one MPEG-1 Layer III frame header plus a zero-filled
-// body of exactly its own declared length (no padding bit set).
-func mp3Frame(bitrateKbps, sampleRateHz int) []byte {
-	bitrateIndex := mp3IndexForBitrate(bitrateKbps)
-	sampleRateIndex := mp3IndexForSampleRate(sampleRateHz)
-
-	hdr := make([]byte, 4)
-	hdr[0] = 0xFF
-	hdr[1] = 0xFB // sync (3 more bits) + MPEG-1 (11) + Layer III (01)
-	hdr[2] = bitrateIndex<<4 | sampleRateIndex<<2
-	hdr[3] = 0x00
-
-	frameLen := 144 * bitrateKbps * 1000 / sampleRateHz
-	body := make([]byte, frameLen-4)
-	return append(hdr, body...)
-}
-
-// mp3IndexForBitrate reverses mp3BitrateKbps's own table for the
-// handful of values this package's fixtures use.
-func mp3IndexForBitrate(kbps int) byte {
-	table := map[int]byte{32: 1, 40: 2, 48: 3, 56: 4, 64: 5, 80: 6, 96: 7, 112: 8, 128: 9, 160: 10, 192: 11, 224: 12, 256: 13, 320: 14}
-	return table[kbps]
-}
-
-// mp3IndexForSampleRate reverses mp3SampleRateHz's own table.
-func mp3IndexForSampleRate(hz int) byte {
-	table := map[int]byte{44_100: 0, 48_000: 1, 32_000: 2}
-	return table[hz]
-}
-
-// id3v2Tag builds a minimal ID3v2 tag header, with bodyLen zero
-// bytes following it: this package's own mp3HasForbiddenTag only ever
-// looks for the tag's own "ID3" signature, never its declared size or
-// frame structure, so the zero bytes are only there to give the tag a
-// plausible, non-empty body.
-func id3v2Tag(bodyLen int) []byte {
-	hdr := make([]byte, 10)
-	copy(hdr[0:3], "ID3")
-	hdr[3], hdr[4] = 3, 0 // version 2.3.0
-	size := synchsafeEncode(bodyLen)
-	copy(hdr[6:10], size)
-	return append(hdr, make([]byte, bodyLen)...)
-}
-
-// id3v2TagWithFrames builds a complete ID3v2 tag of the given version
-// (2, 3 or 4), its own declared size computed from the frames it
-// carries, with no padding beyond their own bytes.
-func id3v2TagWithFrames(version byte, frames ...[]byte) []byte {
-	var body []byte
-	for _, f := range frames {
-		body = append(body, f...)
-	}
-
-	hdr := make([]byte, 10)
-	copy(hdr[0:3], "ID3")
-	hdr[3], hdr[4] = version, 0
-	copy(hdr[6:10], synchsafeEncode(len(body)))
-	return append(hdr, body...)
-}
-
-// id3v2Frame builds one ID3v2 frame: frameID (3 bytes for version 2,
-// 4 bytes for version 3 or 4), its own declared size (plain
-// big-endian for version 2 or 3, synchsafe for version 4) and body.
-// Version 3 and 4 frames get a 2-byte all-zero flags field; version 2
-// frames have none.
-func id3v2Frame(version byte, frameID string, body []byte) []byte {
-	idLen := 3
-	if version >= 3 {
-		idLen = 4
-	}
-	id := make([]byte, idLen)
-	copy(id, frameID)
-
-	var sizeField []byte
-	switch version {
-	case 4:
-		sizeField = synchsafeEncode(len(body))
-	case 3:
-		sizeField = []byte{
-			byte(len(body) >> 24), byte(len(body) >> 16),
-			byte(len(body) >> 8), byte(len(body)),
-		}
-	default: // version 2
-		sizeField = []byte{byte(len(body) >> 16), byte(len(body) >> 8), byte(len(body))}
-	}
-
-	frame := append(append([]byte{}, id...), sizeField...)
-	if version >= 3 {
-		frame = append(frame, 0, 0) // frame flags
-	}
-	return append(frame, body...)
-}
-
-// synchsafeEncode encodes n as a 4-byte ID3v2 synchsafe size field.
-func synchsafeEncode(n int) []byte {
-	return []byte{
-		byte((n >> 21) & 0x7F),
-		byte((n >> 14) & 0x7F),
-		byte((n >> 7) & 0x7F),
-		byte(n & 0x7F),
-	}
-}
-
-// id3v1Tag builds a complete, fixed 128-byte ID3v1 trailer: the
-// "TAG" signature this package never treats as forbidden, followed by
-// zeroed title/artist/album/year/comment/genre fields - a real one's
-// shape, but this package never reads any of it, only confirms the
-// file does not also carry one of mp3ForbiddenTagMarkers.
-func id3v1Tag() []byte {
-	tag := make([]byte, 128)
-	copy(tag[0:3], "TAG")
-	return tag
-}
-
-// apeTag builds a minimal APE tag: just its own "APETAGEX" signature,
-// the one byte sequence mp3HasForbiddenTag looks for - a real APE tag
-// carries a version, size and item count after it, none of which this
-// package reads.
-func apeTag() []byte {
-	return []byte("APETAGEX")
-}
-
-// lyrics3Tag builds a minimal Lyrics3 tag: just its own "LYRICSBEGIN"
-// opening marker, shared by both Lyrics3 v1 and v2 and the one byte
-// sequence mp3HasForbiddenTag looks for.
-func lyrics3Tag() []byte {
-	return []byte("LYRICSBEGIN")
 }

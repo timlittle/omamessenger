@@ -240,12 +240,14 @@ func VideoPlayable(ctx context.Context, path string) (bool, error) {
 // FetchMedia has already written to disk unchanged, is safe to hand
 // to the UI's own in-window audio player at all: its own bytes, read
 // in pure Go without ever shelling out (see audiosafe), describe a
-// single-stream Ogg/Opus, MP4/M4A (AAC or Opus, no video track) or
-// simple constant-bitrate MP3 file within audiosafe's own duration
-// limit. False, with no error, covers every way an audio file fails
-// that check - the sender's own bytes turned out to be something
-// this UI must never be trusted to decode in place - while an error
-// here means path itself could not be read at all.
+// single-stream Ogg/Opus or MP4/M4A (AAC or Opus, no video track)
+// file within audiosafe's own duration limit. MP3 (and other MPEG
+// audio) is never playable in-window; see audiosafe's own package
+// doc comment and docs/decisions.md. False, with no error, covers
+// every way an audio file fails that check - the sender's own bytes
+// turned out to be something this UI must never be trusted to decode
+// in place - while an error here means path itself could not be read
+// at all.
 func AudioPlayable(path string) (bool, error) {
 	playable, err := audiosafe.Validate(path)
 	if err != nil {

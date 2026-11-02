@@ -11,11 +11,15 @@ import (
 )
 
 // errSoundNotPlayable reports that a chosen file's own bytes do not
-// describe one of the formats audiosafe.Validate accepts. Wrapped in
-// ErrInvalidInput, its message is safe to show; it never names the
+// describe one of the formats audiosafe.Validate accepts: Ogg/Opus or
+// M4A/AAC (MP3 is never accepted, however it is tagged - see
+// audiosafe's own package doc comment and docs/decisions.md). Wrapped
+// in ErrInvalidInput, its message is safe to show; it never names the
 // file itself (see docs/decisions.md's sign-in hint entry, the same
-// reasoning: a fixed sentence, not an echo of what the user gave).
-var errSoundNotPlayable = fmt.Errorf("%w: that file is not an audio clip this chat can play", ErrInvalidInput)
+// reasoning: a fixed sentence, not an echo of what the user gave), but
+// it does name the formats that do work, so the refusal is actionable
+// rather than just a dead end.
+var errSoundNotPlayable = fmt.Errorf("%w: that file is not a sound this chat can play - try an Ogg/Opus or M4A file", ErrInvalidInput)
 
 // soundKeyConversation is the sound store key a conversation's own
 // custom notification sound is kept under.

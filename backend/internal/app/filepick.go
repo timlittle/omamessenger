@@ -23,9 +23,12 @@ var attachFilters = []portal.Filter{
 // soundFilters are the audio formats the notification sound picker
 // offers; audiosafe itself is the real authority on what actually
 // plays (see notificationsound.go), this only steers the dialog
-// towards the formats that stand a chance.
+// towards the formats that stand a chance. MP3 is deliberately left
+// out: audiosafe never reports an MP3 playable (see its own package
+// doc comment and docs/decisions.md), so offering it here would only
+// invite a pick errSoundNotPlayable always refuses.
 var soundFilters = []portal.Filter{
-	{Name: "Audio files", Globs: []string{"*.wav", "*.ogg", "*.oga", "*.mp3", "*.m4a", "*.aac"}},
+	{Name: "Audio files", Globs: []string{"*.wav", "*.ogg", "*.oga", "*.m4a", "*.aac"}},
 }
 
 // FilePickError reports that no file picker dialog could be shown at

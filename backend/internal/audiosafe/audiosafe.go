@@ -9,17 +9,21 @@
 // Validate reads only the handful of container or frame headers each
 // supported format needs, through bounded, absolute-offset reads
 // (see cursor), and never shells out or decodes a single audio
-// sample. Three formats are accepted: Ogg carrying a single Opus
+// sample. Two formats are accepted: Ogg carrying a single Opus
 // stream (identified by its own "OpusHead" packet, never a sender's
-// file name or mime type), MP4/M4A carrying a single AAC or Opus
-// audio track and no video track, and MPEG-1 Layer III (MP3) in the
-// simple, constant-bitrate case a frame header's own fields can
-// confirm without walking variable-length frames. Anything else -
-// including a format this package recognizes but cannot validate
-// simply, such as a free-bitrate or multiplexed-stream file - is
-// reported not playable, the same way videosafe and imagesafe report
-// bad input: this is attacker-controlled data, not a program fault,
-// so Validate returns an error only when path itself cannot be read.
+// file name or mime type), and MP4/M4A carrying a single AAC or Opus
+// audio track and no video track. MPEG audio (MP3, MP2 or MP1, with
+// or without a tag of any kind) is always reported not playable: a
+// differential security review found that checking only a frame
+// chain's own opening headers, the only part a constant-bitrate
+// stream can confirm without walking the whole file, left Qt's
+// FFmpeg backend free to demux and decode whatever followed as
+// something else entirely once it reached the real player (see
+// docs/decisions.md). Anything else this package does not recognize
+// at all is reported not playable the same way, the same way
+// videosafe and imagesafe report bad input: this is
+// attacker-controlled data, not a program fault, so Validate returns
+// an error only when path itself cannot be read.
 package audiosafe
 
 import (
@@ -29,10 +33,11 @@ import (
 )
 
 // Validate reports whether path is an audio file this shell may
-// safely hand to QtMultimedia: Ogg/Opus, MP4/M4A with AAC or Opus and
-// no video track, or a simple constant-bitrate MPEG-1 Layer III
-// (MP3) stream - in every case, a single audio stream, no video
-// stream, and a duration of at most 30 minutes.
+// safely hand to QtMultimedia: Ogg/Opus or MP4/M4A with AAC or Opus
+// and no video track - in either case, a single audio stream, no
+// video stream, and a duration of at most 30 minutes. MPEG audio
+// (MP3, MP2 or MP1) is never playable in-window; such a file still
+// opens fine in the user's own player.
 func Validate(path string) (playable bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -61,7 +66,10 @@ func Validate(path string) (playable bool, err error) {
 	case c.readAt(head[:], 0) && isISOBMFF(head[:]):
 		return validateISOBMFFAudio(c), nil
 	default:
-		return validateMP3(c), nil
+		// Everything else, including every shape of MPEG audio
+		// (MP3, MP2, MP1), is never playable in-window (see the
+		// package doc comment and docs/decisions.md).
+		return false, nil
 	}
 }
 

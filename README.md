@@ -84,7 +84,7 @@ Omarchy's own notification popups never play a sound, so OmaMessenger plays its 
 2. **WhatsApp notification sound** / **Telegram notification sound**, a plugin setting for every chat on that service without one of its own.
 3. **Default notification sound**, a plugin setting for everything else.
 
-Each of the two plugin settings accepts a path to a WAV, Ogg or MP3 file, or the special values "default" (inherit the level below) and "none" (silence at and below this level, even if a lower one has a sound); left blank, a plugin setting behaves the same as "default". A muted chat never plays a sound, whatever these settings say. A chosen file is validated before it is ever played; an invalid one is treated as no sound rather than shown as an error. Turning on Omarchy's own do-not-disturb silences this plugin's sound too, checked with a quick, read-only query each time, right before playing.
+Each of the two plugin settings accepts a path to a WAV, Ogg/Opus or M4A file, or the special values "default" (inherit the level below) and "none" (silence at and below this level, even if a lower one has a sound); left blank, a plugin setting behaves the same as "default". MP3 is not accepted, whatever it is tagged with: it is never played in-window, the same as any other unsupported format. A muted chat never plays a sound, whatever these settings say. A chosen file is validated before it is ever played; an invalid one is treated as no sound rather than shown as an error. Turning on Omarchy's own do-not-disturb silences this plugin's sound too, checked with a quick, read-only query each time, right before playing.
 
 ## Data and privacy
 
