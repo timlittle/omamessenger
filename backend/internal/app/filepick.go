@@ -28,7 +28,7 @@ var attachFilters = []portal.Filter{
 // doc comment and docs/decisions.md), so offering it here would only
 // invite a pick errSoundNotPlayable always refuses.
 var soundFilters = []portal.Filter{
-	{Name: "Audio files", Globs: []string{"*.wav", "*.ogg", "*.oga", "*.m4a", "*.aac"}},
+	{Name: "Audio files", Globs: []string{"*.ogg", "*.oga", "*.m4a"}},
 }
 
 // FilePickError reports that no file picker dialog could be shown at
