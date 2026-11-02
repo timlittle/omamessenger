@@ -463,7 +463,9 @@ ShellRoot {
   }
 
   // checkLinkPreview verifies a message with a link preview shows its card
-  // inside the bubble, and one without shows none.
+  // inside the bubble, and one without builds no linkPreview view at all:
+  // its Loader is inactive, not merely hidden, so nothing is left behind
+  // to decode the previous message's thumbnail off-screen.
   function checkLinkPreview(): bool {
     const link = { kind: "link", url: "https://x.io", siteName: "X", title: "A page", description: "About it" };
     delegate.message = { id: "m6", senderId: "s1", senderName: "Alex", text: "see https://x.io", outgoing: false, status: "received", created: root.now, media: JSON.stringify(link) };
@@ -475,14 +477,19 @@ ShellRoot {
     if (bubble.width < card.width) return Check.fail("bubble is narrower than its link preview");
 
     delegate.message = { id: "m7", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "received", created: root.now, media: "" };
-    if (card.visible) return Check.fail("link preview shown for a message without one");
+    if (Check.find(delegate, "linkPreview")) return Check.fail("link preview view still exists for a message without one");
     return true;
   }
 
   // checkPhoto verifies a photo without a caption shows only the photo, at
   // its shape, asks to be downloaded, and shows the download once it is
   // in; its pixel dimensions and file size show underneath, as soon as
-  // the service reports them, with no download needed first.
+  // the service reports them, with no download needed first. It also
+  // verifies that a photo message builds no sticker, video or link
+  // preview view at all - not merely hidden ones - the regression where
+  // every media view was created for every message and decoded a
+  // thumbnail on the shell's own UI thread whether or not it was ever
+  // shown (see docs/decisions.md).
   function checkPhoto(): bool {
     const photo = { kind: "photo", width: 400, height: 200, size: 1024, thumb: "" };
     delegate.message = { id: "m8", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
@@ -492,6 +499,10 @@ ShellRoot {
     if (Check.find(delegate, "body").visible) return Check.fail("the [Photo] label is shown beside the photo");
     if (Math.abs(view.height - view.width / 2) > 1) return Check.fail(`photo is ${view.width}x${view.height}, not at its 2:1 shape`);
     if (root.wanted.indexOf("m8") < 0) return Check.fail("the photo did not ask to be downloaded");
+
+    if (Check.find(delegate, "stickerView")) return Check.fail("a photo message built a stickerView");
+    if (Check.find(delegate, "inlineVideo")) return Check.fail("a photo message built an inlineVideo");
+    if (Check.find(delegate, "linkPreview")) return Check.fail("a photo message built a linkPreview");
 
     const meta = Check.find(delegate, "photoMeta");
     if (!meta.visible || meta.text !== "400 × 200 · 1.0 KB") return Check.fail("photo dimensions and size not shown: " + meta.text);

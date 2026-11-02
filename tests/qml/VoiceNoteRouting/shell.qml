@@ -112,19 +112,20 @@ ShellRoot {
   }
 
   // checkDelegate verifies that exactly one of photoView, fileView and
-  // voiceNotePlayer is visible for delegate, and that it is want.
+  // voiceNotePlayer is built for delegate, and that it is want: the
+  // other two are not merely hidden, they are never created at all, so
+  // none of them ever gets a path to decode that is not its own (see
+  // MessageBubbleContent's per-kind Loaders).
   function checkDelegate(delegate: var, want: string, label: string): bool {
-    const views = { photoView: Check.find(delegate, "photoView"), fileView: Check.find(delegate, "fileView"), voiceNotePlayer: Check.find(delegate, "voiceNotePlayer") };
-    for (const name in views) {
-      const shouldShow = name === want;
-      if (views[name].visible !== shouldShow)
-        return Check.fail(label + ": " + name + ".visible is " + views[name].visible + ", want " + shouldShow);
+    const names = ["photoView", "fileView", "voiceNotePlayer"];
+    for (const name of names) {
+      const view = Check.find(delegate, name);
+      const shouldExist = name === want;
+      if (shouldExist && !view)
+        return Check.fail(label + ": " + name + " was not built");
+      if (!shouldExist && view)
+        return Check.fail(label + ": " + name + " was built although this message is not its kind");
     }
-    // The decode error this guards against came from an invisible
-    // PhotoView still being handed the shared mediaPath; it must stay
-    // unset for anything that is not the photo or video view.
-    if (want !== "photoView" && views.photoView.path !== "")
-      return Check.fail(label + ": the hidden photo view still got a path to decode: " + views.photoView.path);
     return true;
   }
 

@@ -91,6 +91,11 @@ Item {
       // embedded in the message; this never fetches a remote URL.
       source: root.preview.thumb ? "data:image/jpeg;base64," + root.preview.thumb : ""
       fillMode: Image.PreserveAspectCrop
+      // Decodes off the UI thread: without this, Qt decoded the
+      // progressive JPEG thumbnail synchronously on the shell's own
+      // thread, which froze the desktop for a batch of heavy-but-
+      // within-limits thumbnails (see docs/decisions.md).
+      asynchronous: true
       // Fit inside this thumbnail's own fixed box (see PhotoView.qml's
       // own sourceSize for why the box alone is not enough). A link
       // preview carries no width or height of its own - unlike a

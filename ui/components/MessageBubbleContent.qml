@@ -157,49 +157,75 @@ Column {
     text: Format.longestLine(body.caption)
   }
 
-  LinkPreview {
-    objectName: "linkPreview"
-    width: Math.min(implicitWidth, root.maxTextWidth)
-    visible: root._mediaKind === "link"
-    preview: root.media ? root.media : ({})
-    // The sender sets a preview's URL apart from the text the bubble
-    // shows, so a card whose URL that text never shows asks first.
-    onOpened: url => root.linkOpenRequested(url, Links.previewDisplayText(url, root.message ? root.message.text : "", root.media ? root.media.title : ""))
+  // Only the one view matching _mediaKind is ever created, each inside
+  // its own Loader gated on that kind: an inactive Loader holds no item
+  // at all, so a message's media never reaches a view it does not
+  // belong to - not even as a hidden sibling. That used to let a
+  // never-shown Image decode a thumbnail on the shell's own UI thread
+  // (see docs/decisions.md): the fix is to stop that view existing at
+  // all for a message of a different kind, not merely to hide it.
+  Loader {
+    objectName: "linkPreviewLoader"
+    active: root._mediaKind === "link"
+    visible: active
+    sourceComponent: Component {
+      LinkPreview {
+        objectName: "linkPreview"
+        width: Math.min(implicitWidth, root.maxTextWidth)
+        preview: root.media ? root.media : ({})
+        // The sender sets a preview's URL apart from the text the
+        // bubble shows, so a card whose URL that text never shows
+        // asks first.
+        onOpened: url => root.linkOpenRequested(url, Links.previewDisplayText(url, root.message ? root.message.text : "", root.media ? root.media.title : ""))
+      }
+    }
   }
 
-  PhotoView {
-    objectName: "photoView"
-    maxWidth: root.maxTextWidth
-    width: implicitWidth
-    height: implicitHeight
-    visible: root._mediaKind === "photo"
-    photo: root.media ? root.media : ({})
-    path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
-    failed: visible && !!(root.message && root.message.mediaFailed)
-    failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
-    onWanted: root.mediaWanted()
-    onOpened: root.mediaOpen()
+  Loader {
+    objectName: "photoViewLoader"
+    active: root._mediaKind === "photo"
+    visible: active
+    sourceComponent: Component {
+      PhotoView {
+        objectName: "photoView"
+        maxWidth: root.maxTextWidth
+        width: implicitWidth
+        height: implicitHeight
+        photo: root.media ? root.media : ({})
+        path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
+        failed: !!(root.message && root.message.mediaFailed)
+        failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
+        onWanted: root.mediaWanted()
+        onOpened: root.mediaOpen()
+      }
+    }
   }
 
-  InlineVideo {
-    objectName: "inlineVideo"
-    maxWidth: root.maxTextWidth
-    width: implicitWidth
-    height: implicitHeight
-    visible: root._mediaKind === "video"
-    video: root.media ? root.media : ({})
-    path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
-    decodeAs: visible && root.message && root.message.mediaDecodeAs ? root.message.mediaDecodeAs : ""
-    playable: visible && !!root.message && !!root.message.mediaPlayable
-    failed: visible && !!(root.message && root.message.mediaFailed)
-    available: root.videoPlayback.available
-    playing: visible && !!root.message && root.videoPlayback.playingId === root.message.id
-    muted: root.videoPlayback.muted
-    windowActive: root.windowActive
-    onOpened: root.mediaOpen()
-    onToggled: root.videoToggled()
-    onMuteToggled: root.videoMuteToggled()
-    onExpandRequested: root.mediaOpen()
+  Loader {
+    objectName: "inlineVideoLoader"
+    active: root._mediaKind === "video"
+    visible: active
+    sourceComponent: Component {
+      InlineVideo {
+        objectName: "inlineVideo"
+        maxWidth: root.maxTextWidth
+        width: implicitWidth
+        height: implicitHeight
+        video: root.media ? root.media : ({})
+        path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
+        decodeAs: root.message && root.message.mediaDecodeAs ? root.message.mediaDecodeAs : ""
+        playable: !!root.message && !!root.message.mediaPlayable
+        failed: !!(root.message && root.message.mediaFailed)
+        available: root.videoPlayback.available
+        playing: !!root.message && root.videoPlayback.playingId === root.message.id
+        muted: root.videoPlayback.muted
+        windowActive: root.windowActive
+        onOpened: root.mediaOpen()
+        onToggled: root.videoToggled()
+        onMuteToggled: root.videoMuteToggled()
+        onExpandRequested: root.mediaOpen()
+      }
+    }
   }
 
   Text {
@@ -214,52 +240,76 @@ Column {
     font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
 
-  FileView {
-    objectName: "fileView"
-    width: Math.min(implicitWidth, root.maxTextWidth)
-    visible: root._mediaKind === "file"
-    file: root.media ? root.media : ({})
-    onOpened: root.mediaOpen()
+  Loader {
+    objectName: "fileViewLoader"
+    active: root._mediaKind === "file"
+    visible: active
+    sourceComponent: Component {
+      FileView {
+        objectName: "fileView"
+        width: Math.min(implicitWidth, root.maxTextWidth)
+        file: root.media ? root.media : ({})
+        onOpened: root.mediaOpen()
+      }
+    }
   }
 
-  StickerView {
-    objectName: "stickerView"
-    visible: root._mediaKind === "sticker"
-    sticker: root.media ? root.media : ({})
-    path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
-    failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
-    onWanted: root.mediaWanted()
-    onRetryRequested: root.mediaRetry()
+  Loader {
+    objectName: "stickerViewLoader"
+    active: root._mediaKind === "sticker"
+    visible: active
+    sourceComponent: Component {
+      StickerView {
+        objectName: "stickerView"
+        sticker: root.media ? root.media : ({})
+        path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
+        failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
+        onWanted: root.mediaWanted()
+        onRetryRequested: root.mediaRetry()
+      }
+    }
   }
 
-  PollView {
-    objectName: "pollView"
-    width: Math.min(implicitWidth, root.maxTextWidth)
-    visible: root._mediaKind === "poll"
-    poll: root.media && root.media.poll ? root.media.poll : ({ options: [] })
-    voting: root.pollVote.voting
-    highlightedIndex: root.pollVote.highlightedIndex
-    selectedIds: root.pollVote.selectedIds
-    onVoted: optionIds => root.voted(optionIds)
+  Loader {
+    objectName: "pollViewLoader"
+    active: root._mediaKind === "poll"
+    visible: active
+    sourceComponent: Component {
+      PollView {
+        objectName: "pollView"
+        width: Math.min(implicitWidth, root.maxTextWidth)
+        poll: root.media && root.media.poll ? root.media.poll : ({ options: [] })
+        voting: root.pollVote.voting
+        highlightedIndex: root.pollVote.highlightedIndex
+        selectedIds: root.pollVote.selectedIds
+        onVoted: optionIds => root.voted(optionIds)
+      }
+    }
   }
 
-  VoiceNotePlayer {
-    objectName: "voiceNotePlayer"
-    width: Math.min(implicitWidth, root.maxTextWidth)
+  Loader {
+    objectName: "voiceNotePlayerLoader"
     // An ordinary audio message plays through this same player as a
     // voice note, gated by the same media.fetch playable verdict; only
     // its label differs (see VoiceNotePlayer.qml).
-    visible: root._mediaKind === "voice" || root._mediaKind === "audio"
-    media: root.media ? root.media : ({})
-    path: visible && root.message && root.message.mediaPath ? root.message.mediaPath : ""
-    failed: visible && !!(root.message && root.message.mediaFailed)
-    failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
-    available: root.voiceNotes.available
-    playable: visible && !!root.message && !!root.message.mediaPlayable
-    playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id && root.voiceNotes.playing
-    positionMs: playing ? root.voiceNotes.positionMs : 0
-    durationMs: playing ? root.voiceNotes.durationMs : 0
-    onWanted: root.mediaWanted()
-    onOpened: root.mediaOpen()
+    active: root._mediaKind === "voice" || root._mediaKind === "audio"
+    visible: active
+    sourceComponent: Component {
+      VoiceNotePlayer {
+        objectName: "voiceNotePlayer"
+        width: Math.min(implicitWidth, root.maxTextWidth)
+        media: root.media ? root.media : ({})
+        path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
+        failed: !!(root.message && root.message.mediaFailed)
+        failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
+        available: root.voiceNotes.available
+        playable: !!root.message && !!root.message.mediaPlayable
+        playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id && root.voiceNotes.playing
+        positionMs: playing ? root.voiceNotes.positionMs : 0
+        durationMs: playing ? root.voiceNotes.durationMs : 0
+        onWanted: root.mediaWanted()
+        onOpened: root.mediaOpen()
+      }
+    }
   }
 }
