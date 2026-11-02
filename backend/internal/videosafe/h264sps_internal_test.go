@@ -13,8 +13,6 @@ package videosafe
 // rarely hit on its own.
 
 import (
-	"bytes"
-	"encoding/binary"
 	"testing"
 )
 
@@ -481,109 +479,12 @@ func TestParseSPSDims_TruncatedNeverSucceeds(t *testing.T) {
 	}
 }
 
-// TestAvcSPSDims_StructuralEdgeCases covers avcSPSDims' own search
-// for the sample entry and its avcC child, each checked directly
-// since this is the one package function trackInfo's own call order
-// never reaches with a short-enough stsd or entry to fail here first
-// - sampleEntryCodec already requires a usable stsd before avcSPSDims
-// is ever called.
-func TestAvcSPSDims_StructuralEdgeCases(t *testing.T) {
-	t.Parallel()
-
-	stsdWith := func(entry []byte) []byte {
-		buf := make([]byte, 8, 8+len(entry))
-		binary.BigEndian.PutUint32(buf[4:8], 1) // entry_count
-		buf = append(buf, entry...)
-		return box("stsd", buf)
-	}
-
-	cases := map[string][]byte{
-		"no stsd at all":                                        box("vmhd", []byte{}),
-		"stsd too short to hold a header":                       box("stsd", make([]byte, 4)),
-		"entry shorter than the fixed VisualSampleEntry fields": stsdWith(box("avc1", make([]byte, 10))),
-		"entry with no avcC child":                              stsdWith(box("avc1", make([]byte, 78))),
-	}
-
-	for name, body := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			c := &cursor{f: bytes.NewReader(body), size: int64(len(body)), boxes: maxBoxBudget}
-			if _, _, ok := c.avcSPSDims(0, int64(len(body))); ok {
-				t.Errorf("avcSPSDims() succeeded for %q, want it refused", name)
-			}
-		})
-	}
-}
-
-// TestAvcDecoderConfigSPSDims_EdgeCases covers avcDecoderConfigSPSDims'
-// own bounds checks on the SPS length field, and every one of its
-// reads failing partway through - something no well-formed file can
-// reach, the same reason readfailure_internal_test.go exists for the
-// ISO BMFF and EBML walkers.
-func TestAvcDecoderConfigSPSDims_EdgeCases(t *testing.T) {
-	t.Parallel()
-
-	sps := baselineSPS(640, 480)
-	validAVCC := append([]byte{1, 66, 0, 30, 0xFF, 0x01, byte(len(sps) >> 8), byte(len(sps))}, sps...)
-
-	t.Run("declared SPS length of zero", func(t *testing.T) {
-		t.Parallel()
-
-		buf := []byte{1, 66, 0, 30, 0xFF, 0x01, 0, 0}
-		c := &cursor{f: bytes.NewReader(buf), size: int64(len(buf)), boxes: maxBoxBudget}
-		if _, _, ok := c.avcDecoderConfigSPSDims(span{off: 0, len: int64(len(buf))}); ok {
-			t.Error("avcDecoderConfigSPSDims() succeeded with a declared SPS length of zero, want it refused")
-		}
-	})
-
-	t.Run("declared SPS length past maxSPSLength", func(t *testing.T) {
-		t.Parallel()
-
-		buf := []byte{1, 66, 0, 30, 0xFF, 0x01, 0xFF, 0xFF}
-		c := &cursor{f: bytes.NewReader(buf), size: int64(len(buf)), boxes: maxBoxBudget}
-		if _, _, ok := c.avcDecoderConfigSPSDims(span{off: 0, len: int64(len(buf))}); ok {
-			t.Error("avcDecoderConfigSPSDims() succeeded with a declared SPS length past maxSPSLength, want it refused")
-		}
-	})
-
-	t.Run("declared SPS length past the avcc box's own length", func(t *testing.T) {
-		t.Parallel()
-
-		buf := []byte{1, 66, 0, 30, 0xFF, 0x01, 0, 100} // declares far more than the 8 bytes actually here
-		c := &cursor{f: bytes.NewReader(buf), size: int64(len(buf)), boxes: maxBoxBudget}
-		if _, _, ok := c.avcDecoderConfigSPSDims(span{off: 0, len: int64(len(buf))}); ok {
-			t.Error("avcDecoderConfigSPSDims() succeeded with a declared SPS length past the avcc box, want it refused")
-		}
-	})
-
-	t.Run("fixed header read fails", func(t *testing.T) {
-		t.Parallel()
-
-		c := &cursor{f: &endFailingReaderAt{data: validAVCC, failPast: 4}, size: int64(len(validAVCC)), boxes: maxBoxBudget}
-		if _, _, ok := c.avcDecoderConfigSPSDims(span{off: 0, len: int64(len(validAVCC))}); ok {
-			t.Error("avcDecoderConfigSPSDims() succeeded once its own header read failed, want it refused")
-		}
-	})
-
-	t.Run("SPS length field read fails", func(t *testing.T) {
-		t.Parallel()
-
-		c := &cursor{f: &endFailingReaderAt{data: validAVCC, failPast: 7}, size: int64(len(validAVCC)), boxes: maxBoxBudget}
-		if _, _, ok := c.avcDecoderConfigSPSDims(span{off: 0, len: int64(len(validAVCC))}); ok {
-			t.Error("avcDecoderConfigSPSDims() succeeded once its own SPS-length read failed, want it refused")
-		}
-	})
-
-	t.Run("SPS bytes read fails", func(t *testing.T) {
-		t.Parallel()
-
-		c := &cursor{f: &endFailingReaderAt{data: validAVCC, failPast: int64(len(validAVCC) - 1)}, size: int64(len(validAVCC)), boxes: maxBoxBudget}
-		if _, _, ok := c.avcDecoderConfigSPSDims(span{off: 0, len: int64(len(validAVCC))}); ok {
-			t.Error("avcDecoderConfigSPSDims() succeeded once its own SPS-bytes read failed, want it refused")
-		}
-	})
-}
+// avcSPSDims' and readAVCDecoderConfig's own structural edge cases -
+// a short stsd, a missing avcC, the SPS-length bounds, avcC's own
+// trailing picture-parameter-set list and high-profile extension -
+// are covered directly in avccconfig_internal_test.go, the file that
+// mirrors avccconfig.go, since every one of them is that file's own
+// function, not this one's.
 
 // FuzzParseSPSDims seeds the corpus with the crafted cases an SPS
 // parser must survive without panicking, hanging or reading past its

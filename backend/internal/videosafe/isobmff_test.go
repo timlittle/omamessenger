@@ -243,6 +243,11 @@ func TestValidate_MP4SPSDimensions(t *testing.T) {
 	}
 }
 
+// avcC's own structural edge cases - configurationVersion, the
+// profile/level cross-check, the reserved lengthSizeMinusOne value and
+// trailing data past its picture-parameter-set list - are covered
+// directly in avccconfig_test.go, the file that mirrors avccconfig.go.
+
 // TestValidate_MP4MissingFile covers the one case Validate reports as
 // an actual error: a file that cannot be opened at all.
 func TestValidate_MP4MissingFile(t *testing.T) {
@@ -326,8 +331,12 @@ func TestValidate_MP4MalformedStructure(t *testing.T) {
 // parser must survive without panicking, hanging or reading past its
 // own bounds: a valid file, one with an oversize dimension, one with
 // an unsupported codec, one truncated partway through a box header,
-// and one that is not a video at all. go test's mutation engine takes
-// it from there.
+// one that is not a video at all, and - the exact shapes a security
+// review found readAVCDecoderConfig needed to bound beyond its SPS
+// count and length-prefix width alone - a configurationVersion other
+// than 1, and an otherwise valid avcC carrying unparsed bytes past its
+// own picture-parameter-set list. go test's mutation engine takes it
+// from there.
 func FuzzValidateMP4(f *testing.F) {
 	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000}))
 	f.Add(mp4Fixture(mp4Params{width: 4000, height: 4000, durationUnit: 5000}))
@@ -340,6 +349,12 @@ func FuzzValidateMP4(f *testing.F) {
 	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000, coverArtPlacement: "topLevel"}))
 	f.Add([]byte("not a video file at all"))
 	f.Add([]byte{})
+	f.Add(func() []byte {
+		cfg := append([]byte{}, buildAVCDecoderConfig(1280, 720)...)
+		cfg[0] = 0 // configurationVersion other than 1
+		return buildCustomAVCFixture(1280, 720, cfg)
+	}())
+	f.Add(buildCustomAVCFixture(1280, 720, append(buildAVCDecoderConfig(1280, 720), 0x11, 0x22, 0x33, 0x44)))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := writeFixture(t, "fuzz.mp4", data)

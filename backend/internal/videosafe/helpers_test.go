@@ -301,7 +301,7 @@ func duplicateSPSAVCConfig(width, height int) []byte {
 	spsLen := make([]byte, 2)
 	binary.BigEndian.PutUint16(spsLen, uint16(len(sps)))
 
-	buf := []byte{1, 66, 0, 30, 0xFF, 0x02} // declares two sequence parameter sets
+	buf := []byte{1, sps[1], sps[2], sps[3], 0xFF, 0x02} // declares two sequence parameter sets
 	buf = append(buf, spsLen...)
 	buf = append(buf, sps...)
 	buf = append(buf, spsLen...)
@@ -311,15 +311,35 @@ func duplicateSPSAVCConfig(width, height int) []byte {
 // buildAVCDecoderConfig builds an AVCDecoderConfigurationRecord
 // (avcC's own body) declaring exactly one SPS, from buildAVCSPS, and
 // no picture parameter sets: this package's own avcDecoderConfigSPSDims
-// never reads past the one SPS it requires.
+// never reads past the one SPS it requires. Its own
+// profile/compatibility/level bytes are read straight off the SPS
+// itself (sps[1:4], always literal here since buildAVCSPS never puts
+// an emulation-prevention byte this early) rather than fixed, since
+// Validate now requires the two copies to agree (see
+// avcCProfileBytesMatchSPS), and a trailing zero numOfPictureParameterSets
+// byte is always appended, since Validate now reads through avcC's
+// own picture-parameter-set list before accepting the box at all (see
+// avcCTrailingDataAllowed).
 func buildAVCDecoderConfig(width, height int) []byte {
+	return buildAVCDecoderConfigWithLengthSize(width, height, 3)
+}
+
+// buildAVCDecoderConfigWithLengthSize builds an AVCDecoderConfigurationRecord
+// exactly like buildAVCDecoderConfig, but with avcC's own
+// lengthSizeMinusOne field set directly rather than always 3 (4-byte
+// NAL length prefixes): the one way to build a track using a shorter
+// prefix width, the shape the "a sample shaped like avcC itself"
+// exploit (see avcsamples_test.go) specifically needs a 1- or 2-byte
+// prefix to reach.
+func buildAVCDecoderConfigWithLengthSize(width, height, lengthSizeMinusOne int) []byte {
 	sps := buildAVCSPS(width, height)
 
-	buf := []byte{1, 66, 0, 30, 0xFF, 0x01} // version, profile, compat, level and lengthSizeMinusOne, then one declared SPS
+	buf := []byte{1, sps[1], sps[2], sps[3], byte(0xFC | lengthSizeMinusOne), 0x01} // version, profile, compat, level and lengthSizeMinusOne, then one declared SPS
 	spsLen := make([]byte, 2)
 	binary.BigEndian.PutUint16(spsLen, uint16(len(sps)))
 	buf = append(buf, spsLen...)
-	return append(buf, sps...)
+	buf = append(buf, sps...)
+	return append(buf, 0x00) // numOfPictureParameterSets: none
 }
 
 // buildAVCSPS builds a single baseline-profile H.264 sequence
