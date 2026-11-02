@@ -9,8 +9,12 @@ package transcode_test
 // output name, timeout and size cap.
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/sandbox"
 	"github.com/timlittle/omamessenger/backend/internal/transcode"
@@ -102,6 +106,29 @@ func TestVideo_OutputEmpty(t *testing.T) {
 	}
 }
 
+func TestVideo_OutputIsASymlink(t *testing.T) {
+	t.Parallel()
+
+	// A compromised or misbehaving ffmpeg leaving a symlink where the
+	// sandbox told it to write its real output must never be treated
+	// as the output itself: whatever the link points at - here, a
+	// file the test controls, but it could as easily be /etc/shadow -
+	// would otherwise reach whatever this helper does next with "the
+	// transcoded file" (serve it, copy it, open it).
+	outside := filepath.Join(t.TempDir(), "not-the-output")
+	if err := os.WriteFile(outside, []byte("not a video"), 0o600); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputSymlinkTo: outside}
+	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
+
+	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	if !errors.Is(err, transcode.ErrFailed) {
+		t.Fatalf("Video() error = %v, want %v", err, transcode.ErrFailed)
+	}
+}
+
 func TestVideo_Succeeds(t *testing.T) {
 	t.Parallel()
 
@@ -121,5 +148,80 @@ func TestVideo_Succeeds(t *testing.T) {
 	}
 	if fake.lastSpec.Input != "/in.mp4" {
 		t.Errorf("Spec.Input = %q, want /in.mp4", fake.lastSpec.Input)
+	}
+}
+
+func TestTranscoder_RunsOneJobAtATime(t *testing.T) {
+	t.Parallel()
+
+	blocking := newBlockingRunner()
+	tr := transcode.NewTranscoder(blocking, "/usr/bin/ffmpeg")
+
+	// First job: starts, reaches Run, and sits there until the test
+	// lets it go.
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+		firstDone <- err
+	}()
+
+	select {
+	case <-blocking.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first job never reached Run")
+	}
+
+	// Second job: a different profile, to prove the slot is shared
+	// across every profile on this Transcoder, not just repeats of
+	// the same one. Its own context ends well before the first job
+	// is let go, so it must never reach Run at all - proving the slot,
+	// not luck, is what is blocking it.
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := tr.Audio(ctx, "/in.mp4", t.TempDir())
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, transcode.ErrTimeout) {
+		t.Fatalf("Audio() error = %v, want %v", err, transcode.ErrTimeout)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("Audio() took %s to report a 100ms context timeout; it is not honouring ctx while waiting for the slot", elapsed)
+	}
+
+	// Letting the first job finish must free the slot for the next
+	// one. blockingRunner writes no output file, so the job itself
+	// still ends in ErrFailed - only that it actually completes
+	// (proving release ran) matters here, not its own outcome.
+	close(blocking.unblock)
+
+	select {
+	case err := <-firstDone:
+		if !errors.Is(err, transcode.ErrFailed) {
+			t.Fatalf("first job's Video() error = %v, want %v", err, transcode.ErrFailed)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("first job never finished after being unblocked")
+	}
+
+	// The same Transcoder, same slot: with unblock already closed,
+	// Run returns immediately now, so a third call only still reports
+	// ErrTimeout, or takes anywhere near as long as acquiring the
+	// slot would have, if release never actually ran. blockingRunner
+	// writes no output file, so the call still fails - just not with
+	// ErrTimeout, and not slowly.
+	ctx3, cancel3 := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel3()
+
+	start = time.Now()
+	_, err = tr.Audio(ctx3, "/in.mp4", t.TempDir())
+	elapsed = time.Since(start)
+
+	if errors.Is(err, transcode.ErrTimeout) {
+		t.Fatalf("Audio() after the first job finished = %v, want anything but ErrTimeout - the slot was not freed", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("Audio() after the first job finished took %s; the slot was not freed promptly", elapsed)
 	}
 }

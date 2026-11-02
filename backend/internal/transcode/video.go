@@ -30,10 +30,11 @@ const videoTimeout = 5 * time.Minute
 const videoDurationSeconds = 600
 
 // videoMaxOutputBytes bounds Video's own output file, checked after
-// ffmpeg exits: generous next to the roughly 100 MiB a full ten-
-// minute clip at this profile's settings should reach, extrapolated
-// from the 10 MiB measured for a 60-second clip at a similar bitrate
-// (see docs/decisions.md), well under the sandbox's own, blunter
+// ffmpeg exits: videoRateControlArgs' own VBV cap bounds the worst
+// case at roughly 194.7 MB (600s * (2500+96) kbit/s / 8) regardless of
+// how adversarial the input is, so this leaves a margin above that -
+// not the looser, typical-content estimate an unbounded CRF encode
+// would otherwise need - well under the sandbox's own, blunter
 // backstop.
 const videoMaxOutputBytes = 200 << 20
 
@@ -62,6 +63,9 @@ func videoArgs() []string {
 		"-pix_fmt", "yuv420p",
 		"-fpsmax", "30",
 		"-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "23",
+	)
+	args = append(args, videoRateControlArgs()...)
+	args = append(args,
 		"-c:a", "aac", "-ac", "2", "-b:a", "96k",
 		"-t", strconv.Itoa(videoDurationSeconds),
 		"-movflags", "+faststart",

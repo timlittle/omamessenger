@@ -36,6 +36,21 @@ func TestCheckOutput(t *testing.T) {
 		}
 	})
 
+	t.Run("symlink", func(t *testing.T) {
+		t.Parallel()
+
+		target := write(t, []byte("0123456789"))
+		link := filepath.Join(t.TempDir(), "out")
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatalf("creating fixture symlink: %v", err)
+		}
+
+		err := checkOutput(link, 100)
+		if !errors.Is(err, ErrFailed) {
+			t.Fatalf("checkOutput() = %v, want %v", err, ErrFailed)
+		}
+	})
+
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
 

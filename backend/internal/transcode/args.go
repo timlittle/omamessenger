@@ -45,6 +45,37 @@ func stripMetadataArgs() []string {
 	return []string{"-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn"}
 }
 
+// maxVideoBitrateKbps and maxVideoBufsizeKbps cap libx264's own CRF
+// encoding at a worst-case bitrate (-maxrate, -bufsize: the VBV
+// constraints x264 enforces by spending extra quantisation rather
+// than ever exceeding them), so Video's and Animation's own CRF
+// setting - which has no bitrate ceiling of its own, and could reach
+// far higher than usual for the highest-motion, least compressible
+// input a sender could construct - can never make either profile's
+// own output approach its own maxOutput cap, however adversarial the
+// input. bufsize is twice maxrate, the common VBV convention: a short
+// window for the encoder to average bursts over, rather than hard-
+// capping every single frame's own size.
+const (
+	maxVideoBitrateKbps = 2500
+	maxVideoBufsizeKbps = 5000
+)
+
+// videoRateControlArgs returns the VBV arguments every libx264
+// profile gives ffmpeg (see maxVideoBitrateKbps). The worst case this
+// cap times a profile's own duration cap could ever produce stays
+// under each profile's own maxOutput: Video's own 600s *
+// (2500+96) kbit/s / 8 ≈ 194.7 MB, under its 200 MiB cap with room to
+// spare; Animation's own 600s * 2500 kbit/s / 8 ≈ 187.5 MB (no audio
+// track) is covered by the same cap, reused rather than given a
+// tighter one of its own (see animation.go).
+func videoRateControlArgs() []string {
+	return []string{
+		"-maxrate", strconv.Itoa(maxVideoBitrateKbps) + "k",
+		"-bufsize", strconv.Itoa(maxVideoBufsizeKbps) + "k",
+	}
+}
+
 // fitWithinFilter returns a scale filter that fits a frame within a
 // max x max box, keeping its aspect ratio, without ever upscaling a
 // smaller input: both of scale's own target dimensions are capped at

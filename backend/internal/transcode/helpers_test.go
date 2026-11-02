@@ -1,12 +1,14 @@
 package transcode_test
 
-// helpers_test.go holds fakeRunner, the one test double every test
-// file in this package needs: a hand-written fake satisfying the
+// helpers_test.go holds the test doubles every test file in this
+// package needs: fakeRunner, a hand-written fake satisfying the
 // small, unexported interface Transcoder.run actually calls, so a
 // profile's own wiring - which output name, timeout and size cap it
 // uses - and its own fixed ffmpeg argument list can both be checked
 // through the public API alone, by inspecting what reached Run,
-// rather than needing access to anything unexported.
+// rather than needing access to anything unexported; and
+// blockingRunner, which holds Run open until a test lets it finish,
+// for proving two jobs on the same Transcoder never run at once.
 
 import (
 	"context"
@@ -14,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/sandbox"
@@ -32,6 +35,13 @@ type fakeRunner struct {
 
 	writeOutputName string
 	writeOutputData []byte
+
+	// writeOutputSymlinkTo, when set instead of writeOutputData, makes
+	// Run create writeOutputName as a symlink to this target rather
+	// than an ordinary file, simulating a compromised or misbehaving
+	// ffmpeg leaving a symlink where the sandbox told it to write its
+	// real output.
+	writeOutputSymlinkTo string
 
 	// lastSpec is the Spec the most recent Run call received, for a
 	// test to check a profile's own argv and paths against.
@@ -53,17 +63,64 @@ func (f *fakeRunner) Run(_ context.Context, spec sandbox.Spec) (sandbox.Result, 
 	}
 
 	if f.writeOutputName != "" {
-		data := f.writeOutputData
-		if data == nil {
-			data = []byte("fake ffmpeg output")
-		}
 		path := filepath.Join(spec.OutputDir, f.writeOutputName)
-		if err := os.WriteFile(path, data, 0o600); err != nil {
-			return sandbox.Result{}, err
+
+		if f.writeOutputSymlinkTo != "" {
+			if err := os.Symlink(f.writeOutputSymlinkTo, path); err != nil {
+				return sandbox.Result{}, err
+			}
+		} else {
+			data := f.writeOutputData
+			if data == nil {
+				data = []byte("fake ffmpeg output")
+			}
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				return sandbox.Result{}, err
+			}
 		}
 	}
 
 	return f.result, nil
+}
+
+// blockingRunner is a runner whose Run does not return until the test
+// sends on unblock, for proving that Transcoder lets only one job run
+// through it at a time. Available always succeeds immediately: only
+// Run's own duration matters to that test. Safe to call Run on more
+// than once (started only ever closes the first time), so the same
+// instance can also be used to check that a slot it held is free
+// again once unblock has already been closed.
+type blockingRunner struct {
+	startedOnce sync.Once
+	// started is closed the first time Run is actually called, so a
+	// test can wait for that rather than racing it with a sleep.
+	started chan struct{}
+	// unblock is read by Run; sending on it (or closing it) lets any
+	// call currently blocked in Run return result.
+	unblock chan struct{}
+	result  sandbox.Result
+}
+
+// newBlockingRunner returns a blockingRunner with its own channels
+// already made, ready to use.
+func newBlockingRunner() *blockingRunner {
+	return &blockingRunner{started: make(chan struct{}), unblock: make(chan struct{})}
+}
+
+// Available always succeeds.
+func (b *blockingRunner) Available(context.Context, string) error { return nil }
+
+// Run marks itself started, then blocks until unblock is sent to or
+// closed, or ctx ends first.
+func (b *blockingRunner) Run(ctx context.Context, _ sandbox.Spec) (sandbox.Result, error) {
+	b.startedOnce.Do(func() { close(b.started) })
+
+	select {
+	case <-b.unblock:
+		return b.result, nil
+	case <-ctx.Done():
+		return sandbox.Result{}, ctx.Err()
+	}
 }
 
 // requireRealTranscoder returns a Transcoder backed by a real

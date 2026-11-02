@@ -36,6 +36,7 @@ func TestVideo_Args(t *testing.T) {
 		"-pix_fmt", "yuv420p",
 		"-fpsmax", "30",
 		"-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "23",
+		"-maxrate", "2500k", "-bufsize", "5000k",
 		"-c:a", "aac", "-ac", "2", "-b:a", "96k",
 		"-t", "600",
 		"-movflags", "+faststart",

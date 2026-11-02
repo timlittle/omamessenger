@@ -16,6 +16,15 @@
 // corrupt file, an unsupported stream, ffmpeg itself failing). A
 // caller tells them apart with errors.Is; none of the four ever
 // carries ffmpeg's own stderr text, which this package never exposes.
+//
+// By the time Run returns, the sandboxed ffmpeg is not merely
+// finished but gone: bwrap gives it its own PID namespace, and a PID
+// namespace is torn down - every process in it killed - the moment
+// its own pid 1 (bwrap's own internal fork, see sandbox's own package
+// doc comment) exits, which is what Run's own wait is blocked on.
+// checkOutput's own Lstat check, run after Run has already returned,
+// is therefore never racing a still-live process that could still
+// change what it finds.
 package transcode
 
 import (
@@ -63,12 +72,44 @@ var _ runner = (*sandbox.Runner)(nil)
 type Transcoder struct {
 	runner runner
 	ffmpeg string // the absolute path to the system ffmpeg every profile runs
+
+	// slot is a buffered channel of 1, holding one token: acquire
+	// takes it, release puts it back, so only one job runs through
+	// this Transcoder's own runner at a time. See acquire's own doc
+	// comment for why.
+	slot chan struct{}
 }
 
 // NewTranscoder returns a Transcoder that runs ffmpegPath - the
 // system's own ffmpeg, resolved by the caller - through r.
 func NewTranscoder(r runner, ffmpegPath string) *Transcoder {
-	return &Transcoder{runner: r, ffmpeg: ffmpegPath}
+	return &Transcoder{runner: r, ffmpeg: ffmpegPath, slot: make(chan struct{}, 1)}
+}
+
+// acquire reserves this Transcoder's one job slot, waiting until it
+// is free or ctx ends first. Every profile shares one slot because a
+// single job already runs ffmpeg at this machine's own full tilt for
+// its own two threads, and because sandbox's own resource limits (see
+// docs/decisions.md) are sized for exactly one job at a time, not
+// several sharing them.
+//
+// A caller whose ctx ends while still waiting gets ErrTimeout: the
+// same sentinel a job that ran out of time once it actually started
+// already returns, since both mean the same thing to a caller - this
+// call did not finish within the time it was given - and a caller
+// checking with errors.Is need not tell the two apart.
+func (t *Transcoder) acquire(ctx context.Context) error {
+	select {
+	case t.slot <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("%w: waiting for a transcode slot: %w", ErrTimeout, ctx.Err())
+	}
+}
+
+// release frees the job slot acquire reserved.
+func (t *Transcoder) release() {
+	<-t.slot
 }
 
 // profile names one fixed ffmpeg invocation this package knows how to
@@ -83,12 +124,17 @@ type profile struct {
 	maxOutput  int64
 }
 
-// run is every profile method's own shared body: confirm the sandbox
-// can run ffmpeg at all, give the job a fresh directory under outDir
-// and its own wall-clock budget, run it, and turn whatever happened
-// into the one output file's path or one of this package's own
-// sentinel errors.
+// run is every profile method's own shared body: reserve this
+// Transcoder's one job slot, confirm the sandbox can run ffmpeg at
+// all, give the job a fresh directory under outDir and its own
+// wall-clock budget, run it, and turn whatever happened into the one
+// output file's path or one of this package's own sentinel errors.
 func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (string, error) {
+	if err := t.acquire(ctx); err != nil {
+		return "", err
+	}
+	defer t.release()
+
 	if err := t.runner.Available(ctx, t.ffmpeg); err != nil {
 		return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
@@ -134,13 +180,25 @@ func resultError(result sandbox.Result) error {
 	}
 }
 
-// checkOutput confirms path exists, is not empty and is no larger
-// than max: ffmpeg reporting success is not, on its own, proof it
-// actually wrote a usable file.
+// checkOutput confirms path exists, is a regular file - never a
+// symlink - and is not empty and no larger than max: ffmpeg reporting
+// success is not, on its own, proof it actually wrote a usable file.
+//
+// Lstat, not Stat: a compromised or merely misbehaving ffmpeg could
+// leave path as a symlink to any file on the host instead of writing
+// one itself, and whatever later opens, copies or serves "the
+// transcoded output" would otherwise follow it there. This is not a
+// race to close, only a lie to catch: the sandboxed job is a dead PID
+// namespace by the time Run returns (see package doc comment), so
+// there is no process left that could still be swapping the target
+// between this check and whatever reads the file next.
 func checkOutput(path string, max int64) error {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("%w: output missing: %w", ErrFailed, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: output is not a regular file", ErrFailed)
 	}
 	if info.Size() == 0 {
 		return fmt.Errorf("%w: output is empty", ErrFailed)

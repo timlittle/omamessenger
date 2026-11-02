@@ -22,12 +22,12 @@ const animationTimeout = videoTimeout
 // is a video by another name, so the same ten-minute cap applies.
 const animationDurationSeconds = videoDurationSeconds
 
-// animationMaxOutputBytes bounds Animation's own output file: smaller
-// than videoMaxOutputBytes, since dropping the audio stream a video
-// of the same length and dimensions would otherwise carry removes a
-// meaningful share of it, while a real GIF or "GIF video" is short
-// enough in practice to stay well inside either cap.
-const animationMaxOutputBytes = 100 << 20
+// animationMaxOutputBytes reuses videoMaxOutputBytes: Animation
+// shares Video's own VBV-capped video settings exactly, minus audio,
+// so its own worst case (600s * 2500 kbit/s / 8 ≈ 187.5 MB - see
+// videoRateControlArgs) is already lower than Video's own, and does
+// not need a tighter cap of its own.
+const animationMaxOutputBytes = videoMaxOutputBytes
 
 // Animation re-encodes in - an animated GIF, WebP, or a "GIF video" -
 // into a silent MP4 at outDir, with the same scaling, frame-rate and
@@ -54,6 +54,9 @@ func animationArgs() []string {
 		"-pix_fmt", "yuv420p",
 		"-fpsmax", "30",
 		"-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "23",
+	)
+	args = append(args, videoRateControlArgs()...)
+	args = append(args,
 		"-t", strconv.Itoa(animationDurationSeconds),
 		"-movflags", "+faststart",
 		"-f", "mp4",
