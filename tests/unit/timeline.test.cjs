@@ -463,25 +463,28 @@ test('mediaIdentityChanged is false for a poll update that only changes tallies,
 
 test('windowNewest leaves a list at or under the cap alone', () => {
   const rows = [{ id: 'a' }, { id: 'b' }];
-  assert.strictEqual(Timeline.windowNewest(rows, 2, ''), rows);
-  assert.strictEqual(Timeline.windowNewest(rows, 5, ''), rows);
+  assert.strictEqual(Timeline.windowNewest(rows, 2), rows);
+  assert.strictEqual(Timeline.windowNewest(rows, 5), rows);
 });
 
 test('windowNewest drops the oldest rows, at the back of a newest-first list, past the cap', () => {
   const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
-  const result = Timeline.windowNewest(rows, 2, '');
+  const result = Timeline.windowNewest(rows, 2);
   assert.deepEqual(result.map((r) => r.id), ['a', 'b']);
 });
 
-test('windowNewest never drops the protected id, even past the cap', () => {
+// windowNewest's cap is absolute: an earlier version took a protectId
+// and let it grow the window past cap without bound, which a flood
+// could ride forever since the highlighted message it names never
+// moves on its own (see docs/decisions.md). There is no longer
+// anything for a caller to pass that would do that - the regression
+// this guards is covered end to end by applyUpsert's own flood test
+// below, with a fixed protectId, since that is the real shape the
+// vulnerability took: one upsert call per live message, not a single
+// windowNewest call on an already-built list.
+test('windowNewest drops past the cap regardless of how long any one row has been loaded', () => {
   const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
-  const result = Timeline.windowNewest(rows, 2, 'd');
-  assert.deepEqual(result.map((r) => r.id), ['a', 'b', 'c', 'd']);
-});
-
-test('windowNewest with no protected id loaded behaves as an ordinary cap', () => {
-  const rows = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
-  const result = Timeline.windowNewest(rows, 2, 'not-loaded');
+  const result = Timeline.windowNewest(rows, 2);
   assert.deepEqual(result.map((r) => r.id), ['a', 'b']);
 });
 
@@ -598,13 +601,37 @@ test('applyUpsert evicts the oldest row once a new one pushes past the cap, and 
   assert.ok(result.touched.includes(1), 'expected the new oldest row to be marked touched: ' + JSON.stringify(result.touched));
 });
 
-test('applyUpsert never evicts the protected id even once the cap is reached', () => {
+test('applyUpsert evicts the protected id too, once the cap is reached, and reports it', () => {
+  // An earlier version let protectId (the highlighted message) grow the
+  // window past cap instead of ever evicting it - exactly the
+  // unbounded growth a message flood could exploit, since the
+  // highlight never moves on its own as new messages arrive (see
+  // docs/decisions.md). The cap must hold regardless of protectId.
   const order = [{ id: 'b', created: 20 }, { id: 'a', created: 10 }];
   const index = Timeline.reindex(order);
 
   const result = Timeline.applyUpsert(order, index, { id: 'c', created: 30 }, 2, 'a');
-  assert.strictEqual(result.evicted, 0);
-  assert.deepEqual(result.order.map((r) => r.id), ['c', 'b', 'a']);
+  assert.strictEqual(result.evicted, 1);
+  assert.strictEqual(result.protectIdEvicted, true);
+  assert.deepEqual(result.order.map((r) => r.id), ['c', 'b']);
+});
+
+test('applyUpsert reports protectIdEvicted false while the protected id is still loaded', () => {
+  const order = [{ id: 'b', created: 20 }, { id: 'a', created: 10 }];
+  const index = Timeline.reindex(order);
+
+  const result = Timeline.applyUpsert(order, index, { id: 'c', created: 30 }, 2, 'b');
+  assert.strictEqual(result.evicted, 1);
+  assert.strictEqual(result.protectIdEvicted, false);
+});
+
+test('applyUpsert reports protectIdEvicted false when nothing is protected', () => {
+  const order = [{ id: 'b', created: 20 }, { id: 'a', created: 10 }];
+  const index = Timeline.reindex(order);
+
+  const result = Timeline.applyUpsert(order, index, { id: 'c', created: 30 }, 2, '');
+  assert.strictEqual(result.evicted, 1);
+  assert.strictEqual(result.protectIdEvicted, false);
 });
 
 test('applyRemove drops a loaded row and marks its newer neighbour touched', () => {
@@ -676,4 +703,35 @@ test('applyUpsert handles a flood of 50000 new messages within a generous time b
   assert.strictEqual(order[order.length - 1].id, `m${50000 - Timeline.MAX_LOADED_ROWS}`);
   assert.strictEqual(Object.keys(index).length, Timeline.MAX_LOADED_ROWS);
   assert.strictEqual(index['m49999'], 0);
+});
+
+// Regression: a user's highlight sitting on the very first loaded
+// message must not let a flood grow the timeline without bound. An
+// earlier version passed that message's id as protectId on every
+// upsert and let it keep the window open forever, since the id never
+// changes on its own - this is the shape the real vulnerability took
+// (one upsert per live message, every single one naming the same
+// still-unmoved highlight), not a single oversized windowNewest call.
+// 100,000 is 50x the cap, so a single leftover unbounded-growth path
+// would both blow well past Timeline.MAX_LOADED_ROWS and take long
+// enough to fail the time bound too.
+test('applyUpsert caps a 100000-message flood even while every upsert protects the same, never-moving id', () => {
+  let order = [];
+  let index = {};
+  const protectId = 'm0';
+  const start = Date.now();
+
+  for (let i = 0; i < 100000; i++) {
+    const result = Timeline.applyUpsert(order, index, { id: `m${i}`, created: i }, Timeline.MAX_LOADED_ROWS, protectId);
+    order = result.order;
+    index = result.index;
+    assert.ok(order.length <= Timeline.MAX_LOADED_ROWS, `order grew to ${order.length} rows at insert ${i}, want <= ${Timeline.MAX_LOADED_ROWS}`);
+  }
+
+  const elapsedMs = Date.now() - start;
+  assert.ok(elapsedMs < 16000, `100000 upserts took ${elapsedMs}ms, want well under 16000ms`);
+  assert.strictEqual(order.length, Timeline.MAX_LOADED_ROWS);
+  assert.strictEqual(order[0].id, 'm99999');
+  assert.strictEqual(Object.keys(index).length, Timeline.MAX_LOADED_ROWS);
+  assert.strictEqual(index[protectId], undefined, 'the protected row should have fallen out of the index once the flood aged it past the cap');
 });

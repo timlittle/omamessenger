@@ -128,12 +128,16 @@ Item {
   // history fetched from the service further down. Once inserting would
   // push past Timeline.MAX_LOADED_ROWS, the oldest loaded rows are
   // dropped and hasMore is forced true, since they are still in the
-  // helper's own store and loadOlder can page them back in - except
-  // protectId (the highlighted message, when there is one), which is
-  // never dropped, so a flood can never pull the user's own place out
-  // from under them. See Timeline.mergeRow for how a cached mediaPath
-  // and its verdicts carry over, or do not, across an update.
-  function upsert(message: var, isGroup: bool, protectId: string): void {
+  // helper's own store and loadOlder can page them back in. The cap is
+  // absolute: protectId (the highlighted message, when there is one)
+  // falls out the same way once a flood ages it past the cap - an
+  // earlier version kept it loaded forever instead, which let a flood
+  // grow the model without bound (see docs/decisions.md). Returns true
+  // the one time protectId itself was just dropped, so the caller can
+  // move the highlight off a row that no longer exists. See
+  // Timeline.mergeRow for how a cached mediaPath and its verdicts carry
+  // over, or do not, across an update.
+  function upsert(message: var, isGroup: bool, protectId: string): bool {
     const result = Timeline.applyUpsert(root._order, root._index, message, Timeline.MAX_LOADED_ROWS, protectId);
     root._order = result.order;
     root._index = result.index;
@@ -150,6 +154,7 @@ Item {
     }
 
     root._reannotateTouched(result.touched, isGroup);
+    return !!result.protectIdEvicted;
   }
 
   // remove drops a message from the model by id, doing nothing when it is
@@ -378,7 +383,7 @@ Item {
       shown.add(m.id);
     }
 
-    const windowed = Timeline.windowNewest(order, Timeline.MAX_LOADED_ROWS, "");
+    const windowed = Timeline.windowNewest(order, Timeline.MAX_LOADED_ROWS);
     const evicted = order.length - windowed.length;
     if (evicted > 0) {
       messagesModel.remove(windowed.length, evicted);

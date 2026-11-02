@@ -99,17 +99,21 @@ var MAX_LOADED_ROWS = 2000;
 
 // windowNewest drops rows past cap from the oldest end - the back of a
 // newest-first array - so a flood of live messages, or a long run of
-// loadOlder pages, never grows past a fixed bound. protectId, when it
-// names a row still loaded, is never dropped, and neither is anything
-// newer than it: this is how a window never pulls the highlighted
-// message out from under the user (see qml.md: rows identified by id).
-// rows is never mutated.
-function windowNewest(rows, cap, protectId) {
+// loadOlder pages, never grows past a fixed bound. cap is absolute: an
+// earlier version let a "protected" id (the highlighted message) grow
+// the window past cap so it was never dropped, but highlightedId never
+// moves on its own as new messages arrive, so a flood that just kept
+// posting made protectAt - and the window - grow by one row per
+// message forever, the exact unbounded growth this function exists to
+// prevent (see docs/decisions.md). The highlighted row now falls out
+// like any other once it ages past cap; applyUpsert reports that to its
+// caller (protectIdEvicted) so the highlight can move back to the
+// newest message instead of pointing at a row that is no longer
+// loaded. rows is never mutated.
+function windowNewest(rows, cap) {
   if (rows.length <= cap) return rows;
 
-  const protectAt = protectId ? rows.findIndex((r) => r.id === protectId) : -1;
-  const keep = protectAt === -1 ? cap : Math.max(cap, protectAt + 1);
-  return rows.slice(0, keep);
+  return rows.slice(0, cap);
 }
 
 // reindex builds an id -> position map from order, a newest-first list
@@ -183,13 +187,19 @@ function carryVerifiedDimensions(oldRow, newMedia) {
 // (see MessageTimeline.qml); index maps those same ids to their
 // position in order, so finding an existing message is O(1) instead of
 // a scan. cap bounds how many rows order may hold afterward (see
-// windowNewest); protectId, when loaded, is never evicted to make room.
+// windowNewest), unconditionally: nothing, including protectId, ever
+// grows order past it. protectId names the highlighted message, when
+// there is one, purely so this can tell the caller whether this
+// particular insert is the one that just evicted it (protectIdEvicted);
+// it never changes which rows are kept.
 //
 // Returns update (true for an existing message, false for a new one),
 // at (the row's final position), the new order and index to keep
 // instead of the old ones, evicted (how many rows the cap just
-// dropped, usually 0) and touched (every position whose annotation may
-// now be wrong, for the caller to recompute - see annotateForPair).
+// dropped, usually 0), protectIdEvicted (whether protectId was among
+// them, for the caller to move the highlight off a row that no longer
+// exists) and touched (every position whose annotation may now be
+// wrong, for the caller to recompute - see annotateForPair).
 //
 // order and index are consumed, not copied: a flood calling this once
 // per message would otherwise pay for an extra O(MAX_LOADED_ROWS) copy
@@ -201,20 +211,21 @@ function applyUpsert(order, index, message, cap, protectId) {
   const at = index[message.id];
   if (at !== undefined) {
     order[at] = { id: message.id, created: message.created };
-    return { update: true, at, order, index, evicted: 0, touched: at > 0 ? [at - 1, at] : [at] };
+    return { update: true, at, order, index, evicted: 0, protectIdEvicted: false, touched: at > 0 ? [at - 1, at] : [at] };
   }
 
   const insertAt = insertIndex(order, message);
   order.splice(insertAt, 0, { id: message.id, created: message.created });
 
-  const windowed = windowNewest(order, cap, protectId);
+  const windowed = windowNewest(order, cap);
   const evicted = order.length - windowed.length;
+  const protectIdEvicted = evicted > 0 && !!protectId && order.slice(windowed.length).some((r) => r.id === protectId);
   const nextIndex = reindex(windowed);
 
   const touched = insertAt > 0 ? [insertAt - 1, insertAt] : [insertAt];
   if (evicted > 0 && windowed.length > 0) touched.push(windowed.length - 1);
 
-  return { update: false, at: insertAt, order: windowed, index: nextIndex, evicted, touched };
+  return { update: false, at: insertAt, order: windowed, index: nextIndex, evicted, protectIdEvicted, touched };
 }
 
 // applyRemove decides how dropping id changes a loaded timeline, the

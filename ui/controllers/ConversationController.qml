@@ -697,10 +697,14 @@ Item {
 
   // applyMessage applies a sent, retried or pushed message to the
   // timeline, ignoring one for a conversation that is not the open one.
-  // Reactions and the composer's own send both land here.
+  // Reactions and the composer's own send both land here. A message
+  // flood can age the highlighted row out of the capped timeline (see
+  // MessageTimeline.upsert); when that just happened to this one, the
+  // highlight moves back to the newest loaded message rather than
+  // keep pointing at a row that is no longer there.
   function applyMessage(message: var): void {
     if (message.conversationId !== root.activeId) return;
-    timeline.upsert(message, root.isGroup, highlight.highlightedId);
+    if (timeline.upsert(message, root.isGroup, highlight.highlightedId)) highlight.reset(timeline);
   }
 
   // _removeMessage drops a deleted message from the timeline, ignoring

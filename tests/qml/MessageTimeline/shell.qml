@@ -10,9 +10,11 @@
 // dropped, not applied, once its guard says the conversation it was for
 // is no longer the one open; a flood of live messages past
 // Timeline.MAX_LOADED_ROWS windows out the oldest loaded rows rather than
-// growing without bound; and a protected id (the highlighted message)
-// stays loaded through that same windowing - the wiring this test checks,
-// not windowNewest's own decision, already proven in tests/unit/timeline.test.cjs.
+// growing without bound, even while every one of them names the same
+// highlighted message as protectId - the cap is absolute, so that row
+// falls out too, once the flood ages it past the cap, and upsert's
+// return value says so - the wiring this test checks, not windowNewest's
+// own decision, already proven in tests/unit/timeline.test.cjs.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -217,7 +219,7 @@ ShellRoot {
     if (!root.checkUpsertDropsMediaOnIdentityChange()) return;
     if (!root.checkUpsertKeepsVerifiedDimensionsAcrossUnrelatedUpdate()) return;
     if (!root.checkWindowingCapsLoadedRows()) return;
-    if (!root.checkWindowingProtectsHighlightedId()) return;
+    if (!root.checkWindowingCapIsAbsoluteEvenWithHighlightedId()) return;
     root.checkLoadOlderDropsStaleReply();
   }
 
@@ -251,28 +253,37 @@ ShellRoot {
     return true;
   }
 
-  // checkWindowingProtectsHighlightedId reproduces a user's highlight
-  // sitting on an old message while the chat keeps receiving live
-  // messages in the background: windowing must never evict the
-  // protected id, so the highlight never silently points at a message
-  // that is no longer loaded (qml.md: rows identified by id, never an
-  // index). Returns false, having already called Check.fail, on the
-  // first thing that does not hold.
-  function checkWindowingProtectsHighlightedId(): bool {
+  // checkWindowingCapIsAbsoluteEvenWithHighlightedId reproduces a
+  // user's highlight sitting on an old message while the chat keeps
+  // receiving live messages in the background: an earlier version let
+  // the protected id grow the window past the cap without bound, which
+  // a flood could ride forever since the highlight never moves on its
+  // own. The cap must hold regardless - the model must never grow past
+  // it, however many live messages in a row name the same protectId -
+  // and upsert must report back the one time it is forced to drop the
+  // highlighted row itself, so the caller can move the highlight
+  // somewhere still loaded instead of leaving it pointing at nothing
+  // (qml.md: rows identified by id, never an index). Returns false,
+  // having already called Check.fail, on the first thing that does not
+  // hold.
+  function checkWindowingCapIsAbsoluteEvenWithHighlightedId(): bool {
     const loadedIds = windowTimeline.ids();
     const protect = loadedIds[loadedIds.length - 1]; // the oldest row still loaded, and so the first windowing would otherwise drop
     const cap = Timeline.MAX_LOADED_ROWS;
-    const before = windowTimeline.model.count;
+    let evictedSignalled = 0;
 
     for (let i = 0; i < 50; i++) {
-      windowTimeline.upsert(root.message("p" + i, cap + 1000 + i), false, protect);
+      if (windowTimeline.upsert(root.message("p" + i, cap + 1000 + i), false, protect)) evictedSignalled++;
+      if (windowTimeline.model.count !== cap) {
+        return Check.fail("the cap must hold even while a highlighted row keeps ageing past it: count = " + windowTimeline.model.count + " at i=" + i + ", want " + cap);
+      }
     }
 
-    if (windowTimeline.find(protect) === null) {
-      return Check.fail("windowing evicted the protected id " + protect + " it was told to keep");
+    if (windowTimeline.find(protect) !== null) {
+      return Check.fail("the highlighted row should have fallen out of the capped window like any other once the flood aged it past the cap");
     }
-    if (windowTimeline.model.count !== before + 50) {
-      return Check.fail("protecting the oldest loaded row should keep every one of the 50 new messages too: count = " + windowTimeline.model.count + ", want " + (before + 50));
+    if (evictedSignalled !== 1) {
+      return Check.fail("upsert should report the highlighted row's own eviction exactly once, got " + evictedSignalled);
     }
 
     return true;
