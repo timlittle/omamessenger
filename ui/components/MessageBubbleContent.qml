@@ -213,8 +213,8 @@ Column {
         height: implicitHeight
         video: root.media ? root.media : ({})
         path: root.message && root.message.mediaPath ? root.message.mediaPath : ""
-        decodeAs: root.message && root.message.mediaDecodeAs ? root.message.mediaDecodeAs : ""
-        playable: !!root.message && !!root.message.mediaPlayable
+        playPath: root.message && root.message.mediaPlayPath ? root.message.mediaPlayPath : ""
+        preparing: !!root.message && !!root.message.mediaPreparing
         failed: !!(root.message && root.message.mediaFailed)
         available: root.videoPlayback.available
         playing: !!root.message && root.videoPlayback.playingId === root.message.id
@@ -304,6 +304,7 @@ Column {
         failedReason: root.message && root.message.mediaFailedReason ? root.message.mediaFailedReason : ""
         available: root.voiceNotes.available
         playable: !!root.message && !!root.message.mediaPlayable
+        preparing: !!root.message && !!root.message.mediaPreparing
         playing: root.voiceNotes.available && !!root.message && root.voiceNotes.playingId === root.message.id && root.voiceNotes.playing
         positionMs: playing ? root.voiceNotes.positionMs : 0
         durationMs: playing ? root.voiceNotes.durationMs : 0

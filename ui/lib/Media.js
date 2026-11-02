@@ -51,36 +51,6 @@ function isAnimated(media) {
   return !!media && media.kind === 'video' && !!media.animated;
 }
 
-// decodesAsGif reports whether decodeAs - media.fetch's own result
-// field (see docs/api.md), never a message's fileName or animated
-// flag - says a downloaded video's actual bytes are a genuine,
-// sanitized GIF image that must play through an image engine
-// (AnimatedImage) rather than a video one: both an ordinary video and
-// one a sending service merely marked to play back like a silent,
-// looping "GIF" are actually MP4 bytes, which only a video engine can
-// decode. The helper is the only thing that ever sets this, from the
-// file's own bytes once it is downloaded, which is why nothing here
-// reads the media object itself any more.
-function decodesAsGif(decodeAs) {
-  return decodeAs === 'gif';
-}
-
-// canPlayInline reports whether a downloaded video's bytes may be
-// loaded into the in-window video player at all: a genuine GIF image
-// (decodeAs "gif", see decodesAsGif) always can, through the image
-// engine, regardless of playable; an ordinary video can only once
-// playable is true, media.fetch's own verdict that the helper has
-// validated its container and stream headers (see docs/api.md).
-// Never computed from the video's own fileName or animated flag,
-// both fully sender-controlled, and never true just because playable
-// is true but the bytes turned out to be a GIF image instead - that
-// case is always routed through decodesAsGif's own branch, never this
-// one, since a GIF image is never a valid video container to begin
-// with.
-function canPlayInline(decodeAs, playable) {
-  return decodesAsGif(decodeAs) || !!playable;
-}
-
 // thumbMime names the MIME type thumb's own base64 bytes actually
 // decode as, sniffed from its own leading characters rather than
 // assumed from the message's kind: the helper's own imagesafe.Reencode
@@ -121,22 +91,13 @@ function mimeFor(media) {
   return null;
 }
 
-// copyable reports whether media's full file may actually be copied
-// to the clipboard right now: mimeFor already limits this to a photo
-// or a video, and a video additionally needs the helper's own verdict
-// that it can be decoded at all (see canPlayInline), never only the
-// sender's own claim that the message is a video. The helper's own
-// media.copy independently refuses to put anything on the clipboard
-// that does not match this (see docs/decisions.md); this is what
-// keeps the UI from even offering an action that call would refuse.
-function copyable(media, decodeAs, playable) {
-  if (!mimeFor(media)) {
-    return false;
-  }
-
-  if (media.kind === 'video') {
-    return canPlayInline(decodeAs, playable);
-  }
-
-  return true;
+// copyable reports whether media's full file may sensibly be offered
+// for copying to the clipboard: mimeFor already limits this to a
+// photo or a video, which is as far as the UI needs to decide -
+// whether a video's own play copy can actually be built is the
+// helper's own call, made fresh inside media.copy itself (see
+// docs/decisions.md), not something a cached, possibly stale local
+// verdict should gate here.
+function copyable(media) {
+  return !!mimeFor(media);
 }

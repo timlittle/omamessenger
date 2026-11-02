@@ -334,13 +334,13 @@ ShellRoot {
   function checkUpsertDropsMediaOnIdentityChange(): bool {
     timeline.upsert(Object.assign(root.message("me1", 95), { media: { kind: "voice", fileName: "note.ogg", duration: 5 } }), false);
     timeline.setMediaPath("me1", "/data/omamessenger/media/me1.ogg");
-    timeline.setMediaPlayable("me1", true);
+    timeline.setMediaPlayPath("me1", "/data/omamessenger/media/me1-play.wav");
 
     timeline.upsert(Object.assign(root.message("me1", 95), { edited: true, media: { kind: "photo", fileName: "note.ogg", width: 800, height: 600 } }), false);
     if (timeline.mediaPath("me1") !== "") {
       return Check.fail("upsert kept a stale mediaPath across an edit that changed the media kind: " + timeline.mediaPath("me1"));
     }
-    if (timeline.mediaVerdictsKnown("me1")) {
+    if (timeline.mediaPlayKnown("me1")) {
       return Check.fail("upsert kept stale media verdicts across an edit that changed the media kind");
     }
 

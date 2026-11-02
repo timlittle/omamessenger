@@ -31,19 +31,16 @@ Item {
   property var photo: null
   // path is where the full file was downloaded, or "" until then.
   property string path: ""
-  // decodeAs is the helper's own verdict on how to decode the open
-  // video (see InlineVideo.decodeAs), or "" for a photo.
-  property string decodeAs: ""
+  // videoPlayPath is the open video's in-window play copy, from a
+  // play fetch (see InlineVideo.playPath), or "" for a photo or
+  // before one has answered or succeeded.
+  property string videoPlayPath: ""
+  // videoPreparing is whether the open video's play fetch is
+  // actually in flight right now (see InlineVideo.preparing).
+  property bool videoPreparing: false
   // videoAvailable is false when in-window video playback cannot work
-  // at all on this machine; a real GIF file plays regardless. Read only
-  // while photo is a video.
+  // at all on this machine. Read only while photo is a video.
   property bool videoAvailable: true
-  // videoPlayable is the helper's own verdict on whether an ordinary
-  // video's own container and stream headers are safe to play in
-  // place at all (see InlineVideo.decodeAs's sibling property);
-  // ignored for a real GIF file, which plays regardless. Read only
-  // while photo is a video.
-  property bool videoPlayable: true
   // videoMuted mutes a playing video, shared with every other video in
   // the window.
   property bool videoMuted: true
@@ -159,9 +156,8 @@ Item {
       visible: root._isVideo
       video: root.photo ? root.photo : ({})
       path: root.path
-      decodeAs: root.decodeAs
+      playPath: root.videoPlayPath
       available: root.videoAvailable
-      playable: root.videoPlayable
       muted: root.videoMuted
       windowActive: root.windowActive
       onMuteToggled: root.videoMuteToggled()
@@ -172,6 +168,16 @@ Item {
       anchors.centerIn: parent
       visible: !root._isVideo && root.path === ""
       text: "Loading…"
+      textFormat: Text.PlainText
+      color: Util.alpha(Theme.foreground, 0.7)
+      font { family: Theme.font.family; pixelSize: Theme.font.body }
+    }
+
+    Text {
+      objectName: "preparingLabel"
+      anchors.centerIn: parent
+      visible: root._isVideo && root.videoPreparing && root.videoPlayPath === ""
+      text: "Preparing…"
       textFormat: Text.PlainText
       color: Util.alpha(Theme.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.body }

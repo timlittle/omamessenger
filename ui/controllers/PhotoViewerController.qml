@@ -36,16 +36,15 @@ QtObject {
   // "" until that finishes.
   readonly property string viewerPath: root.viewerId ? root.conversation.timeline.mediaPath(root.viewerId) : ""
 
-  // viewerDecodeAs is the helper's own verdict on how to decode the
-  // open video (see InlineVideo.decodeAs), or "" while the viewer is
-  // closed or showing a photo.
-  readonly property string viewerDecodeAs: root.viewerId ? root.conversation.timeline.mediaDecodeAs(root.viewerId) : ""
+  // viewerPlayPath is the open video's in-window play copy, from a
+  // play fetch (see InlineVideo.qml), or "" while the viewer is
+  // closed, showing a photo, or still waiting on one.
+  readonly property string viewerPlayPath: root.viewerId ? root.conversation.timeline.mediaPlayPath(root.viewerId) : ""
 
-  // viewerPlayable is the helper's own verdict on whether the open
-  // video is safe to play in place at all (see InlineVideo.qml), or
-  // false while the viewer is closed, showing a photo, or still
-  // waiting on media.fetch.
-  readonly property bool viewerPlayable: root.viewerId ? root.conversation.timeline.mediaPlayable(root.viewerId) : false
+  // viewerPreparing is whether the open video's play fetch is
+  // actually in flight right now (see InlineVideo.preparing), for the
+  // viewer to show the same "Preparing…" hint.
+  readonly property bool viewerPreparing: root.viewerId ? root.conversation.timeline.mediaPreparing(root.viewerId) : false
 
   // handles reports whether this controller owns action.
   function handles(action: string): bool {
@@ -64,16 +63,23 @@ QtObject {
     if (handler) handler();
   }
 
-  // show displays id's photo, video or GIF in the in-app viewer,
-  // downloading it first if it is not here yet. A video claims the
-  // single decoding slot every video shares (see VideoController),
-  // taking over from whichever other one, inline or full-size, held
-  // it before: the viewer's own FullVideoPlayer only ever decodes
-  // while this is the selected video.
+  // show displays id's photo or video in the in-app viewer,
+  // downloading it first if it is not here yet - and, for a video,
+  // asking for its in-window play copy too, unless a play fetch has
+  // already answered for it (see MessageTimeline.mediaPlayKnown). A
+  // video claims the single decoding slot every video shares (see
+  // VideoController), taking over from whichever other one, inline or
+  // full-size, held it before: the viewer's own FullVideoPlayer only
+  // ever decodes while this is the selected video.
   function show(id: string): void {
     root.viewerId = id;
-    if (root._isVideo(id) && root.conversation.videoController) root.conversation.videoController.select(id);
-    if (!root.conversation.timeline.mediaPath(id)) root.conversation.downloadMedia(id, true, () => {});
+    if (root._isVideo(id)) {
+      if (root.conversation.videoController) root.conversation.videoController.select(id);
+      if (!root.conversation.timeline.mediaPlayKnown(id)) root.conversation.downloadMedia(id, true, true, () => {});
+      return;
+    }
+
+    if (!root.conversation.timeline.mediaPath(id)) root.conversation.downloadMedia(id, true, false, () => {});
   }
 
   // close hides the in-app photo viewer, giving up the single

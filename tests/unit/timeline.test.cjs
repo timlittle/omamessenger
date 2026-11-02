@@ -292,14 +292,25 @@ test('row keeps a downloaded media path, and starts without one', () => {
   assert.strictEqual(Timeline.row({ id: 'a', mediaPath: '/m/a.jpg' }).mediaPath, '/m/a.jpg');
 });
 
-test('row keeps the helper\'s own decode verdict for a video, and starts without one', () => {
-  assert.strictEqual(Timeline.row({ id: 'a' }).mediaDecodeAs, '');
-  assert.strictEqual(Timeline.row({ id: 'a', mediaDecodeAs: 'gif' }).mediaDecodeAs, 'gif');
+test('row keeps the in-window play copy a play fetch produced, and starts without one', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).mediaPlayPath, '');
+  assert.strictEqual(Timeline.row({ id: 'a', mediaPlayPath: '/m/a-play.mp4' }).mediaPlayPath, '/m/a-play.mp4');
 });
 
-test('row keeps the helper\'s own playable verdict for a video, and starts false', () => {
+test('row\'s mediaPlayable is always just whether mediaPlayPath is set, never a separate verdict', () => {
   assert.strictEqual(Timeline.row({ id: 'a' }).mediaPlayable, false);
-  assert.strictEqual(Timeline.row({ id: 'a', mediaPlayable: true }).mediaPlayable, true);
+  assert.strictEqual(Timeline.row({ id: 'a', mediaPlayPath: '' }).mediaPlayable, false);
+  assert.strictEqual(Timeline.row({ id: 'a', mediaPlayPath: '/m/a-play.mp4' }).mediaPlayable, true);
+});
+
+test('row keeps whether a play fetch has actually answered, and starts false', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).mediaPlayKnown, false);
+  assert.strictEqual(Timeline.row({ id: 'a', mediaPlayKnown: true }).mediaPlayKnown, true);
+});
+
+test('row keeps whether a play fetch is in flight, and starts false', () => {
+  assert.strictEqual(Timeline.row({ id: 'a' }).mediaPreparing, false);
+  assert.strictEqual(Timeline.row({ id: 'a', mediaPreparing: true }).mediaPreparing, true);
 });
 
 test('row keeps the helper\'s own risky verdict, and starts not risky', () => {
@@ -536,10 +547,12 @@ test('reindex of an empty list is an empty map', () => {
 // directly and reused for a flood of updates.
 
 test('mergeRow keeps a resolved mediaPath and verdicts across an unrelated update', () => {
-  const oldRow = { status: 'sent', mediaPath: '/m/a.jpg', mediaPlayable: true, mediaVerdictsKnown: true };
+  const oldRow = { status: 'sent', mediaPath: '/m/a.jpg', mediaPlayPath: '/m/a-play.mp4', mediaPlayable: true, mediaPlayKnown: true };
   const merged = Timeline.mergeRow(oldRow, { id: 'a', status: 'sent', text: 'edited' });
   assert.strictEqual(merged.mediaPath, '/m/a.jpg');
+  assert.strictEqual(merged.mediaPlayPath, '/m/a-play.mp4');
   assert.strictEqual(merged.mediaPlayable, true);
+  assert.strictEqual(merged.mediaPlayKnown, true);
   assert.strictEqual(merged.text, 'edited');
 });
 

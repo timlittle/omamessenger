@@ -103,11 +103,11 @@ ShellRoot {
       { id: "r2", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]", outgoing: false, status: "received", created: -4, media: { kind: "file", fileName: "invoice.pdf" }, mediaPath: "" },
       // v8 and a1 carry a mediaPath already set, the same as a row
       // loaded straight from messages.list would, but never fetched in
-      // this session: neither mediaPlayable nor the rest of media.fetch's
-      // verdicts for them are known yet, for the checks that toggleVideo
-      // and openMedia's voice/audio path must still call media.fetch
-      // before deciding, rather than trust those verdicts' unset
-      // defaults.
+      // this session: no play fetch has answered for them yet, for the
+      // checks that toggleVideo and openMedia's voice/audio path must
+      // still ask media.fetch for a play copy before deciding, rather
+      // than trust a cached mediaPlayPath that was never actually
+      // checked.
       { id: "v8", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: -5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v8-cached.mp4" },
       { id: "a1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Audio]", outgoing: false, status: "received", created: -6, media: { kind: "audio", duration: 9, fileName: "song.mp3" }, mediaPath: "/tmp/a1-cached.ogg" },
       // stale1 is a never-clicked undownloaded voice note, for the
@@ -225,11 +225,15 @@ ShellRoot {
   }
 
   // answerFetchSuccess resolves a held media.fetch call with path and,
-  // for a check that cares, the helper's own playable verdict.
+  // for a check that cares, a play copy: playable true means
+  // media.fetch answered with playPath set (to path itself, standing
+  // in for whatever the transcoder would have produced), false means
+  // no play copy at all, the same as play never being asked for or
+  // the transcode failing.
   function answerFetchSuccess(id, path, playable) {
     const callback = service.pendingFetch[id];
     delete service.pendingFetch[id];
-    callback(null, { path: path, playable: !!playable });
+    callback(null, { path: path, playPath: playable ? path : "" });
   }
 
   // answerFetchSuccessRisky resolves a held media.fetch call with path,
@@ -485,7 +489,7 @@ ShellRoot {
     fakeVideoController.toggleCalls = [];
     controller.videoController = fakeVideoController;
     controller.photoViewer = viewer;
-    controller.timeline.setMediaPlayable("v2", true);
+    controller.timeline.setMediaPlayPath("v2", "/tmp/v2-play.mp4");
 
     controller.openMedia("v2");
 
@@ -642,7 +646,7 @@ ShellRoot {
   // ever reach the row.
   function checkStaleMediaFetchNeverWritesBackAfterAnEditChangesKind(): bool {
     service.fetchRequests = [];
-    controller.downloadMedia("stale1", false, () => {});
+    controller.downloadMedia("stale1", false, true, () => {});
     if (service.fetchRequests.filter((id) => id === "stale1").length !== 1) {
       return Check.fail("downloadMedia did not send exactly one media.fetch for stale1: " + JSON.stringify(service.fetchRequests));
     }
@@ -660,7 +664,7 @@ ShellRoot {
     if (controller.timeline.mediaPath("stale1") !== "") {
       return Check.fail("a media.fetch answer for the message's old voice kind still set a path on the now-photo row: " + controller.timeline.mediaPath("stale1"));
     }
-    if (controller.timeline.mediaDecodeAs("stale1") !== "" || controller.timeline.mediaPlayable("stale1")) {
+    if (controller.timeline.mediaPlayPath("stale1") !== "" || controller.timeline.mediaPlayKnown("stale1")) {
       return Check.fail("a stale media.fetch answer still wrote verdicts for the message's no-longer-current kind");
     }
     if (service.fetchRequests.filter((id) => id === "stale1").length !== 2) {

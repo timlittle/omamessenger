@@ -4,64 +4,59 @@ import qs.Commons
 import "../theme"
 import "../lib/Format.js" as Format
 import "../lib/ImageBounds.js" as ImageBounds
-import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
 
-// A video or GIF in a message, once downloaded. Nothing here ever
-// fetches or decodes without a click: a video the sending service
-// marked as a silent, looping "GIF" (see domain.Media.Animated) shows
-// its thumbnail and a play mark exactly like any other video, never
-// autoplaying on its own - that flag is fully sender-controlled, and
-// the fetch and decode it used to trigger for free is exactly the
-// risk this component now closes. A click downloads the file if it
-// is not here yet, asks the helper to validate it (see playable
-// below), and only then plays it in place: looping and muted for a
-// "GIF" video, with play/pause, a draggable seek bar and a mute
-// button for an ordinary one. Either kind stops decoding - the engine
-// is torn down, not merely paused - once this bubble scrolls out of
-// view, the window loses focus, or another video or the full-size
-// viewer takes over the one decoding slot every video shares (see
-// VideoController), so a long scroll-back through a chat full of
-// videos never keeps more than one of them decoding at once.
+// A video or "GIF video" in a message, once downloaded. Nothing here
+// ever fetches or decodes without a click: a video the sending
+// service marked as a silent, looping "GIF" (see domain.Media.Animated)
+// shows its thumbnail and a play mark exactly like any other video,
+// never autoplaying on its own - that flag is fully sender-controlled,
+// and the fetch and decode it used to trigger for free is exactly the
+// risk this component now closes. A click downloads the file if it is
+// not here yet, asks the helper to prepare its in-window play copy
+// (see playPath below), and only then plays it in place: looping and
+// muted for a "GIF" video, with play/pause, a draggable seek bar and
+// a mute button for an ordinary one. Either kind stops decoding - the
+// engine is torn down, not merely paused - once this bubble scrolls
+// out of view, the window loses focus, or another video or the
+// full-size viewer takes over the one decoding slot every video
+// shares (see VideoController), so a long scroll-back through a chat
+// full of videos never keeps more than one of them decoding at once.
 //
-// A real .gif file (an actual GIF image, confirmed only by the helper's
-// own decodeAs verdict once downloaded - see Media.decodesAsGif, never
-// a filename or the animated flag, both fully sender-controlled)
-// always animates through AnimatedImage, whether or not QtMultimedia is
-// even loaded: its bytes are genuine GIF data, a video engine was never
-// going to decode them. available is false when QtMultimedia itself
-// could not be loaded (see VideoController); playable is false until
-// media.fetch has validated this video's own container and stream
-// headers (see docs/api.md) - ignored for a real GIF file, which
-// plays regardless. Either one being false falls back to opening
-// externally instead of decoding in place, exactly as it did before
-// this component existed.
+// This never loads a sender's own bytes into any engine at all: the
+// one file it ever plays is playPath, the file the helper's own
+// sandboxed transcoder produced (see docs/decisions.md). available is
+// false when QtMultimedia itself could not be loaded (see
+// VideoController); playPath is "" until a play fetch has produced
+// one, which falls back to opening externally instead of decoding in
+// place, exactly as it did before this component existed.
 Item {
   id: root
 
   // video is the message's video media: kind, width, height, duration,
   // thumb, animated and fileName.
   required property var video
-  // path is where the full file was downloaded, or "" until then.
+  // path is where the full file was downloaded, or "" until then:
+  // read only to decide whether anything has even been fetched yet
+  // (see _unavailable) and as the fallback this opens externally once
+  // available or playPath says in-window playback is not an option.
   property string path: ""
-  // decodeAs is the helper's own verdict on how to decode this video,
-  // from media.fetch's result (see docs/api.md): "gif" once it has
-  // confirmed the downloaded bytes are a genuine, sanitized GIF image,
-  // or "" for an ordinary video or before it has answered. Never
-  // computed here from video's own fileName or animated flag, both
-  // fully sender-controlled.
-  property string decodeAs: ""
+  // playPath is the in-window play copy a play fetch produced (see
+  // media.fetch's playPath in docs/api.md), or "" before one has
+  // answered or succeeded. This is the only file this component ever
+  // decodes; a sender's own downloaded bytes at path are never handed
+  // to the video engine directly.
+  property string playPath: ""
   // failed is true once a fetch for this video has definitely failed.
   property bool failed: false
-  // available is false when in-window playback (for anything but a real
-  // .gif file) cannot work at all: see VideoController.available.
+  // preparing is true while a play fetch for this video is actually
+  // in flight: re-encoding a long clip can take a few seconds, so the
+  // play mark becomes a "Preparing…" label instead until playPath
+  // answers, one way or another.
+  property bool preparing: false
+  // available is false when in-window playback cannot work at all:
+  // see VideoController.available.
   property bool available: true
-  // playable is the helper's own verdict on whether this video's own
-  // container and stream headers are safe to decode at all (see
-  // media.fetch's playable in docs/api.md); ignored for a real .gif
-  // file, which plays regardless, since this field never applies to
-  // one.
-  property bool playable: true
   // playing is true while this is the one video, of the single slot
   // every video shares (see VideoController), actually decoding right
   // now - an animated "GIF" included, which no longer decodes on its
@@ -115,50 +110,26 @@ Item {
   // _animated is true for a video the service marked as a silent,
   // looping "GIF".
   readonly property bool _animated: Media.isAnimated(root.video)
-  // _realGifFile is true when the file itself is an actual .gif, the
-  // one animated format AnimatedImage can decode without QtMultimedia;
-  // every GIF WhatsApp or Telegram actually sends on its own is a
-  // silent MP4, so this is rare, but a real one (see Media.decodesAsGif)
-  // still deserves to animate, and through AnimatedImage specifically:
-  // see _decoding below.
-  readonly property bool _realGifFile: Media.decodesAsGif(root.decodeAs)
   // _verifiedWidth and _verifiedHeight are the thumbnail's own real,
   // decoder-confirmed size (see ImageBounds.verifiedDimensions), for
   // the static thumb Image below to bound its decode by: never
   // root.video.width/height, the sender's own claim, which a
   // differential review found need not match the thumbnail's real
   // shape. This always reads the thumbnail's own verified size, never
-  // the full file's - see _verifiedGifWidth/_verifiedGifHeight below
-  // for that one.
+  // the full file's - the file itself is never decoded as an image at
+  // all any more, only ever played from its own play copy (see
+  // playPath below).
   readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.video, false).width
   readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.video, false).height
-  // _verifiedGifWidth and _verifiedGifHeight are a real .gif file's
-  // own real, decoder-confirmed canvas size, read the instant
-  // media.fetch confirms decodeAs is "gif" (see
-  // MediaController._applyVerifiedSize, which records it as
-  // root.video.verifiedWidth/verifiedHeight the same way it already
-  // does for a photo or sticker): never root.video.width/height, the
-  // sender's own claim for the video, which a security review found
-  // could still size the AnimatedImage below's decode on its own -
-  // the box fallback alone is not enough, since Qt's own covering
-  // scale amplifies past the box once the real file's ratio disagrees
-  // with whatever ratio a lying claim asked for (see
-  // docs/decisions.md). Both are 0 before that answer exists yet, which
-  // boundedSourceSize already treats as "use the box".
-  readonly property int _verifiedGifWidth: ImageBounds.verifiedDimensions(root.video, true).width
-  readonly property int _verifiedGifHeight: ImageBounds.verifiedDimensions(root.video, true).height
   // _aspect is height over width, square when the size is unknown.
   readonly property real _aspect: root.video.width > 0 ? root.video.height / root.video.width : 1
   // _decoding is true while this bubble should actually hold the
   // QtMultimedia engine: the one video the caller selected (playing),
-  // downloaded, validated playable, on screen and with the window
-  // active - never a real .gif file, which plays through
-  // AnimatedImage below instead and has no use for QtMultimedia at
-  // all. A selected video that the user has merely paused still
-  // counts: pausing only stops its own frames, through _paused below,
-  // rather than tearing the whole engine down and losing the frame on
-  // screen.
-  readonly property bool _decoding: root.available && root.playable && root.path !== "" && root.visible && root.windowActive && !root._realGifFile && root.playing
+  // with a play copy ready, on screen and with the window active. A
+  // selected video that the user has merely paused still counts:
+  // pausing only stops its own frames, through _paused below, rather
+  // than tearing the whole engine down and losing the frame on screen.
+  readonly property bool _decoding: root.available && root.playPath !== "" && root.visible && root.windowActive && root.playing
   // _paused is a selected, non-animated video's own local pause state:
   // the engine stays loaded and its last frame stays on screen, only
   // its own playback stops. Reset whenever a new engine loads, so
@@ -191,7 +162,7 @@ Item {
 
     onLoaded: {
       root._paused = false;
-      _runtime.item.source = root.path;
+      _runtime.item.source = root.playPath;
       _runtime.item.loop = root._animated;
       _runtime.item.muted = root._animated || root.muted;
       _runtime.item.playing = true;
@@ -209,13 +180,12 @@ Item {
   }
 
   // The static thumbnail, shown whenever the engine is not actively
-  // decoding: before a click, while paused, or for an animated GIF this
-  // machine cannot play inline at all.
+  // decoding: before a click, while paused, or while preparing.
   Image {
     id: thumb
     objectName: "videoThumb"
     anchors.fill: parent
-    visible: !root._decoding && !(root._animated && root._realGifFile && root.path)
+    visible: !root._decoding
     source: root.video.thumb ? "data:" + Media.thumbMime(root.video.thumb) + ";base64," + root.video.thumb : ""
     fillMode: Image.PreserveAspectFit
     // Fit inside this bubble's own box, computed from the thumbnail's
@@ -228,36 +198,9 @@ Item {
     smooth: true
   }
 
-  // A real .gif file always animates through AnimatedImage, whether or
-  // not QtMultimedia is even loaded (see _decoding above): this is the
-  // one media kind that never touches the QtMultimedia-backed runtime
-  // at all. It animates only while it is the one selected video
-  // (playing), so it shares the single decoding slot every video does,
-  // and it caches no frames, since Qt decodes the whole canvas for
-  // each one.
-  AnimatedImage {
-    id: realGif
-    objectName: "realGifImage"
-    anchors.fill: parent
-    visible: !root._decoding && root._animated && root._realGifFile && root.path !== ""
-    source: visible ? Links.fileURL(root.path) : ""
-    playing: visible && root.visible && root.windowActive && root.playing
-    cache: false
-    fillMode: Image.PreserveAspectFit
-    // Fit inside this bubble's own box, computed from the GIF's own
-    // verified canvas size (see _verifiedGifWidth/_verifiedGifHeight
-    // above), never root.video.width/height, the sender's own claim -
-    // the box alone is not a safe fallback either (see
-    // docs/decisions.md), so before the verified size is known this
-    // falls back to the box, exactly what boundedSourceSize's own
-    // zero-dimensions case already does.
-    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedGifWidth, root._verifiedGifHeight).width
-    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedGifWidth, root._verifiedGifHeight).height
-  }
-
   Rectangle {
     anchors.fill: parent
-    visible: (thumb.visible || realGif.visible) && !root.video.thumb && root.path === ""
+    visible: thumb.visible && !root.video.thumb && root.path === ""
     color: Util.alpha(Theme.foreground, 0.08)
   }
 
@@ -290,13 +233,25 @@ Item {
   Text {
     objectName: "playMark"
     anchors.centerIn: parent
-    visible: !root._decoding && !root._unavailable && !(root._animated && root._realGifFile)
+    visible: !root._decoding && !root._unavailable && !root.preparing
     text: "▶"
     textFormat: Text.PlainText
     color: Theme.foreground
     style: Text.Outline
     styleColor: Util.alpha(Theme.background, 0.6)
     font { family: Theme.font.family; pixelSize: Theme.font.heading }
+  }
+
+  Text {
+    objectName: "preparingLabel"
+    anchors.centerIn: parent
+    visible: !root._decoding && !root._unavailable && root.preparing
+    text: "Preparing…"
+    textFormat: Text.PlainText
+    color: Theme.foreground
+    style: Text.Outline
+    styleColor: Util.alpha(Theme.background, 0.6)
+    font { family: Theme.font.family; pixelSize: Theme.font.caption }
   }
 
   Text {

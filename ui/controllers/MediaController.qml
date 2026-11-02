@@ -104,7 +104,7 @@ QtObject {
   // its file this way (see InlineVideo.qml) - only a click does,
   // through toggleVideo.
   function fetchMedia(timeline: var, id: string): void {
-    root.downloadMedia(timeline, id, false, true, () => {});
+    root.downloadMedia(timeline, id, false, true, false, () => {});
   }
 
   // retryMedia downloads a message's photo, sticker or voice note
@@ -112,7 +112,7 @@ QtObject {
   // the tap-to-load action offered once an automatic fetch was refused
   // only for being too large, never retried on its own.
   function retryMedia(timeline: var, id: string): void {
-    root.downloadMedia(timeline, id, false, false, () => {});
+    root.downloadMedia(timeline, id, false, false, false, () => {});
   }
 
   // openMedia opens a message's photo, video, file, voice note or audio
@@ -135,7 +135,7 @@ QtObject {
     const path = timeline.mediaPath(id);
     if (path) { root._openIfAllowed(timeline, id, path); return; }
 
-    root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(timeline, id, downloaded));
+    root.downloadMedia(timeline, id, true, false, false, (downloaded) => root._openIfAllowed(timeline, id, downloaded));
   }
 
   // _openIfAllowed hands path to openExternally unless this same
@@ -207,40 +207,36 @@ QtObject {
   }
 
   // toggleVideo selects, deselects or pauses id as the one video
-  // playing right now, downloading it first if it is not on this
-  // machine yet; does nothing with no videoController wired (an older
-  // caller that never set one up). A cached path whose row has never
-  // had a media.fetch answer in this session - loaded with mediaPath
-  // already set, rather than resolved through downloadMedia - still
-  // goes through downloadMedia rather than straight to
-  // _selectOrOpenVideo: its decodeAs/playable/risky verdicts are
-  // otherwise read as their unset defaults, which would wrongly treat
-  // an unvalidated or risky video as safe (see
-  // MessageTimeline.mediaVerdictsKnown). media.fetch answers from the
-  // cache at once when the file is already there, so this costs
-  // nothing once the verdicts are actually known. A video media.fetch
-  // has not validated as playable (see Media.canPlayInline) never
-  // selects for in-window playback at all, even once downloaded: it
-  // opens externally instead, the same fallback a machine with no
+  // playing right now, asking for its in-window play copy first if it
+  // is not known yet; does nothing with no videoController wired (an
+  // older caller that never set one up). A row whose play fetch has
+  // never answered in this session - loaded with mediaPath already
+  // set, rather than resolved through downloadMedia(play: true) -
+  // still asks for one rather than trusting a cached mediaPlayPath
+  // that was never actually checked (see MessageTimeline.mediaPlayKnown).
+  // media.fetch answers from the cache at once when a play copy
+  // already exists, so this costs nothing once it is actually known.
+  // A video whose play fetch returns no playPath never selects for
+  // in-window playback at all, even once downloaded: it opens
+  // externally instead, the same fallback a machine with no
   // QtMultimedia already takes.
   function toggleVideo(timeline: var, id: string): void {
     if (!root.videoController) return;
 
-    const path = timeline.mediaPath(id);
-    if (path && timeline.mediaVerdictsKnown(id)) { root._selectOrOpenVideo(timeline, id, path); return; }
+    if (timeline.mediaPlayKnown(id)) { root._selectOrOpenVideo(timeline, id); return; }
 
-    root.downloadMedia(timeline, id, true, false, (downloaded) => root._selectOrOpenVideo(timeline, id, downloaded));
+    root.downloadMedia(timeline, id, true, false, true, () => root._selectOrOpenVideo(timeline, id));
   }
 
-  // _selectOrOpenVideo selects id for in-window playback once
-  // media.fetch has validated it (or it is a genuine GIF image,
-  // always playable through the image engine regardless), or opens it
-  // externally instead, never both: a video that failed validation is
-  // never handed to the video engine at all.
-  function _selectOrOpenVideo(timeline: var, id: string, path: string): void {
-    if (Media.canPlayInline(timeline.mediaDecodeAs(id), timeline.mediaPlayable(id))) { root.videoController.toggle(id); return; }
+  // _selectOrOpenVideo selects id for in-window playback once a play
+  // fetch has produced a playPath, or opens the original externally
+  // instead, never both: a video with no play copy is never handed to
+  // the video engine at all.
+  function _selectOrOpenVideo(timeline: var, id: string): void {
+    if (timeline.mediaPlayPath(id)) { root.videoController.toggle(id); return; }
 
-    root._openIfAllowed(timeline, id, path);
+    const path = timeline.mediaPath(id);
+    if (path) root._openIfAllowed(timeline, id, path);
   }
 
   // openExternal downloads id's media if need be and hands it straight
@@ -252,27 +248,26 @@ QtObject {
     const path = timeline.mediaPath(id);
     if (path) { root._openIfAllowed(timeline, id, path); return; }
 
-    root.downloadMedia(timeline, id, true, false, (downloaded) => root._openIfAllowed(timeline, id, downloaded));
+    root.downloadMedia(timeline, id, true, false, false, (downloaded) => root._openIfAllowed(timeline, id, downloaded));
   }
 
   // copyMedia asks the helper to copy a message's photo or video to
-  // the clipboard (see media.copy in docs/api.md), fetching it first
-  // if need be; does nothing for any other media kind, which has
-  // nothing sensible to copy as (see Media.mimeFor), or for a video
-  // the helper's own verdict (decodeAs, playable) does not yet confirm
-  // can actually be decoded (see Media.copyable) - never only the
-  // sender's own claim that the message is a video, the same
-  // distinction InlineVideo already draws before decoding one in
-  // place. The helper's own media.copy independently refuses to put
-  // anything mismatched on the clipboard regardless (see
-  // docs/decisions.md): this is what keeps the UI from even offering
-  // an action that call would refuse. The helper runs wl-copy itself,
-  // with a fixed argv and the file on stdin, rather than this
-  // controller building a shell command string: a chat name or file
-  // name reaching that command line was the exact class of bug a
-  // security review found here (see docs/decisions.md).
+  // the clipboard (see media.copy in docs/api.md); does nothing for
+  // any other media kind, which has nothing sensible to copy as (see
+  // Media.mimeFor and Media.copyable). The helper copies only its own
+  // output - a photo or sticker's display copy, or a video's play
+  // copy, prepared on demand if need be - never a sender's raw bytes
+  // directly, and independently refuses anything that does not match
+  // (see docs/decisions.md): this is what keeps the UI from even
+  // offering an action for a kind that call would always refuse,
+  // without this controller needing to know, or re-check, whether a
+  // video's own play copy can actually be built. The helper runs
+  // wl-copy itself, with a fixed argv and the file on stdin, rather
+  // than this controller building a shell command string: a chat name
+  // or file name reaching that command line was the exact class of
+  // bug a security review found here (see docs/decisions.md).
   function copyMedia(timeline: var, id: string): void {
-    if (!Media.copyable(timeline.media(id), timeline.mediaDecodeAs(id), timeline.mediaPlayable(id))) return;
+    if (!Media.copyable(timeline.media(id))) return;
 
     root.service.request("media.copy", { messageId: id }, function(error, result) {
       if (error) {
@@ -310,37 +305,35 @@ QtObject {
     });
   }
 
-  // _toggleVoice plays or pauses a voice note or audio message,
-  // downloading it first if it has not been fetched yet; both are
-  // small, so this is quick and happens the same way a photo's own
-  // missing full image would. A cached path whose row has never had a
-  // media.fetch answer in this session still goes through
-  // downloadMedia rather than straight to _selectOrOpenVoice, the same
-  // reasoning toggleVideo's own comment gives: media.fetch answers
-  // from the cache at once, so this costs nothing once the verdicts
-  // this message's playable (and risky) decision needs are actually
-  // known.
+  // _toggleVoice plays or pauses a voice note or audio message, asking
+  // for its in-window play copy first if it is not known yet; both are
+  // small, so this is quick, the same way a photo's own missing full
+  // image would be. A row whose play fetch has never answered in this
+  // session still asks for one rather than trusting a cached, never
+  // actually checked mediaPlayPath, the same reasoning toggleVideo's
+  // own comment gives.
   function _toggleVoice(timeline: var, id: string, media: var): void {
-    const path = timeline.mediaPath(id);
-    if (path && timeline.mediaVerdictsKnown(id)) { root._selectOrOpenVoice(timeline, id, path, media); return; }
+    if (timeline.mediaPlayKnown(id)) { root._selectOrOpenVoice(timeline, id, media); return; }
 
-    root.downloadMedia(timeline, id, true, false, (downloaded) => root._selectOrOpenVoice(timeline, id, downloaded, media));
+    root.downloadMedia(timeline, id, true, false, true, () => root._selectOrOpenVoice(timeline, id, media));
   }
 
   // _selectOrOpenVoice plays id in place through voiceController only
-  // once media.fetch has validated its downloaded bytes (see
-  // MessageTimeline.mediaPlayable) and QtMultimedia is actually loaded;
-  // otherwise it falls back to the gated external-open path, the same
-  // fallback a machine with no QtMultimedia already takes. The sender's
-  // claimed file name or kind never decides this - only the helper's own
-  // verdict on the bytes it downloaded does (see docs/decisions.md).
-  function _selectOrOpenVoice(timeline: var, id: string, path: string, media: var): void {
-    if (root.voiceController && root.voiceController.available && timeline.mediaPlayable(id)) {
-      root.voiceController.toggle(id, path, (media.duration || 0) * 1000);
+  // once a play fetch has produced a playPath and QtMultimedia is
+  // actually loaded; otherwise it falls back to the gated
+  // external-open path, the same fallback a machine with no
+  // QtMultimedia already takes. The sender's claimed file name or kind
+  // never decides this - only the helper's own sandboxed transcode of
+  // the bytes it downloaded does (see docs/decisions.md).
+  function _selectOrOpenVoice(timeline: var, id: string, media: var): void {
+    const playPath = timeline.mediaPlayPath(id);
+    if (root.voiceController && root.voiceController.available && playPath) {
+      root.voiceController.toggle(id, playPath, (media.duration || 0) * 1000);
       return;
     }
 
-    root._openIfAllowed(timeline, id, path);
+    const path = timeline.mediaPath(id);
+    if (path) root._openIfAllowed(timeline, id, path);
   }
 
   // downloadMedia asks the helper for a message's media once, records
@@ -367,27 +360,42 @@ QtObject {
   // (a joiner's own auto is never consulted): true means the helper
   // applies its small, automatic-fetch size cap instead of the far
   // larger one a deliberate click is trusted with (see media.fetch's
-  // auto param in docs/api.md). An edit can swap id's media for a
-  // different kind, or different bytes of the same kind, while this
-  // very request is in flight; the answer is checked against id's
-  // current media before it is kept (see _answerIsStale), never
-  // written back for media it was never checked against.
-  function downloadMedia(timeline: var, id: string, report: bool, auto: bool, done: var): void {
+  // auto param in docs/api.md). play asks the helper to also prepare
+  // the in-window play copy (see media.fetch's play param): only
+  // toggleVideo, _toggleVoice and an Animated video's autoplay ever
+  // set it, and only once mediaPlayKnown says it is not already known;
+  // openExternal, saveMedia, copyMedia and the silent prefetch above
+  // never need one, so they always pass false. Marking the row
+  // "preparing" (see MessageTimeline.setMediaPreparing) only ever
+  // happens for the call that actually starts a play request, the
+  // same way auto's own size cap only applies to that one. An edit can
+  // swap id's media for a different kind, or different bytes of the
+  // same kind, while this very request is in flight; the answer is
+  // checked against id's current media before it is kept (see
+  // _answerIsStale), never written back for media it was never
+  // checked against.
+  function downloadMedia(timeline: var, id: string, report: bool, auto: bool, play: bool, done: var): void {
     if (root._fetching[id]) { root._fetching[id].push({ report: report, done: done }); return; }
 
     root._fetching[id] = [{ report: report, done: done }];
+    if (play) timeline.setMediaPreparing(id, true);
+
     // Recorded before the request, not read back from timeline once
     // the answer arrives: an edit can swap id's media for a different
     // kind, or different bytes of the same kind, while media.fetch is
     // still in flight (see _answerIsStale and docs/decisions.md).
     const expected = Timeline.mediaSignature(timeline.media(id));
-    const params = auto ? { messageId: id, auto: true } : { messageId: id };
+    const params = { messageId: id };
+    if (auto) params.auto = true;
+    if (play) params.play = true;
+
     root.service.request("media.fetch", params, function(error, result) {
       const waiting = root._fetching[id];
       delete root._fetching[id];
+      if (play) timeline.setMediaPreparing(id, false);
 
       if (error) { root._failDownload(timeline, id, error, waiting); return; }
-      if (root._answerIsStale(timeline, id, expected)) return;
+      if (root._answerIsStale(timeline, id, expected, play)) return;
 
       timeline.setMediaFailed(id, false, "");
       // Recorded before setMediaPath: a bound component's own
@@ -398,8 +406,7 @@ QtObject {
       // once, forever.
       root._applyVerifiedSize(timeline, id, result);
       timeline.setMediaPath(id, result.path);
-      timeline.setMediaDecodeAs(id, result.decodeAs || "");
-      timeline.setMediaPlayable(id, !!result.playable);
+      if (play) timeline.setMediaPlayPath(id, result.playPath || "");
       root._riskyVerdicts[id] = !!result.risky;
       timeline.setMediaRisky(id, !!result.risky);
       timeline.lastError = "";
@@ -424,25 +431,26 @@ QtObject {
   // own cached risky verdict for id is forgotten, and a fresh fetch
   // starts for whatever media.fetch has not actually checked against
   // yet, the same silent, automatic fetch a newly shown row's own
-  // prefetch would ask for.
-  function _answerIsStale(timeline: var, id: string, expected: var): bool {
+  // prefetch would ask for - asking for play again too when the stale
+  // request itself had, so retrying never quietly downgrades it to a
+  // download-only fetch.
+  function _answerIsStale(timeline: var, id: string, expected: var, play: bool): bool {
     const current = timeline.media(id);
     if (!current || Timeline.mediaSignaturesMatch(expected, Timeline.mediaSignature(current))) return false;
 
     delete root._riskyVerdicts[id];
     console.warn("media.fetch answered after message " + id + " changed media; refetching");
-    root.downloadMedia(timeline, id, false, true, () => {});
+    root.downloadMedia(timeline, id, false, true, play, () => {});
     return true;
   }
 
   // _applyVerifiedSize records result's verified width and height on
   // id's own media as verifiedWidth/verifiedHeight, once media.fetch
   // actually returned one: a photo or sticker whose downloaded file
-  // passed imagesafe, or a video whose downloaded bytes turned out to
-  // be a real GIF image (decodeAs "gif") - see media.fetch's result
-  // in docs/api.md. Either way this is the real, decoder-confirmed
-  // size of the file now at mediaPath, never the sender's own
-  // original claim, which a security review found need not match it.
+  // passed imagesafe - see media.fetch's result in docs/api.md. This
+  // is the real, decoder-confirmed size of the file now at mediaPath,
+  // never the sender's own original claim, which a security review
+  // found need not match it.
   // These are new fields the message protocol never sends,
   // deliberately never named width/height: overwriting those would
   // make mediaIdentityChanged (see ui/lib/Timeline.js) wrongly read

@@ -1,24 +1,25 @@
 // Checks InlineVideo's rendering and click intent, given fixed input
 // properties, the way every other message media view is checked: a
 // plain video asks to be opened externally while in-window playback is
-// unavailable, but asks to toggle instead once it is; an animated "GIF"
-// shows a thumbnail and a play mark exactly like any other video, and
-// never fetches or decodes without a click; a selected, playing video
-// shows its controls row, and its own pause button flips without
-// deselecting it (see _togglePause in InlineVideo.qml); a video whose
-// fetch is known to have failed, with no thumbnail to fall back to,
-// says so instead of staying an empty box; a selected, playing video
-// (GIF or ordinary) asks to open the full-size viewer when its own
-// frame is clicked, while one not yet selected still just starts
-// playing inline from that same click; a video the helper has not
-// validated as playable never decodes even once selected; and, of the
-// single decoding slot every video shares, only the selected one ever
+// unavailable, but asks to toggle instead once it is; an animated "GIF
+// video" shows a thumbnail, a play mark and a GIF badge exactly like
+// any other video, and never fetches or decodes without a click; a
+// selected, playing video shows its controls row, and its own pause
+// button flips without deselecting it (see _togglePause in
+// InlineVideo.qml); a video whose fetch is known to have failed, with
+// no thumbnail to fall back to, says so instead of staying an empty
+// box; a video with no play copy yet never loads the QtMultimedia
+// runtime at all, however it is selected; a video whose play fetch is
+// still in flight shows "Preparing…" instead of its usual play mark;
+// a selected, playing video asks to open the full-size viewer when
+// its own frame is clicked, while one not yet selected still just
+// starts playing inline from that same click; and, of the single
+// decoding slot every video shares, only the selected one ever
 // decodes at once.
 import QtQuick
 import QtTest
 import Quickshell
 import "ui/components"
-import "ui/lib/ImageBounds.js" as ImageBounds
 import "Check.js" as Check
 
 ShellRoot {
@@ -29,7 +30,6 @@ ShellRoot {
   property int animatedToggledCount: 0
   property int animatedExpandCount: 0
   property int playingExpandCount: 0
-  property int realGifExpandCount: 0
 
   // selectedId stands in for the shared playingId a real
   // VideoController tracks: sharedA and sharedB below both bind their
@@ -72,20 +72,29 @@ ShellRoot {
         id: playingVideo
         video: ({ kind: "video", width: 16, height: 9, duration: 12, thumb: "" })
         available: true
-        playable: true
-        path: Qt.resolvedUrl(".") // a real, playable file is not needed for this check
-          .toString().replace("file://", "") + "/does-not-exist.mp4"
+        path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist.mp4"
+        playPath: Qt.resolvedUrl(".") // a real, playable file is not needed for this check
+          .toString().replace("file://", "") + "/does-not-exist-play.mp4"
         playing: true
         onExpandRequested: root.playingExpandCount++
       }
 
       InlineVideo {
-        id: unplayableVideo
+        id: noPlayCopyVideo
         video: ({ kind: "video", width: 16, height: 9, duration: 12, thumb: "" })
         available: true
-        playable: false
         path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-unplayable.mp4"
+        playPath: ""
         playing: true
+      }
+
+      InlineVideo {
+        id: preparingVideo
+        video: ({ kind: "video", width: 16, height: 9, duration: 12, thumb: "" })
+        available: true
+        path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-preparing.mp4"
+        playPath: ""
+        preparing: true
       }
 
       InlineVideo {
@@ -94,60 +103,12 @@ ShellRoot {
         failed: true
       }
 
-      // A real GIF image (confirmed by the helper's own decodeAs
-      // verdict, never the fileName or animated flag alone) must
-      // animate through AnimatedImage even though in-window playback
-      // (QtMultimedia) is available: the downloaded bytes are actual
-      // GIF data, which only an image engine can decode, never a video
-      // one. This is the bug the fix covers - before it, a real .gif
-      // file silently loaded the video runtime instead and showed
-      // nothing at all whenever QtMultimedia was present.
-      InlineVideo {
-        id: realGifVideo
-        video: ({ kind: "video", width: 16, height: 9, animated: true, fileName: "run.gif", thumb: "" })
-        available: true
-        decodeAs: "gif"
-        playing: true
-        path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist.gif"
-        onExpandRequested: root.realGifExpandCount++
-      }
-
-      // A video merely named and flagged like a GIF, but with no
-      // decodeAs verdict from the helper, must never animate through
-      // AnimatedImage: the exact exploit this fix closes, where a
-      // sender set fileName and the animated attribute on a video the
-      // helper had not sanitized or confirmed as GIF data at all.
-      InlineVideo {
-        id: fakeGifVideo
-        video: ({ kind: "video", width: 16, height: 9, animated: true, fileName: "evil.gif", thumb: "" })
-        available: true
-        decodeAs: ""
-        path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-either.mp4"
-      }
-
-      // A security review found a real GIF video's AnimatedImage sized
-      // its decode from root.video.width/height - the sender's own
-      // claim, read from the message's video metadata - rather than
-      // the file's own verified canvas size. width/height here claim
-      // an extreme, mismatched shape; only verifiedWidth/verifiedHeight
-      // - the real, decoder-confirmed size media.fetch reports once it
-      // has sanitized this file as a genuine GIF image - must ever
-      // reach this bubble's own sourceSize.
-      InlineVideo {
-        id: lyingGifVideo
-        video: ({ kind: "video", width: 2000000, height: 1, animated: true, fileName: "run.gif", thumb: "", verifiedWidth: 4, verifiedHeight: 3 })
-        available: true
-        decodeAs: "gif"
-        playing: true
-        path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-lying.gif"
-      }
-
       InlineVideo {
         id: sharedA
         video: ({ kind: "video", width: 16, height: 9, duration: 12, thumb: "" })
         available: true
-        playable: true
         path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-a.mp4"
+        playPath: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-play-a.mp4"
         playing: root.selectedId === "a"
       }
 
@@ -155,8 +116,8 @@ ShellRoot {
         id: sharedB
         video: ({ kind: "video", width: 16, height: 9, duration: 12, thumb: "" })
         available: true
-        playable: true
         path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-b.mp4"
+        playPath: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-play-b.mp4"
         playing: root.selectedId === "b"
       }
     }
@@ -188,10 +149,11 @@ ShellRoot {
     t.mouseClick(availableVideo);
     if (root.availableToggledCount !== 1) return Check.fail("clicking an available video toggled " + root.availableToggledCount + " times, want 1");
 
-    // An animated "GIF" never fetches or decodes on its own: it shows
-    // a thumbnail and a play mark exactly like any other video, and a
-    // click is what asks the caller to fetch, validate and select it,
-    // the same toggled() every other video's first click fires.
+    // An animated "GIF video" never fetches or decodes on its own: it
+    // shows a thumbnail and a play mark exactly like any other video,
+    // and a click is what asks the caller to fetch, prepare its play
+    // copy and select it, the same toggled() every other video's
+    // first click fires.
     const animatedPlayMark = Check.find(animatedVideo, "playMark");
     if (!animatedPlayMark || !animatedPlayMark.visible) return Check.fail("an animated video with no path shows no play mark");
     if (root.animatedToggledCount !== 0) return Check.fail("an animated video asked to toggle before any click");
@@ -224,66 +186,25 @@ ShellRoot {
     t.mouseClick(playingVideo, playingVideo.width / 2, 5);
     if (root.playingExpandCount !== 1) return Check.fail("clicking a playing video's frame asked to expand " + root.playingExpandCount + " times, want 1");
 
-    // A video selected for playback but never validated as playable
-    // never loads the QtMultimedia runtime at all: the helper's own
-    // verdict, not just selection, decides whether anything decodes.
-    const unplayableLoader = Check.find(unplayableVideo, "videoRuntimeLoader");
-    if (unplayableLoader && unplayableLoader.active) return Check.fail("a selected but unvalidated video loaded the video runtime anyway");
+    // A video selected for playback but with no play copy yet never
+    // loads the QtMultimedia runtime at all: a playPath, not just
+    // selection, decides whether anything decodes.
+    const noPlayCopyLoader = Check.find(noPlayCopyVideo, "videoRuntimeLoader");
+    if (noPlayCopyLoader && noPlayCopyLoader.active) return Check.fail("a selected video with no play copy loaded the video runtime anyway");
 
     // A video with no thumbnail whose fetch is known to have failed
     // says so instead of staying an empty box.
     const unavailableLabel = Check.find(unreachableVideo, "unavailableLabel");
     if (!unavailableLabel || !unavailableLabel.visible) return Check.fail("a failed video with no thumbnail shows no \"Video unavailable\" message");
 
-    // A real .gif file animates through AnimatedImage, never the
-    // QtMultimedia video runtime, even with in-window playback
-    // available, and shows no play mark once it is already animating.
-    const realGifImage = Check.find(realGifVideo, "realGifImage");
-    if (!realGifImage || !realGifImage.visible) return Check.fail("a real .gif file with in-window playback available shows no AnimatedImage");
-    if (realGifImage.cache) return Check.fail("a real .gif file caches every decoded frame");
+    // A video whose play fetch is still in flight shows "Preparing…"
+    // instead of its usual play mark, since re-encoding a long clip
+    // can take a few seconds.
+    const preparingPlayMark = Check.find(preparingVideo, "playMark");
+    if (preparingPlayMark && preparingPlayMark.visible) return Check.fail("a video preparing its play copy still shows the play mark");
 
-    // It animates only while it holds the single decoding slot, the
-    // same as every video: unselected, it stays still.
-    realGifVideo.playing = false;
-    if (realGifImage.playing) return Check.fail("a real .gif file kept animating once it was no longer the selected video");
-    realGifVideo.playing = true;
-
-    const realGifThumb = Check.find(realGifVideo, "videoThumb");
-    if (realGifThumb && realGifThumb.visible) return Check.fail("a real .gif file still shows its static thumbnail once its file is here");
-
-    const realGifLoader = Check.find(realGifVideo, "videoRuntimeLoader");
-    if (realGifLoader && realGifLoader.active) return Check.fail("a real .gif file loaded the QtMultimedia video runtime instead of playing through AnimatedImage");
-
-    const realGifPlayMark = Check.find(realGifVideo, "playMark");
-    if (realGifPlayMark && realGifPlayMark.visible) return Check.fail("a real .gif file already animating still shows a play mark");
-
-    // Once selected, a real GIF's whole frame still asks to open the
-    // full-size viewer, the same as any other selected, playing video.
-    t.mouseClick(realGifVideo);
-    if (root.realGifExpandCount !== 1) return Check.fail("clicking a selected, playing real GIF toggled it instead of asking to expand");
-
-    // A lying video claim (2000000x1) must never raise the real GIF
-    // player's own sourceSize past what its real, verified 4x3 canvas
-    // would ask for: proven by recomputing boundedSourceSize directly
-    // from that verified size, over whatever box this bubble's own
-    // (lying-aspect-ratio-driven) layout settled on, and requiring the
-    // component's own AnimatedImage to match it exactly - were the
-    // claim read instead, the two would disagree, since 2000000x1 and
-    // 4x3 scale to the same box in entirely different shapes (see
-    // ImageBounds.verifiedDimensions and docs/decisions.md).
-    const lyingGifImage = Check.find(lyingGifVideo, "realGifImage");
-    if (!lyingGifImage) return Check.fail("could not find the lying video's own AnimatedImage");
-
-    const wantLyingSize = ImageBounds.boundedSourceSize(lyingGifVideo.implicitWidth, lyingGifVideo.implicitHeight, 4, 3);
-    if (lyingGifImage.sourceSize.width !== wantLyingSize.width || lyingGifImage.sourceSize.height !== wantLyingSize.height) {
-      return Check.fail(`lying video sourceSize = ${lyingGifImage.sourceSize.width}x${lyingGifImage.sourceSize.height}, want ${wantLyingSize.width}x${wantLyingSize.height} (from the verified 4x3, not the claimed 2000000x1)`);
-    }
-
-    // A video merely named and flagged like a GIF, with no decodeAs
-    // verdict, never animates through AnimatedImage: it stays an
-    // ordinary video, exactly like unavailableVideo above.
-    const fakeGifImage = Check.find(fakeGifVideo, "realGifImage");
-    if (fakeGifImage && fakeGifImage.visible) return Check.fail("a fileName and animated flag alone picked AnimatedImage with no decodeAs verdict");
+    const preparingLabel = Check.find(preparingVideo, "preparingLabel");
+    if (!preparingLabel || !preparingLabel.visible) return Check.fail("a video preparing its play copy shows no \"Preparing…\" label");
 
     // Of the single decoding slot every video shares, only the one
     // the shared selection actually names ever decodes: selecting "a"

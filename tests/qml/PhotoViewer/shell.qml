@@ -5,14 +5,14 @@
 // photo and Escape (forwarded through routeKey, as every other full-window
 // dialog in this UI does) all ask to close; a click on the photo itself
 // does not; and the open-externally button reports its own intent. It
-// also checks that a video or a real GIF file opens into FullVideoPlayer
-// instead of the plain Image, and that a real GIF plays through it even
-// while in-window video playback is unavailable.
+// also checks that a video opens into FullVideoPlayer instead of the
+// plain Image, and that a video with no play copy yet, or one still
+// preparing one, shows the right message instead of ever loading the
+// QtMultimedia runtime.
 import QtQuick
 import QtTest
 import Quickshell
 import "ui/components"
-import "ui/lib/ImageBounds.js" as ImageBounds
 import "Check.js" as Check
 
 ShellRoot {
@@ -72,9 +72,8 @@ ShellRoot {
     if (!root.checkOpenExternalButton()) return;
     if (!root.checkEscapeForwardedAndClosesWhenRouterSaysSo()) return;
     if (!root.checkVideoOpensIntoFullVideoPlayer()) return;
-    if (!root.checkRealGifFilePlaysEvenWithoutInWindowVideo()) return;
-    if (!root.checkLyingGifDimensionsNeverRaiseSourceSize()) return;
-    if (!root.checkAFileNameAloneNeverPicksAnimatedImage()) return;
+    if (!root.checkVideoWithNoPlayCopyShowsUnavailable()) return;
+    if (!root.checkVideoPreparingShowsItsOwnLabel()) return;
 
     console.log("PASS PhotoViewer");
     Qt.exit(0);
@@ -213,81 +212,41 @@ ShellRoot {
     return true;
   }
 
-  // checkRealGifFilePlaysEvenWithoutInWindowVideo verifies a real GIF
-  // file (see Media.decodesAsGif) animates through FullVideoPlayer's
-  // own AnimatedImage even while videoAvailable is false: it needs no
-  // QtMultimedia at all, unlike an ordinary video or a silent "GIF"
-  // mp4. decodeAs, the helper's own post-download verdict, is what
-  // triggers this, never the fileName or animated flag alone.
-  function checkRealGifFilePlaysEvenWithoutInWindowVideo(): bool {
+  // checkVideoWithNoPlayCopyShowsUnavailable verifies a video with no
+  // play copy yet - whatever its own fileName or animated flag claims -
+  // shows the "can't be played here" message instead of ever loading
+  // the QtMultimedia runtime: videoPlayPath, never a sender-controlled
+  // claim, is what FullVideoPlayer actually decodes (see
+  // docs/decisions.md).
+  function checkVideoWithNoPlayCopyShowsUnavailable(): bool {
     viewer.open = true;
-    viewer.videoAvailable = false;
+    viewer.videoAvailable = true;
+    viewer.videoPlayPath = "";
     viewer.photo = { kind: "video", animated: true, fileName: "run.gif", thumb: "" };
-    viewer.decodeAs = "gif";
     viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
 
-    const gifImage = Check.find(viewer, "fullGifImage");
-    if (!gifImage || !gifImage.visible) return Check.fail("a real .gif file with in-window video unavailable shows no AnimatedImage");
-
     const unavailableLabel = Check.find(viewer, "fullVideoUnavailableLabel");
-    if (unavailableLabel && unavailableLabel.visible) return Check.fail("a real .gif file shows the \"video playback unavailable\" message");
+    if (!unavailableLabel || !unavailableLabel.visible) return Check.fail("a video with no play copy yet shows no \"can't be played here\" message");
 
     return true;
   }
 
-  // checkLyingGifDimensionsNeverRaiseSourceSize covers a security
-  // review's own finding: a real GIF video's full-window
-  // AnimatedImage sized its decode from the message's own claimed
-  // video width/height, the sender's claim, rather than the file's
-  // own verified canvas size. width/height here claim an extreme,
-  // mismatched shape (2000000x1); only verifiedWidth/verifiedHeight -
-  // the real, decoder-confirmed size media.fetch reports once it has
-  // sanitized this file as a genuine GIF image - must ever reach this
-  // player's own sourceSize, proven the same way
-  // checkRealGifFilePlaysEvenWithoutInWindowVideo already got the
-  // image itself: recomputing boundedSourceSize directly from the
-  // verified size, over whatever box the player's own full-window
-  // stage is, and requiring the component's own AnimatedImage to
-  // match it exactly.
-  function checkLyingGifDimensionsNeverRaiseSourceSize(): bool {
+  // checkVideoPreparingShowsItsOwnLabel verifies a video whose play
+  // fetch is still in flight shows its own "Preparing…" label rather
+  // than the generic unavailable message, since this one is expected
+  // to resolve itself shortly.
+  function checkVideoPreparingShowsItsOwnLabel(): bool {
     viewer.open = true;
-    viewer.videoAvailable = false;
-    viewer.photo = { kind: "video", width: 2000000, height: 1, animated: true, fileName: "run.gif", thumb: "", verifiedWidth: 4, verifiedHeight: 3 };
-    viewer.decodeAs = "gif";
+    viewer.videoAvailable = true;
+    viewer.videoPlayPath = "";
+    viewer.videoPreparing = true;
+    viewer.photo = { kind: "video", thumb: "" };
     viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
 
-    const gifImage = Check.find(viewer, "fullGifImage");
-    if (!gifImage || !gifImage.visible) return Check.fail("a real .gif file with a lying claim shows no AnimatedImage");
+    const preparingLabel = Check.find(viewer, "preparingLabel");
+    if (!preparingLabel || !preparingLabel.visible) return Check.fail("a video preparing its play copy shows no \"Preparing…\" label");
 
-    const player = Check.find(viewer, "fullVideoPlayer");
-    if (!player) return Check.fail("no fullVideoPlayer found");
-
-    const want = ImageBounds.boundedSourceSize(player.width, player.height, 4, 3);
-    if (gifImage.sourceSize.width !== want.width || gifImage.sourceSize.height !== want.height) {
-      return Check.fail(`sourceSize = ${gifImage.sourceSize.width}x${gifImage.sourceSize.height}, want ${want.width}x${want.height} (from the verified 4x3, not the claimed 2000000x1)`);
-    }
-    return true;
-  }
-
-  // checkAFileNameAloneNeverPicksAnimatedImage guards the bug this
-  // fixes: a video merely named and flagged like a GIF, but with no
-  // decodeAs verdict from the helper, must never animate through
-  // AnimatedImage - it falls back to the "video playback unavailable"
-  // message here, exactly like any other video while videoAvailable is
-  // false.
-  function checkAFileNameAloneNeverPicksAnimatedImage(): bool {
-    viewer.open = true;
-    viewer.videoAvailable = false;
-    viewer.photo = { kind: "video", animated: true, fileName: "evil.gif", thumb: "" };
-    viewer.decodeAs = "";
-    viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
-
-    const gifImage = Check.find(viewer, "fullGifImage");
-    if (gifImage && gifImage.visible) return Check.fail("a fileName and animated flag alone picked AnimatedImage with no decodeAs verdict");
-
-    const unavailableLabel = Check.find(viewer, "fullVideoUnavailableLabel");
-    if (!unavailableLabel || !unavailableLabel.visible) return Check.fail("a video with no decodeAs verdict and no in-window video shows no unavailable message");
-
+    viewer.videoPreparing = false;
     return true;
   }
 }

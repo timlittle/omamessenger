@@ -151,26 +151,26 @@ function reindex(order) {
 }
 
 // mergeRow builds the row upsert writes for message when id is already
-// loaded: a cached mediaPath, its verdicts (mediaDecodeAs, mediaPlayable,
-// mediaRisky, mediaVerdictsKnown), mediaFailed and the media's own
-// verifiedWidth/verifiedHeight (see carryVerifiedDimensions) normally
-// carry over from oldRow untouched, since the service's own update
-// never carries any of them - but they are dropped instead the moment
-// this update is either the message's attachment being retired into
-// the download cache (see mediaJustRetired) or an edit that swaps its
-// media for a different kind or different bytes of the same kind (see
-// mediaIdentityChanged): in both cases the cached path, verdicts and
-// verified size describe bytes that are no longer this row's own, and
-// must be resolved and checked again rather than reused or shown as
-// missing forever.
+// loaded: a cached mediaPath, its verdicts (mediaPlayPath, mediaPlayable,
+// mediaPlayKnown, mediaRisky, mediaPreparing), mediaFailed and the
+// media's own verifiedWidth/verifiedHeight (see carryVerifiedDimensions)
+// normally carry over from oldRow untouched, since the service's own
+// update never carries any of them - but they are dropped instead the
+// moment this update is either the message's attachment being retired
+// into the download cache (see mediaJustRetired) or an edit that swaps
+// its media for a different kind or different bytes of the same kind
+// (see mediaIdentityChanged): in both cases the cached path, verdicts
+// and verified size describe bytes that are no longer this row's own,
+// and must be resolved and checked again rather than reused or shown
+// as missing forever.
 function mergeRow(oldRow, message) {
   const mediaReplaced = mediaJustRetired(oldRow, message) || mediaIdentityChanged(oldRow, message);
   const kept = mediaReplaced
-    ? { mediaPath: '', mediaDecodeAs: '', mediaPlayable: false, mediaRisky: false, mediaVerdictsKnown: false, mediaFailed: false, mediaFailedReason: '' }
+    ? { mediaPath: '', mediaPlayPath: '', mediaPlayable: false, mediaPlayKnown: false, mediaPreparing: false, mediaRisky: false, mediaFailed: false, mediaFailedReason: '' }
     : {
-        mediaPath: oldRow.mediaPath, mediaDecodeAs: oldRow.mediaDecodeAs,
-        mediaPlayable: oldRow.mediaPlayable, mediaRisky: oldRow.mediaRisky,
-        mediaVerdictsKnown: oldRow.mediaVerdictsKnown,
+        mediaPath: oldRow.mediaPath, mediaPlayPath: oldRow.mediaPlayPath,
+        mediaPlayable: oldRow.mediaPlayable, mediaPlayKnown: oldRow.mediaPlayKnown,
+        mediaPreparing: oldRow.mediaPreparing, mediaRisky: oldRow.mediaRisky,
         mediaFailed: oldRow.mediaFailed, mediaFailedReason: oldRow.mediaFailedReason
       };
 
@@ -292,23 +292,23 @@ function insertIndex(newestFirst, message) {
 // mediaPath, where its download is, starts empty; mediaFailed, whether
 // the last download attempt failed, starts false; mediaFailedReason,
 // the safe category of that failure (see server/errors.go), starts
-// empty too. mediaDecodeAs, the helper's own verdict on how to decode a
-// video once media.fetch has answered (see MessageTimeline.setMediaDecodeAs
-// and ui/lib/Media.js's decodesAsGif), starts empty, the same as
-// mediaPath, until a fetch answers. mediaPlayable, the helper's own
-// verdict on whether an ordinary video's container and stream headers
-// are safe to play in place at all (see MessageTimeline.setMediaPlayable
-// and Media.js's canPlayInline), starts false until a fetch answers,
-// the same safe default "not yet known" shares with every video
-// before it is validated. mediaRisky, the helper's own verdict on
-// whether a downloaded file is active or executable content that must
-// be confirmed before it opens externally (see
-// MessageTimeline.setMediaRisky), starts false the same way.
-// mediaVerdictsKnown is whether media.fetch has actually answered for
-// this row in this session, so a caller reading mediaPath, mediaPlayable
-// or mediaRisky directly can tell a real verdict apart from its unset
-// default (see MessageTimeline.mediaVerdictsKnown); starts false, even
-// for a row whose mediaPath came already set.
+// empty too. mediaPlayPath, the in-window play copy a play fetch
+// produced (see MessageTimeline.setMediaPlayPath and media.fetch's
+// playPath in docs/api.md), starts empty, the same as mediaPath,
+// until a play fetch answers; mediaPlayable is always just whether
+// mediaPlayPath is set, never a separate verdict of its own.
+// mediaPreparing is true only while a play fetch for this row is
+// actually in flight (see MessageTimeline.setMediaPreparing), for the
+// video or voice control to show "Preparing…" instead of its usual
+// play glyph. mediaRisky, the helper's own verdict on whether a
+// downloaded file is active or executable content that must be
+// confirmed before it opens externally (see
+// MessageTimeline.setMediaRisky), starts false. mediaPlayKnown is
+// whether a play fetch has actually answered for this row in this
+// session, so a caller deciding whether to trust a cached
+// mediaPlayPath (or its empty default) can tell a real answer apart
+// from "never asked yet" (see MessageTimeline.mediaPlayKnown); starts
+// false, even for a row whose mediaPath came already set.
 // mentionsMe is a plain boolean, which a ListModel role already
 // handles directly, so it needs no such encoding. retryAt, the
 // helper's next scheduled automatic retry for a failed outgoing
@@ -319,10 +319,11 @@ function row(message) {
     media: message.media ? JSON.stringify(message.media) : '',
     replyTo: message.replyTo ? JSON.stringify(message.replyTo) : '',
     mediaPath: message.mediaPath ?? '',
-    mediaDecodeAs: message.mediaDecodeAs ?? '',
-    mediaPlayable: message.mediaPlayable ?? false,
+    mediaPlayPath: message.mediaPlayPath ?? '',
+    mediaPlayable: !!(message.mediaPlayPath ?? ''),
+    mediaPlayKnown: message.mediaPlayKnown ?? false,
+    mediaPreparing: message.mediaPreparing ?? false,
     mediaRisky: message.mediaRisky ?? false,
-    mediaVerdictsKnown: message.mediaVerdictsKnown ?? false,
     mediaFailed: message.mediaFailed ?? false,
     mediaFailedReason: message.mediaFailedReason ?? '',
     reactions: JSON.stringify(message.reactions ?? []),

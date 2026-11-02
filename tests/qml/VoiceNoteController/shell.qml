@@ -180,7 +180,8 @@ ShellRoot {
       }
       if (method === "media.fetch") {
         fakeService.fetchRequests.push(params.messageId);
-        callback(null, { path: testRoot + "/tone.ogg", playable: params.messageId !== "vm2" });
+        const playPath = params.messageId !== "vm2" ? testRoot + "/tone.ogg" : "";
+        callback(null, { path: testRoot + "/tone.ogg", playPath: playPath });
         return;
       }
       callback(null, {});

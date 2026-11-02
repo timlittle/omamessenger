@@ -715,8 +715,8 @@ Item {
   // the user picks a file, the same way movePinTo above is the entry
   // point a pinned row's drag handler calls; a test with no real
   // portal to drive calls this directly instead. An invalid file (not
-  // a format the helper's audiosafe check accepts) reports through
-  // lastError, the same as any other refused request.
+  // a format the helper's transcoder can read as audio at all) reports
+  // through lastError, the same as any other refused request.
   function notificationSoundPicked(path: string): void {
     const id = root._notificationSoundTargetId;
     root._notificationSoundTargetId = "";

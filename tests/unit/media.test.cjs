@@ -94,55 +94,19 @@ test('mimeFor is null for a kind with nothing sensible to copy', () => {
   assert.strictEqual(Media.mimeFor(undefined), null);
 });
 
-test('decodesAsGif is true only for the helper\'s own "gif" verdict', () => {
-  assert.strictEqual(Media.decodesAsGif('gif'), true);
-});
-
-test('decodesAsGif is false for anything else, including a name or flag that merely claims gif', () => {
-  // Guards the bug this fixes: a sender fully controls a video's
-  // fileName and animated flag, so neither one may ever decide this -
-  // only media.fetch's own decodeAs result can.
-  assert.strictEqual(Media.decodesAsGif(''), false);
-  assert.strictEqual(Media.decodesAsGif('video'), false);
-  assert.strictEqual(Media.decodesAsGif(null), false);
-  assert.strictEqual(Media.decodesAsGif(undefined), false);
-});
-
-test('canPlayInline is true for a genuine GIF image regardless of playable', () => {
-  assert.strictEqual(Media.canPlayInline('gif', false), true);
-  assert.strictEqual(Media.canPlayInline('gif', true), true);
-  assert.strictEqual(Media.canPlayInline('gif', undefined), true);
-});
-
-test('canPlayInline is true for an ordinary video only once playable is true', () => {
-  assert.strictEqual(Media.canPlayInline('', true), true);
-  assert.strictEqual(Media.canPlayInline('', false), false);
-  assert.strictEqual(Media.canPlayInline('', undefined), false);
-});
-
-test('copyable is true for a photo regardless of decodeAs or playable', () => {
-  assert.strictEqual(Media.copyable({ kind: 'photo' }, '', false), true);
-  assert.strictEqual(Media.copyable({ kind: 'photo' }, 'gif', true), true);
-});
-
-test('copyable is true for a video only once the helper confirms it can play, never from the sender\'s own claim alone', () => {
-  // Guards the bug this fixes: the UI used to offer copy for any
-  // message merely claiming to be a video, never checking the
-  // helper's own verdict the way the view that actually plays it
-  // already does (see docs/decisions.md).
-  assert.strictEqual(Media.copyable({ kind: 'video' }, '', true), true);
-  assert.strictEqual(Media.copyable({ kind: 'video' }, '', false), false);
-  assert.strictEqual(Media.copyable({ kind: 'video' }, '', undefined), false);
-});
-
-test('copyable is true for a video the helper confirms is a genuine GIF, regardless of playable', () => {
-  assert.strictEqual(Media.copyable({ kind: 'video' }, 'gif', false), true);
+test('copyable is true for a photo or a video, the two kinds mimeFor names', () => {
+  assert.strictEqual(Media.copyable({ kind: 'photo' }), true);
+  assert.strictEqual(Media.copyable({ kind: 'video' }), true);
 });
 
 test('copyable is false for every kind mimeFor already refuses', () => {
+  // Whether a video's own play copy can actually be built is the
+  // helper's own call, made fresh inside media.copy itself (see
+  // docs/decisions.md): this never pre-checks that, only which kinds
+  // have anything sensible to copy as at all.
   for (const kind of ['link', 'voice', 'audio', 'sticker', 'poll', 'file']) {
-    assert.strictEqual(Media.copyable({ kind }, '', true), false, kind);
+    assert.strictEqual(Media.copyable({ kind }), false, kind);
   }
-  assert.strictEqual(Media.copyable(null, '', true), false);
-  assert.strictEqual(Media.copyable(undefined, '', true), false);
+  assert.strictEqual(Media.copyable(null), false);
+  assert.strictEqual(Media.copyable(undefined), false);
 });

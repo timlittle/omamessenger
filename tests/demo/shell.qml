@@ -530,13 +530,13 @@ ShellRoot {
     return !!thumb && thumb.visible;
   }
 
-  // waitForDesignTeamGifAnimating holds until the GIF has been fetched
-  // and the helper has confirmed its bytes are a genuine GIF image (see
-  // app.Commands.DecodeAsForMedia), so the bubble has switched from its
-  // static thumbnail to the real, playing AnimatedImage.
-  function waitForDesignTeamGifAnimating(): var {
-    const image = Check.find(root.panel(), "realGifImage");
-    return !!image && image.visible;
+  // waitForDesignTeamGifPlaying holds until the GIF has been fetched
+  // and the helper has prepared its in-window play copy, so the
+  // bubble has switched from its static thumbnail to actually
+  // decoding it.
+  function waitForDesignTeamGifPlaying(): var {
+    const loader = Check.find(root.panel(), "videoRuntimeLoader");
+    return !!loader && loader.active;
   }
 
   // openPaletteAndType returns a step that opens Ctrl+K and types query,
@@ -684,7 +684,7 @@ ShellRoot {
       root.pressKey("Esc  (scroll)", Qt.Key_Escape, Qt.NoModifier),
       root.waitForComposerBlurred,
       root.openHighlighted("⏎  →  play GIF"),
-      root.waitForDesignTeamGifAnimating,
+      root.waitForDesignTeamGifPlaying,
       root.holdFor(6)
     ];
     case "reply-reaction": return [

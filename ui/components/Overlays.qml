@@ -147,9 +147,9 @@ Item {
     open: root.photoViewerController.viewerOpen
     photo: root.photoViewerController.viewerPhoto
     path: root.photoViewerController.viewerPath
-    decodeAs: root.photoViewerController.viewerDecodeAs
+    videoPlayPath: root.photoViewerController.viewerPlayPath
+    videoPreparing: root.photoViewerController.viewerPreparing
     videoAvailable: root.videoController ? root.videoController.available : true
-    videoPlayable: root.photoViewerController.viewerPlayable
     windowActive: root.windowActive
     videoMuted: root.videoController ? root.videoController.muted : true
     routeKey: root.routeKey

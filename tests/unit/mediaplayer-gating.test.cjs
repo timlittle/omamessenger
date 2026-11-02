@@ -13,9 +13,10 @@
 // outside the two reviewed runtime files, and that every known place
 // that actually starts real playback - setting a loaded runtime's
 // own `source` to a real path, or calling VoiceNoteController's
-// `toggle` - reads the helper's own `playable` verdict (see
-// media.fetch's playable in docs/api.md) somewhere in that same
-// file, never the sender's claimed file name or kind.
+// `toggle` - reads `playPath`, the in-window play copy the helper's
+// own sandboxed transcode produced (see media.fetch's playPath in
+// docs/api.md), somewhere in that same file, never the sender's
+// original downloaded bytes or claimed file name directly.
 'use strict';
 
 const { test } = require('node:test');
@@ -40,7 +41,7 @@ const RUNTIME_FILES = ['components/VoiceNoteRuntime.qml', 'components/VideoRunti
 // noticed too, the same way openurl-coverage.test.cjs's own allow-lists
 // work.
 const PLAYBACK_TRIGGERS = [
-  { pattern: /_runtime\.item\.source\s*=\s*root\.path/, files: ['components/InlineVideo.qml', 'components/FullVideoPlayer.qml'] },
+  { pattern: /_runtime\.item\.source\s*=\s*root\.playPath/, files: ['components/InlineVideo.qml', 'components/FullVideoPlayer.qml'] },
   { pattern: /voiceController\.toggle\(/, files: ['controllers/MediaController.qml'] },
 ];
 
@@ -78,8 +79,8 @@ for (const { pattern, files } of PLAYBACK_TRIGGERS) {
       `expected exactly ${JSON.stringify(files)} to trigger real playback this way, found ${JSON.stringify(matching)}`);
 
     for (const file of matching) {
-      assert.ok(CONTENTS.get(file).includes('playable'),
-        `${file} triggers real playback but never reads the helper's own playable verdict`);
+      assert.ok(CONTENTS.get(file).includes('playPath'),
+        `${file} triggers real playback but never reads the helper's own playPath`);
     }
   });
 }

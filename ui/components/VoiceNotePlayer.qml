@@ -41,6 +41,11 @@ Item {
   // this never shows a false "will open externally" hint before a
   // fetch has even run.
   property bool playable: true
+  // preparing is true while a play fetch for this voice note is
+  // actually in flight: re-encoding takes a moment, so the play
+  // button's tooltip says "Preparing…" instead until it answers, one
+  // way or another.
+  property bool preparing: false
   // playing is true while this particular voice note is the one making
   // sound; a different note playing, or this one paused, is false.
   property bool playing: false
@@ -113,10 +118,11 @@ Item {
 
     Ui.Button {
       objectName: "voicePlayButton"
-      text: root.playing ? "⏸" : "▶"
+      text: root.preparing ? "…" : root.playing ? "⏸" : "▶"
       tooltipText: root._unplayable
         ? ("Unavailable" + (root._unavailableHint ? " — " + root._unavailableHint : ""))
         : root._tooLargeAuto ? "Tap to load"
+        : root.preparing ? "Preparing…"
         : root._opensExternally ? "Open in your own application"
         : (root.playing ? ("Pause " + root._noun) : ("Play " + root._noun))
       enabled: !root._unplayable

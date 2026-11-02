@@ -381,9 +381,11 @@ Item {
   // media (see MediaController): the photo viewer reuses this rather
   // than asking the helper itself, so there is one place that tracks an
   // in-flight download. Always a deliberate fetch (auto false): the
-  // viewer only ever opens once the user asks to see something.
-  function downloadMedia(id: string, report: bool, done: var): void {
-    media.downloadMedia(timeline, id, report, false, done);
+  // viewer only ever opens once the user asks to see something. play
+  // asks for the in-window play copy too, for the viewer to open a
+  // video straight into (see PhotoViewerController.show).
+  function downloadMedia(id: string, report: bool, play: bool, done: var): void {
+    media.downloadMedia(timeline, id, report, false, play, done);
   }
 
   // toggleVideo selects, deselects or pauses a message's video, through

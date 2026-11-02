@@ -2,43 +2,36 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
-import "../lib/ImageBounds.js" as ImageBounds
-import "../lib/Links.js" as Links
-import "../lib/Media.js" as Media
 
-// The player shown inside the in-app media viewer (see PhotoViewer, which
-// reuses that same full-window viewer for a video or GIF, not only a
-// photo) once it is a video or a real GIF file rather than a photo. A
-// real .gif file (see Media.decodesAsGif) animates through AnimatedImage,
-// which needs no QtMultimedia at all; an ordinary video, or one a
-// service marked to play back like a silent, looping GIF, plays through
-// the same QtMultimedia-backed runtime the message bubble's own
-// InlineVideo uses, but sized to fill the window instead of staying
-// bubble-sized, with play/pause, a seek bar and mute. available is false
-// when QtMultimedia itself could not be loaded, the same probe
-// VideoController already runs elsewhere.
+// The player shown inside the in-app media viewer (see PhotoViewer,
+// which reuses that same full-window viewer for a video, not only a
+// photo) once it is a video rather than a photo: the same
+// QtMultimedia-backed runtime the message bubble's own InlineVideo
+// uses, but sized to fill the window instead of staying bubble-sized,
+// with play/pause, a seek bar and mute. available is false when
+// QtMultimedia itself could not be loaded, the same probe
+// VideoController already runs elsewhere. This never loads a
+// sender's own bytes into the engine at all: the one file it ever
+// plays is playPath, the file the helper's own sandboxed transcoder
+// produced (see docs/decisions.md).
 Item {
   id: root
 
   // video is the open message's video media: kind, fileName, animated,
   // width and height.
   required property var video
-  // path is where the full file was downloaded, or "" until then.
+  // path is where the full file was downloaded, or "" until then:
+  // read only to tell "nothing fetched yet" apart from "fetched but
+  // no play copy" in the unavailable label below.
   property string path: ""
-  // decodeAs is the helper's own verdict on how to decode this video
-  // (see InlineVideo.decodeAs); "gif" is the only value that matters
-  // here, never video's own fileName or animated flag.
-  property string decodeAs: ""
+  // playPath is the in-window play copy a play fetch produced (see
+  // InlineVideo.playPath), or "" before one has answered or succeeded.
+  property string playPath: ""
   // available is false when in-window video playback cannot work at
-  // all on this machine; a real .gif file plays regardless.
+  // all on this machine.
   property bool available: true
-  // playable is the helper's own verdict on whether an ordinary
-  // video's own container and stream headers are safe to decode at
-  // all (see media.fetch's playable in docs/api.md); a real .gif file
-  // plays regardless, since this field never applies to one.
-  property bool playable: true
-  // muted mutes a playing, non-gif video; shared with every other video
-  // in the window, the same preference InlineVideo reads.
+  // muted mutes a playing video, shared with every other video in
+  // the window, the same preference InlineVideo reads.
   property bool muted: true
   // windowActive is whether the user can see the window at all: shown
   // and focused. Playback stops decoding while it is false, the same
@@ -53,22 +46,6 @@ Item {
   // muteToggled asks the caller to flip the shared mute preference.
   signal muteToggled()
 
-  // _isGifFile is true when video is a genuine GIF image rather than an
-  // ordinary video, which needs no QtMultimedia at all (see
-  // Media.decodesAsGif).
-  readonly property bool _isGifFile: Media.decodesAsGif(root.decodeAs)
-  // _verifiedGifWidth and _verifiedGifHeight are a real .gif file's
-  // own real, decoder-confirmed canvas size (see
-  // ImageBounds.verifiedDimensions and InlineVideo.qml's own copy of
-  // this same property for the full reasoning): never
-  // root.video.width/height, the sender's own claim, which a security
-  // review found could still size the AnimatedImage below's decode on
-  // its own even inside this player's own box (see
-  // docs/decisions.md). Both are 0 before media.fetch has confirmed
-  // decodeAs is "gif", which boundedSourceSize already treats as "use
-  // the box".
-  readonly property int _verifiedGifWidth: ImageBounds.verifiedDimensions(root.video, true).width
-  readonly property int _verifiedGifHeight: ImageBounds.verifiedDimensions(root.video, true).height
   // _paused is the player's own local pause state.
   property bool _paused: false
   // _engine is the loaded VideoRuntime, as a plain var: see
@@ -85,35 +62,16 @@ Item {
     anchors.fill: parent
   }
 
-  AnimatedImage {
-    id: gif
-    objectName: "fullGifImage"
-    anchors.fill: parent
-    visible: root._isGifFile && root.path !== ""
-    source: visible ? Links.fileURL(root.path) : ""
-    playing: visible && root.windowActive
-    // Qt decodes the whole canvas for each frame; caching every one of
-    // them would hold the whole animation in memory at once.
-    cache: false
-    fillMode: Image.PreserveAspectFit
-    // Fit inside this player's own box (the viewer's full window
-    // stage), computed from the GIF's own verified canvas size (see
-    // _verifiedGifWidth/_verifiedGifHeight above), never the sender's
-    // claimed video width/height.
-    sourceSize.width: ImageBounds.boundedSourceSize(root.width, root.height, root._verifiedGifWidth, root._verifiedGifHeight).width
-    sourceSize.height: ImageBounds.boundedSourceSize(root.width, root.height, root._verifiedGifWidth, root._verifiedGifHeight).height
-  }
-
   Loader {
     id: _runtime
     objectName: "fullVideoRuntimeLoader"
     anchors.fill: parent
-    active: root.available && root.playable && root.windowActive && !root._isGifFile && root.path !== ""
+    active: root.available && root.playPath !== "" && root.windowActive
     source: root.runtimeSource
 
     onLoaded: {
       root._paused = false;
-      _runtime.item.source = root.path;
+      _runtime.item.source = root.playPath;
       _runtime.item.loop = false;
       _runtime.item.muted = root.muted;
       _runtime.item.playing = true;
@@ -125,11 +83,11 @@ Item {
     anchors.centerIn: parent
     width: parent.width - Theme.spacing.sm * 2
     // Covers both reasons this can never decode here: the machine has
-    // no QtMultimedia at all, or the helper could not validate this
-    // particular video's own headers (see docs/decisions.md) - never
-    // distinguished in the message itself, since the fix is the same
-    // either way: the "Open in your own video player" button above.
-    visible: !root._isGifFile && root.path !== "" && (!root.available || !root.playable)
+    // no QtMultimedia at all, or the helper's own play fetch produced
+    // no play copy (see docs/decisions.md) - never distinguished in
+    // the message itself, since the fix is the same either way: the
+    // "Open in your own video player" button above.
+    visible: root.path !== "" && (!root.available || root.playPath === "")
     horizontalAlignment: Text.AlignHCenter
     wrapMode: Text.Wrap
     text: "This video can't be played here."
@@ -141,7 +99,7 @@ Item {
   RowLayout {
     id: controls
     objectName: "fullVideoControls"
-    visible: !root._isGifFile && root.available && root.playable && root.path !== ""
+    visible: root.available && root.playPath !== ""
     anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: Theme.spacing.md }
     spacing: Theme.spacing.sm
 

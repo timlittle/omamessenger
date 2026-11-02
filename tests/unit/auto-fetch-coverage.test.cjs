@@ -9,10 +9,13 @@
 // cap to a fetch the user never asked for. fetchMedia must always pass
 // auto true; retryMedia, the tap-to-load action offered once that
 // smaller cap refuses something, must always pass auto false, the
-// same deliberate fetch a click already gets. These checks are
-// deliberately simple substring checks, not a generic parser, since
-// MediaController.qml's own downloadMedia(timeline, id, report, auto,
-// done) call shape never varies at these two call sites.
+// same deliberate fetch a click already gets. Neither one ever asks
+// for a play copy either (see docs/decisions.md): that is only ever
+// toggleVideo's, _toggleVoice's and an Animated video's autoplay's
+// call to make. These checks are deliberately simple substring
+// checks, not a generic parser, since MediaController.qml's own
+// downloadMedia(timeline, id, report, auto, play, done) call shape
+// never varies at these two call sites.
 'use strict';
 
 const { test } = require('node:test');
@@ -34,18 +37,18 @@ function functionBody(src, name) {
   return next < 0 ? src.slice(start) : src.slice(start, next);
 }
 
-test('fetchMedia always passes auto true to downloadMedia', () => {
+test('fetchMedia always passes auto true and play false to downloadMedia', () => {
   const body = functionBody(fs.readFileSync(MEDIA_CONTROLLER, 'utf8'), 'fetchMedia');
 
-  assert.ok(body.includes('downloadMedia(timeline, id, false, true, () => {});'),
-    'fetchMedia must call downloadMedia with auto: true, so the visibility-triggered fetch gets the small, automatic cap');
+  assert.ok(body.includes('downloadMedia(timeline, id, false, true, false, () => {});'),
+    'fetchMedia must call downloadMedia with auto: true, play: false, so the visibility-triggered fetch gets the small, automatic cap and never a play copy');
 });
 
-test('retryMedia always passes auto false to downloadMedia', () => {
+test('retryMedia always passes auto false and play false to downloadMedia', () => {
   const body = functionBody(fs.readFileSync(MEDIA_CONTROLLER, 'utf8'), 'retryMedia');
 
-  assert.ok(body.includes('downloadMedia(timeline, id, false, false, () => {});'),
-    'retryMedia must call downloadMedia with auto: false, the same deliberate fetch a click already gets');
+  assert.ok(body.includes('downloadMedia(timeline, id, false, false, false, () => {});'),
+    'retryMedia must call downloadMedia with auto: false, play: false, the same deliberate, download-only fetch a click already gets');
 });
 
 test('every photo, sticker and voice note wanted() handler reaches mediaWanted(), never a different signal', () => {
@@ -59,7 +62,7 @@ test('every photo, sticker and voice note wanted() handler reaches mediaWanted()
 });
 
 test('a deliberately broken expectation is caught: fetchMedia without auto true', () => {
-  const body = 'function fetchMedia(timeline: var, id: string): void {\n    root.downloadMedia(timeline, id, false, false, () => {});\n  }';
+  const body = 'function fetchMedia(timeline: var, id: string): void {\n    root.downloadMedia(timeline, id, false, false, false, () => {});\n  }';
 
-  assert.ok(!body.includes('downloadMedia(timeline, id, false, true, () => {});'));
+  assert.ok(!body.includes('downloadMedia(timeline, id, false, true, false, () => {});'));
 });

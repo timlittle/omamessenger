@@ -103,7 +103,7 @@ ShellRoot {
     root.openNadiaGif,
     root.waitForNadiaGifLoaded,
     root.clickNadiaGif,
-    root.waitForNadiaGifAnimating,
+    root.waitForNadiaGifPlaying,
     root.closeNadia,
     root.searchTicket,
     root.waitForSearch,
@@ -422,9 +422,9 @@ ShellRoot {
   }
 
   // clickNadiaGif clicks the GIF message's own bubble: before this,
-  // nothing has fetched or decoded anything at all (see
+  // nothing has fetched, transcoded or decoded anything at all (see
   // InlineVideo.qml), so this single click is also what starts the
-  // fetch and the helper's own byte check.
+  // fetch and asks for the in-window play copy.
   function clickNadiaGif(): var {
     const delegate = root.delegateFor(root.nadiaGifMessageId);
     const video = delegate ? Check.find(delegate, "inlineVideo") : null;
@@ -434,18 +434,18 @@ ShellRoot {
     return true;
   }
 
-  // waitForNadiaGifAnimating holds until the click above has fetched
-  // the file and the helper has confirmed its bytes are a genuine GIF
-  // image (see app.Commands.DecodeAsForMedia), so InlineVideo has
-  // switched from its static thumbnail to the real AnimatedImage.
-  function waitForNadiaGifAnimating(): var {
+  // waitForNadiaGifPlaying holds until the click above has fetched
+  // the file, the helper's own sandboxed transcoder (the fake build's
+  // passthrough) has prepared a play copy, and InlineVideo has
+  // switched from its static thumbnail to actually decoding it.
+  function waitForNadiaGifPlaying(): var {
     const delegate = root.delegateFor(root.nadiaGifMessageId);
-    const image = delegate ? Check.find(delegate, "realGifImage") : null;
-    if (!image || !image.visible) return false;
+    const loader = delegate ? Check.find(delegate, "videoRuntimeLoader") : null;
+    if (!loader || !loader.active) return false;
 
     const thumb = Check.find(delegate, "videoThumb");
     if (thumb && thumb.visible)
-      return Check.fail("a real GIF message still shows its static thumbnail once animating");
+      return Check.fail("a GIF video message still shows its static thumbnail once playing");
     return true;
   }
 

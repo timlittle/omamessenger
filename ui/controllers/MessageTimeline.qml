@@ -192,40 +192,46 @@ Item {
     return at !== undefined ? messagesModel.get(at).mediaPath : "";
   }
 
-  // mediaDecodeAs returns the helper's own verdict on how to decode a
-  // message's downloaded video (see media.fetch's decodeAs in
-  // docs/api.md), or "" before it has answered or for anything but a
-  // video. Never computed here from the message's own media object:
-  // only media.fetch's result, through setMediaDecodeAs, ever sets it.
-  function mediaDecodeAs(id: string): string {
+  // mediaPlayPath returns the in-window play copy a play fetch
+  // produced for a message's video, voice note or audio message (see
+  // media.fetch's playPath in docs/api.md), or "" before a play fetch
+  // has answered, failed, or for any other kind. Never computed here
+  // from the message's own media object: only media.fetch's result,
+  // through setMediaPlayPath, ever sets it.
+  function mediaPlayPath(id: string): string {
     const at = root._index[id];
-    return at !== undefined ? messagesModel.get(at).mediaDecodeAs : "";
+    return at !== undefined ? messagesModel.get(at).mediaPlayPath : "";
   }
 
-  // mediaPlayable returns the helper's own verdict on whether a
-  // message's downloaded video is safe to play in the in-window video
-  // player at all (see media.fetch's playable in docs/api.md), or
-  // false before it has answered or for anything but a video. Never
-  // computed here from the message's own media object: only
-  // media.fetch's result, through setMediaPlayable, ever sets it.
+  // mediaPlayable returns whether mediaPlayPath is set: the UI's own
+  // derived shorthand for "there is something to play in place right
+  // now" (see ui/lib/Timeline.js's row), never a verdict of its own.
   function mediaPlayable(id: string): bool {
     const at = root._index[id];
     return at !== undefined ? !!messagesModel.get(at).mediaPlayable : false;
   }
 
-  // mediaVerdictsKnown returns whether media.fetch has actually
-  // answered for this row in this session, so decodeAs, playable and
-  // risky are its real verdicts rather than their unset defaults. A
-  // row can carry a cached mediaPath without this ever being true - it
-  // may have been loaded with one already set, rather than resolved
-  // through setMediaPath's own caller - and a caller that reads
-  // mediaPath directly must check this first rather than trust
-  // mediaPlayable's false default as "not playable" or mediaRisky's
-  // false default as "safe" (see MediaController.toggleVideo and
-  // _toggleVoice).
-  function mediaVerdictsKnown(id: string): bool {
+  // mediaPlayKnown returns whether a play fetch has actually answered
+  // for this row in this session, so mediaPlayPath is its real answer
+  // rather than the unset default. A row can carry a cached mediaPath
+  // without this ever being true - it may have been loaded with one
+  // already set, rather than resolved through a play fetch - and a
+  // caller deciding whether a cached mediaPlayPath is trustworthy
+  // must check this first rather than trust mediaPlayable's false
+  // default as "definitely not playable" (see MediaController.toggleVideo
+  // and _toggleVoice).
+  function mediaPlayKnown(id: string): bool {
     const at = root._index[id];
-    return at !== undefined ? !!messagesModel.get(at).mediaVerdictsKnown : false;
+    return at !== undefined ? !!messagesModel.get(at).mediaPlayKnown : false;
+  }
+
+  // mediaPreparing returns whether a play fetch for this row is
+  // actually in flight right now, for the video or voice control to
+  // show "Preparing…" instead of its usual play glyph while a
+  // transcode may take a few seconds (see setMediaPreparing).
+  function mediaPreparing(id: string): bool {
+    const at = root._index[id];
+    return at !== undefined ? !!messagesModel.get(at).mediaPreparing : false;
   }
 
   // media returns a message's parsed photo or video media (kind, width,
@@ -259,25 +265,27 @@ Item {
     if (at !== undefined) messagesModel.setProperty(at, "mediaPath", path);
   }
 
-  // setMediaDecodeAs records the helper's own verdict on how to decode
-  // a message's downloaded video, from media.fetch's result.
-  function setMediaDecodeAs(id: string, decodeAs: string): void {
-    const at = root._index[id];
-    if (at !== undefined) messagesModel.setProperty(at, "mediaDecodeAs", decodeAs);
-  }
-
-  // setMediaPlayable records the helper's own verdict on whether a
-  // message's downloaded video is safe to play in place, from
-  // media.fetch's result, and marks this row's verdicts known (see
-  // mediaVerdictsKnown): decodeAs, playable and risky are always set
-  // together from the one media.fetch answer, so this is the one place
-  // that needs to flip the flag.
-  function setMediaPlayable(id: string, playable: bool): void {
+  // setMediaPlayPath records the in-window play copy a play fetch
+  // produced (or "" when it failed or was unavailable - never an
+  // error, see docs/decisions.md), and marks this row's play state
+  // known (see mediaPlayKnown): a play fetch's answer is always the
+  // one place both change together.
+  function setMediaPlayPath(id: string, playPath: string): void {
     const at = root._index[id];
     if (at === undefined) return;
 
-    messagesModel.setProperty(at, "mediaPlayable", playable);
-    messagesModel.setProperty(at, "mediaVerdictsKnown", true);
+    messagesModel.setProperty(at, "mediaPlayPath", playPath);
+    messagesModel.setProperty(at, "mediaPlayable", !!playPath);
+    messagesModel.setProperty(at, "mediaPlayKnown", true);
+  }
+
+  // setMediaPreparing records whether a play fetch for this row is
+  // actually in flight right now (see mediaPreparing), set true just
+  // before the request and false again however it ends - answered,
+  // failed, or found to be stale - so it can never stay stuck true.
+  function setMediaPreparing(id: string, preparing: bool): void {
+    const at = root._index[id];
+    if (at !== undefined) messagesModel.setProperty(at, "mediaPreparing", preparing);
   }
 
   // mediaRisky returns the helper's own verdict on whether a message's
@@ -287,7 +295,7 @@ Item {
   // and true once the row is gone, since a verdict that cannot be found
   // is not one that said safe. Never computed here
   // from the message's own media object: only media.fetch's result,
-  // through setMediaRisky, ever sets it, the same as mediaDecodeAs.
+  // through setMediaRisky, ever sets it.
   function mediaRisky(id: string): bool {
     const at = root._index[id];
     return at !== undefined ? !!messagesModel.get(at).mediaRisky : true;
