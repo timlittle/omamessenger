@@ -199,6 +199,91 @@ func TestSanitizeJPEG_CapsRepeatedTableSegments(t *testing.T) {
 	}
 }
 
+// TestSanitizeJPEG_CountsMarkersPastFillBytes covers the exact bypass
+// a follow-up security review found: copyJPEGRemainder classified the
+// byte right after the first 0xFF as the marker code, so a marker
+// preceded by one or more extra 0xFF fill bytes - FF FF DA rather than
+// a plain FF DA - was never counted at all, letting a repeated scan,
+// DHT or DQT segment back past jpegMaxScans and
+// jpegMaxRepeatedTableSegments the same way TestSanitizeJPEG_CapsRepeatedScans
+// and TestSanitizeJPEG_CapsRepeatedTableSegments already cover without
+// the extra fill byte.
+func TestSanitizeJPEG_CountsMarkersPastFillBytes(t *testing.T) {
+	original := buildJPEG(64, 64)
+
+	cases := []struct {
+		name   string
+		marker byte
+	}{
+		{"SOS", 0xDA},
+		{"DHT", 0xC4},
+		{"DQT", 0xDB},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := insertFakeMarkersWithFill(original, c.marker, 1, 2_000_000)
+
+			start := time.Now()
+			_, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+			if elapsed := time.Since(start); elapsed > time.Second {
+				t.Errorf("Sanitize() took %v for a fill-padded marker repeated two million times, want well under a second", elapsed)
+			}
+			if ok {
+				t.Errorf("Sanitize() = accepted for a %s marker hidden behind one fill byte and repeated two million times, want rejected", c.name)
+			}
+		})
+	}
+}
+
+// TestSanitizeJPEG_CollapsesOrdinaryFillBytes covers the case any real
+// encoder actually produces: a marker preceded by a small, ordinary
+// run of fill bytes must still be accepted, with the run collapsed in
+// the output to the marker's own ordinary leading 0xFF rather than
+// kept at full length or rejected outright. The spliced-in markers
+// have no real scan data behind them (see insertFakeMarkersWithFill),
+// the same as TestSanitizeJPEG_CapsRepeatedScans, so this checks the
+// output's bytes directly rather than attempting a full re-decode.
+func TestSanitizeJPEG_CollapsesOrdinaryFillBytes(t *testing.T) {
+	original := buildJPEG(64, 64)
+	src := insertFakeMarkersWithFill(original, 0xDA, 3, 2)
+
+	out, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	if !ok {
+		t.Fatal("Sanitize() = rejected for an ordinary fill-byte run before a marker, want accepted")
+	}
+
+	uncollapsed := append(bytes.Repeat([]byte{0xFF}, 4), 0xDA)
+	if bytes.Contains(out, uncollapsed) {
+		t.Error("output kept the fill-byte run uncollapsed before the marker, want it collapsed")
+	}
+	if !bytes.Contains(out, []byte{0xFF, 0xDA}) {
+		t.Error("output dropped the marker along with its fill bytes, want it kept and collapsed")
+	}
+}
+
+// TestSanitizeJPEG_CapsTotalFillBytes covers a single, huge run of
+// fill bytes that never resolves into enough markers to trip the scan
+// or table caps on its own: copyJPEGRemainder must still refuse once
+// the total number of fill bytes it has skipped crosses
+// jpegMaxFillBytes.
+func TestSanitizeJPEG_CapsTotalFillBytes(t *testing.T) {
+	original := buildJPEG(64, 64)
+	// One marker, preceded by a single fill run far past
+	// jpegMaxFillBytes: not enough scans or tables on their own to
+	// trip those caps, so only the fill-byte cap can catch this.
+	src := insertFakeMarkersWithFill(original, 0xDA, 200_000, 1)
+
+	start := time.Now()
+	_, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("Sanitize() took %v for a single oversized fill run, want well under a second", elapsed)
+	}
+	if ok {
+		t.Error("Sanitize() = accepted for a fill run far past jpegMaxFillBytes, want rejected")
+	}
+}
+
 // assertSameJPEGSize decodes both JPEGs and fails t if their
 // dimensions differ: lossy re-encoding inside the stdlib encoder used
 // to build the fixture means pixel-for-pixel equality is not
@@ -229,8 +314,11 @@ func FuzzSanitizeJPEG(f *testing.F) {
 	f.Add(insertJPEGSegment(seed, 0xE1, bytes.Repeat([]byte{1}, 2048)))
 	f.Add([]byte{})
 	f.Add(seed[:len(seed)-4])
-	f.Add(insertFakeMarkers(seed, 0xDA, 500))   // scans repeated past jpegMaxScans
-	f.Add(insertFakeMarkers(seed, 0xC4, 5_000)) // DHT repeated past jpegMaxRepeatedTableSegments
+	f.Add(insertFakeMarkers(seed, 0xDA, 500))                // scans repeated past jpegMaxScans
+	f.Add(insertFakeMarkers(seed, 0xC4, 5_000))              // DHT repeated past jpegMaxRepeatedTableSegments
+	f.Add(insertFakeMarkersWithFill(seed, 0xDA, 1, 500))     // the fill-byte bypass: scans hidden behind one extra 0xFF each
+	f.Add(insertFakeMarkersWithFill(seed, 0xC4, 1, 5_000))   // the same bypass for a repeated DHT segment
+	f.Add(insertFakeMarkersWithFill(seed, 0xDA, 100_000, 1)) // a single fill run past jpegMaxFillBytes on its own
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		out, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage)

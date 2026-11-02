@@ -115,6 +115,28 @@ func insertFakeMarkers(src []byte, marker byte, count int) []byte {
 	return out.Bytes()
 }
 
+// insertFakeMarkersWithFill is insertFakeMarkers, but each marker is
+// preceded by extraFill additional 0xFF fill bytes - 0xFF 0xFF ...
+// 0xFF marker, rather than a plain 0xFF marker - the exact shape a
+// security review found hid a start-of-scan, DHT or DQT marker from
+// copyJPEGRemainder's own counts entirely: a parser that reads only
+// the byte right after the first 0xFF takes the next fill byte as the
+// marker code instead of skipping it, so the real marker that follows
+// is never counted at all.
+func insertFakeMarkersWithFill(src []byte, marker byte, extraFill, count int) []byte {
+	eoi := bytes.LastIndex(src, []byte{0xFF, 0xD9})
+	if eoi < 0 {
+		panic("test JPEG has no EOI marker")
+	}
+
+	unit := append(bytes.Repeat([]byte{0xFF}, extraFill+1), marker)
+	var out bytes.Buffer
+	out.Write(src[:eoi])
+	out.Write(bytes.Repeat(unit, count))
+	out.Write(src[eoi:])
+	return out.Bytes()
+}
+
 // buildGIF encodes a looping animation of frameCount solid frames at
 // the given size, with a Netscape loop extension, exactly what a real
 // animated sticker or GIF produces.

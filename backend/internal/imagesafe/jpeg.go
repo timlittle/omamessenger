@@ -37,6 +37,17 @@ const jpegMaxScans = 100
 // decoding one scan.
 const jpegMaxRepeatedTableSegments = 1_000
 
+// jpegMaxFillBytes bounds the total count of 0xFF fill bytes (the
+// JPEG spec's own allowance for any number of them to precede a
+// marker, see B.1.1.5) copyJPEGRemainder will skip across its whole
+// walk of the remainder: libjpeg-turbo's next_marker skips a run of
+// these unconditionally, with no cap of its own, before classifying
+// whatever byte follows as the marker code. A handful of fill bytes
+// before an occasional marker is ordinary; a count far past that
+// serves no real encoder and only costs this walk more cycles for no
+// reason, the same shape as the scan and table caps above.
+const jpegMaxFillBytes = 64 * 1024
+
 // jpegKeptMarkers are the header markers sanitizeJPEG keeps: the start
 // of frame variants (needed for dimensions and the decoder's own
 // setup), Huffman and quantization tables, the restart interval,
@@ -182,17 +193,28 @@ func jpegDimensions(segment []byte) (width, height int64, ok bool) {
 // the entropy-coded scan, any restart markers inside it, and any
 // later header segments and scans a progressive JPEG adds - straight
 // through: none of it is metadata a decoder could mistake for
-// something to inflate, so nothing here needs filtering, only a
+// something to inflate, so nothing here needs filtering beyond a
 // marker-aware skip so an 0xFF that starts a later header segment is
-// not mistaken for stuffing or restart. A later start-of-scan marker,
-// and a later Huffman or quantization table segment, are each counted
-// and bounded (see jpegMaxScans and jpegMaxRepeatedTableSegments):
-// libjpeg itself sets no limit of its own on how many times a scan or
-// a table may repeat, and walks every block of the image again on
-// each scan, so this package's own copy must refuse a count no real
-// encoder would ever produce rather than let it through unfiltered.
+// not mistaken for stuffing or restart. Classifying that marker byte
+// first skips any run of further 0xFF fill bytes exactly as
+// libjpeg-turbo's own next_marker does (see jpegMaxFillBytes): a
+// security review found that skipping this step let extra fill bytes
+// before a marker - FF FF DA rather than a plain FF DA - hide a
+// start-of-scan, DHT or DQT marker from the counts below entirely,
+// since the second FF was taken as the marker byte instead. The run is
+// collapsed in the output down to the single 0xFF a marker ordinarily
+// begins with: fill bytes carry no meaning of their own, so nothing a
+// decoder cares about changes, and a long run can no longer be used
+// to hide a marker from these counts by padding past where a naive
+// scan would look for one. A later start-of-scan marker, and a later
+// Huffman or quantization table segment, are each counted and bounded
+// (see jpegMaxScans and jpegMaxRepeatedTableSegments): libjpeg itself
+// sets no limit of its own on how many times a scan or a table may
+// repeat, and walks every block of the image again on each scan, so
+// this package's own copy must refuse a count no real encoder would
+// ever produce rather than let it through unfiltered.
 func copyJPEGRemainder(data []byte, pos int, out *bytes.Buffer) bool {
-	scans, tableSegments := 0, 0
+	scans, tableSegments, fillBytes := 0, 0, 0
 	for pos < len(data) {
 		next := bytes.IndexByte(data[pos:], 0xFF)
 		if next < 0 {
@@ -201,13 +223,22 @@ func copyJPEGRemainder(data []byte, pos int, out *bytes.Buffer) bool {
 
 		next += pos
 		out.Write(data[pos : next+1])
-		if next+1 >= len(data) {
+		pos = next + 1
+
+		for pos < len(data) && data[pos] == 0xFF {
+			fillBytes++
+			if fillBytes > jpegMaxFillBytes {
+				return false
+			}
+			pos++
+		}
+		if pos >= len(data) {
 			return false
 		}
 
-		following := data[next+1]
+		following := data[pos]
 		out.WriteByte(following)
-		pos = next + 2
+		pos++
 
 		switch following {
 		case 0xD9: // EOI
