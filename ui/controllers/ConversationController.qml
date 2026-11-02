@@ -1,7 +1,6 @@
 import QtQuick
 import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
-import "../lib/Links.js" as Links
 import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
 
@@ -57,9 +56,18 @@ Item {
   property var scheduledController: null
 
   // openExternally hands a local file to the user's own application,
-  // through media (see MediaController); a test overrides it with a
+  // through media (see MediaController), by asking the helper's own
+  // files.open method to open it through the desktop portal rather
+  // than starting xdg-open with path as one of its own command-line
+  // arguments (see docs/decisions.md); a test overrides it with a
   // recorder rather than letting a video or file open for real.
-  property var openExternally: (path) => Qt.openUrlExternally(Links.fileURL(path))
+  property var openExternally: (path) => {
+    if (!root.service) return;
+
+    root.service.request("files.open", { path: path }, function(error) {
+      if (error) console.warn("files.open failed: code=" + error.code);
+    });
+  }
 
   // mediaOpenCooldownMs is how long media (see MediaController) ignores
   // a repeat open of the same message after opening it; a test
@@ -183,11 +191,13 @@ Item {
   signal scrollToMessageRequested(string id)
 
   // linksRequested asks the caller to open the highlighted message's
-  // link: Qt.openUrlExternally on it directly when there is exactly one,
-  // the same choice the mouse path already makes, or let the user choose
-  // among several when there is more than one. Opening stays with the
-  // caller, rather than this controller, so it is checked by what it
-  // asked for rather than by stubbing Qt.openUrlExternally.
+  // link: opened directly (through WindowController.openLink, which
+  // asks the helper's own links.open method) when there is exactly
+  // one, the same choice the mouse path already makes, or let the
+  // user choose among several when there is more than one. Opening
+  // stays with the caller, rather than this controller, so it is
+  // checked by what it asked for rather than by stubbing how opening
+  // actually happens.
   signal linksRequested(var urls)
 
   // handles reports whether this controller owns action.

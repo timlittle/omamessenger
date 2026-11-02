@@ -1,7 +1,6 @@
 import QtQuick
 import Quickshell
 import "../lib/Format.js" as Format
-import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
 import "../lib/MediaOpen.js" as MediaOpen
 import "../lib/Rpc.js" as Rpc
@@ -33,12 +32,20 @@ QtObject {
   // or mutes through, when it is there.
   property var videoController: null
 
-  // openExternally hands a local file to the user's own application.
-  // The default calls the real Qt.openUrlExternally; a test overrides
-  // it with a recorder, so opening a video or file can be proven to
-  // dispatch exactly once without ever calling the real, user-visible
-  // function.
-  property var openExternally: (path) => Qt.openUrlExternally(Links.fileURL(path))
+  // openExternally hands a local file to the user's own application,
+  // by asking the helper's own files.open method to open it through
+  // the desktop portal rather than starting xdg-open with path as one
+  // of its own command-line arguments (see docs/decisions.md). The
+  // default calls the real root.service.request; a test overrides it
+  // with a recorder, so opening a video or file can be proven to
+  // dispatch exactly once without ever reaching the real helper.
+  property var openExternally: (path) => {
+    if (!root.service) return;
+
+    root.service.request("files.open", { path: path }, function(error) {
+      if (error) console.warn("files.open failed: code=" + error.code);
+    });
+  }
 
   // cooldownMs is how long a message's video or file stays ignored after
   // it was last opened. Nothing tells this controller when, or whether,

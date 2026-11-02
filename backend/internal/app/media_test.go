@@ -509,3 +509,24 @@ func TestFetchMedia_EditingKindNeverReusesTheOldKindsCachedFile(t *testing.T) {
 		t.Errorf("the voice note's own cached file was touched: %v, want it left alone", statErr)
 	}
 }
+
+// fakeCache fails every Fetch with err, without ever calling fill, for
+// testing how FetchMedia reports a failure the cache itself caused
+// rather than one the connector reported.
+type fakeCache struct{ err error }
+
+func (c *fakeCache) Fetch(context.Context, string, func(context.Context, string) error) (string, error) {
+	return "", c.err
+}
+
+// FetchNamed is never exercised by a test using fakeCache; it only ever
+// fails the same way Fetch does.
+func (c *fakeCache) FetchNamed(context.Context, string, func(context.Context, string) error, func(string) (string, error)) (string, error) {
+	return "", c.err
+}
+
+// Adopt is never exercised by a test using fakeCache; it only ever fails
+// Fetch.
+func (c *fakeCache) Adopt(context.Context, string, string) error {
+	return c.err
+}

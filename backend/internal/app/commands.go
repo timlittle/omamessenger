@@ -57,6 +57,7 @@ type Commands struct {
 	sounds          SoundStore
 	clipboard       ClipboardRunner
 	filePicker      FilePicker
+	opener          URIOpener
 	fake            Injector
 	logger          Logger
 	spell           *spell.Checker
@@ -81,6 +82,13 @@ type Commands struct {
 	// downloadsDir is where SaveMedia copies a message's media to; see
 	// Deps.DownloadsDir.
 	downloadsDir string
+
+	// mediaCacheDir, outgoingDir and keysConfigPath are OpenFile's own
+	// allow-list of where a local file it opens may live; see
+	// Deps.MediaCacheDir, Deps.OutgoingDir and Deps.KeysConfigPath.
+	mediaCacheDir  string
+	outgoingDir    string
+	keysConfigPath string
 }
 
 // attemptedRefresh is the set of message ids this helper run has already

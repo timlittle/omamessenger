@@ -70,6 +70,10 @@ var _ app.Notifier = &notify.Desktop{}
 // for the same reason.
 var _ app.FilePicker = &portal.Picker{}
 
+// portal.Opener is the only URIOpener the helper wires; checked here
+// for the same reason.
+var _ app.URIOpener = &portal.Opener{}
+
 // main runs the helper until the UI disconnects or it receives SIGTERM.
 // The actual work is in exitCode so os.Exit always runs after mainErr's
 // own deferred cleanup, instead of cutting it short.
@@ -228,11 +232,15 @@ func serve(ctx context.Context, cfg config, s streams, env func(string) string) 
 // mediaCaches are the directories the helper keeps media in: downloaded
 // media, pruned once it grows past a limit; outgoing attachments, kept
 // until their message is sent or deleted; and validated copies of
-// custom notification sounds, one per conversation or service.
+// custom notification sounds, one per conversation or service. dir and
+// outgoingDir are the downloaded and outgoing areas' own paths, read by
+// wire to build OpenFile's allow-list (see docs/decisions.md).
 type mediaCaches struct {
-	downloaded *cache.Cache
-	outgoing   *cache.Outgoing
-	sounds     *cache.Sounds
+	dir         string
+	outgoingDir string
+	downloaded  *cache.Cache
+	outgoing    *cache.Outgoing
+	sounds      *cache.Sounds
 }
 
 // newMediaCaches builds every one of the helper's media areas under
@@ -240,11 +248,15 @@ type mediaCaches struct {
 // message's copy from an orphan Sweep may remove.
 func newMediaCaches(dir string, db *store.Store) mediaCaches {
 	exists := func(ctx context.Context, id string) (bool, error) { return db.MessageExists(ctx, id) }
+	mediaDir := filepath.Join(dir, "media")
+	outgoingDir := filepath.Join(mediaDir, "outgoing")
 
 	return mediaCaches{
-		downloaded: cache.New(filepath.Join(dir, "media"), mediaCacheLimit),
-		outgoing:   cache.NewOutgoing(filepath.Join(dir, "media", "outgoing"), outgoingOrphanGrace, outgoingSizeLimit, exists),
-		sounds:     cache.NewSounds(filepath.Join(dir, "sounds")),
+		dir:         mediaDir,
+		outgoingDir: outgoingDir,
+		downloaded:  cache.New(mediaDir, mediaCacheLimit),
+		outgoing:    cache.NewOutgoing(outgoingDir, outgoingOrphanGrace, outgoingSizeLimit, exists),
+		sounds:      cache.NewSounds(filepath.Join(dir, "sounds")),
 	}
 }
 
@@ -295,10 +307,13 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 	}, Log: d.logger}
 	deps := app.Deps{
 		Store: d.db, Notifier: notifier, Publisher: d.srv, Accounts: d.registry, Cache: d.caches.downloaded,
-		Outgoing: d.caches.outgoing, Sounds: d.caches.sounds, Clipboard: clipboard.Wayland{}, FilePicker: &portal.Picker{}, Logger: d.logger,
+		Outgoing: d.caches.outgoing, Sounds: d.caches.sounds, Clipboard: clipboard.Wayland{}, FilePicker: &portal.Picker{}, Opener: &portal.Opener{}, Logger: d.logger,
 		Spell:   spell.New(d.dataDir, d.env),
 		DataDir: d.dataDir, DBPath: d.dbPath, ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
-		DownloadsDir: d.downloadsDir,
+		DownloadsDir:   d.downloadsDir,
+		MediaCacheDir:  d.caches.dir,
+		OutgoingDir:    d.caches.outgoingDir,
+		KeysConfigPath: keysConfigPath(d.env),
 	}
 
 	connectors, injector := fakeConnectors()

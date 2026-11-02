@@ -71,19 +71,32 @@ Item {
   // row Enter picks, set by _runScheduledAction below.
   property string _scheduledAction: ""
 
-  // openExternalLink is the one place in this UI that ever calls
-  // Qt.openUrlExternally for a URL that came from a message, a link
-  // preview or a service's own text, rather than a "file://" path this
-  // UI built itself from something already on disk: every such caller
-  // reports a linkOpenRequested signal or calls openLink below, which
-  // always arrives here. Links.isAllowed checks url's scheme first, the
-  // same allow-list a message's own formatting span already checks, so
-  // a sender or a service can never make this open anything else.
-  // Overridable so a test can record what would have opened instead of
-  // truly opening it; tests/unit/openurl-coverage.test.cjs enforces that
-  // no other file calls Qt.openUrlExternally with anything but a local
-  // file path it built itself.
-  property var openExternalLink: (url) => { if (Links.isAllowed(url)) Qt.openUrlExternally(url); }
+  // openExternalLink is the one place in this UI that ever asks the
+  // helper to open a URL that came from a message, a link preview or a
+  // service's own text, rather than a local file this UI already has
+  // on disk: every such caller reports a linkOpenRequested signal or
+  // calls openLink below, which always arrives here. It asks the
+  // helper's own links.open method, which opens it through the desktop
+  // portal rather than starting xdg-open with the url as one of its
+  // own command-line arguments - readable by any other local user
+  // through /proc (see docs/decisions.md) - and never falls back to
+  // that. Links.isAllowed checks url's scheme first, the same
+  // allow-list a message's own formatting span already checks, so a
+  // sender or a service can never make this ask the helper to open
+  // anything else; the helper re-checks the same allow-list on its own
+  // side regardless. Overridable so a test can record what would have
+  // opened instead of truly asking the helper to.
+  property var openExternalLink: (url) => {
+    if (!Links.isAllowed(url) || !root.service) return;
+
+    root.service.request("links.open", { url: url }, function(error) {
+      if (!error) return;
+
+      root.lastError = Rpc.errorReason(error) === "unavailable"
+        ? "Couldn't open the link: no desktop portal"
+        : Rpc.errorText(error);
+    });
+  }
 
   // linkConfirmOpen is true while asking whether to open a link whose
   // own visible text does not read as the same destination as where

@@ -266,13 +266,17 @@ Item {
 
   // openKeyConfigFile is the palette's "Open key bindings file" command:
   // it seeds keys.conf with a commented template the first time it is
-  // asked for (never overwriting one that already exists), then opens
-  // it in the user's own editor through xdg-open, the same way every
-  // other externally-opened file in this UI does.
+  // asked for (never overwriting one that already exists), then asks
+  // the helper's own files.open method to open it in the user's own
+  // editor through the desktop portal, rather than starting xdg-open
+  // with its path as one of its own command-line arguments (see
+  // docs/decisions.md).
   function openKeyConfigFile(): void {
     if (root._keyConfigMissing) keysFile.setText(KeyBindings.template(Keymap.BINDINGS));
 
-    Qt.openUrlExternally(Links.fileURL(root._keyConfigPath));
+    root.request("files.open", { path: root._keyConfigPath }, function(error) {
+      if (error) console.warn("files.open failed: code=" + error.code);
+    });
   }
 
   // _applyKeyConfig re-merges keys.conf's text into effectiveBindings,

@@ -49,8 +49,8 @@ QtObject {
   signal scrollRequested(string id)
 
   // linksRequested asks the caller to open the highlighted message's
-  // link: Qt.openUrlExternally on it directly when there is exactly one,
-  // or let the user choose among several when there is more than one.
+  // link: opened directly when there is exactly one, or let the user
+  // choose among several when there is more than one.
   signal linksRequested(var urls)
 
   // reset moves the highlight to timeline's newest loaded message, and

@@ -30,6 +30,7 @@ var (
 func rpcError(err error) *jsonrpc2.Error {
 	var mediaErr *app.MediaFetchError
 	var pickErr *app.FilePickError
+	var openErr *app.OpenError
 
 	switch {
 	case errors.Is(err, errUnknownMethod):
@@ -45,6 +46,8 @@ func rpcError(err error) *jsonrpc2.Error {
 		return mediaFetchRPCError(mediaErr)
 	case errors.As(err, &pickErr):
 		return filePickRPCError(pickErr)
+	case errors.As(err, &openErr):
+		return openRPCError(openErr)
 	case errors.Is(err, domain.ErrNotFound):
 		return &jsonrpc2.Error{Code: CodeNotFound, Message: "not found"}
 	default:
@@ -86,6 +89,27 @@ type filePickErrorData struct {
 func filePickRPCError(pickErr *app.FilePickError) *jsonrpc2.Error {
 	rpcErr := &jsonrpc2.Error{Code: CodeInternal, Message: "internal error"}
 	rpcErr.SetError(filePickErrorData{Reason: pickErr.Reason})
+
+	return rpcErr
+}
+
+// openErrorData is the only detail of a failed links.open,
+// media.openExternal or files.open that crosses the protocol: a safe
+// reason category (see app.OpenError), so the UI knows to show a
+// fixed message ("Couldn't open the link: no desktop portal") rather
+// than falling back to xdg-open's own argv leak (see
+// docs/decisions.md).
+type openErrorData struct {
+	Reason string `json:"reason"`
+}
+
+// openRPCError turns an *app.OpenError into the internal-error code
+// every unexpected failure already uses, with its safe reason category
+// attached as the error's data field; nothing else about what went
+// wrong leaves the helper.
+func openRPCError(openErr *app.OpenError) *jsonrpc2.Error {
+	rpcErr := &jsonrpc2.Error{Code: CodeInternal, Message: "internal error"}
+	rpcErr.SetError(openErrorData{Reason: openErr.Reason})
 
 	return rpcErr
 }

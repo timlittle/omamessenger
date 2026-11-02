@@ -42,6 +42,16 @@ type session struct {
 	accounts   *storeAccounts
 	clipboard  *fakeClipboard
 	filePicker *fakeFilePicker
+	opener     *fakeOpener
+
+	// mediaDir, outgoingDir, downloadsDir and keysConfigPath are the
+	// directories and file files.open's own allow-list was wired with
+	// (see app.Deps.MediaCacheDir and its siblings), for a test to
+	// write a real fixture file into one of them.
+	mediaDir       string
+	outgoingDir    string
+	downloadsDir   string
+	keysConfigPath string
 }
 
 // connect serves a fresh application with one account, "wa", and a direct
@@ -53,14 +63,24 @@ func connect(t *testing.T, faked bool) *session {
 	accounts := &storeAccounts{db: db}
 	clipboard := &fakeClipboard{}
 	filePicker := &fakeFilePicker{}
+	opener := &fakeOpener{}
+	mediaDir := filepath.Join(t.TempDir(), "media")
+	outgoingDir := filepath.Join(t.TempDir(), "outgoing")
+	downloadsDir := filepath.Join(t.TempDir(), "downloads")
+	keysConfigPath := filepath.Join(t.TempDir(), "config", "keys.conf")
 	deps := app.Deps{
 		Dispatcher: acceptAll{}, Notifier: silent{}, Accounts: accounts,
 		SignIn: acceptAll{}, Organizer: acceptAll{}, ArchiveUnpinner: acceptAll{}, Reactor: acceptAll{}, Voter: acceptAll{}, Deleter: acceptAll{}, Editor: acceptAll{}, Members: acceptAll{},
 		Blocker: acceptAll{}, SpamReporter: acceptAll{},
-		Outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
-		Sounds:     cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
-		FilePicker: filePicker,
-		Spell:      spell.New(t.TempDir(), func(string) string { return "" }),
+		Outgoing: cache.NewOutgoing(outgoingDir, 24*time.Hour, 1<<30, storeExists(db)), Clipboard: clipboard,
+		Sounds:         cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
+		FilePicker:     filePicker,
+		Opener:         opener,
+		Spell:          spell.New(t.TempDir(), func(string) string { return "" }),
+		MediaCacheDir:  mediaDir,
+		OutgoingDir:    outgoingDir,
+		DownloadsDir:   downloadsDir,
+		KeysConfigPath: keysConfigPath,
 	}
 	if faked {
 		deps.Fake = unreachableFake{}
@@ -70,6 +90,11 @@ func connect(t *testing.T, faked bool) *session {
 	s.accounts = accounts
 	s.clipboard = clipboard
 	s.filePicker = filePicker
+	s.opener = opener
+	s.mediaDir = mediaDir
+	s.outgoingDir = outgoingDir
+	s.downloadsDir = downloadsDir
+	s.keysConfigPath = keysConfigPath
 
 	return s
 }
@@ -536,4 +561,30 @@ func (f *fakeFilePicker) Pick(_ context.Context, title string, filters []portal.
 	f.title, f.filters = title, filters
 
 	return f.path, f.ok, f.err
+}
+
+// fakeOpener records what its Open and OpenFile were given and returns
+// whatever error a test scripted, standing in for portal.Opener so no
+// test here ever reaches a real portal over D-Bus. Its default zero
+// value (no error) behaves like a successful open.
+type fakeOpener struct {
+	gotURI  string
+	gotPath string
+
+	openErr     error
+	openFileErr error
+}
+
+// Open records uri and returns the fake's scripted error.
+func (f *fakeOpener) Open(_ context.Context, uri string) error {
+	f.gotURI = uri
+
+	return f.openErr
+}
+
+// OpenFile records path and returns the fake's scripted error.
+func (f *fakeOpener) OpenFile(_ context.Context, path string) error {
+	f.gotPath = path
+
+	return f.openFileErr
 }

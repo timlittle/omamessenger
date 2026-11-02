@@ -102,9 +102,12 @@ type fixture struct {
 	sounds          *cache.Sounds
 	clipboard       *fakeClipboard
 	filePicker      *fakeFilePicker
+	opener          *fakeOpener
 	logger          *fakeLogger
 	downloads       string
 	mediaDir        string
+	outgoingDir     string
+	keysConfigPath  string
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -128,17 +131,21 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		t.Fatal(err)
 	}
 
+	outgoingDir := filepath.Join(t.TempDir(), "outgoing")
+
 	f := &fixture{
 		store: db, dispatcher: &fakeDispatcher{}, notifier: &fakeNotifier{},
 		published: &fakePublisher{}, injector: &fakeInjector{}, members: &fakeMemberLister{},
 		accounts: &fakeAccounts{store: db}, signIn: &fakeSignIn{}, history: &fakeHistory{}, media: &fakeMedia{},
 		refresher: &fakeRefresher{}, organizer: &fakeOrganizer{}, archiveUnpinner: &fakeArchiveUnpinner{unpins: map[string]bool{}}, reactor: &fakeReactor{}, voter: &fakeVoter{}, deleter: &fakeDeleter{}, editor: &fakeEditor{},
 		blocker: &fakeBlocker{}, spamReport: &fakeSpamReporter{}, limiter: &fakeLimiter{limits: map[string]int64{}},
-		outgoing: cache.NewOutgoing(filepath.Join(t.TempDir(), "outgoing"), 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
+		outgoing: cache.NewOutgoing(outgoingDir, 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		sounds:     cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
-		filePicker: &fakeFilePicker{},
-		logger:     &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
-		mediaDir: filepath.Join(t.TempDir(), "media"),
+		filePicker: &fakeFilePicker{}, opener: &fakeOpener{},
+		logger: &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
+		mediaDir:       filepath.Join(t.TempDir(), "media"),
+		outgoingDir:    outgoingDir,
+		keysConfigPath: filepath.Join(t.TempDir(), "config", "keys.conf"),
 	}
 
 	deps := app.Deps{
@@ -147,9 +154,12 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Media: f.media, Cache: cache.New(f.mediaDir, 1<<20),
 		Refresher: f.refresher, Organizer: f.organizer, ArchiveUnpinner: f.archiveUnpinner, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
 		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members, Limiter: f.limiter,
-		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, FilePicker: f.filePicker, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
+		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, FilePicker: f.filePicker, Opener: f.opener, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
 		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
-		DownloadsDir: f.downloads,
+		DownloadsDir:   f.downloads,
+		MediaCacheDir:  f.mediaDir,
+		OutgoingDir:    f.outgoingDir,
+		KeysConfigPath: f.keysConfigPath,
 	}
 	if faked {
 		deps.Fake = f.injector
@@ -476,27 +486,6 @@ func (m *fakeMedia) FetchMedia(_ context.Context, _ domain.Conversation, message
 	}
 
 	return os.WriteFile(path, content, 0o600)
-}
-
-// fakeCache fails every Fetch with err, without ever calling fill, for
-// testing how FetchMedia reports a failure the cache itself caused
-// rather than one the connector reported.
-type fakeCache struct{ err error }
-
-func (c *fakeCache) Fetch(context.Context, string, func(context.Context, string) error) (string, error) {
-	return "", c.err
-}
-
-// FetchNamed is never exercised by a test using fakeCache; it only ever
-// fails the same way Fetch does.
-func (c *fakeCache) FetchNamed(context.Context, string, func(context.Context, string) error, func(string) (string, error)) (string, error) {
-	return "", c.err
-}
-
-// Adopt is never exercised by a test using fakeCache; it only ever fails
-// Fetch.
-func (c *fakeCache) Adopt(context.Context, string, string) error {
-	return c.err
 }
 
 // fakeLogger records every diagnostic line FetchMedia writes, so a test

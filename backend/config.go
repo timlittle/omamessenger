@@ -72,3 +72,21 @@ func withPaths(cfg config, env func(string) string) (config, error) {
 
 	return cfg, nil
 }
+
+// keysConfigPath returns where keys.conf lives, following the same
+// XDG rule the UI's own ui/lib/KeyBindings.js configPath uses:
+// XDG_CONFIG_HOME when set, otherwise HOME's own .config. Empty when
+// neither is set, in which case OpenFile's allow-list simply never
+// matches it, the same as any other unset root.
+func keysConfigPath(env func(string) string) string {
+	base := env("XDG_CONFIG_HOME")
+	if base == "" {
+		if env("HOME") == "" {
+			return ""
+		}
+
+		base = filepath.Join(env("HOME"), ".config")
+	}
+
+	return filepath.Join(base, "omamessenger", "keys.conf")
+}

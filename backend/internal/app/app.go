@@ -206,6 +206,22 @@ type FilePicker interface {
 	Pick(ctx context.Context, title string, filters []portal.Filter) (path string, ok bool, err error)
 }
 
+// URIOpener opens a link or a local file with the desktop's own
+// default handler, so Qt (or this helper) never starts a process whose
+// arguments carry the target: a process's argv is readable by every
+// other local user through /proc/<pid>/cmdline, and a link can carry
+// something as sensitive as a password-reset token (see
+// docs/decisions.md). *portal.Opener is the production implementation.
+type URIOpener interface {
+	// Open opens uri with the user's own default handler for its
+	// scheme, typically a browser.
+	Open(ctx context.Context, uri string) error
+
+	// OpenFile opens the local file at path with the user's own
+	// default handler for its kind.
+	OpenFile(ctx context.Context, path string) error
+}
+
 // NewAccount is what adding an account needs: the service, and whatever
 // options its provider's Prepare wants, such as Telegram's "apiId" and
 // "apiHash" from my.telegram.org.
@@ -278,6 +294,7 @@ type Deps struct {
 	Sounds          SoundStore
 	Clipboard       ClipboardRunner
 	FilePicker      FilePicker
+	Opener          URIOpener
 	Fake            Injector
 	Logger          Logger
 	Spell           *spell.Checker
@@ -295,6 +312,17 @@ type Deps struct {
 	// one (no HOME set), in which case SaveMedia fails rather than
 	// guessing a location.
 	DownloadsDir string
+
+	// MediaCacheDir and OutgoingDir are, respectively, where a
+	// message's downloaded media and a user's own outgoing attachment
+	// live, and KeysConfigPath is this plugin's own key-bindings file
+	// (see docs/decisions.md). OpenFile refuses any path that, once its
+	// own symlinks are resolved, lies outside every one of these: the
+	// only local files it should ever be asked to open, however the
+	// caller built the path it sent.
+	MediaCacheDir  string
+	OutgoingDir    string
+	KeysConfigPath string
 }
 
 // New builds the two halves of the application, which share the event
@@ -307,7 +335,7 @@ func New(d Deps) (*Commands, *Ingest) {
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, archiveUnpinner: d.ArchiveUnpinner, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
-		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, filePicker: d.FilePicker, logger: d.Logger, spell: d.Spell,
+		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, filePicker: d.FilePicker, opener: d.Opener, logger: d.Logger, spell: d.Spell,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors:    &errorHistory{},
 		reminders:       newReminders(d.Store, d.Notifier, events, state),
@@ -316,7 +344,10 @@ func New(d Deps) (*Commands, *Ingest) {
 		organizeNotices: &organizeNotices{},
 		videoVerdicts:   &videoVerdicts{entries: map[string]videoVerdict{}},
 		dataDir:         d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
-		downloadsDir: d.DownloadsDir,
+		downloadsDir:   d.DownloadsDir,
+		mediaCacheDir:  d.MediaCacheDir,
+		outgoingDir:    d.OutgoingDir,
+		keysConfigPath: d.KeysConfigPath,
 	}
 	retries.commands = commands
 	scheduled.commands = commands

@@ -1,25 +1,30 @@
 // Two regression guards for how this UI opens a local file or a URL
 // from outside it.
 //
-// The first is against a sender- or service-controlled URL opening
-// with any scheme. Qt.openUrlExternally opens whatever string it is
-// given with no filter of its own: a WhatsApp link preview's matched
-// text, a Telegram formatting span, or a service's own setup error text
-// is not something this UI should ever hand it unchecked. Every call
-// that might carry such a URL goes through WindowController's own
-// openExternalLink, the one place that checks ui/lib/Links.js's
-// isAllowed first (see docs/decisions.md); a handful of other files
-// call Qt.openUrlExternally directly, but only ever with a local
-// "file://" path for a file this helper or the user already put on
-// disk, not a URL a sender or service handed the UI as text, so
-// Links.isAllowed's scheme check does not apply to them.
+// The first is against any QML file ever starting a process - Qt's
+// Qt.openUrlExternally runs xdg-open (or the detected browser)
+// directly - whose own command-line arguments would carry a
+// sender-, service- or user-controlled target: another local user can
+// read a process's full argv through /proc/<pid>/cmdline for as long
+// as it lives, and a link can carry something as sensitive as a
+// password-reset token (see docs/decisions.md). Every open, local
+// file or remote link alike, now asks the helper's own links.open or
+// files.open method instead, which opens it through the desktop
+// portal over D-Bus - a method call's own arguments are never a
+// process's argv - rather than falling back to Qt.openUrlExternally
+// when the portal cannot be reached. WindowController's own
+// openExternalLink additionally checks ui/lib/Links.js's isAllowed
+// before ever asking the helper to open a link.
 //
-// The second is against building one of those local "file://" URLs by
-// hand. A local path, however it was named, can still hold a
-// character - '#', '?', '%', a space, non-ASCII text - that a raw
-// `"file://" + path` concatenation would mangle into the wrong URL
-// rather than merely refuse (see ui/lib/Links.js's fileURL and
-// docs/decisions.md). Every local open goes through fileURL instead.
+// The second is against building a local "file://" URL by hand, for
+// showing it in an Image or MediaPlayer source rather than opening it
+// externally (opening now never builds one of these URLs at all,
+// having moved to files.open's own plain path parameter instead). A
+// local path, however it was named, can still hold a character -
+// '#', '?', '%', a space, non-ASCII text - that a raw `"file://" +
+// path` concatenation would mangle into the wrong URL rather than
+// merely refuse (see ui/lib/Links.js's fileURL and docs/decisions.md).
+// Every such local URL goes through fileURL instead.
 'use strict';
 
 const { test } = require('node:test');
@@ -31,24 +36,6 @@ const UI_ROOT = path.resolve(__dirname, '../../ui');
 
 // OPEN_URL_PATTERN matches a direct call to Qt.openUrlExternally.
 const OPEN_URL_PATTERN = /Qt\.openUrlExternally\(/g;
-
-// ALLOWED_FILES are the only files that may call Qt.openUrlExternally
-// directly, relative to ui/: WindowController's own openExternalLink,
-// the one gate a sender- or service-controlled URL goes through;
-// MediaController's and ConversationController's own default
-// openExternally property, the terminal action every other file reaches
-// only after MediaController._openIfAllowed has already approved it (a
-// cooldown and, for risky media, a confirmation first) - nothing else
-// may call Qt.openUrlExternally for a message's media, which is why
-// PhotoViewerController no longer does; and Service.qml's one local
-// open of the user's own keys.conf for editing, unrelated to either
-// gate since it never carries sender- or service-controlled content.
-const ALLOWED_FILES = new Set([
-  'controllers/WindowController.qml',
-  'Service.qml',
-  'controllers/ConversationController.qml',
-  'controllers/MediaController.qml'
-]);
 
 // qmlFiles walks dir and returns every ".qml" file under it.
 function qmlFiles(dir) {
@@ -65,12 +52,11 @@ function qmlFiles(dir) {
 }
 
 // findDisallowedOpens returns one description per Qt.openUrlExternally
-// call in src, as "<file>:<line>", when file is not in ALLOWED_FILES.
+// call in src, as "<file>:<line>": every one is disallowed now, since
+// opening anything, local or remote, goes through the helper's own
+// links.open or files.open method instead (see this file's own header
+// comment).
 function findDisallowedOpens(file, src) {
-  if (ALLOWED_FILES.has(file)) {
-    return [];
-  }
-
   const found = [];
   for (const match of src.matchAll(OPEN_URL_PATTERN)) {
     const line = src.slice(0, match.index).split('\n').length;
@@ -79,28 +65,21 @@ function findDisallowedOpens(file, src) {
   return found;
 }
 
-test('no QML file outside the allowed few calls Qt.openUrlExternally directly', () => {
+test('no QML file calls Qt.openUrlExternally directly', () => {
   const offenders = qmlFiles(UI_ROOT)
     .map((file) => path.relative(UI_ROOT, file))
     .flatMap((file) => findDisallowedOpens(file, fs.readFileSync(path.join(UI_ROOT, file), 'utf8')));
 
   assert.deepEqual(offenders, [],
-    `${offenders.length} direct Qt.openUrlExternally call(s) outside the allowed files: a URL from a message, ` +
-    `a link preview or a service's own text must go through WindowController.openExternalLink, which checks ` +
-    `ui/lib/Links.js's isAllowed first:\n  ${offenders.join('\n  ')}`);
+    `${offenders.length} direct Qt.openUrlExternally call(s): a link or a local file must be opened through ` +
+    `the helper's own links.open or files.open method instead, over D-Bus through the desktop portal, never ` +
+    `by starting a process whose argv would carry the target (see docs/decisions.md):\n  ${offenders.join('\n  ')}`);
 });
 
 test('a deliberately broken expectation is caught', () => {
   const offenders = findDisallowedOpens('components/Example.qml', 'onClicked: Qt.openUrlExternally(url)');
 
   assert.deepEqual(offenders, ['components/Example.qml:1']);
-});
-
-test('the allowed files are not flagged for their own local file:// opens', () => {
-  for (const file of ALLOWED_FILES) {
-    const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
-    assert.deepEqual(findDisallowedOpens(file, src), []);
-  }
 });
 
 // RAW_FILE_URL_PATTERN matches a "file://" URL built by hand - string
