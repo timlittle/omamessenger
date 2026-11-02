@@ -57,7 +57,15 @@ func ensurePollTables(ctx context.Context, db *sql.DB) error {
 
 // putPoll saves a poll's question, multiple-choice flag and option
 // text, replacing whatever was saved for it before. It is called once,
-// when a poll creation message is first seen.
+// when a poll creation message is first seen. A poll creation message
+// carries its own option list straight from the wire, with no count or
+// id-length limit of its own before this runs, so an option list past
+// domain.MaxPollOptions, and any option whose own id runs past
+// domain.MaxRemoteIDLength - never a real option's own hash, always
+// exactly 64 hex characters, see poll.go's pollOptionID - are bounded
+// before the insert loop even starts, rather than written to this
+// account's database in full and only capped once domain.CapMedia reads
+// the message back out.
 func (m *mediaStore) putPoll(ctx context.Context, conversationRemoteID, messageRemoteID string, poll domain.Poll) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -73,7 +81,14 @@ func (m *mediaStore) putPoll(ctx context.Context, conversationRemoteID, messageR
 
 	const option = `INSERT INTO poll_options (conversation_id, message_id, option_id, text, position) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (conversation_id, message_id, option_id) DO UPDATE SET text = excluded.text, position = excluded.position`
-	for i, o := range poll.Options {
+	options := poll.Options
+	if len(options) > domain.MaxPollOptions {
+		options = options[:domain.MaxPollOptions]
+	}
+	for i, o := range options {
+		if len(o.ID) > domain.MaxRemoteIDLength {
+			continue
+		}
 		if _, err := tx.ExecContext(ctx, option, conversationRemoteID, messageRemoteID, o.ID, o.Text, i); err != nil {
 			return fmt.Errorf("whatsapp: save poll: %w", err)
 		}
@@ -136,8 +151,14 @@ func (m *mediaStore) pollOptions(ctx context.Context, conversationRemoteID, mess
 
 // setVotes replaces voterID's selected options for a poll with
 // optionIDs, an empty list retracting every earlier vote, the way a
-// later PollUpdateMessage always carries the voter's complete,
-// current selection rather than a diff.
+// later PollUpdateMessage always carries the voter's complete, current
+// selection rather than a diff. A live vote decrypts to whatever option
+// ids its own sender's client put there, with no count or length limit
+// of its own before this runs (see vote.go's handlePollVote), so an id
+// list past domain.MaxPollOptions, and any individual id past
+// domain.MaxRemoteIDLength - never a real option's own hash, always
+// exactly 64 hex characters - are bounded before the insert loop even
+// starts, the same defence putPoll gives an oversized option list.
 func (m *mediaStore) setVotes(ctx context.Context, conversationRemoteID, messageRemoteID, voterID string, optionIDs []string) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -151,7 +172,14 @@ func (m *mediaStore) setVotes(ctx context.Context, conversationRemoteID, message
 	}
 
 	const insert = `INSERT INTO poll_votes (conversation_id, message_id, voter_id, option_id) VALUES (?, ?, ?, ?)`
-	for _, id := range optionIDs {
+	ids := optionIDs
+	if len(ids) > domain.MaxPollOptions {
+		ids = ids[:domain.MaxPollOptions]
+	}
+	for _, id := range ids {
+		if len(id) > domain.MaxRemoteIDLength {
+			continue
+		}
 		if _, err := tx.ExecContext(ctx, insert, conversationRemoteID, messageRemoteID, voterID, id); err != nil {
 			return fmt.Errorf("whatsapp: save vote: %w", err)
 		}
