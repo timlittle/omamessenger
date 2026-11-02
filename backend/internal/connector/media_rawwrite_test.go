@@ -1,10 +1,12 @@
 package connector_test
 
 // media_rawwrite_test.go statically guards that every connector writes a
-// message's downloaded media to disk only through SaveImageMedia or
-// SaveMedia, never through a raw os.WriteFile or os.OpenFile, so a
-// sender's unchecked bytes cannot bypass imagesafe on their way to a
-// QML Image component.
+// message's downloaded media to disk only through SaveMedia, never
+// through a raw os.WriteFile or os.OpenFile: one shared, auditable
+// write path for every kind, image included, now that checking an
+// image's own content is app.Commands's own display copy's job, built
+// once it is actually viewed, never a connector's own job at write
+// time (see docs/decisions.md).
 
 import (
 	"os"
@@ -15,13 +17,13 @@ import (
 
 // rawFileWrite matches a direct call to os.WriteFile or os.OpenFile:
 // the two ways a package could put bytes on disk without going
-// through SaveImageMedia or SaveMedia.
+// through SaveMedia.
 var rawFileWrite = regexp.MustCompile(`\bos\.(WriteFile|OpenFile)\(`)
 
-// sharedSaverCall matches a call to one of this package's own shared
-// savers, so the guard test below can confirm a connector actually
-// uses one rather than merely not using a raw file write.
-var sharedSaverCall = regexp.MustCompile(`connector\.Save(Image)?Media\(`)
+// sharedSaverCall matches a call to this package's own shared saver,
+// so the guard test below can confirm a connector actually uses it
+// rather than merely not using a raw file write.
+var sharedSaverCall = regexp.MustCompile(`connector\.SaveMedia\(`)
 
 // funcHeader matches a top-level function declaration's own line, to
 // tell which function a later match in the same file falls under.
@@ -31,24 +33,23 @@ var funcHeader = regexp.MustCompile(`(?m)^func (?:\([^)]*\)\s*)?(\w+)\(`)
 // allowed a raw file write: a video, audio or document never reaches
 // a QML Image, so streaming it straight to disk - rather than
 // buffering it in memory only to call SaveMedia - costs nothing in
-// safety. Every other function, especially the one that decides
-// whether a download is an image at all, must go through this
-// package's shared savers instead.
+// safety. Every other function must go through this package's shared
+// saver instead.
 var rawWriteAllowlist = map[string]string{
 	"telegram": "download",
 }
 
-// TestConnectors_WriteFetchedMediaOnlyThroughSharedSavers statically
+// TestConnectors_WriteFetchedMediaOnlyThroughSharedSaver statically
 // checks fetch.go in the whatsapp and telegram connector packages -
 // the one file in each where FetchMedia decides how to write a
 // message's downloaded media to disk: every raw os.WriteFile or
 // os.OpenFile call falls under rawWriteAllowlist's one named
-// exception, if the directory has one, and each file calls
-// SaveImageMedia or SaveMedia at least once. A future change that
-// reached for a raw file write anywhere else - the exact mistake a
-// marketplace review found in this package's sticker path - fails
-// this test rather than reaching production unnoticed.
-func TestConnectors_WriteFetchedMediaOnlyThroughSharedSavers(t *testing.T) {
+// exception, if the directory has one, and each file calls SaveMedia
+// at least once. A future change that reached for a raw file write
+// anywhere else - the exact mistake a marketplace review found in
+// this package's sticker path - fails this test rather than reaching
+// production unnoticed.
+func TestConnectors_WriteFetchedMediaOnlyThroughSharedSaver(t *testing.T) {
 	t.Parallel()
 
 	for _, dir := range []string{"whatsapp", "telegram"} {
@@ -63,11 +64,11 @@ func TestConnectors_WriteFetchedMediaOnlyThroughSharedSavers(t *testing.T) {
 
 			for _, fn := range functionsContaining(src, rawFileWrite) {
 				if fn != rawWriteAllowlist[dir] {
-					t.Errorf("%s: func %s calls os.WriteFile or os.OpenFile directly; use connector.SaveImageMedia or connector.SaveMedia instead", path, fn)
+					t.Errorf("%s: func %s calls os.WriteFile or os.OpenFile directly; use connector.SaveMedia instead", path, fn)
 				}
 			}
 			if !sharedSaverCall.Match(src) {
-				t.Errorf("%s never calls connector.SaveImageMedia or connector.SaveMedia at all", path)
+				t.Errorf("%s never calls connector.SaveMedia at all", path)
 			}
 		})
 	}
@@ -125,7 +126,7 @@ func TestRawFileWrite_CatchesADeliberateViolation(t *testing.T) {
 	cases := map[string]bool{
 		`os.WriteFile(path, data, 0o600)`:           true,
 		`os.OpenFile(path, os.O_CREATE, 0o600)`:     true,
-		`connector.SaveImageMedia(path, data, p)`:   false,
+		`connector.SaveMedia(path, data)`:           false,
 		`// os.WriteFile(x, y, z) is disabled here`: true, // the check is textual, on purpose: see its own doc comment
 	}
 

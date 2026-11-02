@@ -1,11 +1,11 @@
 package connector_test
 
-// media_test.go checks SaveImageMedia and SaveMedia directly, and
-// guards the invariant every connector's FetchMedia depends on: a
-// photo, sticker or GIF's downloaded bytes always reach disk through
-// SaveImageMedia, which runs them through imagesafe first, never
-// through a raw file write that could put a sender's unchecked bytes
-// straight in front of a QML Image component.
+// media_test.go checks ReencodeImageFile and SaveMedia directly.
+// ReencodeImageFile is the one place a photo, sticker or GIF's pixels
+// are ever decoded for display: app.Commands calls it once to fill a
+// display copy's own cache slot, never again on every time that slot
+// is served, since re-encoding is a lossy, one-way rewrite (see
+// docs/decisions.md).
 
 import (
 	"bytes"
@@ -18,200 +18,108 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
-// TestSaveImageMedia_SanitizesOrRejects covers both outcomes: real
-// image bytes are written, through imagesafe, readable only by the
-// user; anything imagesafe rejects is never written at all, and the
-// caller sees ErrUnsafeImage.
-func TestSaveImageMedia_SanitizesOrRejects(t *testing.T) {
+// TestReencodeImageFile_WritesTheReencodedResult covers the basic
+// round trip: src is read and left exactly as it was, and dst
+// receives imagesafe.Reencode's own result, never src's own bytes.
+func TestReencodeImageFile_WritesTheReencodedResult(t *testing.T) {
 	t.Parallel()
 
-	t.Run("a real image is written", func(t *testing.T) {
-		t.Parallel()
-
-		path := filepath.Join(t.TempDir(), "out.png")
-		if err := connector.SaveImageMedia(path, onePixelPNG(), imagesafe.Thumbnail); err != nil {
-			t.Fatalf("SaveImageMedia() = %v, want a sanitized file written", err)
-		}
-
-		info, err := os.Stat(path)
-		if err != nil || info.Mode().Perm() != 0o600 {
-			t.Errorf("file mode = %v, %v, want 0600", info, err)
-		}
-	})
-
-	t.Run("unsafe bytes are rejected and never written", func(t *testing.T) {
-		t.Parallel()
-
-		path := filepath.Join(t.TempDir(), "out.png")
-		err := connector.SaveImageMedia(path, []byte("not an image at all"), imagesafe.Thumbnail)
-		if !errors.Is(err, connector.ErrUnsafeImage) {
-			t.Fatalf("SaveImageMedia() = %v, want %v", err, connector.ErrUnsafeImage)
-		}
-		if _, err := os.Stat(path); err == nil {
-			t.Fatal("unsafe bytes were written to disk anyway")
-		}
-	})
-}
-
-// TestEnsureImageSafe_KeepsAnAlreadySafeFileUnchanged covers the
-// common case app.Commands.FetchMedia relies on for every photo and
-// sticker it serves: a file that already sanitizes cleanly is left
-// exactly as it was, never rewritten for no reason.
-func TestEnsureImageSafe_KeepsAnAlreadySafeFileUnchanged(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "m1.photo.jpg")
-	data := onePixelPNG()
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "original.bin")
+	original := onePixelPNG()
+	if err := os.WriteFile(src, original, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	dst := filepath.Join(dir, "view.jpg")
 
-	width, height, err := connector.EnsureImageSafe(path, imagesafe.FullImage)
+	format, width, height, err := connector.ReencodeImageFile(src, dst, imagesafe.Thumbnail)
 	if err != nil {
-		t.Fatalf("EnsureImageSafe() = %v, want nil", err)
+		t.Fatalf("ReencodeImageFile() = %v, want nil", err)
+	}
+	if format != imagesafe.FormatJPEG {
+		t.Errorf("format = %v, want FormatJPEG for an opaque 1x1 PNG", format)
 	}
 	wantDims(t, width, height, 1, 1)
 
-	got, err := os.ReadFile(path)
-	if err != nil || !bytes.Equal(got, data) {
-		t.Error("an already-safe file was rewritten, want it left exactly as it was")
-	}
-}
-
-// TestEnsureImageSafe_RewritesAFileSanitizeStrips covers a file that
-// still passes today's checks but carries something Sanitize removes:
-// kept, but rewritten to the stripped bytes.
-func TestEnsureImageSafe_RewritesAFileSanitizeStrips(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "m1.photo.jpg")
-	original := pngWithTextChunk("legacy metadata nobody asked for")
-	if err := os.WriteFile(path, original, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	width, height, err := connector.EnsureImageSafe(path, imagesafe.FullImage)
+	out, err := os.ReadFile(dst)
 	if err != nil {
-		t.Fatalf("EnsureImageSafe() = %v, want nil", err)
+		t.Fatalf("read destination: %v", err)
 	}
-	wantDims(t, width, height, 2, 2)
-
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Equal(got, original) {
-		t.Error("file was not rewritten, want the stripped chunk gone")
-	}
-	if bytes.Contains(got, []byte("legacy metadata")) {
-		t.Error("stripped chunk's own text is still on disk")
-	}
-}
-
-// TestEnsureImageSafe_RemovesWhatFailsSanitizing covers the actual
-// guarantee this exists for: a file that is not one of the formats
-// imagesafe recognizes - a legacy sticker saved from an SVG, say - is
-// removed and reported as an error, never served.
-func TestEnsureImageSafe_RemovesWhatFailsSanitizing(t *testing.T) {
-	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "m1.sticker.svg")
-	if err := os.WriteFile(path, []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`), 0o600); err != nil {
-		t.Fatal(err)
+	if bytes.Equal(out, original) {
+		t.Error("destination holds the original bytes unchanged, want a fresh re-encode")
 	}
 
-	if _, _, err := connector.EnsureImageSafe(path, imagesafe.Thumbnail); !errors.Is(err, connector.ErrUnsafeImage) {
-		t.Fatalf("EnsureImageSafe() = %v, want %v", err, connector.ErrUnsafeImage)
+	stillThere, err := os.ReadFile(src)
+	if err != nil || !bytes.Equal(stillThere, original) {
+		t.Error("source file was modified, want it left exactly as it was")
 	}
 
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Errorf("unsafe file stat = %v, want it removed", err)
+	info, err := os.Stat(dst)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("destination mode = %v, %v, want 0600", info, err)
 	}
 }
 
-// TestEnsureImageSafe_RejectsAFileOverTheProfilesInputCap covers the
-// declared-size check, refused before anything is even read into
-// memory.
-func TestEnsureImageSafe_RejectsAFileOverTheProfilesInputCap(t *testing.T) {
+// TestReencodeImageFile_RejectsUnsafeInput covers data imagesafe
+// cannot even parse as an image: refused, and dst is never written.
+func TestReencodeImageFile_RejectsUnsafeInput(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "m1.sticker.png")
-	oversized := append(append([]byte{}, onePixelPNG()...), make([]byte, imagesafe.Thumbnail.MaxInputLen)...)
-	if err := os.WriteFile(path, oversized, 0o600); err != nil {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "original.bin")
+	if err := os.WriteFile(src, []byte("not an image at all"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	dst := filepath.Join(dir, "view.jpg")
 
-	if _, _, err := connector.EnsureImageSafe(path, imagesafe.Thumbnail); !errors.Is(err, connector.ErrMediaTooLarge) {
-		t.Fatalf("EnsureImageSafe() = %v, want %v", err, connector.ErrMediaTooLarge)
+	if _, _, _, err := connector.ReencodeImageFile(src, dst, imagesafe.Thumbnail); !errors.Is(err, connector.ErrUnsafeImage) {
+		t.Fatalf("ReencodeImageFile() = %v, want %v", err, connector.ErrUnsafeImage)
 	}
-
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Errorf("oversized file stat = %v, want it removed", err)
+	if _, err := os.Stat(dst); err == nil {
+		t.Error("unsafe input still produced a destination file")
 	}
 }
 
-// TestEnsureImageSafe_ReportsAMissingFile covers path simply not
-// existing: an error, never treated as safe to leave alone.
-func TestEnsureImageSafe_ReportsAMissingFile(t *testing.T) {
+// TestReencodeImageFile_ReportsAMissingSourceFile covers src simply
+// not existing: a plain error, never one of connector's own
+// sentinels, which both name a problem with the bytes themselves.
+func TestReencodeImageFile_ReportsAMissingSourceFile(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "missing.jpg")
-
-	if _, _, err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
-		t.Fatal("EnsureImageSafe() = nil, want an error for a file that cannot be read")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("error = %v, want it to wrap os.ErrNotExist", err)
+	dir := t.TempDir()
+	_, _, _, err := connector.ReencodeImageFile(filepath.Join(dir, "missing.png"), filepath.Join(dir, "view.jpg"), imagesafe.Thumbnail)
+	if err == nil {
+		t.Fatal("ReencodeImageFile() on a missing source succeeded")
+	}
+	if errors.Is(err, connector.ErrUnsafeImage) {
+		t.Error("a missing file was reported as unsafe rather than as a plain read error")
 	}
 }
 
-// TestEnsureImageSafe_RemovesAFileItCannotRead mirrors the sweep's own
-// guard for a file that exists but cannot even be opened - here,
-// every permission bit cleared: removed, never left trusted on disk
-// just because this check could not look at it.
-func TestEnsureImageSafe_RemovesAFileItCannotRead(t *testing.T) {
+// TestReencodeImageFile_ReportsAWriteFailure covers the destination
+// write itself failing: a directory that does not exist, so an
+// otherwise-valid re-encode still cannot be saved.
+func TestReencodeImageFile_ReportsAWriteFailure(t *testing.T) {
 	t.Parallel()
-	skipAsRoot(t)
 
-	path := filepath.Join(t.TempDir(), "m1.photo.jpg")
-	if err := os.WriteFile(path, onePixelPNG(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, 0o000); err != nil {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "original.png")
+	if err := os.WriteFile(src, onePixelPNG(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
-		t.Fatal("EnsureImageSafe() = nil, want an error for a file that cannot be read")
-	}
-
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("unreadable file stat = %v, want it removed", err)
-	}
-}
-
-// TestEnsureImageSafe_ReportsAWriteFailureWhenRewriting covers the
-// rewrite's own write failing: the file is read-only, so sanitizing
-// it (it carries a chunk Sanitize strips) succeeds but writing the
-// result back does not.
-func TestEnsureImageSafe_ReportsAWriteFailureWhenRewriting(t *testing.T) {
-	t.Parallel()
-	skipAsRoot(t)
-
-	path := filepath.Join(t.TempDir(), "m1.photo.jpg")
-	if err := os.WriteFile(path, pngWithTextChunk("strip me"), 0o400); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, _, err := connector.EnsureImageSafe(path, imagesafe.FullImage); err == nil {
-		t.Fatal("EnsureImageSafe() = nil, want an error for a rewrite that cannot be written")
+	_, _, _, err := connector.ReencodeImageFile(src, filepath.Join(dir, "no-such-directory", "view.jpg"), imagesafe.Thumbnail)
+	if err == nil {
+		t.Fatal("ReencodeImageFile() = nil, want an error for a destination directory that does not exist")
 	}
 }
 
 // TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes reproduces the bug a
 // video Telegram document carrying both a video attribute and an
 // animated attribute could exploit: a sender who marks a document a
-// video (so FetchMedia streams it to disk unchanged, never through
-// SaveImageMedia) but gives it a ".gif" name and the animated flag can
+// video (so FetchMedia streams it to disk unchanged through
+// SaveMedia, never imagesafe-checked at write time) but gives it a
+// ".gif" name and the animated flag can
 // make the UI pick AnimatedImage purely from that metadata. The fix is
 // this check, run after such a file is already on disk: it never
 // reads a filename, mime type or attribute, only the file's own first
@@ -465,9 +373,10 @@ func TestAudioPlayable_ChecksTheFilesOwnHeaders(t *testing.T) {
 	})
 }
 
-// TestSaveMedia_WritesUnchanged covers a video, audio or document: none
-// of SaveImageMedia's checks apply, so whatever bytes a connector
-// downloaded land on disk exactly as they were.
+// TestSaveMedia_WritesUnchanged covers a video, audio, document, or
+// now a photo, sticker or GIF download too (see SaveMedia's own doc
+// comment): whatever bytes a connector downloaded land on disk
+// exactly as they were, with no check of their own at write time.
 func TestSaveMedia_WritesUnchanged(t *testing.T) {
 	t.Parallel()
 

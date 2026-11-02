@@ -109,21 +109,6 @@ func backdate(t *testing.T, path string, d time.Duration) {
 	}
 }
 
-// mustWriteFile writes contents to path, creating its parent
-// directory first, and fails the test on any error - a plain file on
-// disk Store or Fetch never wrote itself, standing in for one a past
-// run of the helper left behind.
-func mustWriteFile(t *testing.T, path, contents string) {
-	t.Helper()
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // failingReader always fails to read, like a clipboard command that
 // could not be run.
 type failingReader struct{ err error }

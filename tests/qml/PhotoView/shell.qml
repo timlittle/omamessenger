@@ -22,7 +22,67 @@ ShellRoot {
   // standing in for the controller re-fetching its media.
   property int reloadWantedCount: 0
 
-  property var steps: [root.checkUnavailableMessage, root.checkLyingDimensionsNeverRaiseSourceSize, root.waitForBrokenPhotoToAskAgain]
+  // testRoot is this test's own directory, where opaque.jpg and
+  // mismatched.jpg (committed alongside this file) actually live.
+  readonly property string testRoot: String(Qt.resolvedUrl(".")).replace("file://", "")
+
+  property var steps: [
+    root.checkUnavailableMessage,
+    root.checkLyingDimensionsNeverRaiseSourceSize,
+    root.waitForBrokenPhotoToAskAgain,
+    root.waitForRealJpegThumbToRender,
+    root.waitForMatchedExtensionFileToRender,
+    root.waitForMismatchedExtensionFileToRender
+  ]
+
+  // realJpegThumbBase64 is a tiny, real, opaque 4x3 JPEG: imagesafe.Reencode
+  // writes a thumb this way whenever it finds no real transparency (see
+  // docs/decisions.md), so this proves Media.thumbMime's own sniff picks
+  // "image/jpeg" and that Qt actually decodes the result, not just that
+  // the Image element exists.
+  readonly property string realJpegThumbBase64: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAADAAQDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAAB//EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAH/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8ANzAL3//Z"
+
+  // waitForRealJpegThumbToRender polls realJpegThumbPhoto's own Image
+  // until it leaves the loading state: Ready and a positive sourceSize
+  // means Qt actually decoded it; Error, or any other mismatch, fails
+  // the test outright rather than retrying out the clock.
+  function waitForRealJpegThumbToRender(): var {
+    const image = Check.find(realJpegThumbPhoto, "photoImage");
+    if (!image) return "could not find realJpegThumbPhoto's own Image";
+    if (image.status === Image.Error) return "real JPEG thumb failed to decode";
+    if (image.status !== Image.Ready) return false;
+    if (image.sourceSize.width <= 0 || image.sourceSize.height <= 0) return "real JPEG thumb decoded to an empty size";
+    return true;
+  }
+
+  // waitForMatchedExtensionFileToRender polls matchedExtensionPhoto's own
+  // Image: a real JPEG file named "opaque.jpg", the ordinary case a
+  // display copy's own name always matches (see
+  // connector.ReencodeImageFile and docs/decisions.md).
+  function waitForMatchedExtensionFileToRender(): var {
+    const image = Check.find(matchedExtensionPhoto, "photoImage");
+    if (!image) return "could not find matchedExtensionPhoto's own Image";
+    if (image.status === Image.Error) return "matched-extension JPEG file failed to decode";
+    if (image.status !== Image.Ready) return false;
+    if (image.sourceSize.width <= 0 || image.sourceSize.height <= 0) return "matched-extension JPEG file decoded to an empty size";
+    return true;
+  }
+
+  // waitForMismatchedExtensionFileToRender polls mismatchedExtensionPhoto's
+  // own Image: real PNG bytes in a file named "mismatched.jpg", proving
+  // Qt's own QImageReader sniffs a file:// source's actual content rather
+  // than trusting its suffix - the question docs/decisions.md needed an
+  // answer to before deciding an outgoing attachment's own on-disk name
+  // never needs to change just because imagesafe.Reencode may have
+  // changed its format.
+  function waitForMismatchedExtensionFileToRender(): var {
+    const image = Check.find(mismatchedExtensionPhoto, "photoImage");
+    if (!image) return "could not find mismatchedExtensionPhoto's own Image";
+    if (image.status === Image.Error) return "mismatched-extension PNG file failed to decode despite its .jpg name";
+    if (image.status !== Image.Ready) return false;
+    if (image.sourceSize.width <= 0 || image.sourceSize.height <= 0) return "mismatched-extension PNG file decoded to an empty size";
+    return true;
+  }
 
   // checkUnavailableMessage is the original synchronous check: it needs
   // no waiting, so it always finishes on its first attempt.
@@ -107,6 +167,23 @@ ShellRoot {
         // thumbWidth/thumbHeight - the thumbnail's own verified size
         // - must ever reach this bubble's own sourceSize.
         photo: ({ kind: "photo", width: 100000, height: 1, thumbWidth: 4, thumbHeight: 3, thumb: "/9j/placeholder" })
+      }
+
+      PhotoView {
+        id: realJpegThumbPhoto
+        photo: ({ kind: "photo", width: 4, height: 3, thumb: root.realJpegThumbBase64 })
+      }
+
+      PhotoView {
+        id: matchedExtensionPhoto
+        photo: ({ kind: "photo", width: 4, height: 3, thumb: "" })
+        path: root.testRoot + "/opaque.jpg"
+      }
+
+      PhotoView {
+        id: mismatchedExtensionPhoto
+        photo: ({ kind: "photo", width: 8, height: 8, thumb: "" })
+        path: root.testRoot + "/mismatched.jpg"
       }
     }
   }

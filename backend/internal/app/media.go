@@ -60,11 +60,11 @@ func (e *MediaFetchError) Unwrap() error {
 
 // FetchMedia returns the path of a message's photo, video, file or
 // voice note, together with width and height when it is a photo or
-// sticker: its own real dimensions, as connector.EnsureImageSafe's
-// own parse of the served file just confirmed them, for the UI to
-// size its decode from in place of the message's own claimed size,
-// which need not match what the served file actually decodes to (see
-// docs/decisions.md). Both are zero for every other media kind. An
+// sticker: its own real dimensions, as displayCopy's own decode of
+// it just confirmed them, for the UI to size its decode from in
+// place of the message's own claimed size, which need not match what
+// the served file actually decodes to (see docs/decisions.md). Both
+// are zero for every other media kind. An
 // outgoing message's own attachment is already on this machine, so
 // its local copy is returned at once, with no remote id needed;
 // anything else is downloaded from the service the first time, then
@@ -141,14 +141,14 @@ func imageSafeProfile(kind string) (profile imagesafe.Profile, ok bool) {
 }
 
 // servedPath is the one guarantee FetchMedia relies on before it ever
-// hands path back: for a photo or sticker, path must pass
-// connector.EnsureImageSafe under its kind's own profile, whatever
-// wrote it and however long ago, since neither a cache hit nor an
-// outgoing message's own local copy is trusted just because it is
-// already on disk (see docs/decisions.md). refetchable is true once
-// for a download recoverUnsafeImage can retry from the service when
-// that check fails; false for an outgoing message's own copy, which
-// has nowhere else to come from. Every other media kind passes
+// hands a path back: for a photo or sticker, path - the original,
+// downloaded or outgoing, bytes - is never that path at all, but
+// displayCopy's own display copy built from it, the only file this
+// helper ever lets the UI load into a QML Image (see
+// docs/decisions.md). refetchable is true once for a download
+// recoverUnsafeImage can retry from the service when building that
+// copy fails; false for an outgoing message's own copy, which has
+// nowhere else to come from. Every other media kind passes path
 // straight through unchecked here: it already has its own per-fetch
 // check elsewhere.
 func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m domain.Message, path string, refetchable bool) (string, int, int, error) {
@@ -157,26 +157,112 @@ func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m d
 		return path, 0, 0, nil
 	}
 
-	width, height, err := connector.EnsureImageSafe(path, profile)
+	view, width, height, err := c.tryDisplayCopy(ctx, m, path, profile)
 	if err != nil {
 		return c.recoverUnsafeImage(ctx, conv, m, err, refetchable)
+	}
+
+	return view, width, height, nil
+}
+
+// tryDisplayCopy builds m's own display copy from originalPath (see
+// displayCopy), removing originalPath itself when that fails: a file
+// that cannot be turned into something safe to show is never left
+// trusted on disk just because of how or when it got there, whether
+// this is servedPath's own first attempt or recoverUnsafeImage's
+// retry (see docs/decisions.md).
+func (c *Commands) tryDisplayCopy(ctx context.Context, m domain.Message, originalPath string, profile imagesafe.Profile) (path string, width, height int, err error) {
+	path, width, height, err = c.displayCopy(ctx, m, originalPath, profile)
+	if err == nil {
+		return path, width, height, nil
+	}
+
+	if removeErr := os.Remove(originalPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+		return "", 0, 0, errors.Join(err, removeErr)
+	}
+
+	return "", 0, 0, err
+}
+
+// displayCopyID names m's own slot for its display copy in the
+// downloaded media cache: distinct from cacheIdentity's own slot for
+// the original bytes it is built from, and a name no release before
+// this one ever wrote, so a cache hit under it is always this
+// release's own Reencode output, never a file an older release's
+// different checks already passed - the one invariant that makes
+// re-checking a cache hit unnecessary at all (see
+// docs/decisions.md). The same id serves a downloaded photo and an
+// outgoing one's own bubble alike, since both resolve to the same
+// m.ID and m.Media.Kind regardless of where their original bytes
+// currently live.
+func displayCopyID(m domain.Message) string {
+	return cacheIdentity(m) + ".view"
+}
+
+// displayCopy returns the path of m's own display copy, filling it -
+// once - by re-encoding originalPath's bytes through
+// connector.ReencodeImageFile under profile when no copy exists yet.
+// Re-encoding is a lossy, one-way rewrite, so it must never run again
+// once a copy exists: unlike the per-serve check this replaced,
+// FetchMedia can be called many times for the same photo as its
+// message bubble scrolls in and out of view, and a cache hit here is
+// served as is, with no re-check (see docs/decisions.md). width and
+// height are read back from the result's own header on every call,
+// including a cache hit (see imagesafe.Dimensions): cheap enough to
+// pay every time, unlike Reencode's own full decode.
+func (c *Commands) displayCopy(ctx context.Context, m domain.Message, originalPath string, profile imagesafe.Profile) (path string, width, height int, err error) {
+	id := displayCopyID(m)
+	var format imagesafe.OutputFormat
+
+	fill := func(_ context.Context, dst string) error {
+		f, _, _, fillErr := connector.ReencodeImageFile(originalPath, dst, profile)
+		format = f
+		return fillErr
+	}
+	nameFor := func(string) (string, error) {
+		return id + format.Extension(), nil
+	}
+
+	path, err = c.cache.FetchNamed(ctx, id, fill, nameFor)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("media: display copy: %w", err)
+	}
+
+	width, height, ok := dimensionsOf(path)
+	if !ok {
+		return "", 0, 0, fmt.Errorf("media: display copy: %w", connector.ErrUnsafeImage)
 	}
 
 	return path, width, height, nil
 }
 
-// recoverUnsafeImage responds to servedPath's own check failing,
-// which already removed the file it rejected: a download gets exactly
-// one fresh retry from the service, since a connector sanitizes a
-// photo or sticker itself the moment it writes one (see
-// connector.SaveImageMedia), so a retry through the same path is
-// expected to come back clean. Anything else - an outgoing message's
-// own local copy, with nowhere further to come from, or a retry that
-// fails the same check again - is classified and logged the same way
-// any other failed fetch is (see failDecodeCheck), and never served.
-// profile is recomputed from m's own kind rather than passed in,
-// since servedPath already confirmed imageSafeProfile finds one for
-// this message before ever calling here.
+// dimensionsOf reads width and height from path's own header through
+// imagesafe.Dimensions, never a full decode: the cheap check
+// displayCopy's own cache hit gets on every serve.
+func dimensionsOf(path string) (width, height int, ok bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close() // reading only; nothing to lose on a close error
+
+	return imagesafe.Dimensions(f)
+}
+
+// recoverUnsafeImage responds to servedPath's own display copy
+// failing to build, which tryDisplayCopy has already removed the
+// original it tried to build from: a download gets exactly one
+// fresh retry from the service, since tryDisplayCopy's own removal
+// guarantees this retry's download actually asks the service for
+// something rather than finding the same bad file cached under the
+// same name again (see cache.Cache.Fetch). Anything else - an
+// outgoing message's own local copy, with nowhere further to come
+// from, or a retry that fails the same check again - is classified
+// and logged the same way any other failed fetch is (see
+// failDecodeCheck), and never served. profile is recomputed from m's
+// own kind rather than passed in, since servedPath already confirmed
+// imageSafeProfile finds one for this message before ever calling
+// here.
 func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversation, m domain.Message, checkErr error, refetchable bool) (string, int, int, error) {
 	if !refetchable {
 		return "", 0, 0, c.failDecodeCheck(ctx, m, checkErr)
@@ -188,12 +274,12 @@ func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversat
 	}
 
 	profile, _ := imageSafeProfile(m.Media.Kind)
-	width, height, err := connector.EnsureImageSafe(path, profile)
+	view, width, height, err := c.tryDisplayCopy(ctx, m, path, profile)
 	if err != nil {
 		return "", 0, 0, c.failDecodeCheck(ctx, m, err)
 	}
 
-	return path, width, height, nil
+	return view, width, height, nil
 }
 
 // DecodeAsForMedia reports how the UI must decode messageID's video,

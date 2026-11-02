@@ -36,18 +36,28 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 		}
 	}
 
-	// A photo's bytes must pass imagesafe on every fetch (see
-	// app.servedPath), so the fake connector's usual stand-in - the
-	// message's own remote id, as plain text - is swapped for a real
-	// PNG here, unlike the file case below.
+	// A photo's bytes are decoded and re-encoded into a display copy on
+	// every fetch (see app.servedPath), so the fake connector's usual
+	// stand-in - the message's own remote id, as plain text - is
+	// swapped for a real PNG here, unlike the file case below.
 	f.media.data = testPNGBytes(t, 2, 2)
 	path, _, _, err := f.commands.FetchMedia(ctx, "m1", false)
-	if err != nil || filepath.Base(path) != "m1.photo.jpg" {
-		t.Fatalf("FetchMedia = %q, %v; want m1.photo.jpg in the cache", path, err)
+	if err != nil || filepath.Base(path) != "m1.photo.view.png" {
+		t.Fatalf("FetchMedia = %q, %v; want the display copy m1.photo.view.png in the cache", path, err)
 	}
 
-	if got, _ := os.ReadFile(path); !bytes.Equal(got, f.media.data) {
-		t.Errorf("cached %q, want the downloaded media unchanged by the safety check", got)
+	view, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(view, f.media.data) {
+		t.Error("display copy holds the original bytes unchanged, want a fresh re-encode")
+	}
+	assertSamePixels(t, f.media.data, view)
+
+	original, err := os.ReadFile(filepath.Join(f.mediaDir, "m1.photo.jpg"))
+	if err != nil || !bytes.Equal(original, f.media.data) {
+		t.Errorf("original = %v, %v; want the downloaded bytes kept unchanged alongside the display copy", original, err)
 	}
 
 	if _, _, _, err := f.commands.FetchMedia(ctx, "m1", false); err != nil || !slices.Equal(f.media.fetched, []string{"40"}) {
@@ -143,9 +153,15 @@ func TestFetchMedia_OutgoingPhotoUsesTheLocalCopyWhileStillPending(t *testing.T)
 		t.Fatal(err)
 	}
 	have, err := os.ReadFile(got)
-	if err != nil || !bytes.Equal(have, want) {
-		t.Errorf("FetchMedia() = %q, %v; want the same bytes as the attachment sent", got, err)
+	if err != nil {
+		t.Fatal(err)
 	}
+	// The display copy is re-encoded, twice over - once when the
+	// attachment itself was sanitized at attach time, again building
+	// this display copy from it - so its bytes are never identical to
+	// the file originally attached, only its pixels (see
+	// docs/decisions.md).
+	assertSamePixels(t, want, have)
 
 	if len(f.media.fetched) != 0 {
 		t.Errorf("downloaded from the service %v, want the local copy used instead", f.media.fetched)
@@ -171,17 +187,24 @@ func TestFetchMedia_OutgoingPhotoFallsBackToDownloadIfTheLocalCopyIsGone(t *test
 		t.Fatal(err)
 	}
 
-	// The re-download must pass imagesafe just like any other photo
-	// fetch (see app.servedPath), so the fake connector returns a real
-	// PNG here rather than its usual remote-id placeholder.
+	// The re-download is decoded and re-encoded into a display copy
+	// just like any other photo fetch (see app.servedPath), so the
+	// fake connector returns a real PNG here rather than its usual
+	// remote-id placeholder.
 	f.media.data = testPNGBytes(t, 2, 2)
 	got, _, _, err := f.commands.FetchMedia(ctx, sent.ID, false)
-	if err != nil || filepath.Base(got) != sent.ID+".photo.jpg" {
-		t.Fatalf("FetchMedia() = %q, %v; want the service's copy once the local one is gone", got, err)
+	if err != nil || filepath.Base(got) != sent.ID+".photo.view.png" {
+		t.Fatalf("FetchMedia() = %q, %v; want the service's display copy once the local one is gone", got, err)
 	}
 	if !slices.Equal(f.media.fetched, []string{"99"}) {
 		t.Errorf("fetched = %v, want the service asked for remote id 99", f.media.fetched)
 	}
+
+	view, err := os.ReadFile(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSamePixels(t, f.media.data, view)
 }
 
 func TestFetchMedia_ReportsADownloadFailure(t *testing.T) {
@@ -373,9 +396,10 @@ func TestFetchMedia_RemovesAnUnsafeLegacyCacheFileAndRefetches(t *testing.T) {
 	}
 
 	got, readErr := os.ReadFile(path)
-	if readErr != nil || !bytes.Equal(got, f.media.data) {
-		t.Errorf("served %q, %v; want the freshly downloaded, sanitized photo", got, readErr)
+	if readErr != nil {
+		t.Fatal(readErr)
 	}
+	assertSamePixels(t, f.media.data, got)
 	if !slices.Equal(f.media.fetched, []string{"40"}) {
 		t.Errorf("fetched = %v, want exactly one re-download", f.media.fetched)
 	}
@@ -457,9 +481,10 @@ func TestFetchMedia_RemovesAnUnsafeStickerCacheFileAndRefetches(t *testing.T) {
 	}
 
 	got, readErr := os.ReadFile(path)
-	if readErr != nil || !bytes.Equal(got, f.media.data) {
-		t.Errorf("served %q, %v; want the freshly downloaded, sanitized sticker", got, readErr)
+	if readErr != nil {
+		t.Fatal(readErr)
 	}
+	assertSamePixels(t, f.media.data, got)
 }
 
 // TestFetchMedia_EditingKindNeverReusesTheOldKindsCachedFile

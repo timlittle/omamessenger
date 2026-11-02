@@ -60,10 +60,10 @@ func gifMinDelayCS(raw uint16, canvasPixels int64) uint16 {
 // the Netscape looping one AnimatedImage needs, after checking the
 // logical screen's and every frame's own dimensions against profile,
 // and returns that logical screen's own width and height alongside
-// the rebuilt bytes: the real size a caller may need to bound a later
-// decode by (see connector.EnsureImageSafe), never the size any
-// later, unrelated metadata might claim instead. ok is false for
-// anything structurally wrong or over profile's caps. A file of more
+// the rebuilt bytes: the real size a caller may need to bound a
+// later decode by, never the size any later, unrelated metadata
+// might claim instead. ok is false for anything structurally wrong
+// or over profile's caps. A file of more
 // than one frame also gets every Graphics Control extension's own
 // delay raised to gifMinDelayCS's bound (see writeGIFBlocks):
 // countGIFFrames learns the frame count first, since a single still

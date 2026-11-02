@@ -366,7 +366,7 @@ func startManager(t *testing.T, ctx context.Context, connectors ...connector.Con
 }
 
 // wantDims fails t unless width and height equal wantWidth and wantHeight,
-// for a test confirming EnsureImageSafe's own verified dimensions.
+// for a test confirming ReencodeImageFile's own verified dimensions.
 func wantDims(t *testing.T, width, height, wantWidth, wantHeight int) {
 	t.Helper()
 

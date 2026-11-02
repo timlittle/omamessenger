@@ -3,6 +3,7 @@ package store_test
 import (
 	"errors"
 	"fmt"
+	"image"
 	"slices"
 	"strings"
 	"sync"
@@ -487,9 +488,8 @@ func TestMessage_SanitizesStoredThumbnail(t *testing.T) {
 		domain.Message{ID: "invalid", ConversationID: "chat", Text: "c", Created: 3, Media: &domain.Media{Kind: domain.MediaSticker, Thumb: "not valid base64 at all!!"}},
 	)
 
-	if got, err := s.Message(ctx, "clean"); err != nil || got.Media.Thumb != clean {
-		t.Errorf("clean thumbnail = %q, %v; want %q, unchanged", got.Media.Thumb, err, clean)
-	}
+	got, err := s.Message(ctx, "clean")
+	requireThumbReencoded(t, got.Media.Thumb, err, clean, image.Pt(8, 8))
 	if got, err := s.Message(ctx, "oversized"); err != nil || got.Media.Thumb != "" {
 		t.Errorf("oversized thumbnail = %q, %v; want cleared", got.Media.Thumb, err)
 	}

@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import "../theme"
 import "../lib/ImageBounds.js" as ImageBounds
+import "../lib/Media.js" as Media
 
 // A link's preview under a message: the site, the page's title and the
 // start of its description, with the small picture Telegram sent. All of
@@ -89,7 +90,7 @@ Item {
       visible: !!root.preview.thumb
       // thumb is a base64 JPEG the connector already downloaded and
       // embedded in the message; this never fetches a remote URL.
-      source: root.preview.thumb ? "data:image/jpeg;base64," + root.preview.thumb : ""
+      source: root.preview.thumb ? "data:" + Media.thumbMime(root.preview.thumb) + ";base64," + root.preview.thumb : ""
       fillMode: Image.PreserveAspectCrop
       // Decodes off the UI thread: without this, Qt decoded the
       // progressive JPEG thumbnail synchronously on the shell's own

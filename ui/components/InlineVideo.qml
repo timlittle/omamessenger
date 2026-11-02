@@ -216,7 +216,7 @@ Item {
     objectName: "videoThumb"
     anchors.fill: parent
     visible: !root._decoding && !(root._animated && root._realGifFile && root.path)
-    source: root.video.thumb ? "data:image/jpeg;base64," + root.video.thumb : ""
+    source: root.video.thumb ? "data:" + Media.thumbMime(root.video.thumb) + ";base64," + root.video.thumb : ""
     fillMode: Image.PreserveAspectFit
     // Fit inside this bubble's own box, computed from the thumbnail's
     // own verified width and height (see PhotoView.qml's own

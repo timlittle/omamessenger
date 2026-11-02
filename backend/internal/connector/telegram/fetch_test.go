@@ -122,11 +122,13 @@ func TestFetchMedia_SanitizesStickerAndGIFDocument(t *testing.T) {
 	}
 }
 
-// TestFetchMedia_SanitizesAStickerWhateverMimeTypeItClaims covers a
-// sticker whose sender-chosen mime type is not WebP: its bytes still go
-// through imagesafe, which refuses anything it cannot validate (here an
-// SVG), rather than being written to disk for a QML Image to decode.
-func TestFetchMedia_SanitizesAStickerWhateverMimeTypeItClaims(t *testing.T) {
+// TestFetchMedia_WritesAStickerWhateverMimeTypeItClaims covers a
+// sticker whose sender-chosen mime type is not WebP: its bytes still
+// get written exactly as downloaded, whatever they actually are
+// (here an SVG). Checking an image's own content is app.Commands's
+// own display copy's job now, built once a conversation actually
+// asks to view one, never this connector's (see docs/decisions.md).
+func TestFetchMedia_WritesAStickerWhateverMimeTypeItClaims(t *testing.T) {
 	t.Parallel()
 
 	doc := &tg.Document{
@@ -137,14 +139,17 @@ func TestFetchMedia_SanitizesAStickerWhateverMimeTypeItClaims(t *testing.T) {
 	f.reply(&tg.MessagesGetMessagesRequest{}, &tg.MessagesMessages{Messages: []tg.MessageClass{
 		&tg.Message{ID: 40, PeerID: &tg.PeerUser{UserID: 42}, Media: &tg.MessageMediaDocument{Document: doc}},
 	}})
-	f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFilePartial{}, Bytes: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)})
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)
+	f.reply(&tg.UploadGetFileRequest{}, &tg.UploadFile{Type: &tg.StorageFilePartial{}, Bytes: svg})
 
 	path := filepath.Join(t.TempDir(), "out")
-	if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path, false); err == nil {
-		t.Fatal("FetchMedia() wrote a non-image sticker, want it refused by the sanitizer")
+	if err := connectedTo(f, &connectortest.Sink{}).FetchMedia(t.Context(), chatWithNadia, "40", path, false); err != nil {
+		t.Fatalf("FetchMedia() = %v, want nil", err)
 	}
-	if _, err := os.Stat(path); err == nil {
-		t.Error("an unsanitized sticker file was left on disk")
+
+	got, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(got, svg) {
+		t.Errorf("file = %v, %v, want the downloaded bytes written unchanged", got, err)
 	}
 }
 

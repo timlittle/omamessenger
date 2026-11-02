@@ -85,7 +85,9 @@ linters:
         imagesafe:
           list-mode: strict
           files: ["**/backend/internal/imagesafe/*.go", "!$test"]
-          allow: [$gostd]
+          allow:
+            - $gostd
+            - golang.org/x/image/webp
         videosafe:
           list-mode: strict
           files: ["**/backend/internal/videosafe/*.go", "!$test"]

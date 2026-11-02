@@ -299,9 +299,9 @@ func TestMediaFetch_OmitsRiskyForEverydayMedia(t *testing.T) {
 }
 
 // TestMediaFetch_ReportsVerifiedDimensionsForAPhoto confirms
-// media.fetch's additive width and height fields are the downloaded
-// file's own real, decoder-confirmed size (see
-// connector.EnsureImageSafe), never the message's own claimed
+// media.fetch's additive width and height fields are the display
+// copy's own real, decoder-confirmed size (see
+// app.Commands.displayCopy), never the message's own claimed
 // Media.Width/Height, which a sender fully controls and need not
 // match what the served file actually decodes to (see
 // docs/decisions.md).

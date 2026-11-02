@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"bytes"
+	"image"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/cache"
@@ -10,7 +12,10 @@ import (
 
 // TestMediaCopy_WritesTheFetchedFileToTheClipboard confirms media.copy
 // downloads a message's media through the same path media.fetch uses,
-// then puts its own bytes on the clipboard.
+// then puts that photo's display copy on the clipboard: re-encoded by
+// app.Commands.displayCopy, so its bytes differ from the original
+// fetched photo even though its pixels do not (see
+// docs/decisions.md).
 func TestMediaCopy_WritesTheFetchedFileToTheClipboard(t *testing.T) {
 	t.Parallel()
 
@@ -32,8 +37,20 @@ func TestMediaCopy_WritesTheFetchedFileToTheClipboard(t *testing.T) {
 		t.Fatalf("media.copy = %v", err)
 	}
 
-	if string(s.clipboard.written) != string(photo) {
-		t.Errorf("clipboard got %q, want the fetched media", s.clipboard.written)
+	if bytes.Equal(s.clipboard.written, photo) {
+		t.Error("clipboard holds the original bytes unchanged, want the display copy's own re-encode")
+	}
+
+	wantImg, _, err := image.Decode(bytes.NewReader(photo))
+	if err != nil {
+		t.Fatalf("decode want: %v", err)
+	}
+	gotImg, _, err := image.Decode(bytes.NewReader(s.clipboard.written))
+	if err != nil {
+		t.Fatalf("decode clipboard content: %v", err)
+	}
+	if wantImg.Bounds() != gotImg.Bounds() {
+		t.Errorf("clipboard image bounds = %v, want %v", gotImg.Bounds(), wantImg.Bounds())
 	}
 }
 

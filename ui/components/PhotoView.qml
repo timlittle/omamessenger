@@ -3,6 +3,7 @@ import qs.Commons
 import "../theme"
 import "../lib/ImageBounds.js" as ImageBounds
 import "../lib/Links.js" as Links
+import "../lib/Media.js" as Media
 
 // A photo in a message, at its shape. It shows its blurred preview until
 // the full image is downloaded, which it asks for as soon as it is
@@ -109,7 +110,7 @@ Item {
     anchors.fill: parent
     // Always the helper's own downloaded file or an embedded base64
     // thumb; never a remote URL.
-    source: root.path && !root._loadFailed ? Links.fileURL(root.path) : (root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
+    source: root.path && !root._loadFailed ? Links.fileURL(root.path) : (root.photo.thumb ? "data:" + Media.thumbMime(root.photo.thumb) + ";base64," + root.photo.thumb : "")
     fillMode: Image.PreserveAspectFit
     // Fit inside this bubble's own box, computed from the photo's own
     // verified width and height rather than the box alone: Qt's own

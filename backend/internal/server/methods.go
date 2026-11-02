@@ -410,9 +410,9 @@ type mediaResult struct {
 	Playable bool   `json:"playable,omitempty"`
 	Risky    bool   `json:"risky,omitempty"`
 	// Width and Height are the fetched file's own real dimensions,
-	// confirmed by the helper's own parse of it, never the message's
-	// own claimed size: a photo's or sticker's (see
-	// connector.EnsureImageSafe), or, when DecodeAs is "gif", that
+	// confirmed by the helper's own decode of it, never the message's
+	// own claimed size: a photo's or sticker's display copy (see
+	// app.Commands.displayCopy), or, when DecodeAs is "gif", that
 	// GIF's own canvas (see connector.SanitizeIfGIF). The UI must size
 	// its decode of path from these, never from media's own
 	// width/height field, which need not match what this file actually

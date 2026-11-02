@@ -25,8 +25,10 @@ func (f *fakeLogger) Printf(format string, v ...any) {
 }
 
 // openStore opens a fresh database in a temporary directory and closes it
-// when the test ends.
-func openStore(t *testing.T) *store.Store {
+// when the test ends. t is testing.TB rather than *testing.T so a
+// benchmark can share this with every other test (see
+// BenchmarkMessages_PageOfThumbnails).
+func openStore(t testing.TB) *store.Store {
 	t.Helper()
 
 	s, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "data", "messages.db"), nil)
@@ -44,7 +46,7 @@ func openStore(t *testing.T) *store.Store {
 }
 
 // addAccount stores a WhatsApp account named after its id.
-func addAccount(t *testing.T, s *store.Store, id string) {
+func addAccount(t testing.TB, s *store.Store, id string) {
 	t.Helper()
 
 	account := domain.Account{ID: id, Service: domain.ServiceWhatsApp, Name: id}
@@ -54,7 +56,7 @@ func addAccount(t *testing.T, s *store.Store, id string) {
 }
 
 // addConversation stores a direct conversation whose remote id is "r-" + id.
-func addConversation(t *testing.T, s *store.Store, accountID, id, title string) domain.Conversation {
+func addConversation(t testing.TB, s *store.Store, accountID, id, title string) domain.Conversation {
 	t.Helper()
 
 	c, created, err := s.EnsureConversation(t.Context(), domain.Conversation{
@@ -71,7 +73,7 @@ func addConversation(t *testing.T, s *store.Store, accountID, id, title string) 
 // and one direct conversation in it, "chat", titled "Chat". Most tests
 // need no other account or conversation shape, so this is their usual
 // starting point.
-func openChatStore(t *testing.T) (*store.Store, domain.Conversation) {
+func openChatStore(t testing.TB) (*store.Store, domain.Conversation) {
 	t.Helper()
 
 	s := openStore(t)
@@ -104,7 +106,7 @@ func ids(messages []domain.Message) []string {
 // fakeThumb returns a plain, solid-colour PNG of the given size,
 // base64-encoded exactly as domain.Media.Thumb stores one: a real,
 // valid preview a test can plant on a message.
-func fakeThumb(t *testing.T, width, height int) string {
+func fakeThumb(t testing.TB, width, height int) string {
 	t.Helper()
 
 	var buf bytes.Buffer
@@ -113,4 +115,41 @@ func fakeThumb(t *testing.T, width, height int) string {
 	}
 
 	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
+// requireThumbDecodesTo fails t unless thumb is valid base64 that
+// decodes, as an image, to exactly width by height: the one property
+// that survives sanitizedThumb's own re-encode, which no longer
+// leaves an already-well-formed thumbnail's bytes unchanged (see
+// imagesafe.Reencode and docs/decisions.md).
+func requireThumbDecodesTo(t testing.TB, thumb string, width, height int) {
+	t.Helper()
+
+	data, err := base64.StdEncoding.DecodeString(thumb)
+	if err != nil {
+		t.Fatalf("thumbnail is not valid base64: %v", err)
+	}
+
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width != width || cfg.Height != height {
+		t.Fatalf("decoded = %+v, %v; want %dx%d", cfg, err, width, height)
+	}
+}
+
+// requireThumbReencoded fails t unless err is nil and got - a
+// message's own thumbnail, read back after sanitizedThumb's full
+// re-encode - is neither empty nor still equal to original, and
+// decodes to exactly size (see requireThumbDecodesTo): the one
+// guarantee that still holds for a thumbnail that was already
+// well-formed, now that its bytes are never left byte-for-byte
+// unchanged (see imagesafe.Reencode and docs/decisions.md). size is
+// one image.Point, width then height, rather than two separate
+// arguments, to stay within this project's own argument-count limit.
+func requireThumbReencoded(t testing.TB, got string, err error, original string, size image.Point) {
+	t.Helper()
+
+	if err != nil || got == "" || got == original {
+		t.Fatalf("thumbnail = %q, %v; want re-encoded, neither empty nor unchanged", got, err)
+	}
+	requireThumbDecodesTo(t, got, size.X, size.Y)
 }

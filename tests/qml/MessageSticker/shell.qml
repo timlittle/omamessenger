@@ -14,12 +14,35 @@ ShellRoot {
 
   readonly property var noAnnotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
 
+  // realPngThumbBase64 is a tiny, real 8x8 PNG with a genuinely
+  // transparent corner: imagesafe.Reencode writes a thumb this way
+  // whenever hasAlpha finds a pixel that is not fully opaque, a
+  // sticker's own cut-out shape above all (see docs/decisions.md), so
+  // this proves Media.thumbMime's own sniff picks "image/png" and
+  // that Qt actually decodes the result, not just that the Image
+  // element exists.
+  readonly property string realPngThumbBase64: "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAgMAAAC5YVYYAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAMUExURQAAAOBQUOBQUOBQUOREq+cAAAADdFJOUwAos/VDiEIAAAAHdElNRQfqCwIPGjrbrw+KAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTExLTAyVDE1OjI2OjU4KzAwOjAw5RV57wAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMS0wMlQxNToyNjo1OCswMDowMJRIwVMAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTEtMDJUMTU6MjY6NTgrMDA6MDDDXeCMAAAAHUlEQVQI12NgYGBge8Ig/5dB/x+D/X8QCWSzPQEATWcHpT3VHv4AAAAASUVORK5CYII="
+
   function run(): void {
     if (!root.checkStickerWithNoThumbShowsEmoji()) return;
     if (!root.checkStickerWithThumbShowsImage()) return;
     if (!root.checkStickerHasNoBubbleFill()) return;
     if (!root.checkMentionsMeShowsGlyph()) return;
     if (!root.checkOversizedEmojiStaysBounded()) return;
+
+    stepper.retry(root.checkRealPngThumbRenders);
+  }
+
+  // checkRealPngThumbRenders polls realPngSticker's own Image until it
+  // leaves the loading state: Ready and a positive sourceSize means Qt
+  // actually decoded the re-encoded PNG thumb, not just that the
+  // element exists with its own visible binding true.
+  function checkRealPngThumbRenders(): void {
+    const image = Check.find(realPngSticker, "stickerImage");
+    if (!image) { Check.fail("could not find realPngSticker's own Image"); return; }
+    if (image.status === Image.Error) { Check.fail("real PNG sticker thumb failed to decode"); return; }
+    if (image.status !== Image.Ready) { stepper.retry(root.checkRealPngThumbRenders); return; }
+    if (image.sourceSize.width <= 0 || image.sourceSize.height <= 0) { Check.fail("real PNG sticker thumb decoded to an empty size"); return; }
 
     console.log("PASS MessageSticker");
     Qt.exit(0);
@@ -136,6 +159,16 @@ ShellRoot {
         annotation: root.noAnnotation
         message: ({ id: "m2", outgoing: false, status: "received", created: 0, senderName: "Nadia", text: "hi" })
       }
+
+      MessageDelegate {
+        id: realPngSticker
+        width: 600
+        annotation: root.noAnnotation
+        message: ({
+          id: "s4", outgoing: false, status: "received", created: 0, senderName: "", text: "[Sticker]",
+          media: { kind: "sticker", emoji: "😀", thumb: root.realPngThumbBase64 }
+        })
+      }
     }
   }
 
@@ -144,5 +177,10 @@ ShellRoot {
     running: true
     interval: 100
     onTriggered: root.run()
+  }
+
+  Stepper {
+    id: stepper
+    name: "MessageSticker"
   }
 }

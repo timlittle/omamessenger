@@ -13,43 +13,27 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/videosafe"
 )
 
-// ErrUnsafeImage reports that a photo, sticker or GIF a connector
-// downloaded failed its safety check (see imagesafe) and so was never
-// written to disk at all. The app layer reports this the same way as
-// any other failed fetch: the UI falls back to a thumbnail or a
-// placeholder, never a crash.
+// ErrUnsafeImage reports that a photo, sticker or GIF failed
+// imagesafe's own check: a decode that found the bytes malformed,
+// panicked, or produced a size over its profile's caps. The app layer
+// reports this the same way as any other failed fetch: the UI falls
+// back to a thumbnail or a placeholder, never a crash.
 var ErrUnsafeImage = errors.New("connector: image failed safety check")
 
-// SaveImageMedia strips compressed or oversized metadata from data,
-// which must be a photo, sticker or GIF a connector is about to let
-// the UI load into a QML Image or AnimatedImage, and writes the
-// result to path, readable only by the user. A sender-controlled
-// image is the one kind of downloaded media Qt itself decodes inline,
-// which is why every connector's FetchMedia routes exactly these
-// kinds through here rather than SaveMedia (see docs/decisions.md).
-func SaveImageMedia(path string, data []byte, profile imagesafe.Profile) error {
-	safe, _, _, ok := imagesafe.Sanitize(data, profile)
-	if !ok {
-		return fmt.Errorf("connector: save image media: %w", ErrUnsafeImage)
-	}
-
-	if err := os.WriteFile(path, safe, 0o600); err != nil {
-		return fmt.Errorf("connector: save image media: %w", err)
-	}
-
-	return nil
-}
-
-// SanitizeOutgoingImage strips compressed or oversized metadata from
-// data, an image the user is attaching to an outgoing message - a
-// paste from the clipboard, say - and returns the sanitized bytes
-// without writing anything to disk: the app layer copies the result
-// into the outgoing media area itself. A pasted image comes from
+// SanitizeOutgoingImage re-encodes data, an image the user is
+// attaching to an outgoing message - a paste from the clipboard, say -
+// through imagesafe.Reencode under the full-size profile, and returns
+// the result without writing anything to disk: the app layer copies
+// it into the outgoing media area itself. A pasted image comes from
 // whichever other program last put something on the clipboard, so it
-// is checked against the same full-size profile a downloaded photo
-// is, never trusted just because the user chose to paste it.
+// is decoded and re-encoded the same way a downloaded photo is, never
+// trusted just because the user chose to paste it (see
+// docs/decisions.md): this is the one point in an outgoing photo's
+// whole life this package ever re-encodes it, so both the composer's
+// own preview and the bubble shown once it sends can keep reusing the
+// same already-safe bytes afterwards.
 func SanitizeOutgoingImage(data []byte) ([]byte, error) {
-	safe, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage)
+	safe, _, _, _, ok := imagesafe.Reencode(data, imagesafe.FullImage)
 	if !ok {
 		return nil, fmt.Errorf("connector: sanitize outgoing image: %w", ErrUnsafeImage)
 	}
@@ -57,19 +41,18 @@ func SanitizeOutgoingImage(data []byte) ([]byte, error) {
 	return safe, nil
 }
 
-// SanitizeOutgoingImageFile overwrites path in place with imagesafe's
-// own sanitized rewrite of its own content, under the same full-size
-// profile SanitizeOutgoingImage already applies to a pasted image:
-// for a photo attachment the app layer has already copied into the
-// outgoing media area from a file the user picked on disk, checked
-// the same way before anything reads or decodes it further, never
-// trusted further just because the user chose to attach it (see
-// docs/decisions.md). path's declared size is checked against that
-// profile's own input cap before the file is ever read into memory,
-// the same discipline a downloaded photo's declared size already
-// gets, so an attachment many times larger than any real photo
-// cannot force an unbounded read just to find out it will be
-// refused.
+// SanitizeOutgoingImageFile overwrites path in place with
+// SanitizeOutgoingImage's own re-encoded rewrite of its own content,
+// under the same full-size profile: for a photo attachment the app
+// layer has already copied into the outgoing media area from a file
+// the user picked on disk, decoded and re-encoded the same way before
+// anything reads it further, never trusted further just because the
+// user chose to attach it (see docs/decisions.md). path's declared
+// size is checked against that profile's own input cap before the
+// file is ever read into memory, the same discipline a downloaded
+// photo's declared size already gets, so an attachment many times
+// larger than any real photo cannot force an unbounded read just to
+// find out it will be refused.
 func SanitizeOutgoingImageFile(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -97,9 +80,14 @@ func SanitizeOutgoingImageFile(path string) error {
 }
 
 // SaveMedia writes data to path unchanged, readable only by the
-// user, for a video, audio, voice note, file or document: formats
-// Qt's own image decoders never touch, so none of SaveImageMedia's
-// risk applies.
+// user. Every connector's FetchMedia uses this for a video, audio,
+// voice note or file - formats Qt's own image decoders never touch -
+// and, now that the UI loads a photo, sticker or GIF's own display
+// copy instead of this file (see ReencodeImageFile and
+// docs/decisions.md), for one of those downloads too: the one check
+// that still matters for them is Reencode's own, run once when their
+// display copy is first built, never again on every write of the
+// original.
 func SaveMedia(path string, data []byte) error {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("connector: save media: %w", err)
@@ -162,55 +150,36 @@ func SanitizeIfGIF(path string) (isGIF bool, width, height int, err error) {
 	return true, width, height, nil
 }
 
-// EnsureImageSafe re-examines path - a photo or sticker about to be
-// handed to the UI's own Image, whatever wrote it - against
-// imagesafe's own sanitizer under profile, regardless of whether it
-// was ever checked before: this is the one guarantee app.Commands
-// relies on at the serving boundary, so an older release's cache
-// entry, a file an edit left behind from a different media kind, or
-// an outgoing copy a retry recopied without sanitizing all land on
-// the same check, never trusted just because of how or when they
-// reached disk (see docs/decisions.md). path is rewritten in place
-// when sanitizing changes it, exactly like a fresh download's own
-// SaveImageMedia; a file that is not one of the formats
-// imagesafe.Sanitize recognizes (PNG, JPEG, GIF or WebP), fails its
-// own checks outright, or cannot even be read is removed and reported
-// as an error - never kept on disk and never served - so a caller
-// that catches the error can simply refuse or retry, never fall back
-// to the very bytes this was asked to rule out. width and height are
-// the file's own real dimensions, as imagesafe.Sanitize's own parse
-// of it just confirmed them, for app.Commands to hand on to the UI in
-// place of whatever size a message's own metadata claims (see
-// docs/decisions.md): a sender's claimed width and height need not
-// match what the served file actually decodes to, and only this
-// check ever reads the file itself.
-func EnsureImageSafe(path string, profile imagesafe.Profile) (width, height int, err error) {
-	info, err := os.Stat(path)
+// ReencodeImageFile reads srcPath - a photo, sticker or GIF this
+// helper already has on disk, downloaded or attached, read here but
+// never written to - fully through imagesafe.Reencode under profile,
+// and writes the result to dstPath, readable only by the user:
+// Qt's own C image decoders inside omarchy-shell only ever see bytes
+// this call's own encoder wrote, never srcPath's own bytes directly
+// (see docs/decisions.md). app.Commands calls this exactly once to
+// fill a display copy's own cache slot, never on every time that
+// slot is served afterwards, since Reencode is a lossy, one-way
+// rewrite that must not run again on its own earlier output. format,
+// width and height are Reencode's own result, for the caller to name
+// and size that cache slot from; ok is false for the same reasons
+// imagesafe.Reencode's own ok is, or srcPath cannot be read, and
+// dstPath is never written in that case.
+func ReencodeImageFile(srcPath, dstPath string, profile imagesafe.Profile) (format imagesafe.OutputFormat, width, height int, err error) {
+	data, err := os.ReadFile(srcPath)
 	if err != nil {
-		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", errors.Join(err, removeIfPresent(path)))
-	}
-	if info.Size() > profile.MaxInputLen {
-		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", errors.Join(ErrMediaTooLarge, removeIfPresent(path)))
+		return imagesafe.FormatUnknown, 0, 0, fmt.Errorf("connector: reencode image file: %w", err)
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", errors.Join(err, removeIfPresent(path)))
-	}
-
-	safe, width, height, ok := imagesafe.Sanitize(data, profile)
+	out, format, width, height, ok := imagesafe.Reencode(data, profile)
 	if !ok {
-		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
-	}
-	if bytes.Equal(safe, data) {
-		return width, height, nil
+		return imagesafe.FormatUnknown, 0, 0, fmt.Errorf("connector: reencode image file: %w", ErrUnsafeImage)
 	}
 
-	if err := os.WriteFile(path, safe, 0o600); err != nil { //nolint:gosec // deliberate: path is a media cache or outgoing path app.Commands already wrote, never built from untrusted input
-		return 0, 0, fmt.Errorf("connector: ensure image safe: %w", err)
+	if err := os.WriteFile(dstPath, out, 0o600); err != nil { //nolint:gosec // deliberate: dstPath is a display copy's cache path app.Commands already builds through cache.FetchNamed, never built from untrusted input
+		return imagesafe.FormatUnknown, 0, 0, fmt.Errorf("connector: reencode image file: %w", err)
 	}
 
-	return width, height, nil
+	return format, width, height, nil
 }
 
 // VideoPlayable reports whether path, an ordinary video FetchMedia has

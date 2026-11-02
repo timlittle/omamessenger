@@ -81,6 +81,24 @@ function canPlayInline(decodeAs, playable) {
   return decodesAsGif(decodeAs) || !!playable;
 }
 
+// thumbMime names the MIME type thumb's own base64 bytes actually
+// decode as, sniffed from its own leading characters rather than
+// assumed from the message's kind: the helper's own imagesafe.Reencode
+// can write a thumbnail as either PNG or JPEG depending on whether it
+// carries real transparency - a sticker's cut-out shape, say - whatever
+// kind of message it illustrates (see docs/decisions.md), so a data
+// URI built from it must declare whichever one it actually is.
+// "iVBORw0KGgo" is the base64 encoding every PNG's own fixed signature
+// bytes always start with; any other thumb - including one with no
+// bytes at all - defaults to JPEG, the more common of the two.
+function thumbMime(thumb) {
+  if (thumb && thumb.indexOf('iVBORw0KGgo') === 0) {
+    return 'image/png';
+  }
+
+  return 'image/jpeg';
+}
+
 // mimeFor names the MIME type to offer when copying media's full file to
 // the clipboard, or null for a kind there is nothing sensible to copy as
 // (a link preview, a poll, a sticker still only on the service, …). The

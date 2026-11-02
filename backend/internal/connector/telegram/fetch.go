@@ -14,7 +14,6 @@ import (
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
-	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
 // errNoFile reports a message with no photo or file to download.
@@ -77,7 +76,7 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 		return errMediaTooLarge
 	}
 
-	return downloadImage(ctx, api, imageDownload{location: location, path: path, profile: profile, max: max})
+	return downloadImage(ctx, api, imageDownload{location: location, path: path, max: max})
 }
 
 // declaredMediaSize is the size m's sender claims for the file
@@ -104,12 +103,10 @@ func declaredMediaSize(m tg.MessageMediaClass) (int64, bool) {
 // imageDownload bundles what downloadImage needs about a photo,
 // sticker or GIF document's own download, keeping that function
 // within the project's own argument limit: where Telegram keeps it,
-// where to write it, the imagesafe.Profile its bytes must pass and
-// its own byte cap (see connector.ImageFetchCap).
+// where to write it and its own byte cap (see connector.ImageFetchCap).
 type imageDownload struct {
 	location tg.InputFileLocationClass
 	path     string
-	profile  imagesafe.Profile
 	max      int64
 }
 
@@ -117,12 +114,11 @@ type imageDownload struct {
 // (see connector.ImageFetchCap) even if Telegram's declared size
 // undersold what it actually streams (see boundedBuffer, the backstop
 // under FetchMedia's own declaredMediaSize check), and writes the
-// result to id.path through the sanitizer every photo, sticker or GIF
-// must pass before the UI can load it into a QML Image (see
-// connector.SaveImageMedia). A video or other document instead streams
-// straight to disk through download below: formats Qt's image
-// decoders never touch, so buffering them in memory first would cost
-// without ever paying for anything.
+// result to id.path unchanged: the UI never loads this file directly
+// (see app.Commands's own display copy and docs/decisions.md), so
+// nothing here needs to check or rewrite it before it reaches disk,
+// the same as a video or other document streamed straight there
+// through download below.
 func downloadImage(ctx context.Context, api *tg.Client, id imageDownload) error {
 	downloadCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
@@ -136,7 +132,7 @@ func downloadImage(ctx context.Context, api *tg.Client, id imageDownload) error 
 		return fmt.Errorf("telegram: fetch media: %w", err)
 	}
 
-	if err := connector.SaveImageMedia(id.path, buf.Bytes(), id.profile); err != nil {
+	if err := connector.SaveMedia(id.path, buf.Bytes()); err != nil {
 		return fmt.Errorf("telegram: fetch media: %w", err)
 	}
 

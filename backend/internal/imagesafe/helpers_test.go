@@ -69,6 +69,49 @@ func setPNGDimensions(src []byte, width, height uint32) []byte {
 	return out
 }
 
+// buildTransparentPNG encodes a solid image of the given size as PNG,
+// with one corner pixel made partly transparent: enough for a test to
+// confirm Reencode's own hasAlpha check finds real transparency,
+// never just an alpha-capable colour type whose pixels all happen to
+// be opaque (see TestReencode_OpaqueAlphaChannelStillBecomesJPEG).
+func buildTransparentPNG(width, height int) []byte {
+	img := image.NewNRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetNRGBA(x, y, color.NRGBA{R: uint8(x), G: uint8(y), B: 200, A: 255})
+		}
+	}
+	img.SetNRGBA(0, 0, color.NRGBA{G: 200, A: 128})
+
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
+}
+
+// buildSolidColorGIF encodes an animation of the given size with one
+// solid-colour frame per entry in colors, for a test that needs each
+// frame visually distinct from the others - such as confirming only
+// the first frame is ever used once a GIF is reduced to a still image
+// (see TestReencode_GIFTakesFirstFrameOnly).
+func buildSolidColorGIF(width, height int, colors ...color.Color) []byte {
+	g := &gif.GIF{LoopCount: 0}
+	for _, c := range colors {
+		palette := color.Palette{color.RGBA{A: 255}, c}
+		frame := image.NewPaletted(image.Rect(0, 0, width, height), palette)
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				frame.SetColorIndex(x, y, 1)
+			}
+		}
+		g.Image = append(g.Image, frame)
+		g.Delay = append(g.Delay, 10)
+	}
+
+	var buf bytes.Buffer
+	_ = gif.EncodeAll(&buf, g)
+	return buf.Bytes()
+}
+
 // buildJPEG encodes a solid image of the given size as a baseline JPEG.
 func buildJPEG(width, height int) []byte {
 	var buf bytes.Buffer
@@ -76,53 +119,16 @@ func buildJPEG(width, height int) []byte {
 	return buf.Bytes()
 }
 
-// insertJPEGSegment returns src with one marker segment of the given
-// marker byte and payload inserted right after the SOI, exactly where
-// APPn or COM segments sit in a real file.
-func insertJPEGSegment(src []byte, marker byte, payload []byte) []byte {
-	var out bytes.Buffer
-	out.Write(src[0:2]) // SOI
-	out.WriteByte(0xFF)
-	out.WriteByte(marker)
-
-	var length [2]byte
-	binary.BigEndian.PutUint16(length[:], uint16(len(payload)+2))
-	out.Write(length[:])
-	out.Write(payload)
-	out.Write(src[2:])
-	return out.Bytes()
-}
-
-// insertFakeMarkers returns src (a real baseline JPEG) with count
-// copies of the two-byte marker 0xFF, marker spliced into its own
-// entropy data, right before EOI: enough to drive
-// copyJPEGRemainder's own per-marker counts (scans, or repeated
-// Huffman/quantization table segments) past any cap under test,
-// without needing count separate, fully-formed segments of real
-// data. copyJPEGRemainder counts a marker the moment it sees it in
-// the byte stream, before reading any length or payload that would
-// normally follow, so these two bytes alone are enough.
-func insertFakeMarkers(src []byte, marker byte, count int) []byte {
-	eoi := bytes.LastIndex(src, []byte{0xFF, 0xD9})
-	if eoi < 0 {
-		panic("test JPEG has no EOI marker")
-	}
-
-	var out bytes.Buffer
-	out.Write(src[:eoi])
-	out.Write(bytes.Repeat([]byte{0xFF, marker}, count))
-	out.Write(src[eoi:])
-	return out.Bytes()
-}
-
-// insertFakeMarkersWithFill is insertFakeMarkers, but each marker is
-// preceded by extraFill additional 0xFF fill bytes - 0xFF 0xFF ...
-// 0xFF marker, rather than a plain 0xFF marker - the exact shape a
-// security review found hid a start-of-scan, DHT or DQT marker from
-// copyJPEGRemainder's own counts entirely: a parser that reads only
-// the byte right after the first 0xFF takes the next fill byte as the
-// marker code instead of skipping it, so the real marker that follows
-// is never counted at all.
+// insertFakeMarkersWithFill returns src (a real baseline JPEG) with
+// count copies of a marker - 0xFF, extraFill further 0xFF fill bytes,
+// then marker - spliced into its own entropy data, right before EOI:
+// the exact shape a pre-rewrite security review found could hide an
+// unbounded number of scan or table markers from this package's old,
+// hand-written marker walk. Reencode no longer walks markers itself -
+// decodeImage hands the whole file straight to Go's own jpeg decoder -
+// so this now only proves that decoder, not a parser this package
+// still owns, never panics or hangs on the shape that broke the old
+// one (see FuzzReencode).
 func insertFakeMarkersWithFill(src []byte, marker byte, extraFill, count int) []byte {
 	eoi := bytes.LastIndex(src, []byte{0xFF, 0xD9})
 	if eoi < 0 {
@@ -261,25 +267,6 @@ func buildWebPSimple(width, height int) []byte {
 	return riffFile(chunk("VP8 ", vp8))
 }
 
-// buildWebPExtended hand-builds an extended WebP: a VP8X chunk
-// declaring the given canvas size, with ICCP, EXIF and XMP chunks
-// when asked for, followed by a plain VP8 chunk of the same size.
-func buildWebPExtended(width, height int, iccp, exif, xmp bool) []byte {
-	var body bytes.Buffer
-	body.Write(chunk("VP8X", vp8xPayload(width, height, iccp, exif, xmp)))
-	if iccp {
-		body.Write(chunk("ICCP", []byte("fake-icc-profile-data")))
-	}
-	if exif {
-		body.Write(chunk("EXIF", []byte("fake-exif-metadata-block")))
-	}
-	if xmp {
-		body.Write(chunk("XMP ", []byte("<x:xmpmeta>fake</x:xmpmeta>")))
-	}
-	body.Write(chunk("VP8 ", vp8Payload(width, height)))
-	return riffFile(body.Bytes())
-}
-
 // buildWebPAnimated hand-builds an animated, extended WebP: a VP8X
 // chunk, an ANIM chunk, and frameCount ANMF chunks each declaring the
 // given frame size.
@@ -291,23 +278,6 @@ func buildWebPAnimated(width, height, frameCount int) []byte {
 		body.Write(chunk("ANMF", anmfPayload(width, height)))
 	}
 	return riffFile(body.Bytes())
-}
-
-// buildWebPLossless hand-builds a minimal non-extended, lossless
-// WebP: just a "VP8L" chunk whose signature and packed size field
-// declare the given size.
-func buildWebPLossless(width, height int) []byte {
-	return riffFile(chunk("VP8L", vp8lPayload(width, height)))
-}
-
-// vp8lPayload is a VP8L signature byte followed by its packed
-// width-1/height-1 size field.
-func vp8lPayload(width, height int) []byte {
-	bits := uint32(width-1)&0x3FFF | (uint32(height-1)&0x3FFF)<<14
-	p := make([]byte, 5)
-	p[0] = 0x2f
-	binary.LittleEndian.PutUint32(p[1:5], bits)
-	return p
 }
 
 // vp8Payload is a VP8 key frame header declaring width and height,

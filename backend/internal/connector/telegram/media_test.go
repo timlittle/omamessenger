@@ -13,13 +13,22 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// stripped is a stripped thumbnail as Telegram sends it: a version byte,
-// the height and width, then the JPEG body without its standard header.
-// It returns a fresh value each time: gotd's encoder mutates a struct's
+// stripped is a stripped thumbnail as Telegram sends it: a version
+// byte, the height and width, then the JPEG body without its standard
+// header - thumbnail.Expand's own package test fixture, the one
+// sequence in this codebase already proven to expand into a real,
+// fully decodable JPEG (gotd/td's TestExpand asserts exactly that),
+// rather than arbitrary placeholder bytes: imagesafe.Sanitize now
+// decodes a thumbnail fully, not just its header, so a fake entropy
+// stream that used to pass unchecked would be refused here too. It
+// returns a fresh value each time: gotd's encoder mutates a struct's
 // flags fields while encoding, so sharing one pointer across parallel
 // tests would race.
 func stripped() *tg.PhotoStrippedSize {
-	return &tg.PhotoStrippedSize{Type: "i", Bytes: []byte{1, 40, 30, 0xAB, 0xCD}}
+	return &tg.PhotoStrippedSize{Type: "i", Bytes: []byte{
+		0x01, 0x0e, 0x28, 0xa3, 0x9e, 0x05, 0x26, 0x78, 0xa5, 0x03, 0x8e, 0xb4, 0xd2, 0x31, 0x40, 0x06,
+		0x7d, 0x85, 0x19, 0xa4, 0xe2, 0x8e, 0x28, 0x00, 0xa2, 0x8a, 0x28, 0x03,
+	}}
 }
 
 func TestMedia_LinkPreview(t *testing.T) {

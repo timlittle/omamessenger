@@ -1,15 +1,23 @@
-// Package imagesafe strips the parts of a sender-supplied image that
-// a connector has no use for before it is written to disk or embedded
-// as a thumbnail: the compressed text chunks Qt's own image plugins
-// still inflate (PNG zTXt/iTXt/iCCP, JPEG's APPn/COM segments) and a
-// declared width or height Qt would otherwise allocate a bitmap for
-// before ever checking it looks sane. Every byte this package returns
-// still decodes to the same pixels; nothing here resizes or
-// re-encodes an image, only removes what rendering never reads (see
-// docs/decisions.md).
+// Package imagesafe makes a sender-supplied image safe to decode
+// inside omarchy-shell by never letting the shell's own C decoders
+// (libjpeg-turbo, libpng, libwebp, Qt's GIF reader) see the sender's
+// compressed bytes at all: Reencode decodes a PNG, JPEG, GIF or still
+// WebP fully in memory-safe Go, checked against a Profile's caps
+// before and after that decode, then writes a fresh JPEG or PNG of
+// its own - the one class of bug this closes is CVE-2023-4863 and its
+// relatives, where a crafted libwebp input corrupts memory inside the
+// process that decodes it (see docs/decisions.md). The one exception
+// is AnimatedGIF: a real GIF animation is still rewritten block by
+// block, never decoded, exactly as before, because AnimatedImage
+// needs its own container and timing, not a single re-encoded frame
+// (see gif.go).
 package imagesafe
 
-import "bytes"
+import (
+	"bytes"
+	"image"
+	"io"
+)
 
 // Profile bounds how large a sanitized image may declare itself and
 // how many undecoded bytes it may arrive as. The bound is chosen by
@@ -144,39 +152,131 @@ func isWebP(data []byte) bool {
 	return len(data) >= 12 && bytes.HasPrefix(data, []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WEBP"))
 }
 
-// Sanitize returns data with every chunk or segment its format does
-// not need for rendering removed, after checking its declared
-// dimensions against profile, together with those dimensions: the
-// image's own real width and height, read from its header (and, for
-// every format but WebP, confirmed again by actually decoding the
-// rebuilt bytes - see finishPNG, finishJPEG and writeGIFBlocks's own
-// trailer check), never whatever size an unrelated caller - a
-// message's own claimed photo size, say - might otherwise assume
-// matches it (see docs/decisions.md). ok is false when data is not a
-// format this package recognizes, is structurally broken (a bad
-// length, a failed checksum, a truncated chunk), or declares a size
-// profile rejects; out, width and height are all zero in that case,
-// so a caller cannot accidentally use a partially-checked result.
-// Nothing is logged here: callers log only the safe category they
-// already have (see app.MediaFetchReason), never these bytes or this
-// function's own reasoning.
+// OutputFormat is the image format Reencode actually wrote its result
+// as, which a caller must use to name or label that result - a cache
+// file's own extension, a data URI's mime type - since it need not
+// match data's own input format at all (see Reencode).
+type OutputFormat int
+
+// The formats Reencode ever writes. FormatGIF only ever comes from
+// the AnimatedGIF profile's own preserved path (see sanitizeGIF):
+// every other profile always writes FormatJPEG or FormatPNG,
+// whatever format data arrived as.
+const (
+	FormatUnknown OutputFormat = iota
+	FormatJPEG
+	FormatPNG
+	FormatGIF
+)
+
+// Extension is format's own canonical file extension, for a caller
+// naming a cache file from Reencode's result so the name on disk
+// always matches the bytes actually written there.
+func (f OutputFormat) Extension() string {
+	switch f {
+	case FormatJPEG:
+		return ".jpg"
+	case FormatPNG:
+		return ".png"
+	case FormatGIF:
+		return ".gif"
+	default:
+		return ""
+	}
+}
+
+// MIME is format's own canonical media type, for a caller building a
+// data URI from Reencode's result.
+func (f OutputFormat) MIME() string {
+	switch f {
+	case FormatJPEG:
+		return "image/jpeg"
+	case FormatPNG:
+		return "image/png"
+	case FormatGIF:
+		return "image/gif"
+	default:
+		return ""
+	}
+}
+
+// Sanitize is Reencode without its own output format, for a caller
+// that only ever treats an image as opaque bytes to write or embed
+// and never needs to know which encoder produced them.
 func Sanitize(data []byte, profile Profile) (out []byte, width, height int, ok bool) {
+	out, _, width, height, ok = Reencode(data, profile)
+	return out, width, height, ok
+}
+
+// Reencode makes data safe to decode inside omarchy-shell under
+// profile's own caps, together with the format it wrote (see
+// OutputFormat) and the real width and height of what it wrote -
+// never whatever size an unrelated caller, such as a message's own
+// claimed photo size, might otherwise assume matches it (see
+// docs/decisions.md).
+//
+// For every profile but AnimatedGIF: data is decoded fully, in
+// memory-safe Go (recovering from any panic a decoder raises on a
+// crafted input as a plain refusal, never a crash - see decodeImage),
+// after its declared dimensions already passed profile's caps from a
+// cheap header read alone (see reencodeStill), so a declared-huge
+// image is refused before anything tries to allocate a bitmap for it.
+// The decoded pixels are then written fresh as JPEG, quality 90, or
+// PNG when they carry any real transparency (see hasAlpha) - a
+// sticker's own cut-out shape, say. A GIF decodes to its first frame
+// only, the same as every other format: this package never hands
+// AnimatedImage anything but a real, unbroken animation (see
+// AnimatedGIF below), so a GIF under any other profile is just
+// another still image. An animated WebP has no Go decoder at all
+// (golang.org/x/image/webp decodes a still WebP only), so it is
+// refused outright, not silently reduced to one frame.
+//
+// For the AnimatedGIF profile, a genuine GIF is instead rewritten
+// block by block exactly as before this package re-encoded anything
+// (see sanitizeGIF): AnimatedImage needs the real container and
+// frame timing, which decoding to one frame would throw away. Bytes
+// that are not actually a GIF under this profile still go through
+// the same decode-and-re-encode path as any other profile, which is
+// strictly safer than the structural rewrite this replaced, never
+// less.
+//
+// ok is false when data is not a format this package recognizes, is
+// too large or malformed to even parse, decodes to a size over
+// profile's own caps, or is an animated WebP; out, format, width and
+// height are all zero or FormatUnknown in that case, so a caller
+// cannot accidentally use a partially-checked result. Nothing is
+// logged here: callers log only the safe category they already have
+// (see app.MediaFetchReason), never these bytes or this function's
+// own reasoning.
+func Reencode(data []byte, profile Profile) (out []byte, format OutputFormat, width, height int, ok bool) {
 	if int64(len(data)) > profile.MaxInputLen || len(data) == 0 {
-		return nil, 0, 0, false
+		return nil, FormatUnknown, 0, 0, false
 	}
 
-	switch detectFormat(data) {
-	case formatPNG:
-		return sanitizePNG(data, profile)
-	case formatJPEG:
-		return sanitizeJPEG(data, profile)
-	case formatGIF:
-		return sanitizeGIF(data, profile)
-	case formatWebP:
-		return sanitizeWebP(data, profile)
-	default:
-		return nil, 0, 0, false
+	detected := detectFormat(data)
+	if detected == formatGIF && profile == AnimatedGIF {
+		out, width, height, ok := sanitizeGIF(data, profile)
+		return out, FormatGIF, width, height, ok
 	}
+	if detected == formatUnknown {
+		return nil, FormatUnknown, 0, 0, false
+	}
+
+	return reencodeStill(data, profile)
+}
+
+// Dimensions reads width and height from r's own header alone, with
+// no full decode: cheap enough to call on every cache hit a caller
+// serves again for a file Reencode already wrote, unlike Reencode's
+// own full decode. ok is false when r's content cannot even be
+// parsed as one of the formats this package registers a decoder for.
+func Dimensions(r io.Reader) (width, height int, ok bool) {
+	cfg, _, err := image.DecodeConfig(r)
+	if err != nil {
+		return 0, 0, false
+	}
+
+	return cfg.Width, cfg.Height, true
 }
 
 // LooksLikeImage reports whether data's own leading bytes are one of
@@ -223,10 +323,4 @@ func withinAspectRatio(width, height int64, maxRatio float64) bool {
 	longer, shorter := max(width, height), min(width, height)
 
 	return float64(longer) <= float64(shorter)*maxRatio
-}
-
-// withinTotal reports whether frames frames of a width by height canvas
-// stay within profile's MaxTotalPixels.
-func withinTotal(width, height int64, frames int, profile Profile) bool {
-	return width*height*int64(max(frames, 1)) <= profile.MaxTotalPixels
 }

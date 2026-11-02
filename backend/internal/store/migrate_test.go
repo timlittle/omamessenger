@@ -287,9 +287,15 @@ func TestMigrate_SanitizesLegacyThumbnails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := readRawMedia(t, db, "clean").Thumb; got != clean {
-		t.Errorf("clean thumbnail = %q, want unchanged %q", got, clean)
+	// Even an already-well-formed thumbnail is re-encoded now, not left
+	// byte-for-byte unchanged (see imagesafe.Reencode and
+	// docs/decisions.md), so this only checks it still decodes to the
+	// same size, the same as the stripped case below.
+	cleanGot := readRawMedia(t, db, "clean").Thumb
+	if cleanGot == "" || cleanGot == clean {
+		t.Errorf("clean thumbnail = %q, want re-encoded, neither empty nor unchanged", cleanGot)
 	}
+	requireDecodesTo(t, cleanGot, 8, 8)
 
 	strippedGot := readRawMedia(t, db, "stripped").Thumb
 	if strippedGot == "" || strippedGot == stripped {

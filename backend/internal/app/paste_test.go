@@ -34,9 +34,13 @@ func TestPasteImage_CopiesThePreferredImageType(t *testing.T) {
 	}
 
 	got, err := os.ReadFile(img.Path)
-	if err != nil || !bytes.Equal(got, imgBytes.Bytes()) {
-		t.Errorf("stored clipboard image: %v, equal=%t", err, bytes.Equal(got, imgBytes.Bytes()))
+	if err != nil {
+		t.Fatal(err)
 	}
+	if bytes.Equal(got, imgBytes.Bytes()) {
+		t.Error("stored clipboard image holds the original bytes unchanged, want a fresh re-encode")
+	}
+	assertSamePixels(t, imgBytes.Bytes(), got)
 }
 
 func TestPasteImage_RejectsAClipboardWithNoImage(t *testing.T) {

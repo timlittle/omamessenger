@@ -3,6 +3,7 @@ import qs.Commons
 import "../theme"
 import "../lib/ImageBounds.js" as ImageBounds
 import "../lib/Links.js" as Links
+import "../lib/Media.js" as Media
 
 // A sticker in a message: a small, borderless static image, never
 // animated (an animated WebP or video sticker still only ever shows its
@@ -74,7 +75,7 @@ Item {
     visible: root._hasImage
     // Always the helper's own downloaded file or an embedded base64
     // thumb; never a remote URL.
-    source: root.path ? Links.fileURL(root.path) : (root.sticker.thumb ? "data:image/png;base64," + root.sticker.thumb : "")
+    source: root.path ? Links.fileURL(root.path) : (root.sticker.thumb ? "data:" + Media.thumbMime(root.sticker.thumb) + ";base64," + root.sticker.thumb : "")
     fillMode: Image.PreserveAspectFit
     // Fit inside this sticker's own fixed box, computed from the
     // sticker's own known width and height (see PhotoView.qml's own

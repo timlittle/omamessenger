@@ -25,7 +25,7 @@ import (
 // generic download-decrypt-write mechanics with a document reference:
 // a kind that reaches the UI as a plain file, never a QML Image, so
 // this test's own bytes stay an arbitrary placeholder rather than a
-// real image. A photo, sticker or GIF's own route through imagesafe is
+// real image. A photo, sticker or GIF write the same way, unchanged,
 // covered separately below.
 func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 	t.Parallel()
@@ -60,13 +60,16 @@ func TestFetchMedia_DownloadsAndDecryptsAStoredReference(t *testing.T) {
 	}
 }
 
-// TestFetchMedia_SanitizesADownloadedPhotoStickerAndGIF covers every
-// kind this connector lets the UI load into a QML Image or
-// AnimatedImage - a photo, a sticker and a document that turned out
-// to be a real GIF (see isGIFImage) - proving each one routes through
-// imagesafe rather than writing whatsmeow's downloaded bytes straight
-// to disk.
-func TestFetchMedia_SanitizesADownloadedPhotoStickerAndGIF(t *testing.T) {
+// TestFetchMedia_WritesAPhotoStickerAndGIFUnchanged covers every kind
+// this connector once ran through imagesafe the moment it was
+// downloaded - a photo, a sticker and a document that turned out to
+// be a real GIF (see isGIFImage) - confirming each one now writes
+// whatsmeow's own downloaded bytes straight to disk instead, exactly
+// like any other kind: checking an image's own content is
+// app.Commands's own display copy's job, built once a conversation
+// actually asks to view one, never this connector's (see
+// docs/decisions.md).
+func TestFetchMedia_WritesAPhotoStickerAndGIFUnchanged(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]mediaRef{
@@ -83,22 +86,20 @@ func TestFetchMedia_SanitizesADownloadedPhotoStickerAndGIF(t *testing.T) {
 			t.Parallel()
 
 			dev, _, c, media := connectedMediaFixture(t)
-			dev.downloadData = tinyJPEG(t) // imagesafe detects the real format by magic bytes, not ref.Mimetype
+			data := tinyJPEG(t) // the real bytes, whatever ref.Mimetype claims; this connector no longer looks at either
+			dev.downloadData = data
 			if err := media.put(t.Context(), directChat.RemoteID, "msg-1", ref); err != nil {
 				t.Fatal(err)
 			}
 
 			path := filepath.Join(t.TempDir(), "out")
 			if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err != nil {
-				t.Fatalf("FetchMedia() = %v, want a sanitized file written", err)
+				t.Fatalf("FetchMedia() = %v, want nil", err)
 			}
 
 			got, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("read sanitized file: %v", err)
-			}
-			if _, err := jpegDecodeConfig(got); err != nil {
-				t.Errorf("sanitized file does not decode as an image: %v", err)
+			if err != nil || !bytes.Equal(got, data) {
+				t.Errorf("file = %v, %v, want the downloaded bytes written unchanged", got, err)
 			}
 		})
 	}
@@ -110,7 +111,7 @@ func TestFetchMedia_SanitizesADownloadedPhotoStickerAndGIF(t *testing.T) {
 // unchecked is exactly the class a marketplace review flagged this
 // connector's sticker thumbnail for. No file must ever land on disk
 // for it.
-func TestFetchMedia_RejectsAnUnsafeDownloadedPhoto(t *testing.T) {
+func TestFetchMedia_WritesWhateverBytesTheServiceSent(t *testing.T) {
 	t.Parallel()
 
 	dev, _, c, media := connectedMediaFixture(t)
@@ -124,11 +125,13 @@ func TestFetchMedia_RejectsAnUnsafeDownloadedPhoto(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "out.jpg")
-	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err == nil {
-		t.Fatal("FetchMedia() = nil, want an error for unsafe image bytes")
+	if err := c.FetchMedia(t.Context(), directChat, "msg-1", path, false); err != nil {
+		t.Fatalf("FetchMedia() = %v, want nil: checking an image's own content is app.Commands's own display copy's job now, not this layer's (see docs/decisions.md)", err)
 	}
-	if _, err := os.Stat(path); err == nil {
-		t.Fatal("unsafe image bytes were written to disk anyway")
+
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "not an image at all" {
+		t.Errorf("file = %q, %v, want the service's own bytes written unchanged", got, err)
 	}
 }
 

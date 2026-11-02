@@ -101,8 +101,8 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 
 // fetchImage downloads a photo, sticker or real GIF file to a
 // temporary file next to req.path, streamed and capped the same way
-// fetch_stream.go bounds a video or file, then sanitizes it from
-// disk: a security review found the previous, in-memory download
+// fetch_stream.go bounds a video or file, then moves it into place
+// unchanged: a security review found the previous, in-memory download
 // trusted the sender's own declared FileLength as its only gate,
 // skipping the check entirely when that field was left at 0, and only
 // then read the whole reply into memory with no cap of its own at
@@ -110,7 +110,9 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 // further to connector.AutoFetchMaxBytes when req.auto is set (see
 // connector.ImageFetchCap), so an automatic fetch of a photo or
 // sticker is never trusted with more than any other automatic fetch
-// is.
+// is. The UI never loads this file directly - app.Commands's own
+// display copy does, re-encoded through imagesafe (see
+// docs/decisions.md) - so nothing here needs to check or rewrite it.
 func (c *Connector) fetchImage(ctx context.Context, dev device, media *mediaStore, req fetchRequest) error {
 	profile, _ := imageProfile(req.ref)
 	max := connector.ImageFetchCap(profile, req.auto)
@@ -129,7 +131,7 @@ func (c *Connector) fetchImage(ctx context.Context, dev device, media *mediaStor
 		return fmt.Errorf("whatsapp: fetch media: %w", err)
 	}
 
-	if err := connector.SaveImageMedia(req.path, data, profile); err != nil {
+	if err := connector.SaveMedia(req.path, data); err != nil {
 		return fmt.Errorf("whatsapp: fetch media: %w", err)
 	}
 

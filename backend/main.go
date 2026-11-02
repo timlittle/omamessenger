@@ -203,9 +203,6 @@ func serve(ctx context.Context, cfg config, s streams, env func(string) string) 
 	registry := newAccountRegistry(db, cfg.dataDir, providers())
 	caches := newMediaCaches(cfg.dataDir, db)
 
-	// Must finish before srv.Start below (see medialegacy.go).
-	revalidateLegacyMedia(caches, logger)
-
 	commands, ingest, manager, err := wire(ctx, wireDeps{
 		db: db, srv: srv, registry: registry, caches: caches, logger: logger,
 		dataDir: cfg.dataDir, dbPath: cfg.dbPath, downloadsDir: cfg.downloadsDir, env: env,

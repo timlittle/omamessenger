@@ -7,6 +7,7 @@ import "../lib/Format.js" as Format
 import "../lib/ImageBounds.js" as ImageBounds
 import "../lib/Keymap.js" as Keymap
 import "../lib/Links.js" as Links
+import "../lib/Media.js" as Media
 
 // Shows a conversation's photo, video or GIF over the whole window.
 // Omarchy's Hyprland window rule floats an external viewer too small to
@@ -125,7 +126,7 @@ Item {
       // thumb; never a remote URL. Empty for a video: a hidden Image
       // still decodes its source, and a video's file is the sender's
       // own bytes, never sanitized as an image.
-      source: root._isVideo ? "" : root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:image/jpeg;base64," + root.photo.thumb : "")
+      source: root._isVideo ? "" : root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:" + Media.thumbMime(root.photo.thumb) + ";base64," + root.photo.thumb : "")
       fillMode: Image.PreserveAspectFit
       // Fit inside the viewer's own stage, computed from the photo's
       // own known width and height (see PhotoView.qml's own

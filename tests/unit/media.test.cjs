@@ -66,6 +66,21 @@ test('isAnimated is true only for a video the service marked animated', () => {
   assert.strictEqual(Media.isAnimated(undefined), false);
 });
 
+test('thumbMime recognizes a PNG thumb by its own base64-encoded signature', () => {
+  // The base64 encoding of PNG's fixed 8-byte signature, exactly what
+  // every PNG store.sanitizedThumb ever writes starts with, whatever
+  // real pixels follow.
+  assert.strictEqual(Media.thumbMime('iVBORw0KGgoAAAANSUhEUgAA'), 'image/png');
+});
+
+test('thumbMime defaults to JPEG for anything that is not a PNG, including no thumb at all', () => {
+  // The base64 encoding of JPEG's fixed start-of-image marker.
+  assert.strictEqual(Media.thumbMime('/9j/4AAQSkZJRgABAQAAAQ=='), 'image/jpeg');
+  assert.strictEqual(Media.thumbMime(''), 'image/jpeg');
+  assert.strictEqual(Media.thumbMime(null), 'image/jpeg');
+  assert.strictEqual(Media.thumbMime(undefined), 'image/jpeg');
+});
+
 test('mimeFor names a photo as JPEG and a video as MP4', () => {
   assert.strictEqual(Media.mimeFor({ kind: 'photo' }), 'image/jpeg');
   assert.strictEqual(Media.mimeFor({ kind: 'video' }), 'video/mp4');
