@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
@@ -169,6 +170,50 @@ func TestResolveNotificationSound_ServiceWithARefusedFileResolvesToNothingNotAnE
 	resolved, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceTelegram, path)
 	if err != nil || resolved != "" {
 		t.Errorf("ResolveNotificationSound() for a refused service default = %q, %v; want \"\", nil", resolved, err)
+	}
+}
+
+// TestResolveNotificationSound_NeverServesAnOldStyleRawFileLeftUnderTheSameKey
+// reproduces the actual security finding: an earlier development
+// build, before this helper transcoded notification sounds at all,
+// copied a user's raw chosen file straight into the sound store under
+// a fixed name, unvalidated (see docs/decisions.md). This never calls
+// any private helper to learn that old name; it derives the sibling
+// legacy path directly from a real resolved path, by swapping its
+// extension for ".sound" - the one extension every build before this
+// fix ever wrote - so it reproduces the exact collision an upgrade
+// could hit, whatever the current key format happens to be.
+func TestResolveNotificationSound_NeverServesAnOldStyleRawFileLeftUnderTheSameKey(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	transcoded := []byte("a real, transcoded notification sound")
+	path := writeSoundFixture(t, "ping.mp3", transcoded)
+
+	if _, err := f.commands.SetNotificationSound(ctx, chat.ID, path); err != nil {
+		t.Fatalf("SetNotificationSound() error = %v", err)
+	}
+
+	resolved, err := f.commands.ResolveNotificationSound(ctx, chat.ID, "", "")
+	if err != nil || resolved == "" {
+		t.Fatalf("ResolveNotificationSound() = %q, %v; want a playable path", resolved, err)
+	}
+
+	legacy := strings.TrimSuffix(resolved, filepath.Ext(resolved)) + ".sound"
+	if err := os.WriteFile(legacy, []byte("the user's own unvalidated file, never transcoded"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	again, err := f.commands.ResolveNotificationSound(ctx, chat.ID, "", "")
+	if err != nil || again != resolved {
+		t.Fatalf("ResolveNotificationSound() with a legacy file present = %q, %v; want the same transcoded path %q", again, err, resolved)
+	}
+
+	got, err := os.ReadFile(again)
+	if err != nil || string(got) != string(transcoded) {
+		t.Errorf("content served = %q, %v; want the transcoded bytes, never the legacy file's", got, err)
 	}
 }
 
