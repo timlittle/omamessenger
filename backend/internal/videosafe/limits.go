@@ -105,6 +105,82 @@ const maxPPSLength = 256
 // integer overflow computing its value.
 const maxExpGolombPrefix = 16
 
+// maxH264RefFrames bounds an SPS's own declared max_num_ref_frames:
+// 16, the absolute ceiling every H.264 level allows (Annex A caps
+// MaxDpbFrames at 16 regardless of level). FFmpeg's decoder allocates
+// one reference-picture buffer per frame this field declares, at the
+// coded (not cropped) size - see maxCodedFrameBudget and
+// docs/decisions.md.
+const maxH264RefFrames = 16
+
+// maxCodedFrameBudget bounds an SPS's own coded pixel count (coded
+// width times coded height, both already bounded to maxDimension)
+// multiplied by one more than its own declared max_num_ref_frames -
+// the number of same-sized frame buffers FFmpeg's decoder actually
+// allocates (every reference frame, plus the one being decoded).
+// Computed from maxDimension and maxH264RefFrames rather than a
+// separate magic number, so it can never silently fall out of step
+// with either: at the worst case both already allow (maxDimension
+// square, maxH264RefFrames references), this is already the exact
+// ceiling, making this an explicit, single assertion of a bound the
+// two checks above already imply - not a looser one.
+const maxCodedFrameBudget = maxDimension * maxDimension * (maxH264RefFrames + 1)
+
+// h264LevelLimits is one entry of the H.264 specification's own
+// Table A-1 (Annex A): the largest coded frame size a level allows,
+// in macroblocks (maxFS), and the largest decoded picture buffer,
+// also in macroblocks (maxDpbMbs) - together bounding how many
+// reference frames a stream at that level and frame size may declare
+// (floor(maxDpbMbs/frameSizeInMbs), separately capped at
+// maxH264RefFrames).
+type h264LevelLimits struct {
+	maxFS, maxDpbMbs int64
+}
+
+// h264Levels maps every level_idc value Annex A defines to its own
+// maxFS/maxDpbMbs pair (Table A-1). level_idc 9 is the alternate
+// encoding some encoders use for level 1b, carrying the same limits
+// this table gives level_idc 11 (1.1) rather than level 1's own
+// tighter ones - treating it as the looser of the two costs nothing:
+// level 1b's real limits are themselves tiny (99 macroblocks), far
+// below anything this package would otherwise allow either way. A
+// level_idc this table does not list is never produced by a real
+// encoder and is refused outright, the same "cannot read it, cannot
+// trust it" rule every other check in this package already applies.
+var h264Levels = map[uint32]h264LevelLimits{
+	9:  {396, 900},
+	10: {99, 396},
+	11: {396, 900},
+	12: {396, 2376},
+	13: {396, 2376},
+	20: {396, 2376},
+	21: {792, 4752},
+	22: {1620, 8100},
+	30: {1620, 8100},
+	31: {3600, 18000},
+	32: {5120, 20480},
+	40: {8192, 32768},
+	41: {8192, 32768},
+	42: {8704, 34816},
+	50: {22080, 110400},
+	51: {36864, 184320},
+	52: {36864, 184320},
+	60: {139264, 696320},
+	61: {139264, 696320},
+	62: {139264, 696320},
+}
+
+// maxCropSlack bounds how many pixels frame cropping may remove from
+// a coded dimension already within maxDimension: one macroblock's own
+// width (16) for the horizontal axis, or one macroblock row's own
+// height (16, doubled to 32 for field-coded pictures, which count two
+// field lines per map unit) for the vertical axis. A real encoder
+// crops only to correct for the coded size rounding up to a whole
+// macroblock; a crafted SPS cropping away far more than that is
+// declaring a coded size the cropped, container-agreeing size was
+// never meant to reveal (see docs/decisions.md).
+const maxCropSlack = 16
+
 // avcVisualSampleEntryFixedFields is the byte length of
 // ISO/IEC 14496-12's VisualSampleEntry fixed fields (reserved,
 // data_reference_index, width, height and the rest, up to but not

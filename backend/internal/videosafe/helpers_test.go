@@ -339,7 +339,7 @@ func buildAVCSPS(width, height int) []byte {
 	w := &spsBitWriter{}
 	w.u(8, 66) // profile_idc: Baseline, no chroma extension fields
 	w.u(8, 0)  // constraint flags + reserved
-	w.u(8, 30) // level_idc
+	w.u(8, 50) // level_idc: 5.0, generous enough for every size this package's own fixtures use
 	w.ue(0)    // seq_parameter_set_id
 	w.ue(0)    // log2_max_frame_num_minus4
 	w.ue(0)    // pic_order_cnt_type

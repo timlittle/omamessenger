@@ -68,12 +68,12 @@ func baselineSPS(width, height int) []byte {
 	w := &internalBitWriter{}
 	w.u(8, 66)
 	w.u(8, 0)
-	w.u(8, 30)
-	w.ue(0) // seq_parameter_set_id
-	w.ue(0) // log2_max_frame_num_minus4
-	w.ue(0) // pic_order_cnt_type
-	w.ue(0) // log2_max_pic_order_cnt_lsb_minus4
-	w.ue(0) // max_num_ref_frames
+	w.u(8, 50) // level_idc: 5.0, generous enough for every size this file builds
+	w.ue(0)    // seq_parameter_set_id
+	w.ue(0)    // log2_max_frame_num_minus4
+	w.ue(0)    // pic_order_cnt_type
+	w.ue(0)    // log2_max_pic_order_cnt_lsb_minus4
+	w.ue(0)    // max_num_ref_frames
 	w.u(1, 0)
 	w.ue(uint32(width/16 - 1))
 	w.ue(uint32(height/16 - 1))
@@ -93,12 +93,12 @@ func highProfileSPS(width, height int, scalingMatrixPresent uint32) []byte {
 	w := &internalBitWriter{}
 	w.u(8, 100)
 	w.u(8, 0)
-	w.u(8, 30)
-	w.ue(0)   // seq_parameter_set_id
-	w.ue(1)   // chroma_format_idc: 4:2:0
-	w.ue(0)   // bit_depth_luma_minus8
-	w.ue(0)   // bit_depth_chroma_minus8
-	w.u(1, 0) // qpprime_y_zero_transform_bypass_flag
+	w.u(8, 50) // level_idc: 5.0, generous enough for every size this file builds
+	w.ue(0)    // seq_parameter_set_id
+	w.ue(1)    // chroma_format_idc: 4:2:0
+	w.ue(0)    // bit_depth_luma_minus8
+	w.ue(0)    // bit_depth_chroma_minus8
+	w.u(1, 0)  // qpprime_y_zero_transform_bypass_flag
 	w.u(1, scalingMatrixPresent)
 	if scalingMatrixPresent != 0 {
 		// A real encoder would follow this with 8 scaling-list-present
@@ -127,7 +127,7 @@ func interlacedSPS(width, frameHeight int) []byte {
 	w := &internalBitWriter{}
 	w.u(8, 66)
 	w.u(8, 0)
-	w.u(8, 30)
+	w.u(8, 50) // level_idc: 5.0, generous enough for every size this file builds
 	w.ue(0)
 	w.ue(0)
 	w.ue(0)
@@ -150,13 +150,13 @@ func picOrderCntType1SPS(width, height int, numRefFramesInCycle uint32) []byte {
 	w := &internalBitWriter{}
 	w.u(8, 66)
 	w.u(8, 0)
-	w.u(8, 30)
-	w.ue(0)   // seq_parameter_set_id
-	w.ue(0)   // log2_max_frame_num_minus4
-	w.ue(1)   // pic_order_cnt_type: 1
-	w.u(1, 0) // delta_pic_order_always_zero_flag
-	w.ue(0)   // offset_for_non_ref_pic (se(v) zero)
-	w.ue(0)   // offset_for_top_to_bottom_field (se(v) zero)
+	w.u(8, 50) // level_idc: 5.0, generous enough for every size this file builds
+	w.ue(0)    // seq_parameter_set_id
+	w.ue(0)    // log2_max_frame_num_minus4
+	w.ue(1)    // pic_order_cnt_type: 1
+	w.u(1, 0)  // delta_pic_order_always_zero_flag
+	w.ue(0)    // offset_for_non_ref_pic (se(v) zero)
+	w.ue(0)    // offset_for_top_to_bottom_field (se(v) zero)
 	w.ue(numRefFramesInCycle)
 	for range numRefFramesInCycle {
 		w.ue(0) // offset_for_ref_frame[i] (se(v) zero)
@@ -187,7 +187,7 @@ func croppedSPS(p croppedSPSParams) []byte {
 	w := &internalBitWriter{}
 	w.u(8, 66)
 	w.u(8, 0)
-	w.u(8, 30)
+	w.u(8, 50) // level_idc: 5.0, generous enough for every size this file builds
 	w.ue(0)
 	w.ue(0)
 	w.ue(0)
@@ -208,16 +208,16 @@ func croppedSPS(p croppedSPSParams) []byte {
 
 // chromaFormatSPS builds a High-profile SPS declaring chromaFormatIDC
 // and, when it is 3, separateColourPlaneFlag, with no custom scaling
-// matrix and no frame cropping: the one way to reach chromaSubsampling's
-// own 4:2:2 and 4:4:4 branches and chromaArrayTypeOf's
-// separate-colour-plane override, none of which any profile-66
-// fixture in this file can reach.
+// matrix and no frame cropping: the one way to reach
+// parseSPSFields' own refusal of any chroma format but 4:2:0
+// (chromaArrayType 1), none of which any profile-66 fixture in this
+// file can reach.
 func chromaFormatSPS(chromaFormatIDC, separateColourPlaneFlag uint32, mbWidth, mbHeightUnits int) []byte {
 	w := &internalBitWriter{}
 	w.u(8, 100) // profile_idc: High
 	w.u(8, 0)
-	w.u(8, 30)
-	w.ue(0) // seq_parameter_set_id
+	w.u(8, 50) // level_idc: 5.0, generous enough for every size this file builds
+	w.ue(0)    // seq_parameter_set_id
 	w.ue(chromaFormatIDC)
 	if chromaFormatIDC == 3 {
 		w.u(1, separateColourPlaneFlag)
@@ -239,12 +239,71 @@ func chromaFormatSPS(chromaFormatIDC, separateColourPlaneFlag uint32, mbWidth, m
 	return append([]byte{0x67}, w.buf...)
 }
 
+// baselineSPSWithLimits builds a baseline-profile SPS like
+// baselineSPS, but with level_idc and max_num_ref_frames given
+// directly rather than fixed: the shape every one of h264BoundsOK's
+// own bound tests needs, since both a declared level and a reference
+// count this package must cross-check against the coded size, not
+// merely read, vary independently of width and height.
+func baselineSPSWithLimits(width, height int, levelIDC byte, maxNumRefFrames uint32) []byte {
+	w := &internalBitWriter{}
+	w.u(8, 66)
+	w.u(8, 0)
+	w.u(8, uint32(levelIDC))
+	w.ue(0) // seq_parameter_set_id
+	w.ue(0) // log2_max_frame_num_minus4
+	w.ue(0) // pic_order_cnt_type
+	w.ue(0) // log2_max_pic_order_cnt_lsb_minus4
+	w.ue(maxNumRefFrames)
+	w.u(1, 0) // gaps_in_frame_num_value_allowed_flag
+	w.ue(uint32(width/16 - 1))
+	w.ue(uint32(height/16 - 1))
+	w.u(1, 1) // frame_mbs_only_flag
+	w.u(1, 0) // direct_8x8_inference_flag
+	w.u(1, 0) // frame_cropping_flag
+	return append([]byte{0x67}, w.buf...)
+}
+
+// highProfileSPSWithBitDepth builds a High-profile SPS like
+// highProfileSPS, but with bit_depth_luma_minus8 and
+// bit_depth_chroma_minus8 given directly rather than fixed at 0: the
+// one way to reach parseSPSFields' own refusal of any bit depth but
+// plain 8-bit.
+func highProfileSPSWithBitDepth(width, height int, bitDepthLumaMinus8, bitDepthChromaMinus8 uint32) []byte {
+	w := &internalBitWriter{}
+	w.u(8, 100)
+	w.u(8, 0)
+	w.u(8, 50) // level_idc: 5.0
+	w.ue(0)    // seq_parameter_set_id
+	w.ue(1)    // chroma_format_idc: 4:2:0
+	w.ue(bitDepthLumaMinus8)
+	w.ue(bitDepthChromaMinus8)
+	w.u(1, 0) // qpprime_y_zero_transform_bypass_flag
+	w.u(1, 0) // seq_scaling_matrix_present_flag
+	w.ue(0)   // log2_max_frame_num_minus4
+	w.ue(0)   // pic_order_cnt_type
+	w.ue(0)   // log2_max_pic_order_cnt_lsb_minus4
+	w.ue(0)   // max_num_ref_frames
+	w.u(1, 0)
+	w.ue(uint32(width/16 - 1))
+	w.ue(uint32(height/16 - 1))
+	w.u(1, 1) // frame_mbs_only_flag
+	w.u(1, 0) // direct_8x8_inference_flag
+	w.u(1, 0) // frame_cropping_flag
+	return append([]byte{0x67}, w.buf...)
+}
+
 // TestParseSPSDims covers the fields a real SPS can vary that
 // parseSPSDims must still parse correctly to reach pic_width_in_mbs
 // and pic_height_in_map_units: a plain baseline SPS, a high-profile
 // SPS without a custom scaling matrix, interlaced coding, and
 // pic_order_cnt_type 1's own list - plus every one of those this
-// package refuses rather than guesses at.
+// package refuses rather than guesses at, including the bounds a
+// differential security review found this package needed beyond the
+// cropped size itself: the coded size before cropping, how much a
+// crop may remove, bit depth, chroma format, and max_num_ref_frames
+// both on its own and cross-checked against the SPS's own declared
+// level_idc (see docs/decisions.md).
 func TestParseSPSDims(t *testing.T) {
 	t.Parallel()
 
@@ -278,17 +337,57 @@ func TestParseSPSDims(t *testing.T) {
 			croppedSPS(croppedSPSParams{mbWidth: 10, mbHeightUnits: 10, cropLeft: 1, cropRight: 1, cropTop: 2, cropBottom: 0}),
 			156, 156, true, // 160x160 macroblocks, minus 2*(crop units) per axis
 		},
-		"chroma_format_idc 2 (4:2:2)": {
+		"chroma_format_idc 2 (4:2:2) is refused": {
 			chromaFormatSPS(2, 0, 10, 10),
-			160, 160, true,
+			0, 0, false,
 		},
-		"chroma_format_idc 3 (4:4:4)": {
+		"chroma_format_idc 3 (4:4:4) is refused": {
 			chromaFormatSPS(3, 0, 10, 10),
-			160, 160, true,
+			0, 0, false,
 		},
-		"chroma_format_idc 3 with separate colour planes (monochrome cropping)": {
+		"chroma_format_idc 3 with separate colour planes is refused": {
 			chromaFormatSPS(3, 1, 10, 10),
-			160, 160, true,
+			0, 0, false,
+		},
+		"bit_depth_luma_minus8 nonzero (10-bit luma) is refused": {
+			highProfileSPSWithBitDepth(1280, 720, 2, 0),
+			0, 0, false,
+		},
+		"bit_depth_chroma_minus8 nonzero (10-bit chroma) is refused": {
+			highProfileSPSWithBitDepth(1280, 720, 0, 2),
+			0, 0, false,
+		},
+		"coded size past maxDimension, even with no crop to hide it": {
+			baselineSPSWithLimits(1936, 160, 60, 0),
+			0, 0, false,
+		},
+		"a crop of exactly one macroblock column's own width is refused, on its own, within an otherwise ordinary coded size": {
+			// 640x480 coded (well within maxDimension), cropping 20
+			// pixels off the width alone - past maxCropSlack by
+			// itself, with nothing else about this SPS a bound would
+			// otherwise reject.
+			croppedSPS(croppedSPSParams{mbWidth: 40, mbHeightUnits: 30, cropLeft: 10, cropRight: 0, cropTop: 0, cropBottom: 0}),
+			0, 0, false,
+		},
+		"a crop far larger than one macroblock hides a coded size far past maxDimension": {
+			croppedSPS(croppedSPSParams{mbWidth: 1000, mbHeightUnits: 1000, cropLeft: 7680, cropRight: 0, cropTop: 7000, cropBottom: 0}),
+			0, 0, false, // 16000x16000 coded, cropped down to a plausible-looking 640x2000
+		},
+		"max_num_ref_frames at the spec's own absolute ceiling of 16 is allowed": {
+			baselineSPSWithLimits(640, 480, 50, 16), // level 5.0, 1200 coded mbs: maxDpbMbs/frameSizeMbs is 92, well above 16
+			640, 480, true,
+		},
+		"max_num_ref_frames one past the spec's own absolute ceiling of 16": {
+			baselineSPSWithLimits(640, 480, 50, 17),
+			0, 0, false,
+		},
+		"max_num_ref_frames within the absolute cap but past what the declared level allows for this coded size": {
+			baselineSPSWithLimits(1920, 1920, 50, 8), // level 5.0: maxDpbMbs 110400 / 14400 mbs = 7 frames, not 8
+			0, 0, false,
+		},
+		"a level_idc this package does not recognize": {
+			baselineSPSWithLimits(640, 480, 99, 0),
+			0, 0, false,
 		},
 		"not an SPS NAL unit": {
 			[]byte{0x65, 0, 0, 0}, // nal_unit_type 5 (an IDR slice)
@@ -490,14 +589,24 @@ func TestAvcDecoderConfigSPSDims_EdgeCases(t *testing.T) {
 // parser must survive without panicking, hanging or reading past its
 // own bounds: a valid baseline SPS, a high-profile SPS with a custom
 // scaling matrix, a truncated NAL unit, one with emulation-prevention
-// bytes to strip, and an empty slice. go test's mutation engine takes
-// it from there.
+// bytes to strip, an empty slice, and - the exact shape a differential
+// security review found this package needed to bound beyond the
+// cropped size alone - a huge coded size hidden behind a crop far past
+// maxCropSlack, a reference-frame count past both the absolute and the
+// declared level's own ceiling, a non-8-bit depth and a non-4:2:0
+// chroma format. go test's mutation engine takes it from there.
 func FuzzParseSPSDims(f *testing.F) {
 	f.Add(baselineSPS(640, 480))
 	f.Add(highProfileSPS(1280, 720, 1))
 	f.Add([]byte{0x67, 0, 0, 0x03, 1, 2})
 	f.Add([]byte{0x67})
 	f.Add([]byte{})
+	f.Add(croppedSPS(croppedSPSParams{mbWidth: 1000, mbHeightUnits: 1000, cropLeft: 7680, cropRight: 0, cropTop: 7000, cropBottom: 0}))
+	f.Add(baselineSPSWithLimits(640, 480, 50, 17))
+	f.Add(baselineSPSWithLimits(1920, 1920, 50, 8))
+	f.Add(baselineSPSWithLimits(640, 480, 99, 0))
+	f.Add(highProfileSPSWithBitDepth(1280, 720, 2, 0))
+	f.Add(chromaFormatSPS(2, 0, 10, 10))
 
 	f.Fuzz(func(t *testing.T, nal []byte) {
 		parseSPSDims(nal)
