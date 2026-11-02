@@ -19,7 +19,7 @@ Short clips of each feature are in [docs/demo.md](docs/demo.md).
 - Edit or delete your own sent messages (**↑** in an empty message box, or **E** on a highlighted one, to edit)
 - English spell check in the composer, with a picker for suggestions, adding a word, or ignoring it for the session
 - Pin any number of conversations and reorder them by dragging or with **Ctrl+Shift+↑ / ↓**; archive, hide, snooze and mark conversations read or unread; failed sends retry themselves; block a contact or report spam from the command palette
-- Received photos, videos, voice notes and files are sanitised and size-checked before anything opens them, with a confirmation first for a file that could run code or a link whose real destination does not match its own text
+- Received photos, videos, voice notes and files are re-encoded by OmaMessenger before the window shows them - video and audio inside a sandbox with no network - and size-checked throughout, with a confirmation first for a file that could run code or a link whose real destination does not match its own text
 - The composer shows the open chat's own attachment limit and refuses a file over it before sending: up to 2 GB for a file (4 GB with Telegram Premium), or 16 MB for a photo or video sent on WhatsApp
 - Desktop notifications (by default just "New message"; see [docs/privacy.md](docs/privacy.md)), and read receipts you can turn off to read and reply without the sender being told (see [docs/privacy.md](docs/privacy.md) for exactly what that does and does not hide)
 - "What's new" in the command palette lists big changes release by release, with a quiet one-time hint after an update
@@ -34,7 +34,7 @@ omarchy plugin add https://github.com/timlittle/omamessenger --enable
 
 The first time you open the window, it downloads the helper release pinned in `helper-version`, verifies it against the SHA-256 committed in `helper-checksums`, and starts it.
 
-Voice notes play in the window when `qt6-multimedia` is installed; without it, they open in your default player.
+Video, voice notes and GIFs play in the window when `qt6-multimedia`, `ffmpeg` and `bubblewrap` are all installed: OmaMessenger re-encodes each one through the system's own `ffmpeg`, sandboxed with `bubblewrap`, before ever playing it. Missing any of the three, they open in your default player instead.
 
 It also adds OmaMessenger to Omarchy's apps menu (**SUPER+ALT+SPACE**). To bind it to a key instead, add a line to `~/.config/hypr/bindings.lua`:
 
@@ -84,7 +84,7 @@ Omarchy's own notification popups never play a sound, so OmaMessenger plays its 
 2. **WhatsApp notification sound** / **Telegram notification sound**, a plugin setting for every chat on that service without one of its own.
 3. **Default notification sound**, a plugin setting for everything else.
 
-Each of the two plugin settings accepts a path to an Ogg/Opus or M4A file, or the special values "default" (inherit the level below) and "none" (silence at and below this level, even if a lower one has a sound); left blank, a plugin setting behaves the same as "default". MP3 and WAV are not accepted: only Ogg/Opus and M4A are played in-window. A muted chat never plays a sound, whatever these settings say. A chosen file is validated before it is ever played; an invalid one is treated as no sound rather than shown as an error. Turning on Omarchy's own do-not-disturb silences this plugin's sound too, checked with a quick, read-only query each time, right before playing.
+Each of the two plugin settings accepts a path to an MP3, WAV, Ogg, M4A or FLAC file, or the special values "default" (inherit the level below) and "none" (silence at and below this level, even if a lower one has a sound); left blank, a plugin setting behaves the same as "default". OmaMessenger re-encodes whichever file you pick into a plain WAV before ever playing it, the same sandboxed re-encode a received video or voice note gets. A muted chat never plays a sound, whatever these settings say. A file ffmpeg cannot read as audio at all is treated as no sound rather than shown as an error. Turning on Omarchy's own do-not-disturb silences this plugin's sound too, checked with a quick, read-only query each time, right before playing.
 
 ## Data and privacy
 
