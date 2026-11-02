@@ -136,7 +136,12 @@ type profile struct {
 // all, give the job a fresh directory under outDir and its own
 // wall-clock budget, run it, and turn whatever happened into the one
 // output file's path or one of this package's own sentinel errors.
-func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (string, error) {
+// jobDir is removed on every failure path below: the one file a
+// caller gets back on success still lives inside it, so only a
+// successful return may leave it behind (see
+// app.transcodedPlayCopy's own cleanup, which removes that
+// directory once it is done with the file inside it).
+func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (path string, err error) {
 	if err := t.acquire(ctx); err != nil {
 		return "", err
 	}
@@ -150,6 +155,11 @@ func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (str
 	if err != nil {
 		return "", fmt.Errorf("transcode: job directory: %w", err)
 	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(jobDir) // best-effort: run is already returning the real error
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()

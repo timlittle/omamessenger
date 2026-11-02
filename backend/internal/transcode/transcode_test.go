@@ -225,3 +225,54 @@ func TestTranscoder_RunsOneJobAtATime(t *testing.T) {
 		t.Fatalf("Audio() after the first job finished took %s; the slot was not freed promptly", elapsed)
 	}
 }
+
+// TestVideo_RemovesTheJobDirectoryOnEveryFailure confirms run cleans
+// up the directory it made under outDir on every way a job can fail,
+// not just a successful one: a caller only ever removes the one file
+// run actually hands back, never a directory it was never told the
+// name of, so a failed job that left its own directory behind would
+// otherwise never be removed by anything (see app.transcodedPlayCopy
+// and docs/decisions.md).
+func TestVideo_RemovesTheJobDirectoryOnEveryFailure(t *testing.T) {
+	t.Parallel()
+
+	outsideTarget := filepath.Join(t.TempDir(), "not-the-output")
+	if err := os.WriteFile(outsideTarget, []byte("not a video"), 0o600); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		fake *fakeRunner
+	}{
+		{"sandbox run error", &fakeRunner{runErr: errors.New("test: could not start")}},
+		{"timed out", &fakeRunner{result: sandbox.Result{TimedOut: true}}},
+		{"too large", &fakeRunner{result: sandbox.Result{TooLarge: true}}},
+		{"ffmpeg exited non-zero", &fakeRunner{result: sandbox.Result{ExitCode: 1}}},
+		{"output missing despite success", &fakeRunner{result: sandbox.Result{ExitCode: 0}}},
+		{"output empty", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: []byte{}}},
+		{"output is a symlink", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputSymlinkTo: outsideTarget}},
+		{"rebuild fails", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: []byte("not a real mp4")}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			tr := transcode.NewTranscoder(c.fake, "/usr/bin/ffmpeg")
+
+			_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+			if err == nil {
+				t.Fatal("Video() error = nil, want an error for this failure case")
+			}
+
+			jobDir := c.fake.lastSpec.OutputDir
+			if jobDir == "" {
+				t.Fatal("fake runner never saw a job directory - this case does not exercise the cleanup path")
+			}
+			if _, statErr := os.Stat(jobDir); !os.IsNotExist(statErr) {
+				t.Errorf("job directory %q still exists after a failed run, want it removed", jobDir)
+			}
+		})
+	}
+}
