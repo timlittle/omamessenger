@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"image/jpeg"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
@@ -133,6 +134,71 @@ func TestSanitizeJPEG_RejectsShortMarker(t *testing.T) {
 	}
 }
 
+// TestSanitizeJPEG_CapsRepeatedScans covers the exact gap a security
+// review found: copyJPEGRemainder copied every later start-of-scan
+// segment through unfiltered, so a progressive JPEG could repeat a
+// tiny scan about a million times inside a file well under this
+// package's own size cap, each repeat walking the decoder across
+// every block of the image again - minutes to hours of CPU inside
+// omarchy-shell, with no click needed. An ordinary progressive encode
+// never comes close to this many scans.
+func TestSanitizeJPEG_CapsRepeatedScans(t *testing.T) {
+	original := buildJPEG(64, 64)
+
+	t.Run("an ordinary number of scans is accepted", func(t *testing.T) {
+		// The header's own first SOS, plus 9 more: 10 total, well
+		// within what a real progressive encode produces.
+		src := insertFakeMarkers(original, 0xDA, 9)
+
+		if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage); !ok {
+			t.Error("Sanitize() = rejected for an ordinary progressive scan count, want accepted")
+		}
+	})
+
+	t.Run("a far larger number of scans is refused quickly", func(t *testing.T) {
+		src := insertFakeMarkers(original, 0xDA, 2_000_000)
+
+		start := time.Now()
+		_, _, _, ok := imagesafe.Sanitize(src, imagesafe.FullImage)
+		if elapsed := time.Since(start); elapsed > time.Second {
+			t.Errorf("Sanitize() took %v for a file repeating its scan two million times, want well under a second", elapsed)
+		}
+		if ok {
+			t.Error("Sanitize() = accepted for a file repeating its scan two million times, want rejected")
+		}
+	})
+}
+
+// TestSanitizeJPEG_CapsRepeatedTableSegments covers the same kind of
+// unfiltered repetition for DHT and DQT segments: cheaper per
+// repetition than a scan, but still unbounded before this fix, and
+// just as far from anything a real encoder produces.
+func TestSanitizeJPEG_CapsRepeatedTableSegments(t *testing.T) {
+	original := buildJPEG(64, 64)
+
+	cases := []struct {
+		name   string
+		marker byte
+	}{
+		{"DHT", 0xC4},
+		{"DQT", 0xDB},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ordinary := insertFakeMarkers(original, c.marker, 20)
+			if _, _, _, ok := imagesafe.Sanitize(ordinary, imagesafe.FullImage); !ok {
+				t.Errorf("Sanitize() = rejected for an ordinary number of %s segments, want accepted", c.name)
+			}
+
+			excessive := insertFakeMarkers(original, c.marker, 100_000)
+			if _, _, _, ok := imagesafe.Sanitize(excessive, imagesafe.FullImage); ok {
+				t.Errorf("Sanitize() = accepted for %s repeated far beyond any real encoder's use, want rejected", c.name)
+			}
+		})
+	}
+}
+
 // assertSameJPEGSize decodes both JPEGs and fails t if their
 // dimensions differ: lossy re-encoding inside the stdlib encoder used
 // to build the fixture means pixel-for-pixel equality is not
@@ -163,6 +229,8 @@ func FuzzSanitizeJPEG(f *testing.F) {
 	f.Add(insertJPEGSegment(seed, 0xE1, bytes.Repeat([]byte{1}, 2048)))
 	f.Add([]byte{})
 	f.Add(seed[:len(seed)-4])
+	f.Add(insertFakeMarkers(seed, 0xDA, 500))   // scans repeated past jpegMaxScans
+	f.Add(insertFakeMarkers(seed, 0xC4, 5_000)) // DHT repeated past jpegMaxRepeatedTableSegments
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		out, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage)

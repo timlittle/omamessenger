@@ -11,6 +11,32 @@ import (
 // gives the PNG walk.
 const jpegMaxSegments = 10_000
 
+// jpegMaxScans bounds how many start-of-scan (SOS) markers
+// copyJPEGRemainder will let through after the header's own first
+// one: a progressive JPEG legitimately adds another for each later
+// scan, but a real encoder uses on the order of ten (one or two
+// passes per colour component). libjpeg-turbo's own djpeg tool bounds
+// decoding at 100 scans by default (-maxscans), generous enough for
+// any real encoder's output while still refusing the shape a security
+// review found: a tiny scan repeated roughly a million times inside a
+// file well under this package's own size cap, each repeat walking
+// libjpeg across every block of the image again - minutes to hours
+// of CPU inside omarchy-shell, with no click needed, since the photo
+// bubble that shows it decodes it again every time it scrolls back
+// into view.
+const jpegMaxScans = 100
+
+// jpegMaxRepeatedTableSegments bounds how many DHT (Huffman table)
+// and DQT (quantization table) segments, combined, copyJPEGRemainder
+// will let through after the header: a real progressive encode
+// repeats these only a handful of times, once or twice per scan, so
+// a count far beyond any real file's own use is refused the same way
+// a repeated scan is. Checking this costs one more integer compare
+// per marker already being read, so there is no reason to leave it
+// unbounded just because rebuilding one table is cheaper than
+// decoding one scan.
+const jpegMaxRepeatedTableSegments = 1_000
+
 // jpegKeptMarkers are the header markers sanitizeJPEG keeps: the start
 // of frame variants (needed for dimensions and the decoder's own
 // setup), Huffman and quantization tables, the restart interval,
@@ -158,8 +184,15 @@ func jpegDimensions(segment []byte) (width, height int64, ok bool) {
 // through: none of it is metadata a decoder could mistake for
 // something to inflate, so nothing here needs filtering, only a
 // marker-aware skip so an 0xFF that starts a later header segment is
-// not mistaken for stuffing or restart.
+// not mistaken for stuffing or restart. A later start-of-scan marker,
+// and a later Huffman or quantization table segment, are each counted
+// and bounded (see jpegMaxScans and jpegMaxRepeatedTableSegments):
+// libjpeg itself sets no limit of its own on how many times a scan or
+// a table may repeat, and walks every block of the image again on
+// each scan, so this package's own copy must refuse a count no real
+// encoder would ever produce rather than let it through unfiltered.
 func copyJPEGRemainder(data []byte, pos int, out *bytes.Buffer) bool {
+	scans, tableSegments := 0, 0
 	for pos < len(data) {
 		next := bytes.IndexByte(data[pos:], 0xFF)
 		if next < 0 {
@@ -175,8 +208,20 @@ func copyJPEGRemainder(data []byte, pos int, out *bytes.Buffer) bool {
 		following := data[next+1]
 		out.WriteByte(following)
 		pos = next + 2
-		if following == 0xD9 { // EOI
+
+		switch following {
+		case 0xD9: // EOI
 			return true
+		case 0xDA: // SOS: another scan
+			scans++
+			if scans > jpegMaxScans {
+				return false
+			}
+		case 0xC4, 0xDB: // DHT, DQT
+			tableSegments++
+			if tableSegments > jpegMaxRepeatedTableSegments {
+				return false
+			}
 		}
 	}
 

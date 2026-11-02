@@ -93,6 +93,28 @@ func insertJPEGSegment(src []byte, marker byte, payload []byte) []byte {
 	return out.Bytes()
 }
 
+// insertFakeMarkers returns src (a real baseline JPEG) with count
+// copies of the two-byte marker 0xFF, marker spliced into its own
+// entropy data, right before EOI: enough to drive
+// copyJPEGRemainder's own per-marker counts (scans, or repeated
+// Huffman/quantization table segments) past any cap under test,
+// without needing count separate, fully-formed segments of real
+// data. copyJPEGRemainder counts a marker the moment it sees it in
+// the byte stream, before reading any length or payload that would
+// normally follow, so these two bytes alone are enough.
+func insertFakeMarkers(src []byte, marker byte, count int) []byte {
+	eoi := bytes.LastIndex(src, []byte{0xFF, 0xD9})
+	if eoi < 0 {
+		panic("test JPEG has no EOI marker")
+	}
+
+	var out bytes.Buffer
+	out.Write(src[:eoi])
+	out.Write(bytes.Repeat([]byte{0xFF, marker}, count))
+	out.Write(src[eoi:])
+	return out.Bytes()
+}
+
 // buildGIF encodes a looping animation of frameCount solid frames at
 // the given size, with a Netscape loop extension, exactly what a real
 // animated sticker or GIF produces.
