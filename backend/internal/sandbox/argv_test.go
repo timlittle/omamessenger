@@ -22,14 +22,17 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 		OutputDir: "/host/out",
 	}
 
-	name, args := buildArgv(spec, "/usr/bin/bwrap", "/usr/bin/prlimit")
+	name, args := buildArgv(spec, "/usr/bin/bwrap", "/usr/bin/prlimit", "/usr/bin/env")
 
-	if name != "/usr/bin/prlimit" {
-		t.Fatalf("name = %q, want /usr/bin/prlimit", name)
+	if name != "/usr/bin/env" {
+		t.Fatalf("name = %q, want /usr/bin/env", name)
 	}
 
 	want := []string{
-		"--cpu=900", "--as=4294967296", "--fsize=536870912", "--nofile=64",
+		"--ignore-signal=XFSZ,XCPU",
+		"--",
+		"/usr/bin/prlimit",
+		"--core=0", "--cpu=900", "--as=4294967296", "--fsize=536870912", "--nofile=64",
 		"--",
 		"/usr/bin/bwrap",
 		"--ro-bind", "/usr", "/usr",
@@ -42,6 +45,8 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 		"--ro-bind", "/host/in.mp4", "/work/in",
 		"--bind", "/host/out", "/work/out",
 		"--unshare-all",
+		"--unshare-user",
+		"--disable-userns",
 		"--die-with-parent",
 		"--new-session",
 		"--clearenv",

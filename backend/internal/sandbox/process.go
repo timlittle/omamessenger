@@ -34,7 +34,7 @@ func (r *Runner) Run(ctx context.Context, spec Spec) (Result, error) {
 	}
 	defer seccompFile.Close() // the child gets its own copy via ExtraFiles when cmd.Start duplicates it; closing ours here never affects that copy
 
-	name, args := buildArgv(spec, r.bwrapPath, r.prlimitPath)
+	name, args := buildArgv(spec, r.bwrapPath, r.prlimitPath, r.envPath)
 
 	cmd := r.command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
@@ -48,19 +48,21 @@ func (r *Runner) Run(ctx context.Context, spec Spec) (Result, error) {
 		return Result{}, fmt.Errorf("sandbox: run: start: %w", err)
 	}
 
-	return wait(ctx, cmd, stderr), nil
+	return wait(ctx, cmd, stderr, spec.OutputDir), nil
 }
 
 // wait blocks until cmd exits on its own or ctx ends, killing cmd's
 // whole process group in the second case (see killGroup), and turns
 // whichever happened into a Result.
-func wait(ctx context.Context, cmd *exec.Cmd, stderr *boundedStderr) Result {
+func wait(ctx context.Context, cmd *exec.Cmd, stderr *boundedStderr, outputDir string) Result {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
 	select {
 	case waitErr := <-done:
-		exitCode, tooLarge := classifyWaitErr(waitErr)
+		exitCode := classifyWaitErr(waitErr)
+		tooLarge := exitCode != 0 && outputReachedSizeLimit(outputDir)
+
 		return Result{ExitCode: exitCode, TooLarge: tooLarge, StderrClass: classifyStderr(stderr.Bytes())}
 	case <-ctx.Done():
 		killGroup(cmd.Process.Pid)
@@ -82,31 +84,58 @@ func killGroup(pid int) {
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
 }
 
-// classifyWaitErr turns cmd.Wait's own error into an exit code and
-// whether prlimit's own output-size limit (SIGXFSZ) was what ended
-// the job, rather than an ordinary non-zero exit or another signal
-// (the seccomp filter's own ActionKillProcess response among them,
-// which this package does not give its own named Result field, since
-// no caller needs to tell it apart from any other failure). A nil err
-// means exit status 0; any error that is not an *exec.ExitError -
-// which Wait never actually returns for a command this package itself
-// started and is only waiting on once - falls back to exit code -1
+// classifyWaitErr turns cmd.Wait's own error into the job's own exit
+// code: 0 for a nil error (success), -1 for a process a signal ended
+// (this package's own SIGKILL on timeout, prlimit's own hard CPU
+// limit, or the seccomp filter - none of which this package tells
+// apart in Result, since no caller needs to), or the process's own
+// reported status otherwise. *exec.ExitError's own ExitCode method
+// already returns -1 for a signalled process, so this only has its own
+// branch for a waitErr that is not an *exec.ExitError at all, which
+// Wait never actually returns for a command this package itself
+// started and is only waiting on once; that falls back to -1 too,
 // rather than being treated as success.
-func classifyWaitErr(waitErr error) (exitCode int, tooLarge bool) {
+func classifyWaitErr(waitErr error) int {
 	if waitErr == nil {
-		return 0, false
+		return 0
 	}
 
 	var exitErr *exec.ExitError
 	if !errors.As(waitErr, &exitErr) {
-		return -1, false
+		return -1
 	}
 
-	if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
-		return -1, status.Signal() == syscall.SIGXFSZ
+	return exitErr.ExitCode()
+}
+
+// outputReachedSizeLimit reports whether any regular file directly
+// inside outputDir has reached maxOutputFileBytes: the shape prlimit's
+// own --fsize limit leaves behind now that env's own --ignore-signal
+// (see argv.go) makes a write past it fail with EFBIG instead of
+// delivering SIGXFSZ. Confirmed directly on this machine that the
+// file this leaves lands at exactly the limit, not some smaller,
+// write-buffer-dependent size, so no tolerance margin is needed.
+// Errors reading the directory - it not existing is the only
+// realistic one, which a job that never got as far as writing
+// anything would also produce - are treated as "not too large" rather
+// than failing the whole classification.
+func outputReachedSizeLimit(outputDir string) bool {
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		return false
 	}
 
-	return exitErr.ExitCode(), false
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if info.Size() >= maxOutputFileBytes {
+			return true
+		}
+	}
+
+	return false
 }
 
 // boundedStderr collects a job's own stderr up to max bytes,

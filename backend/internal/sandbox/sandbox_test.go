@@ -104,12 +104,13 @@ func TestRun_SeccompDeniesUnshare(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	// bwrap's own monitor reports a signal-killed sandboxed command
-	// through its own ordinary exit, using the common "128+signal"
-	// shell convention (confirmed on this machine: unshare's own
-	// SIGSYS kill, signal 31, surfaces as exit code 159), rather than
-	// the outer process this package waits on being signalled itself -
-	// so this checks that the job failed at all, not the exact code.
+	// The filter refuses a denied syscall with EPERM rather than
+	// killing the process (see seccomp.go's own package doc comment
+	// for why): unshare(2) itself just fails, and the unshare binary
+	// reports that failure through its own, ordinary non-zero exit -
+	// never a signal, so this checks that the job failed at all,
+	// without pinning the exact code to one userspace tool's own
+	// convention for reporting a failed syscall.
 	if result.Succeeded() {
 		t.Fatal("Run() succeeded calling unshare; the seccomp filter did not deny it")
 	}

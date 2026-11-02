@@ -90,9 +90,12 @@ type Result struct {
 	// group in this case (see wait).
 	TimedOut bool
 
-	// TooLarge is true when the job wrote more than maxOutputFileBytes
-	// (see limits.go) and prlimit's own file-size limit killed it with
-	// SIGXFSZ, rather than the job failing on its own terms.
+	// TooLarge is true when the job failed and left behind a file
+	// that reached maxOutputFileBytes (see limits.go and
+	// outputReachedSizeLimit): prlimit's own file-size limit turned a
+	// write past it into an ordinary EFBIG error rather than a kill,
+	// so this is inferred from what the job left behind, not from how
+	// it died.
 	TooLarge bool
 
 	// StderrClass is a short, fixed, safe word summarising what the
@@ -118,6 +121,7 @@ type Runner struct {
 	scratchRoot string
 
 	toolsOnce   sync.Once
+	envPath     string
 	bwrapPath   string
 	prlimitPath string
 	toolsErr    error
@@ -148,12 +152,18 @@ func NewRunner(scratchRoot string) *Runner {
 	return &Runner{scratchRoot: scratchRoot, command: exec.Command, lookPath: exec.LookPath}
 }
 
-// resolveTools finds bwrap and prlimit (see lookPath) once, caching
-// the result for every later call on this Runner: a PATH that does
-// not change while this process runs, which holds for the helper's
-// own fixed install layout.
+// resolveTools finds env, bwrap and prlimit (see lookPath) once,
+// caching the result for every later call on this Runner: a PATH that
+// does not change while this process runs, which holds for the
+// helper's own fixed install layout.
 func (r *Runner) resolveTools() error {
 	r.toolsOnce.Do(func() {
+		envPath, err := r.lookPath("env")
+		if err != nil {
+			r.toolsErr = fmt.Errorf("%w: env: %w", ErrUnavailable, err)
+			return
+		}
+
 		bwrapPath, err := r.lookPath("bwrap")
 		if err != nil {
 			r.toolsErr = fmt.Errorf("%w: bwrap: %w", ErrUnavailable, err)
@@ -166,7 +176,7 @@ func (r *Runner) resolveTools() error {
 			return
 		}
 
-		r.bwrapPath, r.prlimitPath = bwrapPath, prlimitPath
+		r.envPath, r.bwrapPath, r.prlimitPath = envPath, bwrapPath, prlimitPath
 	})
 
 	return r.toolsErr

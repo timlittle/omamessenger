@@ -15,7 +15,9 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -37,6 +39,26 @@ func fakeRunner(t *testing.T, script string) *Runner {
 		command: func(string, ...string) *exec.Cmd {
 			return exec.CommandContext(t.Context(), "/bin/sh", "-c", script)
 		},
+	}
+}
+
+// makeOutputFile creates a regular file of exactly size bytes at
+// dir/name, as a sparse file (Truncate, never actually writing size
+// bytes of real data): outputReachedSizeLimit only ever looks at the
+// size Stat reports, which a sparse file reports correctly, and
+// maxOutputFileBytes is large enough that writing it for real in
+// every test that needs one would be wasteful.
+func makeOutputFile(t *testing.T, dir, name string, size int64) {
+	t.Helper()
+
+	f, err := os.Create(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatalf("creating fixture: %v", err)
+	}
+	defer f.Close()
+
+	if err := f.Truncate(size); err != nil {
+		t.Fatalf("truncating fixture to %d bytes: %v", size, err)
 	}
 }
 
@@ -72,13 +94,25 @@ func TestRun_ReportsNonZeroExitAndClassifiesStderr(t *testing.T) {
 	}
 }
 
-func TestRun_ReportsTooLargeOnSIGXFSZ(t *testing.T) {
+func TestRun_ReportsTooLargeWhenOutputReachedTheSizeLimit(t *testing.T) {
 	t.Parallel()
 
-	// Simulates what prlimit's own --fsize limit delivers to a real
-	// job that writes too much: the process itself killed by SIGXFSZ.
-	r := fakeRunner(t, "kill -XFSZ $$; sleep 5")
-	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
+	// env's own --ignore-signal (see argv.go) makes a real write past
+	// prlimit's own --fsize limit fail with EFBIG rather than deliver
+	// SIGXFSZ - confirmed directly on this machine that the file this
+	// leaves behind lands at exactly the limit - so this is what a
+	// real too-large job leaves for outputReachedSizeLimit to find:
+	// a failing command, and a file already at the cap when it runs.
+	// Deliberately not sending a real signal here at all: SIGXFSZ
+	// core-dumps by default, and this machine's systemd-coredump turns
+	// every one into a desktop "Process crashed" notification - this
+	// is exactly the failure mode this package's own fix avoids, so
+	// the test must not reintroduce it to prove the fix works.
+	dir := t.TempDir()
+	makeOutputFile(t, dir, "out", maxOutputFileBytes)
+
+	r := fakeRunner(t, "exit 1")
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: dir})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -87,6 +121,65 @@ func TestRun_ReportsTooLargeOnSIGXFSZ(t *testing.T) {
 	}
 	if result.TimedOut {
 		t.Error("TimedOut = true, want false")
+	}
+}
+
+func TestRun_NotTooLargeWhenOutputIsSmallerThanTheLimit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	makeOutputFile(t, dir, "out", maxOutputFileBytes-1)
+
+	r := fakeRunner(t, "exit 1")
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: dir})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.TooLarge {
+		t.Errorf("TooLarge = true, want false for an output one byte under the limit (result: %+v)", result)
+	}
+}
+
+func TestRun_NotTooLargeWhenTheJobSucceededEvenIfTheOutputIsLarge(t *testing.T) {
+	t.Parallel()
+
+	// A large output is only ever evidence of exceeding the limit
+	// alongside a job that failed; a successful job's own output
+	// reaching this size legitimately is not this package's concern.
+	dir := t.TempDir()
+	makeOutputFile(t, dir, "out", maxOutputFileBytes)
+
+	r := fakeRunner(t, "exit 0")
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: dir})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.TooLarge {
+		t.Errorf("TooLarge = true, want false for a successful job (result: %+v)", result)
+	}
+}
+
+func TestOutputReachedSizeLimit_MissingDirectory(t *testing.T) {
+	t.Parallel()
+
+	if outputReachedSizeLimit(filepath.Join(t.TempDir(), "never-created")) {
+		t.Error("outputReachedSizeLimit() = true, want false for a directory that does not exist")
+	}
+}
+
+func TestOutputReachedSizeLimit_IgnoresASubdirectory(t *testing.T) {
+	t.Parallel()
+
+	// A subdirectory can never itself be "too large" the way a file
+	// can; entry.Info().Mode().IsRegular() must skip it rather than
+	// erroring or miscounting it.
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o700); err != nil {
+		t.Fatalf("creating fixture subdirectory: %v", err)
+	}
+
+	if outputReachedSizeLimit(dir) {
+		t.Error("outputReachedSizeLimit() = true, want false for a directory containing only a subdirectory")
 	}
 }
 
@@ -161,9 +254,9 @@ func TestRun_ReportsStartFailure(t *testing.T) {
 func TestRun_ReportsFailureFromAnUnrelatedSignal(t *testing.T) {
 	t.Parallel()
 
-	// A signal other than the one Run's own timeout path sends and the
-	// one prlimit's own file-size limit sends, so classifyWaitErr must
-	// tell it apart from both rather than mislabelling it TooLarge.
+	// A signal other than the one Run's own timeout path sends
+	// (SIGKILL), so classifyWaitErr's own exit-code extraction still
+	// reports -1 for it rather than treating it as success.
 	r := fakeRunner(t, "kill -TERM $$; sleep 5")
 
 	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
@@ -181,26 +274,42 @@ func TestRun_ReportsFailureFromAnUnrelatedSignal(t *testing.T) {
 func TestClassifyWaitErr_NonExitError(t *testing.T) {
 	t.Parallel()
 
-	exitCode, tooLarge := classifyWaitErr(errLookPath)
-	if exitCode != -1 || tooLarge {
-		t.Errorf("classifyWaitErr(non-ExitError) = (%d, %v), want (-1, false)", exitCode, tooLarge)
+	if exitCode := classifyWaitErr(errLookPath); exitCode != -1 {
+		t.Errorf("classifyWaitErr(non-ExitError) = %d, want -1", exitCode)
 	}
 }
 
 func TestResolveTools_PartialFailure(t *testing.T) {
 	t.Parallel()
 
-	r := &Runner{
-		lookPath: func(name string) (string, error) {
-			if name == "bwrap" {
-				return "/fake/bwrap", nil
-			}
-			return "", errLookPath
-		},
+	// resolveTools looks up env, then bwrap, then prlimit (see argv.go
+	// for why env comes first); each of the three must be able to
+	// fail on its own, not just the first one tried.
+	tests := map[string]struct {
+		missing string
+	}{
+		"env missing":     {missing: "env"},
+		"bwrap missing":   {missing: "bwrap"},
+		"prlimit missing": {missing: "prlimit"},
 	}
 
-	if err := r.resolveTools(); err == nil {
-		t.Fatal("resolveTools() error = nil, want an error when prlimit cannot be resolved")
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &Runner{
+				lookPath: func(name string) (string, error) {
+					if name == tt.missing {
+						return "", errLookPath
+					}
+					return "/fake/" + name, nil
+				},
+			}
+
+			if err := r.resolveTools(); err == nil {
+				t.Fatalf("resolveTools() error = nil, want an error when %s cannot be resolved", tt.missing)
+			}
+		})
 	}
 }
 

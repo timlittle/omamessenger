@@ -35,6 +35,28 @@ const sandboxPath = "/usr/bin:/bin"
 // output is always in a predictable, parseable form.
 const sandboxLang = "C.UTF-8"
 
+// maxCoreBytes bounds how large a core dump a job's own process may
+// write (prlimit --core), and is 0: no core data ever saved. This is
+// not, on its own, enough to stop a crash notification reaching the
+// desktop - confirmed directly: even with this at 0, a process the
+// kernel still delivers a core-dumping signal to still makes
+// systemd-coredump log the event (COREFILE "none" rather than
+// "present"), and this machine still shows "Process crashed" for
+// that log entry regardless of whether any data was saved. Avoiding
+// the signal in the first place is what actually prevents the
+// notification: env's own --ignore-signal (see argv.go and
+// docs/decisions.md) does that for prlimit's own --fsize and the
+// soft half of its own --cpu limit, and the seccomp filter returns an
+// errno rather than killing (see seccomp.go's own package doc
+// comment) for every syscall it denies. What this limit still bounds:
+// the hard half of --cpu, which the kernel enforces with an
+// unconditional, uncatchable SIGKILL - not core-dumping by default,
+// so nothing to suppress there - and a genuine crash in ffmpeg
+// itself (SIGSEGV, SIGABRT and the like), which is the one case
+// nothing here can prevent from reaching the desktop, only keep from
+// also leaving a core file nothing here needs.
+const maxCoreBytes = 0
+
 // maxCPUSeconds bounds a job's total CPU time across every thread it
 // starts (prlimit --cpu). transcode's own longest-running profile
 // bounds its own wall-clock timeout to 5 minutes at two threads, which
@@ -62,12 +84,17 @@ const maxCPUSeconds = 900
 const maxAddressSpaceBytes = 4 << 30
 
 // maxOutputFileBytes bounds how large any single file a job writes
-// may grow (prlimit --fsize) before the kernel kills it with SIGXFSZ
-// (see classifyWaitErr and Result.TooLarge): a backstop well above
-// what a legitimate job run through this package should ever write,
-// so it exists to bound a pathological or hostile case, not to police
-// an ordinary one - a caller wanting a tighter, profile-specific cap
-// checks the file it gets back itself.
+// may grow (prlimit --fsize) before the kernel refuses any further
+// write to it with EFBIG, rather than killing the job outright: env's
+// own --ignore-signal (see argv.go) makes that so, in place of the
+// SIGXFSZ the kernel would otherwise deliver, so a job hitting this
+// limit fails on an ordinary write error, which outputReachedSizeLimit
+// then recognises from the file it leaves behind (see
+// Result.TooLarge). A backstop well above what a legitimate job run
+// through this package should ever write, so it exists to bound a
+// pathological or hostile case, not to police an ordinary one - a
+// caller wanting a tighter, profile-specific cap checks the file it
+// gets back itself.
 const maxOutputFileBytes = 512 << 20
 
 // maxOpenFiles bounds how many files a job may hold open at once
