@@ -72,7 +72,7 @@ func streamImageOnce(ctx context.Context, dev device, ref mediaRef, path string,
 		return fmt.Errorf("whatsapp: fetch media: %w", err)
 	}
 
-	bf := &boundedFile{File: f, max: max}
+	bf := &boundedFile{file: f, max: max}
 	downloadErr := dev.downloadMediaToFile(downloadCtx, ref, bf)
 
 	return errors.Join(downloadErr, f.Close())

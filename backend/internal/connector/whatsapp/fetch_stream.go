@@ -77,7 +77,7 @@ func streamOnce(ctx context.Context, dev device, ref mediaRef, path string, auto
 	}
 
 	max := connector.ByteCap(int64(ref.FileLength), connector.MaxBytes(auto))
-	bf := &boundedFile{File: f, max: max, onWrite: onWrite}
+	bf := &boundedFile{file: f, max: max, onWrite: onWrite}
 	downloadErr := dev.downloadMediaToFile(downloadCtx, ref, bf)
 
 	return errors.Join(downloadErr, f.Close())

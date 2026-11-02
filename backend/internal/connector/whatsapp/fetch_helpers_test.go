@@ -6,16 +6,23 @@ package whatsapp
 // keep neither file past the project's own file-length limit.
 
 import (
+	"bytes"
 	"context"
 	"io"
 
 	"go.mau.fi/whatsmeow"
 )
 
-// downloadMediaToFile records ref and writes the scripted downloadData
-// to file through file.Write, reporting downloadErr, or blocking on
-// ctx when downloadBlocks is set, as a real download that never hears
-// back from WhatsApp's media servers does. A path-specific error in
+// downloadMediaToFile records ref and copies the scripted downloadData
+// into file the same way real whatsmeow does -
+// io.Copy(file, io.TeeReader(resp.Body, hasher)), see whatsmeow's own
+// download-to-file.go - reporting downloadErr, or blocking on ctx when
+// downloadBlocks is set, as a real download that never hears back from
+// WhatsApp's media servers does. Going through io.Copy rather than
+// file.Write directly matters: io.Copy prefers a destination's own
+// ReadFrom over repeated Write calls, which is exactly how a security
+// review found boundedFile's cap bypassed when it still embedded
+// *os.File (see download_file.go). A path-specific error in
 // downloadErrPaths overrides the plain downloadErr for that one
 // reference only; scripting both downloadData and downloadErr drives
 // recoverableStaleDigest, since real whatsmeow writes the decrypted
@@ -36,8 +43,8 @@ func (d *fakeDevice) downloadMediaToFile(ctx context.Context, ref mediaRef, file
 	// this writes data whenever there is any, even alongside a
 	// scripted error.
 	if len(data) > 0 {
-		if _, writeErr := file.Write(data); writeErr != nil {
-			return writeErr
+		if _, copyErr := io.Copy(file, io.TeeReader(bytes.NewReader(data), io.Discard)); copyErr != nil {
+			return copyErr
 		}
 		// Real whatsmeow then reads the whole file back, to check its
 		// MAC and decrypt it in place, so a file the connector opened

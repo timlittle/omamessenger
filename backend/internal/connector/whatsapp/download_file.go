@@ -10,6 +10,17 @@ package whatsapp
 // fetch.go and fetch_stream.go both wrap the destination in
 // boundedFile so a declared size that undersold what the server
 // actually sends - or one left at 0 altogether - is still caught.
+//
+// boundedFile holds the real file as a named field rather than
+// embedding it. A security review found that embedding *os.File let
+// Go promote its ReadFrom method, and whatsmeow's own download loop
+// copies with io.Copy(file, io.TeeReader(resp.Body, hasher)): a
+// TeeReader has no WriteTo, so io.Copy looked for ReadFrom on the
+// destination instead of calling Write in a loop, found the promoted
+// one, and used it - writing every byte straight to disk without ever
+// reaching boundedFile's own cap. Naming the field instead means
+// boundedFile has no ReadFrom of its own, so io.Copy falls back to
+// calling Write repeatedly, which is what actually enforces max.
 
 import (
 	"context"
@@ -31,30 +42,65 @@ func (d *waDevice) downloadMediaToFile(ctx context.Context, ref mediaRef, file w
 // total written past max and running onWrite after every write that
 // actually lands, so a caller can reset an idle timeout exactly when
 // the transfer is still making progress (see connector.IdleContext).
-// Every other method - Read, Seek, ReadAt, WriteAt, Truncate, Stat,
-// Close - passes straight through to the embedded file, which is what
-// whatsmeow's own decrypt-in-place step still needs after the initial
-// download this wraps; only Write is overridden.
+// It implements exactly the whatsmeow.File methods whatsmeow's own
+// decrypt-in-place step needs - Read, Seek, ReadAt, WriteAt, Truncate,
+// Stat - each forwarding straight to the wrapped file; only Write
+// counts bytes and enforces max. Deliberately holds file as a named
+// field, not an embedded one: see this file's own package comment for
+// why that is the whole fix.
 type boundedFile struct {
-	*os.File
+	file *os.File
 
 	max     int64
 	written int64
 	onWrite func()
 }
 
-// Write appends p to the embedded file, refusing once the total
+// Write appends p to the wrapped file, refusing once the total
 // written would exceed max.
 func (b *boundedFile) Write(p []byte) (int, error) {
 	if b.written+int64(len(p)) > b.max {
 		return 0, errMediaTooLarge
 	}
 
-	n, err := b.File.Write(p)
+	n, err := b.file.Write(p)
 	b.written += int64(n)
 	if n > 0 && b.onWrite != nil {
 		b.onWrite()
 	}
 
 	return n, err
+}
+
+// Read forwards to the wrapped file.
+func (b *boundedFile) Read(p []byte) (int, error) {
+	return b.file.Read(p)
+}
+
+// Seek forwards to the wrapped file.
+func (b *boundedFile) Seek(offset int64, whence int) (int64, error) {
+	return b.file.Seek(offset, whence)
+}
+
+// ReadAt forwards to the wrapped file.
+func (b *boundedFile) ReadAt(p []byte, off int64) (int, error) {
+	return b.file.ReadAt(p, off)
+}
+
+// WriteAt forwards to the wrapped file without re-checking max:
+// whatsmeow only ever uses it to decrypt bytes in place, overwriting a
+// span this same download already wrote and counted through Write,
+// never to grow the file past what Write already bounded.
+func (b *boundedFile) WriteAt(p []byte, off int64) (int, error) {
+	return b.file.WriteAt(p, off)
+}
+
+// Truncate forwards to the wrapped file.
+func (b *boundedFile) Truncate(size int64) error {
+	return b.file.Truncate(size)
+}
+
+// Stat forwards to the wrapped file.
+func (b *boundedFile) Stat() (os.FileInfo, error) {
+	return b.file.Stat()
 }
