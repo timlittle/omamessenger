@@ -43,6 +43,16 @@
 // that cancelling leaves it unopened, and that clicking the same file
 // again and confirming does open it, reusing the cached path and
 // risky verdict rather than fetching it again.
+//
+// Finally, it reproduces a security review's own scenario: an edit
+// changes a message's media kind - a voice note turned into a photo,
+// say - while that message's own media.fetch is still in flight. The
+// stale answer that follows must never write its path or verdicts
+// back onto the row (MessageTimeline's own mergeRow already cleared
+// them the moment the edit landed), and must start a fresh fetch for
+// the row's current media instead, so whichever view is now showing
+// it still gets a file media.fetch actually checked for that kind
+// (see docs/decisions.md).
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -99,7 +109,11 @@ ShellRoot {
       // before deciding, rather than trust those verdicts' unset
       // defaults.
       { id: "v8", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: -5, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "/tmp/v8-cached.mp4" },
-      { id: "a1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Audio]", outgoing: false, status: "received", created: -6, media: { kind: "audio", duration: 9, fileName: "song.mp3" }, mediaPath: "/tmp/a1-cached.ogg" }
+      { id: "a1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Audio]", outgoing: false, status: "received", created: -6, media: { kind: "audio", duration: 9, fileName: "song.mp3" }, mediaPath: "/tmp/a1-cached.ogg" },
+      // stale1 is a never-clicked undownloaded voice note, for the
+      // security review's own scenario: an edit swaps its media for a
+      // photo while its own media.fetch is still in flight.
+      { id: "stale1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Voice note]", outgoing: false, status: "received", created: -7, media: { kind: "voice", duration: 3 }, mediaPath: "" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -236,6 +250,7 @@ ShellRoot {
     if (!root.checkCachedMediaOpensOnceForBackToBackClicks()) return;
     if (!root.checkDifferentMessageStillOpensDuringAnothersCooldown()) return;
     if (!root.checkOpenDuringAnInFlightPrefetchStillOpensOnceAnswered()) return;
+    if (!root.checkStaleMediaFetchNeverWritesBackAfterAnEditChangesKind()) return;
 
     cooldownTimer.start();
   }
@@ -612,6 +627,49 @@ ShellRoot {
 
     if (root.openCalls.length !== 1 || root.openCalls[0] !== "/tmp/v4.mp4") {
       return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want the open that arrived while the prefetch was in flight to open the file once answered");
+    }
+    return true;
+  }
+
+  // checkStaleMediaFetchNeverWritesBackAfterAnEditChangesKind
+  // reproduces the security review's own scenario: stale1 starts as an
+  // undownloaded voice note, its media.fetch still in flight when an
+  // edit swaps its media for a photo entirely - the same way a
+  // service's end-to-end encrypted edit can. The stale answer, scripted
+  // here to come back as if it had validated the old voice bytes, must
+  // never land on the now-photo row; a fresh fetch for the row's
+  // current media must follow instead, and only its own answer may
+  // ever reach the row.
+  function checkStaleMediaFetchNeverWritesBackAfterAnEditChangesKind(): bool {
+    service.fetchRequests = [];
+    controller.downloadMedia("stale1", false, () => {});
+    if (service.fetchRequests.filter((id) => id === "stale1").length !== 1) {
+      return Check.fail("downloadMedia did not send exactly one media.fetch for stale1: " + JSON.stringify(service.fetchRequests));
+    }
+
+    controller.timeline.upsert({
+      id: "stale1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Photo]",
+      outgoing: false, status: "received", created: -7, edited: true,
+      media: { kind: "photo", width: 400, height: 300 }
+    }, false, "");
+    if (controller.timeline.media("stale1").kind !== "photo") {
+      return Check.fail("the edit did not land before the stale fetch answered");
+    }
+
+    root.answerFetchSuccess("stale1", "/tmp/stale1-voice.jpg", true);
+    if (controller.timeline.mediaPath("stale1") !== "") {
+      return Check.fail("a media.fetch answer for the message's old voice kind still set a path on the now-photo row: " + controller.timeline.mediaPath("stale1"));
+    }
+    if (controller.timeline.mediaDecodeAs("stale1") !== "" || controller.timeline.mediaPlayable("stale1")) {
+      return Check.fail("a stale media.fetch answer still wrote verdicts for the message's no-longer-current kind");
+    }
+    if (service.fetchRequests.filter((id) => id === "stale1").length !== 2) {
+      return Check.fail("the stale answer did not trigger a fresh fetch for the row's current media: " + JSON.stringify(service.fetchRequests));
+    }
+
+    root.answerFetchSuccess("stale1", "/tmp/stale1-photo.jpg", true);
+    if (controller.timeline.mediaPath("stale1") !== "/tmp/stale1-photo.jpg") {
+      return Check.fail("the fresh fetch for the photo kind never landed once it answered: " + controller.timeline.mediaPath("stale1"));
     }
     return true;
   }

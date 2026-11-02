@@ -459,6 +459,38 @@ test('mediaIdentityChanged is false for a poll update that only changes tallies,
   assert.strictEqual(Timeline.mediaIdentityChanged(oldRow, update), false);
 });
 
+// mediaSignature and mediaSignaturesMatch: what MediaController's own
+// downloadMedia compares before and after a media.fetch round trip, so
+// a stale answer for a message whose media changed underneath it
+// (an edit swapping kind, or the same kind's own bytes) is never
+// mistaken for the one it was fetched for.
+test('mediaSignature is null for no media', () => {
+  assert.strictEqual(Timeline.mediaSignature(null), null);
+});
+
+test('mediaSignature carries every MEDIA_IDENTITY_KEYS field, defaulting a missing one to null', () => {
+  assert.deepEqual(Timeline.mediaSignature({ kind: 'photo', fileName: 'a.jpg', width: 100 }), {
+    kind: 'photo', fileName: 'a.jpg', size: null, width: 100, height: null, duration: null, thumb: null, url: null
+  });
+});
+
+test('mediaSignaturesMatch is true for two nulls, and false when only one is null', () => {
+  assert.strictEqual(Timeline.mediaSignaturesMatch(null, null), true);
+  assert.strictEqual(Timeline.mediaSignaturesMatch(null, Timeline.mediaSignature({ kind: 'photo' })), false);
+  assert.strictEqual(Timeline.mediaSignaturesMatch(Timeline.mediaSignature({ kind: 'photo' }), null), false);
+});
+
+test('mediaSignaturesMatch is true for the same attachment, false for a different kind or different bytes', () => {
+  const photo = { kind: 'photo', fileName: 'a.jpg', width: 100, height: 100 };
+  assert.strictEqual(Timeline.mediaSignaturesMatch(Timeline.mediaSignature(photo), Timeline.mediaSignature({ ...photo })), true);
+
+  const voice = { kind: 'voice', fileName: 'a.jpg', duration: 3 };
+  assert.strictEqual(Timeline.mediaSignaturesMatch(Timeline.mediaSignature(photo), Timeline.mediaSignature(voice)), false);
+
+  const differentBytes = { ...photo, fileName: 'b.jpg' };
+  assert.strictEqual(Timeline.mediaSignaturesMatch(Timeline.mediaSignature(photo), Timeline.mediaSignature(differentBytes)), false);
+});
+
 // windowNewest: capping how many loaded rows the shell keeps.
 
 test('windowNewest leaves a list at or under the cap alone', () => {

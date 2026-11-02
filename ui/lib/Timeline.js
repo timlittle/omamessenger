@@ -48,12 +48,32 @@ var MEDIA_IDENTITY_KEYS = ['kind', 'fileName', 'size', 'width', 'height', 'durat
 // from reusing an older, unrelated file's path and verdicts if it is
 // not cleared here.
 function mediaIdentityChanged(oldRow, message) {
-  const before = media(oldRow);
-  const after = message.media ?? null;
-  if (!before && !after) return false;
-  if (!before || !after) return true;
+  return !mediaSignaturesMatch(mediaSignature(media(oldRow)), mediaSignature(message.media ?? null));
+}
 
-  return MEDIA_IDENTITY_KEYS.some((key) => (before[key] ?? null) !== (after[key] ?? null));
+// mediaSignature returns a comparable snapshot of media's own identity
+// (every MEDIA_IDENTITY_KEYS field), or null for no media at all.
+// mediaIdentityChanged above compares two of these; MediaController's
+// own downloadMedia takes one when a fetch starts and compares it
+// against the message's current one when the answer arrives, so a
+// stale answer - started under one kind, delivered after an edit
+// swapped in another - never writes its path or verdicts back onto
+// media it was never checked for (see docs/decisions.md).
+function mediaSignature(attachment) {
+  if (!attachment) return null;
+
+  const signature = {};
+  for (const key of MEDIA_IDENTITY_KEYS) signature[key] = attachment[key] ?? null;
+  return signature;
+}
+
+// mediaSignaturesMatch reports whether two mediaSignature results (or
+// either, or both, null for no media) describe the same attachment.
+function mediaSignaturesMatch(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+
+  return MEDIA_IDENTITY_KEYS.every((key) => a[key] === b[key]);
 }
 
 // annotateAt returns the annotation for one message. Its older neighbour

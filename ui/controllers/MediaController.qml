@@ -4,6 +4,7 @@ import "../lib/Format.js" as Format
 import "../lib/Media.js" as Media
 import "../lib/MediaOpen.js" as MediaOpen
 import "../lib/Rpc.js" as Rpc
+import "../lib/Timeline.js" as Timeline
 
 // Downloads and opens a message's photo, video, file or voice note, for
 // the open conversation, asking first when the helper named a file
@@ -366,17 +367,27 @@ QtObject {
   // (a joiner's own auto is never consulted): true means the helper
   // applies its small, automatic-fetch size cap instead of the far
   // larger one a deliberate click is trusted with (see media.fetch's
-  // auto param in docs/api.md).
+  // auto param in docs/api.md). An edit can swap id's media for a
+  // different kind, or different bytes of the same kind, while this
+  // very request is in flight; the answer is checked against id's
+  // current media before it is kept (see _answerIsStale), never
+  // written back for media it was never checked against.
   function downloadMedia(timeline: var, id: string, report: bool, auto: bool, done: var): void {
     if (root._fetching[id]) { root._fetching[id].push({ report: report, done: done }); return; }
 
     root._fetching[id] = [{ report: report, done: done }];
+    // Recorded before the request, not read back from timeline once
+    // the answer arrives: an edit can swap id's media for a different
+    // kind, or different bytes of the same kind, while media.fetch is
+    // still in flight (see _answerIsStale and docs/decisions.md).
+    const expected = Timeline.mediaSignature(timeline.media(id));
     const params = auto ? { messageId: id, auto: true } : { messageId: id };
     root.service.request("media.fetch", params, function(error, result) {
       const waiting = root._fetching[id];
       delete root._fetching[id];
 
       if (error) { root._failDownload(timeline, id, error, waiting); return; }
+      if (root._answerIsStale(timeline, id, expected)) return;
 
       timeline.setMediaFailed(id, false, "");
       // Recorded before setMediaPath: a bound component's own
@@ -394,6 +405,34 @@ QtObject {
       timeline.lastError = "";
       for (const waiter of waiting) waiter.done(result.path);
     });
+  }
+
+  // _answerIsStale reports whether id's own media no longer matches
+  // expected - the signature downloadMedia recorded before it asked
+  // media.fetch for it - meaning an edit swapped in different media
+  // on a row still loaded while the request was in flight. A row not
+  // loaded at all (the list was cleared, or another conversation is
+  // open) is not this: the helper's verdict still belongs with the
+  // download, not a row that may or may not come back, exactly as
+  // checkRiskyVerdictSurvivesTheListBeingCleared expects, so that case
+  // runs the normal path below unchanged. Only an actual mismatch on a
+  // still-loaded row is stale: the answer describes bytes nobody has
+  // checked against id's current kind, so it is dropped outright
+  // rather than written back (an unchecked file could otherwise reach
+  // whatever sink that kind's own view trusts, such as a photo's Image
+  // with no verified size): no waiter's done runs, this controller's
+  // own cached risky verdict for id is forgotten, and a fresh fetch
+  // starts for whatever media.fetch has not actually checked against
+  // yet, the same silent, automatic fetch a newly shown row's own
+  // prefetch would ask for.
+  function _answerIsStale(timeline: var, id: string, expected: var): bool {
+    const current = timeline.media(id);
+    if (!current || Timeline.mediaSignaturesMatch(expected, Timeline.mediaSignature(current))) return false;
+
+    delete root._riskyVerdicts[id];
+    console.warn("media.fetch answered after message " + id + " changed media; refetching");
+    root.downloadMedia(timeline, id, false, true, () => {});
+    return true;
   }
 
   // _applyVerifiedSize records result's verified width and height on
