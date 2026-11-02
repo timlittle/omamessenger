@@ -39,10 +39,11 @@ func TestCopyMedia_WritesAPhotoToTheClipboard(t *testing.T) {
 	}
 }
 
-// TestCopyMedia_WritesAPlayableVideoToTheClipboard confirms a video
-// message whose downloaded bytes pass videosafe's own check is
-// copied.
-func TestCopyMedia_WritesAPlayableVideoToTheClipboard(t *testing.T) {
+// TestCopyMedia_WritesAVideosPlayCopyToTheClipboard confirms copying a
+// video prepares its in-window play copy on demand, through the
+// sandboxed transcoder, and copies that - never the raw download - to
+// the clipboard (see docs/decisions.md).
+func TestCopyMedia_WritesAVideosPlayCopyToTheClipboard(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
@@ -60,11 +61,41 @@ func TestCopyMedia_WritesAPlayableVideoToTheClipboard(t *testing.T) {
 		t.Fatalf("CopyMedia() = %v", err)
 	}
 
+	if f.transcoder.lastCall() != "video" {
+		t.Errorf("transcoder's last call = %q, want \"video\": copying a video must prepare its play copy", f.transcoder.lastCall())
+	}
 	if len(f.clipboard.written) != 1 {
 		t.Fatalf("clipboard.written = %+v, want exactly one write", f.clipboard.written)
 	}
 	if !strings.HasPrefix(f.clipboard.written[0].mimeType, "video/") {
 		t.Errorf("wrote mimeType %q, want a video/* type", f.clipboard.written[0].mimeType)
+	}
+}
+
+// TestCopyMedia_RejectsAVideoWithNoPlayCopyAvailable confirms a video
+// whose play copy the transcoder could not produce is never copied as
+// its own raw download instead: there is simply nothing safe to copy.
+func TestCopyMedia_RejectsAVideoWithNoPlayCopyAvailable(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.media.data = onePlayableMP4()
+	f.transcoder.err = errors.New("ffmpeg exploded")
+
+	if err := f.commands.CopyMedia(ctx, "m1"); !errors.Is(err, app.ErrInvalidInput) {
+		t.Fatalf("CopyMedia() = %v, want ErrInvalidInput when no play copy could be built", err)
+	}
+	if len(f.clipboard.written) != 0 {
+		t.Errorf("clipboard.written = %+v, want nothing written with no play copy available", f.clipboard.written)
 	}
 }
 
@@ -127,7 +158,7 @@ func TestCopyMedia_RejectsAKindItNeverOffersToCopy(t *testing.T) {
 // is refused before it ever reaches the clipboard, whatever its
 // content: wl-copy holds its own offer in memory for as long as it
 // stands, so a cap here is not merely redundant with imagesafe's or
-// videosafe's own limits.
+// transcode's own limits.
 func TestCopyMedia_RejectsAFileOverTheCopyCap(t *testing.T) {
 	t.Parallel()
 

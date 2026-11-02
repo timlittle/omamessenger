@@ -72,6 +72,13 @@ type Facts struct {
 	// the session bus as org.freedesktop.Notifications.
 	NotificationServiceReachable bool
 
+	// PlaybackAvailable is true once this run confirmed, at startup,
+	// that ffmpeg and bubblewrap both resolve on PATH: the two external
+	// tools in-window video and voice playback need. False means a
+	// play fetch will never produce a playPath at all, not that any
+	// one message failed on its own.
+	PlaybackAvailable bool
+
 	// RecentErrorCategories are the last few safe error categories
 	// recorded during this run, oldest first; empty when none have been
 	// recorded, or when gathering facts outside a running helper, which
@@ -122,6 +129,7 @@ func Build(f Facts) Report {
 		cacheCheck(f),
 		outgoingSizeCheck(f),
 		notifyCheck(f),
+		playbackCheck(f),
 		recentErrorsCheck(f),
 	}
 	for _, a := range f.Accounts {
@@ -206,6 +214,17 @@ func notifyCheck(f Facts) Check {
 	}
 
 	return Check{Name: "Desktop notifications", OK: true, Detail: "notification service reachable"}
+}
+
+// playbackCheck flags ffmpeg or bubblewrap missing from PATH, which
+// means in-window video and voice playback can never work until both
+// are installed, not that this run happened to hit a failure.
+func playbackCheck(f Facts) Check {
+	if !f.PlaybackAvailable {
+		return Check{Name: "In-window playback", OK: false, Detail: "needs ffmpeg and bubblewrap installed"}
+	}
+
+	return Check{Name: "In-window playback", OK: true, Detail: "ffmpeg and bubblewrap available"}
 }
 
 // accountCheck flags an account waiting for sign-in or in error; any

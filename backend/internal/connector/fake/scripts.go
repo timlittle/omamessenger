@@ -49,8 +49,9 @@ type conversationScript struct {
 
 	// lastGif makes the newest seeded message a real GIF document (not
 	// a video merely marked to play back like one), so the UI has one
-	// to drive through the real fetch and the helper's own byte check
-	// that confirms it is safe to animate (see app.DecodeAsForMedia).
+	// to drive through the real fetch and the sandboxed transcoder's
+	// own re-encode, rather than only a classification hint (see
+	// app.Commands.playCopy).
 	lastGif bool
 
 	// linkPreviewText, when set, marks which seeded text carries a link

@@ -158,6 +158,33 @@ type OutgoingMedia interface {
 	Remove(ctx context.Context, id, fileName string) error
 }
 
+// Transcoder re-encodes untrusted media with the system ffmpeg, run
+// inside a sandbox, so the UI only ever plays a file this helper's own
+// fixed ffmpeg invocation produced - never a sender's bytes directly
+// (see docs/decisions.md). Five methods, one per fixed output profile
+// *transcode.Transcoder exposes, not the usual one or two (see
+// interfaces.md): each is a different ffmpeg invocation and output
+// container - Video and Animation both write an MP4, the one
+// difference being whether the source's own audio is kept; Audio
+// re-encodes a voice note or audio message; Sound re-encodes a
+// notification sound to WAV, the only format Qt's SoundEffect plays;
+// StillFrame extracts one frame, for a sticker format Go cannot decode
+// at all - so a caller already knows which it wants and a single
+// parameterized method would only make it pass that choice back in as
+// a value this interface would have to validate itself. Every method
+// takes the same (ctx, in, outDir) and returns the one output file's
+// path inside a fresh job directory under outDir, which the caller
+// moves into place and removes (see docs/decisions.md), or one of
+// transcode's own sentinel errors (ErrUnavailable, ErrTimeout,
+// ErrTooLong, ErrFailed).
+type Transcoder interface {
+	Video(ctx context.Context, in, outDir string) (string, error)
+	Animation(ctx context.Context, in, outDir string) (string, error)
+	Audio(ctx context.Context, in, outDir string) (string, error)
+	Sound(ctx context.Context, in, outDir string) (string, error)
+	StillFrame(ctx context.Context, in, outDir string) (string, error)
+}
+
 // SoundStore stores a validated copy of every custom notification sound
 // this helper plays, one file per key: a conversation's own id, or a
 // fixed name for a service's or the global default sound (see
@@ -306,6 +333,7 @@ type Deps struct {
 	Fake            Injector
 	Logger          Logger
 	Spell           *spell.Checker
+	Transcoder      Transcoder
 
 	// DataDir, DBPath, ExecutableName and HelperVersion are read only by
 	// Doctor, to stat the data directory's and database's permissions
@@ -331,6 +359,20 @@ type Deps struct {
 	MediaCacheDir  string
 	OutgoingDir    string
 	KeysConfigPath string
+
+	// TranscodeJobRoot is where Transcoder writes a job's own output
+	// directory: a fixed root, cleared at startup, under this run's own
+	// data directory (see main.go), never /tmp.
+	TranscodeJobRoot string
+
+	// PlaybackAvailable is true once this run confirmed, at startup,
+	// that ffmpeg and bubblewrap both resolve on PATH - the two
+	// external tools in-window video and voice playback need (see
+	// docs/decisions.md). False means a play fetch will never produce a
+	// playPath at all; Doctor reports this as the likely cause, rather
+	// than Commands failing a request that is never going to succeed
+	// differently next time.
+	PlaybackAvailable bool
 }
 
 // New builds the two halves of the application, which share the event
@@ -343,19 +385,21 @@ func New(d Deps) (*Commands, *Ingest) {
 
 	commands := &Commands{
 		store: d.Store, dispatcher: d.Dispatcher, signIn: d.SignIn, accounts: d.Accounts, history: d.History, media: d.Media, cache: d.Cache, refresher: d.Refresher, organizer: d.Organizer, archiveUnpinner: d.ArchiveUnpinner, reactor: d.Reactor, voter: d.Voter, deleter: d.Deleter, editor: d.Editor, blocker: d.Blocker, spamReporter: d.SpamReporter, members: d.Members, limiter: d.Limiter, fake: d.Fake,
-		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, filePicker: d.FilePicker, opener: d.Opener, logger: d.Logger, spell: d.Spell,
+		outgoing: d.Outgoing, sounds: d.Sounds, clipboard: d.Clipboard, filePicker: d.FilePicker, opener: d.Opener, logger: d.Logger, spell: d.Spell, transcoder: d.Transcoder,
 		events: events, ui: state, refreshed: &attemptedRefresh{done: map[string]bool{}},
 		recentErrors:    &errorHistory{},
 		reminders:       newReminders(d.Store, d.Notifier, events, state),
 		retries:         retries,
 		scheduled:       scheduled,
 		organizeNotices: &organizeNotices{},
-		videoVerdicts:   &videoVerdicts{entries: map[string]videoVerdict{}},
 		dataDir:         d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 		downloadsDir:   d.DownloadsDir,
 		mediaCacheDir:  d.MediaCacheDir,
 		outgoingDir:    d.OutgoingDir,
 		keysConfigPath: d.KeysConfigPath,
+
+		transcodeJobRoot:  d.TranscodeJobRoot,
+		playbackAvailable: d.PlaybackAvailable,
 	}
 	retries.commands = commands
 	scheduled.commands = commands

@@ -1,16 +1,19 @@
 // Package imagesafe makes a sender-supplied image safe to decode
 // inside omarchy-shell by never letting the shell's own C decoders
-// (libjpeg-turbo, libpng, libwebp, Qt's GIF reader) see the sender's
-// compressed bytes at all: Reencode decodes a PNG, JPEG, GIF or still
-// WebP fully in memory-safe Go, checked against a Profile's caps
-// before and after that decode, then writes a fresh JPEG or PNG of
-// its own - the one class of bug this closes is CVE-2023-4863 and its
-// relatives, where a crafted libwebp input corrupts memory inside the
-// process that decodes it (see docs/decisions.md). The one exception
-// is AnimatedGIF: a real GIF animation is still rewritten block by
-// block, never decoded, exactly as before, because AnimatedImage
-// needs its own container and timing, not a single re-encoded frame
-// (see gif.go).
+// (libjpeg-turbo, libpng, libwebp) see the sender's compressed bytes
+// at all: Reencode decodes a PNG, JPEG or still WebP fully in
+// memory-safe Go, checked against a Profile's caps before and after
+// that decode, then writes a fresh JPEG or PNG of its own - the one
+// class of bug this closes is CVE-2023-4863 and its relatives, where
+// a crafted libwebp input corrupts memory inside the process that
+// decodes it (see docs/decisions.md). A real GIF animation is no
+// longer a case this package handles at all: every connector routes
+// one through the same sandboxed video path a "GIF video" already
+// used (see docs/decisions.md), so Reencode refuses GIF bytes
+// outright, by their own magic header, never attempting a decode -
+// deliberately, rather than relying on this package not happening to
+// link a GIF decoder, which a test binary or a future change
+// elsewhere can never guarantee on its own.
 package imagesafe
 
 import (
@@ -81,16 +84,6 @@ var FullImage = Profile{
 	MaxTotalPixels: 40_000_000, MaxAspectRatio: maxRealisticAspectRatio,
 }
 
-// AnimatedGIF bounds a real GIF file shown animating (see
-// InlineVideo.qml's realGif): a message GIF is rarely past a phone
-// screen's width, so each frame is capped far below a photo, and the
-// whole animation to a few hundred frames of that, which Qt decodes on
-// the shell's own thread every loop.
-var AnimatedGIF = Profile{
-	MaxSide: 2048, MaxPixels: 4_200_000, MaxInputLen: 32 << 20,
-	MaxTotalPixels: 400_000_000, MaxAspectRatio: maxRealisticAspectRatio,
-}
-
 // format is one of the image formats this package knows how to
 // sanitize; every other byte stream is rejected outright, never
 // forwarded as if it were safe.
@@ -158,15 +151,12 @@ func isWebP(data []byte) bool {
 // match data's own input format at all (see Reencode).
 type OutputFormat int
 
-// The formats Reencode ever writes. FormatGIF only ever comes from
-// the AnimatedGIF profile's own preserved path (see sanitizeGIF):
-// every other profile always writes FormatJPEG or FormatPNG,
+// The formats Reencode ever writes: always FormatJPEG or FormatPNG,
 // whatever format data arrived as.
 const (
 	FormatUnknown OutputFormat = iota
 	FormatJPEG
 	FormatPNG
-	FormatGIF
 )
 
 // Extension is format's own canonical file extension, for a caller
@@ -178,8 +168,6 @@ func (f OutputFormat) Extension() string {
 		return ".jpg"
 	case FormatPNG:
 		return ".png"
-	case FormatGIF:
-		return ".gif"
 	default:
 		return ""
 	}
@@ -193,8 +181,6 @@ func (f OutputFormat) MIME() string {
 		return "image/jpeg"
 	case FormatPNG:
 		return "image/png"
-	case FormatGIF:
-		return "image/gif"
 	default:
 		return ""
 	}
@@ -215,50 +201,39 @@ func Sanitize(data []byte, profile Profile) (out []byte, width, height int, ok b
 // claimed photo size, might otherwise assume matches it (see
 // docs/decisions.md).
 //
-// For every profile but AnimatedGIF: data is decoded fully, in
-// memory-safe Go (recovering from any panic a decoder raises on a
-// crafted input as a plain refusal, never a crash - see decodeImage),
-// after its declared dimensions already passed profile's caps from a
-// cheap header read alone (see reencodeStill), so a declared-huge
-// image is refused before anything tries to allocate a bitmap for it.
-// The decoded pixels are then written fresh as JPEG, quality 90, or
-// PNG when they carry any real transparency (see hasAlpha) - a
-// sticker's own cut-out shape, say. A GIF decodes to its first frame
-// only, the same as every other format: this package never hands
-// AnimatedImage anything but a real, unbroken animation (see
-// AnimatedGIF below), so a GIF under any other profile is just
-// another still image. An animated WebP has no Go decoder at all
-// (golang.org/x/image/webp decodes a still WebP only), so it is
-// refused outright, not silently reduced to one frame.
-//
-// For the AnimatedGIF profile, a genuine GIF is instead rewritten
-// block by block exactly as before this package re-encoded anything
-// (see sanitizeGIF): AnimatedImage needs the real container and
-// frame timing, which decoding to one frame would throw away. Bytes
-// that are not actually a GIF under this profile still go through
-// the same decode-and-re-encode path as any other profile, which is
-// strictly safer than the structural rewrite this replaced, never
-// less.
+// data is decoded fully, in memory-safe Go (recovering from any panic
+// a decoder raises on a crafted input as a plain refusal, never a
+// crash - see decodeImage), after its declared dimensions already
+// passed profile's caps from a cheap header read alone (see
+// reencodeStill), so a declared-huge image is refused before
+// anything tries to allocate a bitmap for it. The decoded pixels are
+// then written fresh as JPEG, quality 90, or PNG when they carry any
+// real transparency (see hasAlpha) - a sticker's own cut-out shape,
+// say. A real GIF animation is refused outright, by its own magic
+// header, before any decode is attempted: every connector routes one
+// through the sandboxed video path instead (see docs/decisions.md),
+// and this package must refuse it deliberately rather than rely on
+// no GIF decoder happening to be linked into the binary, which
+// nothing here can actually guarantee. An animated WebP has no Go
+// decoder either (golang.org/x/image/webp decodes a still WebP
+// only), so it is refused outright too, never silently reduced to
+// one frame.
 //
 // ok is false when data is not a format this package recognizes, is
-// too large or malformed to even parse, decodes to a size over
-// profile's own caps, or is an animated WebP; out, format, width and
-// height are all zero or FormatUnknown in that case, so a caller
-// cannot accidentally use a partially-checked result. Nothing is
-// logged here: callers log only the safe category they already have
-// (see app.MediaFetchReason), never these bytes or this function's
-// own reasoning.
+// a GIF, is too large or malformed to even parse, decodes to a size
+// over profile's own caps, or is an animated WebP; out, format,
+// width and height are all zero or FormatUnknown in that case, so a
+// caller cannot accidentally use a partially-checked result. Nothing
+// is logged here: callers log only the safe category they already
+// have (see app.MediaFetchReason), never these bytes or this
+// function's own reasoning.
 func Reencode(data []byte, profile Profile) (out []byte, format OutputFormat, width, height int, ok bool) {
 	if int64(len(data)) > profile.MaxInputLen || len(data) == 0 {
 		return nil, FormatUnknown, 0, 0, false
 	}
 
-	detected := detectFormat(data)
-	if detected == formatGIF && profile == AnimatedGIF {
-		out, width, height, ok := sanitizeGIF(data, profile)
-		return out, FormatGIF, width, height, ok
-	}
-	if detected == formatUnknown {
+	switch detectFormat(data) {
+	case formatUnknown, formatGIF:
 		return nil, FormatUnknown, 0, 0, false
 	}
 

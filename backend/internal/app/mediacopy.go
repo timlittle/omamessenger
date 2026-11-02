@@ -13,7 +13,7 @@ import (
 // system clipboard. A clipboard offer sits in the Wayland compositor,
 // read by whichever program pastes next, for as long as it stands -
 // unlike a download, which this helper's own cache already bounds -
-// so this is a backstop independent of imagesafe's or videosafe's own
+// so this is a backstop independent of imagesafe's or transcode's own
 // limits, not merely a restatement of them. 64 MiB comfortably covers
 // any photo (imagesafe.FullImage's own 32 MiB input cap) or a short
 // video clip, while staying far below the 2 GiB a deliberate fetch
@@ -38,14 +38,18 @@ var errMediaCopyTooLarge = fmt.Errorf("%w: this file is too large to copy", ErrI
 
 // CopyMedia puts a message's photo, sticker or video onto the system
 // clipboard, through clipboard (wl-copy), fetching it first if it is
-// not already on this machine. mimeType is always sniffed fresh from
-// the downloaded bytes (see sniffContentType), never a sender's own
-// claimed kind or file name - the same rule fetchIntoCache already
-// applies to a cached file's own name - and copyableContentType
-// refuses to copy anything whose sniffed bytes do not actually match
-// the kind that sniff is checked against, so a modified client cannot
-// put arbitrary bytes on the clipboard merely by claiming the message
-// carries one of the kinds this ever copies (see docs/decisions.md).
+// not already on this machine. It copies only this helper's own
+// output, never a sender's bytes directly: a photo or sticker's
+// display copy, already what FetchMedia always returns for those
+// kinds, or a video's play copy, built on demand here the same way a
+// play fetch builds one for the UI's own player (see
+// docs/decisions.md). mimeType is always sniffed fresh from those
+// bytes (see sniffContentType), never a sender's own claimed kind or
+// file name, and copyableContentType refuses to copy anything whose
+// sniffed bytes do not actually match the kind that sniff is checked
+// against, so a modified client cannot put arbitrary bytes on the
+// clipboard merely by claiming the message carries one of the kinds
+// this ever copies.
 func (c *Commands) CopyMedia(ctx context.Context, messageID string) error {
 	if c.clipboard == nil {
 		return errNoClipboard
@@ -56,35 +60,58 @@ func (c *Commands) CopyMedia(ctx context.Context, messageID string) error {
 		return err
 	}
 
-	path, _, _, err := c.FetchMedia(ctx, messageID, false)
+	path, playPath, _, _, err := c.FetchMedia(ctx, messageID, false, true)
 	if err != nil {
 		return err
 	}
 
-	contentType, err := c.copyableMediaType(ctx, m, path)
+	source, ok := copySource(m, path, playPath)
+	if !ok {
+		return errUnsafeMediaCopy
+	}
+
+	contentType, err := copyableMediaType(m, source)
 	if err != nil {
 		return err
 	}
 
-	return c.writeMediaToClipboard(ctx, path, contentType)
+	return c.writeMediaToClipboard(ctx, source, contentType)
 }
 
-// copyableMediaType sniffs path's own downloaded bytes and confirms
-// they are safe to copy for m's own kind (see copyableContentType),
-// returning the sniffed MIME type to copy under. err is
-// errUnsafeMediaCopy when the content does not match, never a bare
-// "false" a caller could mistake for some other failure.
-func (c *Commands) copyableMediaType(ctx context.Context, m domain.Message, path string) (string, error) {
-	contentType, err := sniffContentType(path)
+// copySource is the one file CopyMedia ever reads for m: path, the
+// display copy FetchMedia already returns for a photo or sticker, or
+// playPath, the video play copy a play fetch just built or reused
+// (see docs/decisions.md). ok is false whenever there is no such
+// file to copy - any other media kind, or a video whose play copy
+// could not be built at all - never a reason to fall back to the
+// original download.
+func copySource(m domain.Message, path, playPath string) (string, bool) {
+	if m.Media == nil {
+		return "", false
+	}
+
+	switch m.Media.Kind {
+	case domain.MediaPhoto, domain.MediaSticker:
+		return path, true
+	case domain.MediaVideo:
+		return playPath, playPath != ""
+	default:
+		return "", false
+	}
+}
+
+// copyableMediaType sniffs source's own bytes and confirms they are
+// safe to copy for m's own kind (see copyableContentType), returning
+// the sniffed MIME type to copy under. err is errUnsafeMediaCopy when
+// the content does not match, never a bare "false" a caller could
+// mistake for some other failure.
+func copyableMediaType(m domain.Message, source string) (string, error) {
+	contentType, err := sniffContentType(source)
 	if err != nil {
 		return "", fmt.Errorf("media: copy: %w", err)
 	}
 
-	allowed, err := c.copyableContentType(ctx, m, path, contentType)
-	if err != nil {
-		return "", err
-	}
-	if !allowed {
+	if !copyableContentType(m.Media.Kind, contentType) {
 		return "", errUnsafeMediaCopy
 	}
 
@@ -117,52 +144,28 @@ func (c *Commands) writeMediaToClipboard(ctx context.Context, path, contentType 
 }
 
 // copyableContentType reports whether contentType, sniffed fresh from
-// path's own downloaded bytes, is safe to put on the clipboard for
-// m's own media kind: an image for a photo or sticker, every kind
-// this UI's own copy action ever offers (see MediaController.qml's
-// copyMedia and Media.mimeFor) but checked again here, since that
-// gate is the UI's own convenience, never the security boundary - a
-// future UI change, or a client calling media.copy directly, must not
-// be able to copy a kind this never allows just because some message
-// happens to carry it. Every other kind, including a plain file or a
-// voice note, is refused outright: neither one has an obvious MIME
-// family of its own to check sniffed bytes against the way a photo or
-// video does.
-func (c *Commands) copyableContentType(ctx context.Context, m domain.Message, path, contentType string) (bool, error) {
-	if m.Media == nil {
-		return false, nil
-	}
-
-	switch m.Media.Kind {
+// source's own bytes (copySource's display or play copy, never a raw
+// download), is safe to put on the clipboard for kind: an image for a
+// photo or sticker, a video for a video - every kind this UI's own
+// copy action ever offers (see MediaController.qml's copyMedia and
+// Media.mimeFor) but checked again here, since that gate is the UI's
+// own convenience, never the security boundary - a future UI change,
+// or a client calling media.copy directly, must not be able to copy a
+// kind this never allows just because some message happens to carry
+// it. Every other kind, including a plain file or a voice note, is
+// refused outright: neither one has an obvious MIME family of its own
+// to check sniffed bytes against the way a photo or video does. A
+// video's own content always sniffs as video/*: copySource only ever
+// hands this a play copy the sandboxed transcoder itself produced,
+// never raw, sender-controlled bytes that could sniff as anything
+// else (see docs/decisions.md).
+func copyableContentType(kind, contentType string) bool {
+	switch kind {
 	case domain.MediaPhoto, domain.MediaSticker:
-		return strings.HasPrefix(contentType, "image/"), nil
+		return strings.HasPrefix(contentType, "image/")
 	case domain.MediaVideo:
-		return c.copyableVideo(ctx, m.ID, path, contentType)
+		return strings.HasPrefix(contentType, "video/")
 	default:
-		return false, nil
+		return false
 	}
-}
-
-// copyableVideo reports whether a video message's own downloaded
-// bytes may be copied: a video a sending service marked as a silent
-// "GIF" that genuinely sanitizes as one (see DecodeAsForMedia) must
-// itself still sniff as an image, since that is what its bytes
-// actually are by this point; an ordinary video must both sniff as a
-// video and pass VideoPlayableForMedia's own check - the same verdict
-// the UI already shows a video through before ever decoding it in
-// place, never the sender's own claim that this is a playable video
-// at all.
-func (c *Commands) copyableVideo(ctx context.Context, messageID, path, contentType string) (bool, error) {
-	decodeAs, _, _, err := c.DecodeAsForMedia(ctx, messageID, path)
-	if err != nil {
-		return false, err
-	}
-	if decodeAs == "gif" {
-		return strings.HasPrefix(contentType, "image/"), nil
-	}
-	if !strings.HasPrefix(contentType, "video/") {
-		return false, nil
-	}
-
-	return c.VideoPlayableForMedia(ctx, messageID, path)
 }

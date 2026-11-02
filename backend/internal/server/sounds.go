@@ -63,8 +63,9 @@ type soundFetchResult struct {
 	Path string `json:"path,omitempty"`
 }
 
-// soundsFetch resolves a notification sound's playable path, validating
-// it with audiosafe first; see app.Commands.ResolveNotificationSound.
+// soundsFetch resolves a notification sound's playable path, already
+// re-encoded to WAV by the sandboxed transcoder when it was set; see
+// app.Commands.ResolveNotificationSound.
 func soundsFetch(c *app.Commands) func(context.Context, soundFetchParams) (any, error) {
 	return func(ctx context.Context, p soundFetchParams) (any, error) {
 		path, err := c.ResolveNotificationSound(ctx, p.ConversationID, p.Service, p.Path)

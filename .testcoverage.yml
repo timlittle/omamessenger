@@ -19,6 +19,3 @@ exclude:
   paths:
     # Test support shared by the connector tests; they exercise it.
     - ^backend/internal/connector/connectortest/
-    # Test support shared by the app and server packages' notification
-    # sound tests; they exercise it.
-    - ^backend/internal/audiosafe/audiosafetest/

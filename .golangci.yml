@@ -92,18 +92,6 @@ linters:
           allow:
             - $gostd
             - golang.org/x/image/webp
-        videosafe:
-          list-mode: strict
-          files: ["**/backend/internal/videosafe/*.go", "!$test"]
-          allow: [$gostd]
-        audiosafe:
-          list-mode: strict
-          files: ["**/backend/internal/audiosafe/*.go", "!$test"]
-          allow: [$gostd]
-        audiosafetest:
-          list-mode: strict
-          files: ["**/backend/internal/audiosafe/audiosafetest/*.go"]
-          allow: [$gostd]
         connector:
           list-mode: strict
           files: ["**/backend/internal/connector/*.go", "!$test"]
@@ -111,8 +99,6 @@ linters:
             - $gostd
             - github.com/timlittle/omamessenger/backend/internal/domain$
             - github.com/timlittle/omamessenger/backend/internal/imagesafe$
-            - github.com/timlittle/omamessenger/backend/internal/videosafe$
-            - github.com/timlittle/omamessenger/backend/internal/audiosafe$
         connectortest:
           list-mode: strict
           files: ["**/backend/internal/connector/connectortest/*.go"]
@@ -172,7 +158,6 @@ linters:
           allow:
             - $gostd
             - github.com/timlittle/omamessenger/backend/internal/app/policy$
-            - github.com/timlittle/omamessenger/backend/internal/audiosafe$
             - github.com/timlittle/omamessenger/backend/internal/cache$
             - github.com/timlittle/omamessenger/backend/internal/connector$
             - github.com/timlittle/omamessenger/backend/internal/doctor$
@@ -182,6 +167,7 @@ linters:
             - github.com/timlittle/omamessenger/backend/internal/portal$
             - github.com/timlittle/omamessenger/backend/internal/spell$
             - github.com/timlittle/omamessenger/backend/internal/store$
+            - github.com/timlittle/omamessenger/backend/internal/transcode$
         server:
           list-mode: strict
           files: ["**/backend/internal/server/*.go", "!$test"]

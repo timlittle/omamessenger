@@ -29,10 +29,10 @@ type mediaRef struct {
 	FileLength    uint64
 	Mimetype      string
 	// FileName is only ever set for a mediaKindDocument reference,
-	// where it is what lets FetchMedia tell a genuine GIF image sent
-	// as a plain file (see isGIFImage) apart from every other kind of
-	// document, which Kind alone cannot: unlike image and sticker,
-	// Kind never gets its own value for this case (see imageProfile).
+	// where it is what lets documentMedia tell a genuine GIF image
+	// sent as a plain file (see isGIFImage) apart from every other
+	// kind of document, which Kind alone cannot: unlike image and
+	// sticker, Kind never gets its own value for this case.
 	FileName string
 }
 
@@ -185,10 +185,9 @@ func videoMedia(m *waE2E.VideoMessage) (*domain.Media, mediaRef, bool) {
 // duration and its reference for FetchMedia to download it later. A
 // voice note (PTT, "push to talk") gets MediaVoice; an ordinary audio
 // message gets MediaAudio. Both reach the UI's inline audio player,
-// gated the same way by media.fetch's own byte check (see
-// app.AudioPlayableForMedia and audiosafe) - MediaAudio only changes
-// the player's label from a voice note's fixed "Voice message" to the
-// file's own name.
+// through the same sandboxed transcoder's Audio profile - MediaAudio
+// only changes the player's label from a voice note's fixed "Voice
+// message" to the file's own name.
 func audioMedia(m *waE2E.AudioMessage) (*domain.Media, mediaRef, bool) {
 	kind, name := domain.MediaAudio, "audio-message.ogg"
 	if m.GetPTT() {
@@ -210,10 +209,8 @@ func audioMedia(m *waE2E.AudioMessage) (*domain.Media, mediaRef, bool) {
 // GifPlayback set) carries nothing to tell it apart from any other
 // document except its mime type or name, so it is marked the same way
 // that mp4 is - MediaVideo with Animated true - to reach the same
-// inline view. That mime type and name are only ever classification
-// hints, though, both fully sender-controlled: the UI's actual
-// decoder choice never comes from here, only from app.DecodeAsForMedia
-// checking the downloaded file's own bytes once it is on disk.
+// inline view, played through the sandboxed transcoder's Animation
+// profile (see docs/decisions.md).
 func documentMedia(m *waE2E.DocumentMessage) (*domain.Media, mediaRef, bool) {
 	ref := mediaRef{
 		Kind: mediaKindDocument, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),
@@ -246,8 +243,8 @@ func isGIFImage(mimeType, name string) bool {
 
 // gifFileName is name, or a sensible default ending ".gif" when the
 // message carries no file name at all: a classification hint for the
-// UI's file-type labelling only, never what picks its decoder (see
-// app.DecodeAsForMedia).
+// UI's file-type labelling only, never what decides how it plays (see
+// app.Commands.playCopy).
 func gifFileName(name string) string {
 	if name == "" {
 		return "image.gif"
@@ -306,18 +303,17 @@ func thumb(data []byte) string {
 // pass before FetchMedia writes them to disk, and whether ref is one
 // at all: an image or a sticker, both of which whatsmeow authenticates
 // the same way (see appInfo), always reach a QML Image component
-// directly, and so does a document that turned out to be a genuine
-// GIF image (see isGIFImage) - the one case Kind itself cannot name,
-// since documentMedia has no kind of its own for it and FileName is
-// what this falls back to. Every other kind is written unchanged.
+// directly. Every other kind is written unchanged, including a
+// document that turned out to be a genuine GIF image (see
+// isGIFImage): it reaches the UI as a video-kind message, re-encoded
+// by the sandboxed transcoder on demand rather than imagesafe at
+// download time (see docs/decisions.md).
 func imageProfile(ref mediaRef) (imagesafe.Profile, bool) {
-	switch {
-	case ref.Kind == mediaKindImage:
+	switch ref.Kind {
+	case mediaKindImage:
 		return imagesafe.FullImage, true
-	case ref.Kind == mediaKindSticker:
+	case mediaKindSticker:
 		return imagesafe.Thumbnail, true
-	case ref.Kind == mediaKindDocument && isGIFImage(ref.Mimetype, ref.FileName):
-		return imagesafe.AnimatedGIF, true
 	default:
 		return imagesafe.Profile{}, false
 	}

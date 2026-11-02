@@ -86,7 +86,6 @@ func TestSanitize_RejectsExtremeAspectRatio(t *testing.T) {
 		"gif thumbnail":  {buildGIF(1, 1024, 1), imagesafe.Thumbnail},
 		"webp thumbnail": {buildWebPSimple(1, 1024), imagesafe.Thumbnail},
 		"png full image": {buildPNG(1, 8192), imagesafe.FullImage},
-		"png animated":   {buildPNG(1, 2048), imagesafe.AnimatedGIF},
 	}
 
 	for name, tc := range cases {

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
@@ -73,33 +73,47 @@ func (e *MediaFetchError) Unwrap() error {
 // "GIF" video autoplaying as soon as it is shown - which every
 // connector bounds to a far smaller size than a deliberate click is
 // trusted with (see connector.MaxBytes); SaveMedia, always a
-// deliberate action, passes false. A download failure is always
-// logged with its safe reason category and returned as a
-// *MediaFetchError, so nothing fails silently (see docs/decisions.md).
-func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto bool) (path string, width, height int, err error) {
+// deliberate action, passes false. play, when true, also asks for the
+// message's in-window play copy (see playCopy): playPath is "" unless
+// play was true and the transcode actually succeeded, never an error
+// on its own either way, so a transcode failing or being unavailable
+// never fails a fetch that would otherwise have succeeded (see
+// docs/decisions.md). A download failure is always logged with its
+// safe reason category and returned as a *MediaFetchError, so nothing
+// fails silently (see docs/decisions.md).
+func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto, play bool) (path, playPath string, width, height int, err error) {
 	if strings.TrimSpace(messageID) == "" {
-		return "", 0, 0, fmt.Errorf("%w: messageId is required", ErrInvalidInput)
+		return "", "", 0, 0, fmt.Errorf("%w: messageId is required", ErrInvalidInput)
 	}
 
 	m, err := c.store.Message(ctx, messageID)
 	if err != nil {
-		return "", 0, 0, err
+		return "", "", 0, 0, err
 	}
 
 	if m.Media == nil || m.Media.Kind == domain.MediaLink {
-		return "", 0, 0, fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
+		return "", "", 0, 0, fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
 	}
 
 	conv, err := c.store.Conversation(ctx, m.ConversationID)
 	if err != nil {
-		return "", 0, 0, err
+		return "", "", 0, 0, err
 	}
 
 	if local, ok := c.localAttachment(m); ok {
-		return c.servedPath(ctx, conv, m, local, false)
+		path, width, height, err = c.servedPath(ctx, conv, m, local, false)
+	} else {
+		path, width, height, err = c.fetchAndServe(ctx, conv, m, auto)
+	}
+	if err != nil {
+		return "", "", 0, 0, err
 	}
 
-	return c.fetchAndServe(ctx, conv, m, auto)
+	if play {
+		playPath = c.playCopy(ctx, m, path)
+	}
+
+	return path, playPath, width, height, nil
 }
 
 // fetchAndServe downloads m's media from its service, for FetchMedia's
@@ -123,12 +137,13 @@ func (c *Commands) fetchAndServe(ctx context.Context, conv domain.Conversation, 
 // must pass before FetchMedia ever hands its file to the UI's own
 // Image, and true: a photo's full-size profile, or a sticker's far
 // smaller thumbnail one, since a sticker is always drawn small (see
-// imagesafe.Thumbnail). An animated "GIF" video is covered by
-// DecodeAsForMedia's own call to connector.SanitizeIfGIF instead,
-// already run on every fetch the same way; every other kind already
-// gets its own kind-specific check (VideoPlayableForMedia,
-// AudioPlayableForMedia, MediaRisk), so ok is false for anything else
-// here.
+// imagesafe.Thumbnail) - a real GIF image passes through whichever of
+// these its own message kind already is, decoded as its own first
+// frame like any other still image, with no profile of its own any
+// more (see imagesafe.Reencode and docs/decisions.md). A video, voice
+// note or audio message has no display-copy profile at all: its own
+// in-window play copy, when one exists, comes from playCopy instead,
+// never from this function, so ok is false for every one of them.
 func imageSafeProfile(kind string) (profile imagesafe.Profile, ok bool) {
 	switch kind {
 	case domain.MediaPhoto:
@@ -202,9 +217,15 @@ func (c *Commands) tryDisplayCopy(ctx context.Context, m domain.Message, origina
 // docs/decisions.md). The same id serves a downloaded photo and an
 // outgoing one's own bubble alike, since both resolve to the same
 // m.ID and m.Media.Kind regardless of where their original bytes
-// currently live.
+// currently live. The "-view" suffix, not ".view", matters: findByID
+// matches a stored file's id against everything up to its own next
+// '.', so cacheIdentity(m) alone - the original's own slot for a kind
+// fetched through FetchNamed, such as a voice note or sticker - must
+// never be a prefix of this id followed by '.', or a lookup for the
+// original could resolve to this derived copy instead (see
+// cache.findByID and docs/decisions.md).
 func displayCopyID(m domain.Message) string {
-	return cacheIdentity(m) + ".view"
+	return cacheIdentity(m) + "-view"
 }
 
 // displayCopy returns the path of m's own display copy, filling it -
@@ -222,8 +243,8 @@ func (c *Commands) displayCopy(ctx context.Context, m domain.Message, originalPa
 	id := displayCopyID(m)
 	var format imagesafe.OutputFormat
 
-	fill := func(_ context.Context, dst string) error {
-		f, _, _, fillErr := connector.ReencodeImageFile(originalPath, dst, profile)
+	fill := func(ctx context.Context, dst string) error {
+		f, fillErr := c.reencodeForDisplay(ctx, originalPath, dst, profile)
 		format = f
 		return fillErr
 	}
@@ -242,6 +263,41 @@ func (c *Commands) displayCopy(ctx context.Context, m domain.Message, originalPa
 	}
 
 	return path, width, height, nil
+}
+
+// reencodeForDisplay is displayCopy's own fill: the ordinary
+// connector.ReencodeImageFile re-encode, falling back to the
+// sandboxed transcoder's StillFrame profile, then that single
+// extracted frame's own Reencode, only when the ordinary re-encode
+// refuses the bytes outright and a transcoder is actually wired in.
+// This is what makes a sticker format Go's own decoders cannot read
+// at all - an animated WebP, at least - still get a display copy:
+// StillFrame's ffmpeg decodes it where imagesafe never could, and the
+// frame it hands back then passes through exactly the same check and
+// encoder every other display copy does (see docs/decisions.md). A
+// failure that is not ErrUnsafeImage - originalPath too large or
+// unreadable - is returned as is, never worth a sandboxed job over.
+func (c *Commands) reencodeForDisplay(ctx context.Context, originalPath, dst string, profile imagesafe.Profile) (imagesafe.OutputFormat, error) {
+	format, _, _, err := connector.ReencodeImageFile(originalPath, dst, profile)
+	if err == nil {
+		return format, nil
+	}
+	if !errors.Is(err, connector.ErrUnsafeImage) || c.transcoder == nil {
+		return imagesafe.FormatUnknown, err
+	}
+
+	frame, frameErr := c.transcoder.StillFrame(ctx, originalPath, c.transcodeJobRoot)
+	if frameErr != nil {
+		return imagesafe.FormatUnknown, err // the original refusal is what this profile's caller needs to see, not the fallback's own
+	}
+	defer os.RemoveAll(filepath.Dir(frame))
+
+	format, _, _, stillErr := connector.ReencodeImageFile(frame, dst, profile)
+	if stillErr != nil {
+		return imagesafe.FormatUnknown, err
+	}
+
+	return format, nil
 }
 
 // dimensionsOf reads width and height from path's own header through
@@ -290,164 +346,12 @@ func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversat
 	return view, width, height, nil
 }
 
-// DecodeAsForMedia reports how the UI must decode messageID's video,
-// already downloaded to path by a prior FetchMedia: "gif" once path's
-// own bytes are confirmed, by their magic header alone, to be a
-// genuine GIF image, sanitized through imagesafe first, in place, the
-// same check and profile every other image this UI ever shows must
-// pass (see connector.SanitizeIfGIF); "" for an ordinary video, or any
-// other media kind, which the UI must never decode as an animated
-// image. Never inferred from a sender's filename, mime type or
-// "animated" flag - the bug this replaces - so the result can only
-// ever disagree with that metadata in the safe direction. width and
-// height are the GIF's own real, decoder-confirmed canvas size when
-// decodeAs is "gif", both zero otherwise: a differential review found
-// the UI had nothing else to size an AnimatedImage's decode from but
-// the sender's own claimed video width/height, which need not match
-// what the file playing through it actually decodes to (see
-// docs/decisions.md) - the same reasoning FetchMedia's own width and
-// height already give a photo or sticker.
-func (c *Commands) DecodeAsForMedia(ctx context.Context, messageID, path string) (decodeAs string, width, height int, err error) {
-	m, err := c.store.Message(ctx, messageID)
-	if err != nil {
-		return "", 0, 0, err
-	}
-	if m.Media == nil || m.Media.Kind != domain.MediaVideo {
-		return "", 0, 0, nil
-	}
-
-	isGIF, gifWidth, gifHeight, err := connector.SanitizeIfGIF(path)
-	if err != nil {
-		return "", 0, 0, c.failDecodeCheck(ctx, m, err)
-	}
-	if !isGIF {
-		return "", 0, 0, nil
-	}
-
-	return "gif", gifWidth, gifHeight, nil
-}
-
-// VideoPlayableForMedia reports whether messageID's video, already
-// downloaded to path by a prior FetchMedia, is safe for the UI to
-// hand to its own in-window video player at all: its container and
-// stream headers, read in pure Go without ever shelling out (see
-// connector.VideoPlayable), declare an allowed codec, dimensions and
-// duration within videosafe's own limits, and, if it carries audio,
-// an allowed audio codec too. It is always false for anything but a
-// video, and for a video whose bytes DecodeAsForMedia already
-// confirmed are a genuine GIF image: that file no longer looks like a
-// video at all once imagesafe has rewritten it, so this reports false
-// for it too, which is exactly right - the UI already knows to play a
-// "gif" decodeAs result through an image engine instead, and never
-// consults this field for one.
-// A GIF playing as a video re-fetches the same cache file every time
-// its bubble scrolls back into view, with no click, so
-// VideoPlayableForMedia consults videoVerdicts first: videosafe's own
-// sample scan is the one part of this check whose cost scales with
-// the file, and re-running it on every fetch of a file nothing has
-// touched since buys nothing.
-func (c *Commands) VideoPlayableForMedia(ctx context.Context, messageID, path string) (bool, error) {
-	m, err := c.store.Message(ctx, messageID)
-	if err != nil {
-		return false, err
-	}
-	if m.Media == nil || m.Media.Kind != domain.MediaVideo {
-		return false, nil
-	}
-
-	info, statErr := os.Stat(path)
-	if statErr == nil {
-		if playable, ok := c.videoVerdicts.lookup(path, info); ok {
-			return playable, nil
-		}
-	}
-
-	playable, err := connector.VideoPlayable(ctx, path)
-	if err != nil {
-		return false, c.failDecodeCheck(ctx, m, err)
-	}
-
-	if statErr == nil {
-		c.videoVerdicts.store(path, info, playable)
-	}
-	return playable, nil
-}
-
-// videoVerdicts caches VideoPlayableForMedia's own verdict for a
-// file, keyed by its path together with the size and modification
-// time os.Stat reported when that verdict was computed: either one
-// changing invalidates the entry, so a retried download that replaces
-// the bytes at the same cache path is never served a stale verdict.
-type videoVerdicts struct {
-	mu      sync.Mutex
-	entries map[string]videoVerdict
-}
-
-// videoVerdict is one cached entry in a videoVerdicts: the file size
-// and modification time its own playable verdict was computed from.
-type videoVerdict struct {
-	size     int64
-	modTime  time.Time
-	playable bool
-}
-
-// lookup reports v's own cached verdict for path, when one exists and
-// info - path's current os.Stat result - still has the same size and
-// modification time it was computed from.
-func (v *videoVerdicts) lookup(path string, info os.FileInfo) (playable, ok bool) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
-	entry, found := v.entries[path]
-	if !found || entry.size != info.Size() || !entry.modTime.Equal(info.ModTime()) {
-		return false, false
-	}
-	return entry.playable, true
-}
-
-// store records playable as path's own verdict in v, keyed by info's
-// size and modification time so a later change to the file at the
-// same path invalidates it.
-func (v *videoVerdicts) store(path string, info os.FileInfo, playable bool) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
-	v.entries[path] = videoVerdict{size: info.Size(), modTime: info.ModTime(), playable: playable}
-}
-
-// AudioPlayableForMedia reports whether messageID's voice note or
-// audio file, already downloaded to path by a prior FetchMedia, is
-// safe for the UI to hand to its own in-window audio player at all:
-// its own bytes, read in pure Go without ever shelling out (see
-// connector.AudioPlayable), describe a single-stream Ogg/Opus or
-// MP4/M4A file within audiosafe's own duration limit. MP3 (and other
-// MPEG audio) is never playable in-window; see audiosafe's own
-// package doc comment and docs/decisions.md. It is always false for
-// anything but a voice note or an ordinary audio message, mirroring
-// VideoPlayableForMedia: the sender's claimed file name never chooses
-// a decoder, only the downloaded bytes do (see docs/decisions.md).
-func (c *Commands) AudioPlayableForMedia(ctx context.Context, messageID, path string) (bool, error) {
-	m, err := c.store.Message(ctx, messageID)
-	if err != nil {
-		return false, err
-	}
-	if m.Media == nil || (m.Media.Kind != domain.MediaVoice && m.Media.Kind != domain.MediaAudio) {
-		return false, nil
-	}
-
-	playable, err := connector.AudioPlayable(path)
-	if err != nil {
-		return false, c.failDecodeCheck(ctx, m, err)
-	}
-
-	return playable, nil
-}
-
-// failDecodeCheck classifies and logs a failure from any check a
-// downloaded video or voice note's own bytes must pass - SanitizeIfGIF,
-// VideoPlayable or AudioPlayable - the same way download classifies and
-// logs a failed fetch, so media that turned out to be unreadable once
-// its actual bytes were checked is never silently left as it was.
+// failDecodeCheck classifies and logs a failure from recoverUnsafeImage's
+// own retry - a photo or sticker that still fails its display-copy
+// check on the one re-download it gets - the same way download
+// classifies and logs a failed fetch, so media that turned out to be
+// unreadable once its actual bytes were checked is never silently
+// left as it was.
 func (c *Commands) failDecodeCheck(ctx context.Context, m domain.Message, err error) error {
 	conv, convErr := c.store.Conversation(ctx, m.ConversationID)
 	if convErr != nil {
@@ -616,15 +520,17 @@ func (c *Commands) localAttachment(m domain.Message) (string, bool) {
 // fixedMediaName returns the cache name a photo or video always uses,
 // and true: an extension that says what it is, never the sender's
 // own filename or attributes, which fetchIntoCache must trust even
-// less for these two kinds than for any other, since Qt's own image
-// and video engines are handed this file directly by its extension.
+// less for these two kinds than for any other, since this is the one
+// file playCopy or displayCopy ever reads as that kind's own original.
 // Every MediaVideo message is cached as ".mp4", even the rare one
-// whose downloaded bytes turn out to be a genuine GIF image once
-// DecodeAsForMedia checks them: Qt's own image plugins sniff a file's
-// actual format from its content, not its extension (see
-// DecodeAsForMedia and docs/decisions.md). ok is false for every other
-// kind, whose correct name can only be known once its own bytes exist
-// to sniff (see fetchIntoCache).
+// whose downloaded bytes turn out to be a genuine GIF file rather
+// than an actual MP4 container: ffmpeg's own demuxer sniffs a file's
+// real format from its content, never its extension, the same as
+// Qt's image plugins already do for a photo, so playCopy's re-encode
+// produces a real MP4 play copy from either one with nothing extra to
+// check here first (see docs/decisions.md). ok is false for every
+// other kind, whose correct name can only be known once its own bytes
+// exist to sniff (see fetchIntoCache).
 func fixedMediaName(m domain.Message) (name string, ok bool) {
 	switch m.Media.Kind {
 	case domain.MediaPhoto:

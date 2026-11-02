@@ -14,9 +14,7 @@ import (
 
 // Fixed size and frame count for the procedural stand-in GIF every
 // scripted message with a real .gif document downloads as: 320x200
-// matches the message bubble's own maxWidth, and comfortably inside
-// imagesafe.AnimatedGIF's own per-frame and total-pixel bounds
-// (4,200,000 and 400,000,000 respectively).
+// matches the message bubble's own maxWidth.
 const (
 	gifWidth   = 320
 	gifHeight  = 200
@@ -36,10 +34,11 @@ const (
 // palette. It is a stand-in for a real GIF document a sender attached,
 // not a video a service marked to play back like one, so this is the
 // one scripted media FetchMedia ever writes whose bytes are an actual
-// GIF header - the exact shape app.DecodeAsForMedia's SanitizeIfGIF
-// check must confirm before the UI ever animates it (see
-// docs/decisions.md). Generated fresh each run, the same reasoning
-// placeholderPhoto gives for not shipping a committed image file.
+// GIF header; it reaches the UI the same way any other "GIF video"
+// does, played through the sandboxed transcoder's Animation profile
+// (see docs/decisions.md). Generated fresh each run, the same
+// reasoning placeholderPhoto gives for not shipping a committed image
+// file.
 func placeholderGIF() []byte {
 	scenes := make([]*image.RGBA, gifFrames)
 	for i := range gifFrames {

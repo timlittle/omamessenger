@@ -37,6 +37,7 @@ func (c *Commands) Doctor(ctx context.Context) (doctor.Report, error) {
 		OutgoingLimitMiB:             outgoingLimitMiB(c.outgoing),
 		FailedAttachments:            failedAttachments,
 		NotificationServiceReachable: notify.ServiceReachable(ctx),
+		PlaybackAvailable:            c.playbackAvailable,
 		RecentErrorCategories:        c.recentErrors.snapshot(),
 		Accounts:                     accountFacts(accounts),
 	}

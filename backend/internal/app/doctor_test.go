@@ -203,12 +203,34 @@ func TestDoctor_RecordsTheSafeCategoryOfARecentMediaFetchFailure(t *testing.T) {
 	}
 
 	f.media.err = domain.ErrMediaExpired
-	if _, _, _, err := f.commands.FetchMedia(ctx, "m1", false); err == nil {
+	if _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); err == nil {
 		t.Fatal("FetchMedia with a failing connector succeeded")
 	}
 
 	if got := checkNamed(t, doctorReport(t, f), "Recent errors"); got.Detail != "expired" {
 		t.Errorf("Recent errors detail = %q, want %q", got.Detail, "expired")
+	}
+}
+
+// TestDoctor_ReportsPlaybackAvailability confirms the health report
+// says whether ffmpeg and bubblewrap were found at startup: a
+// fixture's own transcoder (see newFixture) reports it available, a
+// bare Commands built with none wired in at all reports it is not.
+func TestDoctor_ReportsPlaybackAvailability(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	if got := checkNamed(t, doctorReport(t, f), "In-window playback"); !got.OK {
+		t.Errorf("In-window playback = %+v, want OK with a transcoder wired in", got)
+	}
+
+	bare := doctorCommandsWithPaths(t, t.TempDir(), filepath.Join(t.TempDir(), "x.db"))
+	report, err := bare.Doctor(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := checkNamed(t, report, "In-window playback"); got.OK {
+		t.Errorf("In-window playback = %+v, want not OK with no transcoder wired in", got)
 	}
 }
 

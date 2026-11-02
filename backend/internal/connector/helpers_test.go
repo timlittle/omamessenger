@@ -3,12 +3,10 @@ package connector_test
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
-	"image/gif"
 	"image/png"
 	"testing"
 
@@ -27,102 +25,6 @@ func onePixelPNG() []byte {
 	_ = png.Encode(&buf, img)
 
 	return buf.Bytes()
-}
-
-// onePixelGIF returns a tiny, real GIF, for a test that needs bytes a
-// genuine GIF header check and imagesafe's own sanitizer both actually
-// accept, rather than an arbitrary placeholder.
-func onePixelGIF() []byte {
-	img := image.NewPaletted(image.Rect(0, 0, 1, 1), color.Palette{color.RGBA{R: 200, G: 100, B: 50, A: 255}})
-	img.SetColorIndex(0, 0, 0)
-
-	var buf bytes.Buffer
-	_ = gif.Encode(&buf, img, nil)
-
-	return buf.Bytes()
-}
-
-// avcDecoderConfig640x480 is an AVCDecoderConfigurationRecord
-// declaring exactly one SPS that decodes, through videosafe's own
-// SPS parser, to exactly 640x480: videosafe now requires an avc1
-// track's avcC-declared dimensions to agree with its sample entry's
-// own width and height fields (see docs/decisions.md), so a test
-// fixture must carry a real one rather than an empty placeholder.
-// Generated once from the same bit-level encoding videosafe's own
-// test fixtures use (backend/internal/videosafe/helpers_test.go's
-// buildAVCDecoderConfig), not read from any real file.
-var avcDecoderConfig640x480 = []byte{0x01, 0x42, 0x00, 0x1E, 0xFF, 0x01, 0x00, 0x08, 0x67, 0x42, 0x00, 0x1E, 0xF8, 0x14, 0x07, 0xA0, 0x00}
-
-// onePlayableMP4 returns a minimal, well-formed MP4 file an ordinary
-// H.264 video at 640x480, for a test that needs bytes videosafe
-// actually accepts rather than an arbitrary placeholder: one moov box
-// with an mvhd and a single video trak, just enough of a real file's
-// own box structure for videosafe's own parser to read.
-func onePlayableMP4() []byte {
-	mediaHeader := func(timescale, duration uint32) []byte {
-		buf := make([]byte, 20)
-		binary.BigEndian.PutUint32(buf[12:16], timescale)
-		binary.BigEndian.PutUint32(buf[16:20], duration)
-		return buf
-	}
-	box := func(boxType string, body []byte) []byte {
-		buf := make([]byte, 8+len(body))
-		binary.BigEndian.PutUint32(buf[0:4], uint32(len(buf)))
-		copy(buf[4:8], boxType)
-		copy(buf[8:], body)
-		return buf
-	}
-
-	entryBody := make([]byte, 78)
-	binary.BigEndian.PutUint16(entryBody[24:26], 640)
-	binary.BigEndian.PutUint16(entryBody[26:28], 480)
-	entryBody = append(entryBody, box("avcC", avcDecoderConfig640x480)...)
-	entry := box("avc1", entryBody)
-
-	sampleDescription := make([]byte, 8, 8+len(entry))
-	binary.BigEndian.PutUint32(sampleDescription[4:8], 1) // entry_count
-	sampleDescription = append(sampleDescription, entry...)
-
-	mdhd := box("mdhd", mediaHeader(1000, 5000))
-	hdlr := box("hdlr", append(make([]byte, 8), []byte("vide")...))
-	stsd := box("stsd", sampleDescription)
-	stsz := box("stsz", make([]byte, 12))
-	stbl := box("stbl", append(append([]byte{}, stsd...), stsz...))
-	minf := box("minf", stbl)
-	mdia := box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
-	trak := box("trak", mdia)
-	mvhd := box("mvhd", mediaHeader(1000, 5000))
-	moov := box("moov", append(append([]byte{}, mvhd...), trak...))
-
-	return moov
-}
-
-// onePlayableOggOpus returns a minimal, well-formed two-page Ogg/Opus
-// file, for a test that needs bytes audiosafe actually accepts rather
-// than an arbitrary placeholder: a first page carrying the "OpusHead"
-// identification packet, then the "OpusTags" comment header every real
-// Opus stream must carry (empty here, so no cover picture), marked the
-// last page with a granule position implying a five-second stream.
-func onePlayableOggOpus() []byte {
-	return append(
-		oggPage(0x02, 0, 0, []byte("OpusHead further opus header bytes here")),
-		oggPage(0x04, 48_000*5, 1, append([]byte("OpusTags"), 0, 0, 0, 0, 0, 0, 0, 0))...,
-	)
-}
-
-// oggPage builds one single-segment Ogg page of the test stream with
-// the given header-type flags, granule position and page sequence.
-func oggPage(flags byte, granule uint64, sequence uint32, payload []byte) []byte {
-	hdr := make([]byte, 27)
-	copy(hdr[0:4], "OggS")
-	hdr[5] = flags
-	binary.LittleEndian.PutUint64(hdr[6:14], granule)
-	binary.LittleEndian.PutUint32(hdr[14:18], 1) // serial
-	binary.LittleEndian.PutUint32(hdr[18:22], sequence)
-	hdr[26] = 1 // one segment table entry
-
-	hdr = append(hdr, byte(len(payload)))
-	return append(hdr, payload...)
 }
 
 // fakeConnector runs the run function, or blocks until cancelled when it

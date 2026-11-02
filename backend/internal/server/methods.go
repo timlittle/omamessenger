@@ -383,22 +383,20 @@ func messagesEdit(c *app.Commands) func(context.Context, editParams) (any, error
 }
 
 // mediaResult is where a downloaded photo, video, file or voice note
-// is on disk. DecodeAs is set only for a video, and only once the
-// helper has confirmed its actual bytes are a genuine, sanitized GIF
-// image ("gif"); omitted for an ordinary video or anything else,
-// which the UI must never decode through an image component. The UI
-// reads only this field to make that choice, never a message's own
-// filename or "animated" flag (see docs/decisions.md). Playable is
-// set for an ordinary video (DecodeAs omitted) whose own container
-// and stream headers the helper has validated well enough to trust
-// its in-window video player with, or for a voice note or an ordinary
-// audio message whose own bytes the helper has validated as a safe,
-// single-stream audio file; omitted (false) for anything else,
-// including a video, voice note or audio message that failed its own
-// check, which the UI must then offer only to open in the user's own
-// application, never load into its own player. Risky is true only
-// when app.MediaRisk,
-// sniffing path's own bytes, finds active or executable content - a
+// is on disk. Path is always the original: the downloaded bytes for
+// a video, voice note, audio message or file, or the display copy
+// for a photo or sticker (see app.Commands.displayCopy). PlayPath,
+// set only when the request asked for play and the helper's own
+// sandboxed transcode actually succeeded, is the one file the UI may
+// ever load into its in-window video or voice player; the UI falls
+// back to opening Path externally whenever PlayPath is omitted,
+// whether play was never asked for, the message's claimed duration
+// was already over the profile's own cap, or the transcode itself
+// failed or was unavailable - none of which is an error on its own
+// (see docs/decisions.md). Playable is omitted (false) exactly when
+// PlayPath is, kept only so a result's shape still carries a boolean
+// there for compatibility. Risky is true only when app.MediaRisk,
+// sniffing Path's own bytes, finds active or executable content - a
 // web page, a vector image or a script; omitted (false) for everyday
 // media, which is every message's media until proven otherwise. The
 // UI must ask for confirmation before opening a file this names
@@ -406,18 +404,16 @@ func messagesEdit(c *app.Commands) func(context.Context, editParams) (any, error
 // name (see docs/decisions.md).
 type mediaResult struct {
 	Path     string `json:"path"`
-	DecodeAs string `json:"decodeAs,omitempty"`
+	PlayPath string `json:"playPath,omitempty"`
 	Playable bool   `json:"playable,omitempty"`
 	Risky    bool   `json:"risky,omitempty"`
 	// Width and Height are the fetched file's own real dimensions,
 	// confirmed by the helper's own decode of it, never the message's
 	// own claimed size: a photo's or sticker's display copy (see
-	// app.Commands.displayCopy), or, when DecodeAs is "gif", that
-	// GIF's own canvas (see connector.SanitizeIfGIF). The UI must size
-	// its decode of path from these, never from media's own
-	// width/height field, which need not match what this file actually
-	// decodes to (see docs/decisions.md). Omitted for every other media
-	// kind, and for a video that is not a real GIF file.
+	// app.Commands.displayCopy). The UI must size its decode of Path
+	// from these, never from media's own width/height field, which
+	// need not match what this file actually decodes to (see
+	// docs/decisions.md). Omitted for every other media kind.
 	Width  int `json:"width,omitempty"`
 	Height int `json:"height,omitempty"`
 }
@@ -427,50 +423,32 @@ type mediaResult struct {
 // user: today, only an animated "GIF" video autoplaying as soon as its
 // bubble is shown (see docs/api.md). Omitted, it defaults to false, a
 // deliberate fetch, which every existing caller before this field
-// existed is still treated as.
+// existed is still treated as. Play, also optional and defaulting to
+// false, asks the helper to also prepare the in-window play copy
+// (mediaResult.PlayPath): set only for a video, voice note or audio
+// message a user is about to watch or listen to in place, never for
+// openExternal, save, copy or a silent prefetch, which never need one
+// (see docs/api.md).
 type mediaFetchParams struct {
 	MessageID string `json:"messageId"`
 	Auto      bool   `json:"auto,omitempty"`
+	Play      bool   `json:"play,omitempty"`
 }
 
-// mediaFetch downloads a message's media, or finds it already cached,
-// then asks the helper's own verdict on how to decode it and, for an
-// ordinary video, voice note or audio message, whether it is safe to
-// play in place at all (see mediaResult.DecodeAs and
-// mediaResult.Playable): further steps, rather than folded into
-// FetchMedia itself, since none of them ever applies to anything but
-// those kinds, and none changes what was downloaded or where. width
-// and height start as FetchMedia's own answer (set for a photo or
-// sticker, zero for a video) and are replaced by DecodeAsForMedia's
-// own answer once decodeAs comes back "gif": the one case where a
-// video's file is itself the thing with real dimensions to report,
-// and FetchMedia never looked at its bytes to find them.
+// mediaFetch downloads a message's media, or finds it already
+// cached, and, when p.Play asks for it, prepares its in-window play
+// copy too (see app.Commands.FetchMedia).
 func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, error) {
 	return func(ctx context.Context, p mediaFetchParams) (any, error) {
-		path, width, height, err := c.FetchMedia(ctx, p.MessageID, p.Auto)
+		path, playPath, width, height, err := c.FetchMedia(ctx, p.MessageID, p.Auto, p.Play)
 		if err != nil {
 			return mediaResult{}, err
 		}
 
-		decodeAs, gifWidth, gifHeight, err := c.DecodeAsForMedia(ctx, p.MessageID, path)
-		if decodeAs == "gif" {
-			width, height = gifWidth, gifHeight
-		}
-		if err != nil {
-			return mediaResult{Path: path, DecodeAs: decodeAs, Width: width, Height: height}, err
-		}
-
-		videoPlayable, err := c.VideoPlayableForMedia(ctx, p.MessageID, path)
-		if err != nil {
-			return mediaResult{Path: path, DecodeAs: decodeAs, Width: width, Height: height}, err
-		}
-
-		audioPlayable, err := c.AudioPlayableForMedia(ctx, p.MessageID, path)
-
 		return mediaResult{
-			Path: path, DecodeAs: decodeAs, Playable: videoPlayable || audioPlayable,
+			Path: path, PlayPath: playPath, Playable: playPath != "",
 			Risky: app.MediaRisk(path), Width: width, Height: height,
-		}, err
+		}, nil
 	}
 }
 

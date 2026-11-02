@@ -3,8 +3,6 @@ package server_test
 import (
 	"bytes"
 	"image"
-	"image/color"
-	"image/gif"
 	"image/png"
 	"maps"
 	"os"
@@ -12,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/timlittle/omamessenger/backend/internal/audiosafe/audiosafetest"
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/doctor"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -101,8 +98,11 @@ func TestMethods_RoundTrip(t *testing.T) {
 		t.Errorf("conversations.setMuted = %+v, %v", muted, err)
 	}
 
+	// The fake transcoder every session is wired with just copies
+	// whatever bytes are here through, so the content does not need to
+	// be a real, decodable sound (see fakeTranscoder).
 	soundPath := filepath.Join(t.TempDir(), "ping.ogg")
-	if err := os.WriteFile(soundPath, audiosafetest.ValidOpusFixture(), 0o600); err != nil {
+	if err := os.WriteFile(soundPath, []byte("a notification sound, not real audio"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -445,22 +445,6 @@ func pngBytes(t *testing.T, width, height int) []byte {
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
-		t.Fatal(err)
-	}
-
-	return buf.Bytes()
-}
-
-// gifBytes returns a tiny, real GIF of width by height, for a test
-// that needs bytes connector.SanitizeIfGIF's own magic-header check
-// and imagesafe.AnimatedGIF's sanitizer both actually accept, rather
-// than an arbitrary placeholder.
-func gifBytes(t *testing.T, width, height int) []byte {
-	t.Helper()
-
-	img := image.NewPaletted(image.Rect(0, 0, width, height), color.Palette{color.RGBA{R: 200, G: 100, B: 50, A: 255}})
-	var buf bytes.Buffer
-	if err := gif.Encode(&buf, img, nil); err != nil {
 		t.Fatal(err)
 	}
 

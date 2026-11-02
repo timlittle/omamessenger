@@ -2,7 +2,6 @@ package app_test
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -18,60 +17,6 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/spell"
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
-
-// avcDecoderConfig640x480 is an AVCDecoderConfigurationRecord whose
-// one SPS decodes, through videosafe's own parser, to exactly
-// 640x480 - videosafe now requires that to agree with the sample
-// entry's own fields - generated from the same encoding
-// videosafe/helpers_test.go's buildAVCDecoderConfig uses.
-var avcDecoderConfig640x480 = []byte{0x01, 0x42, 0x00, 0x1E, 0xFF, 0x01, 0x00, 0x08, 0x67, 0x42, 0x00, 0x1E, 0xF8, 0x14, 0x07, 0xA0, 0x00}
-
-// onePlayableMP4 returns a minimal, well-formed MP4 file - an
-// ordinary H.264 video at 640x480 - for a test that needs bytes
-// videosafe actually accepts rather than an arbitrary placeholder:
-// a leading ftyp box (the one box http.DetectContentType's own mp4
-// signature actually keys on, so this also sniffs as "video/mp4" the
-// way any real downloaded video does, not only passing videosafe's
-// own, more tolerant box walk) followed by one moov box with an mvhd
-// and a single video trak, just enough of a real file's own box
-// structure for videosafe's own parser to read.
-func onePlayableMP4() []byte {
-	mediaHeader := func(timescale, duration uint32) []byte {
-		buf := make([]byte, 20)
-		binary.BigEndian.PutUint32(buf[12:16], timescale)
-		binary.BigEndian.PutUint32(buf[16:20], duration)
-		return buf
-	}
-	box := func(boxType string, body []byte) []byte {
-		buf := make([]byte, 8+len(body))
-		binary.BigEndian.PutUint32(buf[0:4], uint32(len(buf)))
-		copy(buf[4:8], boxType)
-		copy(buf[8:], body)
-		return buf
-	}
-
-	entryBody := append(make([]byte, 78), box("avcC", avcDecoderConfig640x480)...)
-	binary.BigEndian.PutUint16(entryBody[24:26], 640)
-	binary.BigEndian.PutUint16(entryBody[26:28], 480)
-
-	sampleDescription := make([]byte, 8)
-	binary.BigEndian.PutUint32(sampleDescription[4:8], 1) // entry_count
-	sampleDescription = append(sampleDescription, box("avc1", entryBody)...)
-
-	mdhd := box("mdhd", mediaHeader(1000, 5000))
-	hdlr := box("hdlr", append(make([]byte, 8), []byte("vide")...))
-	stsd := box("stsd", sampleDescription)
-	stsz := box("stsz", make([]byte, 12))
-	stbl := box("stbl", append(append([]byte{}, stsd...), stsz...))
-	minf := box("minf", stbl)
-	mdia := box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
-	trak := box("trak", mdia)
-	mvhd := box("mvhd", mediaHeader(1000, 5000))
-	moov := box("moov", append(append([]byte{}, mvhd...), trak...))
-	ftyp := box("ftyp", append([]byte("mp4 "), make([]byte, 4)...)) // major brand "mp4 ", zero minor version
-
-	return append(ftyp, moov...)
-}
 
 // fixture is an application over a real database with fake connectors,
 // notifications and UI.
@@ -104,10 +49,12 @@ type fixture struct {
 	filePicker      *fakeFilePicker
 	opener          *fakeOpener
 	logger          *fakeLogger
+	transcoder      *fakeTranscoder
 	downloads       string
 	mediaDir        string
 	outgoingDir     string
 	keysConfigPath  string
+	transcodeRoot   string
 }
 
 // newFixture builds an application with one WhatsApp account "wa". With
@@ -142,10 +89,14 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		outgoing: cache.NewOutgoing(outgoingDir, 24*time.Hour, 1<<30, storeExists(db)), clipboard: &fakeClipboard{},
 		sounds:     cache.NewSounds(filepath.Join(t.TempDir(), "sounds")),
 		filePicker: &fakeFilePicker{}, opener: &fakeOpener{},
-		logger: &fakeLogger{}, downloads: filepath.Join(t.TempDir(), "downloads"),
+		logger: &fakeLogger{}, transcoder: &fakeTranscoder{}, downloads: filepath.Join(t.TempDir(), "downloads"),
 		mediaDir:       filepath.Join(t.TempDir(), "media"),
 		outgoingDir:    outgoingDir,
 		keysConfigPath: filepath.Join(t.TempDir(), "config", "keys.conf"),
+		transcodeRoot:  filepath.Join(t.TempDir(), "work"),
+	}
+	if err := os.MkdirAll(f.transcodeRoot, 0o700); err != nil {
+		t.Fatal(err)
 	}
 
 	deps := app.Deps{
@@ -155,11 +106,14 @@ func newFixture(t *testing.T, faked bool) *fixture {
 		Refresher: f.refresher, Organizer: f.organizer, ArchiveUnpinner: f.archiveUnpinner, Reactor: f.reactor, Voter: f.voter, Deleter: f.deleter, Editor: f.editor,
 		Blocker: f.blocker, SpamReporter: f.spamReport, Members: f.members, Limiter: f.limiter,
 		Outgoing: f.outgoing, Sounds: f.sounds, Clipboard: f.clipboard, FilePicker: f.filePicker, Opener: f.opener, Logger: f.logger, Spell: spell.New(dataDir, func(string) string { return "" }),
-		DataDir: dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
-		DownloadsDir:   f.downloads,
-		MediaCacheDir:  f.mediaDir,
-		OutgoingDir:    f.outgoingDir,
-		KeysConfigPath: f.keysConfigPath,
+		Transcoder: f.transcoder,
+		DataDir:    dataDir, DBPath: dbPath, ExecutableName: "oma-messenger-service-9.9.9", HelperVersion: "9.9.9",
+		DownloadsDir:      f.downloads,
+		MediaCacheDir:     f.mediaDir,
+		OutgoingDir:       f.outgoingDir,
+		KeysConfigPath:    f.keysConfigPath,
+		TranscodeJobRoot:  f.transcodeRoot,
+		PlaybackAvailable: true,
 	}
 	if faked {
 		deps.Fake = f.injector

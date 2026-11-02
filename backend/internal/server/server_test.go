@@ -204,47 +204,42 @@ func TestMediaFetch_PassesAutoThroughToTheConnector(t *testing.T) {
 	}
 }
 
-// TestMediaFetch_ReportsPlayable confirms media.fetch's result
-// carries the helper's own verdict on whether a downloaded video's
-// container and stream headers are safe to decode in place (see
-// docs/api.md): true for one videosafe actually accepts, false for
-// one it does not, each reached only through app.Commands, never
-// recomputed here.
-func TestMediaFetch_ReportsPlayable(t *testing.T) {
+// TestMediaFetch_PreparesAPlayCopyOnlyWhenPlayIsRequested confirms
+// media.fetch's result carries a playPath, and playable true, only
+// when the request actually asked for play: the same download asked
+// for without it gets neither (see docs/api.md).
+func TestMediaFetch_PreparesAPlayCopyOnlyWhenPlayIsRequested(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]struct {
-		content []byte
-		want    bool
-	}{
-		"a well-formed video is playable":      {onePlayableMP4(), true},
-		"an unrecognized file is not playable": {[]byte("not a video at all"), false},
+	s := connectWithMedia(t, fakeMediaWriter{content: onePlayableMP4()}, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+	type result struct {
+		Path     string `json:"path"`
+		PlayPath string `json:"playPath"`
+		Playable bool   `json:"playable"`
+	}
 
-			s := connectWithMedia(t, fakeMediaWriter{content: tt.content}, cache.New(t.TempDir(), 1<<20))
-			msg := domain.Message{
-				ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[Video]", Created: 1,
-				Media: &domain.Media{Kind: domain.MediaVideo},
-			}
-			if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
-				t.Fatal(err)
-			}
+	without, err := call[result](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+	if err != nil {
+		t.Fatalf("media.fetch = %v", err)
+	}
+	if without.PlayPath != "" || without.Playable {
+		t.Errorf("media.fetch(no play) = %+v, want no playPath and playable false", without)
+	}
 
-			result, err := call[struct {
-				Path     string `json:"path"`
-				Playable bool   `json:"playable"`
-			}](t, s, "media.fetch", map[string]any{"messageId": "m1"})
-			if err != nil {
-				t.Fatalf("media.fetch = %v", err)
-			}
-			if result.Playable != tt.want {
-				t.Errorf("playable = %t, want %t", result.Playable, tt.want)
-			}
-		})
+	with, err := call[result](t, s, "media.fetch", map[string]any{"messageId": "m1", "play": true})
+	if err != nil {
+		t.Fatalf("media.fetch(play=true) = %v", err)
+	}
+	if with.PlayPath == "" || !with.Playable {
+		t.Errorf("media.fetch(play=true) = %+v, want a real playPath and playable true", with)
 	}
 }
 
@@ -332,47 +327,6 @@ func TestMediaFetch_ReportsVerifiedDimensionsForAPhoto(t *testing.T) {
 	}
 	if got.Width != 3 || got.Height != 5 {
 		t.Errorf("media.fetch dimensions = %dx%d, want the file's own real 3x5", got.Width, got.Height)
-	}
-}
-
-// TestMediaFetch_ReportsVerifiedDimensionsForARealGIFVideo confirms
-// media.fetch's width/height fields also carry a real GIF's own
-// decoder-confirmed canvas size when a video message's downloaded
-// bytes turn out to be a genuine GIF image (DecodeAs "gif"), never
-// the message's own claimed Media.Width/Height: a security review
-// found nothing reported this file's own real size at all, so the
-// real-GIF AnimatedImage player had only the sender's claim left to
-// size its decode from (see docs/decisions.md).
-func TestMediaFetch_ReportsVerifiedDimensionsForARealGIFVideo(t *testing.T) {
-	t.Parallel()
-
-	s := connectWithMedia(t, fakeMediaWriter{content: gifBytes(t, 2, 2)}, cache.New(t.TempDir(), 1<<20))
-	msg := domain.Message{
-		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[GIF]", Created: 1,
-		// A claimed size wildly unlike the real 2x2 GIF this test
-		// downloads: the same mismatch
-		// TestMediaFetch_ReportsVerifiedDimensionsForAPhoto already
-		// covers for a photo, here for a video marked to play back
-		// like a silent "GIF".
-		Media: &domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Animated: true, Width: 2000000, Height: 1},
-	}
-	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := call[struct {
-		DecodeAs string `json:"decodeAs"`
-		Width    int    `json:"width"`
-		Height   int    `json:"height"`
-	}](t, s, "media.fetch", map[string]any{"messageId": "m1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.DecodeAs != "gif" {
-		t.Fatalf("media.fetch decodeAs = %q, want \"gif\"", got.DecodeAs)
-	}
-	if got.Width != 2 || got.Height != 2 {
-		t.Errorf("media.fetch dimensions = %dx%d, want the file's own real 2x2, never the message's claimed 2000000x1", got.Width, got.Height)
 	}
 }
 

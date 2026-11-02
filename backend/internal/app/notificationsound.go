@@ -5,21 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
-	"github.com/timlittle/omamessenger/backend/internal/audiosafe"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// errSoundNotPlayable reports that a chosen file's own bytes do not
-// describe one of the formats audiosafe.Validate accepts: Ogg/Opus or
-// M4A/AAC (MP3 is never accepted, however it is tagged - see
-// audiosafe's own package doc comment and docs/decisions.md). Wrapped
-// in ErrInvalidInput, its message is safe to show; it never names the
-// file itself (see docs/decisions.md's sign-in hint entry, the same
-// reasoning: a fixed sentence, not an echo of what the user gave), but
-// it does name the formats that do work, so the refusal is actionable
-// rather than just a dead end.
-var errSoundNotPlayable = fmt.Errorf("%w: that file is not a sound this chat can play - try an Ogg/Opus or M4A file", ErrInvalidInput)
+// errSoundNotPlayable reports that a chosen file could not be
+// transcoded into a sound this chat can play: ffmpeg itself did not
+// recognise it as audio at all, or no transcoder was wired in (see
+// storeAndTranscodeSound). Wrapped in ErrInvalidInput, its message is
+// safe to show; it never names the file itself (see
+// docs/decisions.md's sign-in hint entry, the same reasoning: a fixed
+// sentence, not an echo of what the user gave), but it does name the
+// formats that do work, so the refusal is actionable rather than just
+// a dead end.
+var errSoundNotPlayable = fmt.Errorf("%w: that file is not a sound this chat can play - try an MP3, WAV, Ogg, M4A or FLAC file", ErrInvalidInput)
 
 // soundKeyConversation is the sound store key a conversation's own
 // custom notification sound is kept under.
@@ -35,12 +35,13 @@ func soundKeyService(service string) string {
 }
 
 // SetNotificationSound gives a conversation its own notification
-// sound, copying path - a file the user picked from disk - into the
-// helper's own sound store and confirming the copy with audiosafe
-// before this conversation is ever allowed to point at it: a
-// user-chosen file is still untrusted bytes to whatever eventually
-// decodes it (see docs/decisions.md). Fails with ErrInvalidInput when
-// path cannot be read or is not a format audiosafe recognises.
+// sound, transcoding path - a file the user picked from disk - into
+// the helper's own sound store before this conversation is ever
+// allowed to point at it: a user-chosen file is still untrusted bytes
+// to whatever eventually decodes it, so nothing but this helper's own
+// re-encoded WAV output is ever stored or played (see
+// docs/decisions.md). Fails with ErrInvalidInput when path cannot be
+// read or is not a format the transcoder recognises as audio.
 func (c *Commands) SetNotificationSound(ctx context.Context, conversationID, path string) (domain.Conversation, error) {
 	if conversationID == "" {
 		return domain.Conversation{}, fmt.Errorf("%w: conversationId is required", ErrInvalidInput)
@@ -49,7 +50,7 @@ func (c *Commands) SetNotificationSound(ctx context.Context, conversationID, pat
 		return domain.Conversation{}, fmt.Errorf("%w: a file is required", ErrInvalidInput)
 	}
 
-	if err := c.storeAndValidateSound(ctx, soundKeyConversation(conversationID), path); err != nil {
+	if err := c.storeAndTranscodeSound(ctx, soundKeyConversation(conversationID), path); err != nil {
 		if errors.Is(err, errSoundNotPlayable) {
 			return domain.Conversation{}, err
 		}
@@ -107,8 +108,8 @@ func (c *Commands) ResolveNotificationSound(ctx context.Context, conversationID,
 }
 
 // resolveConversationSound returns conversationID's own stored sound,
-// re-validated here rather than trusted from when SetNotificationSound
-// first stored it, or "" once it has no custom sound at all.
+// or "" once it has no custom sound at all, or the stored file has
+// gone missing since (see playableSoundPath).
 func (c *Commands) resolveConversationSound(ctx context.Context, conversationID string) (string, error) {
 	conv, err := c.store.Conversation(ctx, conversationID)
 	if err != nil {
@@ -132,58 +133,67 @@ func (c *Commands) resolveServiceSound(ctx context.Context, service, path string
 	}
 
 	key := soundKeyService(service)
-	if err := c.storeAndValidateSound(ctx, key, path); err != nil {
+	if err := c.storeAndTranscodeSound(ctx, key, path); err != nil {
 		return ""
 	}
 
 	return c.sounds.Path(key)
 }
 
-// storeAndValidateSound copies path's bytes into the sound store under
-// key and confirms the copy with audiosafe.Validate, removing it again
-// and reporting errSoundNotPlayable when it does not decode as one of
-// the formats audiosafe recognises; any other error means path itself
-// could not be read.
-func (c *Commands) storeAndValidateSound(ctx context.Context, key, path string) error {
+// storeAndTranscodeSound transcodes path - a file the user picked, or
+// a service's own manifest setting - into an uncompressed WAV through
+// the sandboxed transcoder's Sound profile, the only format Qt's
+// SoundEffect can play (see docs/decisions.md), and stores the result
+// in the sound store under key: path itself is never what the sound
+// store keeps, nor what resolve ever hands back. errSoundNotPlayable
+// reports path decoding as nothing ffmpeg itself recognises as audio,
+// or no transcoder being wired in at all; any other error means path
+// itself could not even be opened.
+func (c *Commands) storeAndTranscodeSound(ctx context.Context, key, path string) error {
 	if c.sounds == nil {
 		return fmt.Errorf("%w: notification sounds are not available", ErrInvalidInput)
 	}
+	if _, err := os.Stat(path); err != nil {
+		return err
+	}
+	if c.transcoder == nil {
+		return errSoundNotPlayable
+	}
 
-	f, err := os.Open(path)
+	wav, err := c.transcoder.Sound(ctx, path, c.transcodeJobRoot)
+	if err != nil {
+		return errSoundNotPlayable
+	}
+	defer os.RemoveAll(filepath.Dir(wav))
+
+	return c.storeTranscodedSound(ctx, key, wav)
+}
+
+// storeTranscodedSound copies wav's bytes into the sound store under
+// key, the last step storeAndTranscodeSound needs once ffmpeg has
+// already produced a playable file.
+func (c *Commands) storeTranscodedSound(ctx context.Context, key, wav string) error {
+	f, err := os.Open(wav)
 	if err != nil {
 		return err
 	}
 	defer f.Close() // reading only; nothing to flush
 
-	dst, err := c.sounds.Store(ctx, key, f)
-	if err != nil {
-		return err
-	}
+	_, err = c.sounds.Store(ctx, key, f)
 
-	playable, err := audiosafe.Validate(dst)
-	if err != nil {
-		return err
-	}
-	if !playable {
-		if removeErr := c.sounds.Remove(ctx, key); removeErr != nil {
-			return removeErr
-		}
-
-		return errSoundNotPlayable
-	}
-
-	return nil
+	return err
 }
 
-// playableSoundPath returns key's stored path once audiosafe.Validate
-// confirms it still decodes, or "" - never an error - once it does not:
-// a sound gone missing or no longer valid since it was stored simply
-// plays nothing rather than failing the request that asked for it.
+// playableSoundPath returns key's stored path, or "" - never an
+// error - once nothing is stored there, or it no longer exists on
+// disk: a sound removed since it was stored simply plays nothing
+// rather than failing the request that asked for it. The file is
+// always a WAV this helper's own transcoder produced (see
+// storeAndTranscodeSound), so there is nothing left to re-validate on
+// a read the way an unchecked, sender-chosen file still would.
 func (c *Commands) playableSoundPath(key string) string {
 	path := c.sounds.Path(key)
-
-	playable, err := audiosafe.Validate(path)
-	if err != nil || !playable {
+	if _, err := os.Stat(path); err != nil {
 		return ""
 	}
 

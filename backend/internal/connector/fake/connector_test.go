@@ -343,11 +343,12 @@ func TestFetchMedia_WritesTheScriptedVoiceNote(t *testing.T) {
 }
 
 // TestFetchMedia_WritesTheScriptedGIFDocument confirms a real GIF
-// document downloads as genuine GIF bytes, not the photo placeholder:
-// the same class of bug TestFetchMedia_WritesTheScriptedVoiceNote
-// guards against, for the one other media kind whose decoder the UI
-// only ever trusts once the helper has confirmed the downloaded
-// bytes' own magic header (see app.DecodeAsForMedia).
+// document downloads as genuine GIF bytes, not the photo placeholder,
+// and reaches the message store as a video-kind message marked
+// animated, the same classification a real connector gives a "GIF
+// video": the UI plays it through the sandboxed transcoder's
+// Animation profile, never a decoder picked from the bytes
+// themselves.
 func TestFetchMedia_WritesTheScriptedGIFDocument(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		sink := &connectortest.Sink{}
@@ -377,15 +378,12 @@ func TestFetchMedia_WritesTheScriptedGIFDocument(t *testing.T) {
 			t.Fatalf("downloaded %q, %v; want a file", got, err)
 		}
 
-		// "GIF8" is the magic header connector.SanitizeIfGIF itself
-		// checks for; a JPEG or Ogg placeholder would never match it.
+		// "GIF8" is a real GIF file's own fixed signature; a JPEG or
+		// Ogg placeholder would never match it, and - unlike a photo
+		// or sticker - nothing re-encodes this file at download time,
+		// so it must still be exactly what was written.
 		if !bytes.HasPrefix(got, []byte("GIF8")) {
 			t.Errorf("downloaded GIF document does not start with GIF's own signature: %x", got[:min(4, len(got))])
-		}
-
-		isGIF, _, _, err := connector.SanitizeIfGIF(path)
-		if err != nil || !isGIF {
-			t.Errorf("SanitizeIfGIF(%q) = %t, %v, want true, nil", path, isGIF, err)
 		}
 	})
 }

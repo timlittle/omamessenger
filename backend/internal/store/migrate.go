@@ -141,16 +141,16 @@ var migrations = []migrationStep{
 	// (see telegram/media.go's and whatsapp/normalize_media.go's own
 	// isGIFImage) is reclassified here the same way: MediaVideo,
 	// Animated, so it reaches the same inline view and the same
-	// decodeAs byte check on its next fetch as one received after
+	// sandboxed play copy on its next fetch as one received after
 	// that fix, rather than staying a plain file chip forever. Only a
 	// stored file name is available to judge this by - mime type was
 	// never persisted - which is exactly the fallback isGIFImage
 	// itself uses when a sender's mime type is missing. This never
-	// decides how the UI decodes anything: that still only ever comes
-	// from the downloaded bytes themselves (see
-	// app.Commands.DecodeAsForMedia), so a wrongly reclassified row
-	// can only ever fall back to opening externally, never animate
-	// unsafely.
+	// decides how the UI plays anything: that still only ever comes
+	// from the downloaded bytes, re-encoded fresh by the transcoder on
+	// every fetch (see app.Commands.playCopy), so a wrongly
+	// reclassified row can only ever fall back to opening externally,
+	// never play unsafely.
 	{sql: `UPDATE messages
 		SET media = json_set(media, '$.kind', 'video', '$.animated', json('true'))
 		WHERE json_valid(media)
@@ -164,7 +164,7 @@ var migrations = []migrationStep{
 	// plain file chip forever. "audio-message.ogg" is the helper's own
 	// fixed name for this case, never a sender's choice, so matching it
 	// is safe the way matching a sender's own claimed file name would
-	// not be - audiosafe's byte check still decides whether the
+	// not be - the sandboxed transcoder still decides whether the
 	// reclassified row actually plays, exactly as it already does for
 	// every "voice" or "audio" row. A Telegram audio document stored
 	// this way carries only the sender's own file name, with nothing

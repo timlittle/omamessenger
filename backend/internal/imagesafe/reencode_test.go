@@ -1,14 +1,12 @@
 package imagesafe_test
 
-// reencode_test.go covers Reencode's own decode-and-re-encode path:
-// every profile but AnimatedGIF's own real GIF animations (see
-// gif_test.go). The one property every case here ultimately checks
-// is that omarchy-shell's C decoders never see a byte of the input's
-// own compressed pixel data - only a fresh encode this package's own
-// Go standard library wrote - which the alpha, format and "GIF first
-// frame" cases below demonstrate from different angles, and the
-// decompression-bomb case confirms happens before any such decode is
-// ever attempted at all.
+// reencode_test.go covers Reencode's own decode-and-re-encode path.
+// The one property every case here ultimately checks is that
+// omarchy-shell's C decoders never see a byte of the input's own
+// compressed pixel data - only a fresh encode this package's own Go
+// standard library wrote - which the alpha and format cases below
+// demonstrate from different angles, and the decompression-bomb case
+// confirms happens before any such decode is ever attempted at all.
 
 import (
 	"bytes"
@@ -180,29 +178,17 @@ func TestReencode_OpaqueAlphaChannelStillBecomesJPEG(t *testing.T) {
 	}
 }
 
-// TestReencode_GIFTakesFirstFrameOnly covers every profile but
-// AnimatedGIF: a GIF with distinctly coloured frames is re-encoded
-// from its first frame's own pixels alone, exactly like any other
-// still image, never the whole animation (see gif_test.go for the one
-// profile that still gets the real animation).
-func TestReencode_GIFTakesFirstFrameOnly(t *testing.T) {
+// TestReencode_RefusesAGIFOutright covers the format this package
+// used to reduce to its first frame and now cannot decode at all:
+// every connector routes a real GIF animation through the sandboxed
+// video path instead (see docs/decisions.md), so this package no
+// longer registers a GIF decoder, and genuine GIF bytes reaching
+// Reencode fail the same way any other unrecognised format does.
+func TestReencode_RefusesAGIFOutright(t *testing.T) {
 	red := buildSolidColorGIF(8, 8, color.RGBA{R: 255, A: 255}, color.RGBA{B: 255, A: 255})
 
-	out, _, width, height, ok := imagesafe.Reencode(red, imagesafe.Thumbnail)
-	if !ok {
-		t.Fatal("Reencode() = rejected, want accepted")
-	}
-	if width != 8 || height != 8 {
-		t.Fatalf("width/height = %d/%d, want 8/8", width, height)
-	}
-
-	img, err := jpeg.Decode(bytes.NewReader(out))
-	if err != nil {
-		t.Fatalf("output does not decode as JPEG: %v", err)
-	}
-	r, g, b, _ := img.At(0, 0).RGBA()
-	if r < 0x8000 || g > 0x4000 || b > 0x4000 {
-		t.Errorf("pixel (0,0) = %04x/%04x/%04x, want the first frame's red, not the second frame's blue", r, g, b)
+	if _, _, _, _, ok := imagesafe.Reencode(red, imagesafe.Thumbnail); ok {
+		t.Fatal("Reencode() = accepted for a real GIF, want refused outright")
 	}
 }
 
@@ -306,7 +292,6 @@ func TestOutputFormat_ExtensionAndMIME(t *testing.T) {
 	}{
 		imagesafe.FormatJPEG:    {".jpg", "image/jpeg"},
 		imagesafe.FormatPNG:     {".png", "image/png"},
-		imagesafe.FormatGIF:     {".gif", "image/gif"},
 		imagesafe.FormatUnknown: {"", ""},
 	}
 

@@ -21,14 +21,14 @@ var attachFilters = []portal.Filter{
 }
 
 // soundFilters are the audio formats the notification sound picker
-// offers; audiosafe itself is the real authority on what actually
-// plays (see notificationsound.go), this only steers the dialog
-// towards the formats that stand a chance. MP3 is deliberately left
-// out: audiosafe never reports an MP3 playable (see its own package
-// doc comment and docs/decisions.md), so offering it here would only
-// invite a pick errSoundNotPlayable always refuses.
+// offers; the sandboxed transcoder's Sound profile is the real
+// authority on what actually plays (see notificationsound.go), this
+// only steers the dialog towards the formats that stand a chance.
+// ffmpeg itself decodes any of these, re-encoding whichever one the
+// user picks into the uncompressed WAV Qt's SoundEffect actually
+// plays.
 var soundFilters = []portal.Filter{
-	{Name: "Audio files", Globs: []string{"*.ogg", "*.oga", "*.m4a"}},
+	{Name: "Audio files", Globs: []string{"*.mp3", "*.wav", "*.ogg", "*.oga", "*.m4a", "*.flac"}},
 }
 
 // FilePickError reports that no file picker dialog could be shown at

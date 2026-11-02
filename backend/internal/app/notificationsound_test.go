@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
-	"github.com/timlittle/omamessenger/backend/internal/audiosafe/audiosafetest"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -25,17 +24,21 @@ func writeSoundFixture(t *testing.T, name string, data []byte) string {
 	return path
 }
 
-func TestSetNotificationSound_StoresAValidatedCopy(t *testing.T) {
+func TestSetNotificationSound_StoresATranscodedCopy(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
-	path := writeSoundFixture(t, "ping.ogg", audiosafetest.ValidOpusFixture())
+	data := []byte("a notification sound, not real audio - the fake transcoder just copies it through")
+	path := writeSoundFixture(t, "ping.mp3", data)
 
 	conv, err := f.commands.SetNotificationSound(ctx, chat.ID, path)
 	if err != nil || conv.NotificationSound != "custom" {
 		t.Fatalf("SetNotificationSound() = %+v, %v; want notificationSound \"custom\"", conv, err)
+	}
+	if f.transcoder.lastCall() != "sound" {
+		t.Errorf("transcoder's last call = %q, want \"sound\"", f.transcoder.lastCall())
 	}
 
 	resolved, err := f.commands.ResolveNotificationSound(ctx, chat.ID, "", "")
@@ -43,23 +46,23 @@ func TestSetNotificationSound_StoresAValidatedCopy(t *testing.T) {
 		t.Fatalf("ResolveNotificationSound() = %q, %v; want a playable path", resolved, err)
 	}
 
-	original, readErr := os.ReadFile(path)
 	copied, copyErr := os.ReadFile(resolved)
-	if readErr != nil || copyErr != nil || string(original) != string(copied) {
-		t.Errorf("stored copy = %q, %v; original = %q, %v; want equal bytes", copied, copyErr, original, readErr)
+	if copyErr != nil || string(data) != string(copied) {
+		t.Errorf("stored copy = %q, %v; want the original bytes unchanged (the fake transcoder only copies)", copied, copyErr)
 	}
 }
 
-func TestSetNotificationSound_RejectsAFileThatIsNotPlayable(t *testing.T) {
+func TestSetNotificationSound_RejectsAFileTheTranscoderRefuses(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
-	path := writeSoundFixture(t, "not-audio.ogg", audiosafetest.InvalidFixture())
+	path := writeSoundFixture(t, "not-audio.mp3", []byte("whatever ffmpeg itself would refuse"))
 
+	f.transcoder.err = errors.New("ffmpeg: not a recognised audio stream")
 	if _, err := f.commands.SetNotificationSound(ctx, chat.ID, path); !errors.Is(err, app.ErrInvalidInput) {
-		t.Errorf("SetNotificationSound() with an unplayable file = %v, want ErrInvalidInput", err)
+		t.Errorf("SetNotificationSound() with a refused file = %v, want ErrInvalidInput", err)
 	}
 
 	conv, err := f.store.Conversation(ctx, chat.ID)
@@ -75,8 +78,11 @@ func TestSetNotificationSound_RejectsAMissingFile(t *testing.T) {
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
 
-	if _, err := f.commands.SetNotificationSound(ctx, chat.ID, filepath.Join(t.TempDir(), "never-written.ogg")); !errors.Is(err, app.ErrInvalidInput) {
+	if _, err := f.commands.SetNotificationSound(ctx, chat.ID, filepath.Join(t.TempDir(), "never-written.mp3")); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("SetNotificationSound() with a missing file = %v, want ErrInvalidInput", err)
+	}
+	if f.transcoder.callCount() != 0 {
+		t.Errorf("transcoder calls = %d, want 0: a missing file must never even try", f.transcoder.callCount())
 	}
 }
 
@@ -85,7 +91,7 @@ func TestSetNotificationSound_RequiresAConversationAndAFile(t *testing.T) {
 
 	f := newFixture(t, false)
 	ctx := t.Context()
-	path := writeSoundFixture(t, "ping.ogg", audiosafetest.ValidOpusFixture())
+	path := writeSoundFixture(t, "ping.mp3", []byte("whatever, the fake transcoder copies anything"))
 
 	if _, err := f.commands.SetNotificationSound(ctx, "", path); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("SetNotificationSound() with no conversationId = %v, want ErrInvalidInput", err)
@@ -103,7 +109,7 @@ func TestResetNotificationSound_ClearsItAndRemovesTheStoredFile(t *testing.T) {
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
-	path := writeSoundFixture(t, "ping.ogg", audiosafetest.ValidOpusFixture())
+	path := writeSoundFixture(t, "ping.mp3", []byte("whatever, the fake transcoder copies anything"))
 
 	if _, err := f.commands.SetNotificationSound(ctx, chat.ID, path); err != nil {
 		t.Fatal(err)
@@ -133,12 +139,13 @@ func TestResolveNotificationSound_ConversationWithNoCustomSoundResolvesToNothing
 	}
 }
 
-func TestResolveNotificationSound_ServiceResolvesAValidatedPath(t *testing.T) {
+func TestResolveNotificationSound_ServiceResolvesATranscodedCopy(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
 	ctx := t.Context()
-	path := writeSoundFixture(t, "whatsapp-default.ogg", audiosafetest.ValidOpusFixture())
+	data := []byte("whatsapp's own default sound, not real audio")
+	path := writeSoundFixture(t, "whatsapp-default.mp3", data)
 
 	resolved, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceWhatsApp, path)
 	if err != nil || resolved == "" {
@@ -146,22 +153,22 @@ func TestResolveNotificationSound_ServiceResolvesAValidatedPath(t *testing.T) {
 	}
 
 	got, readErr := os.ReadFile(resolved)
-	want, wantErr := os.ReadFile(path)
-	if readErr != nil || wantErr != nil || string(got) != string(want) {
-		t.Errorf("resolved copy = %q, %v; original = %q, %v; want equal bytes", got, readErr, want, wantErr)
+	if readErr != nil || string(got) != string(data) {
+		t.Errorf("resolved copy = %q, %v; want the original bytes unchanged", got, readErr)
 	}
 }
 
-func TestResolveNotificationSound_ServiceWithAnUnplayableFileResolvesToNothingNotAnError(t *testing.T) {
+func TestResolveNotificationSound_ServiceWithARefusedFileResolvesToNothingNotAnError(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
 	ctx := t.Context()
-	path := writeSoundFixture(t, "not-audio.ogg", audiosafetest.InvalidFixture())
+	path := writeSoundFixture(t, "not-audio.mp3", []byte("whatever ffmpeg itself would refuse"))
+	f.transcoder.err = errors.New("ffmpeg: not a recognised audio stream")
 
 	resolved, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceTelegram, path)
 	if err != nil || resolved != "" {
-		t.Errorf("ResolveNotificationSound() for an unplayable service default = %q, %v; want \"\", nil", resolved, err)
+		t.Errorf("ResolveNotificationSound() for a refused service default = %q, %v; want \"\", nil", resolved, err)
 	}
 }
 

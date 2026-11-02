@@ -413,3 +413,48 @@ func (b *lockedBuffer) String() string {
 
 	return b.buf.String()
 }
+
+// TestResetWorkRoot_RemovesLeftoverFilesFirst confirms a previous,
+// uncleanly stopped run's own leftover file under the transcode work
+// root does not survive a fresh reset, left as a private, empty
+// 0700 directory.
+func TestResetWorkRoot_RemovesLeftoverFilesFirst(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join(t.TempDir(), "work")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	leftover := filepath.Join(root, "stale.txt")
+	if err := os.WriteFile(leftover, []byte("leftover"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := resetWorkRoot(root); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Errorf("leftover file still exists after resetWorkRoot(), err = %v", err)
+	}
+	if info, err := os.Stat(root); err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+		t.Errorf("work root after reset = %v, %v, want a fresh 0700 directory", info, err)
+	}
+}
+
+// TestResetWorkRoot_ReportsAnErrorWhenItCannotCreateTheDirectory
+// confirms a path whose parent cannot hold a directory at all - a
+// plain file where a directory needs to be - is a plain error,
+// never silently left as it was.
+func TestResetWorkRoot_ReportsAnErrorWhenItCannotCreateTheDirectory(t *testing.T) {
+	t.Parallel()
+
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := resetWorkRoot(filepath.Join(blocked, "work")); err == nil {
+		t.Fatal("resetWorkRoot() under a file, not a directory, succeeded")
+	}
+}

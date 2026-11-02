@@ -149,6 +149,21 @@ func TestBuild_NotificationServiceReachability(t *testing.T) {
 	}
 }
 
+// TestBuild_PlaybackAvailability confirms the in-window playback
+// check flags ffmpeg or bubblewrap missing from PATH, since that is
+// what decides whether a play fetch can ever produce a playPath at
+// all, not any one message's own bytes.
+func TestBuild_PlaybackAvailability(t *testing.T) {
+	t.Parallel()
+
+	if got := checkNamed(t, doctor.Build(doctor.Facts{PlaybackAvailable: true}), "In-window playback"); !got.OK {
+		t.Errorf("ffmpeg and bubblewrap both available reports a problem: %q", got.Detail)
+	}
+	if got := checkNamed(t, doctor.Build(doctor.Facts{PlaybackAvailable: false}), "In-window playback"); got.OK {
+		t.Errorf("ffmpeg or bubblewrap missing reports no problem: %q", got.Detail)
+	}
+}
+
 // TestBuild_OneCheckPerAccountFlagsErrorAndNeedsAuth confirms each
 // account gets its own check, failing only when it needs sign-in or has
 // errored.
@@ -183,6 +198,7 @@ func TestBuild_ProblemsCountsOnlyFailingChecks(t *testing.T) {
 	report := doctor.Build(doctor.Facts{
 		DatabaseOK:                   false,
 		NotificationServiceReachable: false,
+		PlaybackAvailable:            true,
 		Accounts:                     []doctor.AccountFact{{Service: "telegram", Status: "connected"}},
 	})
 

@@ -152,10 +152,12 @@ func runDoctor(ctx context.Context, args []string, env func(string) string, s st
 	}
 	defer db.Close()
 
+	_, playbackAvailable := newTranscoder(filepath.Join(cfg.dataDir, "work"))
 	commands, _ := app.New(app.Deps{
 		Store: db, Cache: cache.New(filepath.Join(cfg.dataDir, "media"), mediaCacheLimit),
 		DataDir: cfg.dataDir, DBPath: cfg.dbPath,
 		ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
+		PlaybackAvailable: playbackAvailable,
 	})
 
 	report, err := commands.Doctor(ctx)
@@ -236,6 +238,23 @@ func serve(ctx context.Context, cfg config, s streams, env func(string) string) 
 	return nil
 }
 
+// resetWorkRoot creates path, private to this user, after removing
+// whatever a previous, uncleanly stopped run may have left there: a
+// transcode job's own directory under it is always removed once the
+// job finishes, win or lose (see app.Commands' own play and display
+// copy code), so anything still here is leftover from a crash, never
+// something still in use.
+func resetWorkRoot(path string) error {
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("transcode work directory: %w", err)
+	}
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return fmt.Errorf("transcode work directory: %w", err)
+	}
+
+	return nil
+}
+
 // mediaCaches are the directories the helper keeps media in: downloaded
 // media, pruned once it grows past a limit; outgoing attachments, kept
 // until their message is sent or deleted; and validated copies of
@@ -312,15 +331,25 @@ func wire(ctx context.Context, d wireDeps) (*app.Commands, *app.Ingest, *connect
 	notifier := &notify.Desktop{Click: func(conversationID string) {
 		d.srv.Publish(ctx, app.EventNotificationClicked, app.NotificationClicked{ConversationID: conversationID})
 	}, Log: d.logger}
+
+	workRoot := filepath.Join(d.dataDir, "work")
+	if err := resetWorkRoot(workRoot); err != nil {
+		return nil, nil, nil, err
+	}
+	transcoder, playbackAvailable := newTranscoder(workRoot)
+
 	deps := app.Deps{
 		Store: d.db, Notifier: notifier, Publisher: d.srv, Accounts: d.registry, Cache: d.caches.downloaded,
 		Outgoing: d.caches.outgoing, Sounds: d.caches.sounds, Clipboard: clipboard.Wayland{}, FilePicker: &portal.Picker{}, Opener: &portal.Opener{}, Logger: d.logger,
 		Spell:   spell.New(d.dataDir, d.env),
 		DataDir: d.dataDir, DBPath: d.dbPath, ExecutableName: filepath.Base(os.Args[0]), HelperVersion: helperVersion,
-		DownloadsDir:   d.downloadsDir,
-		MediaCacheDir:  d.caches.dir,
-		OutgoingDir:    d.caches.outgoingDir,
-		KeysConfigPath: keysConfigPath(d.env),
+		DownloadsDir:      d.downloadsDir,
+		MediaCacheDir:     d.caches.dir,
+		OutgoingDir:       d.caches.outgoingDir,
+		KeysConfigPath:    keysConfigPath(d.env),
+		Transcoder:        transcoder,
+		TranscodeJobRoot:  workRoot,
+		PlaybackAvailable: playbackAvailable,
 	}
 
 	connectors, injector := fakeConnectors()

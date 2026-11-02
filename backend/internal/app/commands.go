@@ -70,7 +70,7 @@ type Commands struct {
 	retries         *retrier
 	scheduled       *scheduledSender
 	organizeNotices *organizeNotices
-	videoVerdicts   *videoVerdicts
+	transcoder      Transcoder
 
 	// dataDir, dbPath, execName and helperVersion are read only by
 	// Doctor; see Deps.
@@ -89,6 +89,11 @@ type Commands struct {
 	mediaCacheDir  string
 	outgoingDir    string
 	keysConfigPath string
+
+	// transcodeJobRoot and playbackAvailable are Deps.TranscodeJobRoot
+	// and Deps.PlaybackAvailable; see their own doc comments.
+	transcodeJobRoot  string
+	playbackAvailable bool
 }
 
 // attemptedRefresh is the set of message ids this helper run has already

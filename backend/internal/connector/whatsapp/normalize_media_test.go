@@ -147,9 +147,9 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 			// GifPlayback set): the connector marks it the same way as
 			// that mp4 - MediaVideo with Animated true - so it reaches
 			// the same inline view. Its mime type and name are only
-			// classification hints here; the UI's actual decoder
-			// choice comes from app.DecodeAsForMedia checking the
-			// downloaded bytes instead.
+			// classification hints here; however it actually plays
+			// comes from the sandboxed transcoder re-encoding the
+			// downloaded bytes, never from either one.
 			"document that is a real gif image",
 			&waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
 				FileName: strPtr("run.gif"), FileLength: u64(5000), Mimetype: strPtr("image/gif"),

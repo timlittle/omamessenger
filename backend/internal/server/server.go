@@ -19,7 +19,7 @@ import (
 
 // Protocol is the protocol version reported by the hello method. Increase
 // it when a change would break an older UI.
-const Protocol = 3
+const Protocol = 4
 
 // Server is one connection to the UI.
 type Server struct {

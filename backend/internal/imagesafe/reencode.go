@@ -27,9 +27,9 @@ const jpegQuality = 90
 // the measured cost this closes).
 const jpegMaxScans = 100
 
-// reencodeStill is Reencode's own implementation for every profile
-// but AnimatedGIF's own GIF path (see Reencode): it checks data's
-// declared dimensions against profile from a cheap header read alone,
+// reencodeStill is Reencode's own implementation (see Reencode): it
+// checks data's declared dimensions against profile from a cheap
+// header read alone,
 // before ever decoding a single pixel, then decodes fully and writes
 // a fresh encode of the result. ok is false when data's header
 // already fails profile, when a JPEG declares more than jpegMaxScans
@@ -81,13 +81,12 @@ func countJPEGScans(data []byte) int {
 }
 
 // decodeImage decodes data with this package's own registered
-// decoders (PNG, JPEG, GIF - to its first frame only - and still
-// WebP), recovering from any panic a decoder raises on a crafted
-// input it does not itself defend against: a decoder panicking here
-// must refuse the image, the same as any other decode failure, never
-// crash the helper (see errors.md). A GIF decodes to its first frame
-// because image.Decode, unlike gif.DecodeAll, never reads the rest of
-// the animation at all.
+// decoders (PNG, JPEG and still WebP - Reencode already refused a GIF
+// outright before ever calling this, see the package doc comment),
+// recovering from any panic a decoder raises on a crafted input it
+// does not itself defend against: a decoder panicking here must
+// refuse the image, the same as any other decode failure, never
+// crash the helper (see errors.md).
 func decodeImage(data []byte) (img image.Image, ok bool) {
 	defer func() {
 		if recover() != nil { // coverage-ignore: none of this package's four registered decoders is known to panic on crafted input; this is a backstop, not a path a test can currently reach

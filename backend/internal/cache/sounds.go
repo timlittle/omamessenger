@@ -26,9 +26,10 @@ func NewSounds(dir string) *Sounds {
 
 // Store copies the bytes of r into the sound store under key, readable
 // only by the user, and returns the new path. A failed or interrupted
-// copy leaves nothing behind. The caller is responsible for validating
-// the copy (see audiosafe.Validate) before ever handing its path to a
-// player; Store itself only copies bytes.
+// copy leaves nothing behind. The caller is responsible for transcoding
+// r into a format the player can trust before it ever reaches here (see
+// app.storeAndTranscodeSound and docs/decisions.md); Store itself only
+// copies bytes.
 func (s *Sounds) Store(ctx context.Context, key string, r io.Reader) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err

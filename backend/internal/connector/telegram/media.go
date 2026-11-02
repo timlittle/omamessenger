@@ -159,10 +159,10 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 		// of DocumentAttributeVideo or DocumentAttributeAnimated: only
 		// its mime type or name says what it is. It still reaches the
 		// UI as a video kind marked animated, exactly like a service's
-		// own GIF playback, so it plays inline the same way; this is
-		// only ever a classification hint, though, never what decides
-		// the UI's decoder - see app.DecodeAsForMedia, which checks
-		// the downloaded bytes themselves.
+		// own GIF playback, so it plays inline the same way, through
+		// the sandboxed transcoder's Animation profile, the same path
+		// every other "GIF video" already takes (see
+		// docs/decisions.md).
 		return &domain.Media{Kind: domain.MediaVideo, FileName: gifFileName(d.name), Size: doc.Size, Animated: true}
 	case d.voice:
 		return &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}
@@ -181,8 +181,7 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 
 // audioFileName names an audio document by the name Telegram's own
 // filename attribute carries, or a sensible default when there is
-// none: a classification hint for the UI's label only, never what
-// picks its decoder (see app.AudioPlayableForMedia and audiosafe).
+// none: a classification hint for the UI's label only.
 func audioFileName(name string) string {
 	if name == "" {
 		return "audio"
@@ -202,8 +201,7 @@ func isGIFImage(mimeType, name string) bool {
 
 // gifFileName is name, or a sensible default ending ".gif" when
 // Telegram sent no filename attribute at all: a classification hint
-// for the UI's file-type labelling only, never what picks its decoder
-// (see app.DecodeAsForMedia).
+// for the UI's file-type labelling only.
 func gifFileName(name string) string {
 	if name == "" {
 		return "image.gif"
@@ -290,10 +288,12 @@ func strippedThumb(sizes []tg.PhotoSizeClass) string {
 
 // imageProfile is the imagesafe.Profile a downloaded message's media
 // must pass before FetchMedia writes it to disk, and whether it is
-// one at all: a photo, a static WebP sticker, or a video document
-// Telegram itself marks as an actual GIF file rather than an encoded
-// clip, the only media kinds this UI ever loads into a QML Image or
-// AnimatedImage. Everything else is written unchanged.
+// one at all: a photo or a static WebP sticker, the only media kinds
+// this UI ever loads straight into a QML Image. Everything else,
+// including a video document Telegram itself marks as an actual GIF
+// file, is written unchanged: a "GIF" reaches the UI through the same
+// sandboxed transcoder every other video does (see
+// docs/decisions.md), never imagesafe.
 func imageProfile(m tg.MessageMediaClass) (imagesafe.Profile, bool) {
 	switch mm := m.(type) {
 	case *tg.MessageMediaPhoto:
@@ -310,31 +310,20 @@ func imageProfile(m tg.MessageMediaClass) (imagesafe.Profile, bool) {
 // never disagree about which document is which: any sticker, whatever
 // mime type the sender claims for it, since the UI shows a fetched
 // sticker in a QML Image and imagesafe refuses bytes it cannot
-// validate, or - once d.sticker and d.video are both ruled out, the
-// same order documentMedia checks them in - a document isGIFImage
-// says is a genuine GIF file. A document carrying DocumentAttributeVideo
-// is written unchanged here regardless of its Animated attribute or
-// name: a sender fully controls both and could set them on bytes that
-// are not GIF-format at all, which is exactly what this skips running
-// through imagesafe's image-only checks for. That sender-controlled
-// claim is never the last word, though - app.DecodeAsForMedia checks
-// the actual downloaded bytes afterwards and only then sanitizes and
-// reports a genuine GIF, never trusting this attribute alone.
+// validate. A document carrying DocumentAttributeVideo, or one
+// isGIFImage says is a genuine GIF file, is written unchanged here
+// either way: both reach the UI as a video-kind message, re-encoded
+// by the sandboxed transcoder on demand rather than imagesafe at
+// download time (see docs/decisions.md).
 func documentImageProfile(dc tg.DocumentClass) (imagesafe.Profile, bool) {
 	doc, ok := dc.(*tg.Document)
 	if !ok {
 		return imagesafe.Profile{}, false
 	}
 
-	d := describe(doc)
-	switch {
-	case d.sticker:
+	if describe(doc).sticker {
 		return imagesafe.Thumbnail, true
-	case d.video:
-		return imagesafe.Profile{}, false
-	case isGIFImage(doc.MimeType, d.name):
-		return imagesafe.AnimatedGIF, true
-	default:
-		return imagesafe.Profile{}, false
 	}
+
+	return imagesafe.Profile{}, false
 }

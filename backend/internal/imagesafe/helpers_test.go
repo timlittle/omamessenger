@@ -159,80 +159,6 @@ func buildGIF(width, height, frameCount int) []byte {
 	return buf.Bytes()
 }
 
-// buildGIFWithDelays encodes an animation of the given size, one
-// frame per entry in delays, each frame's own Graphics Control
-// extension carrying that entry as its delay time in centiseconds -
-// for a test that needs a delay buildGIF's own fixed 10cs cannot
-// cover, such as zero.
-func buildGIFWithDelays(width, height int, delays []int) []byte {
-	g := &gif.GIF{LoopCount: 0}
-	palette := []color.Color{color.RGBA{R: 255, A: 255}, color.RGBA{B: 255, A: 255}}
-	for _, d := range delays {
-		frame := image.NewPaletted(image.Rect(0, 0, width, height), palette)
-		g.Image = append(g.Image, frame)
-		g.Delay = append(g.Delay, d)
-	}
-	var buf bytes.Buffer
-	_ = gif.EncodeAll(&buf, g)
-	return buf.Bytes()
-}
-
-// buildGIFWithFrameRects encodes an animation whose logical screen is
-// canvasWidth by canvasHeight, with one frame per entry in rects, each
-// occupying exactly that rectangle of the canvas - for a test that
-// needs a frame's own size or position to differ from the canvas
-// itself, such as a real encoder's small delta frame covering only
-// the part of the canvas that changed, which buildGIF's own
-// full-canvas frames can never cover.
-func buildGIFWithFrameRects(canvasWidth, canvasHeight int, rects []image.Rectangle) []byte {
-	palette := color.Palette{color.RGBA{R: 255, A: 255}, color.RGBA{B: 255, A: 255}}
-	g := &gif.GIF{
-		LoopCount: 0,
-		Config:    image.Config{ColorModel: palette, Width: canvasWidth, Height: canvasHeight},
-	}
-	for _, r := range rects {
-		g.Image = append(g.Image, image.NewPaletted(r, palette))
-		g.Delay = append(g.Delay, 10)
-	}
-	var buf bytes.Buffer
-	_ = gif.EncodeAll(&buf, g)
-	return buf.Bytes()
-}
-
-// gifFrameDelays returns data's own frame delays, in centiseconds, in
-// order, by decoding it the way AnimatedImage's own GIF reader would.
-func gifFrameDelays(data []byte) ([]int, error) {
-	g, err := gif.DecodeAll(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	return g.Delay, nil
-}
-
-// insertGIFExtension returns src with one extension block - introducer,
-// label and its sub-blocks - inserted right after the header, logical
-// screen descriptor and any global color table, exactly where a
-// Comment or Application extension sits in a real file.
-func insertGIFExtension(src []byte, label byte, blocks [][]byte) []byte {
-	packed := src[10]
-	pos := 13
-	if packed&0x80 != 0 {
-		pos += 3 * (1 << ((packed & 0x07) + 1))
-	}
-
-	var out bytes.Buffer
-	out.Write(src[:pos])
-	out.WriteByte(0x21)
-	out.WriteByte(label)
-	for _, b := range blocks {
-		out.WriteByte(byte(len(b)))
-		out.Write(b)
-	}
-	out.WriteByte(0)
-	out.Write(src[pos:])
-	return out.Bytes()
-}
-
 // setGIFDimensions rewrites a GIF's logical screen width and height
 // in place, without touching anything else.
 func setGIFDimensions(src []byte, width, height uint16) []byte {
@@ -240,22 +166,6 @@ func setGIFDimensions(src []byte, width, height uint16) []byte {
 	binary.LittleEndian.PutUint16(out[6:8], width)
 	binary.LittleEndian.PutUint16(out[8:10], height)
 	return out
-}
-
-// addGIFGlobalColorTable sets src's logical screen descriptor's
-// global-color-table flag and inserts a two-colour table right after
-// it: gif.EncodeAll never produces one of its own, using a local
-// table per frame instead, so a test covering it needs one added by
-// hand.
-func addGIFGlobalColorTable(src []byte) []byte {
-	out := append([]byte{}, src...)
-	out[10] |= 0x80 // flag bit; size bits already 0, meaning two colours
-
-	var buf bytes.Buffer
-	buf.Write(out[:13])
-	buf.Write([]byte{255, 0, 0, 0, 0, 255}) // red, blue
-	buf.Write(out[13:])
-	return buf.Bytes()
 }
 
 // buildWebPSimple hand-builds a minimal non-extended WebP: just a

@@ -89,9 +89,11 @@ func (s conversationScript) applyNewestMedia(messages []domain.Message) {
 		// WhatsApp GIF document normalizes to (see
 		// telegram/media.go's and whatsapp/normalize_media.go's own
 		// isGIFImage case): a classification hint only, never what
-		// the UI trusts to decode it - FetchMedia below writes a
-		// genuine GIF file, which app.DecodeAsForMedia confirms the
-		// same way it would a real sender's. Width, Height and Thumb
+		// decides how it plays - FetchMedia below writes a genuine
+		// GIF file, which the sandboxed transcoder's Animation
+		// profile re-encodes into a real play copy exactly the way
+		// it would an actual MP4's bytes, with nothing here needing
+		// to tell the two apart first. Width, Height and Thumb
 		// match the real GIF document's own size: without a thumb the
 		// unplayed bubble (InlineVideo.qml) has nothing to show before
 		// a click, exactly as a real GIF document always arrives with
