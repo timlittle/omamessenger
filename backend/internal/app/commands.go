@@ -21,6 +21,18 @@ import (
 // result.
 const MaxSpellMisspellings = 200
 
+// MaxSpellWordLength bounds how many Unicode code points a word may
+// have and still be offered to SuggestSpelling or AddSpellingWord. No
+// real dictionary word comes close to this long: gospell's own
+// suggester builds roughly n² candidate strings of n characters each,
+// so a multi-thousand-letter "word" - a run of letters copied from
+// another message, with no spaces of its own - could otherwise grow
+// the helper to tens of GB before returning a single suggestion. The
+// tokenizer feeding CheckSpelling applies the same cap (see
+// spell.maxCheckedWordLength) so such a run is never even flagged
+// misspelled in the first place.
+const MaxSpellWordLength = 64
+
 // Commands are the actions the UI can take.
 type Commands struct {
 	store           *store.Store
@@ -227,9 +239,11 @@ func capTextLength(text string, max int) string {
 }
 
 // SuggestSpelling returns replacement words for a misspelled word; see
-// spell.Checker.Suggest.
+// spell.Checker.Suggest. A word longer than MaxSpellWordLength is not
+// a dictionary word this helper will ever recognize, so it returns no
+// suggestions rather than passing it on to gospell's own suggester.
 func (c *Commands) SuggestSpelling(ctx context.Context, word string) ([]string, error) {
-	if c.spell == nil {
+	if c.spell == nil || utf8.RuneCountInString(word) > MaxSpellWordLength {
 		return nil, nil
 	}
 
@@ -237,10 +251,15 @@ func (c *Commands) SuggestSpelling(ctx context.Context, word string) ([]string, 
 }
 
 // AddSpellingWord adds word to the user's personal dictionary; see
-// spell.Checker.AddWord.
+// spell.Checker.AddWord. A word longer than MaxSpellWordLength is
+// refused as invalid input, the same cap SuggestSpelling enforces,
+// rather than saved to the personal word list.
 func (c *Commands) AddSpellingWord(ctx context.Context, word string) error {
 	if word == "" {
 		return fmt.Errorf("%w: word is required", ErrInvalidInput)
+	}
+	if utf8.RuneCountInString(word) > MaxSpellWordLength {
+		return fmt.Errorf("%w: word is too long", ErrInvalidInput)
 	}
 
 	if c.spell == nil {

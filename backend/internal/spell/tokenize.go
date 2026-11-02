@@ -17,6 +17,18 @@ var (
 	codeSpanPattern = regexp.MustCompile("`[^`]*`")
 )
 
+// maxCheckedWordLength bounds how many runes a word cluster may have
+// and still be offered to Check: no real dictionary word comes close
+// to this long, so anything past it is treated the same way a number
+// or a URL already is - skipped outright, never handed to the
+// dictionary. This also keeps such a run from ever being flagged a
+// misspelling in the first place, so the UI never asks spell.suggest
+// for it: gospell's suggester builds roughly n² candidate strings of n
+// characters each, which for a run of thousands of letters copied from
+// a message would grow to tens of GB. See MaxSpellWordLength in
+// app/commands.go, which bounds the same call directly.
+const maxCheckedWordLength = 64
+
 // wordCandidate is one word Check considers spell-checking: its text,
 // and its UTF-16 start/end offsets in the original message, the unit
 // the helper protocol already uses for a mention's offset (see
@@ -96,10 +108,10 @@ func wordRuneRange(runes []rune, i int) (end int, hasDigit bool) {
 
 // checkableWord reports the cluster runes[i:j] as a word worth spell
 // checking, trimmed of its own leading or trailing apostrophes, unless
-// it contains a digit, falls inside a skipped range, or is an
-// @mention.
+// it contains a digit, falls inside a skipped range, is an @mention,
+// or is longer than maxCheckedWordLength.
 func checkableWord(runes []rune, i, j int, hasDigit bool, skip [][2]int) (string, bool) {
-	if hasDigit || overlapsSkip(i, j, skip) || precededByAt(runes, i) {
+	if hasDigit || j-i > maxCheckedWordLength || overlapsSkip(i, j, skip) || precededByAt(runes, i) {
 		return "", false
 	}
 

@@ -1,6 +1,10 @@
 package spell
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 // TestCandidates checks which words candidates picks out of a message to
 // spell-check, and which it skips. This is an internal test: the skip
@@ -54,6 +58,12 @@ func TestCandidates(t *testing.T) {
 		}},
 		{"empty text", "", nil},
 		{"no words", "... --- 123", nil},
+		{
+			"skips a word right at the length cap",
+			strings.Repeat("a", maxCheckedWordLength),
+			[]wordCandidate{{text: strings.Repeat("a", maxCheckedWordLength), start: 0, end: maxCheckedWordLength}},
+		},
+		{"skips a word past the length cap", strings.Repeat("a", maxCheckedWordLength+1), nil},
 	}
 
 	for _, c := range cases {
@@ -65,6 +75,29 @@ func TestCandidates(t *testing.T) {
 				t.Errorf("candidates(%q) = %+v, want %+v", c.text, got, c.want)
 			}
 		})
+	}
+}
+
+// TestCandidates_SkipsVeryLongWordQuickly confirms a run of thousands
+// of letters - the shape a message's own 4096-character cap still
+// allows as "one word" with no spaces - is skipped outright rather
+// than handed to the dictionary, and that candidates itself, a pure
+// scan with no dictionary involved, does the skipping in well under a
+// second: the actual unbounded cost this cap exists to avoid lives
+// one level up, in gospell's own suggester (see maxCheckedWordLength).
+func TestCandidates_SkipsVeryLongWordQuickly(t *testing.T) {
+	t.Parallel()
+
+	text := strings.Repeat("a", 4000)
+
+	start := time.Now()
+	got := candidates(text)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("candidates(4000-letter word) took %v, want well under a second", elapsed)
+	}
+
+	if got != nil {
+		t.Errorf("candidates(4000-letter word) = %+v, want nil", got)
 	}
 }
 

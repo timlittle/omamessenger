@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -251,6 +252,44 @@ func TestAddSpellingWord_RejectsEmpty(t *testing.T) {
 
 	if err := f.commands.AddSpellingWord(t.Context(), ""); !errors.Is(err, app.ErrInvalidInput) {
 		t.Errorf("AddSpellingWord(\"\") = %v, want ErrInvalidInput", err)
+	}
+}
+
+// TestSuggestSpelling_CapsOverlongWord confirms a word past
+// app.MaxSpellWordLength never reaches gospell's own suggester, whose
+// candidate search grows roughly with the word's length cubed in
+// total bytes allocated: a multi-thousand-letter "word" copied from
+// another message could otherwise grow the helper to tens of GB
+// before this cap, so the call must instead return quickly with no
+// suggestions at all.
+func TestSuggestSpelling_CapsOverlongWord(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	word := strings.Repeat("a", 4000)
+
+	start := time.Now()
+	suggestions, err := f.commands.SuggestSpelling(t.Context(), word)
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("SuggestSpelling(4000-letter word) took %v, want well under a second", elapsed)
+	}
+	if err != nil || suggestions != nil {
+		t.Errorf("SuggestSpelling(4000-letter word) = %v, %v, want nil, nil", suggestions, err)
+	}
+}
+
+// TestAddSpellingWord_RejectsOverlongWord reports invalid input for a
+// word past app.MaxSpellWordLength, the same cap SuggestSpelling
+// enforces, rather than saving an implausible "word" to the personal
+// dictionary.
+func TestAddSpellingWord_RejectsOverlongWord(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	word := strings.Repeat("a", 4000)
+
+	if err := f.commands.AddSpellingWord(t.Context(), word); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("AddSpellingWord(4000-letter word) = %v, want ErrInvalidInput", err)
 	}
 }
 
