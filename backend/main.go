@@ -204,6 +204,9 @@ func serve(ctx context.Context, cfg config, s streams, env func(string) string) 
 
 	registry := newAccountRegistry(db, cfg.dataDir, providers())
 	caches := newMediaCaches(cfg.dataDir, db)
+	if err := caches.sounds.Sweep(ctx); err != nil {
+		logger.Printf("cache: sounds sweep failed")
+	}
 
 	commands, ingest, manager, err := wire(ctx, wireDeps{
 		db: db, srv: srv, registry: registry, caches: caches, logger: logger,

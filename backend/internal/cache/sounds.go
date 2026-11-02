@@ -2,11 +2,21 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// soundExtension is the only extension Store itself ever writes: a
+// name no build of this helper, released or not, ever used before
+// this one (see Sweep and docs/decisions.md). Resolving a sound by
+// this exact extension, rather than trusting whatever already sits
+// under a key's name, is what keeps a stray file left by an older
+// build from ever being served.
+const soundExtension = ".wav"
 
 // Sounds stores a validated copy of every custom notification sound this
 // helper plays, one file per key, so a sound keeps working even after the
@@ -53,7 +63,7 @@ func (s *Sounds) Store(ctx context.Context, key string, r io.Reader) (string, er
 // sender's or a user's own text, so this needs no traversal guard the
 // way Outgoing.Path's file name does.
 func (s *Sounds) Path(key string) string {
-	return filepath.Join(s.dir, key+".sound")
+	return filepath.Join(s.dir, key+soundExtension)
 }
 
 // Remove deletes key's stored sound. Removing one already gone, or one
@@ -68,4 +78,36 @@ func (s *Sounds) Remove(ctx context.Context, key string) error {
 	}
 
 	return nil
+}
+
+// Sweep removes every file in the sound store that is not named
+// <key>.wav: anything else cannot have come from this helper's own
+// Store, however it got there (see docs/decisions.md). Called once at
+// startup, before anything can resolve a sound to play, so a file an
+// older build once left behind is gone before the first request that
+// could have served it.
+func (s *Sounds) Sweep(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+
+		return fmt.Errorf("cache: sounds: sweep: %w", err)
+	}
+
+	var errs []error
+	for _, e := range entries {
+		if e.Type().IsRegular() && strings.HasSuffix(e.Name(), soundExtension) {
+			continue
+		}
+
+		errs = append(errs, removeIfPresent(filepath.Join(s.dir, e.Name())))
+	}
+
+	return errors.Join(errs...)
 }

@@ -190,6 +190,92 @@ func buildWebPAnimated(width, height, frameCount int) []byte {
 	return riffFile(body.Bytes())
 }
 
+// vp8lBitWriter packs bits least-significant-bit first within each
+// byte, the order vp8l's own decoder reads them in, so a test can
+// hand-build a minimal VP8L bitstream without a real encoder -
+// golang.org/x/image does not provide one at all.
+type vp8lBitWriter struct {
+	buf   []byte
+	bits  uint32
+	nBits uint
+}
+
+// writeBits appends the low n bits of value, flushing whole bytes to
+// buf as they fill.
+func (w *vp8lBitWriter) writeBits(value uint32, n uint) {
+	w.bits |= value << w.nBits
+	w.nBits += n
+	for w.nBits >= 8 {
+		w.buf = append(w.buf, byte(w.bits))
+		w.bits >>= 8
+		w.nBits -= 8
+	}
+}
+
+// bytes flushes any partial final byte, padded with zero bits, and
+// returns everything written so far.
+func (w *vp8lBitWriter) bytes() []byte {
+	if w.nBits > 0 {
+		w.buf = append(w.buf, byte(w.bits))
+		w.bits, w.nBits = 0, 0
+	}
+	return w.buf
+}
+
+// buildVP8LPayload hand-builds the smallest VP8L bitstream that
+// declares width x height and then immediately runs out of data: no
+// transform, one Huffman group, trivial one-symbol trees for red,
+// blue, alpha and distance (which need no bits at all to decode,
+// forever, once built), and a real two-symbol tree for green, which
+// needs one genuine bit the very first pixel reads. A decoder that
+// honours width and height allocates a pixel buffer sized for them
+// before it ever reaches that first pixel, so this proves the
+// allocation happens without needing to supply millions of pixels'
+// worth of genuine compressed data (see
+// TestReencode_RejectsWebPInnerChunkLargerThanDeclaredCanvas).
+func buildVP8LPayload(width, height int) []byte {
+	var w vp8lBitWriter
+	w.writeBits(0x2f, 8)
+	w.writeBits(uint32(width-1), 14)
+	w.writeBits(uint32(height-1), 14)
+	w.writeBits(0, 1) // hasAlphaHint, ignored by the decoder
+	w.writeBits(0, 3) // version, must be 0
+
+	w.writeBits(0, 1) // no transform
+	w.writeBits(0, 1) // no colour cache
+	w.writeBits(0, 1) // one Huffman group, no meta image
+
+	// green: a real, two-symbol tree.
+	w.writeBits(1, 1) // useSimple
+	w.writeBits(1, 1) // nSymbols-1: 2 symbols
+	w.writeBits(0, 1) // firstSymbolLengthCode: 1 bit
+	w.writeBits(0, 1) // first symbol, value zero
+	w.writeBits(1, 8) // second symbol, value one
+
+	// red, blue, alpha, distance: trivial one-symbol trees.
+	for i := 0; i < 4; i++ {
+		w.writeBits(1, 1) // useSimple
+		w.writeBits(0, 1) // nSymbols-1: 1 symbol
+		w.writeBits(0, 1) // firstSymbolLengthCode: 1 bit
+		w.writeBits(0, 1) // the one symbol, value zero
+	}
+
+	return w.bytes()
+}
+
+// buildWebPExtendedMismatch hand-builds an extended (VP8X) WebP whose
+// outer canvas declares canvasW x canvasH while its inner VP8L chunk
+// declares a completely different innerW x innerH - the shape that let
+// a declared-tiny thumbnail make the lossless decoder allocate a pixel
+// buffer sized for whatever the inner chunk alone claims (see
+// TestReencode_RejectsWebPInnerChunkLargerThanDeclaredCanvas).
+func buildWebPExtendedMismatch(canvasW, canvasH, innerW, innerH int) []byte {
+	var body bytes.Buffer
+	body.Write(chunk("VP8X", vp8xPayload(canvasW, canvasH, false, false, false)))
+	body.Write(chunk("VP8L", buildVP8LPayload(innerW, innerH)))
+	return riffFile(body.Bytes())
+}
+
 // vp8Payload is a VP8 key frame header declaring width and height,
 // padded with arbitrary bytes a real decoder would need next.
 func vp8Payload(width, height int) []byte {
