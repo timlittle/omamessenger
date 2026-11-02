@@ -55,11 +55,20 @@ Item {
   // cancelled closes the dialog without changing anything.
   signal cancelled()
 
+  // _alias exposes aliasLoader's own item, or null while the alias
+  // step is not showing. A plain var, not an alias, since Loader.item
+  // has no declared type for qmllint to check members against (the
+  // same reasoning Composer.qml's own `input` property documents).
+  property var _alias: aliasLoader.item
+
   objectName: "renameAccount"
   anchors.fill: parent
   visible: root.open
-  onStageChanged: if (root.stage === "alias") Qt.callLater(() => aliasField.forceActiveFocus())
-  onOpenChanged: if (root.open && root.stage === "alias") Qt.callLater(() => aliasField.forceActiveFocus())
+  // Deferred with Qt.callLater, so by the time this runs, aliasLoader's
+  // own active binding (bound to the same open-and-stage check) has
+  // already created the field this focuses.
+  onStageChanged: if (root.stage === "alias") Qt.callLater(() => { if (root._alias) root._alias.forceActiveFocus() })
+  onOpenChanged: if (root.open && root.stage === "alias") Qt.callLater(() => { if (root._alias) root._alias.forceActiveFocus() })
 
   ChoiceDialog {
     id: chooser
@@ -111,36 +120,48 @@ Item {
         font { family: Theme.font.family; pixelSize: Theme.font.body }
       }
 
-      Ui.TextField {
-        id: aliasField
-        objectName: "aliasField"
+      // aliasLoader holds the alias field, active only at the alias
+      // step: a field merely hidden with `visible:` is still a live Qt
+      // object that keeps reading every foreign Wayland clipboard
+      // offer, with no size or time limit, through the choose step too
+      // (see docs/decisions.md), so it must actually be destroyed
+      // while this dialog is picking which account to rename, not just
+      // hidden behind ChoiceDialog.
+      Loader {
+        id: aliasLoader
         Layout.fillWidth: true
-        text: root.currentAlias
-        placeholderText: "e.g. Personal WhatsApp"
-        maximumLength: Limits.ACCOUNT_ALIAS
-        // Qt's own right-click "Paste" menu would read the clipboard
-        // in-process, with no size or time limit of its own; routeKey
-        // below already routes Ctrl+V and Shift+Insert through the
-        // helper's bounded clipboard.readText instead (see
-        // docs/decisions.md), so this menu is removed outright.
-        ContextMenu.menu: null
-        Keys.priority: Keys.BeforeItem
-        // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-        // dedicated Paste key, …) ahead of the binding lookup below,
-        // so a rebound field.paste in keys.conf can never bring back
-        // this field's own unbounded native paste() (see
-        // docs/decisions.md).
-        Keys.onPressed: event => {
-          if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
-            if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
-            event.accepted = true;
-            return;
-          }
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
-        }
-        onAccepted: root.submitted(text.trim())
+        active: root.open && root.stage === "alias"
 
-        MiddleClickGuard {}
+        sourceComponent: Ui.TextField {
+          id: aliasFieldInner
+          objectName: "aliasField"
+          text: root.currentAlias
+          placeholderText: "e.g. Personal WhatsApp"
+          maximumLength: Limits.ACCOUNT_ALIAS
+          // Qt's own right-click "Paste" menu would read the clipboard
+          // in-process, with no size or time limit of its own;
+          // routeKey below already routes Ctrl+V and Shift+Insert
+          // through the helper's bounded clipboard.readText instead
+          // (see docs/decisions.md), so this menu is removed outright.
+          ContextMenu.menu: null
+          Keys.priority: Keys.BeforeItem
+          // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
+          // dedicated Paste key, …) ahead of the binding lookup below,
+          // so a rebound field.paste in keys.conf can never bring back
+          // this field's own unbounded native paste() (see
+          // docs/decisions.md).
+          Keys.onPressed: event => {
+            if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+              if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
+              event.accepted = true;
+              return;
+            }
+            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+          }
+          onAccepted: root.submitted(text.trim())
+
+          MiddleClickGuard {}
+        }
       }
 
       Text {
@@ -169,7 +190,7 @@ Item {
           text: "Save"
           focusable: true
           selected: true
-          onClicked: root.submitted(aliasField.text.trim())
+          onClicked: root.submitted(root._alias ? root._alias.text.trim() : "")
         }
       }
     }

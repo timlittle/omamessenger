@@ -142,15 +142,17 @@ ShellRoot {
   // checkAccountSetupGated polls until account setup is open and has
   // focused the credentials step's own field (AccountSetup's own
   // Component.onCompleted, since it is only ever constructed already
-  // open), checks its credential, phone and password fields all exist
-  // (every stage's field is a static child of the same view, not only
-  // the one the current stage shows), closes it, and checks every field
-  // is gone again.
+  // open), checks only the credentials step's own fields exist - not
+  // the phone/code/password step's answerField, which a security
+  // review found alive here too, merely hidden with `visible:`, before
+  // each field got its own Loader gated on the exact step that shows
+  // it (see docs/decisions.md and tests/unit/textinput-lifetime) -
+  // closes it, and checks every field is gone again.
   function checkAccountSetupGated(): var {
     const field = Check.find(root.panel(), "apiIdField");
     if (!field || !field.activeFocus) return false;
 
-    const wantOpen = root.fieldsAlwaysPresent.concat(["apiIdField", "apiHashField", "answerField"]).sort();
+    const wantOpen = root.fieldsAlwaysPresent.concat(["apiIdField", "apiHashField"]).sort();
     const foundOpen = root.editableFieldNames();
     if (JSON.stringify(foundOpen) !== JSON.stringify(wantOpen)) {
       return Check.fail("editable fields with account setup open: " + JSON.stringify(foundOpen) + ", want " + JSON.stringify(wantOpen));

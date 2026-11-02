@@ -275,10 +275,56 @@ test('fieldSelfGated is false when any field in the file is not gated at all', (
   assert.equal(fieldSelfGated(src), false);
 });
 
-test("ListColumn's search field and Composer's own input are both self-gated, needing no caller-side Loader", () => {
-  for (const file of ['components/ListColumn.qml', 'components/Composer.qml']) {
+// SELF_GATED_FILES names every component whose own field(s) must sit
+// behind their own inner Loader, gated on the exact condition that
+// shows that field, rather than relying on a caller wrapping the whole
+// component in a Loader of its own. AccountSetup and RenameAccount were
+// added after a security review found each one's fields merely hidden
+// with `visible:` per step inside an overlay that is itself gated at
+// the whole-dialog level (Overlays.qml) - WhatsApp can open
+// AccountSetup's own overlay unasked (a QR re-pairing after the linked
+// device is logged out remotely), so a hidden field left alive for as
+// long as that overlay stays open was still reading every foreign
+// Wayland clipboard offer the whole time, with no size or time limit,
+// through every step the overlay's own Loader has no reason to
+// re-create it for (see docs/decisions.md).
+const SELF_GATED_FILES = [
+  'components/ListColumn.qml',
+  'components/Composer.qml',
+  'components/AccountSetup.qml',
+  'components/RenameAccount.qml',
+];
+
+test('every field in SELF_GATED_FILES is gated by its own inner Loader, needing no caller-side Loader', () => {
+  for (const file of SELF_GATED_FILES) {
     const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
     assert.equal(fieldSelfGated(src), true, `${file} has a field not gated by its own inner Loader`);
+  }
+});
+
+// STEP_GATED_ACTIVE_SUBSTRINGS names, for AccountSetup and RenameAccount,
+// a substring every one of the dialog's own step conditions must appear
+// in at least one Loader's `active` binding somewhere in the file: proof
+// that each field is gated on the specific step that shows it, the same
+// condition the field used to carry on its own now-removed `visible:`,
+// not merely on the whole overlay being open (which fieldSelfGated alone
+// cannot tell apart from a single step, since both read as "not a bare
+// true" to it). A field toggled only by `visible` has no such binding at
+// all, so this also catches a regression back to that shape.
+const STEP_GATED_ACTIVE_SUBSTRINGS = {
+  'components/AccountSetup.qml': ['stage === "credentials"', 'root._field !== null'],
+  'components/RenameAccount.qml': ['stage === "alias"'],
+};
+
+test("AccountSetup's and RenameAccount's fields gate on their own step, not merely on the dialog being open", () => {
+  for (const [file, substrings] of Object.entries(STEP_GATED_ACTIVE_SUBSTRINGS)) {
+    const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
+    const activeBindings = [...src.matchAll(/\bactive\s*:\s*([^\n;]+)/g)].map((m) => m[1].trim());
+
+    for (const substring of substrings) {
+      assert.ok(activeBindings.some((expr) => expr.includes(substring)),
+        `${file}: no field Loader's active binding contains ${JSON.stringify(substring)}; found ${JSON.stringify(activeBindings)}`);
+    }
   }
 });
 

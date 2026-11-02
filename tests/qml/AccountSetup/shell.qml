@@ -146,6 +146,7 @@ ShellRoot {
   // since they wait on deferred focus changes.
   function run(): void {
     if (!root.checkAddsWithoutKeys()) return;
+    if (!root.checkFieldsDestroyedOutsideTheirOwnStep()) return;
     if (!root.checkCredentials()) return;
     if (!root.checkSignInByPhone()) return;
     if (!root.checkSignInToWhatsAppByLinkCode()) return;
@@ -164,6 +165,53 @@ ShellRoot {
     const sent = root.last();
     if (sent.method !== "accounts.add" || sent.params.apiId !== undefined) return Check.fail("account.add sent " + JSON.stringify(sent));
     if (!controller.open || controller.stage !== "waiting") return Check.fail("account.add is not waiting: " + controller.stage);
+
+    controller.cancel();
+    service.requests = [];
+    return true;
+  }
+
+  // noSetupFieldExists reports whether none of the three setup fields
+  // (from any step) currently exist as objects at all - not merely
+  // hidden - the check a security review found missing: a field once
+  // only gated with `visible:` per step stayed alive, reading every
+  // foreign Wayland clipboard offer, through every other step (see
+  // docs/decisions.md).
+  function noSetupFieldExists(): bool {
+    return !Check.find(view, "apiIdField") && !Check.find(view, "apiHashField") && !Check.find(view, "answerField");
+  }
+
+  // checkFieldsDestroyedOutsideTheirOwnStep walks the chooseService,
+  // waiting, qr and credentials steps and checks that only the field
+  // each step actually asks for exists at all: the regression this
+  // guards against left every setup field alive, merely invisible,
+  // through every step but the one it belonged to.
+  function checkFieldsDestroyedOutsideTheirOwnStep(): bool {
+    service.services = [{ id: "telegram", name: "Telegram" }, { id: "whatsapp", name: "WhatsApp" }];
+    service.requests = [];
+
+    controller.run("account.add");
+    if (controller.stage !== "chooseService") return Check.fail("expected the chooser, got " + controller.stage);
+    if (!root.noSetupFieldExists()) return Check.fail("a setup field exists at the chooseService step");
+
+    Check.find(view, "serviceButton-telegram").clicked();
+    if (controller.stage !== "waiting") return Check.fail("expected waiting, got " + controller.stage);
+    if (!root.noSetupFieldExists()) return Check.fail("a setup field exists at the waiting step");
+
+    service.event("auth.step", { accountId: controller.accountId, kind: "qr", qr: "cG5n", hint: "Scan it" });
+    if (controller.stage !== "qr") return Check.fail("expected the qr step, got " + controller.stage);
+    if (!root.noSetupFieldExists()) return Check.fail("a setup field exists at the qr step");
+
+    controller.cancel();
+    service.services = [];
+    service.requests = [];
+
+    controller.run("account.addOwnKeys");
+    if (controller.stage !== "credentials") return Check.fail("expected the credentials step, got " + controller.stage);
+    if (!Check.find(view, "apiIdField") || !Check.find(view, "apiHashField")) {
+      return Check.fail("the credentials fields do not exist at the credentials step");
+    }
+    if (Check.find(view, "answerField")) return Check.fail("the answer field exists at the credentials step");
 
     controller.cancel();
     service.requests = [];
@@ -257,7 +305,10 @@ ShellRoot {
     service.event("auth.step", { accountId: accountId, kind: "linkcode", hint: "Enter this code on your phone: ABCD-1234" });
     if (controller.stage !== "linkcode") return Check.fail("linkcode step not shown: " + controller.stage);
     if (Check.find(view, "continueButton").visible) return Check.fail("Continue shown for a step with nothing to type");
-    if (Check.find(view, "answerField").visible) return Check.fail("a typed answer field shown for the linkcode step");
+    // The linkcode step has nothing to type, so answerField's own Loader
+    // is not even active: it must not exist at all here, not merely be
+    // invisible (see docs/decisions.md).
+    if (Check.find(view, "answerField")) return Check.fail("a typed answer field exists for the linkcode step");
     if (Check.find(view, "stepHint").text.indexOf("ABCD-1234") < 0) return Check.fail("link code not shown in the hint");
 
     service.event("account.updated", { id: accountId, status: "connected" });
@@ -348,10 +399,13 @@ ShellRoot {
   // anyFocused reports whether the setup Item itself or one of its text
   // fields currently holds real keyboard focus: whichever it is, a key
   // event reaches routeKey, so a wait only needs to know focus landed
-  // somewhere in this step, not on a specific control.
+  // somewhere in this step, not on a specific control. apiIdField and
+  // answerField only exist at all while their own step is showing (see
+  // docs/decisions.md), so each lookup is optional-chained rather than
+  // assumed to find something.
   function anyFocused(): bool {
-    return view.activeFocus || Check.find(view, "apiIdField").activeFocus
-      || Check.find(view, "answerField").activeFocus;
+    return view.activeFocus || (Check.find(view, "apiIdField")?.activeFocus ?? false)
+      || (Check.find(view, "answerField")?.activeFocus ?? false);
   }
 
   // beginKeyboardChecks opens the service chooser with two services and
@@ -446,7 +500,7 @@ ShellRoot {
   // number below lands in it.
   function checkWhatsAppPhoneByP(): void {
     t.keyClick("p");
-    root.waitForFocus(() => Check.find(view, "answerField").activeFocus, "the phone number field",
+    root.waitForFocus(() => Check.find(view, "answerField")?.activeFocus ?? false, "the phone number field",
       root.checkWhatsAppTypesPhoneNumber);
   }
 
@@ -542,7 +596,7 @@ ShellRoot {
   // first one to take focus.
   function beginTypingLettersIntoFields(): void {
     controller.run("account.addOwnKeys");
-    root.waitForFocus(() => Check.find(view, "apiIdField").activeFocus, "the API id field",
+    root.waitForFocus(() => Check.find(view, "apiIdField")?.activeFocus ?? false, "the API id field",
       root.checkLettersTypeIntoFields);
   }
 

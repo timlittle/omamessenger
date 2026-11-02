@@ -68,21 +68,42 @@ Item {
   // _field describes the typed answer the stage asks for, or null.
   readonly property var _field: Setup.field(root.stage)
 
-  // submit continues from the current step.
+  // _credentials exposes credentialsLoader's own item, or null while the
+  // credentials step is not showing (see the Loader's own comment
+  // below). A plain var, not an alias, since Loader.item has no
+  // declared type for qmllint to check members against (the same
+  // reasoning Composer.qml's own `input` property documents).
+  property var _credentials: credentialsLoader.item
+  // _answer exposes answerLoader's own item, or null while none of the
+  // phone, code or password steps is showing; see _credentials above.
+  property var _answer: answerLoader.item
+
+  // submit continues from the current step. _credentials and _answer
+  // only exist while their own step is the one showing (see each
+  // Loader's own comment below), which is exactly when submit can be
+  // called for that step, so a missing one here would itself be a bug
+  // - but the guard costs nothing and keeps this from ever reading a
+  // property off null.
   function submit(): void {
     if (root.busy) return;
-    if (root.stage === "credentials") root.credentialsSubmitted(idField.text, hashField.text);
-    else if (root._field) root.answered(answerField.text);
+    if (root.stage === "credentials" && root._credentials) {
+      root.credentialsSubmitted(root._credentials.idField.text, root._credentials.hashField.text);
+    } else if (root._field && root._answer) {
+      root.answered(root._answer.text);
+    }
   }
 
   // _focusStep moves real keyboard focus to the stage's own control: a
   // text field for credentials, a phone number, a code or a password, and
   // this Item itself for every other step, so j/k, the mnemonic letters
   // and p/q reach it through routeKey rather than needing a focused
-  // button of their own.
+  // button of their own. Deferred with Qt.callLater by every caller
+  // below, so by the time this runs, credentialsLoader's and
+  // answerLoader's own active bindings (bound to the same stage this
+  // reads) have already created or destroyed their item.
   function _focusStep(): void {
-    if (root.stage === "credentials") { idField.forceActiveFocus(); return; }
-    if (root._field) { answerField.text = ""; answerField.forceActiveFocus(); return; }
+    if (root.stage === "credentials") { if (root._credentials) root._credentials.idField.forceActiveFocus(); return; }
+    if (root._field) { if (root._answer) { root._answer.text = ""; root._answer.forceActiveFocus(); } return; }
     root.forceActiveFocus();
   }
 
@@ -175,65 +196,90 @@ Item {
         }
       }
 
-      Ui.TextField {
-        id: idField
-        objectName: "apiIdField"
+      // credentialsLoader holds the API id and hash fields, active only
+      // for the credentials step: a field merely hidden with `visible:`
+      // is still a live Qt object that keeps reading every foreign
+      // Wayland clipboard offer, with no size or time limit, and
+      // WhatsApp's own connector can open this whole overlay unasked (a
+      // QR re-pairing after the linked device is logged out remotely),
+      // so the fields must actually be destroyed once this is not the
+      // step shown, not just hidden behind the waiting, qr, phone, code
+      // or password steps that can follow (see docs/decisions.md).
+      Loader {
+        id: credentialsLoader
         Layout.fillWidth: true
-        visible: root.stage === "credentials"
-        placeholderText: "API id"
-        maximumLength: Limits.API_ID
-        // Qt's own right-click "Paste" menu would read the clipboard
-        // in-process, with no size or time limit of its own; routeKey
-        // below already routes Ctrl+V and Shift+Insert through the
-        // helper's bounded clipboard.readText instead (see
-        // docs/decisions.md), so this menu is removed outright - this
-        // field invites exactly that paste, from my.telegram.org.
-        ContextMenu.menu: null
-        KeyNavigation.tab: hashField
-        Keys.priority: Keys.BeforeItem
-        // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-        // dedicated Paste key, …) ahead of the binding lookup below,
-        // so a rebound field.paste in keys.conf can never bring back
-        // this field's own unbounded native paste() (see
-        // docs/decisions.md).
-        Keys.onPressed: event => {
-          if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
-            if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
-            event.accepted = true;
-            return;
+        active: root.stage === "credentials"
+
+        sourceComponent: ColumnLayout {
+          // idField and hashField expose the two fields so root.submit
+          // and root._focusStep can reach them through this Loader's
+          // own item, without either field needing to be known outside
+          // this Component.
+          property alias idField: idFieldInner
+          property alias hashField: hashFieldInner
+
+          spacing: Theme.spacing.md
+
+          Ui.TextField {
+            id: idFieldInner
+            objectName: "apiIdField"
+            Layout.fillWidth: true
+            placeholderText: "API id"
+            maximumLength: Limits.API_ID
+            // Qt's own right-click "Paste" menu would read the
+            // clipboard in-process, with no size or time limit of its
+            // own; routeKey below already routes Ctrl+V and
+            // Shift+Insert through the helper's bounded
+            // clipboard.readText instead (see docs/decisions.md), so
+            // this menu is removed outright - this field invites
+            // exactly that paste, from my.telegram.org.
+            ContextMenu.menu: null
+            KeyNavigation.tab: hashFieldInner
+            Keys.priority: Keys.BeforeItem
+            // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
+            // dedicated Paste key, …) ahead of the binding lookup
+            // below, so a rebound field.paste in keys.conf can never
+            // bring back this field's own unbounded native paste()
+            // (see docs/decisions.md).
+            Keys.onPressed: event => {
+              if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+                if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
+                event.accepted = true;
+                return;
+              }
+              if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+            }
+            onAccepted: hashFieldInner.forceActiveFocus()
+
+            MiddleClickGuard {}
           }
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
-        }
-        onAccepted: hashField.forceActiveFocus()
 
-        MiddleClickGuard {}
-      }
+          Ui.TextField {
+            id: hashFieldInner
+            objectName: "apiHashField"
+            Layout.fillWidth: true
+            placeholderText: "API hash"
+            maximumLength: Limits.API_HASH
+            ContextMenu.menu: null
+            Keys.priority: Keys.BeforeItem
+            // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
+            // dedicated Paste key, …) ahead of the binding lookup
+            // below, so a rebound field.paste in keys.conf can never
+            // bring back this field's own unbounded native paste()
+            // (see docs/decisions.md).
+            Keys.onPressed: event => {
+              if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+                if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
+                event.accepted = true;
+                return;
+              }
+              if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+            }
+            onAccepted: root.submit()
 
-      Ui.TextField {
-        id: hashField
-        objectName: "apiHashField"
-        Layout.fillWidth: true
-        visible: root.stage === "credentials"
-        placeholderText: "API hash"
-        maximumLength: Limits.API_HASH
-        ContextMenu.menu: null
-        Keys.priority: Keys.BeforeItem
-        // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-        // dedicated Paste key, …) ahead of the binding lookup below,
-        // so a rebound field.paste in keys.conf can never bring back
-        // this field's own unbounded native paste() (see
-        // docs/decisions.md).
-        Keys.onPressed: event => {
-          if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
-            if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
-            event.accepted = true;
-            return;
+            MiddleClickGuard {}
           }
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
         }
-        onAccepted: root.submit()
-
-        MiddleClickGuard {}
       }
 
       Image {
@@ -247,32 +293,42 @@ Item {
         fillMode: Image.PreserveAspectFit
       }
 
-      Ui.TextField {
-        id: answerField
-        objectName: "answerField"
+      // answerLoader holds the phone, code and password field, active
+      // only while this step asks for one (root._field is non-null for
+      // exactly those three steps): the same reasoning as
+      // credentialsLoader above, including WhatsApp's own ability to
+      // reopen this overlay at the qr or waiting step with nothing
+      // typed.
+      Loader {
+        id: answerLoader
         Layout.fillWidth: true
-        visible: root._field !== null
-        placeholderText: root._field ? root._field.placeholder : ""
-        password: root._field ? root._field.password : false
-        maximumLength: Limits.SETUP_ANSWER
-        ContextMenu.menu: null
-        Keys.priority: Keys.BeforeItem
-        // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-        // dedicated Paste key, …) ahead of the binding lookup below,
-        // so a rebound field.paste in keys.conf can never bring back
-        // this field's own unbounded native paste() (see
-        // docs/decisions.md).
-        Keys.onPressed: event => {
-          if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
-            if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
-            event.accepted = true;
-            return;
-          }
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
-        }
-        onAccepted: root.submit()
+        active: root._field !== null
 
-        MiddleClickGuard {}
+        sourceComponent: Ui.TextField {
+          id: answerFieldInner
+          objectName: "answerField"
+          placeholderText: root._field ? root._field.placeholder : ""
+          password: root._field ? root._field.password : false
+          maximumLength: Limits.SETUP_ANSWER
+          ContextMenu.menu: null
+          Keys.priority: Keys.BeforeItem
+          // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
+          // dedicated Paste key, …) ahead of the binding lookup below,
+          // so a rebound field.paste in keys.conf can never bring back
+          // this field's own unbounded native paste() (see
+          // docs/decisions.md).
+          Keys.onPressed: event => {
+            if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+              if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
+              event.accepted = true;
+              return;
+            }
+            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+          }
+          onAccepted: root.submit()
+
+          MiddleClickGuard {}
+        }
       }
 
       Text {

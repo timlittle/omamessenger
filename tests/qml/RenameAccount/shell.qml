@@ -79,6 +79,7 @@ ShellRoot {
 
   function run(): void {
     if (!root.checkDoesNothingWithNoAccounts()) return;
+    if (!root.checkAliasFieldDestroyedAtTheChooseStep()) return;
     if (!root.checkOneAccountGoesStraightToTheAliasField()) return;
     if (!root.checkCancellingTheAliasFieldSendsNothing()) return;
     if (!root.checkChoosesThenSaves()) return;
@@ -93,6 +94,26 @@ ShellRoot {
   function checkDoesNothingWithNoAccounts(): bool {
     controller.run("account.rename");
     if (controller.renaming) return Check.fail("account.rename opened with no accounts");
+    return true;
+  }
+
+  // checkAliasFieldDestroyedAtTheChooseStep proves the alias field does
+  // not exist at all - not merely hidden - while the chooser is
+  // showing: the regression this guards against left it alive, merely
+  // invisible, reading every foreign Wayland clipboard offer the whole
+  // time the chooser was up (see docs/decisions.md).
+  function checkAliasFieldDestroyedAtTheChooseStep(): bool {
+    service.accounts = [
+      { id: "wa-1", service: "whatsapp", name: "WhatsApp", alias: "Personal WhatsApp" },
+      { id: "tg-1", service: "telegram", name: "Telegram", alias: "" }
+    ];
+
+    controller.run("account.rename");
+    if (view.stage !== "choose") return Check.fail("expected the chooser, got " + view.stage);
+    if (Check.find(view, "aliasField")) return Check.fail("the alias field exists at the choose step");
+
+    controller.run("rename.cancel");
+    service.accounts = [];
     return true;
   }
 
