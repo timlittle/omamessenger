@@ -31,7 +31,7 @@ func TestMessage_ThumbDimensionsAreVerifiedNotClaimed(t *testing.T) {
 			// A sender-claimed full size wildly unlike the thumbnail's
 			// own real 8x8 shape: exactly the mismatch the UI must
 			// never size a decode from.
-			Width: 100000, Height: 1,
+			Width: 60000, Height: 1,
 		},
 	})
 
@@ -45,8 +45,8 @@ func TestMessage_ThumbDimensionsAreVerifiedNotClaimed(t *testing.T) {
 	if got.Media.ThumbWidth != 8 || got.Media.ThumbHeight != 8 {
 		t.Errorf("ThumbWidth/ThumbHeight = %dx%d, want 8x8 (the thumbnail's own real size)", got.Media.ThumbWidth, got.Media.ThumbHeight)
 	}
-	if got.Media.Width != 100000 || got.Media.Height != 1 {
-		t.Errorf("Width/Height = %dx%d, want the sender's own claim (100000x1) left untouched", got.Media.Width, got.Media.Height)
+	if got.Media.Width != 60000 || got.Media.Height != 1 {
+		t.Errorf("Width/Height = %dx%d, want the sender's own claim (60000x1) left untouched", got.Media.Width, got.Media.Height)
 	}
 }
 
