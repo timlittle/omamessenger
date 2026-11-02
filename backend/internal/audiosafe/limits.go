@@ -86,6 +86,32 @@ const maxSampleGroupEntries = 65_536
 // and its own "allow only a single in-range entry" reasoning.
 const maxELSTEntries = 1
 
+// audioSampleEntryFixedFields is the byte length of ISO/IEC
+// 14496-12's AudioSampleEntry fixed fields: mirrors videosafe's own
+// audioSampleEntryFixedFields.
+const audioSampleEntryFixedFields = 28
+
+// maxESDSLength bounds an mp4a sample entry's own esds box before any
+// of it is read into memory: mirrors videosafe's own maxESDSLength.
+const maxESDSLength = 1024
+
+// allowedAACObjectType names every MPEG-4 Audio audioObjectType this
+// package accepts inside an mp4a sample entry's own esds: mirrors
+// videosafe's own allowedAACObjectType.
+var allowedAACObjectType = map[byte]bool{2: true, 5: true, 29: true}
+
+// allowedMP4AChild names every box this package accepts as a direct
+// child of an mp4a sample entry, besides its own esds: btrt (bitrate)
+// - confirmed against real ffmpeg-encoded AAC audio, which writes one
+// there. Mirrors videosafe's own allowedMP4AChild.
+var allowedMP4AChild = map[string]bool{"esds": true, "btrt": true}
+
+// allowedOpusChild names every box this package accepts as a direct
+// child of an Opus sample entry, besides its own dOps: btrt, the same
+// reasoning allowedMP4AChild documents. Mirrors videosafe's own
+// allowedOpusChild.
+var allowedOpusChild = map[string]bool{"dOps": true, "btrt": true}
+
 // opusGranuleRate is Opus's own fixed sample rate for its granule
 // position timestamps (RFC 7845): every Opus stream's granule
 // position counts 48kHz samples regardless of the stream's actual

@@ -67,6 +67,9 @@ func (c *cursor) avcConfigDetails(stblOff, stblLen int64) (avcDecoderConfig, boo
 	if !ok || entry.len < avcVisualSampleEntryFixedFields {
 		return avcDecoderConfig{}, false
 	}
+	if !c.avcSampleEntryChildrenOK(entry) {
+		return avcDecoderConfig{}, false
+	}
 
 	avcc, found := c.firstChild(entry.off+avcVisualSampleEntryFixedFields, entry.len-avcVisualSampleEntryFixedFields, "avcC")
 	if !found {

@@ -238,13 +238,15 @@ func (c *cursor) audioTrackInfo(trakOff, trakLen int64) (kind, codec string, dur
 
 // soundTrackFields reads a "soun" track's own minf and stbl boxes,
 // checking each against this package's own allowlist as it goes (see
-// onlyChildrenAllowed), its codec fourcc, and its own sample count,
-// sample tables (see sampleTablesConsistent) and trak-level edit list
-// (see editListAllowed): the part of audioTrackInfo that only runs
-// once the track's handler type is already known to be "soun". A
-// security review found this package read none of these beyond the
-// codec fourcc alone - not an audio track's own sample count, any of
-// its other sample tables, or its edit list (see docs/decisions.md).
+// onlyChildrenAllowed), its codec fourcc, sample count and sample
+// tables (see sampleTablesConsistent), its own sample entry's
+// children (see audioSampleEntryOK) and its trak-level edit list (see
+// editListAllowed): the part of audioTrackInfo that only runs once
+// the track's handler type is already known to be "soun". A security
+// review found this package read none of these beyond the codec
+// fourcc alone - not an audio track's own sample count, any of its
+// other sample tables, its edit list, or what sat inside its one
+// sample entry besides that fourcc (see docs/decisions.md).
 func (c *cursor) soundTrackFields(mdia span, trakOff, trakLen int64, timescale uint32) (string, bool) {
 	stbl, ok := c.soundStbl(mdia)
 	if !ok {
@@ -255,7 +257,7 @@ func (c *cursor) soundTrackFields(mdia span, trakOff, trakLen int64, timescale u
 	if !ok {
 		return "", false
 	}
-	if !c.soundTablesOK(trakOff, trakLen, stbl, timescale) {
+	if !c.soundTablesAndEntryOK(trakOff, trakLen, stbl, codec, timescale) {
 		return "", false
 	}
 	return codec, true
@@ -277,13 +279,14 @@ func (c *cursor) soundStbl(mdia span) (span, bool) {
 	return stbl, true
 }
 
-// soundTablesOK reports whether the sound track's own sample count is
-// within maxSampleCount, its sample tables all agree with each other
-// and with that count (see sampleTablesConsistent), and its own edit
-// list (if any) declares at most one in-range entry: split out of
-// soundTrackFields to keep its own branching within this package's
-// complexity limit.
-func (c *cursor) soundTablesOK(trakOff, trakLen int64, stbl span, timescale uint32) bool {
+// soundTablesAndEntryOK reports whether the sound track's own sample
+// count is within maxSampleCount, its sample tables all agree with
+// each other and with that count (see sampleTablesConsistent), its
+// own edit list (if any) declares at most one in-range entry, and its
+// one sample entry's own children describe a codec this package
+// accepts (see audioSampleEntryOK): split out of soundTrackFields to
+// keep its own branching within this package's complexity limit.
+func (c *cursor) soundTablesAndEntryOK(trakOff, trakLen int64, stbl span, codec string, timescale uint32) bool {
 	sampleCount, ok := c.sampleCount(stbl.off, stbl.len)
 	if !ok || sampleCount > maxSampleCount {
 		return false
@@ -291,7 +294,10 @@ func (c *cursor) soundTablesOK(trakOff, trakLen int64, stbl span, timescale uint
 	if !c.sampleTablesConsistent(stbl, sampleCount) {
 		return false
 	}
-	return c.editListAllowed(trakOff, trakLen, timescale)
+	if !c.editListAllowed(trakOff, trakLen, timescale) {
+		return false
+	}
+	return c.audioSampleEntryOK(stbl.off, stbl.len, codec)
 }
 
 // sampleCount reads stbl's stsz or stz2 box for its declared

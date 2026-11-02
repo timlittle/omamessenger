@@ -276,8 +276,11 @@ func mp4MediaHeaderV1(timescale uint32, duration uint64) []byte {
 // matching SPS, since Validate now requires the two to agree: see
 // mp4AVCSampleDescription.
 func mp4SampleDescription(codec string, width, height uint16) []byte {
-	if codec == "avc1" {
+	switch codec {
+	case "avc1":
 		return mp4AVCSampleDescription(width, height)
+	case "mp4a", "Opus":
+		return mp4AudioSampleDescription(codec)
 	}
 
 	buf := make([]byte, 8+44)
@@ -288,6 +291,12 @@ func mp4SampleDescription(codec string, width, height uint16) []byte {
 	binary.BigEndian.PutUint16(buf[8+34:8+36], height)
 	return buf
 }
+
+// mp4AudioSampleDescription, buildAACESDS, mp4Descriptor and
+// buildOpusSpecificBox - the mp4a/Opus sample entry builders
+// Validate's new audio sample entry checks need
+// - live in sampleentryfixtures_test.go, once this file's own
+// file-length limit needed the room.
 
 // mp4AVCSampleDescription builds an stsd body holding one avc1
 // sample entry at its full, real VisualSampleEntry fixed-field length

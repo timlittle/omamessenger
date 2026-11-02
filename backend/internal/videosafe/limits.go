@@ -104,6 +104,12 @@ const maxSampleGroupEntries = 65_536
 // whatever the sample tables above already declare.
 const maxELSTEntries = 1
 
+// maxESDSLength bounds an mp4a sample entry's own esds box before any
+// of it is read into memory: a real AAC esds is under 50 bytes, so a
+// far larger declared length is already implausible, the same
+// reasoning maxSPSLength applies to an SPS.
+const maxESDSLength = 1024
+
 // avcSampleCancelCheckInterval bounds how many of an avc1 track's own
 // samples avcSamplesSafe scans between checks of the caller's own
 // context: often enough that a cancelled fetch stops within a small
@@ -237,6 +243,54 @@ const maxCropSlack = 16
 // never read from the file itself, so this package can safely skip
 // straight past them to look for avcC.
 const avcVisualSampleEntryFixedFields = 78
+
+// audioSampleEntryFixedFields is the byte length of ISO/IEC
+// 14496-12's AudioSampleEntry fixed fields (SampleEntry's own 8 bytes
+// - reserved and data_reference_index - plus 20 more: two reserved
+// 32-bit words, channelcount, samplesize, pre_defined, reserved and
+// samplerate): fixed by the standard, never read from the file
+// itself, the audio counterpart to avcVisualSampleEntryFixedFields.
+const audioSampleEntryFixedFields = 28
+
+// allowedAVC1Child names every box this package accepts as a direct
+// child of an avc1 sample entry, besides its own avcC configuration:
+// pasp (pixel aspect ratio), colr (colour information), btrt (bitrate)
+// and fiel (field/interlace order) - confirmed against real
+// ffmpeg/x264-encoded files (see docs/decisions.md; none of the four
+// actually appeared in the plain encodes this package was checked
+// against, so this list rests on the specification and a differential
+// security review's own recommendation, not a sample file that needed
+// one). clap (clean aperture) is deliberately absent: nothing in this
+// package's own real-file testing needed it, and adding a box this
+// package has never seen a real encoder write only widens the
+// allowlist without a file to justify it. Anything else - an esds or
+// hvcC box (a replacement decoder configuration FFmpeg's own mov
+// demuxer would read instead of the trusted avcC this package already
+// validated, see docs/decisions.md) or a second avcC - is refused
+// outright.
+var allowedAVC1Child = map[string]bool{
+	"avcC": true, "pasp": true, "colr": true, "btrt": true, "fiel": true,
+}
+
+// allowedMP4AChild names every box this package accepts as a direct
+// child of an mp4a sample entry, besides its own esds: btrt (bitrate)
+// - confirmed against real ffmpeg-encoded AAC audio, which writes one
+// there the same way it does for avc1 (see docs/decisions.md).
+// Anything else is refused outright.
+var allowedMP4AChild = map[string]bool{"esds": true, "btrt": true}
+
+// allowedOpusChild names every box this package accepts as a direct
+// child of an Opus sample entry, besides its own dOps: btrt, the same
+// reasoning allowedMP4AChild documents.
+var allowedOpusChild = map[string]bool{"dOps": true, "btrt": true}
+
+// allowedAACObjectType names every MPEG-4 Audio audioObjectType (ISO/
+// IEC 14496-3) this package accepts inside an mp4a sample entry's own
+// esds: 2 (AAC LC), 5 (SBR, HE-AAC) and 29 (PS, HE-AAC v2) - the object
+// types a real AAC encoder, software or a phone's own hardware one,
+// actually writes. Anything else - including audioObjectType 31's own
+// extended-object-type escape - is refused.
+var allowedAACObjectType = map[byte]bool{2: true, 5: true, 29: true}
 
 // allowedISOVideoCodec names every MP4/MOV sample entry type (the
 // sample description box's own 4-byte format, never a sender's mime

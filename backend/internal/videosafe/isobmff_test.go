@@ -357,20 +357,14 @@ func FuzzValidateMP4(f *testing.F) {
 	f.Add(buildCustomAVCFixture(1280, 720, append(buildAVCDecoderConfig(1280, 720), 0x11, 0x22, 0x33, 0x44)))
 
 	// A security review found neither an audio track's own sample
-	// count nor any track's stts/ctts/stss/sgpd/sbgp tables, nor a
-	// trak's own edit list, were ever checked against each other at
-	// all (see sampletables.go and docs/decisions.md); these seeds
-	// cover the shapes that closed it.
-	f.Add(func() []byte {
-		p := baselineAudioTables()
-		p.stts = sttsBody([2]uint32{85_000_000, 1024})
-		return mp4AudioTrackWithTables(p)
-	}())
-	f.Add(func() []byte {
-		p := baselineAudioTables()
-		p.edts = edtsWith(elstBody(2, 5000))
-		return mp4AudioTrackWithTables(p)
-	}())
+	// count nor any track's stts/ctts/stss/sgpd/sbgp/elst tables, nor
+	// an avc1 or mp4a sample entry's own children, were ever checked
+	// against each other at all (see sampletables.go, sampleentry.go
+	// and docs/decisions.md); these seeds cover the shapes that
+	// closed it.
+	for _, seed := range sampleTableAndEntryFuzzSeeds() {
+		f.Add(seed)
+	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := writeFixture(t, "fuzz.mp4", data)

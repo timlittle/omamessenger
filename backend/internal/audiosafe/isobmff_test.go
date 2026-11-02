@@ -285,9 +285,10 @@ func FuzzValidateMP4Audio(f *testing.F) {
 
 	// A security review found this package never checked its one
 	// audio track's own sample count against anything, nor any of its
-	// other sample tables or its edit list (see sampletables.go,
-	// samplegrouptables.go and docs/decisions.md); these seeds cover
-	// the shapes that closed it.
+	// other sample tables, its edit list, or its sample entry's own
+	// children (see sampletables.go, samplegrouptables.go,
+	// sampleentry.go and docs/decisions.md); these seeds cover the
+	// shapes that closed it.
 	f.Add(func() []byte {
 		p := baselineAudioTables()
 		p.stts = sttsBody(85_000_000, 1024)
@@ -298,6 +299,7 @@ func FuzzValidateMP4Audio(f *testing.F) {
 		p.edts = edtsWith(elstBody(2, 5000))
 		return mp4AudioTrackWithTables(p)
 	}())
+	f.Add(mp4AudioFixtureWithEntry("mp4a", mp4Box("esds", buildESDSWithObjectTypeIndication(0x6B))))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := writeFixture(t, "fuzz.m4a", data)

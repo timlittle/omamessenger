@@ -403,9 +403,13 @@ func mp4MediaHeaderV1(timescale uint32, duration uint64) []byte {
 }
 
 // mp4SampleDescription builds an stsd body holding exactly one sample
-// entry: version/flags and entry_count (8 bytes), then the entry's
-// own size+type header (8 bytes, type set to codec) padded out to a
-// plausible audio sample entry size.
+// entry at its full, real AudioSampleEntry fixed-field length (28
+// bytes), followed by a real configuration box - esds declaring AAC
+// LC at 44.1kHz stereo for mp4a, or dOps for Opus - since Validate
+// now requires an audio sample entry to carry exactly the one
+// configuration box a real encoder writes (see sampleentry.go and
+// docs/decisions.md). mp4SampleDescriptionMultiEntryFixtures.go's own
+// mp4AudioSampleEntry builds one such entry on its own.
 func mp4SampleDescription(codec string) []byte {
 	return mp4SampleDescriptionMultiEntry(codec, 1)
 }
@@ -413,13 +417,14 @@ func mp4SampleDescription(codec string) []byte {
 // mp4SampleDescriptionMultiEntry builds an stsd body like
 // mp4SampleDescription, but declaring entryCount sample entries - each
 // an identical copy of the same codec entry - instead of always
-// exactly one.
+// exactly one: a test using entryCount other than 1 only ever checks
+// that stsd's own entry_count is refused before this package reads
+// any entry's own content, so every entry built here is still a full,
+// otherwise-valid one.
 func mp4SampleDescriptionMultiEntry(codec string, entryCount uint32) []byte {
-	entry := make([]byte, 20)
-	binary.BigEndian.PutUint32(entry[0:4], 20)
-	copy(entry[4:8], codec)
+	entry := mp4AudioSampleEntry(codec)
 
-	buf := make([]byte, 8, 8+20*int(entryCount))
+	buf := make([]byte, 8, 8+len(entry)*int(entryCount))
 	binary.BigEndian.PutUint32(buf[4:8], entryCount)
 	for i := uint32(0); i < entryCount; i++ {
 		buf = append(buf, entry...)

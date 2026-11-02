@@ -338,13 +338,16 @@ func (c *cursor) trackTablesAndEditsOK(trakOff, trakLen int64, stbl span, sample
 // trackKindFieldsOK reads and validates whatever this package checks
 // beyond a track's own codec, sample count and sample tables, specific
 // to its kind: a video track's own avcC/SPS agreement and in-band NAL
-// scan (see videoTrackFields). A track of neither kind is refused by
-// isoTrackAllowed regardless of what this reports, so there is
-// nothing to check for it here.
+// scan (see videoTrackFields), or an audio track's own sample entry
+// children and AAC/Opus configuration (see audioSampleEntryOK). A
+// track of neither kind is refused by isoTrackAllowed regardless of
+// what this reports, so there is nothing to check for it here.
 func (c *cursor) trackKindFieldsOK(ctx context.Context, kind string, stbl span, track *isoTrack) bool {
 	switch kind {
 	case "vide":
 		return c.videoTrackFields(ctx, stbl, track)
+	case "soun":
+		return c.audioSampleEntryOK(stbl.off, stbl.len, track.codec)
 	default:
 		return true
 	}
