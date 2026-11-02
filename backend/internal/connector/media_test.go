@@ -80,6 +80,32 @@ func TestReencodeImageFile_RejectsUnsafeInput(t *testing.T) {
 	}
 }
 
+// TestReencodeImageFile_RejectsOverProfileSizeBeforeReading covers
+// the cheapest rejection of all: src's own size on disk, over
+// profile's MaxInputLen, is refused from a stat alone. The file holds
+// no real image bytes at all, so a pass here could only mean the
+// size was checked first - a decode attempt would instead fail with
+// ErrUnsafeImage, not ErrMediaTooLarge.
+func TestReencodeImageFile_RejectsOverProfileSizeBeforeReading(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "huge.bin")
+	huge := make([]byte, imagesafe.Thumbnail.MaxInputLen+1)
+	if err := os.WriteFile(src, huge, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(dir, "view.jpg")
+
+	_, _, _, err := connector.ReencodeImageFile(src, dst, imagesafe.Thumbnail)
+	if !errors.Is(err, connector.ErrMediaTooLarge) {
+		t.Fatalf("ReencodeImageFile() = %v, want %v", err, connector.ErrMediaTooLarge)
+	}
+	if _, err := os.Stat(dst); err == nil {
+		t.Error("an oversized source still produced a destination file")
+	}
+}
+
 // TestReencodeImageFile_ReportsAMissingSourceFile covers src simply
 // not existing: a plain error, never one of connector's own
 // sentinels, which both name a problem with the bytes themselves.

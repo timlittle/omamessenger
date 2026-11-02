@@ -162,9 +162,20 @@ func SanitizeIfGIF(path string) (isGIF bool, width, height int, err error) {
 // rewrite that must not run again on its own earlier output. format,
 // width and height are Reencode's own result, for the caller to name
 // and size that cache slot from; ok is false for the same reasons
-// imagesafe.Reencode's own ok is, or srcPath cannot be read, and
-// dstPath is never written in that case.
+// imagesafe.Reencode's own ok is, srcPath's own size on disk is over
+// profile's MaxInputLen (checked before anything reads it, the same
+// discipline SanitizeOutgoingImageFile already gives an outgoing
+// attachment), or srcPath cannot be read at all, and dstPath is never
+// written in any of those cases.
 func ReencodeImageFile(srcPath, dstPath string, profile imagesafe.Profile) (format imagesafe.OutputFormat, width, height int, err error) {
+	info, err := os.Stat(srcPath)
+	if err != nil {
+		return imagesafe.FormatUnknown, 0, 0, fmt.Errorf("connector: reencode image file: %w", err)
+	}
+	if info.Size() > profile.MaxInputLen {
+		return imagesafe.FormatUnknown, 0, 0, fmt.Errorf("connector: reencode image file: %w", ErrMediaTooLarge)
+	}
+
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return imagesafe.FormatUnknown, 0, 0, fmt.Errorf("connector: reencode image file: %w", err)
