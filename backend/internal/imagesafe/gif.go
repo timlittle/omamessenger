@@ -86,8 +86,8 @@ func sanitizeGIF(data []byte, profile Profile) (out []byte, width, height int, o
 		return nil, 0, 0, false
 	}
 
-	frames, ok := countGIFFrames(data, screenEnd, profile)
-	if !ok || !withinTotal(w64, h64, frames, profile) {
+	frames, totalFramePixels, maxFramePixels, ok := countGIFFrames(data, screenEnd, profile, w64, h64)
+	if !ok || totalFramePixels > profile.MaxTotalPixels {
 		return nil, 0, 0, false
 	}
 
@@ -98,7 +98,14 @@ func sanitizeGIF(data []byte, profile Profile) (out []byte, width, height int, o
 		return nil, 0, 0, false
 	}
 
-	gw := &gifWriter{profile: profile, canvasPixels: w64 * h64}
+	// delayPixels is what AnimatedImage actually pays to decode a
+	// frame: at least the canvas, which it redraws every loop (see
+	// gifMaxDecodeRate's own comment), and at least the largest single
+	// frame it ever decodes, so a frame larger than the canvas can
+	// never slip under the canvas's own, smaller delay floor (see
+	// docs/decisions.md).
+	delayPixels := max(w64*h64, maxFramePixels)
+	gw := &gifWriter{profile: profile, canvasWidth: w64, canvasHeight: h64, delayPixels: delayPixels}
 	kept, ok := writeGIFBlocks(data, pos, &buf, gw, frames > 1)
 	if !ok {
 		return nil, 0, 0, false
@@ -146,54 +153,66 @@ func copyGIFScreen(data []byte, out *bytes.Buffer) (pos int, ok bool) {
 
 // countGIFFrames walks data from pos exactly as writeGIFBlocks does,
 // without writing anything, only to learn how many image blocks the
-// file has: sanitizeGIF needs that count before it can decide
-// whether a file actually animates, since an image block's own
-// Graphics Control extension is only ever rewritten for one that
-// does (see writeGIFBlocks).
-func countGIFFrames(data []byte, pos int, profile Profile) (int, bool) {
-	frames := 0
-
+// file has, and two things about their own, individual sizes rather
+// than the logical screen's: totalPixels, the sum of every frame's
+// own width times height - the real total decode cost sanitizeGIF
+// checks against profile.MaxTotalPixels, never the canvas size times
+// the frame count, which a frame smaller or larger than the canvas
+// would make inaccurate - and maxPixels, the largest single frame's
+// own pixel count, for sanitizeGIF to raise the canvas-based delay
+// floor by when any frame needs more than the canvas alone would
+// suggest (see docs/decisions.md). sanitizeGIF needs the frame count
+// before it can decide whether a file actually animates, since an
+// image block's own Graphics Control extension is only ever rewritten
+// for one that does (see writeGIFBlocks).
+func countGIFFrames(data []byte, pos int, profile Profile, canvasWidth, canvasHeight int64) (frames int, totalPixels, maxPixels int64, ok bool) {
 	for pos < len(data) {
 		switch data[pos] {
 		case 0x3B:
-			return frames, true
+			return frames, totalPixels, maxPixels, true
 		case 0x21:
 			end, _, ok := gifExtension(data, pos)
 			if !ok {
-				return 0, false
+				return 0, 0, 0, false
 			}
 			pos = end
 		case 0x2C:
-			end, ok := gifImage(data, pos, profile)
+			end, framePixels, ok := gifImage(data, pos, profile, canvasWidth, canvasHeight)
 			if !ok {
-				return 0, false
+				return 0, 0, 0, false
 			}
 
 			frames++
 			if frames > gifMaxFrames {
-				return 0, false
+				return 0, 0, 0, false
 			}
+			totalPixels += framePixels
+			maxPixels = max(maxPixels, framePixels)
 			pos = end
 		default:
-			return 0, false
+			return 0, 0, 0, false
 		}
 	}
 
-	return 0, false
+	return 0, 0, 0, false
 }
 
 // gifWriter carries writeGIFBlocks' own context across the whole
-// walk - the profile a frame's dimensions are checked against, the
-// canvas pixel count gifMinDelayCS rates a frame's delay against,
-// the frame count so far, and whether a Graphics Control extension
-// has already been seen for the frame about to be written - so that
-// walk's own functions, and the one it calls per frame, each take
-// only the handful of arguments that call actually needs.
+// walk - the profile a frame's dimensions and rectangle are checked
+// against (canvasWidth and canvasHeight), the pixel count
+// gifMinDelayCS rates a frame's delay against (delayPixels - the
+// larger of the canvas and the largest frame actually in the file,
+// see sanitizeGIF), the frame count so far, and whether a Graphics
+// Control extension has already been seen for the frame about to be
+// written - so that walk's own functions, and the one it calls per
+// frame, each take only the handful of arguments that call actually
+// needs.
 type gifWriter struct {
-	profile      Profile
-	canvasPixels int64
-	frames       int
-	sawGCE       bool
+	profile                   Profile
+	canvasWidth, canvasHeight int64
+	delayPixels               int64
+	frames                    int
+	sawGCE                    bool
 }
 
 // writeGIFBlocks copies every extension and image block from pos to
@@ -215,7 +234,7 @@ func writeGIFBlocks(data []byte, pos int, out *bytes.Buffer, w *gifWriter, anima
 			if !w.noteExtension(data, pos) {
 				return nil, false
 			}
-			next, ok := copyGIFExtensionBlock(data, pos, out, w.canvasPixels, animated)
+			next, ok := copyGIFExtensionBlock(data, pos, out, w.delayPixels, animated)
 			if !ok {
 				return nil, false
 			}
@@ -255,27 +274,27 @@ func (w *gifWriter) noteExtension(data []byte, pos int) (ok bool) {
 
 // writeFrame writes the image block at pos to out, first
 // synthesizing a minimal Graphics Control extension ahead of it, at
-// gifMinDelayCS's own floor for w's own canvasPixels, when animated
+// gifMinDelayCS's own floor for w's own delayPixels, when animated
 // is true and none has been seen for this frame yet (see
 // noteExtension): every reader's default delay for a frame missing
 // one is zero, the same unbounded case a sender's own explicit zero
 // already is. It returns the position right after the image block.
 func (w *gifWriter) writeFrame(data []byte, pos int, out *bytes.Buffer, animated bool) (int, bool) {
 	if animated && !w.sawGCE {
-		writeMinimalGraphicsControl(w.canvasPixels, out)
+		writeMinimalGraphicsControl(w.delayPixels, out)
 	}
 	w.sawGCE = false
 
-	return copyGIFImageBlock(data, pos, out, w.profile, &w.frames)
+	return w.copyGIFImageBlock(data, pos, out)
 }
 
 // writeMinimalGraphicsControl writes a Graphics Control extension
 // carrying no transparency or disposal of its own, only
-// gifMinDelayCS's own minimum delay for canvasPixels, for
+// gifMinDelayCS's own minimum delay for delayPixels, for
 // writeGIFBlocks to insert ahead of an animated file's image block
 // that arrived with no Graphics Control extension of its own.
-func writeMinimalGraphicsControl(canvasPixels int64, out *bytes.Buffer) {
-	delay := gifMinDelayCS(0, canvasPixels)
+func writeMinimalGraphicsControl(delayPixels int64, out *bytes.Buffer) {
+	delay := gifMinDelayCS(0, delayPixels)
 	out.Write([]byte{0x21, 0xF9, 4, 0, byte(delay), byte(delay >> 8), 0, 0})
 }
 
@@ -286,7 +305,7 @@ func writeMinimalGraphicsControl(canvasPixels int64, out *bytes.Buffer) {
 // rebuilds it with its own delay time raised to gifMinDelayCS's
 // bound, so a sender's own value, including zero, can never reach
 // AnimatedImage unchanged.
-func copyGIFExtensionBlock(data []byte, pos int, out *bytes.Buffer, canvasPixels int64, animated bool) (int, bool) {
+func copyGIFExtensionBlock(data []byte, pos int, out *bytes.Buffer, delayPixels int64, animated bool) (int, bool) {
 	end, keep, ok := gifExtension(data, pos)
 	if !ok {
 		return 0, false
@@ -296,7 +315,7 @@ func copyGIFExtensionBlock(data []byte, pos int, out *bytes.Buffer, canvasPixels
 	}
 
 	if animated && data[pos+1] == 0xF9 {
-		writeGraphicsControl(data, pos, canvasPixels, out)
+		writeGraphicsControl(data, pos, delayPixels, out)
 		return end, true
 	}
 
@@ -307,17 +326,17 @@ func copyGIFExtensionBlock(data []byte, pos int, out *bytes.Buffer, canvasPixels
 
 // writeGraphicsControl copies the Graphics Control extension at pos
 // to out, with its own delay time raised to gifMinDelayCS's bound for
-// canvasPixels. gifExtension has already confirmed this block is
+// delayPixels. gifExtension has already confirmed this block is
 // exactly one four-byte sub-block followed by the terminator -
 // isCanonicalGraphicsControl's own shape, the only one Qt's reader
 // can ever agree with this package about - so gifSubBlocks cannot
 // fail here and there is always a block to rewrite.
-func writeGraphicsControl(data []byte, pos int, canvasPixels int64, out *bytes.Buffer) {
+func writeGraphicsControl(data []byte, pos int, delayPixels int64, out *bytes.Buffer) {
 	_, blocks, _ := gifSubBlocks(data, pos+2)
 	out.Write(data[pos : pos+2]) // introducer and the 0xF9 label
 
 	block := bytes.Clone(blocks[0])
-	delay := gifMinDelayCS(leUint16(block[1:3]), canvasPixels)
+	delay := gifMinDelayCS(leUint16(block[1:3]), delayPixels)
 	block[1], block[2] = byte(delay), byte(delay>>8)
 
 	out.WriteByte(byte(len(block)))
@@ -326,19 +345,21 @@ func writeGraphicsControl(data []byte, pos int, canvasPixels int64, out *bytes.B
 }
 
 // copyGIFImageBlock copies the image block at pos to out, counts it
-// against frames, and returns the position right after it. ok is
-// false once frames passes gifMaxFrames, the same as any other
-// structural failure.
-func copyGIFImageBlock(data []byte, pos int, out *bytes.Buffer, profile Profile, frames *int) (int, bool) {
-	end, ok := gifImage(data, pos, profile)
+// against w's own frames, and returns the position right after it.
+// ok is false once frames passes gifMaxFrames, the same as any other
+// structural failure. A method on gifWriter, rather than a free
+// function taking profile and the canvas size directly, so it stays
+// within this package's own argument-count limit.
+func (w *gifWriter) copyGIFImageBlock(data []byte, pos int, out *bytes.Buffer) (int, bool) {
+	end, _, ok := gifImage(data, pos, w.profile, w.canvasWidth, w.canvasHeight)
 	if !ok {
 		return 0, false
 	}
 
 	out.Write(data[pos:end])
-	*frames++
+	w.frames++
 
-	return end, *frames <= gifMaxFrames
+	return end, w.frames <= gifMaxFrames
 }
 
 // gifExtension reads the extension block at pos (introducer, label
@@ -400,32 +421,44 @@ func isNetscapeLoop(blocks [][]byte) bool {
 // gifImage reads the image block at pos - its descriptor, local
 // color table if its packed field has one, and its LZW-compressed,
 // sub-block-framed data - checks its own width and height against
-// profile, and returns the position right after it.
-func gifImage(data []byte, pos int, profile Profile) (end int, ok bool) {
+// profile and its own rectangle (left and top position plus that
+// width and height) against the canvas, and returns the position
+// right after it along with its own pixel count (width times height)
+// for countGIFFrames to total and rate against. AnimatedImage decodes
+// whatever a frame itself declares, not just what the canvas does
+// (see docs/decisions.md), so a frame whose rectangle extends past
+// canvasWidth/canvasHeight is refused outright, the same as one whose
+// own size alone already fails profile.
+func gifImage(data []byte, pos int, profile Profile, canvasWidth, canvasHeight int64) (end int, framePixels int64, ok bool) {
 	if pos+10 > len(data) {
-		return 0, false
+		return 0, 0, false
 	}
 
+	left := int64(leUint16(data[pos+1 : pos+3]))
+	top := int64(leUint16(data[pos+3 : pos+5]))
 	width := int64(leUint16(data[pos+5 : pos+7]))
 	height := int64(leUint16(data[pos+7 : pos+9]))
 	if !withinCaps(width, height, profile) {
-		return 0, false
+		return 0, 0, false
+	}
+	if left+width > canvasWidth || top+height > canvasHeight {
+		return 0, 0, false
 	}
 
 	next := pos + 10
 	if packed := data[pos+9]; packed&0x80 != 0 {
 		size := 3 * (1 << ((packed & 0x07) + 1))
 		if next+size > len(data) {
-			return 0, false
+			return 0, 0, false
 		}
 		next += size
 	}
 
 	if next >= len(data) {
-		return 0, false
+		return 0, 0, false
 	}
 	end, _, ok = gifSubBlocks(data, next+1) // skip the LZW minimum code size byte
-	return end, ok
+	return end, width * height, ok
 }
 
 // gifSubBlocks reads the size-prefixed data blocks starting at pos,

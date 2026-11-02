@@ -2,6 +2,7 @@ package imagesafe_test
 
 import (
 	"bytes"
+	"image"
 	"image/gif"
 	"testing"
 
@@ -98,6 +99,47 @@ func TestSanitizeGIF_AnimatedGIFRejectsAPhotoSizedCanvas(t *testing.T) {
 
 	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); ok {
 		t.Fatal("Sanitize() = ok for a 6000x6000 animated GIF canvas, want rejected")
+	}
+}
+
+// TestSanitizeGIF_RejectsFrameExceedingCanvas covers the fix for a
+// frame never checked against the logical screen it is supposed to
+// fit inside: a tiny declared canvas (here 1x1, as small as a real
+// one gets) cannot shrink AnimatedImage's real decode cost just
+// because the frame it actually decodes - still 2048x2048, well
+// within every per-frame cap on its own - is left completely
+// unchecked against that canvas. Before this fix, Sanitize accepted
+// this and rated its delay against the fake 1x1 canvas instead,
+// which is exactly how a sender could make AnimatedImage decode far
+// faster than gifMaxDecodeRate intends.
+func TestSanitizeGIF_RejectsFrameExceedingCanvas(t *testing.T) {
+	src := setGIFDimensions(buildGIF(2048, 2048, 1), 1, 1)
+
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); ok {
+		t.Fatal("Sanitize() = ok for a 2048x2048 frame on a declared 1x1 canvas, want rejected")
+	}
+}
+
+// TestSanitizeGIF_CountsEachFrameOwnSizeForTheTotal covers the other
+// half of the same fix: the total pixel budget is charged by each
+// frame's own real size, not the canvas size repeated once per frame.
+// A keyframe followed by many small delta frames - a real encoder's
+// own way of animating only the part of the canvas that actually
+// changes - decodes far less than canvas-times-frame-count would
+// charge it for, and must be accepted on that real cost.
+func TestSanitizeGIF_CountsEachFrameOwnSizeForTheTotal(t *testing.T) {
+	rects := []image.Rectangle{image.Rect(0, 0, 2000, 2000)} // one full keyframe
+	for range 200 {
+		rects = append(rects, image.Rect(0, 0, 10, 10)) // 200 tiny delta frames
+	}
+	src := buildGIFWithFrameRects(2000, 2000, rects)
+
+	// The old canvas-times-frame-count accounting would have charged
+	// this 2,000,000*201 = 402,000,000 pixels, just over
+	// AnimatedGIF.MaxTotalPixels (400,000,000); its real cost, summing
+	// each frame's own size, is only 2,000,000 + 200*100 = 2,020,000.
+	if _, _, _, ok := imagesafe.Sanitize(src, imagesafe.AnimatedGIF); !ok {
+		t.Fatal("Sanitize() = rejected for a keyframe plus many small delta frames well within the real total pixel budget, want accepted")
 	}
 }
 

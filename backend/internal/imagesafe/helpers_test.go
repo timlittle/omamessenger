@@ -127,6 +127,28 @@ func buildGIFWithDelays(width, height int, delays []int) []byte {
 	return buf.Bytes()
 }
 
+// buildGIFWithFrameRects encodes an animation whose logical screen is
+// canvasWidth by canvasHeight, with one frame per entry in rects, each
+// occupying exactly that rectangle of the canvas - for a test that
+// needs a frame's own size or position to differ from the canvas
+// itself, such as a real encoder's small delta frame covering only
+// the part of the canvas that changed, which buildGIF's own
+// full-canvas frames can never cover.
+func buildGIFWithFrameRects(canvasWidth, canvasHeight int, rects []image.Rectangle) []byte {
+	palette := color.Palette{color.RGBA{R: 255, A: 255}, color.RGBA{B: 255, A: 255}}
+	g := &gif.GIF{
+		LoopCount: 0,
+		Config:    image.Config{ColorModel: palette, Width: canvasWidth, Height: canvasHeight},
+	}
+	for _, r := range rects {
+		g.Image = append(g.Image, image.NewPaletted(r, palette))
+		g.Delay = append(g.Delay, 10)
+	}
+	var buf bytes.Buffer
+	_ = gif.EncodeAll(&buf, g)
+	return buf.Bytes()
+}
+
 // gifFrameDelays returns data's own frame delays, in centiseconds, in
 // order, by decoding it the way AnimatedImage's own GIF reader would.
 func gifFrameDelays(data []byte) ([]int, error) {
