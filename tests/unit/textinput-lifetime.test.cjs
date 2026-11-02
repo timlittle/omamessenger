@@ -287,12 +287,21 @@ test('fieldSelfGated is false when any field in the file is not gated at all', (
 // long as that overlay stays open was still reading every foreign
 // Wayland clipboard offer the whole time, with no size or time limit,
 // through every step the overlay's own Loader has no reason to
-// re-create it for (see docs/decisions.md).
+// re-create it for (see docs/decisions.md). CommandPalette and
+// NewChatDialog were added after a follow-up review found all four of
+// these fields - this pair, plus AccountSetup's and RenameAccount's -
+// still alive for as long as the window itself merely sat open and
+// unfocused (an alt-tab, another window on top): each gained its own
+// inner Loader for the same reason the other two already had one, not
+// only relying on Overlays.qml's own caller-side Loader (see
+// WINDOW_ACTIVE_REQUIRED below and docs/decisions.md).
 const SELF_GATED_FILES = [
   'components/ListColumn.qml',
   'components/Composer.qml',
   'components/AccountSetup.qml',
   'components/RenameAccount.qml',
+  'components/CommandPalette.qml',
+  'components/NewChatDialog.qml',
 ];
 
 test('every field in SELF_GATED_FILES is gated by its own inner Loader, needing no caller-side Loader', () => {
@@ -357,4 +366,72 @@ test('the search field and the composer input gate on actually being edited, not
       `${file}'s field Loader does not gate on ${flag} (an edit-intent flag that only turns true once the user ` +
       `actually asks to type, and false again the moment the field loses focus); found active: ${JSON.stringify(activeBindings)}`);
   }
+});
+
+// WINDOW_ACTIVE_REQUIRED is every file in SELF_GATED_FILES whose own
+// field(s) must prove they do not exist while the window itself is
+// inactive (alt-tab, another window focused) - not just an allow-list
+// of four names, but everything SELF_GATED_FILES holds except the two
+// entries EDIT_INTENT_FLAGS already covers. A Wayland compositor still
+// delivers a clipboard offer to a focused-but-inactive-window
+// TextInput exactly as it does to a merely-visible one, so "gated on
+// being edited" only closes that gap for a field whose own edit-intent
+// flag is itself cleared the moment real activeFocus is lost - which
+// Qt ties to the window being the active one, not just this field
+// having been asked for (Composer's _writingRequested and ListColumn's
+// _editingSearch both clear from the field's own onActiveFocusChanged,
+// so an alt-tab away already destroys them with no extra code) - never
+// for a field whose only gate is "this step/stage is showing" or "the
+// dialog is open", neither of which cares whether the window is
+// focused at all. A fifth or sixth file landing in SELF_GATED_FILES
+// later, for a new overlay, is covered by this the moment it is added
+// there, without this list needing to grow on its own.
+const WINDOW_ACTIVE_REQUIRED = SELF_GATED_FILES.filter((file) => !(file in EDIT_INTENT_FLAGS));
+
+// fieldLoaderActiveBindings returns the `active:` expression of every
+// Loader block in src that itself holds a TextField, TextArea or
+// TextInput - one string per such Loader, in source order - so a file
+// with more than one gated field (AccountSetup has two) is checked
+// one Loader at a time, rather than passing as soon as any one of
+// them happens to mention the right word.
+function fieldLoaderActiveBindings(src) {
+  const found = [];
+  for (const block of loaderBlocks(src)) {
+    FIELD_PATTERN.lastIndex = 0;
+    if (!FIELD_PATTERN.test(block.text)) continue;
+
+    const activeMatch = block.text.match(/\bactive\s*:\s*([^\n;]+)/);
+    found.push(activeMatch ? activeMatch[1].trim() : '');
+  }
+  return found;
+}
+
+test('every self-gated field not covered by an edit-intent flag also gates on windowActive', () => {
+  const offenders = [];
+  for (const file of WINDOW_ACTIVE_REQUIRED) {
+    const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
+    for (const active of fieldLoaderActiveBindings(src)) {
+      if (!active.includes('windowActive')) offenders.push(`${file}: active: ${active || '(none)'}`);
+    }
+  }
+
+  assert.deepEqual(offenders, [],
+    `${offenders.length} field Loader(s) do not gate on windowActive, so the field inside stays alive reading a ` +
+    `foreign Wayland clipboard offer for as long as the window sits open and unfocused:\n  ${offenders.join('\n  ')}`);
+});
+
+test('a deliberately broken expectation is caught for the windowActive requirement', () => {
+  const src = 'Item {\n  Loader {\n    active: root.stage === "x"\n    sourceComponent: TextField {}\n  }\n}\n';
+
+  assert.deepEqual(fieldLoaderActiveBindings(src), ['root.stage === "x"']);
+});
+
+test('fieldLoaderActiveBindings reports one active binding per field-holding Loader, source order preserved', () => {
+  const src = 'Item {\n' +
+    '  Loader {\n    active: root.a && root.windowActive\n    sourceComponent: TextField { id: f1 }\n  }\n' +
+    '  Loader {\n    active: root.b\n    sourceComponent: Rectangle {}\n  }\n' + // no field: skipped
+    '  Loader {\n    active: root.c && root.windowActive\n    sourceComponent: TextArea { id: f2 }\n  }\n' +
+    '}\n';
+
+  assert.deepEqual(fieldLoaderActiveBindings(src), ['root.a && root.windowActive', 'root.c && root.windowActive']);
 });

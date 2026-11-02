@@ -46,6 +46,47 @@ ShellRoot {
     if (!root.checkNextAccountWraps()) return;
     if (!root.checkFitsCard()) return;
 
+    root.beginWindowInactiveCheck();
+  }
+
+  // beginWindowInactiveCheck proves the fix for a follow-up security
+  // review: the search field used to stay alive for as long as the
+  // dialog was open, even with the window itself not the active one
+  // (another window focused, or alt-tabbed away) - the exact "merely
+  // visible" gap already closed for every other field in this UI (see
+  // docs/decisions.md). query is set directly here, as the fixed input
+  // this component takes from its caller (DialogController, in the
+  // real app) - that round trip is DialogController's own job, proven
+  // in tests/qml/Controllers, not this component's - then turning the
+  // window inactive must destroy the field, and turning it active
+  // again must bring it back still seeded from query, with real
+  // keyboard focus restored.
+  function beginWindowInactiveCheck(): void {
+    dialog.query = "looking for someone";
+    const field = Check.find(dialog, "newChatSearchField");
+    if (!field) return Check.fail("the search field does not exist to begin the window-inactive check");
+    if (field.text !== "looking for someone") return Check.fail("the search field did not seed from query: " + JSON.stringify(field.text));
+    field.forceActiveFocus();
+
+    dialog.windowActive = false;
+    if (Check.find(dialog, "newChatSearchField")) return Check.fail("the search field still exists with the window inactive");
+
+    dialog.windowActive = true;
+    // dialog's own onWindowActiveChanged restores focus through
+    // Qt.callLater, exactly as the production code does, so the
+    // deferred check below runs after that same callback has had its
+    // turn.
+    Qt.callLater(root.checkSearchFieldRestoredWithTextAndFocus);
+  }
+
+  // checkSearchFieldRestoredWithTextAndFocus confirms the search field
+  // came back still seeded from query and with real keyboard focus.
+  function checkSearchFieldRestoredWithTextAndFocus(): void {
+    const field = Check.find(dialog, "newChatSearchField");
+    if (!field) return Check.fail("the search field did not come back once the window was active again");
+    if (field.text !== "looking for someone") return Check.fail("the search field's text did not survive: " + JSON.stringify(field.text));
+    if (!field.activeFocus) return Check.fail("the search field did not get focus back once the window was active again");
+
     console.log("PASS NewChatDialog");
     Qt.exit(0);
   }

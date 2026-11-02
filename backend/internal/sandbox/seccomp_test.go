@@ -7,6 +7,7 @@ package sandbox
 // enforcement test in sandbox_test.go (TestRun_SeccompDeniesUnshare).
 
 import (
+	"encoding/binary"
 	"io"
 	"testing"
 
@@ -181,6 +182,115 @@ func TestSeccompInstructions_AllowsOrdinarySyscallsOnTheNativeArch(t *testing.T)
 				t.Errorf("action for %s (nr=%d) = %#x, want ActionAllow (%#x)", name, nr, got, uint32(seccomp.ActionAllow))
 			}
 		})
+	}
+}
+
+// seccompDataPacketWithArg0 extends seccompDataPacket with arg0, the
+// syscall's own first argument - clone's own flags, for this
+// package's tests - written as two big-endian 32-bit halves at the
+// exact byte offsets go-seccomp-bpf's own LdLo/LdHi read on a
+// little-endian machine (argumentOffset=16, low half first then high;
+// see assembler.go), which is what every architecture this helper
+// ships for is. Like seccompDataPacket itself, this layout is only
+// for driving the VM in a test, never written anywhere a real kernel
+// reads from.
+func seccompDataPacketWithArg0(nr int32, archID uint32, arg0 uint64) []byte {
+	buf := seccompDataPacket(nr, archID)
+	binary.BigEndian.PutUint32(buf[16:20], uint32(arg0))
+	binary.BigEndian.PutUint32(buf[20:24], uint32(arg0>>32))
+	return buf
+}
+
+func TestSeccompInstructions_RefusesForkAndVforkOnTheNativeArch(t *testing.T) {
+	t.Parallel()
+
+	native, err := arch.GetInfo("")
+	if err != nil {
+		t.Fatalf("arch.GetInfo() error = %v", err)
+	}
+
+	want := uint32(seccomp.ActionErrno) | errnoEPERM
+
+	for _, name := range processCreationSyscalls {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			nr, ok := native.SyscallNames[name]
+			if !ok {
+				t.Fatalf("native arch %s has no syscall number for %q", native.Name, name)
+			}
+
+			pkt := seccompDataPacket(int32(nr), uint32(native.ID))
+			if got := runSeccompVM(t, pkt); got != want {
+				t.Errorf("action for %s (nr=%d) = %#x, want ActionErrno|EPERM (%#x)", name, nr, got, want)
+			}
+		})
+	}
+}
+
+func TestSeccompInstructions_CloneWithoutThreadFlagIsRefused(t *testing.T) {
+	t.Parallel()
+
+	native, err := arch.GetInfo("")
+	if err != nil {
+		t.Fatalf("arch.GetInfo() error = %v", err)
+	}
+	nr, ok := native.SyscallNames["clone"]
+	if !ok {
+		t.Fatalf("native arch %s has no syscall number for clone", native.Name)
+	}
+
+	// Any flags value at all, as long as cloneThreadFlag's own bit is
+	// clear: fork() and a one-off clone neither ever sets it, and this
+	// filter must refuse both the same way.
+	pkt := seccompDataPacketWithArg0(int32(nr), uint32(native.ID), 0)
+
+	want := uint32(seccomp.ActionErrno) | errnoEPERM
+	if got := runSeccompVM(t, pkt); got != want {
+		t.Errorf("action for clone(flags=0) = %#x, want ActionErrno|EPERM (%#x)", got, want)
+	}
+}
+
+func TestSeccompInstructions_CloneWithThreadFlagIsAllowed(t *testing.T) {
+	t.Parallel()
+
+	native, err := arch.GetInfo("")
+	if err != nil {
+		t.Fatalf("arch.GetInfo() error = %v", err)
+	}
+	nr, ok := native.SyscallNames["clone"]
+	if !ok {
+		t.Fatalf("native arch %s has no syscall number for clone", native.Name)
+	}
+
+	// glibc's own pthread_create also sets further flags alongside
+	// cloneThreadFlag (CLONE_VM, CLONE_SIGHAND and the rest clone(2)
+	// requires to go with it); this only needs the one bit the filter
+	// itself actually checks.
+	pkt := seccompDataPacketWithArg0(int32(nr), uint32(native.ID), cloneThreadFlag)
+
+	if got := runSeccompVM(t, pkt); got != uint32(seccomp.ActionAllow) {
+		t.Errorf("action for clone(flags=CLONE_THREAD) = %#x, want ActionAllow (%#x)", got, uint32(seccomp.ActionAllow))
+	}
+}
+
+func TestSeccompInstructions_Clone3IsRefusedWithENOSYS(t *testing.T) {
+	t.Parallel()
+
+	native, err := arch.GetInfo("")
+	if err != nil {
+		t.Fatalf("arch.GetInfo() error = %v", err)
+	}
+	nr, ok := native.SyscallNames["clone3"]
+	if !ok {
+		t.Fatalf("native arch %s has no syscall number for clone3", native.Name)
+	}
+
+	pkt := seccompDataPacket(int32(nr), uint32(native.ID))
+
+	want := uint32(seccomp.ActionErrno) | errnoENOSYS
+	if got := runSeccompVM(t, pkt); got != want {
+		t.Errorf("action for clone3 = %#x, want ActionErrno|ENOSYS (%#x)", got, want)
 	}
 }
 

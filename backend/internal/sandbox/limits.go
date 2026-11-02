@@ -18,9 +18,29 @@ const workDir = "/work"
 // input, never a path derived from a sender's own file name.
 const InputPath = workDir + "/in"
 
-// OutputDirPath is where Run binds Spec.OutputDir, read-write: the
-// one, fixed location a caller's own Args must name to write output.
+// OutputDirPath is the directory Run binds Spec.Output's one file
+// under, read-write, at that file's own base name: the fixed location
+// a caller's own Args must name to write output. Run mounts a fresh,
+// empty tmpfs here first, bind-mounts the one file into it, and then
+// remounts the tmpfs itself read-only (see bwrapArgs): the file stays
+// writable - that one mount keeps its own read-write flag regardless
+// of what happens to the directory around it - but nothing else is
+// ever creatable, renameable or removable under this path, so a job
+// can reach no file here but the one its caller actually bound.
 const OutputDirPath = workDir + "/out"
+
+// maxTmpBytes bounds the empty tmpfs Run mounts at /tmp (bwrap's own
+// --size, read just before --tmpfs; see argv.go): none of this
+// helper's own fixed ffmpeg arguments ever ask it to write anything
+// there, so this only has to cover whatever a linked library's own
+// startup might still touch - never real output, which OutputDirPath
+// bounds instead. Without a --size, bwrap's own tmpfs defaults to half
+// of this machine's own RAM, counted against no limit above it: a
+// hijacked job could fill that much disk (tmpfs pages are reclaimed
+// from, and swap back to, real storage under memory pressure) well
+// within its own wall-clock timeout. 16 MiB is generous for ordinary
+// startup use while bounding exactly that.
+const maxTmpBytes = 16 << 20
 
 // InputBaseName is the only base name Spec.validate accepts for
 // Spec.Input: a caller places its own file under this name, inside a
@@ -69,29 +89,40 @@ const sandboxLang = "C.UTF-8"
 const maxCoreBytes = 0
 
 // maxCPUSeconds bounds a job's total CPU time across every thread it
-// starts (prlimit --cpu). transcode's own longest-running profile
-// bounds its own wall-clock timeout to 5 minutes at two threads, which
-// at full use of both could reach 600 CPU-seconds; this is 1.5x that,
-// so it should never actually fire before the caller's own context
-// deadline does - it exists only to bound a process still running
-// after that.
+// starts (prlimit --cpu): the kernel charges RLIMIT_CPU to a whole
+// thread group's combined usage, not to each thread separately, and
+// now actually bounds the whole job, not just its first thread -
+// seccomp.go's own process-creation rules refuse every way a job could
+// otherwise split into a second process with a fresh limit of its
+// own, leaving threading (which shares this same total) as the only
+// way left to run anything concurrently at all. transcode's own
+// longest-running profile bounds its own wall-clock timeout to 5
+// minutes at two threads, which at full use of both could reach 600
+// CPU-seconds; this is 1.5x that, so it should never actually fire
+// before the caller's own context deadline does - it exists only to
+// bound a process still running after that.
 const maxCPUSeconds = 900
 
 // maxAddressSpaceBytes bounds a job's total virtual memory (prlimit
-// --as). Arch Linux's ffmpeg package links a large number of optional
-// libraries (CUDA, Vulkan, VapourSynth and others, confirmed from its
-// own -version output) that the dynamic linker maps into the process
-// before a single frame is read, well before any real encode buffer
-// is requested; measured directly, re-encoding a 720x1280 clip with
-// audio at two threads - transcode's own Video profile - failed
-// inside libx264's own allocator under a 2 GiB cap
-// and succeeded under 3 GiB, with or without bwrap, so the cap is not
-// bwrap overhead but this ffmpeg build's own baseline footprint. This
-// is 4 GiB: a full GiB of headroom above the measured 3 GiB success
-// point, generous for every profile transcode runs while still
-// bounding what a crafted file's declared dimensions or bitrate could
-// make an encoder try to allocate beyond that baseline (see
-// docs/decisions.md).
+// --as): shared by every thread a job starts, the same as
+// maxCPUSeconds above, and for the same reason now actually a bound on
+// the whole job rather than just whichever process happens to hold it
+// - a thread cannot have its own address space, by definition, so
+// there is no way left to dodge this one either once seccomp.go's own
+// rules close every way to fork. Arch Linux's ffmpeg package links a
+// large number of optional libraries (CUDA, Vulkan, VapourSynth and
+// others, confirmed from its own -version output) that the dynamic
+// linker maps into the process before a single frame is read, well
+// before any real encode buffer is requested; measured directly,
+// re-encoding a 720x1280 clip with audio at two threads - transcode's
+// own Video profile - failed inside libx264's own allocator under a
+// 2 GiB cap and succeeded under 3 GiB, with or without bwrap, so the
+// cap is not bwrap overhead but this ffmpeg build's own baseline
+// footprint. This is 4 GiB: a full GiB of headroom above the measured
+// 3 GiB success point, generous for every profile transcode runs
+// while still bounding what a crafted file's declared dimensions or
+// bitrate could make an encoder try to allocate beyond that baseline
+// (see docs/decisions.md).
 const maxAddressSpaceBytes = 4 << 30
 
 // maxOutputFileBytes bounds how large any single file a job writes

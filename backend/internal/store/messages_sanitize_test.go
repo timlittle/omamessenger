@@ -104,6 +104,65 @@ func TestMessage_CapsAStoredOversizedMediaURLOnRead(t *testing.T) {
 	}
 }
 
+// TestMessage_CapsAStoredOversizedMentionUserIDOnRead confirms a
+// mention's own UserID, stored uncapped by a release before
+// domain.MaxRemoteIDLength existed, is cleared on every read, the same
+// legacy-row repair scanMessage already gives a stored reaction chip
+// or link preview URL: a truncated id could read as a different,
+// shorter real one it was never actually sent as, so it must be
+// cleared outright, never shortened.
+func TestMessage_CapsAStoredOversizedMentionUserIDOnRead(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	huge := strings.Repeat("9", domain.MaxRemoteIDLength+1) + "@s.whatsapp.net"
+	addMessages(t, s, domain.Message{
+		ID: "huge-mention", ConversationID: "chat", Text: "@x", Created: 1,
+		Mentions: []domain.Mention{{UserID: huge, Name: "x", Offset: 0, Length: 2}},
+	})
+
+	got, err := s.Message(ctx, "huge-mention")
+	if err != nil {
+		t.Fatalf("Message: %v", err)
+	}
+	if len(got.Mentions) != 1 {
+		t.Fatalf("Mentions = %+v, want the one mention kept", got.Mentions)
+	}
+	if got.Mentions[0].UserID != "" {
+		t.Errorf("Mentions[0].UserID = %q, want it dropped", got.Mentions[0].UserID)
+	}
+}
+
+// TestMessage_CapsAStoredOversizedReplyRemoteIDOnRead confirms a reply
+// quote's own RemoteID, stored uncapped by a release before
+// domain.MaxRemoteIDLength existed, is cleared on every read, the same
+// legacy-row repair scanMessage already gives a stored reply SenderName.
+func TestMessage_CapsAStoredOversizedReplyRemoteIDOnRead(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	huge := strings.Repeat("r", domain.MaxRemoteIDLength+1)
+	addMessages(t, s, domain.Message{
+		ID: "huge-reply", ConversationID: "chat", Text: "hi", Created: 1,
+		ReplyTo: &domain.Reply{RemoteID: huge, SenderName: "Quoted", Text: "quoted"},
+	})
+
+	got, err := s.Message(ctx, "huge-reply")
+	if err != nil {
+		t.Fatalf("Message: %v", err)
+	}
+	if got.ReplyTo == nil || got.ReplyTo.RemoteID != "" {
+		t.Errorf("ReplyTo.RemoteID = %+v, want it dropped", got.ReplyTo)
+	}
+	if got.ReplyTo.SenderName != "Quoted" {
+		t.Errorf("ReplyTo.SenderName = %q, want it untouched", got.ReplyTo.SenderName)
+	}
+}
+
 // TestMessage_TruncatesStoredTextOnRead confirms a message's own text,
 // stored longer than domain.MaxIncomingTextLength by a release before
 // that cap existed, is truncated on every read: the one unbounded

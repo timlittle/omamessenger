@@ -30,6 +30,15 @@ Item {
   // routeKey is the panel's key router, so the palette's keys work while
   // the search field has focus.
   property var routeKey: null
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. The search field exists only while this and open are
+  // both true (see fieldLoader below): a field merely visible while the
+  // window sits unfocused in the background - alt-tabbed away - is
+  // still a live sink for a foreign Wayland clipboard offer, with no
+  // size or time limit (see docs/decisions.md). Defaults true so a
+  // caller or test that never sets it (tests/qml/FieldPaste, say) keeps
+  // the field exactly as it was before this existed.
+  property bool windowActive: true
 
   // queryEdited reports the search text as it is typed.
   signal queryEdited(string text)
@@ -38,27 +47,48 @@ Item {
   // cancelled closes the palette.
   signal cancelled()
 
-  // focusInput puts keyboard focus in the search field.
+  // _query is the field's own typed text, kept here rather than only in
+  // the field itself: fieldLoader below destroys and recreates it
+  // across a window-focus blip, so something outside it has to be the
+  // value's real home, the same reasoning Composer.qml's own text
+  // documents. It always starts "" since a fresh palette session (a new
+  // instance - see Overlays.qml) always starts with nothing typed.
+  property string _query: ""
+  // _fieldHadFocus is true from the moment the real field last gained
+  // activeFocus until it loses it for a reason other than the window
+  // itself going inactive (a real blur: Escape, Tab, a click
+  // elsewhere) - see the field's own onActiveFocusChanged below.
+  // windowActive turning true again only puts focus back in the field
+  // while this is also true, rather than stealing it from whatever the
+  // user had instead moved it to before switching away.
+  property bool _fieldHadFocus: false
+  // _fieldHeight remembers the search field's own implicitHeight the
+  // last time it existed, so the card's own height stays stable across
+  // a window-focus blip destroying and recreating it: fieldLoader.item
+  // itself is null for exactly that gap.
+  property real _fieldHeight: 0
+  // field exposes the loaded search field itself, or null while the
+  // window is inactive and it does not exist. A plain var, not an
+  // alias, since the Loader's own item has no declared type for a
+  // static checker to verify members against (the same reasoning
+  // VoiceNoteController's own `_engine` documents).
+  property var field: fieldLoader.item
+
+  // focusInput puts keyboard focus in the search field, if it exists.
   function focusInput(): void {
-    field.forceActiveFocus();
+    if (root.field) root.field.forceActiveFocus();
   }
 
   objectName: "commandPalette"
   anchors.fill: parent
   visible: root.open
-  onOpenChanged: {
-    if (!root.open) return;
-
-    field.text = "";
-    root.focusInput();
-  }
-  // The palette is only ever instantiated while open (see Overlays.qml,
-  // which destroys it on close instead of just hiding it, so its field
-  // cannot read the clipboard while hidden): onOpenChanged above only
-  // fires on a later toggle, never for the value a binding already had
-  // when this object was created, so this is what actually focuses the
-  // field the first time.
-  Component.onCompleted: if (root.open) root.focusInput();
+  // Regaining the window's focus brings the field back only if it was
+  // the thing actually focused when that focus was lost; see
+  // _fieldHadFocus above. Deferred with Qt.callLater, so by the time
+  // this runs, fieldLoader's own active binding has already recreated
+  // the item this focuses (see AccountSetup.qml's own _focusStep for
+  // the same reasoning).
+  onWindowActiveChanged: if (root.windowActive && root._fieldHadFocus) Qt.callLater(root.focusInput);
 
   // Near the top of the window, like Telescope or Alfred, so the list has
   // room to grow downwards.
@@ -66,7 +96,7 @@ Item {
     id: modal
 
     cardWidth: Style.space(640)
-    cardHeight: field.implicitHeight + list.contentHeight + Theme.spacing.md + modal.verticalInsets
+    cardHeight: root._fieldHeight + list.contentHeight + Theme.spacing.md + modal.verticalInsets
     atTop: true
     onOutsideClicked: root.cancelled()
 
@@ -74,38 +104,64 @@ Item {
       anchors.fill: parent
       spacing: Theme.spacing.md
 
-      Ui.TextField {
-        id: field
+      // The search field is destroyed, not merely hidden, exactly while
+      // the window is inactive: a merely-visible, unfocused TextField
+      // still reads every foreign Wayland clipboard offer, with no size
+      // or time limit, for however long an alt-tab lasts (see
+      // windowActive above and docs/decisions.md). _query is what the
+      // field is seeded from and mirrors every keystroke into, so
+      // recreating it on return loses nothing the user typed.
+      Loader {
+        id: fieldLoader
 
-        objectName: "paletteField"
         Layout.fillWidth: true
-        placeholderText: root.placeholder
-        maximumLength: Limits.PALETTE_QUERY
-        // Qt's own right-click "Paste" menu would read the clipboard
-        // in-process, with no size or time limit of its own; routeKey
-        // above already routes Ctrl+V and Shift+Insert through the
-        // helper's bounded clipboard.readText instead (see
-        // docs/decisions.md), so this menu is removed outright rather
-        // than left to offer the one path around that.
-        ContextMenu.menu: null
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: event => {
-          // Qt's own paste shortcut is more than Ctrl+V and Shift+Insert
-          // (Ctrl+Shift+Insert and the dedicated Paste key on some
-          // themes too); catching it here, ahead of the binding lookup
-          // routeKey does below, means a rebound field.paste in
-          // keys.conf still can never bring back this field's own
-          // unbounded native paste() (see docs/decisions.md).
-          if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
-            if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
-            event.accepted = true;
-            return;
-          }
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true;
+        active: root.open && root.windowActive
+        onLoaded: {
+          root._fieldHeight = root.field.implicitHeight;
+          if (root.open) root.field.forceActiveFocus();
         }
-        onTextChanged: root.queryEdited(text)
 
-        MiddleClickGuard {}
+        sourceComponent: Ui.TextField {
+          objectName: "paletteField"
+          text: root._query
+          placeholderText: root.placeholder
+          maximumLength: Limits.PALETTE_QUERY
+          // Qt's own right-click "Paste" menu would read the clipboard
+          // in-process, with no size or time limit of its own; routeKey
+          // above already routes Ctrl+V and Shift+Insert through the
+          // helper's bounded clipboard.readText instead (see
+          // docs/decisions.md), so this menu is removed outright rather
+          // than left to offer the one path around that.
+          ContextMenu.menu: null
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: event => {
+            // Qt's own paste shortcut is more than Ctrl+V and Shift+Insert
+            // (Ctrl+Shift+Insert and the dedicated Paste key on some
+            // themes too); catching it here, ahead of the binding lookup
+            // routeKey does below, means a rebound field.paste in
+            // keys.conf still can never bring back this field's own
+            // unbounded native paste() (see docs/decisions.md).
+            if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+              if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
+              event.accepted = true;
+              return;
+            }
+            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true;
+          }
+          onTextChanged: { root._query = text; root.queryEdited(text); }
+          // Losing focus because the window itself went inactive is not
+          // a real blur: root.windowActive is already false by the time
+          // this runs, since that is what emptied fieldLoader.active in
+          // the first place, so _fieldHadFocus is left alone for that
+          // case and only cleared for an actual Escape, Tab or outside
+          // click.
+          onActiveFocusChanged: {
+            if (activeFocus) { root._fieldHadFocus = true; return; }
+            if (root.windowActive) root._fieldHadFocus = false;
+          }
+
+          MiddleClickGuard {}
+        }
       }
 
       ListView {

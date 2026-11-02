@@ -47,6 +47,15 @@ Item {
   // it; see Composer.qml for why this is a function property, not a
   // signal.
   property var routeKey: null
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. The alias field exists only while this is also true
+  // (see aliasLoader below): a field merely visible while the window
+  // sits unfocused in the background - alt-tabbed away - is still a
+  // live sink for a foreign Wayland clipboard offer, with no size or
+  // time limit (see docs/decisions.md). Defaults true so a caller or
+  // test that never sets it keeps the field exactly as it was before
+  // this existed.
+  property bool windowActive: true
 
   // chosen reports the account picked to rename.
   signal chosen(string accountId)
@@ -60,6 +69,25 @@ Item {
   // has no declared type for qmllint to check members against (the
   // same reasoning Composer.qml's own `input` property documents).
   property var _alias: aliasLoader.item
+  // _aliasDraft is the field's own typed text, kept here rather than
+  // only in the field itself: aliasLoader below destroys and recreates
+  // it across a window-focus blip, so something outside it has to be
+  // the value's real home, the same reasoning Composer.qml's own text
+  // documents. Bound to currentAlias as a plain default rather than a
+  // reset elsewhere: this component is itself recreated fresh for every
+  // rename session (see Overlays.qml), and currentAlias never changes
+  // again once that session starts, so the first keystroke severing
+  // this binding (an ordinary QML binding, broken by assignment) never
+  // loses a later prefill there was none of.
+  property string _aliasDraft: root.currentAlias
+  // _aliasHadFocus is true from the moment the real field last gained
+  // activeFocus until it loses it for a reason other than the window
+  // itself going inactive (a real blur: Tab, a click elsewhere) - see
+  // the field's own onActiveFocusChanged below. windowActive turning
+  // true again only restores focus to the field while this is also
+  // true, rather than stealing it from whatever the user had instead
+  // moved it to (Cancel or Save) before switching away.
+  property bool _aliasHadFocus: false
 
   objectName: "renameAccount"
   anchors.fill: parent
@@ -69,6 +97,10 @@ Item {
   // already created the field this focuses.
   onStageChanged: if (root.stage === "alias") Qt.callLater(() => { if (root._alias) root._alias.forceActiveFocus() })
   onOpenChanged: if (root.open && root.stage === "alias") Qt.callLater(() => { if (root._alias) root._alias.forceActiveFocus() })
+  // Regaining the window's focus brings the field back only if it was
+  // the thing actually focused when that focus was lost; see
+  // _aliasHadFocus above.
+  onWindowActiveChanged: if (root.windowActive && root._aliasHadFocus) Qt.callLater(() => { if (root._alias) root._alias.forceActiveFocus() })
 
   ChoiceDialog {
     id: chooser
@@ -121,21 +153,26 @@ Item {
       }
 
       // aliasLoader holds the alias field, active only at the alias
-      // step: a field merely hidden with `visible:` is still a live Qt
-      // object that keeps reading every foreign Wayland clipboard
-      // offer, with no size or time limit, through the choose step too
-      // (see docs/decisions.md), so it must actually be destroyed
-      // while this dialog is picking which account to rename, not just
-      // hidden behind ChoiceDialog.
+      // step and only while the window is active (see windowActive
+      // above): a field merely hidden with `visible:`, or merely
+      // visible while the window sits unfocused in the background, is
+      // still a live Qt object that keeps reading every foreign Wayland
+      // clipboard offer, with no size or time limit, through the choose
+      // step too or through an alt-tab (see docs/decisions.md), so it
+      // must actually be destroyed while this dialog is picking which
+      // account to rename, not just hidden behind ChoiceDialog.
+      // _aliasDraft is what the field is seeded from and mirrors every
+      // keystroke into, so recreating it on return from an alt-tab
+      // loses nothing the user typed.
       Loader {
         id: aliasLoader
         Layout.fillWidth: true
-        active: root.open && root.stage === "alias"
+        active: root.open && root.stage === "alias" && root.windowActive
 
         sourceComponent: Ui.TextField {
           id: aliasFieldInner
           objectName: "aliasField"
-          text: root.currentAlias
+          text: root._aliasDraft
           placeholderText: "e.g. Personal WhatsApp"
           maximumLength: Limits.ACCOUNT_ALIAS
           // Qt's own right-click "Paste" menu would read the clipboard
@@ -158,7 +195,18 @@ Item {
             }
             if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
           }
-          onAccepted: root.submitted(text.trim())
+          onAccepted: root.submitted(root._aliasDraft.trim())
+          onTextChanged: root._aliasDraft = text
+          // Losing focus because the window itself went inactive is not
+          // a real blur: root.windowActive is already false by the time
+          // this runs, since that is what emptied aliasLoader.active in
+          // the first place, so _aliasHadFocus is left alone for that
+          // case and only cleared for an actual Tab or a click
+          // elsewhere.
+          onActiveFocusChanged: {
+            if (activeFocus) { root._aliasHadFocus = true; return; }
+            if (root.windowActive) root._aliasHadFocus = false;
+          }
 
           MiddleClickGuard {}
         }
@@ -190,7 +238,7 @@ Item {
           text: "Save"
           focusable: true
           selected: true
-          onClicked: root.submitted(root._alias ? root._alias.text.trim() : "")
+          onClicked: root.submitted(root._aliasDraft.trim())
         }
       }
     }

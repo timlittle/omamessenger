@@ -15,7 +15,7 @@ import (
 func TestAnimation_Args(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, false)}
+	fake := &fakeRunner{writeOutput: true, writeOutputData: validMP4Bytes(t, false)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()
@@ -84,7 +84,7 @@ func TestAnimation_RealEncode_AnimatedWebP(t *testing.T) {
 func TestAnimation_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, false)}
+	fake := &fakeRunner{writeOutput: true, writeOutputData: validMP4Bytes(t, false)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()

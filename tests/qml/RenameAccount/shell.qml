@@ -86,7 +86,7 @@ ShellRoot {
     if (!root.checkCancellingTheChooserSendsNothing()) return;
     if (!root.checkRemovingTheAccountClosesItsRenameDialog()) return;
 
-    stepper.pass();
+    root.beginWindowInactiveCheck();
   }
 
   // checkDoesNothingWithNoAccounts proves "Rename account" is a no-op
@@ -213,5 +213,50 @@ ShellRoot {
     if (controller.renaming) return Check.fail("rename dialog still open after its account was removed");
 
     return true;
+  }
+
+  // beginWindowInactiveCheck proves the fix for a follow-up security
+  // review: the alias field used to stay alive for as long as the
+  // alias step was showing, even with the window itself not the active
+  // one (another window focused, or alt-tabbed away) - the exact
+  // "merely visible" gap already closed for every other field in this
+  // UI (see docs/decisions.md). Opens a fresh rename, picks the first
+  // account the same way checkChoosesThenSaves does, types a
+  // replacement alias, then proves turning the window inactive
+  // destroys the field and turning it active again restores both the
+  // typed text and real keyboard focus.
+  function beginWindowInactiveCheck(): void {
+    service.requests = [];
+    controller.run("account.rename");
+    if (view.stage !== "choose") return Check.fail("expected the chooser to start the window-inactive check");
+
+    controller.run("rename.down");
+    controller.run("rename.accept");
+    if (view.stage !== "alias") return Check.fail("did not reach the alias field for the window-inactive check");
+
+    Check.find(view, "aliasField").text = "Renamed while testing";
+
+    view.windowActive = false;
+    if (Check.find(view, "aliasField")) return Check.fail("the alias field still exists with the window inactive");
+
+    view.windowActive = true;
+    // view's own onWindowActiveChanged restores focus through
+    // Qt.callLater, exactly as the production code does, so the
+    // deferred check below runs after that same callback has had its
+    // turn - the one thing nothing earlier in this file needed to wait
+    // for, since nothing earlier asserted on real focus.
+    Qt.callLater(root.checkAliasFieldRestoredWithTextAndFocus);
+  }
+
+  // checkAliasFieldRestoredWithTextAndFocus confirms the alias field
+  // came back with exactly the text it held before the window went
+  // inactive, and with real keyboard focus.
+  function checkAliasFieldRestoredWithTextAndFocus(): void {
+    const field = Check.find(view, "aliasField");
+    if (!field) return Check.fail("the alias field did not come back once the window was active again");
+    if (field.text !== "Renamed while testing") return Check.fail("the alias field's text did not survive: " + JSON.stringify(field.text));
+    if (!field.activeFocus) return Check.fail("the alias field did not get focus back once the window was active again");
+
+    stepper.pass();
   }
 }

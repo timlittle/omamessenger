@@ -7,6 +7,8 @@ package sandbox_test
 // here rather than reporting what they found.
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/sandbox"
@@ -23,4 +25,19 @@ func requireSandbox(t *testing.T, binary string) *sandbox.Runner {
 	}
 
 	return r
+}
+
+// mustOutputFile creates an empty file inside a fresh temporary
+// directory and returns its path: sandbox.Spec.Output must already
+// exist before Run can bind it, the same way a real caller - such as
+// transcode's own joboutput.go - always creates it first.
+func mustOutputFile(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "out")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("creating fixture output file: %v", err)
+	}
+
+	return path
 }

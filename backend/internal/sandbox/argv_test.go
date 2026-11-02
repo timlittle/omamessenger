@@ -16,10 +16,10 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 	t.Parallel()
 
 	spec := Spec{
-		Binary:    "/usr/bin/ffmpeg",
-		Args:      []string{"-i", InputPath, OutputDirPath + "/out.mp4"},
-		Input:     "/host/in.mp4",
-		OutputDir: "/host/out",
+		Binary: "/usr/bin/ffmpeg",
+		Args:   []string{"-i", InputPath, OutputDirPath + "/out.mp4"},
+		Input:  "/host/in.mp4",
+		Output: "/host/out/out.mp4",
 	}
 
 	name, args := buildArgv(spec, "/usr/bin/bwrap", "/usr/bin/prlimit", "/usr/bin/env")
@@ -41,9 +41,11 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 		"--symlink", "usr/bin", "/bin",
 		"--proc", "/proc",
 		"--dev", "/dev",
-		"--tmpfs", "/tmp",
+		"--size", "16777216", "--tmpfs", "/tmp",
 		"--ro-bind", "/host/in.mp4", "/work/in",
-		"--bind", "/host/out", "/work/out",
+		"--tmpfs", "/work/out",
+		"--bind", "/host/out/out.mp4", "/work/out/out.mp4",
+		"--remount-ro", "/work/out",
 		"--unshare-all",
 		"--unshare-user",
 		"--disable-userns",
@@ -67,7 +69,7 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 func TestBwrapArgs_OmitsInputBindWhenNoneGiven(t *testing.T) {
 	t.Parallel()
 
-	args := bwrapArgs(Spec{Binary: "/usr/bin/true", OutputDir: "/host/out"})
+	args := bwrapArgs(Spec{Binary: "/usr/bin/true", Output: "/host/out/out.bin"})
 
 	// --ro-bind itself still appears once, for the base /usr mount
 	// every job gets; what must be absent is InputPath, which only a
@@ -76,14 +78,14 @@ func TestBwrapArgs_OmitsInputBindWhenNoneGiven(t *testing.T) {
 		t.Fatalf("args contains %q with no Input set: %q", InputPath, args)
 	}
 	if !slices.Contains(args, "--bind") {
-		t.Fatalf("args missing --bind for OutputDir: %q", args)
+		t.Fatalf("args missing --bind for Output: %q", args)
 	}
 }
 
 func TestBwrapArgs_BindsInputWhenGiven(t *testing.T) {
 	t.Parallel()
 
-	args := bwrapArgs(Spec{Binary: "/usr/bin/true", Input: "/host/in", OutputDir: "/host/out"})
+	args := bwrapArgs(Spec{Binary: "/usr/bin/true", Input: "/host/in", Output: "/host/out/out.bin"})
 
 	// Find InputPath itself, then check the two arguments right
 	// before it: the base /usr mount also uses --ro-bind, so this
@@ -95,6 +97,33 @@ func TestBwrapArgs_BindsInputWhenGiven(t *testing.T) {
 	}
 }
 
+func TestBwrapArgs_BindsOutputAsASingleFileUnderAReadOnlyParent(t *testing.T) {
+	t.Parallel()
+
+	args := bwrapArgs(Spec{Binary: "/usr/bin/true", Output: "/host/job/out.mp4"})
+
+	// The three flags that make OutputDirPath hold nothing but the one
+	// bound file (see bwrapArgs' own doc comment): a fresh tmpfs, the
+	// file itself bound in at its own base name, then that tmpfs
+	// remounted read-only - in that exact order, since binding the
+	// file before the tmpfs exists, or remounting read-only before the
+	// bind, would not do what the comment says it does.
+	want := []string{
+		"--tmpfs", OutputDirPath,
+		"--bind", "/host/job/out.mp4", OutputDirPath + "/out.mp4",
+		"--remount-ro", OutputDirPath,
+	}
+
+	// OutputDirPath itself appears nowhere else in this spec's own
+	// args (the bind target is OutputDirPath plus a suffix, a
+	// different string), so its first occurrence is exactly where
+	// "--tmpfs" introduces it.
+	i := slices.Index(args, OutputDirPath)
+	if i < 1 || args[i-1] != "--tmpfs" || i-1+len(want) > len(args) || !slices.Equal(args[i-1:i-1+len(want)], want) {
+		t.Fatalf("args = %q, want to contain %q in order", args, want)
+	}
+}
+
 func TestSpecValidate(t *testing.T) {
 	t.Parallel()
 
@@ -103,29 +132,29 @@ func TestSpecValidate(t *testing.T) {
 		wantErr bool
 	}{
 		"valid": {
-			spec: Spec{Binary: "/usr/bin/ffmpeg", OutputDir: "/host/out"},
+			spec: Spec{Binary: "/usr/bin/ffmpeg", Output: "/host/out/out.mp4"},
 		},
 		"missing binary": {
-			spec:    Spec{OutputDir: "/host/out"},
+			spec:    Spec{Output: "/host/out/out.mp4"},
 			wantErr: true,
 		},
 		"relative binary": {
-			spec:    Spec{Binary: "ffmpeg", OutputDir: "/host/out"},
+			spec:    Spec{Binary: "ffmpeg", Output: "/host/out/out.mp4"},
 			wantErr: true,
 		},
-		"missing output dir": {
+		"missing output": {
 			spec:    Spec{Binary: "/usr/bin/ffmpeg"},
 			wantErr: true,
 		},
 		"input named InputBaseName is fine": {
-			spec: Spec{Binary: "/usr/bin/ffmpeg", OutputDir: "/host/out", Input: "/host/job/" + InputBaseName},
+			spec: Spec{Binary: "/usr/bin/ffmpeg", Output: "/host/out/out.mp4", Input: "/host/job/" + InputBaseName},
 		},
 		"input not named InputBaseName": {
 			// A caller's own file name reaching this field at all is
 			// exactly the mistake validate exists to catch: bwrap's own
 			// argv would otherwise carry it (see Spec's own doc
 			// comment).
-			spec:    Spec{Binary: "/usr/bin/ffmpeg", OutputDir: "/host/out", Input: "/host/attachment-original-name.mp4"},
+			spec:    Spec{Binary: "/usr/bin/ffmpeg", Output: "/host/out/out.mp4", Input: "/host/attachment-original-name.mp4"},
 			wantErr: true,
 		},
 	}
