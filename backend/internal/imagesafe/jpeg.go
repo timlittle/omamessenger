@@ -223,40 +223,64 @@ func copyJPEGRemainder(data []byte, pos int, out *bytes.Buffer) bool {
 
 		next += pos
 		out.Write(data[pos : next+1])
-		pos = next + 1
 
-		for pos < len(data) && data[pos] == 0xFF {
-			fillBytes++
-			if fillBytes > jpegMaxFillBytes {
-				return false
-			}
-			pos++
-		}
-		if pos >= len(data) {
+		following, newPos, ok := skipJPEGFillBytes(data, next+1, &fillBytes)
+		if !ok {
 			return false
 		}
-
-		following := data[pos]
+		pos = newPos
 		out.WriteByte(following)
-		pos++
 
-		switch following {
-		case 0xD9: // EOI
+		if following == 0xD9 { // EOI
 			return true
-		case 0xDA: // SOS: another scan
-			scans++
-			if scans > jpegMaxScans {
-				return false
-			}
-		case 0xC4, 0xDB: // DHT, DQT
-			tableSegments++
-			if tableSegments > jpegMaxRepeatedTableSegments {
-				return false
-			}
+		}
+		if !countJPEGRepeatedMarker(following, &scans, &tableSegments) {
+			return false
 		}
 	}
 
 	return false
+}
+
+// skipJPEGFillBytes skips any run of 0xFF fill bytes in data starting
+// at pos - the JPEG spec's own allowance for any number of them to
+// precede a marker, which libjpeg-turbo's next_marker skips the same
+// way - counting them against *fillBytes, shared across
+// copyJPEGRemainder's whole walk (see jpegMaxFillBytes). It returns
+// the first non-fill byte found, the real marker code, and the
+// position right after it; ok is false once *fillBytes exceeds
+// jpegMaxFillBytes or data runs out before a marker code is found.
+func skipJPEGFillBytes(data []byte, pos int, fillBytes *int) (marker byte, next int, ok bool) {
+	for pos < len(data) && data[pos] == 0xFF {
+		*fillBytes++
+		if *fillBytes > jpegMaxFillBytes {
+			return 0, 0, false
+		}
+		pos++
+	}
+	if pos >= len(data) {
+		return 0, 0, false
+	}
+
+	return data[pos], pos + 1, true
+}
+
+// countJPEGRepeatedMarker counts marker against *scans or
+// *tableSegments when it is a start-of-scan (SOS), DHT or DQT marker,
+// and reports whether the matching count is still within its own cap
+// (see jpegMaxScans and jpegMaxRepeatedTableSegments). Any other
+// marker is not this function's concern and always reports true.
+func countJPEGRepeatedMarker(marker byte, scans, tableSegments *int) bool {
+	switch marker {
+	case 0xDA: // SOS: another scan
+		*scans++
+		return *scans <= jpegMaxScans
+	case 0xC4, 0xDB: // DHT, DQT
+		*tableSegments++
+		return *tableSegments <= jpegMaxRepeatedTableSegments
+	default:
+		return true
+	}
 }
 
 // finishJPEG confirms out still decodes, and to the same dimensions
