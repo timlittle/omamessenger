@@ -40,6 +40,17 @@ const bitsPerSamplePCM16 = 16
 // muxer needs at most one or two.
 const wavMaxSkippedChunks = 4
 
+// maxFMTChunkBody bounds a fmt chunk's own declared size, checked
+// before parseFMTChunk allocates a buffer for it: a canonical PCM fmt
+// chunk is exactly 16 bytes, and even the cbSize extension some
+// encoders add stays far under this. Without this cap, the chunk
+// header's own 32-bit size field - read from the file, not yet
+// validated at all - would size that allocation directly, so a WAV a
+// few dozen bytes long could claim a fmt chunk approaching 4 GiB and
+// make this package allocate that much before ever reading a single
+// byte of it.
+const maxFMTChunkBody = 64
+
 // wavSkippableChunkIDs are the only chunk kinds rebuildWAV will skip
 // over on its way to data: both harmless and informational.
 // Anything else - a second data chunk, or a chunk this package has
@@ -117,7 +128,7 @@ func checkWAVData(f io.Seeker, fileSize int64, format pcmFormat, dataLen int64, 
 // its chunks (see findDataChunk) to find and validate fmt and locate
 // data. f is left positioned at the first byte of the data chunk's
 // own samples.
-func readWAVHeader(f io.Reader, wantSampleRate int) (pcmFormat, int64, error) {
+func readWAVHeader(f io.ReadSeeker, wantSampleRate int) (pcmFormat, int64, error) {
 	if err := readMagic(f, "RIFF"); err != nil {
 		return pcmFormat{}, 0, err
 	}
@@ -143,7 +154,7 @@ type wavChunkScanner struct {
 // (dataLen, true, nil) once data is found, (0, false, nil) to keep
 // reading, or a non-nil error for anything findDataChunk must refuse
 // or could not read.
-func (s *wavChunkScanner) handle(f io.Reader, header wavChunkHeader, wantSampleRate int) (int64, bool, error) {
+func (s *wavChunkScanner) handle(f io.ReadSeeker, header wavChunkHeader, wantSampleRate int) (int64, bool, error) {
 	switch {
 	case header.id == "fmt ":
 		format, err := parseFMTChunk(f, header.size, wantSampleRate)
@@ -175,7 +186,7 @@ func (s *wavChunkScanner) handle(f io.Reader, header wavChunkHeader, wantSampleR
 // chunk it is not already willing to skip (see wavSkippableChunkIDs),
 // so a crafted file cannot hide a second data chunk, or anything
 // else, behind a chunk kind this package has no reason to ever see.
-func findDataChunk(f io.Reader, wantSampleRate int) (pcmFormat, int64, error) {
+func findDataChunk(f io.ReadSeeker, wantSampleRate int) (pcmFormat, int64, error) {
 	scanner := &wavChunkScanner{}
 	for {
 		header, err := readChunkHeader(f)
@@ -222,6 +233,9 @@ func readChunkHeader(f io.Reader) (wavChunkHeader, error) {
 func parseFMTChunk(f io.Reader, size int64, wantSampleRate int) (pcmFormat, error) {
 	if size < 16 {
 		return pcmFormat{}, fmt.Errorf("%w: fmt chunk is %d bytes, want at least 16", ErrFailed, size)
+	}
+	if size > maxFMTChunkBody {
+		return pcmFormat{}, fmt.Errorf("%w: fmt chunk is %d bytes, more than %d allowed", ErrFailed, size, maxFMTChunkBody)
 	}
 
 	body := make([]byte, size)
@@ -295,13 +309,25 @@ func skipPad(f io.Reader, size int64) error {
 	return nil
 }
 
-// skipChunk discards size bytes (plus padding) of a chunk this
-// package recognises as harmless but has no use for.
-func skipChunk(f io.Reader, size int64) error {
-	if _, err := io.CopyN(io.Discard, f, size); err != nil {
+// skipChunk moves f past size bytes (plus the pad byte an odd size
+// carries) of a chunk this package recognises as harmless but has no
+// use for, by seeking rather than reading: size comes straight from
+// the file, unvalidated, and a crafted chunk could declare it
+// anywhere up to 4 GiB, so reading and discarding that many bytes -
+// even into io.Discard, which needs no buffer of its own - would
+// still cost this package a read of every one of them. Seeking costs
+// nothing regardless of how large size claims to be; a size that
+// overruns the file is instead caught the moment the next read
+// (ordinarily the following chunk's own header) comes up short.
+func skipChunk(f io.Seeker, size int64) error {
+	skip := size
+	if size%2 != 0 {
+		skip++ // the chunk's own pad byte, word-aligning the next chunk header
+	}
+	if _, err := f.Seek(skip, io.SeekCurrent); err != nil {
 		return fmt.Errorf("%w: skipping chunk: %w", ErrFailed, err)
 	}
-	return skipPad(f, size)
+	return nil
 }
 
 // wavHeader builds the canonical 44-byte PCM header for format and

@@ -291,25 +291,114 @@ func TestWriteWAV_AlreadyExists(t *testing.T) {
 	}
 }
 
-func TestSkipChunk_Truncated(t *testing.T) {
+func TestSkipChunk_SeekError(t *testing.T) {
 	t.Parallel()
 
-	err := skipChunk(strings.NewReader("short"), 100)
+	err := skipChunk(failingSeeker{}, 100)
 	if !errors.Is(err, ErrFailed) {
 		t.Fatalf("skipChunk() error = %v, want %v", err, ErrFailed)
 	}
 }
 
-func TestSkipChunk_PadTruncated(t *testing.T) {
+func TestSkipChunk_SeeksPastSizePlusPad(t *testing.T) {
 	t.Parallel()
 
-	// An odd-sized chunk whose body reads cleanly but whose single
-	// pad byte is then missing: skipChunk's own call to skipPad must
-	// still report the truncation.
-	err := skipChunk(strings.NewReader("odd"), 3)
-	if !errors.Is(err, ErrFailed) {
-		t.Fatalf("skipChunk() error = %v, want %v", err, ErrFailed)
+	// skipChunk must move the seeker by exactly size bytes, plus one
+	// more for an odd size's own pad byte - and must do so by
+	// seeking, never reading, so a chunk already decided to be
+	// skipped can declare any size at all, however large, without
+	// costing a read of that many bytes (see wav.go's own comment on
+	// skipChunk).
+	tests := map[string]struct {
+		size     int64
+		wantSkip int64
+	}{
+		"even size, no pad":      {size: 8, wantSkip: 8},
+		"odd size, one pad byte": {size: 7, wantSkip: 8},
+		"huge size, never read":  {size: 1 << 32, wantSkip: 1 << 32},
 	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			rec := &seekRecorder{}
+			if err := skipChunk(rec, tt.size); err != nil {
+				t.Fatalf("skipChunk() error = %v, want nil", err)
+			}
+			if rec.offset != tt.wantSkip {
+				t.Fatalf("skipChunk() moved the seeker to %d, want %d", rec.offset, tt.wantSkip)
+			}
+		})
+	}
+}
+
+// seekRecorder is a minimal io.Seeker that records the offset it was
+// asked to move to, so a test can confirm skipChunk seeks by exactly
+// the right amount without needing a real file - or a real multi-
+// gigabyte one, for the huge-size case.
+type seekRecorder struct{ offset int64 }
+
+// Seek records a io.SeekCurrent move by offset and reports the new
+// total; any other whence fails, since skipChunk never uses one.
+func (s *seekRecorder) Seek(offset int64, whence int) (int64, error) {
+	if whence != io.SeekCurrent {
+		return 0, errors.New("seekRecorder: unexpected whence")
+	}
+	s.offset += offset
+	return s.offset, nil
+}
+
+func TestRebuildWAV_SkippableChunkWithHugeDeclaredSize(t *testing.T) {
+	t.Parallel()
+
+	// A LIST chunk claiming to be over 2 GiB long, inside a file that
+	// is really only a few dozen bytes: if skipChunk read and
+	// discarded that many bytes instead of seeking past them, this
+	// test would hang or exhaust memory rather than simply failing
+	// once the seek runs past the file's own end and the next read -
+	// the chunk header that should have followed - comes up short.
+	dir := t.TempDir()
+	huge := wavChunk("LIST", []byte{0, 0, 0, 0})
+	binary.LittleEndian.PutUint32(huge[4:8], 1<<31)
+	in := writeTestWAV(t, dir, "in.wav", wavFmtChunk(1, 16, 48000), huge, wavDataChunk(4))
+
+	err := rebuildWAV(in, filepath.Join(dir, "out.wav"), 48000, 1<<20)
+	if !errors.Is(err, ErrFailed) {
+		t.Fatalf("rebuildWAV() error = %v, want %v", err, ErrFailed)
+	}
+}
+
+func TestParseFMTChunk_OversizedIsRefusedBeforeReading(t *testing.T) {
+	t.Parallel()
+
+	// A fmt chunk declaring a size approaching 4 GiB must be refused
+	// before parseFMTChunk ever allocates a buffer for it or reads a
+	// byte: recordingReader proves no read was attempted at all, and
+	// if the cap check ran after the allocation instead of before it,
+	// this test would itself try to allocate that much memory.
+	rec := &recordingReader{}
+	_, err := parseFMTChunk(rec, 1<<32-8, 48000)
+	if !errors.Is(err, ErrFailed) {
+		t.Fatalf("parseFMTChunk() error = %v, want %v", err, ErrFailed)
+	}
+	if rec.maxLen != 0 {
+		t.Fatalf("parseFMTChunk() read from an oversized fmt chunk (buffer %d bytes) before refusing it", rec.maxLen)
+	}
+}
+
+// recordingReader records the largest single buffer any Read call
+// was asked to fill, without needing to actually hold that many
+// bytes itself, so a test can confirm a function never attempts a
+// read anywhere near an untrusted, oversized declared length.
+type recordingReader struct{ maxLen int }
+
+// Read records len(p) and reports EOF: no caller of this test double
+// is meant to get real data back from it.
+func (r *recordingReader) Read(p []byte) (int, error) {
+	if len(p) > r.maxLen {
+		r.maxLen = len(p)
+	}
+	return 0, io.EOF
 }
 
 func TestRebuildWAV_StatError(t *testing.T) {
