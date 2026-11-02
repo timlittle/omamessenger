@@ -178,7 +178,21 @@ const cases = [
   ['deleteConfirm', letter('e'), 0, 'e', 'delete.everyone'],
   ['deleteConfirm', letter('m'), 0, 'm', 'delete.forMe'],
   ['deleteConfirm', letter('n'), 0, 'n', 'delete.cancel'],
-  ['deleteConfirm', KEY.Escape, 0, '', 'escape']
+  ['deleteConfirm', KEY.Escape, 0, '', 'escape'],
+
+  // Ctrl+V and Shift+Insert paste through the helper's bounded
+  // clipboard.readText in every context with an editable field, except
+  // the composer, whose own compose.attach binding (tried first, as a
+  // context binding) keeps owning both keys there - an image paste
+  // first, text only as its own fallback.
+  ['search', letter('v'), MOD.Ctrl, '', 'field.paste'],
+  ['search', KEY.Insert, MOD.Shift, '', 'field.paste'],
+  ['palette', letter('v'), MOD.Ctrl, '', 'field.paste'],
+  ['dialog', letter('v'), MOD.Ctrl, '', 'field.paste'],
+  ['chooseService', letter('v'), MOD.Ctrl, '', 'field.paste'],
+  ['removeAccount', letter('v'), MOD.Ctrl, '', 'field.paste'],
+  ['compose', letter('v'), MOD.Ctrl, '', 'compose.attach'],
+  ['compose', KEY.Insert, MOD.Shift, '', 'compose.attach']
 ];
 
 for (const [context, key, modifiers, text, want] of cases) {
@@ -187,10 +201,14 @@ for (const [context, key, modifiers, text, want] of cases) {
   });
 }
 
-test('every global binding uses Ctrl or Alt, or is Escape, so typing is never stolen', () => {
+test('every global binding uses Ctrl or Alt, or is Escape or Shift+Insert, so typing is never stolen', () => {
+  // Shift+Insert is allowed alongside Escape: Insert has no printable
+  // text of its own (see KEY_NAMES/keyCodes), so Shift+Insert can never
+  // be mistaken for a character someone is actually typing, the same
+  // reason Escape needs no Ctrl or Alt either.
   for (const binding of Keymap.BINDINGS.filter((b) => b.contexts.includes('global'))) {
     for (const spec of binding.keys) {
-      assert.ok(/^(Ctrl|Alt)\+/.test(spec) || spec === 'Escape', `${binding.action}: ${spec}`);
+      assert.ok(/^(Ctrl|Alt)\+/.test(spec) || spec === 'Escape' || spec === 'Shift+Insert', `${binding.action}: ${spec}`);
     }
   }
 });

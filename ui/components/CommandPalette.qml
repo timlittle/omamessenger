@@ -1,9 +1,11 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
+import "../lib/Limits.js" as Limits
 
 // The command palette: type to filter, Enter to run. It lists commands
 // with their shortcut beside them, so people learn the keys as they go,
@@ -78,11 +80,21 @@ Item {
         objectName: "paletteField"
         Layout.fillWidth: true
         placeholderText: root.placeholder
+        maximumLength: Limits.PALETTE_QUERY
+        // Qt's own right-click "Paste" menu would read the clipboard
+        // in-process, with no size or time limit of its own; routeKey
+        // above already routes Ctrl+V and Shift+Insert through the
+        // helper's bounded clipboard.readText instead (see
+        // docs/decisions.md), so this menu is removed outright rather
+        // than left to offer the one path around that.
+        ContextMenu.menu: null
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: event => {
           if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true;
         }
         onTextChanged: root.queryEdited(text)
+
+        MiddleClickGuard {}
       }
 
       ListView {

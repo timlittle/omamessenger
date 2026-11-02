@@ -1,10 +1,12 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Setup.js" as Setup
+import "../lib/Limits.js" as Limits
 
 // Adds an account and signs it in: a chooser first when the helper offers
 // more than one service, then optionally the user's own API id and hash
@@ -179,10 +181,20 @@ Item {
         Layout.fillWidth: true
         visible: root.stage === "credentials"
         placeholderText: "API id"
+        maximumLength: Limits.API_ID
+        // Qt's own right-click "Paste" menu would read the clipboard
+        // in-process, with no size or time limit of its own; routeKey
+        // below already routes Ctrl+V and Shift+Insert through the
+        // helper's bounded clipboard.readText instead (see
+        // docs/decisions.md), so this menu is removed outright - this
+        // field invites exactly that paste, from my.telegram.org.
+        ContextMenu.menu: null
         KeyNavigation.tab: hashField
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: event => { if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true }
         onAccepted: hashField.forceActiveFocus()
+
+        MiddleClickGuard {}
       }
 
       Ui.TextField {
@@ -191,9 +203,13 @@ Item {
         Layout.fillWidth: true
         visible: root.stage === "credentials"
         placeholderText: "API hash"
+        maximumLength: Limits.API_HASH
+        ContextMenu.menu: null
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: event => { if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true }
         onAccepted: root.submit()
+
+        MiddleClickGuard {}
       }
 
       Image {
@@ -214,9 +230,13 @@ Item {
         visible: root._field !== null
         placeholderText: root._field ? root._field.placeholder : ""
         password: root._field ? root._field.password : false
+        maximumLength: Limits.SETUP_ANSWER
+        ContextMenu.menu: null
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: event => { if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true }
         onAccepted: root.submit()
+
+        MiddleClickGuard {}
       }
 
       Text {

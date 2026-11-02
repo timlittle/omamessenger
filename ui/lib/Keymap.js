@@ -83,6 +83,17 @@ var BINDINGS = [
   { action: 'scheduled.edit', keys: [], contexts: ['conversation'], label: 'Edit scheduled message', command: true, keywords: ['send later', 'scheduled'] },
   { action: 'scheduled.cancel', keys: [], contexts: ['conversation'], label: 'Cancel scheduled message', command: true, keywords: ['send later', 'scheduled'] },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
+  // field.paste is Ctrl+V and Shift+Insert in every editable field
+  // except the composer: compose.attach (below) is bound in the
+  // "compose" context, which match() checks before this global one, so
+  // it keeps owning both keys there, pasted image and all. Everywhere
+  // else - the palette, search, a dialog's own search, account setup's
+  // fields, an account's alias - Panel.qml's own routeKey reads this
+  // action and pastes through the same bounded helper round trip
+  // Composer already uses, into whichever field actually has keyboard
+  // focus, never through a field's own unbounded built-in paste (see
+  // docs/decisions.md).
+  { action: 'field.paste', keys: ['Ctrl+V', 'Shift+Insert'], contexts: ['global'], label: 'Paste' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
   { action: 'cursor.up', keys: ['k', 'Up'], contexts: ['list'], label: 'Previous chat' },

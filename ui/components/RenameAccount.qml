@@ -1,10 +1,12 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Rail.js" as Rail
+import "../lib/Limits.js" as Limits
 
 // Sets an account's display name, the alias shown wherever that account
 // is identified once more than one exists: the rail, the conversation
@@ -115,9 +117,18 @@ Item {
         Layout.fillWidth: true
         text: root.currentAlias
         placeholderText: "e.g. Personal WhatsApp"
+        maximumLength: Limits.ACCOUNT_ALIAS
+        // Qt's own right-click "Paste" menu would read the clipboard
+        // in-process, with no size or time limit of its own; routeKey
+        // below already routes Ctrl+V and Shift+Insert through the
+        // helper's bounded clipboard.readText instead (see
+        // docs/decisions.md), so this menu is removed outright.
+        ContextMenu.menu: null
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: event => { if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true }
         onAccepted: root.submitted(text.trim())
+
+        MiddleClickGuard {}
       }
 
       Text {

@@ -1,10 +1,12 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Keymap.js" as Keymap
+import "../lib/Limits.js" as Limits
 
 // The search field, conversation list and its show-all fold, plus the
 // empty state shown before any account is added. Takes its data through
@@ -151,6 +153,13 @@ ColumnLayout {
       objectName: "searchField"
       placeholderText: "Search"
       text: root.query
+      maximumLength: Limits.SEARCH_QUERY
+      // Qt's own right-click "Paste" menu would read the clipboard
+      // in-process, with no size or time limit of its own; routeKey
+      // below already routes Ctrl+V and Shift+Insert through the
+      // helper's bounded clipboard.readText instead (see
+      // docs/decisions.md), so this menu is removed outright.
+      ContextMenu.menu: null
 
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: event => {
@@ -162,6 +171,8 @@ ColumnLayout {
       // false, destroying this field through searchFieldLoader.active
       // above rather than leaving it alive but merely visible.
       onActiveFocusChanged: if (!activeFocus) root._editingSearch = false
+
+      MiddleClickGuard {}
     }
   }
 

@@ -1,10 +1,12 @@
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Rail.js" as Rail
+import "../lib/Limits.js" as Limits
 
 // New-chat modal: pick an account, search contacts, open one. An in-window
 // scrim and card, not a native dialog, so it stays inside the FloatingWindow.
@@ -121,6 +123,13 @@ Item {
         Layout.fillWidth: true
         placeholderText: "Search contacts"
         text: root.query
+        maximumLength: Limits.CONTACT_QUERY
+        // Qt's own right-click "Paste" menu would read the clipboard
+        // in-process, with no size or time limit of its own; routeKey
+        // below already routes Ctrl+V and Shift+Insert through the
+        // helper's bounded clipboard.readText instead (see
+        // docs/decisions.md), so this menu is removed outright.
+        ContextMenu.menu: null
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: event => {
@@ -128,6 +137,8 @@ Item {
         }
 
         onTextChanged: root.queryEdited(text)
+
+        MiddleClickGuard {}
       }
 
       ListView {

@@ -163,6 +163,18 @@ Item {
 
     if (!action) return false;
 
+    // field.paste reaches here for every editable field except the
+    // composer (compose.attach wins there: a context's own binding is
+    // checked before this global one, see Keymap.js). keyArea.Window's
+    // own activeFocusItem is whichever field the key was actually
+    // typed into - the one thing every TextField and TextArea already
+    // has in common - so this needs no reference threaded down
+    // through every component and controller in between.
+    if (action === "field.paste") {
+      clipboardPaste.pasteInto(keyArea.Window.activeFocusItem);
+      return true;
+    }
+
     // The open chat's own highlighted queued "send later" message (see
     // ConversationController.highlightedScheduledId and
     // ScheduledList.qml) answers to the same three keys a highlighted
@@ -282,6 +294,14 @@ Item {
     if (root.service.status === "missing") return "Installing the helper…";
     if (root.service.status === "error") return "The helper stopped: " + root.service.detail;
     return "Starting the helper…";
+  }
+
+  // clipboardPaste is the one paste round trip every editable field
+  // outside the composer shares for Ctrl+V and Shift+Insert; see
+  // routeKey above and ClipboardPaste.qml.
+  ClipboardPaste {
+    id: clipboardPaste
+    service: root.service
   }
 
   ListController {

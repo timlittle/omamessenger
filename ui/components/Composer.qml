@@ -858,6 +858,12 @@ Item {
             textFormat: TextEdit.PlainText
             selectByMouse: true
             placeholderText: root.blocked ? "Blocked" : "Message"
+            // Qt's own right-click "Paste" menu would read the
+            // clipboard in-process, with no size or time limit of its
+            // own; removed outright rather than relied on the
+            // spellRightClick MouseArea below happening to swallow the
+            // press first (see docs/decisions.md).
+            ContextMenu.menu: null
 
             onTextChanged: {
               // A pasted clipboard string has no length limit of its

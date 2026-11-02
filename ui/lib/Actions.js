@@ -233,7 +233,16 @@ var OWNERS = {
   'close.cancel': 'window',
   'close.quit': 'window',
   'close.keep': 'window',
-  'escape': 'window'
+  'escape': 'window',
+
+  // field.paste has no controller owner at all: Panel.routeKey answers
+  // it directly, pasting into whichever field actually has keyboard
+  // focus (see Keymap.js and ClipboardPaste.qml), since that field can
+  // belong to any of several different controllers' own overlays
+  // depending on which is open. "panel" names this explicitly, rather
+  // than leaving it out of OWNERS, so the exhaustiveness check below
+  // still catches a Keymap binding nothing accounts for at all.
+  'field.paste': 'panel'
 };
 
 // owner returns the controller name that owns action, or "" if none does.
