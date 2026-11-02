@@ -29,23 +29,31 @@ import (
 )
 
 // fakeRunner stands in for a *sandbox.Runner: Available and Run both
-// return whatever a test configured, and Run also writes
-// writeOutputName under the job's own OutputDir when set, simulating
-// what a real ffmpeg run inside the sandbox would have left there.
+// return whatever a test configured, and Run also writes to the job's
+// own pre-created spec.Output when writeOutput is set, simulating
+// what a real ffmpeg run inside the sandbox would have left there -
+// the real run already pre-creates that file itself (see
+// joboutput.go) before any Runner.Run is ever called, exactly as the
+// real sandbox.Runner would see it too.
 type fakeRunner struct {
 	availErr error
 
 	result sandbox.Result
 	runErr error
 
-	writeOutputName string
+	writeOutput     bool
 	writeOutputData []byte
 
 	// writeOutputSymlinkTo, when set instead of writeOutputData, makes
-	// Run create writeOutputName as a symlink to this target rather
-	// than an ordinary file, simulating a compromised or misbehaving
-	// ffmpeg leaving a symlink where the sandbox told it to write its
-	// real output.
+	// Run replace the pre-created spec.Output with a symlink to this
+	// target rather than an ordinary file, simulating a compromised or
+	// misbehaving ffmpeg leaving a symlink where the sandbox told it to
+	// write its real output. This no longer reflects something the
+	// real sandbox can still produce, now that Run binds only
+	// spec.Output's own single file rather than a writable directory
+	// around it (see docs/decisions.md) - but checkOutput's own Lstat
+	// defence stays in place regardless, so it is still worth proving
+	// directly here.
 	writeOutputSymlinkTo string
 
 	// lastSpec is the Spec the most recent Run call received, for a
@@ -58,8 +66,8 @@ func (f *fakeRunner) Available(_ context.Context, _ string) error {
 	return f.availErr
 }
 
-// Run records spec, optionally writes a fake output file where the
-// caller's own OutputDir says to, and returns result and runErr.
+// Run records spec, optionally replaces the caller's own pre-created
+// spec.Output with fake ffmpeg output, and returns result and runErr.
 func (f *fakeRunner) Run(_ context.Context, spec sandbox.Spec) (sandbox.Result, error) {
 	f.lastSpec = spec
 
@@ -67,21 +75,20 @@ func (f *fakeRunner) Run(_ context.Context, spec sandbox.Spec) (sandbox.Result, 
 		return sandbox.Result{}, f.runErr
 	}
 
-	if f.writeOutputName != "" {
-		path := filepath.Join(spec.OutputDir, f.writeOutputName)
-
-		if f.writeOutputSymlinkTo != "" {
-			if err := os.Symlink(f.writeOutputSymlinkTo, path); err != nil {
-				return sandbox.Result{}, err
-			}
-		} else {
-			data := f.writeOutputData
-			if data == nil {
-				data = []byte("fake ffmpeg output")
-			}
-			if err := os.WriteFile(path, data, 0o600); err != nil {
-				return sandbox.Result{}, err
-			}
+	if f.writeOutputSymlinkTo != "" {
+		if err := os.Remove(spec.Output); err != nil {
+			return sandbox.Result{}, err
+		}
+		if err := os.Symlink(f.writeOutputSymlinkTo, spec.Output); err != nil {
+			return sandbox.Result{}, err
+		}
+	} else if f.writeOutput {
+		data := f.writeOutputData
+		if data == nil {
+			data = []byte("fake ffmpeg output")
+		}
+		if err := os.WriteFile(spec.Output, data, 0o600); err != nil {
+			return sandbox.Result{}, err
 		}
 	}
 

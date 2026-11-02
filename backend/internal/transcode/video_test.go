@@ -17,7 +17,7 @@ import (
 func TestVideo_Args(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, true)}
+	fake := &fakeRunner{writeOutput: true, writeOutputData: validMP4Bytes(t, true)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()

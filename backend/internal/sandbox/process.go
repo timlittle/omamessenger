@@ -48,20 +48,20 @@ func (r *Runner) Run(ctx context.Context, spec Spec) (Result, error) {
 		return Result{}, fmt.Errorf("sandbox: run: start: %w", err)
 	}
 
-	return wait(ctx, cmd, stderr, spec.OutputDir), nil
+	return wait(ctx, cmd, stderr, spec.Output), nil
 }
 
 // wait blocks until cmd exits on its own or ctx ends, killing cmd's
 // whole process group in the second case (see killGroup), and turns
 // whichever happened into a Result.
-func wait(ctx context.Context, cmd *exec.Cmd, stderr *boundedStderr, outputDir string) Result {
+func wait(ctx context.Context, cmd *exec.Cmd, stderr *boundedStderr, outputPath string) Result {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 
 	select {
 	case waitErr := <-done:
 		exitCode := classifyWaitErr(waitErr)
-		tooLarge := exitCode != 0 && outputReachedSizeLimit(outputDir)
+		tooLarge := exitCode != 0 && outputReachedSizeLimit(outputPath)
 
 		return Result{ExitCode: exitCode, TooLarge: tooLarge, StderrClass: classifyStderr(stderr.Bytes())}
 	case <-ctx.Done():
@@ -108,34 +108,26 @@ func classifyWaitErr(waitErr error) int {
 	return exitErr.ExitCode()
 }
 
-// outputReachedSizeLimit reports whether any regular file directly
-// inside outputDir has reached maxOutputFileBytes: the shape prlimit's
-// own --fsize limit leaves behind now that env's own --ignore-signal
-// (see argv.go) makes a write past it fail with EFBIG instead of
-// delivering SIGXFSZ. Confirmed directly that the file this leaves
-// lands at exactly the limit, not some smaller, write-buffer-dependent
-// size, so no tolerance margin is needed.
-// Errors reading the directory - it not existing is the only
-// realistic one, which a job that never got as far as writing
-// anything would also produce - are treated as "not too large" rather
-// than failing the whole classification.
-func outputReachedSizeLimit(outputDir string) bool {
-	entries, err := os.ReadDir(outputDir)
-	if err != nil {
+// outputReachedSizeLimit reports whether outputPath - Spec.Output's
+// own single file - has reached maxOutputFileBytes: the shape
+// prlimit's own --fsize limit leaves behind now that env's own
+// --ignore-signal (see argv.go) makes a write past it fail with EFBIG
+// instead of delivering SIGXFSZ. Confirmed directly that the file this
+// leaves lands at exactly the limit, not some smaller,
+// write-buffer-dependent size, so no tolerance margin is needed.
+// Errors statting it - it never having been written at all is the
+// only realistic one, which a job that failed before ffmpeg ever
+// opened it would also produce - are treated as "not too large"
+// rather than failing the whole classification; so is outputPath
+// naming anything but a regular file, which it should never actually
+// be.
+func outputReachedSizeLimit(outputPath string) bool {
+	info, err := os.Stat(outputPath)
+	if err != nil || !info.Mode().IsRegular() {
 		return false
 	}
 
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil || !info.Mode().IsRegular() {
-			continue
-		}
-		if info.Size() >= maxOutputFileBytes {
-			return true
-		}
-	}
-
-	return false
+	return info.Size() >= maxOutputFileBytes
 }
 
 // boundedStderr collects a job's own stderr up to max bytes,

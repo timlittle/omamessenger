@@ -15,7 +15,7 @@ import (
 func TestStillFrame_Args(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.png"}
+	fake := &fakeRunner{writeOutput: true}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()
@@ -70,7 +70,7 @@ func TestStillFrame_RealEncode_AnimatedWebP(t *testing.T) {
 func TestStillFrame_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.png", writeOutputData: []byte("png bytes")}
+	fake := &fakeRunner{writeOutput: true, writeOutputData: []byte("png bytes")}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()

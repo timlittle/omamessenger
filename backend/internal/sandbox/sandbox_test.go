@@ -26,7 +26,7 @@ func TestRun_RealTrivialCommandSucceeds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
-	result, err := r.Run(ctx, sandbox.Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
+	result, err := r.Run(ctx, sandbox.Spec{Binary: "/usr/bin/true", Output: mustOutputFile(t)})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -44,9 +44,9 @@ func TestRun_NetworkUnreachable(t *testing.T) {
 	defer cancel()
 
 	spec := sandbox.Spec{
-		Binary:    "/usr/bin/bash",
-		Args:      []string{"-c", "exec 3<>/dev/tcp/1.1.1.1/80"},
-		OutputDir: t.TempDir(),
+		Binary: "/usr/bin/bash",
+		Args:   []string{"-c", "exec 3<>/dev/tcp/1.1.1.1/80"},
+		Output: mustOutputFile(t),
 	}
 
 	result, err := r.Run(ctx, spec)
@@ -72,9 +72,9 @@ func TestRun_FileOutsideBoundPathsUnreadable(t *testing.T) {
 	defer cancel()
 
 	spec := sandbox.Spec{
-		Binary:    "/usr/bin/cat",
-		Args:      []string{outside},
-		OutputDir: t.TempDir(),
+		Binary: "/usr/bin/cat",
+		Args:   []string{outside},
+		Output: mustOutputFile(t),
 	}
 
 	result, err := r.Run(ctx, spec)
@@ -82,7 +82,7 @@ func TestRun_FileOutsideBoundPathsUnreadable(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if result.Succeeded() {
-		t.Fatal("Run() read a host file outside Input/OutputDir; it should not have been visible inside the sandbox at all")
+		t.Fatal("Run() read a host file outside Input/Output; it should not have been visible inside the sandbox at all")
 	}
 }
 
@@ -95,9 +95,9 @@ func TestRun_SeccompDeniesUnshare(t *testing.T) {
 	defer cancel()
 
 	spec := sandbox.Spec{
-		Binary:    "/usr/bin/unshare",
-		Args:      []string{"-U", "/usr/bin/true"},
-		OutputDir: t.TempDir(),
+		Binary: "/usr/bin/unshare",
+		Args:   []string{"-U", "/usr/bin/true"},
+		Output: mustOutputFile(t),
 	}
 
 	result, err := r.Run(ctx, spec)
@@ -116,5 +116,97 @@ func TestRun_SeccompDeniesUnshare(t *testing.T) {
 	}
 	if result.TimedOut || result.TooLarge {
 		t.Fatalf("Run() = %+v, want an ordinary failure, not a timeout or an oversized output", result)
+	}
+}
+
+func TestRun_SeccompDeniesForkingAChildProcess(t *testing.T) {
+	t.Parallel()
+
+	r := requireSandbox(t, "/usr/bin/bash")
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	// "cmd & wait" needs a child process - by definition, not a
+	// thread - to run cmd in the background: exactly the shape of call
+	// this package's own seccomp filter now refuses outright (see
+	// seccomp.go's own processCreationSyscalls), whichever of fork,
+	// vfork or a thread-less clone bash actually uses for it.
+	spec := sandbox.Spec{
+		Binary: "/usr/bin/bash",
+		Args:   []string{"-c", "true & wait"},
+		Output: mustOutputFile(t),
+	}
+
+	result, err := r.Run(ctx, spec)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Succeeded() {
+		t.Fatal("Run() succeeded forking a child process; the seccomp filter did not deny it")
+	}
+	if result.TimedOut || result.TooLarge {
+		t.Fatalf("Run() = %+v, want an ordinary failure, not a timeout or an oversized output", result)
+	}
+}
+
+func TestRun_OutputBindExposesOnlyTheSingleBoundFile(t *testing.T) {
+	t.Parallel()
+
+	r := requireSandbox(t, "/usr/bin/bash")
+
+	// input and output live in the same host directory, the same way
+	// transcode's own job directory holds both the hard-linked input
+	// and the pre-created output file side by side - exactly the
+	// layout that used to let a job reach the hard link for writing
+	// through the old, whole-directory output bind (see
+	// docs/decisions.md).
+	jobDir := t.TempDir()
+	inputPath := filepath.Join(jobDir, sandbox.InputBaseName)
+	if err := os.WriteFile(inputPath, []byte("original input bytes"), 0o600); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+	outputPath := filepath.Join(jobDir, "out.bin")
+	if err := os.WriteFile(outputPath, nil, 0o600); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	// Every piece here is a bash builtin (redirection, :, [, a plain
+	// variable) rather than an external command: TestRun_
+	// SeccompDeniesForkingAChildProcess already proves this package's
+	// own seccomp filter now refuses the fork a real external command
+	// like touch or rm would need, so using one here would make this
+	// test confound that unrelated protection with the one this test
+	// actually checks - whether anything other than the bound file is
+	// writable at all.
+	script := `echo ffmpeg output > /work/out/out.bin; wrote=$?
+: > /work/out/newfile 2>/dev/null
+[ ! -e /work/out/newfile ] && [ "$wrote" = 0 ]`
+
+	spec := sandbox.Spec{
+		Binary: "/usr/bin/bash",
+		Args:   []string{"-c", script},
+		Input:  inputPath,
+		Output: outputPath,
+	}
+
+	result, err := r.Run(ctx, spec)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Succeeded() {
+		t.Fatalf("Run() = %+v, want Succeeded() true: writing the bound file must still work, and "+
+			"creating any other file under OutputDirPath must fail", result)
+	}
+
+	got, err := os.ReadFile(inputPath)
+	if err != nil {
+		t.Fatalf("reading input fixture back: %v", err)
+	}
+	if string(got) != "original input bytes" {
+		t.Fatalf("the host's own input file changed to %q; the sandbox could reach it through the output bind", got)
 	}
 }

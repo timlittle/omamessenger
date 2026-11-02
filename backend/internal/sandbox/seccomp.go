@@ -88,6 +88,67 @@ var deniedSyscalls = []string{
 	"clock_settime", "clock_adjtime", "settimeofday", "adjtimex",
 }
 
+// cloneThreadFlag is CLONE_THREAD, from the kernel's own
+// include/uapi/linux/sched.h: part of the stable UAPI, not something
+// either library this package uses exports as a constant. It is
+// clone's own first argument (its flags, arg0 on every architecture
+// this helper ships for) telling apart its two, otherwise identical,
+// uses: starting a new thread that shares this process's address
+// space (set - glibc's own pthread_create always sets it, confirmed
+// directly against this build's own glibc) or starting an entirely
+// separate process with its own (clear).
+const cloneThreadFlag = 0x00010000
+
+// processCreationSyscalls names every way this helper's own glibc and
+// kernel let a process start another one, refused below for a reason
+// deniedSyscalls' own entries are not: sandbox/limits.go's RLIMIT_AS
+// and RLIMIT_CPU are both limits the kernel charges to a process (for
+// a multithreaded one, to its whole thread group's combined total),
+// never to a tree of them, so a hijacked ffmpeg that could fork would
+// give each child its own fresh 4 GiB and 900 CPU-seconds, multiplying
+// every bound those limits promise by however many children it
+// started. A new thread has no such gap - it shares its parent's
+// address space outright and is charged against that same combined
+// CPU total - so refusing every way to start a process while still
+// allowing ordinary threading (which every profile's own "-threads 2"
+// needs) is what actually makes limits.go's own claim true: a bound on
+// the whole job, not just its first process.
+//
+// fork and vfork can never be a thread - both create a new process by
+// definition - so both are refused outright here, the same as
+// deniedSyscalls' own entries; clone is instead checked against
+// cloneThreadFlag (see cloneRequiresThread) and clone3 against its own
+// ENOSYS exception (see clone3Syscalls), since neither can be refused
+// the same unconditional way without also refusing the threading every
+// profile needs.
+var processCreationSyscalls = []string{"fork", "vfork"}
+
+// cloneRequiresThread is clone's own entry in the filter below: EPERM
+// unless cloneThreadFlag is set in its own flags argument (see
+// processCreationSyscalls' own doc comment for why threads are the
+// one process-creation call this filter still allows). BitsNotSet
+// matches when the given bits are clear, so this matches - and so
+// refuses - exactly the calls that do not set cloneThreadFlag.
+var cloneRequiresThread = seccomp.NameWithConditions{
+	Name: "clone",
+	Conditions: seccomp.ArgumentConditions{
+		{Argument: 0, Operation: seccomp.BitsNotSet, Value: cloneThreadFlag},
+	},
+}
+
+// clone3Syscalls is refused with ENOSYS, not EPERM: the one deliberate
+// exception to this file's own "EPERM for denied, ENOSYS only for a
+// foreign architecture" rule (see the package doc comment). glibc's
+// own pthread_create tries clone3 first and falls back to the clone
+// call cloneRequiresThread covers on exactly ENOSYS, never on EPERM -
+// confirmed directly, on this build's own glibc (2.44): a filter
+// refusing clone3 with EPERM instead makes pthread_create fail
+// outright, while ENOSYS lets it fall back to clone and succeed.
+// glibc added the fallback for a kernel genuinely too old to have
+// clone3 at all, which is exactly what ENOSYS already means, so EPERM
+// never reaches the code path that would retry.
+var clone3Syscalls = []string{"clone3"}
+
 // archGate returns the three instructions that run before anything
 // else in seccompInstructions: load the syscall's own reported
 // architecture, and refuse it with ENOSYS unless it equals want. This
@@ -133,10 +194,17 @@ func seccompInstructions() ([]bpf.Instruction, error) {
 		return nil, fmt.Errorf("sandbox: seccomp: %w", err)
 	}
 
+	epermAction := seccomp.Action(uint32(seccomp.ActionErrno) | errnoEPERM)
 	policy := seccomp.Policy{
 		DefaultAction: seccomp.ActionAllow,
 		Syscalls: []seccomp.SyscallGroup{
-			{Action: seccomp.Action(uint32(seccomp.ActionErrno) | errnoEPERM), Names: deniedSyscalls},
+			{Action: epermAction, Names: deniedSyscalls},
+			{
+				Action:             epermAction,
+				Names:              processCreationSyscalls,
+				NamesWithCondtions: []seccomp.NameWithConditions{cloneRequiresThread},
+			},
+			{Action: seccomp.Action(uint32(seccomp.ActionErrno) | errnoENOSYS), Names: clone3Syscalls},
 		},
 	}
 

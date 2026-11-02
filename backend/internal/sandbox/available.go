@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // ErrUnavailable reports that this machine cannot run a sandboxed job
@@ -74,7 +75,12 @@ func (r *Runner) runSmokeTest(ctx context.Context) error {
 	}
 	defer os.RemoveAll(dir) // best-effort: a throwaway directory this call alone created and never shares with anything else
 
-	result, err := r.Run(ctx, Spec{Binary: trueBinary, OutputDir: dir})
+	output := filepath.Join(dir, "out")
+	if err := os.WriteFile(output, nil, 0o600); err != nil {
+		return fmt.Errorf("sandbox: smoke test: %w", err)
+	}
+
+	result, err := r.Run(ctx, Spec{Binary: trueBinary, Output: output})
 	if err != nil {
 		return fmt.Errorf("sandbox: smoke test: %w", err)
 	}

@@ -32,7 +32,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/sandbox"
@@ -133,12 +132,13 @@ type profile struct {
 
 // run is every profile method's own shared body: reserve this
 // Transcoder's one job slot, confirm the sandbox can run ffmpeg at
-// all, give the job a fresh directory under outDir and its own
-// wall-clock budget, run it, and turn whatever happened into the one
-// output file's path or one of this package's own sentinel errors.
-// jobDir is removed on every failure path below: the one file a
-// caller gets back on success still lives inside it, so only a
-// successful return may leave it behind (see
+// all, give the job a fresh directory under outDir, pre-create the
+// one file (see createJobOutput) the sandbox will ever let it write,
+// and its own wall-clock budget, run it, and turn whatever happened
+// into the one output file's path or one of this package's own
+// sentinel errors. jobDir is removed on every failure path below: the
+// one file a caller gets back on success still lives inside it, so
+// only a successful return may leave it behind (see
 // app.transcodedPlayCopy's own cleanup, which removes that
 // directory once it is done with the file inside it).
 func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (path string, err error) {
@@ -169,10 +169,15 @@ func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (pat
 		_ = os.Remove(jobInput) // best-effort: nothing past this point, success or failure, still needs a copy of the caller's own input file
 	}()
 
+	outputPath, err := createJobOutput(jobDir, p.outputName)
+	if err != nil {
+		return "", err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
-	spec := sandbox.Spec{Binary: t.ffmpeg, Args: p.args, Input: jobInput, OutputDir: jobDir}
+	spec := sandbox.Spec{Binary: t.ffmpeg, Args: p.args, Input: jobInput, Output: outputPath}
 
 	result, err := t.runner.Run(ctx, spec)
 	if err != nil {
@@ -181,8 +186,6 @@ func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (pat
 	if err := resultError(result); err != nil {
 		return "", err
 	}
-
-	outputPath := filepath.Join(jobDir, p.outputName)
 	if err := checkOutput(outputPath, p.maxOutput); err != nil {
 		return "", err
 	}

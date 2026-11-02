@@ -10,7 +10,10 @@ package sandbox
 // unit-tested exhaustively without starting any process at all (see
 // argv_test.go).
 
-import "strconv"
+import (
+	"path/filepath"
+	"strconv"
+)
 
 // seccompFD is the file descriptor bwrap reads its seccomp program
 // from, once exec'd: os/exec always gives ExtraFiles its slots
@@ -66,10 +69,32 @@ func buildArgv(spec Spec, bwrapPath, prlimitPath, envPath string) (name string, 
 // just before the "--" that introduces the command bwrap itself runs
 // (buildArgv adds that part): a read-only /usr with the symlinks real
 // binaries expect to find their shared libraries through, a fresh
-// /proc, /dev and empty /tmp, spec's own input and output bound at the
-// fixed InputPath/OutputDirPath, every namespace unshared with no way
-// to open a new user namespace from inside, a cleared environment
-// with only PATH and LANG set, and this package's own seccomp filter.
+// /proc, /dev and a size-capped empty /tmp, spec's own input bound
+// read-only at the fixed InputPath, spec's own single output file
+// bound read-write under the fixed OutputDirPath with nothing else
+// reachable there, every namespace unshared with no way to open a new
+// user namespace from inside, a cleared environment with only PATH
+// and LANG set, and this package's own seccomp filter.
+//
+// --size before --tmpfs /tmp (bwrap 0.12+): without it, bwrap's own
+// tmpfs defaults to half of this machine's own RAM, counted against
+// no limit above (see maxTmpBytes's own doc comment in limits.go).
+//
+// The output bind is three flags, not one: --tmpfs OutputDirPath
+// mounts a fresh, empty, writable tmpfs there first; --bind
+// spec.Output's own single file into it, at its own base name, is
+// what a profile's fixed ffmpeg arguments actually write to;
+// --remount-ro OutputDirPath then remounts that tmpfs read-only,
+// which does not affect the file bind already mounted inside it (that
+// mount keeps its own, separate read-write flag) but does mean
+// nothing else can be created, renamed or removed under OutputDirPath
+// at all - confirmed directly, with this exact sequence through a real
+// bwrap, that writing to the bound file still works while creating,
+// deleting or renaming any other entry under OutputDirPath now fails
+// with "Read-only file system". Before this, the whole job directory
+// was bound read-write here, which also exposed Input's own hard link
+// - living in that same directory - for writing (see
+// docs/decisions.md).
 //
 // --unshare-user plus --disable-userns (on top of --unshare-all,
 // which does not by itself stop this): confirmed directly that
@@ -90,13 +115,19 @@ func bwrapArgs(spec Spec) []string {
 		"--symlink", "usr/bin", "/bin",
 		"--proc", "/proc",
 		"--dev", "/dev",
-		"--tmpfs", "/tmp",
+		"--size", strconv.Itoa(maxTmpBytes), "--tmpfs", "/tmp",
 	}
 
 	if spec.Input != "" {
 		args = append(args, "--ro-bind", spec.Input, InputPath)
 	}
-	args = append(args, "--bind", spec.OutputDir, OutputDirPath)
+
+	outputDest := OutputDirPath + "/" + filepath.Base(spec.Output)
+	args = append(args,
+		"--tmpfs", OutputDirPath,
+		"--bind", spec.Output, outputDest,
+		"--remount-ro", OutputDirPath,
+	)
 
 	args = append(args,
 		"--unshare-all",
