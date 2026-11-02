@@ -33,26 +33,37 @@ func validateISOBMFFAudio(c *cursor) bool {
 		return false
 	}
 
-	audioTracks := 0
+	audioTracks, duration, ok := c.tallyAudioTracks(traks, duration)
+	if !ok {
+		return false
+	}
+
+	return audioTracks == 1 && duration > 0 && duration <= maxDuration.Seconds()
+}
+
+// tallyAudioTracks checks every trak in traks, counting the audio
+// tracks and returning the longest of duration and each track's own
+// duration; ok is false as soon as one track is unreadable or not an
+// allowed audio track.
+func (c *cursor) tallyAudioTracks(traks []span, duration float64) (audioTracks int, longest float64, ok bool) {
+	longest = duration
 	for _, trak := range traks {
-		kind, codec, trackDuration, ok := c.audioTrackInfo(trak.off, trak.len)
-		if !ok {
-			return false
+		kind, codec, trackDuration, readOK := c.audioTrackInfo(trak.off, trak.len)
+		if !readOK {
+			return 0, 0, false
 		}
-		if trackDuration > duration {
-			duration = trackDuration
-		}
+		longest = max(longest, trackDuration)
 
 		isAudio, allowed := isoAudioTrackAllowed(kind, codec, audioTracks)
 		if !allowed {
-			return false
+			return 0, 0, false
 		}
 		if isAudio {
 			audioTracks++
 		}
 	}
 
-	return audioTracks == 1 && duration > 0 && duration <= maxDuration.Seconds()
+	return audioTracks, longest, true
 }
 
 // topLevelMoov walks every top-level box in the file once, both to

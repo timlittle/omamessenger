@@ -39,8 +39,8 @@ func TestValidate_MP3RefusesID3v2AttachedPicture(t *testing.T) {
 			t.Parallel()
 
 			tag := id3v2TagWithFrames(tc.version, id3v2Frame(tc.version, tc.frameID, []byte("fake picture or object bytes")))
-			data := append(tag, mp3Fixture(128, 44_100, 10)...)
-			path := writeFixture(t, "picture.mp3", data)
+			tag = append(tag, mp3Fixture(128, 44_100, 10)...)
+			path := writeFixture(t, "picture.mp3", tag)
 
 			got, err := audiosafe.Validate(path)
 			if err != nil {
@@ -73,8 +73,8 @@ func TestValidate_MP3AllowsOrdinaryID3v2Frames(t *testing.T) {
 				id3v2Frame(version, titleID, []byte("Example Song")),
 				id3v2Frame(version, artistID, []byte("Example Artist")),
 			)
-			data := append(tag, mp3Fixture(128, 44_100, 10)...)
-			path := writeFixture(t, "ordinary.mp3", data)
+			tag = append(tag, mp3Fixture(128, 44_100, 10)...)
+			path := writeFixture(t, "ordinary.mp3", tag)
 
 			got, err := audiosafe.Validate(path)
 			if err != nil {

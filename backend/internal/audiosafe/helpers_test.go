@@ -371,10 +371,10 @@ func id3v2Frame(version byte, frameID string, body []byte) []byte {
 	copy(id, frameID)
 
 	var sizeField []byte
-	switch {
-	case version == 4:
+	switch version {
+	case 4:
 		sizeField = synchsafeEncode(len(body))
-	case version == 3:
+	case 3:
 		sizeField = []byte{
 			byte(len(body) >> 24), byte(len(body) >> 16),
 			byte(len(body) >> 8), byte(len(body)),

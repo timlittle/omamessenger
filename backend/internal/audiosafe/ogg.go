@@ -60,36 +60,40 @@ type oggWalkState struct {
 // position any page reports, divided by Opus's fixed 48kHz granule
 // rate, is greater than zero and no more than maxDuration.
 func validateOgg(c *cursor) bool {
-	var st oggWalkState
+	st, ok := walkOggPages(c)
+	if !ok || !st.sawOpusHead || st.maxGranule == 0 {
+		return false
+	}
 
+	return float64(st.maxGranule)/float64(opusGranuleRate) <= maxDuration.Seconds()
+}
+
+// walkOggPages reads every page of c in order, at most maxOggPages,
+// checking each one as validateOgg describes, and reports the state it
+// gathered; ok is false if any page fails or the pages do not end
+// exactly at the end of the file.
+func walkOggPages(c *cursor) (st oggWalkState, ok bool) {
 	off := int64(0)
 	for pages := 0; pages < maxOggPages && off < c.size; pages++ {
-		hdr, segments, ok := c.readOggPageHeader(off)
-		if !ok || !st.acceptSerial(hdr) {
-			return false
+		hdr, segments, headerOK := c.readOggPageHeader(off)
+		if !headerOK || !st.acceptSerial(hdr) {
+			return st, false
 		}
 
 		payloadOff := off + oggPageHeaderLen + int64(len(segments))
 		firstPage := !st.sawOpusHead
 		if firstPage && !st.confirmOpusHead(c, payloadOff) {
-			return false
+			return st, false
 		}
 		st.trackGranule(hdr.granule)
 
 		off = payloadOff + sumSegments(segments)
 		if firstPage && !c.opusCommentHeaderSafe(off, hdr.serial) {
-			return false
+			return st, false
 		}
 	}
 
-	if off != c.size {
-		return false
-	}
-	if !st.sawOpusHead || st.maxGranule == 0 {
-		return false
-	}
-
-	return float64(st.maxGranule)/float64(opusGranuleRate) <= maxDuration.Seconds()
+	return st, off == c.size
 }
 
 // acceptSerial records hdr's bitstream serial the first time it is
