@@ -99,15 +99,16 @@ func TestRun_ReportsTooLargeWhenOutputReachedTheSizeLimit(t *testing.T) {
 
 	// env's own --ignore-signal (see argv.go) makes a real write past
 	// prlimit's own --fsize limit fail with EFBIG rather than deliver
-	// SIGXFSZ - confirmed directly on this machine that the file this
-	// leaves behind lands at exactly the limit - so this is what a
-	// real too-large job leaves for outputReachedSizeLimit to find:
-	// a failing command, and a file already at the cap when it runs.
+	// SIGXFSZ - confirmed directly that the file this leaves behind
+	// lands at exactly the limit - so this is what a real too-large
+	// job leaves for outputReachedSizeLimit to find: a failing
+	// command, and a file already at the cap when it runs.
 	// Deliberately not sending a real signal here at all: SIGXFSZ
-	// core-dumps by default, and this machine's systemd-coredump turns
-	// every one into a desktop "Process crashed" notification - this
-	// is exactly the failure mode this package's own fix avoids, so
-	// the test must not reintroduce it to prove the fix works.
+	// core-dumps by default, and systemd-coredump records every one,
+	// with desktop crash notifiers reporting each as a "Process
+	// crashed" notification - this is exactly the failure mode this
+	// package's own fix avoids, so the test must not reintroduce it
+	// to prove the fix works.
 	dir := t.TempDir()
 	makeOutputFile(t, dir, "out", maxOutputFileBytes)
 

@@ -76,9 +76,9 @@ func wait(ctx context.Context, cmd *exec.Cmd, stderr *boundedStderr, outputDir s
 // always starts a job with Setpgid, so pid is also that group's id.
 // bwrap's own --die-with-parent then cascades the kill through its
 // internal fork to the sandboxed command itself, even though that
-// fork moves to a process group of its own - confirmed on this
-// machine; see docs/decisions.md. A target that has already exited on
-// its own between ctx firing and this call is not an error worth
+// fork moves to a process group of its own - confirmed directly; see
+// docs/decisions.md. A target that has already exited on its own
+// between ctx firing and this call is not an error worth
 // reporting: the caller is about to reap it anyway.
 func killGroup(pid int) {
 	_ = syscall.Kill(-pid, syscall.SIGKILL)
@@ -112,9 +112,9 @@ func classifyWaitErr(waitErr error) int {
 // inside outputDir has reached maxOutputFileBytes: the shape prlimit's
 // own --fsize limit leaves behind now that env's own --ignore-signal
 // (see argv.go) makes a write past it fail with EFBIG instead of
-// delivering SIGXFSZ. Confirmed directly on this machine that the
-// file this leaves lands at exactly the limit, not some smaller,
-// write-buffer-dependent size, so no tolerance margin is needed.
+// delivering SIGXFSZ. Confirmed directly that the file this leaves
+// lands at exactly the limit, not some smaller, write-buffer-dependent
+// size, so no tolerance margin is needed.
 // Errors reading the directory - it not existing is the only
 // realistic one, which a job that never got as far as writing
 // anything would also produce - are treated as "not too large" rather

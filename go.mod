@@ -12,6 +12,7 @@ go 1.26.0
 toolchain go1.27.3
 
 require (
+	github.com/Eyevinn/mp4ff v0.61.0
 	github.com/client9/gospell v0.9.2
 	github.com/elastic/go-seccomp-bpf v1.6.0
 	github.com/godbus/dbus/v5 v5.2.4

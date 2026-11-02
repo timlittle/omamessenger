@@ -15,7 +15,7 @@ import (
 func TestAnimation_Args(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.mp4"}
+	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, false)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	if _, err := tr.Animation(t.Context(), "/in.gif", t.TempDir()); err != nil {
@@ -33,7 +33,7 @@ func TestAnimation_Args(t *testing.T) {
 		"-vf", "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
 		"-pix_fmt", "yuv420p",
 		"-fpsmax", "30",
-		"-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "23",
+		"-c:v", "libx264", "-profile:v", "main", "-level:v", "4.0", "-preset", "veryfast", "-crf", "23", "-bf", "0",
 		"-maxrate", "2500k", "-bufsize", "5000k",
 		"-t", "600",
 		"-movflags", "+faststart",
@@ -60,12 +60,7 @@ func TestAnimation_RealEncode_GIF(t *testing.T) {
 		t.Fatalf("Animation() error = %v", err)
 	}
 
-	if codec := probeEntry(t, out, "v", "codec_name"); codec != "h264" {
-		t.Errorf("video codec = %q, want h264", codec)
-	}
-	if codec := probeEntry(t, out, "a", "codec_name"); codec != "" {
-		t.Errorf("audio codec = %q, want no audio stream at all", codec)
-	}
+	assertCleanContainer(t, out, false)
 }
 
 func TestAnimation_RealEncode_AnimatedWebP(t *testing.T) {
@@ -82,15 +77,13 @@ func TestAnimation_RealEncode_AnimatedWebP(t *testing.T) {
 		t.Fatalf("Animation() error = %v", err)
 	}
 
-	if codec := probeEntry(t, out, "v", "codec_name"); codec != "h264" {
-		t.Errorf("video codec = %q, want h264", codec)
-	}
+	assertCleanContainer(t, out, false)
 }
 
 func TestAnimation_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: []byte("mp4 bytes")}
+	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, false)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	path, err := tr.Animation(t.Context(), "/in.gif", t.TempDir())

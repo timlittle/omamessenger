@@ -88,10 +88,9 @@ func NewTranscoder(r runner, ffmpegPath string) *Transcoder {
 
 // acquire reserves this Transcoder's one job slot, waiting until it
 // is free or ctx ends first. Every profile shares one slot because a
-// single job already runs ffmpeg at this machine's own full tilt for
-// its own two threads, and because sandbox's own resource limits (see
-// docs/decisions.md) are sized for exactly one job at a time, not
-// several sharing them.
+// single job already runs ffmpeg at full tilt on its own two threads,
+// and because sandbox's own resource limits (see docs/decisions.md)
+// are sized for exactly one job at a time, not several sharing them.
 //
 // A caller whose ctx ends while still waiting gets ErrTimeout: the
 // same sentinel a job that ran out of time once it actually started
@@ -122,6 +121,14 @@ type profile struct {
 	outputName string
 	timeout    time.Duration
 	maxOutput  int64
+
+	// rebuild, when set, replaces the sandboxed output checkOutput
+	// already approved with a new file this package writes itself
+	// from jobDir, and reports that file's own path. The sandboxed
+	// output named by sandboxedOutput is always removed once rebuild
+	// has run, whether it succeeded or not: nothing has any further
+	// use for it either way.
+	rebuild func(sandboxedOutput, jobDir string) (string, error)
 }
 
 // run is every profile method's own shared body: reserve this
@@ -161,8 +168,27 @@ func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (str
 	if err := checkOutput(outputPath, p.maxOutput); err != nil {
 		return "", err
 	}
+	return finishOutput(p, outputPath, jobDir)
+}
 
-	return outputPath, nil
+// finishOutput returns outputPath unchanged when p has no rebuild
+// step, or replaces it with p.rebuild's own file otherwise. The
+// sandboxed file at outputPath is always removed once rebuild has
+// run, whether it succeeded or not.
+func finishOutput(p profile, outputPath, jobDir string) (string, error) {
+	if p.rebuild == nil {
+		return outputPath, nil
+	}
+
+	finalPath, rebuildErr := p.rebuild(outputPath, jobDir)
+	switch removeErr := os.Remove(outputPath); {
+	case rebuildErr != nil:
+		return "", rebuildErr
+	case removeErr != nil:
+		return "", fmt.Errorf("transcode: removing intermediate: %w", removeErr)
+	default:
+		return finalPath, nil
+	}
 }
 
 // resultError turns a sandbox.Result into one of this package's own

@@ -6,19 +6,19 @@ package sandbox
 // layer behind bwrap's own namespace isolation and prlimit's resource
 // caps. See docs/decisions.md for why elastic/go-seccomp-bpf - a pure
 // Go, Apache-2.0 library - can build this without cgo, and how the
-// result was confirmed to actually stop a denied syscall on this
-// machine.
+// result was confirmed to actually stop a denied syscall.
 //
 // Every action here returns an errno rather than killing the process
 // (ActionKillProcess, this package's first choice, does not actually
 // "kill" quietly: SIGSYS is one of the signals that core-dumps by
-// default, and this machine's systemd-coredump turns every one of
-// those into a desktop "Process crashed" notification regardless of
-// how deep inside a sandbox, or how deliberately, it happened -
-// confirmed directly, running this package's own tests). Denying with
-// errno avoids that entirely: the syscall simply fails, the process
-// keeps running and reports its own ordinary non-zero exit, and
-// nothing reaches systemd-coredump at all.
+// default, and systemd-coredump records every one of those, with
+// desktop crash notifiers reporting each as a "Process crashed"
+// notification regardless of how deep inside a sandbox, or how
+// deliberately, it happened - confirmed directly, running this
+// package's own tests). Denying with errno avoids that entirely: the
+// syscall simply fails, the process keeps running and reports its own
+// ordinary non-zero exit, and nothing reaches systemd-coredump at
+// all.
 
 import (
 	"bytes"
@@ -96,8 +96,8 @@ var deniedSyscalls = []string{
 // for, jumps straight to the policy's DefaultAction - skipping every
 // syscall deniedSyscalls names, allowed or denied. With this
 // package's own DefaultAction of Allow, that is a real bypass of the
-// whole denylist, not a theoretical one: confirmed on this machine
-// with a probe that reached an unshare(CLONE_NEWUSER) the native
+// whole denylist, not a theoretical one: confirmed directly with a
+// probe that reached an unshare(CLONE_NEWUSER) the native
 // x86_64 path already refuses, by making the identical call through
 // the i386 ABI (`int 0x80`, reachable whenever the kernel is built
 // with CONFIG_IA32_EMULATION) instead. Running this gate first, and

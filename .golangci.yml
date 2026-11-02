@@ -209,6 +209,9 @@ linters:
           allow:
             - $gostd
             - github.com/timlittle/omamessenger/backend/internal/sandbox$
+            - github.com/Eyevinn/mp4ff/aac$
+            - github.com/Eyevinn/mp4ff/avc$
+            - github.com/Eyevinn/mp4ff/mp4$
     revive:
       rules:
         - name: function-length

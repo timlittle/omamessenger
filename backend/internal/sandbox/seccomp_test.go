@@ -116,7 +116,7 @@ func TestSeccompInstructions_RefusesAForeignArchitectureRegardlessOfSyscall(t *t
 	// seccomp-bpf's own Policy.Assemble jumps straight to its
 	// DefaultAction whenever the loaded arch does not match the one
 	// the policy was built for, skipping every syscall it names -
-	// confirmed, on this machine, by a probe that reached an
+	// confirmed directly by a probe that reached an
 	// unshare(CLONE_NEWUSER) the native x86_64 path already refuses,
 	// by making the identical call through the i386 ABI (int 0x80)
 	// instead. The gate this package adds in front of the library's

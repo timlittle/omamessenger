@@ -24,17 +24,17 @@ const seccompFD = 3
 // turn: XFSZ (prlimit's own --fsize limit) and XCPU (its own --cpu
 // limit's soft-limit warning). A signal set to SIG_IGN, unlike a
 // caught one, stays SIG_IGN across every exec in the chain (POSIX),
-// confirmed directly on this machine down to the final sandboxed
-// process's own /proc/self/status. Ignoring them turns what would
-// otherwise be a kill into an ordinary failed write (EFBIG) or a
-// process that keeps running past its own soft CPU warning - both of
-// which this package's own --core=0 and the hard CPU limit's own
-// unconditional, uncatchable SIGKILL (which never core-dumps) still
-// bound. See docs/decisions.md for why: every one of these signals
-// core-dumps by default, and this machine's systemd-coredump turns
-// every core dump into a desktop "Process crashed" notification -
-// confirmed directly - however deliberately, or deep inside a
-// sandbox, it happened.
+// confirmed directly down to the final sandboxed process's own
+// /proc/self/status. Ignoring them turns what would otherwise be a
+// kill into an ordinary failed write (EFBIG) or a process that keeps
+// running past its own soft CPU warning - both of which this
+// package's own --core=0 and the hard CPU limit's own unconditional,
+// uncatchable SIGKILL (which never core-dumps) still bound. See
+// docs/decisions.md for why: every one of these signals core-dumps by
+// default, and systemd-coredump records every core-dumping signal,
+// with desktop crash notifiers reporting each one as a "Process
+// crashed" notification - confirmed directly - however deliberately,
+// or deep inside a sandbox, it happened.
 const ignoredSignals = "XFSZ,XCPU"
 
 // buildArgv returns the full command Run starts for spec: env, named
@@ -72,7 +72,7 @@ func buildArgv(spec Spec, bwrapPath, prlimitPath, envPath string) (name string, 
 // with only PATH and LANG set, and this package's own seccomp filter.
 //
 // --unshare-user plus --disable-userns (on top of --unshare-all,
-// which does not by itself stop this): confirmed on this machine that
+// which does not by itself stop this): confirmed directly that
 // without them, a sandboxed job can still call unshare(CLONE_NEWUSER)
 // or clone's own equivalent flag and successfully open a second user
 // namespace nested inside the sandbox's own - bwrap's "unshare-all"

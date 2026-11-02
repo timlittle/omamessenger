@@ -41,11 +41,11 @@ const sandboxLang = "C.UTF-8"
 // desktop - confirmed directly: even with this at 0, a process the
 // kernel still delivers a core-dumping signal to still makes
 // systemd-coredump log the event (COREFILE "none" rather than
-// "present"), and this machine still shows "Process crashed" for
-// that log entry regardless of whether any data was saved. Avoiding
-// the signal in the first place is what actually prevents the
-// notification: env's own --ignore-signal (see argv.go and
-// docs/decisions.md) does that for prlimit's own --fsize and the
+// "present"), and desktop crash notifiers still report "Process
+// crashed" for that log entry regardless of whether any data was
+// saved. Avoiding the signal in the first place is what actually
+// prevents the notification: env's own --ignore-signal (see argv.go
+// and docs/decisions.md) does that for prlimit's own --fsize and the
 // soft half of its own --cpu limit, and the seccomp filter returns an
 // errno rather than killing (see seccomp.go's own package doc
 // comment) for every syscall it denies. What this limit still bounds:
@@ -67,13 +67,13 @@ const maxCoreBytes = 0
 const maxCPUSeconds = 900
 
 // maxAddressSpaceBytes bounds a job's total virtual memory (prlimit
-// --as). This machine's own ffmpeg links a large number of optional
+// --as). Arch Linux's ffmpeg package links a large number of optional
 // libraries (CUDA, Vulkan, VapourSynth and others, confirmed from its
 // own -version output) that the dynamic linker maps into the process
 // before a single frame is read, well before any real encode buffer
-// is requested; measured directly on this machine, re-encoding a
-// 720x1280 clip with audio at two threads - transcode's own Video
-// profile - failed inside libx264's own allocator under a 2 GiB cap
+// is requested; measured directly, re-encoding a 720x1280 clip with
+// audio at two threads - transcode's own Video profile - failed
+// inside libx264's own allocator under a 2 GiB cap
 // and succeeded under 3 GiB, with or without bwrap, so the cap is not
 // bwrap overhead but this ffmpeg build's own baseline footprint. This
 // is 4 GiB: a full GiB of headroom above the measured 3 GiB success
@@ -101,7 +101,7 @@ const maxOutputFileBytes = 512 << 20
 // (prlimit --nofile): modest, since every profile this helper runs
 // opens at most a handful of files (its one input, its one output,
 // and whatever small number of library files ffmpeg itself opens),
-// confirmed on this machine (see docs/decisions.md).
+// confirmed directly (see docs/decisions.md).
 const maxOpenFiles = 64
 
 // maxCapturedStderr bounds how much of a job's own stderr Run keeps

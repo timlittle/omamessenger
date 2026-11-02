@@ -7,6 +7,7 @@ package transcode
 
 import (
 	"context"
+	"path/filepath"
 	"strconv"
 )
 
@@ -40,7 +41,24 @@ func (t *Transcoder) Animation(ctx context.Context, in, outDir string) (string, 
 		outputName: animationOutputName,
 		timeout:    animationTimeout,
 		maxOutput:  animationMaxOutputBytes,
+		rebuild:    animationRebuild,
 	})
+}
+
+// animationRebuild validates the MP4 ffmpeg wrote for Animation and
+// rewrites it as sandboxedOutput's own replacement in jobDir (see
+// remuxMP4). Animation allows no audio track at all, unlike Video.
+func animationRebuild(sandboxedOutput, jobDir string) (string, error) {
+	outPath := filepath.Join(jobDir, "remux.mp4")
+	caps := remuxCaps{
+		allowAudio:        false,
+		maxVideoSamples:   animationDurationSeconds*30 + remuxSampleCountSlack,
+		maxVideoSampleLen: maxRemuxVideoSampleBytes,
+	}
+	if err := remuxMP4(sandboxedOutput, outPath, caps); err != nil {
+		return "", err
+	}
+	return outPath, nil
 }
 
 // animationArgs is the Animation profile's own fixed ffmpeg argument
@@ -53,7 +71,7 @@ func animationArgs() []string {
 		"-vf", fitWithinFilter(1280)+",scale=trunc(iw/2)*2:trunc(ih/2)*2",
 		"-pix_fmt", "yuv420p",
 		"-fpsmax", "30",
-		"-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "23",
+		"-c:v", "libx264", "-profile:v", "main", "-level:v", "4.0", "-preset", "veryfast", "-crf", "23", "-bf", "0",
 	)
 	args = append(args, videoRateControlArgs()...)
 	args = append(args,
