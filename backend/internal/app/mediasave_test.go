@@ -129,6 +129,46 @@ func TestSaveMedia_StripsControlAndBidiCharactersFromTheFileName(t *testing.T) {
 	}
 }
 
+// TestSaveMedia_NeverWritesMarkupCharactersInTheFileName confirms the
+// gap a security review found: a sanitized file name kept markup
+// characters - `<`, `>`, `&`, `=`, `#`, `;` - that Qt's non-native
+// fallback file dialog (its FileDialogDelegateLabel.qml, used by the
+// composer's attach picker and the sound picker) renders as rich text
+// with no textFormat override, defaulting to AutoText. A sender's own
+// file name containing `<img src=x>` would then make the shell fetch
+// a remote image just from listing the downloads folder. None of
+// those characters, or any other outside a conservative allow-list,
+// must ever reach the saved file's own name.
+func TestSaveMedia_NeverWritesMarkupCharactersInTheFileName(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	m := domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile, FileName: "<img src=x>&weird#chars;here.png"},
+	}
+	if _, _, err := f.store.AddMessage(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := f.commands.SaveMedia(ctx, "m1")
+	if err != nil {
+		t.Fatalf("SaveMedia = %v", err)
+	}
+
+	name := filepath.Base(path)
+	for _, c := range []string{"<", ">", "&", "=", "#", ";"} {
+		if strings.Contains(name, c) {
+			t.Errorf("saved file name %q still contains %q, want it replaced", name, c)
+		}
+	}
+	if want := "_img src_x__weird_chars_here.txt"; name != want {
+		t.Errorf("saved file name = %q, want %q", name, want)
+	}
+}
+
 // TestSaveMedia_FallsBackToAFixedNameWhenTheSenderNameSanitizesAway
 // confirms a saved download never ends up named just its extension, or
 // nothing at all, when the sender's claimed file name sanitizes to
