@@ -231,6 +231,45 @@ func TestReencode_RejectsOverInputLenBeforeFormatDetection(t *testing.T) {
 	}
 }
 
+// TestReencode_RejectsJPEGWithTooManyScans covers the CPU cost Go's
+// own progressive JPEG decoder has no limit on: each start-of-scan
+// marker makes it re-walk every block of the image again, so a file
+// declaring 101 of them must be refused before that decode ever
+// runs. The fixture is a real, otherwise-valid progressive JPEG -
+// Go's decoder accepts it fine without this cap - carrying 91 extra
+// repeats of one genuine, tiny scan, so this proves the new count
+// check itself rejects it, not some unrelated decode failure (see
+// docs/decisions.md for the measured cost this closes).
+func TestReencode_RejectsJPEGWithTooManyScans(t *testing.T) {
+	data := readTestdata(t, "jpeg_progressive_101_scans.jpg")
+
+	if _, _, _, _, ok := imagesafe.Reencode(data, imagesafe.FullImage); ok {
+		t.Fatal("Reencode() = accepted a JPEG with 101 scan markers, want rejected")
+	}
+}
+
+// TestReencode_AcceptsRealisticProgressiveScanCount covers the cap's
+// other edge: a real photo encoded progressively can easily carry
+// ten genuine scans, well under the cap, and must still decode and
+// re-encode normally.
+func TestReencode_AcceptsRealisticProgressiveScanCount(t *testing.T) {
+	data := readTestdata(t, "jpeg_progressive_10_scans.jpg")
+
+	out, format, width, height, ok := imagesafe.Reencode(data, imagesafe.FullImage)
+	if !ok {
+		t.Fatal("Reencode() = rejected a progressive JPEG with 10 scans, want accepted")
+	}
+	if format != imagesafe.FormatJPEG {
+		t.Errorf("format = %v, want FormatJPEG", format)
+	}
+	if width != 32 || height != 32 {
+		t.Errorf("width/height = %d/%d, want 32/32", width, height)
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(out)); err != nil {
+		t.Errorf("output does not decode as JPEG: %v", err)
+	}
+}
+
 // TestReencode_DimensionsMatchesItsOwnOutput covers Dimensions, the
 // cheap header-only read a caller uses on a cache hit instead of
 // paying for Reencode's own full decode again: it must agree with

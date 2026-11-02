@@ -14,12 +14,26 @@ import (
 // the PNG this package would otherwise have to write for every photo.
 const jpegQuality = 90
 
+// jpegMaxScans bounds how many start-of-scan markers a JPEG may
+// contain before reencodeStill refuses to decode it at all. Go's own
+// image/jpeg decoder re-walks every block of the image for each
+// progressive scan and has no limit of its own, so a tiny scan
+// repeated thousands of times inside a file far under profile's
+// MaxInputLen costs real CPU time for bytes that cost nothing to
+// send - and because store/thumbsafe re-encodes a stored thumbnail
+// on every read, a hostile one would pay that cost again on every
+// conversation load. 100 matches libjpeg-turbo's own -maxscans
+// default, which guards the same shape (see docs/decisions.md for
+// the measured cost this closes).
+const jpegMaxScans = 100
+
 // reencodeStill is Reencode's own implementation for every profile
 // but AnimatedGIF's own GIF path (see Reencode): it checks data's
 // declared dimensions against profile from a cheap header read alone,
 // before ever decoding a single pixel, then decodes fully and writes
 // a fresh encode of the result. ok is false when data's header
-// already fails profile, when it fails to decode at all (an animated
+// already fails profile, when a JPEG declares more than jpegMaxScans
+// start-of-scan markers, when it fails to decode at all (an animated
 // WebP, truncated input, or anything a decoder's own panic turns into
 // a plain refusal - see decodeImage), or when the pixels actually
 // decoded still turn out to be over profile's caps: a confirmation
@@ -28,6 +42,9 @@ const jpegQuality = 90
 func reencodeStill(data []byte, profile Profile) (out []byte, format OutputFormat, width, height int, ok bool) {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || !withinCaps(int64(cfg.Width), int64(cfg.Height), profile) {
+		return nil, FormatUnknown, 0, 0, false
+	}
+	if isJPEG(data) && countJPEGScans(data) > jpegMaxScans {
 		return nil, FormatUnknown, 0, 0, false
 	}
 
@@ -43,6 +60,24 @@ func reencodeStill(data []byte, profile Profile) (out []byte, format OutputForma
 	}
 
 	return encodeImage(img, width, height)
+}
+
+// countJPEGScans counts every occurrence of JPEG's start-of-scan
+// marker (0xFF 0xDA) anywhere in data, including one that happens to
+// fall inside entropy-coded data rather than being a real marker: a
+// plain linear byte count, not a real parser that tracks markers,
+// byte stuffing or restart intervals. That is deliberate - an
+// over-count only ever rejects more input against jpegMaxScans,
+// never less, which is all this needs to guarantee.
+func countJPEGScans(data []byte) int {
+	count := 0
+	for i := 0; i+1 < len(data); i++ {
+		if data[i] == 0xFF && data[i+1] == 0xDA {
+			count++
+		}
+	}
+
+	return count
 }
 
 // decodeImage decodes data with this package's own registered
