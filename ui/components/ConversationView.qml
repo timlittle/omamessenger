@@ -179,8 +179,8 @@ Item {
   // quoteOpened asks the caller to scroll to the message a reply quotes,
   // by the remote id the quote carries.
   signal quoteOpened(string remoteId)
-  // fileAttached reports a file the composer's own fallback dialog
-  // chose.
+  // fileAttached reports a file the portal's own file chooser picked
+  // for the composer's attach button.
   signal fileAttached(string path)
   // attachRequested asks the caller to run the portal's own file
   // chooser for the composer's attach button (see Composer.qml).

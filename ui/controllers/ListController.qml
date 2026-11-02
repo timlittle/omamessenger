@@ -1,6 +1,5 @@
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Dialogs
 import "../lib/Rail.js" as Rail
 import "../lib/Selection.js" as Selection
 import "../lib/ListSync.js" as ListSync
@@ -203,17 +202,11 @@ Item {
   // meantime cannot alter what confirming it actually does.
   property string _blockConfirmId: ""
 
-  // _notificationSoundTargetId is the conversation soundFileDialog's
+  // _notificationSoundTargetId is the conversation the portal's own
   // file picker applies to, captured when it was opened so a list
-  // change while the (asynchronous, possibly portal-backed) dialog is
-  // still open cannot alter what accepting it actually does.
+  // change while that asynchronous call is still outstanding cannot
+  // alter what accepting it actually does.
   property string _notificationSoundTargetId: ""
-
-  // _soundFileDialogActive gates soundFileDialogLoader: true only
-  // while the fallback "Set notification sound…" dialog is open, so
-  // its hidden text fields are created fresh on each pick and
-  // destroyed the moment it closes (see soundFileDialogLoader).
-  property bool _soundFileDialogActive: false
 
   // _all holds every conversation the helper reported, unfiltered by the
   // rail or a search.
@@ -693,9 +686,12 @@ Item {
   // current's own notification sound - the command palette's "Set
   // notification sound…". Does nothing with no current conversation.
   // A cancelled pick does nothing further; one the portal could not
-  // show at all falls back to soundFileDialog, this controller's own
-  // non-native dialog, never the in-process GTK one that once crashed
-  // the whole shell.
+  // show at all reports a fixed notice through lastError instead,
+  // never a fallback dialog of this UI's own - Qt's own non-native
+  // FileDialog rendered a sender-controlled file name as rich text
+  // through its delegate's default AutoText, which a security review
+  // found let a markup-named file already on disk run as HTML the
+  // moment the dialog merely listed its folder (see docs/decisions.md).
   function _setNotificationSound(): void {
     const id = root._currentId();
     if (!id || !root.findConversation(id)) return;
@@ -703,8 +699,8 @@ Item {
     root._notificationSoundTargetId = id;
     root.service.request("files.pick", { purpose: "sound", title: "Set notification sound" }, function(error, result) {
       if (error) {
-        if (Rpc.errorReason(error) === "unavailable") root._soundFileDialogActive = true;
-        else root._notificationSoundTargetId = "";
+        root._notificationSoundTargetId = "";
+        if (Rpc.errorReason(error) === "unavailable") root.lastError = "Couldn't open the file picker: no desktop portal";
         return;
       }
       if (!result.path) { root._notificationSoundTargetId = ""; return; } // cancelled
@@ -715,11 +711,12 @@ Item {
 
   // notificationSoundPicked stores path as the conversation
   // _setNotificationSound captured's own notification sound: the
-  // entry point soundFileDialog's onAccepted calls once the user
-  // picks a file, the same way movePinTo above is the entry point a
-  // pinned row's drag handler calls. An invalid file (not a format
-  // the helper's audiosafe check accepts) reports through lastError,
-  // the same as any other refused request.
+  // entry point the portal's own file picker's success reaches once
+  // the user picks a file, the same way movePinTo above is the entry
+  // point a pinned row's drag handler calls; a test with no real
+  // portal to drive calls this directly instead. An invalid file (not
+  // a format the helper's audiosafe check accepts) reports through
+  // lastError, the same as any other refused request.
   function notificationSoundPicked(path: string): void {
     const id = root._notificationSoundTargetId;
     root._notificationSoundTargetId = "";
@@ -960,40 +957,6 @@ Item {
   Component.onCompleted: root._start()
 
   ListModel { id: listModel }
-
-  // soundFileDialogLoader creates the fallback "Set notification
-  // sound…" picker only while _soundFileDialogActive is true, set by
-  // _setNotificationSound once the portal's own file chooser has
-  // already been tried and reported unavailable: QtQuick's own
-  // non-native dialog (DontUseNativeDialog), never the native one,
-  // which runs GTK in this same shared shell process and once crashed
-  // it outright (see docs/decisions.md). Restricted to the audio
-  // formats the helper's audiosafe check can actually validate; a
-  // file of another kind is still refused by the helper itself (see
-  // notificationSoundPicked), this is only to steer the picker. Qt's
-  // own dialog content embeds editable text fields that are created
-  // when the dialog object is, not deferred until it opens, and
-  // otherwise stay alive reading the Wayland clipboard until this
-  // controller itself is destroyed; gating the whole dialog behind
-  // this Loader tears those fields down the moment it closes.
-  Loader {
-    id: soundFileDialogLoader
-    objectName: "soundFileDialogLoader"
-    active: root._soundFileDialogActive
-    // item has no declared type for qmllint to check against, so it
-    // is cast explicitly here.
-    onLoaded: (item as FileDialog).open()
-    sourceComponent: FileDialog {
-      title: "Set notification sound"
-      options: FileDialog.DontUseNativeDialog
-      nameFilters: ["Audio files (*.wav *.ogg *.oga *.mp3 *.m4a *.aac)"]
-      onAccepted: {
-        root.notificationSoundPicked(String(selectedFile).replace(/^file:\/\//, ""))
-        root._soundFileDialogActive = false
-      }
-      onRejected: root._soundFileDialogActive = false
-    }
-  }
 
   Connections {
     target: root.service

@@ -156,36 +156,6 @@ ShellRoot {
     return true;
   }
 
-  // checkFileDialogLifetime covers the fallback attach dialog's own
-  // lifetime fix: Qt's non-native FileDialog (opened only once the
-  // portal's own file chooser is unavailable) embeds a hidden,
-  // focusable fileNameTextField that keeps reading the Wayland
-  // clipboard for as long as the dialog object exists, so the whole
-  // dialog must be destroyed the moment it closes, not merely hidden.
-  // FileDialog exposes no public property reaching into that content
-  // (it is not a Dialog/Popup itself, just a thin wrapper that may
-  // show one), so the only thing a test can observe from here is the
-  // wrapper object's own lifetime: fileDialogLoader's item exists
-  // only while picking, and destroying it takes everything created
-  // inside it - including that field - down with it.
-  function checkFileDialogLifetime(): bool {
-    const loader = Check.find(composer, "fileDialogLoader");
-    if (!loader) return Check.fail("no fileDialogLoader found");
-    if (loader.item) return Check.fail("fileDialogLoader already has an item before the dialog was ever opened");
-
-    composer.openFallbackPicker();
-    t.wait(50);
-    if (!loader.item) return Check.fail("fileDialogLoader has no item once the fallback dialog opened");
-
-    // Closing without picking anything must destroy the whole dialog,
-    // not merely hide it, so the field inside goes with it.
-    loader.item.reject();
-    t.wait(50);
-    if (loader.item) return Check.fail("fileDialogLoader kept its item after the dialog was closed");
-
-    return true;
-  }
-
   // checkSubmit verifies trimming, whitespace-only text being ignored,
   // and the placeholder staying a fixed string.
   function checkSubmit(): bool {
@@ -481,10 +451,6 @@ ShellRoot {
     if (!root.checkMentionPicker()) return;
     if (!root.checkSpellCheck()) return;
     if (!root.checkOversizedMisspellingListStaysBounded()) return;
-    // Run last: opening the fallback dialog creates a second, real
-    // window, which can disturb the composer's own keyboard focus the
-    // other checks above rely on.
-    if (!root.checkFileDialogLifetime()) return;
 
     console.log("PASS Composer");
     Qt.exit(0);

@@ -121,14 +121,10 @@ function findUngatedUsages(file, src, componentName) {
 // for as long as the container object exists, not only while it is
 // shown:
 //
-//   - QtQuick.Dialogs' non-native dialogs (DontUseNativeDialog) are
-//     QML, not a native window: FileDialog and FolderDialog each embed
-//     FolderBreadcrumbBar's own editable breadcrumb field
-//     (/usr/lib/qt6/qml/QtQuick/Dialogs/quickimpl/qml/FolderBreadcrumbBar.qml),
-//     FileDialog additionally has fileNameTextField
-//     (.../FileDialog.qml), ColorDialog has ColorInputs' hex field
-//     (.../ColorInputs.qml), FontDialog has FontDialogContent's family
-//     field (.../FontDialogContent.qml), and MessageDialog has its own
+//   - QtQuick.Dialogs' non-native ColorDialog has ColorInputs' hex
+//     field (/usr/lib/qt6/qml/QtQuick/Dialogs/quickimpl/qml/ColorInputs.qml),
+//     FontDialog has FontDialogContent's family field
+//     (.../FontDialogContent.qml), and MessageDialog has its own
 //     detailedTextArea (.../MessageDialog.qml)
 //   - Omarchy's Ui.SearchableDropdown, Ui.NumberField and
 //     Ui.MultiSelect each wrap a TextField or TextInput internally
@@ -137,9 +133,9 @@ function findUngatedUsages(file, src, componentName) {
 // Each is checked exactly like a direct field declaration: a usage must
 // sit inside a gated Loader, because the field inside is created when
 // the container itself is, never deferred until the container opens.
+// FileDialog and FolderDialog are deliberately NOT here: see the
+// dedicated, zero-tolerance test below instead of gating them.
 const KNOWN_CONTAINER_TYPES = [
-  'FileDialog',
-  'FolderDialog',
   'ColorDialog',
   'FontDialog',
   'MessageDialog',
@@ -205,6 +201,30 @@ test('every Qt dialog and known third-party text-input container is only ever in
     `gated on its own open state: the field inside is created when the container is, not when it opens, so it ` +
     `keeps reading a foreign Wayland clipboard offer after the dialog closes unless the whole container is torn ` +
     `down with it:\n  ${offenders.join('\n  ')}`);
+});
+
+// FileDialog and FolderDialog get no gated-Loader allowance at all,
+// unlike every other container above: a security review found Qt's
+// own non-native FileDialog (options: FileDialog.DontUseNativeDialog)
+// renders a sender-controlled file name as rich text through its own
+// delegate's default AutoText, so listing a folder that merely
+// contains a markup-named file - already on disk from an earlier
+// release, or dropped there by any other means - ran it as HTML with
+// no click on anything (see docs/decisions.md). The fix removed the
+// composer's and the notification-sound picker's own in-shell
+// fallback dialogs outright, in favor of a fixed notice when the
+// portal cannot be reached, so this checks that neither type is
+// declared anywhere in ui/ at all, gated or not: there is no safe way
+// to gate this one back in, only to not have it.
+test('FileDialog and FolderDialog are never declared anywhere in the UI, gated or not', () => {
+  const files = qmlFiles(UI_ROOT).map((file) => path.relative(UI_ROOT, file));
+  const pattern = /(?<![\w.])(?:[A-Za-z][\w.]*\.)?(FileDialog|FolderDialog)\s*\{/;
+
+  const offenders = files.filter((file) => pattern.test(fs.readFileSync(path.join(UI_ROOT, file), 'utf8')));
+
+  assert.deepEqual(offenders, [],
+    `${offenders.length} file(s) declare a FileDialog or FolderDialog, which must never exist in this UI again ` +
+    `(see docs/decisions.md): ${offenders.join(', ')}`);
 });
 
 test('a deliberately broken expectation is caught for a known container type', () => {

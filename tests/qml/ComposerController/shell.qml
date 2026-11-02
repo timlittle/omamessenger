@@ -80,15 +80,12 @@ ShellRoot {
     }
   }
 
-  property int filePickerUnavailableCount: 0
-
   ComposerController {
     id: composer
     service: fakeService
     conversation: fakeConversation
 
     onPasteFallbackRequested: root.fallbackCount++
-    onFilePickerUnavailable: root.filePickerUnavailableCount++
   }
 
   Timer {
@@ -167,9 +164,9 @@ ShellRoot {
   // never attaching the raw picked path itself. A cancelled
   // pick (files.pick answering with no path) calls neither further;
   // one the portal could not show at all (an "unavailable" reason)
-  // reports filePickerUnavailable instead, the composer's own cue to
-  // fall back to its non-native dialog - never driven as a real
-  // dialog here (see ui-testing.md).
+  // reports a fixed notice through the open conversation's lastError
+  // instead - there is no in-shell dialog of this UI's own to fall
+  // back to any more (see docs/decisions.md).
   function checkPickAttachFile(): bool {
     composer.pickAttachFile();
     const pickReply = root.takePending();
@@ -199,15 +196,17 @@ ShellRoot {
     if (fakeService.lastMethod !== "files.pick")
       return Check.fail("a cancelled pick called the service again: " + fakeService.lastMethod);
 
+    fakeConversation.timeline.lastError = "";
     fakeService.lastMethod = "";
     composer.pickAttachFile();
     const unavailableReply = root.takePending();
     unavailableReply({ code: -32603, message: "internal error", data: { reason: "unavailable" } }, null);
     if (fakeService.lastMethod !== "files.pick")
       return Check.fail("an unavailable portal called the service again: " + fakeService.lastMethod);
-    if (root.filePickerUnavailableCount !== 1)
-      return Check.fail("an unavailable portal did not report filePickerUnavailable");
+    if (fakeConversation.timeline.lastError !== "Couldn't open the file picker: no desktop portal")
+      return Check.fail("an unavailable portal did not report the fixed notice: " + fakeConversation.timeline.lastError);
 
+    fakeConversation.timeline.lastError = "";
     return true;
   }
 

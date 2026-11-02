@@ -1,7 +1,6 @@
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui as Ui
@@ -72,13 +71,6 @@ Item {
   // input existed yet (just as active turned true, say): the Loader's
   // own onLoaded consumes it once there is something to focus.
   property bool _focusPending: false
-  // _fileDialogActive gates fileDialogLoader: true only while the
-  // fallback file dialog is open, so its hidden text fields (Qt's own
-  // fileNameTextField and breadcrumb field) are created fresh on each
-  // pick and destroyed the moment it closes, rather than staying alive
-  // reading the Wayland clipboard until the composer itself is (see
-  // openFallbackPicker and fileDialogLoader).
-  property bool _fileDialogActive: false
   // replyTo is the message being answered: {id, senderName, text}, or
   // null when the user is not replying to anything.
   property var replyTo: null
@@ -232,15 +224,18 @@ Item {
   // scheduledEditCanceled reports that the user dismissed the queued
   // message's own editing banner, leaving it queued unchanged.
   signal scheduledEditCanceled()
-  // fileAttached reports a file openFallbackPicker's own dialog chose.
+  // fileAttached reports a file the caller's own file picker chose,
+  // for the caller to attach; a test with no real portal to drive
+  // emits this directly in place of one (see tests/qml/Flows).
   signal fileAttached(string path)
   // attachRequested asks the caller to run the portal's own file
   // chooser over the helper (files.pick), out of process from the
   // shared Omarchy shell, for the attach button and the command
   // palette's "Attach a file" (see docs/decisions.md): never the
-  // in-process GTK dialog that once crashed the whole shell. The
-  // caller calls openFallbackPicker only if that call reports the
-  // portal unavailable.
+  // in-process GTK dialog that once crashed the whole shell, and
+  // never a fallback dialog of this composer's own either - the
+  // caller shows a notice instead when the portal cannot be reached
+  // (see docs/decisions.md).
   signal attachRequested()
   // attachmentRemoveRequested asks the caller to clear attachmentPath,
   // from the chip's ✕ or Escape (handled by the caller's escape chain).
@@ -337,16 +332,6 @@ Item {
   // a file" command; see attachRequested.
   function openFilePicker() {
     root.attachRequested()
-  }
-
-  // openFallbackPicker opens this composer's own non-native file
-  // dialog, only once the caller has learned the portal could not be
-  // shown at all: never the first choice, and never the in-process
-  // GTK dialog that once crashed the whole shell (see
-  // docs/decisions.md). It only sets _fileDialogActive; fileDialogLoader
-  // creates the dialog and opens it.
-  function openFallbackPicker() {
-    root._fileDialogActive = true
   }
 
   // _openSpellPickerAt opens the spelling picker for whichever
@@ -495,36 +480,6 @@ Item {
     id: fontMetrics
     font.family: Theme.font.family
     font.pixelSize: Theme.font.body
-  }
-
-  // fileDialogLoader creates the fallback attach dialog only while
-  // _fileDialogActive is true, opened only through openFallbackPicker
-  // once the portal's own file chooser has already been tried and
-  // reported unavailable: QtQuick's own non-native dialog
-  // (DontUseNativeDialog), never the native one, which runs GTK in
-  // this same shared shell process and once crashed it outright (see
-  // docs/decisions.md). Qt's own dialog content embeds editable text
-  // fields (a file-name field and the folder breadcrumb's own field)
-  // that are created when the dialog object is, not deferred until it
-  // opens, and otherwise stay alive reading the Wayland clipboard
-  // until the composer itself is destroyed; gating the whole dialog
-  // behind this Loader tears those fields down the moment it closes.
-  Loader {
-    id: fileDialogLoader
-    objectName: "fileDialogLoader"
-    active: root._fileDialogActive
-    // item has no declared type for qmllint to check against (see
-    // root.input's own comment above), so it is cast explicitly here.
-    onLoaded: (item as FileDialog).open()
-    sourceComponent: FileDialog {
-      title: "Attach a file"
-      options: FileDialog.DontUseNativeDialog
-      onAccepted: {
-        root.fileAttached(String(selectedFile).replace(/^file:\/\//, ""))
-        root._fileDialogActive = false
-      }
-      onRejected: root._fileDialogActive = false
-    }
   }
 
   ColumnLayout {

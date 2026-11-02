@@ -152,7 +152,6 @@ Item {
     function onPasteFallbackRequested() {
       if (conversationView.composer.input) conversationView.composer.input.paste()
     }
-    function onFilePickerUnavailable() { conversationView.composer.openFallbackPicker() }
   }
 
   Connections {
