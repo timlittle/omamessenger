@@ -20,7 +20,7 @@ require (
 	github.com/sourcegraph/jsonrpc2 v0.2.3
 	go.mau.fi/libsignal v0.2.2
 	go.mau.fi/whatsmeow v0.0.0-20261007111105-c386243a72ba
-	golang.org/x/image v0.41.0
+	golang.org/x/image v0.47.0
 	golang.org/x/net v0.61.0
 	golang.org/x/tools v0.52.0
 	google.golang.org/protobuf v1.36.12

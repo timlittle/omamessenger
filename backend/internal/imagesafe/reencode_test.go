@@ -95,6 +95,33 @@ func TestReencode_RejectsDecompressionBombWithoutAllocating(t *testing.T) {
 	}
 }
 
+// TestReencode_RejectsWebPInnerChunkLargerThanDeclaredCanvas covers an
+// extended (VP8X) WebP whose outer canvas and inner VP8L chunk declare
+// different sizes. The pre-decode check above only ever sees the
+// canvas - a tiny declared canvas wrapping a chunk that actually
+// claims 16384x16384 must still be rejected, and rejected before
+// anything allocates a pixel buffer sized for that inner claim, not
+// only once the real decode finally finishes and its result is
+// measured against profile a second time (see
+// docs/decisions.md).
+func TestReencode_RejectsWebPInnerChunkLargerThanDeclaredCanvas(t *testing.T) {
+	bomb := buildWebPExtendedMismatch(1, 1, 16384, 16384)
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, _, _, _, ok := imagesafe.Reencode(bomb, imagesafe.FullImage)
+	runtime.ReadMemStats(&after)
+
+	if ok {
+		t.Fatal("Reencode() = accepted a WebP whose inner chunk disagrees with its own declared canvas, want rejected")
+	}
+
+	const ceiling = 8 << 20
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > ceiling {
+		t.Errorf("Reencode() allocated %d bytes rejecting a mismatched VP8X/VP8L WebP, want well under %d (no pixel buffer for the inner chunk's own claimed size)", grew, ceiling)
+	}
+}
+
 // TestReencode_OpaqueBecomesJPEG covers the common case: a photo with
 // no transparency at all is written back as JPEG, never PNG, so it
 // stays small.
@@ -319,6 +346,7 @@ func FuzzReencode(f *testing.F) {
 	f.Add(buildGIF(8, 8, 3))
 	f.Add(buildWebPSimple(8, 8))
 	f.Add(buildWebPAnimated(8, 8, 2))
+	f.Add(buildWebPExtendedMismatch(1, 1, 16384, 16384)) // the VP8X/inner-chunk size mismatch; x/image must never allocate or decode past its own caps over this
 	f.Add([]byte{})
 	f.Add([]byte("not an image at all"))
 
