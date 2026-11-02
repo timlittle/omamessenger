@@ -57,13 +57,17 @@ QtObject {
   // players). A property, not a constant, so a test can shorten it.
   property int cooldownMs: 5000
 
-  // _fetching holds, per message id whose media is downloading, every
-  // caller still waiting on it: {report, done} pairs, so a photo's own
-  // silent prefetch and a deliberate open that follows before it answers
-  // share the one request instead of sending a second, and both still
-  // hear back once it answers, rather than the second caller's own
-  // report flag and done callback being dropped silently (see
-  // tests/qml/MediaController's prefetch-race check).
+  // _fetching holds, per message id whose media is downloading,
+  // {play, waiters, rejoin}: play is whether the in-flight request
+  // itself asked for a play copy; waiters is every {report, done}
+  // pair that request's own answer will satisfy, so a photo's own
+  // silent prefetch and a deliberate open that follows before it
+  // answers share the one request instead of sending a second (see
+  // tests/qml/MediaController's prefetch-race check); rejoin is every
+  // {report, auto, done} that arrived wanting play while the in-flight
+  // request did not, each re-issued as its own play request once this
+  // one answers, never satisfied by this one's own, playPath-less
+  // answer (see downloadMedia and docs/decisions.md).
   property var _fetching: ({})
 
   // _lastOpenedAt holds, per message id, when its video or file was last
@@ -343,41 +347,59 @@ QtObject {
   // it comes back: this is what lets a photo's or voice note's own
   // silent prefetch (report false, done a no-op) and a deliberate open
   // that follows right after it (report true, done something that
-  // matters) both get what they asked for from the one round trip. A
-  // failure is reported to the user only for a caller that asked for it,
-  // but is always recorded on the message, so a photo with no preview
-  // shows "Photo unavailable" instead of an empty box that a failed,
-  // silent auto-fetch would otherwise leave forever, and always logged
-  // to the console with its code and safe reason category, so a failed
-  // fetch is never silent even when nothing asked to see its error
-  // text. A reason that means the file is truly gone (not found,
-  // expired or undecryptable) gets its own sentence naming the media's
-  // kind, such as "This video is no longer available.", rather than the
-  // generic "something went wrong" every other helper error shows. The
-  // photo viewer reuses this rather than asking the helper itself, so
-  // there is one place that tracks an in-flight download. auto is sent
-  // to the helper only for the call that actually starts the request
-  // (a joiner's own auto is never consulted): true means the helper
-  // applies its small, automatic-fetch size cap instead of the far
-  // larger one a deliberate click is trusted with (see media.fetch's
-  // auto param in docs/api.md). play asks the helper to also prepare
-  // the in-window play copy (see media.fetch's play param): only
-  // toggleVideo, _toggleVoice and an Animated video's autoplay ever
-  // set it, and only once mediaPlayKnown says it is not already known;
-  // openExternal, saveMedia, copyMedia and the silent prefetch above
-  // never need one, so they always pass false. Marking the row
-  // "preparing" (see MessageTimeline.setMediaPreparing) only ever
-  // happens for the call that actually starts a play request, the
-  // same way auto's own size cap only applies to that one. An edit can
-  // swap id's media for a different kind, or different bytes of the
-  // same kind, while this very request is in flight; the answer is
-  // checked against id's current media before it is kept (see
-  // _answerIsStale), never written back for media it was never
-  // checked against.
+  // matters) both get what they asked for from the one round trip -
+  // unless the new call asks for play and the in-flight one did not: a
+  // download-only answer never carries a playPath, so joining it would
+  // leave a play request silently unsatisfied and the UI falling back
+  // to opening the file externally instead of playing it in place (see
+  // docs/decisions.md). That one case is queued in _rejoinAsPlay
+  // instead, re-asked for once the in-flight request answers; a
+  // download-only call always still joins an in-flight play request,
+  // whose answer is a superset of what it needs. A failure is reported
+  // to the user only for a caller that
+  // asked for it, but is always recorded on the message, so a photo
+  // with no preview shows "Photo unavailable" instead of an empty box
+  // that a failed, silent auto-fetch would otherwise leave forever, and
+  // always logged to the console with its code and safe reason
+  // category, so a failed fetch is never silent even when nothing asked
+  // to see its error text. A reason that means the file is truly gone
+  // (not found, expired or undecryptable) gets its own sentence naming
+  // the media's kind, such as "This video is no longer available.",
+  // rather than the generic "something went wrong" every other helper
+  // error shows. The photo viewer reuses this rather than asking the
+  // helper itself, so there is one place that tracks an in-flight
+  // download. auto is sent to the helper only for the call that
+  // actually starts the request (a joiner's own auto is never
+  // consulted): true means the helper applies its small, automatic-fetch
+  // size cap instead of the far larger one a deliberate click is trusted
+  // with (see media.fetch's auto param in docs/api.md). play asks the
+  // helper to also prepare the in-window play copy (see media.fetch's
+  // play param): only toggleVideo, _toggleVoice and an Animated video's
+  // autoplay ever set it, and only once mediaPlayKnown says it is not
+  // already known; openExternal, saveMedia, copyMedia and the silent
+  // prefetch above never need one, so they always pass false. Marking
+  // the row "preparing" (see MessageTimeline.setMediaPreparing) happens
+  // for the call that actually starts a play request, and for one
+  // queued in _rejoinAsPlay - both are a play intent the UI should show
+  // as in progress - but never for a joiner whose own request already
+  // did, nor for anything download-only. An edit can swap id's media
+  // for a different kind, or different bytes of the same kind, while
+  // this very request is in flight; the answer is checked against id's
+  // current media before it is kept (see _answerIsStale), never written
+  // back for media it was never checked against.
   function downloadMedia(timeline: var, id: string, report: bool, auto: bool, play: bool, done: var): void {
-    if (root._fetching[id]) { root._fetching[id].push({ report: report, done: done }); return; }
+    const inFlight = root._fetching[id];
+    if (inFlight) {
+      if (play && !inFlight.play) {
+        timeline.setMediaPreparing(id, true);
+        inFlight.rejoin.push({ report: report, auto: auto, done: done });
+        return;
+      }
+      inFlight.waiters.push({ report: report, done: done });
+      return;
+    }
 
-    root._fetching[id] = [{ report: report, done: done }];
+    root._fetching[id] = { play: play, waiters: [{ report: report, done: done }], rejoin: [] };
     if (play) timeline.setMediaPreparing(id, true);
 
     // Recorded before the request, not read back from timeline once
@@ -389,29 +411,63 @@ QtObject {
     if (auto) params.auto = true;
     if (play) params.play = true;
 
-    root.service.request("media.fetch", params, function(error, result) {
-      const waiting = root._fetching[id];
-      delete root._fetching[id];
-      if (play) timeline.setMediaPreparing(id, false);
+    root.service.request("media.fetch", params, (error, result) =>
+      root._handleFetchAnswer(timeline, id, play, expected, error, result));
+  }
 
-      if (error) { root._failDownload(timeline, id, error, waiting); return; }
-      if (root._answerIsStale(timeline, id, expected, play)) return;
+  // _handleFetchAnswer applies the one media.fetch answer downloadMedia
+  // just received for id: records it on the row, tells every waiter
+  // that request collected, and re-asks for play on behalf of anything
+  // downloadMedia queued in _rejoinAsPlay instead of joining - this
+  // answer, whatever it turned out to be, was never going to carry a
+  // playPath for those, since the request it answers never asked for
+  // one. Runs exactly once per request, whether it failed outright, was
+  // superseded by an edit (see _answerIsStale) or carried a real result.
+  function _handleFetchAnswer(timeline: var, id: string, play: bool, expected: var, error: var, result: var): void {
+    const entry = root._fetching[id];
+    delete root._fetching[id];
+    if (play) timeline.setMediaPreparing(id, false);
 
-      timeline.setMediaFailed(id, false, "");
-      // Recorded before setMediaPath: a bound component's own
-      // onPathChanged (see PhotoView.qml's _needsFetch) reads
-      // media.verifiedWidth the instant path changes, so the verified
-      // size this same answer carries must already be in place by
-      // then, or it would see neither one set yet and ask again at
-      // once, forever.
-      root._applyVerifiedSize(timeline, id, result);
-      timeline.setMediaPath(id, result.path);
-      if (play) timeline.setMediaPlayPath(id, result.playPath || "");
-      root._riskyVerdicts[id] = !!result.risky;
-      timeline.setMediaRisky(id, !!result.risky);
-      timeline.lastError = "";
-      for (const waiter of waiting) waiter.done(result.path);
-    });
+    if (error) {
+      root._failDownload(timeline, id, error, entry.waiters);
+      root._rejoinAsPlay(timeline, id, entry.rejoin);
+      return;
+    }
+    if (root._answerIsStale(timeline, id, expected, play)) {
+      root._rejoinAsPlay(timeline, id, entry.rejoin);
+      return;
+    }
+
+    timeline.setMediaFailed(id, false, "");
+    // Recorded before setMediaPath: a bound component's own
+    // onPathChanged (see PhotoView.qml's _needsFetch) reads
+    // media.verifiedWidth the instant path changes, so the verified
+    // size this same answer carries must already be in place by then,
+    // or it would see neither one set yet and ask again at once,
+    // forever.
+    root._applyVerifiedSize(timeline, id, result);
+    timeline.setMediaPath(id, result.path);
+    if (play) timeline.setMediaPlayPath(id, result.playPath || "");
+    root._riskyVerdicts[id] = !!result.risky;
+    timeline.setMediaRisky(id, !!result.risky);
+    timeline.lastError = "";
+    for (const waiter of entry.waiters) waiter.done(result.path);
+    root._rejoinAsPlay(timeline, id, entry.rejoin);
+  }
+
+  // _rejoinAsPlay re-issues downloadMedia, asking for play this time,
+  // for every waiter downloadMedia queued instead of joining because a
+  // download-only fetch for the same id was already in flight: that
+  // fetch's own, just-finished answer never carries a playPath, so each
+  // one is re-asked for exactly as if it had called downloadMedia itself
+  // just now. The first call here finds nothing in flight (the one that
+  // was has just been deleted) and starts a fresh request; any further
+  // one in the same rejoin list joins that request normally, since both
+  // ask for play.
+  function _rejoinAsPlay(timeline: var, id: string, rejoin: var): void {
+    for (const waiter of rejoin) {
+      root.downloadMedia(timeline, id, waiter.report, waiter.auto, true, waiter.done);
+    }
   }
 
   // _answerIsStale reports whether id's own media no longer matches

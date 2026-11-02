@@ -113,7 +113,13 @@ ShellRoot {
       // stale1 is a never-clicked undownloaded voice note, for the
       // security review's own scenario: an edit swaps its media for a
       // photo while its own media.fetch is still in flight.
-      { id: "stale1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Voice note]", outgoing: false, status: "received", created: -7, media: { kind: "voice", duration: 3 }, mediaPath: "" }
+      { id: "stale1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Voice note]", outgoing: false, status: "received", created: -7, media: { kind: "voice", duration: 3 }, mediaPath: "" },
+      // v9 and vn1, both never-clicked and undownloaded, are for the
+      // play-never-joins-a-download-only-fetch check: a video and a
+      // voice note, each asked for with a silent, download-only
+      // prefetch first, then a play click before that prefetch answers.
+      { id: "v9", conversationId: "c1", senderId: "s", senderName: "S", text: "[Video]", outgoing: false, status: "received", created: -8, media: { kind: "video", width: 800, height: 600, duration: 5 }, mediaPath: "" },
+      { id: "vn1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Voice note]", outgoing: false, status: "received", created: -9, media: { kind: "voice", duration: 3 }, mediaPath: "" }
     ];
     // pendingFetch holds each media.fetch callback until the test answers it.
     property var pendingFetch: ({})
@@ -271,6 +277,9 @@ ShellRoot {
     if (!root.checkToggleVideoRefetchesACachedPathWithAnUnknownVerdict()) return;
     if (!root.checkOpenMediaRefetchesACachedVoiceOrAudioPathWithAnUnknownVerdict()) return;
     if (!root.checkRiskyMediaAsksBeforeOpeningAndRespectsTheAnswer()) return;
+    if (!root.checkPlayRequestNeverJoinsADownloadOnlyFetch()) return;
+    // Clears the whole timeline, so nothing after this may assume a
+    // loaded row again.
     if (!root.checkRiskyVerdictSurvivesTheListBeingCleared()) return;
 
     console.log("PASS MediaController");
@@ -410,6 +419,63 @@ ShellRoot {
     if (!controller.riskyOpenConfirmOpen) return Check.fail("riskyOpenConfirmOpen = false for a risky file whose row was cleared, want true");
 
     controller.cancelRiskyOpen();
+    return true;
+  }
+
+  // checkPlayRequestNeverJoinsADownloadOnlyFetch verifies the fix for a
+  // play click landing while a silent, download-only fetch for the same
+  // id is already in flight - a voice note's own prefetch, say, or
+  // PhotoViewerController's download-only call: the click must not join
+  // that fetch and settle for its playPath-less answer, falling back to
+  // opening the file externally instead of playing it in place. It
+  // covers both toggleVideo and the voice/audio path openMedia reaches
+  // through _toggleVoice, since both ask downloadMedia for play the
+  // same way.
+  function checkPlayRequestNeverJoinsADownloadOnlyFetch(): bool {
+    root.openCalls = [];
+    service.fetchRequests = [];
+    fakeVideoController.toggleCalls = [];
+    fakeVoiceController.calls = [];
+    controller.videoController = fakeVideoController;
+    controller.voiceController = fakeVoiceController;
+
+    controller.fetchMedia("v9");
+    controller.toggleVideo("v9");
+    if (service.fetchRequests.filter((id) => id === "v9").length !== 1)
+      return Check.fail("toggleVideo sent its own media.fetch instead of joining the in-flight prefetch for v9: " + JSON.stringify(service.fetchRequests));
+
+    // The prefetch's own answer: no playPath, since it never asked for
+    // one. Must not be treated as toggleVideo's own answer.
+    root.answerFetchSuccess("v9", "/tmp/v9.mp4", false);
+    if (fakeVideoController.toggleCalls.includes("v9") || root.openCalls.includes("/tmp/v9.mp4"))
+      return Check.fail("v9 was played or opened from the download-only prefetch's own answer, before its own play request had even been sent");
+    if (service.fetchRequests.filter((id) => id === "v9").length !== 2)
+      return Check.fail("toggleVideo's own play request never followed once the prefetch answered: " + JSON.stringify(service.fetchRequests));
+
+    root.answerFetchSuccess("v9", "/tmp/v9.mp4", true);
+    if (!fakeVideoController.toggleCalls.includes("v9"))
+      return Check.fail("a video whose play click joined a download-only fetch opened externally instead of playing in-window");
+    if (root.openCalls.includes("/tmp/v9.mp4"))
+      return Check.fail("v9 also opened externally after playing in-window");
+
+    // The same race through openMedia's voice/audio path.
+    controller.fetchMedia("vn1");
+    controller.openMedia("vn1");
+    if (service.fetchRequests.filter((id) => id === "vn1").length !== 1)
+      return Check.fail("opening vn1 sent its own media.fetch instead of joining the in-flight prefetch: " + JSON.stringify(service.fetchRequests));
+
+    root.answerFetchSuccess("vn1", "/tmp/vn1.ogg", false);
+    if (service.fetchRequests.filter((id) => id === "vn1").length !== 2)
+      return Check.fail("the voice note's own play request never followed once the prefetch answered: " + JSON.stringify(service.fetchRequests));
+
+    root.answerFetchSuccess("vn1", "/tmp/vn1.ogg", true);
+    if (fakeVoiceController.calls.length !== 1 || fakeVoiceController.calls[0].id !== "vn1")
+      return Check.fail("a voice note whose play click joined a download-only fetch opened externally instead of playing in-window: " + JSON.stringify(fakeVoiceController.calls));
+    if (root.openCalls.includes("/tmp/vn1.ogg"))
+      return Check.fail("vn1 also opened externally after playing in-window");
+
+    controller.videoController = null;
+    controller.voiceController = null;
     return true;
   }
 
