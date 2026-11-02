@@ -82,12 +82,22 @@ func main() { // coverage-ignore: process entry point; run is tested
 }
 
 // exitCode runs the helper and returns the process exit status: 0 on a
-// clean disconnect or SIGTERM, 1 if run reported an error.
+// clean disconnect or SIGTERM, 1 if run reported an error. Stdout is
+// claimed for the protocol before anything else runs, so no
+// dependency - go.mau.fi/libsignal's own default logger especially,
+// see stdout.go - gets a chance to write to it first.
 func exitCode() int {
+	protocolOut, err := claimProtocolStdout(int(os.Stdout.Fd()), os.Stderr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "OmaMessenger helper:", err)
+		return 1
+	}
+	quietLibsignalLogger(log.New(os.Stderr, "", 0))
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	streams := streams{in: os.Stdin, out: os.Stdout, errOut: os.Stderr}
+	streams := streams{in: os.Stdin, out: protocolOut, errOut: os.Stderr}
 	if err := run(ctx, streams, os.Args[1:], os.Getenv); err != nil {
 		fmt.Fprintln(os.Stderr, "OmaMessenger helper:", err)
 		return 1

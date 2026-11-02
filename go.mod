@@ -16,6 +16,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gotd/td v0.162.0
 	github.com/sourcegraph/jsonrpc2 v0.2.3
+	go.mau.fi/libsignal v0.2.2
 	go.mau.fi/whatsmeow v0.0.0-20261007111105-c386243a72ba
 	golang.org/x/tools v0.52.0
 	google.golang.org/protobuf v1.36.12
@@ -56,7 +57,6 @@ require (
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
 	github.com/yuin/goldmark v1.8.5 // indirect
-	go.mau.fi/libsignal v0.2.2 // indirect
 	go.mau.fi/util v0.10.1 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
