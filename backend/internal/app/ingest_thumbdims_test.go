@@ -103,7 +103,7 @@ func TestEdited_PublishesVerifiedThumbDimensions(t *testing.T) {
 	f.published.take()
 
 	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{
-		RemoteID: "e1", Text: "now with a photo",
+		RemoteID: "e1", SenderID: "alex", Text: "now with a photo",
 		Media: &domain.Media{Kind: domain.MediaPhoto, Thumb: fakeThumb(t, 8, 8), Width: 60000, Height: 1},
 	})
 
