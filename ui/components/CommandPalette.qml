@@ -90,6 +90,17 @@ Item {
         ContextMenu.menu: null
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: event => {
+          // Qt's own paste shortcut is more than Ctrl+V and Shift+Insert
+          // (Ctrl+Shift+Insert and the dedicated Paste key on some
+          // themes too); catching it here, ahead of the binding lookup
+          // routeKey does below, means a rebound field.paste in
+          // keys.conf still can never bring back this field's own
+          // unbounded native paste() (see docs/decisions.md).
+          if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+            if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
+            event.accepted = true;
+            return;
+          }
           if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true;
         }
         onTextChanged: root.queryEdited(text)

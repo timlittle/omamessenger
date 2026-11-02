@@ -11,7 +11,12 @@
 // closing it without inserting, and the resolved mention reaching
 // submitted()), and that a key the picker does not own (such as the
 // command palette's Ctrl+/) still reaches routeKey while the picker is
-// open, rather than being silently swallowed.
+// open, rather than being silently swallowed; and that Ctrl+Shift+Insert
+// and the dedicated Paste key both reach routeKey with its nativePaste
+// flag set, ahead of any picker or binding lookup, so Panel.qml's own
+// router (not reproduced here) always runs compose.attach's bounded
+// paste for them rather than the TextArea's own unbounded paste() (see
+// docs/decisions.md).
 import QtQuick
 import QtTest
 import Quickshell
@@ -27,6 +32,7 @@ ShellRoot {
   property var sentReplyIds: []
   property var sentMentions: []
   property var routeKeyCalls: []
+  property var nativePasteCalls: []
   property int cancelCount: 0
   property int editCancelCount: 0
   property int scheduledEditCancelCount: 0
@@ -457,6 +463,7 @@ ShellRoot {
     if (!root.checkMentionPicker()) return;
     if (!root.checkSpellCheck()) return;
     if (!root.checkOversizedMisspellingListStaysBounded()) return;
+    if (!root.checkNativePasteInterception()) return;
 
     console.log("PASS Composer");
     Qt.exit(0);
@@ -664,6 +671,43 @@ ShellRoot {
     }
 
     root.testMisspellings = [];
+    return true;
+  }
+
+  // checkNativePasteInterception proves Ctrl+Shift+Insert and the
+  // dedicated Paste key - both QKeySequence::StandardKey::Paste or
+  // Qt.Key_Paste, neither of them one of compose.attach's own two
+  // listed keys (Ctrl+V, Shift+Insert) - still reach routeKey with its
+  // nativePaste flag set, which is what makes Panel.qml's own router
+  // run the bounded compose.attach path unconditionally rather than
+  // the TextArea's own built-in paste() (see Panel.qml's routeKey and
+  // docs/decisions.md). The full round trip from there to a
+  // media.paste request is Panel.qml's and ComposerController's own
+  // job, already covered by tests/qml/ComposerController; this only
+  // proves the composer's own field catches the key and asks for it,
+  // ahead of the mention and spell pickers checked above.
+  function checkNativePasteInterception(): bool {
+    const input = composer.input;
+    if (!input.activeFocus) return Check.fail("composer input did not get active focus");
+    input.text = "";
+
+    root.nativePasteCalls = [];
+    composer.routeKey = (key, modifiers, text, nativePaste) => { root.nativePasteCalls.push(!!nativePaste); return true; };
+
+    t.keyClick(Qt.Key_Insert, Qt.ControlModifier | Qt.ShiftModifier);
+    if (!root.nativePasteCalls.includes(true)) {
+      composer.routeKey = null;
+      return Check.fail("Ctrl+Shift+Insert in the composer never reached routeKey with nativePaste: " + JSON.stringify(root.nativePasteCalls));
+    }
+
+    root.nativePasteCalls = [];
+    t.keyClick(Qt.Key_Paste);
+    if (!root.nativePasteCalls.includes(true)) {
+      composer.routeKey = null;
+      return Check.fail("Key_Paste in the composer never reached routeKey with nativePaste: " + JSON.stringify(root.nativePasteCalls));
+    }
+
+    composer.routeKey = null;
     return true;
   }
 }

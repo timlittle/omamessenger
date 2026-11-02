@@ -901,6 +901,19 @@ Item {
 
             Keys.priority: Keys.BeforeItem
             Keys.onPressed: event => {
+              // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
+              // dedicated Paste key, …) ahead of every other check
+              // below, including the mention and spell pickers: a
+              // rebound compose.attach in keys.conf can never bring
+              // back this field's own unbounded native paste() (see
+              // docs/decisions.md). routeKey resolves nativePaste to
+              // compose.attach for the composer's own context, so it
+              // still tries a pasted image first, the same as Ctrl+V.
+              if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+                if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true)
+                event.accepted = true
+                return
+              }
               if (root.pickerOpen) {
                 // Keymap.match also matches every global binding in this
                 // context, not just the picker's own, so only a mention.*

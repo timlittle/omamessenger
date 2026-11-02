@@ -127,8 +127,28 @@ Item {
   // setting `accepted` on a copy would not stop the real one. Every
   // caller — the window's own key handler and those fields — gets a
   // plain boolean back and sets `accepted` on its own, real event.
-  function routeKey(key: int, modifiers: int, text: string): bool {
+  // nativePaste, passed only by a field that just caught Qt's own
+  // paste shortcut itself, forces the bounded paste path regardless of
+  // key bindings; every other caller omits it.
+  function routeKey(key: int, modifiers: int, text: string, nativePaste: bool): bool {
     const context = Navigation.keyContext(root._navState());
+
+    // nativePaste means the field itself already saw Qt's own paste
+    // shortcut directly (event.matches(StandardKey.Paste), or the
+    // dedicated Paste key) and is asking for the bounded helper paste
+    // unconditionally, not through a binding lookup. keys.conf can
+    // rebind which key runs field.paste or compose.attach, but it must
+    // never bring back Qt's own unbounded paste() for whatever key Qt
+    // itself treats as "paste" (see docs/decisions.md), so this skips
+    // Keymap.match - and the typing guard and scheduled remap below,
+    // neither of which apply to a paste key - and always runs the
+    // field's own bounded path for its context.
+    if (nativePaste) {
+      if (context === "compose") return composerController.run("compose.attach") !== false;
+      clipboardPaste.pasteInto(keyArea.Window.activeFocusItem);
+      return true;
+    }
+
     const action = Keymap.match(context, key, modifiers, text, root.bindings);
 
     // Escape drops whatever the typing guard below has tracked so

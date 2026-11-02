@@ -125,7 +125,19 @@ Item {
         // docs/decisions.md), so this menu is removed outright.
         ContextMenu.menu: null
         Keys.priority: Keys.BeforeItem
-        Keys.onPressed: event => { if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true }
+        // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
+        // dedicated Paste key, …) ahead of the binding lookup below,
+        // so a rebound field.paste in keys.conf can never bring back
+        // this field's own unbounded native paste() (see
+        // docs/decisions.md).
+        Keys.onPressed: event => {
+          if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+            if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
+            event.accepted = true;
+            return;
+          }
+          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+        }
         onAccepted: root.submitted(text.trim())
 
         MiddleClickGuard {}

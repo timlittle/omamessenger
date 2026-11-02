@@ -28,6 +28,19 @@
 // TextArea has no maximumLength property to declare at all - both
 // already covered by tests/qml/ComposerController and
 // tests/unit/spellcheck.test.cjs, not re-proven here.
+//
+// A follow-up review found Ctrl+V and Shift+Insert are not the only
+// keys that reach a field's own built-in paste(): Qt's
+// QKeySequence::StandardKey::Paste also covers Ctrl+Shift+Insert and,
+// on some platform themes, the dedicated Paste key, and the binding
+// lookup in Keymap.js/Panel.qml only ever matches the two keys listed
+// there - worse, keys.conf can rebind field.paste or compose.attach
+// off Ctrl+V entirely, so even that key would then fall through too.
+// Every field - the composer included this time - must therefore
+// catch `event.matches(StandardKey.Paste)` and `Qt.Key_Paste` itself,
+// ahead of the routeKey binding lookup, and force the same bounded
+// path regardless of bindings (Panel.qml's routeKey takes a
+// `nativePaste` flag for exactly this; see docs/decisions.md).
 'use strict';
 
 const { test } = require('node:test');
@@ -139,6 +152,40 @@ test('every single-line field falls through to routeKey, reaching Panel.qml\'s f
   assert.deepEqual(offenders, [],
     `${offenders.length} field(s) do not forward an unhandled key press to root.routeKey, so Ctrl+V and ` +
     `Shift+Insert never reach the helper's bounded clipboard.readText there:\n  ${offenders.join('\n  ')}`);
+});
+
+test('every field, including the composer, catches StandardKey.Paste and Key_Paste before routeKey\'s binding lookup', () => {
+  const offenders = fields()
+    .filter((f) => {
+      const catchesStandardKey = /event\.matches\(StandardKey\.Paste\)/.test(f.block);
+      const catchesKeyPaste = /Qt\.Key_Paste/.test(f.block);
+      const forcesNativePaste = /root\.routeKey\([^)]*,\s*true\)/.test(f.block);
+      if (!catchesStandardKey || !catchesKeyPaste || !forcesNativePaste) return true;
+
+      // The interception must run ahead of the plain, bindings-based
+      // routeKey fallback textually, so a key bound to something else
+      // (or a field.paste/compose.attach moved off Ctrl+V entirely in
+      // keys.conf) can never shadow it.
+      const interceptIndex = f.block.search(/event\.matches\(StandardKey\.Paste\)/);
+      const fallbackIndex = f.block.search(/root\.routeKey\(event\.key,\s*event\.modifiers,\s*event\.text\)\)/);
+      return fallbackIndex !== -1 && interceptIndex > fallbackIndex;
+    })
+    .map((f) => `${f.file} (${f.objectName || 'unnamed'})`);
+
+  assert.deepEqual(offenders, [],
+    `${offenders.length} field(s) do not catch Qt's own paste shortcut (StandardKey.Paste, which also covers ` +
+    `Ctrl+Shift+Insert, plus the dedicated Key_Paste) ahead of routeKey's binding lookup, so Qt's unbounded ` +
+    `native paste() still runs whenever that lookup matches nothing or keys.conf has rebound field.paste or ` +
+    `compose.attach:\n  ${offenders.join('\n  ')}`);
+});
+
+test('a deliberately broken expectation is caught: a field with no StandardKey.Paste interception fails', () => {
+  const src = 'Item {\n  Ui.TextField {\n    objectName: "x"\n    Keys.onPressed: event => {\n' +
+    '      if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true\n    }\n  }\n}\n';
+  const match = [...src.matchAll(FIELD_PATTERN)][0];
+  const block = blockFor(src, match.index + match[0].length - 1);
+
+  assert.equal(/event\.matches\(StandardKey\.Paste\)/.test(block), false);
 });
 
 test('a deliberately broken expectation is caught: a field missing maximumLength fails', () => {
