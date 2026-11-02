@@ -77,6 +77,30 @@ func TestCapMentions_DropsAMentionThatRunsPastTheTextsEnd(t *testing.T) {
 	}
 }
 
+// TestCapMentions_CapsEachMentionsName covers a mention whose own Name
+// has no length limit of its own (unlike SenderName, which
+// SanitizeIncoming already caps directly): a hostile or compromised
+// service could send one user with a multi-megabyte name, mentioned up
+// to MaxMentions times in a single message, so CapMentions must cap
+// every kept mention's Name the same way CapDisplayName caps any other
+// sender-controlled display name.
+func TestCapMentions_CapsEachMentionsName(t *testing.T) {
+	t.Parallel()
+
+	longName := strings.Repeat("x", domain.MaxDisplayNameLength+50)
+	mentions := []domain.Mention{
+		{UserID: "u1", Name: longName, Offset: 0, Length: 1},
+	}
+
+	got := domain.CapMentions(mentions, 1)
+	if len(got) != 1 {
+		t.Fatalf("CapMentions kept %d mentions, want 1", len(got))
+	}
+	if n := utf8.RuneCountInString(got[0].Name); n != domain.MaxDisplayNameLength {
+		t.Errorf("CapMentions kept Name at %d runes, want exactly %d", n, domain.MaxDisplayNameLength)
+	}
+}
+
 // TestCapMentions_KeepsAtMostMaxMentions mirrors
 // TestCapSpans_KeepsAtMostMaxFormattingSpans for mentions.
 func TestCapMentions_KeepsAtMostMaxMentions(t *testing.T) {

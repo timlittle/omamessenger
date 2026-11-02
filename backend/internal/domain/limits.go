@@ -211,12 +211,22 @@ func CapSpans(spans []Span, textLen int) []Span {
 	return kept
 }
 
-// CapMentions drops a mention that no longer fits text (see capRanges)
-// and keeps at most MaxMentions of what remains.
+// CapMentions drops a mention that no longer fits text (see capRanges),
+// keeps at most MaxMentions of what remains, and caps each kept
+// mention's own Name at MaxDisplayNameLength: unlike SenderName, a
+// mention's Name has no length limit of its own at the connector, and
+// one hostile name can arrive mentioned up to MaxMentions times in a
+// single message.
 func CapMentions(mentions []Mention, textLen int) []Mention {
-	return capRanges(mentions, textLen, MaxMentions, func(m Mention) capRange {
+	kept := capRanges(mentions, textLen, MaxMentions, func(m Mention) capRange {
 		return capRange{m.Offset, m.Offset + m.Length}
 	})
+
+	for i := range kept {
+		kept[i].Name = CapDisplayName(kept[i].Name)
+	}
+
+	return kept
 }
 
 // CapReactions drops a reaction chip whose own emoji text runs past
