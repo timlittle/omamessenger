@@ -73,3 +73,32 @@ var mp3SampleRateHz = map[byte]int{
 // framed MP3 and not arbitrary bytes that merely happened to start
 // with a sync pattern.
 const mp3FramesToConfirm = 3
+
+// mp3ScanChunkSize bounds how many bytes mp3HasForbiddenTag reads
+// into memory at once while scanning a whole file for a forbidden tag
+// signature, so a file many megabytes long is never loaded in full.
+const mp3ScanChunkSize = 1 << 16 // 64 KiB
+
+// mp3ForbiddenTagMarkers names every byte signature mp3HasForbiddenTag
+// refuses to find anywhere in an MP3 file: the start of an ID3v2 tag
+// ("ID3" - wherever it appears, at the front, appended after the
+// audio, or as a second tag), an APE tag's own footer or header
+// ("APETAGEX"), and a Lyrics3 tag, v1 or v2 (both open with
+// "LYRICSBEGIN"). A differential security review found that
+// audiosafe's own ID3v2 frame walker and FFmpeg's id3v2 demuxer parse
+// a v2.4 frame's own size field differently once its high bit is set,
+// letting an attached picture hide in bytes the walker treated as
+// padding; rather than track every way the two could still disagree,
+// an MP3 is only ever played in-window when none of these tags are
+// present at all (see mp3HasForbiddenTag and docs/decisions.md).
+var mp3ForbiddenTagMarkers = [][]byte{
+	[]byte("ID3"),
+	[]byte("APETAGEX"),
+	[]byte("LYRICSBEGIN"),
+}
+
+// mp3MaxForbiddenMarkerLen is the longest byte sequence in
+// mp3ForbiddenTagMarkers, the amount of overlap mp3HasForbiddenTag
+// must carry from one scanned chunk into the next so a marker
+// straddling a chunk boundary is never missed.
+const mp3MaxForbiddenMarkerLen = len("LYRICSBEGIN")

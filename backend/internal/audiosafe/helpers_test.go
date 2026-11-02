@@ -379,9 +379,10 @@ func mp3IndexForSampleRate(hz int) byte {
 }
 
 // id3v2Tag builds a minimal ID3v2 tag header, with bodyLen zero
-// bytes following it (read as padding, never a real frame), that
-// this package's own id3v2Scan must walk over before reading the
-// first real MP3 frame.
+// bytes following it: this package's own mp3HasForbiddenTag only ever
+// looks for the tag's own "ID3" signature, never its declared size or
+// frame structure, so the zero bytes are only there to give the tag a
+// plausible, non-empty body.
 func id3v2Tag(bodyLen int) []byte {
 	hdr := make([]byte, 10)
 	copy(hdr[0:3], "ID3")
@@ -448,4 +449,30 @@ func synchsafeEncode(n int) []byte {
 		byte((n >> 7) & 0x7F),
 		byte(n & 0x7F),
 	}
+}
+
+// id3v1Tag builds a complete, fixed 128-byte ID3v1 trailer: the
+// "TAG" signature this package never treats as forbidden, followed by
+// zeroed title/artist/album/year/comment/genre fields - a real one's
+// shape, but this package never reads any of it, only confirms the
+// file does not also carry one of mp3ForbiddenTagMarkers.
+func id3v1Tag() []byte {
+	tag := make([]byte, 128)
+	copy(tag[0:3], "TAG")
+	return tag
+}
+
+// apeTag builds a minimal APE tag: just its own "APETAGEX" signature,
+// the one byte sequence mp3HasForbiddenTag looks for - a real APE tag
+// carries a version, size and item count after it, none of which this
+// package reads.
+func apeTag() []byte {
+	return []byte("APETAGEX")
+}
+
+// lyrics3Tag builds a minimal Lyrics3 tag: just its own "LYRICSBEGIN"
+// opening marker, shared by both Lyrics3 v1 and v2 and the one byte
+// sequence mp3HasForbiddenTag looks for.
+func lyrics3Tag() []byte {
+	return []byte("LYRICSBEGIN")
 }

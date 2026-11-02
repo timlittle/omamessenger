@@ -9,44 +9,83 @@ package audiosafe
 // variable bitrate - is refused outright rather than guessed at (see
 // package doc and docs/decisions.md): this package never walks a
 // variable-length frame chain, which is what "simple to validate"
-// means here. A leading ID3v2 tag, when present, is walked frame by
-// frame rather than simply skipped by its own declared size, so a
-// picture or other embedded object it carries can never reach the
-// player unexamined (see id3v2Scan and docs/decisions.md).
+// means here. A file is also refused outright the moment it carries
+// an ID3v2, APE or Lyrics3 tag anywhere at all - not walked frame by
+// frame and allowed through once no forbidden frame is found, the way
+// an earlier fix did this, since that walk and FFmpeg's own id3v2
+// demuxer were found to disagree about a v2.4 frame's own declared
+// size (see mp3HasForbiddenTag and docs/decisions.md). A real MP3
+// from an encoder almost always carries an ID3v2 tag, so this is a
+// deliberately narrow in-window allowance: a refused file still opens
+// fine in the user's own player.
 
-// id3v2HeaderLen is the fixed size of an ID3v2 tag header: "ID3", two
-// version bytes, one flags byte, four bytes of synchsafe size.
-const id3v2HeaderLen = 10
+import "bytes"
 
 // validateMP3 reports whether c's file is a simple, constant-bitrate
-// MPEG-1 Layer III stream within maxDuration carrying no ID3v2 frame
-// this package treats as an embedded picture or object: its first
-// frame header (after an optional leading ID3v2 tag, confirmed free
-// of one by id3v2Scan) declares an allowed sample rate and a
-// non-free, non-reserved bitrate, and mp3FramesToConfirm consecutive
-// frames are found each at the offset the previous one's own
-// declared length predicts. Duration is estimated from the file's
-// total size and that one bitrate, which is only accurate for a
-// constant-bitrate stream - exactly the case this package accepts.
+// MPEG-1 Layer III stream within maxDuration, carrying none of the
+// tag kinds mp3HasForbiddenTag refuses: its first frame header
+// declares an allowed sample rate and a non-free, non-reserved
+// bitrate, and mp3FramesToConfirm consecutive frames are found each
+// at the offset the previous one's own declared length predicts. An
+// ID3v1 trailer, which has no room for a picture at all (a fixed 128
+// bytes of plain text fields), is left unchecked: nothing this
+// package refuses matches its own "TAG" signature, so one at the very
+// end - the only place the format allows - never affects this result.
+// Duration is estimated from the file's total size and that one
+// bitrate, which is only accurate for a constant-bitrate stream -
+// exactly the case this package accepts.
 func validateMP3(c *cursor) bool {
-	off, safe := c.id3v2Scan()
-	if !safe {
+	if c.mp3HasForbiddenTag() {
 		return false
 	}
 
-	bitrateKbps, sampleRateHz, ok := c.confirmMP3Frames(off)
+	bitrateKbps, sampleRateHz, ok := c.confirmMP3Frames(0)
 	if !ok {
 		return false
 	}
 
-	durationSec := float64(c.size-off) * 8 / float64(bitrateKbps*1000)
+	durationSec := float64(c.size) * 8 / float64(bitrateKbps*1000)
 	return durationSec > 0 && durationSec <= maxDuration.Seconds() && sampleRateHz > 0
 }
 
-// synchsafeSize decodes an ID3v2 synchsafe size field: four bytes,
-// each holding only its low 7 bits, big-endian.
-func synchsafeSize(b []byte) int64 {
-	return int64(b[0])<<21 | int64(b[1])<<14 | int64(b[2])<<7 | int64(b[3])
+// mp3HasForbiddenTag reports whether c's file contains any of
+// mp3ForbiddenTagMarkers anywhere at all, read in bounded, overlapping
+// chunks (mp3ScanChunkSize) so a marker straddling a chunk boundary is
+// never missed and the whole file is never loaded into memory at
+// once. An unreadable chunk is never trusted either way: this package
+// reads files it can fully account for, or refuses them, never a
+// middle ground.
+func (c *cursor) mp3HasForbiddenTag() bool {
+	overlap := int64(mp3MaxForbiddenMarkerLen - 1)
+	stride := int64(mp3ScanChunkSize) - overlap
+
+	for off := int64(0); off < c.size; off += stride {
+		end := min(off+mp3ScanChunkSize, c.size)
+
+		buf := make([]byte, end-off)
+		if !c.readAt(buf, off) {
+			return true
+		}
+		if containsForbiddenMP3Marker(buf) {
+			return true
+		}
+		if end == c.size {
+			break
+		}
+	}
+
+	return false
+}
+
+// containsForbiddenMP3Marker reports whether buf contains any byte
+// sequence named in mp3ForbiddenTagMarkers.
+func containsForbiddenMP3Marker(buf []byte) bool {
+	for _, marker := range mp3ForbiddenTagMarkers {
+		if bytes.Contains(buf, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // confirmMP3Frames reads the frame header at off and mp3FramesToConfirm-1
