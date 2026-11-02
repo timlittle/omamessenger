@@ -561,6 +561,14 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.composerController.clearScheduledEdit();
       root.composerController.setDraft("");
+      // The palette this came from held focus, not the composer: ask
+      // for it back, the same way editScheduledMessage already does
+      // after loading a queued message's text in, so the composer -
+      // now empty - is still the one writing picks up where it left
+      // off, exactly as it would have looked before this existed only
+      // while actually being edited (see Composer.qml's own
+      // _writingRequested and docs/decisions.md).
+      root.composerController.composeFocusRequested();
     };
 
     if (editingId) root.scheduledController.edit(editingId, text, at, onDone);

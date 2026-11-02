@@ -414,35 +414,6 @@ func TestHelperDoctor_ReturnsOneCheckPerConcernIncludingTheSignedInAccount(t *te
 	}
 }
 
-func TestMediaPaste_ReturnsTheClipboardImage(t *testing.T) {
-	t.Parallel()
-
-	s := connect(t, false)
-	s.clipboard.types = []string{"image/png"}
-	s.clipboard.data = map[string][]byte{"image/png": pngBytes(t, 2, 2)}
-
-	pasted, err := call[struct {
-		Path   string `json:"path"`
-		Kind   string `json:"kind"`
-		Width  int    `json:"width"`
-		Height int    `json:"height"`
-	}](t, s, "media.paste", nil)
-	if err != nil || pasted.Kind != domain.MediaPhoto || pasted.Width != 2 || pasted.Height != 2 || pasted.Path == "" {
-		t.Errorf("media.paste = %+v, %v", pasted, err)
-	}
-}
-
-func TestMediaPaste_RejectsAnEmptyClipboard(t *testing.T) {
-	t.Parallel()
-
-	s := connect(t, false)
-	s.clipboard.types = []string{"text/plain"}
-
-	if _, err := call[struct{}](t, s, "media.paste", nil); code(err) != -32602 {
-		t.Errorf("media.paste(no image) code = %d, want invalid params", code(err))
-	}
-}
-
 // TestMessagesList_ReportsHistoryUnavailableWhenThePhoneCannotBeReached
 // confirms messages.list's additive historyUnavailable field is set,
 // alongside the page already stored, when paging past the oldest stored

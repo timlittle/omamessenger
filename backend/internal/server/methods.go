@@ -44,7 +44,6 @@ func methods(c *app.Commands, version string) map[string]method {
 		"media.fetch":               bind(mediaFetch(c)),
 		"media.save":                bind(mediaSave(c)),
 		"media.copy":                bind(mediaCopy(c)),
-		"media.paste":               bind(mediaPaste(c)),
 		"media.attach":              bind(mediaAttach(c)),
 		"ui.setFocus":               bind(uiSetFocus(c)),
 		"whatsNew.getSeenVersion":   bind(whatsNewGetSeenVersion(c)),
@@ -52,6 +51,7 @@ func methods(c *app.Commands, version string) map[string]method {
 		"settings.apply":            bind(settingsApply(c)),
 		"helper.doctor":             bind(helperDoctor(c)),
 	}
+	maps.Copy(table, clipboardMethods(c))
 	maps.Copy(table, scheduledMethods(c))
 	maps.Copy(table, windowStateMethods(c))
 	maps.Copy(table, spellMethods(c))
@@ -471,26 +471,6 @@ func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, e
 			Path: path, DecodeAs: decodeAs, Playable: videoPlayable || audioPlayable,
 			Risky: app.MediaRisk(path), Width: width, Height: height,
 		}, err
-	}
-}
-
-// pasteResult is the image media.paste found on the clipboard, copied
-// into the outgoing media area.
-type pasteResult struct {
-	Path   string `json:"path"`
-	Kind   string `json:"kind"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-}
-
-// mediaPaste copies an image off the clipboard, for the composer to
-// attach to the next message sent, or fails with an invalid-input error
-// when the clipboard holds no image.
-func mediaPaste(c *app.Commands) func(context.Context, none) (any, error) {
-	return func(ctx context.Context, _ none) (any, error) {
-		img, err := c.PasteImage(ctx)
-
-		return pasteResult{Path: img.Path, Kind: img.Kind, Width: img.Width, Height: img.Height}, err
 	}
 }
 

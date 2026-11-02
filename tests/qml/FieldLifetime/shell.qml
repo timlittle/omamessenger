@@ -1,14 +1,15 @@
 // Checks that the search field and the composer's text input are each
-// destroyed, not merely hidden, exactly while they are irrelevant - a
-// hidden-but-alive TextInput still reads Wayland clipboard changes with
-// no size or time limit, the same risk tests/unit/textinput-lifetime
-// guards for every other field in this UI (see docs/decisions.md) - and
-// that both still work normally whenever they are shown. Drives a
-// narrow window (list and conversation never both fit) the same way
-// NarrowLayout does: the search field exists only while the list column
-// shows, and the composer's input exists only while a conversation is
-// open and its column shows, with neither ever both at once in a narrow
-// window.
+// destroyed, not merely hidden, exactly while they are not being
+// edited - a hidden-but-alive, or merely visible but untouched,
+// TextInput still reads Wayland clipboard changes with no size or time
+// limit, the same risk tests/unit/textinput-lifetime guards for every
+// other field in this UI (see docs/decisions.md) - and that both still
+// work normally once entered. Drives a narrow window (list and
+// conversation never both fit) the same way NarrowLayout does: the
+// search field exists only once focusSearch() (a click, here) is
+// called while the list column shows, and the composer's input exists
+// only once a conversation opens, which focuses it automatically, with
+// neither ever both at once in a narrow window.
 import QtQuick
 import Quickshell
 import "ui"
@@ -35,13 +36,19 @@ ShellRoot {
     return listController.model.count === 11;
   }
 
-  // checkListOnlyFields verifies the search field exists while the list
-  // column shows, and the composer's own input does not: no conversation
-  // is open, and the conversation column is hidden besides.
+  // checkListOnlyFields verifies the search field does not exist merely
+  // because the list column shows - only focusSearch() (a click, for a
+  // real user) brings the real field in - and that the composer's own
+  // input does not exist either: no conversation is open, and the
+  // conversation column is hidden besides.
   function checkListOnlyFields(): var {
     if (!layout.narrow) return "a 600-wide window is not treated as narrow";
-    if (!Check.find(layout, "searchField")) return "searchField does not exist while the list column shows";
+    if (Check.find(layout, "searchField")) return "searchField exists before anyone asked to search";
+    if (!Check.find(layout, "searchPlaceholder")) return "the search placeholder is not shown while the list column shows";
     if (Check.find(layout, "composerInput")) return "composerInput exists with no conversation open";
+
+    Check.find(layout, "listColumn").focusSearch();
+    if (!Check.find(layout, "searchField")) return "searchField did not come in once focusSearch() was called";
     return true;
   }
 
@@ -88,12 +95,17 @@ ShellRoot {
     return true;
   }
 
-  // checkSearchSurvivedHiding verifies the search field is back, with
-  // the text it held before it was destroyed: the controller, not the
-  // field itself, is what actually held it meanwhile.
+  // checkSearchSurvivedHiding verifies the search field does not come
+  // back on its own merely because the list column shows again - it
+  // still needs its own focusSearch() - but once asked for, holds the
+  // text it had before it was destroyed: the controller, not the field
+  // itself, is what actually held it meanwhile.
   function checkSearchSurvivedHiding(): var {
+    if (Check.find(layout, "searchField")) return "searchField came back on its own merely because the list column showed again";
+
+    Check.find(layout, "listColumn").focusSearch();
     const field = Check.find(layout, "searchField");
-    if (!field) return "searchField did not come back once the list column showed again";
+    if (!field) return "searchField did not come back once focusSearch() was called again";
     if (field.text !== "dentist") return "search field text \"" + field.text + "\" did not survive being hidden and shown again";
     if (Check.find(layout, "composerInput")) return "composerInput still exists once the conversation column hid again";
 

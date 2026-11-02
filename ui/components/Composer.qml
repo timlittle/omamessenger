@@ -59,14 +59,27 @@ Item {
   // declared type for qmllint to check members against (the same
   // reasoning VoiceNoteController's own `_engine` documents).
   property var input: inputLoader.item ? inputLoader.item.area : null
-  // active is false while this composer's text input must not exist at
+  // active is false while this composer's pane itself is not usable at
   // all: no conversation open, or the conversation pane is hidden in a
-  // narrow window (see ConversationView.qml). A hidden-but-alive
-  // TextArea still reads Wayland clipboard changes with no size or time
-  // limit, the same risk every other field in this UI is gated against
-  // (see docs/decisions.md). Defaults true so a test or other caller
-  // that never sets it keeps the input always there, as it used to be.
+  // narrow window (see ConversationView.qml). The text input needs
+  // this and _writingRequested both true to exist (see
+  // inputLoader.active below) - active alone is not enough, since a
+  // merely visible field that nobody is typing into is itself a sink
+  // for a foreign Wayland clipboard offer with no size or time limit,
+  // the same risk every other field in this UI is gated against (see
+  // docs/decisions.md). Defaults true so a test or other caller that
+  // never sets it treats the pane as always usable, as it used to be
+  // the input's own only gate.
   property bool active: true
+  // _writingRequested is true from the moment focusInput() is called -
+  // the composer's own single entry point for "the user wants to type
+  // now", reached through compose.focus (i/a), clicking the composer
+  // while it shows the placeholder below, or Up loading the last
+  // editable message - until the real input loses focus for any
+  // reason (Escape, Tab, a click elsewhere), which clears it straight
+  // from the input's own onActiveFocusChanged. This, not merely being
+  // visible, is what the Loader below actually gates on.
+  property bool _writingRequested: false
   // _focusPending is true when focusInput() was asked for before the
   // input existed yet (just as active turned true, say): the Loader's
   // own onLoaded consumes it once there is something to focus.
@@ -276,10 +289,14 @@ Item {
     root._mentionTokens = []
   }
 
-  // focusInput moves keyboard focus into the text input, once it
-  // exists; if it is still loading (active just turned true), the
-  // Loader's own onLoaded grants the focus this asked for instead.
+  // focusInput starts writing: the single entry point that turns
+  // _writingRequested true, which is what actually loads the text
+  // input (see inputLoader.active). Moves keyboard focus into it at
+  // once if it already exists; otherwise the Loader's own onLoaded
+  // grants the focus this asked for, through _focusPending, the
+  // moment it finishes loading.
   function focusInput() {
+    root._writingRequested = true
     if (root.input) { root.input.forceActiveFocus(); return }
     root._focusPending = true
   }
@@ -758,19 +775,60 @@ Item {
         onClicked: root.openFilePicker()
       }
 
-      // The text input lives behind a Loader, active only while root.active
-      // is true: a hidden-but-alive TextArea still reads Wayland clipboard
-      // changes with no size or time limit, the same risk every other
-      // field in this UI is gated against (see docs/decisions.md and
-      // root.active's own comment above). Its text is seeded from
-      // root.text once it loads; destroying it loses nothing, since
-      // every change already flowed up through the input's own
-      // onTextChanged as it happened.
+      // placeholderRow shows root.text (or the placeholder) as plain,
+      // non-editable Text while the real input does not exist: a field
+      // merely visible but not focused is itself a sink for a foreign
+      // Wayland clipboard offer, with no size or time limit of its own
+      // (see docs/decisions.md), so the real TextArea below exists only
+      // from focusInput() (compose.focus, or a click here) until it
+      // loses focus. A click starts writing, the same gesture that
+      // would have placed the caret in a real field.
+      Item {
+        id: placeholderRow
+        objectName: "composerPlaceholder"
+        Layout.fillWidth: true
+        Layout.preferredHeight: fontMetrics.height + Theme.spacing.inputPaddingY * 2
+        visible: !inputLoader.active
+        // This only ever shows while not writing (it is what the real
+        // input swaps for the moment writing stops), so it carries the
+        // same dimmed look the real TextArea used to show in that
+        // state, rather than looking identical to the focused field.
+        opacity: root.dimmedOpacity
+
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.leftMargin: Theme.spacing.controlPaddingX
+          text: root.text.length > 0 ? root.text : (root.blocked ? "Blocked" : "Message")
+          textFormat: Text.PlainText
+          elide: Text.ElideRight
+          color: root.text.length > 0 ? Theme.foreground : Util.alpha(Theme.foreground, 0.4)
+          font.family: Theme.font.family
+          font.pixelSize: Theme.font.body
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          enabled: root.enabled
+          onClicked: root.focusInput()
+        }
+      }
+
+      // The real text input lives behind a Loader, active only while
+      // _writingRequested names this the field actually being edited
+      // right now (see root._writingRequested's own comment): a
+      // hidden-but-alive TextArea still reads Wayland clipboard changes
+      // with no size or time limit, the same risk every other field in
+      // this UI is gated against (see docs/decisions.md). Its text is
+      // seeded from root.text once it loads; destroying it loses
+      // nothing, since every change already flowed up through the
+      // input's own onTextChanged as it happened.
       Loader {
         id: inputLoader
         Layout.fillWidth: true
         Layout.preferredHeight: Math.min(root.input ? root.input.implicitHeight : fontMetrics.height, root._maxInputHeight)
-        active: root.active
+        active: root.active && root._writingRequested
         onLoaded: {
           item.area.text = root.text
           if (root._focusPending) {
@@ -829,6 +887,11 @@ Item {
                 root._closeSpellPicker()
               }
             }
+            // Losing focus for any reason - Escape, Tab, a click
+            // elsewhere - ends writing: _writingRequested turns false,
+            // which destroys this field through inputLoader.active
+            // above rather than leaving it alive but merely hidden.
+            onActiveFocusChanged: if (!area.activeFocus) root._writingRequested = false
 
             Keys.priority: Keys.BeforeItem
             Keys.onPressed: event => {
@@ -919,14 +982,28 @@ Item {
             // spellRightClick opens the spelling picker for the word
             // under a right-click, without otherwise changing how the
             // text input handles the mouse: a left-click, drag or
-            // scroll passes straight through to it.
+            // scroll passes straight through to it. It also swallows a
+            // middle-click outright, rather than letting the TextArea's
+            // own default handling paste the Wayland primary selection:
+            // that is Qt's in-process clipboard reader again, with no
+            // size or time limit of its own, the same risk Ctrl+V's own
+            // fallback was rewritten to avoid (see docs/decisions.md).
+            // There is no equivalent helper-side read of the primary
+            // selection to fall back to instead - middle-click paste
+            // simply does nothing here now, a deliberately smaller loss
+            // than adding a second clipboard-reading path for one rarely
+            // used gesture.
             MouseArea {
               id: spellRightClick
               objectName: "spellRightClickArea"
               anchors.fill: parent
-              acceptedButtons: Qt.LeftButton | Qt.RightButton
+              acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
               propagateComposedEvents: true
               onPressed: mouse => {
+                if (mouse.button === Qt.MiddleButton) {
+                  mouse.accepted = true
+                  return
+                }
                 if (mouse.button !== Qt.RightButton) {
                   mouse.accepted = false
                   return

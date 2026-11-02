@@ -1,16 +1,17 @@
-// Guards the fix for a clipboard-exhaustion report: a hidden-but-alive
-// editable TextField still reads Wayland clipboard changes on supported
-// Qt versions, with no size limit or deadline, so the command palette,
-// account setup and the new-chat dialog must be destroyed on close, not
-// just hidden (see Overlays.qml). This drives the real Panel with every
-// gated overlay closed, then opened one at a time, and checks the whole
-// tree for any editable text field other than the conversation list's
-// own search field, which exists for as long as the window is open and
-// is not part of this fix. The composer's own text input is not in this
-// baseline either: with no conversation open, it does not exist at all
-// (see Composer.qml's own active and docs/decisions.md) - its own
-// lifetime, and the search field's, are checked separately, in
-// tests/qml/FieldLifetime.
+// Guards the fix for a clipboard-exhaustion report: a hidden-but-alive,
+// or merely visible but untouched, editable TextField still reads
+// Wayland clipboard changes on supported Qt versions, with no size
+// limit or deadline, so the command palette, account setup and the
+// new-chat dialog must be destroyed on close, not just hidden (see
+// Overlays.qml). This drives the real Panel with every gated overlay
+// closed, then opened one at a time, and checks the whole tree for any
+// editable text field at all. Nothing is in this baseline: the
+// conversation list's own search field and the composer's text input
+// both exist only while actually being edited (see Composer.qml's own
+// _writingRequested and ListColumn.qml's own _editingSearch, and
+// docs/decisions.md) - neither is reached just by the window being
+// open, let alone focused. Their own narrower lifetimes are checked
+// separately, in tests/qml/FieldLifetime.
 import QtQuick
 import QtTest
 import Quickshell
@@ -22,8 +23,9 @@ ShellRoot {
 
   // fieldsAlwaysPresent are the only editable fields allowed to exist
   // while every gated overlay is closed and no conversation is open:
-  // the conversation list's own search field, always on screen.
-  readonly property var fieldsAlwaysPresent: ["searchField"]
+  // none, now that the search field and the composer's input are both
+  // gated on actually being edited, not merely on being shown.
+  readonly property var fieldsAlwaysPresent: []
 
   property var steps: [
     root.waitForList,
@@ -80,10 +82,11 @@ ShellRoot {
     return root.listCount() === 11 && accounts.length === 3 && accounts.every((a) => a.status === "connected");
   }
 
-  // checkBaseline checks that with every overlay closed, nothing but the
-  // composer and the list's own search field can be typed into: proof
-  // the scan itself works (it is not vacuously empty) and that nothing
-  // else is already wrongly instantiated.
+  // checkBaseline checks that with every overlay closed, no conversation
+  // open and neither the search field nor the composer being edited,
+  // nothing at all can be typed into; the scan itself is proven working
+  // by the later steps below, each of which does find the palette's own
+  // field once it opens.
   function checkBaseline(): var {
     const found = root.editableFieldNames();
     if (JSON.stringify(found) !== JSON.stringify(root.fieldsAlwaysPresent.slice().sort())) {

@@ -110,9 +110,8 @@ ShellRoot {
 
   function waitForListModeOpen(listView: var): void {
     const title = Check.find(panel, "conversationTitle");
-    const composer = Check.find(panel, "composerInput");
 
-    if (title && title.text === root._wantAfterDown.title) return root.checkListModeLandedScrolling(listView, composer);
+    if (title && title.text === root._wantAfterDown.title) return root.checkListModeLandedScrolling(listView);
 
     stepper.attempts++;
     if (stepper.attempts >= 100)
@@ -122,10 +121,13 @@ ShellRoot {
   }
 
   // checkListModeLandedScrolling checks Alt+Down from the list did not
-  // drag the user into writing mode, since nothing was being written.
-  function checkListModeLandedScrolling(listView: var, composer: var): void {
-    if (composer.activeFocus)
-      return Check.fail("Alt+Down from the list left the composer focused; it should have opened the chat in scroll mode");
+  // drag the user into writing mode, since nothing was being written:
+  // the composer's own real input exists only while actually being
+  // written into (see Composer.qml's own _writingRequested), so
+  // landing in scroll mode means it must not exist at all here.
+  function checkListModeLandedScrolling(listView: var): void {
+    if (Check.find(panel, "composerInput"))
+      return Check.fail("Alt+Down from the list instantiated the composer's real input; it should have opened the chat in scroll mode");
 
     root._scrollOpenId = root._wantAfterDown.id;
     root.checkScrollModePreserved(listView);
@@ -146,13 +148,12 @@ ShellRoot {
 
   function waitForScrollModeOpen(listView: var, want: var): void {
     const title = Check.find(panel, "conversationTitle");
-    const composer = Check.find(panel, "composerInput");
 
     if (title && title.text === want.title) {
-      if (composer.activeFocus)
-        return Check.fail("Alt+Up while scrolling snapped into writing mode instead of staying in scroll mode");
+      if (Check.find(panel, "composerInput"))
+        return Check.fail("Alt+Up while scrolling instantiated the composer's real input instead of staying in scroll mode");
       root._scrollOpenId = want.id;
-      return root.checkWritingModePreserved(listView, composer);
+      return root.checkWritingModePreserved(listView);
     }
 
     stepper.attempts++;
@@ -164,34 +165,36 @@ ShellRoot {
   // checkWritingModePreserved focuses the composer with i, then presses
   // Alt+Down: the next chat must open with the composer still focused,
   // the way Ctrl+J already works while writing.
-  function checkWritingModePreserved(listView: var, composer: var): void {
+  function checkWritingModePreserved(listView: var): void {
     t.keyClick(Qt.Key_I);
     stepper.attempts = 0;
-    root.waitForWritingFocus(listView, composer);
+    root.waitForWritingFocus(listView);
   }
 
-  function waitForWritingFocus(listView: var, composer: var): void {
-    if (composer.activeFocus) return root.sendAltDownWhileWriting(listView, composer);
+  function waitForWritingFocus(listView: var): void {
+    const composer = Check.find(panel, "composerInput");
+    if (composer && composer.activeFocus) return root.sendAltDownWhileWriting(listView);
 
     stepper.attempts++;
-    if (stepper.attempts >= 100) return Check.fail("i never focused the composer");
-    stepper.retry(() => root.waitForWritingFocus(listView, composer));
+    if (stepper.attempts >= 100) return Check.fail("i never brought in and focused the composer's real input");
+    stepper.retry(() => root.waitForWritingFocus(listView));
   }
 
-  function sendAltDownWhileWriting(listView: var, composer: var): void {
+  function sendAltDownWhileWriting(listView: var): void {
     const currentIndex = root.indexOfId(listView, root._scrollOpenId);
     const want = root.rowAt(listView, (currentIndex + 1) % listView.model.count);
 
     t.keyClick(Qt.Key_Down, Qt.AltModifier);
     stepper.attempts = 0;
-    root.waitForWritingModeOpen(listView, composer, want);
+    root.waitForWritingModeOpen(listView, want);
   }
 
-  function waitForWritingModeOpen(listView: var, composer: var, want: var): void {
+  function waitForWritingModeOpen(listView: var, want: var): void {
     const title = Check.find(panel, "conversationTitle");
 
     if (title && title.text === want.title) {
-      if (!composer.activeFocus)
+      const composer = Check.find(panel, "composerInput");
+      if (!composer || !composer.activeFocus)
         return Check.fail("Alt+Down while writing left writing mode instead of keeping it in the next chat");
       root._scrollOpenId = want.id;
       return root.leaveToListMode();
@@ -200,7 +203,7 @@ ShellRoot {
     stepper.attempts++;
     if (stepper.attempts >= 100)
       return Check.fail("Alt+Down while writing opened \"" + (title ? title.text : "?") + "\", want \"" + want.title + "\"");
-    stepper.retry(() => root.waitForWritingModeOpen(listView, composer, want));
+    stepper.retry(() => root.waitForWritingModeOpen(listView, want));
   }
 
   // leaveToListMode steps Escape twice: once out of the composer, once to
@@ -212,8 +215,7 @@ ShellRoot {
   }
 
   function waitForComposeLeft(): void {
-    const composer = Check.find(panel, "composerInput");
-    if (composer && !composer.activeFocus) {
+    if (!Check.find(panel, "composerInput")) {
       t.keyClick(Qt.Key_Escape);
       stepper.attempts = 0;
       return root.waitForConversationClosed();
@@ -260,11 +262,10 @@ ShellRoot {
 
   function waitForUnreadNextOpen(): void {
     const title = Check.find(panel, "conversationTitle");
-    const composer = Check.find(panel, "composerInput");
 
     if (title && title.text === root._wantUnread.title) {
-      if (composer.activeFocus)
-        return Check.fail("Alt+Shift+Down from the list left the composer focused; it should open in scroll mode");
+      if (Check.find(panel, "composerInput"))
+        return Check.fail("Alt+Shift+Down from the list instantiated the composer's real input; it should open in scroll mode");
       return root.leaveToUnreadView();
     }
 
@@ -323,11 +324,10 @@ ShellRoot {
 
   function waitForUnreadViewChatNext(listView: var): void {
     const title = Check.find(panel, "conversationTitle");
-    const composer = Check.find(panel, "composerInput");
 
     if (title && title.text === root._wantAfterDown.title) {
-      if (composer.activeFocus)
-        return Check.fail("Alt+Down inside the unread view left the composer focused instead of scroll mode");
+      if (Check.find(panel, "composerInput"))
+        return Check.fail("Alt+Down inside the unread view instantiated the composer's real input instead of scroll mode");
       console.log("PASS ChatNavigation");
       return Qt.exit(0);
     }

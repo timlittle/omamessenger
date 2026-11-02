@@ -99,7 +99,7 @@ The highlight starts on the newest message when the conversation opens or when y
 | Enter | Send, or save an edit in progress |
 | ↑, in an empty composer | Load your most recent editable sent message for editing |
 | Shift+Enter or Ctrl+J | Start a new line instead of sending |
-| Ctrl+V | Paste a clipboard image as an attachment |
+| Ctrl+V or Shift+Insert | Paste: a clipboard image as an attachment, or otherwise its text at the cursor |
 | Ctrl+. | Open spelling suggestions for the misspelled word the caret is in |
 | Ctrl+L, or the clock button beside Send | Send later (shown in the footer's key hints while writing) |
 | Esc | While editing, cancel and restore the composer to what it held before |

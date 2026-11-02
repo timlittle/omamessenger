@@ -34,6 +34,15 @@ const writeTimeout = 10 * time.Second
 // without bound.
 const MaxPasteLen = 32 << 20
 
+// MaxPasteTextLen bounds how many bytes ReadText accepts from
+// wl-paste: comfortably more than four bytes (UTF-8's own worst case
+// per rune) times domain.MaxTextLength's 4096 code points, with room
+// to spare, and far smaller than MaxPasteLen, since nothing this UI
+// ever sends as text is anywhere near that long. This package cannot
+// import domain (see .golangci.yml's depguard rules), so the number is
+// restated here rather than computed from it.
+const MaxPasteTextLen = 32 * 1024
+
 // errPasteTooLarge reports that wl-paste's own output was larger than
 // MaxPasteLen: the clipboard belongs to whichever other program last
 // put something on it, so its declared or actual size is never
@@ -51,7 +60,7 @@ type Wayland struct {
 // Types lists the MIME types wl-paste says the clipboard currently
 // offers, or none when it is empty.
 func (w Wayland) Types(ctx context.Context) ([]string, error) {
-	out, err := w.run(ctx, "--list-types")
+	out, err := w.run(ctx, MaxPasteLen, "--list-types")
 	if err != nil {
 		return nil, fmt.Errorf("clipboard: list types: %w", err)
 	}
@@ -64,9 +73,10 @@ func (w Wayland) Types(ctx context.Context) ([]string, error) {
 	return strings.Split(trimmed, "\n"), nil
 }
 
-// Read writes the clipboard's data of mimeType to w.
+// Read writes the clipboard's data of mimeType to w, bounded by
+// MaxPasteLen.
 func (w Wayland) Read(ctx context.Context, mimeType string, dst io.Writer) error {
-	out, err := w.run(ctx, "--type", mimeType)
+	out, err := w.run(ctx, MaxPasteLen, "--type", mimeType)
 	if err != nil {
 		return fmt.Errorf("clipboard: read: %w", err)
 	}
@@ -74,6 +84,22 @@ func (w Wayland) Read(ctx context.Context, mimeType string, dst io.Writer) error
 	_, err = dst.Write(out)
 
 	return err
+}
+
+// ReadText returns the clipboard's text/plain offer, the same bounded
+// wl-paste path Read uses for an image, but capped at MaxPasteTextLen
+// rather than MaxPasteLen: nothing this UI ever pastes as text needs
+// anywhere near that much room. Qt's own in-process clipboard reader
+// must never see a foreign clipboard offer directly - this is the
+// helper-side read every paste of plain text goes through instead (see
+// docs/decisions.md).
+func (w Wayland) ReadText(ctx context.Context) (string, error) {
+	out, err := w.run(ctx, MaxPasteTextLen, "--type", "text/plain")
+	if err != nil {
+		return "", fmt.Errorf("clipboard: read text: %w", err)
+	}
+
+	return string(out), nil
 }
 
 // Write puts data on the clipboard as mimeType, through wl-copy,
@@ -95,14 +121,14 @@ func (w Wayland) Write(ctx context.Context, mimeType string, data io.Reader) err
 }
 
 // run invokes wl-paste with args and returns its stdout, bounded by
-// commandTimeout and MaxPasteLen.
-func (w Wayland) run(ctx context.Context, args ...string) ([]byte, error) {
+// commandTimeout and max bytes.
+func (w Wayland) run(ctx context.Context, max int, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 
 	cmd := w.command(ctx, "wl-paste", args...)
 
-	out := &boundedWriter{max: MaxPasteLen}
+	out := &boundedWriter{max: max}
 	cmd.Stdout = out
 
 	if err := cmd.Run(); err != nil {

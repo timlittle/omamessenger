@@ -114,6 +114,22 @@ Item {
     else if (direction === "oldest") conversationView.scrollToOldest()
   }
 
+  // conversationController restores whatever conversation was open the
+  // last time the panel existed from its own Component.onCompleted,
+  // which can run - and change activeId - before this file's own
+  // Connections below even exists yet, whenever the whole panel is torn
+  // down and rebuilt (Omarchy reloading the plugin, say): the usual
+  // "activeId just changed, focus the composer" signal is missed for
+  // that one restored conversation, though never for one a real click
+  // or search opens afterwards, since by then everything here already
+  // exists. Qt.callLater runs this once the event loop turns over, by
+  // which point conversationController's own restore has always
+  // already run, so this only ever needs to check its current state,
+  // not catch a signal.
+  Component.onCompleted: Qt.callLater(() => {
+    if (root.conversationController && root.conversationController.activeId) conversationView.focusComposer()
+  })
+
   Connections {
     target: root.conversationController
 
@@ -149,8 +165,9 @@ Item {
       if (root.focusDefault) root.focusDefault()
     }
     function onAttachFileRequested() { conversationView.composer.openFilePicker() }
-    function onPasteFallbackRequested() {
-      if (conversationView.composer.input) conversationView.composer.input.paste()
+    function onTextInsertRequested(text) {
+      const input = conversationView.composer.input
+      if (input) input.insert(input.cursorPosition, text)
     }
   }
 

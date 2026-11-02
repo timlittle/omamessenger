@@ -44,6 +44,29 @@ ColumnLayout {
   // a key router intercepts through a function property, not a signal.
   property var routeKey: null
 
+  // _editingSearch is true from the moment the search field is entered
+  // (a click on its placeholder, or focusSearch()) until it is left
+  // (blur): the real TextField below exists only then, not merely
+  // while this column is shown, the same reasoning Composer.qml's own
+  // _writingRequested documents (see docs/decisions.md) - a field
+  // visible but untouched is itself a sink for a foreign Wayland
+  // clipboard offer, with no size or time limit of its own.
+  property bool _editingSearch: false
+  // _searchFocusPending mirrors Composer's own _focusPending: true when
+  // focusSearch() was asked for before the field existed yet, consumed
+  // by the Loader's own onLoaded.
+  property bool _searchFocusPending: false
+
+
+  // focusSearch starts editing the search field, the way a click on its
+  // placeholder does; see ListController for the j/k-style keyboard
+  // paths that might call this.
+  function focusSearch(): void {
+    root._editingSearch = true;
+    if (root.searchField) { root.searchField.forceActiveFocus(); return; }
+    root._searchFocusPending = true;
+  }
+
   // searchField exposes the loaded field itself, or null while the list
   // column is not shown and the field does not exist: a key router or a
   // focus-tracking Connections must guard against null (see
@@ -71,18 +94,59 @@ ColumnLayout {
 
   spacing: Theme.spacing.sm
 
-  // The search field is destroyed, not merely hidden, while the list
-  // column is not shown: a hidden but still-alive TextInput keeps reading
-  // Wayland clipboard changes with no size or time limit, the same risk
-  // tests/unit/textinput-lifetime.test.cjs guards for every other field
-  // (see docs/decisions.md). Its text is a one-way mirror of root.query,
-  // owned by ListController, so losing and recreating this item on every
-  // show never loses anything: the controller's own value is what comes
-  // back.
+  // searchPlaceholder shows the current query, or "Search", as plain,
+  // non-editable Text while the field is not being edited: clicking it
+  // starts editing (see focusSearch). A field merely visible but
+  // untouched is itself a clipboard sink, not only a hidden one (see
+  // _editingSearch's own comment above and docs/decisions.md).
+  Rectangle {
+    id: searchPlaceholder
+    objectName: "searchPlaceholder"
+    Layout.fillWidth: true
+    Layout.preferredHeight: placeholderText.implicitHeight + Theme.spacing.inputPaddingY * 2
+    visible: !searchFieldLoader.active
+    radius: Style.cornerRadius
+    color: Style.normalFill
+
+    Text {
+      id: placeholderText
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.leftMargin: Theme.spacing.controlPaddingX
+      text: root.query.length > 0 ? root.query : "Search"
+      textFormat: Text.PlainText
+      elide: Text.ElideRight
+      color: root.query.length > 0 ? Theme.foreground : Util.alpha(Theme.foreground, 0.4)
+      font.family: Theme.font.family
+      font.pixelSize: Theme.font.body
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      onClicked: root.focusSearch()
+    }
+  }
+
+  // The search field is destroyed, not merely hidden, while it is not
+  // being edited: a hidden-or-merely-visible but still-alive TextInput
+  // keeps reading Wayland clipboard changes with no size or time
+  // limit, the same risk tests/unit/textinput-lifetime.test.cjs guards
+  // for every other field (see docs/decisions.md). Its text is a
+  // one-way mirror of root.query, owned by ListController, so losing
+  // and recreating this item on every edit never loses anything: the
+  // controller's own value is what comes back.
   Loader {
     id: searchFieldLoader
     Layout.fillWidth: true
-    active: root.visible
+    active: root.visible && root._editingSearch
+    onLoaded: {
+      if (root._searchFocusPending) {
+        root.searchField.forceActiveFocus();
+        root._searchFocusPending = false;
+      }
+    }
+
     sourceComponent: Ui.TextField {
       objectName: "searchField"
       placeholderText: "Search"
@@ -94,6 +158,10 @@ ColumnLayout {
       }
 
       onTextChanged: root.queryEdited(text)
+      // Losing focus for any reason ends editing: _editingSearch turns
+      // false, destroying this field through searchFieldLoader.active
+      // above rather than leaving it alive but merely visible.
+      onActiveFocusChanged: if (!activeFocus) root._editingSearch = false
     }
   }
 

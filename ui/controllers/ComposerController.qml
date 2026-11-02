@@ -69,8 +69,8 @@ Item {
 
   // attachmentPath is the file to send with the next message, or "" for
   // none: set by attachFile (the composer's own file picker, through
-  // media.attach) or pasteImage (a clipboard image, through
-  // media.paste), once either finishes, and read by
+  // media.attach) or paste (a clipboard image, through media.paste),
+  // once either finishes, and read by
   // ConversationController.send(). See Composer.qml for why the caller,
   // not the composer, owns it. It always names a file the helper has
   // already copied into its own outgoing media area and, when it looks
@@ -123,10 +123,15 @@ Item {
   // everywhere else (see Keymap.js's compose context).
   signal newlineRequested()
 
-  // pasteFallbackRequested asks the caller to paste the clipboard's text
-  // into the composer, because pasteImage found no image there and
-  // Ctrl+V must still work as a plain text paste.
-  signal pasteFallbackRequested()
+  // textInsertRequested asks the caller to insert text at the
+  // composer's cursor, the same way newlineRequested already asks for
+  // a line break: paste()'s own plain-text fallback, once an image
+  // paste found nothing there, reads the clipboard through the
+  // helper's bounded clipboard.readText and asks for it to land here -
+  // never through the real text field's own paste(), which would read
+  // the clipboard a second time, this time with no size or time limit
+  // of its own (see docs/decisions.md).
+  signal textInsertRequested(string text)
 
   // leaveComposeRequested asks the caller to move focus out of the composer.
   signal leaveComposeRequested()
@@ -149,7 +154,7 @@ Item {
       "compose.editLast": () => root.startEditFromUp(),
       "message.send": () => { root.submitRequested(); return true; },
       "compose.newline": () => { root.newlineRequested(); return true; },
-      "compose.attach": () => { root.pasteImage(); return true; },
+      "compose.attach": () => { root.paste(); return true; },
       "compose.attachFile": () => { root.attachFileRequested(); return true; }
     };
 
@@ -292,7 +297,7 @@ Item {
   // treatment a pasted image already gets, never a decision made from
   // the file's own extension. media.attach answers asynchronously, so
   // the open conversation is captured when it starts, the same
-  // staleness guard pasteImage uses below; an oversized or unsafe
+  // staleness guard paste uses below; an oversized or unsafe
   // image is refused outright and reported the same way a failed send
   // already is. attachmentPath, name and kind are set only once it
   // succeeds, so the chip never shows anything for a refused file.
@@ -363,7 +368,7 @@ Item {
     return account ? (account.attachmentLimit || 0) : 0;
   }
 
-  // removeAttachment clears whatever attachFile or pasteImage set, from
+  // removeAttachment clears whatever attachFile or paste set, from
   // the composer's chip, the Escape chain, or once a message carrying
   // it has been handed to the service (see
   // ConversationController.send). Its outgoing copy is not
@@ -378,27 +383,52 @@ Item {
     root.attachmentLimit = 0;
   }
 
-  // pasteImage asks the helper whether the clipboard holds an image; if
-  // it does, it is attached to the next message, and otherwise Ctrl+V
-  // still pastes text, same as it always did. media.paste answers
-  // asynchronously, so the open conversation is captured when the paste
-  // starts; if it has since changed by the time the reply lands, the
-  // reply is dropped outright rather than attaching the pasted image, or
-  // falling back to a plain paste, to whichever conversation now happens
-  // to be open (see docs/decisions.md).
-  function pasteImage(): void {
+  // paste asks the helper whether the clipboard holds an image; if it
+  // does, it is attached to the next message. Otherwise - no image, or
+  // the helper refused it (too large, timed out, or malformed) -
+  // Ctrl+V falls back to plain text, read through the same bounded
+  // clipboard.readText round trip rather than ever letting the real
+  // text field's own paste() read the clipboard itself: an earlier
+  // version fell back to exactly that, which read the clipboard's
+  // text/plain offer with no size or time limit of its own, even in
+  // the case the helper had just refused the same clipboard owner's
+  // image for being too large or too slow (see docs/decisions.md).
+  // media.paste and clipboard.readText both answer asynchronously, so
+  // the open conversation is captured once, before either call; a
+  // reply for a conversation no longer open is dropped outright rather
+  // than attaching the image or inserting the text into whichever
+  // conversation now happens to be open.
+  function paste(): void {
     if (!root.service) return;
 
     const conversationId = root.conversation ? root.conversation.activeId : "";
     const isCurrent = Rpc.guard(() => root.conversation ? root.conversation.activeId : null, conversationId);
     root.service.request("media.paste", {}, function(error, result) {
       if (!isCurrent()) return;
-      if (error) { root.pasteFallbackRequested(); return; }
-      root.attachmentPath = result.path;
-      root.attachmentName = "";
-      root.attachmentKind = result.kind || "";
-      root.attachmentSize = 0;
-      root.attachmentLimit = 0;
+      if (!error) {
+        root.attachmentPath = result.path;
+        root.attachmentName = "";
+        root.attachmentKind = result.kind || "";
+        root.attachmentSize = 0;
+        root.attachmentLimit = 0;
+        return;
+      }
+
+      root._pasteText(isCurrent);
+    });
+  }
+
+  // _pasteText is paste()'s own plain-text fallback, split out to keep
+  // paste() within the size guideline: the clipboard's text/plain
+  // offer, through the helper's bounded clipboard.readText, inserted
+  // at the composer's cursor on success, or a short refusal notice
+  // when the clipboard holds no text either.
+  function _pasteText(isCurrent: var): void {
+    root.service.request("clipboard.readText", {}, function(error, result) {
+      if (!isCurrent()) return;
+      if (error) { root.conversation.timeline.lastError = Rpc.errorText(error); return; }
+
+      root.textInsertRequested(result.text);
     });
   }
 
@@ -458,7 +488,7 @@ Item {
 
   // _runSpellCheck sends the debounced spell.check request. A reply for
   // text the composer has since moved on from is dropped, the same
-  // staleness guard pasteImage uses above.
+  // staleness guard paste uses above.
   function _runSpellCheck(): void {
     if (!root.service) return;
 

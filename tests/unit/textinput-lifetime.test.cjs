@@ -281,3 +281,34 @@ test("ListColumn's search field and Composer's own input are both self-gated, ne
     assert.equal(fieldSelfGated(src), true, `${file} has a field not gated by its own inner Loader`);
   }
 });
+
+// EDIT_INTENT_FLAGS names, for each self-gated field, the private flag
+// its own Loader's `active` binding must read: true only from the
+// moment the user actually asks to type (a click on its placeholder,
+// i/a, Up into an empty draft) until the real field loses focus, never
+// merely because the surrounding component is shown. A security review
+// found both fields gated on "merely visible" instead - ListColumn's
+// own root.visible, Composer's own root.active, itself only ever
+// "is the pane open" - which still left each one a clipboard sink
+// the whole time its column was on screen, focused or not, exactly
+// the gap tests/unit/textinput-lifetime otherwise exists to close (see
+// docs/decisions.md). fieldSelfGated above cannot see this: a Loader
+// gated on root.visible and one gated on an edit-intent flag both read
+// as "not a bare true" to it. This checks the one thing that test
+// cannot: that the flag named here, not just any non-literal
+// expression, is what each field's own Loader actually reads.
+const EDIT_INTENT_FLAGS = {
+  'components/Composer.qml': '_writingRequested',
+  'components/ListColumn.qml': '_editingSearch'
+};
+
+test('the search field and the composer input gate on actually being edited, not merely on being shown', () => {
+  for (const [file, flag] of Object.entries(EDIT_INTENT_FLAGS)) {
+    const src = fs.readFileSync(path.join(UI_ROOT, file), 'utf8');
+    const activeBindings = [...src.matchAll(/\bactive\s*:\s*([^\n;]+)/g)].map((m) => m[1].trim());
+
+    assert.ok(activeBindings.some((expr) => expr.includes(flag)),
+      `${file}'s field Loader does not gate on ${flag} (an edit-intent flag that only turns true once the user ` +
+      `actually asks to type, and false again the moment the field loses focus); found active: ${JSON.stringify(activeBindings)}`);
+  }
+});

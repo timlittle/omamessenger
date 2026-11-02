@@ -1,11 +1,17 @@
-// Checks ComposerController.pasteImage and attachFile against a scripted
-// service whose media.paste or media.attach reply is held back until the
-// test fires it by hand: both answer asynchronously, so one started in one
-// conversation must not attach, or fall back to a plain paste, in whatever
-// conversation is open by the time the helper replies. attachFile is also
-// checked for calling media.attach (never setting attachmentPath straight
-// from the picked path) and for showing a refused file as an error rather
-// than attaching it. Also checks the editing wiring:
+// Checks ComposerController.paste and attachFile against a scripted
+// service whose media.paste, clipboard.readText or media.attach reply is
+// held back until the test fires it by hand: all three answer
+// asynchronously, so one started in one conversation must not attach, or
+// insert text, in whatever conversation is open by the time the helper
+// replies. paste's own plain-text fallback, once media.paste finds no
+// image, goes through clipboard.readText and asks the caller to insert
+// the result at the cursor (textInsertRequested) rather than ever
+// falling back to the real text field's own paste() - see
+// docs/decisions.md for why that fallback was removed outright, not
+// merely delayed. attachFile is also checked for calling media.attach
+// (never setting attachmentPath straight from the picked path) and for
+// showing a refused file as an error rather than attaching it. Also
+// checks the editing wiring:
 // compose.editLast (Up in an empty composer) loads the conversation's
 // last editable message, saveEdit (Enter while editing) calls
 // messages.edit with the right params, and cancelEdit (Esc while
@@ -22,7 +28,8 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  property int fallbackCount: 0
+  // insertedTexts records every textInsertRequested text, in order.
+  property var insertedTexts: []
 
   // fakeService holds media.paste's callback rather than answering at
   // once, so the test controls exactly when the reply lands relative to
@@ -46,7 +53,7 @@ ShellRoot {
     }
   }
 
-  // fakeConversation stands in for the ConversationController pasteImage
+  // fakeConversation stands in for the ConversationController paste
   // and the editing checks read the open conversation's id, timeline and
   // applyMessage from. _timelineMessages holds one incoming and one
   // editable outgoing message, the minimum compose.editLast needs to
@@ -85,7 +92,7 @@ ShellRoot {
     service: fakeService
     conversation: fakeConversation
 
-    onPasteFallbackRequested: root.fallbackCount++
+    onTextInsertRequested: text => root.insertedTexts.push(text)
   }
 
   Timer {
@@ -104,12 +111,14 @@ ShellRoot {
 
   // run drives every case in turn: a reply for the conversation that is
   // still open attaches normally; a reply for one that is not, whether
-  // it succeeds or fails, is dropped outright.
+  // it succeeds or fails, is dropped outright, including the text
+  // fallback's own clipboard.readText call, which must never even
+  // start for a conversation no longer open.
   function run(): void {
-    composer.pasteImage();
+    composer.paste();
     const sameConversationReply = root.takePending();
     if (!sameConversationReply) {
-      Check.fail("pasteImage did not call media.paste");
+      Check.fail("paste did not call media.paste");
       return;
     }
 
@@ -120,7 +129,7 @@ ShellRoot {
     }
 
     composer.attachmentPath = "";
-    composer.pasteImage();
+    composer.paste();
     const switchedBeforeSuccess = root.takePending();
     fakeConversation.activeId = "b";
     switchedBeforeSuccess(null, { path: "/tmp/leaked.png" });
@@ -129,22 +138,46 @@ ShellRoot {
       return;
     }
 
-    composer.pasteImage();
+    fakeConversation.activeId = "a";
+    composer.paste();
     const switchedBeforeError = root.takePending();
     fakeConversation.activeId = "c";
     switchedBeforeError({ code: -1, message: "no image on the clipboard" }, null);
-    if (root.fallbackCount !== 0) {
-      Check.fail("a failed media.paste for a closed conversation fell back to a plain paste in the one now open");
+    if (fakeService.pending) {
+      Check.fail("a failed media.paste for a closed conversation still started the text fallback in the one now open");
       return;
     }
 
-    composer.pasteImage();
+    fakeConversation.activeId = "a";
+    composer.paste();
     const sameConversationError = root.takePending();
     sameConversationError({ code: -1, message: "no image on the clipboard" }, null);
-    if (root.fallbackCount !== 1) {
-      Check.fail("a failed media.paste for the conversation still open did not fall back to a plain paste");
+    const textReply = root.takePending();
+    if (!textReply) {
+      Check.fail("a failed media.paste for the conversation still open did not fall back to clipboard.readText");
       return;
     }
+    if (fakeService.lastMethod !== "clipboard.readText") {
+      Check.fail("the text fallback called " + fakeService.lastMethod + ", want clipboard.readText");
+      return;
+    }
+
+    textReply(null, { text: "see you at 6" });
+    if (root.insertedTexts.length !== 1 || root.insertedTexts[0] !== "see you at 6") {
+      Check.fail("clipboard.readText's reply did not reach textInsertRequested: " + JSON.stringify(root.insertedTexts));
+      return;
+    }
+
+    fakeConversation.timeline.lastError = "";
+    composer.paste();
+    root.takePending()({ code: -1, message: "no image on the clipboard" }, null);
+    const refusedTextReply = root.takePending();
+    refusedTextReply({ code: -32602, message: "there is no text on the clipboard" }, null);
+    if (fakeConversation.timeline.lastError === "") {
+      Check.fail("a refused clipboard.readText did not report a notice through the open conversation");
+      return;
+    }
+    fakeConversation.timeline.lastError = "";
 
     if (!root.checkPickAttachFile()) return;
     if (!root.checkAttachFile()) return;

@@ -521,6 +521,12 @@ func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) er
 	return err
 }
 
+// ReadText returns the canned text/plain data, the same as Read does
+// for an image.
+func (c *fakeClipboard) ReadText(context.Context) (string, error) {
+	return string(c.data["text/plain"]), nil
+}
+
 // Write records data's bytes as written, ignoring mimeType: no test in
 // this package needs to assert on it.
 func (c *fakeClipboard) Write(_ context.Context, _ string, data io.Reader) error {

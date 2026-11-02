@@ -98,6 +98,51 @@ func TestRead_FailsWhenOutputExceedsTheCap(t *testing.T) {
 	}
 }
 
+// TestReadText_ReturnsTheCommandsOutput confirms ReadText reads the
+// clipboard's text/plain offer back as a string.
+func TestReadText_ReturnsTheCommandsOutput(t *testing.T) {
+	t.Parallel()
+
+	w := clipboard.Wayland{Command: stubCommand("printf 'hello there'")}
+
+	got, err := w.ReadText(t.Context())
+	if err != nil {
+		t.Fatalf("ReadText() error = %v", err)
+	}
+	if got != "hello there" {
+		t.Errorf("ReadText() = %q, want %q", got, "hello there")
+	}
+}
+
+// TestReadText_FailsWhenTheCommandFails confirms a clipboard with no
+// text/plain offer (wl-paste --type text/plain exits non-zero) is
+// reported as an error rather than an empty paste.
+func TestReadText_FailsWhenTheCommandFails(t *testing.T) {
+	t.Parallel()
+
+	w := clipboard.Wayland{Command: stubCommand("exit 1")}
+
+	if _, err := w.ReadText(t.Context()); err == nil {
+		t.Error("ReadText() with a failing command = nil error, want one")
+	}
+}
+
+// TestReadText_FailsWhenOutputExceedsTheCap confirms a hostile or
+// stuck clipboard source offering far more text than anything this UI
+// would ever send is refused rather than read fully into memory, the
+// same way Read is bounded for an image - but at MaxPasteTextLen, a
+// much smaller cap, since nothing this UI pastes as text is ever that
+// long.
+func TestReadText_FailsWhenOutputExceedsTheCap(t *testing.T) {
+	t.Parallel()
+
+	w := clipboard.Wayland{Command: stubCommand(fmt.Sprintf("head -c %d /dev/zero", clipboard.MaxPasteTextLen+1))}
+
+	if _, err := w.ReadText(t.Context()); err == nil {
+		t.Error("ReadText() over the cap = nil error, want one")
+	}
+}
+
 // TestWrite_SendsDataToTheCommand confirms Write hands data to the
 // command's own stdin, the way wl-copy expects what it is to put on
 // the clipboard.

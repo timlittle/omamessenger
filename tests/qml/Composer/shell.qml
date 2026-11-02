@@ -89,8 +89,14 @@ ShellRoot {
     onTriggered: root.runFocusedChecks()
   }
 
-  // run drives the composer and checks the outcome.
+  // run drives the composer and checks the outcome. focusInput() starts
+  // writing first: the real text input now exists only from that call
+  // until it loses focus (see Composer.qml's own _writingRequested), so
+  // every check below that reaches composer.input needs this first,
+  // the same way a real caller reaches it through compose.focus (i/a)
+  // or a click, never for free just by the composer being on screen.
   function run(): void {
+    composer.focusInput();
     if (!root.checkSubmit()) return;
     if (!root.checkBlocked()) return;
     if (!root.checkReplyBanner()) return;

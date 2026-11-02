@@ -78,6 +78,53 @@ func TestPasteImage_ReportsAClipboardFailure(t *testing.T) {
 	}
 }
 
+// TestPasteText_ReturnsTheClipboardsText confirms PasteText hands back
+// whatever ReadText found, through the same bounded wl-paste path
+// PasteImage already uses for an image.
+func TestPasteText_ReturnsTheClipboardsText(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.clipboard.data = map[string][]byte{"text/plain": []byte("hello there")}
+
+	got, err := f.commands.PasteText(t.Context())
+	if err != nil {
+		t.Fatalf("PasteText() error = %v", err)
+	}
+	if got != "hello there" {
+		t.Errorf("PasteText() = %q, want %q", got, "hello there")
+	}
+}
+
+// TestPasteText_RejectsAnEmptyClipboard confirms an empty text/plain
+// offer is reported as invalid input rather than silently inserting
+// nothing, the same as PasteImage does when the clipboard holds no
+// image.
+func TestPasteText_RejectsAnEmptyClipboard(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+
+	if _, err := f.commands.PasteText(t.Context()); !errors.Is(err, app.ErrInvalidInput) {
+		t.Errorf("PasteText(empty clipboard) = %v, want ErrInvalidInput", err)
+	}
+}
+
+// TestPasteText_ReportsAClipboardFailure confirms a failing
+// clipboard.ReadText (the helper's own bounded read refused a clipboard
+// that was too large or too slow) is reported as an error rather than
+// treated as empty.
+func TestPasteText_ReportsAClipboardFailure(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	f.clipboard.readErr = errors.New("clipboard: paste exceeds the size limit")
+
+	if _, err := f.commands.PasteText(t.Context()); err == nil {
+		t.Error("PasteText() with a failing clipboard = nil error, want one")
+	}
+}
+
 // encodePNG writes a solid image of the given size as a PNG to w.
 func encodePNG(w *bytes.Buffer, width, height int) error {
 	return png.Encode(w, image.NewRGBA(image.Rect(0, 0, width, height)))

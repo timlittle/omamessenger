@@ -171,20 +171,28 @@ type SoundStore interface {
 }
 
 // ClipboardRunner reads and writes the Wayland clipboard. Quickshell's
-// QML cannot read clipboard image data, or put an image or video on the
-// clipboard at all, itself, so the helper shells out to wl-paste and
-// wl-copy; PasteImage asks for the first, CopyMedia for the second.
-// Three methods, not the usual one or two, because all three are the
-// one real resource - the system clipboard - a single command-line
-// pair already owns: splitting Read and Write into their own
-// interfaces would only mean two fields wired to the same
-// implementation for no caller's benefit.
+// QML cannot read clipboard image or text data, or put an image or
+// video on the clipboard at all, itself, so the helper shells out to
+// wl-paste and wl-copy; PasteImage asks for the first, PasteText for a
+// second, bounded read of the clipboard's plain text, and CopyMedia for
+// wl-copy. Four methods, not the usual one or two, because all four are
+// the one real resource - the system clipboard - a single command-line
+// pair already owns: splitting them into their own interfaces would
+// only mean several fields wired to the same implementation for no
+// caller's benefit.
 type ClipboardRunner interface {
 	// Types lists the MIME types the clipboard currently offers.
 	Types(ctx context.Context) ([]string, error)
 
 	// Read writes the clipboard's data of mimeType to w.
 	Read(ctx context.Context, mimeType string, w io.Writer) error
+
+	// ReadText returns the clipboard's text/plain offer, bounded the
+	// same way Read is for an image, but at a far smaller cap: the
+	// one safe way to read clipboard text at all, since Qt's own
+	// in-process reader has no size or time limit of its own (see
+	// docs/decisions.md).
+	ReadText(ctx context.Context) (string, error)
 
 	// Write puts data on the clipboard as mimeType.
 	Write(ctx context.Context, mimeType string, data io.Reader) error

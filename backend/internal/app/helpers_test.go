@@ -535,9 +535,7 @@ type clipboardWrite struct {
 }
 
 // Types reports the MIME types the test set the clipboard to offer.
-func (c *fakeClipboard) Types(context.Context) ([]string, error) {
-	return c.types, c.typesErr
-}
+func (c *fakeClipboard) Types(context.Context) ([]string, error) { return c.types, c.typesErr }
 
 // Read writes the canned data for mimeType, or fails with readErr.
 func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) error {
@@ -548,6 +546,12 @@ func (c *fakeClipboard) Read(_ context.Context, mimeType string, w io.Writer) er
 	_, err := w.Write(c.data[mimeType])
 
 	return err
+}
+
+// ReadText returns the canned text/plain data, or fails with readErr,
+// the same as Read does for an image.
+func (c *fakeClipboard) ReadText(context.Context) (string, error) {
+	return string(c.data["text/plain"]), c.readErr
 }
 
 // Write records mimeType and data's bytes as one clipboardWrite, or

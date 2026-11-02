@@ -9,7 +9,7 @@
 // and digits their ASCII code, as Qt does.
 var KEY = {
   Escape: 0x01000000, Tab: 0x01000001, Backtab: 0x01000002,
-  Return: 0x01000004, Enter: 0x01000005, Home: 0x01000010,
+  Return: 0x01000004, Enter: 0x01000005, Insert: 0x01000006, Home: 0x01000010,
   End: 0x01000011, Left: 0x01000012, Up: 0x01000013, Right: 0x01000014, Down: 0x01000015,
   PageUp: 0x01000016, PageDown: 0x01000017,
   Slash: 0x2f, Question: 0x3f, Space: 0x20, Period: 0x2e
@@ -215,7 +215,7 @@ var BINDINGS = [
   // order), so Ctrl+J only jumps to the next unread conversation outside
   // the composer; Alt+Shift+Down/Up keep doing that while writing.
   { action: 'compose.newline', keys: ['Shift+Enter', 'Ctrl+J'], contexts: ['compose'], label: 'New line', hint: true },
-  { action: 'compose.attach', keys: ['Ctrl+V'], contexts: ['compose'], label: 'Paste a clipboard image as an attachment' },
+  { action: 'compose.attach', keys: ['Ctrl+V', 'Shift+Insert'], contexts: ['compose'], label: 'Paste a clipboard image as an attachment' },
   { action: 'compose.attachFile', keys: [], contexts: ['conversation', 'compose'], label: 'Attach a file', command: true },
   // Queues the composer's own text to send at a chosen time instead of
   // right away; see WindowController._scheduleDraft. Ctrl+L is free in

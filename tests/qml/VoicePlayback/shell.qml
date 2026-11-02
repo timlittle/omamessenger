@@ -103,8 +103,7 @@ ShellRoot {
   }
 
   function waitForComposerLeft(): void {
-    const composer = Check.find(panel, "composerInput");
-    if (composer && !composer.activeFocus) return root.openHighlightedVoiceNote();
+    if (!Check.find(panel, "composerInput")) return root.openHighlightedVoiceNote();
 
     stepper.attempts++;
     if (stepper.attempts >= 200) return Check.fail("Escape never left the composer");

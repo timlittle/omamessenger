@@ -22,6 +22,10 @@ var errNoClipboardImage = errors.New("there is no image on the clipboard")
 // trusted further than a sender's own attachment.
 var errUnsafeClipboardImage = errors.New("the pasted image could not be used")
 
+// errNoClipboardText reports a paste asked for when the clipboard
+// holds no text the helper can read.
+var errNoClipboardText = errors.New("there is no text on the clipboard")
+
 // pasteImageTypes are the clipboard MIME types PasteImage accepts, most
 // preferred first.
 var pasteImageTypes = []string{"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"}
@@ -66,6 +70,31 @@ func (c *Commands) PasteImage(ctx context.Context) (PastedImage, error) {
 	width, height := imageDimensions(stored)
 
 	return PastedImage{Path: stored, Kind: domain.MediaPhoto, Width: width, Height: height}, nil
+}
+
+// PasteText returns the clipboard's text/plain offer, read through the
+// same bounded wl-paste path PasteImage uses for an image: Ctrl+V's
+// own fallback for plain text, once an image paste finds nothing,
+// calls this rather than ever letting Qt's own in-process clipboard
+// reader see the clipboard directly - that reader has no size or time
+// limit of its own, unlike this one (see docs/decisions.md). Fails
+// with an invalid-input error when the clipboard holds no text, or an
+// ordinary error when the helper's own bounded read was refused (too
+// large, too slow, or no wl-paste at all).
+func (c *Commands) PasteText(ctx context.Context) (string, error) {
+	if c.clipboard == nil {
+		return "", fmt.Errorf("%w: %w", ErrInvalidInput, errNoClipboardText)
+	}
+
+	text, err := c.clipboard.ReadText(ctx)
+	if err != nil {
+		return "", fmt.Errorf("clipboard: %w", err)
+	}
+	if text == "" {
+		return "", fmt.Errorf("%w: %w", ErrInvalidInput, errNoClipboardText)
+	}
+
+	return text, nil
 }
 
 // clipboardImageType asks the clipboard what it offers and returns the

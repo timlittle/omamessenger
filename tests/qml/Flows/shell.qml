@@ -510,10 +510,14 @@ ShellRoot {
   }
 
   // waitForDraftRestored holds until the new panel reopens Alex Chen with
-  // the draft still in the composer.
+  // the draft still in the composer - a controller fact, checked on
+  // composerController.draft directly rather than the real text field's
+  // own .text, since that field exists only while actually being
+  // written into (see Composer.qml's own _writingRequested and
+  // docs/decisions.md) and nothing here asks to resume writing.
   function waitForDraftRestored(): var {
-    const composer = Check.find(root.panel(), "composerInput");
-    return root.title() === "Alex Chen" && composer && composer.text === "draft kept";
+    const composerController = Check.find(root.panel(), "composerController");
+    return root.title() === "Alex Chen" && composerController && composerController.draft === "draft kept";
   }
 
   // openSam jumps to Sam's chat with Ctrl+K, the conversation switcher,
@@ -693,13 +697,21 @@ ShellRoot {
   }
 
   // waitEEditLoaded holds until "E" loaded the same message for editing.
+  // Shift+E reaches this from the conversation context (a highlighted
+  // message), not from writing - the very next check in this journey
+  // presses plain e for message.react, which must still reach the
+  // reactions picker rather than being typed into a composer Shift+E
+  // never asked to focus (see tests/qml/MessageHighlight's own
+  // checkShiftEEditsHighlightedMessage) - so this checks the loaded
+  // text on composerController.draft, a controller fact, rather than
+  // the real text field's own .text, which does not exist here.
   function waitEEditLoaded(): var {
     const banner = Check.find(root.panel(), "editBanner");
-    const composer = Check.find(root.panel(), "composerInput");
+    const composerController = Check.find(root.panel(), "composerController");
     if (!banner || !banner.visible) return false;
-    if (!composer || composer.text !== "are you there")
-      return Check.fail("E on the highlighted message did not load it for editing: composer text is \""
-        + (composer ? composer.text : "?") + "\"");
+    if (!composerController || composerController.draft !== "are you there")
+      return Check.fail("E on the highlighted message did not load it for editing: composer draft is \""
+        + (composerController ? composerController.draft : "?") + "\"");
     return true;
   }
 
@@ -1134,12 +1146,15 @@ ShellRoot {
     return true;
   }
 
-  // waitComposeLeftNotWriting holds until the first Escape has blurred the
-  // composer, then checks the mode hint and frame reverted to the quiet,
-  // not-writing state before the rest of the chain runs.
+  // waitComposeLeftNotWriting holds until the first Escape has blurred
+  // the composer - which, now that the real input exists only while
+  // actually being edited, destroys it outright rather than merely
+  // leaving it unfocused - then checks the mode hint, the placeholder
+  // that replaced it, and the frame reverted to the quiet, not-writing
+  // state before the rest of the chain runs.
   function waitComposeLeftNotWriting(): var {
-    const composer = Check.find(root.panel(), "composerInput");
-    if (!composer || composer.activeFocus) return false;
+    const placeholder = Check.find(root.panel(), "composerPlaceholder");
+    if (!placeholder || Check.find(root.panel(), "composerInput")) return false;
 
     const hint = Check.find(root.panel(), "composerModeHint");
     const send = Check.find(root.panel(), "sendButton");
@@ -1147,8 +1162,8 @@ ShellRoot {
       return Check.fail("not-writing hint is \"" + (hint ? hint.text : "?") + "\", want \"i to write\"");
     if (Check.find(root.panel(), "composerFrame"))
       return Check.fail("the composer still has a frame object");
-    if (composer.opacity === 1.0)
-      return Check.fail("composer input is still at full opacity while not writing");
+    if (placeholder.opacity === 1.0)
+      return Check.fail("the composer placeholder is still at full opacity while not writing");
     if (!send || send.opacity === 1.0)
       return Check.fail("Send is still at full opacity while not writing");
     return true;

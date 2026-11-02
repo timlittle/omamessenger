@@ -312,6 +312,7 @@ Item {
 
   ComposerController {
     id: composerController
+    objectName: "composerController"
     service: root.service
     conversation: conversationController
   }
