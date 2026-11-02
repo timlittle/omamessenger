@@ -419,6 +419,46 @@ function longestLine(text) {
   return text.split('\n').reduce((longest, line) => (line.length > longest.length ? line : longest), '');
 }
 
+// splitEntities splits text into alternating plain and entity chunks,
+// an entity being "&" through its own next ";" kept together as one
+// piece - the same split /(&[^;]*;)/ produced, as a forward scan
+// rather than that regex: a security review found the regex shape
+// unanchored quantifier, excluded-terminator character class,
+// applied globally - backtracks that class to zero at every "&" in a
+// row with no ";" anywhere after it, costing the square of the run's
+// length, the same root cause already fixed for a different regex in
+// Links.trimTrailingSlashes. highlight's own escaped text is meant to
+// always carry a ";" within a few characters of every "&" (escapeHtml
+// writes only "&amp;", "&lt;", "&gt;" or "&quot;"), but this keeps the
+// function itself safe regardless of what a future caller hands it.
+function splitEntities(text) {
+  const parts = [];
+  let start = 0;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] !== '&') {
+      i++;
+      continue;
+    }
+
+    const semicolon = text.indexOf(';', i + 1);
+    if (semicolon === -1) {
+      // No ";" anywhere after this "&", so none of the "&"s still
+      // ahead can find one either: stop scanning and keep the rest
+      // as one plain chunk.
+      break;
+    }
+
+    parts.push(text.slice(start, i));
+    parts.push(text.slice(i, semicolon + 1));
+    i = semicolon + 1;
+    start = i;
+  }
+
+  parts.push(text.slice(start));
+  return parts;
+}
+
 // highlight wraps case-insensitive matches of query in <b>, never inside an
 // HTML entity.
 function highlight(escaped, query) {
@@ -428,10 +468,43 @@ function highlight(escaped, query) {
 
   const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
 
-  return escaped
-    .split(/(&[^;]*;)/)
+  return splitEntities(escaped)
     .map((part) => (part.startsWith('&') && part.endsWith(';') ? part : part.replace(pattern, '<b>$&</b>')))
     .join('');
+}
+
+// stripAsides removes a bracketed aside such as "(Manager)" from
+// full, replacing each with a single space - the same substitution
+// /\([^)]*\)/g made, as a forward scan rather than that regex, for
+// the same reason splitEntities replaced highlight's own one: a run
+// of "(" with no ")" anywhere after it backtracks that regex's
+// excluded-terminator class to zero at every one of them. A display
+// name reaching initials is capped server-side
+// (domain.MaxDisplayNameLength) today, but this keeps the function
+// itself safe regardless of any caller's own limit.
+function stripAsides(full) {
+  let out = '';
+  let i = 0;
+  while (i < full.length) {
+    if (full[i] !== '(') {
+      out += full[i];
+      i++;
+      continue;
+    }
+
+    const close = full.indexOf(')', i + 1);
+    if (close === -1) {
+      // No ")" anywhere after this "(": keep the rest exactly as it
+      // is, the same as the regex's own failed match would have.
+      out += full.slice(i);
+      break;
+    }
+
+    out += ' ';
+    i = close + 1;
+  }
+
+  return out;
 }
 
 // initials returns the first letter of the first two words, upper-cased,
@@ -440,7 +513,7 @@ function highlight(escaped, query) {
 // Emoji and other wide characters count as one.
 function initials(name) {
   const full = name ?? '';
-  const withoutAsides = full.replace(/\([^)]*\)/g, ' ');
+  const withoutAsides = stripAsides(full);
   const source = /\S/.test(withoutAsides) ? withoutAsides : full;
   const letters = source.split(/\s+/).map(firstLetter).filter((c) => c !== '').slice(0, 2).join('');
 

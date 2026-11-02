@@ -53,15 +53,37 @@ function fileURL(path) {
   return 'file://' + path.split('/').map(encodeURIComponent).join('/');
 }
 
+// trimTrailingSlashes drops every "/" at text's own end, scanning back
+// from the end in a loop rather than the regex this replaced,
+// /\/+$/: with no start anchor, a regex engine retries that pattern
+// from every position in a long run of slashes, backtracking the "+"
+// at each one, which costs the square of the run's length. A security
+// review found exactly that shape here - the same reasoning that
+// already turned Format.splitTrailingPunctuation and
+// Highlight.stripTrailingPunctuation into loops, just missed on this
+// copy. A sender's own link, and the text naming it, both reach this
+// with no length limit of their own at this layer, so the loop is
+// what keeps a single click or the "o" key linear rather than letting
+// one adversarial link stall the whole shell.
+function trimTrailingSlashes(text) {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === '/') {
+    end--;
+  }
+
+  return text.slice(0, end);
+}
+
 // normalizeTarget lowers text, trims it, and drops a leading scheme,
 // a leading "www." and a trailing slash, the one comparison
 // sameTarget applies to both a link's visible text and its href, so
 // neither difference alone counts as a mismatch.
 function normalizeTarget(text) {
-  return (text || '').trim().toLowerCase()
+  const withoutSchemeAndWww = (text || '').trim().toLowerCase()
     .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/\/+$/, '');
+    .replace(/^www\./, '');
+
+  return trimTrailingSlashes(withoutSchemeAndWww);
 }
 
 // sameTarget reports whether displayText and url name the same

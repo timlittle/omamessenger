@@ -155,3 +155,27 @@ test('a preview whose URL is not in its message text needs confirming', () => {
   const shown = Links.previewDisplayText('https://evil.example/login', 'refund: https://www.paypal.com/refund', 'PayPal');
   assert.ok(Links.needsConfirmation(shown, 'https://evil.example/login'));
 });
+
+// sameTarget strips a trailing slash run in linear time, not quadratic.
+// Mirrors tests/unit/format.test.cjs's and tests/unit/highlight.test.cjs's
+// own adversarial cases: a regex with no start anchor before a
+// backtracking quantifier (here /\/+$/) makes the engine retry from
+// every position in a long run of the quantified character, costing
+// the square of the run's length. A sender's own link can carry a
+// slash run this long with no limit of its own at this layer, and
+// both a click and the "o" key run this twice (needsConfirmation
+// normalizes the visible text and the href), so a single adversarial
+// link must not be able to stall the shell.
+test('sameTarget strips a long run of trailing slashes in linear time, not quadratic', () => {
+  const adversarial = `https://a${'/'.repeat(65000)}b`;
+  const start = Date.now();
+  const result = Links.sameTarget(adversarial, adversarial);
+  const elapsedMs = Date.now() - start;
+
+  assert.strictEqual(result, true);
+  assert.ok(elapsedMs < 2000, `sameTarget took ${elapsedMs}ms on an adversarial trailing-slash run, want well under 2000ms`);
+});
+
+test('sameTarget still drops a short, ordinary trailing slash', () => {
+  assert.strictEqual(Links.sameTarget('https://example.com/page///', 'https://example.com/page'), true);
+});
