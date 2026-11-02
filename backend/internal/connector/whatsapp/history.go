@@ -203,10 +203,13 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	// or a wrapped photo or video's download reference is silently
 	// never saved at all.
 	unwrapped := unwrap(content)
-	saveMediaRef(ctx, target.media, target.convRemoteID, m.RemoteID, unwrapped)
 	info := historyMessageInfo(target.chat, hm.GetMessage())
-	saveMessageKey(ctx, target.media, target.convRemoteID, m.RemoteID, messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing, timestamp: m.Created})
-	savePoll(ctx, target.media, target.convRemoteID, m.RemoteID, unwrapped)
+	key := messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing, timestamp: m.Created}
+	// saveIncomingKeyedData's own id-reuse check (see keys.go) applies
+	// here too: its bool is unused, since a bulk sync has no undecryptable
+	// placeholder of its own to ever replace.
+	keyed := incomingKeyedMessage{conversationRemoteID: target.convRemoteID, messageRemoteID: m.RemoteID, key: key, msg: unwrapped}
+	saveIncomingKeyedData(ctx, target.media, keyed)
 	sink.History(ctx, c.account.ID, target.convRemoteID, m)
 
 	return true

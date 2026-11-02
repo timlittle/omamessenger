@@ -17,6 +17,7 @@ import (
 	"fmt"
 
 	"go.mau.fi/whatsmeow/proto/waCommon"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 )
 
@@ -98,16 +99,33 @@ type messageKey struct {
 	timestamp int64
 }
 
-// putMessageKey records messageRemoteID's key, replacing whatever was
-// saved for it before.
+// putMessageKey records messageRemoteID's key: whichever sender and
+// from-me flag were saved first for a (conversation, message) id win
+// and are never overwritten by a different identity later saved under
+// the same id, only ever updated (for instance to refresh the
+// timestamp) when the identity being saved already matches what is on
+// record. WhatsApp lets whoever sends a stanza choose its own id, so
+// without this, a second sender naming someone else's id - or this
+// account's own - could have message_keys remember them as that
+// message's sender instead, letting them pass authorizedActor's revoke
+// or edit check for a message they never sent (see docs/decisions.md).
+// A rejected save is not reported as an error: the message itself is
+// still processed normally, just never allowed to borrow another
+// message's identity.
 func (m *mediaStore) putMessageKey(ctx context.Context, conversationRemoteID, messageRemoteID string, key messageKey) error {
 	const q = `INSERT INTO message_keys (conversation_id, message_id, sender_id, from_me, timestamp)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (conversation_id, message_id) DO UPDATE SET
-			sender_id = excluded.sender_id, from_me = excluded.from_me, timestamp = excluded.timestamp`
+			sender_id = excluded.sender_id, from_me = excluded.from_me, timestamp = excluded.timestamp
+		WHERE message_keys.sender_id = excluded.sender_id AND message_keys.from_me = excluded.from_me`
 
-	if _, err := m.db.ExecContext(ctx, q, conversationRemoteID, messageRemoteID, key.senderID, key.fromMe, key.timestamp); err != nil {
+	res, err := m.db.ExecContext(ctx, q, conversationRemoteID, messageRemoteID, key.senderID, key.fromMe, key.timestamp)
+	if err != nil {
 		return fmt.Errorf("whatsapp: save message key: %w", err)
+	}
+
+	if affected, err := res.RowsAffected(); err == nil && affected == 0 {
+		logDropped(reasonReusedMessageID)
 	}
 
 	return nil
@@ -143,6 +161,59 @@ func saveMessageKey(ctx context.Context, media *mediaStore, conversationRemoteID
 	}
 
 	_ = media.putMessageKey(ctx, conversationRemoteID, messageRemoteID, key)
+}
+
+// reusesAnotherSendersID reports whether messageRemoteID already names
+// a message_keys row for a different identity (sender and from-me)
+// than key: a nil media store, or an id never saved before, is never a
+// reuse, since putMessageKey's own first-writer-wins rule only applies
+// once something is on record to reuse. A lookup failure is reported
+// as a reuse too, the safer answer when there is nothing to check
+// against with confidence.
+func reusesAnotherSendersID(ctx context.Context, media *mediaStore, conversationRemoteID, messageRemoteID string, key messageKey) bool {
+	if media == nil {
+		return false
+	}
+
+	existing, found, err := media.messageKeyFor(ctx, conversationRemoteID, messageRemoteID)
+	if err != nil {
+		return true
+	}
+
+	return found && (existing.senderID != key.senderID || existing.fromMe != key.fromMe)
+}
+
+// incomingKeyedMessage bundles what saveIncomingKeyedData needs to
+// save one message's media reference, key and poll, keeping its own
+// argument count within this codebase's limit.
+type incomingKeyedMessage struct {
+	conversationRemoteID string
+	messageRemoteID      string
+	key                  messageKey
+	msg                  *waE2E.Message
+}
+
+// saveIncomingKeyedData saves m's media reference, message key and
+// poll, unless m's own id already names a different sender's message
+// (see reusesAnotherSendersID): without this check, handleContent's
+// and syncMessage's own saves would let a sender who names someone
+// else's id - or this account's own - swap the file fetched for it, or
+// a poll's question and options, in addition to the revoke and edit
+// forgery putMessageKey alone already closes. It reports whether the
+// save went ahead, so a caller that would otherwise treat m's id as
+// replacing an earlier placeholder (see live.go's resolveUndecryptable)
+// can skip that too for an id reused this way.
+func saveIncomingKeyedData(ctx context.Context, media *mediaStore, m incomingKeyedMessage) bool {
+	if reusesAnotherSendersID(ctx, media, m.conversationRemoteID, m.messageRemoteID, m.key) {
+		logDropped(reasonReusedMessageID)
+		return false
+	}
+
+	saveMediaRef(ctx, media, m.conversationRemoteID, m.messageRemoteID, m.msg)
+	saveMessageKey(ctx, media, m.conversationRemoteID, m.messageRemoteID, m.key)
+	savePoll(ctx, media, m.conversationRemoteID, m.messageRemoteID, m.msg)
+
+	return true
 }
 
 // unreadMessageKeys returns the ids of the newest limit incoming

@@ -82,14 +82,16 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 	// inside, the same one its kind and text came from (see unwrap), as
 	// history sync already does.
 	inner := unwrap(e.Message)
-	saveMediaRef(ctx, media, remote, m.RemoteID, inner)
-	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe, timestamp: m.Created})
-	savePoll(ctx, media, remote, m.RemoteID, inner)
+	key := messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe, timestamp: m.Created}
 
 	// A redelivery of a message first seen as an UndecryptableMessage
 	// (see handleUndecryptable) carries the same id: replace its
-	// placeholder rather than report it a second time.
-	if c.resolveUndecryptable(remote, m.RemoteID) {
+	// placeholder rather than report it a second time. saveIncomingKeyedData
+	// returning false means messageRemoteID actually names a different
+	// sender's message (see keys.go), so it must never be treated as a
+	// replacement for anything that sender did not themselves send.
+	keyed := incomingKeyedMessage{conversationRemoteID: remote, messageRemoteID: m.RemoteID, key: key, msg: inner}
+	if saveIncomingKeyedData(ctx, media, keyed) && c.resolveUndecryptable(remote, m.RemoteID) {
 		if e.UnavailableRequestID != "" {
 			// whatsmeow sets this when the redelivery came from the
 			// primary phone answering AutomaticMessageRerequestFromPhone's

@@ -49,20 +49,73 @@ func TestMessageKey_UnknownMessageIsNotFound(t *testing.T) {
 	}
 }
 
-func TestMessageKey_PutReplacesAnEarlierSave(t *testing.T) {
+// TestMessageKey_PutUpdatesTheTimestampWhenTheSameSenderSavesAgain
+// confirms a later save under the exact identity (sender and from-me)
+// already on record - a retried redelivery, or an undecryptable
+// placeholder's own key saved again once it resolves - still updates
+// fields such as the timestamp, so legitimate re-saves of the same
+// message are never confused with the id-reuse case below.
+func TestMessageKey_PutUpdatesTheTimestampWhenTheSameSenderSavesAgain(t *testing.T) {
 	t.Parallel()
 
 	media := newTestMediaStore(t)
 	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 1000}); err != nil {
 		t.Fatal(err)
 	}
-	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "", fromMe: true, timestamp: 2000}); err != nil {
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "a@s.whatsapp.net", fromMe: false, timestamp: 2000}); err != nil {
+		t.Fatal(err)
+	}
+
+	key, found, err := media.messageKeyFor(t.Context(), "chat-1", "M1")
+	if err != nil || !found || key.timestamp != 2000 {
+		t.Errorf("key = %+v found=%v err=%v, want the same sender's later save to update the timestamp", key, found, err)
+	}
+}
+
+// TestMessageKey_PutKeepsTheFirstSenderWhenAnotherOneReusesTheID covers
+// the fix for an incomplete version of an earlier security fix: WhatsApp
+// lets whoever sends a stanza choose its id, so a second sender naming
+// the same (conversation, message) id as someone else's message must
+// never be allowed to overwrite who message_keys remembers as its
+// sender - authorize.go's authorizedActor trusts that record to decide
+// who may revoke or edit a message, so overwriting it would let the
+// second sender pass that check for a message they never sent.
+func TestMessageKey_PutKeepsTheFirstSenderWhenAnotherOneReusesTheID(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "alice@s.whatsapp.net", fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "mallory@s.whatsapp.net", fromMe: false, timestamp: 2000}); err != nil {
+		t.Fatal(err)
+	}
+
+	key, found, err := media.messageKeyFor(t.Context(), "chat-1", "M1")
+	if err != nil || !found || key.senderID != "alice@s.whatsapp.net" {
+		t.Errorf("key = %+v found=%v err=%v, want Alice kept as M1's sender, not overwritten by the id reused by Mallory", key, found, err)
+	}
+}
+
+// TestMessageKey_PutKeepsOurOwnSentMessageWhenAnIncomingSenderReusesTheID
+// covers the same fix for a message this account sent itself: an
+// incoming message naming the same id must never be allowed to
+// overwrite its from-me record either, or the forger could revoke or
+// edit this account's own sent message under their own name.
+func TestMessageKey_PutKeepsOurOwnSentMessageWhenAnIncomingSenderReusesTheID(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{fromMe: true, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: "mallory@s.whatsapp.net", fromMe: false, timestamp: 2000}); err != nil {
 		t.Fatal(err)
 	}
 
 	key, found, err := media.messageKeyFor(t.Context(), "chat-1", "M1")
 	if err != nil || !found || !key.fromMe || key.senderID != "" {
-		t.Errorf("key = %+v found=%v err=%v, want the later save to win", key, found, err)
+		t.Errorf("key = %+v found=%v err=%v, want our own sent message kept, not overwritten by the id reused by an incoming sender", key, found, err)
 	}
 }
 

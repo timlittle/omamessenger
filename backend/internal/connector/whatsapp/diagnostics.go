@@ -38,6 +38,14 @@ const reasonForgedEdit = "forged edit"
 // own message from another linked device (see authorizedActor).
 const reasonForgedRevoke = "forged revoke"
 
+// reasonReusedMessageID is logDropped's reason for a message whose id
+// already names a different sender's message in message_keys: WhatsApp
+// lets whoever sends a stanza choose its id, so this connector never
+// lets a second sender's message take over what message_keys,
+// media_refs or the poll tables remember about the id's first sender
+// (see keys.go's putMessageKey and docs/decisions.md).
+const reasonReusedMessageID = "message id reused by a different sender"
+
 // logDropped reports a message this connector deliberately did not
 // store, and why, so a report of "messages missing" can be checked
 // against what was dropped on purpose.
