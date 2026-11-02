@@ -6,8 +6,9 @@ package transcode
 // cases at all, and going through the full Transcoder for each one
 // would exercise a lot of sandbox machinery (slot acquisition,
 // checkOutput) that has nothing to do with what is under test here.
-// checkSPS and checkAudioSpecificConfig are tested directly against
-// hand-built values, for the same reason.
+// checkSPS, checkPPS and checkAudioSpecificConfig are tested
+// directly against hand-built values, in avcvalidate_test.go, for
+// the same reason.
 
 import (
 	"bytes"
@@ -19,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/Eyevinn/mp4ff/aac"
-	"github.com/Eyevinn/mp4ff/avc"
 	"github.com/Eyevinn/mp4ff/mp4"
 )
 
@@ -322,90 +322,6 @@ func TestRemuxMP4_TruncatedBoxDeclaringAnImpossibleSize(t *testing.T) {
 	err := remuxMP4(path, filepath.Join(dir, "out.mp4"), defaultCaps())
 	if !errors.Is(err, ErrFailed) {
 		t.Fatalf("remuxMP4() error = %v, want %v", err, ErrFailed)
-	}
-}
-
-func TestCheckSPS(t *testing.T) {
-	t.Parallel()
-
-	valid := func() *avc.SPS {
-		return &avc.SPS{
-			Profile: spsProfileMain, Level: 31, ChromaFormatIDC: spsChroma420,
-			FrameMbsOnlyFlag: true, Width: 320, Height: 240,
-		}
-	}
-
-	tests := map[string]struct {
-		sps     func() *avc.SPS
-		width   uint16
-		height  uint16
-		wantErr bool
-	}{
-		"valid":                 {sps: valid, width: 320, height: 240},
-		"wrong profile":         {sps: func() *avc.SPS { s := valid(); s.Profile = 100; return s }, width: 320, height: 240, wantErr: true},
-		"level over max":        {sps: func() *avc.SPS { s := valid(); s.Level = 41; return s }, width: 320, height: 240, wantErr: true},
-		"level at max is fine":  {sps: func() *avc.SPS { s := valid(); s.Level = 40; return s }, width: 320, height: 240},
-		"wrong chroma":          {sps: func() *avc.SPS { s := valid(); s.ChromaFormatIDC = 2; return s }, width: 320, height: 240, wantErr: true},
-		"not 8-bit luma":        {sps: func() *avc.SPS { s := valid(); s.BitDepthLumaMinus8 = 2; return s }, width: 320, height: 240, wantErr: true},
-		"not 8-bit chroma":      {sps: func() *avc.SPS { s := valid(); s.BitDepthChromaMinus8 = 2; return s }, width: 320, height: 240, wantErr: true},
-		"not frame-only":        {sps: func() *avc.SPS { s := valid(); s.FrameMbsOnlyFlag = false; return s }, width: 320, height: 240, wantErr: true},
-		"odd width":             {sps: func() *avc.SPS { s := valid(); s.Width = 321; return s }, width: 321, height: 240, wantErr: true},
-		"odd height":            {sps: func() *avc.SPS { s := valid(); s.Height = 241; return s }, width: 320, height: 241, wantErr: true},
-		"width over max":        {sps: func() *avc.SPS { s := valid(); s.Width = 1282; return s }, width: 1282, height: 240, wantErr: true},
-		"height over max":       {sps: func() *avc.SPS { s := valid(); s.Height = 1282; return s }, width: 320, height: 1282, wantErr: true},
-		"width at max is fine":  {sps: func() *avc.SPS { s := valid(); s.Width = 1280; return s }, width: 1280, height: 240},
-		"entry width mismatch":  {sps: valid, width: 640, height: 240, wantErr: true},
-		"entry height mismatch": {sps: valid, width: 320, height: 480, wantErr: true},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			err := checkSPS(tt.sps(), tt.width, tt.height)
-			if tt.wantErr && !errors.Is(err, ErrFailed) {
-				t.Fatalf("checkSPS() error = %v, want %v", err, ErrFailed)
-			}
-			if !tt.wantErr && err != nil {
-				t.Fatalf("checkSPS() error = %v, want nil", err)
-			}
-		})
-	}
-}
-
-func TestCheckAudioSpecificConfig(t *testing.T) {
-	t.Parallel()
-
-	valid := func() *aac.AudioSpecificConfig {
-		return &aac.AudioSpecificConfig{ObjectType: aac.AAClc, SamplingFrequency: 48000, ChannelConfiguration: 2}
-	}
-
-	tests := map[string]struct {
-		asc     func() *aac.AudioSpecificConfig
-		rate    uint16
-		wantErr bool
-	}{
-		"valid":               {asc: valid, rate: 48000},
-		"44100 is fine":       {asc: func() *aac.AudioSpecificConfig { a := valid(); a.SamplingFrequency = 44100; return a }, rate: 44100},
-		"mono is fine":        {asc: func() *aac.AudioSpecificConfig { a := valid(); a.ChannelConfiguration = 1; return a }, rate: 48000},
-		"wrong object type":   {asc: func() *aac.AudioSpecificConfig { a := valid(); a.ObjectType = aac.HEAACv1; return a }, rate: 48000, wantErr: true},
-		"wrong sample rate":   {asc: func() *aac.AudioSpecificConfig { a := valid(); a.SamplingFrequency = 32000; return a }, rate: 48000, wantErr: true},
-		"too many channels":   {asc: func() *aac.AudioSpecificConfig { a := valid(); a.ChannelConfiguration = 6; return a }, rate: 48000, wantErr: true},
-		"entry rate mismatch": {asc: valid, rate: 44100, wantErr: true},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			err := checkAudioSpecificConfig(tt.asc(), tt.rate)
-			if tt.wantErr && !errors.Is(err, ErrFailed) {
-				t.Fatalf("checkAudioSpecificConfig() error = %v, want %v", err, ErrFailed)
-			}
-			if !tt.wantErr && err != nil {
-				t.Fatalf("checkAudioSpecificConfig() error = %v, want nil", err)
-			}
-		})
 	}
 }
 
