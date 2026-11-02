@@ -425,6 +425,7 @@ func SanitizeIncoming(m Message) Message {
 	m.Media = CapMedia(m.Media)
 	if m.ReplyTo != nil {
 		m.ReplyTo.SenderName = CapDisplayName(m.ReplyTo.SenderName)
+		m.ReplyTo.Text = Excerpt(m.ReplyTo.Text)
 	}
 
 	return m
