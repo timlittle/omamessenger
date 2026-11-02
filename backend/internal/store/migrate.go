@@ -241,6 +241,17 @@ var migrations = []migrationStep{
 	// guarantee for every row from here on, so this step only ever
 	// needs to run once.
 	{repair: sanitizeLegacyThumbnails},
+	// A reply quote stored before it kept its own copy of the quoted
+	// message's sender id - see domain.Reply.SenderID and
+	// backfillReplySenderIDs - resolved the same way resolveReply
+	// resolves one for a brand new reply, within its own conversation
+	// only. RefreshSenderName's own scoping depends on this: without
+	// it, every quote stored before this field existed would stay
+	// unmatchable by sender id forever, exactly as an unresolved reply
+	// already is (see docs/decisions.md). resolveReply keeps making
+	// this guarantee for every reply from here on, so this step only
+	// ever needs to run once.
+	{repair: backfillReplySenderIDs},
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

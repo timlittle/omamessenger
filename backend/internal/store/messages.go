@@ -67,15 +67,23 @@ func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread bo
 	return m, true, nil
 }
 
-// resolveReply fills a reply's quoted sender name and excerpt from the
-// message it answers, stored earlier in the same conversation, when the
-// caller did not already supply them: a connector reporting an incoming
-// reply often knows only the quoted message's remote id, while an
-// outgoing reply the app builds already carries both. A quoted message
-// not stored here yet, such as one still outside the loaded history,
-// leaves the reply as given.
+// resolveReply fills a reply's quoted sender id, name and excerpt from
+// the message it answers, stored earlier in the same conversation, when
+// the caller did not already supply all three: a connector reporting an
+// incoming reply often knows only the quoted message's remote id, while
+// an outgoing reply the app builds already carries everything
+// resolveReplyTo could resolve itself. The lookup is always scoped to
+// m's own conversation, never the whole account: a message's remote id
+// is only unique within one conversation, so resolving against another
+// one is exactly the mix-up RefreshSenderName's own scoping depends on
+// this never doing (see sendernames.go and docs/decisions.md). A quoted
+// message not stored here yet, such as one still outside the loaded
+// history, leaves the reply as given, with no sender id.
 func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Message {
-	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" || (m.ReplyTo.SenderName != "" && m.ReplyTo.Text != "") {
+	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" {
+		return m
+	}
+	if m.ReplyTo.SenderID != "" && m.ReplyTo.SenderName != "" && m.ReplyTo.Text != "" {
 		return m
 	}
 
@@ -85,6 +93,7 @@ func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Messa
 	}
 
 	reply := *m.ReplyTo
+	reply.SenderID = quoted.SenderID
 	reply.SenderName = quoted.SenderName
 	reply.Text = domain.Excerpt(quoted.Text)
 	m.ReplyTo = &reply

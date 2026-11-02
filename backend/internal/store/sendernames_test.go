@@ -209,3 +209,78 @@ func TestRefreshSenderName_IsScopedToOneAccount(t *testing.T) {
 		t.Errorf("message.SenderName = %q, want another account's message left untouched", stored.SenderName)
 	}
 }
+
+// TestRefreshSenderName_NeverRelabelsAQuoteFromAnotherConversationsReusedRemoteID
+// reproduces the WhatsApp scenario where a reused message id let a
+// rename reach a quote it never actually named: Alice posts message X
+// in group G; Bob replies there, quoting it. Mallory, who is also in
+// G, separately reuses the same remote id X on a message of her own
+// in a direct chat with the user (a message id is only unique within
+// one conversation, not the whole account, so WhatsApp's own reused-id
+// guard, keyed per conversation, does not catch this). Mallory also
+// posts in G under her own id, so the account-wide rename below does
+// reach replies in G - but Bob's quote names Alice's id, stored when
+// it was first resolved within G itself (see resolveReply), never
+// Mallory's, so renaming Mallory must still leave it alone.
+func TestRefreshSenderName_NeverRelabelsAQuoteFromAnotherConversationsReusedRemoteID(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+	group := addConversation(t, s, "wa", "group", "Group")
+	dm := addConversation(t, s, "wa", "dm", "Mallory")
+	addMessages(t, s,
+		domain.Message{ID: "alice-x", ConversationID: group.ID, RemoteID: "x", SenderID: "r-alice", SenderName: "Alice", Text: "let's meet at noon", Created: 100},
+		domain.Message{ID: "bob-quote", ConversationID: group.ID, RemoteID: "r2", SenderID: "r-bob", SenderName: "Bob", Text: "works for me", Created: 150, ReplyTo: &domain.Reply{RemoteID: "x"}},
+		domain.Message{ID: "mallory-in-group", ConversationID: group.ID, RemoteID: "r3", SenderID: "r-mallory", SenderName: "WhatsApp user", Text: "hi all", Created: 160},
+		domain.Message{ID: "mallory-x", ConversationID: dm.ID, RemoteID: "x", SenderID: "r-mallory", SenderName: "WhatsApp user", Text: "hey", Created: 170},
+	)
+
+	if _, err := s.RefreshSenderName(ctx, "wa", "r-mallory", "Bob"); err != nil {
+		t.Fatalf("RefreshSenderName: %v", err)
+	}
+
+	quoting, err := s.Message(ctx, "bob-quote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quoting.ReplyTo == nil || quoting.ReplyTo.SenderName != "Alice" {
+		t.Errorf("bob-quote.ReplyTo = %+v, want Alice's quote left alone, not relabelled Bob", quoting.ReplyTo)
+	}
+}
+
+// TestRefreshSenderName_IgnoresANaturallyCollidingRemoteIDInAnotherConversation
+// reproduces Telegram's own natural id collisions: message ids are
+// only unique within one chat, so two unrelated chats can each have a
+// message numbered the same with no crafted input needed. A rename in
+// one chat must never reach a quote in the other just because their
+// quoted messages happen to share a remote id.
+func TestRefreshSenderName_IgnoresANaturallyCollidingRemoteIDInAnotherConversation(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	if err := s.UpsertAccount(ctx, domain.Account{ID: "tg", Service: domain.ServiceTelegram, Name: "tg"}); err != nil {
+		t.Fatalf("UpsertAccount: %v", err)
+	}
+	chatA := addConversation(t, s, "tg", "chatA", "Chat A")
+	chatB := addConversation(t, s, "tg", "chatB", "Chat B")
+	addMessages(t, s,
+		domain.Message{ID: "a-42", ConversationID: chatA.ID, RemoteID: "42", SenderID: "r-nina", SenderName: "Nina", Text: "see you then", Created: 100},
+		domain.Message{ID: "a-quote", ConversationID: chatA.ID, RemoteID: "43", SenderID: "r-omar", SenderName: "Omar", Text: "great", Created: 150, ReplyTo: &domain.Reply{RemoteID: "42"}},
+		domain.Message{ID: "b-42", ConversationID: chatB.ID, RemoteID: "42", SenderID: "r-priya", SenderName: "Priya", Text: "unrelated chat", Created: 200},
+	)
+
+	if _, err := s.RefreshSenderName(ctx, "tg", "r-priya", "Priya Nair"); err != nil {
+		t.Fatalf("RefreshSenderName: %v", err)
+	}
+
+	quoting, err := s.Message(ctx, "a-quote")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if quoting.ReplyTo == nil || quoting.ReplyTo.SenderName != "Nina" {
+		t.Errorf("a-quote.ReplyTo = %+v, want Nina's quote in chat A left alone by a rename in chat B", quoting.ReplyTo)
+	}
+}

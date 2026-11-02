@@ -213,7 +213,7 @@ func (c *Commands) resolveReplyTo(ctx context.Context, conversationID, replyToID
 		return nil, fmt.Errorf("%w: replyTo must be a message in the conversation", ErrInvalidInput)
 	}
 
-	return &domain.Reply{RemoteID: quoted.RemoteID, SenderName: quoted.SenderName, Text: domain.Excerpt(quoted.Text)}, nil
+	return &domain.Reply{RemoteID: quoted.RemoteID, SenderID: quoted.SenderID, SenderName: quoted.SenderName, Text: domain.Excerpt(quoted.Text)}, nil
 }
 
 // captionText validates a message's text, required unless media stands

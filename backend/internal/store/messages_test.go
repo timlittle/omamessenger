@@ -360,7 +360,7 @@ func TestAddMessage_FillsReplySenderAndTextFromTheQuotedMessage(t *testing.T) {
 
 	s, _ := openChatStore(t)
 	ctx := t.Context()
-	addMessages(t, s, domain.Message{ID: "quoted", ConversationID: "chat", RemoteID: "1", Text: "original message", SenderName: "Alex", Created: 1})
+	addMessages(t, s, domain.Message{ID: "quoted", ConversationID: "chat", RemoteID: "1", SenderID: "r-alex", Text: "original message", SenderName: "Alex", Created: 1})
 
 	reply, _, err := s.AddMessage(ctx, domain.Message{
 		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
@@ -372,9 +372,12 @@ func TestAddMessage_FillsReplySenderAndTextFromTheQuotedMessage(t *testing.T) {
 	if reply.ReplyTo == nil || reply.ReplyTo.SenderName != "Alex" || reply.ReplyTo.Text != "original message" {
 		t.Fatalf("reply.ReplyTo = %+v, want sender Alex and the quoted text", reply.ReplyTo)
 	}
+	if reply.ReplyTo.SenderID != "r-alex" {
+		t.Errorf("reply.ReplyTo.SenderID = %q, want the quoted message's own sender id, r-alex", reply.ReplyTo.SenderID)
+	}
 
 	stored, err := s.Message(ctx, "reply")
-	if err != nil || stored.ReplyTo == nil || stored.ReplyTo.RemoteID != "1" || stored.ReplyTo.SenderName != "Alex" {
+	if err != nil || stored.ReplyTo == nil || stored.ReplyTo.RemoteID != "1" || stored.ReplyTo.SenderName != "Alex" || stored.ReplyTo.SenderID != "r-alex" {
 		t.Errorf("stored reply = %+v, %v", stored.ReplyTo, err)
 	}
 }
@@ -390,9 +393,9 @@ func TestAddMessage_KeepsAReplysOwnSenderAndTextWhenAlreadyGiven(t *testing.T) {
 	// message it answers, so the store must not need to look it up.
 	reply, _, err := s.AddMessage(ctx, domain.Message{
 		ID: "reply", ConversationID: "chat", RemoteID: "2", Text: "sure", Created: 2,
-		ReplyTo: &domain.Reply{RemoteID: "1", SenderName: "You", Text: "hi there"},
+		ReplyTo: &domain.Reply{RemoteID: "1", SenderID: "alex", SenderName: "You", Text: "hi there"},
 	})
-	if err != nil || reply.ReplyTo == nil || reply.ReplyTo.SenderName != "You" || reply.ReplyTo.Text != "hi there" {
+	if err != nil || reply.ReplyTo == nil || reply.ReplyTo.SenderID != "alex" || reply.ReplyTo.SenderName != "You" || reply.ReplyTo.Text != "hi there" {
 		t.Fatalf("AddMessage = %+v, %v", reply.ReplyTo, err)
 	}
 }

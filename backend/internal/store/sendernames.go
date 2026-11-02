@@ -115,27 +115,34 @@ func refreshPreviewSenders(ctx context.Context, tx *sql.Tx, accountID, senderRem
 }
 
 // refreshReplyQuotes brings every reply quote naming senderRemoteID as
-// its sender back in step with renameSender, within account: a reply
-// keeps its own copy of the quoted message's sender name, resolved once
-// when it was first stored (see resolveReply), so correcting that
-// sender's own messages is not enough on its own - a reply already
+// its sender back in step with renameSender, within the conversations
+// senderRemoteID has a message in: a reply keeps its own copy of the
+// quoted message's sender id and name, resolved once when it was first
+// stored, within its own conversation (see resolveReply), so correcting
+// that sender's own messages is not enough on its own - a reply already
 // quoting one of them would otherwise keep showing whatever name was
-// known at the time forever.
+// known at the time forever. The query is scoped to senderRemoteID's own
+// conversations, and staleQuotes then matches each candidate quote's own
+// stored sender id, never its quoted message's remote id: a remote id is
+// only unique within one conversation, so matching on that alone let a
+// rename reach a quote in a conversation senderRemoteID never sent that
+// message in (see docs/decisions.md). A quote with no stored sender id -
+// one whose quote could not be resolved when it was first stored - is
+// never rewritten.
 func refreshReplyQuotes(ctx context.Context, tx *sql.Tx, accountID, senderRemoteID, name string) error {
-	remotes, err := sentRemoteIDs(ctx, tx, accountID, senderRemoteID)
-	if err != nil || len(remotes) == 0 {
-		return err
-	}
-
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, reply_to FROM messages
-		WHERE reply_to<>'' AND conversation_id IN (SELECT id FROM conversations WHERE account_id=?)`, accountID)
+		WHERE reply_to<>'' AND conversation_id IN (
+			SELECT m.conversation_id FROM messages m
+			JOIN conversations c ON c.id = m.conversation_id
+			WHERE m.sender_id=? AND c.account_id=?
+		)`, senderRemoteID, accountID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	fixes, err := staleQuotes(rows, remotes, name)
+	fixes, err := staleQuotes(rows, senderRemoteID, name)
 	if err != nil {
 		return err
 	}
@@ -156,9 +163,10 @@ type quotedMessageFix struct {
 }
 
 // staleQuotes scans rows of a message's id and its reply_to JSON, and
-// returns the fix for every one that quotes a message in remotes under
-// a name other than name.
-func staleQuotes(rows *sql.Rows, remotes map[string]bool, name string) ([]quotedMessageFix, error) {
+// returns the fix for every one whose own stored SenderID is
+// senderRemoteID, under a name other than name. A quote with no stored
+// SenderID is never matched.
+func staleQuotes(rows *sql.Rows, senderRemoteID, name string) ([]quotedMessageFix, error) {
 	var fixes []quotedMessageFix
 	for rows.Next() {
 		var id, replyTo string
@@ -170,7 +178,7 @@ func staleQuotes(rows *sql.Rows, remotes map[string]bool, name string) ([]quoted
 		if err := json.Unmarshal([]byte(replyTo), &reply); err != nil {
 			continue
 		}
-		if !remotes[reply.RemoteID] || reply.SenderName == name {
+		if reply.SenderID == "" || reply.SenderID != senderRemoteID || reply.SenderName == name {
 			continue
 		}
 
@@ -183,29 +191,4 @@ func staleQuotes(rows *sql.Rows, remotes map[string]bool, name string) ([]quoted
 	}
 
 	return fixes, rows.Err()
-}
-
-// sentRemoteIDs lists the remote ids, within account, that senderRemoteID
-// has a message stored under, so refreshReplyQuotes can tell whether a
-// stored reply quotes one of them.
-func sentRemoteIDs(ctx context.Context, tx *sql.Tx, accountID, senderRemoteID string) (map[string]bool, error) {
-	rows, err := tx.QueryContext(ctx, `
-		SELECT remote_id FROM messages
-		WHERE sender_id=? AND remote_id<>'' AND conversation_id IN (SELECT id FROM conversations WHERE account_id=?)`,
-		senderRemoteID, accountID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := map[string]bool{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out[id] = true
-	}
-
-	return out, rows.Err()
 }

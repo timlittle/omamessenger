@@ -256,13 +256,24 @@ type Reaction struct {
 
 // Reply is the message a reply answers: enough to show a quote above the
 // reply's own text, and, for an outgoing reply, enough for a connector to
-// thread it under the original on the service. SenderName and Text are
-// filled in from the quoted message once it is known locally; a
-// connector reporting an incoming reply may have only RemoteID.
+// thread it under the original on the service. SenderName, Text and
+// SenderID are filled in from the quoted message once it is known
+// locally; a connector reporting an incoming reply may have only
+// RemoteID.
 type Reply struct {
 	RemoteID   string `json:"remoteId"`
 	SenderName string `json:"senderName,omitempty"`
 	Text       string `json:"text,omitempty"`
+
+	// SenderID is the quoted message's own sender id, resolved against
+	// a message stored in the same conversation as the reply that
+	// quotes it (see store.resolveReply). RefreshSenderName uses it to
+	// scope a sender's name correction to a quote that actually names
+	// them: a message's own remote id is only unique within its
+	// conversation, so matching on that alone let a rename reach a
+	// quote it never named (see docs/decisions.md). Empty when the
+	// quoted message could not be resolved locally.
+	SenderID string `json:"senderId,omitempty"`
 }
 
 // Media is what a message carries besides its text: a link preview, a

@@ -164,6 +164,34 @@ func TestSend_WithReplyToFillsTheQuoteAndPassesItToTheConnector(t *testing.T) {
 	}
 }
 
+// TestSend_WithReplyToAContactsMessageCarriesThatSendersID confirms a
+// reply built from resolveReplyTo carries the quoted message's own
+// sender id, not just its name: RefreshSenderName needs it to scope a
+// later name correction to the sender who actually sent the quoted
+// message (see store/sendernames.go).
+func TestSend_WithReplyToAContactsMessageCarriesThatSendersID(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("in-1", "original"))
+
+	page, _, _, err := f.commands.Messages(ctx, chat.ID, "", 0)
+	if err != nil || len(page) != 1 {
+		t.Fatalf("Messages = %+v, %v", page, err)
+	}
+	quoted := page[0]
+
+	reply, err := f.commands.Send(ctx, "chat", "sure", app.SendOptions{AttachmentPath: "", ReplyToID: quoted.ID, Mentions: nil})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if reply.ReplyTo == nil || reply.ReplyTo.SenderID != "alex" {
+		t.Errorf("reply.ReplyTo = %+v, want SenderID alex, the quoted message's own sender", reply.ReplyTo)
+	}
+}
+
 func TestSend_RefusedMessageIsFailedNotAnError(t *testing.T) {
 	t.Parallel()
 

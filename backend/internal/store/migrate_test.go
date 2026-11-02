@@ -80,14 +80,14 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "gif.db"))
-	// The GIF migration is ninth-from-last, before the audio
+	// The GIF migration is tenth-from-last, before the audio
 	// migration, the pin_order column, the scheduled_messages table,
 	// the notification_sound column, the window-open column, the
-	// pin_order backfill, the before-archive pin columns and the
-	// legacy thumbnail repair, all appended after it; stop short of
-	// all nine so inserting the pre-fix rows below still finds them
-	// unreclassified.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-9]); err != nil {
+	// pin_order backfill, the before-archive pin columns, the legacy
+	// thumbnail repair and the reply sender id backfill, all appended
+	// after it; stop short of all ten so inserting the pre-fix rows
+	// below still finds them unreclassified.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-10]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,7 +120,7 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into a video.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-9].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-10].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -143,12 +143,13 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "audio.db"))
-	// The audio migration is eighth-from-last, before the pin_order
+	// The audio migration is ninth-from-last, before the pin_order
 	// column, the scheduled_messages table, the notification_sound
 	// column, the window-open column, the pin_order backfill, the
-	// before-archive pin columns and the legacy thumbnail repair, all
-	// appended after it; stop short of all eight.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-8]); err != nil {
+	// before-archive pin columns, the legacy thumbnail repair and the
+	// reply sender id backfill, all appended after it; stop short of
+	// all nine.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-9]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -181,7 +182,7 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into audio.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-8].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-9].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -203,12 +204,12 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "pin-backfill.db"))
-	// Stop three short of the full set: the backfill is third-from-last,
+	// Stop four short of the full set: the backfill is fourth-from-last,
 	// appended after pin_order's own column, scheduled messages, the
 	// notification sound column and the window-open column, and ahead
-	// of the before-archive pin columns and the legacy thumbnail repair
-	// appended after it.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-3]); err != nil {
+	// of the before-archive pin columns, the legacy thumbnail repair
+	// and the reply sender id backfill appended after it.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-4]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -239,7 +240,7 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	// order: it is idempotent, like the GIF and audio reclassifications
 	// above, since recomputing the same recency ranking over rows whose
 	// relative order has not changed yields the same ranks.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-3].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-4].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -264,9 +265,10 @@ func TestMigrate_SanitizesLegacyThumbnails(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "legacy-thumbs.db"))
-	// The thumbnail repair is the very last migration, appended after
-	// the pin_order backfill above.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-1]); err != nil {
+	// The thumbnail repair is second-to-last, appended after the
+	// pin_order backfill above and before the reply sender id backfill
+	// below.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-2]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -322,6 +324,147 @@ func TestMigrate_SanitizesLegacyThumbnails(t *testing.T) {
 	if got := readRawMedia(t, db, "stripped").Thumb; got != strippedGot {
 		t.Errorf("re-running the repair changed an already-repaired thumbnail: %q, want %q", got, strippedGot)
 	}
+}
+
+// TestMigrate_BackfillsReplySenderID confirms the migration that fills
+// in a reply quote's own stored sender id, added so RefreshSenderName
+// can scope a name correction to the sender who actually sent the
+// quoted message instead of trusting a message's remote id, which is
+// only unique within one conversation (see sendernames.go and
+// docs/decisions.md). A quote resolves against the quoted message
+// stored in its own conversation; one whose remote id only exists in
+// a different conversation is left with no sender id at all, exactly
+// as an unresolved reply already is, rather than guessed from the
+// wrong conversation's message.
+func TestMigrate_BackfillsReplySenderID(t *testing.T) {
+	t.Parallel()
+
+	db := openRaw(t, filepath.Join(t.TempDir(), "legacy-replies.db"))
+	// The reply sender id backfill is the very last migration,
+	// appended after the thumbnail repair above.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-1]); err != nil {
+		t.Fatal(err)
+	}
+
+	insertRawReplyMessage(t, db, rawReplyMessage{id: "quoted", conversationID: "c1", remoteID: "r1", senderID: "r-alex"})
+	insertRawReplyMessage(t, db, rawReplyMessage{id: "resolvable", conversationID: "c1", remoteID: "r2", replyTo: `{"remoteId":"r1"}`})
+	insertRawReplyMessage(t, db, rawReplyMessage{id: "already-set", conversationID: "c1", remoteID: "r3", replyTo: `{"remoteId":"r1","senderId":"r-someone-else"}`})
+	// "other-chat" shares remote id "r1" with "quoted" above, but lives
+	// in a different conversation, c2 - exactly the natural collision
+	// (or a reused id) the fix must not cross.
+	insertRawReplyMessage(t, db, rawReplyMessage{id: "other-chat", conversationID: "c2", remoteID: "r1", senderID: "r-other-chat-sender"})
+	insertRawReplyMessage(t, db, rawReplyMessage{id: "cross-conversation-quote", conversationID: "c2", remoteID: "r4", replyTo: `{"remoteId":"r1"}`})
+	insertRawReplyMessage(t, db, rawReplyMessage{id: "truly-unresolvable", conversationID: "c3", remoteID: "r5", replyTo: `{"remoteId":"no-such-message"}`})
+
+	if err := migrate(t.Context(), db, migrations); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readRawReplyTo(t, db, "resolvable"); got.SenderID != "r-alex" {
+		t.Errorf("resolvable quote's SenderID = %q, want it resolved within its own conversation, r-alex", got.SenderID)
+	}
+
+	if got := readRawReplyTo(t, db, "already-set"); got.SenderID != "r-someone-else" {
+		t.Errorf("already-set quote's SenderID = %q, want it left alone", got.SenderID)
+	}
+
+	// "cross-conversation-quote" is in c2, which has its own message
+	// under remote id "r1" ("other-chat"): it must resolve to that
+	// message's own sender, never to "quoted"'s sender in c1, even
+	// though both conversations share the same remote id.
+	if got := readRawReplyTo(t, db, "cross-conversation-quote"); got.SenderID != "r-other-chat-sender" {
+		t.Errorf("cross-conversation-quote's SenderID = %q, want it resolved within its own conversation c2, r-other-chat-sender, never c1's r-alex", got.SenderID)
+	}
+
+	if got := readRawReplyTo(t, db, "truly-unresolvable"); got.SenderID != "" {
+		t.Errorf("truly-unresolvable quote's SenderID = %q, want it left empty", got.SenderID)
+	}
+
+	// Idempotent: re-running the backfill directly, bypassing migrate's
+	// own version gate, must not touch an already-backfilled row again.
+	tx, err := db.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backfillReplySenderIDs(t.Context(), tx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := readRawReplyTo(t, db, "resolvable"); got.SenderID != "r-alex" {
+		t.Errorf("re-running the backfill changed resolvable's SenderID: %q, want r-alex", got.SenderID)
+	}
+}
+
+// TestStaleQuotes_SkipsAnUnparsableReplyToJSON confirms
+// RefreshSenderName's own staleQuotes (sendernames.go) skips a stored
+// reply_to that does not even decode as JSON, rather than failing the
+// whole rename: a row this malformed can never come from the store's
+// own encodeReply, so this is tested directly against a raw row, the
+// only way to produce one.
+func TestStaleQuotes_SkipsAnUnparsableReplyToJSON(t *testing.T) {
+	t.Parallel()
+
+	db := openRaw(t, filepath.Join(t.TempDir(), "unparsable-reply.db"))
+	if err := migrate(t.Context(), db, migrations); err != nil {
+		t.Fatal(err)
+	}
+
+	insertRawReplyMessage(t, db, rawReplyMessage{id: "broken", conversationID: "c1", replyTo: "not valid json at all"})
+	insertRawReplyMessage(t, db, rawReplyMessage{id: "fine", conversationID: "c1", replyTo: `{"remoteId":"1","senderId":"r-alex","senderName":"WhatsApp user"}`})
+
+	rows, err := db.QueryContext(t.Context(), `SELECT id, reply_to FROM messages ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fixes, err := staleQuotes(rows, "r-alex", "Alex Chen")
+	if err != nil {
+		t.Fatalf("staleQuotes: %v", err)
+	}
+	if len(fixes) != 1 || fixes[0].id != "fine" {
+		t.Errorf("staleQuotes fixes = %+v, want only the parsable row fixed, the broken one skipped", fixes)
+	}
+}
+
+// rawReplyMessage is one row insertRawReplyMessage writes directly,
+// bypassing the store's own encodeReply: the exact pre-fix shape a
+// reply was stored under before domain.Reply.SenderID existed.
+type rawReplyMessage struct {
+	id, conversationID, remoteID, senderID, replyTo string
+}
+
+// insertRawReplyMessage inserts a minimal message row from m.
+func insertRawReplyMessage(t *testing.T, db *sql.DB, m rawReplyMessage) {
+	t.Helper()
+
+	_, err := db.ExecContext(t.Context(), `INSERT INTO messages(id,conversation_id,remote_id,sender_id,text,outgoing,status,created,reply_to)
+		VALUES(?,?,?,?,'reply',0,'received',1,?)`, m.id, m.conversationID, m.remoteID, m.senderID, m.replyTo)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// readRawReplyTo reads and decodes id's stored reply_to column
+// directly, bypassing the store's own public API, which this
+// package's own migration tests cannot otherwise reach a pre-migration
+// row through.
+func readRawReplyTo(t *testing.T, db *sql.DB, id string) domain.Reply {
+	t.Helper()
+
+	var encoded string
+	if err := db.QueryRowContext(t.Context(), `SELECT reply_to FROM messages WHERE id=?`, id).Scan(&encoded); err != nil {
+		t.Fatal(err)
+	}
+
+	var reply domain.Reply
+	if err := json.Unmarshal([]byte(encoded), &reply); err != nil {
+		t.Fatalf("reply_to for %s does not decode: %v", id, err)
+	}
+
+	return reply
 }
 
 // fakePNGThumb returns a plain, solid-colour PNG of the given size,
