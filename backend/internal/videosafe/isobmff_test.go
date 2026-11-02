@@ -144,6 +144,43 @@ func TestValidate_MP4TooManyVideoTracks(t *testing.T) {
 	}
 }
 
+// TestValidate_MP4SecondStsdEntry covers the exact gap a differential
+// security review found in this package's own stsd reading: a second
+// sample entry, even one that on its own looks just as valid as the
+// first, must refuse the whole track. Nothing here read past the
+// first entry, but FFmpeg's own mov demuxer keeps every entry sharing
+// a track's codec tag and can switch to a later one's own codec
+// configuration mid-stream, so a second avc1 entry's own avcC - never
+// checked by this package at all - could carry an SPS declaring
+// dimensions far past this package's own cap.
+func TestValidate_MP4SecondStsdEntry(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		entryCount uint32
+		want       bool
+	}{
+		"one entry, the ordinary case":      {1, true},
+		"two entries, both otherwise valid": {2, false},
+		"three entries":                     {3, false},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeFixture(t, "stsd-entries.mp4", mp4AVCFixtureWithStsdEntries(1280, 720, tc.entryCount))
+			got, err := videosafe.Validate(path)
+			if err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if got != tc.want {
+				t.Errorf("Validate() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestValidate_MP4SPSDimensions covers the exact gap the differential
 // security review found: a container whose sample entry declares one
 // set of dimensions while its avcC configuration's own SPS - what

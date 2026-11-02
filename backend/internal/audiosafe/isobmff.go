@@ -201,7 +201,14 @@ func durationSeconds(timescale uint32, duration uint64) float64 {
 
 // sampleEntryCodec reads stbl's stsd box far enough to return its
 // first sample entry's own four-byte type - the codec fourcc this
-// package reads, never a sender's mime type or file extension.
+// package reads, never a sender's mime type or file extension. ok is
+// also false when stsd's entry_count is anything but 1: this package
+// only ever reads the first entry, but FFmpeg's own mov demuxer keeps
+// every entry sharing a track's codec tag and can switch to a later
+// one's own codec configuration mid-stream, so a second entry would
+// never be checked at all - the same gap videosafe's own
+// sampleEntryCodec documents and a differential security review
+// found; see docs/decisions.md.
 func (c *cursor) sampleEntryCodec(stblOff, stblLen int64) (string, bool) {
 	stsd, found := c.firstChild(stblOff, stblLen, "stsd")
 	if !found || stsd.len < 16 {
@@ -210,6 +217,10 @@ func (c *cursor) sampleEntryCodec(stblOff, stblLen int64) (string, bool) {
 
 	var buf [16]byte
 	if !c.readAt(buf[:], stsd.off) {
+		return "", false
+	}
+
+	if binary.BigEndian.Uint32(buf[4:8]) != 1 {
 		return "", false
 	}
 

@@ -329,7 +329,14 @@ func durationSeconds(timescale uint32, duration uint64) float64 {
 // sampleEntryCodec reads stbl's stsd box far enough to return its
 // first sample entry's own four-byte type - the codec fourcc every
 // check in this package reads, never a sender's mime type or file
-// extension.
+// extension. ok is also false when stsd's entry_count is anything
+// but 1: this package, and the in-band sample scan in avcsamples.go,
+// only ever read the first entry, but FFmpeg's own mov demuxer keeps
+// every entry sharing a track's codec tag and can switch to a later
+// one's own codec configuration mid-stream (mov_change_extradata),
+// so a second avc1 entry's own avcC - carrying its own, unbounded SPS
+// - would never be checked at all. A differential security review
+// found exactly this gap; see docs/decisions.md.
 func (c *cursor) sampleEntryCodec(stblOff, stblLen int64) (string, bool) {
 	stsd, found := c.firstChild(stblOff, stblLen, "stsd")
 	if !found || stsd.len < 16 {
@@ -338,6 +345,10 @@ func (c *cursor) sampleEntryCodec(stblOff, stblLen int64) (string, bool) {
 
 	var buf [16]byte
 	if !c.readAt(buf[:], stsd.off) {
+		return "", false
+	}
+
+	if binary.BigEndian.Uint32(buf[4:8]) != 1 {
 		return "", false
 	}
 

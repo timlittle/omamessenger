@@ -30,6 +30,14 @@ func TestValidate_MP4Audio(t *testing.T) {
 		"a second audio track":  {mp4AudioFixture(mp4AudioParams{secondAudio: true, timescale: 1000, durationUnit: 5000}), false},
 		"zero duration":         {mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 0}), false},
 		"no moov box at all":    {[]byte("not an mp4 file"), false},
+		"two sample entries in stsd": {
+			// The same gap videosafe's own stsd test covers: FFmpeg's
+			// mov demuxer keeps every entry sharing a track's codec
+			// tag, so a second one - never read by this package at
+			// all - could carry a configuration this package never
+			// validated.
+			mp4AudioFixture(mp4AudioParams{stsdEntries: 2, timescale: 1000, durationUnit: 5000}), false,
+		},
 	}
 
 	for name, tc := range cases {

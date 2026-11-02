@@ -253,12 +253,22 @@ func co64Body(offsets ...uint64) []byte {
 // stscBody builds an stsc box body from (firstChunk, samplesPerChunk)
 // pairs, one entry per pair, sample_description_index fixed at 1.
 func stscBody(entries ...[2]uint32) []byte {
+	return stscBodyWithIndex(1, entries...)
+}
+
+// stscBodyWithIndex builds an stsc box body like stscBody, but with
+// the given sample_description_index on every entry instead of
+// always 1 - for a test that checks a track is refused when a chunk's
+// samples claim a sample description other than the one entry this
+// package ever validates (see sampleEntryCodec's own entry_count
+// check and stscEntriesValid).
+func stscBodyWithIndex(index uint32, entries ...[2]uint32) []byte {
 	buf := make([]byte, 8+12*len(entries))
 	binary.BigEndian.PutUint32(buf[4:8], uint32(len(entries)))
 	for i, e := range entries {
 		binary.BigEndian.PutUint32(buf[8+i*12:12+i*12], e[0])
 		binary.BigEndian.PutUint32(buf[12+i*12:16+i*12], e[1])
-		binary.BigEndian.PutUint32(buf[16+i*12:20+i*12], 1)
+		binary.BigEndian.PutUint32(buf[16+i*12:20+i*12], index)
 	}
 	return buf
 }

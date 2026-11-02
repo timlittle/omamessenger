@@ -101,7 +101,8 @@ type mp4AudioParams struct {
 	videoCodec   string // adding a video trak when set, to prove it is rejected
 	timescale    uint32 // defaults to 1000 when zero
 	durationUnit uint32
-	secondAudio  bool // adds a second audio trak, to prove multiple is rejected
+	secondAudio  bool   // adds a second audio trak, to prove multiple is rejected
+	stsdEntries  uint32 // the audio trak's own stsd entry_count; 1 when zero
 }
 
 // mp4AudioFixture returns a minimal, well-formed MP4/M4A file: an
@@ -114,9 +115,12 @@ func mp4AudioFixture(p mp4AudioParams) []byte {
 	if p.timescale == 0 {
 		p.timescale = 1000
 	}
+	if p.stsdEntries == 0 {
+		p.stsdEntries = 1
+	}
 
 	mvhd := mp4Box("mvhd", mp4MediaHeader(p.timescale, p.durationUnit))
-	audioTrak := mp4AudioTrak(p.audioCodec, p.timescale, p.durationUnit)
+	audioTrak := mp4AudioTrakWithEntries(p.audioCodec, p.timescale, p.durationUnit, p.stsdEntries)
 
 	moovBody := append(append([]byte{}, mvhd...), audioTrak...)
 	if p.secondAudio {
@@ -135,6 +139,23 @@ func mp4AudioFixture(p mp4AudioParams) []byte {
 // carrying codec).
 func mp4AudioTrak(codec string, timescale, durationUnit uint32) []byte {
 	return mp4Trak("soun", codec, timescale, durationUnit)
+}
+
+// mp4AudioTrakWithEntries builds one audio trak box exactly like
+// mp4AudioTrak, except its stsd box declares entryCount sample
+// entries - each a full copy of the same codec entry - instead of
+// always exactly one: for a test that checks a track is refused
+// outright once entry_count is anything but 1, the same gap
+// videosafe's own second-stsd-entry test covers (see
+// docs/decisions.md).
+func mp4AudioTrakWithEntries(codec string, timescale, durationUnit, entryCount uint32) []byte {
+	mdhd := mp4Box("mdhd", mp4MediaHeader(timescale, durationUnit))
+	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("soun")...))
+	stsd := mp4Box("stsd", mp4SampleDescriptionMultiEntry(codec, entryCount))
+	stbl := mp4Box("stbl", stsd)
+	minf := mp4Box("minf", stbl)
+	mdia := mp4Box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
+	return mp4Box("trak", mdia)
 }
 
 // mp4VideoTrak builds one video trak box with handler "vide", used
@@ -181,10 +202,23 @@ func mp4MediaHeaderV1(timescale uint32, duration uint64) []byte {
 // own size+type header (8 bytes, type set to codec) padded out to a
 // plausible audio sample entry size.
 func mp4SampleDescription(codec string) []byte {
-	buf := make([]byte, 8+20)
-	binary.BigEndian.PutUint32(buf[4:8], 1) // entry_count
-	binary.BigEndian.PutUint32(buf[8:12], 20)
-	copy(buf[12:16], codec)
+	return mp4SampleDescriptionMultiEntry(codec, 1)
+}
+
+// mp4SampleDescriptionMultiEntry builds an stsd body like
+// mp4SampleDescription, but declaring entryCount sample entries - each
+// an identical copy of the same codec entry - instead of always
+// exactly one.
+func mp4SampleDescriptionMultiEntry(codec string, entryCount uint32) []byte {
+	entry := make([]byte, 20)
+	binary.BigEndian.PutUint32(entry[0:4], 20)
+	copy(entry[4:8], codec)
+
+	buf := make([]byte, 8, 8+20*int(entryCount))
+	binary.BigEndian.PutUint32(buf[4:8], entryCount)
+	for i := uint32(0); i < entryCount; i++ {
+		buf = append(buf, entry...)
+	}
 	return buf
 }
 

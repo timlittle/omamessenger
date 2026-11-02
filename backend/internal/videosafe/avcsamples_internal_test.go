@@ -267,12 +267,13 @@ func TestSampleToChunkTable_RefusesCountAboveLimit(t *testing.T) {
 
 // TestStscEntriesValid covers every shape stscEntriesValid must judge:
 // empty (vacuously valid), starting at chunk 1 with strictly
-// increasing first_chunk values and every samples_per_chunk above
-// zero (valid), and each way a crafted table can depart from that -
-// out of order, duplicated, not starting at chunk 1, or a zero
-// samples_per_chunk row - which the old algorithm's unbounded rescan
-// let through and an attacker used to defeat its own early-break
-// optimization (see avcsamples.go's own doc comment).
+// increasing first_chunk values, every samples_per_chunk above zero
+// and every sample_description_index exactly 1 (valid), and each way
+// a crafted table can depart from that - out of order, duplicated,
+// not starting at chunk 1, a zero samples_per_chunk row, or a
+// sample_description_index other than 1 - which the old algorithm's
+// unbounded rescan let through and an attacker used to defeat its own
+// early-break optimization (see avcsamples.go's own doc comment).
 func TestStscEntriesValid(t *testing.T) {
 	t.Parallel()
 
@@ -281,20 +282,42 @@ func TestStscEntriesValid(t *testing.T) {
 		want    bool
 	}{
 		"empty":              {nil, true},
-		"single valid entry": {[]stscEntry{{firstChunk: 1, samplesPerChunk: 1}}, true},
+		"single valid entry": {[]stscEntry{{firstChunk: 1, samplesPerChunk: 1, sampleDescriptionIndex: 1}}, true},
 		"several valid entries": {
-			[]stscEntry{{firstChunk: 1, samplesPerChunk: 2}, {firstChunk: 3, samplesPerChunk: 1}}, true,
+			[]stscEntry{
+				{firstChunk: 1, samplesPerChunk: 2, sampleDescriptionIndex: 1},
+				{firstChunk: 3, samplesPerChunk: 1, sampleDescriptionIndex: 1},
+			}, true,
 		},
-		"does not start at chunk 1": {[]stscEntry{{firstChunk: 2, samplesPerChunk: 1}}, false},
+		"does not start at chunk 1": {[]stscEntry{{firstChunk: 2, samplesPerChunk: 1, sampleDescriptionIndex: 1}}, false},
 		"out of order": {
-			[]stscEntry{{firstChunk: 1, samplesPerChunk: 1}, {firstChunk: 3, samplesPerChunk: 1}, {firstChunk: 2, samplesPerChunk: 1}}, false,
+			[]stscEntry{
+				{firstChunk: 1, samplesPerChunk: 1, sampleDescriptionIndex: 1},
+				{firstChunk: 3, samplesPerChunk: 1, sampleDescriptionIndex: 1},
+				{firstChunk: 2, samplesPerChunk: 1, sampleDescriptionIndex: 1},
+			}, false,
 		},
 		"duplicate first_chunk": {
-			[]stscEntry{{firstChunk: 1, samplesPerChunk: 1}, {firstChunk: 1, samplesPerChunk: 1}}, false,
+			[]stscEntry{
+				{firstChunk: 1, samplesPerChunk: 1, sampleDescriptionIndex: 1},
+				{firstChunk: 1, samplesPerChunk: 1, sampleDescriptionIndex: 1},
+			}, false,
 		},
-		"zero samples_per_chunk": {[]stscEntry{{firstChunk: 1, samplesPerChunk: 0}}, false},
+		"zero samples_per_chunk": {[]stscEntry{{firstChunk: 1, samplesPerChunk: 0, sampleDescriptionIndex: 1}}, false},
 		"zero samples_per_chunk, not first": {
-			[]stscEntry{{firstChunk: 1, samplesPerChunk: 1}, {firstChunk: 2, samplesPerChunk: 0}}, false,
+			[]stscEntry{
+				{firstChunk: 1, samplesPerChunk: 1, sampleDescriptionIndex: 1},
+				{firstChunk: 2, samplesPerChunk: 0, sampleDescriptionIndex: 1},
+			}, false,
+		},
+		"sample_description_index other than 1": {
+			[]stscEntry{{firstChunk: 1, samplesPerChunk: 1, sampleDescriptionIndex: 2}}, false,
+		},
+		"sample_description_index other than 1, not first": {
+			[]stscEntry{
+				{firstChunk: 1, samplesPerChunk: 1, sampleDescriptionIndex: 1},
+				{firstChunk: 2, samplesPerChunk: 1, sampleDescriptionIndex: 2},
+			}, false,
 		},
 	}
 

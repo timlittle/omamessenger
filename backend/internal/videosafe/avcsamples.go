@@ -172,11 +172,13 @@ func ppsReferencesSPS(nal []byte, spsID uint32) bool {
 }
 
 // stscEntry is one row of stbl's stsc box: the first chunk (1-based)
-// this entry applies to, and how many samples every chunk from there
-// up to the next entry's own first_chunk holds.
+// this entry applies to, how many samples every chunk from there up
+// to the next entry's own first_chunk holds, and which sample
+// description (1-based) those samples use.
 type stscEntry struct {
-	firstChunk      uint32
-	samplesPerChunk uint32
+	firstChunk             uint32
+	samplesPerChunk        uint32
+	sampleDescriptionIndex uint32
 }
 
 // sampleSpans computes every sample's own offset and length in the
@@ -253,21 +255,27 @@ func layoutSamples(sizes []uint32, chunkOffsets []int64, entries []stscEntry) ([
 
 // stscEntriesValid reports whether entries is a well-formed stsc
 // table: empty, or starting at chunk 1 with strictly increasing
-// first_chunk values (no row out of order or duplicated) and every
-// row's own samples_per_chunk greater than zero. This is the shape
-// ISO/IEC 14496-12 itself defines, and the one precondition
+// first_chunk values (no row out of order or duplicated), every row's
+// own samples_per_chunk greater than zero, and every row's own
+// sample_description_index exactly 1. The shape and ordering come
+// from ISO/IEC 14496-12 itself, and are the one precondition
 // layoutSamples' own linear merge relies on to only ever move forward
 // through this table once; a table that does not hold it is refused
-// by sampleToChunkTable before layoutSamples ever sees it.
+// by sampleToChunkTable before layoutSamples ever sees it. The index
+// check is this package's own: sampleEntryCodec already refuses any
+// stsd declaring more than one sample entry, so an index other than 1
+// could only point at a sample description this package never
+// validated, or at none at all.
 func stscEntriesValid(entries []stscEntry) bool {
 	if len(entries) == 0 {
 		return true
 	}
-	if entries[0].firstChunk != 1 || entries[0].samplesPerChunk == 0 {
+	if entries[0].firstChunk != 1 || entries[0].samplesPerChunk == 0 || entries[0].sampleDescriptionIndex != 1 {
 		return false
 	}
 	for i := 1; i < len(entries); i++ {
-		if entries[i].firstChunk <= entries[i-1].firstChunk || entries[i].samplesPerChunk == 0 {
+		e, prev := entries[i], entries[i-1]
+		if e.firstChunk <= prev.firstChunk || e.samplesPerChunk == 0 || e.sampleDescriptionIndex != 1 {
 			return false
 		}
 	}
@@ -403,10 +411,10 @@ func readFileOffset(buf []byte, width int64) int64 {
 
 // sampleToChunkTable reads stbl's stsc box for every entry: its own
 // entry_count field, then that many 12-byte rows (first_chunk,
-// samples_per_chunk, sample_description_index - the third field this
-// package never needs), bounded by maxAVCStscEntries and the box's
-// own declared length before any of it is allocated, and validated
-// (see stscEntriesValid) before it is ever handed to layoutSamples.
+// samples_per_chunk, sample_description_index), bounded by
+// maxAVCStscEntries and the box's own declared length before any of
+// it is allocated, and validated (see stscEntriesValid) before it is
+// ever handed to layoutSamples.
 func (c *cursor) sampleToChunkTable(stblOff, stblLen int64) ([]stscEntry, bool) {
 	stsc, found := c.firstChild(stblOff, stblLen, "stsc")
 	if !found || stsc.len < 8 {
@@ -436,8 +444,9 @@ func (c *cursor) sampleToChunkTable(stblOff, stblLen int64) ([]stscEntry, bool) 
 	for i := range entries {
 		row := buf[int64(i)*12:]
 		entries[i] = stscEntry{
-			firstChunk:      binary.BigEndian.Uint32(row[0:4]),
-			samplesPerChunk: binary.BigEndian.Uint32(row[4:8]),
+			firstChunk:             binary.BigEndian.Uint32(row[0:4]),
+			samplesPerChunk:        binary.BigEndian.Uint32(row[4:8]),
+			sampleDescriptionIndex: binary.BigEndian.Uint32(row[8:12]),
 		}
 	}
 	if !stscEntriesValid(entries) {

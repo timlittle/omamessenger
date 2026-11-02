@@ -360,12 +360,13 @@ func TestValidate_MP4InBandSampleBoundsExceeded(t *testing.T) {
 // TestValidate_MP4InBandMalformedStscRows covers every way a crafted
 // stsc table can depart from ISO/IEC 14496-12's own shape - out of
 // order, a duplicated first_chunk, one that does not start at chunk
-// 1, or a zero samples_per_chunk row - each of which the layout
-// walker's old, unbounded rescan let through (and a zero row let an
-// attacker defeat its own early-break optimization with; see
-// avcsamples.go's own doc comment). Every one must be refused
-// outright, the same "cannot read it, cannot trust it" rule every
-// other malformed table in this package already gets.
+// 1, a zero samples_per_chunk row, or a sample_description_index
+// other than 1 - each of which the layout walker's old, unbounded
+// rescan let through (and a zero row let an attacker defeat its own
+// early-break optimization with; see avcsamples.go's own doc
+// comment). Every one must be refused outright, the same "cannot
+// read it, cannot trust it" rule every other malformed table in this
+// package already gets.
 func TestValidate_MP4InBandMalformedStscRows(t *testing.T) {
 	t.Parallel()
 
@@ -443,6 +444,25 @@ func TestValidate_MP4InBandMalformedStscRows(t *testing.T) {
 		patchStcoOffset(data, int64(len(data)-len(p.mdat)))
 
 		assertPlayable(t, data, false, "duplicate first_chunk rows")
+	})
+
+	t.Run("sample_description_index other than 1", func(t *testing.T) {
+		t.Parallel()
+
+		// The one sample entry sampleEntryCodec ever reads is always
+		// index 1; a chunk's samples claiming any other index name a
+		// sample description this package never validated at all.
+		p := avcCustomLayoutParams{
+			width: 1280, height: 720,
+			stsz: stszBody(uint32(len(sample))),
+			stco: stcoBody(0),
+			stsc: stscBodyWithIndex(2, [2]uint32{1, 1}),
+			mdat: sample,
+		}
+		data := mp4AVCVideoCustomLayout(p)
+		patchStcoOffset(data, int64(len(data)-len(p.mdat)))
+
+		assertPlayable(t, data, false, "stsc entry naming sample_description_index 2")
 	})
 }
 

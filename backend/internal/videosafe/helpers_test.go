@@ -188,6 +188,41 @@ func buildCustomAVCFixture(containerWidth, containerHeight uint16, avccBody []by
 	return append(out, moov...)
 }
 
+// mp4AVCFixtureWithStsdEntries builds a minimal, well-formed MP4
+// whose avc1 track's stsd box declares entryCount sample entries,
+// each a full, valid, width×height avc1 entry built the same way
+// mp4AVCSampleDescription builds its one entry: for a test that
+// checks a track is refused outright once entry_count is anything
+// but 1, regardless of how plausible every entry looks on its own
+// (see sampleEntryCodec's own entry_count check and
+// docs/decisions.md on the second-entry gap it closes).
+func mp4AVCFixtureWithStsdEntries(width, height uint16, entryCount uint32) []byte {
+	entryBody := make([]byte, 78)
+	binary.BigEndian.PutUint16(entryBody[24:26], width)
+	binary.BigEndian.PutUint16(entryBody[26:28], height)
+	entryBody = append(entryBody, mp4Box("avcC", buildAVCDecoderConfig(int(width), int(height)))...)
+	entry := mp4Box("avc1", entryBody)
+
+	stsdBody := make([]byte, 8, 8+len(entry)*int(entryCount))
+	binary.BigEndian.PutUint32(stsdBody[4:8], entryCount)
+	for i := uint32(0); i < entryCount; i++ {
+		stsdBody = append(stsdBody, entry...)
+	}
+
+	stsz := mp4Box("stsz", mp4SampleSize(0))
+	stbl := mp4Box("stbl", append(mp4Box("stsd", stsdBody), stsz...))
+	minf := mp4Box("minf", stbl)
+	mdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
+	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("vide")...))
+	mdia := mp4Box("mdia", append(append(append([]byte{}, mdhd...), hdlr...), minf...))
+	trak := mp4Box("trak", mdia)
+
+	mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
+	moov := mp4Box("moov", append(append([]byte{}, mvhd...), trak...))
+	out := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
+	return append(out, moov...)
+}
+
 // duplicateSPSAVCConfig builds an AVCDecoderConfigurationRecord that
 // declares two sequence parameter sets, both the same bytes a single
 // SPS for width/height would be: enough to check that Validate
