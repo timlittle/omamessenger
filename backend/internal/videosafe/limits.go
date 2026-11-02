@@ -70,6 +70,14 @@ const avcSampleCancelCheckInterval = 4096
 // meaningfully more time on it than an ordinary file this size would.
 const maxBoxBudget = 10_000
 
+// maxCoverArtDepth bounds how many levels deep hasCoverArtAnywhere's
+// own recursive walk will descend through nested container boxes
+// (moov > trak > udta > meta > ilst): real MP4/MOV files never nest
+// anywhere near this deep, so a file crafted with many pointless
+// levels of nesting cannot grow this scan's own recursion depth
+// without bound.
+const maxCoverArtDepth = 16
+
 // maxStringElement bounds an EBML string element's declared size
 // (used only for a track's own CodecID, always a handful of ASCII
 // characters) before this package reads it into memory at all, so a

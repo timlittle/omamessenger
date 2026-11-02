@@ -140,6 +140,16 @@ type mp4AudioParams struct {
 	secondAudio  bool   // adds a second audio trak, to prove multiple is rejected
 	stsdEntries  uint32 // the audio trak's own stsd entry_count; 1 when zero
 	coverArt     bool   // true adds an iTunes-style moov > udta > meta > ilst > covr atom
+	// coverArtPlacement adds a cover art atom at one of the other
+	// places FFmpeg's own mov demuxer also reads one from, which the
+	// narrow moov > udta > meta > ilst > covr check alone used to miss
+	// (see isobmff.go's own hasCoverArtAnywhere and docs/decisions.md):
+	// "moovMeta" (meta directly under moov, no udta wrapper), "secondUdta"
+	// (an empty first udta, then a second one carrying the real atom),
+	// "malformedDecoy" (a malformed box inside udta, before the real
+	// meta), or "topLevel" (a bare meta at the file's own top level,
+	// outside moov entirely).
+	coverArtPlacement string
 }
 
 // mp4AudioFixture returns a minimal, well-formed MP4/M4A file: an
@@ -171,21 +181,61 @@ func mp4AudioFixture(p mp4AudioParams) []byte {
 	if p.coverArt {
 		moovBody = append(moovBody, mp4CoverArtUdta()...)
 	}
+	switch p.coverArtPlacement {
+	case "moovMeta":
+		moovBody = append(moovBody, mp4CoverArtMeta()...)
+	case "secondUdta":
+		moovBody = append(moovBody, mp4CoverArtUnderSecondUdta()...)
+	case "malformedDecoy":
+		moovBody = append(moovBody, mp4CoverArtBehindMalformedBox()...)
+	}
 
 	out := append([]byte{}, mp4Box("ftyp", []byte("isom0000isomiso2mp41"))...)
-	return append(out, mp4Box("moov", moovBody)...)
+	out = append(out, mp4Box("moov", moovBody)...)
+	if p.coverArtPlacement == "topLevel" {
+		out = append(out, mp4CoverArtMeta()...)
+	}
+	return out
+}
+
+// mp4CoverArtMeta builds a minimal iTunes-style meta > ilst > covr
+// atom on its own, carrying a handful of fake image bytes as covr's
+// own body: the exact shape FFmpeg's own mov demuxer reads as an
+// attached picture (see isobmff.go's own hasCoverArtAnywhere and
+// docs/decisions.md), wherever a caller places it.
+func mp4CoverArtMeta() []byte {
+	covr := mp4Box("covr", []byte("fake cover art image bytes"))
+	ilst := mp4Box("ilst", covr)
+	return mp4Box("meta", append(make([]byte, 4), ilst...)) // 4 bytes of version/flags
 }
 
 // mp4CoverArtUdta builds a minimal iTunes-style
-// udta > meta > ilst > covr atom, carrying a handful of fake image
-// bytes as covr's own body: the exact shape FFmpeg's own mov demuxer
-// reads as an attached picture (see isobmff.go's own hasCoverArtAtom
-// and docs/decisions.md).
+// udta > meta > ilst > covr atom, the common placement.
 func mp4CoverArtUdta() []byte {
-	covr := mp4Box("covr", []byte("fake cover art image bytes"))
-	ilst := mp4Box("ilst", covr)
-	meta := mp4Box("meta", append(make([]byte, 4), ilst...)) // 4 bytes of version/flags
-	return mp4Box("udta", meta)
+	return mp4Box("udta", mp4CoverArtMeta())
+}
+
+// mp4CoverArtUnderSecondUdta builds two sibling udta boxes: an empty
+// first one, then a second carrying the real cover art atom, covering
+// the gap the earlier, narrower check had by only ever looking at the
+// first udta it found.
+func mp4CoverArtUnderSecondUdta() []byte {
+	empty := mp4Box("udta", []byte{})
+	return append(empty, mp4CoverArtUdta()...)
+}
+
+// mp4CoverArtBehindMalformedBox builds a udta box whose own body opens
+// with a box header declaring a size past its container, before the
+// real meta > ilst > covr atom: the earlier, narrower check's own
+// firstChild stopped at the first box it could not parse and reported
+// "not found" rather than refusing the file, so a decoy like this
+// placed ahead of the real atom hid it entirely.
+func mp4CoverArtBehindMalformedBox() []byte {
+	malformed := make([]byte, 8)
+	binary.BigEndian.PutUint32(malformed[0:4], 999_999)
+	copy(malformed[4:8], "xxxx")
+	body := append(append([]byte{}, malformed...), mp4CoverArtMeta()...)
+	return mp4Box("udta", body)
 }
 
 // mp4AudioTrak builds one audio trak box: mdia > hdlr ("soun"), mdia

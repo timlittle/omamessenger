@@ -47,6 +47,28 @@ func TestValidate_MP4Audio(t *testing.T) {
 			// imagesafe entirely.
 			mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArt: true}), false,
 		},
+		"cover art under moov > meta directly, no udta wrapper": {
+			mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "moovMeta"}), false,
+		},
+		"cover art under a second udta, after an empty first one": {
+			mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "secondUdta"}), false,
+		},
+		"cover art behind a malformed decoy box inside udta": {
+			mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "malformedDecoy"}), false,
+		},
+		"cover art in a bare meta box at the file's own top level": {
+			mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "topLevel"}), false,
+		},
+		"an image codec in the audio track's own codec slot": {
+			// Not a cover art atom at all - a track declaring itself an
+			// ordinary audio track but naming an image codec FFmpeg
+			// would otherwise treat as an attached picture. Already
+			// refused by this package's own audio codec allowlist
+			// (allowedISOAudioCodec), the same path "unsupported codec"
+			// above covers; named separately so the reason this exact
+			// shape is safe is on record.
+			mp4AudioFixture(mp4AudioParams{audioCodec: "mjpg", timescale: 1000, durationUnit: 5000}), false,
+		},
 	}
 
 	for name, tc := range cases {
@@ -200,6 +222,10 @@ func FuzzValidateMP4Audio(f *testing.F) {
 	f.Add(mp4AudioFixture(mp4AudioParams{audioCodec: "xxxx", timescale: 1000, durationUnit: 5000}))
 	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000})[:40])
 	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArt: true}))
+	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "moovMeta"}))
+	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "secondUdta"}))
+	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "malformedDecoy"}))
+	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "topLevel"}))
 	f.Add([]byte("not an audio file at all"))
 	f.Add([]byte{})
 

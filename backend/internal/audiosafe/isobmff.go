@@ -22,7 +22,10 @@ import "encoding/binary"
 // mdhd) within maxDuration.
 func validateISOBMFFAudio(c *cursor) bool {
 	moov, ok := c.topLevelMoov()
-	if !ok || c.hasCoverArtAtom(moov) {
+	if !ok {
+		return false
+	}
+	if hasArt, scanOK := c.hasCoverArtAnywhere(); !scanOK || hasArt {
 		return false
 	}
 
@@ -87,35 +90,85 @@ func (c *cursor) topLevelMoov() (moov span, ok bool) {
 	return moov, found
 }
 
-// hasCoverArtAtom reports whether moov carries an iTunes-style cover
-// art atom at moov > udta > meta > ilst > covr - the usual place
-// MP4/M4A metadata stores an attached picture. FFmpeg's own mov
-// demuxer exposes that atom as an attached-pic image stream, which
-// Qt's FFmpeg plugin decodes with QImage::fromData once the file
-// plays, skipping imagesafe entirely (see docs/decisions.md). Any
-// step of that path missing - no udta, no meta, no ilst, no covr -
-// means no cover art this package knows to look for, so false is the
-// ordinary answer for a file that carries none, never a reason on its
-// own to refuse the file.
-func (c *cursor) hasCoverArtAtom(moov span) bool {
-	udta, found := c.firstChild(moov.off, moov.len, "udta")
-	if !found {
+// coverArtContainer reports whether typ is a box type this package
+// recurses into while looking for a cover art atom: FFmpeg's own mov
+// demuxer reads a 'covr' box out of a 'meta' box found at any of
+// several places - directly under moov, under moov > udta, under a
+// trak's own udta, or bare at the file's own top level (see
+// docs/decisions.md and hasCoverArtAnywhere) - so this package no
+// longer assumes only the one, most common placement. Any other box
+// type is skipped over by its own declared size, never descended
+// into: most of this format's non-container boxes (mdhd, hdlr, stsd,
+// and the rest) open with a FullBox version/flags field or other
+// fixed data that would misparse as nested box headers if this walk
+// ever tried to read into them too.
+func coverArtContainer(typ string) bool {
+	switch typ {
+	case "moov", "trak", "udta", "meta", "ilst":
+		return true
+	default:
 		return false
 	}
+}
 
-	meta, found := c.firstChild(udta.off, udta.len, "meta")
-	if !found || meta.len < 4 {
-		return false
+// hasCoverArtAnywhere reports whether the file carries an iTunes-style
+// cover art atom ('covr') anywhere at all, recursing into every box
+// coverArtContainer names, starting from the file's own top level, so
+// there is nowhere left for one to hide among the handful of places
+// FFmpeg's own mov demuxer reads one from. ok is false once the walk
+// could not finish - a malformed box, or the shared box budget or
+// maxCoverArtDepth running out - since an incomplete scan can never be
+// trusted to have seen the whole file; found is then meaningless, and
+// the caller must refuse the file rather than trust a result this scan
+// never actually reached.
+func (c *cursor) hasCoverArtAnywhere() (found, ok bool) {
+	return c.walkForCoverArt(0, c.size, 0)
+}
+
+// walkForCoverArt is hasCoverArtAnywhere's own recursion, over every
+// box in [containerOff, containerOff+containerLen), to the given
+// nesting depth.
+func (c *cursor) walkForCoverArt(containerOff, containerLen int64, depth int) (found, ok bool) {
+	if depth > maxCoverArtDepth {
+		return false, false
 	}
 
-	// meta is a FullBox: 4 bytes of version/flags precede its own children.
-	ilst, found := c.firstChild(meta.off+4, meta.len-4, "ilst")
-	if !found {
-		return false
+	limit := containerOff + containerLen
+	for off := containerOff; off < limit; {
+		typ, body, next, headerOK := c.boxHeader(off, limit)
+		if !headerOK {
+			return false, false
+		}
+		if typ == "covr" {
+			return true, true
+		}
+
+		child, recurse := body, coverArtContainer(typ)
+		if typ == "meta" {
+			// meta is a FullBox: 4 bytes of version/flags precede its
+			// own children. Too short to even hold them means nothing
+			// could fit inside, not a reason to refuse the file.
+			if body.len < 4 {
+				recurse = false
+			} else {
+				child = span{off: body.off + 4, len: body.len - 4}
+			}
+		}
+
+		if recurse {
+			childFound, childOK := c.walkForCoverArt(child.off, child.len, depth+1)
+			if !childOK {
+				return false, false
+			}
+			if childFound {
+				return true, true
+			}
+		}
+
+		off = next
 	}
 
-	_, found = c.firstChild(ilst.off, ilst.len, "covr")
-	return found
+	return false, true
 }
 
 // isoAudioTrackAllowed judges one track's handler type and codec: a

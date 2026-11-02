@@ -334,6 +334,10 @@ func FuzzValidateMP4(f *testing.F) {
 	f.Add(mp4Fixture(mp4Params{videoCodec: "xxxx", width: 640, height: 480, durationUnit: 5000}))
 	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000})[:40])
 	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000, coverArt: true}))
+	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000, coverArtPlacement: "moovMeta"}))
+	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000, coverArtPlacement: "secondUdta"}))
+	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000, coverArtPlacement: "malformedDecoy"}))
+	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000, coverArtPlacement: "topLevel"}))
 	f.Add([]byte("not a video file at all"))
 	f.Add([]byte{})
 

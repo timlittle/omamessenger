@@ -28,6 +28,14 @@ const maxOggPages = 1_000_000
 // mirroring videosafe's own box budget.
 const maxBoxBudget = 10_000
 
+// maxCoverArtDepth bounds how many levels deep hasCoverArtAnywhere's
+// own recursive walk will descend through nested container boxes
+// (moov > trak > udta > meta > ilst): real MP4/M4A files never nest
+// anywhere near this deep, so a file crafted with many pointless
+// levels of nesting cannot grow this scan's own recursion depth
+// without bound.
+const maxCoverArtDepth = 16
+
 // opusGranuleRate is Opus's own fixed sample rate for its granule
 // position timestamps (RFC 7845): every Opus stream's granule
 // position counts 48kHz samples regardless of the stream's actual
