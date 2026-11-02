@@ -198,6 +198,76 @@ Do these after the UI. Connectors never reach real services in tests: use record
    - demo off once a real account exists (the demo mode was removed instead; fake accounts exist only in test builds)
 8. **Release:** done. The privacy and account risks are documented in the README; release-please bumps the version and tags each release (see CONTRIBUTING.md's "Release" section for the checksum-pinning follow-up pull request each one needs); `install-helper.sh` installs a tagged release on a clean machine.
 
+## Signal
+
+Status: planned. Signal joins as a third service on the same footing as WhatsApp and Telegram, through `go.mau.fi/mautrix-signal`'s `signalmeow` inside the helper (see "Signal: built on signalmeow" in decisions.md). Do the briefs in order; each ends with `make check` and `make ci` passing.
+
+Signal itself sets two limits no brief can lift: a linked device gets its history once, at link time, and only if the user picks "Transfer message history" on the phone ("Don't transfer" means no history at all); media older than 45 days is gone from Signal's servers.
+
+Already proven against `signalmeow` v26.10 (libsignal v0.105.0): the dependency resolves next to the pinned whatsmeow; libsignal builds for x86_64 and arm64; the x86_64 helper links and the whole Go suite passes with cgo and `-race`; `signalmeow`'s store migrates cleanly on `modernc.org/sqlite`; nothing in `signalmeow` writes to stdout. Not yet proven: the arm64 helper link (a cross container lacked arm64 zlib; native arm runners avoid that) and a real link with history transfer, which needs a phone.
+
+### S1 · cgo build and AGPL release
+
+The helper now needs cgo and Signal's Rust library, `libsignal_ffi`, at the exact version `signalmeow` pins (`pkg/libsignalgo/signalversion`).
+
+- `make libsignal` fetches signalapp/libsignal pinned to a full 40-character commit, checked out detached and verified against that commit (a tag alone is a marketplace finding, `remote-git-execution-unpinned`). It builds `libsignal-ffi` once into `build/libsignal/<version>/<arch>/`, with `CARGO_TARGET_DIR` under `build/` and `CARGO_BUILD_JOBS` capped (about 3.5 GB peak), and skips the build when the archive exists. Needs rustup (it honours libsignal's `rust-toolchain`), cmake, protoc and clang; document them in CONTRIBUTING.
+- cgo is on by default wherever a C compiler exists (`go test -race` already needs it), so `//go:build cgo` does not hide the Signal connector from tools: it makes them fail to link. Export `CGO_ENABLED=1` and `CGO_LDFLAGS=-L<archive dir>` once in the Makefile and make `libsignal` a prerequisite of every Go target: `build`, `test-build`, `test-go`, `lint` (golangci-lint and `tools/nologcontent`), `license-check`, `third-party-notices`, `vulncheck`. `build-fake` keeps `CGO_ENABLED=0`.
+- Providers: `backend/signal_cgo.go` (`//go:build cgo`) returns the Signal provider and `backend/signal_nocgo.go` (`//go:build !cgo`) returns none, mirroring `fake.go`/`nofake.go`; `providers()` in `main.go` appends them. Add the depguard rule for the new package.
+- CI: `ci.yml`'s jobs build libsignal through `actions/cache` keyed on the commit and architecture. The `release-build` dry run becomes a two-runner matrix so arm64 is still built before merge. Rust comes from the runner's rustup or a SHA-pinned action, never `curl | sh`. CodeQL builds with cgo too, so the Signal connector is scanned.
+- Release: `release.yml`'s single job becomes a matrix on `ubuntu-24.04` and `ubuntu-24.04-arm` (glibc 2.39; the 22.04 images retire on 17 April 2027); a final job gathers both binaries for checksums and attestations. `scripts/build-release.sh` builds only the host architecture. `release-check` fails if `ldd` shows anything beyond libc, libm, libz, libstdc++, libgcc_s, libresolv and libdl.
+- `install-helper.sh`: raise the download cap from 64 MiB to 128 MiB; the helper grows from 31 MB to about 54 MB.
+- Licence: release binaries become AGPL-3.0. Add `LICENSE-AGPL-3.0`, update the README's License section and decisions.md, add `AGPL-3.0` to `ALLOWED_LICENSES`. go-licenses cannot see Rust crates, so `THIRD_PARTY_NOTICES` also takes libsignal's own generated acknowledgments (`acknowledgments/` at the pinned commit) through `scripts/third-party-notices.tmpl`. The repository source stays MIT.
+- Accept: `make check` and `make ci` pass on a clean checkout; the release dry run produces both binaries, each runs `--version` on its own architecture, and the `ldd` check passes.
+
+### S2 · Disappearing and view-once messages, every service
+
+Today a disappearing message from WhatsApp or Telegram is stored forever (WhatsApp's normalizer unwraps the ephemeral and view-once wrappers and keeps the content as an ordinary message), and a Signal one would be too. Senders turn these on expecting the message to go. This brief makes the helper honour them for all three services, before Signal arrives.
+
+- Domain and store: a message carries its expiry period and when its timer starts; the store keeps the resulting `expires_at` and re-arms from it after a restart. A sweeper goroutine in `app`, shaped like the retry scheduler, deletes each expired message's text, media files and search entry at its time and emits the same event a delete does. It never sends a delete to the service.
+- Timer start follows each service's own rule, reported by its connector: Signal starts a received message's timer when it is read and a sent one's when it is sent ([Signal support](https://support.signal.org/hc/en-us/articles/360007320771-Set-and-manage-disappearing-messages)); WhatsApp counts from sending, read or not ([WhatsApp FAQ](https://faq.whatsapp.com/general/chats/about-disappearing-messages/)); Telegram's message `TTLPeriod` rule is checked against its documentation before coding. Messages already past their expiry are never imported from history.
+- Connectors: WhatsApp reads `ContextInfo.Expiration`, Telegram `TTLPeriod`, Signal `DataMessage.ExpireTimer`, and each reports timer changes in a chat.
+- View-once media is never downloaded: the message shows "View-once photo: open it on your phone" (or video, or voice note). Signal's `IsViewOnce`, WhatsApp's view-once wrappers and Telegram's self-destructing media all map to it.
+- Protocol: an optional `expiresAt` on a message and a `viewOnce` flag, added without breaking older UIs; `docs/api.md` updated. The UI shows a timer glyph with a tooltip giving the time left.
+- Accept: in synctest, a received Signal message expires its period after being read and a WhatsApp one its period after being sent, with text, media file and search entry gone and the UI told; a restart keeps pending expiries; a view-once photo is never fetched.
+
+### S3 · Signal connector: link and receive
+
+`backend/internal/connector/signal`, shaped like the WhatsApp connector: the real `signalmeow` client sits behind a small interface with a hand-written fake, as WhatsApp's `device` does, so the 90 % coverage gate holds without exclusions.
+
+- `domain.ServiceSignal`, and `domain.ValidService` accepts it; without that, `store.UpsertAccount` rejects the account.
+- `Provider` and `Authenticator`: link as a secondary device by QR (`PerformProvisioning` with history allowed), with the same countdown and steps as WhatsApp. Session in `<data-dir>/signal/<account>.db` (0600, directory 0700), opened with `dbutil.NewWithDB(db, "sqlite3")` over our `modernc.org/sqlite` connection.
+- Logging: `main.go` calls `signalmeow.SetLogger` once at start-up (it is process-wide and unsynchronised), keeping libsignal's own logs at Warning and above on stderr. Each client gets a no-op zerolog logger, as whatsmeow gets `waLog.Noop`: `signalmeow` logs the whole backup info, including the media backup key, at Info level (`backup.go:185`).
+- History: after link, `WaitForTransfer` then `FetchAndProcessTransfer` import the archive into `signalmeow`'s backup store. Import each chat with its archived, pinned-order and mute-until state and its newest page of messages. Implement `HistoryLoader` by paging older messages out of that local archive (`GetBackupChatItems` takes an anchor and a limit), so scrolling back works as it does for Telegram, up to the start of the transferred history.
+- Live receive through the client's event handler: 1:1 and groups v2, contacts, names and avatars, receipts, typing, edits, deletes, reactions, polls (create, vote, end), stickers, voice notes, disappearing timers and view-once (handled as the disappearing-messages brief sets out). Reactions, deletes, polls and timers arrive as fields on the raw `DataMessage`; the normalizer reads each one.
+- Identity: a message's remote ID is its sender ACI plus sent timestamp, which reactions, edits, deletes and votes target. A contact first seen by phone number or PNI moves to its ACI through `RemoteIDUpgrader`, as Telegram's placeholder peers do.
+- Keep per message what later actions need: the attachment pointer fields (CDN id, key and number, key, digest, size) for `MediaFetcher`, and the server GUID and report-spam token of incoming messages (an edit carries neither, so keep the original's).
+- Safety: run every link-preview and formatting-span URL through `domain.AllowedLinkURL`, and every inline thumbnail, avatar or sticker preview through `imagesafe`, as the other connectors do; fetched media is already checked centrally in `app/media.go`.
+- `MemberLister`; `LogoutOnRemove` through `Unlink`, which removes the device from the account.
+- Tests: the conformance suite, plus golden files built from constructed `signalpb` messages and backup frames, never from a real account. Fuzz every normalizer.
+- Accept: a test account links, its history appears and pages back, new messages arrive live, and nothing listed in privacy.md reaches the logs.
+
+### S4 · Signal connector: send and act
+
+- Send text with replies, mentions and formatting, media and voice notes, through `SendMessage`/`SendGroupMessage` with `WrapDataMessage`; `UploadAttachment` for files.
+- `Reactor`, `MessageEditor` (`WrapEditMessage`), `Deleter` (delete for everyone within Signal's own time limit), `Voter`: Signal votes by option index plus a per-voter vote counter, which the connector stores, since `signalmeow` keeps none.
+- `MarkRead`: read receipts go to each sender's ACI (`ReadReceptMessageForTimestamps`); `signalmeow` also sends the read sync to the user's own devices, so the phone clears its unread count.
+- `Blocker`: a message-request-response sync message to the user's own devices (1:1 only; `app/block.go` already refuses groups). `SpamReporter`: `ReportSpam` with the stored server GUID and token of that sender's recent messages, then the block-and-spam sync. Both are a few lines over exported `signalmeow` calls, as its bridge does them.
+- `AttachmentLimiter`: 100 MiB.
+- Accept: each action shows on the phone; the retry and refusal classes behave as for the other two services.
+
+### S5 · Pin, archive and mute stay on this computer
+
+`signalmeow` can read Signal's synced chat settings but cannot write them. So the Signal connector does not implement `Organizer`, and `connector.Manager` keeps pin and archive local, as it does for any connector without one; mute is already local for every service. A Signal chat starts from the state in the transferred history; later changes on the phone do not arrive (`signalmeow` raises no event for them), and changes here do not reach the phone. The README says so in one line. A later brief can poll `FetchStorage` for phone-side changes and, separately, write them back through the storage service.
+
+### S6 · Signal in the UI
+
+- Nerd Fonts has no Signal logo, so `ServiceGlyph.qml` uses `md-message_lock` (U+F0FCC, present in the installed JetBrainsMono Nerd Font) with the label "Signal".
+- `Rail.js` and `Tooltip.js` service lists; `Keymap.js` `rail.signal` on Ctrl+3 (free) and `setup.chooseSignal` on `s` (free in that dialog); the matching entries in `Actions.js`, `AccountController.qml` and `ListController.qml`; `Setup.js` mnemonic `s`.
+- Notification sound: a `signalNotificationSound` setting in `Settings.js` and `manifest.json`, and `Service.qml`'s two-way ternary (`data.service === "telegram" ? … : whatsappSound`, which would give Signal WhatsApp's sound) becomes a lookup by service. The helper side is already generic.
+- `AccountSetup` handles the QR flow as for WhatsApp; its test mocks the RPC layer, so no fake Signal provider is needed. Add a Signal account to the fake scripts so the rail and flow tests cover it.
+- Docs: README (setup, account risk, the S5 limit, "Don't transfer" means no history), `docs/shortcuts.md` (Ctrl+3, `s`), the example payloads in `docs/api.md`, the manual checks doc.
+- Accept: the offscreen QML tests cover a Signal account in the rail, its glyph and sound, and the setup flow; the flow has been tried in the installed plugin with a test account.
+
 ## After 0.3.0
 
 Ideas from comparing other Omarchy messaging plugins, not yet scheduled.
