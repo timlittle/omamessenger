@@ -11,7 +11,20 @@ import (
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/clipboard"
+	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
+
+// TestMaxPasteLen_MatchesTheOutgoingImageProfilesInputCap guards
+// against the two drifting apart: MaxPasteLen exists only so a pasted
+// image is never cut off before it reaches the same check
+// app/paste.go runs it through (see MaxPasteLen's own doc comment).
+func TestMaxPasteLen_MatchesTheOutgoingImageProfilesInputCap(t *testing.T) {
+	t.Parallel()
+
+	if clipboard.MaxPasteLen != imagesafe.Outgoing.MaxInputLen {
+		t.Errorf("MaxPasteLen = %d, want %d (imagesafe.Outgoing.MaxInputLen)", clipboard.MaxPasteLen, imagesafe.Outgoing.MaxInputLen)
+	}
+}
 
 // stubCommand returns a Command that runs name and args through sh -c,
 // so tests fake wl-paste without it being installed.

@@ -6,6 +6,7 @@ import (
 	"hash/crc32"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
@@ -67,6 +68,65 @@ func setPNGDimensions(src []byte, width, height uint32) []byte {
 	binary.BigEndian.PutUint32(crc[:], crc32.ChecksumIEEE(out[12:29]))
 	copy(out[29:33], crc[:])
 	return out
+}
+
+// setJPEGDimensions rewrites a JPEG's own start-of-frame height and
+// width fields in place, without touching anything else - the same
+// trick setPNGDimensions plays for PNG's IHDR - by walking markers
+// exactly as jpegIsProgressive does, so a real, otherwise-valid JPEG,
+// progressive scans and all, can declare a size far past what it
+// actually encodes.
+func setJPEGDimensions(src []byte, width, height uint16) []byte {
+	out := append([]byte{}, src...)
+
+	for i := 2; i+8 < len(out); {
+		if out[i] != 0xFF {
+			i++
+			continue
+		}
+
+		marker := out[i+1]
+		switch {
+		case marker == 0xFF:
+			i++
+		case marker == 0x01 || (marker >= 0xD0 && marker <= 0xD8):
+			i += 2
+		case marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC:
+			binary.BigEndian.PutUint16(out[i+5:i+7], height)
+			binary.BigEndian.PutUint16(out[i+7:i+9], width)
+			return out
+		default:
+			length := int(out[i+2])<<8 | int(out[i+3])
+			i += 2 + length
+		}
+	}
+
+	panic("setJPEGDimensions: no SOF marker found")
+}
+
+// fastSolidJPEG encodes a single flat colour as a baseline JPEG of
+// the given size, filled with one draw.Draw call rather than a
+// per-pixel loop: fast enough to build a real, multi-megapixel photo
+// fixture - the size real cameras and screenshots actually produce -
+// without a multi-second test.
+func fastSolidJPEG(width, height int) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{R: 128, G: 64, B: 32, A: 255}), image.Point{}, draw.Src)
+
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
+	return buf.Bytes()
+}
+
+// fastSolidPNG mirrors fastSolidJPEG for PNG, opaque so it re-encodes
+// as JPEG the same way a real screenshot without transparency would.
+func fastSolidPNG(width, height int) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{R: 10, G: 200, B: 220, A: 255}), image.Point{}, draw.Src)
+
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
 }
 
 // build16BitPNG encodes a solid image of the given size as a 16-bit-

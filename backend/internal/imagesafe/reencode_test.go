@@ -397,6 +397,115 @@ func TestReencode_SixteenBitPNGCostsMoreThanEightBitAtTheSameSize(t *testing.T) 
 	}
 }
 
+// TestReencode_OutgoingAcceptsAndDownscalesRealPhotoSizes covers the
+// regression FullImage's own lower cap introduced: a 24, 48 or
+// ~17 megapixel photo or screenshot - a real camera's or a 5K/dual-4K
+// desktop's own output, all previously accepted - must still be
+// accepted under Outgoing, and come back no larger than 4096 pixels
+// on its longer side, with its aspect ratio kept.
+func TestReencode_OutgoingAcceptsAndDownscalesRealPhotoSizes(t *testing.T) {
+	cases := map[string]struct {
+		data          []byte
+		width, height int
+	}{
+		"6000x4000 JPEG, a 24 megapixel camera photo": {fastSolidJPEG(6000, 4000), 6000, 4000},
+		"8000x6000 JPEG, a 48 megapixel phone photo":  {fastSolidJPEG(8000, 6000), 8000, 6000},
+		"7680x2160 PNG, a dual-4K desktop screenshot": {fastSolidPNG(7680, 2160), 7680, 2160},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			out, format, width, height, ok := imagesafe.Reencode(tc.data, imagesafe.Outgoing)
+			if !ok {
+				t.Fatalf("Reencode() = rejected, want accepted for a real %s", name)
+			}
+			if format != imagesafe.FormatJPEG {
+				t.Errorf("format = %v, want FormatJPEG for an opaque photo", format)
+			}
+			if longer := max(width, height); longer > 4096 {
+				t.Errorf("result = %dx%d, want at most 4096 on the longer side", width, height)
+			}
+
+			wantRatio := float64(tc.width) / float64(tc.height)
+			gotRatio := float64(width) / float64(height)
+			if diff := wantRatio - gotRatio; diff > 0.01 || diff < -0.01 {
+				t.Errorf("aspect ratio = %dx%d (%.4f), want close to the source's own %dx%d (%.4f)", width, height, gotRatio, tc.width, tc.height, wantRatio)
+			}
+
+			decoded, _, err := image.Decode(bytes.NewReader(out))
+			if err != nil {
+				t.Fatalf("output does not decode: %v", err)
+			}
+			if b := decoded.Bounds(); b.Dx() != width || b.Dy() != height {
+				t.Errorf("output decodes to %dx%d, want the reported %dx%d", b.Dx(), b.Dy(), width, height)
+			}
+		})
+	}
+}
+
+// TestReencode_OutgoingNeverUpscalesAnAlreadySmallImage covers
+// downscaleToFit's own floor: an image already within DownscaleTo is
+// left exactly as it is, never enlarged to meet it.
+func TestReencode_OutgoingNeverUpscalesAnAlreadySmallImage(t *testing.T) {
+	data := buildJPEG(100, 80)
+
+	_, _, width, height, ok := imagesafe.Reencode(data, imagesafe.Outgoing)
+	if !ok {
+		t.Fatal("Reencode() = rejected, want accepted")
+	}
+	if width != 100 || height != 80 {
+		t.Errorf("result = %dx%d, want 100x80 unchanged: a small image must never be upscaled", width, height)
+	}
+}
+
+// TestReencode_OutgoingRejectsOverBudgetHostileShapeAt50Megapixels
+// covers the other half of the regression fix: accepting a real
+// photo's own size must not also raise what this package considers a
+// safe amount of memory for one decode. A progressive JPEG - real
+// scans, just relabelled via setJPEGDimensions to declare a
+// 50-megapixel canvas, the same trick
+// TestReencode_RejectsDecompressionBombWithoutAllocating's PNG case
+// uses - is refused by MaxDecodeBytes before the (here, fake) pixel
+// data is ever decoded, exactly as it would be if the declared size
+// were real.
+func TestReencode_OutgoingRejectsOverBudgetHostileShapeAt50Megapixels(t *testing.T) {
+	progressive := readTestdata(t, "jpeg_progressive_10_scans.jpg")
+	hostile := setJPEGDimensions(progressive, 10000, 5000) // exactly 50 megapixels, within Outgoing's own MaxSide and MaxPixels
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, _, _, _, ok := imagesafe.Reencode(hostile, imagesafe.Outgoing)
+	runtime.ReadMemStats(&after)
+
+	if ok {
+		t.Fatal("Reencode() = accepted a 50-megapixel progressive JPEG, want rejected by MaxDecodeBytes")
+	}
+
+	const ceiling = 8 << 20
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > ceiling {
+		t.Errorf("Reencode() allocated %d bytes rejecting it, want well under %d (refused before any real decode)", grew, ceiling)
+	}
+}
+
+// TestReencode_FullImageKeepsItsStricterCapForReceivedPhotos covers
+// the other side of the fix: FullImage, used for a photo this account
+// received, must still refuse exactly what it always has - anything
+// over its own 4096-pixel side - even though Outgoing now accepts the
+// identical bytes for sending. 4200 on the long side is enough to
+// prove this without the slower, multi-second decode a full 6000x4000
+// camera-sized fixture would add here on top of the same size already
+// covered by TestReencode_OutgoingAcceptsAndDownscalesRealPhotoSizes.
+func TestReencode_FullImageKeepsItsStricterCapForReceivedPhotos(t *testing.T) {
+	data := fastSolidJPEG(4200, 3000)
+
+	if _, _, _, _, ok := imagesafe.Reencode(data, imagesafe.Outgoing); !ok {
+		t.Fatal("Reencode() under Outgoing = rejected, want accepted (sanity check before the real assertion below)")
+	}
+	if _, _, _, _, ok := imagesafe.Reencode(data, imagesafe.FullImage); ok {
+		t.Fatal("Reencode() under FullImage = accepted a 4200x3000 photo, want rejected: a received photo keeps the stricter cap")
+	}
+}
+
 // TestReencode_DimensionsMatchesItsOwnOutput covers Dimensions, the
 // cheap header-only read a caller uses on a cache hit instead of
 // paying for Reencode's own full decode again: it must agree with

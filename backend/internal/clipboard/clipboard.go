@@ -27,12 +27,13 @@ const commandTimeout = 3 * time.Second
 const writeTimeout = 10 * time.Second
 
 // MaxPasteLen bounds how many bytes Read accepts from wl-paste: the
-// same cap as the full-size image profile a pasted photo is sanitized
-// against (see app/paste.go and imagesafe.FullImage), large enough for
-// any image this UI would otherwise accept, small enough that a stuck
-// or hostile clipboard source cannot grow this process's memory
-// without bound.
-const MaxPasteLen = 32 << 20
+// same cap as the outgoing image profile a pasted photo is sanitized
+// against (see app/paste.go and imagesafe.Outgoing), large enough for
+// any image this UI would otherwise accept - a real camera photo or a
+// multi-monitor screenshot, not just a small display copy - small
+// enough that a stuck or hostile clipboard source cannot grow this
+// process's memory without bound.
+const MaxPasteLen = 64 << 20
 
 // MaxPasteTextLen bounds how many bytes ReadText accepts from
 // wl-paste: comfortably more than four bytes (UTF-8's own worst case

@@ -10,6 +10,7 @@ package connector_test
 import (
 	"bytes"
 	"errors"
+	"image"
 	"os"
 	"path/filepath"
 	"testing"
@@ -143,7 +144,7 @@ func TestReencodeImageFile_ReportsAWriteFailure(t *testing.T) {
 // TestSanitizeOutgoingImageFile_ChecksSizeFormatAndRewritesInPlace
 // covers every outcome app.describeAttachment's own sanitizeAttachedPhoto
 // depends on: a real image is rewritten in place through imagesafe; a
-// file declaring more bytes than imagesafe.FullImage accepts is
+// file declaring more bytes than imagesafe.Outgoing accepts is
 // refused before anything reads it; bytes that merely sniff as an
 // image but fail imagesafe's own parser are refused too; and a
 // missing file is a plain error, none of connector's own sentinels.
@@ -172,7 +173,7 @@ func TestSanitizeOutgoingImageFile_ChecksSizeFormatAndRewritesInPlace(t *testing
 		t.Parallel()
 
 		path := filepath.Join(t.TempDir(), "huge.png")
-		huge := append([]byte{0x89, 0x50, 0x4E, 0x47}, make([]byte, imagesafe.FullImage.MaxInputLen+1)...)
+		huge := append([]byte{0x89, 0x50, 0x4E, 0x47}, make([]byte, imagesafe.Outgoing.MaxInputLen+1)...)
 		if err := os.WriteFile(path, huge, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -208,6 +209,58 @@ func TestSanitizeOutgoingImageFile_ChecksSizeFormatAndRewritesInPlace(t *testing
 			t.Errorf("err = %v, want a plain stat error, not one of connector's own sentinels", err)
 		}
 	})
+}
+
+// TestSanitizeOutgoingImage_AcceptsAndDownscalesAPhotoOverFullImagesCap
+// covers the regression FullImage's own lower cap introduced:
+// SanitizeOutgoingImage must be wired to imagesafe.Outgoing, not
+// FullImage, so a real camera photo over FullImage's 4096-pixel side
+// is still accepted for sending, shrunk to fit rather than refused.
+func TestSanitizeOutgoingImage_AcceptsAndDownscalesAPhotoOverFullImagesCap(t *testing.T) {
+	t.Parallel()
+
+	data := fastSolidJPEG(5000, 4000) // over FullImage's own MaxSide, under Outgoing's
+
+	safe, err := connector.SanitizeOutgoingImage(data)
+	if err != nil {
+		t.Fatalf("SanitizeOutgoingImage() = %v, want nil: a 5000x4000 photo must be accepted under Outgoing", err)
+	}
+
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(safe))
+	if err != nil {
+		t.Fatalf("decode result config: %v", err)
+	}
+	if cfg.Width > 4096 || cfg.Height > 4096 {
+		t.Errorf("result = %dx%d, want at most 4096 on each side after downscaling", cfg.Width, cfg.Height)
+	}
+}
+
+// TestSanitizeOutgoingImageFile_AcceptsAndDownscalesAPhotoOverFullImagesCap
+// mirrors the above for the on-disk path app.describeAttachment's own
+// sanitizeAttachedPhoto actually calls.
+func TestSanitizeOutgoingImageFile_AcceptsAndDownscalesAPhotoOverFullImagesCap(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "photo.jpg")
+	if err := os.WriteFile(path, fastSolidJPEG(5000, 4000), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := connector.SanitizeOutgoingImageFile(path); err != nil {
+		t.Fatalf("SanitizeOutgoingImageFile() = %v, want nil: a 5000x4000 photo must be accepted under Outgoing", err)
+	}
+
+	safe, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(safe))
+	if err != nil {
+		t.Fatalf("decode result config: %v", err)
+	}
+	if cfg.Width > 4096 || cfg.Height > 4096 {
+		t.Errorf("result = %dx%d, want at most 4096 on each side after downscaling", cfg.Width, cfg.Height)
+	}
 }
 
 // TestSaveMedia_WritesUnchanged covers a video, audio, document, or

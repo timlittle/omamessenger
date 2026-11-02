@@ -17,7 +17,7 @@ var ErrUnsafeImage = errors.New("connector: image failed safety check")
 
 // SanitizeOutgoingImage re-encodes data, an image the user is
 // attaching to an outgoing message - a paste from the clipboard, say -
-// through imagesafe.Reencode under the full-size profile, and returns
+// through imagesafe.Reencode under the Outgoing profile, and returns
 // the result without writing anything to disk: the app layer copies
 // it into the outgoing media area itself. A pasted image comes from
 // whichever other program last put something on the clipboard, so it
@@ -26,14 +26,17 @@ var ErrUnsafeImage = errors.New("connector: image failed safety check")
 // docs/decisions.md): this is the one point in an outgoing photo's
 // whole life this package ever re-encodes it, so both the composer's
 // own preview and the bubble shown once it sends can keep reusing the
-// same already-safe bytes afterwards. Every caller runs this (and
-// SanitizeOutgoingImageFile and ReencodeImageFile below) through
-// app.Commands's own decode slot, since Reencode's full decode is the
-// single largest allocation any request this helper serves makes (see
-// docs/decisions.md); a future caller of any of the three must do the
-// same.
+// same already-safe bytes afterwards. Outgoing, not FullImage: a real
+// camera or phone photo can be far larger than anything this helper
+// ever displays, and Reencode shrinks it to fit rather than refusing
+// it outright (see imagesafe.Outgoing and docs/decisions.md). Every
+// caller runs this (and SanitizeOutgoingImageFile and ReencodeImageFile
+// below) through app.Commands's own decode slot, since Reencode's
+// full decode is the single largest allocation any request this
+// helper serves makes (see docs/decisions.md); a future caller of any
+// of the three must do the same.
 func SanitizeOutgoingImage(data []byte) ([]byte, error) {
-	safe, _, _, _, ok := imagesafe.Reencode(data, imagesafe.FullImage)
+	safe, _, _, _, ok := imagesafe.Reencode(data, imagesafe.Outgoing)
 	if !ok {
 		return nil, fmt.Errorf("connector: sanitize outgoing image: %w", ErrUnsafeImage)
 	}
@@ -43,7 +46,7 @@ func SanitizeOutgoingImage(data []byte) ([]byte, error) {
 
 // SanitizeOutgoingImageFile overwrites path in place with
 // SanitizeOutgoingImage's own re-encoded rewrite of its own content,
-// under the same full-size profile: for a photo attachment the app
+// under the same Outgoing profile: for a photo attachment the app
 // layer has already copied into the outgoing media area from a file
 // the user picked on disk, decoded and re-encoded the same way before
 // anything reads it further, never trusted further just because the
@@ -58,7 +61,7 @@ func SanitizeOutgoingImageFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("connector: sanitize outgoing image file: %w", err)
 	}
-	if info.Size() > imagesafe.FullImage.MaxInputLen {
+	if info.Size() > imagesafe.Outgoing.MaxInputLen {
 		return fmt.Errorf("connector: sanitize outgoing image file: %w", ErrMediaTooLarge)
 	}
 

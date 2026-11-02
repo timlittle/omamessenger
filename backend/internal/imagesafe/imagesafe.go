@@ -66,6 +66,14 @@ type Profile struct {
 	// against). Zero means no limit, the same convention
 	// MaxAspectRatio already uses.
 	MaxDecodeBytes int64
+	// DownscaleTo, when positive, is the longer side Reencode shrinks a
+	// decoded image down to - never up - before encoding it, once it
+	// has already passed every cap above: Outgoing's own way of
+	// meeting a real camera photo's actual size without having to
+	// accept everything that size could cost to decode as this
+	// profile's own accept caps. Zero means never resize: refuse
+	// instead, Thumbnail and FullImage's own behaviour, unchanged.
+	DownscaleTo int
 }
 
 // maxRealisticAspectRatio bounds every profile's own MaxAspectRatio:
@@ -88,25 +96,56 @@ var Thumbnail = Profile{
 	MaxDecodeBytes: 64 << 20,
 }
 
-// FullImage bounds a downloaded or pasted still photo. MaxSide and
-// MaxPixels match what a real photo actually needs, not what Qt could
-// in principle be asked to decode: WhatsApp's own HD photos cap out at
-// 4096 pixels on the long side, and Telegram's at 2560 (see
-// connector/whatsapp/limits.go and connector/telegram/limits.go), so
-// 4096x4096 clears every real photo with room to spare. It used to be
-// 8192x8192/40 megapixels; measuring runtime.MemStats peaks at that
-// old cap found a single decode could reach close to a gigabyte on
-// its own (a 4-component progressive JPEG, or a 16-bit PNG) -
-// reasonable for one photo, but the UI auto-fetches every visible one,
-// so several at once could reach many gigabytes with no cap on how
-// many decode in parallel at all (see app.decodeSlots, which now
-// serialises every one of them, and docs/decisions.md for the
-// measurements this cap and MaxDecodeBytes are both calibrated
-// against). Its total allows a single frame of that size and no more.
+// FullImage bounds a downloaded photo: one this account received,
+// which this helper never trusts further than confirming it decodes
+// safely and showing it, never shrinking it - there is no "too big to
+// receive" the way there is a limit to what makes sense to send. Its
+// MaxSide and MaxPixels match what a real photo actually needs, not
+// what Qt could in principle be asked to decode: WhatsApp's own HD
+// photos cap out at 4096 pixels on the long side, and Telegram's at
+// 2560 (see connector/whatsapp/limits.go and
+// connector/telegram/limits.go), so 4096x4096 clears every real photo
+// with room to spare. It used to be 8192x8192/40 megapixels;
+// measuring runtime.MemStats peaks at that old cap found a single
+// decode could reach close to a gigabyte on its own (a 4-component
+// progressive JPEG, or a 16-bit PNG) - reasonable for one photo, but
+// the UI auto-fetches every visible one, so several at once could
+// reach many gigabytes with no cap on how many decode in parallel at
+// all (see app.decodeSlots, which now serialises every one of them,
+// and docs/decisions.md for the measurements this cap and
+// MaxDecodeBytes are both calibrated against). Its total allows a
+// single frame of that size and no more. An outgoing attachment or
+// clipboard paste - the user's own deliberate choice, not an
+// attacker's, and shrunk to fit a real service's own limit rather
+// than refused outright - uses Outgoing instead.
 var FullImage = Profile{
 	MaxSide: 4096, MaxPixels: 4096 * 4096, MaxInputLen: 32 << 20,
 	MaxTotalPixels: 40_000_000, MaxAspectRatio: maxRealisticAspectRatio,
 	MaxDecodeBytes: 768 << 20,
+}
+
+// Outgoing bounds a photo the user is attaching or pasting to send:
+// their own deliberate choice, one at a time, behind the same
+// app.decodeSlots serialisation FullImage's own decodes share - never
+// an attacker's, and never auto-fetched - so it accepts what a real
+// camera or screenshot actually produces (a 24, 48 or 50 megapixel
+// phone photo; a 5K or dual-4K desktop screenshot) rather than
+// FullImage's own, far smaller limit, then shrinks the result to
+// DownscaleTo (4096, WhatsApp's own HD maximum; Telegram serves 2560)
+// on its longer side - never upscaled - before encoding, rather than
+// refusing a real photo outright just because it needs resizing
+// before it can be sent. MaxDecodeBytes is deliberately the same
+// budget FullImage uses, not a larger one scaled up for the larger
+// pixel caps: the measurements it was calibrated against (see
+// docs/decisions.md) already found that budget sane for one decode at
+// a time, and a real photo - almost always a baseline, 8-bit JPEG -
+// fits it with room to spare even at 50 megapixels; only a
+// progressive or 16-bit-per-channel shape anywhere near that size,
+// never produced by an ordinary camera or screenshot, hits it.
+var Outgoing = Profile{
+	MaxSide: 12000, MaxPixels: 50_000_000, MaxInputLen: 64 << 20,
+	MaxAspectRatio: maxRealisticAspectRatio, MaxDecodeBytes: 768 << 20,
+	DownscaleTo: 4096,
 }
 
 // format is one of the image formats this package knows how to

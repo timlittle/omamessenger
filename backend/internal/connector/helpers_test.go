@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
+	"image/jpeg"
 	"image/png"
 	"testing"
 
@@ -23,6 +25,22 @@ func onePixelPNG() []byte {
 
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)
+
+	return buf.Bytes()
+}
+
+// fastSolidJPEG encodes a single flat colour as a baseline JPEG of
+// the given size, filled with one draw.Draw call rather than a
+// per-pixel loop: fast enough to build a real, multi-megapixel photo
+// fixture - larger than imagesafe.FullImage accepts, so a test can
+// prove SanitizeOutgoingImage(File) is wired to imagesafe.Outgoing,
+// not FullImage - without a multi-second test.
+func fastSolidJPEG(width, height int) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	draw.Draw(img, img.Bounds(), image.NewUniform(color.RGBA{R: 128, G: 64, B: 32, A: 255}), image.Point{}, draw.Src)
+
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
 
 	return buf.Bytes()
 }

@@ -204,6 +204,20 @@ func TestImageDimensions_ReportsZeroForUndecodableData(t *testing.T) {
 	}
 }
 
+// TestWithinThumbnailSourceCaps_AcceptsASizeOverFullImagesCap covers
+// the consistency fix: a real camera photo's size - over
+// imagesafe.FullImage's own 4096-pixel side, which app's own
+// SanitizeOutgoingImageFile no longer refuses for an outgoing
+// attachment - must not be refused here either, or Send would lose
+// its thumbnail for exactly the photos the fix was about.
+func TestWithinThumbnailSourceCaps_AcceptsASizeOverFullImagesCap(t *testing.T) {
+	t.Parallel()
+
+	if !withinThumbnailSourceCaps(5000, 4000) {
+		t.Error("withinThumbnailSourceCaps(5000, 4000) = false, want true: within imagesafe.Outgoing's own cap")
+	}
+}
+
 func TestJPEGThumbnail_ReturnsNilForUndecodableData(t *testing.T) {
 	t.Parallel()
 
@@ -214,7 +228,7 @@ func TestJPEGThumbnail_ReturnsNilForUndecodableData(t *testing.T) {
 
 // TestJPEGThumbnail_RejectsOversizedDeclaredDimensions covers a JPEG
 // whose header declares a width and height far past
-// imagesafe.FullImage's own cap: jpegThumbnail must refuse it by its
+// imagesafe.Outgoing's own cap: jpegThumbnail must refuse it by its
 // header alone, the same way imagesafe.Sanitize does for a downloaded
 // image, rather than calling image.Decode and letting Go's own JPEG
 // decoder allocate a bitmap that size.
@@ -228,7 +242,7 @@ func TestJPEGThumbnail_RejectsOversizedDeclaredDimensions(t *testing.T) {
 	}
 
 	// SOF0 payload: precision(1) height(2) width(2) ...; set both to
-	// 60000, far past any sane photo and past imagesafe.FullImage's cap.
+	// 60000, far past any sane photo and past imagesafe.Outgoing's cap.
 	src[sof+5], src[sof+6] = 0xEA, 0x60
 	src[sof+7], src[sof+8] = 0xEA, 0x60
 

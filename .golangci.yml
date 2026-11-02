@@ -92,6 +92,7 @@ linters:
           allow:
             - $gostd
             - golang.org/x/image/webp
+            - golang.org/x/image/draw
         connector:
           list-mode: strict
           files: ["**/backend/internal/connector/*.go", "!$test"]
@@ -269,13 +270,13 @@ linters:
         text: "image\\.Decode|image\\.DecodeConfig|png\\.Decode|jpeg\\.Decode|gif\\.Decode"
       # jpegThumbnail and imageDimensions each call image.DecodeConfig
       # first and check its declared width and height against
-      # imagesafe.FullImage's own caps before jpegThumbnail's one
+      # imagesafe.Outgoing's own caps before jpegThumbnail's one
       # image.Decode call; see their own doc comments.
       - path: backend/internal/connector/whatsapp/upload\.go
         linters: [forbidigo]
         text: "image\\.Decode|image\\.DecodeConfig"
       # describeAttachment runs a photo attachment through
-      # sanitizeAttachedPhoto (imagesafe's own full-size profile)
+      # sanitizeAttachedPhoto (imagesafe's own Outgoing profile)
       # before imageDimensions or photoThumb ever decodes it; see its
       # own doc comment.
       - path: backend/internal/app/attachment\.go

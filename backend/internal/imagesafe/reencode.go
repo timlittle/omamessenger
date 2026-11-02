@@ -6,6 +6,7 @@ import (
 	"image/jpeg" // also registers the JPEG decoder reencodeStill uses
 	"image/png"  // also registers the PNG decoder reencodeStill uses
 
+	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // registers the still-WebP decoder reencodeStill uses; animated WebP has no Go decoder at all
 )
 
@@ -40,7 +41,12 @@ const jpegMaxScans = 100
 // a plain refusal - see decodeImage), or when the pixels actually
 // decoded still turn out to be over profile's caps: a confirmation
 // exactly like finishPNG and finishJPEG's old ones, never trusting a
-// header's own claim once real pixels exist to check it against.
+// header's own claim once real pixels exist to check it against. An
+// image that passes every cap is shrunk to profile.DownscaleTo on its
+// longer side, never enlarged, before being encoded (see
+// downscaleToFit); width and height are always this function's own
+// final result, after any such resize, never the original decoded
+// size.
 func reencodeStill(data []byte, profile Profile) (out []byte, format OutputFormat, width, height int, ok bool) {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || !withinCaps(int64(cfg.Width), int64(cfg.Height), profile) {
@@ -64,7 +70,59 @@ func reencodeStill(data []byte, profile Profile) (out []byte, format OutputForma
 		return nil, FormatUnknown, 0, 0, false
 	}
 
-	return encodeImage(img, width, height)
+	// hasAlpha is checked before any resize, while img still carries its
+	// own decoded type (*image.YCbCr for an opaque JPEG, say): that
+	// lets it skip straight past the pixel scan for every format that
+	// can never carry alpha (see hasAlpha). downscaleToFit's own
+	// result is always a generic *image.RGBA, which would otherwise
+	// force that scan - over the resized pixels, not even the real
+	// photo's own - on every outgoing photo, never free for one as
+	// large as Outgoing now accepts.
+	alpha := hasAlpha(img)
+	img, width, height = downscaleToFit(img, width, height, profile.DownscaleTo)
+
+	return encodeImage(img, alpha, width, height)
+}
+
+// downscaleToFit returns img resized so its longer side is maxSide,
+// its aspect ratio kept exactly (both sides scaled by the same
+// factor), together with its own new width and height - or img,
+// width and height unchanged when maxSide is zero (profiles that
+// refuse an over-cap image outright rather than resizing it) or img
+// already fits within it: never upscaled, only ever shrunk. Uses
+// golang.org/x/image/draw's ApproxBiLinear, chosen over BiLinear or
+// CatmullRom after measuring all three against a real 50-megapixel
+// photo - about 8 times faster than either, for quality this
+// package's own doc calls merely "reasonable" rather than "high" or
+// "very high" (see docs/decisions.md for the measured times): this
+// runs inside app.decodeSlots' own single slot, which every other
+// photo decode - including an incoming one the user is simply
+// scrolling past - waits behind, so the extra second or more either
+// kernel interpolator costs is a real, felt delay for unrelated work,
+// not merely a slower encode of this one photo.
+func downscaleToFit(img image.Image, width, height, maxSide int) (image.Image, int, int) {
+	longer := max(width, height)
+	if maxSide <= 0 || longer <= maxSide {
+		return img, width, height
+	}
+
+	scale := float64(maxSide) / float64(longer)
+	dw, dh := scaledSize(width, scale), scaledSize(height, scale)
+
+	dst := image.NewRGBA(image.Rect(0, 0, dw, dh))
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
+
+	return dst, dw, dh
+}
+
+// scaledSize applies scale to n, never below one pixel: an extreme
+// aspect ratio could otherwise round a side down to zero.
+func scaledSize(n int, scale float64) int {
+	if s := int(float64(n) * scale); s > 0 {
+		return s
+	}
+
+	return 1
 }
 
 // countJPEGScans counts every occurrence of JPEG's start-of-scan
@@ -108,16 +166,16 @@ func decodeImage(data []byte) (img image.Image, ok bool) {
 }
 
 // encodeImage writes img - already confirmed within profile's caps -
-// as PNG at png.BestSpeed when it carries any real transparency (see
-// hasAlpha), or JPEG at jpegQuality otherwise: the one choice Reencode
-// makes about its own output format, independent of whatever format
-// data arrived as. ok is false only if the standard library's own
-// encoder itself fails, which neither ever does for a decoded
-// image.Image.
-func encodeImage(img image.Image, width, height int) (out []byte, format OutputFormat, w, h int, ok bool) {
+// as PNG at png.BestSpeed when alpha is true (see hasAlpha, called by
+// reencodeStill before any resize, never here), or JPEG at
+// jpegQuality otherwise: the one choice Reencode makes about its own
+// output format, independent of whatever format data arrived as. ok
+// is false only if the standard library's own encoder itself fails,
+// which neither ever does for a decoded image.Image.
+func encodeImage(img image.Image, alpha bool, width, height int) (out []byte, format OutputFormat, w, h int, ok bool) {
 	var buf bytes.Buffer
 
-	if hasAlpha(img) {
+	if alpha {
 		if err := (&png.Encoder{CompressionLevel: png.BestSpeed}).Encode(&buf, img); err != nil { // coverage-ignore: the standard library's own PNG encoder has no failure mode for a decoded image.Image within this package's own caps
 			return nil, FormatUnknown, 0, 0, false
 		}

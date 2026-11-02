@@ -16,12 +16,14 @@ import (
 // request this helper serves makes (see docs/decisions.md for the
 // measured peaks), and the UI auto-fetches every photo as it scrolls
 // into view, so without this, ten hostile photos in one chat would
-// decode in parallel rather than one at a time. One slot, not two: the
-// measured worst case at FullImage's own new cap already approaches
-// imagesafe.FullImage.MaxDecodeBytes on its own, so a second
-// concurrent decode would roughly double the helper's own worst-case
-// footprint for no benefit the UI's own single-column message list
-// ever needs.
+// decode in parallel rather than one at a time. One slot, not two:
+// the measured worst case at FullImage's own cap already approaches
+// its own MaxDecodeBytes, and SanitizeOutgoingImage(File) share that
+// same budget under imagesafe.Outgoing's own, larger pixel caps (see
+// docs/decisions.md), so a second concurrent decode would roughly
+// double the helper's own worst-case footprint for no benefit either
+// an incoming photo's single-column message list or a one-at-a-time
+// outgoing attachment ever needs.
 const decodeSlots = 1
 
 // acquireDecodeSlot reserves one of this Commands's decodeSlots,
