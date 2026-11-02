@@ -69,6 +69,22 @@ func TestValidate_MP4Audio(t *testing.T) {
 			// shape is safe is on record.
 			mp4AudioFixture(mp4AudioParams{audioCodec: "mjpg", timescale: 1000, durationUnit: 5000}), false,
 		},
+		"compressed moov (cmov) alongside an otherwise valid moov": {
+			// The exact gap a differential security review found:
+			// FFmpeg's own mov demuxer hands a cmov box to
+			// mov_read_cmov, which inflates its own declared size and
+			// reparses the result as a second, completely unvalidated
+			// moov - the audio track inside becomes a stream this
+			// package never looked at. An otherwise ordinary audio
+			// track alongside one must not make the file valid.
+			mp4AudioFixtureWithMoovExtra(mp4Box("cmov", []byte("fake compressed movie data, never inflated or trusted here"))), false,
+		},
+		"mvex (fragmented sample tables) alongside an otherwise valid moov": {
+			mp4AudioFixtureWithMoovExtra(mp4Box("mvex", []byte("fake fragment defaults"))), false,
+		},
+		"an unrecognized box alongside an otherwise valid moov": {
+			mp4AudioFixtureWithMoovExtra(mp4Box("zzzz", []byte("not a box this package recognizes"))), false,
+		},
 	}
 
 	for name, tc := range cases {
@@ -213,6 +229,41 @@ func TestValidate_MP4BoxHeaderVariants(t *testing.T) {
 	}
 }
 
+// TestValidate_MP4AudioUnknownNestedBox covers this package's own
+// allowlist at every level it now applies below moov - trak, mdia,
+// minf and stbl - each proven with a box this package does not name
+// there, alongside the structure it still needs to read, so an
+// otherwise valid audio track is refused the moment any one of its
+// own containers carries a box FFmpeg's own mov demuxer might still
+// open while this package stayed silent about it.
+func TestValidate_MP4AudioUnknownNestedBox(t *testing.T) {
+	t.Parallel()
+
+	extra := mp4Box("zzzz", []byte("not a box this package recognizes"))
+
+	cases := map[string][]byte{
+		"unknown box as a direct child of trak": mp4AudioFixtureWithTrakExtra(extra),
+		"unknown box as a direct child of mdia": mp4AudioFixtureWithMdiaExtra(extra),
+		"unknown box as a direct child of minf": mp4AudioFixtureWithMinfExtra(extra),
+		"unknown box as a direct child of stbl": mp4AudioFixtureWithStblExtra(extra),
+	}
+
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeFixture(t, "nested.m4a", data)
+			got, err := audiosafe.Validate(path)
+			if err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if got {
+				t.Errorf("Validate() = true for %q, want false", name)
+			}
+		})
+	}
+}
+
 // FuzzValidateMP4Audio seeds the corpus with the crafted cases a
 // header parser must survive without panicking, hanging or reading
 // past its own bounds. go test's mutation engine takes it from there.
@@ -228,6 +279,8 @@ func FuzzValidateMP4Audio(f *testing.F) {
 	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArtPlacement: "topLevel"}))
 	f.Add([]byte("not an audio file at all"))
 	f.Add([]byte{})
+	f.Add(mp4AudioFixtureWithMoovExtra(mp4Box("cmov", []byte("fake compressed movie data"))))
+	f.Add(mp4AudioFixtureWithStblExtra(mp4Box("zzzz", []byte("unexpected"))))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := writeFixture(t, "fuzz.m4a", data)

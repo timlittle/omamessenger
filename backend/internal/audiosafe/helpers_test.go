@@ -282,6 +282,91 @@ func mp4Trak(handler, codec string, timescale, durationUnit uint32) []byte {
 	return mp4Box("trak", mdia)
 }
 
+// mp4AudioFixtureWithMoovExtra builds a minimal, well-formed,
+// otherwise valid M4A whose moov box carries extra as one more
+// direct child alongside its own mvhd and audio trak, for a test
+// proving this package's moov allowlist refuses a box it does not
+// name there (a compressed cmov especially - see
+// docs/decisions.md).
+func mp4AudioFixtureWithMoovExtra(extra []byte) []byte {
+	mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
+	trak := mp4AudioTrak("mp4a", 1000, 5000)
+	moovBody := append(append(append([]byte{}, mvhd...), trak...), extra...)
+	out := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
+	return append(out, mp4Box("moov", moovBody)...)
+}
+
+// mp4AudioFixtureWithTrakExtra builds the same kind of fixture, with
+// extra appended as one more direct child of the audio trak instead
+// of moov.
+func mp4AudioFixtureWithTrakExtra(extra []byte) []byte {
+	mdia := mp4AudioMdia(1000, 5000)
+	trak := mp4Box("trak", append(append([]byte{}, mdia...), extra...))
+	return mp4AudioFixtureWithTrak(trak)
+}
+
+// mp4AudioFixtureWithMdiaExtra builds the same fixture, with extra
+// appended as one more direct child of mdia instead.
+func mp4AudioFixtureWithMdiaExtra(extra []byte) []byte {
+	mdia := mp4Box("mdia", append(mp4AudioMdiaBody(1000, 5000), extra...))
+	return mp4AudioFixtureWithTrak(mp4Box("trak", mdia))
+}
+
+// mp4AudioFixtureWithMinfExtra builds the same fixture, with extra
+// appended as one more direct child of minf instead.
+func mp4AudioFixtureWithMinfExtra(extra []byte) []byte {
+	stbl := mp4AudioStbl("mp4a")
+	minf := mp4Box("minf", append(append([]byte{}, stbl...), extra...))
+	mdia := mp4Box("mdia", append(mp4AudioMdiaHeaderAndHandler(1000, 5000), minf...))
+	return mp4AudioFixtureWithTrak(mp4Box("trak", mdia))
+}
+
+// mp4AudioFixtureWithStblExtra builds the same fixture, with extra
+// appended as one more direct child of stbl instead.
+func mp4AudioFixtureWithStblExtra(extra []byte) []byte {
+	stblBody := append(mp4Box("stsd", mp4SampleDescription("mp4a")), extra...)
+	minf := mp4Box("minf", mp4Box("stbl", stblBody))
+	mdia := mp4Box("mdia", append(mp4AudioMdiaHeaderAndHandler(1000, 5000), minf...))
+	return mp4AudioFixtureWithTrak(mp4Box("trak", mdia))
+}
+
+// mp4AudioFixtureWithTrak wraps trak in a minimal, otherwise
+// well-formed M4A: ftyp, an mvhd-carrying moov holding exactly trak.
+func mp4AudioFixtureWithTrak(trak []byte) []byte {
+	mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
+	moov := mp4Box("moov", append(append([]byte{}, mvhd...), trak...))
+	out := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
+	return append(out, moov...)
+}
+
+// mp4AudioMdiaHeaderAndHandler builds mdia's own mdhd and hdlr
+// ("soun") children, the part every mp4AudioFixtureWith*Extra helper
+// above shares regardless of which level it adds its own extra box
+// at.
+func mp4AudioMdiaHeaderAndHandler(timescale, durationUnit uint32) []byte {
+	mdhd := mp4Box("mdhd", mp4MediaHeader(timescale, durationUnit))
+	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("soun")...))
+	return append(mdhd, hdlr...)
+}
+
+// mp4AudioMdiaBody builds mdia's own body for an mp4a audio track:
+// mdhd, hdlr and minf, with no extra box of its own.
+func mp4AudioMdiaBody(timescale, durationUnit uint32) []byte {
+	minf := mp4Box("minf", mp4AudioStbl("mp4a"))
+	return append(mp4AudioMdiaHeaderAndHandler(timescale, durationUnit), minf...)
+}
+
+// mp4AudioMdia wraps mp4AudioMdiaBody in its own mdia box.
+func mp4AudioMdia(timescale, durationUnit uint32) []byte {
+	return mp4Box("mdia", mp4AudioMdiaBody(timescale, durationUnit))
+}
+
+// mp4AudioStbl builds a minimal stbl box for an audio track: just
+// its own stsd sample entry, with no extra box of its own.
+func mp4AudioStbl(codec string) []byte {
+	return mp4Box("stbl", mp4Box("stsd", mp4SampleDescription(codec)))
+}
+
 // mp4MediaHeader builds an mvhd/mdhd body (version 0): 4 bytes of
 // version/flags, two 4-byte timestamps, the timescale, then the
 // duration, the only fields either box's own reader ever looks at.

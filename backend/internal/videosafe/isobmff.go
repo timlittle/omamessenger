@@ -33,6 +33,9 @@ func isoBMFFPlayable(ctx context.Context, c *cursor) bool {
 	if !ok {
 		return false
 	}
+	if !c.onlyChildrenAllowed(moov.off, moov.len, allowedMoovChild) {
+		return false
+	}
 	if hasArt, scanOK := c.hasCoverArtAnywhere(); !scanOK || hasArt {
 		return false
 	}
@@ -93,22 +96,20 @@ func (c *cursor) addTrak(ctx context.Context, trak span, t *trackTally) bool {
 }
 
 // topLevelMoov walks every top-level box in the file once, both to
-// find moov and to refuse a fragmented MP4 outright: a moof or mfra
-// box anywhere means sample data lives in additional movie fragments
-// this package never reads, which FFmpeg's own mov demuxer still
-// opens and decodes (see docs/decisions.md), so a file carrying
-// either is never reported playable regardless of what its moov box
-// alone declares. ok is false once a top-level box is malformed, the
-// same "cannot read it, cannot trust it" rule every other check in
-// this package already applies.
+// find moov and to refuse outright anything allowedTopLevelBox does
+// not name - a moof or mfra box, meaning sample data lives in
+// additional movie fragments this package never reads, or any other
+// box FFmpeg's own mov demuxer would still open and decode while this
+// package stayed silent about it (see docs/decisions.md) - so a file
+// carrying one is never reported playable regardless of what its
+// moov box alone declares. ok is false once a top-level box is
+// malformed or disallowed, the same "cannot read it, cannot trust
+// it" rule every other check in this package already applies.
 func (c *cursor) topLevelMoov() (moov span, ok bool) {
 	var found bool
 	for off := int64(0); off < c.size; {
 		typ, body, next, headerOK := c.boxHeader(off, c.size)
-		if !headerOK {
-			return span{}, false
-		}
-		if typ == "moof" || typ == "mfra" {
+		if !headerOK || !allowedTopLevelBox[typ] {
 			return span{}, false
 		}
 		if typ == "moov" && !found {
@@ -279,11 +280,13 @@ func dimensionsWithinCap(width, height int) bool {
 // avcVideoTrackChecks runs for it), its declared sample count (from
 // stsz/stz2, read as a single field, never allocated outside that
 // scan) and its own duration in seconds (from mdhd). ok is false once
-// any box this needs is missing or too short to read, so a track
-// whose header was cut off is never silently treated as safe.
+// any box this needs is missing, too short to read, or - through
+// trackChildBoxes - carries a child outside this package's own
+// allowlist, so a track whose header was cut off, or whose structure
+// hides an unvalidated box, is never silently treated as safe.
 func (c *cursor) trackInfo(ctx context.Context, trakOff, trakLen int64) (track isoTrack, duration float64, ok bool) {
-	mdia, found := c.firstChild(trakOff, trakLen, "mdia")
-	if !found {
+	mdia, stbl, ok := c.trackChildBoxes(trakOff, trakLen)
+	if !ok {
 		return
 	}
 
@@ -294,17 +297,6 @@ func (c *cursor) trackInfo(ctx context.Context, trakOff, trakLen int64) (track i
 
 	duration, ok = c.boxDuration(mdia.off, mdia.len, "mdhd")
 	if !ok {
-		return
-	}
-
-	minf, found := c.firstChild(mdia.off, mdia.len, "minf")
-	if !found {
-		ok = false
-		return
-	}
-	stbl, found := c.firstChild(minf.off, minf.len, "stbl")
-	if !found {
-		ok = false
 		return
 	}
 
@@ -323,6 +315,39 @@ func (c *cursor) trackInfo(ctx context.Context, trakOff, trakLen int64) (track i
 	}
 	ok = c.videoTrackFields(ctx, stbl, &track)
 	return
+}
+
+// trackChildBoxes walks trak down through mdia, minf and stbl,
+// checking each container's own children against this package's
+// allowlist as it goes (see onlyChildrenAllowed and docs/decisions.md
+// on the cmov gap this closes), so a box FFmpeg's own mov demuxer
+// would still parse - a compressed moov, a fragmented MP4's own
+// sample tables, or anything else this package does not expect to
+// find there - can never hide a track's real structure from the rest
+// of trackInfo. ok is false the moment any expected box is missing,
+// any container's own children fail the allowlist, or a box itself
+// is malformed.
+func (c *cursor) trackChildBoxes(trakOff, trakLen int64) (mdia, stbl span, ok bool) {
+	if !c.onlyChildrenAllowed(trakOff, trakLen, allowedTrakChild) {
+		return span{}, span{}, false
+	}
+
+	mdia, found := c.firstChild(trakOff, trakLen, "mdia")
+	if !found || !c.onlyChildrenAllowed(mdia.off, mdia.len, allowedMdiaChild) {
+		return span{}, span{}, false
+	}
+
+	minf, found := c.firstChild(mdia.off, mdia.len, "minf")
+	if !found || !c.onlyChildrenAllowed(minf.off, minf.len, allowedMinfChild) {
+		return span{}, span{}, false
+	}
+
+	stbl, found = c.firstChild(minf.off, minf.len, "stbl")
+	if !found || !c.onlyChildrenAllowed(stbl.off, stbl.len, allowedStblChild) {
+		return span{}, span{}, false
+	}
+
+	return mdia, stbl, true
 }
 
 // videoTrackFields fills a video track's own declared width and
@@ -568,4 +593,27 @@ func (c *cursor) children(containerOff, containerLen int64, want string) ([]span
 		off = next
 	}
 	return out, true
+}
+
+// onlyChildrenAllowed reports whether every immediate child within
+// [containerOff, containerOff+containerLen) is one of allowed's own
+// box types, refusing the container outright the moment one is not -
+// the same "cannot read it, cannot trust it" rule children and
+// firstChild already apply to a malformed box, extended here to a
+// box this package simply does not expect to find there (see
+// isoBMFFPlayable, trackChildBoxes and docs/decisions.md on the cmov
+// gap this closes).
+func (c *cursor) onlyChildrenAllowed(containerOff, containerLen int64, allowed map[string]bool) bool {
+	limit := containerOff + containerLen
+	for off := containerOff; off < limit; {
+		typ, _, next, ok := c.boxHeader(off, limit)
+		if !ok {
+			return false
+		}
+		if !allowed[typ] {
+			return false
+		}
+		off = next
+	}
+	return true
 }

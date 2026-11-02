@@ -25,6 +25,9 @@ func validateISOBMFFAudio(c *cursor) bool {
 	if !ok {
 		return false
 	}
+	if !c.onlyChildrenAllowed(moov.off, moov.len, allowedMoovChild) {
+		return false
+	}
 	if hasArt, scanOK := c.hasCoverArtAnywhere(); !scanOK || hasArt {
 		return false
 	}
@@ -70,16 +73,15 @@ func (c *cursor) tallyAudioTracks(traks []span, duration float64) (audioTracks i
 }
 
 // topLevelMoov walks every top-level box in the file once, both to
-// find moov and to refuse a fragmented MP4 outright: see videosafe's
-// own topLevelMoov, which this mirrors, and docs/decisions.md.
+// find moov and to refuse outright anything allowedTopLevelBox does
+// not name - a moof or mfra box, or any other box this package does
+// not expect there: see videosafe's own topLevelMoov, which this
+// mirrors, and docs/decisions.md.
 func (c *cursor) topLevelMoov() (moov span, ok bool) {
 	var found bool
 	for off := int64(0); off < c.size; {
 		typ, body, next, headerOK := c.boxHeader(off, c.size)
-		if !headerOK {
-			return span{}, false
-		}
-		if typ == "moof" || typ == "mfra" {
+		if !headerOK || !allowedTopLevelBox[typ] {
 			return span{}, false
 		}
 		if typ == "moov" && !found {
@@ -195,11 +197,23 @@ func isoAudioTrackAllowed(kind, codec string, audioTracksSoFar int) (isAudio, ok
 // audioTrackInfo extracts trak's handler type ("vide" or "soun"),
 // its first sample entry's codec fourcc, and its own duration in
 // seconds (from mdhd). ok is false once any box this needs is
-// missing or too short to read, so a track whose header was cut off
-// is never silently treated as safe.
+// missing, too short to read, or - through onlyChildrenAllowed -
+// carries a child box outside this package's own allowlist (see
+// docs/decisions.md on the cmov gap this closes), so a track whose
+// header was cut off, or whose structure hides an unvalidated box,
+// is never silently treated as safe. minf and stbl are only read,
+// and so only checked, once kind is "soun": a track of any other
+// kind is already refused by the caller regardless of what either
+// box holds (see isoAudioTrackAllowed and soundCodec, split out to
+// keep this function's own branching within this package's
+// complexity limit).
 func (c *cursor) audioTrackInfo(trakOff, trakLen int64) (kind, codec string, duration float64, ok bool) {
+	if !c.onlyChildrenAllowed(trakOff, trakLen, allowedTrakChild) {
+		return "", "", 0, false
+	}
+
 	mdia, found := c.firstChild(trakOff, trakLen, "mdia")
-	if !found {
+	if !found || !c.onlyChildrenAllowed(mdia.off, mdia.len, allowedMdiaChild) {
 		return "", "", 0, false
 	}
 
@@ -217,17 +231,26 @@ func (c *cursor) audioTrackInfo(trakOff, trakLen int64) (kind, codec string, dur
 		return kind, "", duration, true
 	}
 
+	codec, ok = c.soundCodec(mdia)
+	return kind, codec, duration, ok
+}
+
+// soundCodec reads a "soun" track's own minf and stbl boxes, checking
+// each against this package's own allowlist as it goes (see
+// onlyChildrenAllowed), and returns its first sample entry's codec
+// fourcc: the part of audioTrackInfo that only runs once the track's
+// handler type is already known to be "soun".
+func (c *cursor) soundCodec(mdia span) (string, bool) {
 	minf, found := c.firstChild(mdia.off, mdia.len, "minf")
-	if !found {
-		return "", "", 0, false
+	if !found || !c.onlyChildrenAllowed(minf.off, minf.len, allowedMinfChild) {
+		return "", false
 	}
 	stbl, found := c.firstChild(minf.off, minf.len, "stbl")
-	if !found {
-		return "", "", 0, false
+	if !found || !c.onlyChildrenAllowed(stbl.off, stbl.len, allowedStblChild) {
+		return "", false
 	}
 
-	codec, ok = c.sampleEntryCodec(stbl.off, stbl.len)
-	return kind, codec, duration, ok
+	return c.sampleEntryCodec(stbl.off, stbl.len)
 }
 
 // handlerType reads mdia's hdlr box, reporting the track's handler
@@ -412,4 +435,24 @@ func (c *cursor) children(containerOff, containerLen int64, want string) ([]span
 		off = next
 	}
 	return out, true
+}
+
+// onlyChildrenAllowed reports whether every immediate child within
+// [containerOff, containerOff+containerLen) is one of allowed's own
+// box types, refusing the container outright the moment one is not:
+// see videosafe's own onlyChildrenAllowed, which this mirrors, and
+// docs/decisions.md on the cmov gap this closes.
+func (c *cursor) onlyChildrenAllowed(containerOff, containerLen int64, allowed map[string]bool) bool {
+	limit := containerOff + containerLen
+	for off := containerOff; off < limit; {
+		typ, _, next, ok := c.boxHeader(off, limit)
+		if !ok {
+			return false
+		}
+		if !allowed[typ] {
+			return false
+		}
+		off = next
+	}
+	return true
 }

@@ -215,6 +215,80 @@ var allowedISOAudioCodec = map[string]bool{
 	"Opus": true,
 }
 
+// allowedTopLevelBox names every box this package accepts at the
+// file's own top level: ftyp (file type), moov (the movie metadata
+// this package validates), mdat (sample data, never read here), the
+// padding atoms real muxers write around mdat or moov (free, skip
+// and wide - FFmpeg's own mov demuxer treats all three as no-ops),
+// uuid (vendor extension data, also skipped unread) and meta (an
+// iTunes-style cover art atom can sit bare at the top level too, see
+// hasCoverArtAnywhere). A moof or mfra box - a fragmented MP4's own
+// movie fragment and its index, holding sample tables this package
+// never reads at all - is deliberately absent: FFmpeg's own mov
+// demuxer still opens and decodes them (see docs/decisions.md), and
+// any other box this package does not name here is refused the same
+// way, never silently skipped over.
+var allowedTopLevelBox = map[string]bool{
+	"ftyp": true, "moov": true, "mdat": true,
+	"free": true, "skip": true, "wide": true, "uuid": true,
+	"meta": true,
+}
+
+// allowedMoovChild names every box this package accepts as a direct
+// child of moov: mvhd (the movie header), trak (a track), udta and
+// meta (already walked for cover art, see hasCoverArtAnywhere), iods
+// (an MPEG-4 Initial Object Descriptor some encoders still write for
+// backward compatibility, never read here) and the same padding
+// atoms allowedTopLevelBox allows. A cmov - a compressed moov that
+// FFmpeg's own mov demuxer inflates and reparses as a second,
+// completely unvalidated moov - is deliberately absent, the exact
+// gap a differential security review found; so is mvex, the box a
+// fragmented MP4 carries its own sample tables in. Any other child
+// is refused the same way.
+var allowedMoovChild = map[string]bool{
+	"mvhd": true, "trak": true, "udta": true, "meta": true,
+	"iods": true, "free": true, "skip": true,
+}
+
+// allowedTrakChild names every box this package accepts as a direct
+// child of trak: tkhd (the track header), mdia (the media
+// information this package reads into), edts (an edit list - real
+// encoders write one whenever a track starts with encoder delay or
+// priming, AAC's own pre-roll especially) and udta/meta, the same
+// cover art placement hasCoverArtAnywhere also reads directly under
+// a trak. Any other child is refused.
+var allowedTrakChild = map[string]bool{
+	"tkhd": true, "mdia": true, "edts": true, "udta": true, "meta": true,
+}
+
+// allowedMdiaChild names every box this package accepts as a direct
+// child of mdia: mdhd (the track's own duration), hdlr (its handler
+// type) and minf (the media information this package reads on
+// into). Any other child is refused.
+var allowedMdiaChild = map[string]bool{
+	"mdhd": true, "hdlr": true, "minf": true,
+}
+
+// allowedMinfChild names every box this package accepts as a direct
+// child of minf: vmhd or smhd (the video or sound media header, one
+// or the other depending on the track's own kind), dinf (the
+// mandatory data information box every real encoder writes, never
+// read here) and stbl (the sample tables this package reads into).
+// Any other child is refused.
+var allowedMinfChild = map[string]bool{
+	"vmhd": true, "smhd": true, "dinf": true, "stbl": true,
+}
+
+// allowedStblChild names every box this package accepts as a direct
+// child of stbl: the sample tables this package itself reads (stsd,
+// stsz, stz2, stco, co64, stsc - see avcsamples.go) and the ones it
+// never reads but real encoders still write alongside them (stts,
+// stss, ctts, sgpd, sbgp). Any other child is refused.
+var allowedStblChild = map[string]bool{
+	"stsd": true, "stsz": true, "stz2": true, "stco": true, "co64": true, "stsc": true,
+	"stts": true, "stss": true, "ctts": true, "sgpd": true, "sbgp": true,
+}
+
 // No WebM/Matroska video codec is accepted for a video track - see
 // matroskaTrackAllowed in matroska.go and docs/decisions.md for why.
 

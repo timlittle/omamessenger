@@ -166,6 +166,86 @@ func mp4Trak(p trakParams) []byte {
 	return mp4Box("trak", mdia)
 }
 
+// mp4FixtureWithTrakExtra builds a minimal, well-formed, otherwise
+// playable MP4 whose one video trak carries extra as one more direct
+// child alongside its own mdia, for a test proving this package's
+// trak allowlist refuses a box it does not name there.
+func mp4FixtureWithTrakExtra(extra []byte) []byte {
+	mdia := mp4VideoMdia(1280, 720)
+	trak := mp4Box("trak", append(append([]byte{}, mdia...), extra...))
+	return mp4FixtureWithTrak(trak)
+}
+
+// mp4FixtureWithMdiaExtra builds the same fixture as
+// mp4FixtureWithTrakExtra, but with extra appended as one more direct
+// child of mdia instead of trak.
+func mp4FixtureWithMdiaExtra(extra []byte) []byte {
+	mdia := mp4Box("mdia", append(mp4VideoMdiaBody(1280, 720), extra...))
+	return mp4FixtureWithTrak(mp4Box("trak", mdia))
+}
+
+// mp4FixtureWithMinfExtra builds the same fixture, with extra
+// appended as one more direct child of minf instead.
+func mp4FixtureWithMinfExtra(extra []byte) []byte {
+	stbl := mp4VideoStbl(1280, 720)
+	minf := mp4Box("minf", append(append([]byte{}, stbl...), extra...))
+	mdia := mp4Box("mdia", append(mp4VideoMdiaHeaderAndHandler(), minf...))
+	return mp4FixtureWithTrak(mp4Box("trak", mdia))
+}
+
+// mp4FixtureWithStblExtra builds the same fixture, with extra
+// appended as one more direct child of stbl instead.
+func mp4FixtureWithStblExtra(extra []byte) []byte {
+	stblBody := append(mp4VideoStblBody(1280, 720), extra...)
+	minf := mp4Box("minf", mp4Box("stbl", stblBody))
+	mdia := mp4Box("mdia", append(mp4VideoMdiaHeaderAndHandler(), minf...))
+	return mp4FixtureWithTrak(mp4Box("trak", mdia))
+}
+
+// mp4FixtureWithTrak wraps trak in a minimal, otherwise well-formed
+// MP4: ftyp, an mvhd-carrying moov holding exactly trak.
+func mp4FixtureWithTrak(trak []byte) []byte {
+	mvhd := mp4Box("mvhd", mp4MediaHeader(1000, 5000))
+	moov := mp4Box("moov", append(append([]byte{}, mvhd...), trak...))
+	out := mp4Box("ftyp", []byte("isom0000isomiso2mp41"))
+	return append(out, moov...)
+}
+
+// mp4VideoMdiaHeaderAndHandler builds mdia's own mdhd and hdlr
+// ("vide") children, the part every mp4FixtureWith*Extra helper above
+// shares regardless of which level it adds its own extra box at.
+func mp4VideoMdiaHeaderAndHandler() []byte {
+	mdhd := mp4Box("mdhd", mp4MediaHeader(1000, 5000))
+	hdlr := mp4Box("hdlr", append(make([]byte, 8), []byte("vide")...))
+	return append(mdhd, hdlr...)
+}
+
+// mp4VideoMdiaBody builds mdia's own body for a width×height avc1
+// video track: mdhd, hdlr and minf, with no extra box of its own.
+func mp4VideoMdiaBody(width, height int) []byte {
+	minf := mp4Box("minf", mp4VideoStbl(width, height))
+	return append(mp4VideoMdiaHeaderAndHandler(), minf...)
+}
+
+// mp4VideoMdia wraps mp4VideoMdiaBody in its own mdia box.
+func mp4VideoMdia(width, height int) []byte {
+	return mp4Box("mdia", mp4VideoMdiaBody(width, height))
+}
+
+// mp4VideoStblBody builds stbl's own body for a width×height avc1
+// video track: stsd (the sample entry) and stsz (zero samples), with
+// no extra box of its own.
+func mp4VideoStblBody(width, height int) []byte {
+	stsd := mp4Box("stsd", mp4AVCSampleDescription(uint16(width), uint16(height)))
+	stsz := mp4Box("stsz", mp4SampleSize(0))
+	return append(stsd, stsz...)
+}
+
+// mp4VideoStbl wraps mp4VideoStblBody in its own stbl box.
+func mp4VideoStbl(width, height int) []byte {
+	return mp4Box("stbl", mp4VideoStblBody(width, height))
+}
+
 // mp4MediaHeader builds an mvhd/mdhd body (version 0): 4 bytes of
 // version/flags, two 4-byte timestamps, the timescale, then the
 // duration, the only fields either box's own reader ever looks at.
