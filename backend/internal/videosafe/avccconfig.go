@@ -210,19 +210,13 @@ func avcCProfileBytesMatchSPS(hdr [6]byte, sps []byte) bool {
 // in-band data, checked against the SPS's id (see avcsamples.go) - so
 // the list is only ever walked here to find where it ends, the same
 // "cannot read it, cannot trust it" rule every other check in this
-// package applies to bytes it does not otherwise need. An avcC whose
-// declared length ends exactly at the SPS, with not even a
-// numOfPictureParameterSets byte present, is accepted without reading
-// one: ISO/IEC 14496-15 makes that field mandatory, but a box with
-// zero bytes left has no room left to hide anything either way, so
-// requiring the byte to exist would refuse a harmlessly non-conformant
-// avcC for no safety gain.
+// package applies to bytes it does not otherwise need. The
+// numOfPictureParameterSets byte itself is required, as ISO/IEC
+// 14496-15 makes it: an avcC that ends at its SPS is not one a real
+// encoder writes, so it is refused like any other malformed box.
 func (c *cursor) avcCTrailingDataAllowed(avcc span, afterSPS int64, profileIDC uint32) bool {
 	start := avcc.off + afterSPS
 	end := avcc.off + avcc.len
-	if start == end {
-		return true
-	}
 
 	off, ok := c.skipAVCCPPSList(start, end)
 	if !ok {

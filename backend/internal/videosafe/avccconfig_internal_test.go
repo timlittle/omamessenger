@@ -165,12 +165,10 @@ func TestReadAVCDecoderConfig_TrailingData(t *testing.T) {
 		ok   bool
 	}{
 		"baseline, no numOfPictureParameterSets byte at all": {
-			// ISO/IEC 14496-15 makes the byte mandatory, but a real-world
-			// fixture elsewhere in this codebase omits it; since avcC ends
-			// exactly at the SPS here, there is no room left to hide
-			// anything either way, so this must still be accepted.
+			// ISO/IEC 14496-15 makes the byte mandatory and every real
+			// encoder writes it, so an avcC ending at its SPS is refused.
 			buildAVCCNoTrailer(baseline),
-			true,
+			false,
 		},
 		"baseline, no PPS, nothing trailing": {
 			buildAVCC(baseline, 0, nil, nil),
