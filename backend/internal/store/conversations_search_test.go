@@ -187,6 +187,37 @@ func TestConversations_BoundsAMatchedMessagesSnippet(t *testing.T) {
 	}
 }
 
+// TestConversations_CapsAnOversizedSingleWordMatch confirms Match stays
+// bounded even when the matched message is one long run of letters with
+// no spaces at all: FTS5's own snippet() never splits a token, so the
+// 32-token window in conversationsByTitleOrMessage does nothing once the
+// whole match is a single token, the way a release before
+// domain.MaxIncomingTextLength existed could still have stored one. The
+// same domain.CapPreview cap scanConversationWith already applies to
+// Preview must apply to Match too.
+func TestConversations_CapsAnOversizedSingleWordMatch(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	huge := "ticket" + strings.Repeat("x", domain.MaxPreviewLength*2)
+	addMessages(t, s, domain.Message{ID: "m1", ConversationID: "chat", Text: huge, Created: 1})
+
+	got, err := s.Conversations(t.Context(), "ticket")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("Conversations(ticket) = %v, want one match", got)
+	}
+	if n := domain.UTF16Len(got[0].Match); n > domain.MaxPreviewLength {
+		t.Errorf("Match is %d UTF-16 units, want at most %d (domain.MaxPreviewLength)", n, domain.MaxPreviewLength)
+	}
+	if !strings.HasPrefix(got[0].Match, "ticket") {
+		t.Errorf("Match = %q, want it to still start with the matched word", got[0].Match)
+	}
+}
+
 func TestConversations_IgnoresHostileQuerySyntax(t *testing.T) {
 	t.Parallel()
 

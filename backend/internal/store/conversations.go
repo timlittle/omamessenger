@@ -450,11 +450,17 @@ func scanConversation(row scanner) (domain.Conversation, error) {
 }
 
 // scanConversationMatch reads conversationColumns followed by the search
-// match, matched message id and matched sender columns.
+// match, matched message id and matched sender columns. Match gets the
+// same domain.CapPreview cap Preview already gets in scanConversationWith:
+// FTS5's own snippet() never splits a token, so a message stored as one
+// long run of letters with no spaces comes back in full regardless of
+// the 32-token window conversationsByTitleOrMessage asks for, the same
+// way a row written before domain.MaxIncomingTextLength existed could
+// still carry unbounded text today.
 func scanConversationMatch(row scanner) (domain.Conversation, error) {
 	var match, messageID, sender sql.NullString
 	c, err := scanConversationWith(row, &match, &messageID, &sender)
-	c.Match = match.String
+	c.Match = domain.CapPreview(match.String)
 	c.MatchMessageID = messageID.String
 	c.MatchSender = domain.CapDisplayName(sender.String)
 
