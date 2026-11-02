@@ -95,6 +95,10 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto, play 
 		return "", "", 0, 0, fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
 	}
 
+	if reason, ok := c.refused.lookup(cacheIdentity(m)); ok {
+		return "", "", 0, 0, &MediaFetchError{Reason: reason, err: errRefusedDisplayCopyCached}
+	}
+
 	conv, err := c.store.Conversation(ctx, m.ConversationID)
 	if err != nil {
 		return "", "", 0, 0, err
@@ -277,8 +281,15 @@ func (c *Commands) displayCopy(ctx context.Context, m domain.Message, originalPa
 // encoder every other display copy does (see docs/decisions.md). A
 // failure that is not ErrUnsafeImage - originalPath too large or
 // unreadable - is returned as is, never worth a sandboxed job over.
+// Each of the (up to two) calls into imagesafe's own full decode
+// acquires this helper's own decode slot on its own (see
+// reencodeImageFile and decodeSlots), released again before the
+// sandboxed StillFrame job runs: that job has no use for the slot
+// imagesafe's own decode needs, and holding it idle for however long
+// ffmpeg takes would only ever delay some other request's own photo
+// for no reason.
 func (c *Commands) reencodeForDisplay(ctx context.Context, originalPath, dst string, profile imagesafe.Profile) (imagesafe.OutputFormat, error) {
-	format, _, _, err := connector.ReencodeImageFile(originalPath, dst, profile)
+	format, err := c.reencodeImageFile(ctx, originalPath, dst, profile)
 	if err == nil {
 		return format, nil
 	}
@@ -292,7 +303,7 @@ func (c *Commands) reencodeForDisplay(ctx context.Context, originalPath, dst str
 	}
 	defer os.RemoveAll(filepath.Dir(frame))
 
-	format, _, _, stillErr := connector.ReencodeImageFile(frame, dst, profile)
+	format, stillErr := c.reencodeImageFile(ctx, frame, dst, profile)
 	if stillErr != nil {
 		return imagesafe.FormatUnknown, err
 	}
@@ -351,7 +362,12 @@ func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversat
 // check on the one re-download it gets - the same way download
 // classifies and logs a failed fetch, so media that turned out to be
 // unreadable once its actual bytes were checked is never silently
-// left as it was.
+// left as it was. It also remembers m under c.refused, so a later
+// FetchMedia for the same message fails fast with this same reason
+// rather than downloading and decoding it all over again (see
+// refusedDisplayCopies): the UI auto-fetches every visible photo, so
+// without this, a refused photo or sticker would pay this exact cost
+// again on every scroll.
 func (c *Commands) failDecodeCheck(ctx context.Context, m domain.Message, err error) error {
 	conv, convErr := c.store.Conversation(ctx, m.ConversationID)
 	if convErr != nil {
@@ -360,6 +376,7 @@ func (c *Commands) failDecodeCheck(ctx context.Context, m domain.Message, err er
 
 	reason := fetchFailureReason(err, err)
 	c.logFetchFailure(conv.Service, m.Media.Kind, reason)
+	c.refused.remember(cacheIdentity(m), reason)
 
 	return &MediaFetchError{Reason: reason, err: err}
 }

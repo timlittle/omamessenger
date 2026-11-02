@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -156,6 +158,130 @@ func TestResolveNotificationSound_ServiceResolvesATranscodedCopy(t *testing.T) {
 	got, readErr := os.ReadFile(resolved)
 	if readErr != nil || string(got) != string(data) {
 		t.Errorf("resolved copy = %q, %v; want the original bytes unchanged", got, readErr)
+	}
+}
+
+// TestResolveNotificationSound_ServiceReusesTheSameTranscodeWhenUnchanged
+// covers the actual security finding: resolveServiceSound runs on
+// every incoming notification, so without this, a contact spamming
+// messages would occupy the helper's one transcode slot on every
+// single one (see docs/decisions.md). A second resolve of the exact
+// same, untouched manifest file must not transcode it again.
+func TestResolveNotificationSound_ServiceReusesTheSameTranscodeWhenUnchanged(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	path := writeSoundFixture(t, "whatsapp-default.mp3", []byte("whatsapp's own default sound"))
+
+	if _, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceWhatsApp, path); err != nil {
+		t.Fatalf("first ResolveNotificationSound() error = %v", err)
+	}
+	if _, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceWhatsApp, path); err != nil {
+		t.Fatalf("second ResolveNotificationSound() error = %v", err)
+	}
+
+	if got := f.transcoder.callCount(); got != 1 {
+		t.Errorf("transcoder calls = %d, want exactly 1: a second resolve of the exact same file must not transcode again", got)
+	}
+}
+
+// TestResolveNotificationSound_ServiceRetranscodesWhenTheFileChanges
+// covers the other side: once the manifest file's own content and
+// modification time actually change, resolving it again must
+// transcode it again and serve the new result.
+func TestResolveNotificationSound_ServiceRetranscodesWhenTheFileChanges(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	path := writeSoundFixture(t, "whatsapp-default.mp3", []byte("first version"))
+
+	if _, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceWhatsApp, path); err != nil {
+		t.Fatalf("first ResolveNotificationSound() error = %v", err)
+	}
+
+	later := time.Now().Add(time.Hour)
+	if err := os.WriteFile(path, []byte("second, different version"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceWhatsApp, path)
+	if err != nil {
+		t.Fatalf("second ResolveNotificationSound() error = %v", err)
+	}
+
+	if got := f.transcoder.callCount(); got != 2 {
+		t.Errorf("transcoder calls = %d, want exactly 2: a changed file must be retranscoded", got)
+	}
+	if got, err := os.ReadFile(resolved); err != nil || string(got) != "second, different version" {
+		t.Errorf("resolved content = %q, %v; want the new version", got, err)
+	}
+}
+
+// TestResolveNotificationSound_ServiceRetranscodesWhenTheStoredSoundGoesMissing
+// covers the safety net: an unchanged source alone must not be
+// enough to skip transcoding if the sound it last produced is no
+// longer actually there to serve.
+func TestResolveNotificationSound_ServiceRetranscodesWhenTheStoredSoundGoesMissing(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	path := writeSoundFixture(t, "whatsapp-default.mp3", []byte("whatsapp's own default sound"))
+
+	resolved, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceWhatsApp, path)
+	if err != nil || resolved == "" {
+		t.Fatalf("first ResolveNotificationSound() = %q, %v", resolved, err)
+	}
+	if err := os.Remove(resolved); err != nil {
+		t.Fatal(err)
+	}
+
+	resolvedAgain, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceWhatsApp, path)
+	if err != nil || resolvedAgain == "" {
+		t.Fatalf("second ResolveNotificationSound() = %q, %v", resolvedAgain, err)
+	}
+
+	if got := f.transcoder.callCount(); got != 2 {
+		t.Errorf("transcoder calls = %d, want exactly 2: a stored sound removed since must be retranscoded, not just trusted by its unchanged source", got)
+	}
+	if _, err := os.Stat(resolvedAgain); err != nil {
+		t.Errorf("stat resolved path after re-transcode: %v", err)
+	}
+}
+
+// TestResolveNotificationSound_ServiceSerializesConcurrentResolves
+// covers the other half of the same finding: two notifications from
+// the same service arriving close together must share one transcode,
+// never both run the sandboxed transcoder for a sound neither has
+// actually changed. Real concurrency, not a blocking fake: the lock
+// guarantees exactly one real transcode regardless of scheduling
+// order, since every goroutine but the first to acquire it sees the
+// first one's own completed work once its own turn comes.
+func TestResolveNotificationSound_ServiceSerializesConcurrentResolves(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	path := writeSoundFixture(t, "whatsapp-default.mp3", []byte("whatsapp's own default sound"))
+
+	const concurrent = 20
+	var wg sync.WaitGroup
+	for range concurrent {
+		wg.Go(func() {
+			if _, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceWhatsApp, path); err != nil {
+				t.Errorf("ResolveNotificationSound() error = %v", err)
+			}
+		})
+	}
+	wg.Wait()
+
+	if got := f.transcoder.callCount(); got != 1 {
+		t.Errorf("transcoder calls = %d, want exactly 1: concurrent resolves of an unchanged sound must share one transcode", got)
 	}
 }
 

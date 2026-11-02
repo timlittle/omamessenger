@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -55,7 +54,7 @@ func (c *Commands) PasteImage(ctx context.Context) (PastedImage, error) {
 		return PastedImage{}, fmt.Errorf("clipboard: %w", err)
 	}
 
-	safe, err := connector.SanitizeOutgoingImage(data.Bytes())
+	safe, err := c.sanitizeOutgoingImage(ctx, data.Bytes())
 	if err != nil {
 		return PastedImage{}, fmt.Errorf("%w: %w", ErrInvalidInput, errUnsafeClipboardImage)
 	}

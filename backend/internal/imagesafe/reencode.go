@@ -33,7 +33,9 @@ const jpegMaxScans = 100
 // before ever decoding a single pixel, then decodes fully and writes
 // a fresh encode of the result. ok is false when data's header
 // already fails profile, when a JPEG declares more than jpegMaxScans
-// start-of-scan markers, when it fails to decode at all (an animated
+// start-of-scan markers, when profile sets MaxDecodeBytes and the
+// header alone already estimates a decode over it (see
+// estimatedDecodeBytes), when it fails to decode at all (an animated
 // WebP, truncated input, or anything a decoder's own panic turns into
 // a plain refusal - see decodeImage), or when the pixels actually
 // decoded still turn out to be over profile's caps: a confirmation
@@ -45,6 +47,9 @@ func reencodeStill(data []byte, profile Profile) (out []byte, format OutputForma
 		return nil, FormatUnknown, 0, 0, false
 	}
 	if isJPEG(data) && countJPEGScans(data) > jpegMaxScans {
+		return nil, FormatUnknown, 0, 0, false
+	}
+	if profile.MaxDecodeBytes > 0 && estimatedDecodeBytes(data, int64(cfg.Width), int64(cfg.Height)) > profile.MaxDecodeBytes {
 		return nil, FormatUnknown, 0, 0, false
 	}
 
@@ -156,4 +161,129 @@ func hasAlpha(img image.Image) bool {
 	}
 
 	return false
+}
+
+// bytesPerPixelBaseline is what estimatedDecodeBytes charges every
+// pixel of a baseline (non-progressive) JPEG, an 8-bit or paletted
+// PNG, or a still WebP: none of these keep much more than their own
+// final pixels live while decoding. Measured up to roughly 1.75 bytes
+// per pixel for a baseline JPEG at FullImage's own cap (see
+// docs/decisions.md); more than doubled here for headroom.
+const bytesPerPixelBaseline int64 = 4
+
+// bytesPerPixelExpensive is what estimatedDecodeBytes charges every
+// pixel of a progressive JPEG, whatever its component count, or a
+// 16-bit-per-channel PNG: a progressive decode keeps every block's
+// coefficients live across every one of its scans, and a 16-bit
+// image's own row buffers are twice as wide, so both cost far more
+// per pixel than the baseline case above. Measured up to roughly 28
+// bytes per pixel for the worst of either at FullImage's own cap (see
+// docs/decisions.md); rounded up for headroom.
+const bytesPerPixelExpensive int64 = 32
+
+// estimatedDecodeBytes approximates, from data's own header alone, how
+// many bytes decoding a width x height image like it will need at
+// peak: cheap enough for reencodeStill to check before the real decode
+// it exists to guard ever runs. A progressive JPEG or a 16-bit PNG is
+// charged at bytesPerPixelExpensive; everything else at the far
+// cheaper bytesPerPixelBaseline (see both for why). Deliberately not
+// exact: calibrated with headroom against runtime.MemStats peaks
+// actually measured for this package's own worst legitimate shapes at
+// FullImage's new cap (see docs/decisions.md) - always on the side of
+// too much, never too little.
+func estimatedDecodeBytes(data []byte, width, height int64) int64 {
+	pixels := width * height
+
+	switch {
+	case isJPEG(data) && jpegIsProgressive(data):
+		return pixels * bytesPerPixelExpensive
+	case isPNG(data) && pngBitDepth(data) > 8:
+		return pixels * bytesPerPixelExpensive
+	default:
+		return pixels * bytesPerPixelBaseline
+	}
+}
+
+// pngIHDRBitDepthOffset is the fixed byte offset of a PNG's own
+// declared bit depth, inside the IHDR chunk every PNG starts with:
+// 8 (signature) + 4 (chunk length) + 4 (chunk type "IHDR") + 4 (width)
+// + 4 (height) bytes in. Cheap enough to read directly, without asking
+// image/png to parse the whole header just for this one byte.
+const pngIHDRBitDepthOffset = 24
+
+// pngBitDepth reads data's own declared bit depth straight from its
+// IHDR chunk. 8 - a safe, cheap default that never inflates an
+// estimate - for data too short to even hold that byte; reencodeStill's
+// own earlier image.DecodeConfig call is what actually refuses
+// anything this malformed.
+func pngBitDepth(data []byte) int {
+	if len(data) <= pngIHDRBitDepthOffset {
+		return 8
+	}
+
+	return int(data[pngIHDRBitDepthOffset])
+}
+
+// jpegIsProgressive reports whether data's first start-of-frame marker
+// - walked past every other segment by its own declared length, so a
+// payload byte that merely looks like a marker is never mistaken for
+// one - is one of the four progressive DCT variants (0xC2, 0xC6, 0xCA
+// or 0xCE) rather than baseline or extended-sequential (see
+// estimatedDecodeBytes for why that distinction matters). A run of
+// 0xFF fill bytes before a real marker, the same shape a pre-rewrite
+// security review found bypassing this package's old hand-written
+// scan count, is handled the same way countJPEGScans's own comment
+// describes: skipped one byte at a time rather than assumed away.
+// false for anything this walk cannot even reach, such as a file with
+// no SOF marker at all; reencodeStill's own decode is what actually
+// refuses a file that malformed, not this function.
+func jpegIsProgressive(data []byte) bool {
+	for i := 2; i+3 < len(data); {
+		if data[i] != 0xFF {
+			i++
+			continue
+		}
+
+		marker := data[i+1]
+		switch {
+		case marker == 0xFF:
+			i++
+		case jpegMarkerHasNoLength(marker):
+			i += 2
+		case jpegMarkerIsSOF(marker):
+			return jpegMarkerIsProgressiveSOF(marker)
+		default:
+			length := int(data[i+2])<<8 | int(data[i+3])
+			if length < 2 {
+				return false
+			}
+			i += 2 + length
+		}
+	}
+
+	return false
+}
+
+// jpegMarkerHasNoLength reports whether marker is TEM (0x01) or one of
+// the eight restart markers (0xD0-0xD8): every JPEG marker but these
+// two, SOI and EOI carries a two-byte length jpegIsProgressive must
+// skip by, rather than simply stepping past the marker code itself.
+func jpegMarkerHasNoLength(marker byte) bool {
+	return marker == 0x01 || (marker >= 0xD0 && marker <= 0xD8)
+}
+
+// jpegMarkerIsSOF reports whether marker is one of the twelve real
+// start-of-frame markers, 0xC0 through 0xCF excluding 0xC4 (DHT),
+// 0xC8 (reserved "JPG") and 0xCC (DAC), which share that numeric range
+// without being frame markers at all.
+func jpegMarkerIsSOF(marker byte) bool {
+	return marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC
+}
+
+// jpegMarkerIsProgressiveSOF reports whether marker - already
+// confirmed a start-of-frame marker by jpegMarkerIsSOF - is one of the
+// four progressive DCT variants (0xC2, 0xC6, 0xCA, 0xCE) rather than
+// baseline or extended-sequential.
+func jpegMarkerIsProgressiveSOF(marker byte) bool {
+	return marker == 0xC2 || marker == 0xC6 || marker == 0xCA || marker == 0xCE
 }

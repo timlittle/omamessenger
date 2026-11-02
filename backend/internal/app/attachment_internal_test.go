@@ -23,7 +23,8 @@ import (
 func TestSanitizeAttachedPhoto_GenericReadFailure(t *testing.T) {
 	t.Parallel()
 
-	if err := sanitizeAttachedPhoto(t.TempDir()); err == nil {
+	c := &Commands{decodeSlot: make(chan struct{}, decodeSlots)}
+	if err := c.sanitizeAttachedPhoto(t.Context(), t.TempDir()); err == nil {
 		t.Fatal("sanitizeAttachedPhoto(directory) succeeded, want an error")
 	}
 }

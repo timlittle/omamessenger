@@ -162,7 +162,7 @@ func (c *Commands) prepareAttachment(ctx context.Context, id, accountID, path, n
 		return nil, err
 	}
 
-	media, err := describeAttachment(stored, name, info.Size())
+	media, err := c.describeAttachment(ctx, stored, name, info.Size())
 	if err != nil {
 		_ = os.Remove(stored) // best effort: the attachment is refused either way, and a stale file here is cleaned up on the next prune regardless
 		return nil, err
@@ -241,10 +241,10 @@ func (c *Commands) storeAttachment(ctx context.Context, id, name, path string) (
 // here decodes it to read its dimensions or build a thumbnail: an
 // error means the attachment is refused outright, never sent with an
 // unchecked image.
-func describeAttachment(storedPath, name string, size int64) (*domain.Media, error) {
+func (c *Commands) describeAttachment(ctx context.Context, storedPath, name string, size int64) (*domain.Media, error) {
 	kind := sniffKind(storedPath)
 	if kind == domain.MediaPhoto {
-		if err := sanitizeAttachedPhoto(storedPath); err != nil {
+		if err := c.sanitizeAttachedPhoto(ctx, storedPath); err != nil {
 			return nil, err
 		}
 	}
@@ -260,14 +260,22 @@ func describeAttachment(storedPath, name string, size int64) (*domain.Media, err
 
 // sanitizeAttachedPhoto overwrites storedPath - a photo attachment
 // already copied into the outgoing media area - in place with
-// imagesafe's own sanitized rewrite (see connector.SanitizeOutgoingImageFile),
-// so an attached image is never trusted further than one received
-// from a sender or pasted from the clipboard just because the user
-// chose to attach it from disk (see docs/decisions.md). The errors
-// this can report are reduced to one of three safe, fixed sentences,
-// never the underlying error, which could otherwise echo a file path.
-func sanitizeAttachedPhoto(storedPath string) error {
-	err := connector.SanitizeOutgoingImageFile(storedPath)
+// imagesafe's own sanitized rewrite (see
+// connector.SanitizeOutgoingImageFile, run through this helper's own
+// decode slot - see decodeSlots), so an attached image is never
+// trusted further than one received from a sender or pasted from the
+// clipboard just because the user chose to attach it from disk (see
+// docs/decisions.md). The errors this can report are reduced to one
+// of three safe, fixed sentences, never the underlying error, which
+// could otherwise echo a file path.
+func (c *Commands) sanitizeAttachedPhoto(ctx context.Context, storedPath string) error {
+	release, err := c.acquireDecodeSlot(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	err = connector.SanitizeOutgoingImageFile(storedPath)
 	switch {
 	case err == nil:
 		return nil
@@ -446,7 +454,7 @@ func (c *Commands) recopyFromOriginal(ctx context.Context, id string, media *dom
 		return nil
 	}
 
-	if err := sanitizeAttachedPhoto(stored); err != nil {
+	if err := c.sanitizeAttachedPhoto(ctx, stored); err != nil {
 		_ = os.Remove(stored) // best effort: the attachment is refused either way, and a stale file here is cleaned up on the next prune regardless
 		return errAttachmentUnavailable
 	}

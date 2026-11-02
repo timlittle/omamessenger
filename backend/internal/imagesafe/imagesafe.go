@@ -53,6 +53,19 @@ type Profile struct {
 	// about 105 megapixels, even though 1024 pixels is well under every
 	// other cap here (see docs/decisions.md). Zero means no limit.
 	MaxAspectRatio float64
+	// MaxDecodeBytes caps a cheap, header-only estimate of how much
+	// memory the real decode below would need at peak - width times
+	// height times bytes per pixel for the format and bit depth
+	// involved, plus a progressive JPEG's own coefficient blocks (see
+	// estimatedDecodeBytes) - checked before that decode ever runs.
+	// MaxSide and MaxPixels alone say nothing about how expensive a
+	// shape within them can still be: a progressive JPEG or a
+	// 16-bit-per-channel PNG costs many times more per pixel than an
+	// ordinary photo, which is exactly what this catches instead (see
+	// docs/decisions.md for the measured peaks this is calibrated
+	// against). Zero means no limit, the same convention
+	// MaxAspectRatio already uses.
+	MaxDecodeBytes int64
 }
 
 // maxRealisticAspectRatio bounds every profile's own MaxAspectRatio:
@@ -72,16 +85,28 @@ const maxRealisticAspectRatio = 16
 var Thumbnail = Profile{
 	MaxSide: 1024, MaxPixels: 1024 * 1024, MaxInputLen: 2 << 20,
 	MaxTotalPixels: 64_000_000, MaxAspectRatio: maxRealisticAspectRatio,
+	MaxDecodeBytes: 64 << 20,
 }
 
-// FullImage bounds a downloaded or pasted still photo. Generous enough
-// for any photo a phone camera takes - none shoot past a small fraction
-// of 8192 pixels on a side - but far short of the gigabyte-scale bitmap
-// a crafted header can otherwise make Qt allocate. Its total allows a
-// single frame of that size and no more.
+// FullImage bounds a downloaded or pasted still photo. MaxSide and
+// MaxPixels match what a real photo actually needs, not what Qt could
+// in principle be asked to decode: WhatsApp's own HD photos cap out at
+// 4096 pixels on the long side, and Telegram's at 2560 (see
+// connector/whatsapp/limits.go and connector/telegram/limits.go), so
+// 4096x4096 clears every real photo with room to spare. It used to be
+// 8192x8192/40 megapixels; measuring runtime.MemStats peaks at that
+// old cap found a single decode could reach close to a gigabyte on
+// its own (a 4-component progressive JPEG, or a 16-bit PNG) -
+// reasonable for one photo, but the UI auto-fetches every visible one,
+// so several at once could reach many gigabytes with no cap on how
+// many decode in parallel at all (see app.decodeSlots, which now
+// serialises every one of them, and docs/decisions.md for the
+// measurements this cap and MaxDecodeBytes are both calibrated
+// against). Its total allows a single frame of that size and no more.
 var FullImage = Profile{
-	MaxSide: 8192, MaxPixels: 40_000_000, MaxInputLen: 32 << 20,
+	MaxSide: 4096, MaxPixels: 4096 * 4096, MaxInputLen: 32 << 20,
 	MaxTotalPixels: 40_000_000, MaxAspectRatio: maxRealisticAspectRatio,
+	MaxDecodeBytes: 768 << 20,
 }
 
 // format is one of the image formats this package knows how to

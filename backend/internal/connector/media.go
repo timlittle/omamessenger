@@ -26,7 +26,12 @@ var ErrUnsafeImage = errors.New("connector: image failed safety check")
 // docs/decisions.md): this is the one point in an outgoing photo's
 // whole life this package ever re-encodes it, so both the composer's
 // own preview and the bubble shown once it sends can keep reusing the
-// same already-safe bytes afterwards.
+// same already-safe bytes afterwards. Every caller runs this (and
+// SanitizeOutgoingImageFile and ReencodeImageFile below) through
+// app.Commands's own decode slot, since Reencode's full decode is the
+// single largest allocation any request this helper serves makes (see
+// docs/decisions.md); a future caller of any of the three must do the
+// same.
 func SanitizeOutgoingImage(data []byte) ([]byte, error) {
 	safe, _, _, _, ok := imagesafe.Reencode(data, imagesafe.FullImage)
 	if !ok {

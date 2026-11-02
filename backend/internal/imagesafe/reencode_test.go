@@ -232,6 +232,31 @@ func TestReencode_RefusesAnimatedWebP(t *testing.T) {
 	}
 }
 
+// TestSanitize_RejectsZeroDeclaredDimension covers withinCaps's own
+// floor: a width or height of zero, which no real image ever has but
+// a crafted header can still declare.
+func TestSanitize_RejectsZeroDeclaredDimension(t *testing.T) {
+	data := setPNGDimensions(buildPNG(4, 4), 0, 100)
+
+	if _, _, _, ok := imagesafe.Sanitize(data, imagesafe.FullImage); ok {
+		t.Fatal("Sanitize() = accepted a zero-width declared image, want rejected")
+	}
+}
+
+// TestSanitize_RejectsProductOverMaxPixelsEvenUnderMaxSide covers the
+// shape MaxSide alone cannot catch: both sides individually within
+// MaxSide, but their product still over MaxPixels - only possible
+// when a profile's own MaxPixels is set below MaxSide squared, unlike
+// either of this package's own named profiles.
+func TestSanitize_RejectsProductOverMaxPixelsEvenUnderMaxSide(t *testing.T) {
+	data := buildPNG(90, 90) // 8,100 pixels
+	profile := imagesafe.Profile{MaxSide: 100, MaxPixels: 8000, MaxInputLen: 1 << 20}
+
+	if _, _, _, ok := imagesafe.Sanitize(data, profile); ok {
+		t.Fatal("Sanitize() = accepted, want rejected: both sides are under MaxSide but their product is over MaxPixels")
+	}
+}
+
 // TestReencode_RejectsOverInputLenBeforeFormatDetection covers the
 // cheapest rejection of all: data larger than profile ever allows is
 // refused before this package even looks at its magic bytes.
@@ -280,6 +305,95 @@ func TestReencode_AcceptsRealisticProgressiveScanCount(t *testing.T) {
 	}
 	if _, err := jpeg.Decode(bytes.NewReader(out)); err != nil {
 		t.Errorf("output does not decode as JPEG: %v", err)
+	}
+}
+
+// TestReencode_RejectsOverDecodeByteBudget covers the memory-budget
+// check: a profile whose MaxDecodeBytes is far below even a tiny
+// image's own estimate must refuse it before the real decode runs,
+// the same proof-of-no-allocation
+// TestReencode_RejectsDecompressionBombWithoutAllocating already gives
+// the size caps.
+func TestReencode_RejectsOverDecodeByteBudget(t *testing.T) {
+	data := buildPNG(100, 100)
+	profile := imagesafe.Profile{
+		MaxSide: 1000, MaxPixels: 1_000_000, MaxInputLen: int64(len(data)) + 1,
+		MaxDecodeBytes: 1,
+	}
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, _, _, _, ok := imagesafe.Reencode(data, profile)
+	runtime.ReadMemStats(&after)
+
+	if ok {
+		t.Fatal("Reencode() = accepted, want rejected: MaxDecodeBytes is far below this image's own estimate")
+	}
+
+	const ceiling = 8 << 20
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > ceiling {
+		t.Errorf("Reencode() allocated %d bytes rejecting a 100x100 image over budget, want well under %d", grew, ceiling)
+	}
+}
+
+// TestReencode_ZeroMaxDecodeBytesMeansNoLimit covers the field's own
+// zero-value convention, the same one MaxAspectRatio already
+// documents: a profile that never sets MaxDecodeBytes at all - every
+// ad hoc Profile literal built before this field existed - must keep
+// behaving exactly as it always has.
+func TestReencode_ZeroMaxDecodeBytesMeansNoLimit(t *testing.T) {
+	data := buildPNG(100, 100)
+	profile := imagesafe.Profile{MaxSide: 1000, MaxPixels: 1_000_000, MaxInputLen: int64(len(data)) + 1}
+
+	if _, _, _, _, ok := imagesafe.Reencode(data, profile); !ok {
+		t.Fatal("Reencode() = rejected, want accepted: MaxDecodeBytes 0 must mean no limit")
+	}
+}
+
+// TestReencode_ProgressiveJPEGCostsMoreThanBaselineAtTheSameSize covers
+// the reason estimatedDecodeBytes exists at all: a progressive JPEG
+// keeps every block's coefficients live across every one of its
+// scans, so it must be charged more per pixel than a baseline JPEG of
+// the exact same declared size. The fixture is a real, genuinely
+// progressive JPEG (ten real scans, already used elsewhere in this
+// file for the scan-count cap), not a baseline file relabelled, so
+// this proves the SOF marker this package reads actually tells the
+// two apart.
+func TestReencode_ProgressiveJPEGCostsMoreThanBaselineAtTheSameSize(t *testing.T) {
+	progressive := readTestdata(t, "jpeg_progressive_10_scans.jpg") // 32x32
+	baseline := buildJPEG(32, 32)
+
+	profile := imagesafe.Profile{
+		MaxSide: 64, MaxPixels: 64 * 64, MaxInputLen: 1 << 20,
+		MaxDecodeBytes: 32 * 32 * 8, // between a baseline image's own cheap cost and a progressive one's coefficient-block cost at this size
+	}
+
+	if _, _, _, _, ok := imagesafe.Reencode(baseline, profile); !ok {
+		t.Fatal("Reencode() = rejected the baseline JPEG, want accepted: its estimate should sit well under the budget")
+	}
+	if _, _, _, _, ok := imagesafe.Reencode(progressive, profile); ok {
+		t.Fatal("Reencode() = accepted the progressive JPEG, want rejected: its coefficient blocks should cost more than the budget allows")
+	}
+}
+
+// TestReencode_SixteenBitPNGCostsMoreThanEightBitAtTheSameSize covers
+// the PNG side of estimatedDecodeBytes: a 16-bit-per-channel image
+// costs more to decode than an ordinary 8-bit one of the same
+// declared size, read from the IHDR bit depth byte alone.
+func TestReencode_SixteenBitPNGCostsMoreThanEightBitAtTheSameSize(t *testing.T) {
+	eightBit := buildPNG(32, 32)
+	sixteenBit := build16BitPNG(32, 32)
+
+	profile := imagesafe.Profile{
+		MaxSide: 64, MaxPixels: 64 * 64, MaxInputLen: 1 << 20,
+		MaxDecodeBytes: 32 * 32 * 8, // between the 8-bit image's own cheap cost and the 16-bit one's higher one
+	}
+
+	if _, _, _, _, ok := imagesafe.Reencode(eightBit, profile); !ok {
+		t.Fatal("Reencode() = rejected the 8-bit PNG, want accepted: its estimate should sit well under the budget")
+	}
+	if _, _, _, _, ok := imagesafe.Reencode(sixteenBit, profile); ok {
+		t.Fatal("Reencode() = accepted the 16-bit PNG, want rejected: its own higher per-pixel cost should exceed the budget")
 	}
 }
 

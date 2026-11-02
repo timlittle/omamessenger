@@ -71,6 +71,9 @@ type Commands struct {
 	scheduled       *scheduledSender
 	organizeNotices *organizeNotices
 	transcoder      Transcoder
+	decodeSlot      chan struct{}
+	refused         *refusedDisplayCopies
+	soundTranscodes *transcodedSoundCache
 
 	// dataDir, dbPath, execName and helperVersion are read only by
 	// Doctor; see Deps.

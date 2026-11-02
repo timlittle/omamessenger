@@ -268,6 +268,61 @@ func TestFetchMedia_RemovesAnUnsafeStickerCacheFileAndRefetches(t *testing.T) {
 	assertSamePixels(t, f.media.data, got)
 }
 
+// TestFetchMedia_FailsFastOnASecondFetchAfterARefusedDisplayCopy
+// covers the other half of the "never serves an unsafe file" finding
+// above: once a message's display copy has failed its check, the one
+// re-download retry included, a second FetchMedia for the very same
+// message must not download or decode it all over again - the UI
+// auto-fetches every visible photo, so a hostile one would otherwise
+// pay that cost again on every scroll (see refusedDisplayCopies and
+// docs/decisions.md). It fails fast with the same reason, and the
+// fake connector's own FetchMedia is never asked a second time.
+func TestFetchMedia_FailsFastOnASecondFetchAfterARefusedDisplayCopy(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Photo]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaPhoto},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// See TestFetchMedia_RemovesAnUnsafeLegacyCacheFileAndRefetches's
+	// own comment for why the fake transcoder must refuse SVG too.
+	f.transcoder.err = errors.New("ffmpeg: no video stream found")
+	f.media.data = []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`)
+
+	var firstErr *app.MediaFetchError
+	if _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.As(err, &firstErr) {
+		t.Fatalf("first FetchMedia() = %v, want a *MediaFetchError", err)
+	}
+	// The first fetch already costs two downloads on its own: the
+	// initial attempt, and the one re-download retry
+	// recoverUnsafeImage gives a message with nothing cached yet
+	// before it gives up (see TestFetchMedia_RemovesAnUnsafeLegacyCacheFileAndRefetches's
+	// own comment on the same retry, there seeded from a cache hit
+	// instead). What matters here is that a second, separate
+	// FetchMedia call pays nothing further at all.
+	firstFetchDownloads := len(f.media.fetched)
+	if firstFetchDownloads == 0 {
+		t.Fatal("downloads after the first fetch = 0, want at least one real attempt")
+	}
+
+	var secondErr *app.MediaFetchError
+	if _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.As(err, &secondErr) {
+		t.Fatalf("second FetchMedia() = %v, want the same kind of *MediaFetchError, fast", err)
+	}
+	if secondErr.Reason != firstErr.Reason {
+		t.Errorf("second fetch reason = %q, want the same %q the first fetch already found", secondErr.Reason, firstErr.Reason)
+	}
+	if got := len(f.media.fetched); got != firstFetchDownloads {
+		t.Errorf("downloads after the second fetch = %d, want still exactly %d: it must fail fast, not download again", got, firstFetchDownloads)
+	}
+}
+
 // TestFetchMedia_EditingKindNeverReusesTheOldKindsCachedFile
 // reproduces the sharp-edges finding: a "voice note" whose actual
 // downloaded bytes are an image is cached unchecked, since a voice

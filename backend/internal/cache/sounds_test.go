@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/cache"
 )
@@ -67,6 +68,56 @@ func TestSoundsStore_OverwritesTheSameKey(t *testing.T) {
 	got, err := os.ReadFile(s.Path("service-whatsapp"))
 	if err != nil || string(got) != "second" {
 		t.Errorf("stored content = %q, %v, want %q", got, err, "second")
+	}
+}
+
+// TestSoundsStore_SerializesStoresOfTheSameKey covers the security
+// finding directly: two concurrent Store calls for the same key must
+// never both be mid-copy to the same ".part" file at once. A
+// blockingReader holds the first call open until the test has
+// confirmed a second, concurrent call for the same key is still
+// waiting, then releases it - proving the lock, not just hoping a
+// race would have shown corruption this run.
+func TestSoundsStore_SerializesStoresOfTheSameKey(t *testing.T) {
+	t.Parallel()
+
+	s := cache.NewSounds(filepath.Join(t.TempDir(), "sounds"))
+
+	started := make(chan struct{})
+	resume := make(chan struct{})
+	first := &blockingReader{chunk: []byte("first"), started: started, resume: resume}
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := s.Store(t.Context(), "service-whatsapp", first)
+		firstDone <- err
+	}()
+	<-started
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := s.Store(t.Context(), "service-whatsapp", strings.NewReader("second"))
+		secondDone <- err
+	}()
+
+	select {
+	case <-secondDone:
+		t.Fatal("second Store() for the same key finished while the first was still writing, want it blocked behind the same key's lock")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(resume)
+
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first Store() error = %v", err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second Store() error = %v", err)
+	}
+
+	got, err := os.ReadFile(s.Path("service-whatsapp"))
+	if err != nil || string(got) != "second" {
+		t.Errorf("final content = %q, %v; want %q, the second Store, run only once the first had released the lock", got, err, "second")
 	}
 }
 

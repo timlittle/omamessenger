@@ -2,6 +2,7 @@ package cache_test
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,3 +115,29 @@ func backdate(t *testing.T, path string, d time.Duration) {
 type failingReader struct{ err error }
 
 func (f failingReader) Read([]byte) (int, error) { return 0, f.err }
+
+// blockingReader hands back chunk once, closing started right before
+// doing so, then blocks until resume is closed before reporting EOF: a
+// deterministic way to hold a Store (or Ensure) call open long enough
+// for a second call racing the same key to prove whether it waits,
+// without relying on timing or a large payload to make a real race
+// likely.
+type blockingReader struct {
+	chunk   []byte
+	started chan struct{}
+	resume  chan struct{}
+	sent    bool
+}
+
+func (r *blockingReader) Read(p []byte) (int, error) {
+	if !r.sent {
+		r.sent = true
+		close(r.started)
+
+		return copy(p, r.chunk), nil
+	}
+
+	<-r.resume
+
+	return 0, io.EOF
+}

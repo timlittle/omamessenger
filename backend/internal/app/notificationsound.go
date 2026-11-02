@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -145,34 +146,59 @@ func (c *Commands) resolveServiceSound(ctx context.Context, service, path string
 // the sandboxed transcoder's Sound profile, the only format Qt's
 // SoundEffect can play (see docs/decisions.md), and stores the result
 // in the sound store under key: path itself is never what the sound
-// store keeps, nor what resolve ever hands back. errSoundNotPlayable
-// reports path decoding as nothing ffmpeg itself recognises as audio,
-// or no transcoder being wired in at all; any other error means path
-// itself could not even be opened.
+// store keeps, nor what resolve ever hands back. The transcode itself
+// runs only when path's own size or modification time has actually
+// changed since the last time this key was filled (see
+// transcodedSoundCache): resolveServiceSound calls this on every
+// notification, and a service's default sound almost never changes,
+// so without this a contact spamming messages would occupy the
+// helper's one transcode slot on every single one (see
+// docs/decisions.md). errSoundNotPlayable reports path decoding as
+// nothing ffmpeg itself recognises as audio, or no transcoder being
+// wired in at all; any other error means path itself could not even
+// be opened.
 func (c *Commands) storeAndTranscodeSound(ctx context.Context, key, path string) error {
 	if c.sounds == nil {
 		return fmt.Errorf("%w: notification sounds are not available", ErrInvalidInput)
 	}
-	if _, err := os.Stat(path); err != nil {
+
+	info, err := os.Stat(path)
+	if err != nil {
 		return err
+	}
+
+	unlock := c.soundTranscodes.lock(key)
+	defer unlock()
+
+	if c.soundTranscodes.matches(key, path, info) {
+		if _, statErr := os.Stat(c.sounds.Path(key)); statErr == nil {
+			return nil
+		}
 	}
 	if c.transcoder == nil {
 		return errSoundNotPlayable
 	}
 
+	if err := c.transcodeSoundTo(ctx, key, path); err != nil {
+		return errSoundNotPlayable
+	}
+
+	c.soundTranscodes.record(key, path, info)
+
+	return nil
+}
+
+// transcodeSoundTo runs path through the sandboxed transcoder's Sound
+// profile and copies its output into the sound store under key, the
+// work storeAndTranscodeSound needs only when path has actually
+// changed since the last time it ran for key.
+func (c *Commands) transcodeSoundTo(ctx context.Context, key, path string) error {
 	wav, err := c.transcoder.Sound(ctx, path, c.transcodeJobRoot)
 	if err != nil {
-		return errSoundNotPlayable
+		return err
 	}
 	defer os.RemoveAll(filepath.Dir(wav))
 
-	return c.storeTranscodedSound(ctx, key, wav)
-}
-
-// storeTranscodedSound copies wav's bytes into the sound store under
-// key, the last step storeAndTranscodeSound needs once ffmpeg has
-// already produced a playable file.
-func (c *Commands) storeTranscodedSound(ctx context.Context, key, wav string) error {
 	f, err := os.Open(wav)
 	if err != nil {
 		return err
@@ -182,6 +208,75 @@ func (c *Commands) storeTranscodedSound(ctx context.Context, key, wav string) er
 	_, err = c.sounds.Store(ctx, key, f)
 
 	return err
+}
+
+// transcodedSoundIdentity is the (path, size, modification time) a
+// sound-store key was last successfully transcoded from.
+type transcodedSoundIdentity struct {
+	path    string
+	size    int64
+	modTime int64
+}
+
+// transcodedSoundCache remembers, per sound-store key, the identity of
+// the source file last transcoded into it, and serialises
+// storeAndTranscodeSound per key (see lock) so two concurrent
+// resolves for the same key - two notifications arriving close
+// together, say - never both run the sandboxed transcoder for a sound
+// neither has actually changed: whichever arrives second simply
+// waits, then - almost always - finds the first call's own work
+// already covers it.
+type transcodedSoundCache struct {
+	keysMu sync.Mutex
+	keys   map[string]*sync.Mutex
+
+	stateMu sync.Mutex
+	state   map[string]transcodedSoundIdentity
+}
+
+// newTranscodedSoundCache returns an empty transcodedSoundCache.
+func newTranscodedSoundCache() *transcodedSoundCache {
+	return &transcodedSoundCache{keys: map[string]*sync.Mutex{}, state: map[string]transcodedSoundIdentity{}}
+}
+
+// lock reserves key's own lock, waiting for any other call already
+// holding it, and returns the func that releases it. The key space
+// here is small and chosen by the user, never a sender - one
+// conversation id per custom sound, plus one per service - so this
+// map simply grows with it rather than needing reference-counted
+// cleanup.
+func (t *transcodedSoundCache) lock(key string) func() {
+	t.keysMu.Lock()
+	l, ok := t.keys[key]
+	if !ok {
+		l = &sync.Mutex{}
+		t.keys[key] = l
+	}
+	t.keysMu.Unlock()
+
+	l.Lock()
+
+	return l.Unlock
+}
+
+// matches reports whether key's last recorded source identity still
+// matches path's current size and modification time.
+func (t *transcodedSoundCache) matches(key, path string, info os.FileInfo) bool {
+	t.stateMu.Lock()
+	defer t.stateMu.Unlock()
+
+	got, ok := t.state[key]
+
+	return ok && got.path == path && got.size == info.Size() && got.modTime == info.ModTime().UnixNano()
+}
+
+// record remembers path's current identity as key's last transcoded
+// source.
+func (t *transcodedSoundCache) record(key, path string, info os.FileInfo) {
+	t.stateMu.Lock()
+	defer t.stateMu.Unlock()
+
+	t.state[key] = transcodedSoundIdentity{path: path, size: info.Size(), modTime: info.ModTime().UnixNano()}
 }
 
 // playableSoundPath returns key's stored path, or "" - never an

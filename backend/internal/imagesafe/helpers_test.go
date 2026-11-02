@@ -69,6 +69,23 @@ func setPNGDimensions(src []byte, width, height uint32) []byte {
 	return out
 }
 
+// build16BitPNG encodes a solid image of the given size as a 16-bit-
+// per-channel RGBA PNG, the shape estimatedDecodeBytes charges more
+// per pixel than an ordinary 8-bit PNG (see
+// TestReencode_SixteenBitPNGCostsMoreThanEightBitAtTheSameSize).
+func build16BitPNG(width, height int) []byte {
+	img := image.NewNRGBA64(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetNRGBA64(x, y, color.NRGBA64{R: uint16(x), G: uint16(y), B: 0xBEEF, A: 0xFFFF})
+		}
+	}
+
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
+}
+
 // buildTransparentPNG encodes a solid image of the given size as PNG,
 // with one corner pixel made partly transparent: enough for a test to
 // confirm Reencode's own hasAlpha check finds real transparency,
