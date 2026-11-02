@@ -84,14 +84,28 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 	inner := unwrap(e.Message)
 	key := messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe, timestamp: m.Created}
 
-	// A redelivery of a message first seen as an UndecryptableMessage
-	// (see handleUndecryptable) carries the same id: replace its
-	// placeholder rather than report it a second time. saveIncomingKeyedData
-	// returning false means messageRemoteID actually names a different
-	// sender's message (see keys.go), so it must never be treated as a
-	// replacement for anything that sender did not themselves send.
+	// saveIncomingKeyedData returning false means messageRemoteID
+	// actually names a different sender's message (see keys.go): m is
+	// then reported nowhere at all, neither as a replacement nor as a
+	// message of its own, or its text, media, reply or reactions would
+	// reach the sink attached to whatever that id's first sender
+	// already has stored - exactly the forgery saveIncomingKeyedData
+	// itself exists to stop.
 	keyed := incomingKeyedMessage{conversationRemoteID: remote, messageRemoteID: m.RemoteID, key: key, msg: inner}
-	if saveIncomingKeyedData(ctx, media, keyed) && c.resolveUndecryptable(remote, m.RemoteID) {
+	if saveIncomingKeyedData(ctx, media, keyed) {
+		c.reportContent(ctx, sink, e, remote, m)
+	}
+}
+
+// reportContent delivers m to sink, once handleContent has already
+// confirmed m's id is not reused by a different sender: a redelivery
+// of a message first seen as an UndecryptableMessage (see
+// handleUndecryptable) replaces its placeholder rather than being
+// reported a second time, this account's own message echoed from
+// another of its devices is history, and anything else is an ordinary
+// incoming message.
+func (c *Connector) reportContent(ctx context.Context, sink connector.Sink, e *events.Message, remote string, m domain.Message) {
+	if c.resolveUndecryptable(remote, m.RemoteID) {
 		if e.UnavailableRequestID != "" {
 			// whatsmeow sets this when the redelivery came from the
 			// primary phone answering AutomaticMessageRerequestFromPhone's

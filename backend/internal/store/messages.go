@@ -26,7 +26,12 @@ var ErrInvalidMessage = errors.New("message needs conversationId and text")
 // AddMessage stores a message and updates its conversation's preview,
 // unread count and activity time. A message whose RemoteID is already stored
 // in the conversation is returned unchanged with inserted false, so a
-// connector replaying history never double-counts unread messages.
+// connector replaying history never double-counts unread messages. Media
+// is filled into that existing row only when the new message's sender
+// and Outgoing flag also match it (see sameSender): a different sender
+// naming an already-stored id is never merged into it, so reusing a
+// remote id can never attach media to a message its own sender never
+// sent.
 func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Message, inserted bool, _ error) {
 	return s.addMessage(ctx, m, true)
 }
@@ -50,7 +55,7 @@ func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread bo
 	}
 
 	if existing, found, err := s.existingByRemote(ctx, m); found || err != nil {
-		if err != nil || existing.Media != nil || m.Media == nil {
+		if err != nil || existing.Media != nil || m.Media == nil || !sameSender(existing, m) {
 			return existing, false, err
 		}
 
@@ -101,8 +106,21 @@ func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Messa
 	return m
 }
 
+// sameSender reports whether m's sender and direction match an
+// already-stored message's: the guard every fill into an existing row
+// by (conversation, remote id) must pass before merging anything into
+// it. A service lets whoever sends a message choose its own id, so
+// without this a second sender naming an existing message's id -
+// someone else's, or this account's own - could attach their own media
+// to it just by reusing that id (see docs/decisions.md).
+func sameSender(existing, m domain.Message) bool {
+	return existing.SenderID == m.SenderID && existing.Outgoing == m.Outgoing
+}
+
 // fillMedia adds media to a message stored before the service reported
-// it, such as one synced before link previews existed.
+// it, such as one synced before link previews existed. Callers must
+// already know m's sender matches the stored message's (see
+// sameSender); fillMedia itself does not check it again.
 func (s *Store) fillMedia(ctx context.Context, m domain.Message, media *domain.Media) (domain.Message, bool, error) {
 	media = verifyThumb(media)
 	encoded, err := encodeMedia(media)

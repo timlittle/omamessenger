@@ -513,3 +513,29 @@ func TestHandleHistorySync_LogsWhenDroppingAConversationWithAnUnparseableID(t *t
 		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
 	}
 }
+
+// TestHandleHistorySync_DropsASyncedMessageThatReusesAnotherSendersID
+// covers the same id-reuse fix live.go's handleContent needs (see
+// live_test.go): saveIncomingKeyedData already refuses to let a second
+// identity overwrite message_keys for an id already on record, and
+// syncMessage must act on that refusal instead of reporting the second
+// message to the sink anyway.
+func TestHandleHistorySync_DropsASyncedMessageThatReusesAnotherSendersID(t *testing.T) {
+	t.Parallel()
+
+	c, dev, sink, media := handlerMediaFixture(t)
+
+	conv := &waHistorySync.Conversation{
+		ID: strPtr("15551234567@s.whatsapp.net"),
+		Messages: []*waHistorySync.HistorySyncMsg{
+			historyMsg("H1", "hi", false),
+			historyMsg("H1", "forged", true),
+		},
+	}
+	c.handleHistorySync(t.Context(), sink, dev, media, historySyncEvent(conv))
+
+	history := sink.Messages()["15551234567@s.whatsapp.net"]
+	if len(history) != 1 || history[0].Text != "hi" {
+		t.Errorf("history messages = %+v, want only the first message, nothing from the id reused with a different identity", history)
+	}
+}

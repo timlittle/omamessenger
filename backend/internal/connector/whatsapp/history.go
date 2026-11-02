@@ -167,14 +167,19 @@ func (c *Connector) reportSyncedOrganize(ctx context.Context, sink connector.Sin
 // here too, but silently, since those are not really missing: the
 // live events that cover them already reported them when this
 // account was connected to receive them, and a bulk sync never
-// replays them again. Its message_keys row (see keys.go), saved the
-// same way a live message's is, is what later lets MarkRead pick this
-// message out of the conversation's newest ones, even after a restart
-// (see markread.go): history sync carries each conversation's unread
-// count but not which of its messages are unread, so MarkRead chooses
-// for itself once it knows that count. It returns whether hm was
-// actually reported, for syncConversation's own count of how many of a
-// synced chat's messages that was true for (see history_ondemand.go).
+// replays them again. A message whose id already names a different
+// sender's message (see saveIncomingKeyedData and live.go's
+// handleContent) is dropped the same way: it is never reported, or its
+// text or media would reach the sink attached to whatever that id's
+// first sender already has stored. Its message_keys row (see keys.go),
+// saved the same way a live message's is, is what later lets MarkRead
+// pick this message out of the conversation's newest ones, even after
+// a restart (see markread.go): history sync carries each conversation's
+// unread count but not which of its messages are unread, so MarkRead
+// chooses for itself once it knows that count. It returns whether hm
+// was actually reported, for syncConversation's own count of how many
+// of a synced chat's messages that was true for (see
+// history_ondemand.go).
 func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target syncTarget, hm *waHistorySync.HistorySyncMsg) bool {
 	content := hm.GetMessage().GetMessage()
 	if content != nil {
@@ -206,10 +211,14 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	info := historyMessageInfo(target.chat, hm.GetMessage())
 	key := messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing, timestamp: m.Created}
 	// saveIncomingKeyedData's own id-reuse check (see keys.go) applies
-	// here too: its bool is unused, since a bulk sync has no undecryptable
-	// placeholder of its own to ever replace.
+	// here too, but unlike live.go's replacement case, a bulk sync has
+	// no undecryptable placeholder of its own to ever replace: a
+	// refusal here always means drop, never report.
 	keyed := incomingKeyedMessage{conversationRemoteID: target.convRemoteID, messageRemoteID: m.RemoteID, key: key, msg: unwrapped}
-	saveIncomingKeyedData(ctx, target.media, keyed)
+	if !saveIncomingKeyedData(ctx, target.media, keyed) {
+		return false
+	}
+
 	sink.History(ctx, c.account.ID, target.convRemoteID, m)
 
 	return true
