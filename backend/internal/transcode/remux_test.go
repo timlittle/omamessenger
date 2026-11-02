@@ -11,7 +11,9 @@ package transcode
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,6 +22,129 @@ import (
 	"github.com/Eyevinn/mp4ff/avc"
 	"github.com/Eyevinn/mp4ff/mp4"
 )
+
+// rawBox builds one top-level box's own raw bytes by hand: an 8-byte
+// header (declaredSize, boxType) followed by bodyLen filler bytes.
+// declaredSize and the body's own actual length are independent, so
+// a test can claim a size the body does not really back up.
+func rawBox(boxType string, declaredSize uint32, bodyLen int) []byte {
+	buf := make([]byte, 8+bodyLen)
+	binary.BigEndian.PutUint32(buf[0:4], declaredSize)
+	copy(buf[4:8], boxType)
+	return buf
+}
+
+// writeRawFile concatenates boxes in order and writes them to
+// dir/name, returning its path.
+func writeRawFile(t *testing.T, dir, name string, boxes ...[]byte) string {
+	t.Helper()
+	var all []byte
+	for _, b := range boxes {
+		all = append(all, b...)
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, all, 0o600); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+	return path
+}
+
+func TestCheckTopLevelBoxes(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		boxes   func() [][]byte
+		wantErr bool
+	}{
+		"ordinary ftyp/moov/mdat": {boxes: func() [][]byte {
+			return [][]byte{rawBox("ftyp", 8, 0), rawBox("moov", 16, 8), rawBox("mdat", 8, 0)}
+		}},
+		"oversized moov": {boxes: func() [][]byte {
+			return [][]byte{rawBox("ftyp", 8, 0), rawBox("moov", maxMoovBytes+100, maxMoovBytes+100-8), rawBox("mdat", 8, 0)}
+		}, wantErr: true},
+		"moov at exactly the cap is fine": {boxes: func() [][]byte {
+			return [][]byte{rawBox("ftyp", 8, 0), rawBox("moov", maxMoovBytes, maxMoovBytes-8), rawBox("mdat", 8, 0)}
+		}},
+		"two moov boxes": {boxes: func() [][]byte {
+			return [][]byte{rawBox("ftyp", 8, 0), rawBox("moov", 16, 8), rawBox("moov", 16, 8), rawBox("mdat", 8, 0)}
+		}, wantErr: true},
+		"too many top-level boxes": {boxes: func() [][]byte {
+			boxes := [][]byte{rawBox("ftyp", 8, 0), rawBox("moov", 16, 8)}
+			for i := 0; i < maxTopLevelBoxes; i++ {
+				boxes = append(boxes, rawBox("free", 8, 0))
+			}
+			return append(boxes, rawBox("mdat", 8, 0))
+		}, wantErr: true},
+		"size runs past the file's own end": {boxes: func() [][]byte {
+			// Declares 1000 bytes but the file holds only this one
+			// small box: nothing backs up the other 992 bytes.
+			return [][]byte{rawBox("ftyp", 1000, 0)}
+		}, wantErr: true},
+		"second box's size runs past the end": {boxes: func() [][]byte {
+			return [][]byte{rawBox("ftyp", 8, 0), rawBox("moov", 1000, 8)}
+		}, wantErr: true},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeRawFile(t, t.TempDir(), "in.mp4", tt.boxes()...)
+			f := mustOpen(t, path)
+			defer func() { _ = f.Close() }()
+
+			err := checkTopLevelBoxes(f)
+			if tt.wantErr && !errors.Is(err, ErrFailed) {
+				t.Fatalf("checkTopLevelBoxes() error = %v, want %v", err, ErrFailed)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("checkTopLevelBoxes() error = %v, want nil", err)
+			}
+		})
+	}
+}
+
+// seekFailAt wraps a real io.ReadSeeker but fails the call numbered
+// failAfter+1 and every one after it, for exercising a caller's own
+// handling of a Seek failure a real file essentially never produces.
+type seekFailAt struct {
+	io.ReadSeeker
+	failAfter int
+	calls     int
+}
+
+func (s *seekFailAt) Seek(offset int64, whence int) (int64, error) {
+	s.calls++
+	if s.calls > s.failAfter {
+		return 0, errors.New("seekFailAt: injected failure")
+	}
+	return s.ReadSeeker.Seek(offset, whence)
+}
+
+func TestCheckTopLevelBoxes_SeekErrors(t *testing.T) {
+	t.Parallel()
+
+	path := writeRawFile(t, t.TempDir(), "in.mp4", rawBox("ftyp", 8, 0), rawBox("moov", 16, 8), rawBox("mdat", 8, 0))
+
+	tests := map[string]int{
+		"finding file size fails":     0,
+		"rewinding to start fails":    1,
+		"skipping a box's body fails": 2,
+	}
+	for name, failAfter := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			f := mustOpen(t, path)
+			defer func() { _ = f.Close() }()
+
+			err := checkTopLevelBoxes(&seekFailAt{ReadSeeker: f, failAfter: failAfter})
+			if !errors.Is(err, ErrFailed) {
+				t.Fatalf("checkTopLevelBoxes() error = %v, want %v", err, ErrFailed)
+			}
+		})
+	}
+}
 
 func TestRemuxMP4_Refusals(t *testing.T) {
 	t.Parallel()

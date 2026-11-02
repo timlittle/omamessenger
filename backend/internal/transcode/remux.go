@@ -15,6 +15,7 @@ package transcode
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/Eyevinn/mp4ff/aac"
@@ -57,6 +58,101 @@ const maxRemuxVideoSampleBytes = 4 << 20
 // video's own audio track may carry: generous for even the highest
 // bitrate this package would ever ask ffmpeg to produce.
 const maxRemuxAudioSampleBytes = 32 << 10
+
+// maxMoovBytes bounds a moov box's own declared size, checked
+// before mp4.DecodeFile ever reads it: decoding a moov box reads its
+// entire payload into memory to decode its own tables (stts, stsz,
+// stco and the rest), and mp4ff's own per-table checks bound each
+// table to its own box's declared size, never the box itself. A
+// crafted intermediate could otherwise make that one read cost
+// nearly as much as checkOutput's own whole-file cap allows, before
+// any of this package's own structural checks run at all. Measured
+// directly: Video's own worst case - ten minutes at 1280x720/30fps
+// with 48 kHz AAC, the longest and most densely sampled file this
+// package's own ffmpeg arguments ever legitimately produce - has a
+// 519,147-byte moov; 2 MiB leaves roughly 4x that as headroom.
+const maxMoovBytes = 2 << 20
+
+// maxTopLevelBoxes bounds how many top-level boxes
+// checkTopLevelBoxes will walk before refusing: an ordinary
+// faststart MP4 this package's own ffmpeg arguments produce has four
+// (ftyp, moov, free, mdat). This leaves headroom for minor variation
+// without letting a crafted file force an unbounded walk.
+const maxTopLevelBoxes = 8
+
+// checkTopLevelBoxes walks f's own top-level boxes from its current
+// position to the file's end, reading only each box's own header
+// (mp4.DecodeHeader) and seeking past its body without ever reading
+// it, so this stays cheap regardless of what a hostile file claims.
+// It refuses more than one moov box, a moov box over maxMoovBytes,
+// more than maxTopLevelBoxes boxes in total, or any box whose own
+// declared size reaches past the file's actual end. f is left
+// positioned wherever the walk stopped; openIntermediate rewinds it
+// before using it for anything else.
+func checkTopLevelBoxes(f io.ReadSeeker) error {
+	fileSize, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
+		return fmt.Errorf("%w: finding file size: %w", ErrFailed, err)
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("%w: rewinding to walk top-level boxes: %w", ErrFailed, err)
+	}
+
+	moovCount := 0
+	boxes := 0
+	for pos := int64(0); pos < fileSize; boxes++ {
+		if boxes >= maxTopLevelBoxes {
+			return fmt.Errorf("%w: more than %d top-level boxes", ErrFailed, maxTopLevelBoxes)
+		}
+
+		header, err := mp4.DecodeHeader(f)
+		if err != nil {
+			return fmt.Errorf("%w: reading top-level box header: %w", ErrFailed, err)
+		}
+		if err := checkBoxFitsFile(header, pos, fileSize); err != nil {
+			return err
+		}
+		if err := checkMoovSize(header, &moovCount); err != nil {
+			return err
+		}
+
+		if _, err := f.Seek(int64(header.Size)-int64(header.Hdrlen), io.SeekCurrent); err != nil {
+			return fmt.Errorf("%w: skipping box %q: %w", ErrFailed, header.Name, err)
+		}
+		pos += int64(header.Size)
+	}
+	return nil
+}
+
+// checkBoxFitsFile refuses header when it claims to reach past
+// fileSize. The comparison stays entirely in uint64: header.Size can
+// claim any 64-bit value (mdat's own large-size form allows one),
+// and converting that down to int64 first could wrap negative and
+// let a too-large claim slip past a signed comparison instead of
+// being caught by it.
+func checkBoxFitsFile(header mp4.BoxHeader, pos, fileSize int64) error {
+	remaining := uint64(fileSize - pos)
+	if header.Size > remaining {
+		return fmt.Errorf("%w: box %q size %d runs past the file's own end", ErrFailed, header.Name, header.Size)
+	}
+	return nil
+}
+
+// checkMoovSize updates moovCount for header and refuses a second
+// moov box, or one over maxMoovBytes.
+func checkMoovSize(header mp4.BoxHeader, moovCount *int) error {
+	if header.Name != "moov" {
+		return nil
+	}
+	*moovCount++
+	if *moovCount > 1 {
+		return fmt.Errorf("%w: more than one moov box", ErrFailed)
+	}
+	if header.Size > maxMoovBytes {
+		return fmt.Errorf("%w: moov box is %d bytes, more than %d allowed", ErrFailed, header.Size, maxMoovBytes)
+	}
+	return nil
+}
 
 // remuxCaps bounds what remuxMP4 is willing to accept from the
 // sandboxed file it rebuilds, sized per profile (see video.go and
@@ -136,13 +232,25 @@ func doRemux(path, outPath string, caps remuxCaps) error {
 	return writeRemuxed(outPath, scratchPath, remuxDescriptors{avcC: avcC, asc: asc}, video, audio)
 }
 
-// openIntermediate opens path and parses it as an MP4 with mp4ff's
-// own lazy mdat decoding, so a large sample payload is never read
-// into memory just to find out how many tracks the file has.
+// openIntermediate opens path, checks its top-level box structure
+// (checkTopLevelBoxes) and only then parses it as an MP4 with
+// mp4ff's own lazy mdat decoding, so a large sample payload - or an
+// oversized moov, which mp4ff reads whole regardless of decode mode -
+// is never read into memory just to find out how many tracks the
+// file has.
 func openIntermediate(path string) (*os.File, *mp4.File, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: opening intermediate: %w", ErrFailed, err)
+	}
+
+	if err := checkTopLevelBoxes(f); err != nil {
+		_ = f.Close() // read-only handle already failing; nothing left to report that matters
+		return nil, nil, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		_ = f.Close() // same as above
+		return nil, nil, fmt.Errorf("%w: rewinding intermediate: %w", ErrFailed, err)
 	}
 
 	parsed, err := mp4.DecodeFile(f, mp4.WithDecodeMode(mp4.DecModeLazyMdat))
