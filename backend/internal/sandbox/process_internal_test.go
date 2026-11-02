@@ -62,11 +62,27 @@ func makeOutputFile(t *testing.T, dir, name string, size int64) {
 	}
 }
 
+// mustOutputFile creates an empty file inside a fresh temporary
+// directory and returns its path: Spec.Output must already exist
+// before Run can bind it (see sandbox.go's own doc comment) - these
+// tests stand in for what a real caller, such as transcode's own
+// joboutput.go, always does first.
+func mustOutputFile(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "out")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("creating fixture output file: %v", err)
+	}
+
+	return path
+}
+
 func TestRun_Succeeds(t *testing.T) {
 	t.Parallel()
 
 	r := fakeRunner(t, "exit 0")
-	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", Output: mustOutputFile(t)})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -79,7 +95,7 @@ func TestRun_ReportsNonZeroExitAndClassifiesStderr(t *testing.T) {
 	t.Parallel()
 
 	r := fakeRunner(t, `echo "Invalid data found when processing input" >&2; exit 1`)
-	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", Output: mustOutputFile(t)})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -113,7 +129,7 @@ func TestRun_ReportsTooLargeWhenOutputReachedTheSizeLimit(t *testing.T) {
 	makeOutputFile(t, dir, "out", maxOutputFileBytes)
 
 	r := fakeRunner(t, "exit 1")
-	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: dir})
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", Output: filepath.Join(dir, "out")})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -132,7 +148,7 @@ func TestRun_NotTooLargeWhenOutputIsSmallerThanTheLimit(t *testing.T) {
 	makeOutputFile(t, dir, "out", maxOutputFileBytes-1)
 
 	r := fakeRunner(t, "exit 1")
-	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: dir})
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", Output: filepath.Join(dir, "out")})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -151,7 +167,7 @@ func TestRun_NotTooLargeWhenTheJobSucceededEvenIfTheOutputIsLarge(t *testing.T) 
 	makeOutputFile(t, dir, "out", maxOutputFileBytes)
 
 	r := fakeRunner(t, "exit 0")
-	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: dir})
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", Output: filepath.Join(dir, "out")})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -160,27 +176,24 @@ func TestRun_NotTooLargeWhenTheJobSucceededEvenIfTheOutputIsLarge(t *testing.T) 
 	}
 }
 
-func TestOutputReachedSizeLimit_MissingDirectory(t *testing.T) {
+func TestOutputReachedSizeLimit_MissingFile(t *testing.T) {
 	t.Parallel()
 
 	if outputReachedSizeLimit(filepath.Join(t.TempDir(), "never-created")) {
-		t.Error("outputReachedSizeLimit() = true, want false for a directory that does not exist")
+		t.Error("outputReachedSizeLimit() = true, want false for a file that does not exist")
 	}
 }
 
-func TestOutputReachedSizeLimit_IgnoresASubdirectory(t *testing.T) {
+func TestOutputReachedSizeLimit_FalseWhenPathIsADirectory(t *testing.T) {
 	t.Parallel()
 
-	// A subdirectory can never itself be "too large" the way a file
-	// can; entry.Info().Mode().IsRegular() must skip it rather than
-	// erroring or miscounting it.
-	dir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(dir, "subdir"), 0o700); err != nil {
-		t.Fatalf("creating fixture subdirectory: %v", err)
-	}
-
-	if outputReachedSizeLimit(dir) {
-		t.Error("outputReachedSizeLimit() = true, want false for a directory containing only a subdirectory")
+	// Spec.Output should never actually be a directory - Run binds
+	// only a single file there (see sandbox.go) - but outputPath comes
+	// from a job's own Spec, not from this function's own control, so
+	// it still must not miscount one as "too large" rather than simply
+	// not matching.
+	if outputReachedSizeLimit(t.TempDir()) {
+		t.Error("outputReachedSizeLimit() = true, want false when the path names a directory, not a file")
 	}
 }
 
@@ -196,7 +209,7 @@ func TestRun_TimesOutAndKillsTheWholeGroup(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	result, err := r.Run(ctx, Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
+	result, err := r.Run(ctx, Spec{Binary: "/usr/bin/true", Output: mustOutputFile(t)})
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -218,7 +231,7 @@ func TestRun_FailsFastWhenToolsCannotBeResolved(t *testing.T) {
 		lookPath:    func(string) (string, error) { return "", errLookPath },
 	}
 
-	_, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
+	_, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", Output: mustOutputFile(t)})
 	if err == nil {
 		t.Fatal("Run() error = nil, want an error when tools cannot be resolved")
 	}
@@ -231,7 +244,7 @@ func TestRun_FailsFastOnAnInvalidSpec(t *testing.T) {
 
 	_, err := r.Run(t.Context(), Spec{})
 	if err == nil {
-		t.Fatal("Run() error = nil, want an error for a Spec with no Binary or OutputDir")
+		t.Fatal("Run() error = nil, want an error for a Spec with no Binary or Output")
 	}
 }
 
@@ -246,7 +259,7 @@ func TestRun_ReportsStartFailure(t *testing.T) {
 		},
 	}
 
-	_, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
+	_, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", Output: mustOutputFile(t)})
 	if err == nil {
 		t.Fatal("Run() error = nil, want an error when the process cannot even start")
 	}
@@ -260,7 +273,7 @@ func TestRun_ReportsFailureFromAnUnrelatedSignal(t *testing.T) {
 	// reports -1 for it rather than treating it as success.
 	r := fakeRunner(t, "kill -TERM $$; sleep 5")
 
-	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", OutputDir: t.TempDir()})
+	result, err := r.Run(t.Context(), Spec{Binary: "/usr/bin/true", Output: mustOutputFile(t)})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}

@@ -103,7 +103,7 @@ func TestVideo_OutputMissingDespiteSuccess(t *testing.T) {
 func TestVideo_OutputEmpty(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: []byte{}}
+	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutput: true, writeOutputData: []byte{}}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()
@@ -127,7 +127,7 @@ func TestVideo_OutputIsASymlink(t *testing.T) {
 		t.Fatalf("writing fixture: %v", err)
 	}
 
-	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputSymlinkTo: outside}
+	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputSymlinkTo: outside}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()
@@ -140,7 +140,7 @@ func TestVideo_OutputIsASymlink(t *testing.T) {
 func TestVideo_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, true)}
+	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutput: true, writeOutputData: validMP4Bytes(t, true)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()
@@ -271,9 +271,9 @@ func TestVideo_RemovesTheJobDirectoryOnEveryFailure(t *testing.T) {
 		{"too large", &fakeRunner{result: sandbox.Result{TooLarge: true}}},
 		{"ffmpeg exited non-zero", &fakeRunner{result: sandbox.Result{ExitCode: 1}}},
 		{"output missing despite success", &fakeRunner{result: sandbox.Result{ExitCode: 0}}},
-		{"output empty", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: []byte{}}},
-		{"output is a symlink", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputSymlinkTo: outsideTarget}},
-		{"rebuild fails", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: []byte("not a real mp4")}},
+		{"output empty", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutput: true, writeOutputData: []byte{}}},
+		{"output is a symlink", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputSymlinkTo: outsideTarget}},
+		{"rebuild fails", &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutput: true, writeOutputData: []byte("not a real mp4")}},
 	}
 
 	for _, c := range cases {
@@ -288,10 +288,10 @@ func TestVideo_RemovesTheJobDirectoryOnEveryFailure(t *testing.T) {
 				t.Fatal("Video() error = nil, want an error for this failure case")
 			}
 
-			jobDir := c.fake.lastSpec.OutputDir
-			if jobDir == "" {
+			if c.fake.lastSpec.Output == "" {
 				t.Fatal("fake runner never saw a job directory - this case does not exercise the cleanup path")
 			}
+			jobDir := filepath.Dir(c.fake.lastSpec.Output)
 			if _, statErr := os.Stat(jobDir); !os.IsNotExist(statErr) {
 				t.Errorf("job directory %q still exists after a failed run, want it removed", jobDir)
 			}
@@ -308,7 +308,7 @@ func TestVideo_RemovesTheJobDirectoryOnEveryFailure(t *testing.T) {
 func TestVideo_RemovesTheJobDirectoryWhenJobInputCannotBePlaced(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, true)}
+	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutput: true, writeOutputData: validMP4Bytes(t, true)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()
@@ -318,7 +318,7 @@ func TestVideo_RemovesTheJobDirectoryWhenJobInputCannotBePlaced(t *testing.T) {
 	if err == nil {
 		t.Fatal("Video() error = nil, want an error for an input file that does not exist")
 	}
-	if fake.lastSpec.OutputDir != "" {
+	if fake.lastSpec.Output != "" {
 		t.Fatal("fakeRunner.Run was called at all; placeJobInput should have failed first")
 	}
 

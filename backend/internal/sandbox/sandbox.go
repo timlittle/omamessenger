@@ -10,15 +10,20 @@
 // one is there, and what the seccomp filter denies.
 //
 // Spec names one job: a binary, its own arguments, an optional input
-// file bound read-only at InputPath, and an output directory bound
-// read-write at OutputDirPath. Every path and flag in a Spec must be a
-// literal the caller's own code chose - never a string a sender,
+// file bound read-only at InputPath, and one output file bound
+// read-write under OutputDirPath. Every path and flag in a Spec must
+// be a literal the caller's own code chose - never a string a sender,
 // another service, or the file being processed controls - since argv
 // is readable by any other local user through /proc the same way a
 // command's name already is (see .golangci.yml's forbidigo rule); the
 // fixed, sandbox-internal paths InputPath and OutputDirPath exist so a
 // caller never has to put a real, sender-influenced path into argv at
 // all.
+//
+// Run binds only the one file named by Output read-write - never a
+// whole directory - so a job can never reach anything else a caller's
+// own job directory happens to also hold, such as Input's own hard
+// link (see Output's own doc comment and docs/decisions.md).
 //
 // Run's own error return is only ever about the sandbox itself failing
 // to start or run at all (bwrap or prlimit missing, the process could
@@ -57,19 +62,23 @@ type Spec struct {
 	// comment and InputBaseName's own).
 	Input string
 
-	// OutputDir is bound read-write inside the sandbox at
-	// OutputDirPath. Required: every job needs somewhere to write, and
-	// it is also where Run keeps the one directory Available's own
-	// smoke test needs.
-	OutputDir string
+	// Output is the one file Run binds read-write inside the sandbox,
+	// under OutputDirPath, at that file's own base name: the only
+	// place a job may write to. The caller creates this file itself -
+	// empty, 0600 - before calling Run (transcode's own
+	// joboutput.go does exactly that for every profile); Run never
+	// creates it and never binds anything else under OutputDirPath, so
+	// a job can address nothing there but this one file (see
+	// docs/decisions.md).
+	Output string
 }
 
 // validate reports an error unless s has everything Run needs to build
-// a sandbox around it: Binary and OutputDir are the two fields every
-// job needs regardless of what it does once it starts, and Input,
-// when given at all, must already be named InputBaseName - the one
-// check standing between a caller's mistake and a sender- or user-
-// chosen path reaching bwrap's own argv (see Spec's own doc comment).
+// a sandbox around it: Binary and Output are the two fields every job
+// needs regardless of what it does once it starts, and Input, when
+// given at all, must already be named InputBaseName - the one check
+// standing between a caller's mistake and a sender- or user-chosen
+// path reaching bwrap's own argv (see Spec's own doc comment).
 func (s Spec) validate() error {
 	if s.Binary == "" {
 		return fmt.Errorf("sandbox: spec: binary is required")
@@ -77,8 +86,8 @@ func (s Spec) validate() error {
 	if s.Binary[0] != '/' {
 		return fmt.Errorf("sandbox: spec: binary must be an absolute path")
 	}
-	if s.OutputDir == "" {
-		return fmt.Errorf("sandbox: spec: output directory is required")
+	if s.Output == "" {
+		return fmt.Errorf("sandbox: spec: output file is required")
 	}
 	if s.Input != "" && filepath.Base(s.Input) != InputBaseName {
 		return fmt.Errorf("sandbox: spec: input must be named %q", InputBaseName)
@@ -125,9 +134,9 @@ func (r Result) Succeeded() bool {
 // The zero value is not usable; construct one with NewRunner.
 type Runner struct {
 	// scratchRoot is where Available's own smoke test creates and
-	// removes a throwaway output directory; it must already exist.
-	// Never used for a real job's own OutputDir, which every caller of
-	// Run supplies itself.
+	// removes a throwaway job directory and output file; it must
+	// already exist. Never used for a real job's own Output, which
+	// every caller of Run supplies itself.
 	scratchRoot string
 
 	toolsOnce   sync.Once

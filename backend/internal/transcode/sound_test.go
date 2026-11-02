@@ -17,7 +17,7 @@ import (
 func TestSound_Args(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.wav", writeOutputData: validWAVBytes(2, 48000, 10)}
+	fake := &fakeRunner{writeOutput: true, writeOutputData: validWAVBytes(2, 48000, 10)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()
@@ -91,7 +91,7 @@ func TestSound_RealEncode_CapsDurationAt30Seconds(t *testing.T) {
 func TestSound_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.wav", writeOutputData: validWAVBytes(1, 48000, 100)}
+	fake := &fakeRunner{writeOutput: true, writeOutputData: validWAVBytes(1, 48000, 100)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	dir := t.TempDir()
