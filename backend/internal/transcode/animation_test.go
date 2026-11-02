@@ -18,7 +18,8 @@ func TestAnimation_Args(t *testing.T) {
 	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, false)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	if _, err := tr.Animation(t.Context(), "/in.gif", t.TempDir()); err != nil {
+	dir := t.TempDir()
+	if _, err := tr.Animation(t.Context(), fakeInputFile(t, dir, "in.gif"), dir); err != nil {
 		t.Fatalf("Animation() error = %v", err)
 	}
 
@@ -86,7 +87,8 @@ func TestAnimation_Succeeds(t *testing.T) {
 	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, false)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	path, err := tr.Animation(t.Context(), "/in.gif", t.TempDir())
+	dir := t.TempDir()
+	path, err := tr.Animation(t.Context(), fakeInputFile(t, dir, "in.gif"), dir)
 	if err != nil {
 		t.Fatalf("Animation() error = %v", err)
 	}

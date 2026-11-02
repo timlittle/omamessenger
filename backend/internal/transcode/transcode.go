@@ -161,10 +161,18 @@ func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (pat
 		}
 	}()
 
+	jobInput, err := placeJobInput(in, jobDir)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = os.Remove(jobInput) // best-effort: nothing past this point, success or failure, still needs a copy of the caller's own input file
+	}()
+
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
-	spec := sandbox.Spec{Binary: t.ffmpeg, Args: p.args, Input: in, OutputDir: jobDir}
+	spec := sandbox.Spec{Binary: t.ffmpeg, Args: p.args, Input: jobInput, OutputDir: jobDir}
 
 	result, err := t.runner.Run(ctx, spec)
 	if err != nil {

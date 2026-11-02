@@ -20,7 +20,8 @@ func TestVideo_Args(t *testing.T) {
 	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, true)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	if _, err := tr.Video(t.Context(), "/in.mp4", t.TempDir()); err != nil {
+	dir := t.TempDir()
+	if _, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir); err != nil {
 		t.Fatalf("Video() error = %v", err)
 	}
 

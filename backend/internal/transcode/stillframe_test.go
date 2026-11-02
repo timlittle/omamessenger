@@ -18,7 +18,8 @@ func TestStillFrame_Args(t *testing.T) {
 	fake := &fakeRunner{writeOutputName: "out.png"}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	if _, err := tr.StillFrame(t.Context(), "/in.webp", t.TempDir()); err != nil {
+	dir := t.TempDir()
+	if _, err := tr.StillFrame(t.Context(), fakeInputFile(t, dir, "in.webp"), dir); err != nil {
 		t.Fatalf("StillFrame() error = %v", err)
 	}
 
@@ -72,7 +73,8 @@ func TestStillFrame_Succeeds(t *testing.T) {
 	fake := &fakeRunner{writeOutputName: "out.png", writeOutputData: []byte("png bytes")}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	path, err := tr.StillFrame(t.Context(), "/in.webp", t.TempDir())
+	dir := t.TempDir()
+	path, err := tr.StillFrame(t.Context(), fakeInputFile(t, dir, "in.webp"), dir)
 	if err != nil {
 		t.Fatalf("StillFrame() error = %v", err)
 	}

@@ -128,6 +128,20 @@ func (b *blockingRunner) Run(ctx context.Context, _ sandbox.Spec) (sandbox.Resul
 	}
 }
 
+// fakeInputFile creates a small file at dir/name with arbitrary
+// content and returns its path: run's own job-input placement (see
+// placeJobInput) links or copies a real file from disk, even for a
+// test whose fakeRunner never looks at Spec.Input's own bytes.
+func fakeInputFile(t *testing.T, dir, name string) string {
+	t.Helper()
+
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("fake input"), 0o600); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+	return path
+}
+
 // requireRealTranscoder returns a Transcoder backed by a real
 // sandbox.Runner and the host's own ffmpeg, skipping the test unless
 // the host can actually run a job end to end right now.

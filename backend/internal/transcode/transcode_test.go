@@ -26,7 +26,8 @@ func TestVideo_UnavailableSandbox(t *testing.T) {
 	fake := &fakeRunner{availErr: errors.New("test: no bwrap")}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 	if !errors.Is(err, transcode.ErrUnavailable) {
 		t.Fatalf("Video() error = %v, want %v", err, transcode.ErrUnavailable)
 	}
@@ -38,7 +39,8 @@ func TestVideo_SandboxRunError(t *testing.T) {
 	fake := &fakeRunner{runErr: errors.New("test: could not start")}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 	if err == nil {
 		t.Fatal("Video() error = nil, want an error when the sandbox itself fails to run")
 	}
@@ -50,7 +52,8 @@ func TestVideo_TimedOut(t *testing.T) {
 	fake := &fakeRunner{result: sandbox.Result{TimedOut: true}}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 	if !errors.Is(err, transcode.ErrTimeout) {
 		t.Fatalf("Video() error = %v, want %v", err, transcode.ErrTimeout)
 	}
@@ -62,7 +65,8 @@ func TestVideo_TooLarge(t *testing.T) {
 	fake := &fakeRunner{result: sandbox.Result{TooLarge: true}}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 	if !errors.Is(err, transcode.ErrTooLong) {
 		t.Fatalf("Video() error = %v, want %v", err, transcode.ErrTooLong)
 	}
@@ -74,7 +78,8 @@ func TestVideo_FfmpegExitedNonZero(t *testing.T) {
 	fake := &fakeRunner{result: sandbox.Result{ExitCode: 1}}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 	if !errors.Is(err, transcode.ErrFailed) {
 		t.Fatalf("Video() error = %v, want %v", err, transcode.ErrFailed)
 	}
@@ -88,7 +93,8 @@ func TestVideo_OutputMissingDespiteSuccess(t *testing.T) {
 	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 	if !errors.Is(err, transcode.ErrFailed) {
 		t.Fatalf("Video() error = %v, want %v", err, transcode.ErrFailed)
 	}
@@ -100,7 +106,8 @@ func TestVideo_OutputEmpty(t *testing.T) {
 	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: []byte{}}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 	if !errors.Is(err, transcode.ErrFailed) {
 		t.Fatalf("Video() error = %v, want %v", err, transcode.ErrFailed)
 	}
@@ -123,7 +130,8 @@ func TestVideo_OutputIsASymlink(t *testing.T) {
 	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputSymlinkTo: outside}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 	if !errors.Is(err, transcode.ErrFailed) {
 		t.Fatalf("Video() error = %v, want %v", err, transcode.ErrFailed)
 	}
@@ -135,7 +143,14 @@ func TestVideo_Succeeds(t *testing.T) {
 	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, true)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	path, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+	dir := t.TempDir()
+	// The input file's own name carries a sender-chosen shape on
+	// purpose: the whole point of this test is that it must never
+	// reach the sandbox's own argv (see Spec.Input's own doc comment
+	// and docs/decisions.md).
+	originalInput := fakeInputFile(t, dir, "attachment-original-name.mp4")
+
+	path, err := tr.Video(t.Context(), originalInput, dir)
 	if err != nil {
 		t.Fatalf("Video() error = %v", err)
 	}
@@ -146,8 +161,11 @@ func TestVideo_Succeeds(t *testing.T) {
 	if fake.lastSpec.Binary != "/usr/bin/ffmpeg" {
 		t.Errorf("Spec.Binary = %q, want /usr/bin/ffmpeg", fake.lastSpec.Binary)
 	}
-	if fake.lastSpec.Input != "/in.mp4" {
-		t.Errorf("Spec.Input = %q, want /in.mp4", fake.lastSpec.Input)
+	if fake.lastSpec.Input == originalInput {
+		t.Errorf("Spec.Input = %q, the caller's own original path reached the sandbox argv", fake.lastSpec.Input)
+	}
+	if got := filepath.Base(fake.lastSpec.Input); got != sandbox.InputBaseName {
+		t.Errorf("Spec.Input = %q, want a base name of %q", fake.lastSpec.Input, sandbox.InputBaseName)
 	}
 }
 
@@ -161,7 +179,8 @@ func TestTranscoder_RunsOneJobAtATime(t *testing.T) {
 	// lets it go.
 	firstDone := make(chan error, 1)
 	go func() {
-		_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+		dir := t.TempDir()
+		_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 		firstDone <- err
 	}()
 
@@ -179,8 +198,9 @@ func TestTranscoder_RunsOneJobAtATime(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 
+	secondDir := t.TempDir()
 	start := time.Now()
-	_, err := tr.Audio(ctx, "/in.mp4", t.TempDir())
+	_, err := tr.Audio(ctx, fakeInputFile(t, secondDir, "in.mp4"), secondDir)
 	elapsed := time.Since(start)
 
 	if !errors.Is(err, transcode.ErrTimeout) {
@@ -214,8 +234,9 @@ func TestTranscoder_RunsOneJobAtATime(t *testing.T) {
 	ctx3, cancel3 := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel3()
 
+	thirdDir := t.TempDir()
 	start = time.Now()
-	_, err = tr.Audio(ctx3, "/in.mp4", t.TempDir())
+	_, err = tr.Audio(ctx3, fakeInputFile(t, thirdDir, "in.mp4"), thirdDir)
 	elapsed = time.Since(start)
 
 	if errors.Is(err, transcode.ErrTimeout) {
@@ -261,7 +282,8 @@ func TestVideo_RemovesTheJobDirectoryOnEveryFailure(t *testing.T) {
 
 			tr := transcode.NewTranscoder(c.fake, "/usr/bin/ffmpeg")
 
-			_, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())
+			dir := t.TempDir()
+			_, err := tr.Video(t.Context(), fakeInputFile(t, dir, "in.mp4"), dir)
 			if err == nil {
 				t.Fatal("Video() error = nil, want an error for this failure case")
 			}
@@ -274,5 +296,37 @@ func TestVideo_RemovesTheJobDirectoryOnEveryFailure(t *testing.T) {
 				t.Errorf("job directory %q still exists after a failed run, want it removed", jobDir)
 			}
 		})
+	}
+}
+
+// TestVideo_RemovesTheJobDirectoryWhenJobInputCannotBePlaced confirms
+// the same cleanup when run fails before ever reaching the sandbox at
+// all: placeJobInput cannot link or copy an input file that does not
+// exist, so this never builds a Spec or calls fakeRunner.Run, and the
+// table above's own check (which reads back the job directory from
+// fake.lastSpec) cannot tell whether this path was exercised at all.
+func TestVideo_RemovesTheJobDirectoryWhenJobInputCannotBePlaced(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, true)}
+	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
+
+	dir := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "never-written.mp4")
+
+	_, err := tr.Video(t.Context(), missing, dir)
+	if err == nil {
+		t.Fatal("Video() error = nil, want an error for an input file that does not exist")
+	}
+	if fake.lastSpec.OutputDir != "" {
+		t.Fatal("fakeRunner.Run was called at all; placeJobInput should have failed first")
+	}
+
+	entries, readErr := os.ReadDir(dir)
+	if readErr != nil {
+		t.Fatalf("reading outDir: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Errorf("outDir still holds %v after a failed run, want the job directory removed", entries)
 	}
 }

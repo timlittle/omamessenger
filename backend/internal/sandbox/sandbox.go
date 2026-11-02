@@ -34,6 +34,7 @@ package sandbox
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"sync"
 )
 
@@ -50,7 +51,10 @@ type Spec struct {
 	Args []string
 
 	// Input, when set, is bound read-only inside the sandbox at
-	// InputPath.
+	// InputPath. Its own base name must be InputBaseName - validate
+	// refuses anything else - since this literal path, not InputPath,
+	// is what actually reaches bwrap's own argv (see the package doc
+	// comment and InputBaseName's own).
 	Input string
 
 	// OutputDir is bound read-write inside the sandbox at
@@ -62,7 +66,10 @@ type Spec struct {
 
 // validate reports an error unless s has everything Run needs to build
 // a sandbox around it: Binary and OutputDir are the two fields every
-// job needs regardless of what it does once it starts.
+// job needs regardless of what it does once it starts, and Input,
+// when given at all, must already be named InputBaseName - the one
+// check standing between a caller's mistake and a sender- or user-
+// chosen path reaching bwrap's own argv (see Spec's own doc comment).
 func (s Spec) validate() error {
 	if s.Binary == "" {
 		return fmt.Errorf("sandbox: spec: binary is required")
@@ -72,6 +79,9 @@ func (s Spec) validate() error {
 	}
 	if s.OutputDir == "" {
 		return fmt.Errorf("sandbox: spec: output directory is required")
+	}
+	if s.Input != "" && filepath.Base(s.Input) != InputBaseName {
+		return fmt.Errorf("sandbox: spec: input must be named %q", InputBaseName)
 	}
 	return nil
 }

@@ -22,6 +22,17 @@ const InputPath = workDir + "/in"
 // one, fixed location a caller's own Args must name to write output.
 const OutputDirPath = workDir + "/out"
 
+// InputBaseName is the only base name Spec.validate accepts for
+// Spec.Input: a caller places its own file under this name, inside a
+// directory it controls, before ever building a Spec (transcode's
+// own job directory does exactly that; see transcode.placeJobInput).
+// The literal path given as Spec.Input - never InputPath, the fixed
+// location inside the sandbox - reaches bwrap's own argv, which is
+// readable by any local user through /proc for the life of the job
+// (see the package doc comment), so it must never carry a sender's
+// file name or a user-picked path of their own choosing.
+const InputBaseName = "input"
+
 // sandboxPath is the only PATH a sandboxed command sees, set by
 // --clearenv plus --setenv rather than inherited from this helper's
 // own environment. /usr/bin and /bin (itself a symlink to usr/bin, see

@@ -20,7 +20,8 @@ func TestSound_Args(t *testing.T) {
 	fake := &fakeRunner{writeOutputName: "out.wav", writeOutputData: validWAVBytes(2, 48000, 10)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	if _, err := tr.Sound(t.Context(), "/in.ogg", t.TempDir()); err != nil {
+	dir := t.TempDir()
+	if _, err := tr.Sound(t.Context(), fakeInputFile(t, dir, "in.ogg"), dir); err != nil {
 		t.Fatalf("Sound() error = %v", err)
 	}
 
@@ -93,7 +94,8 @@ func TestSound_Succeeds(t *testing.T) {
 	fake := &fakeRunner{writeOutputName: "out.wav", writeOutputData: validWAVBytes(1, 48000, 100)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
-	path, err := tr.Sound(t.Context(), "/in.ogg", t.TempDir())
+	dir := t.TempDir()
+	path, err := tr.Sound(t.Context(), fakeInputFile(t, dir, "in.ogg"), dir)
 	if err != nil {
 		t.Fatalf("Sound() error = %v", err)
 	}

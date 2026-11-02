@@ -117,6 +117,17 @@ func TestSpecValidate(t *testing.T) {
 			spec:    Spec{Binary: "/usr/bin/ffmpeg"},
 			wantErr: true,
 		},
+		"input named InputBaseName is fine": {
+			spec: Spec{Binary: "/usr/bin/ffmpeg", OutputDir: "/host/out", Input: "/host/job/" + InputBaseName},
+		},
+		"input not named InputBaseName": {
+			// A caller's own file name reaching this field at all is
+			// exactly the mistake validate exists to catch: bwrap's own
+			// argv would otherwise carry it (see Spec's own doc
+			// comment).
+			spec:    Spec{Binary: "/usr/bin/ffmpeg", OutputDir: "/host/out", Input: "/host/attachment-original-name.mp4"},
+			wantErr: true,
+		},
 	}
 
 	for name, tt := range tests {
