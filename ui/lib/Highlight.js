@@ -95,12 +95,28 @@ function links(message) {
   return found.map(stripTrailingPunctuation);
 }
 
+// TRAILING_PUNCTUATION is the set of characters stripTrailingPunctuation
+// trims from a link's own end.
+var TRAILING_PUNCTUATION = '.,;:!?)';
+
 // stripTrailingPunctuation drops sentence punctuation a link's own text
 // swept up, such as the period ending "see http://x.com." or the
 // closing parenthesis of "(http://x.com)", the same trim Format.js's
-// linkify applies to a link found in escaped text.
+// linkify applies to a link found in escaped text. Scanning back from
+// the end in a loop, rather than a regex of a lazy group followed by a
+// greedy class anchored at $, keeps this linear in url's length: that
+// regex shape backtracks the lazy group one character at a time for
+// every split point the class fails at, which costs the square of the
+// length on a url padded with tens of thousands of trailing punctuation
+// characters - exactly what a sender's own message text can carry,
+// with no length limit of its own at this layer.
 function stripTrailingPunctuation(url) {
-  return url.match(/^(.*?)[.,;:!?)]*$/)[1];
+  let end = url.length;
+  while (end > 0 && TRAILING_PUNCTUATION.includes(url[end - 1])) {
+    end--;
+  }
+
+  return url.slice(0, end);
 }
 
 // primaryLink returns the one link the open key (o) opens when the

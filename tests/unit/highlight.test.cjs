@@ -162,3 +162,20 @@ test('primaryLink returns the first link, or "" for none', () => {
   assert.strictEqual(Highlight.primaryLink(message({ text: 'https://a.example https://b.example' })), 'https://a.example');
   assert.strictEqual(Highlight.primaryLink(message({ text: 'no links' })), '');
 });
+
+test('links strips a long run of trailing punctuation in linear time, not quadratic', () => {
+  // A regex like /^(.*?)[.,;:!?)]*$/ backtracks the lazy group one
+  // character at a time for every length the punctuation class fails
+  // to match at, which costs the square of the run's length. A sender
+  // can put tens of thousands of punctuation characters after a link
+  // with no length limit of its own (message text is only capped once
+  // it reaches the helper, well past what this file ever sees in a
+  // test), so this must finish quickly however long that run is.
+  const adversarial = `http://${'!'.repeat(65000)}A`;
+  const start = Date.now();
+  const found = Highlight.links(message({ text: adversarial }));
+  const elapsedMs = Date.now() - start;
+
+  assert.deepEqual(found, [adversarial]);
+  assert.ok(elapsedMs < 2000, `links took ${elapsedMs}ms on an adversarial trailing-punctuation run, want well under 2000ms`);
+});

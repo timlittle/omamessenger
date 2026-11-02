@@ -82,6 +82,29 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// TRAILING_LINK_PUNCTUATION is the set of characters linkify trims off
+// a matched URL's own end, the same set ui/lib/Highlight.js's
+// stripTrailingPunctuation trims off a link found in a message's raw
+// text.
+var TRAILING_LINK_PUNCTUATION = '.,;:!?)';
+
+// splitTrailingPunctuation returns [url, trailing]: match with any run
+// of TRAILING_LINK_PUNCTUATION at its own end moved into trailing,
+// scanning back from the end in a loop rather than a regex of a lazy
+// group followed by a greedy class anchored at $. That shape backtracks
+// the lazy group one character at a time for every split point the
+// class fails at, which costs the square of match's length on a URL a
+// sender pads with tens of thousands of trailing punctuation
+// characters - match's length has no limit of its own at this layer.
+function splitTrailingPunctuation(match) {
+  let end = match.length;
+  while (end > 0 && TRAILING_LINK_PUNCTUATION.includes(match[end - 1])) {
+    end--;
+  }
+
+  return [match.slice(0, end), match.slice(end)];
+}
+
 // linkify turns http(s) URLs in escaped text into anchors, in color
 // when given, appending one {url, displayText} entry to anchors for
 // each (see messageLinkAnchors): a plain autolinked URL's own visible
@@ -92,7 +115,7 @@ function escapeHtml(text) {
 function linkify(escaped, color, anchors = []) {
   const style = color ? ` style="color:${color}"` : '';
   return escaped.replace(URL_PATTERN, (match) => {
-    const [, url, trailing] = match.match(/^(.*?)([.,;:!?)]*)$/);
+    const [url, trailing] = splitTrailingPunctuation(match);
     const href = linkHref(anchors.length);
     anchors.push({ url, displayText: url });
     return `<a href="${href}"${style}>${url}</a>${trailing}`;

@@ -97,6 +97,29 @@ test('linkify handles multiple URLs, each with its own numbered href', () => {
   ]);
 });
 
+test('linkify splits a long run of trailing punctuation in linear time, not quadratic', () => {
+  // Mirrors tests/unit/highlight.test.cjs's own adversarial case: a
+  // regex shaped like a lazy group followed by a greedy punctuation
+  // class anchored at $ backtracks the square of the input's length. A
+  // sender's message text has no length limit of its own at this
+  // layer, so a URL this long, trailing punctuation and all, must
+  // still split quickly.
+  const adversarial = `http://${'!'.repeat(65000)}A`;
+  const anchors = [];
+  const start = Date.now();
+  const result = Format.linkify(adversarial, null, anchors);
+  const elapsedMs = Date.now() - start;
+
+  // A plain string comparison, not assert.match: V8 only compiles a
+  // regex's bytecode on its first exec, and a pattern this long,
+  // embedded as a literal the way a second regex here would need to,
+  // overflows that compiler outright - a V8 quirk with nothing to do
+  // with the fix under test.
+  assert.deepStrictEqual(anchorsPlain(anchors), [{ url: adversarial, displayText: adversarial }]);
+  assert.strictEqual(result, `<a href="oma-link:0">${adversarial}</a>`);
+  assert.ok(elapsedMs < 2000, `linkify took ${elapsedMs}ms on an adversarial trailing-punctuation run, want well under 2000ms`);
+});
+
 const highlightUnchangedCases = [
   ['does not match inside entities', 'test &amp; demo', 'amp', 'test &amp; demo'],
   ['with empty query returns unchanged', 'Hello World', '', 'Hello World']
