@@ -97,7 +97,16 @@ Item {
         visible: root.description !== ""
         text: root.description
         textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
+        // Wrap can break anywhere, not only at a space: a question
+        // whose description is mostly one long, unbroken token - the
+        // URL LinkOpenConfirm shows in full - would otherwise overflow
+        // the card instead of wrapping. maximumLineCount plus elide
+        // bounds the layout cost of that same token to a fixed number
+        // of lines, however long a sender's own URL runs, rather than
+        // relying on every caller to shorten its own description first.
+        wrapMode: Text.Wrap
+        elide: Text.ElideRight
+        maximumLineCount: 8
         color: Util.alpha(Theme.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.body }
       }

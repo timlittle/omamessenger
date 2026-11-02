@@ -159,6 +159,62 @@ func TestCapPoll_BoundsOptionsAndText(t *testing.T) {
 	}
 }
 
+// TestCapURL_DropsAnOversizedURL confirms a URL past MaxURLLength is
+// dropped outright, never truncated: a cut URL can point somewhere the
+// sender never wrote.
+func TestCapURL_DropsAnOversizedURL(t *testing.T) {
+	t.Parallel()
+
+	huge := "https://example.com/" + strings.Repeat("a", domain.MaxURLLength)
+	if got := domain.CapURL(huge); got != "" {
+		t.Errorf("CapURL kept a URL of %d bytes, want it dropped", len(huge))
+	}
+}
+
+// TestCapURL_LeavesAShortURLAlone confirms a URL already within the
+// cap passes through unchanged.
+func TestCapURL_LeavesAShortURLAlone(t *testing.T) {
+	t.Parallel()
+
+	if got := domain.CapURL("https://example.com"); got != "https://example.com" {
+		t.Errorf("CapURL(%q) = %q, want it unchanged", "https://example.com", got)
+	}
+}
+
+// TestCapMedia_DropsAnOversizedURL confirms a link preview's own URL,
+// which a sender's client writes with no length limit of its own, is
+// dropped once it runs past MaxURLLength, the same way CapMedia already
+// drops an oversized thumbnail or sticker emoji rather than truncating
+// either.
+func TestCapMedia_DropsAnOversizedURL(t *testing.T) {
+	t.Parallel()
+
+	huge := "https://example.com/" + strings.Repeat("a", domain.MaxURLLength)
+	media := &domain.Media{Kind: domain.MediaLink, URL: huge, Title: "Example"}
+
+	got := domain.CapMedia(media)
+	if got.URL != "" {
+		t.Errorf("CapMedia kept a link preview URL of %d bytes, want it dropped", len(huge))
+	}
+}
+
+// TestCapSpans_DropsAnOversizedSpanURL confirms a formatting span's own
+// link URL is dropped once it runs past MaxURLLength, the same cap
+// CapMedia gives a link preview's URL: the span itself (its range and
+// kind) is kept, only its URL is cleared, since the UI already treats a
+// link span with no URL as plain text (see ui/lib/Format.js's spanURL).
+func TestCapSpans_DropsAnOversizedSpanURL(t *testing.T) {
+	t.Parallel()
+
+	huge := "https://example.com/" + strings.Repeat("a", domain.MaxURLLength)
+	spans := []domain.Span{{Kind: domain.SpanLink, Start: 0, End: 5, URL: huge}}
+
+	got := domain.CapSpans(spans, 10)
+	if len(got) != 1 || got[0].URL != "" {
+		t.Errorf("CapSpans kept an oversized span URL: %+v", got)
+	}
+}
+
 // TestCapMedia_NilIsUnchanged confirms a message with no media at all
 // is never given one.
 func TestCapMedia_NilIsUnchanged(t *testing.T) {

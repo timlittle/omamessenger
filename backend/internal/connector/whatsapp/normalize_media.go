@@ -122,9 +122,14 @@ func mediaAndRef(msg *waE2E.Message) (*domain.Media, mediaRef, bool) {
 // until WhatsApp found one worth showing. Its URL, GetMatchedText(), is
 // written by the sender's own client alongside the text, not resolved by
 // any server, so it can name anything at all. It is kept only when its
-// scheme passes domain.AllowedLinkURL and the message's own text
-// actually shows it; otherwise the card stays, with no URL to open,
-// rather than disguising one link as another.
+// scheme passes domain.AllowedLinkURL and the message's own truncated
+// text - the same text domain.SanitizeIncoming stores - actually shows
+// it; otherwise the card stays, with no URL to open, rather than
+// disguising one link as another. Checking against the truncated text,
+// not the raw text a sender's client sent, matters: a sender can pad a
+// message well past domain.MaxIncomingTextLength and place MatchedText
+// only in the part that padding pushes out, which the raw text would
+// still show but the message as stored never does.
 func linkPreview(m *waE2E.ExtendedTextMessage) *domain.Media {
 	title, description := m.GetTitle(), m.GetDescription()
 	if title == "" && description == "" {
@@ -132,7 +137,8 @@ func linkPreview(m *waE2E.ExtendedTextMessage) *domain.Media {
 	}
 
 	url := m.GetMatchedText()
-	if !domain.AllowedLinkURL(url) || !strings.Contains(m.GetText(), url) {
+	truncatedText := domain.TruncateIncomingText(m.GetText())
+	if !domain.AllowedLinkURL(url) || !strings.Contains(truncatedText, url) {
 		url = ""
 	}
 

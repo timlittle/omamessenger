@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"encoding/base64"
 	"reflect"
+	"strings"
 	"testing"
 
 	"go.mau.fi/whatsmeow"
@@ -209,6 +210,29 @@ func TestMedia_EachKindAndItsDownloadReference(t *testing.T) {
 				t.Errorf("downloadRef() = %+v, %t; want %+v, %t", ref, ok, tt.wantRef, tt.wantOK)
 			}
 		})
+	}
+}
+
+// TestMedia_LinkPreviewURLMustAppearInTheTruncatedText confirms a
+// MatchedText URL is accepted only when it appears in the text once
+// domain.TruncateIncomingText has cut it down, not merely in the raw
+// text a sender's client sent: a sender can pad a message well past
+// domain.MaxIncomingTextLength, then place their own MatchedText URL
+// only in the part that padding pushes out, so checking the raw text
+// alone would still accept it even though the stored, truncated text
+// never shows it.
+func TestMedia_LinkPreviewURLMustAppearInTheTruncatedText(t *testing.T) {
+	t.Parallel()
+
+	url := "https://example.com/" + strings.Repeat("a", 50)
+	padding := strings.Repeat("x", domain.MaxIncomingTextLength)
+	msg := &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+		Text: strPtr(padding + url), MatchedText: strPtr(url), Title: strPtr("Example"),
+	}}
+
+	got := media(msg)
+	if got == nil || got.URL != "" {
+		t.Errorf("media(...).URL = %+v, want the URL dropped since it only appears past where the text is truncated", got)
 	}
 }
 

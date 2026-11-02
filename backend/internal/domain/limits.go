@@ -6,11 +6,12 @@ import "unicode/utf8"
 // media carries, so a connector that passes through whatever a service
 // reports can never make one message grow enough rich text, mentions,
 // reactions or poll options to slow the UI's layout pass, or carry a
-// link preview's text past anything a legitimate page's own metadata
-// would ever need (see ui/lib/Format.js and docs/decisions.md).
-// SanitizeIncoming is the one place every cap here is applied, used by
-// app.Ingest for both a newly arrived message and one the service
-// reports edited, so neither path can drift from the other's limits.
+// link preview's text, or a link's own URL, past anything a legitimate
+// page's own metadata would ever need (see ui/lib/Format.js and
+// docs/decisions.md). SanitizeIncoming is the one place every cap here
+// is applied, used by app.Ingest for both a newly arrived message and
+// one the service reports edited, so neither path can drift from the
+// other's limits.
 
 // MaxFormattingSpans bounds how many rich-text spans (links, bold,
 // italic, underline, strike, code, pre, spoiler) one message's
@@ -64,6 +65,19 @@ const MaxLinkPreviewFieldLength = 300
 // a full article - the page a link points to fully controls this text,
 // the same as a sender controls their own message.
 const MaxLinkPreviewDescriptionLength = 2000
+
+// MaxURLLength bounds a link's own URL - a formatting span's URL or a
+// link preview's Media.URL - in bytes. 2048 is the long-standing
+// practical web limit (Internet Explorer's own historical cap, still
+// the figure most servers, crawlers and link-preview generators were
+// built around), so no legitimate link a page or a sender's own client
+// generates needs anything near it. A sender fully controls both
+// fields, with no length limit of their own, so a URL beyond this is
+// dropped outright, the same drop-rather-than-truncate treatment
+// CapReactions already gives an oversized emoji: cutting a URL changes
+// where it points, rather than merely shortening what it says, so a
+// truncated one must never be kept.
+const MaxURLLength = 2048
 
 // MaxGroupMembers bounds how many members Members ever returns for one
 // conversation: generous for any real group a person actually
@@ -167,11 +181,20 @@ func capRanges[T any](items []T, textLen, max int, rangeOf func(T) capRange) []T
 }
 
 // CapSpans drops a formatting span that no longer fits text (see
-// capRanges) and keeps at most MaxFormattingSpans of what remains.
+// capRanges), keeps at most MaxFormattingSpans of what remains, and
+// drops any kept span's own URL past MaxURLLength (see CapURL): the
+// span's range and kind stay, since the UI already treats a link span
+// with no URL as plain text.
 func CapSpans(spans []Span, textLen int) []Span {
-	return capRanges(spans, textLen, MaxFormattingSpans, func(s Span) capRange {
+	kept := capRanges(spans, textLen, MaxFormattingSpans, func(s Span) capRange {
 		return capRange{s.Start, s.End}
 	})
+
+	for i := range kept {
+		kept[i].URL = CapURL(kept[i].URL)
+	}
+
+	return kept
 }
 
 // CapMentions drops a mention that no longer fits text (see capRanges)
@@ -238,18 +261,34 @@ func CapFileName(s string) string {
 	return s[:cut]
 }
 
+// CapURL drops url entirely once it runs past MaxURLLength bytes,
+// rather than truncating it: a formatting span's and a link preview's
+// own URL both carry whatever a sender's client put there, with no
+// length limit of their own, and cutting a URL short changes where it
+// points rather than merely shortening what it says.
+func CapURL(url string) string {
+	if len(url) > MaxURLLength {
+		return ""
+	}
+
+	return url
+}
+
 // CapMedia bounds a poll's options and text, a link preview's own
-// text fields, or a file name, in place, returning media unchanged for
-// a nil media. FileName is capped for every kind that carries one
-// (file, video, voice note or sticker), not only one media.Kind, since
-// a sender names their own attachment the same way whichever kind it
-// is.
+// text fields and URL, or a file name, in place, returning media
+// unchanged for a nil media. FileName is capped for every kind that
+// carries one (file, video, voice note or sticker), not only one
+// media.Kind, since a sender names their own attachment the same way
+// whichever kind it is. URL is capped for every kind too, even though
+// only a link preview sets it today, so a future kind that starts
+// carrying one is covered without a second change.
 func CapMedia(media *Media) *Media {
 	if media == nil {
 		return nil
 	}
 
 	media.FileName = CapFileName(media.FileName)
+	media.URL = CapURL(media.URL)
 	if len(media.Thumb) > MaxInlineThumbLen {
 		media.Thumb = ""
 	}

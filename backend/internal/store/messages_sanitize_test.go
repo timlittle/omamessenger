@@ -77,6 +77,33 @@ func TestMessage_CapsStoredReactionsOnRead(t *testing.T) {
 	}
 }
 
+// TestMessage_CapsAStoredOversizedMediaURLOnRead confirms a link
+// preview's own URL, stored uncapped by a release before
+// domain.MaxURLLength existed, is dropped on every read, the same
+// legacy-row repair scanMessage already gives a stored sender name or
+// reaction chip: a truncated URL would point somewhere the sender
+// never wrote, so it must be dropped outright, never shortened.
+func TestMessage_CapsAStoredOversizedMediaURLOnRead(t *testing.T) {
+	t.Parallel()
+
+	s, _ := openChatStore(t)
+	ctx := t.Context()
+
+	huge := "https://example.com/" + strings.Repeat("a", domain.MaxURLLength)
+	addMessages(t, s, domain.Message{
+		ID: "huge-url", ConversationID: "chat", Text: "hi", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaLink, URL: huge, Title: "Example"},
+	})
+
+	got, err := s.Message(ctx, "huge-url")
+	if err != nil {
+		t.Fatalf("Message: %v", err)
+	}
+	if got.Media == nil || got.Media.URL != "" {
+		t.Errorf("Media.URL = %+v, want it dropped", got.Media)
+	}
+}
+
 // TestMessage_TruncatesStoredTextOnRead confirms a message's own text,
 // stored longer than domain.MaxIncomingTextLength by a release before
 // that cap existed, is truncated on every read: the one unbounded
