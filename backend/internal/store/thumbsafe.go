@@ -10,24 +10,49 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
+// verifyThumb returns media with its own Thumb passed through
+// sanitizedThumb and ThumbWidth/ThumbHeight filled from the real,
+// decoded result, so a message a write path returns - the one
+// app.Ingest publishes straight to the UI as message.added or
+// message.updated, with no read of the row back out of the database
+// in between - already carries the same verified size a later read
+// through scanMessage would give it. Without this, a message
+// delivered live, backfilled from history or edited reached the UI
+// with Thumb's own box alone, because sanitizedThumb only ever ran
+// when a row was read back, never on the write that first produced
+// the value a connector's own report actually carries (see
+// docs/decisions.md). media is returned unchanged when it is nil or
+// carries no thumbnail at all.
+func verifyThumb(media *domain.Media) *domain.Media {
+	if media == nil || media.Thumb == "" {
+		return media
+	}
+
+	verified := *media
+	verified.Thumb, verified.ThumbWidth, verified.ThumbHeight = sanitizedThumb(media.Thumb)
+
+	return &verified
+}
+
 // sanitizedThumb runs thumb - a message's preview image exactly as
 // domain.Media.Thumb stores and the protocol sends it, base64 - back
 // through imagesafe's own bound for one (see imagesafe.Thumbnail), the
 // same check a connector already gives a thumbnail the moment it
-// receives it. scanMessage calls this on every row it reads, so a
-// thumbnail written before this check existed, or by any future write
-// path that forgets to run it, is still caught here before it ever
-// reaches the UI (see docs/decisions.md). It returns thumb unchanged
-// when sanitizing it changes nothing, a re-encoded, stripped version
-// when it does, or "" when thumb fails outright: not valid base64, not
-// a recognized image format, or over the bound - never the original
-// bytes in that case. width and height are the thumbnail's own real
-// dimensions, as imagesafe.Sanitize's own parse of it just confirmed
-// them, for domain.Media.ThumbWidth/ThumbHeight: the UI must size its
-// own decode of this same thumb from these, never from a message's
-// claimed photo or sticker size, which need not match what the
-// thumbnail bytes actually decode to (see docs/decisions.md). Both
-// are zero whenever thumb is "".
+// receives it. scanMessage calls this on every row it reads, and
+// verifyThumb calls it on every write, so a thumbnail written before
+// this check existed, or by any future write path that forgets to run
+// it, is still caught here before it ever reaches the UI (see
+// docs/decisions.md). It returns thumb unchanged when sanitizing it
+// changes nothing, a re-encoded, stripped version when it does, or ""
+// when thumb fails outright: not valid base64, not a recognized image
+// format, or over the bound - never the original bytes in that case.
+// width and height are the thumbnail's own real dimensions, as
+// imagesafe.Sanitize's own parse of it just confirmed them, for
+// domain.Media.ThumbWidth/ThumbHeight: the UI must size its own decode
+// of this same thumb from these, never from a message's claimed photo
+// or sticker size, which need not match what the thumbnail bytes
+// actually decode to (see docs/decisions.md). Both are zero whenever
+// thumb is "".
 func sanitizedThumb(thumb string) (safe string, width, height int) {
 	if thumb == "" {
 		return "", 0, 0

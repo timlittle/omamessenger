@@ -59,6 +59,7 @@ func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread bo
 
 	m = withMessageDefaults(m)
 	m = s.resolveReply(ctx, m)
+	m.Media = verifyThumb(m.Media)
 	if err := s.insertMessage(ctx, m, countUnread); err != nil {
 		return m, false, wrap("add message", err)
 	}
@@ -94,6 +95,7 @@ func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Messa
 // fillMedia adds media to a message stored before the service reported
 // it, such as one synced before link previews existed.
 func (s *Store) fillMedia(ctx context.Context, m domain.Message, media *domain.Media) (domain.Message, bool, error) {
+	media = verifyThumb(media)
 	encoded, err := encodeMedia(media)
 	if err != nil {
 		return m, false, wrap("fill media", err)
@@ -316,6 +318,7 @@ func (s *Store) EditMessage(ctx context.Context, conversationID, remoteID string
 		return m, false, err
 	}
 
+	edit.Media = verifyThumb(edit.Media)
 	encodedMedia, err := encodeMedia(edit.Media)
 	if err != nil {
 		return m, false, wrap("edit message", err)
