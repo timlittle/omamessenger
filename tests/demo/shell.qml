@@ -277,10 +277,12 @@ ShellRoot {
   }
 
   // waitForComposerBlurred holds until the composer's text field has
-  // lost keyboard focus, the mirror of waitForComposerFocused.
+  // lost keyboard focus, the mirror of waitForComposerFocused. The field
+  // only exists while the user is writing, so no field at all counts as
+  // not focused.
   function waitForComposerBlurred(): var {
     const input = Check.find(root.panel(), "composerInput");
-    return !!input && !input.activeFocus;
+    return !input || !input.activeFocus;
   }
 
   // composeMessage returns a step that shows text as the label and types
