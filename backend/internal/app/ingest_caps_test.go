@@ -236,7 +236,7 @@ func TestEdited_CapsFormattingSpans(t *testing.T) {
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "first"))
 	f.published.take()
 
-	edit := domain.Message{RemoteID: "e1", Text: "second"}
+	edit := domain.Message{RemoteID: "e1", SenderID: "alex", Text: "second"}
 	for i := 0; i < domain.MaxFormattingSpans+20; i++ {
 		edit.Formatting = append(edit.Formatting, domain.Span{Kind: domain.SpanBold, Start: 0, End: 1})
 	}

@@ -297,7 +297,7 @@ func TestEdited_UpdatesTheStoredMessageAndPublishes(t *testing.T) {
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "first"))
 	f.published.take()
 
-	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e1", Text: "fixed"})
+	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e1", SenderID: "alex", Text: "fixed"})
 
 	if got := f.published.take(); !slices.Equal(got, []string{app.EventMessageUpdated}) {
 		t.Errorf("events = %v, want %v", got, []string{app.EventMessageUpdated})
@@ -319,7 +319,7 @@ func TestEdited_UpdatesFormatting(t *testing.T) {
 	f.published.take()
 
 	spans := []domain.Span{{Kind: domain.SpanBold, Start: 0, End: 5}}
-	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e1", Text: "fixed", Formatting: spans})
+	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e1", SenderID: "alex", Text: "fixed", Formatting: spans})
 
 	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
 	if err != nil || len(messages) != 1 || !slices.Equal(messages[0].Formatting, spans) {

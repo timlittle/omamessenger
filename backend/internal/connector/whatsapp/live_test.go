@@ -414,32 +414,10 @@ func TestHandleMessage_ReportsEachReactionChangeAsTheFullTally(t *testing.T) {
 	assertTally(1)
 }
 
-func TestHandleMessage_RevokeAndEdit(t *testing.T) {
-	t.Parallel()
-
-	c, dev, sink, media := handlerMediaFixture(t)
-
-	revokeMsg := &events.Message{
-		Info:    liveInfo(),
-		Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_REVOKE.Enum(), Key: &waCommon.MessageKey{ID: strPtr("M0")}}},
-	}
-	c.handleMessage(t.Context(), sink, dev, media, revokeMsg)
-	if !sink.Has("deleted 15551234567@s.whatsapp.net M0") {
-		t.Errorf("events = %q, want the revoked message reported deleted", sink.Lines())
-	}
-
-	editMsg := &events.Message{
-		Info: liveInfo(),
-		Message: &waE2E.Message{ProtocolMessage: &waE2E.ProtocolMessage{
-			Type: waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(), Key: &waCommon.MessageKey{ID: strPtr("M0")},
-			EditedMessage: &waE2E.Message{Conversation: strPtr("corrected")},
-		}},
-	}
-	c.handleMessage(t.Context(), sink, dev, media, editMsg)
-	if !sink.Has("edited 15551234567@s.whatsapp.net M0") {
-		t.Errorf("events = %q, want the edit reported", sink.Lines())
-	}
-}
+// TestHandleMessage_RevokeAndEdit, the forged-sender cases from Vuln 1
+// and the other handleRevoke/handleEdit authorization tests live in
+// live_revoke_edit_test.go, split out to stay under this file's own
+// length limit.
 
 func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	t.Parallel()

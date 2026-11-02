@@ -184,6 +184,10 @@ func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID st
 	// arrived message's, so they get the same caps.
 	m = domain.SanitizeIncoming(m)
 
+	if !in.authorizedEdit(ctx, conv.ID, m) {
+		return
+	}
+
 	updated, found, err := in.store.EditMessage(ctx, conv.ID, m.RemoteID, store.MessageEdit{
 		Text: m.Text, Media: m.Media, Reactions: m.Reactions, Mentions: m.Mentions, MentionsMe: m.MentionsMe,
 		Formatting: m.Formatting,
@@ -193,6 +197,32 @@ func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID st
 	}
 
 	in.events.publish(ctx, EventMessageUpdated, updated)
+}
+
+// authorizedEdit reports whether m's sender is the one already stored
+// for the message it edits: whoever a connector reports as an edit's
+// sender is supposed to be its original sender too, since every
+// service that reaches here only lets someone edit their own message
+// (see the WhatsApp connector's own authorizedActor check, which this
+// backs up as defence in depth for a connector that forgets it). A
+// message not stored yet, or one this call cannot read back for some
+// other reason, is authorized here regardless: EditMessage's own "not
+// found" path, right after this returns, already drops it safely.
+func (in *Ingest) authorizedEdit(ctx context.Context, conversationID string, m domain.Message) bool {
+	existing, err := in.store.MessageByRemote(ctx, conversationID, m.RemoteID)
+	if err != nil {
+		return true
+	}
+
+	if existing.SenderID == m.SenderID {
+		return true
+	}
+
+	if in.logger != nil {
+		in.logger.Printf("ingest: dropped edit (reason=sender mismatch)")
+	}
+
+	return false
 }
 
 // Reacted updates a stored message's reaction chips after the service

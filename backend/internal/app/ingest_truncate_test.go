@@ -51,7 +51,7 @@ func TestEdited_TruncatesAnOversizedText(t *testing.T) {
 	f.published.take()
 
 	long := strings.Repeat("b", domain.MaxIncomingTextLength+1000)
-	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e2", Text: long})
+	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e2", SenderID: "alex", Text: long})
 
 	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
 	if err != nil || len(messages) != 1 {

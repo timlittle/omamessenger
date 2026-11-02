@@ -167,16 +167,37 @@ func reactorKey(ctx context.Context, dev device, info types.MessageInfo) string 
 	return personID(ctx, dev, info.Sender)
 }
 
-// handleRevoke reports a message deleted from the service.
+// handleRevoke reports a message deleted from the service, dropping it
+// when its sender is not the one allowed to delete it (see
+// authorizedActor): without this check, anyone in the chat could
+// delete any other message in it just by naming its id.
 func (c *Connector) handleRevoke(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	remote := chatID(ctx, dev, media, e.Info.Chat)
-	sink.Deleted(ctx, c.account.ID, []string{remote}, []string{revoke(e.Message)})
+	messageRemoteID := revoke(e.Message)
+	key, found, err := messageKeyFor(ctx, media, remote, messageRemoteID)
+	if err != nil || !authorizedActor(ctx, dev, key, found, e.Info) {
+		logDropped(reasonForgedRevoke)
+		return
+	}
+
+	sink.Deleted(ctx, c.account.ID, []string{remote}, []string{messageRemoteID})
 }
 
-// handleEdit reports a message changed after it was sent.
+// handleEdit reports a message changed after it was sent, dropping it
+// when its sender is not the one allowed to change it (see
+// authorizedActor): without this check, anyone in the chat could
+// rewrite any other message in it just by naming its id.
 func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
+	remote := chatID(ctx, dev, media, e.Info.Chat)
+	messageRemoteID := e.Message.GetProtocolMessage().GetKey().GetID()
+	key, found, err := messageKeyFor(ctx, media, remote, messageRemoteID)
+	if err != nil || !authorizedActor(ctx, dev, key, found, e.Info) {
+		logDropped(reasonForgedEdit)
+		return
+	}
+
 	m := c.improvedSenderName(edit(ctx, dev, e.Info, e.Message))
-	sink.Edited(ctx, c.account.ID, chatID(ctx, dev, media, e.Info.Chat), m)
+	sink.Edited(ctx, c.account.ID, remote, m)
 }
 
 // handleChatPresence reports someone typing or stopping, naming them

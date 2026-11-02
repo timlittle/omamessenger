@@ -498,7 +498,7 @@ func TestFetchMedia_EditingKindNeverReusesTheOldKindsCachedFile(t *testing.T) {
 	}
 
 	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{
-		RemoteID: "e1", Text: "look", Media: &domain.Media{Kind: domain.MediaPhoto},
+		RemoteID: "e1", SenderID: "alex", Text: "look", Media: &domain.Media{Kind: domain.MediaPhoto},
 	})
 
 	if _, _, _, err := f.commands.FetchMedia(ctx, localID, false); err == nil {

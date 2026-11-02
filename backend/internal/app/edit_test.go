@@ -244,3 +244,29 @@ func TestEditMessage_OwnEchoDoesNotDuplicate(t *testing.T) {
 		t.Errorf("messages after the echo = %+v, want exactly one, unchanged by the echo", page)
 	}
 }
+
+// TestIngestEdited_DropsAnEditFromADifferentSender is defence in
+// depth for Vuln 1 (see the WhatsApp connector's own authorizedActor):
+// a connector that forgets to check who an edit's sender is must still
+// never have it applied here, since the stored sender is available to
+// compare against.
+func TestIngestEdited_DropsAnEditFromADifferentSender(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Alex", domain.KindDirect)
+	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("e1", "first"))
+	f.published.take()
+
+	f.ingest.Edited(ctx, "wa", chat.RemoteID, domain.Message{RemoteID: "e1", SenderID: "mallory", Text: "forged"})
+
+	if got := f.published.take(); len(got) != 0 {
+		t.Errorf("events = %v, want none for a forged edit", got)
+	}
+
+	messages, _, err := f.store.Messages(ctx, chat.ID, "", 10)
+	if err != nil || len(messages) != 1 || messages[0].Text != "first" || messages[0].Edited {
+		t.Fatalf("messages = %+v, %v; want the original text unchanged", messages, err)
+	}
+}

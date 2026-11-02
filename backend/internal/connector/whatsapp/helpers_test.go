@@ -669,6 +669,18 @@ func newInMemoryMediaStore(ctx context.Context) (*mediaStore, error) {
 	return openMediaStoreDSN(ctx, "file::memory:")
 }
 
+// seedMessageKey saves key for messageRemoteID in conversationRemoteID,
+// the way handleContent would have when the message first arrived, so
+// a test can drive a later edit or revoke of it through
+// authorizedActor's check.
+func seedMessageKey(t *testing.T, media *mediaStore, conversationRemoteID, messageRemoteID string, key messageKey) {
+	t.Helper()
+
+	if err := media.putMessageKey(t.Context(), conversationRemoteID, messageRemoteID, key); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // strPtr takes the address of a string literal, since the generated
 // protobuf structs this package normalizes hold every optional field as
 // a pointer.

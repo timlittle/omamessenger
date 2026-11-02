@@ -28,6 +28,16 @@ import (
 // WhatsApp's own protocol or system notices (see isContentless).
 const reasonContentless = "contentless"
 
+// reasonForgedEdit is logDropped's reason for an edit whose sender is
+// not the message's original sender, nor this account editing its own
+// message from another linked device (see authorizedActor).
+const reasonForgedEdit = "forged edit"
+
+// reasonForgedRevoke is logDropped's reason for a revoke whose sender
+// is not the message's original sender, nor this account deleting its
+// own message from another linked device (see authorizedActor).
+const reasonForgedRevoke = "forged revoke"
+
 // logDropped reports a message this connector deliberately did not
 // store, and why, so a report of "messages missing" can be checked
 // against what was dropped on purpose.
