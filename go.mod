@@ -13,11 +13,13 @@ toolchain go1.27.3
 
 require (
 	github.com/client9/gospell v0.9.2
+	github.com/elastic/go-seccomp-bpf v1.6.0
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gotd/td v0.162.0
 	github.com/sourcegraph/jsonrpc2 v0.2.3
 	go.mau.fi/libsignal v0.2.2
 	go.mau.fi/whatsmeow v0.0.0-20261007111105-c386243a72ba
+	golang.org/x/net v0.61.0
 	golang.org/x/tools v0.52.0
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.60.1
@@ -67,7 +69,6 @@ require (
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
 	golang.org/x/mod v0.42.0 // indirect
-	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
