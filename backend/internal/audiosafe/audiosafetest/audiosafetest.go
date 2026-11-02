@@ -15,11 +15,14 @@ const opusGranuleRate = 48000
 
 // ValidOpusFixture returns the bytes of the simplest file
 // audiosafe.Validate reports playable: a one-second, single-bitstream
-// Ogg stream carrying Opus.
+// Ogg stream carrying Opus, with the "OpusTags" comment header every
+// real Opus stream carries right after "OpusHead" (empty, so no cover
+// picture).
 func ValidOpusFixture() []byte {
 	var out bytes.Buffer
 	out.Write(oggPage(0x02, 0, 1, 0, []byte("OpusHead further opus header bytes")))
-	out.Write(oggPage(0x04, opusGranuleRate, 1, 1, []byte("opus audio data frame")))
+	out.Write(oggPage(0x00, 0, 1, 1, append([]byte("OpusTags"), 0, 0, 0, 0, 0, 0, 0, 0)))
+	out.Write(oggPage(0x04, opusGranuleRate, 1, 2, []byte("opus audio data frame")))
 
 	return out.Bytes()
 }

@@ -97,21 +97,29 @@ func onePlayableMP4() []byte {
 	return moov
 }
 
-// onePlayableOggOpus returns a minimal, well-formed single-page
-// Ogg/Opus file, for a test that needs bytes audiosafe actually
-// accepts rather than an arbitrary placeholder: one page, marked
-// both the first and last of its logical bitstream, whose payload
-// opens with the "OpusHead" packet magic and whose granule position
-// implies a five-second stream.
+// onePlayableOggOpus returns a minimal, well-formed two-page Ogg/Opus
+// file, for a test that needs bytes audiosafe actually accepts rather
+// than an arbitrary placeholder: a first page carrying the "OpusHead"
+// identification packet, then the "OpusTags" comment header every real
+// Opus stream must carry (empty here, so no cover picture), marked the
+// last page with a granule position implying a five-second stream.
 func onePlayableOggOpus() []byte {
-	payload := []byte("OpusHead further opus header bytes here")
+	return append(
+		oggPage(0x02, 0, 0, []byte("OpusHead further opus header bytes here")),
+		oggPage(0x04, 48_000*5, 1, append([]byte("OpusTags"), 0, 0, 0, 0, 0, 0, 0, 0))...,
+	)
+}
 
+// oggPage builds one single-segment Ogg page of the test stream with
+// the given header-type flags, granule position and page sequence.
+func oggPage(flags byte, granule uint64, sequence uint32, payload []byte) []byte {
 	hdr := make([]byte, 27)
 	copy(hdr[0:4], "OggS")
-	hdr[5] = 0x06 // BOS | EOS: the one page is the whole stream
-	binary.LittleEndian.PutUint64(hdr[6:14], 48_000*5)
+	hdr[5] = flags
+	binary.LittleEndian.PutUint64(hdr[6:14], granule)
 	binary.LittleEndian.PutUint32(hdr[14:18], 1) // serial
-	hdr[26] = 1                                  // one segment table entry
+	binary.LittleEndian.PutUint32(hdr[18:22], sequence)
+	hdr[26] = 1 // one segment table entry
 
 	hdr = append(hdr, byte(len(payload)))
 	return append(hdr, payload...)
