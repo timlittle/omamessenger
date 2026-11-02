@@ -25,16 +25,20 @@ linters:
       forbid:
         - pattern: '^exec\.Command$'
           msg: >-
-            only backend/internal/clipboard/clipboard.go may launch a subprocess, and only with a literal
-            program name: an argument another person or service controls reaching argv is readable by any
-            other local user through /proc, the same class of finding that moved desktop notifications to
-            D-Bus (see backend/internal/notify).
+            only backend/internal/clipboard/clipboard.go and backend/internal/sandbox/sandbox.go may launch
+            a subprocess, and only with a literal program name: an argument another person or service
+            controls reaching argv is readable by any other local user through /proc, the same class of
+            finding that moved desktop notifications to D-Bus (see backend/internal/notify). sandbox's own
+            argv is built entirely from this package's own fixed flags, its resolved tool paths and the
+            sandbox-internal paths in limits.go - never a sender-controlled string - see docs/decisions.md.
         - pattern: '^exec\.CommandContext$'
           msg: >-
-            only backend/internal/clipboard/clipboard.go may launch a subprocess, and only with a literal
-            program name: an argument another person or service controls reaching argv is readable by any
-            other local user through /proc, the same class of finding that moved desktop notifications to
-            D-Bus (see backend/internal/notify).
+            only backend/internal/clipboard/clipboard.go and backend/internal/sandbox/sandbox.go may launch
+            a subprocess, and only with a literal program name: an argument another person or service
+            controls reaching argv is readable by any other local user through /proc, the same class of
+            finding that moved desktop notifications to D-Bus (see backend/internal/notify). sandbox's own
+            argv is built entirely from this package's own fixed flags, its resolved tool paths and the
+            sandbox-internal paths in limits.go - never a sender-controlled string - see docs/decisions.md.
         - pattern: '^image\.Decode$'
           msg: >-
             decoding an image without a preceding dimension check lets a crafted header's declared size
@@ -206,6 +210,19 @@ linters:
           list-mode: strict
           files: ["**/backend/internal/clipboard/*.go", "!$test"]
           allow: [$gostd]
+        sandbox:
+          list-mode: strict
+          files: ["**/backend/internal/sandbox/*.go", "!$test"]
+          allow:
+            - $gostd
+            - github.com/elastic/go-seccomp-bpf
+            - golang.org/x/net/bpf
+        transcode:
+          list-mode: strict
+          files: ["**/backend/internal/transcode/*.go", "!$test"]
+          allow:
+            - $gostd
+            - github.com/timlittle/omamessenger/backend/internal/sandbox$
     revive:
       rules:
         - name: function-length
@@ -275,6 +292,14 @@ linters:
       - path: backend/internal/app/attachment\.go
         linters: [forbidigo]
         text: "image\\.Decode|image\\.DecodeConfig"
+      # sandbox.go is the one place, besides clipboard.go, allowed to
+      # launch a subprocess: NewRunner passes exec.Command itself as
+      # Runner's default command value, never calling it with anything
+      # but this package's own fixed argv (see argv.go and
+      # docs/decisions.md).
+      - path: backend/internal/sandbox/sandbox\.go
+        linters: [forbidigo]
+        text: "exec\\.Command"
 
 formatters:
   enable: [gofumpt]
