@@ -1,8 +1,9 @@
 package transcode_test
 
-// sound_test.go checks Sound's own fixed ffmpeg argument list and its
-// own output wiring, captured and written through fakeRunner (see
-// helpers_test.go).
+// sound_test.go checks Sound's own fixed ffmpeg argument list and
+// its own output wiring, captured and written through fakeRunner
+// (see helpers_test.go). Sound's own rebuild step is tested once,
+// directly, in wav_test.go.
 
 import (
 	"slices"
@@ -16,7 +17,7 @@ import (
 func TestSound_Args(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.wav"}
+	fake := &fakeRunner{writeOutputName: "out.wav", writeOutputData: validWAVBytes(2, 48000, 10)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	if _, err := tr.Sound(t.Context(), "/in.ogg", t.TempDir()); err != nil {
@@ -31,7 +32,9 @@ func TestSound_Args(t *testing.T) {
 		"-i", sandbox.InputPath,
 		"-map", "0:a:0", "-vn",
 		"-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn",
-		"-c:a", "pcm_s16le", "-ac", "2", "-ar", "48000",
+		"-af", "aformat=sample_fmts=s16:channel_layouts=mono|stereo",
+		"-ar", "48000",
+		"-c:a", "pcm_s16le", "-bitexact",
 		"-t", "30",
 		"-f", "wav",
 		sandbox.OutputDirPath + "/out.wav",
@@ -87,7 +90,7 @@ func TestSound_RealEncode_CapsDurationAt30Seconds(t *testing.T) {
 func TestSound_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.wav", writeOutputData: []byte("wav bytes")}
+	fake := &fakeRunner{writeOutputName: "out.wav", writeOutputData: validWAVBytes(1, 48000, 100)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	path, err := tr.Sound(t.Context(), "/in.ogg", t.TempDir())

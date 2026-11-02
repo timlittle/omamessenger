@@ -17,7 +17,7 @@ import (
 func TestVideo_Args(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{writeOutputName: "out.mp4"}
+	fake := &fakeRunner{writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, true)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	if _, err := tr.Video(t.Context(), "/in.mp4", t.TempDir()); err != nil {
@@ -35,7 +35,7 @@ func TestVideo_Args(t *testing.T) {
 		"-vf", "scale='min(1280,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
 		"-pix_fmt", "yuv420p",
 		"-fpsmax", "30",
-		"-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "23",
+		"-c:v", "libx264", "-profile:v", "main", "-level:v", "4.0", "-preset", "veryfast", "-crf", "23", "-bf", "0",
 		"-maxrate", "2500k", "-bufsize", "5000k",
 		"-c:a", "aac", "-ac", "2", "-b:a", "96k",
 		"-t", "600",
@@ -65,12 +65,7 @@ func TestVideo_RealEncode_PortraitWithAudio(t *testing.T) {
 		t.Fatalf("Video() error = %v", err)
 	}
 
-	if codec := probeEntry(t, out, "v", "codec_name"); codec != "h264" {
-		t.Errorf("video codec = %q, want h264", codec)
-	}
-	if codec := probeEntry(t, out, "a", "codec_name"); codec != "aac" {
-		t.Errorf("audio codec = %q, want aac", codec)
-	}
+	assertCleanContainer(t, out, true)
 	assertWithinBox(t, out, 1280)
 }
 
@@ -100,6 +95,7 @@ func TestVideo_RealEncode_Rotated(t *testing.T) {
 	if rotation := probeEntry(t, out, "v", "side_data_list"); rotation != "" {
 		t.Errorf("output still carries side data %q, want none: autorotate should have baked the rotation into the pixels", rotation)
 	}
+	assertCleanContainer(t, out, false)
 }
 
 func TestVideo_RealEncode_LargeLandscape(t *testing.T) {
@@ -117,6 +113,7 @@ func TestVideo_RealEncode_LargeLandscape(t *testing.T) {
 	}
 
 	assertWithinBox(t, out, 1280)
+	assertCleanContainer(t, out, false)
 }
 
 func TestVideo_RealEncode_HEVCSource(t *testing.T) {
@@ -126,7 +123,7 @@ func TestVideo_RealEncode_HEVCSource(t *testing.T) {
 	dir := integrationDir(t)
 
 	// generateFixture itself skips this test if libx265 is not built
-	// into this machine's ffmpeg.
+	// into the host's ffmpeg.
 	in := generateFixture(t, dir, "hevc.mp4",
 		"-f", "lavfi", "-i", "testsrc2=size=640x480:duration=1:rate=30", "-c:v", "libx265")
 
@@ -135,9 +132,7 @@ func TestVideo_RealEncode_HEVCSource(t *testing.T) {
 		t.Fatalf("Video() error = %v", err)
 	}
 
-	if codec := probeEntry(t, out, "v", "codec_name"); codec != "h264" {
-		t.Errorf("video codec = %q, want h264 regardless of the HEVC source", codec)
-	}
+	assertCleanContainer(t, out, false)
 }
 
 // assertWithinBox fails t unless path's own video stream fits within

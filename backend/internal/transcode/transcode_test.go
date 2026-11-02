@@ -132,7 +132,7 @@ func TestVideo_OutputIsASymlink(t *testing.T) {
 func TestVideo_Succeeds(t *testing.T) {
 	t.Parallel()
 
-	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: []byte("video bytes")}
+	fake := &fakeRunner{result: sandbox.Result{ExitCode: 0}, writeOutputName: "out.mp4", writeOutputData: validMP4Bytes(t, true)}
 	tr := transcode.NewTranscoder(fake, "/usr/bin/ffmpeg")
 
 	path, err := tr.Video(t.Context(), "/in.mp4", t.TempDir())

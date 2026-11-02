@@ -93,3 +93,10 @@ func fitWithinFilter(max int) string {
 func outputPath(name string) string {
 	return sandbox.OutputDirPath + "/" + name
 }
+
+// pcmFormatFilter is the -af filter Audio and Sound both give
+// ffmpeg: keep a mono source mono, and downmix anything with more
+// channels than stereo down to stereo, so the WAV header this
+// package later validates only ever has to accept exactly one or
+// two channels.
+const pcmFormatFilter = "aformat=sample_fmts=s16:channel_layouts=mono|stereo"

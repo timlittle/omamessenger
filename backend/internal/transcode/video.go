@@ -6,6 +6,7 @@ package transcode
 
 import (
 	"context"
+	"path/filepath"
 	"strconv"
 	"time"
 )
@@ -16,10 +17,10 @@ import (
 const videoOutputName = "out.mp4"
 
 // videoTimeout bounds a Video job's wall clock: generous next to the
-// cost measured re-encoding a 60-second 1080p clip to 720p on this
-// machine (around 5 seconds inside the sandbox at two threads),
-// scaled up for videoDurationSeconds's own ten-minute cap, while still
-// bounding a file that makes ffmpeg hang rather than simply run slowly
+// cost measured re-encoding a 60-second 1080p clip to 720p (around 5
+// seconds inside the sandbox at two threads), scaled up for
+// videoDurationSeconds's own ten-minute cap, while still bounding a
+// file that makes ffmpeg hang rather than simply run slowly
 // (see docs/decisions.md).
 const videoTimeout = 5 * time.Minute
 
@@ -50,7 +51,34 @@ func (t *Transcoder) Video(ctx context.Context, in, outDir string) (string, erro
 		outputName: videoOutputName,
 		timeout:    videoTimeout,
 		maxOutput:  videoMaxOutputBytes,
+		rebuild:    videoRebuild,
 	})
+}
+
+// videoRemuxCaps bounds what videoRebuild's own call to remuxMP4
+// will accept: sample counts sized for Video's own duration cap at
+// 30 frames per second of video and, generously, 50 AAC-LC frames
+// per second of audio, each with a little slack (see remux.go).
+func videoRemuxCaps() remuxCaps {
+	return remuxCaps{
+		allowAudio:        true,
+		maxVideoSamples:   videoDurationSeconds*30 + remuxSampleCountSlack,
+		maxAudioSamples:   videoDurationSeconds*maxAACFramesPerSecond + remuxSampleCountSlack,
+		maxVideoSampleLen: maxRemuxVideoSampleBytes,
+		maxAudioSampleLen: maxRemuxAudioSampleBytes,
+	}
+}
+
+// videoRebuild validates the MP4 ffmpeg wrote for Video and
+// rewrites it as sandboxedOutput's own replacement in jobDir (see
+// remuxMP4): a hijacked ffmpeg can then only ever reach Qt's own
+// H.264 and AAC decoders, through a container this package wrote.
+func videoRebuild(sandboxedOutput, jobDir string) (string, error) {
+	outPath := filepath.Join(jobDir, "remux.mp4")
+	if err := remuxMP4(sandboxedOutput, outPath, videoRemuxCaps()); err != nil {
+		return "", err
+	}
+	return outPath, nil
 }
 
 // videoArgs is the Video profile's own fixed ffmpeg argument list.
@@ -62,7 +90,7 @@ func videoArgs() []string {
 		"-vf", fitWithinFilter(1280)+",scale=trunc(iw/2)*2:trunc(ih/2)*2",
 		"-pix_fmt", "yuv420p",
 		"-fpsmax", "30",
-		"-c:v", "libx264", "-profile:v", "main", "-preset", "veryfast", "-crf", "23",
+		"-c:v", "libx264", "-profile:v", "main", "-level:v", "4.0", "-preset", "veryfast", "-crf", "23", "-bf", "0",
 	)
 	args = append(args, videoRateControlArgs()...)
 	args = append(args,

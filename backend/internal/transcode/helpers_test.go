@@ -11,7 +11,10 @@ package transcode_test
 // for proving two jobs on the same Transcoder never run at once.
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +22,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Eyevinn/mp4ff/aac"
+	"github.com/Eyevinn/mp4ff/mp4"
 	"github.com/timlittle/omamessenger/backend/internal/sandbox"
 	"github.com/timlittle/omamessenger/backend/internal/transcode"
 )
@@ -125,7 +130,7 @@ func (b *blockingRunner) Run(ctx context.Context, _ sandbox.Spec) (sandbox.Resul
 
 // requireRealTranscoder returns a Transcoder backed by a real
 // sandbox.Runner and the host's own ffmpeg, skipping the test unless
-// this machine can actually run a job end to end right now.
+// the host can actually run a job end to end right now.
 func requireRealTranscoder(t *testing.T) *transcode.Transcoder {
 	t.Helper()
 
@@ -136,7 +141,7 @@ func requireRealTranscoder(t *testing.T) *transcode.Transcoder {
 
 	r := sandbox.NewRunner(t.TempDir())
 	if err := r.Available(t.Context(), ffmpegPath); err != nil {
-		t.Skipf("sandbox unavailable on this machine: %v", err)
+		t.Skipf("sandbox unavailable on this host: %v", err)
 	}
 
 	return transcode.NewTranscoder(r, ffmpegPath)
@@ -162,7 +167,7 @@ func integrationDir(t *testing.T) string {
 // sandboxed one, which only ever runs through Transcoder - to build a
 // small synthetic input file at filepath.Join(dir, name) from args,
 // skipping the test if ffmpeg cannot produce it: an optional encoder,
-// such as libx265, may not be built into this machine's ffmpeg.
+// such as libx265, may not be built into the host's ffmpeg.
 func generateFixture(t *testing.T, dir, name string, args ...string) string {
 	t.Helper()
 
@@ -179,11 +184,11 @@ func generateFixture(t *testing.T, dir, name string, args ...string) string {
 
 // generateRotatedFixture builds a 1280x720 landscape clip, then
 // remuxes it with a 90-degree display-matrix rotation injected
-// through ffmpeg's own -display_rotation option. Confirmed on this
-// machine that this option is read-side only - passing it directly to
-// an encode's output is rejected - so the rotation has to be injected
-// on a second, stream-copy pass over an already-encoded plain clip
-// (see docs/decisions.md).
+// through ffmpeg's own -display_rotation option. Confirmed that this
+// option is read-side only - passing it directly to an encode's
+// output is rejected - so the rotation has to be injected on a
+// second, stream-copy pass over an already-encoded plain clip (see
+// docs/decisions.md).
 func generateRotatedFixture(t *testing.T, dir string) string {
 	t.Helper()
 
@@ -198,6 +203,271 @@ func generateRotatedFixture(t *testing.T, dir string) string {
 	}
 
 	return rotated
+}
+
+// validWAVBytes builds one minimal, valid canonical-layout PCM WAV
+// file's own bytes - RIFF/WAVE, a 16-byte fmt chunk, then one data
+// chunk of frames all-zero frames - at channels and sampleRate, for
+// a fakeRunner to write as a profile's own sandboxed output in a
+// test that needs Audio's or Sound's own rebuild step to actually
+// accept what it finds there.
+func validWAVBytes(channels, sampleRate, frames int) []byte {
+	data := make([]byte, frames*channels*2)
+
+	fmtBody := make([]byte, 16)
+	binary.LittleEndian.PutUint16(fmtBody[0:2], 1) // PCM
+	binary.LittleEndian.PutUint16(fmtBody[2:4], uint16(channels))
+	binary.LittleEndian.PutUint32(fmtBody[4:8], uint32(sampleRate))
+	binary.LittleEndian.PutUint32(fmtBody[8:12], uint32(sampleRate*channels*2))
+	binary.LittleEndian.PutUint16(fmtBody[12:14], uint16(channels*2))
+	binary.LittleEndian.PutUint16(fmtBody[14:16], 16)
+
+	var buf bytes.Buffer
+	buf.WriteString("RIFF")
+	writeUint32LE(&buf, uint32(4+8+len(fmtBody)+8+len(data)))
+	buf.WriteString("WAVE")
+	buf.WriteString("fmt ")
+	writeUint32LE(&buf, uint32(len(fmtBody)))
+	buf.Write(fmtBody)
+	buf.WriteString("data")
+	writeUint32LE(&buf, uint32(len(data)))
+	buf.Write(data)
+	return buf.Bytes()
+}
+
+// writeUint32LE appends v to buf as 4 little-endian bytes.
+func writeUint32LE(buf *bytes.Buffer, v uint32) {
+	var b [4]byte
+	binary.LittleEndian.PutUint32(b[:], v)
+	buf.Write(b[:])
+}
+
+// validMP4SPSHex/validMP4PPSHex are one real AVC Main profile,
+// level 3.1, 320x240 SPS/PPS pair, generated once with the host's
+// own ffmpeg (never through this package) and hardcoded here so
+// validMP4Bytes needs no ffmpeg at all.
+const (
+	validMP4SPSHex = "674d401feca0a0fd8088000003000800000300a078c18cb0"
+	validMP4PPSHex = "68ebe3cb20"
+)
+
+// nalSample builds one length-prefixed sample from the given NAL
+// unit types: remuxMP4 never decodes slice data, only reads a NAL's
+// own type byte, so a few arbitrary payload bytes are enough.
+func nalSample(types ...int) []byte {
+	var out []byte
+	for _, nt := range types {
+		nalu := []byte{byte(nt), 0xaa, 0xbb, 0xcc}
+		var length [4]byte
+		binary.BigEndian.PutUint32(length[:], uint32(len(nalu)))
+		out = append(out, length[:]...)
+		out = append(out, nalu...)
+	}
+	return out
+}
+
+// validMP4Bytes builds a minimal MP4 with mp4ff directly - never
+// through this package's own production code - that Video's and
+// Animation's own rebuild step will accept: one avc1 video track
+// (AVC Main profile, 320x240, an IDR sample followed by two non-IDR
+// ones) and, when withAudio, one mp4a AAC-LC audio track too. It is
+// for a fakeRunner to write as a profile's own sandboxed output in a
+// test that needs the rebuild step to actually succeed.
+func validMP4Bytes(t *testing.T, withAudio bool) []byte {
+	t.Helper()
+
+	videoSamples := [][]byte{nalSample(5), nalSample(1), nalSample(1)}
+	video := mp4.CreateEmptyTrak(1, 10000, "video", "und")
+	sps, err := hex.DecodeString(validMP4SPSHex)
+	if err != nil {
+		t.Fatalf("decoding fixture SPS: %v", err)
+	}
+	pps, err := hex.DecodeString(validMP4PPSHex)
+	if err != nil {
+		t.Fatalf("decoding fixture PPS: %v", err)
+	}
+	if err := video.SetAVCDescriptor("avc1", [][]byte{sps}, [][]byte{pps}, true); err != nil {
+		t.Fatalf("SetAVCDescriptor: %v", err)
+	}
+	fillValidSampleTables(t, video, videoSamples)
+
+	traks := []*mp4.TrakBox{video}
+	allSamples := [][][]byte{videoSamples}
+	if withAudio {
+		audioSamples := [][]byte{{0xaa, 0xbb}, {0xaa, 0xbb}, {0xaa, 0xbb}}
+		audio := mp4.CreateEmptyTrak(2, 48000, "audio", "und")
+		if err := audio.SetAACDescriptorWithChannelConfig(aac.AAClc, 2, 48000); err != nil {
+			t.Fatalf("SetAACDescriptorWithChannelConfig: %v", err)
+		}
+		fillValidSampleTables(t, audio, audioSamples)
+		traks = append(traks, audio)
+		allSamples = append(allSamples, audioSamples)
+	}
+
+	return encodeTestMP4(t, traks, allSamples)
+}
+
+// fillValidSampleTables builds trak's own stts/stsc/stsz/stco
+// directly from samples, 1000 ticks each, with a placeholder chunk
+// offset that encodeTestMP4 fills in once it knows the file's own
+// layout.
+func fillValidSampleTables(t *testing.T, trak *mp4.TrakBox, samples [][]byte) {
+	t.Helper()
+	stbl := trak.Mdia.Minf.Stbl
+	stts := &mp4.SttsBox{}
+	sizes := make([]uint32, len(samples))
+	for i, s := range samples {
+		stts.SampleCount = append(stts.SampleCount, 1)
+		stts.SampleTimeDelta = append(stts.SampleTimeDelta, 1000)
+		sizes[i] = uint32(len(s))
+	}
+	stbl.Stts = stts
+	stbl.Stsc = &mp4.StscBox{}
+	if err := stbl.Stsc.AddEntry(1, uint32(len(samples)), 1); err != nil {
+		t.Fatalf("stsc.AddEntry: %v", err)
+	}
+	stbl.Stsz = &mp4.StszBox{SampleNumber: uint32(len(samples)), SampleSize: sizes}
+	stbl.Stco = &mp4.StcoBox{ChunkOffset: []uint32{0}}
+	stbl.Children = []mp4.Box{stbl.Stsd, stbl.Stts, stbl.Stsc, stbl.Stsz, stbl.Stco}
+}
+
+// encodeTestMP4 assembles ftyp+moov+mdat from traks and their own
+// samples, one chunk per track in the same order as traks, and
+// returns the whole file's own bytes.
+func encodeTestMP4(t *testing.T, traks []*mp4.TrakBox, allSamples [][][]byte) []byte {
+	t.Helper()
+	moov := mp4.NewMoovBox()
+	moov.AddChild(mp4.CreateMvhd())
+	for _, trak := range traks {
+		moov.AddChild(trak)
+	}
+	moov.Mvhd.Timescale = 10000
+	moov.Mvhd.NextTrackID = uint32(len(moov.Traks) + 1)
+
+	ftyp := mp4.NewFtyp(mp4.BrandIsom, 0, []string{mp4.BrandIso2, mp4.BrandAvc1, mp4.BrandMp41})
+	offset := int64(ftyp.Size()) + int64(moov.Size()) + 8
+	var payload int64
+	for i, trak := range traks {
+		trak.Mdia.Minf.Stbl.Stco.ChunkOffset[0] = uint32(offset)
+		for _, s := range allSamples[i] {
+			offset += int64(len(s))
+			payload += int64(len(s))
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := ftyp.Encode(&buf); err != nil {
+		t.Fatalf("encoding ftyp: %v", err)
+	}
+	if err := moov.Encode(&buf); err != nil {
+		t.Fatalf("encoding moov: %v", err)
+	}
+	if err := mp4.EncodeHeaderWithSize("mdat", uint64(payload)+8, false, &buf); err != nil {
+		t.Fatalf("encoding mdat header: %v", err)
+	}
+	for _, samples := range allSamples {
+		for _, s := range samples {
+			buf.Write(s)
+		}
+	}
+	return buf.Bytes()
+}
+
+// assertCleanContainer fails t unless path has exactly one h264
+// Main-profile video stream, exactly one aac audio stream when
+// wantAudio (none otherwise), no other stream of any kind, and no
+// format-level metadata tag at all - confirming a rebuilt file is
+// exactly the minimal container remuxMP4 is meant to write, not
+// merely that ffprobe can read something out of it.
+func assertCleanContainer(t *testing.T, path string, wantAudio bool) {
+	t.Helper()
+
+	if codec := probeEntry(t, path, "v", "codec_name"); codec != "h264" {
+		t.Errorf("video codec = %q, want h264", codec)
+	}
+	if profile := probeEntry(t, path, "v", "profile"); profile != "Main" {
+		t.Errorf("video profile = %q, want Main", profile)
+	}
+
+	wantStreams := 1
+	if wantAudio {
+		wantStreams++
+		if codec := probeEntry(t, path, "a", "codec_name"); codec != "aac" {
+			t.Errorf("audio codec = %q, want aac", codec)
+		}
+	} else if codec := probeEntry(t, path, "a", "codec_name"); codec != "" {
+		t.Errorf("audio codec = %q, want no audio stream at all", codec)
+	}
+
+	if got := probeStreamCount(t, path); got != wantStreams {
+		t.Errorf("stream count = %d, want %d", got, wantStreams)
+	}
+	if tags := probeFormatTags(t, path); tags != "" {
+		t.Errorf("format carries metadata %q, want none", tags)
+	}
+}
+
+// probeStreamCount runs the host's own ffprobe and returns how many
+// streams of any kind path declares.
+func probeStreamCount(t *testing.T, path string) int {
+	t.Helper()
+
+	ffprobePath, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe not found on PATH")
+	}
+	cmd := exec.CommandContext(t.Context(), ffprobePath,
+		"-v", "error", "-show_entries", "stream=index", "-of", "csv=p=0", path)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("ffprobe %s: %v", path, err)
+	}
+	lines := strings.Fields(strings.TrimSpace(string(out)))
+	return len(lines)
+}
+
+// formatBrandTags are the format_tags entries ffprobe always
+// surfaces for any MP4 at all, straight from its mandatory ftyp box
+// (major_brand, minor_version, compatible_brands): not metadata a
+// sender or an encoder wrote, and no amount of stripping could ever
+// make them disappear, so probeFormatTags excludes them.
+var formatBrandTags = []string{"TAG:major_brand=", "TAG:minor_version=", "TAG:compatible_brands="}
+
+// probeFormatTags runs the host's own ffprobe and returns whatever
+// format-level metadata tag path carries beyond its own mandatory
+// ftyp brand fields (see formatBrandTags), trimmed; empty means
+// none - a title, an encoder string, a comment or the like.
+func probeFormatTags(t *testing.T, path string) string {
+	t.Helper()
+
+	ffprobePath, err := exec.LookPath("ffprobe")
+	if err != nil {
+		t.Skip("ffprobe not found on PATH")
+	}
+	cmd := exec.CommandContext(t.Context(), ffprobePath,
+		"-v", "error", "-show_entries", "format_tags", "-of", "default=noprint_wrappers=1", path)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("ffprobe %s: %v", path, err)
+	}
+
+	var extra []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		isBrandTag := false
+		for _, brand := range formatBrandTags {
+			if strings.HasPrefix(line, brand) {
+				isBrandTag = true
+				break
+			}
+		}
+		if !isBrandTag {
+			extra = append(extra, line)
+		}
+	}
+	return strings.Join(extra, "\n")
 }
 
 // probeEntry runs the host's own ffprobe and returns the trimmed
