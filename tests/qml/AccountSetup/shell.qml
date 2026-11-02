@@ -617,7 +617,71 @@ ShellRoot {
     if (hashField.text !== "jk19") return Check.fail("the API hash field got " + JSON.stringify(hashField.text));
     if (controller.stage !== "credentials") return Check.fail("typing changed the step to " + controller.stage);
 
-    console.log("PASS AccountSetup");
-    Qt.exit(0);
+    root.beginWindowInactiveChecks();
+  }
+
+  // beginWindowInactiveChecks proves the fix for a follow-up security
+  // review: every field here used to stay alive for as long as its own
+  // step was showing, even with the window itself not the active one
+  // (another window focused, or alt-tabbed away) - the exact "merely
+  // visible" gap already closed for every other field in this UI (see
+  // docs/decisions.md). The hash field (from checkLettersTypeIntoFields
+  // above) holds real keyboard focus with "jk19" typed, and the id
+  // field holds "tpqwyn": turning the window inactive must destroy
+  // both, and turning it active again must bring both back with the
+  // same text, restoring focus to the hash field specifically, not the
+  // id field, since that is the one that actually had it.
+  function beginWindowInactiveChecks(): void {
+    if (!Check.find(view, "apiHashField").activeFocus) return Check.fail("the hash field was not the one focused before this check");
+
+    view.windowActive = false;
+    if (Check.find(view, "apiIdField") || Check.find(view, "apiHashField")) {
+      return Check.fail("a credentials field still exists with the window inactive");
+    }
+
+    view.windowActive = true;
+    // view's own onWindowActiveChanged restores focus through
+    // Qt.callLater, exactly as the production code does, so the
+    // deferred check below runs after the same callback this test is
+    // proving has already had its turn.
+    Qt.callLater(root.checkCredentialsFieldsRestoredWithText);
+  }
+
+  // checkCredentialsFieldsRestoredWithText confirms both fields came
+  // back with exactly the text they held before the window went
+  // inactive, and that the id field - which did not have focus - did
+  // not steal it from the hash field.
+  function checkCredentialsFieldsRestoredWithText(): void {
+    const idField = Check.find(view, "apiIdField");
+    const hashField = Check.find(view, "apiHashField");
+    if (!idField || !hashField) return Check.fail("the credentials fields did not come back once the window was active again");
+    if (idField.text !== "tpqwyn") return Check.fail("the id field's text did not survive: " + JSON.stringify(idField.text));
+    if (hashField.text !== "jk19") return Check.fail("the hash field's text did not survive: " + JSON.stringify(hashField.text));
+    if (!hashField.activeFocus) return Check.fail("the hash field did not get focus back once the window was active again");
+    if (idField.activeFocus) return Check.fail("the id field wrongly took focus back instead of the hash field");
+
+    root.checkWindowInactiveDoesNotStealFocusFromAnUnrelatedControl();
+  }
+
+  // checkWindowInactiveDoesNotStealFocusFromAnUnrelatedControl proves a
+  // field is only restored when it is the one that actually had focus:
+  // move focus to the dialog itself (away from both fields) first, then
+  // toggle the window, and check focus stays exactly where the user had
+  // put it rather than being pulled back into a field that never had it.
+  function checkWindowInactiveDoesNotStealFocusFromAnUnrelatedControl(): void {
+    view.forceActiveFocus();
+    if (!view.activeFocus) return Check.fail("could not move focus to the dialog itself, away from both fields");
+
+    view.windowActive = false;
+    view.windowActive = true;
+    Qt.callLater(() => {
+      if (!view.activeFocus) return Check.fail("toggling the window did not leave focus where it was");
+      if (Check.find(view, "apiIdField")?.activeFocus || Check.find(view, "apiHashField")?.activeFocus) {
+        return Check.fail("toggling the window stole focus into a credentials field that never had it");
+      }
+
+      console.log("PASS AccountSetup");
+      Qt.exit(0);
+    });
   }
 }

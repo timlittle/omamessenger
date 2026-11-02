@@ -128,6 +128,7 @@ Item {
       sectioned: root.windowController.paletteMode === "conversations"
       currentIndex: root.windowController.paletteIndex
       routeKey: root.routeKey
+      windowActive: root.windowActive
       onQueryEdited: text => root.windowController.setPaletteQuery(text)
       onAccepted: index => root.windowController.acceptPalette(index)
       onCancelled: root.windowController.closePalette()
@@ -270,6 +271,7 @@ Item {
       error: root.accountController?.lastError ?? ""
       busy: root.accountController?.busy ?? false
       routeKey: root.routeKey
+      windowActive: root.windowActive
 
       onServiceChosen: serviceId => root.accountController.chooseService(serviceId)
       onCredentialsSubmitted: (apiId, apiHash) => root.accountController.submitCredentials(apiId, apiHash)
@@ -313,6 +315,7 @@ Item {
       busy: root.accountController?.busy ?? false
       knownServices: root.service ? root.service.services : []
       routeKey: root.routeKey
+      windowActive: root.windowActive
 
       onChosen: accountId => root.accountController.chooseRename(accountId)
       onSubmitted: alias => root.accountController.submitAlias(alias)
@@ -351,6 +354,7 @@ Item {
       contacts: root.dialogController.contacts
       currentIndex: root.dialogController.currentIndex
       routeKey: root.routeKey
+      windowActive: root.windowActive
 
       onAccountChanged: id => root.dialogController.setAccount(id)
       onQueryEdited: text => root.dialogController.setQuery(text)

@@ -27,15 +27,35 @@ Item {
   // knownServices: the helper's own services, from hello, for each
   // account button's label; falls back to the built-in labels when empty.
   property var knownServices: []
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. The search field exists only while this is true (see
+  // searchFieldLoader below): a field merely visible while the window
+  // sits unfocused in the background - alt-tabbed away - is still a
+  // live sink for a foreign Wayland clipboard offer, with no size or
+  // time limit (see docs/decisions.md). Defaults true so a caller or
+  // test that never sets it keeps the field exactly as it was before
+  // this existed.
+  property bool windowActive: true
 
-  // searchField exposes the search input so a key router can intercept
-  // navigation keys before the field types them, the same way Composer
-  // exposes its own input.
-  property alias searchField: searchField
+  // searchField exposes the loaded search input, or null while the
+  // window is inactive and it does not exist: a key router or a
+  // focus-tracking caller must guard against null. A plain var, not an
+  // alias, since the Loader's own item has no declared type for a
+  // static checker to verify members against (the same reasoning
+  // VoiceNoteController's own `_engine` documents).
+  property var searchField: searchFieldLoader.item
   // routeKey intercepts a key press in the search field before the field
   // handles it; see Composer.qml for why this is a function property
   // rather than a signal carrying the KeyEvent.
   property var routeKey: null
+  // _searchHadFocus is true from the moment the real field last gained
+  // activeFocus until it loses it for a reason other than the window
+  // itself going inactive (a real blur: Escape, Tab, a click
+  // elsewhere) - see the field's own onActiveFocusChanged below.
+  // windowActive turning true again only puts focus back in the field
+  // while this is also true, rather than stealing it from whatever the
+  // user had instead moved it to before switching away.
+  property bool _searchHadFocus: false
 
   // accountChanged reports a new account chosen from the row of buttons.
   signal accountChanged(string id)
@@ -71,18 +91,19 @@ Item {
     root.accepted(root.accountId, contact.remoteId)
   }
 
-  // focusSearch moves keyboard focus into the search field.
+  // focusSearch moves keyboard focus into the search field, if it exists.
   function focusSearch(): void {
-    searchField.forceActiveFocus()
+    if (root.searchField) root.searchField.forceActiveFocus()
   }
 
   anchors.fill: parent
-  // The dialog is only ever instantiated while open (see Overlays.qml,
-  // which destroys it on close instead of just hiding it, so its search
-  // field cannot read the clipboard while hidden), so this is what
-  // focuses the field, rather than a caller reaching in from outside
-  // once it exists.
-  Component.onCompleted: root.focusSearch()
+  // Regaining the window's focus brings the field back only if it was
+  // the thing actually focused when that focus was lost; see
+  // _searchHadFocus above. Deferred with Qt.callLater, so by the time
+  // this runs, searchFieldLoader's own active binding has already
+  // recreated the item this focuses (see AccountSetup.qml's own
+  // _focusStep for the same reasoning).
+  onWindowActiveChanged: if (root.windowActive && root._searchHadFocus) Qt.callLater(root.focusSearch)
 
   ModalCard {
     id: modal
@@ -117,38 +138,62 @@ Item {
         }
       }
 
-      Ui.TextField {
-        id: searchField
-        objectName: "newChatSearchField"
+      // The search field is destroyed, not merely hidden, exactly while
+      // the window is inactive: a merely-visible, unfocused TextField
+      // still reads every foreign Wayland clipboard offer, with no size
+      // or time limit, for however long an alt-tab lasts (see
+      // windowActive above and docs/decisions.md). root.query, owned by
+      // DialogController, already survives this on its own (see
+      // Overlays.qml), so recreating the field on return loses nothing
+      // the user typed.
+      Loader {
+        id: searchFieldLoader
+
         Layout.fillWidth: true
-        placeholderText: "Search contacts"
-        text: root.query
-        maximumLength: Limits.CONTACT_QUERY
-        // Qt's own right-click "Paste" menu would read the clipboard
-        // in-process, with no size or time limit of its own; routeKey
-        // below already routes Ctrl+V and Shift+Insert through the
-        // helper's bounded clipboard.readText instead (see
-        // docs/decisions.md), so this menu is removed outright.
-        ContextMenu.menu: null
+        active: root.windowActive
+        onLoaded: root.searchField.forceActiveFocus()
 
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: event => {
-          // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-          // dedicated Paste key, …) ahead of the binding lookup below,
-          // so a rebound field.paste in keys.conf can never bring back
-          // this field's own unbounded native paste() (see
-          // docs/decisions.md).
-          if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
-            if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
-            event.accepted = true;
-            return;
+        sourceComponent: Ui.TextField {
+          objectName: "newChatSearchField"
+          placeholderText: "Search contacts"
+          text: root.query
+          maximumLength: Limits.CONTACT_QUERY
+          // Qt's own right-click "Paste" menu would read the clipboard
+          // in-process, with no size or time limit of its own; routeKey
+          // below already routes Ctrl+V and Shift+Insert through the
+          // helper's bounded clipboard.readText instead (see
+          // docs/decisions.md), so this menu is removed outright.
+          ContextMenu.menu: null
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: event => {
+            // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
+            // dedicated Paste key, …) ahead of the binding lookup below,
+            // so a rebound field.paste in keys.conf can never bring back
+            // this field's own unbounded native paste() (see
+            // docs/decisions.md).
+            if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+              if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
+              event.accepted = true;
+              return;
+            }
+            if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
           }
-          if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+
+          onTextChanged: root.queryEdited(text)
+          // Losing focus because the window itself went inactive is not
+          // a real blur: root.windowActive is already false by the time
+          // this runs, since that is what emptied searchFieldLoader.active
+          // in the first place, so _searchHadFocus is left alone for
+          // that case and only cleared for an actual Escape, Tab or
+          // outside click.
+          onActiveFocusChanged: {
+            if (activeFocus) { root._searchHadFocus = true; return; }
+            if (root.windowActive) root._searchHadFocus = false;
+          }
+
+          MiddleClickGuard {}
         }
-
-        onTextChanged: root.queryEdited(text)
-
-        MiddleClickGuard {}
       }
 
       ListView {
