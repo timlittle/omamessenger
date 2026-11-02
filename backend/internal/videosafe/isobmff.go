@@ -18,18 +18,19 @@ import (
 
 // isoBMFFPlayable reports whether c's file is a playable MP4/MOV
 // under this package's limits: no fragmented-MP4 moof/mfra box
-// anywhere at the top level, one moov box holding exactly the tracks
-// this package has validated - one video track within the dimension
-// and sample-count limits, and at most one audio track using an
-// allowed codec, no other track of any kind - and an overall duration
-// (the longest of the movie's own mvhd and every track's own mdhd)
-// within maxDuration. ctx is passed on to addTrak, so a cancelled
-// caller does not wait out an avc1 track's own in-band sample scan,
-// the one part of this walk whose cost scales with the file rather
-// than a small, fixed box budget (see avcsamples.go).
+// anywhere at the top level, no iTunes-style cover art atom (see
+// hasCoverArtAtom), one moov box holding exactly the tracks this
+// package has validated - one video track within the dimension and
+// sample-count limits, and at most one audio track using an allowed
+// codec, no other track of any kind - and an overall duration (the
+// longest of the movie's own mvhd and every track's own mdhd) within
+// maxDuration. ctx is passed on to addTrak, so a cancelled caller
+// does not wait out an avc1 track's own in-band sample scan, the one
+// part of this walk whose cost scales with the file rather than a
+// small, fixed box budget (see avcsamples.go).
 func isoBMFFPlayable(ctx context.Context, c *cursor) bool {
 	moov, ok := c.topLevelMoov()
-	if !ok {
+	if !ok || c.hasCoverArtAtom(moov) {
 		return false
 	}
 
@@ -113,6 +114,37 @@ func (c *cursor) topLevelMoov() (moov span, ok bool) {
 		off = next
 	}
 	return moov, found
+}
+
+// hasCoverArtAtom reports whether moov carries an iTunes-style cover
+// art atom at moov > udta > meta > ilst > covr - the usual place
+// MP4/MOV metadata stores an attached picture. FFmpeg's own mov
+// demuxer exposes that atom as an attached-pic image stream, which
+// Qt's FFmpeg plugin decodes with QImage::fromData once the file
+// plays, skipping imagesafe entirely (see docs/decisions.md). Any
+// step of that path missing - no udta, no meta, no ilst, no covr -
+// means no cover art this package knows to look for, so false is the
+// ordinary answer for a file that carries none, never a reason on its
+// own to refuse the file.
+func (c *cursor) hasCoverArtAtom(moov span) bool {
+	udta, found := c.firstChild(moov.off, moov.len, "udta")
+	if !found {
+		return false
+	}
+
+	meta, found := c.firstChild(udta.off, udta.len, "meta")
+	if !found || meta.len < 4 {
+		return false
+	}
+
+	// meta is a FullBox: 4 bytes of version/flags precede its own children.
+	ilst, found := c.firstChild(meta.off+4, meta.len-4, "ilst")
+	if !found {
+		return false
+	}
+
+	_, found = c.firstChild(ilst.off, ilst.len, "covr")
+	return found
 }
 
 // isoTrack is one track's own handler, codec, dimensions, declared

@@ -38,6 +38,15 @@ func TestValidate_MP4Audio(t *testing.T) {
 			// validated.
 			mp4AudioFixture(mp4AudioParams{stsdEntries: 2, timescale: 1000, durationUnit: 5000}), false,
 		},
+		"otherwise ordinary audio with an iTunes-style cover art atom": {
+			// The exact gap a differential security review found: an
+			// otherwise valid, audio-only M4A says nothing about whether
+			// moov also carries a udta/meta/ilst/covr atom, which
+			// FFmpeg's own mov demuxer reads as an attached-picture
+			// stream and Qt decodes with QImage::fromData, bypassing
+			// imagesafe entirely.
+			mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArt: true}), false,
+		},
 	}
 
 	for name, tc := range cases {
@@ -190,6 +199,7 @@ func FuzzValidateMP4Audio(f *testing.F) {
 	f.Add(mp4AudioFixture(mp4AudioParams{videoCodec: "avc1", timescale: 1000, durationUnit: 5000}))
 	f.Add(mp4AudioFixture(mp4AudioParams{audioCodec: "xxxx", timescale: 1000, durationUnit: 5000}))
 	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000})[:40])
+	f.Add(mp4AudioFixture(mp4AudioParams{timescale: 1000, durationUnit: 5000, coverArt: true}))
 	f.Add([]byte("not an audio file at all"))
 	f.Add([]byte{})
 

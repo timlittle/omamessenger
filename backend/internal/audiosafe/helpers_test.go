@@ -28,19 +28,24 @@ func writeFixture(t *testing.T, name string, data []byte) string {
 
 // oggOpusParams names everything oggOpusFixture varies between test cases.
 type oggOpusParams struct {
-	secondSerial bool   // true makes a later page claim a different bitstream serial
-	skipOpusHead bool   // true makes the first page's payload not start with "OpusHead"
-	granule      uint64 // the final page's granule position; 0 when zero-value
-	pageCount    int    // how many pages to emit; defaults to 1
+	secondSerial      bool     // true makes a later page claim a different bitstream serial
+	skipOpusHead      bool     // true makes the first page's payload not start with "OpusHead"
+	granule           uint64   // the final page's granule position; 0 when zero-value
+	pageCount         int      // how many pages to emit; defaults to 2 (the ID and comment headers, the minimum a real Opus stream always has)
+	commentComments   []string // comments the second page's comment header packet carries; none when nil
+	invalidCommentTag bool     // true makes the second page's payload something other than a parseable "OpusTags" packet
 }
 
 // oggOpusFixture returns a minimal, well-formed single-bitstream Ogg
-// file whose first page's payload opens with "OpusHead", unless
-// skipOpusHead asks for something else; its last page carries
-// granule as its granule position.
+// file whose first page's payload opens with "OpusHead" (unless
+// skipOpusHead asks for something else) and whose second page carries
+// a parseable "OpusTags" comment header packet (unless
+// invalidCommentTag asks for something else), the two packets a real
+// Opus stream always carries before any audio data; its last page
+// carries granule as its granule position.
 func oggOpusFixture(p oggOpusParams) []byte {
 	if p.pageCount == 0 {
-		p.pageCount = 1
+		p.pageCount = 2
 	}
 
 	serial := uint32(1)
@@ -59,22 +64,53 @@ func oggOpusFixture(p oggOpusParams) []byte {
 			pageSerial = serial + 1
 		}
 
-		payload := []byte("OpusHead further opus header bytes here")
-		if i == 0 && p.skipOpusHead {
-			payload = []byte("not an opus packet at all, just filler")
-		}
-		if i > 0 {
-			payload = []byte("opus audio data frame")
-		}
-
 		granule := uint64(0)
 		if i == p.pageCount-1 {
 			granule = p.granule
 		}
 
-		out = append(out, oggPage(headerType, granule, pageSerial, uint32(i), payload)...)
+		out = append(out, oggPage(headerType, granule, pageSerial, uint32(i), oggOpusPagePayload(p, i))...)
 	}
 	return out
+}
+
+// oggOpusPagePayload returns oggOpusFixture's own page i's payload:
+// the ID header for page 0, a comment header packet for page 1, and a
+// filler audio frame for every page after that.
+func oggOpusPagePayload(p oggOpusParams, i int) []byte {
+	switch {
+	case i == 0 && p.skipOpusHead:
+		return []byte("not an opus packet at all, just filler")
+	case i == 0:
+		return []byte("OpusHead further opus header bytes here")
+	case i == 1 && p.invalidCommentTag:
+		return []byte("not an opus tags packet at all, just filler")
+	case i == 1:
+		return opusTagsPacket(p.commentComments...)
+	default:
+		return []byte("opus audio data frame")
+	}
+}
+
+// opusTagsPacket builds a minimal, well-formed Opus comment header
+// packet ("OpusTags"): an empty vendor string and the given comments,
+// each already in "KEY=VALUE" form.
+func opusTagsPacket(comments ...string) []byte {
+	buf := append([]byte{}, []byte("OpusTags")...)
+	buf = append(buf, 0, 0, 0, 0) // vendor_string_length = 0: no vendor string
+
+	countBuf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(countBuf, uint32(len(comments)))
+	buf = append(buf, countBuf...)
+
+	for _, comment := range comments {
+		lenBuf := make([]byte, 4)
+		binary.LittleEndian.PutUint32(lenBuf, uint32(len(comment)))
+		buf = append(buf, lenBuf...)
+		buf = append(buf, []byte(comment)...)
+	}
+
+	return buf
 }
 
 // oggPage builds one Ogg page: a 27-byte header, a one-byte segment
@@ -103,11 +139,14 @@ type mp4AudioParams struct {
 	durationUnit uint32
 	secondAudio  bool   // adds a second audio trak, to prove multiple is rejected
 	stsdEntries  uint32 // the audio trak's own stsd entry_count; 1 when zero
+	coverArt     bool   // true adds an iTunes-style moov > udta > meta > ilst > covr atom
 }
 
 // mp4AudioFixture returns a minimal, well-formed MP4/M4A file: an
 // moov box with an mvhd and one audio trak (and, with videoCodec
-// set, one video trak too).
+// set, one video trak too). With coverArt set, the moov box also
+// carries an iTunes-style cover art atom, the shape this package must
+// refuse (see isobmff.go's own hasCoverArtAtom).
 func mp4AudioFixture(p mp4AudioParams) []byte {
 	if p.audioCodec == "" {
 		p.audioCodec = "mp4a"
@@ -129,9 +168,24 @@ func mp4AudioFixture(p mp4AudioParams) []byte {
 	if p.videoCodec != "" {
 		moovBody = append(moovBody, mp4VideoTrak(p.videoCodec, p.timescale, p.durationUnit)...)
 	}
+	if p.coverArt {
+		moovBody = append(moovBody, mp4CoverArtUdta()...)
+	}
 
 	out := append([]byte{}, mp4Box("ftyp", []byte("isom0000isomiso2mp41"))...)
 	return append(out, mp4Box("moov", moovBody)...)
+}
+
+// mp4CoverArtUdta builds a minimal iTunes-style
+// udta > meta > ilst > covr atom, carrying a handful of fake image
+// bytes as covr's own body: the exact shape FFmpeg's own mov demuxer
+// reads as an attached picture (see isobmff.go's own hasCoverArtAtom
+// and docs/decisions.md).
+func mp4CoverArtUdta() []byte {
+	covr := mp4Box("covr", []byte("fake cover art image bytes"))
+	ilst := mp4Box("ilst", covr)
+	meta := mp4Box("meta", append(make([]byte, 4), ilst...)) // 4 bytes of version/flags
+	return mp4Box("udta", meta)
 }
 
 // mp4AudioTrak builds one audio trak box: mdia > hdlr ("soun"), mdia
@@ -275,8 +329,9 @@ func mp3IndexForSampleRate(hz int) byte {
 }
 
 // id3v2Tag builds a minimal ID3v2 tag header, with bodyLen zero
-// bytes following it, that this package's own mp3StartOffset must
-// skip over before reading the first real frame.
+// bytes following it (read as padding, never a real frame), that
+// this package's own id3v2Scan must walk over before reading the
+// first real MP3 frame.
 func id3v2Tag(bodyLen int) []byte {
 	hdr := make([]byte, 10)
 	copy(hdr[0:3], "ID3")
@@ -284,6 +339,55 @@ func id3v2Tag(bodyLen int) []byte {
 	size := synchsafeEncode(bodyLen)
 	copy(hdr[6:10], size)
 	return append(hdr, make([]byte, bodyLen)...)
+}
+
+// id3v2TagWithFrames builds a complete ID3v2 tag of the given version
+// (2, 3 or 4), its own declared size computed from the frames it
+// carries, with no padding beyond their own bytes.
+func id3v2TagWithFrames(version byte, frames ...[]byte) []byte {
+	var body []byte
+	for _, f := range frames {
+		body = append(body, f...)
+	}
+
+	hdr := make([]byte, 10)
+	copy(hdr[0:3], "ID3")
+	hdr[3], hdr[4] = version, 0
+	copy(hdr[6:10], synchsafeEncode(len(body)))
+	return append(hdr, body...)
+}
+
+// id3v2Frame builds one ID3v2 frame: frameID (3 bytes for version 2,
+// 4 bytes for version 3 or 4), its own declared size (plain
+// big-endian for version 2 or 3, synchsafe for version 4) and body.
+// Version 3 and 4 frames get a 2-byte all-zero flags field; version 2
+// frames have none.
+func id3v2Frame(version byte, frameID string, body []byte) []byte {
+	idLen := 3
+	if version >= 3 {
+		idLen = 4
+	}
+	id := make([]byte, idLen)
+	copy(id, frameID)
+
+	var sizeField []byte
+	switch {
+	case version == 4:
+		sizeField = synchsafeEncode(len(body))
+	case version == 3:
+		sizeField = []byte{
+			byte(len(body) >> 24), byte(len(body) >> 16),
+			byte(len(body) >> 8), byte(len(body)),
+		}
+	default: // version 2
+		sizeField = []byte{byte(len(body) >> 16), byte(len(body) >> 8), byte(len(body))}
+	}
+
+	frame := append(append([]byte{}, id...), sizeField...)
+	if version >= 3 {
+		frame = append(frame, 0, 0) // frame flags
+	}
+	return append(frame, body...)
 }
 
 // synchsafeEncode encodes n as a 4-byte ID3v2 synchsafe size field.

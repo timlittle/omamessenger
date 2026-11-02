@@ -46,12 +46,15 @@ type mp4Params struct {
 	timescale    uint32 // defaults to 1000 when zero
 	durationUnit uint32 // duration in timescale units; callers set this explicitly, including to 0
 	sampleCount  uint32
+	coverArt     bool // true adds an iTunes-style moov > udta > meta > ilst > covr atom
 }
 
 // mp4Fixture returns a minimal, well-formed MP4 file: an moov box
 // with an mvhd and one video trak (and, with an audioCodec set, one
 // audio trak), each carrying just enough of a real file's own box
-// structure for this package's parser to read.
+// structure for this package's parser to read. With coverArt set, the
+// moov box also carries an iTunes-style cover art atom, the shape
+// this package must refuse (see isobmff.go's own hasCoverArtAtom).
 func mp4Fixture(p mp4Params) []byte {
 	if p.videoCodec == "" {
 		p.videoCodec = "avc1"
@@ -67,9 +70,24 @@ func mp4Fixture(p mp4Params) []byte {
 	if p.audioCodec != "" {
 		moovBody = append(moovBody, mp4Trak(trakParams{handler: "soun", codec: p.audioCodec, timescale: p.timescale, durationUnit: p.durationUnit, sampleCount: p.sampleCount})...)
 	}
+	if p.coverArt {
+		moovBody = append(moovBody, mp4CoverArtUdta()...)
+	}
 
 	out := append([]byte{}, mp4Box("ftyp", []byte("isom0000isomiso2mp41"))...)
 	return append(out, mp4Box("moov", moovBody)...)
+}
+
+// mp4CoverArtUdta builds a minimal iTunes-style
+// udta > meta > ilst > covr atom, carrying a handful of fake image
+// bytes as covr's own body: the exact shape FFmpeg's own mov demuxer
+// reads as an attached picture (see isobmff.go's own hasCoverArtAtom
+// and docs/decisions.md).
+func mp4CoverArtUdta() []byte {
+	covr := mp4Box("covr", []byte("fake cover art image bytes"))
+	ilst := mp4Box("ilst", covr)
+	meta := mp4Box("meta", append(make([]byte, 4), ilst...)) // 4 bytes of version/flags
+	return mp4Box("udta", meta)
 }
 
 // trakParams names everything mp4Trak varies between the tracks it builds.

@@ -108,6 +108,16 @@ func TestValidate_MP4(t *testing.T) {
 			mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000})[:40],
 			false,
 		},
+		"otherwise ordinary video with an iTunes-style cover art atom": {
+			// The exact gap a differential security review found: an
+			// otherwise perfectly valid video track says nothing about
+			// whether moov also carries a udta/meta/ilst/covr atom, which
+			// FFmpeg's own mov demuxer reads as a second, attached-picture
+			// stream and Qt decodes with QImage::fromData, bypassing
+			// imagesafe entirely.
+			mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000, coverArt: true}),
+			false,
+		},
 	}
 
 	for name, tc := range cases {
@@ -323,6 +333,7 @@ func FuzzValidateMP4(f *testing.F) {
 	f.Add(mp4Fixture(mp4Params{width: 4000, height: 4000, durationUnit: 5000}))
 	f.Add(mp4Fixture(mp4Params{videoCodec: "xxxx", width: 640, height: 480, durationUnit: 5000}))
 	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000})[:40])
+	f.Add(mp4Fixture(mp4Params{width: 1280, height: 720, durationUnit: 5000, coverArt: true}))
 	f.Add([]byte("not a video file at all"))
 	f.Add([]byte{})
 

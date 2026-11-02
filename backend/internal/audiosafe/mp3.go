@@ -9,24 +9,30 @@ package audiosafe
 // variable bitrate - is refused outright rather than guessed at (see
 // package doc and docs/decisions.md): this package never walks a
 // variable-length frame chain, which is what "simple to validate"
-// means here.
+// means here. A leading ID3v2 tag, when present, is walked frame by
+// frame rather than simply skipped by its own declared size, so a
+// picture or other embedded object it carries can never reach the
+// player unexamined (see id3v2Scan and docs/decisions.md).
 
-// id3v2HeaderLen is the fixed size of an ID3v2 tag header this
-// package skips to find the first MP3 frame: "ID3", two version
-// bytes, one flags byte, four bytes of synchsafe size.
+// id3v2HeaderLen is the fixed size of an ID3v2 tag header: "ID3", two
+// version bytes, one flags byte, four bytes of synchsafe size.
 const id3v2HeaderLen = 10
 
 // validateMP3 reports whether c's file is a simple, constant-bitrate
-// MPEG-1 Layer III stream within maxDuration: its first frame header
-// (after skipping an optional leading ID3v2 tag) declares an allowed
-// sample rate and a non-free, non-reserved bitrate, and
-// mp3FramesToConfirm consecutive frames are found each at the offset
-// the previous one's own declared length predicts. Duration is
-// estimated from the file's total size and that one bitrate, which
-// is only accurate for a constant-bitrate stream - exactly the case
-// this package accepts.
+// MPEG-1 Layer III stream within maxDuration carrying no ID3v2 frame
+// this package treats as an embedded picture or object: its first
+// frame header (after an optional leading ID3v2 tag, confirmed free
+// of one by id3v2Scan) declares an allowed sample rate and a
+// non-free, non-reserved bitrate, and mp3FramesToConfirm consecutive
+// frames are found each at the offset the previous one's own
+// declared length predicts. Duration is estimated from the file's
+// total size and that one bitrate, which is only accurate for a
+// constant-bitrate stream - exactly the case this package accepts.
 func validateMP3(c *cursor) bool {
-	off := c.mp3StartOffset()
+	off, safe := c.id3v2Scan()
+	if !safe {
+		return false
+	}
 
 	bitrateKbps, sampleRateHz, ok := c.confirmMP3Frames(off)
 	if !ok {
@@ -35,19 +41,6 @@ func validateMP3(c *cursor) bool {
 
 	durationSec := float64(c.size-off) * 8 / float64(bitrateKbps*1000)
 	return durationSec > 0 && durationSec <= maxDuration.Seconds() && sampleRateHz > 0
-}
-
-// mp3StartOffset reports where the first MP3 frame should begin:
-// right after an ID3v2 tag's own declared size when the file opens
-// with one, else 0.
-func (c *cursor) mp3StartOffset() int64 {
-	var hdr [id3v2HeaderLen]byte
-	if !c.readAt(hdr[:], 0) || string(hdr[0:3]) != "ID3" {
-		return 0
-	}
-
-	size := synchsafeSize(hdr[6:10])
-	return id3v2HeaderLen + size
 }
 
 // synchsafeSize decodes an ID3v2 synchsafe size field: four bytes,

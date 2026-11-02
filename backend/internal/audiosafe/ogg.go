@@ -12,6 +12,7 @@ package audiosafe
 import (
 	"bytes"
 	"encoding/binary"
+	"strings"
 )
 
 // oggPageHeaderLen is the fixed part of every Ogg page header, up to
@@ -69,12 +70,16 @@ func validateOgg(c *cursor) bool {
 		}
 
 		payloadOff := off + oggPageHeaderLen + int64(len(segments))
-		if !st.sawOpusHead && !st.confirmOpusHead(c, payloadOff) {
+		firstPage := !st.sawOpusHead
+		if firstPage && !st.confirmOpusHead(c, payloadOff) {
 			return false
 		}
 		st.trackGranule(hdr.granule)
 
 		off = payloadOff + sumSegments(segments)
+		if firstPage && !c.opusCommentHeaderSafe(off, hdr.serial) {
+			return false
+		}
 	}
 
 	if off != c.size {
@@ -172,4 +177,161 @@ func sumSegments(segments []byte) int64 {
 		total += int64(s)
 	}
 	return total
+}
+
+// maxOpusCommentPacketLen bounds how many bytes of an Opus stream's
+// own comment header packet ("OpusTags") this package will ever
+// reassemble across Ogg page continuations before giving up: a real
+// comment header carries only a vendor string and a handful of short
+// "KEY=VALUE" tags, nowhere near this. A hostile file that pads past
+// it, or embeds a cover image's own base64 bytes directly inside a
+// METADATA_BLOCK_PICTURE tag, is refused outright rather than scanned
+// in full (see docs/decisions.md).
+const maxOpusCommentPacketLen = 1 << 20 // 1 MiB
+
+// opusTagsMagic is the eight-byte packet magic that opens an Opus
+// stream's second packet, its comment header (RFC 7845 section 5.2).
+var opusTagsMagic = []byte("OpusTags")
+
+// opusForbiddenCommentKeys names every Vorbis comment field (RFC 7845's
+// comment header reuses the Vorbis comment format) FFmpeg's own Ogg
+// demuxer reads as an attached picture rather than plain text: the
+// standard METADATA_BLOCK_PICTURE (a base64-encoded FLAC PICTURE
+// block) and the older, non-standard but still-recognized COVERART. A
+// comment field's own name is case-insensitive (RFC 7845 section
+// 5.2), so every comparison against this list is too.
+var opusForbiddenCommentKeys = []string{"METADATA_BLOCK_PICTURE", "COVERART"}
+
+// opusCommentHeaderSafe reports whether the Opus comment header packet
+// starting at off - reassembled across as many Ogg page continuations
+// as maxOpusCommentPacketLen allows, every page required to share
+// serial, the stream's own bitstream serial - opens with opusTagsMagic
+// and carries no comment field named in opusForbiddenCommentKeys.
+// Anything that prevents fully confirming that - a packet this
+// package cannot read within its own bound, a page that fails to
+// parse at all, or one carrying a different serial - reports false,
+// refusing the whole file the same way any other check in this
+// package does: this is attacker-controlled data, never trusted when
+// it cannot be read in full.
+func (c *cursor) opusCommentHeaderSafe(off int64, serial uint32) bool {
+	packet, ok := c.readOggPacket(off, serial, maxOpusCommentPacketLen)
+	if !ok || len(packet) < len(opusTagsMagic) || !bytes.Equal(packet[:len(opusTagsMagic)], opusTagsMagic) {
+		return false
+	}
+
+	return !opusCommentsCarryPicture(packet[len(opusTagsMagic):])
+}
+
+// readOggPacket reassembles one logical Ogg packet starting at off -
+// the first byte of a page's own payload, never partway through one -
+// across as many page continuations (a page whose own last segment
+// table entry is 255, meaning the packet carries on into the next
+// page) as it takes to reach a segment under 255, which ends it.
+// Every page read along the way must share serial, this stream's own
+// bitstream serial, or ok is false: a second, distinct serial reaching
+// here would mean the very same multiplexed- or chained-stream shape
+// validateOgg's own caller already refuses. The reassembled packet is
+// capped at maxLen; a packet that would need more is refused rather
+// than read in full, the same "too large to verify" refusal this
+// package gives any other oversized or malformed structure.
+func (c *cursor) readOggPacket(off int64, serial uint32, maxLen int) (packet []byte, ok bool) {
+	for pages := 0; pages < maxOggPages; pages++ {
+		hdr, segments, headerOK := c.readOggPageHeader(off)
+		if !headerOK || hdr.serial != serial {
+			return nil, false
+		}
+
+		payloadOff := off + oggPageHeaderLen + int64(len(segments))
+		segOff := payloadOff
+		for _, seg := range segments {
+			if len(packet)+int(seg) > maxLen {
+				return nil, false
+			}
+
+			chunk := make([]byte, seg)
+			if !c.readAt(chunk, segOff) {
+				return nil, false
+			}
+			packet = append(packet, chunk...)
+			segOff += int64(seg)
+
+			if seg < 255 {
+				return packet, true
+			}
+		}
+
+		off = payloadOff + sumSegments(segments)
+	}
+
+	return nil, false
+}
+
+// opusCommentsCarryPicture reports whether body - an Opus comment
+// header packet's own bytes, right after its "OpusTags" magic - names
+// a comment field in opusForbiddenCommentKeys anywhere in its list,
+// reading only the vendor string's and each comment's own declared
+// length before skipping to the next: never a comment's actual value,
+// except the handful of bytes needed to compare its own field name.
+// true for a packet too short or inconsistent to read in full, the
+// same "cannot confirm, so refuse" answer opusCommentHeaderSafe's own
+// caller already gives a packet it could not reassemble at all.
+func opusCommentsCarryPicture(body []byte) bool {
+	vendorLen, body, ok := takeUint32LE(body)
+	if !ok || int64(vendorLen) > int64(len(body)) {
+		return true
+	}
+	body = body[vendorLen:]
+
+	count, body, ok := takeUint32LE(body)
+	if !ok {
+		return true
+	}
+
+	for i := uint32(0); i < count; i++ {
+		var entryLen uint32
+		entryLen, body, ok = takeUint32LE(body)
+		if !ok || int64(entryLen) > int64(len(body)) {
+			return true
+		}
+
+		entry := body[:entryLen]
+		body = body[entryLen:]
+		if commentKeyForbidden(entry) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// takeUint32LE reads a 4-byte little-endian integer from the front of
+// buf, reporting it and the bytes that follow; ok is false once buf is
+// too short to hold even that one field.
+func takeUint32LE(buf []byte) (value uint32, rest []byte, ok bool) {
+	if len(buf) < 4 {
+		return 0, nil, false
+	}
+	return binary.LittleEndian.Uint32(buf[:4]), buf[4:], true
+}
+
+// commentKeyForbidden reports whether entry, one "KEY=VALUE" comment
+// from an Opus comment header, names a field in
+// opusForbiddenCommentKeys: compared case-insensitively against the
+// bytes up to entry's own "=", per RFC 7845's case-insensitive field
+// names, never the value that follows it. A comment with no "=" at
+// all names no field, so it can never match.
+func commentKeyForbidden(entry []byte) bool {
+	eq := bytes.IndexByte(entry, '=')
+	if eq < 0 {
+		return false
+	}
+
+	key := entry[:eq]
+	for _, forbidden := range opusForbiddenCommentKeys {
+		if len(key) == len(forbidden) && strings.EqualFold(string(key), forbidden) {
+			return true
+		}
+	}
+
+	return false
 }

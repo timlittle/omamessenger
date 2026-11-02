@@ -15,13 +15,14 @@ import "encoding/binary"
 
 // validateISOBMFFAudio reports whether c's file is a playable
 // MP4/M4A under this package's limits: no fragmented-MP4 moof/mfra
-// box anywhere at the top level, one moov box holding exactly one
-// audio track in an allowed codec and no other track of any kind,
-// and a duration (the longest of the movie's own mvhd and the audio
-// track's own mdhd) within maxDuration.
+// box anywhere at the top level, no iTunes-style cover art atom (see
+// hasCoverArtAtom), one moov box holding exactly one audio track in
+// an allowed codec and no other track of any kind, and a duration
+// (the longest of the movie's own mvhd and the audio track's own
+// mdhd) within maxDuration.
 func validateISOBMFFAudio(c *cursor) bool {
 	moov, ok := c.topLevelMoov()
-	if !ok {
+	if !ok || c.hasCoverArtAtom(moov) {
 		return false
 	}
 
@@ -73,6 +74,37 @@ func (c *cursor) topLevelMoov() (moov span, ok bool) {
 		off = next
 	}
 	return moov, found
+}
+
+// hasCoverArtAtom reports whether moov carries an iTunes-style cover
+// art atom at moov > udta > meta > ilst > covr - the usual place
+// MP4/M4A metadata stores an attached picture. FFmpeg's own mov
+// demuxer exposes that atom as an attached-pic image stream, which
+// Qt's FFmpeg plugin decodes with QImage::fromData once the file
+// plays, skipping imagesafe entirely (see docs/decisions.md). Any
+// step of that path missing - no udta, no meta, no ilst, no covr -
+// means no cover art this package knows to look for, so false is the
+// ordinary answer for a file that carries none, never a reason on its
+// own to refuse the file.
+func (c *cursor) hasCoverArtAtom(moov span) bool {
+	udta, found := c.firstChild(moov.off, moov.len, "udta")
+	if !found {
+		return false
+	}
+
+	meta, found := c.firstChild(udta.off, udta.len, "meta")
+	if !found || meta.len < 4 {
+		return false
+	}
+
+	// meta is a FullBox: 4 bytes of version/flags precede its own children.
+	ilst, found := c.firstChild(meta.off+4, meta.len-4, "ilst")
+	if !found {
+		return false
+	}
+
+	_, found = c.firstChild(ilst.off, ilst.len, "covr")
+	return found
 }
 
 // isoAudioTrackAllowed judges one track's handler type and codec: a

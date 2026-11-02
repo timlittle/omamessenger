@@ -6,6 +6,7 @@ package audiosafe_test
 // verdict this package did not actually check for.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/audiosafe"
@@ -56,6 +57,93 @@ func TestValidate_Ogg(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Errorf("Validate() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidate_OggRefusesEmbeddedPicture covers the exact bypass a
+// differential security review found: this package confirmed the
+// "OpusHead" magic and granule position but never looked at the
+// comment header packet that follows, where FFmpeg's own Ogg demuxer
+// reads a METADATA_BLOCK_PICTURE or COVERART comment field as an
+// attached picture and hands it to QImage::fromData, skipping
+// imagesafe entirely. Every case here has an otherwise well-formed
+// comment header; only the one comment field named differs.
+func TestValidate_OggRefusesEmbeddedPicture(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"METADATA_BLOCK_PICTURE": "METADATA_BLOCK_PICTURE=" + strings.Repeat("A", 64),
+		"COVERART":               "COVERART=" + strings.Repeat("A", 64),
+		"lowercase metadata_block_picture, field names are case-insensitive": "metadata_block_picture=" + strings.Repeat("A", 64),
+		"lowercase coverart": "coverart=" + strings.Repeat("A", 64),
+	}
+
+	for name, comment := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			data := oggOpusFixture(oggOpusParams{granule: 48_000 * 60, commentComments: []string{comment}})
+			path := writeFixture(t, "cover.opus", data)
+			got, err := audiosafe.Validate(path)
+			if err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if got {
+				t.Errorf("Validate() = true for a comment header carrying %q, want false", name)
+			}
+		})
+	}
+}
+
+// TestValidate_OggAllowsOrdinaryComments covers the counterpart to
+// TestValidate_OggRefusesEmbeddedPicture: a comment header carrying
+// only ordinary, non-picture fields, including one that merely
+// contains "cover" or "picture" as a substring of its own name rather
+// than naming one of opusForbiddenCommentKeys exactly, must still
+// validate as playable.
+func TestValidate_OggAllowsOrdinaryComments(t *testing.T) {
+	t.Parallel()
+
+	data := oggOpusFixture(oggOpusParams{
+		granule:         48_000 * 60,
+		commentComments: []string{"ARTIST=Example Artist", "TITLE=Example Song", "COVERARTIST=Not The Same Field"},
+	})
+	path := writeFixture(t, "ordinary.opus", data)
+	got, err := audiosafe.Validate(path)
+	if err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if !got {
+		t.Error("Validate() = false, want true for ordinary, non-picture comments")
+	}
+}
+
+// TestValidate_OggRefusesUnparseableCommentHeader covers every way the
+// comment header itself can fail to be confirmed safe: a second page
+// that is not a parseable "OpusTags" packet at all, and one missing
+// entirely (a file that stops after its ID header, which a real Opus
+// stream never does).
+func TestValidate_OggRefusesUnparseableCommentHeader(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string][]byte{
+		"second page is not an OpusTags packet": oggOpusFixture(oggOpusParams{granule: 48_000 * 60, invalidCommentTag: true}),
+		"no comment header page at all":         oggOpusFixture(oggOpusParams{granule: 48_000 * 60, pageCount: 1}),
+	}
+
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeFixture(t, "missing.opus", data)
+			got, err := audiosafe.Validate(path)
+			if err != nil {
+				t.Fatalf("Validate() error = %v, want nil", err)
+			}
+			if got {
+				t.Errorf("Validate() = true for %q, want false", name)
 			}
 		})
 	}
@@ -148,6 +236,10 @@ func FuzzValidateOgg(f *testing.F) {
 	))
 	f.Add([]byte("OggS"))
 	f.Add([]byte{})
+	f.Add(oggOpusFixture(oggOpusParams{granule: 48_000 * 60, commentComments: []string{"METADATA_BLOCK_PICTURE=" + strings.Repeat("A", 64)}}))
+	f.Add(oggOpusFixture(oggOpusParams{granule: 48_000 * 60, commentComments: []string{"COVERART=" + strings.Repeat("A", 64)}}))
+	f.Add(oggOpusFixture(oggOpusParams{granule: 48_000 * 60, invalidCommentTag: true}))
+	f.Add(oggOpusFixture(oggOpusParams{granule: 48_000 * 60, pageCount: 1}))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		path := writeFixture(t, "fuzz.ogg", data)
