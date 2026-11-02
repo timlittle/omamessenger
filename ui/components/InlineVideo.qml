@@ -127,12 +127,26 @@ Item {
   // the static thumb Image below to bound its decode by: never
   // root.video.width/height, the sender's own claim, which a
   // differential review found need not match the thumbnail's real
-  // shape. A video's full file is never shown through a plain Image
-  // at all - only AnimatedImage, measured not to amplify a mismatch
-  // this way (see docs/decisions.md) - so this always reads the
-  // thumbnail's own verified size, never the full file's.
+  // shape. This always reads the thumbnail's own verified size, never
+  // the full file's - see _verifiedGifWidth/_verifiedGifHeight below
+  // for that one.
   readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.video, false).width
   readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.video, false).height
+  // _verifiedGifWidth and _verifiedGifHeight are a real .gif file's
+  // own real, decoder-confirmed canvas size, read the instant
+  // media.fetch confirms decodeAs is "gif" (see
+  // MediaController._applyVerifiedSize, which records it as
+  // root.video.verifiedWidth/verifiedHeight the same way it already
+  // does for a photo or sticker): never root.video.width/height, the
+  // sender's own claim for the video, which a security review found
+  // could still size the AnimatedImage below's decode on its own -
+  // the box fallback alone is not enough, since Qt's own covering
+  // scale amplifies past the box once the real file's ratio disagrees
+  // with whatever ratio a lying claim asked for (see
+  // docs/decisions.md). Both are 0 before that answer exists yet, which
+  // boundedSourceSize already treats as "use the box".
+  readonly property int _verifiedGifWidth: ImageBounds.verifiedDimensions(root.video, true).width
+  readonly property int _verifiedGifHeight: ImageBounds.verifiedDimensions(root.video, true).height
   // _aspect is height over width, square when the size is unknown.
   readonly property real _aspect: root.video.width > 0 ? root.video.height / root.video.width : 1
   // _decoding is true while this bubble should actually hold the
@@ -230,11 +244,15 @@ Item {
     playing: visible && root.visible && root.windowActive && root.playing
     cache: false
     fillMode: Image.PreserveAspectFit
-    // Fit inside this bubble's own box, computed from the video's own
-    // known width and height (see PhotoView.qml's own sourceSize for
-    // why the box alone is not enough).
-    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.video.width, root.video.height).width
-    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root.video.width, root.video.height).height
+    // Fit inside this bubble's own box, computed from the GIF's own
+    // verified canvas size (see _verifiedGifWidth/_verifiedGifHeight
+    // above), never root.video.width/height, the sender's own claim -
+    // the box alone is not a safe fallback either (see
+    // docs/decisions.md), so before the verified size is known this
+    // falls back to the box, exactly what boundedSourceSize's own
+    // zero-dimensions case already does.
+    sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedGifWidth, root._verifiedGifHeight).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedGifWidth, root._verifiedGifHeight).height
   }
 
   Rectangle {

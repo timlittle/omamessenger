@@ -57,6 +57,18 @@ Item {
   // ordinary video, which needs no QtMultimedia at all (see
   // Media.decodesAsGif).
   readonly property bool _isGifFile: Media.decodesAsGif(root.decodeAs)
+  // _verifiedGifWidth and _verifiedGifHeight are a real .gif file's
+  // own real, decoder-confirmed canvas size (see
+  // ImageBounds.verifiedDimensions and InlineVideo.qml's own copy of
+  // this same property for the full reasoning): never
+  // root.video.width/height, the sender's own claim, which a security
+  // review found could still size the AnimatedImage below's decode on
+  // its own even inside this player's own box (see
+  // docs/decisions.md). Both are 0 before media.fetch has confirmed
+  // decodeAs is "gif", which boundedSourceSize already treats as "use
+  // the box".
+  readonly property int _verifiedGifWidth: ImageBounds.verifiedDimensions(root.video, true).width
+  readonly property int _verifiedGifHeight: ImageBounds.verifiedDimensions(root.video, true).height
   // _paused is the player's own local pause state.
   property bool _paused: false
   // _engine is the loaded VideoRuntime, as a plain var: see
@@ -85,11 +97,11 @@ Item {
     cache: false
     fillMode: Image.PreserveAspectFit
     // Fit inside this player's own box (the viewer's full window
-    // stage), computed from the video's own known width and height
-    // (see PhotoView.qml's own sourceSize for why the box alone is
-    // not enough).
-    sourceSize.width: ImageBounds.boundedSourceSize(root.width, root.height, root.video.width, root.video.height).width
-    sourceSize.height: ImageBounds.boundedSourceSize(root.width, root.height, root.video.width, root.video.height).height
+    // stage), computed from the GIF's own verified canvas size (see
+    // _verifiedGifWidth/_verifiedGifHeight above), never the sender's
+    // claimed video width/height.
+    sourceSize.width: ImageBounds.boundedSourceSize(root.width, root.height, root._verifiedGifWidth, root._verifiedGifHeight).width
+    sourceSize.height: ImageBounds.boundedSourceSize(root.width, root.height, root._verifiedGifWidth, root._verifiedGifHeight).height
   }
 
   Loader {

@@ -335,6 +335,47 @@ func TestMediaFetch_ReportsVerifiedDimensionsForAPhoto(t *testing.T) {
 	}
 }
 
+// TestMediaFetch_ReportsVerifiedDimensionsForARealGIFVideo confirms
+// media.fetch's width/height fields also carry a real GIF's own
+// decoder-confirmed canvas size when a video message's downloaded
+// bytes turn out to be a genuine GIF image (DecodeAs "gif"), never
+// the message's own claimed Media.Width/Height: a security review
+// found nothing reported this file's own real size at all, so the
+// real-GIF AnimatedImage player had only the sender's claim left to
+// size its decode from (see docs/decisions.md).
+func TestMediaFetch_ReportsVerifiedDimensionsForARealGIFVideo(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithMedia(t, fakeMediaWriter{content: gifBytes(t, 2, 2)}, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[GIF]", Created: 1,
+		// A claimed size wildly unlike the real 2x2 GIF this test
+		// downloads: the same mismatch
+		// TestMediaFetch_ReportsVerifiedDimensionsForAPhoto already
+		// covers for a photo, here for a video marked to play back
+		// like a silent "GIF".
+		Media: &domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Animated: true, Width: 2000000, Height: 1},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := call[struct {
+		DecodeAs string `json:"decodeAs"`
+		Width    int    `json:"width"`
+		Height   int    `json:"height"`
+	}](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DecodeAs != "gif" {
+		t.Fatalf("media.fetch decodeAs = %q, want \"gif\"", got.DecodeAs)
+	}
+	if got.Width != 2 || got.Height != 2 {
+		t.Errorf("media.fetch dimensions = %dx%d, want the file's own real 2x2, never the message's claimed 2000000x1", got.Width, got.Height)
+	}
+}
+
 // TestMediaFetch_OmitsDimensionsForEverydayMedia confirms a file,
 // which never goes through imagesafe's own parse, carries no width or
 // height in media.fetch's result, so the UI's own JSON for the common

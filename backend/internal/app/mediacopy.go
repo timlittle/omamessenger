@@ -153,7 +153,7 @@ func (c *Commands) copyableContentType(ctx context.Context, m domain.Message, pa
 // place, never the sender's own claim that this is a playable video
 // at all.
 func (c *Commands) copyableVideo(ctx context.Context, messageID, path, contentType string) (bool, error) {
-	decodeAs, err := c.DecodeAsForMedia(ctx, messageID, path)
+	decodeAs, _, _, err := c.DecodeAsForMedia(ctx, messageID, path)
 	if err != nil {
 		return false, err
 	}

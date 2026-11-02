@@ -383,7 +383,7 @@ func TestFetchMedia_WritesTheScriptedGIFDocument(t *testing.T) {
 			t.Errorf("downloaded GIF document does not start with GIF's own signature: %x", got[:min(4, len(got))])
 		}
 
-		isGIF, err := connector.SanitizeIfGIF(path)
+		isGIF, _, _, err := connector.SanitizeIfGIF(path)
 		if err != nil || !isGIF {
 			t.Errorf("SanitizeIfGIF(%q) = %t, %v, want true, nil", path, isGIF, err)
 		}

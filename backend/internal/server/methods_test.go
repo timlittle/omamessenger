@@ -3,6 +3,8 @@ package server_test
 import (
 	"bytes"
 	"image"
+	"image/color"
+	"image/gif"
 	"image/png"
 	"maps"
 	"os"
@@ -472,6 +474,22 @@ func pngBytes(t *testing.T, width, height int) []byte {
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
+		t.Fatal(err)
+	}
+
+	return buf.Bytes()
+}
+
+// gifBytes returns a tiny, real GIF of width by height, for a test
+// that needs bytes connector.SanitizeIfGIF's own magic-header check
+// and imagesafe.AnimatedGIF's sanitizer both actually accept, rather
+// than an arbitrary placeholder.
+func gifBytes(t *testing.T, width, height int) []byte {
+	t.Helper()
+
+	img := image.NewPaletted(image.Rect(0, 0, width, height), color.Palette{color.RGBA{R: 200, G: 100, B: 50, A: 255}})
+	var buf bytes.Buffer
+	if err := gif.Encode(&buf, img, nil); err != nil {
 		t.Fatal(err)
 	}
 

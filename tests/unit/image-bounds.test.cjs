@@ -99,6 +99,26 @@ test('verifiedDimensions never falls back to a claimed size nothing has verified
   assert.deepEqual(ImageBounds.verifiedDimensions(media, false), { width: 0, height: 0 });
 });
 
+test('verifiedDimensions and boundedSourceSize together stop a lying video claim sizing an AnimatedImage decode', () => {
+  // The exact shape a security review found: a video the sending
+  // service marked to play back like a silent "GIF" claims 2000000x1,
+  // and nothing before media.fetch answered ever reported the file's
+  // own real size for InlineVideo's or FullVideoPlayer's AnimatedImage
+  // to use instead. Before media.fetch answers (no verifiedWidth/
+  // verifiedHeight yet), this must fall back to the box, never the
+  // claim; once it answers with the real 2x2 canvas, this must use
+  // that, never the claim either.
+  const lyingVideo = { width: 2000000, height: 1 };
+
+  const beforeFetch = ImageBounds.verifiedDimensions(lyingVideo, true);
+  const beforeBounded = ImageBounds.boundedSourceSize(1400, 860, beforeFetch.width, beforeFetch.height);
+  assert.deepEqual(beforeBounded, { width: 1400, height: 860 });
+
+  const afterFetch = { ...lyingVideo, verifiedWidth: 2, verifiedHeight: 2 };
+  const afterBounded = ImageBounds.boundedSourceSize(1400, 860, ImageBounds.verifiedDimensions(afterFetch, true).width, ImageBounds.verifiedDimensions(afterFetch, true).height);
+  assert.deepEqual(afterBounded, { width: 2, height: 2 });
+});
+
 test('verifiedDimensions reports unknown for no media at all', () => {
   assert.deepEqual(ImageBounds.verifiedDimensions(null, true), { width: 0, height: 0 });
   assert.deepEqual(ImageBounds.verifiedDimensions(undefined, false), { width: 0, height: 0 });

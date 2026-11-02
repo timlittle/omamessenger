@@ -18,6 +18,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "ui/components"
+import "ui/lib/ImageBounds.js" as ImageBounds
 import "Check.js" as Check
 
 ShellRoot {
@@ -122,6 +123,23 @@ ShellRoot {
         available: true
         decodeAs: ""
         path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-either.mp4"
+      }
+
+      // A security review found a real GIF video's AnimatedImage sized
+      // its decode from root.video.width/height - the sender's own
+      // claim, read from the message's video metadata - rather than
+      // the file's own verified canvas size. width/height here claim
+      // an extreme, mismatched shape; only verifiedWidth/verifiedHeight
+      // - the real, decoder-confirmed size media.fetch reports once it
+      // has sanitized this file as a genuine GIF image - must ever
+      // reach this bubble's own sourceSize.
+      InlineVideo {
+        id: lyingGifVideo
+        video: ({ kind: "video", width: 2000000, height: 1, animated: true, fileName: "run.gif", thumb: "", verifiedWidth: 4, verifiedHeight: 3 })
+        available: true
+        decodeAs: "gif"
+        playing: true
+        path: Qt.resolvedUrl(".").toString().replace("file://", "") + "/does-not-exist-lying.gif"
       }
 
       InlineVideo {
@@ -243,6 +261,23 @@ ShellRoot {
     // full-size viewer, the same as any other selected, playing video.
     t.mouseClick(realGifVideo);
     if (root.realGifExpandCount !== 1) return Check.fail("clicking a selected, playing real GIF toggled it instead of asking to expand");
+
+    // A lying video claim (2000000x1) must never raise the real GIF
+    // player's own sourceSize past what its real, verified 4x3 canvas
+    // would ask for: proven by recomputing boundedSourceSize directly
+    // from that verified size, over whatever box this bubble's own
+    // (lying-aspect-ratio-driven) layout settled on, and requiring the
+    // component's own AnimatedImage to match it exactly - were the
+    // claim read instead, the two would disagree, since 2000000x1 and
+    // 4x3 scale to the same box in entirely different shapes (see
+    // ImageBounds.verifiedDimensions and docs/decisions.md).
+    const lyingGifImage = Check.find(lyingGifVideo, "realGifImage");
+    if (!lyingGifImage) return Check.fail("could not find the lying video's own AnimatedImage");
+
+    const wantLyingSize = ImageBounds.boundedSourceSize(lyingGifVideo.implicitWidth, lyingGifVideo.implicitHeight, 4, 3);
+    if (lyingGifImage.sourceSize.width !== wantLyingSize.width || lyingGifImage.sourceSize.height !== wantLyingSize.height) {
+      return Check.fail(`lying video sourceSize = ${lyingGifImage.sourceSize.width}x${lyingGifImage.sourceSize.height}, want ${wantLyingSize.width}x${wantLyingSize.height} (from the verified 4x3, not the claimed 2000000x1)`);
+    }
 
     // A video merely named and flagged like a GIF, with no decodeAs
     // verdict, never animates through AnimatedImage: it stays an

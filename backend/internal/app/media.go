@@ -205,25 +205,32 @@ func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversat
 // other media kind, which the UI must never decode as an animated
 // image. Never inferred from a sender's filename, mime type or
 // "animated" flag - the bug this replaces - so the result can only
-// ever disagree with that metadata in the safe direction.
-func (c *Commands) DecodeAsForMedia(ctx context.Context, messageID, path string) (string, error) {
+// ever disagree with that metadata in the safe direction. width and
+// height are the GIF's own real, decoder-confirmed canvas size when
+// decodeAs is "gif", both zero otherwise: a differential review found
+// the UI had nothing else to size an AnimatedImage's decode from but
+// the sender's own claimed video width/height, which need not match
+// what the file playing through it actually decodes to (see
+// docs/decisions.md) - the same reasoning FetchMedia's own width and
+// height already give a photo or sticker.
+func (c *Commands) DecodeAsForMedia(ctx context.Context, messageID, path string) (decodeAs string, width, height int, err error) {
 	m, err := c.store.Message(ctx, messageID)
 	if err != nil {
-		return "", err
+		return "", 0, 0, err
 	}
 	if m.Media == nil || m.Media.Kind != domain.MediaVideo {
-		return "", nil
+		return "", 0, 0, nil
 	}
 
-	isGIF, err := connector.SanitizeIfGIF(path)
+	isGIF, gifWidth, gifHeight, err := connector.SanitizeIfGIF(path)
 	if err != nil {
-		return "", c.failDecodeCheck(ctx, m, err)
+		return "", 0, 0, c.failDecodeCheck(ctx, m, err)
 	}
 	if !isGIF {
-		return "", nil
+		return "", 0, 0, nil
 	}
 
-	return "gif", nil
+	return "gif", gifWidth, gifHeight, nil
 }
 
 // VideoPlayableForMedia reports whether messageID's video, already

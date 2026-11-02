@@ -398,20 +398,22 @@ QtObject {
 
   // _applyVerifiedSize records result's verified width and height on
   // id's own media as verifiedWidth/verifiedHeight, once media.fetch
-  // actually returned one (a photo or sticker whose downloaded file
-  // passed imagesafe - see media.fetch's result in docs/api.md): the
-  // real, decoder-confirmed size of the file now at mediaPath, never
-  // the sender's own original claim, which a differential review
-  // found need not match it. These are new fields the message
-  // protocol never sends, deliberately never named width/height:
-  // overwriting those would make mediaIdentityChanged (see
-  // ui/lib/Timeline.js) wrongly read this verified value as a changed
-  // attachment the next time the server's own message.updated event
-  // echoes the sender's original, unverified claim for an unrelated
-  // edit. ImageBounds.verifiedDimensions reads this same field once
-  // mediaPath is set, exactly as it reads thumbWidth/thumbHeight
-  // before that (see docs/decisions.md). Left untouched for every
-  // other media kind, which media.fetch never returns a size for.
+  // actually returned one: a photo or sticker whose downloaded file
+  // passed imagesafe, or a video whose downloaded bytes turned out to
+  // be a real GIF image (decodeAs "gif") - see media.fetch's result
+  // in docs/api.md. Either way this is the real, decoder-confirmed
+  // size of the file now at mediaPath, never the sender's own
+  // original claim, which a security review found need not match it.
+  // These are new fields the message protocol never sends,
+  // deliberately never named width/height: overwriting those would
+  // make mediaIdentityChanged (see ui/lib/Timeline.js) wrongly read
+  // this verified value as a changed attachment the next time the
+  // server's own message.updated event echoes the sender's original,
+  // unverified claim for an unrelated edit. ImageBounds.verifiedDimensions
+  // reads this same field once mediaPath is set, exactly as it reads
+  // thumbWidth/thumbHeight before that (see docs/decisions.md). Left
+  // untouched for every other media kind, and for an ordinary video,
+  // which media.fetch never returns a size for.
   function _applyVerifiedSize(timeline: var, id: string, result: var): void {
     if (!(result.width > 0) || !(result.height > 0)) return;
 

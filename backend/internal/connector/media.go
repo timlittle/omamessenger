@@ -119,41 +119,47 @@ var gifMagic = []byte("GIF8")
 // has already written to disk unchanged because the sender's own
 // attributes said it was not an image. When path's actual first bytes
 // are a genuine GIF header, it rewrites the file in place through
-// imagesafe's FullImage profile and reports true, so the UI can trust
-// decoding it as an animated image; a file whose bytes fail that
-// sanitizer, whether malformed or over its caps, is removed and
+// imagesafe's AnimatedGIF profile and reports true, so the UI can
+// trust decoding it as an animated image; a file whose bytes fail
+// that sanitizer, whether malformed or over its caps, is removed and
 // reported as an error rather than left half-trusted on disk. Anything
 // whose header does not match, or whose size alone is already larger
 // than AnimatedGIF's own input cap, is left exactly as it was and
 // reported false: a real video, which SanitizeIfGIF never reads in
-// full, let alone sanitizes.
-func SanitizeIfGIF(path string) (isGIF bool, err error) {
+// full, let alone sanitizes. width and height are the file's own
+// canvas size, as imagesafe.Sanitize's own parse of it just confirmed
+// (0, 0 whenever isGIF is false), for app.Commands to hand on to the
+// UI in place of the sender's claimed video width/height: a video
+// marked to play back like a silent "GIF" carries only that claim,
+// which need not match what the file playing through AnimatedImage
+// actually decodes to (see docs/decisions.md).
+func SanitizeIfGIF(path string) (isGIF bool, width, height int, err error) {
 	head, size, err := peekFile(path, len(gifMagic))
 	if err != nil {
-		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
+		return false, 0, 0, fmt.Errorf("connector: sanitize if gif: %w", err)
 	}
 	if !bytes.Equal(head, gifMagic) {
-		return false, nil
+		return false, 0, 0, nil
 	}
 	if size > imagesafe.AnimatedGIF.MaxInputLen {
-		return false, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrMediaTooLarge, removeIfPresent(path)))
+		return false, 0, 0, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrMediaTooLarge, removeIfPresent(path)))
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
+		return false, 0, 0, fmt.Errorf("connector: sanitize if gif: %w", err)
 	}
 
-	safe, _, _, ok := imagesafe.Sanitize(data, imagesafe.AnimatedGIF)
+	safe, width, height, ok := imagesafe.Sanitize(data, imagesafe.AnimatedGIF)
 	if !ok {
-		return false, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
+		return false, 0, 0, fmt.Errorf("connector: sanitize if gif: %w", errors.Join(ErrUnsafeImage, removeIfPresent(path)))
 	}
 
 	if err := os.WriteFile(path, safe, 0o600); err != nil { //nolint:gosec // deliberate: path is the media cache path FetchMedia already wrote to and this function only re-reads; it is never built from untrusted input
-		return false, fmt.Errorf("connector: sanitize if gif: %w", err)
+		return false, 0, 0, fmt.Errorf("connector: sanitize if gif: %w", err)
 	}
 
-	return true, nil
+	return true, width, height, nil
 }
 
 // EnsureImageSafe re-examines path - a photo or sticker about to be

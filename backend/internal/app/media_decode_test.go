@@ -46,25 +46,37 @@ func TestDecodeAsForMedia_NeverTrustsAFileNameOrAttribute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	decodeAs, err := f.commands.DecodeAsForMedia(ctx, "m1", path)
+	decodeAs, width, height, err := f.commands.DecodeAsForMedia(ctx, "m1", path)
 	if err != nil || decodeAs != "" {
 		t.Fatalf("DecodeAsForMedia() = %q, %v; want \"\", nil", decodeAs, err)
+	}
+	if width != 0 || height != 0 {
+		t.Errorf("DecodeAsForMedia() width/height = %d/%d, want 0/0 for a video that is not a real GIF", width, height)
 	}
 }
 
 // TestDecodeAsForMedia_SanitizesAGenuineGIFAndReportsIt confirms the
 // other side: once a video's actual downloaded bytes are a real GIF
-// image, DecodeAsForMedia sanitizes them through imagesafe in place and
-// reports "gif", so the UI can trust decoding it as an animated image.
+// image, DecodeAsForMedia sanitizes them through imagesafe in place,
+// reports "gif", and reports the GIF's own real, decoder-confirmed
+// canvas size - never whatever width/height the message's own video
+// metadata claims - so the UI has something safe to size an
+// AnimatedImage's decode from (see
+// docs/decisions.md and ui/lib/ImageBounds.js's verifiedDimensions).
 func TestDecodeAsForMedia_SanitizesAGenuineGIFAndReportsIt(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
 	ctx := t.Context()
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	// Width and Height are a lying claim far from the real 1x1 GIF
+	// fetched below - the exact shape a security review found could
+	// still size the UI's own AnimatedImage decode, since nothing
+	// before this fix ever reported the file's own real canvas for a
+	// video to use instead.
 	if _, _, err := f.store.AddMessage(ctx, domain.Message{
 		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[GIF]", Created: 1,
-		Media: &domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Animated: true},
+		Media: &domain.Media{Kind: domain.MediaVideo, FileName: "run.gif", Animated: true, Width: 2000000, Height: 1},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -75,9 +87,12 @@ func TestDecodeAsForMedia_SanitizesAGenuineGIFAndReportsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	decodeAs, err := f.commands.DecodeAsForMedia(ctx, "m1", path)
+	decodeAs, width, height, err := f.commands.DecodeAsForMedia(ctx, "m1", path)
 	if err != nil || decodeAs != "gif" {
 		t.Fatalf("DecodeAsForMedia() = %q, %v; want \"gif\", nil", decodeAs, err)
+	}
+	if width != 1 || height != 1 {
+		t.Errorf("DecodeAsForMedia() width/height = %d/%d, want the real 1x1 GIF canvas, never the message's claimed 2000000x1", width, height)
 	}
 
 	safe, err := os.ReadFile(path)
@@ -105,9 +120,12 @@ func TestDecodeAsForMedia_IgnoresEveryMediaKindButVideo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	decodeAs, err := f.commands.DecodeAsForMedia(ctx, "m1", "/does/not/matter")
+	decodeAs, width, height, err := f.commands.DecodeAsForMedia(ctx, "m1", "/does/not/matter")
 	if err != nil || decodeAs != "" {
 		t.Fatalf("DecodeAsForMedia() = %q, %v; want \"\", nil", decodeAs, err)
+	}
+	if width != 0 || height != 0 {
+		t.Errorf("DecodeAsForMedia() width/height = %d/%d, want 0/0 for a non-video message", width, height)
 	}
 }
 

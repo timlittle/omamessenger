@@ -356,6 +356,57 @@ func TestCapMedia_BoundsAFileNameForEveryKind(t *testing.T) {
 	}
 }
 
+// TestCapMedia_BoundsWidthAndHeightForEveryKind confirms a claimed
+// width or height past MaxMediaDimension is clamped to it, whichever
+// kind carries one: a security review found a video marked to play
+// back like a silent "GIF" could claim 2000000x1 with nothing
+// bounding it server-side, the UI's own defence against sizing a
+// decode from this claim (ui/lib/ImageBounds.js's verifiedDimensions)
+// being the only thing standing between that claim and an
+// AnimatedImage decode-bomb before this change.
+func TestCapMedia_BoundsWidthAndHeightForEveryKind(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range []string{domain.MediaPhoto, domain.MediaVideo, domain.MediaSticker} {
+		media := &domain.Media{Kind: kind, Width: 2000000, Height: 1}
+		got := domain.CapMedia(media)
+		if got.Width != domain.MaxMediaDimension {
+			t.Errorf("CapMedia(%s).Width = %d, want %d", kind, got.Width, domain.MaxMediaDimension)
+		}
+		if got.Height != 1 {
+			t.Errorf("CapMedia(%s).Height = %d, want 1 unchanged", kind, got.Height)
+		}
+	}
+}
+
+// TestCapMedia_DropsANegativeWidthOrHeight confirms a negative claim,
+// which no sender's own metadata should ever carry but nothing on the
+// wire actually prevents, is clamped to zero - unknown, the same as
+// CapMedia already treats no claim at all - rather than kept or
+// allowed to go further negative.
+func TestCapMedia_DropsANegativeWidthOrHeight(t *testing.T) {
+	t.Parallel()
+
+	media := &domain.Media{Kind: domain.MediaPhoto, Width: -5, Height: -1}
+	got := domain.CapMedia(media)
+	if got.Width != 0 || got.Height != 0 {
+		t.Errorf("CapMedia negative width/height = %d/%d, want 0/0", got.Width, got.Height)
+	}
+}
+
+// TestCapMedia_LeavesAnOrdinaryWidthAndHeightAlone confirms a real
+// photo or video's own claimed size, well within the cap, passes
+// through unchanged.
+func TestCapMedia_LeavesAnOrdinaryWidthAndHeightAlone(t *testing.T) {
+	t.Parallel()
+
+	media := &domain.Media{Kind: domain.MediaPhoto, Width: 1920, Height: 1080}
+	got := domain.CapMedia(media)
+	if got.Width != 1920 || got.Height != 1080 {
+		t.Errorf("CapMedia ordinary width/height = %d/%d, want 1920/1080 unchanged", got.Width, got.Height)
+	}
+}
+
 // TestCapMedia_DropsAnOversizedStickerEmoji confirms a sticker's own
 // Emoji fallback text, which neither service bounds, is dropped
 // outright once it runs past MaxStickerEmojiLength - the same

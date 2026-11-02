@@ -121,6 +121,20 @@ const MaxStickerEmojiLength = 32
 // still never splits the UTF-8 encoding of one rune across the cut.
 const MaxFileNameLength = 255
 
+// MaxMediaDimension bounds a photo, video or sticker's own claimed
+// Width and Height, in pixels: a sender's own metadata, with no limit
+// of its own, read only for display (ui/lib/Format.js's photoSize)
+// and to tell one attachment from another
+// (ui/lib/Timeline.js's mediaIdentityChanged), never for sizing a
+// decode - that always goes through the file's own verified size
+// instead (see docs/decisions.md). A security review found the UI
+// had nowhere else to turn for a real GIF video before that fix, so
+// this is defence in depth for any future sourceSize calculation that
+// ever again reads this claim directly: no real photo or video from
+// either service approaches this, so it only ever bounds a hostile
+// claim like 2000000x1, never a legitimate one.
+const MaxMediaDimension = 1 << 16 // 65536
+
 // MaxInlineThumbLen bounds a message's own embedded preview
 // (Media.Thumb), in bytes of its base64 text, the one piece of a
 // message's media a connector embeds directly in the message itself
@@ -275,13 +289,17 @@ func CapURL(url string) string {
 }
 
 // CapMedia bounds a poll's options and text, a link preview's own
-// text fields and URL, or a file name, in place, returning media
-// unchanged for a nil media. FileName is capped for every kind that
-// carries one (file, video, voice note or sticker), not only one
-// media.Kind, since a sender names their own attachment the same way
-// whichever kind it is. URL is capped for every kind too, even though
-// only a link preview sets it today, so a future kind that starts
-// carrying one is covered without a second change.
+// text fields and URL, a file name, or a claimed width and height, in
+// place, returning media unchanged for a nil media. FileName is
+// capped for every kind that carries one (file, video, voice note or
+// sticker), not only one media.Kind, since a sender names their own
+// attachment the same way whichever kind it is. URL is capped for
+// every kind too, even though only a link preview sets it today, so a
+// future kind that starts carrying one is covered without a second
+// change. Width and Height are capped at MaxMediaDimension the same
+// way, for every kind: defence in depth, since the UI itself never
+// sizes a decode from either field any more (see
+// MaxMediaDimension's own doc comment).
 func CapMedia(media *Media) *Media {
 	if media == nil {
 		return nil
@@ -289,6 +307,8 @@ func CapMedia(media *Media) *Media {
 
 	media.FileName = CapFileName(media.FileName)
 	media.URL = CapURL(media.URL)
+	media.Width = capDimension(media.Width)
+	media.Height = capDimension(media.Height)
 	if len(media.Thumb) > MaxInlineThumbLen {
 		media.Thumb = ""
 	}
@@ -307,6 +327,22 @@ func CapMedia(media *Media) *Media {
 	}
 
 	return media
+}
+
+// capDimension clamps n to [0, MaxMediaDimension]: a negative claim
+// drops to zero the same as an unknown size already reads, and one
+// above the cap drops to the cap itself, never truncated some other
+// way - there is no "closer to the truth" value for a claim this far
+// from anything a real file could be.
+func capDimension(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > MaxMediaDimension {
+		return MaxMediaDimension
+	}
+
+	return n
 }
 
 // CapPoll bounds poll's own question length and its option count and

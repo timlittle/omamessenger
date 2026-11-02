@@ -230,9 +230,12 @@ func TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		isGIF, err := connector.SanitizeIfGIF(path)
+		isGIF, width, height, err := connector.SanitizeIfGIF(path)
 		if err != nil || !isGIF {
 			t.Fatalf("SanitizeIfGIF() = %t, %v, want true, nil", isGIF, err)
+		}
+		if width != 1 || height != 1 {
+			t.Errorf("SanitizeIfGIF() width/height = %d/%d, want the real 1x1 canvas", width, height)
 		}
 
 		safe, err := os.ReadFile(path)
@@ -253,9 +256,12 @@ func TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		isGIF, err := connector.SanitizeIfGIF(path)
+		isGIF, width, height, err := connector.SanitizeIfGIF(path)
 		if err != nil || isGIF {
 			t.Fatalf("SanitizeIfGIF() = %t, %v, want false, nil", isGIF, err)
+		}
+		if width != 0 || height != 0 {
+			t.Errorf("SanitizeIfGIF() width/height = %d/%d, want 0/0 when it is not a GIF", width, height)
 		}
 
 		got, err := os.ReadFile(path)
@@ -273,7 +279,7 @@ func TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		isGIF, err := connector.SanitizeIfGIF(path)
+		isGIF, _, _, err := connector.SanitizeIfGIF(path)
 		if err == nil || isGIF {
 			t.Fatalf("SanitizeIfGIF() = %t, %v, want an error refusing it", isGIF, err)
 		}
@@ -288,7 +294,7 @@ func TestSanitizeIfGIF_OnlyTrustsTheFileSOwnBytes(t *testing.T) {
 	t.Run("a missing file is reported as an error", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := connector.SanitizeIfGIF(filepath.Join(t.TempDir(), "missing.gif"))
+		_, _, _, err := connector.SanitizeIfGIF(filepath.Join(t.TempDir(), "missing.gif"))
 		if err == nil {
 			t.Fatal("SanitizeIfGIF() on a missing file succeeded")
 		}

@@ -33,7 +33,7 @@ func TestPlaceholderGIF_PassesTheHelperSOwnGIFCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	isGIF, err := connector.SanitizeIfGIF(path)
+	isGIF, _, _, err := connector.SanitizeIfGIF(path)
 	if err != nil || !isGIF {
 		t.Fatalf("SanitizeIfGIF() = %t, %v, want true, nil", isGIF, err)
 	}

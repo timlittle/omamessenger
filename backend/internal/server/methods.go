@@ -409,13 +409,15 @@ type mediaResult struct {
 	DecodeAs string `json:"decodeAs,omitempty"`
 	Playable bool   `json:"playable,omitempty"`
 	Risky    bool   `json:"risky,omitempty"`
-	// Width and Height are the fetched photo's or sticker's own real
-	// dimensions, confirmed by the helper's own parse of the served
-	// file (see connector.EnsureImageSafe), never the message's own
-	// claimed size: the UI must size its decode of path from these,
-	// not from a photo's or sticker's width/height field, which need
-	// not match what this file actually decodes to (see
-	// docs/decisions.md). Omitted for every other media kind.
+	// Width and Height are the fetched file's own real dimensions,
+	// confirmed by the helper's own parse of it, never the message's
+	// own claimed size: a photo's or sticker's (see
+	// connector.EnsureImageSafe), or, when DecodeAs is "gif", that
+	// GIF's own canvas (see connector.SanitizeIfGIF). The UI must size
+	// its decode of path from these, never from media's own
+	// width/height field, which need not match what this file actually
+	// decodes to (see docs/decisions.md). Omitted for every other media
+	// kind, and for a video that is not a real GIF file.
 	Width  int `json:"width,omitempty"`
 	Height int `json:"height,omitempty"`
 }
@@ -437,7 +439,12 @@ type mediaFetchParams struct {
 // play in place at all (see mediaResult.DecodeAs and
 // mediaResult.Playable): further steps, rather than folded into
 // FetchMedia itself, since none of them ever applies to anything but
-// those kinds, and none changes what was downloaded or where.
+// those kinds, and none changes what was downloaded or where. width
+// and height start as FetchMedia's own answer (set for a photo or
+// sticker, zero for a video) and are replaced by DecodeAsForMedia's
+// own answer once decodeAs comes back "gif": the one case where a
+// video's file is itself the thing with real dimensions to report,
+// and FetchMedia never looked at its bytes to find them.
 func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, error) {
 	return func(ctx context.Context, p mediaFetchParams) (any, error) {
 		path, width, height, err := c.FetchMedia(ctx, p.MessageID, p.Auto)
@@ -445,7 +452,10 @@ func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, e
 			return mediaResult{}, err
 		}
 
-		decodeAs, err := c.DecodeAsForMedia(ctx, p.MessageID, path)
+		decodeAs, gifWidth, gifHeight, err := c.DecodeAsForMedia(ctx, p.MessageID, path)
+		if decodeAs == "gif" {
+			width, height = gifWidth, gifHeight
+		}
 		if err != nil {
 			return mediaResult{Path: path, DecodeAs: decodeAs, Width: width, Height: height}, err
 		}

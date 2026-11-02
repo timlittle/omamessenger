@@ -12,6 +12,7 @@ import QtQuick
 import QtTest
 import Quickshell
 import "ui/components"
+import "ui/lib/ImageBounds.js" as ImageBounds
 import "Check.js" as Check
 
 ShellRoot {
@@ -72,6 +73,7 @@ ShellRoot {
     if (!root.checkEscapeForwardedAndClosesWhenRouterSaysSo()) return;
     if (!root.checkVideoOpensIntoFullVideoPlayer()) return;
     if (!root.checkRealGifFilePlaysEvenWithoutInWindowVideo()) return;
+    if (!root.checkLyingGifDimensionsNeverRaiseSourceSize()) return;
     if (!root.checkAFileNameAloneNeverPicksAnimatedImage()) return;
 
     console.log("PASS PhotoViewer");
@@ -230,6 +232,40 @@ ShellRoot {
     const unavailableLabel = Check.find(viewer, "fullVideoUnavailableLabel");
     if (unavailableLabel && unavailableLabel.visible) return Check.fail("a real .gif file shows the \"video playback unavailable\" message");
 
+    return true;
+  }
+
+  // checkLyingGifDimensionsNeverRaiseSourceSize covers a security
+  // review's own finding: a real GIF video's full-window
+  // AnimatedImage sized its decode from the message's own claimed
+  // video width/height, the sender's claim, rather than the file's
+  // own verified canvas size. width/height here claim an extreme,
+  // mismatched shape (2000000x1); only verifiedWidth/verifiedHeight -
+  // the real, decoder-confirmed size media.fetch reports once it has
+  // sanitized this file as a genuine GIF image - must ever reach this
+  // player's own sourceSize, proven the same way
+  // checkRealGifFilePlaysEvenWithoutInWindowVideo already got the
+  // image itself: recomputing boundedSourceSize directly from the
+  // verified size, over whatever box the player's own full-window
+  // stage is, and requiring the component's own AnimatedImage to
+  // match it exactly.
+  function checkLyingGifDimensionsNeverRaiseSourceSize(): bool {
+    viewer.open = true;
+    viewer.videoAvailable = false;
+    viewer.photo = { kind: "video", width: 2000000, height: 1, animated: true, fileName: "run.gif", thumb: "", verifiedWidth: 4, verifiedHeight: 3 };
+    viewer.decodeAs = "gif";
+    viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
+
+    const gifImage = Check.find(viewer, "fullGifImage");
+    if (!gifImage || !gifImage.visible) return Check.fail("a real .gif file with a lying claim shows no AnimatedImage");
+
+    const player = Check.find(viewer, "fullVideoPlayer");
+    if (!player) return Check.fail("no fullVideoPlayer found");
+
+    const want = ImageBounds.boundedSourceSize(player.width, player.height, 4, 3);
+    if (gifImage.sourceSize.width !== want.width || gifImage.sourceSize.height !== want.height) {
+      return Check.fail(`sourceSize = ${gifImage.sourceSize.width}x${gifImage.sourceSize.height}, want ${want.width}x${want.height} (from the verified 4x3, not the claimed 2000000x1)`);
+    }
     return true;
   }
 
