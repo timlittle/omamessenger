@@ -151,6 +151,40 @@ const MaxMediaDimension = 1 << 16 // 65536
 // alone would still let through.
 const MaxInlineThumbLen = 64 << 10
 
+// MaxRemoteIDLength bounds a sender- or service-chosen identifier that
+// is not itself display text: a mention's own UserID, or a reply
+// quote's own RemoteID. Measured against what a real one ever is: a
+// WhatsApp JID, as connector/whatsapp's remoteID renders it, is a user
+// part - at most a 15-digit E.164 phone number, or a LID, a large
+// integer printed in decimal - "@" and a server name, the longest of
+// which whatsmeow defines is "s.whatsapp.net" (14 bytes), so a real
+// JID never reaches 40 bytes; a Telegram remote id ("user:<id>:<access
+// hash>", both int64, see connector/telegram's own remoteID) never
+// reaches 50; and a WhatsApp poll option's own id - hex of the SHA-256
+// hash its vote protocol identifies an option by - is exactly 64. 64
+// bytes is generous for every one of these while still bounding a
+// hostile claim: a WhatsApp sender writes both
+// ContextInfo.MentionedJID and a quoted message's own
+// ContextInfo.StanzaID inside their message's own encrypted content,
+// which the service itself never inspects or bounds, and
+// whatsmeow's types.ParseJID keeps a JID's user part exactly as given,
+// with no length check of its own, so nothing but this cap stops
+// either field from being written far past any real id's length.
+const MaxRemoteIDLength = 64
+
+// CapRemoteID drops id entirely once it runs past MaxRemoteIDLength,
+// rather than truncating it, the same drop-rather-than-truncate
+// treatment CapURL already gives an oversized URL: a cut id could read
+// as a different, shorter real id it was never actually sent as, while
+// a cleared one can never be mistaken for one.
+func CapRemoteID(id string) string {
+	if len(id) > MaxRemoteIDLength {
+		return ""
+	}
+
+	return id
+}
+
 // MaxPreviewLength bounds a conversation's own Preview, in UTF-16 code
 // units: ui/lib/Format.js's previewText only ever shows the first 200
 // characters of it, prefixed in a group by the sender's own name, so a
@@ -212,11 +246,14 @@ func CapSpans(spans []Span, textLen int) []Span {
 }
 
 // CapMentions drops a mention that no longer fits text (see capRanges),
-// keeps at most MaxMentions of what remains, and caps each kept
-// mention's own Name at MaxDisplayNameLength: unlike SenderName, a
-// mention's Name has no length limit of its own at the connector, and
-// one hostile name can arrive mentioned up to MaxMentions times in a
-// single message.
+// keeps at most MaxMentions of what remains, caps each kept mention's
+// own Name at MaxDisplayNameLength, and clears its own UserID past
+// MaxRemoteIDLength: unlike SenderName, a mention's Name has no length
+// limit of its own at the connector, and one hostile name or id can
+// arrive mentioned up to MaxMentions times in a single message. A
+// mention with its UserID cleared this way is still kept, the same as
+// CapSpans keeps a span whose own URL is dropped: its Name, Offset and
+// Length still describe real, already-rendered text in the message.
 func CapMentions(mentions []Mention, textLen int) []Mention {
 	kept := capRanges(mentions, textLen, MaxMentions, func(m Mention) capRange {
 		return capRange{m.Offset, m.Offset + m.Length}
@@ -224,6 +261,7 @@ func CapMentions(mentions []Mention, textLen int) []Mention {
 
 	for i := range kept {
 		kept[i].Name = CapDisplayName(kept[i].Name)
+		kept[i].UserID = CapRemoteID(kept[i].UserID)
 	}
 
 	return kept
@@ -426,6 +464,7 @@ func SanitizeIncoming(m Message) Message {
 	if m.ReplyTo != nil {
 		m.ReplyTo.SenderName = CapDisplayName(m.ReplyTo.SenderName)
 		m.ReplyTo.Text = Excerpt(m.ReplyTo.Text)
+		m.ReplyTo.RemoteID = CapRemoteID(m.ReplyTo.RemoteID)
 	}
 
 	return m
