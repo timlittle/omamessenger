@@ -166,15 +166,23 @@ func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m d
 }
 
 // tryDisplayCopy builds m's own display copy from originalPath (see
-// displayCopy), removing originalPath itself when that fails: a file
-// that cannot be turned into something safe to show is never left
-// trusted on disk just because of how or when it got there, whether
-// this is servedPath's own first attempt or recoverUnsafeImage's
-// retry (see docs/decisions.md).
+// displayCopy), removing originalPath itself only when the failure
+// was imagesafe refusing its own bytes: a file that cannot be turned
+// into something safe to show is never left trusted on disk just
+// because of how or when it got there, whether this is servedPath's
+// own first attempt or recoverUnsafeImage's retry (see
+// docs/decisions.md). Any other failure - a cache write hitting a
+// full disk, say - says nothing about originalPath's own bytes, so it
+// is left exactly as it was: for an outgoing message, that is the
+// attachment a still-pending send needs to upload, not a file this
+// helper owns to delete on a whim.
 func (c *Commands) tryDisplayCopy(ctx context.Context, m domain.Message, originalPath string, profile imagesafe.Profile) (path string, width, height int, err error) {
 	path, width, height, err = c.displayCopy(ctx, m, originalPath, profile)
 	if err == nil {
 		return path, width, height, nil
+	}
+	if !errors.Is(err, connector.ErrUnsafeImage) {
+		return "", 0, 0, err
 	}
 
 	if removeErr := os.Remove(originalPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
