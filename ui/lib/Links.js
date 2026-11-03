@@ -139,13 +139,21 @@ function resolveClickedLink(href, text, mentions, spans) {
 }
 
 // previewDisplayText returns what a link preview card showed for url,
-// for WindowController.openLink to compare against: url itself when the
-// message's own text shows it, otherwise the card's title (or a generic
-// label), since the sender sets a preview's URL apart from both the
-// text and the title, so a card whose URL appears nowhere visible must
-// be confirmed before it opens.
-function previewDisplayText(url, messageText, title) {
-  if (url && String(messageText || '').includes(url)) return url;
+// for WindowController.openLink to compare against: url itself only
+// when it exactly matches one of the anchors the message's own bubble
+// actually renders for its text, mentions and formatting spans (see
+// Format.messageLinkAnchors) - never a plain substring match of url
+// against the raw text, which let a different, shorter domain that
+// merely reads as a textual prefix of the text's own unrelated link
+// (paypal.co inside paypal.com/signin, say) count as "shown" even
+// though the sender controls the preview's own URL entirely apart from
+// what the text displays (see docs/decisions.md). Otherwise this
+// returns the card's title (or a generic label), since a card whose
+// URL appears in none of the bubble's own rendered anchors must be
+// confirmed before it opens.
+function previewDisplayText(url, messageText, mentions, spans, title) {
+  const anchors = Format.messageLinkAnchors(messageText || '', mentions, spans);
+  if (url && anchors.some((a) => a.url === url)) return url;
 
   return title || 'Link preview';
 }

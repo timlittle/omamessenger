@@ -176,7 +176,7 @@ Column {
         // The sender sets a preview's URL apart from the text the
         // bubble shows, so a card whose URL that text never shows
         // asks first.
-        onOpened: url => root.linkOpenRequested(url, Links.previewDisplayText(url, root.message ? root.message.text : "", root.media ? root.media.title : ""))
+        onOpened: url => root.linkOpenRequested(url, Links.previewDisplayText(url, root.message ? root.message.text : "", root.mentions, root.formatting, root.media ? root.media.title : ""))
       }
     }
   }

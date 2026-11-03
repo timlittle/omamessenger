@@ -145,14 +145,36 @@ test('resolveClickedLink needs no confirmation for a plain auto-linked url', () 
   assert.strictEqual(Links.needsConfirmation(resolved.displayText, resolved.url), false);
 });
 
-test('previewDisplayText is the url itself only when the message text shows it', () => {
-  assert.equal(Links.previewDisplayText('https://a.example/x', 'see https://a.example/x', 'A'), 'https://a.example/x');
-  assert.equal(Links.previewDisplayText('https://evil.example/login', 'refund: https://www.paypal.com/refund', 'PayPal'), 'PayPal');
-  assert.equal(Links.previewDisplayText('https://evil.example/login', '', ''), 'Link preview');
+test('previewDisplayText is the url itself only when it is one of the anchors the message\'s own text actually renders', () => {
+  assert.equal(Links.previewDisplayText('https://a.example/x', 'see https://a.example/x', [], [], 'A'), 'https://a.example/x');
+  assert.equal(Links.previewDisplayText('https://evil.example/login', 'refund: https://www.paypal.com/refund', [], [], 'PayPal'), 'PayPal');
+  assert.equal(Links.previewDisplayText('https://evil.example/login', '', [], [], ''), 'Link preview');
+});
+
+test('previewDisplayText rejects a lookalike domain that is only a textual prefix of a different link the text really shows', () => {
+  // A security review found the old check a plain substring match of
+  // the preview's own url against the raw message text: a shorter,
+  // different domain that merely reads as a prefix of the text's own
+  // unrelated link - paypal.co is a literal substring of
+  // paypal.com/signin - said "shown" and skipped the question, even
+  // though the two are different domains the sender fully controls
+  // independently of one another.
+  const shown = Links.previewDisplayText('https://paypal.co', 'go to https://paypal.com/signin', [], [], 'PayPal');
+  assert.equal(shown, 'PayPal');
+  assert.ok(Links.needsConfirmation(shown, 'https://paypal.co'));
+});
+
+test('previewDisplayText recognises the url once it only appears through a formatting span, not as literal text', () => {
+  // The exact-match fix reads the message's own rendered anchors
+  // (Format.messageLinkAnchors), not its raw text, so a link that is
+  // only visible because of a span - never typed out as a URL at all -
+  // still counts as shown, which the old substring check could not do.
+  const spans = [{ kind: 'link', start: 0, end: 4, url: 'https://a.example' }];
+  assert.equal(Links.previewDisplayText('https://a.example', 'link', [], spans, 'A'), 'https://a.example');
 });
 
 test('a preview whose URL is not in its message text needs confirming', () => {
-  const shown = Links.previewDisplayText('https://evil.example/login', 'refund: https://www.paypal.com/refund', 'PayPal');
+  const shown = Links.previewDisplayText('https://evil.example/login', 'refund: https://www.paypal.com/refund', [], [], 'PayPal');
   assert.ok(Links.needsConfirmation(shown, 'https://evil.example/login'));
 });
 
