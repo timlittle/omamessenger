@@ -184,13 +184,44 @@ test('previewDisplayText rejects a lookalike domain that is only a textual prefi
   assert.ok(Links.needsConfirmation(shown, 'https://paypal.co'));
 });
 
-test('previewDisplayText recognises the url once it only appears through a formatting span, not as literal text', () => {
+test('previewDisplayText recognises the url once it is itself an anchor\'s own visible text, even through a formatting span', () => {
   // The exact-match fix reads the message's own rendered anchors
-  // (Format.messageLinkAnchors), not its raw text, so a link that is
-  // only visible because of a span - never typed out as a URL at all -
-  // still counts as shown, which the old substring check could not do.
-  const spans = [{ kind: 'link', start: 0, end: 4, url: 'https://a.example' }];
-  assert.equal(Links.previewDisplayText('https://a.example', 'link', [], spans, 'A'), 'https://a.example');
+  // (Format.messageLinkAnchors), not its raw text, so a link whose
+  // visible text is the url itself - never typed out literally, but
+  // rendered that way by a span - still counts as shown, which the
+  // old substring check could not do.
+  const spans = [{ kind: 'link', start: 0, end: 'https://a.example'.length, url: 'https://evil.example' }];
+  assert.equal(Links.previewDisplayText('https://a.example', 'https://a.example', [], spans, 'A'), 'https://a.example');
+});
+
+test('previewDisplayText needs confirming when a url only matches an anchor\'s own href, never what the anchor actually shows as text', () => {
+  // A later review found the exact-match fix above still checked only
+  // an anchor's own url (its href), not its displayText: a span whose
+  // visible text reads as something else entirely - "Click here",
+  // say - still counted a preview sharing that same href as "shown",
+  // even though the user never saw that url as text anywhere in the
+  // message. The card's own title is the sender's to choose, so
+  // "shown" must mean the url was itself visible, not merely that
+  // some other link in the message happens to share its target.
+  const spans = [{ kind: 'link', start: 0, end: 'Click here'.length, url: 'https://evil.example/login' }];
+  const shown = Links.previewDisplayText('https://evil.example/login', 'Click here', [], spans, 'My Bank');
+  assert.equal(shown, 'My Bank');
+  assert.ok(Links.needsConfirmation(shown, 'https://evil.example/login'));
+});
+
+test('previewDisplayText still finds the url shown as text behind an unrelated, differently-targeted anchor earlier in the same message', () => {
+  // Confirms the fix checks every anchor's own displayText, not just
+  // the first one: an honest anchor (its own text is the preview's
+  // url) and a disguise anchor (different text, some other target)
+  // can both exist in the same message without the disguise hiding
+  // the honest one from this check.
+  const url = 'https://a.example';
+  const spans = [
+    { kind: 'link', start: 0, end: url.length, url },
+    { kind: 'link', start: url.length + 1, end: url.length + 1 + 'click here'.length, url: 'https://evil.example' }
+  ];
+  const text = `${url} click here`;
+  assert.equal(Links.previewDisplayText(url, text, [], spans, 'A'), url);
 });
 
 test('a preview whose URL is not in its message text needs confirming', () => {

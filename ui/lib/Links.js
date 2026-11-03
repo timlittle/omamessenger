@@ -182,20 +182,24 @@ function urlHost(url) {
 
 // previewDisplayText returns what a link preview card showed for url,
 // for WindowController.openLink to compare against: url itself only
-// when it exactly matches one of the anchors the message's own bubble
-// actually renders for its text, mentions and formatting spans (see
-// Format.messageLinkAnchors) - never a plain substring match of url
-// against the raw text, which let a different, shorter domain that
-// merely reads as a textual prefix of the text's own unrelated link
-// (paypal.co inside paypal.com/signin, say) count as "shown" even
-// though the sender controls the preview's own URL entirely apart from
-// what the text displays (see docs/decisions.md). Otherwise this
+// when it is itself the exact visible text of one of the anchors the
+// message's own bubble actually renders for its text, mentions and
+// formatting spans (see Format.messageLinkAnchors) - never merely one
+// of those anchors' own href, which let a span whose visible text
+// reads as something else entirely ("Click here", say) count a
+// preview sharing that same href as "shown", even though the user
+// never saw that url as text anywhere in the message; nor a plain
+// substring match of url against the raw text, which let a different,
+// shorter domain that merely reads as a textual prefix of the text's
+// own unrelated link (paypal.co inside paypal.com/signin, say) count
+// as "shown" the same way (see docs/decisions.md). Otherwise this
 // returns the card's title (or a generic label), since a card whose
-// URL appears in none of the bubble's own rendered anchors must be
-// confirmed before it opens.
+// URL was never itself shown as text anywhere in the bubble must be
+// confirmed before it opens - the sender picks both the preview's own
+// URL and its title entirely apart from what the message text shows.
 function previewDisplayText(url, messageText, mentions, spans, title) {
   const anchors = Format.messageLinkAnchors(messageText || '', mentions, spans);
-  if (url && anchors.some((a) => a.url === url)) return url;
+  if (url && anchors.some((a) => a.displayText === url)) return url;
 
   return title || 'Link preview';
 }
