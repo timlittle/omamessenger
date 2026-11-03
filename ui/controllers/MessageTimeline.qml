@@ -147,8 +147,10 @@ Item {
       messagesModel.set(result.at, Timeline.row(merged));
     } else {
       messagesModel.insert(result.at, Timeline.row(message));
+      root._insertAnnotation(result.at);
       if (result.evicted > 0) {
         messagesModel.remove(result.order.length, result.evicted);
+        root._trimAnnotations(result.order.length);
         root.hasMore = true;
       }
     }
@@ -167,6 +169,7 @@ Item {
     root._order = result.order;
     root._index = result.index;
     messagesModel.remove(result.at);
+    root._removeAnnotation(result.at);
     root._reannotateTouched(result.touched, isGroup);
   }
 
@@ -413,6 +416,42 @@ Item {
     const out = [];
     for (let i = 0; i < messagesModel.count; i++) out.push(messagesModel.get(i));
     return out;
+  }
+
+  // _insertAnnotation keeps root.annotations the same length as
+  // messagesModel the moment upsert inserts a new row at position at:
+  // every already-loaded row at or after that position has just
+  // shifted down one slot in messagesModel, and without shifting its
+  // own annotation entry the same way here, it would silently read
+  // whatever sat one slot above it before the insert instead of its
+  // own - another row's sender-name, grouping or day-separator flags,
+  // never recomputed for the row actually shown at that position (see
+  // docs/decisions.md). The inserted slot itself holds a placeholder;
+  // _reannotateTouched, called right after this in upsert, always
+  // overwrites it with the real one.
+  function _insertAnnotation(at: int): void {
+    const next = root.annotations.slice();
+    next.splice(at, 0, null);
+    root.annotations = next;
+  }
+
+  // _removeAnnotation is _insertAnnotation's own mirror for remove:
+  // every row after position at has just shifted up one slot in
+  // messagesModel, so its own annotation entry shifts the same way,
+  // rather than every later row silently reading the entry one slot
+  // below its own true position.
+  function _removeAnnotation(at: int): void {
+    const next = root.annotations.slice();
+    next.splice(at, 1);
+    root.annotations = next;
+  }
+
+  // _trimAnnotations drops every annotation past the first keep rows,
+  // mirroring the tail rows upsert's own windowing just evicted from
+  // messagesModel once a flood pushes the loaded window past
+  // Timeline.MAX_LOADED_ROWS, so the two stay the same length.
+  function _trimAnnotations(keep: int): void {
+    if (root.annotations.length > keep) root.annotations = root.annotations.slice(0, keep);
   }
 
   // _reannotateTouched recomputes the annotation at each of indices

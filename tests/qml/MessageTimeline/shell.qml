@@ -14,7 +14,13 @@
 // highlighted message as protectId - the cap is absolute, so that row
 // falls out too, once the flood ages it past the cap, and upsert's
 // return value says so - the wiring this test checks, not windowNewest's
-// own decision, already proven in tests/unit/timeline.test.cjs.
+// own decision, already proven in tests/unit/timeline.test.cjs; and that
+// annotations stays aligned with the loaded rows by position through a
+// live insert and remove landing around already-loaded rows, not only
+// at either end - a security review found upsert and remove each only
+// rewrote the one or two positions their own touched list named,
+// without ever shifting every other row's own entry to match the rows
+// actually moving around them in messagesModel.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -74,6 +80,27 @@ ShellRoot {
 
   MessageTimeline {
     id: staleTimeline
+  }
+
+  // annotationService answers loadInitial the same way service does
+  // above, held until the test answers it, for annotationTimeline's
+  // own isolated alignment check below.
+  QtObject {
+    id: annotationService
+
+    property var firstPage: null
+
+    function request(method: string, params: var, callback: var): void {
+      annotationService.firstPage = callback;
+    }
+  }
+
+  // annotationTimeline is its own, empty MessageTimeline for the
+  // annotation-alignment check below, so disturbing it with an insert
+  // and a remove around already-loaded rows never touches timeline's
+  // own, already-asserted state.
+  MessageTimeline {
+    id: annotationTimeline
   }
 
   Timer {
@@ -220,6 +247,7 @@ ShellRoot {
     if (!root.checkUpsertKeepsVerifiedDimensionsAcrossUnrelatedUpdate()) return;
     if (!root.checkWindowingCapsLoadedRows()) return;
     if (!root.checkWindowingCapIsAbsoluteEvenWithHighlightedId()) return;
+    if (!root.checkAnnotationsStayAlignedThroughInsertAndRemove()) return;
     root.checkLoadOlderDropsStaleReply();
   }
 
@@ -382,6 +410,77 @@ ShellRoot {
       return Check.fail("upsert kept stale verified dimensions across an edit that changed the media: " + JSON.stringify(afterEdit));
     }
 
+    return true;
+  }
+
+  // checkAnnotationsStayAlignedThroughInsertAndRemove reproduces a
+  // group chat's annotations going out of step with its own rows: a
+  // security review's exact Alice/Mallory sequence, posted oldest to
+  // newest as Mallory's run of two then Alice's run of two, loaded as
+  // the conversation's initial page so Timeline.annotate's own full
+  // pass establishes a correct baseline to disturb. A live message
+  // then arrives, through upsert exactly as message.added would
+  // deliver it, between Alice's two messages rather than at the newest
+  // end - and an already-loaded row is then deleted, through remove,
+  // from the middle rather than either end - both "around existing
+  // rows", never only at the front or back. Every row's own annotation
+  // must still describe that same row afterwards: this compares
+  // annotationTimeline's own annotations against a fresh, independent
+  // Timeline.annotate() pass over the same final rows, rather than
+  // hand-deriving the expected showSender/groupedWithOlder/showDay
+  // values itself, since the annotation decision these must match is
+  // already proven exhaustively in tests/unit/timeline.test.cjs - this
+  // only checks that MessageTimeline's own bookkeeping kept every row
+  // pointing at its own entry, never a neighbour's, through a
+  // structural change. Returns false, having already called
+  // Check.fail, on the first thing that does not hold.
+  function checkAnnotationsStayAlignedThroughInsertAndRemove(): bool {
+    const alice1 = Object.assign(root.message("alice1", 100), { senderId: "alice", senderName: "Alice" });
+    const alice2 = Object.assign(root.message("alice2", 90), { senderId: "alice", senderName: "Alice" });
+    const mallory1 = Object.assign(root.message("mallory1", 80), { senderId: "mallory", senderName: "Mallory" });
+    const mallory2 = Object.assign(root.message("mallory2", 70), { senderId: "mallory", senderName: "Mallory" });
+
+    annotationTimeline.loadInitial(annotationService, "g1", () => true, true);
+    annotationService.firstPage(null, { hasMore: false, messages: [alice1, alice2, mallory1, mallory2] });
+
+    // mallory1 (not either end) is revoked first, the way a delete
+    // removes a message for everyone.
+    annotationTimeline.remove("mallory1", true);
+
+    // Then a message from Mallory arrives out of order, landing
+    // between Alice's two messages rather than at the newest end -
+    // still through upsert, exactly as a real message.added event for
+    // a message whose own send time put it there would deliver it.
+    // Removing before inserting, rather than after, means the insert's
+    // own shift is the last thing to disturb alice2's position, so a
+    // caller that fixed up only the remove's own touched row could not
+    // accidentally also leave alice2's annotation correct by luck.
+    const mallory3 = Object.assign(root.message("mallory3", 95), { senderId: "mallory", senderName: "Mallory" });
+    annotationTimeline.upsert(mallory3, true, "");
+
+    return root._checkAnnotationsMatchFreshRecompute(annotationTimeline, true);
+  }
+
+  // _checkAnnotationsMatchFreshRecompute compares tl's own annotations
+  // against an independent Timeline.annotate() pass over its current
+  // rows, so a caller can disturb tl with whatever inserts and removes
+  // it likes and then confirm every row still carries its own
+  // annotation, never one shifted over from a neighbour. Returns
+  // false, having already called Check.fail, the first time a row's
+  // annotation does not match.
+  function _checkAnnotationsMatchFreshRecompute(tl: var, isGroup: bool): bool {
+    const rows = tl.snapshot();
+    const want = Timeline.annotate(rows, isGroup, Date.now());
+    const got = tl.annotations;
+
+    if (got.length !== want.length) {
+      return Check.fail("annotations holds " + got.length + " entries for " + want.length + " loaded rows after inserting and removing around existing rows");
+    }
+    for (let i = 0; i < want.length; i++) {
+      if (JSON.stringify(got[i]) !== JSON.stringify(want[i])) {
+        return Check.fail("row " + i + " (" + rows[i].id + ") has annotation " + JSON.stringify(got[i]) + ", want its own " + JSON.stringify(want[i]) + " - it is reading a neighbour's annotation");
+      }
+    }
     return true;
   }
 
