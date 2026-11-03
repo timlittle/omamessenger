@@ -16,7 +16,11 @@ func (c *Commands) Conversations(ctx context.Context, query string) ([]domain.Co
 }
 
 // OpenConversation returns the direct conversation with a contact, creating
-// it when there is none yet.
+// it when there is none yet. Its title is always reported verified: the
+// user deliberately chose this exact contact by its shown name from
+// their own list, a different trust moment from an unsolicited incoming
+// message naming itself whatever it likes (see domain.Conversation.TitleVerified
+// and docs/decisions.md).
 func (c *Commands) OpenConversation(ctx context.Context, accountID, contactID string) (domain.Conversation, error) {
 	if accountID == "" || contactID == "" {
 		return domain.Conversation{}, fmt.Errorf("%w: accountId and contactId are required", ErrInvalidInput)
@@ -28,7 +32,7 @@ func (c *Commands) OpenConversation(ctx context.Context, accountID, contactID st
 	}
 
 	conv, created, err := c.store.EnsureConversation(ctx, domain.Conversation{
-		AccountID: accountID, RemoteID: contact.RemoteID, Kind: domain.KindDirect, Title: contact.Name,
+		AccountID: accountID, RemoteID: contact.RemoteID, Kind: domain.KindDirect, Title: contact.Name, TitleVerified: true,
 	})
 	if err != nil {
 		return conv, err

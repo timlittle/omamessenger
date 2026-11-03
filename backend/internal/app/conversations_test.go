@@ -48,6 +48,26 @@ func TestOpenConversation_CreatesOnce(t *testing.T) {
 	}
 }
 
+// TestOpenConversation_TitleIsVerified confirms a conversation started
+// from the contact picker is never marked "~": the user deliberately
+// chose this exact entry by its shown name, a different trust moment
+// from an unsolicited incoming message naming itself whatever it likes
+// (see docs/decisions.md).
+func TestOpenConversation_TitleIsVerified(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	if err := f.store.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "c1", Name: "New Contact"}); err != nil {
+		t.Fatal(err)
+	}
+
+	conv, err := f.commands.OpenConversation(ctx, "wa", "c1")
+	if err != nil || !conv.TitleVerified {
+		t.Fatalf("OpenConversation = %+v, %v, want TitleVerified true", conv, err)
+	}
+}
+
 func TestOpenConversation_Errors(t *testing.T) {
 	t.Parallel()
 
