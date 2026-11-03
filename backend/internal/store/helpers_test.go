@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"path/filepath"
 	"testing"
@@ -112,6 +113,39 @@ func fakeThumb(t testing.TB, width, height int) string {
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, width, height))); err != nil {
 		t.Fatalf("encode fake thumbnail: %v", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
+// fakeOversizedThumb returns a base64-encoded, opaque PNG checkerboard
+// of the given size: a few kilobytes as PNG - deflate loves its exact,
+// tight repetition - but, once imagesafe.Sanitize re-encodes it as
+// JPEG, the one shape a DCT-based encoder handles worst, growing to
+// several hundred kilobytes at 512x512 and beyond at 1024x1024. This
+// is the exact shape a security review found could ride
+// sanitizedThumb's own re-encode past domain.MaxInlineThumbLen even
+// though CapMedia already confirmed the original bytes fit under it
+// (see docs/decisions.md): a plain solid colour like fakeThumb's own,
+// or even a smooth gradient, compresses far too well as JPEG to ever
+// ride over the cap this way, even at 1024x1024.
+func fakeOversizedThumb(t testing.TB, width, height int) string {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			if (x+y)%2 == 0 {
+				img.Set(x, y, color.RGBA{A: 255})
+			} else {
+				img.Set(x, y, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+			}
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode oversized fake thumbnail: %v", err)
 	}
 
 	return base64.StdEncoding.EncodeToString(buf.Bytes())

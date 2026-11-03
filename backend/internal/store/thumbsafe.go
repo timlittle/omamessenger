@@ -45,7 +45,13 @@ func verifyThumb(media *domain.Media) *domain.Media {
 // docs/decisions.md). It returns thumb unchanged when sanitizing it
 // changes nothing, a re-encoded, stripped version when it does, or ""
 // when thumb fails outright: not valid base64, not a recognized image
-// format, or over the bound - never the original bytes in that case.
+// format, over the bound imagesafe.Thumbnail itself accepts, or - a
+// security review found this one still unchecked - its own re-encoded
+// result runs past domain.MaxInlineThumbLen, which a highly
+// compressible image well under that cap on input can still do, since
+// imagesafe always writes an opaque image as JPEG regardless of how
+// small its own source happened to compress to (see
+// docs/decisions.md). Never the original bytes in any failure case.
 // width and height are the thumbnail's own real dimensions, as
 // imagesafe.Sanitize's own parse of it just confirmed them, for
 // domain.Media.ThumbWidth/ThumbHeight: the UI must size its own decode
@@ -68,7 +74,12 @@ func sanitizedThumb(thumb string) (safe string, width, height int) {
 		return "", 0, 0
 	}
 
-	return base64.StdEncoding.EncodeToString(out), w, h
+	encoded := base64.StdEncoding.EncodeToString(out)
+	if len(encoded) > domain.MaxInlineThumbLen {
+		return "", 0, 0
+	}
+
+	return encoded, w, h
 }
 
 // thumbRow is one candidate row sanitizeLegacyThumbnails considers: its

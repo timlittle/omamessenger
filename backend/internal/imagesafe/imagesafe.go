@@ -89,11 +89,22 @@ const maxRealisticAspectRatio = 16
 // sticker: both are always drawn small (see ui/components/PhotoView.qml
 // and StickerView.qml), so a declared size above a phone screen's own
 // pixel count already means the sender is lying, not sending a real
-// preview.
+// preview. DownscaleTo is 512, the size WhatsApp and Telegram both
+// actually use for a static sticker - the largest this profile's own
+// content legitimately is, so a real sticker is never shrunk, only an
+// oversized claim once it has already passed every cap above: a
+// security review found a highly compressible image, well under
+// domain.MaxInlineThumbLen on input, could still make imagesafe's own
+// re-encode - always a fresh JPEG for an opaque image, whatever the
+// source compressed to - pay the full cost of up to MaxSide on a
+// side, never needed for anything this profile is ever drawn at (see
+// docs/decisions.md). store.sanitizedThumb's own cap on the re-encoded
+// result is still what actually guarantees the bound: a hostile
+// enough pattern can still reencode past it even at 512x512.
 var Thumbnail = Profile{
 	MaxSide: 1024, MaxPixels: 1024 * 1024, MaxInputLen: 2 << 20,
 	MaxTotalPixels: 64_000_000, MaxAspectRatio: maxRealisticAspectRatio,
-	MaxDecodeBytes: 64 << 20,
+	MaxDecodeBytes: 64 << 20, DownscaleTo: 512,
 }
 
 // FullImage bounds a downloaded photo: one this account received,
