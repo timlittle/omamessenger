@@ -26,22 +26,38 @@ func TestMembers(t *testing.T) {
 			name: "from a channel",
 			setup: func(f *fakeTelegram) {
 				f.reply(&tg.ChannelsGetParticipantsRequest{}, &tg.ChannelsChannelParticipants{
-					Users: []tg.UserClass{&tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia", LastName: "Rahman"}},
+					Users: []tg.UserClass{&tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia", LastName: "Rahman", Contact: true}},
 				})
 			},
 			remote: "channel:5:3",
-			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia Rahman"}},
+			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia Rahman", Verified: true}},
 		},
 		{
 			name: "from a basic group",
 			setup: func(f *fakeTelegram) {
 				f.reply(&tg.MessagesGetFullChatRequest{}, &tg.MessagesChatFull{
 					FullChat: &tg.ChatFull{ID: 7, Participants: &tg.ChatParticipants{ChatID: 7}},
-					Users:    []tg.UserClass{&tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia"}},
+					Users:    []tg.UserClass{&tg.User{ID: 42, AccessHash: 99, FirstName: "Nadia", Contact: true}},
 				})
 			},
 			remote: "chat:7",
-			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia"}},
+			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia", Verified: true}},
+		},
+		{
+			// A group member's own profile name is just as able to carry
+			// a self-chosen claim as a direct chat's sender is, unless
+			// Telegram says this account has saved them as a contact or
+			// Telegram itself verifies them (see
+			// domain.Message.SenderVerified and docs/decisions.md).
+			name: "a bare profile name with no contact or verified badge is unverified",
+			setup: func(f *fakeTelegram) {
+				f.reply(&tg.MessagesGetFullChatRequest{}, &tg.MessagesChatFull{
+					FullChat: &tg.ChatFull{ID: 8, Participants: &tg.ChatParticipants{ChatID: 8}},
+					Users:    []tg.UserClass{&tg.User{ID: 43, AccessHash: 100, FirstName: "Mum"}},
+				})
+			},
+			remote: "chat:8",
+			want:   []domain.Member{{ID: "user:43:100", Name: "Mum", Verified: false}},
 		},
 		{
 			name:   "none for a direct chat",

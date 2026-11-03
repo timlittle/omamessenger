@@ -59,7 +59,7 @@ func (c *Connector) handleHistorySync(ctx context.Context, sink connector.Sink, 
 	src := syncSource{dev: dev, media: media}
 	onDemand := data.GetSyncType() == waHistorySync.HistorySync_ON_DEMAND
 
-	c.syncPushnames(ctx, sink, data.GetPushnames())
+	c.syncPushnames(ctx, sink, dev, data.GetPushnames())
 	for _, sc := range data.GetConversations() {
 		chatRemote, reported := c.syncConversation(ctx, sink, src, sc)
 		if onDemand && chatRemote != "" {
@@ -70,15 +70,17 @@ func (c *Connector) handleHistorySync(ctx context.Context, sink connector.Sink, 
 
 // syncPushnames reports a contact for every push name a sync carries,
 // and remembers each one for titling direct chats that otherwise have
-// no name of their own.
-func (c *Connector) syncPushnames(ctx context.Context, sink connector.Sink, names []*waHistorySync.Pushname) {
+// no name of their own. Each contact's own verified status (see
+// contactFromPushName) decides the rank it is remembered at, the same
+// as every other name this connector learns.
+func (c *Connector) syncPushnames(ctx context.Context, sink connector.Sink, dev device, names []*waHistorySync.Pushname) {
 	for _, p := range names {
-		contact, ok := contactFromPushName(c.account.ID, p)
+		contact, ok := contactFromPushName(ctx, dev, c.account.ID, p)
 		if !ok {
 			continue
 		}
 
-		c.rememberName(contact.RemoteID, contact.Name, nameRankPushName)
+		c.rememberName(contact.RemoteID, contact.Name, rankFor(contact.Verified))
 		sink.Contact(ctx, contact)
 	}
 }

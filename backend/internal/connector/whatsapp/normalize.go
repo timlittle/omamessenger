@@ -311,10 +311,25 @@ func contactDisplayName(info types.ContactInfo) (name string, verified bool) {
 }
 
 // contactFromPushName turns one push name of a history sync into a
-// contact, or reports false when it names no one.
-func contactFromPushName(accountID string, p *waHistorySync.Pushname) (domain.Contact, bool) {
+// contact, or reports false when it names no one. A push name is
+// self-chosen, so it only ever makes an unverified contact; when
+// WhatsApp's own contact store already resolves the same JID to a
+// saved contact or verified business name (see device.contactName),
+// that name and its verified status win instead, the same priority a
+// saved contact already takes over a push name everywhere else - the
+// new-chat contact list must never show a stranger's self-chosen
+// "Mum" as if it were a saved contact (see docs/decisions.md).
+func contactFromPushName(ctx context.Context, dev device, accountID string, p *waHistorySync.Pushname) (domain.Contact, bool) {
 	jid, err := types.ParseJID(p.GetID())
-	if err != nil || jid.IsEmpty() || p.GetPushname() == "" {
+	if err != nil || jid.IsEmpty() {
+		return domain.Contact{}, false
+	}
+
+	if name, verified := dev.contactName(ctx, jid); name != "" {
+		return domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: name, Verified: verified}, true
+	}
+
+	if p.GetPushname() == "" {
 		return domain.Contact{}, false
 	}
 

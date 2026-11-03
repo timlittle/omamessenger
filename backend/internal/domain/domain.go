@@ -100,6 +100,18 @@ type Contact struct {
 	AccountID string `json:"accountId"`
 	RemoteID  string `json:"remoteId"`
 	Name      string `json:"name"`
+
+	// Verified mirrors domain.Message.SenderVerified for this
+	// contact's own name: true for a real saved contact (Telegram's
+	// own contacts.getContacts always reports one of these); false for
+	// a bare, self-chosen name, such as a WhatsApp push name synced
+	// with no saved contact behind it at all - WhatsApp's own contact
+	// list is built entirely from push names today (see
+	// connector/whatsapp/history.go's syncPushnames), so a stranger
+	// naming themselves "Mum" can appear in the new-chat picker
+	// exactly like a real saved contact unless this is checked (see
+	// docs/decisions.md).
+	Verified bool `json:"verified,omitempty"`
 }
 
 // Conversation is a direct chat or group, with the summary the
@@ -187,6 +199,13 @@ type Conversation struct {
 	// are "" when only the title matched, or nothing matched at all.
 	MatchMessageID string `json:"matchMessageId,omitempty"`
 	MatchSender    string `json:"matchSender,omitempty"`
+
+	// MatchSenderVerified mirrors domain.Message.SenderVerified for
+	// MatchSender: the command palette's "Messages" section shows
+	// MatchSender as a search result's own label, so it needs the same
+	// "~" marking a message's sender label gets everywhere else (see
+	// docs/decisions.md).
+	MatchSenderVerified bool `json:"matchSenderVerified,omitempty"`
 }
 
 // Message is one message in a conversation. Created is in Unix

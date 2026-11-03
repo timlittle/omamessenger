@@ -326,7 +326,13 @@ func sharedPhone(u *tg.User) string {
 	return "+" + u.Phone
 }
 
-// contact turns a user into a contact of the account.
+// contact turns a user into a contact of the account. It is always
+// verified: contact's only caller reads Telegram's own
+// contacts.getContacts, so every user it names is already a saved
+// contact of this account, regardless of that user's own Contact or
+// Verified flags (see userName, which userName uses for a sender's or
+// group member's name - a bare, self-chosen one that carries no such
+// guarantee).
 func contact(accountID string, u *tg.User) domain.Contact {
 	name, _ := userName(u)
 
@@ -334,5 +340,6 @@ func contact(accountID string, u *tg.User) domain.Contact {
 		AccountID: accountID,
 		RemoteID:  remoteID(&tg.InputPeerUser{UserID: u.ID, AccessHash: u.AccessHash}),
 		Name:      name,
+		Verified:  true,
 	}
 }

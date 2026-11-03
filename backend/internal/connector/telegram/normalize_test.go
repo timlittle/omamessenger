@@ -234,6 +234,28 @@ func TestUserName_MarksAVerifiedNameUnlikeASelfChosenOne(t *testing.T) {
 	}
 }
 
+// TestContact_IsAlwaysVerified confirms every contact this connector
+// builds is verified, regardless of a user's own Contact or Verified
+// flags: contact's only caller is syncContacts, fed exclusively from
+// Telegram's own contacts.getContacts, so every user it names is
+// already a saved contact of this account by definition - unlike a
+// group member's or sender's name, which can be nothing more than a
+// bare, self-chosen profile name (see userName and docs/decisions.md).
+func TestContact_IsAlwaysVerified(t *testing.T) {
+	t.Parallel()
+
+	got := contact("tg", &tg.User{ID: 42, AccessHash: 99, FirstName: "Priya"})
+	want := domain.Contact{
+		AccountID: "tg",
+		RemoteID:  remoteID(&tg.InputPeerUser{UserID: 42, AccessHash: 99}),
+		Name:      "Priya",
+		Verified:  true,
+	}
+	if got != want {
+		t.Errorf("contact(...) = %+v, want %+v", got, want)
+	}
+}
+
 // TestSharedPhone_FormatsAShareOrReportsNone confirms
 // domain.Conversation.Phone's own Telegram source: formatted when the
 // person has chosen to share their phone number, "" - the common

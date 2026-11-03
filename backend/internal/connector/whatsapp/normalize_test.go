@@ -494,17 +494,40 @@ func TestContactDisplayName_PrefersSavedNamesOverAPushName(t *testing.T) {
 func TestContactFromPushName_NamesAContactOrReportsNone(t *testing.T) {
 	t.Parallel()
 
-	got, ok := contactFromPushName("wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net"), Pushname: strPtr("Nadia")})
+	dev := newFakeDevice()
+
+	got, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net"), Pushname: strPtr("Nadia")})
 	want := domain.Contact{AccountID: "wa", RemoteID: "1@s.whatsapp.net", Name: "Nadia"}
 	if !ok || got != want {
 		t.Errorf("contactFromPushName = %+v, %t; want %+v, true", got, ok, want)
 	}
 
-	if _, ok := contactFromPushName("wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net")}); ok {
+	if _, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net")}); ok {
 		t.Error("a push name with no name became a contact")
 	}
 
-	if _, ok := contactFromPushName("wa", &waHistorySync.Pushname{Pushname: strPtr("Nadia")}); ok {
+	if _, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{Pushname: strPtr("Nadia")}); ok {
 		t.Error("a push name with no id became a contact")
+	}
+}
+
+// TestContactFromPushName_PrefersAKnownContactOverTheBarePushName covers
+// a sync that carries a self-chosen push name for a JID WhatsApp's own
+// contact store already resolves to a saved contact: the saved name and
+// its verified status win, the same priority device.contactName already
+// gives a saved contact over a push name everywhere else, so the
+// new-chat contact list never shows a push name as if it were a saved
+// contact's own name just because it arrived through this sync (see
+// docs/decisions.md).
+func TestContactFromPushName_PrefersAKnownContactOverTheBarePushName(t *testing.T) {
+	t.Parallel()
+
+	dev := newFakeDevice()
+	dev.contactNames = map[string]string{"2@s.whatsapp.net": "Nadia Rahman"}
+
+	got, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("2@s.whatsapp.net"), Pushname: strPtr("Nadia")})
+	want := domain.Contact{AccountID: "wa", RemoteID: "2@s.whatsapp.net", Name: "Nadia Rahman", Verified: true}
+	if !ok || got != want {
+		t.Errorf("contactFromPushName = %+v, %t; want %+v, true", got, ok, want)
 	}
 }

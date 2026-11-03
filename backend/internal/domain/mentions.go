@@ -20,6 +20,13 @@ type Mention struct {
 type Member struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+
+	// Verified mirrors domain.Message.SenderVerified for this member's
+	// own name: true for a saved contact or a verified business name,
+	// false for a bare, self-chosen one such as a WhatsApp push name -
+	// a group's own member list is just as able to carry a self-chosen
+	// name as its messages are (see docs/decisions.md).
+	Verified bool `json:"verified,omitempty"`
 }
 
 // utf16RuneLen is how many UTF-16 code units r encodes as: two for a

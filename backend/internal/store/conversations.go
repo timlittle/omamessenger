@@ -106,7 +106,7 @@ func (s *Store) ConversationByRemote(ctx context.Context, accountID, remoteID st
 // of Conversations' search when query has no word characters to look up in
 // messages_fts: an empty FTS5 MATCH argument is invalid, so a query such as
 // "_" or "%" can only match a title, the way LIKE always has.
-const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match, NULL AS match_message_id, NULL AS match_sender
+const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match, NULL AS match_message_id, NULL AS match_sender, NULL AS match_sender_verified
 	` + conversationFrom + `
 	WHERE :query = '' OR c.title LIKE :pattern ESCAPE '\'
 	ORDER BY c.pinned DESC, c.pin_order ASC, c.last_activity DESC, c.id`
@@ -127,7 +127,7 @@ const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match,
 // otherwise make the command palette's "Messages" row lay out far more
 // than a search result ever needs to show.
 const conversationsByTitleOrMessage = `WITH matched AS (
-		SELECT m.conversation_id AS conversation_id, m.id AS message_id, m.sender_name AS sender_name,
+		SELECT m.conversation_id AS conversation_id, m.id AS message_id, m.sender_name AS sender_name, m.sender_verified AS sender_verified,
 			snippet(messages_fts, 0, '', '', '…', 32) AS snippet, bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
 		FROM messages_fts
 		JOIN messages m ON m.rowid = messages_fts.rowid
@@ -138,7 +138,7 @@ const conversationsByTitleOrMessage = `WITH matched AS (
 		) AS rn
 		FROM matched
 	)
-	SELECT ` + conversationColumns + `, hits.snippet AS match, hits.message_id AS match_message_id, hits.sender_name AS match_sender
+	SELECT ` + conversationColumns + `, hits.snippet AS match, hits.message_id AS match_message_id, hits.sender_name AS match_sender, hits.sender_verified AS match_sender_verified
 	` + conversationFrom + `
 	LEFT JOIN hits ON hits.conversation_id = c.id AND hits.rn = 1
 	WHERE c.title LIKE :pattern ESCAPE '\' OR hits.conversation_id IS NOT NULL
@@ -460,10 +460,12 @@ func scanConversation(row scanner) (domain.Conversation, error) {
 // still carry unbounded text today.
 func scanConversationMatch(row scanner) (domain.Conversation, error) {
 	var match, messageID, sender sql.NullString
-	c, err := scanConversationWith(row, &match, &messageID, &sender)
+	var senderVerified sql.NullBool
+	c, err := scanConversationWith(row, &match, &messageID, &sender, &senderVerified)
 	c.Match = domain.CapPreview(match.String)
 	c.MatchMessageID = messageID.String
 	c.MatchSender = domain.CapDisplayName(sender.String)
+	c.MatchSenderVerified = senderVerified.Bool
 
 	return c, err
 }
