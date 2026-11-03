@@ -144,11 +144,14 @@ test('results/items: "conversations" mode matches the list and appends the "Mess
   ]);
 });
 
-test('results/items: "links" mode matches and labels the offered urls', () => {
-  const ctx = { query: 'exam', linkChoices: ['https://example.com', 'https://other.test'] };
+test('results/items: "links" mode matches and labels the offered urls, passing displayText through unchanged', () => {
+  const ctx = { query: 'exam', linkChoices: [
+    { url: 'https://example.com', displayText: 'https://example.com' },
+    { url: 'https://other.test', displayText: 'https://other.test' }
+  ] };
 
   const results = Palette.results('links', ctx);
-  assert.deepEqual(results, [{ url: 'https://example.com' }]);
+  assert.deepEqual(results, [{ url: 'https://example.com', displayText: 'https://example.com' }]);
   assert.deepEqual(Palette.items('links', results, ctx), [{ label: 'Open link: https://example.com', detail: '', keys: '' }]);
 });
 

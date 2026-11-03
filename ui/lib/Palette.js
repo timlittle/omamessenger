@@ -169,8 +169,13 @@ var MODES = {
       keys: '', unread: 0, section: 'message'
     })))
   },
+  // linkChoices is already {url, displayText} pairs (see
+  // WindowController.openLinkChooser), so results passes them through
+  // unchanged rather than rebuilding a {url} wrapper around a bare
+  // string: acceptPalette reads displayText straight off the chosen
+  // entry to ask WindowController.openLink's own mismatch question.
   links: {
-    results: (ctx) => search(ctx.linkChoices.map((url) => ({ url })), ctx.query, (c) => c.url),
+    results: (ctx) => search(ctx.linkChoices, ctx.query, (c) => c.url),
     items: (results) => results.map((c) => ({ label: 'Open link: ' + c.url, detail: '', keys: '' }))
   },
   snoozeCustom: {

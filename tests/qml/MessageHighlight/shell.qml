@@ -38,9 +38,9 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  // capturedLinks records the urls the last linksRequested signal
-  // carried, so o's single-link path is checked without ever calling
-  // the real Qt.openUrlExternally.
+  // capturedLinks records the {url, displayText} pairs the last
+  // linksRequested signal carried, so o's single-link path is checked
+  // without ever calling the real Qt.openUrlExternally.
   property var capturedLinks: null
 
   QtObject {
@@ -450,7 +450,12 @@ ShellRoot {
 
     root.capturedLinks = null;
     t.keyClick(Qt.Key_O);
-    if (JSON.stringify(root.capturedLinks) !== '["https://example.com/offer"]')
+    // {url, displayText}, not the url twice as the same reference: a
+    // security review found the real caller's own equivalent of this
+    // pairing collapsed into comparing a url against itself, which
+    // left WindowController.openLink's own mismatch question with
+    // nothing it could ever catch (see docs/decisions.md).
+    if (JSON.stringify(root.capturedLinks) !== '[{"url":"https://example.com/offer","displayText":"https://example.com/offer"}]')
       return Check.fail("o did not report the highlighted message's own link: " + JSON.stringify(root.capturedLinks));
 
     t.keyClick(Qt.Key_K);

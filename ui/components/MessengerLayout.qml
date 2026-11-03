@@ -139,11 +139,12 @@ Item {
     function onScroll(direction) { root._scrollConversation(direction) }
     function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
     function onLinksRequested(urls) {
-      // Highlight.links only ever finds a bare, autolinked URL already
-      // in a message's own text, never a formatting span's own link,
-      // so its text is always the url itself and this never needs to
-      // ask first (see WindowController.openLink).
-      if (urls.length === 1) root.windowController.openLink(urls[0], urls[0]);
+      // Each entry is {url, displayText} (see MessageHighlight.openLink):
+      // passed through as two separate fields, never the same value
+      // twice, so openLink's own mismatch question - which a security
+      // review found this call defeated outright by always comparing
+      // url against itself - still has something real to compare.
+      if (urls.length === 1) root.windowController.openLink(urls[0].url, urls[0].displayText);
       else root.windowController.openLinkChooser(urls);
     }
   }

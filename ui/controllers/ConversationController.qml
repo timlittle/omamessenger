@@ -194,7 +194,8 @@ Item {
   // link: opened directly (through WindowController.openLink, which
   // asks the helper's own links.open method) when there is exactly
   // one, the same choice the mouse path already makes, or let the
-  // user choose among several when there is more than one. Opening
+  // user choose among several when there is more than one. Each entry
+  // is {url, displayText} (see MessageHighlight.openLink). Opening
   // stays with the caller, rather than this controller, so it is
   // checked by what it asked for rather than by stubbing how opening
   // actually happens.

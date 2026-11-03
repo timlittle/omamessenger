@@ -59,12 +59,13 @@ function fileURL(path) {
 // from every position in a long run of slashes, backtracking the "+"
 // at each one, which costs the square of the run's length. A security
 // review found exactly that shape here - the same reasoning that
-// already turned Format.splitTrailingPunctuation and
-// Highlight.stripTrailingPunctuation into loops, just missed on this
-// copy. A sender's own link, and the text naming it, both reach this
-// with no length limit of their own at this layer, so the loop is
-// what keeps a single click or the "o" key linear rather than letting
-// one adversarial link stall the whole shell.
+// already turned Format.splitTrailingPunctuation into a loop (which
+// Highlight.links now reuses, through Format.plainLinks, rather than
+// keeping a second copy of its own) - just missed on this one. A
+// sender's own link, and the text naming it, both reach this with no
+// length limit of their own at this layer, so the loop is what keeps
+// a single click or the "o" key linear rather than letting one
+// adversarial link stall the whole shell.
 function trimTrailingSlashes(text) {
   let end = text.length;
   while (end > 0 && text[end - 1] === '/') {

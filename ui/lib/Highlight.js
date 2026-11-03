@@ -17,11 +17,7 @@
 .import "Timeline.js" as Timeline
 .import "Keymap.js" as Keymap
 .import "Edit.js" as Edit
-
-// LINK_PATTERN matches http(s) links in a message's raw text, the shape
-// messageHtml's own linkify in Format.js uses on the escaped version. It
-// runs on the unescaped text, since this file never builds HTML.
-var LINK_PATTERN = /https?:\/\/[^\s]+/g;
+.import "Format.js" as Format
 
 // older returns the id before currentId when moving toward older
 // messages (k/Up), stopping at the oldest loaded one rather than
@@ -84,39 +80,21 @@ function hints(message, bindings) {
 }
 
 // links returns every URL the message's open key (o) can reach: every
-// http(s) link found in its text, in the order they appear. A link
-// preview's own URL is never one of them: the sender sets it apart from
-// the text the bubble shows, so only a click on the card itself can
-// reach it, and that asks first when the text does not show it (see
-// Links.previewDisplayText).
+// http(s) link found in its text, in the order they appear, matched by
+// Format.plainLinks - the exact rule messageHtml's own linkify applies
+// when it turns one into a clickable anchor - rather than a separately
+// maintained pattern of this file's own. A security review found that
+// separate pattern ran through a '>' the bubble's own rule stops at,
+// which a browser reads as ending a URL's host and starting a new
+// userinfo@host past it, so o opened more of the message than its
+// bubble ever showed as a link (see docs/decisions.md). A link
+// preview's own URL is never one of them: the sender sets it apart
+// from the text the bubble shows, so only a click on the card itself
+// can reach it, and that asks first when the text does not show it
+// (see Links.previewDisplayText).
 function links(message) {
   const text = message && message.text ? message.text : '';
-  const found = text.match(LINK_PATTERN) || [];
-  return found.map(stripTrailingPunctuation);
-}
-
-// TRAILING_PUNCTUATION is the set of characters stripTrailingPunctuation
-// trims from a link's own end.
-var TRAILING_PUNCTUATION = '.,;:!?)';
-
-// stripTrailingPunctuation drops sentence punctuation a link's own text
-// swept up, such as the period ending "see http://x.com." or the
-// closing parenthesis of "(http://x.com)", the same trim Format.js's
-// linkify applies to a link found in escaped text. Scanning back from
-// the end in a loop, rather than a regex of a lazy group followed by a
-// greedy class anchored at $, keeps this linear in url's length: that
-// regex shape backtracks the lazy group one character at a time for
-// every split point the class fails at, which costs the square of the
-// length on a url padded with tens of thousands of trailing punctuation
-// characters - exactly what a sender's own message text can carry,
-// with no length limit of its own at this layer.
-function stripTrailingPunctuation(url) {
-  let end = url.length;
-  while (end > 0 && TRAILING_PUNCTUATION.includes(url[end - 1])) {
-    end--;
-  }
-
-  return url.slice(0, end);
+  return Format.plainLinks(text);
 }
 
 // primaryLink returns the one link the open key (o) opens when the

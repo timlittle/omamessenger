@@ -50,7 +50,8 @@ QtObject {
 
   // linksRequested asks the caller to open the highlighted message's
   // link: opened directly when there is exactly one, or let the user
-  // choose among several when there is more than one.
+  // choose among several when there is more than one. Each entry is
+  // {url, displayText} (see openLink above).
   signal linksRequested(var urls)
 
   // reset moves the highlight to timeline's newest loaded message, and
@@ -189,13 +190,19 @@ QtObject {
   // openLink finds the highlighted message's link or links (the link
   // preview's own URL, or every link in its text when it has no preview)
   // and asks the caller to open them: nothing happens when it carries
-  // none.
+  // none. Each is reported as {url, displayText}, both read from the
+  // same match (see Highlight.links): a plain autolinked URL's own
+  // visible text is always the URL itself (see ui/lib/Links.js's own
+  // header comment), but paired as two separate fields rather than the
+  // same value passed in twice, so WindowController.openLink's own
+  // mismatch question still has something real to compare if either
+  // one is ever computed differently in the future.
   function openLink(timeline: var): void {
     const message = timeline.find(root.highlightedId);
     if (!message) return;
 
     const found = Highlight.links(message);
-    if (found.length > 0) root.linksRequested(found);
+    if (found.length > 0) root.linksRequested(found.map((url) => ({ url, displayText: url })));
   }
 
   // goToQuote moves the highlight to the message the highlighted one

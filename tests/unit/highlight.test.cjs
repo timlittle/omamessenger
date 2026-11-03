@@ -157,6 +157,17 @@ test('links returns an empty list for a message with no link', () => {
   assert.deepEqual(Highlight.links(message({ media: { kind: 'photo', width: 1, height: 1 } })), []);
 });
 
+test('links stops exactly where the bubble would, matching Format.plainLinks rather than its own pattern', () => {
+  // A security review found this file's own, separately maintained
+  // pattern ran through '>', which a browser reads as ending a URL's
+  // host and starting a new userinfo@host past it: the bubble (see
+  // ui/lib/Format.js's URL_PATTERN) already stopped there, so o opened
+  // more of the message than its own bubble ever showed as a link
+  // (see docs/decisions.md and tests/unit/format.test.cjs's own
+  // plainLinks cases for every other character this same rule covers).
+  const spoofed = message({ text: 'https://bank.com>@evil.example/login' });
+  assert.deepEqual(Highlight.links(spoofed), ['https://bank.com']);
+});
 
 test('primaryLink returns the first link, or "" for none', () => {
   assert.strictEqual(Highlight.primaryLink(message({ text: 'https://a.example https://b.example' })), 'https://a.example');

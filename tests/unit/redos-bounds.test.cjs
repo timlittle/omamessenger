@@ -8,9 +8,10 @@
 // backtrack from every position in a long run of the quantified
 // character, costing the square of the run's length rather than its
 // length - exactly the shape already fixed once, for a different
-// regex, in Format.splitTrailingPunctuation and
-// Highlight.stripTrailingPunctuation, and missed when Links.js's own
-// copy was added later. Each case below feeds the function a run of
+// regex, in Format.splitTrailingPunctuation (which Highlight.links
+// now reuses, through Format.plainLinks, rather than keeping a second
+// copy of its own), and missed when Links.js's own copy was added
+// later. Each case below feeds the function a run of
 // 65000 of its own regex's own boundary character - the character
 // that character class or quantifier is built to consume - and checks
 // it still answers well under a generous bound, so a future change

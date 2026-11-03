@@ -128,8 +128,9 @@ Item {
   // mode; just paletteResults in every other mode.
   property int paletteIndex: 0
 
-  // linkChoices are the URLs offered when the palette opens in "links"
-  // mode: the highlighted message's own links, set by openLinkChooser.
+  // linkChoices are the links offered when the palette opens in "links"
+  // mode: the highlighted message's own links, set by openLinkChooser,
+  // each a {url, displayText} pair (see MessageHighlight.openLink).
   property var linkChoices: []
 
   // _messageSearchResults is the debounced message search's last answer:
@@ -301,11 +302,12 @@ Item {
     root.paletteOpen = true;
   }
 
-  // openLinkChooser shows the palette listing urls, for o on a message
-  // that carries more than one link: picking one opens it, the same as
-  // the single-link case opens straight away without asking.
-  function openLinkChooser(urls: var): void {
-    root.linkChoices = urls;
+  // openLinkChooser shows the palette listing links, for o on a
+  // message that carries more than one: picking one opens it, the
+  // same as the single-link case opens straight away without asking.
+  // links is {url, displayText} pairs (see MessageHighlight.openLink).
+  function openLinkChooser(links: var): void {
+    root.linkChoices = links;
     root.openPalette("links");
   }
 
@@ -531,7 +533,7 @@ Item {
 
     root.closePalette();
     if (root.paletteMode === "conversations") root._openConversation(chosen);
-    else if (root.paletteMode === "links") root.openLink(chosen.url, chosen.url);
+    else if (root.paletteMode === "links") root.openLink(chosen.url, chosen.displayText);
     else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
     else if (root.paletteMode === "sendLaterCustom") root._scheduleDraft(chosen.at);
     else if (root.paletteMode === "scheduledMessages") root._openScheduledMessage(chosen);
