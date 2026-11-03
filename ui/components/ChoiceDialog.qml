@@ -24,6 +24,19 @@ Item {
   property string titleObjectName: ""
   // description is shown under the title, wrapped; empty hides it.
   property string description: ""
+  // descriptionElide is description's own elide mode, for the rare
+  // caller whose description can run past maximumLineCount even once
+  // wrapped - LinkOpenConfirm sets Text.ElideMiddle, so a long URL's
+  // own scheme and whatever sits nearest its real host both stay in
+  // view; every other question's plain sentence never needs more than
+  // the default.
+  property int descriptionElide: Text.ElideRight
+  // emphasisText, when not empty, shows its own line directly under
+  // the title: wrapped but never elided or truncated, so whatever it
+  // says is always shown in full. LinkOpenConfirm uses this for a
+  // mismatched link's real host, which must never be the part eliding
+  // the description below can still hide (see docs/decisions.md).
+  property string emphasisText: ""
   // errorText is shown under the main choices, in the urgent colour, for
   // the "list" layout only; empty hides it.
   property string errorText: ""
@@ -93,19 +106,38 @@ Item {
       }
 
       Text {
+        objectName: "dialogEmphasis"
+        Layout.fillWidth: true
+        visible: root.emphasisText !== ""
+        text: root.emphasisText
+        textFormat: Text.PlainText
+        // Wrap, never elide: this line exists so a caller has
+        // somewhere to say the one thing - LinkOpenConfirm's real
+        // host - that must always be shown in full, whatever the
+        // description below it still has to elide (see
+        // docs/decisions.md).
+        wrapMode: Text.Wrap
+        color: Theme.foreground
+        font { family: Theme.font.family; pixelSize: Theme.font.body; weight: Font.DemiBold }
+      }
+
+      Text {
+        objectName: "dialogDescription"
         Layout.fillWidth: true
         visible: root.description !== ""
         text: root.description
         textFormat: Text.PlainText
         // Wrap can break anywhere, not only at a space: a question
         // whose description is mostly one long, unbroken token - the
-        // URL LinkOpenConfirm shows in full - would otherwise overflow
+        // URL LinkOpenConfirm shows here - would otherwise overflow
         // the card instead of wrapping. maximumLineCount plus elide
         // bounds the layout cost of that same token to a fixed number
         // of lines, however long a sender's own URL runs, rather than
-        // relying on every caller to shorten its own description first.
+        // relying on every caller to shorten its own description
+        // first; descriptionElide picks which end of it, if any, a
+        // caller would rather lose first.
         wrapMode: Text.Wrap
-        elide: Text.ElideRight
+        elide: root.descriptionElide
         maximumLineCount: 8
         color: Util.alpha(Theme.foreground, 0.7)
         font { family: Theme.font.family; pixelSize: Theme.font.body }

@@ -138,6 +138,30 @@ function resolveClickedLink(href, text, mentions, spans) {
   return isAllowed(href) ? { url: href, displayText: '' } : null;
 }
 
+// urlHost returns url's own authority host, exactly as the URL spells
+// it - scheme and userinfo stripped, a punycode (xn--...) or literal
+// IPv4/IPv6 host shown as is, never decoded or resolved, since
+// decoding is itself a step a spoof could abuse - or "" when url
+// carries no "//" authority at all (a mailto: link, say, which has no
+// separate host to show). The real host is whatever comes after the
+// LAST unescaped "@" in the authority, matching how a browser
+// resolves one: a sender can pad the userinfo before it with any text
+// at all, including a convincing fake domain name, and LinkOpenConfirm
+// shows exactly this - never elided - so that padding can never push
+// the real host out of view (see docs/decisions.md). lastIndexOf and a
+// single bounded regex replace keep this linear in url's own length,
+// which has no limit of its own at this layer.
+function urlHost(url) {
+  const afterScheme = (url || '').replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:/, '');
+  if (!afterScheme.startsWith('//')) {
+    return '';
+  }
+
+  const authority = afterScheme.slice(2).split(/[/?#]/, 1)[0];
+  const host = authority.slice(authority.lastIndexOf('@') + 1);
+  return host.replace(/:\d*$/, '');
+}
+
 // previewDisplayText returns what a link preview card showed for url,
 // for WindowController.openLink to compare against: url itself only
 // when it exactly matches one of the anchors the message's own bubble

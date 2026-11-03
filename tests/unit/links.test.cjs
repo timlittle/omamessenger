@@ -201,3 +201,47 @@ test('sameTarget strips a long run of trailing slashes in linear time, not quadr
 test('sameTarget still drops a short, ordinary trailing slash', () => {
   assert.strictEqual(Links.sameTarget('https://example.com/page///', 'https://example.com/page'), true);
 });
+
+const urlHostCases = [
+  ['a plain host', 'https://example.com/path', 'example.com'],
+  ['a host with a port', 'https://example.com:8443/path', 'example.com'],
+  ['userinfo stripped, keeping only the real host after the last "@"',
+    'https://user:pass@example.com/path', 'example.com'],
+  // The review's own example: a convincing fake name padded into the
+  // userinfo, with the real host - the one this must return - only
+  // after the final "@".
+  ['a long userinfo padding does not hide the real host after it',
+    'https://bank.example.com' + 'a'.repeat(1500) + '@evil.example/login', 'evil.example'],
+  ['the last "@" wins when the userinfo itself contains one',
+    'https://name@work@example.com/path', 'example.com'],
+  ['an IPv4 host', 'https://192.168.0.1/path', '192.168.0.1'],
+  ['an IPv4 host with a port', 'https://192.168.0.1:8080/path', '192.168.0.1'],
+  ['a bracketed IPv6 host, shown exactly as written', 'https://[2001:db8::1]/path', '[2001:db8::1]'],
+  ['a bracketed IPv6 host with a port', 'https://[2001:db8::1]:8080/path', '[2001:db8::1]'],
+  ['a punycode host, shown exactly as written, never decoded', 'https://xn--e1aybc.xn--p1ai/path', 'xn--e1aybc.xn--p1ai'],
+  ['no path at all', 'https://example.com', 'example.com'],
+  ['a query string with no path', 'https://example.com?a=1', 'example.com'],
+  ['a fragment with no path', 'https://example.com#section', 'example.com'],
+  ['a mailto: link has no "//" authority, so no separate host to show', 'mailto:person@example.com', ''],
+  ['empty input', '', ''],
+  ['missing entirely', undefined, '']
+];
+
+for (const [name, url, want] of urlHostCases) {
+  test(`urlHost ${name}`, () => {
+    assert.strictEqual(Links.urlHost(url), want);
+  });
+}
+
+test('urlHost stays linear on a long run of userinfo padding, not quadratic', () => {
+  // lastIndexOf and a bounded regex replace are both already linear,
+  // but this guards the shape explicitly: a sender's own padding
+  // before the real "@" has no length limit of its own at this layer.
+  const adversarial = `https://${'a'.repeat(65000)}@evil.example/login`;
+  const start = Date.now();
+  const host = Links.urlHost(adversarial);
+  const elapsedMs = Date.now() - start;
+
+  assert.strictEqual(host, 'evil.example');
+  assert.ok(elapsedMs < 2000, `urlHost took ${elapsedMs}ms on a 65000-character userinfo, want well under 2000ms`);
+});
