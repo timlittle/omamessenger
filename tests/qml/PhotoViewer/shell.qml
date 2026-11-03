@@ -8,7 +8,11 @@
 // also checks that a video opens into FullVideoPlayer instead of the
 // plain Image, and that a video with no play copy yet, or one still
 // preparing one, shows the right message instead of ever loading the
-// QtMultimedia runtime.
+// QtMultimedia runtime. It also checks that an edit swapping the open
+// message's media for a kind the Image may not show - a file, voice
+// note or audio message, none of whose own path is a sanitized display
+// copy - never reaches the Image as a source, even though root.path is
+// still set.
 import QtQuick
 import QtTest
 import Quickshell
@@ -74,6 +78,7 @@ ShellRoot {
     if (!root.checkVideoOpensIntoFullVideoPlayer()) return;
     if (!root.checkVideoWithNoPlayCopyShowsUnavailable()) return;
     if (!root.checkVideoPreparingShowsItsOwnLabel()) return;
+    if (!root.checkEditedToFileNeverLoadsItsRawBytes()) return;
 
     console.log("PASS PhotoViewer");
     Qt.exit(0);
@@ -247,6 +252,35 @@ ShellRoot {
     if (!preparingLabel || !preparingLabel.visible) return Check.fail("a video preparing its play copy shows no \"Preparing…\" label");
 
     viewer.videoPreparing = false;
+    return true;
+  }
+
+  // checkEditedToFileNeverLoadsItsRawBytes verifies that once the open
+  // message's own kind is no longer photo or video - a sender's edit
+  // swapping in a file, voice note or audio message while the viewer
+  // was still open on it, which Telegram allows and a WhatsApp edit
+  // simulates by resending - the Image never takes root.path as its
+  // source, even though root.path is still set: only a photo's path is
+  // the helper's own re-encoded display copy, while a file, voice note
+  // or audio message's path is the sender's original, unsanitized
+  // download, and Qt's Image decodes whatever it is given by sniffing
+  // its own bytes (see docs/decisions.md).
+  function checkEditedToFileNeverLoadsItsRawBytes(): bool {
+    viewer.open = true;
+    viewer.photo = { kind: "photo", width: 400, height: 300, thumb: "" };
+    viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
+
+    const image = Check.find(viewer, "photoImage");
+    if (!image) return Check.fail("no photoImage found");
+    if (String(image.source) === "") return Check.fail("the photo Image has no source while actually showing a photo");
+
+    // The edit: still the same viewer, still a non-empty path, but no
+    // longer a photo.
+    viewer.photo = { kind: "file", fileName: "invoice.pdf" };
+    viewer.path = "/not-a-real-download/invoice.pdf";
+
+    if (String(image.source) !== "") return Check.fail("the photo Image still loads a file message's own path: " + image.source);
+    if (image.visible) return Check.fail("the photo Image is still visible for a file message");
     return true;
   }
 }

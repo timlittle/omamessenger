@@ -69,11 +69,25 @@ Item {
   // _isVideo is true while photo is actually a video or GIF, which
   // plays through FullVideoPlayer instead of the plain Image below.
   readonly property bool _isVideo: !!root.photo && root.photo.kind === "video"
+  // _isPhoto is true while photo is actually a photo: the Image
+  // below's own allow-list, checked instead of "not video", since a
+  // sender's edit can swap the open message's media for a file, voice
+  // note or audio message while the viewer is still open on it
+  // (Telegram allows a media edit; WhatsApp's resends the message).
+  // Only a photo's own path is the helper's re-encoded display copy; a
+  // file, voice note or audio message's path is the sender's original,
+  // unsanitized download, and Qt's Image decodes whatever source it is
+  // given by sniffing its own bytes, choosing the decoder from
+  // untrusted content a security review found this exact "not video"
+  // logic would otherwise hand it (see docs/decisions.md). The viewer
+  // never shows a sticker either, despite its path also being a
+  // display copy: show() only ever opens it for a photo or a video.
+  readonly property bool _isPhoto: !!root.photo && root.photo.kind === "photo"
 
   // _haveFile is whether the full image, rather than its thumbnail,
   // is the one actually shown right now - the same condition image's
   // own source binding below uses.
-  readonly property bool _haveFile: !root._isVideo && !!root.path
+  readonly property bool _haveFile: root._isPhoto && !!root.path
   // _verifiedWidth and _verifiedHeight are the real, decoder-confirmed
   // size to bound the image's own decode by (see
   // ImageBounds.verifiedDimensions): never root.photo.width/height,
@@ -118,12 +132,12 @@ Item {
       id: image
       objectName: "photoImage"
       anchors.fill: parent
-      visible: !root._isVideo
+      visible: root._isPhoto
       // Always the helper's own downloaded file or an embedded base64
-      // thumb; never a remote URL. Empty for a video: a hidden Image
-      // still decodes its source, and a video's file is the sender's
-      // own bytes, never sanitized as an image.
-      source: root._isVideo ? "" : root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:" + Media.thumbMime(root.photo.thumb) + ";base64," + root.photo.thumb : "")
+      // thumb; never a remote URL. Empty for anything but a photo: a
+      // hidden Image still decodes its source, and only a photo's own
+      // path is sanitized as one (see root._isPhoto).
+      source: root._isPhoto ? (root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:" + Media.thumbMime(root.photo.thumb) + ";base64," + root.photo.thumb : "")) : ""
       fillMode: Image.PreserveAspectFit
       // Fit inside the viewer's own stage, computed from the photo's
       // own known width and height (see PhotoView.qml's own
@@ -166,7 +180,7 @@ Item {
     Text {
       objectName: "loadingLabel"
       anchors.centerIn: parent
-      visible: !root._isVideo && root.path === ""
+      visible: root._isPhoto && root.path === ""
       text: "Loading…"
       textFormat: Text.PlainText
       color: Util.alpha(Theme.foreground, 0.7)
@@ -191,7 +205,7 @@ Item {
     Text {
       objectName: "sizeLabel"
       Layout.fillWidth: true
-      text: root.photo && !root._isVideo ? Format.photoSize(root.photo.width, root.photo.height) : ""
+      text: root._isPhoto ? Format.photoSize(root.photo.width, root.photo.height) : ""
       textFormat: Text.PlainText
       color: Util.alpha(Theme.foreground, 0.7)
       font { family: Theme.font.family; pixelSize: Theme.font.bodySmall }

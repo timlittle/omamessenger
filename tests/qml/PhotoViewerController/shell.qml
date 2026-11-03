@@ -9,7 +9,9 @@
 // (see MediaController._openIfAllowed) rather than calling
 // Qt.openUrlExternally itself. Video and file media are never driven
 // through the rest of this file, since opening them for real would call
-// the real Qt.openUrlExternally.
+// the real Qt.openUrlExternally. It also checks that an edit arriving
+// while the viewer is open - swapping the shown message's media for a
+// kind the viewer may not show - closes it at once.
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -99,9 +101,7 @@ ShellRoot {
     if (!root.checkStepViewer()) return;
     if (!root.checkStepDoesNothingForAVideo()) return;
     if (!root.checkOpenExternallyRoutesThroughTheGate()) return;
-
-    console.log("PASS PhotoViewerController");
-    Qt.exit(0);
+    if (!root.beginEditWhileOpenToUnshowableKindCheck()) return;
   }
 
   // checkAlreadyDownloadedPhotoOpensAtOnce verifies a photo with a path
@@ -205,5 +205,46 @@ ShellRoot {
       return Check.fail("openCalls = " + JSON.stringify(root.openCalls) + ", want exactly one call with p1's path");
     }
     return true;
+  }
+
+  // beginEditWhileOpenToUnshowableKindCheck verifies that an edit
+  // arriving while the in-app viewer is open on a photo - Telegram
+  // allows a media edit, and a WhatsApp edit resends the message -
+  // which swaps p1's own media for a kind the viewer may not show (see
+  // PhotoViewer.qml's allow-list) closes the viewer, rather than leave
+  // its live viewerPhoto/viewerPath bindings pointed at that kind's
+  // own raw, unsanitized download (see docs/decisions.md). The close
+  // itself is deferred with Qt.callLater (see
+  // PhotoViewerController.onViewerPhotoChanged's own comment), so this
+  // only sets up the edit and schedules the actual check for the
+  // deferred turn that follows it.
+  function beginEditWhileOpenToUnshowableKindCheck(): bool {
+    controller.openMedia("p1");
+    if (!viewer.viewerOpen) return Check.fail("opening p1 did not open the viewer");
+
+    const edited = Object.assign({}, controller.timeline.media("p1"), { kind: "file", fileName: "invoice.pdf" });
+    controller.timeline.setMedia("p1", edited);
+
+    Qt.callLater(root.checkViewerClosedAfterEdit);
+    return true;
+  }
+
+  // checkViewerClosedAfterEdit confirms the deferred close actually
+  // ran, and is this file's last check: it reports PASS/FAIL itself,
+  // since nothing here chains off a deferred check's own return value.
+  function checkViewerClosedAfterEdit(): void {
+    if (viewer.viewerOpen) {
+      console.error("FAIL the viewer stayed open once p1's own media was edited to a file");
+      Qt.exit(1);
+      return;
+    }
+    if (viewer.viewerId !== "") {
+      console.error("FAIL viewerId is " + viewer.viewerId + " once the viewer should have closed");
+      Qt.exit(1);
+      return;
+    }
+
+    console.log("PASS PhotoViewerController");
+    Qt.exit(0);
   }
 }

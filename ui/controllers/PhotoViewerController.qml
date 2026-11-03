@@ -85,11 +85,17 @@ QtObject {
   // close hides the in-app photo viewer, giving up the single
   // decoding slot if the video it was showing still held it: nothing
   // keeps decoding once the viewer is gone, even though the message
-  // bubble behind it may still be visible.
+  // bubble behind it may still be visible. Asks videoController to
+  // give up the slot unconditionally, never gated on id's current kind:
+  // onViewerPhotoChanged below can call this after an edit has already
+  // swapped a playing video's own media for something else, at which
+  // point id's kind no longer says "video" even though it may still
+  // hold the slot. deselect is itself a no-op unless id still holds
+  // it, so asking unconditionally never deselects the wrong video.
   function close(): void {
     const id = root.viewerId;
     root.viewerId = "";
-    if (id && root._isVideo(id) && root.conversation.videoController) root.conversation.videoController.deselect(id);
+    if (id && root.conversation.videoController) root.conversation.videoController.deselect(id);
   }
 
   // _isVideo reports whether id's own media is a video or GIF, for
@@ -125,4 +131,32 @@ QtObject {
     const next = root.conversation.timeline.photoNeighbor(root.viewerId, delta);
     if (next) root.show(next);
   }
+
+  // _showable reports whether media is a kind this viewer may actually
+  // show: a photo, through PhotoViewer's own Image, or a video,
+  // through FullVideoPlayer - the only two kinds show ever opens the
+  // viewer for (never a sticker, despite its path also being a
+  // sanitized display copy). onViewerPhotoChanged below closes the
+  // viewer the instant this goes false for the open message.
+  function _showable(media: var): bool {
+    return !!media && (media.kind === "photo" || media.kind === "video");
+  }
+
+  // onViewerPhotoChanged closes the viewer once an edit swaps the open
+  // message's media for a kind _showable says it may not show: a
+  // file, voice note or audio message, none of whose own path is a
+  // sanitized display copy the way a photo's or a video's is (Telegram
+  // allows a media edit; WhatsApp's resends the message). Deferred
+  // with Qt.callLater, the same way PhotoViewer's own onOpenChanged
+  // and CommandPalette's onWindowActiveChanged already defer a further
+  // property change they trigger from inside this kind of handler:
+  // calling close() straight from here, synchronously, sets viewerId
+  // while viewerPhoto's own binding (which reads viewerId) is still
+  // being notified, which Qt reports as a binding loop even though it
+  // settles at once. PhotoViewer.qml's own allow-list (_isPhoto) is
+  // what actually keeps the Image from ever decoding that kind's raw
+  // download in the meantime - this is what gives the viewer up
+  // instead of leaving it open on a kind it no longer shows anything
+  // for (see docs/decisions.md).
+  onViewerPhotoChanged: if (root.viewerId && !root._showable(root.viewerPhoto)) Qt.callLater(root.close)
 }
