@@ -394,6 +394,7 @@ func New(d Deps) (*Commands, *Ingest) {
 		organizeNotices: &organizeNotices{},
 		decodeSlot:      make(chan struct{}, decodeSlots),
 		refused:         newRefusedDisplayCopies(),
+		refusedPlay:     newRefusedPlayCopies(),
 		soundTranscodes: newTranscodedSoundCache(),
 		dataDir:         d.DataDir, dbPath: d.DBPath, execName: d.ExecutableName, helperVersion: d.HelperVersion,
 		downloadsDir:   d.DownloadsDir,
