@@ -1,8 +1,11 @@
 // Checks ConversationView: the empty state with no conversation, that an
 // unverified title - self-chosen, like a bare push name - shows marked
 // with a leading "~" and a direct chat's own phone number beside it,
-// while a verified title shows unmarked with no phone number, loadOlder
-// firing once scrolled to the oldest loaded message, a submitted composer
+// while a verified title shows unmarked with no phone number, that an
+// unverified title reading identically to a real, verified contact's own
+// name ("Mum" impersonating "Mum") still renders marked and distinct
+// from the real one, loadOlder firing once scrolled to the oldest loaded
+// message, a submitted composer
 // message reaching the send signal with its reply id, replyTarget copied
 // into the composer, a delegate's reply signals relayed outward, j/k and
 // paging clamping at the real newest/oldest ends of the message list, and
@@ -80,6 +83,7 @@ ShellRoot {
   function run(): void {
     if (!root.checkEmptyState()) return;
     if (!root.checkHeaderMarksAnUnverifiedTitle()) return;
+    if (!root.checkImpersonationIsVisiblyDifferentFromTheRealContact()) return;
     root.startLoadOlderCheck();
   }
 
@@ -102,6 +106,30 @@ ShellRoot {
     view.conversation = { id: "cu2", accountId: "a1", service: "whatsapp", remoteId: "ru2", kind: "direct", title: "Priya", titleVerified: true, phone: "+15559876543" };
     if (title.text !== "Priya") return Check.fail("verified header title = " + title.text + ", want unmarked Priya");
     if (subtitle.text !== "") return Check.fail("verified header subtitle = \"" + subtitle.text + "\", want empty: nothing to add once trusted");
+
+    return true;
+  }
+
+  // checkImpersonationIsVisiblyDifferentFromTheRealContact confirms the
+  // header marks a self-chosen name purely by titleVerified, never by
+  // comparing its text against a real contact's own name: a stranger
+  // naming themselves exactly "Mum" - the same text as the user's own
+  // real, verified "Mum" contact - still renders "~Mum" with their own
+  // phone number shown, so the impersonation is visibly different from
+  // the real contact's unmarked "Mum", even though the two titles read
+  // identically (see docs/decisions.md).
+  function checkImpersonationIsVisiblyDifferentFromTheRealContact(): bool {
+    view.subtitle = "";
+    view.conversation = { id: "real-mum", accountId: "a1", service: "whatsapp", remoteId: "r-real", kind: "direct", title: "Mum", titleVerified: true, phone: "+15550000001" };
+
+    const title = Check.find(view, "conversationTitle");
+    const subtitle = Check.find(view, "conversationSubtitle");
+    if (!title || title.text !== "Mum") return Check.fail("the real contact's header title = " + (title && title.text) + ", want unmarked Mum");
+    if (!subtitle || subtitle.text !== "") return Check.fail("the real contact's header subtitle = \"" + (subtitle && subtitle.text) + "\", want empty: nothing to add once trusted");
+
+    view.conversation = { id: "impostor-mum", accountId: "a1", service: "whatsapp", remoteId: "r-impostor", kind: "direct", title: "Mum", titleVerified: false, phone: "+15559998888" };
+    if (title.text !== "~Mum") return Check.fail("the impostor's header title = " + title.text + ", want ~Mum even though its text matches a real contact");
+    if (subtitle.text !== "+15559998888") return Check.fail("the impostor's header subtitle = \"" + subtitle.text + "\", want its phone number shown instead of trusting the name");
 
     return true;
   }
