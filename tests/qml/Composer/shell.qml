@@ -677,17 +677,24 @@ ShellRoot {
   }
 
   // checkNativePasteInterception proves Ctrl+Shift+Insert and the
-  // dedicated Paste key - both QKeySequence::StandardKey::Paste or
-  // Qt.Key_Paste, neither of them one of compose.attach's own two
-  // listed keys (Ctrl+V, Shift+Insert) - still reach routeKey with its
+  // dedicated Paste key - both keys ui/lib/Paste.js's own isPasteKey
+  // recognises, neither of them one of compose.attach's own two listed
+  // keys (Ctrl+V, Shift+Insert) - still reach routeKey with its
   // nativePaste flag set, which is what makes Panel.qml's own router
   // run the bounded compose.attach path unconditionally rather than
   // the TextArea's own built-in paste() (see Panel.qml's routeKey and
-  // docs/decisions.md). The full round trip from there to a
-  // media.paste request is Panel.qml's and ComposerController's own
-  // job, already covered by tests/qml/ComposerController; this only
-  // proves the composer's own field catches the key and asks for it,
-  // ahead of the mention and spell pickers checked above.
+  // docs/decisions.md). Checking isPasteKey rather than Qt's own
+  // event.matches(StandardKey.Paste) is what this test actually
+  // exercises: Qt only resolves Ctrl+Shift+Insert to StandardKey.Paste
+  // under some keyboard schemes, so a check that asked Qt directly
+  // would pass on a developer's own desktop and fail in a bare CI
+  // container with no platform theme set - isPasteKey answers the same
+  // way regardless (see docs/decisions.md). The full round trip from
+  // there to a media.paste request is Panel.qml's and
+  // ComposerController's own job, already covered by
+  // tests/qml/ComposerController; this only proves the composer's own
+  // field catches the key and asks for it, ahead of the mention and
+  // spell pickers checked above.
   function checkNativePasteInterception(): bool {
     const input = composer.input;
     if (!input.activeFocus) return Check.fail("composer input did not get active focus");

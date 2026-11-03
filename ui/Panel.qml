@@ -133,11 +133,14 @@ Item {
   function routeKey(key: int, modifiers: int, text: string, nativePaste: bool): bool {
     const context = Navigation.keyContext(root._navState());
 
-    // nativePaste means the field itself already saw Qt's own paste
-    // shortcut directly (event.matches(StandardKey.Paste), or the
-    // dedicated Paste key) and is asking for the bounded helper paste
-    // unconditionally, not through a binding lookup. keys.conf can
-    // rebind which key runs field.paste or compose.attach, but it must
+    // nativePaste means the field itself already recognised the key as
+    // a paste - ui/lib/Paste.js's own isPasteKey, which lists every key
+    // some Qt keyboard scheme maps to StandardKey.Paste plus the
+    // dedicated Paste key, checked directly rather than through Qt's
+    // own event.matches() (see docs/decisions.md) - and is asking for
+    // the bounded helper paste unconditionally, not through a binding
+    // lookup. keys.conf can rebind which key runs field.paste or
+    // compose.attach, but it must
     // never bring back Qt's own unbounded paste() for whatever key Qt
     // itself treats as "paste" (see docs/decisions.md), so this skips
     // Keymap.match - and the typing guard and scheduled remap below,

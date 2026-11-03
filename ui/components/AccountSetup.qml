@@ -7,6 +7,7 @@ import qs.Ui as Ui
 import "../theme"
 import "../lib/Setup.js" as Setup
 import "../lib/Limits.js" as Limits
+import "../lib/Paste.js" as Paste
 
 // Adds an account and signs it in: a chooser first when the helper offers
 // more than one service, then optionally the user's own API id and hash
@@ -297,13 +298,15 @@ Item {
             ContextMenu.menu: null
             KeyNavigation.tab: hashFieldInner
             Keys.priority: Keys.BeforeItem
-            // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-            // dedicated Paste key, …) ahead of the binding lookup
-            // below, so a rebound field.paste in keys.conf can never
-            // bring back this field's own unbounded native paste()
-            // (see docs/decisions.md).
+            // Catches a native paste key (ui/lib/Paste.js's own
+            // isPasteKey, which covers Ctrl+Shift+Insert and the
+            // dedicated Paste key on top of Ctrl+V and Shift+Insert)
+            // ahead of the binding lookup below, so a rebound
+            // field.paste in keys.conf can never bring back this
+            // field's own unbounded native paste() (see
+            // docs/decisions.md).
             Keys.onPressed: event => {
-              if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+              if (Paste.isPasteKey(event.key, event.modifiers)) {
                 if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
                 event.accepted = true;
                 return;
@@ -335,13 +338,15 @@ Item {
             maximumLength: Limits.API_HASH
             ContextMenu.menu: null
             Keys.priority: Keys.BeforeItem
-            // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-            // dedicated Paste key, …) ahead of the binding lookup
-            // below, so a rebound field.paste in keys.conf can never
-            // bring back this field's own unbounded native paste()
-            // (see docs/decisions.md).
+            // Catches a native paste key (ui/lib/Paste.js's own
+            // isPasteKey, which covers Ctrl+Shift+Insert and the
+            // dedicated Paste key on top of Ctrl+V and Shift+Insert)
+            // ahead of the binding lookup below, so a rebound
+            // field.paste in keys.conf can never bring back this
+            // field's own unbounded native paste() (see
+            // docs/decisions.md).
             Keys.onPressed: event => {
-              if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+              if (Paste.isPasteKey(event.key, event.modifiers)) {
                 if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
                 event.accepted = true;
                 return;
@@ -395,13 +400,15 @@ Item {
           maximumLength: Limits.SETUP_ANSWER
           ContextMenu.menu: null
           Keys.priority: Keys.BeforeItem
-          // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-          // dedicated Paste key, …) ahead of the binding lookup below,
-          // so a rebound field.paste in keys.conf can never bring back
-          // this field's own unbounded native paste() (see
+          // Catches a native paste key (ui/lib/Paste.js's own
+          // isPasteKey, which covers Ctrl+Shift+Insert and the
+          // dedicated Paste key on top of Ctrl+V and Shift+Insert)
+          // ahead of the binding lookup below, so a rebound
+          // field.paste in keys.conf can never bring back this
+          // field's own unbounded native paste() (see
           // docs/decisions.md).
           Keys.onPressed: event => {
-            if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+            if (Paste.isPasteKey(event.key, event.modifiers)) {
               if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
               event.accepted = true;
               return;

@@ -10,6 +10,7 @@ import "../lib/Format.js" as Format
 import "../lib/Keymap.js" as Keymap
 import "../lib/Links.js" as Links
 import "../lib/Mentions.js" as Mentions
+import "../lib/Paste.js" as Paste
 import "../lib/SpellCheck.js" as SpellCheck
 
 // Message composer: an optional "replying to" banner, an attachment
@@ -936,15 +937,17 @@ Item {
 
             Keys.priority: Keys.BeforeItem
             Keys.onPressed: event => {
-              // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-              // dedicated Paste key, …) ahead of every other check
-              // below, including the mention and spell pickers: a
-              // rebound compose.attach in keys.conf can never bring
-              // back this field's own unbounded native paste() (see
-              // docs/decisions.md). routeKey resolves nativePaste to
-              // compose.attach for the composer's own context, so it
-              // still tries a pasted image first, the same as Ctrl+V.
-              if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+              // Catches a native paste key (ui/lib/Paste.js's own
+              // isPasteKey, which covers Ctrl+Shift+Insert and the
+              // dedicated Paste key on top of Ctrl+V and Shift+Insert)
+              // ahead of every other check below, including the
+              // mention and spell pickers: a rebound compose.attach in
+              // keys.conf can never bring back this field's own
+              // unbounded native paste() (see docs/decisions.md).
+              // routeKey resolves nativePaste to compose.attach for
+              // the composer's own context, so it still tries a
+              // pasted image first, the same as Ctrl+V.
+              if (Paste.isPasteKey(event.key, event.modifiers)) {
                 if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true)
                 event.accepted = true
                 return

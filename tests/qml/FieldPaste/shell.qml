@@ -15,8 +15,18 @@
 // the palette field, Qt.Key_Paste into the search field, and Ctrl+V
 // with field.paste rebound away from it into the setup field, each
 // still expected to reach clipboard.readText - proving the field's own
-// StandardKey.Paste interception, not the binding lookup, is what
-// catches them.
+// paste-key interception, not the binding lookup, is what catches
+// them.
+//
+// A later review found Qt's own event.matches(StandardKey.Paste) unfit
+// for that interception: Qt resolves it from the desktop's active
+// platform theme, which a developer's own session sets and a bare CI
+// container never does, so Ctrl+Shift+Insert matched on one and not
+// the other. Every field now checks ui/lib/Paste.js's own
+// isPasteKey(event.key, event.modifiers) instead - a fixed list of
+// every key some keyboard scheme maps to Paste, plus the dedicated
+// Paste key - which answers the same way regardless of the platform
+// theme (see docs/decisions.md).
 //
 // routeKey below reproduces only the one piece of Panel.qml's own
 // router this needs - Keymap.match resolving "field.paste" (or, for
@@ -46,7 +56,7 @@ ShellRoot {
 
   // bindings lets the setup field's own step rebind field.paste away
   // from Ctrl+V and Shift+Insert entirely, proving the paste still
-  // reaches clipboard.readText through the field's own StandardKey
+  // reaches clipboard.readText through the field's own isPasteKey
   // interception rather than this binding lookup; every other step
   // leaves it at the real defaults.
   property var bindings: Keymap.BINDINGS
@@ -150,9 +160,9 @@ ShellRoot {
       () => Check.find(fieldLoader.item, "paletteField").text === root.pastedInto
         || ("the palette field's text is wrong: " + Check.find(fieldLoader.item, "paletteField").text),
 
-      // Ctrl+Shift+Insert is also QKeySequence::StandardKey::Paste on
-      // Linux, not matched by field.paste's own two listed keys; the
-      // palette field must still catch it itself.
+      // Ctrl+Shift+Insert is one of the keys ui/lib/Paste.js's own
+      // isPasteKey recognises, not matched by field.paste's own two
+      // listed keys; the palette field must still catch it itself.
       () => { fakeService.lastMethod = ""; Check.find(fieldLoader.item, "paletteField").text = ""; return true; },
       () => { t.keyClick(Qt.Key_Insert, Qt.ControlModifier | Qt.ShiftModifier); return true; },
       () => fakeService.lastMethod === "clipboard.readText" || "Ctrl+Shift+Insert in the palette field never reached clipboard.readText",
@@ -167,8 +177,9 @@ ShellRoot {
         || ("the search field's text is wrong: " + Check.find(fieldLoader.item, "searchField").text),
 
       // The dedicated Paste key some keyboards and platform themes
-      // send (Qt.Key_Paste) carries no modifier at all, so it is
-      // caught explicitly rather than only through StandardKey.Paste.
+      // send (Qt.Key_Paste) carries no modifier at all; isPasteKey
+      // recognises it directly, rather than through Ctrl+V or
+      // Shift+Insert.
       () => { fakeService.lastMethod = ""; Check.find(fieldLoader.item, "searchField").text = ""; return true; },
       () => { t.keyClick(Qt.Key_Paste); return true; },
       () => fakeService.lastMethod === "clipboard.readText" || "Key_Paste in the search field never reached clipboard.readText",
@@ -183,9 +194,9 @@ ShellRoot {
         || ("the setup field's text is wrong: " + Check.find(fieldLoader.item, "apiIdField").text),
 
       // With field.paste rebound off Ctrl+V entirely (as keys.conf
-      // could do), Ctrl+V must still paste: the field's own
-      // StandardKey.Paste interception runs ahead of, and regardless
-      // of, that binding lookup.
+      // could do), Ctrl+V must still paste: the field's own isPasteKey
+      // interception runs ahead of, and regardless of, that binding
+      // lookup.
       () => { fakeService.lastMethod = ""; Check.find(fieldLoader.item, "apiIdField").text = ""; root.bindings = root.reboundBindings; return true; },
       () => { t.keyClick(Qt.Key_V, Qt.ControlModifier); return true; },
       () => fakeService.lastMethod === "clipboard.readText" || "Ctrl+V with field.paste rebound never reached clipboard.readText",

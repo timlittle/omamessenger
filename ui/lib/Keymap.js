@@ -95,10 +95,11 @@ var BINDINGS = [
   // docs/decisions.md). These two keys are also the ones listed here
   // for display and for keys.conf to remap; rebinding them changes
   // which key reaches this action, but every field's own key handler
-  // still catches Qt's broader native paste shortcut
-  // (event.matches(StandardKey.Paste), plus the dedicated Paste key)
-  // ahead of this lookup and forces the same bounded path regardless
-  // (see Panel.qml's routeKey and docs/decisions.md).
+  // still catches Qt's broader native paste shortcut (ui/lib/Paste.js's
+  // own isPasteKey, every key some Qt keyboard scheme maps to
+  // StandardKey.Paste, plus the dedicated Paste key) ahead of this
+  // lookup and forces the same bounded path regardless (see Panel.qml's
+  // routeKey and docs/decisions.md).
   { action: 'field.paste', keys: ['Ctrl+V', 'Shift+Insert'], contexts: ['global'], label: 'Paste' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },

@@ -7,6 +7,7 @@ import qs.Ui as Ui
 import "../theme"
 import "../lib/Rail.js" as Rail
 import "../lib/Limits.js" as Limits
+import "../lib/Paste.js" as Paste
 
 // New-chat modal: pick an account, search contacts, open one. An in-window
 // scrim and card, not a native dialog, so it stays inside the FloatingWindow.
@@ -167,12 +168,14 @@ Item {
 
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: event => {
-            // Catches Qt's own paste shortcut (Ctrl+Shift+Insert, the
-            // dedicated Paste key, …) ahead of the binding lookup below,
-            // so a rebound field.paste in keys.conf can never bring back
-            // this field's own unbounded native paste() (see
+            // Catches a native paste key (ui/lib/Paste.js's own
+            // isPasteKey, which covers Ctrl+Shift+Insert and the
+            // dedicated Paste key on top of Ctrl+V and Shift+Insert)
+            // ahead of the binding lookup below, so a rebound
+            // field.paste in keys.conf can never bring back this
+            // field's own unbounded native paste() (see
             // docs/decisions.md).
-            if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+            if (Paste.isPasteKey(event.key, event.modifiers)) {
               if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
               event.accepted = true;
               return;

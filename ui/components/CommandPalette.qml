@@ -6,6 +6,7 @@ import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Limits.js" as Limits
+import "../lib/Paste.js" as Paste
 
 // The command palette: type to filter, Enter to run. It lists commands
 // with their shortcut beside them, so people learn the keys as they go,
@@ -135,13 +136,14 @@ Item {
           ContextMenu.menu: null
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: event => {
-            // Qt's own paste shortcut is more than Ctrl+V and Shift+Insert
-            // (Ctrl+Shift+Insert and the dedicated Paste key on some
-            // themes too); catching it here, ahead of the binding lookup
-            // routeKey does below, means a rebound field.paste in
-            // keys.conf still can never bring back this field's own
-            // unbounded native paste() (see docs/decisions.md).
-            if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
+            // A native paste key (ui/lib/Paste.js's own isPasteKey,
+            // which covers Ctrl+Shift+Insert and the dedicated Paste
+            // key on top of Ctrl+V and Shift+Insert) is caught here,
+            // ahead of the binding lookup routeKey does below, so a
+            // rebound field.paste in keys.conf still can never bring
+            // back this field's own unbounded native paste() (see
+            // docs/decisions.md).
+            if (Paste.isPasteKey(event.key, event.modifiers)) {
               if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
               event.accepted = true;
               return;

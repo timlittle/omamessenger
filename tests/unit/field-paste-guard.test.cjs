@@ -37,10 +37,19 @@
 // there - worse, keys.conf can rebind field.paste or compose.attach
 // off Ctrl+V entirely, so even that key would then fall through too.
 // Every field - the composer included this time - must therefore
-// catch `event.matches(StandardKey.Paste)` and `Qt.Key_Paste` itself,
-// ahead of the routeKey binding lookup, and force the same bounded
-// path regardless of bindings (Panel.qml's routeKey takes a
-// `nativePaste` flag for exactly this; see docs/decisions.md).
+// catch a native paste key itself, ahead of the routeKey binding
+// lookup, and force the same bounded path regardless of bindings
+// (Panel.qml's routeKey takes a `nativePaste` flag for exactly this;
+// see docs/decisions.md).
+//
+// A later review found event.matches(StandardKey.Paste) itself unsafe
+// to depend on: Qt resolves it from the desktop's active platform
+// theme, which a developer's own session sets and a bare CI container
+// never does, so the same key event matches there and not here. Every
+// field now calls ui/lib/Paste.js's own isPasteKey(event.key,
+// event.modifiers) instead - a fixed list of every key some keyboard
+// scheme maps to Paste, plus the dedicated Paste key, that answers the
+// same way regardless of the platform theme (see docs/decisions.md).
 'use strict';
 
 const { test } = require('node:test');
@@ -154,38 +163,37 @@ test('every single-line field falls through to routeKey, reaching Panel.qml\'s f
     `Shift+Insert never reach the helper's bounded clipboard.readText there:\n  ${offenders.join('\n  ')}`);
 });
 
-test('every field, including the composer, catches StandardKey.Paste and Key_Paste before routeKey\'s binding lookup', () => {
+test('every field, including the composer, catches Paste.isPasteKey before routeKey\'s binding lookup', () => {
   const offenders = fields()
     .filter((f) => {
-      const catchesStandardKey = /event\.matches\(StandardKey\.Paste\)/.test(f.block);
-      const catchesKeyPaste = /Qt\.Key_Paste/.test(f.block);
+      const catchesPasteKey = /Paste\.isPasteKey\(event\.key,\s*event\.modifiers\)/.test(f.block);
       const forcesNativePaste = /root\.routeKey\([^)]*,\s*true\)/.test(f.block);
-      if (!catchesStandardKey || !catchesKeyPaste || !forcesNativePaste) return true;
+      if (!catchesPasteKey || !forcesNativePaste) return true;
 
       // The interception must run ahead of the plain, bindings-based
       // routeKey fallback textually, so a key bound to something else
       // (or a field.paste/compose.attach moved off Ctrl+V entirely in
       // keys.conf) can never shadow it.
-      const interceptIndex = f.block.search(/event\.matches\(StandardKey\.Paste\)/);
+      const interceptIndex = f.block.search(/Paste\.isPasteKey\(/);
       const fallbackIndex = f.block.search(/root\.routeKey\(event\.key,\s*event\.modifiers,\s*event\.text\)\)/);
       return fallbackIndex !== -1 && interceptIndex > fallbackIndex;
     })
     .map((f) => `${f.file} (${f.objectName || 'unnamed'})`);
 
   assert.deepEqual(offenders, [],
-    `${offenders.length} field(s) do not catch Qt's own paste shortcut (StandardKey.Paste, which also covers ` +
-    `Ctrl+Shift+Insert, plus the dedicated Key_Paste) ahead of routeKey's binding lookup, so Qt's unbounded ` +
-    `native paste() still runs whenever that lookup matches nothing or keys.conf has rebound field.paste or ` +
-    `compose.attach:\n  ${offenders.join('\n  ')}`);
+    `${offenders.length} field(s) do not catch a native paste key (ui/lib/Paste.js's own isPasteKey, which ` +
+    `covers Ctrl+Shift+Insert and the dedicated Paste key on top of Ctrl+V and Shift+Insert) ahead of routeKey's ` +
+    `binding lookup, so Qt's unbounded native paste() still runs whenever that lookup matches nothing or ` +
+    `keys.conf has rebound field.paste or compose.attach:\n  ${offenders.join('\n  ')}`);
 });
 
-test('a deliberately broken expectation is caught: a field with no StandardKey.Paste interception fails', () => {
+test('a deliberately broken expectation is caught: a field with no isPasteKey interception fails', () => {
   const src = 'Item {\n  Ui.TextField {\n    objectName: "x"\n    Keys.onPressed: event => {\n' +
     '      if (root.routeKey && root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true\n    }\n  }\n}\n';
   const match = [...src.matchAll(FIELD_PATTERN)][0];
   const block = blockFor(src, match.index + match[0].length - 1);
 
-  assert.equal(/event\.matches\(StandardKey\.Paste\)/.test(block), false);
+  assert.equal(/Paste\.isPasteKey\(/.test(block), false);
 });
 
 test('a deliberately broken expectation is caught: a field missing maximumLength fails', () => {
