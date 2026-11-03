@@ -370,28 +370,32 @@ test('the search field and the composer input gate on actually being edited, not
 
 // WINDOW_ACTIVE_REQUIRED is every file in SELF_GATED_FILES whose own
 // field(s) must prove they do not exist while the window itself is
-// inactive (alt-tab, another window focused) - everything
-// SELF_GATED_FILES holds except ListColumn's search field. A Wayland
-// compositor still delivers a clipboard offer to a focused but
-// inactive window's TextInput exactly as it does to a merely-visible
-// one, so "gated on being edited" (see EDIT_INTENT_FLAGS) only closes that gap
-// for a field whose own edit-intent flag is itself cleared the moment
-// real activeFocus is lost for an ordinary reason - which Qt ties to
-// the window being the active one, so an alt-tab away while actually
-// typing already destroys it with no extra code. A follow-up security
-// review found that belief incomplete for Composer: a conversation
-// restored on startup calls focusComposer() before the window is
-// necessarily the active one (see WindowReopen), and a blocked
-// conversation's own input is created disabled, so in both cases the
-// field never gains real focus to lose in the first place and stays
-// alive regardless of _writingRequested. Composer's own Loader now
-// gates on windowActive too, alongside _writingRequested rather than
-// instead of it, so it needs proving here as well as in
-// EDIT_INTENT_FLAGS above (see docs/decisions.md). A new file landing
-// in SELF_GATED_FILES later, for a new overlay, is covered by this the
-// moment it is added there, without this list needing to grow on its
-// own.
-const WINDOW_ACTIVE_REQUIRED = SELF_GATED_FILES.filter((file) => file !== 'components/ListColumn.qml');
+// inactive (alt-tab, another window focused) - all of them, including
+// ListColumn's search field, which a follow-up security review found
+// missing here: with focus not following a click, a click on the
+// search placeholder of a window that is not the active one created a
+// live field that never had real activeFocus to lose, so it never
+// destroyed itself either, the same gap this list exists to close for
+// every other field (see docs/decisions.md). A Wayland compositor
+// still delivers a clipboard offer to a focused but inactive window's
+// TextInput exactly as it does to a merely-visible one, so "gated on
+// being edited" (see EDIT_INTENT_FLAGS) only closes that gap for a
+// field whose own edit-intent flag is itself cleared the moment real
+// activeFocus is lost for an ordinary reason - which Qt ties to the
+// window being the active one, so an alt-tab away while actually
+// typing already destroys it with no extra code. That belief is still
+// incomplete on its own for Composer (a conversation restored on
+// startup calls focusComposer() before the window is necessarily the
+// active one, and a blocked conversation's own input is created
+// disabled, so the field never gains real focus to lose in the first
+// place) and for ListColumn (a click on an inactive window's
+// placeholder, see above) - both gate their own Loader on windowActive
+// too, alongside their own edit-intent flag rather than instead of it,
+// so each needs proving here as well as in EDIT_INTENT_FLAGS above
+// (see docs/decisions.md). A new file landing in SELF_GATED_FILES
+// later, for a new overlay, is covered by this the moment it is added
+// there, without this list needing to grow on its own.
+const WINDOW_ACTIVE_REQUIRED = SELF_GATED_FILES;
 
 // fieldLoaderActiveBindings returns the `active:` expression of every
 // Loader block in src that itself holds a TextField, TextArea or

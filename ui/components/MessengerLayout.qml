@@ -250,6 +250,7 @@ Item {
       hiddenCount: root.listController.hiddenCount
       unreadView: root.listController.unreadView
       routeKey: root.routeKey
+      windowActive: root.conversationController.windowActive
 
       onQueryEdited: text => root.listController.setQuery(text)
       onActivated: id => root._openRow(id)

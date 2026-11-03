@@ -46,6 +46,16 @@ ColumnLayout {
   // routeKey is forwarded to the search field; see Composer.qml for why
   // a key router intercepts through a function property, not a signal.
   property var routeKey: null
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. The search field exists only while this is true, on
+  // top of _editingSearch below (see searchFieldLoader): a field
+  // merely focused but not the active window's - alt-tabbed away,
+  // another window raised on top - still reads every foreign Wayland
+  // clipboard offer, with no size or time limit, for as long as the
+  // window sits open and unfocused (see docs/decisions.md). Defaults
+  // true so a caller or test that never sets it keeps the field
+  // exactly as it was before this existed.
+  property bool windowActive: true
 
   // _editingSearch is true from the moment the search field is entered
   // (a click on its placeholder, or focusSearch()) until it is left
@@ -54,20 +64,24 @@ ColumnLayout {
   // _writingRequested documents (see docs/decisions.md) - a field
   // visible but untouched is itself a sink for a foreign Wayland
   // clipboard offer, with no size or time limit of its own.
+  // windowActive turning false and true again leaves this alone, so a
+  // window-focus blip while searching comes back searching, the same
+  // way Composer.qml's own _writingRequested does: the field's own
+  // onActiveFocusChanged below only clears it for a real blur
+  // (Escape, Tab, a click elsewhere), never for losing focus because
+  // the window itself just went inactive.
   property bool _editingSearch: false
-  // _searchFocusPending is true when focusSearch() was asked for
-  // before the field existed yet, consumed by the Loader's own
-  // onLoaded.
-  property bool _searchFocusPending: false
-
 
   // focusSearch starts editing the search field, the way a click on its
   // placeholder does; see ListController for the j/k-style keyboard
-  // paths that might call this.
+  // paths that might call this. Moves keyboard focus into it at once if
+  // it already exists; otherwise the Loader's own onLoaded grants the
+  // focus this asked for the moment the field actually loads - right
+  // away if windowActive is already true, or only once it catches up
+  // (the window becoming active again).
   function focusSearch(): void {
     root._editingSearch = true;
-    if (root.searchField) { root.searchField.forceActiveFocus(); return; }
-    root._searchFocusPending = true;
+    if (root.searchField) root.searchField.forceActiveFocus();
   }
 
   // searchField exposes the loaded field itself, or null while the list
@@ -132,23 +146,23 @@ ColumnLayout {
   }
 
   // The search field is destroyed, not merely hidden, while it is not
-  // being edited: a hidden-or-merely-visible but still-alive TextInput
-  // keeps reading Wayland clipboard changes with no size or time
-  // limit, the same risk tests/unit/textinput-lifetime.test.cjs guards
-  // for every other field (see docs/decisions.md). Its text is a
-  // one-way mirror of root.query, owned by ListController, so losing
-  // and recreating this item on every edit never loses anything: the
-  // controller's own value is what comes back.
+  // being edited or the window is not active: a hidden-or-merely-
+  // visible but still-alive TextInput keeps reading Wayland clipboard
+  // changes with no size or time limit, the same risk
+  // tests/unit/textinput-lifetime.test.cjs guards for every other
+  // field (see docs/decisions.md). Its text is a one-way mirror of
+  // root.query, owned by ListController, so losing and recreating
+  // this item on every edit, or every window-focus blip, never loses
+  // anything: the controller's own value is what comes back.
   Loader {
     id: searchFieldLoader
     Layout.fillWidth: true
-    active: root.visible && root._editingSearch
-    onLoaded: {
-      if (root._searchFocusPending) {
-        root.searchField.forceActiveFocus();
-        root._searchFocusPending = false;
-      }
-    }
+    active: root.visible && root._editingSearch && root.windowActive
+    // _editingSearch survives a window-focus blip (see its own
+    // comment), so it is still true here whenever this load is that
+    // blip ending, not only the first time focusSearch() asks to
+    // start editing.
+    onLoaded: if (root._editingSearch) root.searchField.forceActiveFocus()
 
     sourceComponent: Ui.TextField {
       objectName: "searchField"
@@ -180,10 +194,17 @@ ColumnLayout {
       }
 
       onTextChanged: root.queryEdited(text)
-      // Losing focus for any reason ends editing: _editingSearch turns
-      // false, destroying this field through searchFieldLoader.active
-      // above rather than leaving it alive but merely visible.
-      onActiveFocusChanged: if (!activeFocus) root._editingSearch = false
+      // Losing focus for a real reason - Escape, Tab, a click
+      // elsewhere - ends editing: _editingSearch turns false,
+      // destroying this field through searchFieldLoader.active above
+      // rather than leaving it alive but merely visible. Losing it
+      // only because the window itself just went inactive is not
+      // that: root.windowActive is already false by the time this
+      // runs, since that is what emptied searchFieldLoader.active in
+      // the first place, so _editingSearch is left alone for that
+      // case, the same way the field itself is left to come back once
+      // the window is active again.
+      onActiveFocusChanged: if (!activeFocus && root.windowActive) root._editingSearch = false
 
       MiddleClickGuard {}
     }

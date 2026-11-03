@@ -3,7 +3,11 @@
 // chats" beside "Show fewer", and the button reports showAllToggled(). Also
 // checks the "Unread" header shown while the all-unreads view is on: it
 // hides the show-all row (irrelevant while that view overrides the rail
-// filter) and its own "Leave" button reports unreadViewLeft().
+// filter) and its own "Leave" button reports unreadViewLeft(). Finally,
+// that the search field - the one editable field in this UI a security
+// review found not gated on windowActive at all, unlike every other
+// field - is destroyed while the window is inactive and comes back
+// seeded from query with real keyboard focus once it is active again.
 import QtQuick
 import QtTest
 import Quickshell
@@ -110,6 +114,60 @@ ShellRoot {
     t.mouseClick(leaveButton);
     if (root.unreadLeft !== 1)
       return Check.fail("clicking \"Leave\" did not report unreadViewLeft");
+
+    root.beginSearchWindowInactiveCheck();
+  }
+
+  // beginSearchWindowInactiveCheck proves the fix for a follow-up
+  // security review: the search field was the one editable field not
+  // gated on windowActive, unlike every other field in this UI - with
+  // focus not following a click, a click on the inactive window's own
+  // placeholder created a live field that never had focus and so never
+  // lost it, reading every clipboard offer for as long as the window
+  // sat open and unfocused (see docs/decisions.md). query is set
+  // directly here, the fixed input this component takes from its
+  // caller (ListController, in the real app) - that round trip is the
+  // controller's own job, not this component's - then turning the
+  // window inactive must destroy the field, and turning it active
+  // again must bring it back still seeded from query, with real
+  // keyboard focus restored. Deferred with Qt.callLater after
+  // focusSearch(), so this never assumes the Loader it just activated
+  // has already created the field within the same call.
+  function beginSearchWindowInactiveCheck(): void {
+    column.query = "looking for someone";
+    column.focusSearch();
+    Qt.callLater(root.checkSearchFieldSeededThenGoInactive);
+  }
+
+  // checkSearchFieldSeededThenGoInactive confirms the field exists,
+  // seeded from query, then that making the window inactive destroys
+  // it outright.
+  function checkSearchFieldSeededThenGoInactive(): void {
+    const field = Check.find(column, "searchField");
+    if (!field) return Check.fail("the search field does not exist to begin the window-inactive check");
+    if (field.text !== "looking for someone")
+      return Check.fail("the search field did not seed from query: " + JSON.stringify(field.text));
+    field.forceActiveFocus();
+
+    column.windowActive = false;
+    if (Check.find(column, "searchField"))
+      return Check.fail("the search field still exists with the window inactive");
+
+    column.windowActive = true;
+    Qt.callLater(root.checkSearchFieldRestoredWithTextAndFocus);
+  }
+
+  // checkSearchFieldRestoredWithTextAndFocus confirms the field came
+  // back once the window was active again with the same text and real
+  // keyboard focus, the same as every other field this project already
+  // checks this way.
+  function checkSearchFieldRestoredWithTextAndFocus(): void {
+    const field = Check.find(column, "searchField");
+    if (!field) return Check.fail("the search field did not come back once the window was active again");
+    if (field.text !== "looking for someone")
+      return Check.fail("the search field's text did not survive: " + JSON.stringify(field.text));
+    if (!field.activeFocus)
+      return Check.fail("the search field did not get focus back once the window was active again");
 
     console.log("PASS ListColumn");
     Qt.exit(0);
