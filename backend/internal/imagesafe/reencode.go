@@ -262,21 +262,43 @@ func estimatedDecodeBytes(data []byte, width, height int64) int64 {
 	}
 }
 
+// pngIHDRChunkTypeOffset is the fixed byte offset of a PNG's first
+// chunk's own type: 8 (signature) + 4 (chunk length) bytes in, right
+// after the length field every chunk starts with.
+const pngIHDRChunkTypeOffset = 12
+
 // pngIHDRBitDepthOffset is the fixed byte offset of a PNG's own
-// declared bit depth, inside the IHDR chunk every PNG starts with:
-// 8 (signature) + 4 (chunk length) + 4 (chunk type "IHDR") + 4 (width)
-// + 4 (height) bytes in. Cheap enough to read directly, without asking
-// image/png to parse the whole header just for this one byte.
+// declared bit depth, inside the IHDR chunk a well-formed PNG starts
+// with: 8 (signature) + 4 (chunk length) + 4 (chunk type "IHDR") + 4
+// (width) + 4 (height) bytes in. Cheap enough to read directly,
+// without asking image/png to parse the whole header just for this
+// one byte - but only once pngIHDRChunkTypeOffset confirms IHDR is
+// actually there: image/png's own decoder orders only IHDR, PLTE,
+// tRNS, IDAT and IEND against each other, silently ignoring any other
+// chunk type wherever it appears, so one spliced in before IHDR shifts
+// this fixed offset into that chunk's own bytes instead - exactly the
+// gap a security review found could hide a 16-bit image's real depth
+// behind whatever happened to sit there (see docs/decisions.md).
 const pngIHDRBitDepthOffset = 24
 
 // pngBitDepth reads data's own declared bit depth straight from its
-// IHDR chunk. 8 - a safe, cheap default that never inflates an
-// estimate - for data too short to even hold that byte; reencodeStill's
-// own earlier image.DecodeConfig call is what actually refuses
-// anything this malformed.
+// IHDR chunk, when IHDR is exactly where every real encoder puts it:
+// the very first chunk, immediately after the signature. 16 - never
+// 8, which would instead shrink estimatedDecodeBytes's own charge -
+// whenever that is not confirmed: data is too short to hold a
+// complete fixed header, or its first chunk's own type is not
+// literally "IHDR", meaning something else precedes it. This never
+// rejects a real image: reencodeStill's own earlier
+// image.DecodeConfig call already refused anything too malformed to
+// reach here, and no real encoder writes a chunk before IHDR; it only
+// makes sure a shape this cheap read cannot confirm is never charged
+// as if it were.
 func pngBitDepth(data []byte) int {
 	if len(data) <= pngIHDRBitDepthOffset {
-		return 8
+		return 16
+	}
+	if string(data[pngIHDRChunkTypeOffset:pngIHDRChunkTypeOffset+4]) != "IHDR" {
+		return 16
 	}
 
 	return int(data[pngIHDRBitDepthOffset])
@@ -292,9 +314,23 @@ func pngBitDepth(data []byte) int {
 // security review found bypassing this package's old hand-written
 // scan count, is handled the same way countJPEGScans's own comment
 // describes: skipped one byte at a time rather than assumed away.
-// false for anything this walk cannot even reach, such as a file with
-// no SOF marker at all; reencodeStill's own decode is what actually
-// refuses a file that malformed, not this function.
+//
+// True - never false, which would instead shrink
+// estimatedDecodeBytes's own charge - for anything this walk cannot
+// confirm is cheap: an "FF 00" byte-stuffed pair, which only ever
+// byte-stuffs a literal 0xFF inside entropy-coded scan data and so
+// never legitimately appears before any SOS; a segment whose own
+// declared length is too short to be real; or a file this walk's own
+// bound runs out on before ever finding a start-of-frame marker at
+// all, which reencodeStill's own earlier image.DecodeConfig call
+// would already have refused for real malformed input, so this walk
+// failing to reach the same marker means it has lost sync with the
+// file, not that the file has none. A security review found the old
+// code treated "FF 00" as a marker carrying a length field of its
+// own, letting it skip clean over a real SOF2 placed just past one;
+// none of these three cases can happen for a file real encoder
+// writes, so this never costs a real photo anything (see
+// docs/decisions.md).
 func jpegIsProgressive(data []byte) bool {
 	for i := 2; i+3 < len(data); {
 		if data[i] != 0xFF {
@@ -306,6 +342,8 @@ func jpegIsProgressive(data []byte) bool {
 		switch {
 		case marker == 0xFF:
 			i++
+		case marker == 0x00:
+			return true
 		case jpegMarkerHasNoLength(marker):
 			i += 2
 		case jpegMarkerIsSOF(marker):
@@ -313,13 +351,13 @@ func jpegIsProgressive(data []byte) bool {
 		default:
 			length := int(data[i+2])<<8 | int(data[i+3])
 			if length < 2 {
-				return false
+				return true
 			}
 			i += 2 + length
 		}
 	}
 
-	return false
+	return true
 }
 
 // jpegMarkerHasNoLength reports whether marker is TEM (0x01) or one of

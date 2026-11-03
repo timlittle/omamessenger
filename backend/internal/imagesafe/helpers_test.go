@@ -43,6 +43,49 @@ func insertPNGChunk(src []byte, kind string, payload []byte) []byte {
 	return out.Bytes()
 }
 
+// insertPNGChunkBeforeIHDR returns src with one extra, well-formed
+// chunk spliced in before its IHDR - between the signature and the
+// first real chunk, where no real encoder ever puts one, but image/png
+// itself still accepts: parseChunk's own switch only orders IHDR,
+// PLTE, tRNS, IDAT and IEND against each other, and falls through to
+// silently ignoring any chunk type outside that list with no order
+// check at all. This pushes the real IHDR - and the bit depth byte a
+// fixed-offset read assumes sits right after the signature - later in
+// the file by exactly the inserted chunk's own length.
+func insertPNGChunkBeforeIHDR(src []byte, kind string, payload []byte) []byte {
+	const afterSignature = 8
+	var out bytes.Buffer
+	out.Write(src[:afterSignature])
+	writeChunk(&out, kind, payload)
+	out.Write(src[afterSignature:])
+	return out.Bytes()
+}
+
+// insertStrayFF00BeforeMarker returns data with an "FF 00" byte-stuffed
+// pair, followed by two bytes a marker-with-length parser would read
+// as that pair's own length, spliced in immediately before the first
+// occurrence of the two-byte marker (0xFF, marker). image/jpeg's own
+// decoder treats "FF 00" as extraneous data wherever it appears before
+// any SOS and simply resumes scanning for the next real marker, so
+// this never changes what a real decode produces; it exists to catch
+// a walk that instead treats the "00" as a marker of its own and skips
+// past whatever immediately follows by the length these two extra
+// bytes supply - enough, at 10, to skip clean over the two-byte marker
+// this inserts itself right before.
+func insertStrayFF00BeforeMarker(data []byte, marker byte) []byte {
+	for i := 0; i+1 < len(data); i++ {
+		if data[i] == 0xFF && data[i+1] == marker {
+			out := make([]byte, 0, len(data)+4)
+			out = append(out, data[:i]...)
+			out = append(out, 0xFF, 0x00, 0x00, 0x0A)
+			out = append(out, data[i:]...)
+			return out
+		}
+	}
+
+	panic("insertStrayFF00BeforeMarker: marker not found")
+}
+
 // writeChunk appends one well-formed PNG chunk - length, type,
 // payload and a correct CRC - to out.
 func writeChunk(out *bytes.Buffer, kind string, payload []byte) {
