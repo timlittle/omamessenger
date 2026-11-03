@@ -39,9 +39,27 @@ var MAX_RICH_TEXT_INPUT_LENGTH = 65536;
 var MAX_FORMATTING_SPANS = 256;
 var MAX_MENTIONS = 64;
 
-// URL_PATTERN matches http(s) links in escaped text. Entities such as &amp;
-// may appear inside a link; any other '&' ends it.
-var URL_PATTERN = /https?:\/\/[^\s<"&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\s<"&]*)*/g;
+// URL_PATTERN matches http(s) links in escaped text. Entities such as
+// &amp; may appear inside a link; any other '&' ends it, as do '<', a
+// double quote, and every character this spells out in place of JS's
+// own \s - real, visible or line-breaking whitespace, listed out
+// rather than written as \s because \s also matches the byte-order
+// mark (U+FEFF), which, unlike the rest, renders as nothing at all. A
+// security review found that let a URL carrying one autolink as only
+// the short prefix before it: "https://paypal-login.ru", the mark,
+// then ".paypal.com/login" read, on screen, as one unbroken
+// paypal.com-looking run, with only the short, honest-looking prefix
+// actually linked - and, since a plain autolink's own displayText is
+// always its own url, opening with no confirmation at all. Every
+// other invisible Unicode "format" character HIDDEN_OR_UNUSUAL_CHAR
+// lists (zero-width spaces and marks, bidi overrides and isolates,
+// word joiner) was never matched by \s to begin with, so leaving only
+// the byte-order mark out of this pattern's own terminator class is
+// enough to sweep all of them into the match instead of ending it
+// there: the combined url then fails spanURL's own hidden-character
+// rule and is refused outright, rather than silently linking the
+// shorter, innocent-looking run before it (see docs/decisions.md).
+var URL_PATTERN =/https?:\/\/[^\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2028\u2029\u202f\u205f\u3000\u2000-\u200a<\x22&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2028\u2029\u202f\u205f\u3000\u2000-\u200a<\x22&]*)*/g;
 
 // LINK_HREF_SCHEME marks an anchor href this file wrote itself, naming
 // that anchor's own position in the ordered list messageLinkAnchors

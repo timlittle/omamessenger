@@ -120,6 +120,49 @@ test('linkify splits a long run of trailing punctuation in linear time, not quad
   assert.ok(elapsedMs < 2000, `linkify took ${elapsedMs}ms on an adversarial trailing-punctuation run, want well under 2000ms`);
 });
 
+// A security review found URL_PATTERN stopping a match at an invisible
+// Unicode "format" character (it only ever stopped at the byte-order
+// mark, since that is the one such character JS's own \s matches):
+// "https://paypal-login.ru" + U+FEFF + ".paypal.com/login" read as one
+// paypal.com-looking run on screen, but only the short prefix before
+// the hidden character was actually linked, with displayText equal to
+// that same short url - so it opened with no confirmation at all,
+// since a plain autolink's own text always equals its own href. The
+// fix sweeps the hidden character into the match instead, so the
+// combined string anchors as one url that then fails spanURL's own
+// hidden-character rule (tests/unit/format.test.cjs's spanURL cases)
+// and is refused, rather than silently autolinking only the innocent-
+// looking prefix.
+const invisibleCharCases = [
+  ['the byte-order mark, the review\'s own paypal.com example', 'https://paypal-login.ru' + String.fromCharCode(65279) + '.paypal.com/login'],
+  ['a zero-width space', 'https://paypal-login.ru' + String.fromCharCode(8203) + '.paypal.com/login'],
+  ['a right-to-left mark', 'https://paypal-login.ru' + String.fromCharCode(8207) + '.paypal.com/login'],
+  ['a left-to-right override', 'https://paypal-login.ru' + String.fromCharCode(8238) + '.paypal.com/login'],
+  ['a left-to-right isolate', 'https://paypal-login.ru' + String.fromCharCode(8294) + '.paypal.com/login'],
+  ['a word joiner', 'https://paypal-login.ru' + String.fromCharCode(8288) + '.paypal.com/login']
+];
+
+for (const [name, text] of invisibleCharCases) {
+  test(`linkify sweeps ${name} into the match rather than ending the url there`, () => {
+    const anchors = [];
+    const result = Format.linkify(text, null, anchors);
+
+    assert.strictEqual(result, `<a href="oma-link:0">${text}</a>`);
+    assert.deepStrictEqual(anchorsPlain(anchors), [{ url: text, displayText: text }]);
+    // Once matched whole, the combined url carries a hidden character
+    // and fails the strict rule outright, rather than opening as the
+    // short, innocent-looking prefix a split match would have anchored.
+    assert.equal(Format.spanURL(text), '');
+  });
+}
+
+test('linkify still stops a url at real, visible whitespace, not just anything after the hidden-character fix', () => {
+  const anchors = [];
+  const result = Format.linkify('see https://example.com and more', null, anchors);
+  assert.deepStrictEqual(anchorsPlain(anchors), [{ url: 'https://example.com', displayText: 'https://example.com' }]);
+  assert.strictEqual(result, 'see <a href="oma-link:0">https://example.com</a> and more');
+});
+
 const highlightUnchangedCases = [
   ['does not match inside entities', 'test &amp; demo', 'amp', 'test &amp; demo'],
   ['with empty query returns unchanged', 'Hello World', '', 'Hello World']
