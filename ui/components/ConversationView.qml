@@ -442,6 +442,7 @@ Item {
       // see MessengerLayout.qml's own _showConversation, which sets
       // root.visible). See Composer.qml's own active for why.
       active: root.visible && root.conversation !== null
+      windowActive: root.windowActive
       enabled: root.composeEnabled && !root._blocked
       blocked: root._blocked
       attachmentPath: root.attachmentPath

@@ -16,7 +16,11 @@
 // flag set, ahead of any picker or binding lookup, so Panel.qml's own
 // router (not reproduced here) always runs compose.attach's bounded
 // paste for them rather than the TextArea's own unbounded paste() (see
-// docs/decisions.md).
+// docs/decisions.md). It also checks a follow-up security review's own
+// finding: the real input is destroyed while the window is inactive -
+// without losing the draft, the caret position or, once the window is
+// active again, real keyboard focus - and is never created at all for
+// a blocked conversation, which can never give it real focus to lose.
 import QtQuick
 import QtTest
 import Quickshell
@@ -464,9 +468,7 @@ ShellRoot {
     if (!root.checkSpellCheck()) return;
     if (!root.checkOversizedMisspellingListStaysBounded()) return;
     if (!root.checkNativePasteInterception()) return;
-
-    console.log("PASS Composer");
-    Qt.exit(0);
+    if (!root.beginWindowInactiveCheck()) return;
   }
 
   // checkMentionPicker drives the @-mention picker end to end: it opens
@@ -708,6 +710,83 @@ ShellRoot {
     }
 
     composer.routeKey = null;
+    return true;
+  }
+
+  // beginWindowInactiveCheck types a draft and moves the caret, then
+  // proves turning the window inactive destroys the real input -
+  // without losing root.text, the composer's own draft outside it -
+  // and that turning it active again is checked once that settles
+  // (see checkFieldRestoredWithTextCursorAndFocus): a security review
+  // found this field relied only on losing real focus to be destroyed,
+  // which never happens for a field created while the window is
+  // already inactive (see docs/decisions.md).
+  function beginWindowInactiveCheck(): bool {
+    const input = composer.input;
+    if (!input || !input.activeFocus) return Check.fail("composer input is not focused to begin this check with");
+    input.text = "left off here";
+    input.cursorPosition = 5;
+
+    composer.windowActive = false;
+    if (composer.input) return Check.fail("the composer input still exists with the window inactive");
+    if (composer.text !== "left off here") return Check.fail("the draft did not survive: " + JSON.stringify(composer.text));
+
+    composer.windowActive = true;
+    Qt.callLater(root.checkFieldRestoredWithTextCursorAndFocus);
+    return true;
+  }
+
+  // checkFieldRestoredWithTextCursorAndFocus confirms the input came
+  // back once the window was active again with exactly the text and
+  // caret position it held before going inactive, and with real
+  // keyboard focus restored, before moving on to the blocked-chat
+  // check: the window here is already known to really be the active
+  // one (every earlier check in this file delivered real key events),
+  // so one deferred turn, the same as CommandPalette's own equivalent
+  // check, is enough to let inputLoader's own onLoaded run.
+  function checkFieldRestoredWithTextCursorAndFocus(): void {
+    const input = composer.input;
+    if (!input) { console.error("FAIL the composer input did not come back once the window was active again"); Qt.exit(1); return; }
+    if (input.text !== "left off here") {
+      console.error("FAIL the composer input's text did not survive: " + JSON.stringify(input.text));
+      Qt.exit(1);
+      return;
+    }
+    if (input.cursorPosition !== 5) {
+      console.error("FAIL the composer input's caret moved to " + input.cursorPosition + ", want 5");
+      Qt.exit(1);
+      return;
+    }
+    if (!input.activeFocus) {
+      console.error("FAIL the composer input did not get focus back once the window was active again");
+      Qt.exit(1);
+      return;
+    }
+
+    input.text = "";
+    if (!root.checkNeverCreatedInABlockedChat()) return;
+
+    console.log("PASS Composer");
+    Qt.exit(0);
+  }
+
+  // checkNeverCreatedInABlockedChat verifies the other half of the same
+  // finding: a blocked conversation's own composer is created disabled
+  // (see ConversationView.qml), which can never gain real focus to
+  // lose and be destroyed that way, so the field must never be created
+  // at all while blocked - including by focusInput(), which every
+  // conversation open calls unconditionally, blocked or not (see
+  // MessengerLayout.qml).
+  function checkNeverCreatedInABlockedChat(): bool {
+    composer.enabled = false;
+    composer.blocked = true;
+    if (composer.input) return Check.fail("the composer input still exists once the conversation is blocked");
+
+    composer.focusInput();
+    if (composer.input) return Check.fail("focusInput() created the composer input for a blocked conversation");
+
+    composer.enabled = true;
+    composer.blocked = false;
     return true;
   }
 }

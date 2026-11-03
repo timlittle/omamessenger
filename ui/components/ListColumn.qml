@@ -54,9 +54,9 @@ ColumnLayout {
   // visible but untouched is itself a sink for a foreign Wayland
   // clipboard offer, with no size or time limit of its own.
   property bool _editingSearch: false
-  // _searchFocusPending mirrors Composer's own _focusPending: true when
-  // focusSearch() was asked for before the field existed yet, consumed
-  // by the Loader's own onLoaded.
+  // _searchFocusPending is true when focusSearch() was asked for
+  // before the field existed yet, consumed by the Loader's own
+  // onLoaded.
   property bool _searchFocusPending: false
 
 

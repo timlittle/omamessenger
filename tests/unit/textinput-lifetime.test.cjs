@@ -370,23 +370,28 @@ test('the search field and the composer input gate on actually being edited, not
 
 // WINDOW_ACTIVE_REQUIRED is every file in SELF_GATED_FILES whose own
 // field(s) must prove they do not exist while the window itself is
-// inactive (alt-tab, another window focused) - not just an allow-list
-// of four names, but everything SELF_GATED_FILES holds except the two
-// entries EDIT_INTENT_FLAGS already covers. A Wayland compositor still
-// delivers a clipboard offer to a focused-but-inactive-window
-// TextInput exactly as it does to a merely-visible one, so "gated on
-// being edited" only closes that gap for a field whose own edit-intent
-// flag is itself cleared the moment real activeFocus is lost - which
-// Qt ties to the window being the active one, not just this field
-// having been asked for (Composer's _writingRequested and ListColumn's
-// _editingSearch both clear from the field's own onActiveFocusChanged,
-// so an alt-tab away already destroys them with no extra code) - never
-// for a field whose only gate is "this step/stage is showing" or "the
-// dialog is open", neither of which cares whether the window is
-// focused at all. A fifth or sixth file landing in SELF_GATED_FILES
-// later, for a new overlay, is covered by this the moment it is added
-// there, without this list needing to grow on its own.
-const WINDOW_ACTIVE_REQUIRED = SELF_GATED_FILES.filter((file) => !(file in EDIT_INTENT_FLAGS));
+// inactive (alt-tab, another window focused) - everything
+// SELF_GATED_FILES holds except ListColumn's search field. A Wayland
+// compositor still delivers a clipboard offer to a focused but
+// inactive window's TextInput exactly as it does to a merely-visible
+// one, so "gated on being edited" (see EDIT_INTENT_FLAGS) only closes that gap
+// for a field whose own edit-intent flag is itself cleared the moment
+// real activeFocus is lost for an ordinary reason - which Qt ties to
+// the window being the active one, so an alt-tab away while actually
+// typing already destroys it with no extra code. A follow-up security
+// review found that belief incomplete for Composer: a conversation
+// restored on startup calls focusComposer() before the window is
+// necessarily the active one (see WindowReopen), and a blocked
+// conversation's own input is created disabled, so in both cases the
+// field never gains real focus to lose in the first place and stays
+// alive regardless of _writingRequested. Composer's own Loader now
+// gates on windowActive too, alongside _writingRequested rather than
+// instead of it, so it needs proving here as well as in
+// EDIT_INTENT_FLAGS above (see docs/decisions.md). A new file landing
+// in SELF_GATED_FILES later, for a new overlay, is covered by this the
+// moment it is added there, without this list needing to grow on its
+// own.
+const WINDOW_ACTIVE_REQUIRED = SELF_GATED_FILES.filter((file) => file !== 'components/ListColumn.qml');
 
 // fieldLoaderActiveBindings returns the `active:` expression of every
 // Loader block in src that itself holds a TextField, TextArea or

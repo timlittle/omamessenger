@@ -71,19 +71,38 @@ Item {
   // never sets it treats the pane as always usable, as it used to be
   // the input's own only gate.
   property bool active: true
+  // windowActive is whether the user can see the window at all: shown
+  // and focused. The text input needs this, besides active and
+  // _writingRequested, to exist (see inputLoader.active below): a
+  // field merely visible while the window sits unfocused in the
+  // background - alt-tabbed away, or restored on a reopen that comes
+  // back inactive (see WindowReopen) - is still a live sink for a
+  // foreign Wayland clipboard offer, with no size or time limit, the
+  // same risk every other field in this UI is gated against (see
+  // docs/decisions.md). Defaults true so a test or other caller that
+  // never sets it (most of tests/qml/Composer, say) keeps the field
+  // exactly as it was before this existed.
+  property bool windowActive: true
   // _writingRequested is true from the moment focusInput() is called -
   // the composer's own single entry point for "the user wants to type
   // now", reached through compose.focus (i/a), clicking the composer
   // while it shows the placeholder below, or Up loading the last
-  // editable message - until the real input loses focus for any
-  // reason (Escape, Tab, a click elsewhere), which clears it straight
-  // from the input's own onActiveFocusChanged. This, not merely being
-  // visible, is what the Loader below actually gates on.
+  // editable message - until the real input loses focus for a reason
+  // other than the window itself going inactive (a real blur: Escape,
+  // Tab, a click elsewhere), which clears it straight from the input's
+  // own onActiveFocusChanged. This, not merely being visible, is what
+  // the Loader below actually gates on; windowActive turning false and
+  // true again leaves it alone, so a window-focus blip while writing
+  // comes back writing, the same as it left off.
   property bool _writingRequested: false
-  // _focusPending is true when focusInput() was asked for before the
-  // input existed yet (just as active turned true, say): the Loader's
-  // own onLoaded consumes it once there is something to focus.
-  property bool _focusPending: false
+  // _cursorPosition mirrors the real input's own cursorPosition,
+  // kept here rather than only in the input itself for the same reason
+  // text is: inputLoader below destroys and recreates the input across
+  // a window-focus blip or a conversation holding a blocked contact
+  // being unblocked, and only text surviving that round trip would
+  // otherwise leave the caret wherever a freshly set text defaults it
+  // to (its very end) rather than where the user actually left it.
+  property int _cursorPosition: 0
   // replyTo is the message being answered: {id, senderName, text}, or
   // null when the user is not replying to anything.
   property var replyTo: null
@@ -293,12 +312,14 @@ Item {
   // _writingRequested true, which is what actually loads the text
   // input (see inputLoader.active). Moves keyboard focus into it at
   // once if it already exists; otherwise the Loader's own onLoaded
-  // grants the focus this asked for, through _focusPending, the
-  // moment it finishes loading.
+  // grants the focus this asked for the moment the input actually
+  // loads - right away if active, windowActive and enabled are
+  // already true, or only once whichever of those was not catches up
+  // (the window becoming active again, or the contact being
+  // unblocked), never before.
   function focusInput() {
     root._writingRequested = true
-    if (root.input) { root.input.forceActiveFocus(); return }
-    root._focusPending = true
+    if (root.input) root.input.forceActiveFocus()
   }
 
   // The caller's spell.check result can arrive after further typing
@@ -817,24 +838,31 @@ Item {
 
       // The real text input lives behind a Loader, active only while
       // _writingRequested names this the field actually being edited
-      // right now (see root._writingRequested's own comment): a
-      // hidden-but-alive TextArea still reads Wayland clipboard changes
-      // with no size or time limit, the same risk every other field in
-      // this UI is gated against (see docs/decisions.md). Its text is
-      // seeded from root.text once it loads; destroying it loses
-      // nothing, since every change already flowed up through the
-      // input's own onTextChanged as it happened.
+      // right now (see root._writingRequested's own comment), the
+      // window is actually active, and the composer itself is enabled
+      // (not blocked): a hidden-but-alive TextArea still reads Wayland
+      // clipboard changes with no size or time limit, the same risk
+      // every other field in this UI is gated against (see
+      // docs/decisions.md), and a blocked conversation's own field can
+      // never gain focus to lose it and be destroyed that way, so it
+      // must never be created at all. Its text and cursor position are
+      // seeded from root.text and root._cursorPosition every time it
+      // loads; destroying it loses nothing, since every change already
+      // flowed up through the input's own onTextChanged and
+      // onCursorPositionChanged as it happened.
       Loader {
         id: inputLoader
         Layout.fillWidth: true
         Layout.preferredHeight: Math.min(root.input ? root.input.implicitHeight : fontMetrics.height, root._maxInputHeight)
-        active: root.active && root._writingRequested
+        active: root.active && root._writingRequested && root.windowActive && root.enabled
         onLoaded: {
           item.area.text = root.text
-          if (root._focusPending) {
-            item.area.forceActiveFocus()
-            root._focusPending = false
-          }
+          item.area.cursorPosition = root._cursorPosition
+          // _writingRequested survives a window-focus blip (see its
+          // own comment), so it is still true here whenever this load
+          // is that blip ending, not only the first time focusInput()
+          // asks to start writing.
+          if (root._writingRequested) item.area.forceActiveFocus()
         }
 
         sourceComponent: ScrollView {
@@ -888,16 +916,23 @@ Item {
               root._recomputeOverlay()
             }
             onCursorPositionChanged: {
+              root._cursorPosition = area.cursorPosition
               root._updateMentionQuery()
               if (root.spellPickerOpen && (area.cursorPosition < root._spellActive.start || area.cursorPosition > root._spellActive.end)) {
                 root._closeSpellPicker()
               }
             }
-            // Losing focus for any reason - Escape, Tab, a click
+            // Losing focus for a real reason - Escape, Tab, a click
             // elsewhere - ends writing: _writingRequested turns false,
             // which destroys this field through inputLoader.active
             // above rather than leaving it alive but merely hidden.
-            onActiveFocusChanged: if (!area.activeFocus) root._writingRequested = false
+            // Losing it only because the window itself just went
+            // inactive is not that: root.windowActive is already false
+            // by the time this runs, since that is what emptied
+            // inputLoader.active in the first place, so _writingRequested
+            // is left alone for that case, the same way the field itself
+            // is left to come back once the window is active again.
+            onActiveFocusChanged: if (!area.activeFocus && root.windowActive) root._writingRequested = false
 
             Keys.priority: Keys.BeforeItem
             Keys.onPressed: event => {
