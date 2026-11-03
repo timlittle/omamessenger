@@ -69,16 +69,30 @@ func buildArgv(spec Spec, bwrapPath, prlimitPath, envPath string) (name string, 
 // just before the "--" that introduces the command bwrap itself runs
 // (buildArgv adds that part): a read-only /usr with the symlinks real
 // binaries expect to find their shared libraries through, a fresh
-// /proc, /dev and a size-capped empty /tmp, spec's own input bound
-// read-only at the fixed InputPath, spec's own single output file
-// bound read-write under the fixed OutputDirPath with nothing else
-// reachable there, every namespace unshared with no way to open a new
-// user namespace from inside, a cleared environment with only PATH
-// and LANG set, and this package's own seccomp filter.
+// /proc, /dev with its own /dev/shm capped and separated from it,
+// a size-capped empty /tmp, spec's own input bound read-only at the
+// fixed InputPath, spec's own single output file bound read-write
+// under the fixed OutputDirPath with nothing else reachable there,
+// every namespace unshared with no way to open a new user namespace
+// from inside, a cleared environment with only PATH and LANG set,
+// this package's own seccomp filter, and finally bwrap's own root
+// remounted read-only now that everything that needs to stay
+// writable already has its own mount.
 //
 // --size before --tmpfs /tmp (bwrap 0.12+): without it, bwrap's own
 // tmpfs defaults to half of this machine's own RAM, counted against
 // no limit above (see maxTmpBytes's own doc comment in limits.go).
+//
+// /dev/shm: --dev /dev already creates it, as part of /dev's own
+// tmpfs, with no size of its own - the same uncapped-tmpfs gap
+// maxTmpBytes already closes for /tmp, confirmed directly to be just
+// as uncapped at this path. Mounting a second, explicitly sized
+// tmpfs at /dev/shm right after replaces that; --remount-ro /dev then
+// closes /dev itself (nothing in any profile's own fixed ffmpeg
+// arguments ever writes there directly) without affecting the
+// separate tmpfs now mounted at /dev/shm - confirmed directly through
+// a real bwrap, the same way remounting OutputDirPath read-only below
+// never affects the file bound inside it.
 //
 // The output bind is three flags, not one: --tmpfs OutputDirPath
 // mounts a fresh, empty, writable tmpfs there first; --bind
@@ -107,6 +121,22 @@ func buildArgv(spec Spec, bwrapPath, prlimitPath, envPath string) (name string, 
 // capabilities, including CAP_SYS_ADMIN, over its own namespace's
 // resources), so this closes it rather than leaving it to whatever
 // the seccomp filter happens to deny.
+//
+// --remount-ro / last: bwrap's own root - everywhere not explicitly
+// bound to something else - starts out as a plain, writable tmpfs
+// with no size of its own, the same uncapped-disk shape as /tmp and
+// /dev/shm before their own --size flags above, just with no fixed
+// path a caller would ever think to check. Remounting it read-only,
+// once every place that still needs to be writable (/tmp, /dev/shm,
+// the one output file) already has its own separate mount, closes
+// that without touching any of them - confirmed directly through a
+// real bwrap, with this exact flag last: a new file anywhere else
+// under / fails with "Read-only file system", while /tmp, /dev/shm
+// and the bound output file all still accept a write exactly as
+// before. This has to run after every other mount in this function,
+// never before: remounting first would make bwrap's own later setup
+// of those mounts fail outright, not just whatever a job tries to do
+// once it starts.
 func bwrapArgs(spec Spec) []string {
 	args := []string{
 		"--ro-bind", "/usr", "/usr",
@@ -115,6 +145,8 @@ func bwrapArgs(spec Spec) []string {
 		"--symlink", "usr/bin", "/bin",
 		"--proc", "/proc",
 		"--dev", "/dev",
+		"--size", strconv.Itoa(maxDevShmBytes), "--tmpfs", "/dev/shm",
+		"--remount-ro", "/dev",
 		"--size", strconv.Itoa(maxTmpBytes), "--tmpfs", "/tmp",
 	}
 
@@ -140,6 +172,7 @@ func bwrapArgs(spec Spec) []string {
 		"--setenv", "LANG", sandboxLang,
 		"--chdir", workDir,
 		"--seccomp", strconv.Itoa(seccompFD),
+		"--remount-ro", "/",
 	)
 
 	return args
