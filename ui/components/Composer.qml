@@ -12,6 +12,7 @@ import "../lib/Links.js" as Links
 import "../lib/Mentions.js" as Mentions
 import "../lib/Paste.js" as Paste
 import "../lib/SpellCheck.js" as SpellCheck
+import "../lib/Verify.js" as Verify
 
 // Message composer: an optional "replying to" banner, an attachment
 // chip, a growing text input and a Send button.
@@ -586,7 +587,10 @@ Item {
         objectName: "replyBannerText"
         Layout.fillWidth: true
         elide: Text.ElideRight
-        text: root.replyTo ? ("Replying to " + root.replyTo.senderName + ": " + root.replyTo.text) : ""
+        // Marked with a leading "~" when the replied-to message's own
+        // sender is unverified, the same as its sender label above the
+        // bubble itself (see docs/decisions.md).
+        text: root.replyTo ? ("Replying to " + Verify.markedName(root.replyTo.senderName, root.replyTo.senderVerified) + ": " + root.replyTo.text) : ""
         // senderName and text both come from the other person, unescaped:
         // PlainText so a message that looks like HTML (an "<img src=...>",
         // say) is never auto-detected as rich text and never fetches

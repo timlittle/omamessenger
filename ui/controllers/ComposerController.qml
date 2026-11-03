@@ -26,7 +26,8 @@ Item {
   property string draft: ""
 
   // replyTarget is the message the composer is about to answer: {id,
-  // senderName, text}, or null when the user is not replying to anything.
+  // senderName, senderVerified, text}, or null when the user is not
+  // replying to anything.
   property var replyTarget: null
 
   // replying is true while replyTarget names a message, for the Escape
@@ -179,7 +180,10 @@ Item {
     if (!m) return;
 
     root.cancelEdit();
-    root.replyTarget = { id: m.id, senderName: m.outgoing ? "You" : m.senderName, text: Format.singleLine(m.text) };
+    root.replyTarget = {
+      id: m.id, senderName: m.outgoing ? "You" : m.senderName,
+      senderVerified: m.outgoing ? true : m.senderVerified, text: Format.singleLine(m.text)
+    };
   }
 
   // cancelReply clears the composer's reply target without sending.
