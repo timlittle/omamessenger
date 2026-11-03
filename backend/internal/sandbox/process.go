@@ -34,7 +34,7 @@ func (r *Runner) Run(ctx context.Context, spec Spec) (Result, error) {
 	}
 	defer seccompFile.Close() // the child gets its own copy via ExtraFiles when cmd.Start duplicates it; closing ours here never affects that copy
 
-	name, args := buildArgv(spec, r.bwrapPath, r.prlimitPath, r.envPath)
+	name, args := buildArgv(spec, r.nicePath, r.ionicePath, r.bwrapPath, r.prlimitPath, r.envPath)
 
 	cmd := r.command(name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}

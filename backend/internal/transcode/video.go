@@ -84,6 +84,7 @@ func videoRebuild(sandboxedOutput, jobDir string) (string, error) {
 // videoArgs is the Video profile's own fixed ffmpeg argument list.
 func videoArgs() []string {
 	args := commonInputArgs()
+	args = append(args, filterThreadArgs()...)
 	args = append(args, "-map", "0:v:0", "-map", "0:a:0?")
 	args = append(args, stripMetadataArgs()...)
 	args = append(args,
@@ -92,9 +93,11 @@ func videoArgs() []string {
 		"-fpsmax", "30",
 		"-c:v", "libx264", "-profile:v", "main", "-level:v", "4.0", "-preset", "veryfast", "-crf", "23", "-bf", "0",
 	)
+	args = append(args, libx264ThreadArgs()...)
 	args = append(args, videoRateControlArgs()...)
+	args = append(args, "-c:a", "aac", "-ac", "2", "-b:a", "96k")
+	args = append(args, outputThreadArgs()...)
 	args = append(args,
-		"-c:a", "aac", "-ac", "2", "-b:a", "96k",
 		"-t", strconv.Itoa(videoDurationSeconds),
 		"-movflags", "+faststart",
 		"-f", "mp4",

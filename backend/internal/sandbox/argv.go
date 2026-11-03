@@ -1,14 +1,15 @@
 package sandbox
 
-// argv.go builds the exact command line Run executes: env, ignoring
-// the two signals this package's own prlimit flags could otherwise
-// trigger, running prlimit, with its own resource-limit flags,
-// running bwrap, with its own isolation flags, running the caller's
-// binary. buildArgv and bwrapArgs are pure functions of their own
-// arguments and the fixed constants in limits.go - never of anything
-// a sender or the file being processed controls - so they are
-// unit-tested exhaustively without starting any process at all (see
-// argv_test.go).
+// argv.go builds the exact command line Run executes: nice, lowering
+// CPU scheduling priority, running ionice, lowering I/O scheduling
+// priority, running env, ignoring the two signals this package's own
+// prlimit flags could otherwise trigger, running prlimit, with its
+// own resource-limit flags, running bwrap, with its own isolation
+// flags, running the caller's binary. buildArgv and bwrapArgs are
+// pure functions of their own arguments and the fixed constants in
+// limits.go - never of anything a sender or the file being processed
+// controls - so they are unit-tested exhaustively without starting
+// any process at all (see argv_test.go).
 
 import (
 	"path/filepath"
@@ -40,13 +41,40 @@ const seccompFD = 3
 // or deep inside a sandbox, it happened.
 const ignoredSignals = "XFSZ,XCPU"
 
-// buildArgv returns the full command Run starts for spec: env, named
-// by its own resolved path, ignoring ignoredSignals, running prlimit
-// under every argument needed to run bwrap (bwrapPath) under this
-// package's fixed resource limits and then, inside it, spec.Binary
-// with spec.Args.
-func buildArgv(spec Spec, bwrapPath, prlimitPath, envPath string) (name string, args []string) {
+// niceLevel is the niceness (see nice(1)) buildArgv's own outermost
+// nice wraps every job in: 19, the least favourable value Linux lets
+// an ordinary process ask for itself. A fork or exec always inherits
+// the calling process's own niceness (POSIX), confirmed directly all
+// the way down to the sandboxed binary bwrap finally execs, so
+// setting this once, on nice itself, is enough to cover every exec in
+// the chain below it (env, prlimit, bwrap and bwrap's own internal
+// fork) without any of them needing to ask for it again. See
+// docs/decisions.md for why a job's own CPU priority, not just how
+// much CPU time it may use in total, needs bounding too.
+const niceLevel = 19
+
+// ioClass is the I/O scheduling class (see ionice(1)) buildArgv's own
+// outermost ionice wraps every job in: 3, "idle", the least
+// favourable class Linux defines, inherited across fork and exec the
+// same way niceLevel is (confirmed directly) - so, like niceLevel,
+// setting it once on ionice itself is enough for the whole chain
+// below it.
+const ioClass = 3
+
+// buildArgv returns the full command Run starts for spec: nice,
+// lowering CPU priority to niceLevel, running ionice, lowering I/O
+// priority to ioClass, running env, named by its own resolved path,
+// ignoring ignoredSignals, running prlimit under every argument
+// needed to run bwrap (bwrapPath) under this package's fixed resource
+// limits and then, inside it, spec.Binary with spec.Args.
+func buildArgv(spec Spec, nicePath, ionicePath, bwrapPath, prlimitPath, envPath string) (name string, args []string) {
 	args = []string{
+		"-n", strconv.Itoa(niceLevel),
+		"--",
+		ionicePath,
+		"-c", strconv.Itoa(ioClass),
+		"--",
+		envPath,
 		"--ignore-signal=" + ignoredSignals,
 		"--",
 		prlimitPath,
@@ -62,7 +90,7 @@ func buildArgv(spec Spec, bwrapPath, prlimitPath, envPath string) (name string, 
 	args = append(args, "--", spec.Binary)
 	args = append(args, spec.Args...)
 
-	return envPath, args
+	return nicePath, args
 }
 
 // bwrapArgs returns every bwrap flag Run passes for spec, stopping

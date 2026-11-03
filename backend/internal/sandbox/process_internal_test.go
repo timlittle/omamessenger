@@ -296,12 +296,15 @@ func TestClassifyWaitErr_NonExitError(t *testing.T) {
 func TestResolveTools_PartialFailure(t *testing.T) {
 	t.Parallel()
 
-	// resolveTools looks up env, then bwrap, then prlimit (see argv.go
-	// for why env comes first); each of the three must be able to
-	// fail on its own, not just the first one tried.
+	// resolveTools looks up nice, then ionice, then env, then bwrap,
+	// then prlimit - the same outermost-to-innermost order buildArgv
+	// itself chains them in (see argv.go); each of the five must be
+	// able to fail on its own, not just the first one tried.
 	tests := map[string]struct {
 		missing string
 	}{
+		"nice missing":    {missing: "nice"},
+		"ionice missing":  {missing: "ionice"},
 		"env missing":     {missing: "env"},
 		"bwrap missing":   {missing: "bwrap"},
 		"prlimit missing": {missing: "prlimit"},
