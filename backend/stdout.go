@@ -27,14 +27,20 @@ import (
 // initializes - or a write that already happened before the swap is
 // not undone by it. It returns the duplicated *os.File callers must
 // use in place of os.Stdout for the protocol itself, or an error if
-// either syscall failed, which the caller should treat as fatal:
+// any syscall failed, which the caller should treat as fatal:
 // continuing on would risk a stray write reaching the real stdout
-// after all.
+// after all. The duplicated descriptor is marked close-on-exec: every
+// descriptor the os package itself opens already is, by default, but
+// syscall.Dup's own result is not, so without this a child process
+// started later - wl-copy, wl-paste, or bwrap for the sandbox - would
+// inherit a second, writable copy of the protocol stream alongside
+// its own stdin, stdout and stderr (see docs/decisions.md).
 func claimProtocolStdout(fd int, redirectTo *os.File) (*os.File, error) {
 	dupFD, err := syscall.Dup(fd)
 	if err != nil {
 		return nil, fmt.Errorf("claim protocol stdout: duplicate fd %d: %w", fd, err)
 	}
+	syscall.CloseOnExec(dupFD)
 	protocol := os.NewFile(uintptr(dupFD), "protocol-stdout")
 
 	if err := syscall.Dup2(int(redirectTo.Fd()), fd); err != nil {
