@@ -4,6 +4,7 @@
 .import "Rail.js" as Rail
 .import "Snooze.js" as Snooze
 .import "Format.js" as Format
+.import "Verify.js" as Verify
 
 // Fuzzy matching for the command palette, in the style of Telescope or
 // Alfred: the letters typed must appear in order, and matches at word
@@ -82,7 +83,10 @@ function conversationOrder(conversations) {
 // but Format.previewText caps it again here, the same cap the
 // conversation list's own preview already gets, as defence in depth
 // against a longer value from an older helper or a single very long
-// matched word.
+// matched word. senderVerified and conversationTitleVerified ride
+// along unmarked - items() below marks them - so a sender's or a
+// chat's own self-chosen name is never trusted here any more than
+// anywhere else it is shown (see Verify.markedName).
 function messageRows(conversations) {
   return (conversations ?? [])
     .filter((c) => c.matchMessageId)
@@ -90,7 +94,9 @@ function messageRows(conversations) {
       conversationId: c.id,
       messageId: c.matchMessageId,
       sender: c.matchSender || '',
+      senderVerified: c.matchSenderVerified ?? false,
       conversationTitle: c.title,
+      conversationTitleVerified: c.titleVerified ?? false,
       service: c.service,
       snippet: Format.previewText(c.match || '')
     }));
@@ -159,13 +165,20 @@ function score(text, wanted) {
 // bindings, keyBindingConflicts, keyBindingErrors, service and now
 // WindowController.qml's _paletteContext fills in.
 var MODES = {
+  // label and detail mark a self-chosen conversation title or
+  // matched-message sender with a leading "~" (see Verify.markedName),
+  // the same as every other place this connector's own data reaches
+  // the UI: this mode's own title and conversationTitle come straight
+  // from conversations.list, which can carry a bare, self-chosen name
+  // with no saved contact behind it at all (see docs/decisions.md).
   conversations: {
     results: (ctx) => search(ctx.listController ? conversationOrder(ctx.listController.all) : [], ctx.query, (c) => c.title),
     items: (results, ctx) => results.map((c) => ({
-      label: c.title, detail: Rail.serviceLabel(c.service, ctx.service ? ctx.service.services : []),
+      label: Verify.markedName(c.title, c.titleVerified), detail: Rail.serviceLabel(c.service, ctx.service ? ctx.service.services : []),
       keys: '', unread: c.unread ?? 0, section: 'conversation'
     })).concat(ctx.messageResults.map((m) => ({
-      label: (m.sender ? m.sender + ': ' : '') + m.snippet, detail: m.conversationTitle,
+      label: (m.sender ? Verify.markedName(m.sender, m.senderVerified) + ': ' : '') + m.snippet,
+      detail: Verify.markedName(m.conversationTitle, m.conversationTitleVerified),
       keys: '', unread: 0, section: 'message'
     })))
   },

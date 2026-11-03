@@ -31,12 +31,12 @@ ShellRoot {
 
     function request(method: string, params: var, callback: var): void {
       if (method === "conversations.list") callback(null, [
-        { id: "r1", title: "Read Older", service: "whatsapp", lastActivity: 100, unread: 0 },
-        { id: "u1", title: "Unread Older", service: "whatsapp", lastActivity: 200, unread: 3 },
-        { id: "r2", title: "Read Newer", service: "telegram", lastActivity: 400, unread: 0 },
-        { id: "u2", title: "Unread Newer", service: "telegram", lastActivity: 300, unread: 1 },
-        { id: "z1", title: "Zorro Read", service: "whatsapp", lastActivity: 10, unread: 0 },
-        { id: "z2", title: "Zorro Unread", service: "whatsapp", lastActivity: 5, unread: 2 }
+        { id: "r1", title: "Read Older", titleVerified: true, service: "whatsapp", lastActivity: 100, unread: 0 },
+        { id: "u1", title: "Unread Older", titleVerified: true, service: "whatsapp", lastActivity: 200, unread: 3 },
+        { id: "r2", title: "Read Newer", titleVerified: true, service: "telegram", lastActivity: 400, unread: 0 },
+        { id: "u2", title: "Unread Newer", titleVerified: true, service: "telegram", lastActivity: 300, unread: 1 },
+        { id: "z1", title: "Zorro Read", titleVerified: true, service: "whatsapp", lastActivity: 10, unread: 0 },
+        { id: "z2", title: "Zorro Unread", titleVerified: true, service: "whatsapp", lastActivity: 5, unread: 2 }
       ]);
     }
   }
