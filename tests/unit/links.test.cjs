@@ -25,6 +25,26 @@ test('isAllowed rejects every other scheme and anything with none at all', () =>
   assert.strictEqual(Links.isAllowed(undefined), false);
 });
 
+// isAllowed is a thin wrapper over Format.spanURL (see this file's own
+// header comment), which carries the exhaustive hidden-character and
+// http(s)-authority cases (tests/unit/format.test.cjs); these confirm
+// the one check every link this UI opens actually goes through sees
+// the same refusal, matching the helper's own domain.AllowedLinkURL.
+
+test('isAllowed refuses a backslash anywhere in the URL, the review\'s own paypal.com/evil.example case', () => {
+  assert.strictEqual(Links.isAllowed('https://evil.example\\@paypal.com/login'), false);
+});
+
+test('isAllowed refuses an http(s) URL with no real "//" authority, which a browser still resolves a host for', () => {
+  assert.strictEqual(Links.isAllowed('https:evil.example'), false);
+  assert.strictEqual(Links.isAllowed('https:\\\\evil.example'), false);
+  assert.strictEqual(Links.isAllowed('https:/\\evil.example'), false);
+});
+
+test('isAllowed refuses a URL carrying a hidden Unicode format character', () => {
+  assert.strictEqual(Links.isAllowed('https://paypal-login.ru' + String.fromCharCode(65279) + '.paypal.com/login'), false);
+});
+
 test('fileURL percent-encodes a plain path with no special characters', () => {
   assert.strictEqual(Links.fileURL('/home/user/Downloads/report.pdf'), 'file:///home/user/Downloads/report.pdf');
 });

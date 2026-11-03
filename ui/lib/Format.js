@@ -196,12 +196,53 @@ function renderMessage(text, linkColor, tableBorderColor, mentions, spans) {
 // link.
 var LINK_SCHEMES = ['http:', 'https:', 'mailto:', 'tg:'];
 
+// HIDDEN_OR_UNUSUAL_CHAR matches a backslash, real whitespace, an
+// ASCII control character, or one of the Unicode "format" characters
+// (category Cf) a spoofed link has used to hide or split its own
+// destination: zero-width spaces and marks (U+200B-U+200F), bidi
+// embeddings and overrides (U+202A-U+202E), word joiner and invisible
+// operators (U+2060-U+2064), bidi isolates (U+2066-U+2069), and the
+// byte-order mark (U+FEFF). None of these ever belongs in a real link;
+// spanURL refuses a URL carrying any of them outright, the same rule
+// the helper's own domain.AllowedLinkURL enforces (see
+// docs/decisions.md). A backslash matters on its own because a
+// browser's own WHATWG URL parser ends an http(s) authority at one
+// the same as it does a forward slash, while urlHost's own authority
+// split (Links.js) does not.
+var HIDDEN_OR_UNUSUAL_CHAR = /[\\\s\x00-\x1f\x7f​-‏‪-‮⁠-⁤⁦-⁩﻿]/;
+
+// hasHTTPAuthority reports whether value - already known to start with
+// "http:" or "https:" - spells out "://" followed by a real, non-empty
+// authority: the one shape an allowed http(s) URL must take. A
+// browser's own URL parser still resolves a host for
+// "https:evil.example", "https:\\evil.example" or
+// "https:/\evil.example" - each missing a real "//" authority of its
+// own, or carrying a backslash standing in for part of it - so this is
+// refused here rather than relying only on HIDDEN_OR_UNUSUAL_CHAR's
+// backslash check.
+function hasHTTPAuthority(value) {
+  const rest = value.replace(/^https?:/i, '');
+  if (!rest.startsWith('//')) return false;
+
+  const first = rest.charAt(2);
+  return first !== '' && first !== '/' && first !== '?' && first !== '#';
+}
+
 // spanURL returns url unchanged when its scheme is one LINK_SCHEMES
-// allows, or '' to drop anything else, including text with no scheme at
-// all.
+// allows, it carries none of HIDDEN_OR_UNUSUAL_CHAR's own characters,
+// and, for http(s), has a real "scheme://authority" shape (see
+// hasHTTPAuthority) - or '' to drop anything else, including text
+// with no scheme at all. mailto: and tg: carry no authority of their
+// own, so neither is held to that last rule.
 function spanURL(url) {
-  const match = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.exec(url || '');
-  return match && LINK_SCHEMES.includes(match[0].toLowerCase()) ? url : '';
+  const value = url || '';
+  const match = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.exec(value);
+  if (!match || !LINK_SCHEMES.includes(match[0].toLowerCase())) return '';
+  if (HIDDEN_OR_UNUSUAL_CHAR.test(value)) return '';
+
+  const scheme = match[0].toLowerCase();
+  const isHTTP = scheme === 'http:' || scheme === 'https:';
+  return isHTTP && !hasHTTPAuthority(value) ? '' : value;
 }
 
 // STYLE_TAGS pairs a span kind with the tag styledSegment wraps it in,

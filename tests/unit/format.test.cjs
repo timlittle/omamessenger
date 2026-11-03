@@ -380,6 +380,65 @@ for (const url of allowedSchemeCases) {
   });
 }
 
+// spanURL is the one allow-list ui/lib/Links.js's isAllowed reuses (see
+// its own header comment), mirroring the exact rule
+// domain.AllowedLinkURL enforces in the helper: a security review
+// found a browser's own WHATWG URL parser ends an http(s) authority at
+// a backslash the same as a forward slash, so a scheme-only check let
+// "https://evil.example\@paypal.com/login" through while Links.urlHost
+// (ending an authority only at "/", "?" or "#") read its host as
+// paypal.com rather than evil.example.
+
+test('spanURL refuses a backslash anywhere in the URL', () => {
+  assert.equal(Format.spanURL('https://evil.example\\@paypal.com/login'), '');
+  assert.equal(Format.spanURL('https:\\\\evil.example'), '');
+  assert.equal(Format.spanURL('https:/\\evil.example'), '');
+});
+
+test('spanURL refuses an http(s) URL with no real "//" authority, which a browser still resolves a host for', () => {
+  assert.equal(Format.spanURL('https:evil.example'), '');
+  assert.equal(Format.spanURL('http:evil.example'), '');
+  assert.equal(Format.spanURL('https:///evil.example'), '');
+  assert.equal(Format.spanURL('https://'), '');
+});
+
+test('spanURL allows ordinary http(s) authorities, so the new shape rule catches nothing legitimate', () => {
+  assert.equal(Format.spanURL('https://example.com/path'), 'https://example.com/path');
+  assert.equal(Format.spanURL('https://example.com:8443/path'), 'https://example.com:8443/path');
+  assert.equal(Format.spanURL('https://user:pass@example.com/path'), 'https://user:pass@example.com/path');
+  assert.equal(Format.spanURL('https://[2001:db8::1]/path'), 'https://[2001:db8::1]/path');
+});
+
+// Each hidden-character case below is built with String.fromCharCode
+// rather than a literal escape, so the adversarial character is
+// unmistakably a deliberate code point in this test's own source, not
+// an accidental one.
+const hiddenCharCases = [
+  ['a space', 'https://evil.example/ login'],
+  ['a tab', 'https://evil.example/\tlogin'],
+  ['a zero-width space', 'https://evil.example/' + String.fromCharCode(8203) + 'login'],
+  ['a right-to-left mark', 'https://evil.example/' + String.fromCharCode(8207) + 'login'],
+  ['a left-to-right override', 'https://evil' + String.fromCharCode(8238) + 'example.com/login'],
+  ['a left-to-right isolate', 'https://evil' + String.fromCharCode(8294) + 'example.com/login'],
+  ['a word joiner', 'https://evil' + String.fromCharCode(8288) + 'example.com/login'],
+  // The review's own example: the invisible byte-order mark glues a
+  // short, unrelated link to a trailing ".paypal.com/login" that was
+  // never really part of it.
+  ['a byte-order mark', 'https://paypal-login.ru' + String.fromCharCode(65279) + '.paypal.com/login']
+];
+
+for (const [name, url] of hiddenCharCases) {
+  test(`spanURL refuses a URL containing ${name}`, () => {
+    assert.equal(Format.spanURL(url), '');
+  });
+}
+
+test('spanURL keeps mailto: and tg: rules unchanged, needing no "//" authority of their own', () => {
+  assert.equal(Format.spanURL('mailto:a@example.com'), 'mailto:a@example.com');
+  assert.equal(Format.spanURL('mailto:a@example.com?body=hello'), 'mailto:a@example.com?body=hello');
+  assert.equal(Format.spanURL('tg://resolve?domain=x'), 'tg://resolve?domain=x');
+});
+
 const simpleSpanCases = [
   ['bold', '<b>text</b>'],
   ['italic', '<i>text</i>'],

@@ -30,13 +30,22 @@
 
 .import "Format.js" as Format
 
-// isAllowed reports whether url's scheme is one a link may safely open,
-// reusing the exact allow-list a message's own formatting span already
-// checks (see Format.spanURL), so there is only one list to keep in
-// step with the helper's own domain.AllowedLinkURL.
+// isAllowed reports whether url is safe to open - its scheme, and now
+// also its characters and, for http(s), its own "scheme://authority"
+// shape - reusing the exact rule a message's own formatting span
+// already checks (see Format.spanURL), so there is only one rule to
+// keep in step with the helper's own domain.AllowedLinkURL.
 function isAllowed(url) {
   return Format.spanURL(url) !== '';
 }
+
+// REFUSED_LINK_MESSAGE is the short, safe text shown instead of a
+// link's real target, or any question about it, once isAllowed has
+// refused a URL outright: one of Format.HIDDEN_OR_UNUSUAL_CHAR's own
+// characters, or an http(s) URL with no real authority of its own
+// (see Format.spanURL). Never a confirmation naming a host computed
+// from characters that could make it wrong (see docs/decisions.md).
+var REFUSED_LINK_MESSAGE = 'This link has hidden or unusual characters and was not opened';
 
 // fileURL returns a "file://" URL for the local absolute path, with
 // each path segment percent-encoded: Qt parses whatever is handed to a
@@ -150,7 +159,16 @@ function resolveClickedLink(href, text, mentions, spans) {
 // shows exactly this - never elided - so that padding can never push
 // the real host out of view (see docs/decisions.md). lastIndexOf and a
 // single bounded regex replace keep this linear in url's own length,
-// which has no limit of its own at this layer.
+// which has no limit of its own at this layer. This only agrees with
+// the browser that will actually open url once isAllowed has already
+// accepted it: a backslash inside the authority ends it one way here
+// (splitting only on "/", "?" or "#") and another way in a browser's
+// own WHATWG parser (which treats "\" the same as "/"). isAllowed now
+// refuses any URL carrying one at all (see Format.spanURL and
+// docs/decisions.md), and LinkOpenConfirm checks that itself before
+// this function ever runs on the link it shows, rather than leaving
+// this function to resolve a disallowed URL's host differently from
+// the browser that would have opened it.
 function urlHost(url) {
   const afterScheme = (url || '').replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:/, '');
   if (!afterScheme.startsWith('//')) {
