@@ -220,13 +220,20 @@ func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev dev
 // handleChatPresence reports someone typing or stopping, naming them
 // only in a group: a direct chat's single header has no room for a
 // name, matching how this helper's other connector reports it.
+// verified mirrors the same cached rank every other name this
+// connector reports for the sender is keyed by (see nameFor): a
+// group's typing indicator is just as able to carry a bare,
+// self-chosen name as its messages are.
 func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.ChatPresence) {
-	name := ""
+	name, verified := "", true
 	if e.IsGroup {
-		name, _ = c.nameFor(remoteID(e.Sender))
+		var rank nameRank
+		name, rank = c.nameFor(remoteID(e.Sender))
+		verified = verifiedRank(rank)
 	}
 
-	sink.Typing(ctx, c.account.ID, chatID(ctx, dev, media, e.Chat), name, typingActive(e.State))
+	state := connector.TypingState{Verified: verified, Active: typingActive(e.State)}
+	sink.Typing(ctx, c.account.ID, chatID(ctx, dev, media, e.Chat), name, state)
 }
 
 // handleReceipt reports the one kind of receipt that is ours to handle

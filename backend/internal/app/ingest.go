@@ -370,14 +370,18 @@ func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, 
 
 // Typing publishes a typing indicator for a known conversation. name
 // is sender-controlled (a group member's own display name), so it
-// gets the same cap SanitizeIncoming gives a message's own SenderName.
-func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, name string, active bool) {
+// gets the same cap SanitizeIncoming gives a message's own SenderName,
+// and state's Verified rides along unchanged so the UI marks it the
+// same way.
+func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, name string, state connector.TypingState) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
 	if err != nil {
 		return
 	}
 
-	in.events.publish(ctx, EventTyping, Typing{ConversationID: conv.ID, Name: domain.CapDisplayName(name), Active: active})
+	in.events.publish(ctx, EventTyping, Typing{
+		ConversationID: conv.ID, Name: domain.CapDisplayName(name), Verified: state.Verified, Active: state.Active,
+	})
 }
 
 // SenderName corrects senderRemoteID's name and verified flag on

@@ -8,7 +8,10 @@
 // message: applyMessage moves the highlight off a row the capped
 // timeline just evicted, rather than leaving it pointing at a message
 // that is no longer loaded (see MessageTimeline.upsert and
-// tests/unit/timeline.test.cjs for the capping decision itself).
+// tests/unit/timeline.test.cjs for the capping decision itself). Also
+// checks that a typing event's own name is marked with "~" when it is
+// not verified, the same as everywhere else a self-chosen name can
+// reach the UI (see docs/decisions.md).
 import QtQuick
 import Quickshell
 import "ui/controllers"
@@ -18,8 +21,9 @@ import "Check.js" as Check
 ShellRoot {
   id: root
 
-  // fakeService records every ui.setFocus call's params and lets the
-  // test flip status to simulate the helper restarting.
+  // fakeService records every ui.setFocus call's params, emits event()
+  // the way the real service does for a typing notification, and lets
+  // the test flip status to simulate the helper restarting.
   QtObject {
     id: fakeService
 
@@ -27,6 +31,12 @@ ShellRoot {
     property var focusCalls: []
     property var uiState: ({})
     property var accounts: []
+
+    // event mirrors the real service's own signal: ConversationController
+    // listens to it with a Connections block the same way it would for
+    // the real helper, so the test can simulate a typing notification
+    // just by emitting it directly.
+    signal event(string name, var data)
 
     // Only ui.setFocus is recorded; every other request (loading
     // messages, marking read, …) is left unanswered, since this test
@@ -70,6 +80,7 @@ ShellRoot {
     }
 
     if (!root.checkFloodMovesHighlightOffAnEvictedRow()) return;
+    if (!root.checkTypingMarksAnUnverifiedName()) return;
 
     console.log("PASS ConversationController");
     Qt.exit(0);
@@ -107,6 +118,33 @@ ShellRoot {
     }
     if (conversationController.highlightedId !== "m" + cap) {
       return Check.fail("the highlight should have moved to the newest loaded message the moment its own row fell out: got " + conversationController.highlightedId + ", want m" + cap);
+    }
+
+    return true;
+  }
+
+  // checkTypingMarksAnUnverifiedName confirms the header subtitle marks
+  // a typing indicator's own name with "~" when the event reports it
+  // unverified - a group member's own push name, say - and leaves a
+  // verified one unmarked, so a stranger typing as "Mum" never reads
+  // like a saved contact mid-conversation either. Returns false, having
+  // already called Check.fail, on the first thing that does not hold.
+  function checkTypingMarksAnUnverifiedName(): bool {
+    conversationController.open({ id: "chat-1" });
+
+    fakeService.event("typing", { conversationId: "chat-1", name: "Mum", verified: false, active: true });
+    if (conversationController.subtitle !== "~Mum is typing…") {
+      return Check.fail("unverified typing subtitle = " + conversationController.subtitle + ", want ~Mum is typing…");
+    }
+
+    fakeService.event("typing", { conversationId: "chat-1", name: "Alex", verified: true, active: true });
+    if (conversationController.subtitle !== "Alex is typing…") {
+      return Check.fail("verified typing subtitle = " + conversationController.subtitle + ", want unmarked Alex is typing…");
+    }
+
+    fakeService.event("typing", { conversationId: "chat-1", name: "Alex", verified: true, active: false });
+    if (conversationController.subtitle === "Alex is typing…") {
+      return Check.fail("typing stopped but the subtitle still shows it");
     }
 
     return true;

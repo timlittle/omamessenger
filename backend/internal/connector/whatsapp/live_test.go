@@ -419,11 +419,19 @@ func TestHandleMessage_ReportsEachReactionChangeAsTheFullTally(t *testing.T) {
 // live_revoke_edit_test.go, split out to stay under this file's own
 // length limit.
 
+// TestHandleChatPresence_NamesTheTyperOnlyInAGroup also confirms
+// verified reaches Sink.Typing from the same cached rank every other
+// name this connector reports for a sender is keyed by (see nameFor):
+// a typing indicator naming a group member cached only as a bare push
+// name must report unverified, exactly like that member's own
+// messages do, and a member resolved to a saved contact must report
+// verified.
 func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	t.Parallel()
 
 	c, dev, sink := handlerFixture(t)
 	c.rememberName("15551234567@s.whatsapp.net", "Nadia", nameRankPushName)
+	c.rememberName("15559876543@s.whatsapp.net", "Priya", nameRankContact)
 
 	direct := types.NewJID("15551234567", types.DefaultUserServer)
 	c.handleChatPresence(t.Context(), sink, dev, nil, &events.ChatPresence{
@@ -432,6 +440,9 @@ func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	if !sink.Has("typing 15551234567@s.whatsapp.net true") {
 		t.Errorf("events = %q, want typing with no name in a direct chat", sink.Lines())
 	}
+	if !sink.LastTypingVerified() {
+		t.Error("a direct chat's typing indicator, which names no one, reported unverified")
+	}
 
 	group := types.NewJID("12345-1600000000", types.GroupServer)
 	c.handleChatPresence(t.Context(), sink, dev, nil, &events.ChatPresence{
@@ -439,6 +450,17 @@ func TestHandleChatPresence_NamesTheTyperOnlyInAGroup(t *testing.T) {
 	})
 	if !sink.Has("typing 12345-1600000000@g.us false") {
 		t.Errorf("events = %q, want typing stopped reported", sink.Lines())
+	}
+	if sink.LastTypingVerified() {
+		t.Error("a group typer cached only as a bare push name reported verified")
+	}
+
+	verifiedSender := types.NewJID("15559876543", types.DefaultUserServer)
+	c.handleChatPresence(t.Context(), sink, dev, nil, &events.ChatPresence{
+		MessageSource: types.MessageSource{Chat: group, Sender: verifiedSender, IsGroup: true}, State: types.ChatPresenceComposing,
+	})
+	if !sink.LastTypingVerified() {
+		t.Error("a group typer cached as a saved contact reported unverified")
 	}
 }
 

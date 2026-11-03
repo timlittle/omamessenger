@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
+	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
@@ -193,7 +194,7 @@ func TestTyping_CapsName(t *testing.T) {
 	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
 
 	long := strings.Repeat("n", domain.MaxDisplayNameLength+10)
-	f.ingest.Typing(t.Context(), "wa", chat.RemoteID, long, true)
+	f.ingest.Typing(t.Context(), "wa", chat.RemoteID, long, connector.TypingState{Verified: true, Active: true})
 
 	got := f.published.last().(app.Typing)
 	if n := domain.UTF16Len(got.Name); n != domain.MaxDisplayNameLength {

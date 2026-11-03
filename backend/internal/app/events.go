@@ -50,10 +50,14 @@ type MessageRemoved struct {
 	MessageID      string `json:"messageId"`
 }
 
-// Typing is the data of a typing event.
+// Typing is the data of a typing event. Verified mirrors
+// domain.Message.SenderVerified for Name: a group's typing indicator
+// names the member the same way its messages do, which can be nothing
+// more than a bare, self-chosen name (see docs/decisions.md).
 type Typing struct {
 	ConversationID string `json:"conversationId"`
 	Name           string `json:"name"`
+	Verified       bool   `json:"verified,omitempty"`
 	Active         bool   `json:"active"`
 }
 

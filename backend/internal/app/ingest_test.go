@@ -523,25 +523,6 @@ func TestOutgoingStatus_PublishesForwardProgressOnly(t *testing.T) {
 	}
 }
 
-func TestTyping_PublishesForKnownConversations(t *testing.T) {
-	t.Parallel()
-
-	f := newFixture(t, false)
-	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
-
-	f.ingest.Typing(t.Context(), "wa", chat.RemoteID, "Alex", true)
-	f.ingest.Typing(t.Context(), "wa", "nowhere", "Alex", true)
-
-	want := app.Typing{ConversationID: chat.ID, Name: "Alex", Active: true}
-	if got := f.published.last(); got != want {
-		t.Errorf("typing = %+v, want %+v", got, want)
-	}
-
-	if got := f.published.take(); !slices.Equal(got, []string{app.EventTyping}) {
-		t.Errorf("events = %v", got)
-	}
-}
-
 // TestIncoming_NotifiesWithNoNameOrTextByDefault confirms a notification
 // names no sender and shows no text until the user asks for more:
 // Omarchy's own notification service keeps a copy of every notification

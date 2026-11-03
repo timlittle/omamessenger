@@ -283,7 +283,9 @@ func (c *Connector) readUpTo(ctx context.Context, sink connector.Sink, key strin
 	}
 }
 
-// typing reports someone typing in a direct chat.
+// typing reports someone typing in a direct chat. It never names them
+// (see Sink.Typing), so verified is always true: there is no
+// self-chosen name here for that flag to qualify.
 func (c *Connector) typing(ctx context.Context, sink connector.Sink, u *tg.UpdateUserTyping) {
 	remote, ok := c.lookup("user:" + strconv.FormatInt(u.UserID, 10))
 	if !ok {
@@ -291,7 +293,7 @@ func (c *Connector) typing(ctx context.Context, sink connector.Sink, u *tg.Updat
 	}
 
 	_, stopped := u.Action.(*tg.SendMessageCancelAction)
-	sink.Typing(ctx, c.account.ID, remote, "", !stopped)
+	sink.Typing(ctx, c.account.ID, remote, "", connector.TypingState{Verified: true, Active: !stopped})
 }
 
 // fromUpdate turns an update's entities into ours.

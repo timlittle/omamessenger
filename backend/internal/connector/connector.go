@@ -280,6 +280,16 @@ type AuthStep struct {
 	PasswordHint string `json:"passwordHint,omitempty"`
 }
 
+// TypingState is what Sink.Typing reports about one typing
+// notification: Verified mirrors domain.Message.SenderVerified for the
+// name reported alongside it, so a bare, self-chosen name earns it no
+// more trust here than anywhere else it is shown, and Active is whether
+// this starts or stops the indicator.
+type TypingState struct {
+	Verified bool
+	Active   bool
+}
+
 // Sink receives normalized updates from a running Connector. It has one
 // method per kind of update so that connectors stay free of any protocol
 // or storage detail.
@@ -320,8 +330,10 @@ type Sink interface {
 	// the service's id for it once known.
 	OutgoingStatus(ctx context.Context, localMessageID, remoteID, status string)
 
-	// Typing reports that someone started or stopped typing.
-	Typing(ctx context.Context, accountID, conversationRemoteID, name string, active bool)
+	// Typing reports that someone started or stopped typing, bundled
+	// into state to keep this method within this codebase's
+	// argument-count limit.
+	Typing(ctx context.Context, accountID, conversationRemoteID, name string, state TypingState)
 
 	// Unread reports the service's own count of unread messages in a
 	// conversation, which replaces ours: after a sync, or when the user

@@ -83,7 +83,7 @@ Events are JSON-RPC notifications: `{"jsonrpc":"2.0","method":"<event>","params"
 | `message.updated` | `Message`; also sent when the service reports a message edited, or its reactions changed |
 | `message.removed` | `{conversationId, messageId}`; sent when the service reports a message deleted |
 | `unread.changed` | `{total, byService}`; `byService` is `{whatsapp: N, telegram: N, …}`, a service omitted meaning zero |
-| `typing` | `{conversationId, name, active}` |
+| `typing` | `{conversationId, name, verified, active}`; `name` is set only in a group (a direct chat's single header has no room for one); `verified` mirrors a `Message`'s own `senderVerified` for it |
 | `notification.clicked` | `{conversationId}`: the user clicked a desktop notification; the UI opens that conversation |
 | `scheduledMessage.added` | `ScheduledMessage`; a message was queued, through `messages.schedule` |
 | `scheduledMessage.updated` | `ScheduledMessage`; a queued message's text or send time changed, through `messages.editScheduled` |
