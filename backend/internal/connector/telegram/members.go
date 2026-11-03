@@ -79,8 +79,9 @@ func chatMembers(ctx context.Context, api *tg.Client, chatID int64) ([]domain.Me
 func memberList(e entities) []domain.Member {
 	out := make([]domain.Member, 0, len(e.users))
 	for id, u := range e.users {
+		name, _ := userName(u)
 		out = append(out, domain.Member{
-			ID: remoteID(&tg.InputPeerUser{UserID: id, AccessHash: u.AccessHash}), Name: userName(u),
+			ID: remoteID(&tg.InputPeerUser{UserID: id, AccessHash: u.AccessHash}), Name: name,
 		})
 	}
 

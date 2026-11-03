@@ -380,15 +380,16 @@ func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, n
 	in.events.publish(ctx, EventTyping, Typing{ConversationID: conv.ID, Name: domain.CapDisplayName(name), Active: active})
 }
 
-// SenderName corrects senderRemoteID's name on every message already
-// stored under a different one, and re-publishes every conversation
-// whose preview this changes, so a group whose preview still names
-// its newest message's sender by a stale, generic label picks up a
-// contact, push or business name that only resolved afterwards (see
-// connector.SenderNamer). name is sender-controlled, so it gets the
-// same cap SanitizeIncoming gives a message's own SenderName.
-func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, name string) {
-	changed, err := in.store.RefreshSenderName(ctx, accountID, senderRemoteID, domain.CapDisplayName(name))
+// SenderName corrects senderRemoteID's name and verified flag on
+// every message already stored under a different one, and
+// re-publishes every conversation whose preview this changes, so a
+// group whose preview still names its newest message's sender by a
+// stale, generic label picks up a contact, push or business name that
+// only resolved afterwards (see connector.SenderNamer). name is
+// sender-controlled, so it gets the same cap SanitizeIncoming gives a
+// message's own SenderName.
+func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, name string, verified bool) {
+	changed, err := in.store.RefreshSenderName(ctx, accountID, senderRemoteID, domain.CapDisplayName(name), verified)
 	if err != nil {
 		return
 	}
@@ -578,6 +579,7 @@ func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Inp
 		Missed:         missed,
 		Kind:           conv.Kind,
 		Sender:         m.SenderName,
+		SenderVerified: m.SenderVerified,
 		Title:          conv.Title,
 		Text:           m.Text,
 		ConversationID: conv.ID,

@@ -419,27 +419,37 @@ func TestIsSystemJID_RecognisesNonConversationJIDs(t *testing.T) {
 	}
 }
 
+// TestContactDisplayName_PrefersSavedNamesOverAPushName confirms the
+// name, and that only the push-name fallback - exactly as self-chosen
+// and unverified as one read straight off a live message - comes back
+// unverified; a saved full or first name, or a verified business
+// name, all come back verified.
 func TestContactDisplayName_PrefersSavedNamesOverAPushName(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		info types.ContactInfo
-		want string
+		name         string
+		info         types.ContactInfo
+		want         string
+		wantVerified bool
 	}{
-		{"full name wins", types.ContactInfo{Found: true, FullName: "Nadia Rahman", PushName: "nads"}, "Nadia Rahman"},
-		{"first name beats business and push", types.ContactInfo{Found: true, FirstName: "Nadia", BusinessName: "Acme", PushName: "nads"}, "Nadia"},
-		{"business name beats push", types.ContactInfo{Found: true, BusinessName: "Acme Support", PushName: "nads"}, "Acme Support"},
-		{"push name is the last resort", types.ContactInfo{Found: true, PushName: "nads"}, "nads"},
-		{"nothing known", types.ContactInfo{Found: true}, ""},
+		{"full name wins", types.ContactInfo{Found: true, FullName: "Nadia Rahman", PushName: "nads"}, "Nadia Rahman", true},
+		{"first name beats business and push", types.ContactInfo{Found: true, FirstName: "Nadia", BusinessName: "Acme", PushName: "nads"}, "Nadia", true},
+		{"business name beats push", types.ContactInfo{Found: true, BusinessName: "Acme Support", PushName: "nads"}, "Acme Support", true},
+		{"push name is the last resort", types.ContactInfo{Found: true, PushName: "nads"}, "nads", false},
+		{"nothing known", types.ContactInfo{Found: true}, "", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := contactDisplayName(tt.info); got != tt.want {
+			got, verified := contactDisplayName(tt.info)
+			if got != tt.want {
 				t.Errorf("contactDisplayName(%s) = %q, want %q", tt.name, got, tt.want)
+			}
+			if verified != tt.wantVerified {
+				t.Errorf("contactDisplayName(%s) verified = %t, want %t", tt.name, verified, tt.wantVerified)
 			}
 		})
 	}

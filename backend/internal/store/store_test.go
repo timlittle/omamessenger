@@ -178,7 +178,7 @@ func storeCalls(t *testing.T, s *store.Store) map[string]func() error {
 			_, err := s.FailedAttachmentCount(ctx)
 			return err
 		},
-		"RefreshSenderName": func() error { _, err := s.RefreshSenderName(ctx, "wa", "r", "Name"); return err },
+		"RefreshSenderName": func() error { _, err := s.RefreshSenderName(ctx, "wa", "r", "Name", true); return err },
 	}
 }
 

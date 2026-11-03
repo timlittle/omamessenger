@@ -112,11 +112,12 @@ func message(ctx context.Context, dev device, info types.MessageInfo, raw *waE2E
 	}
 
 	if info.IsFromMe {
-		out.SenderID, out.SenderName, out.Status = "self", "You", domain.StatusSent
+		out.SenderID, out.SenderName, out.SenderVerified, out.Status = "self", "You", true, domain.StatusSent
 		return out
 	}
 
-	out.SenderID, out.SenderName = remoteID(info.Sender), senderDisplayName(ctx, dev, info)
+	out.SenderID = remoteID(info.Sender)
+	out.SenderName, out.SenderVerified = senderDisplayName(ctx, dev, info)
 	return out
 }
 
@@ -173,15 +174,15 @@ func historySender(chat types.JID, raw *waWeb.WebMessageInfo) types.JID {
 	return jid
 }
 
-// senderDisplayName names who sent a message: their resolved contact
-// name, mapping a LID to its phone JID first (see device.contactName),
-// or, failing that, whatever senderName can tell from the message
-// itself. Resolving the contact first is what names a group's other
-// members instead of the generic "WhatsApp user" once their contact or
-// push name is known locally.
-func senderDisplayName(ctx context.Context, dev device, info types.MessageInfo) string {
-	if name := dev.contactName(ctx, info.Sender); name != "" {
-		return name
+// senderDisplayName names who sent a message, and whether that name is
+// verified: their resolved contact name, mapping a LID to its phone
+// JID first (see device.contactName), or, failing that, whatever
+// senderName can tell from the message itself. Resolving the contact
+// first is what names a group's other members instead of the generic
+// "WhatsApp user" once their contact or push name is known locally.
+func senderDisplayName(ctx context.Context, dev device, info types.MessageInfo) (name string, verified bool) {
+	if name, verified := dev.contactName(ctx, info.Sender); name != "" {
+		return name, verified
 	}
 
 	return senderName(info)
@@ -195,20 +196,23 @@ func senderDisplayName(ctx context.Context, dev device, info types.MessageInfo) 
 // this specific fallback apart from any real name worth keeping.
 const genericSenderName = "WhatsApp user"
 
-// senderName names who sent a message: their self-chosen display name,
-// their verified business name, or a generic label when WhatsApp
-// reported neither. It never falls back to the phone number in their
-// JID, which is not a name.
-func senderName(info types.MessageInfo) string {
+// senderName names who sent a message, and whether that name is
+// verified: their self-chosen display name (never verified), their
+// verified business name (always verified), or a generic label when
+// WhatsApp reported neither - itself never a self-chosen claim, so it
+// is reported verified too, rather than marked as if a stranger had
+// picked it. It never falls back to the phone number in their JID,
+// which is not a name.
+func senderName(info types.MessageInfo) (name string, verified bool) {
 	if info.PushName != "" {
-		return info.PushName
+		return info.PushName, false
 	}
 
 	if name := verifiedName(info); name != "" {
-		return name
+		return name, true
 	}
 
-	return genericSenderName
+	return genericSenderName, true
 }
 
 // verifiedName is a business account's verified name, or "" when the

@@ -50,7 +50,7 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 			"outgoing text",
 			outgoingInfo(), &waE2E.Message{Conversation: strPtr("back")},
 			domain.Message{
-				RemoteID: "ABCD1234", SenderID: "self", SenderName: "You",
+				RemoteID: "ABCD1234", SenderID: "self", SenderName: "You", SenderVerified: true,
 				Text: "back", Outgoing: true, Status: domain.StatusSent, Created: 1_800_000_000_000,
 			},
 		},
@@ -71,7 +71,7 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 			},
 			&waE2E.Message{Conversation: strPtr("hi")},
 			domain.Message{
-				RemoteID: "X", SenderID: "15551234567@s.whatsapp.net", SenderName: "WhatsApp user",
+				RemoteID: "X", SenderID: "15551234567@s.whatsapp.net", SenderName: "WhatsApp user", SenderVerified: true,
 				Text: "hi", Status: domain.StatusReceived, Created: 1000,
 			},
 		},
@@ -185,24 +185,35 @@ func TestMessage_UnwrapGivesUpAfterTheDepthLimit(t *testing.T) {
 	}
 }
 
+// TestSenderName_FallsBackSensibly confirms senderName's name, and
+// that only a bare push name - self-chosen, exactly as a stranger
+// naming themselves "Mum" would use - comes back unverified; a
+// verified business name, and the generic label this falls back to
+// when WhatsApp gave neither (never itself a self-chosen claim), both
+// come back verified.
 func TestSenderName_FallsBackSensibly(t *testing.T) {
 	t.Parallel()
 
-	verified := &types.VerifiedName{Details: &waVnameCert.VerifiedNameCertificate_Details{VerifiedName: strPtr("Acme Support")}}
+	verifiedName := &types.VerifiedName{Details: &waVnameCert.VerifiedNameCertificate_Details{VerifiedName: strPtr("Acme Support")}}
 	tests := []struct {
-		name string
-		info types.MessageInfo
-		want string
+		name         string
+		info         types.MessageInfo
+		want         string
+		wantVerified bool
 	}{
-		{"push name", types.MessageInfo{PushName: "Nadia"}, "Nadia"},
-		{"verified business name", types.MessageInfo{VerifiedName: verified}, "Acme Support"},
-		{"verified name with no details", types.MessageInfo{VerifiedName: &types.VerifiedName{}}, "WhatsApp user"},
-		{"no name at all", types.MessageInfo{}, "WhatsApp user"},
+		{"push name", types.MessageInfo{PushName: "Nadia"}, "Nadia", false},
+		{"verified business name", types.MessageInfo{VerifiedName: verifiedName}, "Acme Support", true},
+		{"verified name with no details", types.MessageInfo{VerifiedName: &types.VerifiedName{}}, "WhatsApp user", true},
+		{"no name at all", types.MessageInfo{}, "WhatsApp user", true},
 	}
 
 	for _, tt := range tests {
-		if got := senderName(tt.info); got != tt.want {
+		got, verified := senderName(tt.info)
+		if got != tt.want {
 			t.Errorf("senderName(%s) = %q, want %q", tt.name, got, tt.want)
+		}
+		if verified != tt.wantVerified {
+			t.Errorf("senderName(%s) verified = %t, want %t", tt.name, verified, tt.wantVerified)
 		}
 	}
 }
@@ -367,7 +378,7 @@ func TestHistoryMessage_DirectAndGroup(t *testing.T) {
 				MessageTimestamp: u64(1_800_000_000),
 			}},
 			domain.Message{
-				RemoteID: "H2", SenderID: "self", SenderName: "You",
+				RemoteID: "H2", SenderID: "self", SenderName: "You", SenderVerified: true,
 				Text: "back", Outgoing: true, Status: domain.StatusSent, Created: 1_800_000_000_000,
 			},
 		},

@@ -133,7 +133,7 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 
 	if dev.isSelfChat(ctx, info.Chat) {
 		c.reportConversation(ctx, sink, domain.Conversation{
-			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: selfChatTitle,
+			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: selfChatTitle, TitleVerified: true,
 		})
 
 		return
@@ -142,7 +142,7 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 	if kindFor(info.Chat) == domain.KindGroup {
 		name, members := c.resolveGroupName(ctx, dev, info.Chat, "", 0)
 		c.reportConversation(ctx, sink, domain.Conversation{
-			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindGroup, Title: name, Members: members,
+			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindGroup, Title: name, TitleVerified: true, Members: members,
 		})
 
 		return
@@ -154,9 +154,9 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 		pushName, businessName = "", ""
 	}
 
-	title := c.resolveDirectTitle(ctx, syncSource{dev: dev, media: media}, info.Chat, pushName, businessName)
+	title, verified := c.resolveDirectTitle(ctx, syncSource{dev: dev, media: media}, info.Chat, pushName, businessName)
 	c.reportConversation(ctx, sink, domain.Conversation{
-		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title,
+		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title, TitleVerified: verified,
 	})
 }
 
@@ -222,7 +222,7 @@ func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev dev
 func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.ChatPresence) {
 	name := ""
 	if e.IsGroup {
-		name = c.nameFor(remoteID(e.Sender))
+		name, _ = c.nameFor(remoteID(e.Sender))
 	}
 
 	sink.Typing(ctx, c.account.ID, chatID(ctx, dev, media, e.Chat), name, typingActive(e.State))
@@ -292,13 +292,14 @@ func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink
 	}
 
 	if e.Info.IsFromMe {
-		m.SenderID, m.SenderName, m.Status = "self", "You", domain.StatusSent
+		m.SenderID, m.SenderName, m.SenderVerified, m.Status = "self", "You", true, domain.StatusSent
 		saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{fromMe: true, timestamp: m.Created})
 		sink.History(ctx, c.account.ID, remote, m)
 		return
 	}
 
-	m.SenderID, m.SenderName = remoteID(e.Info.Sender), senderName(e.Info)
+	m.SenderID = remoteID(e.Info.Sender)
+	m.SenderName, m.SenderVerified = senderName(e.Info)
 	m = c.improvedSenderName(m)
 	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: false, timestamp: m.Created})
 	sink.Incoming(ctx, c.account.ID, remote, m)

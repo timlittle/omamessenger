@@ -44,16 +44,25 @@ type Connector struct {
 	api     *tg.Client
 	sink    connector.Sink
 	waiting bool
-	self    int64             // this account's own user id, set once Run signs in
-	premium bool              // whether the signed-in account has Telegram Premium, set alongside self
-	remotes map[string]string // "user:42" to the full remote id with its access hash
-	sent    map[string]string // "<remote id>/<message id>" to our message id
-	names   map[string]string // a user's remote id to the best real name learned for them
+	self    int64                 // this account's own user id, set once Run signs in
+	premium bool                  // whether the signed-in account has Telegram Premium, set alongside self
+	remotes map[string]string     // "user:42" to the full remote id with its access hash
+	sent    map[string]string     // "<remote id>/<message id>" to our message id
+	names   map[string]namedEntry // a user's remote id to the best real name learned for them, and whether it is verified
 
 	// resolving tracks resolvePlaceholderHash's background goroutines,
 	// so Run can wait for them to finish before it returns rather than
 	// only asking them to stop (see concurrency.md).
 	resolving sync.WaitGroup
+}
+
+// namedEntry is the best name learned so far for a Telegram user's
+// remote id, and whether it is verified: resolved from someone saved
+// as a contact or Telegram's own verified badge, never a bare,
+// self-chosen first/last name or @username (see ownName).
+type namedEntry struct {
+	name     string
+	verified bool
 }
 
 var (
@@ -77,7 +86,7 @@ func New(account domain.Account, dir string) *Connector {
 		answers: make(chan answer, 1),
 		remotes: map[string]string{},
 		sent:    map[string]string{},
-		names:   map[string]string{},
+		names:   map[string]namedEntry{},
 	}
 }
 
@@ -119,7 +128,8 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 
 		c.connected(client.API(), sink)
 		c.setSelf(self.ID, self.Premium)
-		sink.AccountStatus(ctx, c.account.ID, domain.AccountConnected, "Signed in as "+ownName(self))
+		selfName, _ := ownName(self)
+		sink.AccountStatus(ctx, c.account.ID, domain.AccountConnected, "Signed in as "+selfName)
 		defer c.disconnected()
 
 		if err := c.sync(ctx, client.API(), sink); err != nil {

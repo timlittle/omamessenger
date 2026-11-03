@@ -14,7 +14,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked,c.notification_sound`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked,c.notification_sound,c.title_verified`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -50,15 +50,16 @@ func (s *Store) EnsureConversation(ctx context.Context, c domain.Conversation) (
 	return inserted, err == nil, err
 }
 
-// refreshConversation copies the remote service's title, kind and member
-// count onto a stored conversation. It never touches pinned, archived or
-// hidden: most reports, such as a live message's own conversation, carry
-// neither pinned nor archived meaningfully, so only SetOrganized, from a
-// dialog sync, may set them; hidden is local to this computer and no
-// report ever carries it at all.
+// refreshConversation copies the remote service's title, kind, member
+// count and whether that title is verified onto a stored conversation.
+// It never touches pinned, archived or hidden: most reports, such as a
+// live message's own conversation, carry neither pinned nor archived
+// meaningfully, so only SetOrganized, from a dialog sync, may set
+// them; hidden is local to this computer and no report ever carries
+// it at all.
 func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Conversation) (domain.Conversation, error) {
-	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=? WHERE id=?`,
-		c.Title, c.Kind, c.Members, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=?,title_verified=? WHERE id=?`,
+		c.Title, c.Kind, c.Members, boolInt(c.TitleVerified), id)
 	if err != nil {
 		return c, wrap("update conversation", err)
 	}
@@ -74,8 +75,8 @@ func (s *Store) insertConversation(ctx context.Context, c domain.Conversation) (
 	}
 
 	_, err := s.db.ExecContext(ctx, `INSERT INTO conversations
-		(id,account_id,remote_id,kind,title,members,muted,last_activity) VALUES(?,?,?,?,?,?,?,?)`,
-		c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), c.LastActivity)
+		(id,account_id,remote_id,kind,title,members,muted,last_activity,title_verified) VALUES(?,?,?,?,?,?,?,?,?)`,
+		c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), c.LastActivity, boolInt(c.TitleVerified))
 	if err != nil {
 		return c, wrap("insert conversation", err)
 	}
@@ -483,7 +484,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked, &c.NotificationSound,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked, &c.NotificationSound, &c.TitleVerified,
 	}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return c, err

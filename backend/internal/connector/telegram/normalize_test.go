@@ -37,14 +37,14 @@ func TestConversation_FromEachKindOfDialog(t *testing.T) {
 		},
 		{
 			"basic group", &tg.Dialog{Peer: &tg.PeerChat{ChatID: 7}},
-			domain.Conversation{AccountID: "tg", RemoteID: "chat:7", Kind: domain.KindGroup, Title: "Climbing Crew", Members: 5},
+			domain.Conversation{AccountID: "tg", RemoteID: "chat:7", Kind: domain.KindGroup, Title: "Climbing Crew", TitleVerified: true, Members: 5},
 		},
 		{
 			"muted supergroup", &tg.Dialog{
 				Peer:           &tg.PeerChannel{ChannelID: 5},
 				NotifySettings: tg.PeerNotifySettings{MuteUntil: int(now.Unix()) + 3600},
 			},
-			domain.Conversation{AccountID: "tg", RemoteID: "channel:5:3", Kind: domain.KindGroup, Title: "Omarchy Users", Members: 2400, Muted: true},
+			domain.Conversation{AccountID: "tg", RemoteID: "channel:5:3", Kind: domain.KindGroup, Title: "Omarchy Users", TitleVerified: true, Members: 2400, Muted: true},
 		},
 	}
 
@@ -104,7 +104,7 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 		{
 			"outgoing",
 			&tg.Message{ID: 12, Date: 2, Out: true, Message: "back", PeerID: &tg.PeerUser{UserID: 42}},
-			domain.Message{RemoteID: "12", SenderID: "self", SenderName: "You", Text: "back", Outgoing: true, Status: domain.StatusSent, Created: 2000},
+			domain.Message{RemoteID: "12", SenderID: "self", SenderName: "You", SenderVerified: true, Text: "back", Outgoing: true, Status: domain.StatusSent, Created: 2000},
 		},
 		{
 			"photo with no caption",
@@ -169,29 +169,77 @@ func TestMessage_ReportsTheMessageItReplies(t *testing.T) {
 	}
 }
 
+// TestUserName_FallsBackSensibly confirms userName's name, and that
+// every case here is unverified except the two that carry no
+// self-chosen claim at all: the generic placeholder, and the reserved,
+// always-verified "Saved Messages" label (see
+// TestUserName_MarksAVerifiedNameUnlikeASelfChosenOne for the verified
+// cases this table intentionally leaves out).
 func TestUserName_FallsBackSensibly(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]*tg.User{
-		"Ada":            {FirstName: "Ada"},
-		"@ada":           {Username: "ada"},
-		"Telegram user":  {},
-		"Ada Lovelace":   {FirstName: "Ada", LastName: "Lovelace"},
-		"Saved Messages": {Self: true, FirstName: "Me"},
+	tests := map[string]struct {
+		u            *tg.User
+		wantVerified bool
+	}{
+		"Ada":            {&tg.User{FirstName: "Ada"}, false},
+		"@ada":           {&tg.User{Username: "ada"}, false},
+		"Telegram user":  {&tg.User{}, true},
+		"Ada Lovelace":   {&tg.User{FirstName: "Ada", LastName: "Lovelace"}, false},
+		"Saved Messages": {&tg.User{Self: true, FirstName: "Me"}, true},
 	}
 
-	for want, u := range tests {
-		if got := userName(u); got != want {
-			t.Errorf("userName(%+v) = %q, want %q", u, got, want)
+	for want, tc := range tests {
+		name, verified := userName(tc.u)
+		if name != want {
+			t.Errorf("userName(%+v) name = %q, want %q", tc.u, name, want)
 		}
+		if verified != tc.wantVerified {
+			t.Errorf("userName(%+v) verified = %t, want %t", tc.u, verified, tc.wantVerified)
+		}
+	}
+}
+
+// TestUserName_MarksAVerifiedNameUnlikeASelfChosenOne confirms a
+// user's own first/last name or username is verified only once
+// Telegram tells this connector they are a saved contact or carry its
+// own verified badge: a stranger can set their own first name to
+// "Mum" or any other saved contact's name, so that alone must never
+// be shown unmarked (see docs/decisions.md).
+func TestUserName_MarksAVerifiedNameUnlikeASelfChosenOne(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		u    *tg.User
+	}{
+		{"a saved contact", &tg.User{FirstName: "Priya", Contact: true}},
+		{"Telegram's own verified badge", &tg.User{FirstName: "Priya", Verified: true}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			name, verified := userName(c.u)
+			if name != "Priya" || !verified {
+				t.Errorf("userName(%+v) = %q, %t, want Priya, true", c.u, name, verified)
+			}
+		})
+	}
+
+	name, verified := userName(&tg.User{FirstName: "Priya"})
+	if name != "Priya" || verified {
+		t.Errorf("userName(neither contact nor verified) = %q, %t, want Priya, false", name, verified)
 	}
 }
 
 func TestOwnName_IsThePersonNotTheirSavedMessages(t *testing.T) {
 	t.Parallel()
 
-	if got := ownName(&tg.User{Self: true, FirstName: "Tim"}); got != "Tim" {
-		t.Errorf("ownName = %q, want Tim", got)
+	name, _ := ownName(&tg.User{Self: true, FirstName: "Tim"})
+	if name != "Tim" {
+		t.Errorf("ownName = %q, want Tim", name)
 	}
 }
 

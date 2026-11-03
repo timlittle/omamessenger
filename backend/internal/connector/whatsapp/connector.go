@@ -100,6 +100,28 @@ const (
 	nameRankContact
 )
 
+// verifiedRank reports whether rank is trustworthy enough to show
+// unmarked, matching domain.Message.SenderVerified: a contact's saved
+// name or a group's own name, and a business's own verified name, both
+// are; a bare push name, self-chosen and unverified, is not.
+func verifiedRank(rank nameRank) bool {
+	return rank == nameRankContact || rank == nameRankBusiness
+}
+
+// rankFor is verifiedRank's inverse, for a caller that already knows
+// only whether a name it resolved is verified, such as
+// device.contactName: nameRankContact for a verified one, matching
+// how this connector already ranked every contactName resolution
+// before verified existed to tell apart, or nameRankPushName for an
+// unverified one.
+func rankFor(verified bool) nameRank {
+	if verified {
+		return nameRankContact
+	}
+
+	return nameRankPushName
+}
+
 // namedEntry is the best name resolved so far for one remote id, and how
 // much it can be trusted.
 type namedEntry struct {
@@ -355,30 +377,34 @@ func (c *Connector) setWaiting(waiting bool) {
 }
 
 // nameFor returns the best name known for remoteID, a contact, push or
-// group name resolved so far, or "" when nothing has resolved one yet.
-func (c *Connector) nameFor(remoteID string) string {
+// group name resolved so far, and its rank, or "", 0 when nothing has
+// resolved one yet.
+func (c *Connector) nameFor(remoteID string) (string, nameRank) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return c.names[remoteID].name
+	entry := c.names[remoteID]
+
+	return entry.name, entry.rank
 }
 
-// improvedSenderName replaces m's sender name with this connector's own
-// cached name for the sender (see nameFor and rememberName), but only
-// when message or historyMessage could not resolve one of their own
-// and fell all the way back to genericSenderName: a group's history
-// sync often carries no push name of its own for each individual
-// message, even though the account-wide push name list (see
-// syncPushnames) or a later contact event already named that same
-// sender from somewhere else. A message that already carries a real
-// name, or one that is this account's own, is returned unchanged.
+// improvedSenderName replaces m's sender name and verified flag with
+// this connector's own cached name for the sender (see nameFor and
+// rememberName), but only when message or historyMessage could not
+// resolve one of their own and fell all the way back to
+// genericSenderName: a group's history sync often carries no push
+// name of its own for each individual message, even though the
+// account-wide push name list (see syncPushnames) or a later contact
+// event already named that same sender from somewhere else. A message
+// that already carries a real name, or one that is this account's
+// own, is returned unchanged.
 func (c *Connector) improvedSenderName(m domain.Message) domain.Message {
 	if m.Outgoing || m.SenderName != genericSenderName {
 		return m
 	}
 
-	if cached := c.nameFor(m.SenderID); cached != "" {
-		m.SenderName = cached
+	if cached, rank := c.nameFor(m.SenderID); cached != "" {
+		m.SenderName, m.SenderVerified = cached, verifiedRank(rank)
 	}
 
 	return m
@@ -388,14 +414,14 @@ func (c *Connector) improvedSenderName(m domain.Message) domain.Message {
 // trustworthy as whatever is already cached for it, so a later, weaker
 // report, such as a push name arriving after a saved contact name
 // already resolved one, can never replace a good name with a worse one.
-// It returns whichever name ends up cached: the one just given, or the
-// better one already there.
-func (c *Connector) rememberName(remoteID, name string, rank nameRank) string {
+// It returns whichever name and rank end up cached: the ones just
+// given, or the better pair already there.
+func (c *Connector) rememberName(remoteID, name string, rank nameRank) (string, nameRank) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if existing, ok := c.names[remoteID]; ok && existing.rank > rank {
-		return existing.name
+		return existing.name, existing.rank
 	}
 
 	if c.names == nil {
@@ -403,7 +429,7 @@ func (c *Connector) rememberName(remoteID, name string, rank nameRank) string {
 	}
 	c.names[remoteID] = namedEntry{name: name, rank: rank}
 
-	return name
+	return name, rank
 }
 
 // groupMembersFor returns the member count last resolved for a group's

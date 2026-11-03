@@ -252,6 +252,20 @@ var migrations = []migrationStep{
 	// this guarantee for every reply from here on, so this step only
 	// ever needs to run once.
 	{repair: backfillReplySenderIDs},
+	// Whether a message's sender name, and a conversation's title, are
+	// verified - a saved contact, a service's own verified business
+	// name, or the user's own identity, rather than a bare, self-chosen
+	// name a stranger could set to "Mum" or "You" (see
+	// domain.Message.SenderVerified and docs/decisions.md). A row
+	// stored before this column existed defaults to verified: the same
+	// trust an older release already showed it with, not a retroactive
+	// downgrade with no new information behind it. Only a name resolved
+	// from here on is held to the stricter check. A reply quote's own
+	// SenderVerified lives inside its reply_to JSON instead, the same
+	// way its SenderName already does, so it needs no column of its
+	// own here.
+	{sql: `ALTER TABLE messages ADD COLUMN sender_verified INTEGER NOT NULL DEFAULT 1;
+		ALTER TABLE conversations ADD COLUMN title_verified INTEGER NOT NULL DEFAULT 1;`},
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

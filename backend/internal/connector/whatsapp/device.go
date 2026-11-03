@@ -88,10 +88,13 @@ type device interface {
 
 	// contactName is WhatsApp's own name for jid: a LID is mapped to its
 	// phone JID first, then whichever name the local contact store holds
-	// for it, in WhatsApp's own priority order, or "" when nothing is
-	// known yet. It never does network I/O: everything it reads was
-	// already saved locally by an earlier sync.
-	contactName(ctx context.Context, jid types.JID) string
+	// for it, in WhatsApp's own priority order, or "", false when
+	// nothing is known yet. verified reports whether that name came
+	// from a saved contact or a verified business name, rather than a
+	// bare, self-chosen push name (see contactDisplayName). It never
+	// does network I/O: everything it reads was already saved locally
+	// by an earlier sync.
+	contactName(ctx context.Context, jid types.JID) (name string, verified bool)
 
 	// isSelfChat reports whether jid is this account's own chat with
 	// itself: its phone JID, its LID, or, when this device has not
@@ -340,18 +343,18 @@ func (d *waDevice) groupParticipants(ctx context.Context, jid types.JID) ([]type
 // that fails, or the phone JID itself has no contact saved, jid is
 // looked up as given, which covers the few contacts whatsmeow already
 // keyed by LID.
-func (d *waDevice) contactName(ctx context.Context, jid types.JID) string {
-	if name := d.lookupContactName(ctx, jid); name != "" {
-		return name
+func (d *waDevice) contactName(ctx context.Context, jid types.JID) (string, bool) {
+	if name, verified := d.lookupContactName(ctx, jid); name != "" {
+		return name, verified
 	}
 
 	if jid.Server != types.HiddenUserServer {
-		return ""
+		return "", false
 	}
 
 	phone, err := d.cli.Store.LIDs.GetPNForLID(ctx, jid)
 	if err != nil || phone.IsEmpty() {
-		return ""
+		return "", false
 	}
 
 	return d.lookupContactName(ctx, phone)
@@ -359,10 +362,10 @@ func (d *waDevice) contactName(ctx context.Context, jid types.JID) string {
 
 // lookupContactName is contactName's single contact-store lookup, tried
 // against both a LID and its mapped phone JID.
-func (d *waDevice) lookupContactName(ctx context.Context, jid types.JID) string {
+func (d *waDevice) lookupContactName(ctx context.Context, jid types.JID) (string, bool) {
 	info, err := d.cli.Store.Contacts.GetContact(ctx, jid)
 	if err != nil || !info.Found {
-		return ""
+		return "", false
 	}
 
 	return contactDisplayName(info)

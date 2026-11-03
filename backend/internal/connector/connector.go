@@ -349,9 +349,12 @@ type Sink interface {
 // and skips the correction when it is not implemented, such as by a
 // test fake.
 type SenderNamer interface {
-	// SenderName corrects senderRemoteID's name, within account, on
-	// every message already stored under a different one.
-	SenderName(ctx context.Context, accountID, senderRemoteID, name string)
+	// SenderName corrects senderRemoteID's name and verified flag,
+	// within account, on every message already stored under a
+	// different one. verified is true when name was resolved from a
+	// saved contact or a verified business name, false for a bare,
+	// self-chosen one (see domain.Message.SenderVerified).
+	SenderName(ctx context.Context, accountID, senderRemoteID, name string, verified bool)
 }
 
 // RemoteIDUpgrader is a Sink that can also upgrade a conversation's

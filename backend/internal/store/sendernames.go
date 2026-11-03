@@ -17,14 +17,27 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+// senderRefresh bundles accountID, senderRemoteID, the corrected name
+// and whether it is verified - every argument renameSender and
+// refreshReplyQuotes both need - so passing ctx and tx alongside them
+// never pushes either past this codebase's own argument limit.
+type senderRefresh struct {
+	accountID, senderRemoteID, name string
+	verified                        bool
+}
+
 // RefreshSenderName updates every message senderRemoteID sent, within
-// account, to name, and brings each conversation whose preview this
-// changes back in step. It returns the local id of every conversation
-// whose preview_sender this updated, so the caller can report it
-// again. A sender id is only unique within one account, so this never
-// touches another account's conversations even if their own remote
-// ids happen to collide.
-func (s *Store) RefreshSenderName(ctx context.Context, accountID, senderRemoteID, name string) ([]string, error) {
+// account, to name and verified, and brings each conversation whose
+// preview this changes back in step. verified is senderRemoteID's own
+// domain.Message.SenderVerified: true when name was resolved from a
+// saved contact or a verified business name, false for a bare,
+// self-chosen one, so a message already stored under the weaker kind
+// is corrected the same way its name is (see docs/decisions.md). It
+// returns the local id of every conversation whose preview_sender this
+// updated, so the caller can report it again. A sender id is only
+// unique within one account, so this never touches another account's
+// conversations even if their own remote ids happen to collide.
+func (s *Store) RefreshSenderName(ctx context.Context, accountID, senderRemoteID, name string, verified bool) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, wrap("refresh sender name", err)
@@ -38,7 +51,8 @@ func (s *Store) RefreshSenderName(ctx context.Context, accountID, senderRemoteID
 		return nil, wrap("refresh sender name", err)
 	}
 
-	if err := renameSender(ctx, tx, accountID, senderRemoteID, name); err != nil {
+	refresh := senderRefresh{accountID: accountID, senderRemoteID: senderRemoteID, name: name, verified: verified}
+	if err := renameSender(ctx, tx, refresh); err != nil {
 		return nil, wrap("refresh sender name", err)
 	}
 
@@ -46,21 +60,21 @@ func (s *Store) RefreshSenderName(ctx context.Context, accountID, senderRemoteID
 		return nil, wrap("refresh sender name", err)
 	}
 
-	if err := refreshReplyQuotes(ctx, tx, accountID, senderRemoteID, name); err != nil {
+	if err := refreshReplyQuotes(ctx, tx, refresh); err != nil {
 		return nil, wrap("refresh sender name", err)
 	}
 
 	return changed, wrap("refresh sender name", tx.Commit())
 }
 
-// renameSender updates senderRemoteID's name on every message they
-// sent within account.
-func renameSender(ctx context.Context, tx *sql.Tx, accountID, senderRemoteID, name string) error {
+// renameSender updates r's sender's name and verified flag on every
+// message they sent within r's own account.
+func renameSender(ctx context.Context, tx *sql.Tx, r senderRefresh) error {
 	_, err := tx.ExecContext(ctx, `
-		UPDATE messages SET sender_name=?
-		WHERE sender_id=? AND sender_name<>?
+		UPDATE messages SET sender_name=?, sender_verified=?
+		WHERE sender_id=? AND (sender_name<>? OR sender_verified<>?)
 			AND conversation_id IN (SELECT id FROM conversations WHERE account_id=?)`,
-		name, senderRemoteID, name, accountID)
+		r.name, r.verified, r.senderRemoteID, r.name, r.verified, r.accountID)
 
 	return err
 }
@@ -117,10 +131,11 @@ func refreshPreviewSenders(ctx context.Context, tx *sql.Tx, accountID, senderRem
 // refreshReplyQuotes brings every reply quote naming senderRemoteID as
 // its sender back in step with renameSender, within the conversations
 // senderRemoteID has a message in: a reply keeps its own copy of the
-// quoted message's sender id and name, resolved once when it was first
-// stored, within its own conversation (see resolveReply), so correcting
-// that sender's own messages is not enough on its own - a reply already
-// quoting one of them would otherwise keep showing whatever name was
+// quoted message's sender id, name and verified flag, resolved once
+// when it was first stored, within its own conversation (see
+// resolveReply), so correcting that sender's own messages is not
+// enough on its own - a reply already quoting one of them would
+// otherwise keep showing whatever name, and whatever "~" marking, was
 // known at the time forever. The query is scoped to senderRemoteID's own
 // conversations, and staleQuotes then matches each candidate quote's own
 // stored sender id, never its quoted message's remote id: a remote id is
@@ -129,20 +144,20 @@ func refreshPreviewSenders(ctx context.Context, tx *sql.Tx, accountID, senderRem
 // message in (see docs/decisions.md). A quote with no stored sender id -
 // one whose quote could not be resolved when it was first stored - is
 // never rewritten.
-func refreshReplyQuotes(ctx context.Context, tx *sql.Tx, accountID, senderRemoteID, name string) error {
+func refreshReplyQuotes(ctx context.Context, tx *sql.Tx, r senderRefresh) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, reply_to FROM messages
 		WHERE reply_to<>'' AND conversation_id IN (
 			SELECT m.conversation_id FROM messages m
 			JOIN conversations c ON c.id = m.conversation_id
 			WHERE m.sender_id=? AND c.account_id=?
-		)`, senderRemoteID, accountID)
+		)`, r.senderRemoteID, r.accountID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	fixes, err := staleQuotes(rows, senderRemoteID, name)
+	fixes, err := staleQuotes(rows, r.senderRemoteID, r.name, r.verified)
 	if err != nil {
 		return err
 	}
@@ -164,9 +179,9 @@ type quotedMessageFix struct {
 
 // staleQuotes scans rows of a message's id and its reply_to JSON, and
 // returns the fix for every one whose own stored SenderID is
-// senderRemoteID, under a name other than name. A quote with no stored
-// SenderID is never matched.
-func staleQuotes(rows *sql.Rows, senderRemoteID, name string) ([]quotedMessageFix, error) {
+// senderRemoteID, under a name or a verified flag other than name and
+// verified. A quote with no stored SenderID is never matched.
+func staleQuotes(rows *sql.Rows, senderRemoteID, name string, verified bool) ([]quotedMessageFix, error) {
 	var fixes []quotedMessageFix
 	for rows.Next() {
 		var id, replyTo string
@@ -178,11 +193,14 @@ func staleQuotes(rows *sql.Rows, senderRemoteID, name string) ([]quotedMessageFi
 		if err := json.Unmarshal([]byte(replyTo), &reply); err != nil {
 			continue
 		}
-		if reply.SenderID == "" || reply.SenderID != senderRemoteID || reply.SenderName == name {
+		if reply.SenderID == "" || reply.SenderID != senderRemoteID {
+			continue
+		}
+		if reply.SenderName == name && reply.SenderVerified == verified {
 			continue
 		}
 
-		reply.SenderName = name
+		reply.SenderName, reply.SenderVerified = name, verified
 		encoded, err := json.Marshal(reply)
 		if err != nil {
 			return nil, err

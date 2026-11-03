@@ -29,9 +29,10 @@ func mentionsFromEntities(ents []tg.MessageEntityClass, e entities, selfID int64
 			continue
 		}
 
+		name, _ := userName(user)
 		out = append(out, domain.Mention{
 			UserID: remoteID(&tg.InputPeerUser{UserID: mn.UserID, AccessHash: user.AccessHash}),
-			Name:   userName(user), Offset: mn.Offset, Length: mn.Length,
+			Name:   name, Offset: mn.Offset, Length: mn.Length,
 		})
 		if mn.UserID == selfID {
 			me = true

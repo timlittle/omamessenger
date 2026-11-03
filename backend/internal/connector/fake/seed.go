@@ -14,7 +14,7 @@ const seedWindow = 6 * 24 * time.Hour
 func (s conversationScript) conversation(accountID string) domain.Conversation {
 	return domain.Conversation{
 		AccountID: accountID, RemoteID: s.remoteID, Kind: s.kind,
-		Title: s.title, Members: s.members, Muted: s.muted,
+		Title: s.title, TitleVerified: true, Members: s.members, Muted: s.muted,
 	}
 }
 
@@ -28,13 +28,14 @@ func (s conversationScript) history(now time.Time) []domain.Message {
 		outgoing := s.isOutgoing(i)
 		senderID, senderName := s.sender(i, outgoing)
 		messages[i] = domain.Message{
-			RemoteID:   fmt.Sprintf("seed-%s-%d", s.remoteID, i+1),
-			SenderID:   senderID,
-			SenderName: senderName,
-			Text:       s.texts[i%len(s.texts)],
-			Outgoing:   outgoing,
-			Status:     s.status(i, outgoing),
-			Created:    now.Add(-seedWindow + time.Duration(i+1)*step).UnixMilli(),
+			RemoteID:       fmt.Sprintf("seed-%s-%d", s.remoteID, i+1),
+			SenderID:       senderID,
+			SenderName:     senderName,
+			SenderVerified: true,
+			Text:           s.texts[i%len(s.texts)],
+			Outgoing:       outgoing,
+			Status:         s.status(i, outgoing),
+			Created:        now.Add(-seedWindow + time.Duration(i+1)*step).UnixMilli(),
 		}
 	}
 
@@ -165,12 +166,13 @@ func (s conversationScript) olderHistory(now time.Time) []domain.Message {
 
 	for i := range messages {
 		messages[i] = domain.Message{
-			RemoteID:   fmt.Sprintf("older-%s-%d", s.remoteID, i+1),
-			SenderID:   s.title,
-			SenderName: s.title,
-			Text:       s.texts[i%len(s.texts)],
-			Status:     domain.StatusReceived,
-			Created:    start.Add(-time.Duration(s.older-i) * time.Hour).UnixMilli(),
+			RemoteID:       fmt.Sprintf("older-%s-%d", s.remoteID, i+1),
+			SenderID:       s.title,
+			SenderName:     s.title,
+			SenderVerified: true,
+			Text:           s.texts[i%len(s.texts)],
+			Status:         domain.StatusReceived,
+			Created:        start.Add(-time.Duration(s.older-i) * time.Hour).UnixMilli(),
 		}
 	}
 

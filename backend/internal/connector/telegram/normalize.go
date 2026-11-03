@@ -88,11 +88,16 @@ func peerConversation(accountID string, peer tg.PeerClass, e entities) (domain.C
 		return domain.Conversation{}, false
 	}
 
-	c := domain.Conversation{AccountID: accountID, RemoteID: remoteID(input), Kind: domain.KindGroup}
+	// A group or channel's own title is always verified: there is no
+	// self-chosen personal identity to mark for it, only for a
+	// person's own name (see userName), which the PeerUser case below
+	// overrides this default for.
+	c := domain.Conversation{AccountID: accountID, RemoteID: remoteID(input), Kind: domain.KindGroup, TitleVerified: true}
 
 	switch p := peer.(type) {
 	case *tg.PeerUser:
-		c.Kind, c.Title = domain.KindDirect, userName(e.users[p.UserID])
+		c.Kind = domain.KindDirect
+		c.Title, c.TitleVerified = userName(e.users[p.UserID])
 	case *tg.PeerChat:
 		c.Title, c.Members = e.chats[p.ChatID].Title, e.chats[p.ChatID].ParticipantsCount
 	case *tg.PeerChannel:
@@ -124,17 +129,17 @@ func placeholderConversation(accountID string, peer tg.PeerClass) (domain.Conver
 	switch p := peer.(type) {
 	case *tg.PeerUser:
 		return domain.Conversation{
-			AccountID: accountID, Kind: domain.KindDirect, Title: unknownUserName,
+			AccountID: accountID, Kind: domain.KindDirect, Title: unknownUserName, TitleVerified: true,
 			RemoteID: remoteID(&tg.InputPeerUser{UserID: p.UserID}),
 		}, true
 	case *tg.PeerChat:
 		return domain.Conversation{
-			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName,
+			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName, TitleVerified: true,
 			RemoteID: remoteID(&tg.InputPeerChat{ChatID: p.ChatID}),
 		}, true
 	case *tg.PeerChannel:
 		return domain.Conversation{
-			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName,
+			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName, TitleVerified: true,
 			RemoteID: remoteID(&tg.InputPeerChannel{ChannelID: p.ChannelID}),
 		}, true
 	default:
@@ -184,7 +189,7 @@ func message(m *tg.Message, e entities, selfID int64) domain.Message {
 	}
 
 	if m.Out {
-		out.SenderID, out.SenderName, out.Status = "self", "You", domain.StatusSent
+		out.SenderID, out.SenderName, out.SenderVerified, out.Status = "self", "You", true, domain.StatusSent
 		return out
 	}
 
@@ -196,7 +201,7 @@ func message(m *tg.Message, e entities, selfID int64) domain.Message {
 
 	if u, ok := sender.(*tg.PeerUser); ok {
 		out.SenderID = strconv.FormatInt(u.UserID, 10)
-		out.SenderName = userName(e.users[u.UserID])
+		out.SenderName, out.SenderVerified = userName(e.users[u.UserID])
 	}
 
 	return out
@@ -272,35 +277,47 @@ func reactions(mr tg.MessageReactions) []domain.Reaction {
 // sender's name yet.
 const unknownUserName = "Telegram user"
 
-// userName names a user the way Telegram's chat list does: the chat with
-// yourself is your saved messages.
-func userName(u *tg.User) string {
+// userName names a user the way Telegram's chat list does, and
+// reports whether that name is verified: the chat with yourself is
+// your saved messages, a fixed, always-verified label, never a
+// self-chosen claim; otherwise see ownName.
+func userName(u *tg.User) (name string, verified bool) {
 	if u != nil && u.Self {
-		return "Saved Messages"
+		return "Saved Messages", true
 	}
 
 	return ownName(u)
 }
 
-// ownName names a person by first and last name, then username.
-func ownName(u *tg.User) string {
+// ownName names a person by first and last name, then username, and
+// reports whether that name is verified: true when u is someone the
+// account has saved as a contact or Telegram itself verifies
+// (u.Verified - its own badge for notable accounts), false for a bare
+// first/last name or username, exactly as self-chosen and unverified
+// as a WhatsApp push name (see domain.Message.SenderVerified). The
+// generic label this falls back to when u is nil or names neither is
+// never marked unverified: it is this connector's own placeholder, not
+// a claim the person made.
+func ownName(u *tg.User) (name string, verified bool) {
 	switch {
 	case u == nil:
-		return unknownUserName
+		return unknownUserName, true
 	case strings.TrimSpace(u.FirstName+" "+u.LastName) != "":
-		return strings.TrimSpace(u.FirstName + " " + u.LastName)
+		return strings.TrimSpace(u.FirstName + " " + u.LastName), u.Contact || u.Verified
 	case u.Username != "":
-		return "@" + u.Username
+		return "@" + u.Username, u.Contact || u.Verified
 	default:
-		return unknownUserName
+		return unknownUserName, true
 	}
 }
 
 // contact turns a user into a contact of the account.
 func contact(accountID string, u *tg.User) domain.Contact {
+	name, _ := userName(u)
+
 	return domain.Contact{
 		AccountID: accountID,
 		RemoteID:  remoteID(&tg.InputPeerUser{UserID: u.ID, AccessHash: u.AccessHash}),
-		Name:      userName(u),
+		Name:      name,
 	}
 }

@@ -182,7 +182,7 @@ func (c *Commands) Send(ctx context.Context, conversationID, text string, opts S
 
 	before := c.events.unreadTotal(ctx)
 	m, _, err := c.store.AddMessage(ctx, domain.Message{
-		ID: id, ConversationID: conv.ID, SenderName: "You", Text: text, Outgoing: true,
+		ID: id, ConversationID: conv.ID, SenderName: "You", SenderVerified: true, Text: text, Outgoing: true,
 		Status: domain.StatusPending, Created: time.Now().UnixMilli(), Media: media, ReplyTo: replyTo, Mentions: opts.Mentions,
 	})
 	if err != nil {
@@ -213,7 +213,10 @@ func (c *Commands) resolveReplyTo(ctx context.Context, conversationID, replyToID
 		return nil, fmt.Errorf("%w: replyTo must be a message in the conversation", ErrInvalidInput)
 	}
 
-	return &domain.Reply{RemoteID: quoted.RemoteID, SenderID: quoted.SenderID, SenderName: quoted.SenderName, Text: domain.Excerpt(quoted.Text)}, nil
+	return &domain.Reply{
+		RemoteID: quoted.RemoteID, SenderID: quoted.SenderID, SenderName: quoted.SenderName,
+		SenderVerified: quoted.SenderVerified, Text: domain.Excerpt(quoted.Text),
+	}, nil
 }
 
 // captionText validates a message's text, required unless media stands

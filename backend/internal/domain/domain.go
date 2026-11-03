@@ -128,6 +128,21 @@ type Conversation struct {
 	Hidden       bool  `json:"hidden"`
 	LastActivity int64 `json:"lastActivity"`
 
+	// TitleVerified is true when Title comes from a saved contact, a
+	// service's own verified business name, a group's own name, or a
+	// fixed label such as the self-chat's - never from a bare,
+	// self-chosen name such as a WhatsApp push name or a Telegram
+	// profile name with no contact or verification behind it.
+	// Unverified for a direct chat means Title is exactly as easy for a
+	// stranger to set as "Mum" or any other saved contact's own name
+	// (see domain.Message.SenderVerified, which marks the same thing
+	// for a message's sender, and docs/decisions.md). Omitted (so
+	// false) for a row stored before this field existed is corrected by
+	// a migration to true instead, preserving whatever trust that row
+	// already showed rather than marking everything already stored
+	// unverified on this release alone.
+	TitleVerified bool `json:"titleVerified,omitempty"`
+
 	// Blocked is true once the account's contact behind a direct
 	// conversation has been blocked (see app.Commands.BlockContact and
 	// ReportSpam). It is always false for a group: only a direct
@@ -171,6 +186,22 @@ type Message struct {
 	RemoteID       string `json:"remoteId"`
 	SenderID       string `json:"senderId"`
 	SenderName     string `json:"senderName"`
+
+	// SenderVerified is true when SenderName comes from a saved
+	// contact, a service's own verified business name, or this
+	// account's own identity (an outgoing message, always "You") -
+	// never from a bare, self-chosen name such as a WhatsApp push name
+	// or a Telegram profile name with no contact or verification
+	// behind it. A stranger can set their own push name to "Mum" or
+	// "You"; this is what lets the UI mark that instead of showing it
+	// unmarked like a name the user actually saved (see
+	// docs/decisions.md). Never decided by comparing SenderName itself
+	// against "You" - only Outgoing (or, for a connector, the sender's
+	// own account id) ever means this message is the user's own.
+	// Omitted (so false) for a row stored before this field existed is
+	// corrected by a migration to true instead, preserving whatever
+	// trust that row already showed.
+	SenderVerified bool   `json:"senderVerified,omitempty"`
 	Text           string `json:"text"`
 	Outgoing       bool   `json:"outgoing"`
 	Status         string `json:"status"`
@@ -274,6 +305,14 @@ type Reply struct {
 	// quote it never named (see docs/decisions.md). Empty when the
 	// quoted message could not be resolved locally.
 	SenderID string `json:"senderId,omitempty"`
+
+	// SenderVerified mirrors domain.Message.SenderVerified for the
+	// quoted message's own sender: true when SenderName came from a
+	// saved contact, a verified business name or the user's own
+	// identity, never a bare, self-chosen name. Copied from the quoted
+	// message when it resolves locally (see store.resolveReply), the
+	// same as SenderName and Text are.
+	SenderVerified bool `json:"senderVerified,omitempty"`
 }
 
 // Media is what a message carries besides its text: a link preview, a

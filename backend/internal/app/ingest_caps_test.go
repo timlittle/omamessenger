@@ -213,7 +213,7 @@ func TestSenderName_CapsTheCorrectedName(t *testing.T) {
 	f.ingest.Incoming(ctx, "wa", group.RemoteID, incoming("in-1", "Thanks"))
 
 	long := strings.Repeat("n", domain.MaxDisplayNameLength+10)
-	f.ingest.SenderName(ctx, "wa", "alex", long)
+	f.ingest.SenderName(ctx, "wa", "alex", long, true)
 
 	updated, err := f.store.Conversation(ctx, group.ID)
 	if err != nil {

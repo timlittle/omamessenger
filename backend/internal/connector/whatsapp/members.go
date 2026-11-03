@@ -47,7 +47,7 @@ func (c *Connector) Members(ctx context.Context, conv domain.Conversation) ([]do
 // anonymous participant of an announcement group, or the generic label
 // any other unresolved sender gets.
 func memberName(ctx context.Context, dev device, p types.GroupParticipant) string {
-	if name := dev.contactName(ctx, p.JID); name != "" {
+	if name, _ := dev.contactName(ctx, p.JID); name != "" {
 		return name
 	}
 	if p.DisplayName != "" {

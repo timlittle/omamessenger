@@ -117,7 +117,7 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	}
 	conv.RemoteID = chatID(ctx, src.dev, src.media, jid)
 
-	conv.Title, conv.Members = c.resolveConversation(ctx, src, jid, conv, sc)
+	conv.Title, conv.TitleVerified, conv.Members = c.resolveConversation(ctx, src, jid, conv, sc)
 	c.reportConversation(ctx, sink, conv)
 	c.reportSyncedOrganize(ctx, sink, src.dev, jid, conv.RemoteID)
 
@@ -224,29 +224,37 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	return true
 }
 
-// resolveConversation is conv's best title and, for a group, its member
-// count: the account's own self-chat label, the name and participants
-// the sync itself carried, a group's name and member count fetched and
-// cached when the sync left both blank, a direct chat's already-known
-// contact or push name, a business's own verified name or a sender's
-// push name carried by one of sc's own synced messages, or, with
-// nothing else known yet, a fallback title. A conversation with no
-// title at all would be dropped rather than shown, so this never
-// returns "".
-func (c *Connector) resolveConversation(ctx context.Context, src syncSource, jid types.JID, conv domain.Conversation, sc *waHistorySync.Conversation) (title string, members int) {
+// resolveConversation is conv's best title, whether that title is
+// verified, and, for a group, its member count: the account's own
+// self-chat label (always verified: a fixed, reserved title, never a
+// self-chosen claim), the name and participants the sync itself
+// carried (a group's own name, always verified the same way - there is
+// no self-chosen identity to mark for a group's own topic, only for a
+// person's), a group's name and member count fetched and cached when
+// the sync left both blank, a direct chat's already-known contact or
+// push name, a business's own verified name or a sender's push name
+// carried by one of sc's own synced messages, or, with nothing else
+// known yet, a fallback title (also always verified: a phone number or
+// a neutral placeholder this connector built, never the sender's own
+// claim). A conversation with no title at all would be dropped rather
+// than shown, so this never returns "".
+func (c *Connector) resolveConversation(ctx context.Context, src syncSource, jid types.JID, conv domain.Conversation, sc *waHistorySync.Conversation) (title string, verified bool, members int) {
 	if src.dev.isSelfChat(ctx, jid) {
-		return selfChatTitle, 0
+		return selfChatTitle, true, 0
 	}
 
 	if conv.Kind == domain.KindGroup {
-		return c.resolveGroupName(ctx, src.dev, jid, conv.Title, conv.Members)
+		name, members := c.resolveGroupName(ctx, src.dev, jid, conv.Title, conv.Members)
+		return name, true, members
 	}
 
 	if conv.Title != "" {
-		return c.rememberName(conv.RemoteID, conv.Title, nameRankContact), 0
+		name, rank := c.rememberName(conv.RemoteID, conv.Title, nameRankContact)
+		return name, verifiedRank(rank), 0
 	}
 
-	return c.resolveDirectTitle(ctx, src, jid, syncedPushName(sc), syncedBusinessName(sc)), 0
+	title, verified = c.resolveDirectTitle(ctx, src, jid, syncedPushName(sc), syncedBusinessName(sc))
+	return title, verified, 0
 }
 
 // syncedPushName is the push name carried by whichever of sc's own
@@ -269,15 +277,20 @@ func syncedPushName(sc *waHistorySync.Conversation) string {
 	return ""
 }
 
-// resolveDirectTitle is a direct chat's best title: its contact's
-// resolved name (mapping a LID to its phone JID first, see
-// device.contactName; this already covers a business whose verified
-// name is saved in the contact store, see contactDisplayName), the
-// best name already cached for its canonical chat id (see chatID),
-// the business's own verified name this particular report carries,
-// the push name it carries, or, with nothing else known, a fallback
-// title built from jid's mapped phone JID when whatsmeow already
-// knows one, never a LID formatted as if it were a phone number.
+// resolveDirectTitle is a direct chat's best title, and whether it is
+// verified: its contact's resolved name (mapping a LID to its phone
+// JID first, see device.contactName; this already covers a business
+// whose verified name is saved in the contact store, see
+// contactDisplayName, and tells a bare push name cached there apart
+// from the rest, which is just as unverified as one read straight off
+// a message), the best name and rank already cached for its canonical
+// chat id (see chatID), the business's own verified name this
+// particular report carries, the push name it carries (never
+// verified, either of the last two), or, with nothing else known, a
+// fallback title built from jid's mapped phone JID when whatsmeow
+// already knows one, never a LID formatted as if it were a phone
+// number (always verified: it is this connector's own neutral
+// placeholder or the number itself, never the sender's own claim).
 // Keying every lookup and every name this resolves by the chat's
 // canonical id, rather than whichever address form this particular
 // jid happens to be, is what lets a name learned while the chat was
@@ -289,26 +302,29 @@ func syncedPushName(sc *waHistorySync.Conversation) string {
 // other step of a history sync, so a live caller that has no sync of
 // its own to bundle them from (see live.go's ensureChat) builds one
 // just for this call.
-func (c *Connector) resolveDirectTitle(ctx context.Context, src syncSource, jid types.JID, pushName, businessName string) string {
+func (c *Connector) resolveDirectTitle(ctx context.Context, src syncSource, jid types.JID, pushName, businessName string) (title string, verified bool) {
 	remote := chatID(ctx, src.dev, src.media, jid)
 
-	if name := src.dev.contactName(ctx, jid); name != "" {
-		return c.rememberName(remote, name, nameRankContact)
+	if name, contactVerified := src.dev.contactName(ctx, jid); name != "" {
+		resolved, rank := c.rememberName(remote, name, rankFor(contactVerified))
+		return resolved, verifiedRank(rank)
 	}
 
-	if name := c.nameFor(remote); name != "" {
-		return name
+	if name, rank := c.nameFor(remote); name != "" {
+		return name, verifiedRank(rank)
 	}
 
 	if businessName != "" {
-		return c.rememberName(remote, businessName, nameRankBusiness)
+		resolved, rank := c.rememberName(remote, businessName, nameRankBusiness)
+		return resolved, verifiedRank(rank)
 	}
 
 	if pushName != "" {
-		return c.rememberName(remote, pushName, nameRankPushName)
+		resolved, rank := c.rememberName(remote, pushName, nameRankPushName)
+		return resolved, verifiedRank(rank)
 	}
 
-	return titleFallback(phoneFormOf(ctx, src.dev, jid))
+	return titleFallback(phoneFormOf(ctx, src.dev, jid)), true
 }
 
 // resolveGroupName is a group's current name and member count: whichever
@@ -329,10 +345,11 @@ func (c *Connector) resolveGroupName(ctx context.Context, dev device, jid types.
 
 	name := syncedTitle
 	if name == "" {
-		name = c.nameFor(remote)
+		name, _ = c.nameFor(remote)
 	}
 	if name != "" && membersKnown {
-		return c.rememberName(remote, name, nameRankContact), members
+		resolved, _ := c.rememberName(remote, name, nameRankContact)
+		return resolved, members
 	}
 
 	lookupCtx, cancel := context.WithTimeout(ctx, groupNameTimeout)
@@ -350,7 +367,8 @@ func (c *Connector) resolveGroupName(ctx context.Context, dev device, jid types.
 		return "Group", members
 	}
 
-	return c.rememberName(remote, name, nameRankContact), members
+	resolved, _ := c.rememberName(remote, name, nameRankContact)
+	return resolved, members
 }
 
 // cachedGroupMembers is a group's member count from the sync itself, or

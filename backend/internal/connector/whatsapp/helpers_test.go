@@ -73,9 +73,13 @@ type fakeDevice struct {
 	participants    map[string][]types.GroupParticipant
 	participantsErr error
 
-	// contactNames scripts contactName, keyed by the string form of
-	// whichever JID (a phone JID or a LID) the lookup should resolve.
-	contactNames map[string]string
+	// contactNames scripts contactName's verified result (a saved
+	// contact or a verified business name), keyed by the string form
+	// of whichever JID (a phone JID or a LID) the lookup should
+	// resolve; unverifiedContactNames scripts its unverified result (a
+	// bare push name cached in the contact store) the same way (see
+	// contactDisplayName).
+	contactNames, unverifiedContactNames map[string]string
 
 	// lidPhones scripts altJID, keyed by the string form of the LID a
 	// test wants resolved to a phone JID; altJID also resolves the
@@ -430,23 +434,30 @@ func (d *fakeDevice) groupParticipants(_ context.Context, jid types.JID) ([]type
 	return d.participants[jid.String()], nil
 }
 
-// contactName reports the scripted name for jid, mapping a LID to its
-// scripted phone JID first when jid itself has no name of its own, the
-// same priority order the real device's contactName documents; it
-// reports "" when the test did not script either.
-func (d *fakeDevice) contactName(_ context.Context, jid types.JID) string {
+// contactName reports the scripted name for jid and whether it is
+// verified, mapping a LID to its scripted phone JID first when jid
+// has none of its own, the real device's own priority; "", false
+// when the test scripted neither.
+func (d *fakeDevice) contactName(_ context.Context, jid types.JID) (string, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	if name, verified := d.scriptedName(jid); name != "" {
+		return name, verified
+	}
+
+	return d.scriptedName(d.lidPhones[jid.String()])
+}
+
+// scriptedName is contactName's single scripted lookup for jid,
+// tried against contactNames before unverifiedContactNames, the same
+// priority a saved or verified name takes in contactDisplayName.
+func (d *fakeDevice) scriptedName(jid types.JID) (string, bool) {
 	if name := d.contactNames[jid.String()]; name != "" {
-		return name
+		return name, true
 	}
 
-	if phone, ok := d.lidPhones[jid.String()]; ok {
-		return d.contactNames[phone.String()]
-	}
-
-	return ""
+	return d.unverifiedContactNames[jid.String()], false
 }
 
 // isSelfChat reports whether jid's bare form matches the scripted
@@ -701,6 +712,7 @@ func u64(n uint64) *uint64 { return &n }
 // senderNameCall records one call to recordingSink.SenderName.
 type senderNameCall struct {
 	accountID, senderRemoteID, name string
+	verified                        bool
 }
 
 // recordingSink wraps connectortest.Sink, additionally implementing
@@ -715,8 +727,8 @@ type recordingSink struct {
 }
 
 // SenderName records the call.
-func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string) {
-	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name})
+func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string, verified bool) {
+	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name, verified})
 }
 
 // contains reports whether s holds substr.

@@ -191,6 +191,7 @@ func connectedAndKnown(f *fakeTelegram, sink connector.Sink, remoteIDs ...string
 // senderNameCall records one call to recordingSink.SenderName.
 type senderNameCall struct {
 	accountID, senderRemoteID, name string
+	verified                        bool
 }
 
 // remoteIDChangeCall records one call to recordingSink.ConversationRemoteIDChanged.
@@ -212,8 +213,8 @@ type recordingSink struct {
 }
 
 // SenderName records the call.
-func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string) {
-	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name})
+func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string, verified bool) {
+	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name, verified})
 }
 
 // ConversationRemoteIDChanged records the call.

@@ -114,7 +114,7 @@ func (w *mentionWriter) write(ctx context.Context, dev device, text string, m []
 // resolved contact or push name, or the generic label when nothing is
 // known locally.
 func mentionDisplayName(ctx context.Context, dev device, jid types.JID) string {
-	if name := dev.contactName(ctx, jid); name != "" {
+	if name, _ := dev.contactName(ctx, jid); name != "" {
 		return name
 	}
 

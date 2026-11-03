@@ -167,8 +167,9 @@ func TestContactName_ResolvesAPhoneJIDFromTheLocalContactStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := dev.contactName(t.Context(), phone); got != "Nadia Rahman" {
-		t.Errorf("contactName(phone) = %q, want the saved full name", got)
+	name, verified := dev.contactName(t.Context(), phone)
+	if name != "Nadia Rahman" || !verified {
+		t.Errorf("contactName(phone) = %q, %t, want the saved full name, verified", name, verified)
 	}
 }
 
@@ -184,8 +185,9 @@ func TestContactName_ResolvesALIDThroughItsPhoneMapping(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := dev.contactName(t.Context(), lid); got != "Nadia Rahman" {
-		t.Errorf("contactName(lid) = %q, want the name saved for its mapped phone JID", got)
+	name, verified := dev.contactName(t.Context(), lid)
+	if name != "Nadia Rahman" || !verified {
+		t.Errorf("contactName(lid) = %q, %t, want the name saved for its mapped phone JID, verified", name, verified)
 	}
 }
 
@@ -194,8 +196,30 @@ func TestContactName_IsEmptyWhenNothingIsKnown(t *testing.T) {
 	dev := pairedTestDevice(t, own)
 
 	lid := types.NewJID("987654", types.HiddenUserServer)
-	if got := dev.contactName(t.Context(), lid); got != "" {
-		t.Errorf("contactName(unmapped lid) = %q, want \"\"", got)
+	name, verified := dev.contactName(t.Context(), lid)
+	if name != "" || verified {
+		t.Errorf("contactName(unmapped lid) = %q, %t, want \"\", false", name, verified)
+	}
+}
+
+// TestContactName_IsUnverifiedForABarePushName confirms a contact
+// store entry resolved only through a push name - cached there by an
+// earlier app-state sync, never saved by the user or verified by
+// WhatsApp - comes back unverified, the same as one read straight off
+// a live message: a LID often carries no other kind of contact record
+// at all, and showing that unmarked would let a stranger's self-chosen
+// name pass as a saved contact's (see docs/decisions.md).
+func TestContactName_IsUnverifiedForABarePushName(t *testing.T) {
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	dev := pairedTestDevice(t, phone)
+
+	if _, _, err := dev.cli.Store.Contacts.PutPushName(t.Context(), phone, "Mum"); err != nil {
+		t.Fatal(err)
+	}
+
+	name, verified := dev.contactName(t.Context(), phone)
+	if name != "Mum" || verified {
+		t.Errorf("contactName(push name only) = %q, %t, want Mum, unverified", name, verified)
 	}
 }
 

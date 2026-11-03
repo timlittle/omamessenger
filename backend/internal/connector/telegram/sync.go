@@ -276,24 +276,30 @@ func (c *Connector) lookup(key string) (string, bool) {
 }
 
 // nameFor returns the best name learned so far for a Telegram user's
-// remote id (see learnNames), or "" when none has resolved yet.
-func (c *Connector) nameFor(remoteID string) string {
+// remote id (see learnNames), and whether it is verified, or "",
+// false when none has resolved yet.
+func (c *Connector) nameFor(remoteID string) (name string, verified bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	return c.names[remoteID]
+	entry := c.names[remoteID]
+
+	return entry.name, entry.verified
 }
 
-// rememberName records a user's real name and, when it is new or
-// different from what was cached, reports the change through sink: a
-// message already stored under a weaker one, or a reply already
-// quoting it, can then be corrected too (see connector.SenderNamer). A
-// name that has not actually changed is not reported again.
-func (c *Connector) rememberName(ctx context.Context, sink connector.Sink, remoteID, name string) {
+// rememberName records a user's real name and verified flag and, when
+// either is new or different from what was cached, reports the
+// change through sink: a message already stored under a weaker one,
+// or a reply already quoting it, can then be corrected too (see
+// connector.SenderNamer). An entry that has not actually changed is
+// not reported again.
+func (c *Connector) rememberName(ctx context.Context, sink connector.Sink, remoteID, name string, verified bool) {
+	entry := namedEntry{name: name, verified: verified}
+
 	c.mu.Lock()
-	changed := c.names[remoteID] != name
+	changed := c.names[remoteID] != entry
 	if changed {
-		c.names[remoteID] = name
+		c.names[remoteID] = entry
 	}
 	c.mu.Unlock()
 
@@ -302,35 +308,40 @@ func (c *Connector) rememberName(ctx context.Context, sink connector.Sink, remot
 	}
 
 	if namer, ok := sink.(connector.SenderNamer); ok {
-		namer.SenderName(ctx, c.account.ID, remoteID, name)
+		namer.SenderName(ctx, c.account.ID, remoteID, name, verified)
 	}
 }
 
-// learnNames records a real name for every user entities resolves one
-// for, so a later message that carries no user entity of its own -
-// every private chat message Telegram delivers live does not - can
-// still show the right sender (see resolvedMessage).
+// learnNames records a real name and verified flag for every user
+// entities resolves one for, so a later message that carries no user
+// entity of its own - every private chat message Telegram delivers
+// live does not - can still show the right sender (see
+// resolvedMessage).
 func (c *Connector) learnNames(ctx context.Context, sink connector.Sink, e entities) {
 	for id, u := range e.users {
-		if name := ownName(u); name != "" && name != unknownUserName {
-			c.rememberName(ctx, sink, strconv.FormatInt(id, 10), name)
+		name, verified := ownName(u)
+		if name == "" || name == unknownUserName {
+			continue
 		}
+
+		c.rememberName(ctx, sink, strconv.FormatInt(id, 10), name, verified)
 	}
 }
 
-// resolvedMessage normalizes m, then fills in its sender's name from
-// this connector's own cache (see learnNames) when the response that
-// carried it resolved none of its own: Telegram's short update form for
-// a private chat message never does, trusting the client to already
-// know the sender from an earlier, fuller response.
+// resolvedMessage normalizes m, then fills in its sender's name and
+// verified flag from this connector's own cache (see learnNames) when
+// the response that carried it resolved none of its own: Telegram's
+// short update form for a private chat message never does, trusting
+// the client to already know the sender from an earlier, fuller
+// response.
 func (c *Connector) resolvedMessage(m *tg.Message, e entities, selfID int64) domain.Message {
 	msg := message(m, e, selfID)
 	if msg.Outgoing || msg.SenderName != unknownUserName || msg.SenderID == "" {
 		return msg
 	}
 
-	if cached := c.nameFor(msg.SenderID); cached != "" {
-		msg.SenderName = cached
+	if cached, verified := c.nameFor(msg.SenderID); cached != "" {
+		msg.SenderName, msg.SenderVerified = cached, verified
 	}
 
 	return msg

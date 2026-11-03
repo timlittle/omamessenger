@@ -29,7 +29,7 @@ func TestNewMessage_ReportsALearnedNameOnceThroughSenderNamer(t *testing.T) {
 	c.newMessage(t.Context(), sink, &tg.Message{ID: 6, PeerID: &tg.PeerUser{UserID: 42}, Message: "hey"},
 		tg.Entities{Users: map[int64]*tg.User{42: nadia()}})
 
-	want := []senderNameCall{{"tg", "42", "Nadia"}}
+	want := []senderNameCall{{"tg", "42", "Nadia", false}}
 	if !slices.Equal(sink.senderNames, want) {
 		t.Errorf("senderNames = %+v, want %+v", sink.senderNames, want)
 	}
