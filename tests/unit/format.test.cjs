@@ -42,11 +42,20 @@ for (const [name, input, want] of escapeHtmlCases) {
 // writes is always a private "oma-link:<index>" (see
 // Format.linkHref), never the URL itself (see "resolveClickedLink
 // tells apart two spans..." in links.test.cjs for why), so each case
-// also checks the real URL came out the other side, in anchors.
+// also checks the real URL came out the other side, in anchors - its
+// raw form, with every entity decoded back to the character it came
+// from, never the HTML-escaped text URL_PATTERN actually matched (see
+// the entity case below and docs/decisions.md).
 const linkifyCases = [
   ['turns http URLs into links', 'Visit http://example.com for more', /<a href="oma-link:0">http:\/\/example\.com<\/a>/, 'http://example.com'],
   ['turns https URLs into links', 'Visit https://example.com for more', /<a href="oma-link:0">https:\/\/example\.com<\/a>/, 'https://example.com'],
-  ['handles URL with &amp; entity inside', 'https://example.com?a=1&amp;b=2', /<a href="oma-link:0">https:\/\/example\.com\?a=1&amp;b=2<\/a>/, 'https://example.com?a=1&amp;b=2'],
+  // The HTML stays escaped (so it renders correctly as a literal '&'
+  // on screen), but the recorded url is decoded back to raw: opening
+  // 'https://example.com?a=1&amp;b=2' verbatim would reach a
+  // different query string than the sender's own link ever carried,
+  // and it could never match a WhatsApp link preview's own raw URL
+  // either (see docs/decisions.md).
+  ['handles URL with &amp; entity inside', 'https://example.com?a=1&amp;b=2', /<a href="oma-link:0">https:\/\/example\.com\?a=1&amp;b=2<\/a>/, 'https://example.com?a=1&b=2'],
   ['strips trailing period from URL', 'see https://example.com/tickets.', /<a href="oma-link:0">https:\/\/example\.com\/tickets<\/a>\./, 'https://example.com/tickets'],
   ['strips trailing comma from URL', 'visit https://example.com,', /<a href="oma-link:0">https:\/\/example\.com<\/a>,/, 'https://example.com'],
   ['strips trailing parenthesis from URL', 'check (https://example.com)', /check \(<a href="oma-link:0">https:\/\/example\.com<\/a>\)/, 'https://example.com']
@@ -59,6 +68,34 @@ for (const [name, input, want, url] of linkifyCases) {
     assert.deepStrictEqual(anchorsPlain(anchors), [{ url, displayText: url }]);
   });
 }
+
+// unescapeHtml is escapeHtml's own inverse, which linkify uses to
+// recover a matched URL's raw characters from the escaped text
+// URL_PATTERN actually matched (see linkifyCases above).
+const unescapeHtmlCases = [
+  ['decodes an ampersand entity', 'a&amp;b', 'a&b'],
+  ['decodes a less-than entity', 'a&lt;b', 'a<b'],
+  ['decodes a greater-than entity', 'a&gt;b', 'a>b'],
+  ['decodes a double-quote entity', 'a&quot;b', 'a"b'],
+  ['decodes a decimal numeric entity', 'a&#38;b', 'a&b'],
+  ['decodes a hexadecimal numeric entity', 'a&#x26;b', 'a&b'],
+  ['leaves plain text with no entity untouched', 'plain text', 'plain text'],
+  ['leaves an ampersand with no matching entity after it untouched', 'a & b', 'a & b'],
+  ['decodes more than one entity in the same text', 'a&amp;b&lt;c', 'a&b<c']
+];
+
+for (const [name, input, want] of unescapeHtmlCases) {
+  test(`unescapeHtml ${name}`, () => {
+    assert.equal(Format.unescapeHtml(input), want);
+  });
+}
+
+test('linkify records a raw url with every kind of entity URL_PATTERN tolerates, decimal and hexadecimal included', () => {
+  const anchors = [];
+  const result = Format.linkify('https://example.com/a&#38;b&#x26;c', null, anchors);
+  assert.strictEqual(result, '<a href="oma-link:0">https://example.com/a&#38;b&#x26;c</a>');
+  assert.deepStrictEqual(anchorsPlain(anchors), [{ url: 'https://example.com/a&b&c', displayText: 'https://example.com/a&b&c' }]);
+});
 
 test('linkHref and linkIndexFromHref round-trip an anchor\'s own position', () => {
   assert.strictEqual(Format.linkHref(0), 'oma-link:0');

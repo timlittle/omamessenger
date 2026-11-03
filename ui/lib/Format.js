@@ -100,6 +100,31 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ENTITY_PATTERN matches exactly the entities escapeHtml can produce
+// (&amp; &lt; &gt; &quot;) plus a decimal or hexadecimal numeric
+// character reference, the same set URL_PATTERN's own trailing
+// alternation tolerates inside an already-matched URL.
+var ENTITY_PATTERN = /&(amp|lt|gt|quot|#\d+|#x[0-9a-fA-F]+);/g;
+
+// unescapeHtml reverses escapeHtml, decoding each entity back to the
+// raw character or code point it came from: linkify's own way to
+// recover a matched URL's real characters from the escaped text
+// URL_PATTERN actually matched (see linkify and docs/decisions.md),
+// so the url this file records and later opens is never the HTML-
+// escaped form a sender's own '&' would otherwise turn into '&amp;'.
+function unescapeHtml(text) {
+  return text.replace(ENTITY_PATTERN, (whole, body) => {
+    if (body === 'amp') return '&';
+    if (body === 'lt') return '<';
+    if (body === 'gt') return '>';
+    if (body === 'quot') return '"';
+
+    const isHex = body[1] === 'x' || body[1] === 'X';
+    const codePoint = parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10);
+    return String.fromCodePoint(codePoint);
+  });
+}
+
 // TRAILING_LINK_PUNCTUATION is the set of characters linkify drops
 // off a matched URL's own end.
 var TRAILING_LINK_PUNCTUATION = '.,;:!?)';
@@ -127,14 +152,23 @@ function splitTrailingPunctuation(match) {
 // text is always the URL itself. Each anchor's href names its own
 // position in anchors (see linkHref) rather than carrying the URL
 // directly, the same private scheme every anchor this file writes
-// uses. Punctuation that ends a sentence stays outside the link.
+// uses. Punctuation that ends a sentence stays outside the link. The
+// visible text between the anchor's own tags stays in escaped's own
+// escaped form, so it renders correctly on screen, but anchors itself
+// gets the raw, unescaped url (see unescapeHtml): a security review
+// found this recording the escaped form instead - a sender's own '&'
+// came back as literally '&amp;' - made the url this file's own
+// callers later open functionally different from the one the sender
+// actually sent, and made it never match a link preview's own raw URL
+// either (see previewDisplayText and docs/decisions.md).
 function linkify(escaped, color, anchors = []) {
   const style = color ? ` style="color:${color}"` : '';
   return escaped.replace(URL_PATTERN, (match) => {
-    const [url, trailing] = splitTrailingPunctuation(match);
+    const [displayURL, trailing] = splitTrailingPunctuation(match);
+    const url = unescapeHtml(displayURL);
     const href = linkHref(anchors.length);
     anchors.push({ url, displayText: url });
-    return `<a href="${href}"${style}>${url}</a>${trailing}`;
+    return `<a href="${href}"${style}>${displayURL}</a>${trailing}`;
   });
 }
 

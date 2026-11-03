@@ -229,6 +229,19 @@ test('a preview whose URL is not in its message text needs confirming', () => {
   assert.ok(Links.needsConfirmation(shown, 'https://evil.example/login'));
 });
 
+test('previewDisplayText matches a raw ampersand in the message text against a preview url carrying the same raw ampersand', () => {
+  // A security review found a plain autolink's own anchors used to
+  // record a matched url HTML-escaped ('&' as '&amp;'): a WhatsApp
+  // link preview's own url, reported raw by the connector, could then
+  // never match even when the two were really the same link, since
+  // one side read "&amp;" and the other "&". Format.linkify now
+  // decodes the matched text back to raw before recording it (see
+  // tests/unit/format.test.cjs's own unescapeHtml cases), so the two
+  // now compare equal.
+  const url = 'https://example.com?a=1&b=2';
+  assert.equal(Links.previewDisplayText(url, `see ${url}`, [], [], 'Example'), url);
+});
+
 // sameTarget strips a trailing slash run in linear time, not quadratic.
 // Mirrors tests/unit/format.test.cjs's and tests/unit/highlight.test.cjs's
 // own adversarial cases: a regex with no start anchor before a
