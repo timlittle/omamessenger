@@ -1,6 +1,9 @@
 package domain
 
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // limits.go bounds every sender-controlled collection a message or its
 // media carries, so a connector that passes through whatever a service
@@ -311,12 +314,66 @@ func CapReactions(reactions []Reaction) []Reaction {
 	return kept
 }
 
-// CapDisplayName cuts s to MaxDisplayNameLength, the one cap every
-// sender-controlled display name - a contact's name, a push name, a
-// group's title, a message's or reply quote's SenderName, a member's
-// own name - goes through once, wherever it enters the helper.
+// CapDisplayName cuts s to MaxDisplayNameLength, after stripping every
+// control or bidi/format character (see stripControlAndFormatRunes):
+// the one cap every sender-controlled display name - a contact's name,
+// a push name, a group's title, a message's or reply quote's
+// SenderName, a member's own name - goes through once, wherever it
+// enters the helper, and again on every read, so a name stored before
+// this stripping existed is repaired too (see store.scanMessage and
+// store.scanConversationWith).
 func CapDisplayName(s string) string {
-	return capText(s, MaxDisplayNameLength)
+	return capText(stripControlAndFormatRunes(s), MaxDisplayNameLength)
+}
+
+// isControlOrFormatRune reports whether r is a character a
+// sender-controlled display name or file name must never carry
+// unescaped: an ASCII control character, including a newline, or one
+// of the Unicode bidi override or invisible-format characters a
+// self-chosen name could use to reorder or hide part of itself,
+// classically used to disguise a dangerous file extension as a safe
+// one. U+200D, the zero-width joiner, is deliberately kept even though
+// it sits inside the stripped U+200B-U+200F range: a real emoji
+// sequence - a family, a profession, a flag - is several code points
+// joined by it, and stripping it would break the glyph apart into
+// separate, unrelated ones.
+func isControlOrFormatRune(r rune) bool {
+	switch {
+	case r <= 0x1F || r == 0x7F:
+		return true
+	case r == 0x200D:
+		return false
+	case r >= 0x200B && r <= 0x200F:
+		return true
+	case r >= 0x202A && r <= 0x202E:
+		return true
+	case r >= 0x2060 && r <= 0x2064:
+		return true
+	case r >= 0x2066 && r <= 0x2069:
+		return true
+	case r == 0xFEFF:
+		return true
+	default:
+		return false
+	}
+}
+
+// stripControlAndFormatRunes drops every rune isControlOrFormatRune
+// flags from s, keeping every other rune, including a kept zero-width
+// joiner, exactly where it was.
+func stripControlAndFormatRunes(s string) string {
+	if !strings.ContainsFunc(s, isControlOrFormatRune) {
+		return s
+	}
+
+	var b strings.Builder
+	for _, r := range s {
+		if !isControlOrFormatRune(r) {
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
 }
 
 // CapPreview cuts s to MaxPreviewLength, the one cap a conversation's
@@ -330,8 +387,14 @@ func CapPreview(s string) string {
 }
 
 // CapFileName cuts s to at most MaxFileNameLength bytes, never
-// splitting a rune's own UTF-8 encoding across the cut.
+// splitting a rune's own UTF-8 encoding across the cut, after
+// stripping every control or bidi/format character (see
+// stripControlAndFormatRunes): a sender-claimed file name shown in the
+// UI gets the same treatment a display name does, since a right-to-left
+// override could otherwise make a dangerous extension read as a safe
+// one.
 func CapFileName(s string) string {
+	s = stripControlAndFormatRunes(s)
 	if len(s) <= MaxFileNameLength {
 		return s
 	}
