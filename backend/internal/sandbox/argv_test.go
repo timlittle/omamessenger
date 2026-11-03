@@ -41,6 +41,8 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 		"--symlink", "usr/bin", "/bin",
 		"--proc", "/proc",
 		"--dev", "/dev",
+		"--size", "16777216", "--tmpfs", "/dev/shm",
+		"--remount-ro", "/dev",
 		"--size", "16777216", "--tmpfs", "/tmp",
 		"--ro-bind", "/host/in.mp4", "/work/in",
 		"--tmpfs", "/work/out",
@@ -56,6 +58,7 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 		"--setenv", "LANG", "C.UTF-8",
 		"--chdir", "/work",
 		"--seccomp", "3",
+		"--remount-ro", "/",
 		"--",
 		"/usr/bin/ffmpeg",
 		"-i", "/work/in", "/work/out/out.mp4",
@@ -121,6 +124,49 @@ func TestBwrapArgs_BindsOutputAsASingleFileUnderAReadOnlyParent(t *testing.T) {
 	i := slices.Index(args, OutputDirPath)
 	if i < 1 || args[i-1] != "--tmpfs" || i-1+len(want) > len(args) || !slices.Equal(args[i-1:i-1+len(want)], want) {
 		t.Fatalf("args = %q, want to contain %q in order", args, want)
+	}
+}
+
+func TestBwrapArgs_CapsAndIsolatesDevShm(t *testing.T) {
+	t.Parallel()
+
+	args := bwrapArgs(Spec{Binary: "/usr/bin/true", Output: "/host/out/out.bin"})
+
+	// --dev /dev itself creates /dev/shm with no size of its own
+	// (confirmed directly through a real bwrap: it shares /dev's own
+	// uncapped tmpfs); mounting a second, explicitly sized tmpfs at
+	// /dev/shm right after replaces that, and /dev is then remounted
+	// read-only - which, confirmed directly, does not affect the
+	// separate tmpfs now mounted at /dev/shm, the same way remounting
+	// OutputDirPath read-only below does not affect the file bound
+	// inside it.
+	want := []string{
+		"--dev", "/dev",
+		"--size", "16777216", "--tmpfs", "/dev/shm",
+		"--remount-ro", "/dev",
+	}
+
+	i := slices.Index(args, "--dev")
+	if i < 0 || i+len(want) > len(args) || !slices.Equal(args[i:i+len(want)], want) {
+		t.Fatalf("args = %q, want to contain %q in order starting at --dev", args, want)
+	}
+}
+
+func TestBwrapArgs_RemountsRootReadOnlyAsTheFinalFlag(t *testing.T) {
+	t.Parallel()
+
+	args := bwrapArgs(Spec{Binary: "/usr/bin/true", Output: "/host/out/out.bin"})
+
+	// Last, not first: every other mount - /tmp, the input bind, the
+	// output file's own three-flag bind, /dev/shm - must already be
+	// in place before the root tmpfs bwrap creates by default is
+	// remounted read-only, confirmed directly through a real bwrap
+	// that this exact position leaves every one of those still
+	// writable (or readable) as its own doc comment says, while a new
+	// file anywhere else under / fails.
+	want := []string{"--remount-ro", "/"}
+	if len(args) < 2 || !slices.Equal(args[len(args)-2:], want) {
+		t.Fatalf("args = %q, want to end with %q", args, want)
 	}
 }
 

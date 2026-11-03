@@ -42,6 +42,22 @@ const OutputDirPath = workDir + "/out"
 // startup use while bounding exactly that.
 const maxTmpBytes = 16 << 20
 
+// maxDevShmBytes bounds the tmpfs Run mounts at /dev/shm (bwrap's own
+// --size, read just before --tmpfs; see argv.go), the same way
+// maxTmpBytes above bounds /tmp. bwrap's own --dev flag already
+// creates /dev/shm, as part of /dev's own tmpfs, with no size of its
+// own - confirmed directly, that path reported the same uncapped size
+// as /dev itself, the exact same half-of-this-machine's-own-RAM gap
+// maxTmpBytes was written to close for /tmp, just one path over.
+// Nothing in any profile's own fixed ffmpeg arguments ever asks it to
+// use /dev/shm; the only thing glibc itself ever resolves there is
+// POSIX shared memory (sem_open, shm_open), which none of this
+// package's own callers need either. 16 MiB matches maxTmpBytes's own
+// number exactly, for the same reason: generous for whatever a linked
+// library's own startup might still touch, while bounding exactly
+// that.
+const maxDevShmBytes = 16 << 20
+
 // InputBaseName is the only base name Spec.validate accepts for
 // Spec.Input: a caller places its own file under this name, inside a
 // directory it controls, before ever building a Spec (transcode's
@@ -151,3 +167,26 @@ const maxOpenFiles = 64
 // failure shapes apart (see classify.go), far less than a pathological
 // or hostile command could otherwise write.
 const maxCapturedStderr = 4 << 10
+
+// maxJobBytes is the total memory and disk one job can reach at
+// once, now that every writable place inside the sandbox has a cap
+// of its own: maxAddressSpaceBytes (the job's own address space,
+// shared by every thread it starts, never just whichever process
+// first held it - see processCreationSyscalls in seccomp.go) plus
+// maxTmpBytes (/tmp) plus maxDevShmBytes (/dev/shm) plus
+// maxOutputFileBytes (the one file Spec.Output names - the only
+// thing left writable under OutputDirPath, and the only disk a job's
+// own exit code can ever leave larger than it started; see
+// bwrapArgs). About 4.53 GiB, the exact arithmetic kept as a sum
+// rather than a rounded literal so a future change to any one of the
+// four still changes this number, and the test that pins it,
+// together. bwrap's own root and /dev are both remounted read-only
+// once every other mount above is in place (see bwrapArgs), so there
+// is nowhere left for a hijacked job to open a fifth writable place
+// this sum would miss - and memfd_create/memfd_secret, a way to hold
+// shared memory open with no file-size limit of its own at all
+// (unlike every other fd a job can open), are refused outright by
+// the seccomp filter (see seccomp.go) rather than merely added to
+// this total, since there is no cap on either that would make adding
+// them here anything but a made-up number.
+const maxJobBytes = maxAddressSpaceBytes + maxTmpBytes + maxDevShmBytes + maxOutputFileBytes

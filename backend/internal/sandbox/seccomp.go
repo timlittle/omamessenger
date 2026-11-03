@@ -88,6 +88,25 @@ var deniedSyscalls = []string{
 	"clock_settime", "clock_adjtime", "settimeofday", "adjtimex",
 }
 
+// memfdSyscalls names the two ways to create an anonymous,
+// shared-memory-backed file that has its own fd but no file-size
+// limit of its own: memfd_create (ordinary anonymous memory) and
+// memfd_secret (kernel-locked memory meant never to reach disk or be
+// read by anything but the process that created it, not even its own
+// parent). Both differ from every entry in deniedSyscalls in exactly
+// the way that matters here: the pages behind the fd they return are
+// charged to the kernel's own shared-memory accounting, never to the
+// calling process's own virtual address space, so maxAddressSpaceBytes
+// - RLIMIT_AS, enforced per process - never sees them written to at
+// all, only mapped. What does still apply to a memfd is RLIMIT_FSIZE
+// (prlimit's own --fsize) and RLIMIT_NOFILE (--nofile): before this
+// fix, a hijacked job could hold up to maxOpenFiles of them open at
+// once, each written up to maxOutputFileBytes, for close to 32 GiB
+// through a route no other limit in this package actually bounds.
+// Refusing both outright closes that to zero, rather than leaving it
+// as one more thing for limits.go's own numbers to somehow cover.
+var memfdSyscalls = []string{"memfd_create", "memfd_secret"}
+
 // cloneThreadFlag is CLONE_THREAD, from the kernel's own
 // include/uapi/linux/sched.h: part of the stable UAPI, not something
 // either library this package uses exports as a constant. It is
@@ -199,6 +218,7 @@ func seccompInstructions() ([]bpf.Instruction, error) {
 		DefaultAction: seccomp.ActionAllow,
 		Syscalls: []seccomp.SyscallGroup{
 			{Action: epermAction, Names: deniedSyscalls},
+			{Action: epermAction, Names: memfdSyscalls},
 			{
 				Action:             epermAction,
 				Names:              processCreationSyscalls,

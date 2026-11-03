@@ -210,3 +210,53 @@ func TestRun_OutputBindExposesOnlyTheSingleBoundFile(t *testing.T) {
 		t.Fatalf("the host's own input file changed to %q; the sandbox could reach it through the output bind", got)
 	}
 }
+
+func TestRun_RootDevAndOversizedDevShmWritesAllFail(t *testing.T) {
+	t.Parallel()
+
+	r := requireSandbox(t, "/usr/bin/bash")
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	// Every place inside the sandbox a hijacked job might still try to
+	// write, now that bwrap's own root and /dev are both remounted
+	// read-only and /dev/shm has a cap of its own (see
+	// docs/decisions.md): the root tmpfs bwrap creates by default,
+	// /dev itself (outside the small, separate tmpfs now capped at
+	// /dev/shm), and /work outside the one file actually bound there,
+	// must all fail. /dev/shm within its own cap must still succeed -
+	// this is not meant to make it read-only too, only bounded - so a
+	// fix that overshoots by refusing everything under /dev/shm would
+	// wrongly pass the rest of this test without that line failing it.
+	// Every step is a bash builtin (printf, redirection, [): an
+	// external command would need the fork this package's seccomp
+	// filter now refuses outright (see
+	// TestRun_SeccompDeniesForkingAChildProcess), which would confound
+	// that unrelated protection with the one this test actually
+	// checks.
+	script := `
+fail=0
+printf probe > /newfile 2>/dev/null && fail=1
+printf probe > /dev/newfile 2>/dev/null && fail=1
+printf probe > /work/newfile 2>/dev/null && fail=1
+printf probe > /dev/shm/ok 2>/dev/null || fail=1
+printf "%*s" 16000000 "" > /dev/shm/big1 2>/dev/null
+printf "%*s" 1000000 "" > /dev/shm/big2 2>/dev/null && fail=1
+[ "$fail" = 0 ]
+`
+
+	spec := sandbox.Spec{
+		Binary: "/usr/bin/bash",
+		Args:   []string{"-c", script},
+		Output: mustOutputFile(t),
+	}
+
+	result, err := r.Run(ctx, spec)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Succeeded() {
+		t.Fatalf("Run() = %+v, want Succeeded() true: every write outside the sandbox's own bounded places should have failed, and the one within /dev/shm's own cap should have succeeded", result)
+	}
+}
