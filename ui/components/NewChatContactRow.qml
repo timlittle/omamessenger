@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
+import "../lib/Verify.js" as Verify
 
 // One contact row in the new-chat dialog: avatar and name, highlighted
 // when it is the keyboard-selected row or under the pointer. A helper
@@ -10,7 +11,7 @@ import "../theme"
 Rectangle {
   id: root
 
-  // contact is one Contact: accountId, remoteId, name.
+  // contact is one Contact: accountId, remoteId, name, verified.
   required property var contact
   // current is true when this row is the keyboard-selected one.
   property bool current: false
@@ -39,8 +40,13 @@ Rectangle {
     }
 
     Text {
+      objectName: "contactName"
       Layout.fillWidth: true
-      text: root.contact.name
+      // Marked with a leading "~" when the helper reports this
+      // contact's own name as unverified - a bare, self-chosen name
+      // with no saved contact or verified business behind it - so it
+      // never looks like a real saved contact (see docs/decisions.md).
+      text: Verify.markedName(root.contact.name, root.contact.verified)
       // A contact's name is whatever they or the service set it to:
       // PlainText.
       textFormat: Text.PlainText
