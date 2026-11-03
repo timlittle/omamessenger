@@ -54,6 +54,7 @@ func animationRebuild(sandboxedOutput, jobDir string) (string, error) {
 		allowAudio:        false,
 		maxVideoSamples:   animationDurationSeconds*30 + remuxSampleCountSlack,
 		maxVideoSampleLen: maxRemuxVideoSampleBytes,
+		maxOutputBytes:    animationMaxOutputBytes,
 	}
 	if err := remuxMP4(sandboxedOutput, outPath, caps); err != nil {
 		return "", err

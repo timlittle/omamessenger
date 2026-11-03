@@ -42,21 +42,24 @@ type remuxTrack struct {
 // collectSamples validates every sample of video (and, when present,
 // audio) and writes their trusted bytes, in order, to a fresh
 // scratch file at scratchPath: video's own filtered NAL units first,
-// then audio's own unchanged bytes.
+// then audio's own unchanged bytes. Both share one scratchWriter, so
+// caps.maxOutputBytes bounds their combined total, not each one
+// separately.
 func collectSamples(src mp4Source, videoTrak, audioTrak *mp4.TrakBox, scratchPath string, caps remuxCaps) (video, audio *remuxTrack, err error) {
 	scratch, err := os.OpenFile(scratchPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: creating scratch file: %w", ErrFailed, err)
 	}
+	sw := &scratchWriter{f: scratch, max: caps.maxOutputBytes}
 
-	video, err = collectVideoSamples(src, videoTrak, scratch, caps.maxVideoSamples, caps.maxVideoSampleLen)
+	video, err = collectVideoSamples(src, videoTrak, sw, caps.maxVideoSamples, caps.maxVideoSampleLen)
 	if err != nil {
 		_ = scratch.Close() // write side already failing; doRemux reports the real error and removes the file
 		return nil, nil, err
 	}
 
 	if audioTrak != nil {
-		audio, err = collectAudioSamples(src, audioTrak, scratch, caps.maxAudioSamples, caps.maxAudioSampleLen)
+		audio, err = collectAudioSamples(src, audioTrak, sw, caps.maxAudioSamples, caps.maxAudioSampleLen)
 		if err != nil {
 			_ = scratch.Close() // same as above
 			return nil, nil, err
@@ -67,6 +70,37 @@ func collectSamples(src mp4Source, videoTrak, audioTrak *mp4.TrakBox, scratchPat
 		return nil, nil, fmt.Errorf("%w: closing scratch file: %w", ErrFailed, err)
 	}
 	return video, audio, nil
+}
+
+// scratchWriter writes each validated sample to collectSamples' own
+// shared scratch file, refusing to grow video's and audio's combined
+// total past max: trakSampleMetadata and readOneSample only ever
+// bound one declared sample at a time, so without this, a crafted
+// sample table naming many thousands of samples that all alias the
+// same handful of bytes in the sandboxed file's own mdat - each
+// still under its own per-sample cap - could make this package write
+// that small, already-size-capped payload out again once per
+// declared sample (see remuxCaps.maxOutputBytes and
+// docs/decisions.md).
+type scratchWriter struct {
+	f     *os.File
+	total int64
+	max   int64
+}
+
+// write appends sample to w's own scratch file, refusing it - before
+// anything is actually written - once doing so would take w's own
+// running total past max.
+func (w *scratchWriter) write(sample []byte) error {
+	next := w.total + int64(len(sample))
+	if next > w.max {
+		return fmt.Errorf("%w: rebuilt output would reach %d bytes, more than %d allowed", ErrFailed, next, w.max)
+	}
+	if _, err := w.f.Write(sample); err != nil {
+		return fmt.Errorf("%w: writing scratch file: %w", ErrFailed, err)
+	}
+	w.total = next
+	return nil
 }
 
 // trakSampleMetadata returns trak's own declared samples (duration,
@@ -109,18 +143,9 @@ func readOneSample(src mp4Source, trak *mp4.TrakBox, nr uint32, maxLen int64) ([
 	return data, nil
 }
 
-// appendSample writes sample to scratch, which the caller keeps
-// positioned at the end of what it has already written.
-func appendSample(scratch *os.File, sample []byte) error {
-	if _, err := scratch.Write(sample); err != nil {
-		return fmt.Errorf("%w: writing scratch file: %w", ErrFailed, err)
-	}
-	return nil
-}
-
 // collectVideoSamples validates and filters every sample of trak
-// (see processVideoSample) and appends the kept bytes to scratch.
-func collectVideoSamples(src mp4Source, trak *mp4.TrakBox, scratch *os.File, maxSamples int, maxSampleLen int64) (*remuxTrack, error) {
+// (see processVideoSample) and appends the kept bytes to sw.
+func collectVideoSamples(src mp4Source, trak *mp4.TrakBox, sw *scratchWriter, maxSamples int, maxSampleLen int64) (*remuxTrack, error) {
 	samples, err := trakSampleMetadata(trak, maxSamples)
 	if err != nil {
 		return nil, err
@@ -132,7 +157,7 @@ func collectVideoSamples(src mp4Source, trak *mp4.TrakBox, scratch *os.File, max
 		if err != nil {
 			return nil, err
 		}
-		if err := appendSample(scratch, filtered); err != nil {
+		if err := sw.write(filtered); err != nil {
 			return nil, err
 		}
 		track.durations = append(track.durations, s.Dur)
@@ -223,8 +248,8 @@ func encodeNALUSample(nalus [][]byte) []byte {
 
 // collectAudioSamples validates every sample of trak - nonzero
 // duration, no composition time offset, within maxSampleLen - and
-// appends its bytes, unchanged, to scratch.
-func collectAudioSamples(src mp4Source, trak *mp4.TrakBox, scratch *os.File, maxSamples int, maxSampleLen int64) (*remuxTrack, error) {
+// appends its bytes, unchanged, to sw.
+func collectAudioSamples(src mp4Source, trak *mp4.TrakBox, sw *scratchWriter, maxSamples int, maxSampleLen int64) (*remuxTrack, error) {
 	samples, err := trakSampleMetadata(trak, maxSamples)
 	if err != nil {
 		return nil, err
@@ -242,7 +267,7 @@ func collectAudioSamples(src mp4Source, trak *mp4.TrakBox, scratch *os.File, max
 		if err != nil {
 			return nil, err
 		}
-		if err := appendSample(scratch, raw); err != nil {
+		if err := sw.write(raw); err != nil {
 			return nil, err
 		}
 		track.durations = append(track.durations, s.Dur)

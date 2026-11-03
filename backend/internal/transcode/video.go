@@ -58,7 +58,11 @@ func (t *Transcoder) Video(ctx context.Context, in, outDir string) (string, erro
 // videoRemuxCaps bounds what videoRebuild's own call to remuxMP4
 // will accept: sample counts sized for Video's own duration cap at
 // 30 frames per second of video and, generously, 50 AAC-LC frames
-// per second of audio, each with a little slack (see remux.go).
+// per second of audio, each with a little slack (see remux.go), and
+// the rebuilt file's own combined video-plus-audio total bounded by
+// videoMaxOutputBytes, reused rather than given a tighter cap of its
+// own: a legitimate rebuild can never exceed what the sandboxed file
+// it rebuilds from was already capped at.
 func videoRemuxCaps() remuxCaps {
 	return remuxCaps{
 		allowAudio:        true,
@@ -66,6 +70,7 @@ func videoRemuxCaps() remuxCaps {
 		maxAudioSamples:   videoDurationSeconds*maxAACFramesPerSecond + remuxSampleCountSlack,
 		maxVideoSampleLen: maxRemuxVideoSampleBytes,
 		maxAudioSampleLen: maxRemuxAudioSampleBytes,
+		maxOutputBytes:    videoMaxOutputBytes,
 	}
 }
 
