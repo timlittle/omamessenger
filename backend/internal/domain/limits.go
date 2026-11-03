@@ -328,34 +328,51 @@ func CapDisplayName(s string) string {
 
 // isControlOrFormatRune reports whether r is a character a
 // sender-controlled display name or file name must never carry
-// unescaped: an ASCII control character, including a newline, or one
-// of the Unicode bidi override or invisible-format characters a
-// self-chosen name could use to reorder or hide part of itself,
-// classically used to disguise a dangerous file extension as a safe
-// one. U+200D, the zero-width joiner, is deliberately kept even though
-// it sits inside the stripped U+200B-U+200F range: a real emoji
-// sequence - a family, a profession, a flag - is several code points
-// joined by it, and stripping it would break the glyph apart into
-// separate, unrelated ones.
+// unescaped: an ASCII control character, or one of the Unicode bidi
+// override or invisible-format characters a self-chosen name could
+// use to reorder or hide part of itself, classically used to disguise
+// a dangerous file extension as a safe one. Split across
+// isASCIIControlRune and isBidiOrFormatRune so neither this function
+// nor either of those grows past this codebase's complexity limit.
 func isControlOrFormatRune(r rune) bool {
-	switch {
-	case r <= 0x1F || r == 0x7F:
-		return true
-	case r == 0x200D:
-		return false
-	case r >= 0x200B && r <= 0x200F:
-		return true
-	case r >= 0x202A && r <= 0x202E:
-		return true
-	case r >= 0x2060 && r <= 0x2064:
-		return true
-	case r >= 0x2066 && r <= 0x2069:
-		return true
-	case r == 0xFEFF:
-		return true
-	default:
+	return isASCIIControlRune(r) || isBidiOrFormatRune(r)
+}
+
+// isASCIIControlRune reports whether r is an ASCII control character,
+// including every newline form (0x00-0x1F, and DEL, 0x7F).
+func isASCIIControlRune(r rune) bool {
+	return r <= 0x1F || r == 0x7F
+}
+
+// bidiOrFormatRanges are the inclusive Unicode rune ranges
+// isBidiOrFormatRune flags, each a [low, high] pair.
+var bidiOrFormatRanges = [...][2]rune{
+	{0x200B, 0x200F},
+	{0x202A, 0x202E},
+	{0x2060, 0x2064},
+	{0x2066, 0x2069},
+	{0xFEFF, 0xFEFF},
+}
+
+// isBidiOrFormatRune reports whether r is one of the Unicode bidi
+// override or invisible-format characters isControlOrFormatRune also
+// flags. U+200D, the zero-width joiner, is deliberately kept even
+// though it sits inside the stripped U+200B-U+200F range: a real
+// emoji sequence - a family, a profession, a flag - is several code
+// points joined by it, and stripping it would break the glyph apart
+// into separate, unrelated ones.
+func isBidiOrFormatRune(r rune) bool {
+	if r == 0x200D {
 		return false
 	}
+
+	for _, rng := range bidiOrFormatRanges {
+		if r >= rng[0] && r <= rng[1] {
+			return true
+		}
+	}
+
+	return false
 }
 
 // stripControlAndFormatRunes drops every rune isControlOrFormatRune

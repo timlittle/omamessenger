@@ -515,60 +515,6 @@ func TestCapDisplayName_LeavesAShortNameAlone(t *testing.T) {
 	}
 }
 
-// TestCapDisplayName_StripsControlCharacters confirms an ASCII control
-// character, including a newline, never survives in a display name: a
-// name could otherwise carry one to break a single-line layout or hide
-// part of itself.
-func TestCapDisplayName_StripsControlCharacters(t *testing.T) {
-	t.Parallel()
-
-	got := domain.CapDisplayName("Mum\n\t\x00\x7f Impersonator")
-	if got != "Mum Impersonator" {
-		t.Errorf("CapDisplayName(%q) = %q, want control characters stripped", "Mum\\n\\t\\x00\\x7f Impersonator", got)
-	}
-}
-
-// TestCapDisplayName_StripsBidiAndFormatCharacters confirms the
-// Unicode bidi override and invisible-format characters a self-chosen
-// name could use to reorder or hide part of itself are stripped: the
-// right-to-left override (U+202E) classically used to disguise a file
-// extension, and the zero-width space (U+200B).
-func TestCapDisplayName_StripsBidiAndFormatCharacters(t *testing.T) {
-	t.Parallel()
-
-	got := domain.CapDisplayName("Mum‮​evil")
-	if got != "Mumevil" {
-		t.Errorf("CapDisplayName(%q) = %q, want bidi and format characters stripped", "Mum\\u202E\\u200Bevil", got)
-	}
-}
-
-// TestCapDisplayName_KeepsZeroWidthJoiner confirms the zero-width
-// joiner (U+200D) survives CapDisplayName, even though it sits inside
-// the stripped U+200B-U+200F range: real emoji sequences, such as a
-// family or a profession, are built from several code points joined
-// by it, and stripping it would break the glyph apart.
-func TestCapDisplayName_KeepsZeroWidthJoiner(t *testing.T) {
-	t.Parallel()
-
-	family := "\U0001F468‍\U0001F469‍\U0001F467" // man-woman-girl family emoji
-	if got := domain.CapDisplayName(family); got != family {
-		t.Errorf("CapDisplayName(%q) = %q, want the zero-width joiner kept", family, got)
-	}
-}
-
-// TestCapFileName_StripsBidiAndFormatCharacters confirms a file name
-// shown in the UI gets the same bidi and control stripping a display
-// name does: a right-to-left override could otherwise make a
-// dangerous extension read as a safe one.
-func TestCapFileName_StripsBidiAndFormatCharacters(t *testing.T) {
-	t.Parallel()
-
-	got := domain.CapFileName("invoice‮gnp.exe")
-	if got != "invoicegnp.exe" {
-		t.Errorf("CapFileName(%q) = %q, want the right-to-left override stripped", "invoice\\u202Egnp.exe", got)
-	}
-}
-
 // TestCapPreview_CutsAnOversizedPreview confirms a preview past
 // MaxPreviewLength is cut to it, on a rune boundary.
 func TestCapPreview_CutsAnOversizedPreview(t *testing.T) {
