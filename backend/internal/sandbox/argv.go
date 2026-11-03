@@ -61,36 +61,45 @@ const niceLevel = 19
 // below it.
 const ioClass = 3
 
+// toolPaths bundles the five external binaries buildArgv chains
+// together for one job - nice and ionice, wrapping every job at the
+// lowest scheduling priority, then env, prlimit and bwrap, in that
+// same outermost-to-innermost order - each resolved once by
+// Runner.resolveTools, as one argument rather than five.
+type toolPaths struct {
+	nice, ionice, env, prlimit, bwrap string
+}
+
 // buildArgv returns the full command Run starts for spec: nice,
 // lowering CPU priority to niceLevel, running ionice, lowering I/O
 // priority to ioClass, running env, named by its own resolved path,
 // ignoring ignoredSignals, running prlimit under every argument
-// needed to run bwrap (bwrapPath) under this package's fixed resource
-// limits and then, inside it, spec.Binary with spec.Args.
-func buildArgv(spec Spec, nicePath, ionicePath, bwrapPath, prlimitPath, envPath string) (name string, args []string) {
+// needed to run bwrap under this package's fixed resource limits and
+// then, inside it, spec.Binary with spec.Args.
+func buildArgv(spec Spec, tools toolPaths) (name string, args []string) {
 	args = []string{
 		"-n", strconv.Itoa(niceLevel),
 		"--",
-		ionicePath,
+		tools.ionice,
 		"-c", strconv.Itoa(ioClass),
 		"--",
-		envPath,
+		tools.env,
 		"--ignore-signal=" + ignoredSignals,
 		"--",
-		prlimitPath,
+		tools.prlimit,
 		"--core=" + strconv.Itoa(maxCoreBytes),
 		"--cpu=" + strconv.Itoa(maxCPUSeconds),
 		"--as=" + strconv.Itoa(maxAddressSpaceBytes),
 		"--fsize=" + strconv.Itoa(maxOutputFileBytes),
 		"--nofile=" + strconv.Itoa(maxOpenFiles),
 		"--",
-		bwrapPath,
+		tools.bwrap,
 	}
 	args = append(args, bwrapArgs(spec)...)
 	args = append(args, "--", spec.Binary)
 	args = append(args, spec.Args...)
 
-	return nicePath, args
+	return tools.nice, args
 }
 
 // bwrapArgs returns every bwrap flag Run passes for spec, stopping
