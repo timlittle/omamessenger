@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import "../theme"
+import "../lib/Verify.js" as Verify
 
 // A compact quote above a reply's own text: the quoted message's sender
 // and one line of its text, with an accent bar like a link preview.
@@ -9,8 +10,8 @@ import "../theme"
 Item {
   id: root
 
-  // reply is the message's replyTo: remoteId, senderName and text (an
-  // excerpt), as the helper sends it.
+  // reply is the message's replyTo: remoteId, senderName, senderVerified
+  // and text (an excerpt), as the helper sends it.
   required property var reply
 
   // opened reports the quoted message's remote id, to scroll to it.
@@ -42,7 +43,10 @@ Item {
     Text {
       Layout.fillWidth: true
       visible: text !== ""
-      text: root.reply.senderName || ""
+      // Marked with a leading "~" when the quoted message's own sender
+      // is unverified, the same as the sender label above a message
+      // bubble (see docs/decisions.md).
+      text: root.reply.senderName ? Verify.markedName(root.reply.senderName, root.reply.senderVerified) : ""
       // The quoted message's sender name and excerpt are both
       // sender-controlled, unescaped: PlainText.
       textFormat: Text.PlainText

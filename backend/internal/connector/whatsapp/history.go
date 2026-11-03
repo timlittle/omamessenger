@@ -118,6 +118,7 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	conv.RemoteID = chatID(ctx, src.dev, src.media, jid)
 
 	conv.Title, conv.TitleVerified, conv.Members = c.resolveConversation(ctx, src, jid, conv, sc)
+	conv.Phone = phoneNumber(ctx, src.dev, jid)
 	c.reportConversation(ctx, sink, conv)
 	c.reportSyncedOrganize(ctx, sink, src.dev, jid, conv.RemoteID)
 

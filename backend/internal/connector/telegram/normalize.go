@@ -98,6 +98,7 @@ func peerConversation(accountID string, peer tg.PeerClass, e entities) (domain.C
 	case *tg.PeerUser:
 		c.Kind = domain.KindDirect
 		c.Title, c.TitleVerified = userName(e.users[p.UserID])
+		c.Phone = sharedPhone(e.users[p.UserID])
 	case *tg.PeerChat:
 		c.Title, c.Members = e.chats[p.ChatID].Title, e.chats[p.ChatID].ParticipantsCount
 	case *tg.PeerChannel:
@@ -309,6 +310,20 @@ func ownName(u *tg.User) (name string, verified bool) {
 	default:
 		return unknownUserName, true
 	}
+}
+
+// sharedPhone is u's own phone number, formatted "+<digits>" to match
+// domain.Conversation.Phone's WhatsApp form, when u has chosen to
+// share one with this account; most Telegram accounts never do, so
+// "" is the common case. Shown beside an unverified direct chat's
+// title the way the official WhatsApp app shows a stranger's number
+// instead of trusting their self-chosen name.
+func sharedPhone(u *tg.User) string {
+	if u == nil || u.Phone == "" {
+		return ""
+	}
+
+	return "+" + u.Phone
 }
 
 // contact turns a user into a contact of the account.

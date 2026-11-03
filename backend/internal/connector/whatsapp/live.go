@@ -157,6 +157,7 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 	title, verified := c.resolveDirectTitle(ctx, syncSource{dev: dev, media: media}, info.Chat, pushName, businessName)
 	c.reportConversation(ctx, sink, domain.Conversation{
 		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title, TitleVerified: verified,
+		Phone: phoneNumber(ctx, dev, info.Chat),
 	})
 }
 

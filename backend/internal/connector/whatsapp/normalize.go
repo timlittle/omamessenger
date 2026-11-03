@@ -249,6 +249,22 @@ func titleFallback(jid types.JID) string {
 	}
 }
 
+// phoneNumber is jid's own phone number, formatted the same way
+// titleFallback's own phone branch above does, for domain.Conversation.Phone:
+// shown beside an unverified direct chat's title, the way the official
+// WhatsApp app shows a stranger's number instead of trusting their
+// self-chosen name. jid is resolved through phoneFormOf first, so a
+// LID whatsmeow has already mapped to a phone JID still gives a real
+// number; "" when no real phone number is known for it at all.
+func phoneNumber(ctx context.Context, dev device, jid types.JID) string {
+	resolved := phoneFormOf(ctx, dev, jid)
+	if resolved.Server != types.DefaultUserServer {
+		return ""
+	}
+
+	return "+" + resolved.User
+}
+
 // isSystemJID reports whether jid names something history sync or a
 // live event can deliver that is not a conversation with anyone at
 // all: the status broadcast, an old-style broadcast list, or a

@@ -1,4 +1,7 @@
-// Checks ConversationView: the empty state with no conversation, loadOlder
+// Checks ConversationView: the empty state with no conversation, that an
+// unverified title - self-chosen, like a bare push name - shows marked
+// with a leading "~" and a direct chat's own phone number beside it,
+// while a verified title shows unmarked with no phone number, loadOlder
 // firing once scrolled to the oldest loaded message, a submitted composer
 // message reaching the send signal with its reply id, replyTarget copied
 // into the composer, a delegate's reply signals relayed outward, j/k and
@@ -76,7 +79,31 @@ ShellRoot {
   // run drives the view through each scenario and checks the outcome.
   function run(): void {
     if (!root.checkEmptyState()) return;
+    if (!root.checkHeaderMarksAnUnverifiedTitle()) return;
     root.startLoadOlderCheck();
+  }
+
+  // checkHeaderMarksAnUnverifiedTitle verifies the header shows an
+  // unverified title - self-chosen, like a bare WhatsApp push name -
+  // marked with a leading "~", with a direct chat's own phone number
+  // added to the subtitle line when the service gave one; a verified
+  // title shows unmarked, with no phone number, even when one is
+  // given (nothing to add once the title is already trusted); see
+  // docs/decisions.md.
+  function checkHeaderMarksAnUnverifiedTitle(): bool {
+    view.subtitle = "";
+    view.conversation = { id: "cu1", accountId: "a1", service: "whatsapp", remoteId: "ru1", kind: "direct", title: "Mum", titleVerified: false, phone: "+15551234567" };
+
+    const title = Check.find(view, "conversationTitle");
+    if (!title || title.text !== "~Mum") return Check.fail("unverified header title = " + (title && title.text) + ", want ~Mum");
+    const subtitle = Check.find(view, "conversationSubtitle");
+    if (!subtitle || subtitle.text !== "+15551234567") return Check.fail("unverified header subtitle = " + (subtitle && subtitle.text) + ", want the phone number");
+
+    view.conversation = { id: "cu2", accountId: "a1", service: "whatsapp", remoteId: "ru2", kind: "direct", title: "Priya", titleVerified: true, phone: "+15559876543" };
+    if (title.text !== "Priya") return Check.fail("verified header title = " + title.text + ", want unmarked Priya");
+    if (subtitle.text !== "") return Check.fail("verified header subtitle = \"" + subtitle.text + "\", want empty: nothing to add once trusted");
+
+    return true;
   }
 
   // checkEmptyState verifies the placeholder shows when no chat is open.
@@ -93,7 +120,7 @@ ShellRoot {
     const now = Date.now();
     const messages = root.buildMessages(30);
 
-    view.conversation = { id: "c1", accountId: "a1", service: "whatsapp", remoteId: "r1", kind: "direct", title: "Alex", members: 0, preview: "", muted: false, unread: 0, lastActivity: now };
+    view.conversation = { id: "c1", accountId: "a1", service: "whatsapp", remoteId: "r1", kind: "direct", title: "Alex", titleVerified: true, members: 0, preview: "", muted: false, unread: 0, lastActivity: now };
     view.messages = messages;
     view.annotations = Timeline.annotate(messages, false, now);
 

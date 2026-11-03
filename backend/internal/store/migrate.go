@@ -266,6 +266,12 @@ var migrations = []migrationStep{
 	// own here.
 	{sql: `ALTER TABLE messages ADD COLUMN sender_verified INTEGER NOT NULL DEFAULT 1;
 		ALTER TABLE conversations ADD COLUMN title_verified INTEGER NOT NULL DEFAULT 1;`},
+	// A direct chat's other person's own phone number, formatted
+	// "+<digits>", when the service gives one - never a group's or the
+	// self-chat's, which have none; shown beside an unverified title
+	// the way the official WhatsApp app shows a stranger's number
+	// instead of trusting their self-chosen name.
+	{sql: `ALTER TABLE conversations ADD COLUMN phone TEXT NOT NULL DEFAULT '';`},
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

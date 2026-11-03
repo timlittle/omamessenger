@@ -19,10 +19,10 @@ func TestMigrate_DefaultsSenderAndTitleVerifiedToTrueForExistingRows(t *testing.
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "verified-default.db"))
-	// Stop one short of the full set: the verified columns are the
-	// very last migration, appended after the reply sender id
-	// backfill.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-1]); err != nil {
+	// Stop two short of the full set: the verified columns are
+	// second-from-last, appended after the reply sender id backfill
+	// and before the conversation phone column.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-2]); err != nil {
 		t.Fatal(err)
 	}
 

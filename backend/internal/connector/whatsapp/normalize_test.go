@@ -391,6 +391,42 @@ func TestTitleFallback_PhoneNumberOrNeutralLabel(t *testing.T) {
 	}
 }
 
+// TestPhoneNumber_FormatsAKnownNumberOrReportsNone confirms
+// domain.Conversation.Phone's own source: a direct phone JID formats
+// straight away, a LID whatsmeow has already mapped to one formats
+// through that mapping, and a LID with no mapping yet, or a group,
+// gives "" - there is no real phone number to show.
+func TestPhoneNumber_FormatsAKnownNumberOrReportsNone(t *testing.T) {
+	t.Parallel()
+
+	phone := types.NewJID("15551234567", types.DefaultUserServer)
+	mappedLID := types.NewJID("987654", types.HiddenUserServer)
+	unmappedLID := types.NewJID("111222", types.HiddenUserServer)
+	dev := newFakeDevice()
+	dev.lidPhones = map[string]types.JID{mappedLID.String(): phone}
+
+	tests := []struct {
+		name string
+		jid  types.JID
+		want string
+	}{
+		{"phone JID", phone, "+15551234567"},
+		{"mapped LID", mappedLID, "+15551234567"},
+		{"unmapped LID", unmappedLID, ""},
+		{"group", types.NewJID("1-2", types.GroupServer), ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := phoneNumber(t.Context(), dev, tt.jid); got != tt.want {
+				t.Errorf("phoneNumber(%s) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsSystemJID_RecognisesNonConversationJIDs(t *testing.T) {
 	t.Parallel()
 

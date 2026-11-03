@@ -4,6 +4,7 @@ import qs.Commons
 import qs.Ui as Ui
 import "../theme"
 import "../lib/Format.js" as Format
+import "../lib/Verify.js" as Verify
 
 // One row in the conversation list: avatar, title, time, a preview line or
 // a highlighted search match, the owning account when more than one
@@ -64,6 +65,11 @@ Item {
   signal clicked()
 
   readonly property var _conv: root.conversation ?? {}
+  // _title is _conv's own title, marked with a leading "~" when the
+  // helper reports it as unverified - self-chosen, like a bare push
+  // name - so it never looks like a saved contact's own name (see
+  // docs/decisions.md). "" stays "": there is nothing to mark.
+  readonly property string _title: root._conv.title ? Verify.markedName(root._conv.title, root._conv.titleVerified) : ""
   readonly property bool _unread: (root._conv.unread ?? 0) > 0
   readonly property bool _muted: root._conv.muted ?? false
   readonly property bool _pinned: root._conv.pinned ?? false
@@ -157,7 +163,7 @@ Item {
         Text {
           objectName: "titleText"
           Layout.fillWidth: true
-          text: root._conv.title ?? ""
+          text: root._title
           // A contact or group title is sender-controlled, never escaped
           // before it reaches here, so PlainText keeps it from ever being
           // auto-detected as rich text (see Composer's replyBannerText).

@@ -131,6 +131,7 @@ func (c *Connector) retitleDirectChat(ctx context.Context, upd nameUpdate, jid t
 
 	c.reportConversation(ctx, upd.sink, domain.Conversation{
 		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: afterName, TitleVerified: verified,
+		Phone: phoneNumber(ctx, upd.dev, jid),
 	})
 }
 

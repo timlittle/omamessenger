@@ -143,6 +143,17 @@ type Conversation struct {
 	// unverified on this release alone.
 	TitleVerified bool `json:"titleVerified,omitempty"`
 
+	// Phone is a direct chat's other person's own phone number,
+	// formatted as "+<digits>", when the service gives one - WhatsApp
+	// always does for a chat addressed by a real phone number rather
+	// than a hidden id; Telegram only when that person has chosen to
+	// share theirs. "" for a group, the self-chat, or a direct chat the
+	// service names only by a hidden id or access hash. The UI shows
+	// this beside Title when TitleVerified is false, the way the
+	// official WhatsApp app shows a stranger's own number instead of
+	// trusting their self-chosen name (see docs/decisions.md).
+	Phone string `json:"phone,omitempty"`
+
 	// Blocked is true once the account's contact behind a direct
 	// conversation has been blocked (see app.Commands.BlockContact and
 	// ReportSpam). It is always false for a group: only a direct

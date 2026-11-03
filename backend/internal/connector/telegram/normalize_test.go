@@ -234,6 +234,34 @@ func TestUserName_MarksAVerifiedNameUnlikeASelfChosenOne(t *testing.T) {
 	}
 }
 
+// TestSharedPhone_FormatsAShareOrReportsNone confirms
+// domain.Conversation.Phone's own Telegram source: formatted when the
+// person has chosen to share their phone number, "" - the common
+// case - when they have not, or there is no user at all.
+func TestSharedPhone_FormatsAShareOrReportsNone(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		u    *tg.User
+		want string
+	}{
+		{"shared", &tg.User{Phone: "15551234567"}, "+15551234567"},
+		{"not shared", &tg.User{FirstName: "Priya"}, ""},
+		{"no user", nil, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := sharedPhone(tt.u); got != tt.want {
+				t.Errorf("sharedPhone(%s) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestOwnName_IsThePersonNotTheirSavedMessages(t *testing.T) {
 	t.Parallel()
 
