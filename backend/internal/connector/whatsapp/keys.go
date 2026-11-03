@@ -19,6 +19,8 @@ import (
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+
+	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // messageKeySchema creates the table ensureMessageKeysTable installs, if
@@ -118,6 +120,14 @@ func (m *mediaStore) putMessageKey(ctx context.Context, conversationRemoteID, me
 		ON CONFLICT (conversation_id, message_id) DO UPDATE SET
 			sender_id = excluded.sender_id, from_me = excluded.from_me, timestamp = excluded.timestamp
 		WHERE message_keys.sender_id = excluded.sender_id AND message_keys.from_me = excluded.from_me`
+
+	// senderKeyID reads a JID straight off the wire, with no length
+	// limit of its own; dropping an oversized one to "" rather than
+	// truncating it is the same treatment domain.CapRemoteID gives a
+	// reply quote's own RemoteID elsewhere, for the same reason: a cut
+	// id could read as a different, real, shorter sender it was never
+	// actually sent by.
+	key.senderID = domain.CapRemoteID(key.senderID)
 
 	res, err := m.db.ExecContext(ctx, q, conversationRemoteID, messageRemoteID, key.senderID, key.fromMe, key.timestamp)
 	if err != nil {

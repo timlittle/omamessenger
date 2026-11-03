@@ -38,11 +38,6 @@ type Profile struct {
 	// any parsing: a cheap rejection for anything absurdly large to be
 	// a preview or sticker in the first place.
 	MaxInputLen int64
-	// MaxTotalPixels caps the canvas's pixel count multiplied by its
-	// frame count: Qt decodes the whole canvas for every frame of an
-	// animation, so this is the decoding work one loop costs, which a
-	// small, highly compressed file could otherwise make enormous.
-	MaxTotalPixels int64
 	// MaxAspectRatio caps how much longer one side may be than the
 	// other - the longer side divided by the shorter - so a very thin,
 	// very long image cannot pass MaxSide and MaxPixels on its own
@@ -89,11 +84,22 @@ const maxRealisticAspectRatio = 16
 // sticker: both are always drawn small (see ui/components/PhotoView.qml
 // and StickerView.qml), so a declared size above a phone screen's own
 // pixel count already means the sender is lying, not sending a real
-// preview.
+// preview. DownscaleTo is 512, the size WhatsApp and Telegram both
+// actually use for a static sticker - the largest this profile's own
+// content legitimately is, so a real sticker is never shrunk, only an
+// oversized claim once it has already passed every cap above: a
+// security review found a highly compressible image, well under
+// domain.MaxInlineThumbLen on input, could still make imagesafe's own
+// re-encode - always a fresh JPEG for an opaque image, whatever the
+// source compressed to - pay the full cost of up to MaxSide on a
+// side, never needed for anything this profile is ever drawn at (see
+// docs/decisions.md). store.sanitizedThumb's own cap on the re-encoded
+// result is still what actually guarantees the bound: a hostile
+// enough pattern can still reencode past it even at 512x512.
 var Thumbnail = Profile{
 	MaxSide: 1024, MaxPixels: 1024 * 1024, MaxInputLen: 2 << 20,
-	MaxTotalPixels: 64_000_000, MaxAspectRatio: maxRealisticAspectRatio,
-	MaxDecodeBytes: 64 << 20,
+	MaxAspectRatio: maxRealisticAspectRatio,
+	MaxDecodeBytes: 64 << 20, DownscaleTo: 512,
 }
 
 // FullImage bounds a downloaded photo: one this account received,
@@ -113,14 +119,13 @@ var Thumbnail = Profile{
 // reach many gigabytes with no cap on how many decode in parallel at
 // all (see app.decodeSlots, which now serialises every one of them,
 // and docs/decisions.md for the measurements this cap and
-// MaxDecodeBytes are both calibrated against). Its total allows a
-// single frame of that size and no more. An outgoing attachment or
-// clipboard paste - the user's own deliberate choice, not an
+// MaxDecodeBytes are both calibrated against). An outgoing attachment
+// or clipboard paste - the user's own deliberate choice, not an
 // attacker's, and shrunk to fit a real service's own limit rather
 // than refused outright - uses Outgoing instead.
 var FullImage = Profile{
 	MaxSide: 4096, MaxPixels: 4096 * 4096, MaxInputLen: 32 << 20,
-	MaxTotalPixels: 40_000_000, MaxAspectRatio: maxRealisticAspectRatio,
+	MaxAspectRatio: maxRealisticAspectRatio,
 	MaxDecodeBytes: 768 << 20,
 }
 

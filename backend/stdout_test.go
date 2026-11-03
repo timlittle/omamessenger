@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 
 	"go.mau.fi/libsignal/logger"
@@ -81,6 +82,46 @@ func TestClaimProtocolStdout_RedirectsStrayWritesAwayFromTheOriginal(t *testing.
 func TestClaimProtocolStdout_ReportsAnInvalidDescriptor(t *testing.T) {
 	if _, err := claimProtocolStdout(-1, os.Stderr); err == nil {
 		t.Error("claimProtocolStdout(-1, ...) succeeded, want an error")
+	}
+}
+
+// TestClaimProtocolStdout_DuplicatedDescriptorIsCloseOnExec confirms
+// the descriptor claimProtocolStdout duplicates for the protocol
+// writer's own exclusive use is marked close-on-exec: a security
+// review found syscall.Dup's own result carries no such flag, unlike
+// every descriptor the os package itself opens, so without this a
+// child this helper starts later - wl-copy, wl-paste, or bwrap for the
+// sandbox - would inherit a second, writable copy of the protocol
+// stream.
+func TestClaimProtocolStdout_DuplicatedDescriptorIsCloseOnExec(t *testing.T) {
+	protocolRead, protocolWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() (protocol side) = %v", err)
+	}
+	t.Cleanup(func() { _ = protocolRead.Close() })
+
+	_, redirectWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe() (redirect side) = %v", err)
+	}
+
+	originalStdout := os.Stdout
+	t.Cleanup(func() { os.Stdout = originalStdout })
+
+	protocol, err := claimProtocolStdout(int(protocolWrite.Fd()), redirectWrite)
+	if err != nil {
+		t.Fatalf("claimProtocolStdout() error = %v, want nil", err)
+	}
+	t.Cleanup(func() { _ = protocol.Close() })
+	t.Cleanup(func() { _ = protocolWrite.Close() })
+	t.Cleanup(func() { _ = redirectWrite.Close() })
+
+	flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, protocol.Fd(), uintptr(syscall.F_GETFD), 0)
+	if errno != 0 {
+		t.Fatalf("fcntl(F_GETFD) = %v", errno)
+	}
+	if flags&syscall.FD_CLOEXEC == 0 {
+		t.Error("the duplicated protocol descriptor is not close-on-exec, so a child process would inherit a writable copy of it")
 	}
 }
 

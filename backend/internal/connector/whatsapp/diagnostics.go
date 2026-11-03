@@ -80,9 +80,29 @@ func logContentlessDrop(chat types.JID, content *waE2E.Message) {
 
 // logUndecryptable reports a message whatsmeow received but could not
 // decrypt (see live.go's handleUndecryptable), so a report of "messages
-// missing" can be checked against how often this happens.
+// missing" can be checked against how often this happens. mode is
+// logged by its safe category (see decryptFailCategory), never
+// verbatim: whatsmeow reads it straight off the stanza's own
+// "decrypt-fail" attribute, with no length limit or validation of its
+// own, so the attribute's sender could otherwise make this line carry
+// an arbitrarily long string.
 func logUndecryptable(unavailable bool, mode events.DecryptFailMode) {
-	log.Printf("whatsapp: undecryptable message (unavailable=%v, mode=%s)", unavailable, mode)
+	log.Printf("whatsapp: undecryptable message (unavailable=%v, mode=%s)", unavailable, decryptFailCategory(mode))
+}
+
+// decryptFailCategory is logUndecryptable's own safe category for
+// mode: "show" or "hide" for whatsmeow's own events.DecryptFailShow and
+// DecryptFailHide, the only two values it ever means to set itself, or
+// "other" for anything else that attribute's own sender wrote.
+func decryptFailCategory(mode events.DecryptFailMode) string {
+	switch mode {
+	case events.DecryptFailShow:
+		return "show"
+	case events.DecryptFailHide:
+		return "hide"
+	default:
+		return "other"
+	}
 }
 
 // logUnknownKind reports a message content kind this connector does
