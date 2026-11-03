@@ -39,9 +39,27 @@ var MAX_RICH_TEXT_INPUT_LENGTH = 65536;
 var MAX_FORMATTING_SPANS = 256;
 var MAX_MENTIONS = 64;
 
-// URL_PATTERN matches http(s) links in escaped text. Entities such as &amp;
-// may appear inside a link; any other '&' ends it.
-var URL_PATTERN = /https?:\/\/[^\s<"&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\s<"&]*)*/g;
+// URL_PATTERN matches http(s) links in escaped text. Entities such as
+// &amp; may appear inside a link; any other '&' ends it, as do '<', a
+// double quote, and every character this spells out in place of JS's
+// own \s - real, visible or line-breaking whitespace, listed out
+// rather than written as \s because \s also matches the byte-order
+// mark (U+FEFF), which, unlike the rest, renders as nothing at all. A
+// security review found that let a URL carrying one autolink as only
+// the short prefix before it: "https://paypal-login.ru", the mark,
+// then ".paypal.com/login" read, on screen, as one unbroken
+// paypal.com-looking run, with only the short, honest-looking prefix
+// actually linked - and, since a plain autolink's own displayText is
+// always its own url, opening with no confirmation at all. Every
+// other invisible Unicode "format" character HIDDEN_OR_UNUSUAL_CHAR
+// lists (zero-width spaces and marks, bidi overrides and isolates,
+// word joiner) was never matched by \s to begin with, so leaving only
+// the byte-order mark out of this pattern's own terminator class is
+// enough to sweep all of them into the match instead of ending it
+// there: the combined url then fails spanURL's own hidden-character
+// rule and is refused outright, rather than silently linking the
+// shorter, innocent-looking run before it (see docs/decisions.md).
+var URL_PATTERN =/https?:\/\/[^\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2028\u2029\u202f\u205f\u3000\u2000-\u200a<\x22&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2028\u2029\u202f\u205f\u3000\u2000-\u200a<\x22&]*)*/g;
 
 // LINK_HREF_SCHEME marks an anchor href this file wrote itself, naming
 // that anchor's own position in the ordered list messageLinkAnchors
@@ -82,6 +100,31 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ENTITY_PATTERN matches exactly the entities escapeHtml can produce
+// (&amp; &lt; &gt; &quot;) plus a decimal or hexadecimal numeric
+// character reference, the same set URL_PATTERN's own trailing
+// alternation tolerates inside an already-matched URL.
+var ENTITY_PATTERN = /&(amp|lt|gt|quot|#\d+|#x[0-9a-fA-F]+);/g;
+
+// unescapeHtml reverses escapeHtml, decoding each entity back to the
+// raw character or code point it came from: linkify's own way to
+// recover a matched URL's real characters from the escaped text
+// URL_PATTERN actually matched (see linkify and docs/decisions.md),
+// so the url this file records and later opens is never the HTML-
+// escaped form a sender's own '&' would otherwise turn into '&amp;'.
+function unescapeHtml(text) {
+  return text.replace(ENTITY_PATTERN, (whole, body) => {
+    if (body === 'amp') return '&';
+    if (body === 'lt') return '<';
+    if (body === 'gt') return '>';
+    if (body === 'quot') return '"';
+
+    const isHex = body[1] === 'x' || body[1] === 'X';
+    const codePoint = parseInt(isHex ? body.slice(2) : body.slice(1), isHex ? 16 : 10);
+    return String.fromCodePoint(codePoint);
+  });
+}
+
 // TRAILING_LINK_PUNCTUATION is the set of characters linkify drops
 // off a matched URL's own end.
 var TRAILING_LINK_PUNCTUATION = '.,;:!?)';
@@ -109,14 +152,23 @@ function splitTrailingPunctuation(match) {
 // text is always the URL itself. Each anchor's href names its own
 // position in anchors (see linkHref) rather than carrying the URL
 // directly, the same private scheme every anchor this file writes
-// uses. Punctuation that ends a sentence stays outside the link.
+// uses. Punctuation that ends a sentence stays outside the link. The
+// visible text between the anchor's own tags stays in escaped's own
+// escaped form, so it renders correctly on screen, but anchors itself
+// gets the raw, unescaped url (see unescapeHtml): a security review
+// found this recording the escaped form instead - a sender's own '&'
+// came back as literally '&amp;' - made the url this file's own
+// callers later open functionally different from the one the sender
+// actually sent, and made it never match a link preview's own raw URL
+// either (see previewDisplayText and docs/decisions.md).
 function linkify(escaped, color, anchors = []) {
   const style = color ? ` style="color:${color}"` : '';
   return escaped.replace(URL_PATTERN, (match) => {
-    const [url, trailing] = splitTrailingPunctuation(match);
+    const [displayURL, trailing] = splitTrailingPunctuation(match);
+    const url = unescapeHtml(displayURL);
     const href = linkHref(anchors.length);
     anchors.push({ url, displayText: url });
-    return `<a href="${href}"${style}>${url}</a>${trailing}`;
+    return `<a href="${href}"${style}>${displayURL}</a>${trailing}`;
   });
 }
 
@@ -196,12 +248,53 @@ function renderMessage(text, linkColor, tableBorderColor, mentions, spans) {
 // link.
 var LINK_SCHEMES = ['http:', 'https:', 'mailto:', 'tg:'];
 
+// HIDDEN_OR_UNUSUAL_CHAR matches a backslash, real whitespace, an
+// ASCII control character, or one of the Unicode "format" characters
+// (category Cf) a spoofed link has used to hide or split its own
+// destination: zero-width spaces and marks (U+200B-U+200F), bidi
+// embeddings and overrides (U+202A-U+202E), word joiner and invisible
+// operators (U+2060-U+2064), bidi isolates (U+2066-U+2069), and the
+// byte-order mark (U+FEFF). None of these ever belongs in a real link;
+// spanURL refuses a URL carrying any of them outright, the same rule
+// the helper's own domain.AllowedLinkURL enforces (see
+// docs/decisions.md). A backslash matters on its own because a
+// browser's own WHATWG URL parser ends an http(s) authority at one
+// the same as it does a forward slash, while urlHost's own authority
+// split (Links.js) does not.
+var HIDDEN_OR_UNUSUAL_CHAR = /[\\\s\x00-\x1f\x7f\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
+
+// hasHTTPAuthority reports whether value - already known to start with
+// "http:" or "https:" - spells out "://" followed by a real, non-empty
+// authority: the one shape an allowed http(s) URL must take. A
+// browser's own URL parser still resolves a host for
+// "https:evil.example", "https:\\evil.example" or
+// "https:/\evil.example" - each missing a real "//" authority of its
+// own, or carrying a backslash standing in for part of it - so this is
+// refused here rather than relying only on HIDDEN_OR_UNUSUAL_CHAR's
+// backslash check.
+function hasHTTPAuthority(value) {
+  const rest = value.replace(/^https?:/i, '');
+  if (!rest.startsWith('//')) return false;
+
+  const first = rest.charAt(2);
+  return first !== '' && first !== '/' && first !== '?' && first !== '#';
+}
+
 // spanURL returns url unchanged when its scheme is one LINK_SCHEMES
-// allows, or '' to drop anything else, including text with no scheme at
-// all.
+// allows, it carries none of HIDDEN_OR_UNUSUAL_CHAR's own characters,
+// and, for http(s), has a real "scheme://authority" shape (see
+// hasHTTPAuthority) - or '' to drop anything else, including text
+// with no scheme at all. mailto: and tg: carry no authority of their
+// own, so neither is held to that last rule.
 function spanURL(url) {
-  const match = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.exec(url || '');
-  return match && LINK_SCHEMES.includes(match[0].toLowerCase()) ? url : '';
+  const value = url || '';
+  const match = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.exec(value);
+  if (!match || !LINK_SCHEMES.includes(match[0].toLowerCase())) return '';
+  if (HIDDEN_OR_UNUSUAL_CHAR.test(value)) return '';
+
+  const scheme = match[0].toLowerCase();
+  const isHTTP = scheme === 'http:' || scheme === 'https:';
+  return isHTTP && !hasHTTPAuthority(value) ? '' : value;
 }
 
 // STYLE_TAGS pairs a span kind with the tag styledSegment wraps it in,

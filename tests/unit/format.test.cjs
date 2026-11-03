@@ -42,11 +42,20 @@ for (const [name, input, want] of escapeHtmlCases) {
 // writes is always a private "oma-link:<index>" (see
 // Format.linkHref), never the URL itself (see "resolveClickedLink
 // tells apart two spans..." in links.test.cjs for why), so each case
-// also checks the real URL came out the other side, in anchors.
+// also checks the real URL came out the other side, in anchors - its
+// raw form, with every entity decoded back to the character it came
+// from, never the HTML-escaped text URL_PATTERN actually matched (see
+// the entity case below and docs/decisions.md).
 const linkifyCases = [
   ['turns http URLs into links', 'Visit http://example.com for more', /<a href="oma-link:0">http:\/\/example\.com<\/a>/, 'http://example.com'],
   ['turns https URLs into links', 'Visit https://example.com for more', /<a href="oma-link:0">https:\/\/example\.com<\/a>/, 'https://example.com'],
-  ['handles URL with &amp; entity inside', 'https://example.com?a=1&amp;b=2', /<a href="oma-link:0">https:\/\/example\.com\?a=1&amp;b=2<\/a>/, 'https://example.com?a=1&amp;b=2'],
+  // The HTML stays escaped (so it renders correctly as a literal '&'
+  // on screen), but the recorded url is decoded back to raw: opening
+  // 'https://example.com?a=1&amp;b=2' verbatim would reach a
+  // different query string than the sender's own link ever carried,
+  // and it could never match a WhatsApp link preview's own raw URL
+  // either (see docs/decisions.md).
+  ['handles URL with &amp; entity inside', 'https://example.com?a=1&amp;b=2', /<a href="oma-link:0">https:\/\/example\.com\?a=1&amp;b=2<\/a>/, 'https://example.com?a=1&b=2'],
   ['strips trailing period from URL', 'see https://example.com/tickets.', /<a href="oma-link:0">https:\/\/example\.com\/tickets<\/a>\./, 'https://example.com/tickets'],
   ['strips trailing comma from URL', 'visit https://example.com,', /<a href="oma-link:0">https:\/\/example\.com<\/a>,/, 'https://example.com'],
   ['strips trailing parenthesis from URL', 'check (https://example.com)', /check \(<a href="oma-link:0">https:\/\/example\.com<\/a>\)/, 'https://example.com']
@@ -59,6 +68,34 @@ for (const [name, input, want, url] of linkifyCases) {
     assert.deepStrictEqual(anchorsPlain(anchors), [{ url, displayText: url }]);
   });
 }
+
+// unescapeHtml is escapeHtml's own inverse, which linkify uses to
+// recover a matched URL's raw characters from the escaped text
+// URL_PATTERN actually matched (see linkifyCases above).
+const unescapeHtmlCases = [
+  ['decodes an ampersand entity', 'a&amp;b', 'a&b'],
+  ['decodes a less-than entity', 'a&lt;b', 'a<b'],
+  ['decodes a greater-than entity', 'a&gt;b', 'a>b'],
+  ['decodes a double-quote entity', 'a&quot;b', 'a"b'],
+  ['decodes a decimal numeric entity', 'a&#38;b', 'a&b'],
+  ['decodes a hexadecimal numeric entity', 'a&#x26;b', 'a&b'],
+  ['leaves plain text with no entity untouched', 'plain text', 'plain text'],
+  ['leaves an ampersand with no matching entity after it untouched', 'a & b', 'a & b'],
+  ['decodes more than one entity in the same text', 'a&amp;b&lt;c', 'a&b<c']
+];
+
+for (const [name, input, want] of unescapeHtmlCases) {
+  test(`unescapeHtml ${name}`, () => {
+    assert.equal(Format.unescapeHtml(input), want);
+  });
+}
+
+test('linkify records a raw url with every kind of entity URL_PATTERN tolerates, decimal and hexadecimal included', () => {
+  const anchors = [];
+  const result = Format.linkify('https://example.com/a&#38;b&#x26;c', null, anchors);
+  assert.strictEqual(result, '<a href="oma-link:0">https://example.com/a&#38;b&#x26;c</a>');
+  assert.deepStrictEqual(anchorsPlain(anchors), [{ url: 'https://example.com/a&b&c', displayText: 'https://example.com/a&b&c' }]);
+});
 
 test('linkHref and linkIndexFromHref round-trip an anchor\'s own position', () => {
   assert.strictEqual(Format.linkHref(0), 'oma-link:0');
@@ -118,6 +155,49 @@ test('linkify splits a long run of trailing punctuation in linear time, not quad
   assert.deepStrictEqual(anchorsPlain(anchors), [{ url: adversarial, displayText: adversarial }]);
   assert.strictEqual(result, `<a href="oma-link:0">${adversarial}</a>`);
   assert.ok(elapsedMs < 2000, `linkify took ${elapsedMs}ms on an adversarial trailing-punctuation run, want well under 2000ms`);
+});
+
+// A security review found URL_PATTERN stopping a match at an invisible
+// Unicode "format" character (it only ever stopped at the byte-order
+// mark, since that is the one such character JS's own \s matches):
+// "https://paypal-login.ru" + U+FEFF + ".paypal.com/login" read as one
+// paypal.com-looking run on screen, but only the short prefix before
+// the hidden character was actually linked, with displayText equal to
+// that same short url - so it opened with no confirmation at all,
+// since a plain autolink's own text always equals its own href. The
+// fix sweeps the hidden character into the match instead, so the
+// combined string anchors as one url that then fails spanURL's own
+// hidden-character rule (tests/unit/format.test.cjs's spanURL cases)
+// and is refused, rather than silently autolinking only the innocent-
+// looking prefix.
+const invisibleCharCases = [
+  ['the byte-order mark, the review\'s own paypal.com example', 'https://paypal-login.ru' + String.fromCharCode(65279) + '.paypal.com/login'],
+  ['a zero-width space', 'https://paypal-login.ru' + String.fromCharCode(8203) + '.paypal.com/login'],
+  ['a right-to-left mark', 'https://paypal-login.ru' + String.fromCharCode(8207) + '.paypal.com/login'],
+  ['a left-to-right override', 'https://paypal-login.ru' + String.fromCharCode(8238) + '.paypal.com/login'],
+  ['a left-to-right isolate', 'https://paypal-login.ru' + String.fromCharCode(8294) + '.paypal.com/login'],
+  ['a word joiner', 'https://paypal-login.ru' + String.fromCharCode(8288) + '.paypal.com/login']
+];
+
+for (const [name, text] of invisibleCharCases) {
+  test(`linkify sweeps ${name} into the match rather than ending the url there`, () => {
+    const anchors = [];
+    const result = Format.linkify(text, null, anchors);
+
+    assert.strictEqual(result, `<a href="oma-link:0">${text}</a>`);
+    assert.deepStrictEqual(anchorsPlain(anchors), [{ url: text, displayText: text }]);
+    // Once matched whole, the combined url carries a hidden character
+    // and fails the strict rule outright, rather than opening as the
+    // short, innocent-looking prefix a split match would have anchored.
+    assert.equal(Format.spanURL(text), '');
+  });
+}
+
+test('linkify still stops a url at real, visible whitespace, not just anything after the hidden-character fix', () => {
+  const anchors = [];
+  const result = Format.linkify('see https://example.com and more', null, anchors);
+  assert.deepStrictEqual(anchorsPlain(anchors), [{ url: 'https://example.com', displayText: 'https://example.com' }]);
+  assert.strictEqual(result, 'see <a href="oma-link:0">https://example.com</a> and more');
 });
 
 const highlightUnchangedCases = [
@@ -379,6 +459,65 @@ for (const url of allowedSchemeCases) {
     assert.deepStrictEqual(anchorsPlain(Format.messageLinkAnchors('go', [], spans)), [{ url, displayText: 'go' }]);
   });
 }
+
+// spanURL is the one allow-list ui/lib/Links.js's isAllowed reuses (see
+// its own header comment), mirroring the exact rule
+// domain.AllowedLinkURL enforces in the helper: a security review
+// found a browser's own WHATWG URL parser ends an http(s) authority at
+// a backslash the same as a forward slash, so a scheme-only check let
+// "https://evil.example\@paypal.com/login" through while Links.urlHost
+// (ending an authority only at "/", "?" or "#") read its host as
+// paypal.com rather than evil.example.
+
+test('spanURL refuses a backslash anywhere in the URL', () => {
+  assert.equal(Format.spanURL('https://evil.example\\@paypal.com/login'), '');
+  assert.equal(Format.spanURL('https:\\\\evil.example'), '');
+  assert.equal(Format.spanURL('https:/\\evil.example'), '');
+});
+
+test('spanURL refuses an http(s) URL with no real "//" authority, which a browser still resolves a host for', () => {
+  assert.equal(Format.spanURL('https:evil.example'), '');
+  assert.equal(Format.spanURL('http:evil.example'), '');
+  assert.equal(Format.spanURL('https:///evil.example'), '');
+  assert.equal(Format.spanURL('https://'), '');
+});
+
+test('spanURL allows ordinary http(s) authorities, so the new shape rule catches nothing legitimate', () => {
+  assert.equal(Format.spanURL('https://example.com/path'), 'https://example.com/path');
+  assert.equal(Format.spanURL('https://example.com:8443/path'), 'https://example.com:8443/path');
+  assert.equal(Format.spanURL('https://user:pass@example.com/path'), 'https://user:pass@example.com/path');
+  assert.equal(Format.spanURL('https://[2001:db8::1]/path'), 'https://[2001:db8::1]/path');
+});
+
+// Each hidden-character case below is built with String.fromCharCode
+// rather than a literal escape, so the adversarial character is
+// unmistakably a deliberate code point in this test's own source, not
+// an accidental one.
+const hiddenCharCases = [
+  ['a space', 'https://evil.example/ login'],
+  ['a tab', 'https://evil.example/\tlogin'],
+  ['a zero-width space', 'https://evil.example/' + String.fromCharCode(8203) + 'login'],
+  ['a right-to-left mark', 'https://evil.example/' + String.fromCharCode(8207) + 'login'],
+  ['a left-to-right override', 'https://evil' + String.fromCharCode(8238) + 'example.com/login'],
+  ['a left-to-right isolate', 'https://evil' + String.fromCharCode(8294) + 'example.com/login'],
+  ['a word joiner', 'https://evil' + String.fromCharCode(8288) + 'example.com/login'],
+  // The review's own example: the invisible byte-order mark glues a
+  // short, unrelated link to a trailing ".paypal.com/login" that was
+  // never really part of it.
+  ['a byte-order mark', 'https://paypal-login.ru' + String.fromCharCode(65279) + '.paypal.com/login']
+];
+
+for (const [name, url] of hiddenCharCases) {
+  test(`spanURL refuses a URL containing ${name}`, () => {
+    assert.equal(Format.spanURL(url), '');
+  });
+}
+
+test('spanURL keeps mailto: and tg: rules unchanged, needing no "//" authority of their own', () => {
+  assert.equal(Format.spanURL('mailto:a@example.com'), 'mailto:a@example.com');
+  assert.equal(Format.spanURL('mailto:a@example.com?body=hello'), 'mailto:a@example.com?body=hello');
+  assert.equal(Format.spanURL('tg://resolve?domain=x'), 'tg://resolve?domain=x');
+});
 
 const simpleSpanCases = [
   ['bold', '<b>text</b>'],

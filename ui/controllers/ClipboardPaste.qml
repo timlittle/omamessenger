@@ -28,8 +28,18 @@ QtObject {
   // all), either of which does nothing here, the same as a field
   // destroyed - its Loader closing as its overlay closes, say - before
   // the reply arrives: there is nothing left to paste into either way.
+  // A security review found field.insert() does not check readOnly at
+  // all, and, given a RichText field, inserts HTML rather than plain
+  // text - MessageBubbleContent's own read-only message body is
+  // exactly that shape, reachable because it sets selectByMouse so a
+  // click can give it real focus - so a clipboard offer carrying
+  // "<img src=...>" would make this fetch and decode whatever it
+  // points at. Both are refused outright, before clipboard.readText
+  // is even asked for, never merely left unapplied afterward.
   function pasteInto(field: var): void {
     if (!root.service || !field || typeof field.insert !== "function") return;
+    if (field.readOnly === true) return;
+    if (field.textFormat !== undefined && field.textFormat !== TextEdit.PlainText) return;
 
     root.service.request("clipboard.readText", {}, function(error, result) {
       if (error) return;
