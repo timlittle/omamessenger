@@ -22,13 +22,21 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 		Output: "/host/out/out.mp4",
 	}
 
-	name, args := buildArgv(spec, "/usr/bin/bwrap", "/usr/bin/prlimit", "/usr/bin/env")
+	name, args := buildArgv(spec, toolPaths{
+		nice: "/usr/bin/nice", ionice: "/usr/bin/ionice", env: "/usr/bin/env", prlimit: "/usr/bin/prlimit", bwrap: "/usr/bin/bwrap",
+	})
 
-	if name != "/usr/bin/env" {
-		t.Fatalf("name = %q, want /usr/bin/env", name)
+	if name != "/usr/bin/nice" {
+		t.Fatalf("name = %q, want /usr/bin/nice", name)
 	}
 
 	want := []string{
+		"-n", "19",
+		"--",
+		"/usr/bin/ionice",
+		"-c", "3",
+		"--",
+		"/usr/bin/env",
 		"--ignore-signal=XFSZ,XCPU",
 		"--",
 		"/usr/bin/prlimit",

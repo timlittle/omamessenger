@@ -105,6 +105,21 @@ func TestRemuxMP4_SampleRefusals(t *testing.T) {
 			video.Mdia.Minf.Stbl.Stsz.SampleSize[0] = 1 << 20
 			return writeTestMP4File(t, dir, "in.mp4", []*mp4.TrakBox{video}, [][][]byte{defaultVideoSamples()})
 		}},
+		"rebuilt output would exceed its total size cap": {
+			// Each of the three default samples is 8 bytes once
+			// rebuilt (a 4-byte length prefix plus its own 4-byte
+			// NAL unit); a cap of 10 lets the first sample through
+			// but must refuse once the second one would push the
+			// running total to 16 - proving the cap sums video's
+			// own samples as they are copied, not just checking a
+			// single one of them against it, which nothing else
+			// here already does.
+			build: func(t *testing.T, dir string) string {
+				video := buildVideoTrakForTest(t, mainSPSHex, mainPPSHex, defaultVideoSamples())
+				return writeTestMP4File(t, dir, "in.mp4", []*mp4.TrakBox{video}, [][][]byte{defaultVideoSamples()})
+			},
+			caps: func() *remuxCaps { c := defaultCaps(); c.maxOutputBytes = 10; return &c }(),
+		},
 		"scratch file already exists": {build: func(t *testing.T, dir string) string {
 			video := buildVideoTrakForTest(t, mainSPSHex, mainPPSHex, defaultVideoSamples())
 			in := writeTestMP4File(t, dir, "in.mp4", []*mp4.TrakBox{video}, [][][]byte{defaultVideoSamples()})
@@ -161,11 +176,11 @@ func TestFilterVideoSample(t *testing.T) {
 	}
 }
 
-func TestAppendSample_WriteError(t *testing.T) {
+func TestScratchWriter_WriteError(t *testing.T) {
 	t.Parallel()
 
 	// A closed file's own Write always fails: the simplest way to
-	// reach appendSample's own error branch without needing a real
+	// reach write's own error branch without needing a real
 	// disk-full or permission failure.
 	f, err := os.CreateTemp(t.TempDir(), "scratch-*")
 	if err != nil {
@@ -175,7 +190,37 @@ func TestAppendSample_WriteError(t *testing.T) {
 		t.Fatalf("closing fixture: %v", err)
 	}
 
-	if err := appendSample(f, []byte("x")); !errors.Is(err, ErrFailed) {
-		t.Fatalf("appendSample() error = %v, want %v", err, ErrFailed)
+	sw := &scratchWriter{f: f, max: 1 << 20}
+	if err := sw.write([]byte("x")); !errors.Is(err, ErrFailed) {
+		t.Fatalf("write() error = %v, want %v", err, ErrFailed)
+	}
+}
+
+// TestScratchWriter_RefusesOnceTheRunningTotalWouldExceedMax covers
+// the cap itself, directly: two writes that are each individually
+// under max but whose combined total is not.
+func TestScratchWriter_RefusesOnceTheRunningTotalWouldExceedMax(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp(t.TempDir(), "scratch-*")
+	if err != nil {
+		t.Fatalf("creating fixture: %v", err)
+	}
+	defer f.Close()
+
+	sw := &scratchWriter{f: f, max: 10}
+	if err := sw.write([]byte("12345")); err != nil {
+		t.Fatalf("first write() error = %v, want nil", err)
+	}
+	if err := sw.write([]byte("678901")); !errors.Is(err, ErrFailed) {
+		t.Fatalf("second write() error = %v, want %v once the running total would exceed max", err, ErrFailed)
+	}
+
+	got, readErr := os.ReadFile(f.Name())
+	if readErr != nil {
+		t.Fatalf("reading scratch file: %v", readErr)
+	}
+	if string(got) != "12345" {
+		t.Errorf("scratch file = %q, want only the first write's own bytes: the refused second write must never reach disk at all", got)
 	}
 }

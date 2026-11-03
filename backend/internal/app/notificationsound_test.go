@@ -285,6 +285,39 @@ func TestResolveNotificationSound_ServiceSerializesConcurrentResolves(t *testing
 	}
 }
 
+// TestResolveNotificationSound_ServiceDoesNotRetryAnUnchangedFileThatAlreadyFailed
+// covers the other half of the same security finding
+// TestResolveNotificationSound_ServiceReusesTheSameTranscodeWhenUnchanged
+// already covers for a successful transcode: resolveServiceSound runs
+// on every incoming notification, so a service's default sound that
+// fails to transcode once - corrupt, not actually audio - must not
+// occupy the helper's one transcode slot on every single later
+// notification either, not just while it keeps succeeding.
+func TestResolveNotificationSound_ServiceDoesNotRetryAnUnchangedFileThatAlreadyFailed(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	path := writeSoundFixture(t, "not-audio.mp3", []byte("whatever ffmpeg itself would refuse"))
+	f.transcoder.err = errors.New("ffmpeg: not a recognised audio stream")
+
+	resolved, err := f.commands.ResolveNotificationSound(ctx, "", domain.ServiceTelegram, path)
+	if err != nil || resolved != "" {
+		t.Fatalf("first ResolveNotificationSound() = %q, %v; want \"\", nil", resolved, err)
+	}
+	if got := f.transcoder.callCount(); got != 1 {
+		t.Fatalf("transcoder calls after the first resolve = %d, want 1", got)
+	}
+
+	resolved, err = f.commands.ResolveNotificationSound(ctx, "", domain.ServiceTelegram, path)
+	if err != nil || resolved != "" {
+		t.Fatalf("second ResolveNotificationSound() = %q, %v; want \"\", nil", resolved, err)
+	}
+	if got := f.transcoder.callCount(); got != 1 {
+		t.Errorf("transcoder calls after the second resolve = %d, want still 1: an unchanged file that already failed must not be retried", got)
+	}
+}
+
 func TestResolveNotificationSound_ServiceWithARefusedFileResolvesToNothingNotAnError(t *testing.T) {
 	t.Parallel()
 

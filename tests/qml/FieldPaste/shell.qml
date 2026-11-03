@@ -28,6 +28,17 @@
 // Paste key - which answers the same way regardless of the platform
 // theme (see docs/decisions.md).
 //
+// A further review found ClipboardPaste.pasteInto's own check -
+// typeof field.insert === "function" - true of a read-only, rich-text
+// TextEdit too (MessageBubbleContent's own message body is exactly
+// that shape), whose insert() ignores readOnly and, given RichText,
+// inserts HTML rather than plain text: a clipboard offer carrying
+// "<img src=...>" would make the shell fetch and decode whatever it
+// points at. The last step below gives such a field real focus and
+// checks Ctrl+V leaves its text untouched and never even reaches
+// clipboard.readText, proving pasteInto refuses it before it would
+// otherwise have fetched anything at all.
+//
 // routeKey below reproduces only the one piece of Panel.qml's own
 // router this needs - Keymap.match resolving "field.paste" (or, for
 // nativePaste, skipping that lookup entirely the way Panel.qml's own
@@ -67,6 +78,13 @@ ShellRoot {
   property var reboundBindings: [
     { action: "field.paste", keys: ["Ctrl+Shift+Z"], contexts: ["global"], label: "Paste" }
   ]
+
+  // _originalReadOnlyText captures the read-only field's own text
+  // once, right after it loads: Qt re-serialises RichText into a full
+  // HTML document on assignment, so "unchanged" has to mean "still
+  // equal to what it already read back as", never the short literal
+  // string this test originally set it to.
+  property string _originalReadOnlyText: ""
 
   // fakeService records the last method it answered and always
   // replies with clipboardText, the same scripted shape
@@ -113,9 +131,28 @@ ShellRoot {
     implicitHeight: 400
     visible: true
 
-    Loader {
-      id: fieldLoader
+    // keyArea mirrors the one piece of Panel.qml's own key routing the
+    // read-only field step needs: a global ancestor that calls
+    // root.routeKey for a key none of this field's own handling
+    // consumed first. Every other field below intercepts Ctrl+V itself
+    // (isPasteKey, with nativePaste) and accepts the event there, so
+    // it never reaches this handler at all; a read-only TextEdit does
+    // not, the same as the real message body never does, which is
+    // exactly how Ctrl+V reaches ClipboardPaste.pasteInto for it in
+    // the real app too.
+    Item {
+      id: keyArea
       anchors.fill: parent
+      focus: true
+
+      Keys.onPressed: event => {
+        if (root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
+      }
+
+      Loader {
+        id: fieldLoader
+        anchors.fill: parent
+      }
     }
   }
 
@@ -146,6 +183,23 @@ ShellRoot {
     AccountSetup {
       stage: "credentials"
       routeKey: root.routeKey
+    }
+  }
+
+  // readOnlyComponent is the same shape MessageBubbleContent's own
+  // message body takes: readOnly, selectByMouse (so a click gives it
+  // real focus the same way), RichText. pasteInto must refuse this
+  // field outright, whatever Ctrl+V would otherwise have pasted into
+  // it.
+  Component {
+    id: readOnlyComponent
+    TextEdit {
+      objectName: "readOnlyRichField"
+      readOnly: true
+      selectByMouse: true
+      textFormat: TextEdit.RichText
+      text: "<b>original</b>"
+      Component.onCompleted: forceActiveFocus()
     }
   }
 
@@ -201,7 +255,24 @@ ShellRoot {
       () => { t.keyClick(Qt.Key_V, Qt.ControlModifier); return true; },
       () => fakeService.lastMethod === "clipboard.readText" || "Ctrl+V with field.paste rebound never reached clipboard.readText",
       () => Check.find(fieldLoader.item, "apiIdField").text === root.pastedInto
-        || ("Ctrl+V with field.paste rebound left the setup field's text wrong: " + Check.find(fieldLoader.item, "apiIdField").text)
+        || ("Ctrl+V with field.paste rebound left the setup field's text wrong: " + Check.find(fieldLoader.item, "apiIdField").text),
+
+      // A read-only, rich-text TextEdit - the exact shape
+      // MessageBubbleContent's own message body takes - must refuse
+      // Ctrl+V outright: its text stays exactly what it was, and
+      // pasteInto must never even reach clipboard.readText, proving
+      // the refusal happens before anything would otherwise have been
+      // fetched at all. root.bindings is restored to the real
+      // defaults first, so Ctrl+V still resolves to field.paste here
+      // (the previous step deliberately left it rebound away).
+      () => { fakeService.lastMethod = ""; root.bindings = Keymap.BINDINGS; fieldLoader.sourceComponent = readOnlyComponent; return true; },
+      () => !!Check.find(fieldLoader.item, "readOnlyRichField")?.activeFocus,
+      () => { root._originalReadOnlyText = Check.find(fieldLoader.item, "readOnlyRichField").text; return true; },
+      () => { t.keyClick(Qt.Key_V, Qt.ControlModifier); return true; },
+      () => fakeService.lastMethod === ""
+        || ("a read-only rich-text field reached clipboard.readText anyway: " + fakeService.lastMethod),
+      () => Check.find(fieldLoader.item, "readOnlyRichField").text === root._originalReadOnlyText
+        || ("Ctrl+V changed a read-only field's own text: " + Check.find(fieldLoader.item, "readOnlyRichField").text)
     ]
   }
 }

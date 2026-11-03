@@ -25,6 +25,26 @@ test('isAllowed rejects every other scheme and anything with none at all', () =>
   assert.strictEqual(Links.isAllowed(undefined), false);
 });
 
+// isAllowed is a thin wrapper over Format.spanURL (see this file's own
+// header comment), which carries the exhaustive hidden-character and
+// http(s)-authority cases (tests/unit/format.test.cjs); these confirm
+// the one check every link this UI opens actually goes through sees
+// the same refusal, matching the helper's own domain.AllowedLinkURL.
+
+test('isAllowed refuses a backslash anywhere in the URL, the review\'s own paypal.com/evil.example case', () => {
+  assert.strictEqual(Links.isAllowed('https://evil.example\\@paypal.com/login'), false);
+});
+
+test('isAllowed refuses an http(s) URL with no real "//" authority, which a browser still resolves a host for', () => {
+  assert.strictEqual(Links.isAllowed('https:evil.example'), false);
+  assert.strictEqual(Links.isAllowed('https:\\\\evil.example'), false);
+  assert.strictEqual(Links.isAllowed('https:/\\evil.example'), false);
+});
+
+test('isAllowed refuses a URL carrying a hidden Unicode format character', () => {
+  assert.strictEqual(Links.isAllowed('https://paypal-login.ru' + String.fromCharCode(65279) + '.paypal.com/login'), false);
+});
+
 test('fileURL percent-encodes a plain path with no special characters', () => {
   assert.strictEqual(Links.fileURL('/home/user/Downloads/report.pdf'), 'file:///home/user/Downloads/report.pdf');
 });
@@ -164,18 +184,62 @@ test('previewDisplayText rejects a lookalike domain that is only a textual prefi
   assert.ok(Links.needsConfirmation(shown, 'https://paypal.co'));
 });
 
-test('previewDisplayText recognises the url once it only appears through a formatting span, not as literal text', () => {
+test('previewDisplayText recognises the url once it is itself an anchor\'s own visible text, even through a formatting span', () => {
   // The exact-match fix reads the message's own rendered anchors
-  // (Format.messageLinkAnchors), not its raw text, so a link that is
-  // only visible because of a span - never typed out as a URL at all -
-  // still counts as shown, which the old substring check could not do.
-  const spans = [{ kind: 'link', start: 0, end: 4, url: 'https://a.example' }];
-  assert.equal(Links.previewDisplayText('https://a.example', 'link', [], spans, 'A'), 'https://a.example');
+  // (Format.messageLinkAnchors), not its raw text, so a link whose
+  // visible text is the url itself - never typed out literally, but
+  // rendered that way by a span - still counts as shown, which the
+  // old substring check could not do.
+  const spans = [{ kind: 'link', start: 0, end: 'https://a.example'.length, url: 'https://evil.example' }];
+  assert.equal(Links.previewDisplayText('https://a.example', 'https://a.example', [], spans, 'A'), 'https://a.example');
+});
+
+test('previewDisplayText needs confirming when a url only matches an anchor\'s own href, never what the anchor actually shows as text', () => {
+  // A later review found the exact-match fix above still checked only
+  // an anchor's own url (its href), not its displayText: a span whose
+  // visible text reads as something else entirely - "Click here",
+  // say - still counted a preview sharing that same href as "shown",
+  // even though the user never saw that url as text anywhere in the
+  // message. The card's own title is the sender's to choose, so
+  // "shown" must mean the url was itself visible, not merely that
+  // some other link in the message happens to share its target.
+  const spans = [{ kind: 'link', start: 0, end: 'Click here'.length, url: 'https://evil.example/login' }];
+  const shown = Links.previewDisplayText('https://evil.example/login', 'Click here', [], spans, 'My Bank');
+  assert.equal(shown, 'My Bank');
+  assert.ok(Links.needsConfirmation(shown, 'https://evil.example/login'));
+});
+
+test('previewDisplayText still finds the url shown as text behind an unrelated, differently-targeted anchor earlier in the same message', () => {
+  // Confirms the fix checks every anchor's own displayText, not just
+  // the first one: an honest anchor (its own text is the preview's
+  // url) and a disguise anchor (different text, some other target)
+  // can both exist in the same message without the disguise hiding
+  // the honest one from this check.
+  const url = 'https://a.example';
+  const spans = [
+    { kind: 'link', start: 0, end: url.length, url },
+    { kind: 'link', start: url.length + 1, end: url.length + 1 + 'click here'.length, url: 'https://evil.example' }
+  ];
+  const text = `${url} click here`;
+  assert.equal(Links.previewDisplayText(url, text, [], spans, 'A'), url);
 });
 
 test('a preview whose URL is not in its message text needs confirming', () => {
   const shown = Links.previewDisplayText('https://evil.example/login', 'refund: https://www.paypal.com/refund', [], [], 'PayPal');
   assert.ok(Links.needsConfirmation(shown, 'https://evil.example/login'));
+});
+
+test('previewDisplayText matches a raw ampersand in the message text against a preview url carrying the same raw ampersand', () => {
+  // A security review found a plain autolink's own anchors used to
+  // record a matched url HTML-escaped ('&' as '&amp;'): a WhatsApp
+  // link preview's own url, reported raw by the connector, could then
+  // never match even when the two were really the same link, since
+  // one side read "&amp;" and the other "&". Format.linkify now
+  // decodes the matched text back to raw before recording it (see
+  // tests/unit/format.test.cjs's own unescapeHtml cases), so the two
+  // now compare equal.
+  const url = 'https://example.com?a=1&b=2';
+  assert.equal(Links.previewDisplayText(url, `see ${url}`, [], [], 'Example'), url);
 });
 
 // sameTarget strips a trailing slash run in linear time, not quadratic.

@@ -142,19 +142,31 @@ func checkMoovSize(header mp4.BoxHeader, moovCount *int) error {
 
 // remuxCaps bounds what remuxMP4 is willing to accept from the
 // sandboxed file it rebuilds, sized per profile (see video.go and
-// animation.go). Neither bound is this package's real defence
-// against an oversized output - checkOutput's own cap on the
-// sandboxed file as a whole, enforced before remuxMP4 ever runs,
-// already provides that - they exist only so a single absurd value
-// (a billion declared samples, one claiming to be a gigabyte) cannot
-// cost this package more time or memory than parsing a file already
-// known to be small should.
+// animation.go). maxVideoSamples, maxAudioSamples, maxVideoSampleLen
+// and maxAudioSampleLen exist only so a single absurd declared value
+// (a billion samples, one claiming to be a gigabyte) cannot cost this
+// package more time or memory than parsing a file already known to be
+// small should; checkOutput's own cap on the sandboxed file as a
+// whole, enforced before remuxMP4 ever runs, already bounds how much
+// real data underlies any one of them.
+//
+// maxOutputBytes is different: it is this package's own real defence
+// against the file remuxMP4 writes growing past checkOutput's own
+// cap despite that. A crafted sample table can declare many thousands
+// of samples that all alias the same handful of bytes in the
+// sandboxed file's own, already-capped mdat - each individual sample
+// still within maxVideoSampleLen or maxAudioSampleLen - and without
+// this, collectSamples would write that same small payload out again
+// once per declared sample, so this package's own disk, not the
+// untrusted file's real content, is what would actually grow (see
+// scratchWriter in remuxsamples.go and docs/decisions.md).
 type remuxCaps struct {
 	allowAudio        bool
 	maxVideoSamples   int
 	maxAudioSamples   int
 	maxVideoSampleLen int64
 	maxAudioSampleLen int64
+	maxOutputBytes    int64
 }
 
 // remuxMP4 validates path - an MP4 the sandboxed ffmpeg wrote -

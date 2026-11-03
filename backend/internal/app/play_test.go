@@ -124,6 +124,46 @@ func TestFetchMedia_NoPlayPathWhenTheTranscoderFails(t *testing.T) {
 	}
 }
 
+// TestFetchMedia_FailsFastOnASecondPlayFetchAfterAFailedTranscode
+// covers the actual security finding: reopening a conversation asks
+// to play every message in it again, so a video whose play copy
+// already failed once - the transcoder timing out, running out of
+// its own size budget, or simply being unavailable - must not run
+// the sandboxed transcoder all over again on a second play fetch for
+// the very same message (see refusedPlayCopies and
+// docs/decisions.md).
+func TestFetchMedia_FailsFastOnASecondPlayFetchAfterAFailedTranscode(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	chat := f.conversation(t, "chat", "Chat", domain.KindDirect)
+	if _, _, err := f.store.AddMessage(ctx, domain.Message{
+		ID: "m1", ConversationID: chat.ID, RemoteID: "40", Text: "[Video]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaVideo},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	f.transcoder.err = errors.New("ffmpeg exploded")
+
+	path, playPath, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	if err != nil || path == "" || playPath != "" {
+		t.Fatalf("first FetchMedia(play=true) = path %q, playPath %q, %v; want the original path, no playPath, no error", path, playPath, err)
+	}
+	if calls := f.transcoder.callCount(); calls != 1 {
+		t.Fatalf("transcoder calls after the first play fetch = %d, want 1", calls)
+	}
+
+	path, playPath, _, _, err = f.commands.FetchMedia(ctx, "m1", false, true)
+	if err != nil || path == "" || playPath != "" {
+		t.Fatalf("second FetchMedia(play=true) = path %q, playPath %q, %v; want the original path, no playPath, no error", path, playPath, err)
+	}
+	if calls := f.transcoder.callCount(); calls != 1 {
+		t.Errorf("transcoder calls after the second play fetch = %d, want still 1: a message whose play copy already failed must fail fast, not run the transcoder again", calls)
+	}
+}
+
 // TestFetchMedia_TranscodesAMessagesPlayCopyOnlyOnce confirms a second
 // play fetch of the same message shares the first copy, through the
 // media cache's own per-id lock, rather than running the transcoder

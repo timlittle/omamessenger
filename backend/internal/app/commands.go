@@ -73,6 +73,7 @@ type Commands struct {
 	transcoder      Transcoder
 	decodeSlot      chan struct{}
 	refused         *refusedDisplayCopies
+	refusedPlay     *refusedPlayCopies
 	soundTranscodes *transcodedSoundCache
 
 	// dataDir, dbPath, execName and helperVersion are read only by

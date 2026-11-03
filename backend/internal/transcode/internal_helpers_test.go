@@ -222,6 +222,7 @@ func defaultCaps() remuxCaps {
 		maxAudioSamples:   100,
 		maxVideoSampleLen: 1 << 20,
 		maxAudioSampleLen: 1 << 20,
+		maxOutputBytes:    10 << 20,
 	}
 }
 

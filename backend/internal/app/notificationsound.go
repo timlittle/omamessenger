@@ -148,11 +148,13 @@ func (c *Commands) resolveServiceSound(ctx context.Context, service, path string
 // in the sound store under key: path itself is never what the sound
 // store keeps, nor what resolve ever hands back. The transcode itself
 // runs only when path's own size or modification time has actually
-// changed since the last time this key was filled (see
+// changed since the last time this key was attempted (see
 // transcodedSoundCache): resolveServiceSound calls this on every
 // notification, and a service's default sound almost never changes,
 // so without this a contact spamming messages would occupy the
-// helper's one transcode slot on every single one (see
+// helper's one transcode slot on every single one, whether that
+// sound keeps transcoding successfully or - a broken manifest setting,
+// say - keeps failing the exact same way every time (see
 // docs/decisions.md). errSoundNotPlayable reports path decoding as
 // nothing ffmpeg itself recognises as audio, or no transcoder being
 // wired in at all; any other error means path itself could not even
@@ -170,7 +172,10 @@ func (c *Commands) storeAndTranscodeSound(ctx context.Context, key, path string)
 	unlock := c.soundTranscodes.lock(key)
 	defer unlock()
 
-	if c.soundTranscodes.matches(key, path, info) {
+	if last, ok := c.soundTranscodes.lookup(key); ok && last.matches(path, info) {
+		if last.failed {
+			return errSoundNotPlayable
+		}
 		if _, statErr := os.Stat(c.sounds.Path(key)); statErr == nil {
 			return nil
 		}
@@ -180,10 +185,11 @@ func (c *Commands) storeAndTranscodeSound(ctx context.Context, key, path string)
 	}
 
 	if err := c.transcodeSoundTo(ctx, key, path); err != nil {
+		c.soundTranscodes.record(key, path, info, true)
 		return errSoundNotPlayable
 	}
 
-	c.soundTranscodes.record(key, path, info)
+	c.soundTranscodes.record(key, path, info, false)
 
 	return nil
 }
@@ -211,15 +217,28 @@ func (c *Commands) transcodeSoundTo(ctx context.Context, key, path string) error
 }
 
 // transcodedSoundIdentity is the (path, size, modification time) a
-// sound-store key was last successfully transcoded from.
+// sound-store key was last attempted from, and whether that attempt
+// failed: resolveServiceSound calls storeAndTranscodeSound on every
+// notification, so a source that fails to transcode - corrupt, not
+// actually audio - must be remembered as failing too, or a broken
+// custom or service sound would occupy the helper's one transcode
+// slot on every single notification, not just its first one (see
+// docs/decisions.md).
 type transcodedSoundIdentity struct {
 	path    string
 	size    int64
 	modTime int64
+	failed  bool
 }
 
-// transcodedSoundCache remembers, per sound-store key, the identity of
-// the source file last transcoded into it, and serialises
+// matches reports whether identity still describes path's current
+// size and modification time.
+func (identity transcodedSoundIdentity) matches(path string, info os.FileInfo) bool {
+	return identity.path == path && identity.size == info.Size() && identity.modTime == info.ModTime().UnixNano()
+}
+
+// transcodedSoundCache remembers, per sound-store key, the identity
+// of the source file last attempted for it, and serialises
 // storeAndTranscodeSound per key (see lock) so two concurrent
 // resolves for the same key - two notifications arriving close
 // together, say - never both run the sandboxed transcoder for a sound
@@ -259,24 +278,24 @@ func (t *transcodedSoundCache) lock(key string) func() {
 	return l.Unlock
 }
 
-// matches reports whether key's last recorded source identity still
-// matches path's current size and modification time.
-func (t *transcodedSoundCache) matches(key, path string, info os.FileInfo) bool {
+// lookup returns key's last recorded identity, and whether one exists
+// at all.
+func (t *transcodedSoundCache) lookup(key string) (transcodedSoundIdentity, bool) {
 	t.stateMu.Lock()
 	defer t.stateMu.Unlock()
 
-	got, ok := t.state[key]
+	identity, ok := t.state[key]
 
-	return ok && got.path == path && got.size == info.Size() && got.modTime == info.ModTime().UnixNano()
+	return identity, ok
 }
 
-// record remembers path's current identity as key's last transcoded
-// source.
-func (t *transcodedSoundCache) record(key, path string, info os.FileInfo) {
+// record remembers path's current identity as key's last transcode
+// attempt, succeeded or not.
+func (t *transcodedSoundCache) record(key, path string, info os.FileInfo, failed bool) {
 	t.stateMu.Lock()
 	defer t.stateMu.Unlock()
 
-	t.state[key] = transcodedSoundIdentity{path: path, size: info.Size(), modTime: info.ModTime().UnixNano()}
+	t.state[key] = transcodedSoundIdentity{path: path, size: info.Size(), modTime: info.ModTime().UnixNano(), failed: failed}
 }
 
 // playableSoundPath returns key's stored path, or "" - never an

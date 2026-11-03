@@ -43,9 +43,11 @@ type playProfileFunc func(ctx context.Context, in, outDir string) (string, error
 // through the media cache's own per-id lock (see
 // transcodedPlayCopy). It reports "" whenever there is nothing to
 // play: a kind play does not apply to, a claimed duration over the
-// chosen profile's own cap, or the transcoder itself failing or being
-// unavailable - never an error, since the UI opens the file
-// externally either way (see docs/decisions.md).
+// chosen profile's own cap, a message whose play copy has already
+// failed to build once this run (see refusedPlayCopies), or the
+// transcoder itself failing or being unavailable just now - never an
+// error, since the UI opens the file externally either way (see
+// docs/decisions.md).
 func (c *Commands) playCopy(ctx context.Context, m domain.Message, original string) string {
 	profile, ok := c.playProfile(m)
 	if !ok {
@@ -55,13 +57,29 @@ func (c *Commands) playCopy(ctx context.Context, m domain.Message, original stri
 		return ""
 	}
 
+	id := playCopyID(m)
+	if c.refusedPlay.refused(id) {
+		return ""
+	}
+
 	path, err := c.transcodedPlayCopy(ctx, m, original, profile)
 	if err != nil {
 		c.logPlayFailure(m, err)
+		c.refusedPlay.remember(id)
 		return ""
 	}
 
 	return path
+}
+
+// playCopyID returns the cache slot m's own play copy is kept under,
+// derived the same way displayCopyID is: cacheIdentity(m) alone - the
+// original's own slot for a kind fetched through FetchNamed, a voice
+// note among them - must never be a prefix of this id followed by
+// '.', or a lookup for the original could resolve to this derived
+// copy instead (see cache.findByID and docs/decisions.md).
+func playCopyID(m domain.Message) string {
+	return cacheIdentity(m) + "-play"
 }
 
 // playProfile returns the Transcoder method m's own kind plays
@@ -101,7 +119,7 @@ func (c *Commands) playProfile(m domain.Message) (playProfileFunc, bool) {
 // (cacheIdentity(m) alone) to this derived copy instead (see
 // docs/decisions.md).
 func (c *Commands) transcodedPlayCopy(ctx context.Context, m domain.Message, original string, profile playProfileFunc) (string, error) {
-	id := cacheIdentity(m) + "-play"
+	id := playCopyID(m)
 	var ext string
 
 	fill := func(ctx context.Context, dst string) error {

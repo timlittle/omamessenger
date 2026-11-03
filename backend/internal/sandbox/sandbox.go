@@ -143,6 +143,8 @@ type Runner struct {
 	envPath     string
 	bwrapPath   string
 	prlimitPath string
+	nicePath    string
+	ionicePath  string
 	toolsErr    error
 
 	smokeOnce sync.Once
@@ -171,12 +173,27 @@ func NewRunner(scratchRoot string) *Runner {
 	return &Runner{scratchRoot: scratchRoot, command: exec.Command, lookPath: exec.LookPath}
 }
 
-// resolveTools finds env, bwrap and prlimit (see lookPath) once,
-// caching the result for every later call on this Runner: a PATH that
-// does not change while this process runs, which holds for the
-// helper's own fixed install layout.
+// resolveTools finds nice, ionice, env, bwrap and prlimit (see
+// lookPath) once, caching the result for every later call on this
+// Runner: a PATH that does not change while this process runs, which
+// holds for the helper's own fixed install layout. Looked up in the
+// same outermost-to-innermost order buildArgv actually chains them in
+// (see argv.go), so the first one this machine is missing is also the
+// first one reported.
 func (r *Runner) resolveTools() error {
 	r.toolsOnce.Do(func() {
+		nicePath, err := r.lookPath("nice")
+		if err != nil {
+			r.toolsErr = fmt.Errorf("%w: nice: %w", ErrUnavailable, err)
+			return
+		}
+
+		ionicePath, err := r.lookPath("ionice")
+		if err != nil {
+			r.toolsErr = fmt.Errorf("%w: ionice: %w", ErrUnavailable, err)
+			return
+		}
+
 		envPath, err := r.lookPath("env")
 		if err != nil {
 			r.toolsErr = fmt.Errorf("%w: env: %w", ErrUnavailable, err)
@@ -195,7 +212,7 @@ func (r *Runner) resolveTools() error {
 			return
 		}
 
-		r.envPath, r.bwrapPath, r.prlimitPath = envPath, bwrapPath, prlimitPath
+		r.nicePath, r.ionicePath, r.envPath, r.bwrapPath, r.prlimitPath = nicePath, ionicePath, envPath, bwrapPath, prlimitPath
 	})
 
 	return r.toolsErr

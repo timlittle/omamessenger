@@ -58,7 +58,11 @@ func (t *Transcoder) Video(ctx context.Context, in, outDir string) (string, erro
 // videoRemuxCaps bounds what videoRebuild's own call to remuxMP4
 // will accept: sample counts sized for Video's own duration cap at
 // 30 frames per second of video and, generously, 50 AAC-LC frames
-// per second of audio, each with a little slack (see remux.go).
+// per second of audio, each with a little slack (see remux.go), and
+// the rebuilt file's own combined video-plus-audio total bounded by
+// videoMaxOutputBytes, reused rather than given a tighter cap of its
+// own: a legitimate rebuild can never exceed what the sandboxed file
+// it rebuilds from was already capped at.
 func videoRemuxCaps() remuxCaps {
 	return remuxCaps{
 		allowAudio:        true,
@@ -66,6 +70,7 @@ func videoRemuxCaps() remuxCaps {
 		maxAudioSamples:   videoDurationSeconds*maxAACFramesPerSecond + remuxSampleCountSlack,
 		maxVideoSampleLen: maxRemuxVideoSampleBytes,
 		maxAudioSampleLen: maxRemuxAudioSampleBytes,
+		maxOutputBytes:    videoMaxOutputBytes,
 	}
 }
 
@@ -84,6 +89,7 @@ func videoRebuild(sandboxedOutput, jobDir string) (string, error) {
 // videoArgs is the Video profile's own fixed ffmpeg argument list.
 func videoArgs() []string {
 	args := commonInputArgs()
+	args = append(args, filterThreadArgs()...)
 	args = append(args, "-map", "0:v:0", "-map", "0:a:0?")
 	args = append(args, stripMetadataArgs()...)
 	args = append(args,
@@ -92,9 +98,11 @@ func videoArgs() []string {
 		"-fpsmax", "30",
 		"-c:v", "libx264", "-profile:v", "main", "-level:v", "4.0", "-preset", "veryfast", "-crf", "23", "-bf", "0",
 	)
+	args = append(args, libx264ThreadArgs()...)
 	args = append(args, videoRateControlArgs()...)
+	args = append(args, "-c:a", "aac", "-ac", "2", "-b:a", "96k")
+	args = append(args, outputThreadArgs()...)
 	args = append(args,
-		"-c:a", "aac", "-ac", "2", "-b:a", "96k",
 		"-t", strconv.Itoa(videoDurationSeconds),
 		"-movflags", "+faststart",
 		"-f", "mp4",

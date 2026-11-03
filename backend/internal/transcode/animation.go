@@ -54,6 +54,7 @@ func animationRebuild(sandboxedOutput, jobDir string) (string, error) {
 		allowAudio:        false,
 		maxVideoSamples:   animationDurationSeconds*30 + remuxSampleCountSlack,
 		maxVideoSampleLen: maxRemuxVideoSampleBytes,
+		maxOutputBytes:    animationMaxOutputBytes,
 	}
 	if err := remuxMP4(sandboxedOutput, outPath, caps); err != nil {
 		return "", err
@@ -65,6 +66,7 @@ func animationRebuild(sandboxedOutput, jobDir string) (string, error) {
 // list.
 func animationArgs() []string {
 	args := commonInputArgs()
+	args = append(args, filterThreadArgs()...)
 	args = append(args, "-map", "0:v:0", "-an")
 	args = append(args, stripMetadataArgs()...)
 	args = append(args,
@@ -73,7 +75,9 @@ func animationArgs() []string {
 		"-fpsmax", "30",
 		"-c:v", "libx264", "-profile:v", "main", "-level:v", "4.0", "-preset", "veryfast", "-crf", "23", "-bf", "0",
 	)
+	args = append(args, libx264ThreadArgs()...)
 	args = append(args, videoRateControlArgs()...)
+	args = append(args, outputThreadArgs()...)
 	args = append(args,
 		"-t", strconv.Itoa(animationDurationSeconds),
 		"-movflags", "+faststart",
