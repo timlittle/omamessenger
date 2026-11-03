@@ -261,7 +261,7 @@ var LINK_SCHEMES = ['http:', 'https:', 'mailto:', 'tg:'];
 // browser's own WHATWG URL parser ends an http(s) authority at one
 // the same as it does a forward slash, while urlHost's own authority
 // split (Links.js) does not.
-var HIDDEN_OR_UNUSUAL_CHAR = /[\\\s\x00-\x1f\x7f​-‏‪-‮⁠-⁤⁦-⁩﻿]/;
+var HIDDEN_OR_UNUSUAL_CHAR = /[\\\s\x00-\x1f\x7f\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
 
 // hasHTTPAuthority reports whether value - already known to start with
 // "http:" or "https:" - spells out "://" followed by a real, non-empty
