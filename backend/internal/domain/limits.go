@@ -185,6 +185,27 @@ func CapRemoteID(id string) string {
 	return id
 }
 
+// ValidMessageIDs reports whether m's own RemoteID and SenderID both
+// sit within MaxRemoteIDLength. Both are read off the wire with no
+// length check of their own - whatsmeow reads a message's stanza id up
+// to its frame limit, and keeps a JID's user part, which a sender id
+// derives from, exactly as given - so a hostile sender can make either
+// arbitrarily long. Unlike every other field SanitizeIncoming repairs
+// by truncating or clearing it in place, RemoteID is the dedup key
+// AddMessage matches an arriving message against and the handle React,
+// Edit and Delete key off (see store.AddMessage, store.MessageByRemote):
+// truncating it could make a later report resolve to the wrong stored
+// message, and clearing it would make the message indistinguishable
+// from one with no remote id at all. A message shaped like this must
+// be refused outright, so this is checked separately from
+// SanitizeIncoming, at every point that can store one (app.Ingest's
+// save and Edited) or read one back that an older release stored
+// before this check existed (store.Message, store.MessageByRemote,
+// store.Messages).
+func ValidMessageIDs(m Message) bool {
+	return len(m.RemoteID) <= MaxRemoteIDLength && len(m.SenderID) <= MaxRemoteIDLength
+}
+
 // MaxPreviewLength bounds a conversation's own Preview, in UTF-16 code
 // units: ui/lib/Format.js's previewText only ever shows the first 200
 // characters of it, prefixed in a group by the sender's own name, so a

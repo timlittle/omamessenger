@@ -179,6 +179,11 @@ func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID st
 		return
 	}
 
+	if !domain.ValidMessageIDs(m) {
+		in.logDroppedOversizedID()
+		return
+	}
+
 	// See save's own comment: an edit's new text, formatting, mentions,
 	// reactions and media are just as sender-controlled as a newly
 	// arrived message's, so they get the same caps.
@@ -223,6 +228,17 @@ func (in *Ingest) authorizedEdit(ctx context.Context, conversationID string, m d
 	}
 
 	return false
+}
+
+// logDroppedOversizedID reports, as a fixed safe category only, that
+// save or Edited refused a message whose own RemoteID or SenderID ran
+// past domain.MaxRemoteIDLength: never the id itself, which could be
+// just as oversized, and could embed a phone number for a WhatsApp JID
+// (see privacy.md).
+func (in *Ingest) logDroppedOversizedID() {
+	if in.logger != nil {
+		in.logger.Printf("ingest: dropped message (reason=oversized remote or sender id)")
+	}
 }
 
 // Reacted updates a stored message's reaction chips after the service
@@ -415,6 +431,11 @@ func (in *Ingest) AuthStep(ctx context.Context, accountID string, step connector
 func (in *Ingest) save(ctx context.Context, accountID, remoteID string, m domain.Message, countUnread bool) (_ domain.Conversation, _ domain.Message, before int, ok bool) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, remoteID)
 	if err != nil {
+		return conv, m, 0, false
+	}
+
+	if !domain.ValidMessageIDs(m) {
+		in.logDroppedOversizedID()
 		return conv, m, 0, false
 	}
 

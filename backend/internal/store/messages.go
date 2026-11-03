@@ -258,19 +258,32 @@ func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message, countUn
 	return requireRow("bump conversation", res)
 }
 
-// Message returns one message by its local id.
+// Message returns one message by its local id. A row whose own
+// RemoteID or SenderID runs past domain.MaxRemoteIDLength - a message
+// an older release stored before app.Ingest refused one shaped like
+// this - is reported the same as one that is not there at all (see
+// oversizedID).
 func (s *Store) Message(ctx context.Context, id string) (domain.Message, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE id=?`, id)
 	m, err := scanMessage(row)
+	if err == nil && oversizedID(m) {
+		return domain.Message{}, wrap("message", domain.ErrNotFound)
+	}
 
 	return m, wrap("message", err)
 }
 
-// MessageByRemote returns one message by its service's id.
+// MessageByRemote returns one message by its service's id, with the
+// same oversizedID check Message gives a stored row: EditMessage,
+// SetReactions and SetPoll all find the message they update through
+// this, so none of them can republish a legacy row shaped like this.
 func (s *Store) MessageByRemote(ctx context.Context, conversationID, remoteID string) (domain.Message, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages
 		WHERE conversation_id=? AND remote_id=? AND remote_id!=''`, conversationID, remoteID)
 	m, err := scanMessage(row)
+	if err == nil && oversizedID(m) {
+		return domain.Message{}, wrap("message by remote", domain.ErrNotFound)
+	}
 
 	return m, wrap("message by remote", err)
 }
@@ -423,6 +436,12 @@ func (s *Store) Messages(ctx context.Context, conversationID, beforeID string, l
 	hasMore = len(page) > limit
 	page = page[:min(len(page), limit)]
 	slices.Reverse(page)
+	// A row with an oversized RemoteID or SenderID (see oversizedID) is
+	// dropped from the page rather than failing it outright, so the one
+	// legacy row a release before app.Ingest's own refusal existed left
+	// behind can never push every other message in the same page out of
+	// the UI with it.
+	page = slices.DeleteFunc(page, oversizedID)
 
 	return page, hasMore, nil
 }
@@ -443,6 +462,20 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 	}
 
 	return ` AND (created<? OR (created=? AND rowid<?))`, append(args, created, created, rowid), nil
+}
+
+// oversizedID reports whether m's own RemoteID or SenderID runs past
+// domain.MaxRemoteIDLength (see domain.ValidMessageIDs). app.Ingest
+// already refuses to store a message shaped like this, so this only
+// ever matches a row a release before that refusal existed left
+// behind. scanMessage cannot repair RemoteID or SenderID the way it
+// repairs every other field: RemoteID is the dedup key and the handle
+// React, Edit and Delete key off, so Message and MessageByRemote treat
+// a row like this as domain.ErrNotFound, and Messages drops it from
+// the page, rather than any of them truncating or clearing either
+// field.
+func oversizedID(m domain.Message) bool {
+	return !domain.ValidMessageIDs(m)
 }
 
 // scanMessage reads one row selected with messageColumns.
