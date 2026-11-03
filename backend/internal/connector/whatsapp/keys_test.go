@@ -10,6 +10,7 @@ package whatsapp
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -35,6 +36,32 @@ func TestMessageKey_RoundTripsWhatItSaved(t *testing.T) {
 	}
 	if key.senderID != "sender-1@s.whatsapp.net" || key.fromMe {
 		t.Errorf("key = %+v, want the saved sender and fromMe", key)
+	}
+}
+
+// TestMessageKey_PutDropsAnOversizedSenderID confirms a sender id past
+// domain.MaxRemoteIDLength is cleared before being stored, never
+// written verbatim: senderKeyID reads it straight off a JID with no
+// length limit of its own, and clearing it - the same
+// drop-rather-than-truncate treatment domain.CapRemoteID gives a
+// reply quote's own RemoteID - is still a valid messageKey, since ""
+// already means "sender unknown" there is nothing else to confuse it
+// with.
+func TestMessageKey_PutDropsAnOversizedSenderID(t *testing.T) {
+	t.Parallel()
+
+	media := newTestMediaStore(t)
+	huge := strings.Repeat("s", domain.MaxRemoteIDLength+1)
+	if err := media.putMessageKey(t.Context(), "chat-1", "M1", messageKey{senderID: huge, fromMe: false, timestamp: 1000}); err != nil {
+		t.Fatal(err)
+	}
+
+	key, found, err := media.messageKeyFor(t.Context(), "chat-1", "M1")
+	if err != nil || !found {
+		t.Fatalf("messageKeyFor = found=%v err=%v, want it found", found, err)
+	}
+	if key.senderID != "" {
+		t.Errorf("senderID = %q, want it dropped for being over the cap", key.senderID)
 	}
 }
 

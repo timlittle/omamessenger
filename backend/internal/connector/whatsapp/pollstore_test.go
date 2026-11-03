@@ -234,6 +234,38 @@ func TestSetVotes_DropsAnOversizedOptionID(t *testing.T) {
 	}
 }
 
+// TestSetVotes_DropsAnOversizedVoterID confirms a vote reported for a
+// voter id past domain.MaxRemoteIDLength is still recorded for its
+// chosen option, but never under that oversized id itself: a sender's
+// own JID has no length limit of its own before this runs (see
+// live.go's reactorKey), and voter_id is never truncated for the same
+// reason domain.CapRemoteID never truncates a reply quote's own
+// RemoteID - a cut id could read as a different, real, shorter voter
+// it was never actually cast by.
+func TestSetVotes_DropsAnOversizedVoterID(t *testing.T) {
+	t.Parallel()
+
+	store := newTestMediaStore(t)
+	ctx := t.Context()
+	poll := domain.Poll{Question: "Q", Options: []domain.PollOption{{ID: "a", Text: "A"}}}
+	if err := store.putPoll(ctx, "chat", "m1", poll); err != nil {
+		t.Fatal(err)
+	}
+
+	huge := strings.Repeat("v", domain.MaxRemoteIDLength+1)
+	if err := store.setVotes(ctx, "chat", "m1", huge, []string{"a"}); err != nil {
+		t.Fatal(err)
+	}
+
+	votersByOption, _, err := store.pollVoters(ctx, "chat", "m1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if votersByOption["a"][huge] {
+		t.Error("stored the oversized voter id verbatim, want it dropped")
+	}
+}
+
 func TestPollStore_PollShellReportsNotFound(t *testing.T) {
 	t.Parallel()
 

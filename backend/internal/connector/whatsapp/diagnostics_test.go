@@ -255,3 +255,44 @@ func TestHandleMessage_LogsWhenSkippingASystemChat(t *testing.T) {
 		t.Errorf("log = %q, want a dropped-message line naming the reason", got)
 	}
 }
+
+// TestLogUndecryptable_NamesTheKnownModesByCategory confirms the two
+// modes whatsmeow's own events.DecryptFailShow and DecryptFailHide
+// name are logged by their category, matching the fixed set
+// decryptFailCategory recognises.
+func TestLogUndecryptable_NamesTheKnownModesByCategory(t *testing.T) {
+	cases := map[string]events.DecryptFailMode{
+		"show": events.DecryptFailShow,
+		"hide": events.DecryptFailHide,
+	}
+
+	for want, mode := range cases {
+		buf := captureLog(t)
+
+		logUndecryptable(false, mode)
+
+		if got := buf.String(); !strings.Contains(got, "mode="+want) {
+			t.Errorf("log output = %q, want it to contain %q", got, "mode="+want)
+		}
+	}
+}
+
+// TestLogUndecryptable_NeverLogsAnArbitraryModeVerbatim confirms a
+// mode past the two whatsmeow itself ever sets - message.go reads the
+// stanza's own "decrypt-fail" attribute straight into this field, with
+// no length limit or validation of its own - never reaches the log:
+// only the fixed "other" category does.
+func TestLogUndecryptable_NeverLogsAnArbitraryModeVerbatim(t *testing.T) {
+	buf := captureLog(t)
+
+	hostile := events.DecryptFailMode(strings.Repeat("x", 10_000))
+	logUndecryptable(true, hostile)
+
+	got := buf.String()
+	if strings.Contains(got, "xxxx") {
+		t.Errorf("log output = %q, want none of the hostile mode's own text", got)
+	}
+	if !strings.Contains(got, "mode=other") {
+		t.Errorf("log output = %q, want the fixed \"other\" category for an unrecognised mode", got)
+	}
+}

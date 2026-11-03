@@ -160,6 +160,15 @@ func (m *mediaStore) pollOptions(ctx context.Context, conversationRemoteID, mess
 // exactly 64 hex characters - are bounded before the insert loop even
 // starts, the same defence putPoll gives an oversized option list.
 func (m *mediaStore) setVotes(ctx context.Context, conversationRemoteID, messageRemoteID, voterID string, optionIDs []string) error {
+	// A live vote's own reactorKey reads a JID straight off the wire,
+	// with no length limit of its own; dropping an oversized one to ""
+	// rather than truncating it is the same treatment this function
+	// already gives an oversized option id below, and CapRemoteID gives
+	// a reply quote's own RemoteID elsewhere, for the same reason: a
+	// cut id could read as a different, real, shorter voter it was
+	// never actually cast by.
+	voterID = domain.CapRemoteID(voterID)
+
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("whatsapp: save vote: %w", err)
