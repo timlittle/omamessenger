@@ -79,22 +79,29 @@ function hints(message, bindings) {
   return parts.join(' · ');
 }
 
-// links returns every URL the message's open key (o) can reach: every
-// http(s) link found in its text, in the order they appear, matched by
-// Format.plainLinks - the exact rule messageHtml's own linkify applies
-// when it turns one into a clickable anchor - rather than a separately
-// maintained pattern of this file's own. A security review found that
-// separate pattern ran through a '>' the bubble's own rule stops at,
-// which a browser reads as ending a URL's host and starting a new
-// userinfo@host past it, so o opened more of the message than its
-// bubble ever showed as a link (see docs/decisions.md). A link
-// preview's own URL is never one of them: the sender sets it apart
-// from the text the bubble shows, so only a click on the card itself
-// can reach it, and that asks first when the text does not show it
-// (see Links.previewDisplayText).
+// links returns every link the message's open key (o) can reach,
+// exactly as the bubble itself would render it: {url, displayText}
+// pairs, in the same order Format.messageLinkAnchors reports the
+// bubble's own anchors for this message's text, mentions and
+// formatting spans. A previous version of this matched the raw text
+// with Format.plainLinks instead, which agrees with the bubble only
+// for a plain autolinked URL: the bubble instead linkifies per
+// formatting span, per mention segment and per Markdown table cell
+// (see Format.js's styledSegment, lineHtml and mentionHtml, and
+// Markdown.js's own per-cell linkifying), so a span or mention
+// boundary landing inside what reads as one URL could make plainLinks
+// rejoin two separate, inert fragments into a single link the bubble
+// never showed at all, reaching a different, more dangerous
+// destination than any click on the message ever could (see
+// docs/decisions.md). A link preview's own URL is never one of them:
+// the sender sets it apart from the text the bubble shows, so only a
+// click on the card itself can reach it, and that asks first when the
+// text does not show it (see Links.previewDisplayText).
 function links(message) {
   const text = message && message.text ? message.text : '';
-  return Format.plainLinks(text);
+  const mentions = Timeline.mentions(message);
+  const formatting = Timeline.formatting(message);
+  return Format.messageLinkAnchors(text, mentions, formatting);
 }
 
 // primaryLink returns the one link the open key (o) opens when the
@@ -103,7 +110,7 @@ function links(message) {
 // link, for a message with several, use links() instead.
 function primaryLink(message) {
   const found = links(message);
-  return found.length > 0 ? found[0] : '';
+  return found.length > 0 ? found[0].url : '';
 }
 
 // atOldest reports whether currentId is already the oldest loaded

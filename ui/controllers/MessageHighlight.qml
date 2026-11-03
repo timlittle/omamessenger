@@ -190,19 +190,19 @@ QtObject {
   // openLink finds the highlighted message's link or links (the link
   // preview's own URL, or every link in its text when it has no preview)
   // and asks the caller to open them: nothing happens when it carries
-  // none. Each is reported as {url, displayText}, both read from the
-  // same match (see Highlight.links): a plain autolinked URL's own
-  // visible text is always the URL itself (see ui/lib/Links.js's own
-  // header comment), but paired as two separate fields rather than the
-  // same value passed in twice, so WindowController.openLink's own
-  // mismatch question still has something real to compare if either
-  // one is ever computed differently in the future.
+  // none. Each is reported exactly as Highlight.links rendered it -
+  // {url, displayText} - the same anchor the message's own bubble
+  // shows, never re-paired as the url written twice over: that used to
+  // leave WindowController.openLink's own mismatch question
+  // (Links.needsConfirmation) nothing it could ever catch, since
+  // comparing a value against itself never disagrees (see
+  // docs/decisions.md).
   function openLink(timeline: var): void {
     const message = timeline.find(root.highlightedId);
     if (!message) return;
 
     const found = Highlight.links(message);
-    if (found.length > 0) root.linksRequested(found.map((url) => ({ url, displayText: url })));
+    if (found.length > 0) root.linksRequested(found);
   }
 
   // goToQuote moves the highlight to the message the highlighted one

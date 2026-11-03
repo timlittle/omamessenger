@@ -82,24 +82,8 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// unescapeHtml reverses escapeHtml's own four replacements, undoing
-// them in the opposite order so an entity escapeHtml wrote stays
-// correctly resolved rather than being partly re-decoded by a later
-// step (unescaping &amp; first would turn the literal text "&lt;" - a
-// message that already read "&amp;lt;" before escaping - back into a
-// "<" it never was). plainLinks is the one place this matters: a
-// matched URL comes back from escaped text, and must be handed to the
-// helper's own open-link path as the real characters a URL may
-// actually contain, never the HTML entities built for a rich-text
-// TextEdit. An entity this does not recognise (anything escapeHtml
-// itself never writes) is left exactly as it appears.
-function unescapeHtml(text) {
-  return text.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
-}
-
-// TRAILING_LINK_PUNCTUATION is the set of characters linkify (and
-// plainLinks, which shares this same trim) drop off a matched URL's
-// own end.
+// TRAILING_LINK_PUNCTUATION is the set of characters linkify drops
+// off a matched URL's own end.
 var TRAILING_LINK_PUNCTUATION = '.,;:!?)';
 
 // splitTrailingPunctuation returns [url, trailing]: match with any run
@@ -134,27 +118,6 @@ function linkify(escaped, color, anchors = []) {
     anchors.push({ url, displayText: url });
     return `<a href="${href}"${style}>${url}</a>${trailing}`;
   });
-}
-
-// plainLinks returns every plain, unformatted http(s) URL raw text
-// autolinks, in the order they appear: the real characters each one
-// may actually contain, never escaped. This is linkify's own match and
-// trim, URL_PATTERN and splitTrailingPunctuation, run the same way on
-// text escaped first so the characters that end a link - whitespace,
-// or an unescaped '&', '<' or '"' that does not start one of the few
-// entities a URL may still contain - behave identically to a bubble's
-// own anchor, then unescaped back to real characters once matched.
-// ui/lib/Highlight.js's o key calls this rather than matching with its
-// own, separately maintained pattern, the gap a security review found
-// let a stray '>' - which a browser reads as ending a URL's host and
-// starting a new userinfo@host past it - open far more of a message's
-// text than its bubble ever showed as a link (see docs/decisions.md).
-// Never a formatting span's own url: a span's whole covered text is
-// plain, unlinkified text here exactly as it is in the bubble (see
-// styledSegment), so this never needs to know about spans at all.
-function plainLinks(text) {
-  const matches = escapeHtml(text).match(URL_PATTERN) || [];
-  return matches.map((match) => unescapeHtml(splitTrailingPunctuation(match)[0]));
 }
 
 // messageHtml shows a message's text as rich text, which would otherwise

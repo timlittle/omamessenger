@@ -10,7 +10,9 @@
 // view; t retries the highlighted message only when it has failed; e
 // opens the picker for it; r starts a reply to it; Enter opens its
 // photo; o asks to open its link, or lets the caller choose among
-// several; p moves the highlight to the message it replies to; o in the
+// several, reporting exactly the bubble's own url and visible text
+// even once a formatting span makes them different; p moves the
+// highlight to the message it replies to; o in the
 // photo viewer reaches openExternally (never a real download here, so
 // it only closes the viewer, never calling Qt.openUrlExternally for
 // real); that the highlighted message's own visual cue hides the moment
@@ -457,6 +459,28 @@ ShellRoot {
     // nothing it could ever catch (see docs/decisions.md).
     if (JSON.stringify(root.capturedLinks) !== '[{"url":"https://example.com/offer","displayText":"https://example.com/offer"}]')
       return Check.fail("o did not report the highlighted message's own link: " + JSON.stringify(root.capturedLinks));
+
+    // A formatting span can make a message's own visible text read as
+    // something other than where it actually goes - a Telegram
+    // MessageEntityTextURL, say - delivered here as a live edit to the
+    // still-highlighted message, through the same message.updated
+    // event path a real connector uses, not messages.list's own fixed
+    // page. A security review found the real caller's own equivalent
+    // of this re-paired the url as its own displayText instead of
+    // forwarding the span's real, different one, which left
+    // WindowController.openLink's own mismatch question nothing it
+    // could ever catch (see docs/decisions.md).
+    service.event("message.updated", service.fakeMessage("m2", service.base - 1000, {
+      text: "click here",
+      formatting: [{ kind: "link", start: 0, end: 10, url: "https://evil.example.com/login" }]
+    }));
+    if (conversationController.highlightedId !== "m2")
+      return Check.fail("editing the highlighted message's own text moved the highlight: got " + conversationController.highlightedId);
+
+    root.capturedLinks = null;
+    t.keyClick(Qt.Key_O);
+    if (JSON.stringify(root.capturedLinks) !== '[{"url":"https://evil.example.com/login","displayText":"click here"}]')
+      return Check.fail("o did not report the formatting span's own mismatched url and visible text: " + JSON.stringify(root.capturedLinks));
 
     t.keyClick(Qt.Key_K);
     t.keyClick(Qt.Key_K);

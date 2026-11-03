@@ -6,6 +6,7 @@ const assert = require('node:assert');
 const { load } = require('./load.cjs');
 
 const Highlight = load('lib/Highlight.js');
+const Format = load('lib/Format.js');
 
 const ids = ['m1', 'm2', 'm3'];
 
@@ -144,12 +145,15 @@ test('links never reaches a link preview URL the message text does not show', ()
   // The preview's URL is the sender's to set, independently of the text
   // the bubble shows, so the open key only ever reaches visible links.
   const linked = message({ text: 'https://text.example/one', media: { kind: 'link', url: 'https://preview.example/two' } });
-  assert.deepEqual(Highlight.links(linked), ['https://text.example/one']);
+  assert.deepEqual(Highlight.links(linked), [{ url: 'https://text.example/one', displayText: 'https://text.example/one' }]);
 });
 
 test('links finds every URL in the text, in order, trimming trailing punctuation', () => {
   const texted = message({ text: 'see https://a.example/x. then (https://b.example/y) too' });
-  assert.deepEqual(Highlight.links(texted), ['https://a.example/x', 'https://b.example/y']);
+  assert.deepEqual(Highlight.links(texted), [
+    { url: 'https://a.example/x', displayText: 'https://a.example/x' },
+    { url: 'https://b.example/y', displayText: 'https://b.example/y' }
+  ]);
 });
 
 test('links returns an empty list for a message with no link', () => {
@@ -157,19 +161,90 @@ test('links returns an empty list for a message with no link', () => {
   assert.deepEqual(Highlight.links(message({ media: { kind: 'photo', width: 1, height: 1 } })), []);
 });
 
-test('links stops exactly where the bubble would, matching Format.plainLinks rather than its own pattern', () => {
-  // A security review found this file's own, separately maintained
-  // pattern ran through '>', which a browser reads as ending a URL's
-  // host and starting a new userinfo@host past it: the bubble (see
-  // ui/lib/Format.js's URL_PATTERN) already stopped there, so o opened
-  // more of the message than its own bubble ever showed as a link
-  // (see docs/decisions.md and tests/unit/format.test.cjs's own
-  // plainLinks cases for every other character this same rule covers).
+test('links stops exactly where the bubble would for a plain autolinked URL', () => {
+  // The bubble's own URL_PATTERN (ui/lib/Format.js, run through
+  // messageLinkAnchors here) already stops at an unescaped '>', which
+  // a browser reads as ending a URL's host and starting a new
+  // userinfo@host past it; this is the no-spans, no-mentions case
+  // where that alone is enough to agree with the bubble.
   const spoofed = message({ text: 'https://bank.com>@evil.example/login' });
-  assert.deepEqual(Highlight.links(spoofed), ['https://bank.com']);
+  assert.deepEqual(Highlight.links(spoofed), [{ url: 'https://bank.com', displayText: 'https://bank.com' }]);
 });
 
-test('primaryLink returns the first link, or "" for none', () => {
+test('links agrees with the bubble when a formatting span starts at the exact character that would otherwise join two URLs into one', () => {
+  // A security review's own example: raw text that reads as one URL,
+  // https://bank.example@evil.example/login, whose real authority host
+  // (after the last unescaped '@') is evil.example - but a Telegram
+  // entity (bold, here) starting exactly at that '@' makes the bubble
+  // linkify only the text before it, "https://bank.example" on its
+  // own, as a complete, well-formed URL with no further host to hide,
+  // then render "@evil.example/login" as separate, inert bold text
+  // (see ui/lib/Format.js's styledSegment, which runs lineHtml per cut
+  // segment rather than over the whole span-covered text at once).
+  // Matching the whole raw text with a single regex pass - the old
+  // Format.plainLinks - knew nothing about that boundary and rejoined
+  // both halves into the one link the bubble never showed at all,
+  // reaching evil.example instead of the single, harmless link the
+  // bubble actually rendered (see docs/decisions.md).
+  const text = 'https://bank.example@evil.example/login';
+  const spans = [{ kind: 'bold', start: text.indexOf('@'), end: text.length }];
+  const disguised = message({ text, formatting: spans });
+  assert.deepEqual(Highlight.links(disguised), [{ url: 'https://bank.example', displayText: 'https://bank.example' }]);
+});
+
+test('links agrees with the bubble when a would-be URL spans two Markdown table cells', () => {
+  // A GitHub-style pipe table's own cells are linkified one at a time
+  // (see ui/lib/Markdown.js's tableHtml/cellHtml): "https://bank.example.com"
+  // and "@evil.example/login" are two separate cells here, so the
+  // bubble renders only the first, complete and harmless on its own,
+  // as a link, and the second - no "http(s)://" of its own - as plain
+  // text. A single regex pass over the whole raw text instead - the
+  // old Format.plainLinks - matched straight through the "|" cell
+  // boundary (not one of URL_PATTERN's own stop characters) and
+  // rejoined both halves into one link reaching evil.example that the
+  // bubble never rendered at all.
+  const tableText = '| https://bank.example.com|@evil.example/login |\n|-|-|\n| a | b |';
+  assert.deepEqual(Highlight.links(message({ text: tableText })), [
+    { url: 'https://bank.example.com', displayText: 'https://bank.example.com' }
+  ]);
+});
+
+test('links always equals the bubble\'s own anchors: a property check over many generated messages', () => {
+  // Rather than re-deriving Format.messageLinkAnchors' own cases one by
+  // one, this holds links() to the one property that actually matters:
+  // whatever the bubble would render as a clickable anchor for this
+  // exact text, mentions and formatting is exactly what the open key
+  // (o) can reach - never more, never less, and never a different
+  // visible text for the same url. A future change that reintroduces a
+  // second, separately maintained pattern here, even one that passes
+  // every case above, would still have to agree across all of these.
+  let seed = 7;
+  const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const pick = (choices) => choices[Math.floor(rand() * choices.length)];
+
+  const words = ['see', 'https://a.example/path', 'https://b.example?x=1&y=2', 'plain', '@carol', 'https://c.example.com>@evil.example/x', '|', 'table', 'cell'];
+  const schemes = ['https://link.example/one', 'https://link.example/two', 'mailto:a@example.com', 'javascript:alert(1)'];
+
+  for (let i = 0; i < 200; i++) {
+    const wordCount = 1 + Math.floor(rand() * 6);
+    const text = Array.from({ length: wordCount }, () => pick(words)).join(' ');
+
+    const mentions = rand() < 0.3 && text.length > 2
+      ? [{ offset: 0, length: Math.min(2, text.length) }]
+      : [];
+
+    const formatting = rand() < 0.3 && text.length > 2
+      ? [{ kind: pick(['bold', 'italic', 'link']), start: 0, end: Math.min(1 + Math.floor(rand() * (text.length - 1)), text.length), url: pick(schemes) }]
+      : [];
+
+    const got = Highlight.links(message({ text, mentions, formatting }));
+    const want = Format.messageLinkAnchors(text, mentions, formatting);
+    assert.deepEqual(got, Array.from(want, (a) => ({ url: a.url, displayText: a.displayText })),
+      `case ${i}: text=${JSON.stringify(text)} mentions=${JSON.stringify(mentions)} formatting=${JSON.stringify(formatting)}`);
+  }
+});
+
+test('primaryLink returns the first link\'s url, or "" for none', () => {
   assert.strictEqual(Highlight.primaryLink(message({ text: 'https://a.example https://b.example' })), 'https://a.example');
   assert.strictEqual(Highlight.primaryLink(message({ text: 'no links' })), '');
 });
@@ -187,6 +262,6 @@ test('links strips a long run of trailing punctuation in linear time, not quadra
   const found = Highlight.links(message({ text: adversarial }));
   const elapsedMs = Date.now() - start;
 
-  assert.deepEqual(found, [adversarial]);
+  assert.deepEqual(found, [{ url: adversarial, displayText: adversarial }]);
   assert.ok(elapsedMs < 2000, `links took ${elapsedMs}ms on an adversarial trailing-punctuation run, want well under 2000ms`);
 });
