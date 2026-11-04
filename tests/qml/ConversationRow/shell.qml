@@ -15,9 +15,8 @@
 // account colour otherwise, always paired with a tooltip naming the
 // account. Also checks that a title written to look like HTML renders as
 // the literal text instead of being auto-detected as rich text, and
-// that an unverified title - self-chosen, like a bare push name - shows
-// marked with a leading "~" while the same, verified title shows
-// unmarked.
+// that a self-chosen title (a bare push name with no saved contact
+// behind it) renders exactly as given.
 import QtQuick
 import Quickshell
 import "ui/components"
@@ -29,7 +28,7 @@ ShellRoot {
   ConversationRow {
     id: plainRow
     width: 260
-    conversation: ({ id: "c1", title: "Plain", titleVerified: true, lastActivity: Date.now() })
+    conversation: ({ id: "c1", title: "Plain", lastActivity: Date.now() })
     dimmed: false
     dimLabel: ""
   }
@@ -37,7 +36,7 @@ ShellRoot {
   ConversationRow {
     id: olderRow
     width: 260
-    conversation: ({ id: "c2", title: "Older", titleVerified: true, lastActivity: 0 })
+    conversation: ({ id: "c2", title: "Older", lastActivity: 0 })
     dimmed: true
     dimLabel: ""
   }
@@ -45,7 +44,7 @@ ShellRoot {
   ConversationRow {
     id: hiddenRow
     width: 260
-    conversation: ({ id: "c3", title: "Hidden Chat", titleVerified: true, lastActivity: Date.now() })
+    conversation: ({ id: "c3", title: "Hidden Chat", lastActivity: Date.now() })
     dimmed: true
     dimLabel: "Hidden"
   }
@@ -53,7 +52,7 @@ ShellRoot {
   ConversationRow {
     id: archivedRow
     width: 260
-    conversation: ({ id: "c4", title: "Archived Chat", titleVerified: true, lastActivity: Date.now() })
+    conversation: ({ id: "c4", title: "Archived Chat", lastActivity: Date.now() })
     dimmed: true
     dimLabel: "Archived"
   }
@@ -61,25 +60,25 @@ ShellRoot {
   ConversationRow {
     id: pinnedRow
     width: 260
-    conversation: ({ id: "c5", title: "Pinned Chat", titleVerified: true, lastActivity: Date.now(), pinned: true })
+    conversation: ({ id: "c5", title: "Pinned Chat", lastActivity: Date.now(), pinned: true })
   }
 
   ConversationRow {
     id: mutedRow
     width: 260
-    conversation: ({ id: "c6", title: "Muted Chat", titleVerified: true, lastActivity: Date.now(), muted: true })
+    conversation: ({ id: "c6", title: "Muted Chat", lastActivity: Date.now(), muted: true })
   }
 
   ConversationRow {
     id: blockedRow
     width: 260
-    conversation: ({ id: "c11", title: "Blocked Chat", titleVerified: true, lastActivity: Date.now(), blocked: true })
+    conversation: ({ id: "c11", title: "Blocked Chat", lastActivity: Date.now(), blocked: true })
   }
 
   ConversationRow {
     id: snoozedRow
     width: 260
-    conversation: ({ id: "c8", title: "Snoozed Chat", titleVerified: true, lastActivity: Date.now(), reminderAt: Date.now() + 3600000 })
+    conversation: ({ id: "c8", title: "Snoozed Chat", lastActivity: Date.now(), reminderAt: Date.now() + 3600000 })
     dimmed: true
     dimLabel: "Snoozed"
   }
@@ -87,37 +86,29 @@ ShellRoot {
   ConversationRow {
     id: dueRow
     width: 260
-    conversation: ({ id: "c9", title: "Due Chat", titleVerified: true, lastActivity: Date.now() })
+    conversation: ({ id: "c9", title: "Due Chat", lastActivity: Date.now() })
     reminderDue: true
   }
 
   ConversationRow {
     id: hostileRow
     width: 260
-    conversation: ({ id: "c10", title: "<img src=\"https://example.com/x.png\">Group", titleVerified: true, lastActivity: Date.now() })
+    conversation: ({ id: "c10", title: "<img src=\"https://example.com/x.png\">Group", lastActivity: Date.now() })
   }
 
-  // unverifiedRow is a direct chat named by a self-chosen push name the
+  // plainTitleRow is a direct chat named by a self-chosen push name the
   // helper did not resolve to a saved contact, the way a stranger
-  // could set their own name to "Mum".
+  // could set their own name to "Mum". It renders exactly as given.
   ConversationRow {
-    id: unverifiedRow
+    id: plainTitleRow
     width: 260
-    conversation: ({ id: "c12", title: "Mum", titleVerified: false, lastActivity: Date.now() })
-  }
-
-  // verifiedRow is the same title, but resolved from a saved contact or
-  // the service's own verification: shown unmarked.
-  ConversationRow {
-    id: verifiedRow
-    width: 260
-    conversation: ({ id: "c13", title: "Mum", titleVerified: true, lastActivity: Date.now() })
+    conversation: ({ id: "c12", title: "Mum", lastActivity: Date.now() })
   }
 
   ConversationRow {
     id: taggedRow
     width: 260
-    conversation: ({ id: "c7", title: "Tagged Chat", titleVerified: true, lastActivity: Date.now() })
+    conversation: ({ id: "c7", title: "Tagged Chat", lastActivity: Date.now() })
     showAccountColor: true
     accountColor: "#ff00ff"
     accountName: "Work"
@@ -220,16 +211,11 @@ ShellRoot {
     if (hostileTitle.textFormat !== Text.PlainText)
       return Check.fail("title textFormat is " + hostileTitle.textFormat + ", want PlainText");
 
-    // An unverified title - self-chosen, like a bare push name - shows
-    // marked with a leading "~", so it never looks like a saved
-    // contact's own name; the same title, verified, shows unmarked
-    // (see docs/decisions.md).
-    const unverifiedTitle = Check.find(unverifiedRow, "titleText");
-    if (!unverifiedTitle || unverifiedTitle.text !== "~Mum")
-      return Check.fail("an unverified title does not show marked: " + (unverifiedTitle && unverifiedTitle.text));
-    const verifiedTitle = Check.find(verifiedRow, "titleText");
-    if (!verifiedTitle || verifiedTitle.text !== "Mum")
-      return Check.fail("a verified title shows marked, want unmarked: " + (verifiedTitle && verifiedTitle.text));
+    // A self-chosen title (a bare push name with no saved contact
+    // behind it) renders exactly as given, the same as any other title.
+    const plainTitle = Check.find(plainTitleRow, "titleText");
+    if (!plainTitle || plainTitle.text !== "Mum")
+      return Check.fail("a self-chosen title does not show plainly: " + (plainTitle && plainTitle.text));
 
     const plainStripe = Check.find(plainRow, "accountColorStripe");
     if (!plainStripe || plainStripe.visible)

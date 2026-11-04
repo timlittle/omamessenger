@@ -1,5 +1,5 @@
-// Checks MessageDelegate: sender names in groups, that an unverified
-// sender (or quoted sender) shows marked with a leading "~" and never
+// Checks MessageDelegate: sender names in groups, that a self-chosen
+// sender (or quoted sender) name renders exactly as given and never
 // as the reserved "You" label just because the name matches, the read
 // glyph, the retry line on a failed message both with and without a
 // scheduled automatic retry, that rich text escapes markup while
@@ -97,7 +97,7 @@ ShellRoot {
     MessageDelegate {
       id: delegate
       width: 360
-      message: ({ id: "m1", senderId: "s1", senderName: "Alex", senderVerified: true, text: "hi", outgoing: false, status: "delivered", created: root.now })
+      message: ({ id: "m1", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "delivered", created: root.now })
       annotation: ({ showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false })
       isGroup: true
       nowMs: root.now
@@ -125,7 +125,7 @@ ShellRoot {
       MessageDelegate {
         id: rowA
         width: 360
-        message: ({ id: "l1", senderId: "s1", senderName: "Alex", senderVerified: true, text: "first message", outgoing: false, status: "received", created: root.now })
+        message: ({ id: "l1", senderId: "s1", senderName: "Alex", text: "first message", outgoing: false, status: "received", created: root.now })
         annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         nowMs: root.now
       }
@@ -133,7 +133,7 @@ ShellRoot {
       MessageDelegate {
         id: rowB
         width: 360
-        message: ({ id: "l2", senderId: "s1", senderName: "Alex", senderVerified: true, text: "second message", outgoing: false, status: "received", created: root.now })
+        message: ({ id: "l2", senderId: "s1", senderName: "Alex", text: "second message", outgoing: false, status: "received", created: root.now })
         annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         nowMs: root.now
         onReplyRequested: id => root.replied.push(id)
@@ -143,7 +143,7 @@ ShellRoot {
       MessageDelegate {
         id: rowC
         width: 360
-        message: ({ id: "l3", senderId: "s1", senderName: "Alex", senderVerified: true, text: "third message", outgoing: false, status: "received", created: root.now })
+        message: ({ id: "l3", senderId: "s1", senderName: "Alex", text: "third message", outgoing: false, status: "received", created: root.now })
         annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         nowMs: root.now
       }
@@ -151,7 +151,7 @@ ShellRoot {
       MessageDelegate {
         id: rowD
         width: 360
-        message: ({ id: "l4", senderId: "me", senderName: "Me", senderVerified: true, text: "fourth message", outgoing: true, status: "delivered", created: root.now })
+        message: ({ id: "l4", senderId: "me", senderName: "Me", text: "fourth message", outgoing: true, status: "delivered", created: root.now })
         annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
         nowMs: root.now
       }
@@ -165,7 +165,7 @@ ShellRoot {
       id: narrowDelegate
       y: 820
       width: 140
-      message: ({ id: "n1", senderId: "s1", senderName: "Alex", senderVerified: true, text: "a message long enough to wrap onto several lines and reach the bubble's maximum width", outgoing: false, status: "received", created: root.now })
+      message: ({ id: "n1", senderId: "s1", senderName: "Alex", text: "a message long enough to wrap onto several lines and reach the bubble's maximum width", outgoing: false, status: "received", created: root.now })
       annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false })
       nowMs: root.now
     }
@@ -178,7 +178,7 @@ ShellRoot {
       MessageDelegate {
         id: groupA1
         width: 360
-        message: ({ id: "g1", senderId: "sender-a", senderName: "Priya Patel", senderVerified: true, text: "Morning! Ready for the stand-up?", outgoing: false, status: "received", created: root.now })
+        message: ({ id: "g1", senderId: "sender-a", senderName: "Priya Patel", text: "Morning! Ready for the stand-up?", outgoing: false, status: "received", created: root.now })
         annotation: ({ showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false })
         isGroup: true
         nowMs: root.now
@@ -187,7 +187,7 @@ ShellRoot {
       MessageDelegate {
         id: groupA2
         width: 360
-        message: ({ id: "g2", senderId: "sender-a", senderName: "Priya Patel", senderVerified: true, text: "I'll share the notes after.", outgoing: false, status: "received", created: root.now })
+        message: ({ id: "g2", senderId: "sender-a", senderName: "Priya Patel", text: "I'll share the notes after.", outgoing: false, status: "received", created: root.now })
         annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: true })
         isGroup: true
         nowMs: root.now
@@ -196,7 +196,7 @@ ShellRoot {
       MessageDelegate {
         id: groupB1
         width: 360
-        message: ({ id: "g3", senderId: "sender-b", senderName: "Noah Kim", senderVerified: true, text: "Yep, see you there.", outgoing: false, status: "received", created: root.now })
+        message: ({ id: "g3", senderId: "sender-b", senderName: "Noah Kim", text: "Yep, see you there.", outgoing: false, status: "received", created: root.now })
         annotation: ({ showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false })
         isGroup: true
         nowMs: root.now
@@ -205,7 +205,7 @@ ShellRoot {
       MessageDelegate {
         id: groupB2
         width: 360
-        message: ({ id: "g4", senderId: "sender-b", senderName: "Noah Kim", senderVerified: true, text: "Can we push it 10 minutes?", outgoing: false, status: "received", created: root.now })
+        message: ({ id: "g4", senderId: "sender-b", senderName: "Noah Kim", text: "Can we push it 10 minutes?", outgoing: false, status: "received", created: root.now })
         annotation: ({ showDay: false, dayLabel: "", showSender: false, groupedWithOlder: true })
         isGroup: true
         nowMs: root.now
@@ -233,7 +233,7 @@ ShellRoot {
     if (!root.checkGroupSender()) return;
     if (!root.checkSenderNameRendersLiterally()) return;
     if (!root.checkSenderNameElidesAnOversizedName()) return;
-    if (!root.checkSenderNameMarksAnUnverifiedName()) return;
+    if (!root.checkSenderNameRendersPlainlyEvenAsYou()) return;
     if (!root.checkOutgoingReadGlyph()) return;
     if (!root.checkEditedLabel()) return;
     if (!root.checkFailedRetry()) return;
@@ -277,7 +277,7 @@ ShellRoot {
   // Text element itself has to be the one refusing to interpret it.
   function checkSenderNameRendersLiterally(): bool {
     const hostile = "<img src=\"https://example.com/x.png\"><b>Alex</b>";
-    delegate.message = { id: "m17", senderId: "s1", senderName: hostile, senderVerified: true, text: "hi", outgoing: false, status: "delivered", created: root.now };
+    delegate.message = { id: "m17", senderId: "s1", senderName: hostile, text: "hi", outgoing: false, status: "delivered", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false };
 
     const name = Check.find(delegate, "senderName");
@@ -294,7 +294,7 @@ ShellRoot {
   // legacy row, or a future bug, still handing the UI an oversized one.
   function checkSenderNameElidesAnOversizedName(): bool {
     const oversized = "Alex ".repeat(200);
-    delegate.message = { id: "m17b", senderId: "s1", senderName: oversized, senderVerified: true, text: "hi", outgoing: false, status: "delivered", created: root.now };
+    delegate.message = { id: "m17b", senderId: "s1", senderName: oversized, text: "hi", outgoing: false, status: "delivered", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false };
 
     const name = Check.find(delegate, "senderName");
@@ -305,33 +305,29 @@ ShellRoot {
     return true;
   }
 
-  // checkSenderNameMarksAnUnverifiedName verifies a self-chosen sender
-  // name - unverified, the way a bare WhatsApp push name or a Telegram
-  // profile name with no contact behind it is reported - shows marked
-  // with a leading "~", a verified one shows unmarked, and a stranger
-  // who names themselves "You" still shows "~You", never the reserved
-  // label (see docs/decisions.md).
-  function checkSenderNameMarksAnUnverifiedName(): bool {
-    delegate.message = { id: "m17c", senderId: "s1", senderName: "Mum", senderVerified: false, text: "hi", outgoing: false, status: "delivered", created: root.now };
+  // checkSenderNameRendersPlainlyEvenAsYou verifies a self-chosen
+  // sender name - a bare WhatsApp push name or a Telegram profile name
+  // with no contact behind it - renders exactly as given, and that a
+  // stranger who names themselves "You" still shows "You" as their own
+  // sender name, never the reserved outgoing label, since only the
+  // message's own outgoing flag ever means it is the user's own.
+  function checkSenderNameRendersPlainlyEvenAsYou(): bool {
+    delegate.message = { id: "m17c", senderId: "s1", senderName: "Mum", text: "hi", outgoing: false, status: "delivered", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: true, groupedWithOlder: false };
 
     let name = Check.find(delegate, "senderName");
-    if (name.text !== "~Mum") return Check.fail(`unverified sender name = "${name.text}", want "~Mum"`);
+    if (name.text !== "Mum") return Check.fail(`sender name = "${name.text}", want "Mum"`);
 
-    delegate.message = { id: "m17d", senderId: "s1", senderName: "Alex", senderVerified: true, text: "hi", outgoing: false, status: "delivered", created: root.now };
+    delegate.message = { id: "m17e", senderId: "s1", senderName: "You", text: "hi", outgoing: false, status: "delivered", created: root.now };
     name = Check.find(delegate, "senderName");
-    if (name.text !== "Alex") return Check.fail(`verified sender name = "${name.text}", want unmarked "Alex"`);
-
-    delegate.message = { id: "m17e", senderId: "s1", senderName: "You", senderVerified: false, text: "hi", outgoing: false, status: "delivered", created: root.now };
-    name = Check.find(delegate, "senderName");
-    if (name.text !== "~You") return Check.fail(`a stranger named "You" shows as "${name.text}", want "~You", never the reserved label`);
+    if (name.text !== "You") return Check.fail(`a stranger named "You" shows as "${name.text}", want "You" as given, never the reserved label`);
     return true;
   }
 
   // checkOutgoingReadGlyph verifies an outgoing read message hides the
   // sender name and shows the read glyph in the accent colour.
   function checkOutgoingReadGlyph(): bool {
-    delegate.message = { id: "m2", senderId: "me", senderName: "Me", senderVerified: true, text: "ok", outgoing: true, status: "read", created: root.now };
+    delegate.message = { id: "m2", senderId: "me", senderName: "Me", text: "ok", outgoing: true, status: "read", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
 
     const nodes = Check.texts(delegate);
@@ -347,13 +343,13 @@ ShellRoot {
   // checkEditedLabel verifies the "edited" label shows only for a message
   // the service reported changed.
   function checkEditedLabel(): bool {
-    delegate.message = { id: "me1", senderId: "s1", senderName: "Alex", senderVerified: true, text: "fixed", outgoing: false, status: "delivered", created: root.now, edited: true };
+    delegate.message = { id: "me1", senderId: "s1", senderName: "Alex", text: "fixed", outgoing: false, status: "delivered", created: root.now, edited: true };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
 
     let label = root.findText(Check.texts(delegate), "edited");
     if (!label || !label.visible) return Check.fail("edited label not shown for an edited message");
 
-    delegate.message = { id: "me2", senderId: "s1", senderName: "Alex", senderVerified: true, text: "plain", outgoing: false, status: "delivered", created: root.now };
+    delegate.message = { id: "me2", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "delivered", created: root.now };
     label = root.findText(Check.texts(delegate), "edited");
     if (label && label.visible) return Check.fail("edited label shown for a message that was not edited");
     return true;
@@ -363,7 +359,7 @@ ShellRoot {
   // "t to retry" hint for a failed message with no automatic retry
   // scheduled, and clicking it emits retry with the message id.
   function checkFailedRetry(): bool {
-    delegate.message = { id: "m3", senderId: "me", senderName: "Me", senderVerified: true, text: "nope", outgoing: true, status: "failed", created: root.now };
+    delegate.message = { id: "m3", senderId: "me", senderName: "Me", text: "nope", outgoing: true, status: "failed", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
     t.waitForRendering(delegate);
 
@@ -390,7 +386,7 @@ ShellRoot {
   // an overdue one, that it follows nowMs, and that the manual retry
   // hint is hidden while it is shown (but clicking still retries).
   function checkFailedRetrySchedule(): bool {
-    delegate.message = { id: "m5", senderId: "me", senderName: "Me", senderVerified: true, text: "nope", outgoing: true, status: "failed", created: root.now, retryAt: root.now + 2 * 60 * 1000 };
+    delegate.message = { id: "m5", senderId: "me", senderName: "Me", text: "nope", outgoing: true, status: "failed", created: root.now, retryAt: root.now + 2 * 60 * 1000 };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
     t.waitForRendering(delegate);
 
@@ -424,7 +420,7 @@ ShellRoot {
 
   // checkRichText verifies markup is escaped and a URL becomes a link.
   function checkRichText(): bool {
-    delegate.message = { id: "m4", senderId: "s1", senderName: "Alex", senderVerified: true, text: "<b>bold</b> see http://example.com/x", outgoing: false, status: "delivered", created: root.now };
+    delegate.message = { id: "m4", senderId: "s1", senderName: "Alex", text: "<b>bold</b> see http://example.com/x", outgoing: false, status: "delivered", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
 
     const nodes = Check.texts(delegate);
@@ -438,7 +434,7 @@ ShellRoot {
 
   // checkLineBreaks verifies a bulleted message keeps one line per bullet.
   function checkLineBreaks(): bool {
-    delegate.message = { id: "m5", senderId: "s1", senderName: "Alex", senderVerified: true, text: "Plan:\n• one\n• two", outgoing: false, status: "delivered", created: root.now };
+    delegate.message = { id: "m5", senderId: "s1", senderName: "Alex", text: "Plan:\n• one\n• two", outgoing: false, status: "delivered", created: root.now };
 
     const nodes = Check.texts(delegate);
     const body = nodes.find(node => node.objectName === "body");
@@ -460,7 +456,7 @@ ShellRoot {
       "| 06:30 check        | Daily, 06:30             | It compares today's Strava run against yesterday's and writes a short note about the difference, then saves it for the weekly digest |",
       "| Missed-run reminder | Every 30 min, 12:00-20:30 | Looks for a run between those hours and pings if none has shown up yet |",
     ].join("\n");
-    delegate.message = { id: "tbl1", senderId: "s1", senderName: "Alex", senderVerified: true, text: text, outgoing: false, status: "received", created: root.now };
+    delegate.message = { id: "tbl1", senderId: "s1", senderName: "Alex", text: text, outgoing: false, status: "received", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
     t.waitForRendering(delegate);
 
@@ -494,7 +490,7 @@ ShellRoot {
   // to decode the previous message's thumbnail off-screen.
   function checkLinkPreview(): bool {
     const link = { kind: "link", url: "https://x.io", siteName: "X", title: "A page", description: "About it" };
-    delegate.message = { id: "m6", senderId: "s1", senderName: "Alex", senderVerified: true, text: "see https://x.io", outgoing: false, status: "received", created: root.now, media: JSON.stringify(link) };
+    delegate.message = { id: "m6", senderId: "s1", senderName: "Alex", text: "see https://x.io", outgoing: false, status: "received", created: root.now, media: JSON.stringify(link) };
 
     const card = Check.find(delegate, "linkPreview");
     const bubble = Check.find(delegate, "bubble");
@@ -502,7 +498,7 @@ ShellRoot {
     if (!Check.texts(card).some((item) => item.text === "A page")) return Check.fail("link preview does not show the page title");
     if (bubble.width < card.width) return Check.fail("bubble is narrower than its link preview");
 
-    delegate.message = { id: "m7", senderId: "s1", senderName: "Alex", senderVerified: true, text: "plain", outgoing: false, status: "received", created: root.now, media: "" };
+    delegate.message = { id: "m7", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "received", created: root.now, media: "" };
     if (Check.find(delegate, "linkPreview")) return Check.fail("link preview view still exists for a message without one");
     return true;
   }
@@ -523,7 +519,7 @@ ShellRoot {
     // below, which sets mediaPath directly, now that PhotoView never
     // decodes a path without them.
     const photo = { kind: "photo", width: 400, height: 200, verifiedWidth: 400, verifiedHeight: 200, size: 1024, thumb: "" };
-    delegate.message = { id: "m8", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
+    delegate.message = { id: "m8", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
 
     const view = Check.find(delegate, "photoView");
     if (!view || !view.visible) return Check.fail("photo not shown");
@@ -549,7 +545,7 @@ ShellRoot {
   // naming the file rather than staying an empty box.
   function checkPhotoLoadFailure(): bool {
     const noThumb = { kind: "photo", width: 400, height: 200, verifiedWidth: 400, verifiedHeight: 200, thumb: "", fileName: "trip.jpg" };
-    delegate.message = { id: "m16", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(noThumb), mediaPath: "/does/not/exist.jpg" };
+    delegate.message = { id: "m16", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(noThumb), mediaPath: "/does/not/exist.jpg" };
 
     // The PhotoView swaps the Image away from the failed file once it
     // reports the error, so the visible outcome, not the Image's own
@@ -559,7 +555,7 @@ ShellRoot {
     if (label.text.indexOf("trip.jpg") < 0) return Check.fail("unavailable message does not name the file: " + label.text);
 
     const withThumb = { kind: "photo", width: 400, height: 200, verifiedWidth: 400, verifiedHeight: 200, thumb: root.tinyThumb, fileName: "trip.jpg" };
-    delegate.message = { id: "m16b", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(withThumb), mediaPath: "/does/not/exist-either.jpg" };
+    delegate.message = { id: "m16b", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(withThumb), mediaPath: "/does/not/exist-either.jpg" };
 
     const image2 = Check.find(delegate, "photoImage");
     if (!root.waitUntil(() => String(image2.source).indexOf("data:image/jpeg") === 0, 3000)) return Check.fail("thumb fallback not shown once the full image failed");
@@ -575,7 +571,7 @@ ShellRoot {
   function checkVideoAndFile(): bool {
     root.wanted = [];
     const video = { kind: "video", width: 1280, height: 720, duration: 65, size: 5242880 };
-    delegate.message = { id: "m9", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Video]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(video), mediaPath: "" };
+    delegate.message = { id: "m9", senderId: "s1", senderName: "Alex", text: "[Video]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(video), mediaPath: "" };
 
     const view = Check.find(delegate, "inlineVideo");
     if (!view.visible || !Check.find(delegate, "playMark").visible) return Check.fail("video shown without its play mark");
@@ -588,7 +584,7 @@ ShellRoot {
     if (root.videoToggled.indexOf("m9") < 0) return Check.fail("clicking a video did not ask to select it for playback");
 
     const file = { kind: "file", fileName: "report.pdf", size: 2048 };
-    delegate.message = { id: "m10", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[File]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(file), mediaPath: "" };
+    delegate.message = { id: "m10", senderId: "s1", senderName: "Alex", text: "[File]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(file), mediaPath: "" };
 
     const fileView = Check.find(delegate, "fileView");
     const shown = Check.texts(fileView).map((item) => item.text);
@@ -601,18 +597,17 @@ ShellRoot {
     return true;
   }
 
-  // checkReplyQuote verifies a reply shows a quote of the sender and text
-  // it answers, marked with a leading "~" when the quoted sender is
-  // unverified and unmarked when verified, that a message without one
-  // shows none, and that clicking the quote asks to scroll to the
-  // quoted message.
+  // checkReplyQuote verifies a reply shows a quote of the sender and
+  // text it answers, exactly as given even for a self-chosen sender
+  // name, that a message without one shows none, and that clicking the
+  // quote asks to scroll to the quoted message.
   function checkReplyQuote(): bool {
-    const reply = { remoteId: "7", senderName: "Alex", senderVerified: true, text: "original message" };
-    delegate.message = { id: "m11", senderId: "s1", senderName: "Alex", senderVerified: true, text: "sure", outgoing: false, status: "received", created: root.now, replyTo: JSON.stringify(reply) };
+    const reply = { remoteId: "7", senderName: "Alex", text: "original message" };
+    delegate.message = { id: "m11", senderId: "s1", senderName: "Alex", text: "sure", outgoing: false, status: "received", created: root.now, replyTo: JSON.stringify(reply) };
 
     const quote = Check.find(delegate, "replyQuote");
     if (!quote || !quote.visible) return Check.fail("reply quote not shown");
-    if (!Check.texts(quote).some((item) => item.text === "Alex")) return Check.fail("verified quoted sender shows marked, or not at all");
+    if (!Check.texts(quote).some((item) => item.text === "Alex")) return Check.fail("quote does not show the quoted sender");
     if (!Check.texts(quote).some((item) => item.text === "original message")) return Check.fail("quote does not show the quoted text");
 
     root.quoted = [];
@@ -620,13 +615,13 @@ ShellRoot {
     t.mouseClick(quote);
     if (JSON.stringify(root.quoted) !== '["7"]') return Check.fail("quote click reported " + JSON.stringify(root.quoted) + ", want [\"7\"]");
 
-    const unverifiedReply = { remoteId: "8", senderName: "Mum", senderVerified: false, text: "it's me" };
-    delegate.message = { id: "m11b", senderId: "s1", senderName: "Alex", senderVerified: true, text: "sure", outgoing: false, status: "received", created: root.now, replyTo: JSON.stringify(unverifiedReply) };
-    if (!Check.texts(Check.find(delegate, "replyQuote")).some((item) => item.text === "~Mum")) {
-      return Check.fail("unverified quoted sender does not show marked with ~Mum");
+    const selfChosenReply = { remoteId: "8", senderName: "Mum", text: "it's me" };
+    delegate.message = { id: "m11b", senderId: "s1", senderName: "Alex", text: "sure", outgoing: false, status: "received", created: root.now, replyTo: JSON.stringify(selfChosenReply) };
+    if (!Check.texts(Check.find(delegate, "replyQuote")).some((item) => item.text === "Mum")) {
+      return Check.fail("quoted self-chosen sender name does not show plainly as Mum");
     }
 
-    delegate.message = { id: "m12", senderId: "s1", senderName: "Alex", senderVerified: true, text: "plain", outgoing: false, status: "received", created: root.now };
+    delegate.message = { id: "m12", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "received", created: root.now };
     if (Check.find(delegate, "replyQuote").visible) return Check.fail("reply quote shown for a message that answers nothing");
     return true;
   }
@@ -636,7 +631,7 @@ ShellRoot {
   // emoji picker and to reply, and that each button's hit area is big
   // enough to find comfortably with a mouse, not just its small glyph.
   function checkHoverToolbar(): bool {
-    delegate.message = { id: "m13", senderId: "s1", senderName: "Alex", senderVerified: true, text: "hi", outgoing: false, status: "received", created: root.now };
+    delegate.message = { id: "m13", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "received", created: root.now };
 
     // Move the pointer away first: an earlier click left it resting on
     // the bubble, which would otherwise count as an existing hover. The
@@ -685,7 +680,7 @@ ShellRoot {
     if (Check.find(toolbar, "openExternalButton").visible) return Check.fail("open-externally button shown for a message with no media");
 
     const photo = { kind: "photo", width: 400, height: 200, thumb: "" };
-    delegate.message = { id: "m18", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
+    delegate.message = { id: "m18", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
 
     t.mouseMove(delegate, 2, 2);
     t.wait(150);
@@ -716,7 +711,7 @@ ShellRoot {
   // message's id and emoji.
   function checkReactionChips(): bool {
     delegate.message = {
-      id: "m14", senderId: "s1", senderName: "Alex", senderVerified: true, text: "hi", outgoing: false, status: "delivered", created: root.now,
+      id: "m14", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "delivered", created: root.now,
       reactions: [{ emoji: "👍", count: 1, mine: true }]
     };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
@@ -729,7 +724,7 @@ ShellRoot {
     t.mouseClick(Check.find(chips, "chipArea-👍"));
     if (JSON.stringify(root.reacted) !== '["m14 👍"]') return Check.fail("reacted " + JSON.stringify(root.reacted) + ", want [\"m14 \\ud83d\\udc4d\"]");
 
-    delegate.message = { id: "m15", senderId: "s1", senderName: "Alex", senderVerified: true, text: "plain", outgoing: false, status: "delivered", created: root.now };
+    delegate.message = { id: "m15", senderId: "s1", senderName: "Alex", text: "plain", outgoing: false, status: "delivered", created: root.now };
     t.waitForRendering(delegate);
     if (Check.find(delegate, "reactionChips").visible) return Check.fail("reaction chips shown for a message with none");
     return true;
@@ -902,7 +897,7 @@ ShellRoot {
   // message, a failed outgoing one and one carrying media, and that the
   // hint text is never clipped at the row's edge.
   function checkHighlightVisuals(): bool {
-    delegate.message = { id: "h1", senderId: "s1", senderName: "Alex", senderVerified: true, text: "hi", outgoing: false, status: "received", created: root.now };
+    delegate.message = { id: "h1", senderId: "s1", senderName: "Alex", text: "hi", outgoing: false, status: "received", created: root.now };
     delegate.annotation = { showDay: false, dayLabel: "", showSender: false, groupedWithOlder: false };
     delegate.highlighted = false;
     t.waitForRendering(delegate);
@@ -949,7 +944,7 @@ ShellRoot {
     if (hintsRect.x < 1) return Check.fail(`hint row sits flush against the row's own edge and would clip: x=${hintsRect.x}`);
     if (hintsRect.x + hintsRect.width > delegate.width + 0.5) return Check.fail("hint row's text reaches past the row's right edge");
 
-    delegate.message = { id: "h2", senderId: "me", senderName: "Me", senderVerified: true, text: "oops", outgoing: true, status: "failed", created: root.now };
+    delegate.message = { id: "h2", senderId: "me", senderName: "Me", text: "oops", outgoing: true, status: "failed", created: root.now };
     t.waitForRendering(delegate);
     if (Check.rect(bar, delegate).x + bar.width < delegate.width - bubble.width) return Check.fail("an outgoing message's highlight bar is not on the right");
     if (hints.text !== "r reply · e react · d delete · t retry") return Check.fail(`hint text is "${hints.text}", want the failed-retry hint`);
@@ -957,7 +952,7 @@ ShellRoot {
     if (outgoingHintsRect.x + outgoingHintsRect.width > delegate.width - 1) return Check.fail(`an outgoing hint row sits flush against the row's own edge and would clip: right edge=${outgoingHintsRect.x + outgoingHintsRect.width}`);
 
     const photo = { kind: "photo", width: 10, height: 10, thumb: "" };
-    delegate.message = { id: "h3", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo) };
+    delegate.message = { id: "h3", senderId: "s1", senderName: "Alex", text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo) };
     if (hints.text !== "r reply · e react · d delete · Enter open · c copy · s save · x open") return Check.fail(`hint text is "${hints.text}", want the media-open hint`);
 
     delegate.highlighted = false;

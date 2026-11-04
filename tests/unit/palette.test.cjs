@@ -86,14 +86,14 @@ test('conversationOrder: handles null or undefined input', () => {
 
 test('messageRows: keeps only conversations with a matched message, in search order', () => {
   const conversations = [
-    { id: 'a', title: 'Alpha', titleVerified: true, service: 'whatsapp', match: 'see you then', matchMessageId: 'm1', matchSender: 'Alex', matchSenderVerified: true },
+    { id: 'a', title: 'Alpha', service: 'whatsapp', match: 'see you then', matchMessageId: 'm1', matchSender: 'Alex' },
     { id: 'b', title: 'Beta', service: 'telegram' }, // title-only match: no matched message
-    { id: 'c', title: 'Gamma', titleVerified: false, service: 'whatsapp', match: 'ok', matchMessageId: 'm3', matchSender: 'Mum', matchSenderVerified: false }
+    { id: 'c', title: 'Gamma', service: 'whatsapp', match: 'ok', matchMessageId: 'm3', matchSender: 'Mum' }
   ];
 
   assert.deepEqual(Palette.messageRows(conversations), [
-    { conversationId: 'a', messageId: 'm1', sender: 'Alex', senderVerified: true, conversationTitle: 'Alpha', conversationTitleVerified: true, service: 'whatsapp', snippet: 'see you then' },
-    { conversationId: 'c', messageId: 'm3', sender: 'Mum', senderVerified: false, conversationTitle: 'Gamma', conversationTitleVerified: false, service: 'whatsapp', snippet: 'ok' }
+    { conversationId: 'a', messageId: 'm1', sender: 'Alex', conversationTitle: 'Alpha', service: 'whatsapp', snippet: 'see you then' },
+    { conversationId: 'c', messageId: 'm3', sender: 'Mum', conversationTitle: 'Gamma', service: 'whatsapp', snippet: 'ok' }
   ]);
 });
 
@@ -102,16 +102,14 @@ test('messageRows: handles null or undefined input', () => {
   assert.deepEqual(Palette.messageRows(undefined), []);
 });
 
-// messageRows: a conversation with no matchSenderVerified or
-// titleVerified of its own - an older helper, or the self-chat, which
-// carries no sender at all - falls back to unverified, the same
-// fail-safe default every other surface gives a missing flag (see
-// Verify.markedName and docs/decisions.md).
-test('messageRows: falls back to an empty, unverified sender or snippet', () => {
+// messageRows: a conversation with no matchSender of its own - an
+// older helper, or the self-chat, which carries no sender at all -
+// falls back to an empty sender rather than throwing.
+test('messageRows: falls back to an empty sender or snippet', () => {
   const conversations = [{ id: 'a', title: 'Alpha', matchMessageId: 'm1' }];
 
   assert.deepEqual(Palette.messageRows(conversations), [
-    { conversationId: 'a', messageId: 'm1', sender: '', senderVerified: false, conversationTitle: 'Alpha', conversationTitleVerified: false, service: undefined, snippet: '' }
+    { conversationId: 'a', messageId: 'm1', sender: '', conversationTitle: 'Alpha', service: undefined, snippet: '' }
   ]);
 });
 
@@ -129,14 +127,14 @@ test('messageRows: caps an oversized snippet to MAX_PREVIEW_LENGTH', () => {
 
 test('results/items: "conversations" mode matches the list and appends the "Messages" section', () => {
   const conversations = [
-    { id: 'a', title: 'Alex Chen', titleVerified: true, service: 'whatsapp', unread: 2, lastActivity: 200 },
-    { id: 'b', title: 'Mum', titleVerified: true, service: 'telegram', unread: 0, lastActivity: 100 }
+    { id: 'a', title: 'Alex Chen', service: 'whatsapp', unread: 2, lastActivity: 200 },
+    { id: 'b', title: 'Mum', service: 'telegram', unread: 0, lastActivity: 100 }
   ];
   const ctx = {
     query: 'al',
     listController: { all: conversations },
     service: { services: [] },
-    messageResults: Palette.messageRows([{ id: 'c', title: 'Group', titleVerified: true, matchMessageId: 'm1', matchSender: 'Sam', matchSenderVerified: true, match: 'see you', service: 'telegram' }])
+    messageResults: Palette.messageRows([{ id: 'c', title: 'Group', matchMessageId: 'm1', matchSender: 'Sam', match: 'see you', service: 'telegram' }])
   };
 
   const results = Palette.results('conversations', ctx);
@@ -149,27 +147,25 @@ test('results/items: "conversations" mode matches the list and appends the "Mess
   ]);
 });
 
-// results/items: a self-chosen conversation title or matched-message
-// sender that is not verified must still read as "~Mum", everywhere
-// this mode shows one, so a stranger naming a chat or themselves
-// "Mum" never looks like a saved contact in the unified palette either
-// (see docs/decisions.md).
-test('results/items: "conversations" mode marks an unverified title and matched sender', () => {
-  const conversations = [{ id: 'a', title: 'Mum', titleVerified: false, service: 'whatsapp', unread: 0, lastActivity: 100 }];
+// results/items: a conversation title or matched-message sender is
+// shown exactly as the helper gave it, with no marker, even when it
+// is a bare, self-chosen name (see docs/decisions.md).
+test('results/items: "conversations" mode shows a self-chosen title and matched sender plainly', () => {
+  const conversations = [{ id: 'a', title: 'Mum', service: 'whatsapp', unread: 0, lastActivity: 100 }];
   const ctx = {
     query: '',
     listController: { all: conversations },
     service: { services: [] },
     messageResults: Palette.messageRows([
-      { id: 'b', title: 'Mum', titleVerified: false, matchMessageId: 'm1', matchSender: 'Mum', matchSenderVerified: false, match: 'hello', service: 'whatsapp' }
+      { id: 'b', title: 'Mum', matchMessageId: 'm1', matchSender: 'Mum', match: 'hello', service: 'whatsapp' }
     ])
   };
 
   const items = Palette.items('conversations', Palette.results('conversations', ctx), ctx);
 
   assert.deepEqual(items, [
-    { label: '~Mum', detail: 'WhatsApp', keys: '', unread: 0, section: 'conversation' },
-    { label: '~Mum: hello', detail: '~Mum', keys: '', unread: 0, section: 'message' }
+    { label: 'Mum', detail: 'WhatsApp', keys: '', unread: 0, section: 'conversation' },
+    { label: 'Mum: hello', detail: 'Mum', keys: '', unread: 0, section: 'message' }
   ]);
 });
 

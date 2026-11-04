@@ -1,10 +1,6 @@
-// Checks ConversationView: the empty state with no conversation, that an
-// unverified title - self-chosen, like a bare push name - shows marked
-// with a leading "~" and a direct chat's own phone number beside it,
-// while a verified title shows unmarked with no phone number, that an
-// unverified title reading identically to a real, verified contact's own
-// name ("Mum" impersonating "Mum") still renders marked and distinct
-// from the real one, loadOlder firing once scrolled to the oldest loaded
+// Checks ConversationView: the empty state with no conversation, that
+// the header title renders exactly as the conversation gives it,
+// loadOlder firing once scrolled to the oldest loaded
 // message, a submitted composer
 // message reaching the send signal with its reply id, replyTarget copied
 // into the composer, a delegate's reply signals relayed outward, j/k and
@@ -82,54 +78,26 @@ ShellRoot {
   // run drives the view through each scenario and checks the outcome.
   function run(): void {
     if (!root.checkEmptyState()) return;
-    if (!root.checkHeaderMarksAnUnverifiedTitle()) return;
-    if (!root.checkImpersonationIsVisiblyDifferentFromTheRealContact()) return;
+    if (!root.checkHeaderShowsTitlePlainly()) return;
     root.startLoadOlderCheck();
   }
 
-  // checkHeaderMarksAnUnverifiedTitle verifies the header shows an
-  // unverified title - self-chosen, like a bare WhatsApp push name -
-  // marked with a leading "~", with a direct chat's own phone number
-  // added to the subtitle line when the service gave one; a verified
-  // title shows unmarked, with no phone number, even when one is
-  // given (nothing to add once the title is already trusted); see
-  // docs/decisions.md.
-  function checkHeaderMarksAnUnverifiedTitle(): bool {
+  // checkHeaderShowsTitlePlainly verifies the header shows the
+  // conversation's title exactly as given, including a bare,
+  // self-chosen name with no saved contact behind it, and that the
+  // subtitle line is left untouched by the title.
+  function checkHeaderShowsTitlePlainly(): bool {
     view.subtitle = "";
-    view.conversation = { id: "cu1", accountId: "a1", service: "whatsapp", remoteId: "ru1", kind: "direct", title: "Mum", titleVerified: false, phone: "+15551234567" };
+    view.conversation = { id: "cu1", accountId: "a1", service: "whatsapp", remoteId: "ru1", kind: "direct", title: "Mum" };
 
     const title = Check.find(view, "conversationTitle");
-    if (!title || title.text !== "~Mum") return Check.fail("unverified header title = " + (title && title.text) + ", want ~Mum");
+    if (!title || title.text !== "Mum") return Check.fail("header title = " + (title && title.text) + ", want Mum");
     const subtitle = Check.find(view, "conversationSubtitle");
-    if (!subtitle || subtitle.text !== "+15551234567") return Check.fail("unverified header subtitle = " + (subtitle && subtitle.text) + ", want the phone number");
+    if (!subtitle || subtitle.text !== "") return Check.fail("header subtitle = \"" + (subtitle && subtitle.text) + "\", want empty");
 
-    view.conversation = { id: "cu2", accountId: "a1", service: "whatsapp", remoteId: "ru2", kind: "direct", title: "Priya", titleVerified: true, phone: "+15559876543" };
-    if (title.text !== "Priya") return Check.fail("verified header title = " + title.text + ", want unmarked Priya");
-    if (subtitle.text !== "") return Check.fail("verified header subtitle = \"" + subtitle.text + "\", want empty: nothing to add once trusted");
-
-    return true;
-  }
-
-  // checkImpersonationIsVisiblyDifferentFromTheRealContact confirms the
-  // header marks a self-chosen name purely by titleVerified, never by
-  // comparing its text against a real contact's own name: a stranger
-  // naming themselves exactly "Mum" - the same text as the user's own
-  // real, verified "Mum" contact - still renders "~Mum" with their own
-  // phone number shown, so the impersonation is visibly different from
-  // the real contact's unmarked "Mum", even though the two titles read
-  // identically (see docs/decisions.md).
-  function checkImpersonationIsVisiblyDifferentFromTheRealContact(): bool {
-    view.subtitle = "";
-    view.conversation = { id: "real-mum", accountId: "a1", service: "whatsapp", remoteId: "r-real", kind: "direct", title: "Mum", titleVerified: true, phone: "+15550000001" };
-
-    const title = Check.find(view, "conversationTitle");
-    const subtitle = Check.find(view, "conversationSubtitle");
-    if (!title || title.text !== "Mum") return Check.fail("the real contact's header title = " + (title && title.text) + ", want unmarked Mum");
-    if (!subtitle || subtitle.text !== "") return Check.fail("the real contact's header subtitle = \"" + (subtitle && subtitle.text) + "\", want empty: nothing to add once trusted");
-
-    view.conversation = { id: "impostor-mum", accountId: "a1", service: "whatsapp", remoteId: "r-impostor", kind: "direct", title: "Mum", titleVerified: false, phone: "+15559998888" };
-    if (title.text !== "~Mum") return Check.fail("the impostor's header title = " + title.text + ", want ~Mum even though its text matches a real contact");
-    if (subtitle.text !== "+15559998888") return Check.fail("the impostor's header subtitle = \"" + subtitle.text + "\", want its phone number shown instead of trusting the name");
+    view.conversation = { id: "cu2", accountId: "a1", service: "whatsapp", remoteId: "ru2", kind: "direct", title: "Priya" };
+    if (title.text !== "Priya") return Check.fail("header title = " + title.text + ", want Priya");
+    if (subtitle.text !== "") return Check.fail("header subtitle = \"" + subtitle.text + "\", want empty");
 
     return true;
   }
@@ -148,7 +116,7 @@ ShellRoot {
     const now = Date.now();
     const messages = root.buildMessages(30);
 
-    view.conversation = { id: "c1", accountId: "a1", service: "whatsapp", remoteId: "r1", kind: "direct", title: "Alex", titleVerified: true, members: 0, preview: "", muted: false, unread: 0, lastActivity: now };
+    view.conversation = { id: "c1", accountId: "a1", service: "whatsapp", remoteId: "r1", kind: "direct", title: "Alex", members: 0, preview: "", muted: false, unread: 0, lastActivity: now };
     view.messages = messages;
     view.annotations = Timeline.annotate(messages, false, now);
 

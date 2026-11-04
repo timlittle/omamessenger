@@ -110,7 +110,7 @@ ShellRoot {
     if (!root.checkSubmit()) return;
     if (!root.checkBlocked()) return;
     if (!root.checkReplyBanner()) return;
-    if (!root.checkReplyBannerMarksAnUnverifiedSender()) return;
+    if (!root.checkReplyBannerShowsSenderPlainly()) return;
     if (!root.checkEditBanner()) return;
     if (!root.checkScheduledEditBanner()) return;
     if (!root.checkAttachment()) return;
@@ -122,7 +122,7 @@ ShellRoot {
 
     composer.attachmentPath = "";
     composer.replyTo = null;
-    composer.members = [{ id: "u1", name: "Nadia", verified: true }, { id: "u2", name: "Ben", verified: true }];
+    composer.members = [{ id: "u1", name: "Nadia" }, { id: "u2", name: "Ben" }];
     composer.input.forceActiveFocus();
     mentionFocusTimer.start();
   }
@@ -216,7 +216,7 @@ ShellRoot {
     const banner = Check.find(composer, "replyBanner");
     if (banner.visible) return Check.fail("reply banner shown with no reply in progress");
 
-    composer.replyTo = { id: "m1", senderName: "Alex", senderVerified: true, text: "original message" };
+    composer.replyTo = { id: "m1", senderName: "Alex", text: "original message" };
     if (!banner.visible) return Check.fail("reply banner not shown while replying");
 
     const bannerText = Check.find(composer, "replyBannerText");
@@ -230,7 +230,7 @@ ShellRoot {
     if (JSON.stringify(root.sentReplyIds) !== '["m1"]')
       return Check.fail("submitted replyToId " + JSON.stringify(root.sentReplyIds) + ", want [\"m1\"]");
 
-    composer.replyTo = { id: "m2", senderName: "Alex", senderVerified: true, text: "another one" };
+    composer.replyTo = { id: "m2", senderName: "Alex", text: "another one" };
     const cancelButton = Check.find(composer, "replyCancel");
     root.cancelCount = 0;
     cancelButton.clicked();
@@ -240,17 +240,14 @@ ShellRoot {
     return true;
   }
 
-  // checkReplyBannerMarksAnUnverifiedSender verifies the banner marks
-  // an unverified replied-to sender with a leading "~", the same way
-  // every other sender label does (see docs/decisions.md): replying to
-  // a stranger who named themselves "Mum" must never read the same as
-  // replying to a saved contact.
-  function checkReplyBannerMarksAnUnverifiedSender(): bool {
-    composer.replyTo = { id: "m4", senderName: "Mum", senderVerified: false, text: "it's me" };
+  // checkReplyBannerShowsSenderPlainly verifies the banner shows a
+  // replied-to sender's name exactly as given, even a bare, self-chosen
+  // name such as "Mum" with no saved contact behind it.
+  function checkReplyBannerShowsSenderPlainly(): bool {
+    composer.replyTo = { id: "m4", senderName: "Mum", text: "it's me" };
 
     const bannerText = Check.find(composer, "replyBannerText");
-    if (bannerText.text.indexOf("~Mum") < 0) return Check.fail("unverified reply sender not marked: " + bannerText.text);
-    if (bannerText.text.indexOf("Replying to Mum:") >= 0) return Check.fail("unverified reply sender shown unmarked: " + bannerText.text);
+    if (bannerText.text.indexOf("Replying to Mum:") < 0) return Check.fail("reply sender not shown plainly: " + bannerText.text);
 
     composer.replyTo = null;
     return true;
@@ -426,7 +423,7 @@ ShellRoot {
   // that sending carries the reply id alongside the attachment.
   function checkBannerAndChipTogether(): bool {
     composer.attachmentPath = "/tmp/report.pdf";
-    composer.replyTo = { id: "m3", senderName: "Alex", senderVerified: true, text: "see attached" };
+    composer.replyTo = { id: "m3", senderName: "Alex", text: "see attached" };
 
     if (!Check.find(composer, "replyBanner").visible) return Check.fail("reply banner hidden while an attachment is pending");
     if (!Check.find(composer, "attachmentChip").visible) return Check.fail("attachment chip hidden while replying");
@@ -482,7 +479,7 @@ ShellRoot {
   // for the same input and its focus.
   function runFocusedChecks(): void {
     if (!root.checkMentionPicker()) return;
-    if (!root.checkMentionPickerMarksAnUnverifiedMember()) return;
+    if (!root.checkMentionPickerShowsMemberNamesPlainly()) return;
     if (!root.checkSpellCheck()) return;
     if (!root.checkOversizedMisspellingListStaysBounded()) return;
     if (!root.checkNativePasteInterception()) return;
@@ -572,26 +569,21 @@ ShellRoot {
     return true;
   }
 
-  // checkMentionPickerMarksAnUnverifiedMember verifies a group member
-  // whose own name the helper reports unverified - self-chosen, like a
-  // bare WhatsApp push name - shows marked with a leading "~" in the
-  // picker, the same way an unverified sender's name is marked
-  // everywhere else (see docs/decisions.md). A stranger naming
-  // themselves "Mum" must not read the same as a verified member's own
-  // name in the @-mention picker either.
-  function checkMentionPickerMarksAnUnverifiedMember(): bool {
+  // checkMentionPickerShowsMemberNamesPlainly verifies a group member's
+  // name shows exactly as given in the picker, even a bare, self-chosen
+  // name such as "Mum" with no saved contact behind it.
+  function checkMentionPickerShowsMemberNamesPlainly(): bool {
     const input = composer.input;
-    composer.members = [{ id: "u1", name: "Nadia", verified: true }, { id: "u3", name: "Mum", verified: false }];
+    composer.members = [{ id: "u1", name: "Nadia" }, { id: "u3", name: "Mum" }];
 
     input.text = "";
     input.text = "hi @m";
     input.cursorPosition = input.text.length;
-    if (!composer.pickerOpen) return Check.fail("picker did not open for the unverified-member query");
+    if (!composer.pickerOpen) return Check.fail("picker did not open for the member query");
 
     const picker = Check.find(composer, "mentionPicker");
     const names = Check.texts(picker).map((item) => item.text);
-    if (!names.includes("~Mum")) return Check.fail("unverified member not marked: " + names);
-    if (names.includes("Mum")) return Check.fail("unverified member shown unmarked: " + names);
+    if (!names.includes("Mum")) return Check.fail("member name not shown plainly: " + names);
 
     t.keyClick(Qt.Key_Escape);
     return true;

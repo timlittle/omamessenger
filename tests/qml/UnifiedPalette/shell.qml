@@ -45,12 +45,12 @@ ShellRoot {
       if (method === "conversations.list") {
         if (params && params.query === "ticket") {
           callback(null, [
-            { id: "climbing", title: "Climbing Crew", titleVerified: true, service: "whatsapp", lastActivity: 100, unread: 0,
-              match: "got the ticket", matchMessageId: "m2", matchSender: "Priya", matchSenderVerified: true }
+            { id: "climbing", title: "Climbing Crew", service: "whatsapp", lastActivity: 100, unread: 0,
+              match: "got the ticket", matchMessageId: "m2", matchSender: "Priya" }
           ]);
           return;
         }
-        callback(null, [{ id: "climbing", title: "Climbing Crew", titleVerified: true, service: "whatsapp", lastActivity: 100, unread: 2 }]);
+        callback(null, [{ id: "climbing", title: "Climbing Crew", service: "whatsapp", lastActivity: 100, unread: 2 }]);
         return;
       }
 

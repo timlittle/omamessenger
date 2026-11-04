@@ -5,7 +5,6 @@ import qs.Commons
 import "../theme"
 import "../lib/Keymap.js" as Keymap
 import "../lib/Media.js" as Media
-import "../lib/Verify.js" as Verify
 
 // The open conversation: header, message list and composer. Shows an empty
 // state instead when no conversation is open.
@@ -93,20 +92,8 @@ Item {
   // _blocked is true while the open conversation's contact is blocked,
   // which disables the composer and shows why (see Composer.blocked).
   readonly property bool _blocked: root.conversation ? !!root.conversation.blocked : false
-  // _title is the open conversation's own title, marked with a leading
-  // "~" when the helper reports it as unverified - self-chosen, like a
-  // bare push name - so it never looks like a saved contact's own name
-  // (see docs/decisions.md).
-  readonly property string _title: root.conversation && root.conversation.title ? Verify.markedName(root.conversation.title, root.conversation.titleVerified) : ""
-  // _subtitleLine prepends a direct chat's own phone number to subtitle
-  // when the title is unverified and the service gave one, the way the
-  // official WhatsApp app shows a stranger's number instead of trusting
-  // their self-chosen name; just subtitle otherwise.
-  readonly property string _subtitleLine: {
-    const phone = root.conversation ? Verify.titleSubtitle(root.conversation.titleVerified, root.conversation.phone) : "";
-    if (!phone) return root.subtitle;
-    return root.subtitle ? phone + " · " + root.subtitle : phone;
-  }
+  // _title is the open conversation's own title.
+  readonly property string _title: root.conversation && root.conversation.title ? root.conversation.title : ""
   // members are the open group's members, for the composer's @-mention
   // picker; an empty list for a direct chat.
   property var members: []
@@ -350,7 +337,7 @@ Item {
         Text {
           objectName: "conversationSubtitle"
           Layout.fillWidth: true
-          text: root._subtitleLine
+          text: root.subtitle
           textFormat: Text.PlainText
           elide: Text.ElideRight
           color: Util.alpha(Theme.foreground, 0.6)
