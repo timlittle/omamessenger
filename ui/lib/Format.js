@@ -317,24 +317,54 @@ var BIDI_OR_FORMAT_CHAR = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069
 // before it (see docs/decisions.md).
 var URL_TOKEN_CHAR = /[^\u0009\u000a\u000b\u000c\u000d \u00A0\u1680\u2028\u2029\u202F\u205F\u3000\u2000-\u200A<\x22&]/;
 
-// continuesURLToken reports whether text keeps spelling out what reads
-// as the same URL-shaped run starting right at end, the position a
-// link's own matched text or formatting span stopped at: it scans
-// forward through every further URL_TOKEN_CHAR, then drops that run's
-// own trailing sentence punctuation (see splitTrailingPunctuation) the
-// same way a plain autolink's own match already would have, so an
-// ordinary link followed immediately by a comma or a closing
-// parenthesis, with nothing else after it, is never flagged - only a
-// real continuation, with non-punctuation text still left once that
-// trailing punctuation is dropped, counts.
-function continuesURLToken(text, end) {
-  let i = end;
-  while (i < text.length && URL_TOKEN_CHAR.test(text[i])) {
-    i++;
+// continuesURLTokenLookup reports, for every position in text, the same
+// answer continuesURLToken(text, position) would: whether text keeps
+// spelling out what reads as the same URL-shaped run starting right
+// there, once that run's own trailing sentence punctuation (see
+// splitTrailingPunctuation) is dropped the same way a plain autolink's
+// own match already would have - so an ordinary link followed
+// immediately by a comma or a closing parenthesis, with nothing else
+// after it, is never flagged, only a real continuation. A render calls
+// this once per message rather than rescanning forward from every
+// mention and formatting-span boundary on its own: mentionHtml and
+// styledSegment each ask this question many times over the same text
+// (twice per mention, twice per styled range), and a naive forward
+// scan from each of those positions costs the square of the message's
+// length on a long, unbroken run - exactly the shell-stalling shape a
+// security review found here (see docs/decisions.md). This instead
+// sweeps text once, back to front: continues[i] needs only
+// continues[i + 1] and whether text[i] is itself a URL_TOKEN_CHAR and
+// trailing punctuation, so the whole array - and every answer it holds
+// - costs no more than one pass over text.
+function continuesURLTokenLookup(text) {
+  const n = text.length;
+  const continues = new Array(n + 1);
+  continues[n] = false;
+  // restOfRunIsTrailingPunctuation tracks, for the run (if any) that
+  // text[i] belongs to, whether every character from i to that run's
+  // own end is trailing punctuation. It resets to true - vacuously,
+  // an empty run has nothing but trailing punctuation in it - at each
+  // position outside a run, the same base case continues[n] uses.
+  let restOfRunIsTrailingPunctuation = true;
+
+  for (let i = n - 1; i >= 0; i--) {
+    const isToken = URL_TOKEN_CHAR.test(text[i]);
+    restOfRunIsTrailingPunctuation = isToken
+      ? TRAILING_LINK_PUNCTUATION.includes(text[i]) && restOfRunIsTrailingPunctuation
+      : true;
+    continues[i] = isToken && !restOfRunIsTrailingPunctuation;
   }
 
-  const [core] = splitTrailingPunctuation(text.slice(end, i));
-  return core.length > 0;
+  return continues;
+}
+
+// continuesURLToken reports whether text keeps spelling out what reads
+// as the same URL-shaped run starting right at end, the position a
+// link's own matched text or formatting span stopped at (see
+// continuesURLTokenLookup's own comment for what this means and why
+// it is never called more than once per position in a render).
+function continuesURLToken(text, end) {
+  return continuesURLTokenLookup(text)[end];
 }
 
 // hasHTTPAuthority reports whether value - already known to start with
@@ -450,6 +480,9 @@ function styledHtml(text, linkColor, mentions, spans, anchors = []) {
   const bounds = boundaryPoints(text, ranges);
   const startingAt = rangesByBound(ranges, (r) => r.start);
   const endingAt = rangesByBound(ranges, (r) => r.end);
+  // Computed once for the whole render (see continuesURLTokenLookup's
+  // own comment), never rescanned per boundary below.
+  const continuesLookup = continuesURLTokenLookup(text);
 
   let html = '';
   let active = [];
@@ -458,7 +491,7 @@ function styledHtml(text, linkColor, mentions, spans, anchors = []) {
     const end = bounds[i + 1];
 
     active = active.concat(startingAt.get(start) || []);
-    html += styledSegment(text, start, end, linkColor, active, anchors, hiddenCharAnywhere);
+    html += styledSegment(text, start, end, linkColor, active, anchors, hiddenCharAnywhere, continuesLookup);
 
     const leaving = endingAt.get(end);
     if (leaving) {
@@ -523,10 +556,11 @@ function rangesByBound(ranges, boundAt) {
 // reading as one unbroken, honest-looking run while only the shorter
 // piece before the cut is ever actually linked (see
 // docs/decisions.md).
-function styledSegment(text, start, end, linkColor, active, anchors = [], hiddenCharAnywhere = false) {
+function styledSegment(text, start, end, linkColor, active, anchors = [], hiddenCharAnywhere = false, continuesLookup = null) {
+  const continues = continuesLookup || continuesURLTokenLookup(text);
   const segment = text.slice(start, end);
   const link = active.find((r) => r.kind === 'link');
-  let html = link ? plainHtml(segment) : lineHtml(segment, linkColor, anchors, continuesURLToken(text, end), hiddenCharAnywhere);
+  let html = link ? plainHtml(segment) : lineHtml(segment, linkColor, anchors, continues[end], hiddenCharAnywhere);
 
   if (active.some((r) => r.kind === 'code' || r.kind === 'pre')) {
     html = `<span style="font-family:monospace">${html}</span>`;
@@ -541,7 +575,7 @@ function styledSegment(text, start, end, linkColor, active, anchors = [], hidden
   if (link) {
     const style = linkColor ? ` style="color:${linkColor}"` : '';
     const href = linkHref(anchors.length);
-    const suspicious = hiddenCharAnywhere || continuesURLToken(text, link.end);
+    const suspicious = hiddenCharAnywhere || continues[link.end];
     anchors.push({ url: link.url, displayText: text.slice(link.start, link.end), suspicious });
     html = `<a href="${href}"${style}>${html}</a>`;
   }
@@ -556,13 +590,16 @@ function styledSegment(text, start, end, linkColor, active, anchors = [], hidden
 // displayText, suspicious} entry for every autolinked bare URL found
 // along the way (see lineHtml and messageLinkAnchors); a mention is
 // never a link itself, so it adds none of its own. Each of the three
-// lineHtml calls below passes continuesURLToken(text, <its own slice's
-// end>), so a mention boundary landing inside what reads as one URL -
-// the same gap a formatting span can leave, see styledSegment - is
-// caught too, never only a plain autolink that happens to run
-// uninterrupted to this call's own end.
+// lineHtml calls below passes continuesLookup[<its own slice's end>],
+// so a mention boundary landing inside what reads as one URL - the
+// same gap a formatting span can leave, see styledSegment - is caught
+// too, never only a plain autolink that happens to run uninterrupted
+// to this call's own end. continuesLookup is built once for the whole
+// text (see continuesURLTokenLookup's own comment), rather than
+// rescanned forward from every mention boundary.
 function mentionHtml(text, linkColor, mentions, anchors = []) {
   const hiddenCharAnywhere = BIDI_OR_FORMAT_CHAR.test(text);
+  const continuesLookup = continuesURLTokenLookup(text);
   const ordered = [...mentions].sort((a, b) => a.offset - b.offset);
   let html = '';
   let pos = 0;
@@ -572,9 +609,9 @@ function mentionHtml(text, linkColor, mentions, anchors = []) {
       continue;
     }
 
-    html += lineHtml(text.slice(pos, m.offset), linkColor, anchors, continuesURLToken(text, m.offset), hiddenCharAnywhere);
+    html += lineHtml(text.slice(pos, m.offset), linkColor, anchors, continuesLookup[m.offset], hiddenCharAnywhere);
     const boldEnd = m.offset + m.length;
-    html += `<b>${lineHtml(text.slice(m.offset, boldEnd), linkColor, anchors, continuesURLToken(text, boldEnd), hiddenCharAnywhere)}</b>`;
+    html += `<b>${lineHtml(text.slice(m.offset, boldEnd), linkColor, anchors, continuesLookup[boldEnd], hiddenCharAnywhere)}</b>`;
     pos = boldEnd;
   }
 

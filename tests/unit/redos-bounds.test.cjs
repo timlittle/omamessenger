@@ -103,6 +103,35 @@ test('Format.initials stays linear on a long run of "(" with no terminator', () 
 // typed-by-the-user path (a snooze or "send later" prompt), never a
 // sender's own text, but it is swept here too since it does read a
 // regex over text with no length limit of its own.
+// Format.messageHtml's own mention path (mentionHtml) calls
+// continuesURLToken-backed lookups twice per mention, against the
+// full message text, at every mention boundary. A security review's
+// exact adversarial shape: a sender mentions themselves (a push name
+// with no spaces) 64 times back to back, then about 64,000 characters
+// with no whitespace - one unbroken run every boundary would have had
+// to rescan to its own end, under the old per-call forward scan. On
+// this machine the old per-call scan measured at 500-600ms for this
+// exact input and a fixed, single-sweep lookup measures at under 10ms,
+// so MENTION_SCAN_TIME_BOUND_MS - tighter than the shared
+// TIME_BOUND_MS other cases in this file use - is set to land clearly
+// between the two rather than reuse a bound the unfixed code could
+// still have slipped under on a fast machine.
+const MENTION_SCAN_TIME_BOUND_MS = 300;
+
+test('Format.messageHtml stays linear on 64 mentions followed by a long unbroken run', () => {
+  const mentions = [];
+  let text = '';
+  for (let i = 0; i < 64; i++) {
+    mentions.push({ offset: text.length, length: 4 });
+    text += '@Eve';
+  }
+  text += 'a'.repeat(64000);
+
+  const [, elapsedMs] = timed(() => Format.messageHtml(text, null, null, mentions, []));
+
+  assert.ok(elapsedMs < MENTION_SCAN_TIME_BOUND_MS, `Format.messageHtml took ${elapsedMs}ms on 64 mentions plus a 64000-character run, want well under ${MENTION_SCAN_TIME_BOUND_MS}ms`);
+});
+
 test('Snooze.parse stays linear on a long non-matching digit run', () => {
   const adversarial = '9'.repeat(65000);
   const [, elapsedMs] = timed(() => Snooze.parse(adversarial, Date.now()));
