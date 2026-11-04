@@ -14,8 +14,8 @@ import "../lib/Links.js" as Links
 // with no real authority (see Format.spanURL) - could still reach
 // this dialog needing confirmation, and urlHost's own authority split
 // (never handling a backslash the way a browser's own parser does)
-// could then show a convincing but wrong host: "Really opens:
-// paypal.com" while a browser would actually open evil.example. Such
+// could then show a convincing but wrong host, "Domain:
+// paypal.com", while a browser would actually open evil.example. Such
 // a target shows this dialog's own refused state instead: no host
 // line computed from it, the fixed message in place of "It will
 // open:", and no Open or Copy choice left for a stray keypress to
@@ -62,7 +62,7 @@ ChoiceDialog {
   // link with no separate authority host at all, rather than naming
   // an empty one - the same as for a refused link, which has no host
   // this dialog will compute at all.
-  emphasisText: root._host !== "" ? "Really opens: " + Links.hostForDisplay(root._host) : ""
+  emphasisText: root._host !== "" ? "Domain: " + Links.hostForDisplay(root._host) : ""
   description: root._allowed ? "It will open:\n" + root.target : Links.REFUSED_LINK_MESSAGE
   // Elides the middle, not the end, so both the scheme and whatever
   // sits nearest the real host stay in view here too; emphasisText

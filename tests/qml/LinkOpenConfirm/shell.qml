@@ -10,7 +10,7 @@
 // urlHost's own split (on "/", "?" or "#" only) disagree with a
 // browser's own WHATWG parser (which also ends an authority at "\"),
 // so this also checks a URL Links.isAllowed now refuses outright
-// shows this dialog's own refusal state instead - no "Really opens:"
+// shows this dialog's own refusal state instead - no "Domain:"
 // line computed from a host this cannot trust, no Open or Copy choice
 // to act on it, just the one short message and a way to close it.
 import QtQuick
