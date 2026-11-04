@@ -1,13 +1,7 @@
 package whatsapp
 
-// organizehealthstore.go persists, in the same per-account database as
-// the media store and message keys (see storage.go), which app-state
-// patch types Connector.setOrganizeLocalOnly has found permanently
-// unverifiable (see organizehealth.go): without this, a helper restart
-// would have to rediscover the same corrupt-and-rejected failure from
-// scratch, repeating its own expensive full resync, before pin,
-// archive, mark-read and delete-for-me could go back to skipping
-// WhatsApp's server for it.
+// organizehealthstore.go persists which app-state patch types have been found
+// permanently unsyncable, so a restart does not have to rediscover it.
 
 import (
 	"context"

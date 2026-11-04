@@ -8,14 +8,9 @@ import "../lib/Rpc.js" as Rpc
 // guideline; it is still controller code, not a view, so it calls
 // service.request directly.
 //
-// messagesModel is capped at Timeline.MAX_LOADED_ROWS: upsert windows out
-// the oldest loaded rows once a live message pushes past it (see
-// Timeline.windowNewest), so a sender flooding the open chat, or a long
-// session left open, can never make this grow, or cost more per event,
-// without bound. _order (every loaded message's {id, created}, mirroring
-// messagesModel's own order) and _index (those same ids mapped to their
-// position) are the small, cheap side records every lookup below uses
-// instead of scanning messagesModel itself.
+// messagesModel is capped at Timeline.MAX_LOADED_ROWS so a flood of
+// live messages can't grow it without bound. _order and _index are
+// cheap side records every lookup below uses instead of scanning the model.
 Item {
   id: root
 
@@ -48,16 +43,11 @@ Item {
   // _loadingMore guards messages.list so only one older page loads at once.
   property bool _loadingMore: false
 
-  // _order is every loaded message's {id, created}, newest first, kept
-  // in lockstep with messagesModel's own order: a cheap stand-in for a
-  // full row whenever only placement (Timeline.insertIndex) or the id
-  // index (see _index, reindex) is needed.
+  // _order is every loaded message's {id, created}, newest first, kept in
+  // lockstep with messagesModel.
   property var _order: []
 
-  // _index maps a loaded message's id to its position in both _order
-  // and messagesModel, rebuilt by Timeline.reindex whenever either
-  // changes shape, so upsert, remove and every lookup below are O(1)
-  // instead of scanning the whole model.
+  // _index maps a loaded message's id to its position, so lookups are O(1).
   property var _index: ({})
 
   // initialLoaded fires once loadInitial's page has been applied to the
@@ -124,19 +114,10 @@ Item {
   }
 
   // upsert updates one message in place, or inserts it where its time puts
-  // it when it is not loaded yet: new messages at the top, and older
-  // history fetched from the service further down. Once inserting would
-  // push past Timeline.MAX_LOADED_ROWS, the oldest loaded rows are
-  // dropped and hasMore is forced true, since they are still in the
-  // helper's own store and loadOlder can page them back in. The cap is
-  // absolute: protectId (the highlighted message, when there is one)
-  // falls out the same way once a flood ages it past the cap - an
-  // earlier version kept it loaded forever instead, which let a flood
-  // grow the model without bound (see docs/decisions.md). Returns true
-  // the one time protectId itself was just dropped, so the caller can
-  // move the highlight off a row that no longer exists. See
-  // Timeline.mergeRow for how a cached mediaPath and its verdicts carry
-  // over, or do not, across an update.
+  // it when it is not loaded yet. Evicts the oldest rows once
+  // Timeline.MAX_LOADED_ROWS is exceeded, even protectId (see
+  // docs/decisions.md); returns true when protectId was the row evicted,
+  // so the caller can move the highlight off it.
   function upsert(message: var, isGroup: bool, protectId: string): bool {
     const result = Timeline.applyUpsert(root._order, root._index, message, Timeline.MAX_LOADED_ROWS, protectId);
     root._order = result.order;
@@ -181,9 +162,7 @@ Item {
   }
 
   // localIdForRemote returns the loaded message id whose remote id is
-  // remoteId, or "" when it is not loaded: the user has not scrolled to
-  // it, or the service has not assigned it one yet. Not part of the
-  // live-event hot path (see upsert), so a full scan is fine here.
+  // remoteId, or "" when it is not loaded.
   function localIdForRemote(remoteId: string): string {
     const row = root._snapshot().find((m) => m.remoteId === remoteId);
     return row ? row.id : "";
@@ -195,43 +174,28 @@ Item {
     return at !== undefined ? messagesModel.get(at).mediaPath : "";
   }
 
-  // mediaPlayPath returns the in-window play copy a play fetch
-  // produced for a message's video, voice note or audio message (see
-  // media.fetch's playPath in docs/api.md), or "" before a play fetch
-  // has answered, failed, or for any other kind. Never computed here
-  // from the message's own media object: only media.fetch's result,
-  // through setMediaPlayPath, ever sets it.
+  // mediaPlayPath returns the in-window play copy a play fetch produced for
+  // a video, voice note or audio message, or "" (see docs/api.md's playPath).
   function mediaPlayPath(id: string): string {
     const at = root._index[id];
     return at !== undefined ? messagesModel.get(at).mediaPlayPath : "";
   }
 
-  // mediaPlayable returns whether mediaPlayPath is set: the UI's own
-  // derived shorthand for "there is something to play in place right
-  // now" (see ui/lib/Timeline.js's row), never a verdict of its own.
+  // mediaPlayable returns whether mediaPlayPath is set.
   function mediaPlayable(id: string): bool {
     const at = root._index[id];
     return at !== undefined ? !!messagesModel.get(at).mediaPlayable : false;
   }
 
-  // mediaPlayKnown returns whether a play fetch has actually answered
-  // for this row in this session, so mediaPlayPath is its real answer
-  // rather than the unset default. A row can carry a cached mediaPath
-  // without this ever being true - it may have been loaded with one
-  // already set, rather than resolved through a play fetch - and a
-  // caller deciding whether a cached mediaPlayPath is trustworthy
-  // must check this first rather than trust mediaPlayable's false
-  // default as "definitely not playable" (see MediaController.toggleVideo
-  // and _toggleVoice).
+  // mediaPlayKnown returns whether a play fetch has actually answered for
+  // this row, so mediaPlayPath can be trusted rather than treated as unset.
   function mediaPlayKnown(id: string): bool {
     const at = root._index[id];
     return at !== undefined ? !!messagesModel.get(at).mediaPlayKnown : false;
   }
 
-  // mediaPreparing returns whether a play fetch for this row is
-  // actually in flight right now, for the video or voice control to
-  // show "Preparing…" instead of its usual play glyph while a
-  // transcode may take a few seconds (see setMediaPreparing).
+  // mediaPreparing returns whether a play fetch for this row is in flight,
+  // so the control can show "Preparing…" during a transcode.
   function mediaPreparing(id: string): bool {
     const at = root._index[id];
     return at !== undefined ? !!messagesModel.get(at).mediaPreparing : false;
@@ -268,11 +232,8 @@ Item {
     if (at !== undefined) messagesModel.setProperty(at, "mediaPath", path);
   }
 
-  // setMediaPlayPath records the in-window play copy a play fetch
-  // produced (or "" when it failed or was unavailable - never an
-  // error, see docs/decisions.md), and marks this row's play state
-  // known (see mediaPlayKnown): a play fetch's answer is always the
-  // one place both change together.
+  // setMediaPlayPath records a play fetch's result and marks this row's
+  // play state known (see mediaPlayKnown).
   function setMediaPlayPath(id: string, playPath: string): void {
     const at = root._index[id];
     if (at === undefined) return;
@@ -282,10 +243,7 @@ Item {
     messagesModel.setProperty(at, "mediaPlayKnown", true);
   }
 
-  // setMediaPreparing records whether a play fetch for this row is
-  // actually in flight right now (see mediaPreparing), set true just
-  // before the request and false again however it ends - answered,
-  // failed, or found to be stale - so it can never stay stuck true.
+  // setMediaPreparing records whether a play fetch for this row is in flight.
   function setMediaPreparing(id: string, preparing: bool): void {
     const at = root._index[id];
     if (at !== undefined) messagesModel.setProperty(at, "mediaPreparing", preparing);
@@ -375,11 +333,9 @@ Item {
   // each message where its time puts it: older history the helper fetched
   // for this page may already have arrived as events, so the page is not
   // always older than what is shown. Messages already shown are skipped.
-  // Capped the same way upsert is: a long run of loadOlder pages must
-  // never grow past Timeline.MAX_LOADED_ROWS either, but unlike a live
-  // message's own overflow, paging further back once the cap is reached
-  // would only fetch and immediately discard rows, so hasMore is forced
-  // false instead of true.
+  // Also capped at Timeline.MAX_LOADED_ROWS, but unlike upsert's overflow,
+  // this forces hasMore false since paging further back would only
+  // re-fetch discarded rows.
   function _appendOlder(page: var, isGroup: bool): void {
     const loaded = root._snapshot();
     const shown = new Set(loaded.map((m) => m.id));
@@ -407,39 +363,23 @@ Item {
     root.annotations = Timeline.annotate(loaded, isGroup, Date.now());
   }
 
-  // _snapshot copies the loaded messages, newest first. Only ever used
-  // off the live-event hot path (see upsert, remove): _appendOlder's own
-  // bulk page load, and the rare lookups (localIdForRemote, snapshot)
-  // that need every row's full data rather than just its id and
-  // position.
+  // _snapshot copies the loaded messages, newest first.
   function _snapshot(): var {
     const out = [];
     for (let i = 0; i < messagesModel.count; i++) out.push(messagesModel.get(i));
     return out;
   }
 
-  // _insertAnnotation keeps root.annotations the same length as
-  // messagesModel the moment upsert inserts a new row at position at:
-  // every already-loaded row at or after that position has just
-  // shifted down one slot in messagesModel, and without shifting its
-  // own annotation entry the same way here, it would silently read
-  // whatever sat one slot above it before the insert instead of its
-  // own - another row's sender-name, grouping or day-separator flags,
-  // never recomputed for the row actually shown at that position (see
-  // docs/decisions.md). The inserted slot itself holds a placeholder;
-  // _reannotateTouched, called right after this in upsert, always
-  // overwrites it with the real one.
+  // _insertAnnotation keeps root.annotations in step with messagesModel
+  // when upsert inserts a row at position at, with a placeholder that
+  // _reannotateTouched overwrites right after.
   function _insertAnnotation(at: int): void {
     const next = root.annotations.slice();
     next.splice(at, 0, null);
     root.annotations = next;
   }
 
-  // _removeAnnotation is _insertAnnotation's own mirror for remove:
-  // every row after position at has just shifted up one slot in
-  // messagesModel, so its own annotation entry shifts the same way,
-  // rather than every later row silently reading the entry one slot
-  // below its own true position.
+  // _removeAnnotation is _insertAnnotation's mirror for remove.
   function _removeAnnotation(at: int): void {
     const next = root.annotations.slice();
     next.splice(at, 1);
@@ -447,21 +387,13 @@ Item {
   }
 
   // _trimAnnotations drops every annotation past the first keep rows,
-  // mirroring the tail rows upsert's own windowing just evicted from
-  // messagesModel once a flood pushes the loaded window past
-  // Timeline.MAX_LOADED_ROWS, so the two stay the same length.
+  // mirroring the rows upsert's windowing just evicted.
   function _trimAnnotations(keep: int): void {
     if (root.annotations.length > keep) root.annotations = root.annotations.slice(0, keep);
   }
 
-  // _reannotateTouched recomputes the annotation at each of indices
-  // (every position upsert or remove just marked as possibly wrong - see
-  // Timeline.applyUpsert and applyRemove) and nothing else, so a live
-  // event's own annotation cost stays proportional to the one or two
-  // rows it actually touched, not every loaded message: the Date and
-  // toDateString pair a full Timeline.annotate() pass builds for every
-  // row is the expensive part a flood must never pay again and again
-  // for rows nothing changed about.
+  // _reannotateTouched recomputes the annotation at each of indices only,
+  // so a live event's cost stays proportional to the rows it actually touched.
   function _reannotateTouched(indices: var, isGroup: bool): void {
     if (indices.length === 0) return;
 

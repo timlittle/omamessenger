@@ -44,12 +44,9 @@ func ShouldNotify(in Input) bool {
 }
 
 // Notification returns the title, body and conversation id for a desktop
-// notification, shaped by in.Detail. DetailNone hides who it is from too,
-// so the title is a generic app name rather than the sender's; the other
-// two levels name the sender, exactly as the sender gave it, and a group
-// also names the conversation, with the body showing the message text
-// only at DetailNameAndMessage. The conversation id passes straight
-// through, so a click on the notification can reopen it.
+// notification, shaped by in.Detail: DetailNone hides who sent it, the
+// other levels name the sender as given, and the body shows message
+// text only at DetailNameAndMessage.
 func Notification(in Input) (title, body, conversationID string) {
 	if in.Detail == DetailNone {
 		return "OmaMessenger", "New message", in.ConversationID

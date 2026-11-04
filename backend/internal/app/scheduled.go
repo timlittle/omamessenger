@@ -1,18 +1,13 @@
 package app
 
 // scheduled.go lets the user queue a text message to send at a chosen
-// time instead of right away. A queued message lives in its own store
-// table, separate from the messages table (see store/scheduled.go and
-// docs/decisions.md): once its own time comes, or the user asks to
-// send it now, it is claimed - removed from that table - and handed
-// to Commands.Send, so from that moment it is an ordinary outgoing
-// message with that path's own retry and failure handling, not a
-// state this package tracks a second time.
+// time. A queued message lives in its own store table (see
+// store/scheduled.go); once due, or sent early, it is claimed and
+// handed to Commands.Send as an ordinary outgoing message.
 //
 // scheduledSender mirrors reminders and retrier: one goroutine for the
-// life of the helper, re-arming itself for whichever queued message is
-// soonest due, and woken early whenever ScheduleMessage, EditScheduled
-// or CancelScheduled changes what that is.
+// life of the helper, re-arming for whichever message is soonest due
+// and woken early on any change.
 
 import (
 	"context"
@@ -64,11 +59,10 @@ func (sc *scheduledSender) run(ctx context.Context) {
 	}
 }
 
-// fireDue claims and sends every queued message that is due now,
-// reporting when the next one, if any, falls due so run knows how
-// long to wait. A message this pass finds already gone by the time it
-// tries to claim it - a user's own "send now" racing this pass, or a
-// cancel - is simply skipped.
+// fireDue claims and sends every queued message due now, reporting
+// when the next one falls due so run knows how long to wait. A
+// message already claimed or cancelled by the time this tries it is
+// simply skipped.
 func (sc *scheduledSender) fireDue(ctx context.Context) (next time.Time, ok bool, err error) {
 	pending, err := sc.store.ScheduledMessages(ctx)
 	if err != nil {
@@ -96,10 +90,9 @@ func (sc *scheduledSender) fireDue(ctx context.Context) (next time.Time, ok bool
 	return time.Time{}, false, nil
 }
 
-// dispatchScheduled publishes that a claimed queued message is no
-// longer pending, then hands it to the normal send path: a refusal
-// comes back as a failed message, retried automatically the same as
-// any other failed send, never as an error here.
+// dispatchScheduled publishes that a claimed message is no longer
+// pending, then hands it to the normal send path, where a refusal
+// becomes a failed message rather than an error here.
 func (c *Commands) dispatchScheduled(ctx context.Context, m domain.ScheduledMessage) (domain.Message, error) {
 	c.events.publish(ctx, EventScheduledRemoved, ScheduledRemoved{ConversationID: m.ConversationID, ScheduledID: m.ID})
 
@@ -201,11 +194,9 @@ func (c *Commands) CancelScheduled(ctx context.Context, id string) error {
 	return nil
 }
 
-// SendScheduledNow claims a queued message and sends it right away,
-// through the normal send path, instead of waiting for its own time;
-// failing with domain.ErrNotFound once it has already been sent,
-// edited away by a concurrent EditScheduled (unlikely, but the same
-// claim guards it), or cancelled.
+// SendScheduledNow claims a queued message and sends it right away
+// instead of waiting for its own time, failing with domain.ErrNotFound
+// if it was already sent or cancelled.
 func (c *Commands) SendScheduledNow(ctx context.Context, id string) (domain.Message, error) {
 	m, err := c.store.ScheduledMessage(ctx, id)
 	if err != nil {
@@ -231,10 +222,9 @@ func (c *Commands) RunScheduledMessages(ctx context.Context) {
 }
 
 // validateScheduledText trims and checks text the same way Send's own
-// captionText does for a text-only message: required, within the
-// length limit a connector will accept. Attachments are not supported
-// for a scheduled message in this first version (see docs/decisions.md),
-// so unlike captionText there is no media to fall back on.
+// captionText does: required, within the connector's length limit.
+// Attachments are not supported for a scheduled message yet (see
+// docs/decisions.md).
 func validateScheduledText(text string) (string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {

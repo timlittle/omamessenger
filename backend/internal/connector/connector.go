@@ -131,30 +131,19 @@ type Voter interface {
 var ErrPinLimit = errors.New("connector: pin limit reached")
 
 // ErrOrganizeSyncIncomplete reports a pin, archive or mark-read change
-// an Organizer's service refused because this account's own local copy
-// of whatever state the service needs to encrypt or apply that kind of
-// change is not ready yet - for example, WhatsApp's app-state sync keys
-// never finished arriving after pairing. It is safe to show the user:
-// retrying once the account has had more time to sync should succeed.
+// refused because the account's local sync state isn't ready yet.
+// Safe to show the user: retrying later should succeed.
 var ErrOrganizeSyncIncomplete = errors.New("connector: service sync state not ready yet")
 
-// ErrOrganizeRejected reports a pin, archive or mark-read change an
-// Organizer's service explicitly refused for a reason this connector
-// could not resolve on its own, such as a sync conflict already retried
-// once. It is safe to show the user, but carries no detail about why.
+// ErrOrganizeRejected reports a pin, archive or mark-read change the
+// service explicitly refused for an unresolved reason. Safe to show
+// the user, with no further detail.
 var ErrOrganizeRejected = errors.New("connector: service rejected the change")
 
-// ErrOrganizeLocalOnly reports a pin, archive, mark-read or delete
-// change that already stands locally but was never sent to the
-// service, because the service's own synced copy of whatever state it
-// needs to apply that kind of change can never be verified right now -
-// for example, an account whose server-side chat indexes moved to a
-// newer addressing scheme permanently fails its own low-level
-// integrity check (see WhatsApp's connector and docs/decisions.md).
-// Unlike ErrOrganizeRejected, retrying costs real time and traffic for
-// no gain until the underlying condition clears on its own, so a
-// caller that sees this should show a one-time explanatory notice
-// instead of a repeated failure.
+// ErrOrganizeLocalOnly reports a change applied locally but never sent
+// to the service, because its synced state can't be verified right now
+// (see docs/decisions.md). Retrying wastes time until that clears, so
+// show a one-time notice instead of a repeated failure.
 var ErrOrganizeLocalOnly = errors.New("connector: service cannot verify its own synced copy, keeping the change local")
 
 // Organizer is a Connector that keeps a conversation pinned or archived in
@@ -171,12 +160,9 @@ type Organizer interface {
 	SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error
 }
 
-// ArchiveUnpinner is an Organizer whose own service never leaves a
-// conversation both pinned and archived at once: archiving one there
-// unpins it too, the way WhatsApp's own app does (see
-// whatsapp/organize.go). Telegram keeps a separate pinned list per
-// folder and does not implement this; Manager.ArchiveUnpins answers
-// false for any connector that does not.
+// ArchiveUnpinner is an Organizer whose service unpins a conversation
+// when it is archived (as WhatsApp does). Telegram does not implement
+// this; Manager.ArchiveUnpins answers false for any connector that doesn't.
 type ArchiveUnpinner interface {
 	// UnpinsOnArchive reports whether archiving a conversation also
 	// unpins it with this connector's service.
@@ -240,12 +226,8 @@ type MemberLister interface {
 
 // AttachmentLimiter is a Connector that knows the largest attachment of
 // a given kind ("photo", "video" or "file") its service currently
-// accepts from this account, when that is narrower than the 2 GiB
-// backstop every Send already enforces regardless (see
-// app.MaxAttachmentSize). Telegram's own limit depends on whether the
-// signed-in account has Premium; WhatsApp's depends on the
-// attachment's kind. A connector without this interface is assumed to
-// accept up to that backstop and nothing narrower.
+// accepts, when narrower than the backstop in app.MaxAttachmentSize. A
+// connector without this interface is assumed to accept up to that backstop.
 type AttachmentLimiter interface {
 	// AttachmentLimit is the largest attachment of kind this account's
 	// service accepts to send, in bytes.
@@ -355,22 +337,15 @@ type SenderNamer interface {
 	SenderName(ctx context.Context, accountID, senderRemoteID, name string)
 }
 
-// RemoteIDUpgrader is a Sink that can also upgrade a conversation's
-// remote id in place, when a connector resolves a better one for a
-// conversation it already reported under an older id - such as
-// Telegram learning a placeholder peer's real access hash, resolved
-// after the fact rather than known when the conversation was first
-// created. It is optional the same way SenderNamer is: a connector
-// that can resolve a better id this way type-asserts the Sink it was
-// given for this, and skips the report when it is not implemented,
-// such as by a test fake that has no need to track it.
+// RemoteIDUpgrader is a Sink that can upgrade a conversation's remote id
+// in place, for a connector that resolves a better one after the fact
+// (such as Telegram learning a placeholder peer's real access hash).
+// Optional, like SenderNamer: a connector type-asserts for this and
+// skips the report when it is not implemented.
 type RemoteIDUpgrader interface {
-	// ConversationRemoteIDChanged upgrades a stored conversation's
-	// remote id from oldRemoteID to newRemoteID, within account,
-	// keeping its local id and messages. When a conversation already
-	// exists under newRemoteID, oldRemoteID's messages are merged into
-	// it instead and the oldRemoteID conversation is removed, so the
-	// two never end up duplicated.
+	// ConversationRemoteIDChanged upgrades a stored conversation's remote
+	// id, merging into an existing conversation under newRemoteID if one
+	// already exists so the two never duplicate.
 	ConversationRemoteIDChanged(ctx context.Context, accountID, oldRemoteID, newRemoteID string)
 }
 

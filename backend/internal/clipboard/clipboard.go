@@ -27,21 +27,13 @@ const commandTimeout = 3 * time.Second
 const writeTimeout = 10 * time.Second
 
 // MaxPasteLen bounds how many bytes Read accepts from wl-paste: the
-// same cap as the outgoing image profile a pasted photo is sanitized
-// against (see app/paste.go and imagesafe.Outgoing), large enough for
-// any image this UI would otherwise accept - a real camera photo or a
-// multi-monitor screenshot, not just a small display copy - small
-// enough that a stuck or hostile clipboard source cannot grow this
-// process's memory without bound.
+// same cap as imagesafe.Outgoing, large enough for a real photo or
+// screenshot but bounded so a hostile clipboard source cannot grow
+// this process's memory without limit.
 const MaxPasteLen = 64 << 20
 
 // MaxPasteTextLen bounds how many bytes ReadText accepts from
-// wl-paste: comfortably more than four bytes (UTF-8's own worst case
-// per rune) times domain.MaxTextLength's 4096 code points, with room
-// to spare, and far smaller than MaxPasteLen, since nothing this UI
-// ever sends as text is anywhere near that long. This package cannot
-// import domain (see .golangci.yml's depguard rules), so the number is
-// restated here rather than computed from it.
+// wl-paste, well above domain.MaxTextLength's worst case in bytes.
 const MaxPasteTextLen = 32 * 1024
 
 // errPasteTooLarge reports that wl-paste's own output was larger than
@@ -87,13 +79,10 @@ func (w Wayland) Read(ctx context.Context, mimeType string, dst io.Writer) error
 	return err
 }
 
-// ReadText returns the clipboard's text/plain offer, the same bounded
-// wl-paste path Read uses for an image, but capped at MaxPasteTextLen
-// rather than MaxPasteLen: nothing this UI ever pastes as text needs
-// anywhere near that much room. Qt's own in-process clipboard reader
-// must never see a foreign clipboard offer directly - this is the
-// helper-side read every paste of plain text goes through instead (see
-// docs/decisions.md).
+// ReadText returns the clipboard's text/plain offer through the same
+// bounded wl-paste path Read uses, capped at MaxPasteTextLen. Every
+// plain-text paste goes through this rather than Qt's own in-process
+// clipboard reader (see docs/decisions.md).
 func (w Wayland) ReadText(ctx context.Context) (string, error) {
 	out, err := w.run(ctx, MaxPasteTextLen, "--type", "text/plain")
 	if err != nil {

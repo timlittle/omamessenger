@@ -48,14 +48,9 @@ Item {
   // it; see Composer.qml for why this is a function property, not a
   // signal.
   property var routeKey: null
-  // windowActive is whether the user can see the window at all: shown
-  // and focused. The alias field exists only while this is also true
-  // (see aliasLoader below): a field merely visible while the window
-  // sits unfocused in the background - alt-tabbed away - is still a
-  // live sink for a foreign Wayland clipboard offer, with no size or
-  // time limit (see docs/decisions.md). Defaults true so a caller or
-  // test that never sets it keeps the field exactly as it was before
-  // this existed.
+  // windowActive is whether the window is shown and focused; the alias field
+  // exists only while this is true, so it is not a live clipboard sink while
+  // backgrounded (see docs/decisions.md).
   property bool windowActive: true
 
   // chosen reports the account picked to rename.
@@ -65,42 +60,22 @@ Item {
   // cancelled closes the dialog without changing anything.
   signal cancelled()
 
-  // _alias exposes aliasLoader's own item, or null while the alias
-  // step is not showing. A plain var, not an alias, since Loader.item
-  // has no declared type for qmllint to check members against (the
-  // same reasoning Composer.qml's own `input` property documents).
+  // _alias exposes aliasLoader's own item, or null while the alias step is not showing.
   property var _alias: aliasLoader.item
-  // _aliasDraft is the field's own typed text, kept here rather than
-  // only in the field itself: aliasLoader below destroys and recreates
-  // it across a window-focus blip, so something outside it has to be
-  // the value's real home, the same reasoning Composer.qml's own text
-  // documents. Bound to currentAlias as a plain default rather than a
-  // reset elsewhere: this component is itself recreated fresh for every
-  // rename session (see Overlays.qml), and currentAlias never changes
-  // again once that session starts, so the first keystroke severing
-  // this binding (an ordinary QML binding, broken by assignment) never
-  // loses a later prefill there was none of.
+  // _aliasDraft is the field's typed text, kept here since aliasLoader
+  // destroys and recreates the field across a window-focus blip.
   property string _aliasDraft: root.currentAlias
-  // _aliasHadFocus is true from the moment the real field last gained
-  // activeFocus until it loses it for a reason other than the window
-  // itself going inactive (a real blur: Tab, a click elsewhere) - see
-  // the field's own onActiveFocusChanged below. windowActive turning
-  // true again only restores focus to the field while this is also
-  // true, rather than stealing it from whatever the user had instead
-  // moved it to (Cancel or Save) before switching away.
+  // _aliasHadFocus tracks whether the field held focus before losing it to
+  // something other than the window going inactive, so refocus on return
+  // does not steal focus the user moved elsewhere.
   property bool _aliasHadFocus: false
 
   objectName: "renameAccount"
   anchors.fill: parent
   visible: root.open
-  // Deferred with Qt.callLater, so by the time this runs, aliasLoader's
-  // own active binding (bound to the same open-and-stage check) has
-  // already created the field this focuses.
+  // Deferred so aliasLoader has already created the field by the time this runs.
   onStageChanged: if (root.stage === "alias") Qt.callLater(() => { if (root._alias) root._alias.forceActiveFocus() })
   onOpenChanged: if (root.open && root.stage === "alias") Qt.callLater(() => { if (root._alias) root._alias.forceActiveFocus() })
-  // Regaining the window's focus brings the field back only if it was
-  // the thing actually focused when that focus was lost; see
-  // _aliasHadFocus above.
   onWindowActiveChanged: if (root.windowActive && root._aliasHadFocus) Qt.callLater(() => { if (root._alias) root._alias.forceActiveFocus() })
 
   ChoiceDialog {
@@ -153,18 +128,10 @@ Item {
         font { family: Theme.font.family; pixelSize: Theme.font.body }
       }
 
-      // aliasLoader holds the alias field, active only at the alias
-      // step and only while the window is active (see windowActive
-      // above): a field merely hidden with `visible:`, or merely
-      // visible while the window sits unfocused in the background, is
-      // still a live Qt object that keeps reading every foreign Wayland
-      // clipboard offer, with no size or time limit, through the choose
-      // step too or through an alt-tab (see docs/decisions.md), so it
-      // must actually be destroyed while this dialog is picking which
-      // account to rename, not just hidden behind ChoiceDialog.
-      // _aliasDraft is what the field is seeded from and mirrors every
-      // keystroke into, so recreating it on return from an alt-tab
-      // loses nothing the user typed.
+      // aliasLoader holds the alias field, active only at the alias step and
+      // while the window is active, so it is destroyed rather than merely
+      // hidden otherwise (see docs/decisions.md). _aliasDraft preserves
+      // what was typed across recreation.
       Loader {
         id: aliasLoader
         Layout.fillWidth: true
@@ -176,20 +143,12 @@ Item {
           text: root._aliasDraft
           placeholderText: "e.g. Personal WhatsApp"
           maximumLength: Limits.ACCOUNT_ALIAS
-          // Qt's own right-click "Paste" menu would read the clipboard
-          // in-process, with no size or time limit of its own;
-          // routeKey below already routes Ctrl+V and Shift+Insert
-          // through the helper's bounded clipboard.readText instead
-          // (see docs/decisions.md), so this menu is removed outright.
+          // The native paste menu reads the clipboard unbounded, so remove it;
+          // routeKey below routes paste through the helper instead (see docs/decisions.md).
           ContextMenu.menu: null
           Keys.priority: Keys.BeforeItem
-          // Catches a native paste key (ui/lib/Paste.js's own
-          // isPasteKey, which covers Ctrl+Shift+Insert and the
-          // dedicated Paste key on top of Ctrl+V and Shift+Insert)
-          // ahead of the binding lookup below, so a rebound
-          // field.paste in keys.conf can never bring back this
-          // field's own unbounded native paste() (see
-          // docs/decisions.md).
+          // Catch any paste key ahead of routeKey, so a rebound field.paste
+          // in keys.conf cannot resurrect the unbounded native paste().
           Keys.onPressed: event => {
             if (Paste.isPasteKey(event.key, event.modifiers)) {
               if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
@@ -200,12 +159,8 @@ Item {
           }
           onAccepted: root.submitted(root._aliasDraft.trim())
           onTextChanged: root._aliasDraft = text
-          // Losing focus because the window itself went inactive is not
-          // a real blur: root.windowActive is already false by the time
-          // this runs, since that is what emptied aliasLoader.active in
-          // the first place, so _aliasHadFocus is left alone for that
-          // case and only cleared for an actual Tab or a click
-          // elsewhere.
+          // Losing focus because the window went inactive is not a real blur,
+          // so leave _aliasHadFocus alone for that case.
           onActiveFocusChanged: {
             if (activeFocus) { root._aliasHadFocus = true; return; }
             if (root.windowActive) root._aliasHadFocus = false;

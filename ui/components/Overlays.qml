@@ -192,10 +192,8 @@ Item {
     onOpenChanged: root._refocusIfClosed(open)
   }
 
-  // Tests may build this layout without a list controller. Shares the
-  // archiveConfirm key context and its accept/cancel actions with
-  // ArchiveAllConfirm above: only one of the two is ever open at once
-  // (see ListController.confirmArchiveAllRead).
+  // Tests may build this layout without a list controller. Shares
+  // ArchiveAllConfirm's actions: only one of the two is ever open.
   ArchiveConfirm {
     open: root.listController?.archiveOneOpen ?? false
     conversationTitle: root.listController?.archiveOneTitle ?? ""

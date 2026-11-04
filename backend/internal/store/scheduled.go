@@ -1,12 +1,8 @@
 package store
 
-// scheduled.go persists messages the user queued to send at a chosen
-// time instead of right away (see app.Commands.ScheduleMessage). A row
-// here holds only what is needed before it is due: once its own
-// SendAt comes, or the user asks to send it now, ClaimScheduledMessage
-// removes it so it can be handed to the normal send path, which keeps
-// its own retry and failure state from there - this table never grows
-// a status column of its own (see docs/decisions.md).
+// scheduled.go persists messages queued to send at a chosen time instead of
+// right away; once due, ClaimScheduledMessage removes the row and hands it
+// to the normal send path (see docs/decisions.md).
 
 import (
 	"context"
@@ -83,14 +79,9 @@ func (s *Store) CancelScheduledMessage(ctx context.Context, id string) error {
 	return requireRow("cancel scheduled message", res)
 }
 
-// ClaimScheduledMessage removes a queued message so its caller can
-// hand it to the normal send path, reporting whether this call is the
-// one that removed it. False means it was already claimed or
-// cancelled first - by the sender's own earlier pass, a restart racing
-// a user's "send now", or the user cancelling it - so the caller must
-// not send it a second time. The caller already has the row it means
-// to send, from ScheduledMessages or its own earlier lookup, so this
-// never needs to return it again.
+// ClaimScheduledMessage removes a queued message, reporting whether this
+// call is the one that removed it; false means another claim or a
+// cancellation already won the race.
 func (s *Store) ClaimScheduledMessage(ctx context.Context, id string) (claimed bool, _ error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM scheduled_messages WHERE id=?`, id)
 	if err != nil {

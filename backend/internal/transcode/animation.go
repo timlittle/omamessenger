@@ -1,9 +1,7 @@
 package transcode
 
-// animation.go runs the Animation profile: the same video settings
-// Video uses, but with no audio at all, for a GIF or a "GIF video" -
-// a short, silent clip a messaging service marks to autoplay. See
-// docs/decisions.md for why each flag is there.
+// animation.go runs the Animation profile: Video's settings with no
+// audio, for a GIF or silent "GIF video" (see docs/decisions.md).
 
 import (
 	"context"
@@ -11,30 +9,19 @@ import (
 	"strconv"
 )
 
-// animationOutputName is the file Animation's own argv writes inside
-// the sandbox's output directory.
+// animationOutputName is the file Animation writes in the sandbox's output directory.
 const animationOutputName = "out.mp4"
 
-// animationTimeout reuses videoTimeout: Animation runs the same
-// video encode Video does, minus audio, so it can never cost more.
+// animationTimeout is Video's, since an Animation encode never costs more.
 const animationTimeout = videoTimeout
 
-// animationDurationSeconds reuses videoDurationSeconds: a "GIF video"
-// is a video by another name, so the same ten-minute cap applies.
+// animationDurationSeconds is Video's duration cap.
 const animationDurationSeconds = videoDurationSeconds
 
-// animationMaxOutputBytes reuses videoMaxOutputBytes: Animation
-// shares Video's own VBV-capped video settings exactly, minus audio,
-// so its own worst case (600s * 2500 kbit/s / 8 ≈ 187.5 MB - see
-// videoRateControlArgs) is already lower than Video's own, and does
-// not need a tighter cap of its own.
+// animationMaxOutputBytes is Video's output cap; with no audio it is never reached sooner.
 const animationMaxOutputBytes = videoMaxOutputBytes
 
-// Animation re-encodes in - an animated GIF, WebP, or a "GIF video" -
-// into a silent MP4 at outDir, with the same scaling, frame-rate and
-// video codec settings Video uses. It returns the output file's path,
-// or one of this package's own sentinel errors (see the package doc
-// comment).
+// Animation re-encodes an animated GIF, WebP or "GIF video" into a silent MP4 at outDir.
 func (t *Transcoder) Animation(ctx context.Context, in, outDir string) (string, error) {
 	return t.run(ctx, in, outDir, profile{
 		args:       animationArgs(),
@@ -45,9 +32,7 @@ func (t *Transcoder) Animation(ctx context.Context, in, outDir string) (string, 
 	})
 }
 
-// animationRebuild validates the MP4 ffmpeg wrote for Animation and
-// rewrites it as sandboxedOutput's own replacement in jobDir (see
-// remuxMP4). Animation allows no audio track at all, unlike Video.
+// animationRebuild validates and rewrites Animation's MP4, rejecting any audio track.
 func animationRebuild(sandboxedOutput, jobDir string) (string, error) {
 	outPath := filepath.Join(jobDir, "remux.mp4")
 	caps := remuxCaps{
@@ -62,8 +47,7 @@ func animationRebuild(sandboxedOutput, jobDir string) (string, error) {
 	return outPath, nil
 }
 
-// animationArgs is the Animation profile's own fixed ffmpeg argument
-// list.
+// animationArgs is the Animation profile's ffmpeg argument list.
 func animationArgs() []string {
 	args := commonInputArgs()
 	args = append(args, filterThreadArgs()...)

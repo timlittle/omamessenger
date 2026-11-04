@@ -102,17 +102,12 @@ func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, me
 // fetchImage downloads a photo, sticker or real GIF file to a
 // temporary file next to req.path, streamed and capped the same way
 // fetch_stream.go bounds a video or file, then moves it into place
-// unchanged: a security review found the previous, in-memory download
-// trusted the sender's own declared FileLength as its only gate,
-// skipping the check entirely when that field was left at 0, and only
-// then read the whole reply into memory with no cap of its own at
-// all. Capped at the image profile's own MaxInputLen, and narrowed
-// further to connector.AutoFetchMaxBytes when req.auto is set (see
-// connector.ImageFetchCap), so an automatic fetch of a photo or
-// sticker is never trusted with more than any other automatic fetch
-// is. The UI never loads this file directly - app.Commands's own
-// display copy does, re-encoded through imagesafe (see
-// docs/decisions.md) - so nothing here needs to check or rewrite it.
+// unchanged. The cap is the image profile's own MaxInputLen, narrowed
+// to connector.AutoFetchMaxBytes for an automatic fetch (see
+// connector.ImageFetchCap); a sender's declared FileLength alone is
+// not trusted, since it can be left at 0. The UI never loads this
+// file directly: app.Commands's own display copy is re-encoded
+// through imagesafe first (see docs/decisions.md).
 func (c *Connector) fetchImage(ctx context.Context, dev device, media *mediaStore, req fetchRequest) error {
 	profile, _ := imageProfile(req.ref)
 	max := connector.ImageFetchCap(profile, req.auto)

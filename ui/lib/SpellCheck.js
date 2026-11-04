@@ -12,29 +12,13 @@
 // sending a request on every keystroke.
 var DEBOUNCE_MS = 300;
 
-// MAX_RENDERED_MISSPELLINGS bounds how many misspellings Composer ever
-// turns into underline rectangles, matching the helper's own
-// app.MaxSpellMisspellings result cap independently (the same two-
-// independently-maintained-but-matching pair Format.js's own
-// MAX_RICH_TEXT_INPUT_LENGTH describes, since this file has no way to
-// import a Go constant). Composer rebuilds its overlay on every
-// keystroke and caret move, so this is defence in depth behind the
-// helper's own cap for a connector bug, an older helper, or a result
-// kept from before the cap existed.
+// MAX_RENDERED_MISSPELLINGS caps how many misspellings Composer renders, mirroring the helper's own cap.
 var MAX_RENDERED_MISSPELLINGS = 200;
 
-// MAX_COMPOSER_TEXT_LENGTH bounds how much text the composer's own
-// input holds, in Unicode code points, matching domain.MaxTextLength:
-// the same cap messages.send enforces on outgoing text and spell.check
-// now enforces on what it scans. A pasted clipboard string has no
-// length limit of its own (unlike typing, which is naturally slow), so
-// the composer must not hold more than a send could ever accept.
+// MAX_COMPOSER_TEXT_LENGTH caps composer text in Unicode code points, matching domain.MaxTextLength.
 var MAX_COMPOSER_TEXT_LENGTH = 4096;
 
-// capComposerText cuts text to MAX_COMPOSER_TEXT_LENGTH Unicode code
-// points, counted the way the string iterator already does (so a
-// surrogate pair is never split across the cut), leaving anything
-// already within the cap untouched.
+// capComposerText cuts text to MAX_COMPOSER_TEXT_LENGTH code points without splitting a surrogate pair.
 function capComposerText(text) {
   if (text.length <= MAX_COMPOSER_TEXT_LENGTH) return text;
 
@@ -44,18 +28,12 @@ function capComposerText(text) {
   return codePoints.slice(0, MAX_COMPOSER_TEXT_LENGTH).join('');
 }
 
-// formatThousands writes a non-negative integer with "," every three
-// digits ("4096" -> "4,096"), for truncationNoticeText below: locale-
-// free, like every other number this UI formats, so it reads the same
-// for everyone rather than depending on the system's own locale.
+// formatThousands writes a non-negative integer with "," every three digits ("4096" -> "4,096").
 function formatThousands(n) {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-// truncationNoticeText is the toast Composer shows once its own
-// paste-or-type guard actually cuts the draft to limit characters
-// (MAX_COMPOSER_TEXT_LENGTH), so a silent cut always comes with a
-// word naming the real cap, not a magic number baked into the UI text.
+// truncationNoticeText is the toast shown when the composer cuts a draft to the character limit.
 function truncationNoticeText(limit) {
   return `Message cut to the ${formatThousands(limit)}-character limit`;
 }

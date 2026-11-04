@@ -26,8 +26,7 @@ Item {
   property string draft: ""
 
   // replyTarget is the message the composer is about to answer: {id,
-  // senderName, text}, or null when the user is not replying to
-  // anything.
+  // senderName, text}, or null when the user is not replying to anything.
   property var replyTarget: null
 
   // replying is true while replyTarget names a message, for the Escape
@@ -49,23 +48,16 @@ Item {
   property string _draftBeforeEdit: ""
 
   // scheduledEditId is the queued "send later" message the composer is
-  // about to replace, once startScheduledEdit has loaded it back in, or
-  // "" while not editing one. WindowController.editScheduledMessage sets
-  // this (the keyboard's e on a highlighted queued row and the mouse's
-  // own "Edit" button both call it, so the two stay identical): it loads
-  // the text here first, with the composer focused and writing, instead
-  // of jumping straight to the "Send later…" time prompt the way it used
-  // to - that left the text itself unreachable, the report this fixes.
+  // about to replace, loaded by startScheduledEdit, or "" while not
+  // editing one.
   property string scheduledEditId: ""
 
   // editingScheduled is true while scheduledEditId names a queued
-  // message, for the banner, the Escape chain and WindowController's own
-  // compose.sendLater and message.send handling.
+  // message.
   readonly property bool editingScheduled: root.scheduledEditId !== ""
 
   // _draftBeforeScheduledEdit is the draft startScheduledEdit overwrote,
-  // restored by cancelScheduledEdit the same way _draftBeforeEdit is for
-  // a sent message's own edit.
+  // restored by cancelScheduledEdit.
   property string _draftBeforeScheduledEdit: ""
 
   // attachmentPath is the file to send with the next message, or "" for
@@ -90,18 +82,15 @@ Item {
   // a decoded preview only when this is "photo".
   property string attachmentKind: ""
 
-  // attachmentSize is attachmentPath's own byte count, from the same
-  // media.attach round trip; 0 for a pasted image, which the helper's
-  // reply names no size for, or while no attachment is set.
+  // attachmentSize is attachmentPath's own byte count; 0 for a pasted
+  // image or while no attachment is set.
   property real attachmentSize: 0
   // attachmentLimit is the cap attachmentPath was checked against, in
-  // bytes; 0 for a pasted image, or while no attachment is set.
+  // bytes; 0 for a pasted image or while no attachment is set.
   property real attachmentLimit: 0
 
-  // attachmentLimitHint is the open conversation's own account limit,
-  // shown as "Up to 2 GB" near the attach button before any file is
-  // picked; "" while no conversation is open or its account's limit
-  // is not known yet.
+  // attachmentLimitHint shows the open conversation's account limit (e.g.
+  // "Up to 2 GB") near the attach button before any file is picked.
   readonly property string attachmentLimitHint: Attachments.attachmentLimitHint(root._openConversationAttachmentLimit())
 
   // composeFocused mirrors whether the composer holds keyboard focus; the
@@ -125,13 +114,8 @@ Item {
   signal newlineRequested()
 
   // textInsertRequested asks the caller to insert text at the
-  // composer's cursor, the same way newlineRequested already asks for
-  // a line break: paste()'s own plain-text fallback, once an image
-  // paste found nothing there, reads the clipboard through the
-  // helper's bounded clipboard.readText and asks for it to land here -
-  // never through the real text field's own paste(), which would read
-  // the clipboard a second time, this time with no size or time limit
-  // of its own (see docs/decisions.md).
+  // composer's cursor: paste()'s plain-text fallback when there is no
+  // clipboard image.
   signal textInsertRequested(string text)
 
   // leaveComposeRequested asks the caller to move focus out of the composer.
@@ -236,13 +220,8 @@ Item {
     root._draftBeforeEdit = "";
   }
 
-  // startScheduledEdit loads a queued "send later" message's text back
-  // into the draft so its own words can be changed, cancelling any sent
-  // message edit or reply in progress first (the three banners never
-  // show together). The composer is left holding focus in writing mode;
-  // the caller still has to pick a time afterwards, through Ctrl+L
-  // (compose.sendLater), which reads scheduledEditId to reschedule it
-  // instead of queuing a fresh message.
+  // startScheduledEdit loads a queued message's text back into the draft
+  // for editing, cancelling any sent-message edit or reply first.
   function startScheduledEdit(id: string, text: string): void {
     root.cancelEdit();
     root.cancelReply();
@@ -251,9 +230,9 @@ Item {
     root.setDraft(text);
   }
 
-  // cancelScheduledEdit clears the queued message editing in progress
-  // and restores whatever draft startScheduledEdit overwrote, leaving
-  // the queued message itself unchanged - Esc while editing one.
+  // cancelScheduledEdit stops editing the queued message and restores
+  // the draft startScheduledEdit overwrote, leaving the queued message
+  // unchanged.
   function cancelScheduledEdit(): void {
     if (!root.editingScheduled) return;
 
@@ -262,10 +241,8 @@ Item {
     root._draftBeforeScheduledEdit = "";
   }
 
-  // clearScheduledEdit drops scheduledEditId once WindowController has
-  // actually rescheduled it with the composer's current text, without
-  // restoring the draft startScheduledEdit overwrote: the caller is
-  // about to clear the composer itself, the same as a normal send does.
+  // clearScheduledEdit drops scheduledEditId once it has been
+  // rescheduled, without restoring the overwritten draft.
   function clearScheduledEdit(): void {
     root.scheduledEditId = "";
     root._draftBeforeScheduledEdit = "";
@@ -323,18 +300,8 @@ Item {
     });
   }
 
-  // pickAttachFile asks the helper to open the portal's own file
-  // chooser for the composer's attach button, out of process from the
-  // shared Omarchy shell (see docs/decisions.md): never the
-  // in-process GTK dialog that once crashed it, and never a fallback
-  // dialog of this UI's own either - Qt's own non-native FileDialog
-  // rendered a sender-controlled file name as rich text through its
-  // delegate's default AutoText, which a security review found let a
-  // markup-named file already on disk run as HTML the moment the
-  // dialog merely listed its folder (see docs/decisions.md). A
-  // cancelled pick (files.pick answering with no path) does nothing
-  // further; one the portal could not show at all reports a fixed
-  // notice instead, the same way a failed links.open does.
+  // pickAttachFile asks the helper to open the desktop portal's file
+  // chooser rather than an in-process dialog (see docs/decisions.md).
   function pickAttachFile(): void {
     if (!root.service) return;
 
@@ -351,19 +318,16 @@ Item {
     });
   }
 
-  // _openConversationAccountId is the open conversation's own account
-  // id, read for media.attach's accountId param, or "" while no
-  // conversation is open.
+  // _openConversationAccountId is the open conversation's account id, or
+  // "" while none is open.
   function _openConversationAccountId(): string {
     if (!root.conversation || !root.conversation.conversation) return "";
 
     return root.conversation.conversation.accountId;
   }
 
-  // _openConversationAttachmentLimit reads the open conversation's own
-  // account's attachmentLimit out of service.accounts, for
-  // attachmentLimitHint, or 0 while there is no conversation open or
-  // its account is not known yet.
+  // _openConversationAttachmentLimit reads the open conversation's
+  // account attachment limit out of service.accounts, or 0 if unknown.
   function _openConversationAttachmentLimit(): real {
     const accountId = root._openConversationAccountId();
     if (!accountId || !root.service) return 0;
@@ -387,21 +351,9 @@ Item {
     root.attachmentLimit = 0;
   }
 
-  // paste asks the helper whether the clipboard holds an image; if it
-  // does, it is attached to the next message. Otherwise - no image, or
-  // the helper refused it (too large, timed out, or malformed) -
-  // Ctrl+V falls back to plain text, read through the same bounded
-  // clipboard.readText round trip rather than ever letting the real
-  // text field's own paste() read the clipboard itself: an earlier
-  // version fell back to exactly that, which read the clipboard's
-  // text/plain offer with no size or time limit of its own, even in
-  // the case the helper had just refused the same clipboard owner's
-  // image for being too large or too slow (see docs/decisions.md).
-  // media.paste and clipboard.readText both answer asynchronously, so
-  // the open conversation is captured once, before either call; a
-  // reply for a conversation no longer open is dropped outright rather
-  // than attaching the image or inserting the text into whichever
-  // conversation now happens to be open.
+  // paste attaches a clipboard image, or falls back to inserting plain
+  // text through the helper's bounded clipboard.readText rather than the
+  // text field's own unbounded paste() (see docs/decisions.md).
   function paste(): void {
     if (!root.service) return;
 
@@ -422,11 +374,8 @@ Item {
     });
   }
 
-  // _pasteText is paste()'s own plain-text fallback, split out to keep
-  // paste() within the size guideline: the clipboard's text/plain
-  // offer, through the helper's bounded clipboard.readText, inserted
-  // at the composer's cursor on success, or a short refusal notice
-  // when the clipboard holds no text either.
+  // _pasteText is paste()'s plain-text fallback, split out to keep
+  // paste() short.
   function _pasteText(isCurrent: var): void {
     root.service.request("clipboard.readText", {}, function(error, result) {
       if (!isCurrent()) return;
@@ -516,14 +465,8 @@ Item {
     });
   }
 
-  // textTruncated shows a brief toast once Composer's own paste-or-type
-  // guard actually cut the draft down to limit characters: Composer is
-  // a view and never calls the helper or shows anything itself (see
-  // qml.md), so this is the one place that turns its signal into the
-  // same notice banner WindowController.toastText already shows for
-  // every other brief confirmation (see ConversationController.notice).
-  // Does nothing with no conversation open, which the signal cannot
-  // fire from anyway (Composer.active is false with none open).
+  // textTruncated shows a toast once Composer's length guard cuts the
+  // draft down to limit characters.
   function textTruncated(limit: int): void {
     if (!root.conversation) return;
 

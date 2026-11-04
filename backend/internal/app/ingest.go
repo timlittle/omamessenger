@@ -204,15 +204,10 @@ func (in *Ingest) Edited(ctx context.Context, accountID, conversationRemoteID st
 	in.events.publish(ctx, EventMessageUpdated, updated)
 }
 
-// authorizedEdit reports whether m's sender is the one already stored
-// for the message it edits: whoever a connector reports as an edit's
-// sender is supposed to be its original sender too, since every
-// service that reaches here only lets someone edit their own message
-// (see the WhatsApp connector's own authorizedActor check, which this
-// backs up as defence in depth for a connector that forgets it). A
-// message not stored yet, or one this call cannot read back for some
-// other reason, is authorized here regardless: EditMessage's own "not
-// found" path, right after this returns, already drops it safely.
+// authorizedEdit reports whether m's sender matches the message's
+// stored sender, as defence in depth behind each connector's own check.
+// A message not found here is authorized regardless: EditMessage's own
+// "not found" path drops it safely right after.
 func (in *Ingest) authorizedEdit(ctx context.Context, conversationID string, m domain.Message) bool {
 	existing, err := in.store.MessageByRemote(ctx, conversationID, m.RemoteID)
 	if err != nil {
@@ -230,11 +225,8 @@ func (in *Ingest) authorizedEdit(ctx context.Context, conversationID string, m d
 	return false
 }
 
-// logDroppedOversizedID reports, as a fixed safe category only, that
-// save or Edited refused a message whose own RemoteID or SenderID ran
-// past domain.MaxRemoteIDLength: never the id itself, which could be
-// just as oversized, and could embed a phone number for a WhatsApp JID
-// (see privacy.md).
+// logDroppedOversizedID logs that a message with an oversized remote or
+// sender id was dropped, never the id itself (see privacy.md).
 func (in *Ingest) logDroppedOversizedID() {
 	if in.logger != nil {
 		in.logger.Printf("ingest: dropped message (reason=oversized remote or sender id)")
@@ -402,16 +394,10 @@ func (in *Ingest) SenderName(ctx context.Context, accountID, senderRemoteID, nam
 	}
 }
 
-// ConversationRemoteIDChanged upgrades a conversation already
-// reported under oldRemoteID to a connector's better-resolved
-// newRemoteID, in place: see connector.RemoteIDUpgrader. When a
-// conversation already exists under newRemoteID, oldRemoteID's
-// messages are merged into it instead and the oldRemoteID
-// conversation is removed, so the two never end up duplicated.
-// Dropped, publishing nothing, when oldRemoteID is not known - the
-// common case for a connector's own idempotent check against a peer
-// that never actually needed correcting (see the Ingest comment on
-// dropped errors).
+// ConversationRemoteIDChanged upgrades a conversation from oldRemoteID
+// to a connector's better-resolved newRemoteID, merging into an
+// existing newRemoteID conversation if there is one. Does nothing when
+// oldRemoteID is not known.
 func (in *Ingest) ConversationRemoteIDChanged(ctx context.Context, accountID, oldRemoteID, newRemoteID string) {
 	conv, err := in.store.UpgradeConversationRemoteID(ctx, accountID, oldRemoteID, newRemoteID)
 	if err != nil {

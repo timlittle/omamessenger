@@ -29,14 +29,10 @@ const placeholderResolveTimeout = 10 * time.Second
 const placeholderResolveDialogs = 20
 
 // resolvePlaceholderHash looks up userID's real access hash in the
-// background, tracked by c.resolving so Run can wait for it before
-// returning, and, once found, reports the upgrade from its
-// placeholder remote id to the fully resolved one through sink (see
-// learnResolved and connector.RemoteIDUpgrader). ctx is the
-// connector's own run context, not the single update that created
-// the placeholder: finding the user's access hash afterwards is not
-// itself part of handling that update, and must keep going after it
-// returns.
+// background, tracked by c.resolving so Run can wait for it, and once
+// found reports the upgrade from the placeholder remote id to the
+// resolved one through sink. ctx is the connector's run context, not
+// the update that created the placeholder, since this must outlive it.
 func (c *Connector) resolvePlaceholderHash(ctx context.Context, sink connector.Sink, userID int64) {
 	c.resolving.Add(1)
 	go func() {
@@ -60,9 +56,8 @@ func (c *Connector) resolvePlaceholderHash(ctx context.Context, sink connector.S
 }
 
 // findUserAccessHash looks up userID's current access hash among the
-// account's most recent dialogs (see docs/decisions.md for why this
-// call), or reports false when it is not among them. It needs no
-// connector state of its own, only the API handed to it.
+// account's most recent dialogs, or reports false if it is not among
+// them (see docs/decisions.md for why this call).
 func findUserAccessHash(ctx context.Context, api *tg.Client, userID int64) (int64, bool) {
 	result, err := api.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
 		OffsetPeer: &tg.InputPeerEmpty{}, Limit: placeholderResolveDialogs,
@@ -93,18 +88,11 @@ func findUserAccessHash(ctx context.Context, api *tg.Client, userID int64) (int6
 var errUnresolvedPeer = errors.New("telegram: cannot send yet, still identifying this chat")
 
 // resolveSendPeer reads convRemoteID into the peer and remote id Send
-// needs, resolving a user placeholder's access hash first when it is
-// still unknown: remoteID writes it as 0, which placeholderConversation
-// is the only path that ever does for a user peer (see its own
-// comment). The resolved hash, once found, is also learned and its
-// upgrade over convRemoteID reported unconditionally, by its known
-// placeholder shape rather than whatever this run's own cache happens
-// to hold (the same reasoning as sync.go's own unconditional check):
-// Send can be the first thing to touch this peer after a helper
-// restart, with nothing cached yet, and the store's own copy of the
-// conversation still needs correcting at the moment a send finally
-// succeeds under it. A hash still not found returns errUnresolvedPeer
-// rather than sending with one guessed or left at 0.
+// needs, resolving a user placeholder's unknown access hash first.
+// Once found, the hash is learned and the upgrade over convRemoteID
+// reported unconditionally, since Send can be the first thing to
+// touch this peer after a restart with nothing cached. Returns
+// errUnresolvedPeer rather than sending with a guessed or zero hash.
 func (c *Connector) resolveSendPeer(ctx context.Context, sink connector.Sink, api *tg.Client, convRemoteID string) (tg.InputPeerClass, string, error) {
 	peer, err := inputPeer(convRemoteID)
 	if err != nil {

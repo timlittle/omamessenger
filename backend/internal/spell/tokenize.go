@@ -17,16 +17,8 @@ var (
 	codeSpanPattern = regexp.MustCompile("`[^`]*`")
 )
 
-// maxCheckedWordLength bounds how many runes a word cluster may have
-// and still be offered to Check: no real dictionary word comes close
-// to this long, so anything past it is treated the same way a number
-// or a URL already is - skipped outright, never handed to the
-// dictionary. This also keeps such a run from ever being flagged a
-// misspelling in the first place, so the UI never asks spell.suggest
-// for it: gospell's suggester builds roughly n² candidate strings of n
-// characters each, which for a run of thousands of letters copied from
-// a message would grow to tens of GB. See MaxSpellWordLength in
-// app/commands.go, which bounds the same call directly.
+// maxCheckedWordLength is the longest word Check looks at, because
+// gospell's suggester needs memory quadratic in a word's length.
 const maxCheckedWordLength = 64
 
 // wordCandidate is one word Check considers spell-checking: its text,

@@ -1,27 +1,12 @@
 package whatsapp
 
-// organizehealth.go is where this connector remembers, across the
-// process and across a restart, that one of the app-state collections
-// it patches (always WAPatchRegularLow for pin, archive and the
-// chat-read mutation, see appstate.go's own doc comment; WAPatchRegularHigh
-// for delete-for-me) can no longer be verified against WhatsApp's
-// server at all. A real account's logs showed the symptom: an
-// incremental fetch AND a full-sync fetch both failing because the
-// local copy is corrupt, with the retried patch still rejected by the
-// server afterwards (see sendOrganizePatch in appstate.go). That is
-// the open upstream bug at
-// https://github.com/tulir/whatsmeow/issues/1301: on an account whose
-// phone has moved its chats to LID addressing, WhatsApp's own
-// regular_low snapshot fails its own verification, so this companion
-// can never catch up and every regular_low write keeps getting
-// rejected. Once sendOrganizePatch finds that, every later call for
-// the same patch type skips WhatsApp's server entirely, reporting
-// connector.ErrOrganizeLocalOnly at once instead of repeating the same
-// expensive two-round recovery for nothing; runOrganizeHealthCheck is
-// the only thing that ever tries again, so an upstream fix or
-// WhatsApp repairing the account itself is noticed without needing a
-// restart (see docs/decisions.md for why this is not instead fixed by
-// relaxing verification).
+// organizehealth.go remembers, across the process and a restart, that
+// one of the app-state collections this connector patches can no
+// longer be verified against WhatsApp's server (upstream bug
+// https://github.com/tulir/whatsmeow/issues/1301). Once
+// sendOrganizePatch finds that, later calls skip the server entirely
+// and report connector.ErrOrganizeLocalOnly; runOrganizeHealthCheck
+// is the only thing that retries (see docs/decisions.md).
 
 import (
 	"context"
@@ -46,10 +31,9 @@ func (c *Connector) organizeLocalOnly(patchType appstate.WAPatchName) bool {
 	return c.organizeUnsyncable[patchType]
 }
 
-// loadOrganizeHealth resumes patchType's unsyncable state exactly as
-// a previous run last persisted it (see mediaStore.organizeUnsyncable),
-// without logging or writing it straight back: resuming already-known
-// state is not itself a new discovery (see logOrganizeHealthChanged).
+// loadOrganizeHealth resumes patchType's unsyncable state as a
+// previous run last persisted it, without logging it: resuming
+// known state is not a new discovery (see logOrganizeHealthChanged).
 func (c *Connector) loadOrganizeHealth(patchType appstate.WAPatchName, unsyncable bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -61,12 +45,8 @@ func (c *Connector) loadOrganizeHealth(patchType appstate.WAPatchName, unsyncabl
 }
 
 // setOrganizeLocalOnly records whether patchType can currently be
-// trusted to reach WhatsApp's server, persisting the change to this
-// account's own media store when one is open, and logging once on
-// each actual change - becoming true the first time sendOrganizePatch
-// finds it unverifiable, and clearing again the moment
-// recheckOrganizeHealth verifies it - rather than on every call that
-// finds it already set.
+// trusted to reach WhatsApp's server, persisting the change and
+// logging it, but only on an actual change.
 func (c *Connector) setOrganizeLocalOnly(ctx context.Context, patchType appstate.WAPatchName, unsyncable bool) {
 	c.mu.Lock()
 	if c.organizeUnsyncable == nil {
@@ -91,11 +71,9 @@ func (c *Connector) setOrganizeLocalOnly(ctx context.Context, patchType appstate
 	}
 }
 
-// logOrganizeHealthChanged is the one place sendOrganizePatch's
-// discovery, or recheckOrganizeHealth's recovery, is logged (see
-// setOrganizeLocalOnly): every later call that finds the state
-// unchanged logs nothing further, so a flagged account does not spam
-// this line on every pin, archive, mark-read or delete.
+// logOrganizeHealthChanged is the one place a discovery or recovery
+// is logged (see setOrganizeLocalOnly), so a flagged account does not
+// spam this line on every pin, archive, mark-read or delete.
 func logOrganizeHealthChanged(patchType appstate.WAPatchName, unsyncable bool) {
 	if unsyncable {
 		log.Printf("whatsapp: regular_low unverifiable, keeping organize changes local (upstream whatsmeow#1301, type=%s)", patchType)
@@ -106,9 +84,7 @@ func logOrganizeHealthChanged(patchType appstate.WAPatchName, unsyncable bool) {
 }
 
 // runOrganizeHealthCheck retries recheckOrganizeHealth once right
-// away, then every organizeHealthCheckInterval, until ctx is
-// cancelled - Run's own per-run context (see waitForStop in
-// connector.go), so this never outlives the dev it was given.
+// away, then every organizeHealthCheckInterval, until ctx is cancelled.
 func (c *Connector) runOrganizeHealthCheck(ctx context.Context, dev device) {
 	c.recheckOrganizeHealth(ctx, dev)
 
@@ -126,13 +102,8 @@ func (c *Connector) runOrganizeHealthCheck(ctx context.Context, dev device) {
 }
 
 // recheckOrganizeHealth retries one incremental fetch of
-// WAPatchRegularLow - the one patch type the real account diagnosing
-// this found permanently rejected (see this file's own doc comment) -
-// clearing organizeLocalOnly the moment that fetch succeeds, so
-// SetPinned, SetArchived and the chat-read mutation resume talking to
-// WhatsApp's server again without needing a restart. It does nothing,
-// and makes no call at all, while nothing is currently flagged, so a
-// healthy account never gets any of this extra traffic.
+// WAPatchRegularLow, clearing organizeLocalOnly the moment it
+// succeeds. Does nothing while nothing is currently flagged.
 func (c *Connector) recheckOrganizeHealth(ctx context.Context, dev device) {
 	if !c.organizeLocalOnly(appstate.WAPatchRegularLow) {
 		return

@@ -26,21 +26,14 @@ func fakeConnectors() ([]connector.Connector, app.Injector) {
 	return connectors, suite
 }
 
-// newTranscoder returns the passthrough transcoder test builds use in
-// place of the real sandboxed one, and true: a test build has no
-// ffmpeg or bubblewrap to be missing, so in-window playback is always
-// reported available. This keeps QML tests, Flows and demo recordings
-// working without bwrap or a real ffmpeg installed.
+// newTranscoder returns the passthrough transcoder test builds use instead of
+// the real sandboxed one, always reporting playback as available.
 func newTranscoder(_ string) (app.Transcoder, bool) {
 	return passthroughTranscoder{}, true
 }
 
-// passthroughTranscoder stands in for the real sandboxed transcoder:
-// each profile copies its input straight to a fresh output file of
-// its own inside a job directory under outDir, the same contract the
-// real transcoder's own profiles follow (see docs/decisions.md), so
-// app.Commands' own job-directory handling is exercised identically
-// either way.
+// passthroughTranscoder stands in for the real sandboxed transcoder: each
+// profile just copies its input to a fresh output file under outDir.
 type passthroughTranscoder struct{}
 
 func (passthroughTranscoder) Video(ctx context.Context, in, outDir string) (string, error) {
@@ -63,9 +56,8 @@ func (passthroughTranscoder) StillFrame(ctx context.Context, in, outDir string) 
 	return passthroughCopy(ctx, in, outDir, ".png")
 }
 
-// passthroughCopy copies in's bytes to a fresh "out"+ext file inside
-// a new job directory under outDir, honouring ctx so a cancelled
-// request does not keep copying regardless.
+// passthroughCopy copies in's bytes to a fresh "out"+ext file inside a new
+// job directory under outDir.
 func passthroughCopy(ctx context.Context, in, outDir, ext string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err

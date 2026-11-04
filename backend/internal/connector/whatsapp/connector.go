@@ -58,13 +58,10 @@ type Connector struct {
 	undecryptable      map[string]bool              // "<conversation remote id>/<message remote id>" still waiting on a placeholder (see live.go's handleUndecryptable), bounded by maxUndecryptableTargets (see undecryptable.go)
 	undecryptableOrder []string                     // undecryptable's own keys in the order they were first tracked, so undecryptable.go's eviction always drops the oldest one first
 
-	// organizeUnsyncable marks, per app-state patch type, whether this
-	// account's own copy of that collection has been found permanently
-	// unverifiable (see appstate.go's sendOrganizePatch): once true,
-	// SetPinned, SetArchived, the chat-read patch and delete-for-me
-	// skip WhatsApp's server entirely for that patch type and report
-	// connector.ErrOrganizeLocalOnly at once, until a background
-	// recheck (see organizehealth.go) finds it verifies again.
+	// organizeUnsyncable marks, per app-state patch type, whether syncing
+	// has been found permanently unverifiable, so organize calls skip
+	// the server and report connector.ErrOrganizeLocalOnly until a
+	// background recheck clears it (see organizehealth.go).
 	organizeUnsyncable map[appstate.WAPatchName]bool
 
 	// retryWaiters holds one channel per message remote id currently
@@ -197,12 +194,9 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	return c.waitForStop(ctx, dev, stopped)
 }
 
-// waitForStop runs the background organize-health recheck (see
-// organizehealth.go) alongside Run's own wait for ctx to be cancelled
-// or the connection to end for good, through a context derived from
-// ctx that is cancelled the moment this returns for either reason, so
-// the recheck never outlives dev, which Run's own deferred close and
-// disconnect tear down right after this returns.
+// waitForStop runs the background organize-health recheck alongside
+// Run's wait for ctx to be cancelled or the connection to end, and
+// cancels the recheck first so it never outlives dev.
 func (c *Connector) waitForStop(ctx context.Context, dev device, stopped <-chan error) error {
 	runCtx, cancel := context.WithCancel(ctx)
 

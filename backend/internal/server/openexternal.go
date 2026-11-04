@@ -6,12 +6,10 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/app"
 )
 
-// openExternalMethods is links.open's and files.open's own entry, kept
-// in a function of its own rather than growing methods' table literal
-// further. Both open something outside this process through the
-// desktop portal, over D-Bus, instead of starting xdg-open with the
-// target in its own argv, where any other local user could read it
-// through /proc (see docs/decisions.md).
+// openExternalMethods is links.open's and files.open's own entry. Both
+// open something outside this process through the desktop portal
+// instead of xdg-open, so the target never lands in a process argv
+// another local user could read (see docs/decisions.md).
 func openExternalMethods(c *app.Commands) map[string]method {
 	return map[string]method{
 		"links.open": bind(linksOpen(c)),
@@ -25,10 +23,8 @@ type linkOpenParams struct {
 	URL string `json:"url"`
 }
 
-// linksOpen opens url through the desktop portal, once url has passed
-// the same scheme allow-list the UI already checked (see
-// app.Commands.OpenLink): the method WindowController.openExternalLink
-// calls instead of Qt.openUrlExternally.
+// linksOpen opens url through the desktop portal, once it has passed
+// the scheme allow-list in app.Commands.OpenLink.
 func linksOpen(c *app.Commands) func(context.Context, linkOpenParams) (any, error) {
 	return func(ctx context.Context, p linkOpenParams) (any, error) {
 		return struct{}{}, c.OpenLink(ctx, p.URL)
@@ -42,10 +38,7 @@ type fileOpenParams struct {
 	Path string `json:"path"`
 }
 
-// filesOpen opens path through the desktop portal: the method
-// MediaController's and ConversationController's default
-// openExternally, and Service.qml's openKeyConfigFile, call instead of
-// Qt.openUrlExternally.
+// filesOpen opens the local file at path through the desktop portal.
 func filesOpen(c *app.Commands) func(context.Context, fileOpenParams) (any, error) {
 	return func(ctx context.Context, p fileOpenParams) (any, error) {
 		return struct{}{}, c.OpenFile(ctx, p.Path)

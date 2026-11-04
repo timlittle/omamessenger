@@ -1,26 +1,13 @@
 package whatsapp
 
-// download_file.go streams a video, file, voice note, photo, sticker
-// or GIF document straight to disk instead of ever holding the whole
-// decrypted attachment in memory: whatsmeow's own
-// DownloadMediaWithPathToFile copies the ciphertext to the destination
-// file as it arrives and decrypts it in place there, so this
-// connector's own memory never holds more than one chunk at a time
-// regardless of how large the file is (see docs/decisions.md).
+// download_file.go streams an attachment straight to disk instead of
+// holding the whole decrypted file in memory (see docs/decisions.md).
 // fetch.go and fetch_stream.go both wrap the destination in
-// boundedFile so a declared size that undersold what the server
-// actually sends - or one left at 0 altogether - is still caught.
+// boundedFile so an undersold or zero declared size is still caught.
 //
-// boundedFile holds the real file as a named field rather than
-// embedding it. A security review found that embedding *os.File let
-// Go promote its ReadFrom method, and whatsmeow's own download loop
-// copies with io.Copy(file, io.TeeReader(resp.Body, hasher)): a
-// TeeReader has no WriteTo, so io.Copy looked for ReadFrom on the
-// destination instead of calling Write in a loop, found the promoted
-// one, and used it - writing every byte straight to disk without ever
-// reaching boundedFile's own cap. Naming the field instead means
-// boundedFile has no ReadFrom of its own, so io.Copy falls back to
-// calling Write repeatedly, which is what actually enforces max.
+// boundedFile holds the real file as a named field, not embedded: a
+// security review found embedding *os.File promoted its ReadFrom,
+// which io.Copy picked over calling Write, bypassing the cap entirely.
 
 import (
 	"context"
@@ -40,14 +27,9 @@ func (d *waDevice) downloadMediaToFile(ctx context.Context, ref mediaRef, file w
 
 // boundedFile wraps a real file, refusing a write that would take the
 // total written past max and running onWrite after every write that
-// actually lands, so a caller can reset an idle timeout exactly when
-// the transfer is still making progress (see connector.IdleContext).
-// It implements exactly the whatsmeow.File methods whatsmeow's own
-// decrypt-in-place step needs - Read, Seek, ReadAt, WriteAt, Truncate,
-// Stat - each forwarding straight to the wrapped file; only Write
-// counts bytes and enforces max. Deliberately holds file as a named
-// field, not an embedded one: see this file's own package comment for
-// why that is the whole fix.
+// lands, so a caller can reset an idle timeout on progress (see
+// connector.IdleContext). Only Write counts bytes and enforces max;
+// see the package comment for why file is a named field, not embedded.
 type boundedFile struct {
 	file *os.File
 
@@ -88,9 +70,7 @@ func (b *boundedFile) ReadAt(p []byte, off int64) (int, error) {
 }
 
 // WriteAt forwards to the wrapped file without re-checking max:
-// whatsmeow only ever uses it to decrypt bytes in place, overwriting a
-// span this same download already wrote and counted through Write,
-// never to grow the file past what Write already bounded.
+// whatsmeow only uses it to decrypt bytes already written, in place.
 func (b *boundedFile) WriteAt(p []byte, off int64) (int, error) {
 	return b.file.WriteAt(p, off)
 }

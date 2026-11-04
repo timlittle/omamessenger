@@ -11,20 +11,14 @@ import (
 	"sync"
 )
 
-// soundExtension is the only extension Store itself ever writes: a
-// name no build of this helper, released or not, ever used before
-// this one (see Sweep and docs/decisions.md). Resolving a sound by
-// this exact extension, rather than trusting whatever already sits
-// under a key's name, is what keeps a stray file left by an older
-// build from ever being served.
+// soundExtension is the only extension Store writes, so Sweep can tell
+// its files from anything left by an older build.
 const soundExtension = ".wav"
 
 // Sounds stores a validated copy of every custom notification sound this
-// helper plays, one file per key, so a sound keeps working even after the
-// user moves, renames or deletes the file they originally picked. A key
-// names a conversation or a service's own default and always overwrites
-// its own file in place (Store), so callers never need to remove an old
-// copy themselves before replacing it.
+// helper plays, one file per key (a conversation or a service's own
+// default), so a sound keeps working after the user moves or deletes the
+// original file.
 type Sounds struct {
 	dir string
 
@@ -38,15 +32,10 @@ func NewSounds(dir string) *Sounds {
 	return &Sounds{dir: dir}
 }
 
-// lockKey reserves key's own lock, waiting for any other call already
-// holding it, and returns the func that releases it: two Store calls
-// for the same key must never run at once, or they could both be
-// mid-copy to the exact same ".part" temporary file at once (see
-// copyToFile and docs/decisions.md). Sounds has at most a handful of
-// keys - one per conversation with its own custom sound, plus one per
-// service - all chosen by the user, never a sender, so this map
-// simply grows with that small, bounded set rather than needing
-// Cache's own reference-counted cleanup (see Cache.lockName).
+// lockKey reserves key's own lock and returns the func that releases
+// it, so two Store calls for the same key never collide mid-copy to
+// the same temporary file. The key set is small and user-chosen, so
+// this map just grows rather than needing reference-counted cleanup.
 func (s *Sounds) lockKey(key string) func() {
 	s.keysMu.Lock()
 	if s.keys == nil {
@@ -66,11 +55,8 @@ func (s *Sounds) lockKey(key string) func() {
 
 // Store copies the bytes of r into the sound store under key, readable
 // only by the user, and returns the new path. A failed or interrupted
-// copy leaves nothing behind. The caller is responsible for transcoding
-// r into a format the player can trust before it ever reaches here (see
-// app.storeAndTranscodeSound and docs/decisions.md); Store itself only
-// copies bytes. Two calls for the same key never run at once (see
-// lockKey).
+// copy leaves nothing behind; the caller must transcode r into a
+// trusted format before calling this (app.storeAndTranscodeSound).
 func (s *Sounds) Store(ctx context.Context, key string, r io.Reader) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -91,11 +77,9 @@ func (s *Sounds) Store(ctx context.Context, key string, r io.Reader) (string, er
 	return dst, nil
 }
 
-// Path is where key's sound is stored, found again without re-copying
-// it. key is always one of this helper's own fixed strings (a
-// conversation id it generated, or a fixed per-service name), never a
-// sender's or a user's own text, so this needs no traversal guard the
-// way Outgoing.Path's file name does.
+// Path is where key's sound is stored. key is always one of this
+// helper's own fixed strings, never a sender's or user's text, so this
+// needs no traversal guard.
 func (s *Sounds) Path(key string) string {
 	return filepath.Join(s.dir, key+soundExtension)
 }
@@ -114,12 +98,9 @@ func (s *Sounds) Remove(ctx context.Context, key string) error {
 	return nil
 }
 
-// Sweep removes every file in the sound store that is not named
-// <key>.wav: anything else cannot have come from this helper's own
-// Store, however it got there (see docs/decisions.md). Called once at
-// startup, before anything can resolve a sound to play, so a file an
-// older build once left behind is gone before the first request that
-// could have served it.
+// Sweep removes every file in the sound store not named <key>.wav, so
+// a file left by an older build is gone before anything can resolve
+// it. Called once at startup.
 func (s *Sounds) Sweep(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err

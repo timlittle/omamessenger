@@ -1,30 +1,14 @@
 // Package transcode re-encodes an untrusted video, voice note,
 // animation or sticker with the system ffmpeg, run entirely inside a
-// sandbox.Runner's own bwrap sandbox, so the shell only ever plays a
-// file this helper's own, fixed ffmpeg invocation produced - never
-// bytes a sender's file shaped directly (the "Rule of 2": never let
-// an untrustworthy input reach an unsafe-language parser at full
-// privilege). See docs/decisions.md for each profile's exact ffmpeg
-// arguments and why they are there.
+// sandbox.Runner's bwrap sandbox, so the shell only ever plays a file
+// this helper's own fixed ffmpeg invocation produced (see
+// docs/decisions.md for each profile's exact arguments).
 //
-// Each profile - Video, Animation, Audio, Sound, StillFrame - takes
-// an input file and an output directory and returns the one file it
-// produced there, or one of this package's own sentinel errors:
-// ErrUnavailable (the sandbox cannot run right now), ErrTimeout (the
-// job's own wall-clock budget ran out), ErrTooLong (the output grew
-// past what this profile allows) or ErrFailed (anything else - a
-// corrupt file, an unsupported stream, ffmpeg itself failing). A
-// caller tells them apart with errors.Is; none of the four ever
-// carries ffmpeg's own stderr text, which this package never exposes.
-//
-// By the time Run returns, the sandboxed ffmpeg is not merely
-// finished but gone: bwrap gives it its own PID namespace, and a PID
-// namespace is torn down - every process in it killed - the moment
-// its own pid 1 (bwrap's own internal fork, see sandbox's own package
-// doc comment) exits, which is what Run's own wait is blocked on.
-// checkOutput's own Lstat check, run after Run has already returned,
-// is therefore never racing a still-live process that could still
-// change what it finds.
+// Each profile (Video, Animation, Audio, Sound, StillFrame) takes an
+// input file and an output directory and returns the file it
+// produced, or one of ErrUnavailable, ErrTimeout, ErrTooLong or
+// ErrFailed, told apart with errors.Is; none ever carries ffmpeg's own
+// stderr text.
 package transcode
 
 import (
@@ -55,11 +39,8 @@ var ErrTooLong = errors.New("transcode: output exceeded its size limit")
 // sentinel to.
 var ErrFailed = errors.New("transcode: failed")
 
-// runner is what Transcoder needs from a sandbox.Runner: enough to
-// run one job and ask whether the sandbox can run a binary at all.
-// Defined here, at the consumer, per this project's own interface
-// rules (see .claude/rules/interfaces.md); *sandbox.Runner is
-// Transcoder's only real implementation, a test fake its second.
+// runner is what Transcoder needs from a sandbox.Runner: run one job,
+// and ask whether the sandbox can run a binary at all.
 type runner interface {
 	Run(ctx context.Context, spec sandbox.Spec) (sandbox.Result, error)
 	Available(ctx context.Context, binary string) error
@@ -72,10 +53,8 @@ type Transcoder struct {
 	runner runner
 	ffmpeg string // the absolute path to the system ffmpeg every profile runs
 
-	// slot is a buffered channel of 1, holding one token: acquire
-	// takes it, release puts it back, so only one job runs through
-	// this Transcoder's own runner at a time. See acquire's own doc
-	// comment for why.
+	// slot is a buffered channel of 1: acquire takes the token, release
+	// puts it back, so only one job runs at a time (see acquire).
 	slot chan struct{}
 }
 
@@ -86,16 +65,10 @@ func NewTranscoder(r runner, ffmpegPath string) *Transcoder {
 }
 
 // acquire reserves this Transcoder's one job slot, waiting until it
-// is free or ctx ends first. Every profile shares one slot because a
-// single job already runs ffmpeg at full tilt on its own two threads,
-// and because sandbox's own resource limits (see docs/decisions.md)
-// are sized for exactly one job at a time, not several sharing them.
-//
-// A caller whose ctx ends while still waiting gets ErrTimeout: the
-// same sentinel a job that ran out of time once it actually started
-// already returns, since both mean the same thing to a caller - this
-// call did not finish within the time it was given - and a caller
-// checking with errors.Is need not tell the two apart.
+// is free or ctx ends first. Every profile shares one slot since
+// sandbox's own resource limits are sized for exactly one job at a
+// time (see docs/decisions.md). A caller whose ctx ends while waiting
+// gets ErrTimeout, the same sentinel a running job's own timeout returns.
 func (t *Transcoder) acquire(ctx context.Context) error {
 	select {
 	case t.slot <- struct{}{}:
@@ -110,11 +83,9 @@ func (t *Transcoder) release() {
 	<-t.slot
 }
 
-// profile names one fixed ffmpeg invocation this package knows how to
-// run: its own argument list, the file name it writes inside
-// sandbox.OutputDirPath, the wall-clock budget the job gets, and the
-// largest output this package itself accepts before even the
-// sandbox's own, blunter backstop would.
+// profile names one fixed ffmpeg invocation: its argument list, the
+// file name it writes, its wall-clock budget, and the largest output
+// this package accepts before the sandbox's own backstop would.
 type profile struct {
 	args       []string
 	outputName string
@@ -123,24 +94,17 @@ type profile struct {
 
 	// rebuild, when set, replaces the sandboxed output checkOutput
 	// already approved with a new file this package writes itself
-	// from jobDir, and reports that file's own path. The sandboxed
-	// output named by sandboxedOutput is always removed once rebuild
-	// has run, whether it succeeded or not: nothing has any further
-	// use for it either way.
+	// from jobDir, reporting its path. The sandboxed output is always
+	// removed once rebuild has run, whether it succeeded or not.
 	rebuild func(sandboxedOutput, jobDir string) (string, error)
 }
 
-// run is every profile method's own shared body: reserve this
-// Transcoder's one job slot, confirm the sandbox can run ffmpeg at
-// all, give the job a fresh directory under outDir, pre-create the
-// one file (see createJobOutput) the sandbox will ever let it write,
-// and its own wall-clock budget, run it, and turn whatever happened
-// into the one output file's path or one of this package's own
-// sentinel errors. jobDir is removed on every failure path below: the
-// one file a caller gets back on success still lives inside it, so
-// only a successful return may leave it behind (see
-// app.transcodedPlayCopy's own cleanup, which removes that
-// directory once it is done with the file inside it).
+// run is every profile method's shared body: reserve a job slot,
+// confirm the sandbox can run ffmpeg, give the job a fresh directory,
+// run it, and turn the result into the output file's path or one of
+// this package's sentinel errors. jobDir is removed on every failure
+// path; only a successful return may leave it behind (see
+// app.transcodedPlayCopy's own cleanup).
 func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (path string, err error) {
 	if err := t.acquire(ctx); err != nil {
 		return "", err
@@ -193,9 +157,8 @@ func (t *Transcoder) run(ctx context.Context, in, outDir string, p profile) (pat
 }
 
 // finishOutput returns outputPath unchanged when p has no rebuild
-// step, or replaces it with p.rebuild's own file otherwise. The
-// sandboxed file at outputPath is always removed once rebuild has
-// run, whether it succeeded or not.
+// step, or replaces it with p.rebuild's file otherwise, always
+// removing the sandboxed file at outputPath afterward.
 func finishOutput(p profile, outputPath, jobDir string) (string, error) {
 	if p.rebuild == nil {
 		return outputPath, nil
@@ -227,18 +190,9 @@ func resultError(result sandbox.Result) error {
 	}
 }
 
-// checkOutput confirms path exists, is a regular file - never a
-// symlink - and is not empty and no larger than max: ffmpeg reporting
-// success is not, on its own, proof it actually wrote a usable file.
-//
-// Lstat, not Stat: a compromised or merely misbehaving ffmpeg could
-// leave path as a symlink to any file on the host instead of writing
-// one itself, and whatever later opens, copies or serves "the
-// transcoded output" would otherwise follow it there. This is not a
-// race to close, only a lie to catch: the sandboxed job is a dead PID
-// namespace by the time Run returns (see package doc comment), so
-// there is no process left that could still be swapping the target
-// between this check and whatever reads the file next.
+// checkOutput confirms path exists, is a regular file (Lstat, not
+// Stat, so a symlink left by a misbehaving ffmpeg is caught rather
+// than followed), and is not empty and no larger than max.
 func checkOutput(path string, max int64) error {
 	info, err := os.Lstat(path)
 	if err != nil {

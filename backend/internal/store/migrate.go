@@ -59,11 +59,8 @@ var migrations = []migrationStep{
 	CREATE INDEX messages_timeline ON messages(conversation_id, created);`},
 	// A message's link preview, photo, video or file, as JSON.
 	{sql: `ALTER TABLE messages ADD COLUMN media TEXT NOT NULL DEFAULT '';`},
-	// Full-text search over message bodies. The table holds no data of its
-	// own (content='messages'): it indexes the messages table in place, so
-	// triggers must keep it in step, and a rebuild indexes what already
-	// exists. remove_diacritics 2 folds accents and case; the prefix
-	// indexes speed up the short prefixes a search box types first.
+	// Full-text search over message bodies, indexing the messages table in
+	// place; triggers keep it in step on insert, delete and update.
 	{sql: `CREATE VIRTUAL TABLE messages_fts USING fts5(text,
 			content='messages', content_rowid='rowid',
 			tokenize='unicode61 remove_diacritics 2', prefix='2 3');
@@ -93,31 +90,23 @@ var migrations = []migrationStep{
 	// this computer: never reported to or read from the service.
 	{sql: `ALTER TABLE conversations ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0;`},
 	// A conversation snoozed by the user until a chosen time (Unix
-	// milliseconds), or 0 for none: local to this computer only, like
-	// hidden.
+	// milliseconds), or 0 for none; local to this computer only, like hidden.
 	{sql: `ALTER TABLE conversations ADD COLUMN reminder_at INTEGER NOT NULL DEFAULT 0;`},
 	// A message's @-mention tokens, as JSON, the same way reactions are
 	// stored, and whether any of them names the signed-in account.
 	{sql: `ALTER TABLE messages ADD COLUMN mentions TEXT NOT NULL DEFAULT '';
 	ALTER TABLE messages ADD COLUMN mentions_me INTEGER NOT NULL DEFAULT 0;`},
-	// Automatic retry for a failed send: when its next attempt is due
-	// (0 for none scheduled), how many automatic attempts the current
-	// failure streak has had, and when that streak began, so the
-	// backoff and its bound survive a restart. The file an attachment
-	// was attached from, with its size and modification time, so a
-	// retry can re-copy it if the outgoing area's own copy goes
-	// missing; empty for a clipboard paste, which has no such file.
+	// Automatic retry for a failed send (next attempt due, attempt count,
+	// streak start) so backoff survives a restart, plus the original
+	// attachment file and modtime so a retry can re-copy it.
 	{sql: `ALTER TABLE messages ADD COLUMN retry_at INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE messages ADD COLUMN retry_attempts INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE messages ADD COLUMN retry_since INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE messages ADD COLUMN attachment_original_path TEXT NOT NULL DEFAULT '';
 	ALTER TABLE messages ADD COLUMN attachment_original_modtime INTEGER NOT NULL DEFAULT 0;`},
 	// The due time (Unix milliseconds) a reminder has already been
-	// notified for, or 0 for none yet. A reminder itself is never
-	// cleared automatically once it fires (see docs/decisions.md), so
-	// this is the scheduler's own record of having already announced
-	// it, kept in the database rather than in memory so a restart does
-	// not announce the same still-due reminder a second time.
+	// notified for, or 0 for none yet, so a restart does not announce
+	// the same still-due reminder twice.
 	{sql: `ALTER TABLE conversations ADD COLUMN reminder_notified_at INTEGER NOT NULL DEFAULT 0;`},
 	// A message's rich-text formatting spans (links, bold, italic,
 	// underline, strike, code, pre, spoiler), as JSON, the same way
@@ -131,63 +120,32 @@ var migrations = []migrationStep{
 	// conversation (see app.Commands.BlockContact and ReportSpam).
 	{sql: `ALTER TABLE conversations ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0;`},
 	// A single row of durable UI state that outlives a plugin reload,
-	// starting with the version the user last saw the in-app "What's
-	// new" list for (see store.SeenWhatsNewVersion), so the one-time
-	// update hint shows at most once per release.
+	// starting with the version the user last saw the "What's new" list for.
 	{sql: `CREATE TABLE ui_state(id INTEGER PRIMARY KEY CHECK (id = 1), seen_whats_new_version TEXT NOT NULL DEFAULT '');
 	INSERT INTO ui_state(id) VALUES (1);`},
-	// A document a connector classified as a plain file before it
-	// learned to recognise a real GIF image by its mime type or name
-	// (see telegram/media.go's and whatsapp/normalize_media.go's own
-	// isGIFImage) is reclassified here the same way: MediaVideo,
-	// Animated, so it reaches the same inline view and the same
-	// sandboxed play copy on its next fetch as one received after
-	// that fix, rather than staying a plain file chip forever. Only a
-	// stored file name is available to judge this by - mime type was
-	// never persisted - which is exactly the fallback isGIFImage
-	// itself uses when a sender's mime type is missing. This never
-	// decides how the UI plays anything: that still only ever comes
-	// from the downloaded bytes, re-encoded fresh by the transcoder on
-	// every fetch (see app.Commands.playCopy), so a wrongly
-	// reclassified row can only ever fall back to opening externally,
-	// never play unsafely.
+	// Reclassifies a GIF stored as a plain file (before isGIFImage existed)
+	// as an animated video, by its file name, so it gets the inline view.
+	// Playback itself still always goes through the sandboxed transcoder.
 	{sql: `UPDATE messages
 		SET media = json_set(media, '$.kind', 'video', '$.animated', json('true'))
 		WHERE json_valid(media)
 			AND json_extract(media, '$.kind') = 'file'
 			AND lower(json_extract(media, '$.fileName')) LIKE '%.gif';`},
-	// A WhatsApp audio message that arrived before this connector told
-	// an ordinary audio file apart from a voice note (see
-	// whatsapp/normalize_media.go's audioMedia) is reclassified here:
-	// MediaAudio, so it reaches the same inline player its push-to-talk
-	// sibling already gets on its next fetch, rather than staying a
-	// plain file chip forever. "audio-message.ogg" is the helper's own
-	// fixed name for this case, never a sender's choice, so matching it
-	// is safe the way matching a sender's own claimed file name would
-	// not be - the sandboxed transcoder still decides whether the
-	// reclassified row actually plays, exactly as it already does for
-	// every "voice" or "audio" row. A Telegram audio document stored
-	// this way carries only the sender's own file name, with nothing
-	// that would safely tell it apart from an ordinary file, so it is
-	// left as it is.
+	// Reclassifies a WhatsApp voice note stored as a plain file (before
+	// audioMedia told it apart) as audio, matching the helper's own fixed
+	// file name "audio-message.ogg", never a sender-chosen one.
 	{sql: `UPDATE messages
 		SET media = json_set(media, '$.kind', 'audio')
 		WHERE json_valid(media)
 			AND json_extract(media, '$.kind') = 'file'
 			AND json_extract(media, '$.fileName') = 'audio-message.ogg';`},
 	// Where a pinned conversation sits among the others pinned, lowest
-	// first; 0 for a conversation that is not pinned, which never reads
-	// this column (see store.SetPinned and store.MovePin). Unlimited
-	// pinning (issue #14) needs an explicit order because "newest
-	// activity first", the rule that already orders unpinned chats,
-	// gives a pinned chat no stable position of its own to drag or move.
+	// first; 0 for one not pinned. Needed because unpinned chats order by
+	// recency alone, which gives a pinned chat nothing to drag or move.
 	{sql: `ALTER TABLE conversations ADD COLUMN pin_order INTEGER NOT NULL DEFAULT 0;`},
 	// Messages the user queued to send at a chosen time instead of right
-	// away (see app.Commands.ScheduleMessage). Local to this computer
-	// only, like reminder_at above: a row here is removed, not updated
-	// to some "sent" state, once it is claimed and handed to the normal
-	// send path (see store/scheduled.go and docs/decisions.md), so there
-	// is no status column to add.
+	// away. A row is removed, not marked "sent", once it is claimed and
+	// handed to the normal send path.
 	{sql: `CREATE TABLE scheduled_messages(
 		id TEXT PRIMARY KEY,
 		conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -195,25 +153,16 @@ var migrations = []migrationStep{
 		send_at INTEGER NOT NULL,
 		created INTEGER NOT NULL);
 	CREATE INDEX scheduled_messages_due ON scheduled_messages(send_at);`},
-	// "" (the default) inherits whichever notification sound applies at
-	// the service or global default level; "custom" means this
-	// conversation has its own, stored by the helper under its own id
-	// (see cache.Sounds and app.Commands.SetNotificationSound) rather
-	// than kept in this column, which only ever records that one has
-	// been set, never a path (issue #19).
+	// "" inherits the service or global default sound; "custom" means
+	// this conversation has its own, stored elsewhere by id, never a
+	// path, in this column.
 	{sql: `ALTER TABLE conversations ADD COLUMN notification_sound TEXT NOT NULL DEFAULT '';`},
 	// Whether the window was last left open rather than deliberately
-	// closed (see store.WindowOpen), so a shell restart or plugin reload
-	// that destroys it without the user asking to close it can reopen it
-	// on the next start.
+	// closed, so a shell restart or plugin reload can reopen it.
 	{sql: `ALTER TABLE ui_state ADD COLUMN window_open INTEGER NOT NULL DEFAULT 0;`},
-	// Every conversation pinned before the pin_order column above
-	// existed shares its bare default, 0: MovePin's own swap had
-	// nothing to swap, since exchanging 0 for 0 leaves both at 0, so
-	// the first real move a user with old pins made looked like it did
-	// nothing at all. This gives each one a distinct order instead, by
-	// the same recency order the list already showed them in, so the
-	// migration itself reorders nothing visible; only a later move can.
+	// Every conversation pinned before pin_order existed shares its
+	// default of 0, so MovePin's swap had nothing to swap. This gives
+	// each a distinct order instead, matching the recency order already shown.
 	{sql: `UPDATE conversations SET pin_order = (
 			SELECT rank FROM (
 				SELECT id, ROW_NUMBER() OVER (ORDER BY last_activity DESC, id) AS rank
@@ -221,104 +170,45 @@ var migrations = []migrationStep{
 			) ranked
 			WHERE ranked.id = conversations.id)
 		WHERE pinned = 1;`},
-	// A pin SetArchived cleared locally to match a service that
-	// unpins on archive (see docs/decisions.md), remembered so
-	// unarchiving can restore it: pinned_before_archive and
-	// pin_order_before_archive hold what pinned and pin_order were
-	// the moment this account's own service required that unpin,
-	// and are both cleared again once restored (see
-	// RememberPinnedBeforeArchive and RestorePinnedFromArchive).
-	// Meaningless, and left at their default of 0, for a
-	// conversation that was not pinned when it was archived.
+	// A pin SetArchived cleared locally (services unpin on archive, see
+	// docs/decisions.md), remembered here so unarchiving can restore it.
 	{sql: `ALTER TABLE conversations ADD COLUMN pinned_before_archive INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE conversations ADD COLUMN pin_order_before_archive INTEGER NOT NULL DEFAULT 0;`},
-	// A thumbnail stored before imagesafe.Sanitize existed - or written
-	// by any version that, for whatever reason, saved one unchecked -
-	// re-sanitized the same way a connector already sanitizes one the
-	// moment it receives it, or cleared when it fails that check
-	// outright (see sanitizeLegacyThumbnails and docs/decisions.md).
-	// scanMessage's own call to sanitizedThumb keeps making this
-	// guarantee for every row from here on, so this step only ever
-	// needs to run once.
+	// Re-sanitizes a thumbnail stored before imagesafe.Sanitize existed,
+	// or clears it when it fails that check (see sanitizeLegacyThumbnails).
 	{repair: sanitizeLegacyThumbnails},
-	// A reply quote stored before it kept its own copy of the quoted
-	// message's sender id - see domain.Reply.SenderID and
-	// backfillReplySenderIDs - resolved the same way resolveReply
-	// resolves one for a brand new reply, within its own conversation
-	// only. RefreshSenderName's own scoping depends on this: without
-	// it, every quote stored before this field existed would stay
-	// unmatchable by sender id forever, exactly as an unresolved reply
-	// already is (see docs/decisions.md). resolveReply keeps making
-	// this guarantee for every reply from here on, so this step only
-	// ever needs to run once.
+	// Backfills a reply quote's sender id for one stored before it kept
+	// its own copy (see domain.Reply.SenderID), the same way resolveReply
+	// resolves a new reply, within its own conversation only.
 	{repair: backfillReplySenderIDs},
-	// Whether a message's sender name, and a conversation's title, are
-	// verified - a saved contact, a service's own verified business
-	// name, or the user's own identity, rather than a bare, self-chosen
-	// name a stranger could set to "Mum" or "You" (see
-	// domain.Message.SenderVerified and docs/decisions.md). A row
-	// stored before this column existed defaults to verified: the same
-	// trust an older release already showed it with, not a retroactive
-	// downgrade with no new information behind it. Only a name resolved
-	// from here on is held to the stricter check. A reply quote's own
-	// SenderVerified lives inside its reply_to JSON instead, the same
-	// way its SenderName already does, so it needs no column of its
-	// own here.
+	// Whether a message's sender name and a conversation's title are
+	// verified, rather than a bare self-chosen name (see
+	// domain.Message.SenderVerified). A row stored before this column
+	// existed defaults to verified, matching its existing trust level.
 	{sql: `ALTER TABLE messages ADD COLUMN sender_verified INTEGER NOT NULL DEFAULT 1;
 		ALTER TABLE conversations ADD COLUMN title_verified INTEGER NOT NULL DEFAULT 1;`},
-	// A direct chat's other person's own phone number, formatted
-	// "+<digits>", when the service gives one - never a group's or the
-	// self-chat's, which have none; shown beside an unverified title
-	// the way the official WhatsApp app shows a stranger's number
-	// instead of trusting their self-chosen name.
+	// A direct chat's other person's phone number, formatted "+<digits>",
+	// shown beside an unverified title. Never set for a group or self-chat.
 	{sql: `ALTER TABLE conversations ADD COLUMN phone TEXT NOT NULL DEFAULT '';`},
-	// A follow-up security review found the migration above wrong to
-	// default an upgraded row to verified: that is the same trust
-	// level as a name this connector has actually resolved and checked,
-	// for a row this helper has never checked at all. A stranger who
-	// messaged before the upgrade, naming themselves "Mum", kept
-	// showing unmarked forever, since nothing about an upgrade itself
-	// re-resolves their name. This step resets every existing row to
-	// unverified instead, the secure default for a row of unknown
-	// trust; a saved contact's messages and chat title are re-marked
-	// verified the next time this connector resolves their name, which
-	// WhatsApp's own AppStateSyncComplete event (see
-	// whatsapp/contacts.go's handleAppStateSyncComplete) already
-	// triggers for every known direct chat shortly after each
-	// reconnect, with no need to wait for their next message.
+	// A follow-up review found defaulting an upgraded row to verified
+	// wrong: that is unearned trust for a row never actually checked.
+	// Resets every existing row to unverified; a saved contact is
+	// re-marked verified the next time its name is resolved.
 	{sql: `UPDATE messages SET sender_verified=0;
 		UPDATE conversations SET title_verified=0;`},
-	// A security review found the new-chat picker showing every
-	// contact unmarked, with no phone number, however trustworthy
-	// its own name actually was: contacts never carried either column
-	// at all, so UpsertContact had nothing to write and Contact kept
-	// whatever its caller defaulted it to, regardless of what the
-	// connector actually reported. Both new columns default to
-	// unverified and no phone, the same secure-by-default choice as
-	// the reset above, rather than DEFAULT 1: a contact synced before
-	// this column existed is re-marked the next time its connector
-	// reports it again, which for WhatsApp happens through the push
-	// name sync history delivers from time to time (see
-	// whatsapp/history.go's syncPushnames).
+	// Adds verified and phone to contacts, which previously carried
+	// neither; a contact synced before this column existed is re-marked
+	// the next time its connector reports it again.
 	{sql: `ALTER TABLE contacts ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE contacts ADD COLUMN phone TEXT NOT NULL DEFAULT '';`},
-	// A security review found a group's conversation-list preview
-	// showing its last sender's own self-chosen name with no "~" mark
-	// at all, even though the same name shows marked inside the chat
-	// itself: preview_sender carried no verified flag of its own to
-	// show one with. Defaults to unverified, the same secure-by-default
-	// choice as every other column added for this review, since a row
-	// stored before this column existed was never actually checked
-	// either.
+	// A group's conversation-list preview showed its sender's name with
+	// no verified mark, since preview_sender carried no such flag.
+	// Defaults to unverified, like the other columns added for this review.
 	{sql: `ALTER TABLE conversations ADD COLUMN preview_sender_verified INTEGER NOT NULL DEFAULT 0;`},
-	// sender_verified, title_verified, phone (on both conversations and
-	// contacts), contacts.verified and preview_sender_verified, all
-	// added above, are no longer read or written by any Go code: the
-	// UI stopped reading them, and the plumbing that fed them was
-	// later removed too (see docs/decisions.md). Migrations are never
-	// edited or reversed, so these columns stay in the schema, simply
-	// unused, rather than getting a migration of their own to drop
-	// them.
+	// sender_verified, title_verified, phone, contacts.verified and
+	// preview_sender_verified are no longer read or written by any Go
+	// code (see docs/decisions.md). Migrations are never reversed, so
+	// they stay in the schema, unused.
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

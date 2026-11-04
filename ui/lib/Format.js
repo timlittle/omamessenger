@@ -40,25 +40,9 @@ var MAX_FORMATTING_SPANS = 256;
 var MAX_MENTIONS = 64;
 
 // URL_PATTERN matches http(s) links in escaped text. Entities such as
-// &amp; may appear inside a link; any other '&' ends it, as do '<', a
-// double quote, and every character this spells out in place of JS's
-// own \s - real, visible or line-breaking whitespace, listed out
-// rather than written as \s because \s also matches the byte-order
-// mark (U+FEFF), which, unlike the rest, renders as nothing at all. A
-// security review found that let a URL carrying one autolink as only
-// the short prefix before it: "https://paypal-login.ru", the mark,
-// then ".paypal.com/login" read, on screen, as one unbroken
-// paypal.com-looking run, with only the short, honest-looking prefix
-// actually linked - and, since a plain autolink's own displayText is
-// always its own url, opening with no confirmation at all. Every
-// other invisible Unicode "format" character HIDDEN_OR_UNUSUAL_CHAR
-// lists (zero-width spaces and marks, bidi overrides and isolates,
-// word joiner) was never matched by \s to begin with, so leaving only
-// the byte-order mark out of this pattern's own terminator class is
-// enough to sweep all of them into the match instead of ending it
-// there: the combined url then fails spanURL's own hidden-character
-// rule and is refused outright, rather than silently linking the
-// shorter, innocent-looking run before it (see docs/decisions.md).
+// &amp; may appear inside a link; any other '&', '<', '"' or whitespace
+// ends it. Whitespace is listed out rather than \s, which would also end
+// a link at an invisible byte-order mark and link only the part before it.
 var URL_PATTERN =/https?:\/\/[^\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2028\u2029\u202f\u205f\u3000\u2000-\u200a<\x22&]*(?:&(?:amp|lt|quot|#\d+|#x[0-9a-fA-F]+);[^\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2028\u2029\u202f\u205f\u3000\u2000-\u200a<\x22&]*)*/g;
 
 // LINK_HREF_SCHEME marks an anchor href this file wrote itself, naming
@@ -100,18 +84,10 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ENTITY_PATTERN matches exactly the entities escapeHtml can produce
-// (&amp; &lt; &gt; &quot;) plus a decimal or hexadecimal numeric
-// character reference, the same set URL_PATTERN's own trailing
-// alternation tolerates inside an already-matched URL.
+// ENTITY_PATTERN matches the entities escapeHtml writes plus numeric references.
 var ENTITY_PATTERN = /&(amp|lt|gt|quot|#\d+|#x[0-9a-fA-F]+);/g;
 
-// unescapeHtml reverses escapeHtml, decoding each entity back to the
-// raw character or code point it came from: linkify's own way to
-// recover a matched URL's real characters from the escaped text
-// URL_PATTERN actually matched (see linkify and docs/decisions.md),
-// so the url this file records and later opens is never the HTML-
-// escaped form a sender's own '&' would otherwise turn into '&amp;'.
+// unescapeHtml reverses escapeHtml, so a link opens the URL the sender sent.
 function unescapeHtml(text) {
   return text.replace(ENTITY_PATTERN, (whole, body) => {
     if (body === 'amp') return '&';
@@ -125,18 +101,11 @@ function unescapeHtml(text) {
   });
 }
 
-// TRAILING_LINK_PUNCTUATION is the set of characters linkify drops
-// off a matched URL's own end.
+// TRAILING_LINK_PUNCTUATION is what linkify leaves outside a link's end.
 var TRAILING_LINK_PUNCTUATION = '.,;:!?)';
 
-// splitTrailingPunctuation returns [url, trailing]: match with any run
-// of TRAILING_LINK_PUNCTUATION at its own end moved into trailing,
-// scanning back from the end in a loop rather than a regex of a lazy
-// group followed by a greedy class anchored at $. That shape backtracks
-// the lazy group one character at a time for every split point the
-// class fails at, which costs the square of match's length on a URL a
-// sender pads with tens of thousands of trailing punctuation
-// characters - match's length has no limit of its own at this layer.
+// splitTrailingPunctuation returns [url, trailing punctuation]. A loop, not a
+// regex, which would take quadratic time on a long run of punctuation.
 function splitTrailingPunctuation(match) {
   let end = match.length;
   while (end > 0 && TRAILING_LINK_PUNCTUATION.includes(match[end - 1])) {
@@ -146,35 +115,12 @@ function splitTrailingPunctuation(match) {
   return [match.slice(0, end), match.slice(end)];
 }
 
-// linkify turns http(s) URLs in escaped text into anchors, in color
-// when given, appending one {url, displayText, suspicious} entry to
-// anchors for each (see messageLinkAnchors): a plain autolinked URL's
-// own visible text is always the URL itself. Each anchor's href names
-// its own position in anchors (see linkHref) rather than carrying the
-// URL directly, the same private scheme every anchor this file writes
-// uses. Punctuation that ends a sentence stays outside the link. The
-// visible text between the anchor's own tags stays in escaped's own
-// escaped form, so it renders correctly on screen, but anchors itself
-// gets the raw, unescaped url (see unescapeHtml): a security review
-// found this recording the escaped form instead - a sender's own '&'
-// came back as literally '&amp;' - made the url this file's own
-// callers later open functionally different from the one the sender
-// actually sent, and made it never match a link preview's own raw URL
-// either (see previewDisplayText and docs/decisions.md). suspicious is
-// true when hiddenCharAnywhere says the message carries a bidi or
-// other invisible format character anywhere at all - a right-to-left
-// override placed just before a plain URL reverses how the whole run
-// reads on screen while leaving the matched text and its own href
-// identical, which a plain textual comparison can never catch - or
-// when boundaryContinues (resolved by the caller through
-// continuesURLToken, against the full original message text, never
-// just this call's own escaped fragment) says a match reaching the
-// very end of escaped was cut short by a segment boundary rather than
-// reaching the end of what reads as one URL: a mention or a formatting
-// span can each end a linkify call's own text mid-token (see
-// docs/decisions.md). Either way, a caller must always confirm before
-// opening a suspicious anchor, whatever its own text and url compare
-// equal to.
+// linkify turns http(s) URLs in escaped text into anchors, in color when
+// given, adding one {url, displayText, suspicious} entry to anchors for each
+// (see messageLinkAnchors). The href is the anchor's index (see linkHref);
+// the url is unescaped. suspicious means a caller must confirm before
+// opening: the message hides a format character, or the URL was cut short
+// by a span or mention boundary (see docs/decisions.md).
 function linkify(escaped, color, anchors = [], boundaryContinues = false, hiddenCharAnywhere = false) {
   const style = color ? ` style="color:${color}"` : '';
   return escaped.replace(URL_PATTERN, (match, offset) => {
@@ -248,12 +194,7 @@ function renderMessage(text, linkColor, tableBorderColor, mentions, spans) {
     return { html: mentionHtml(capped, linkColor, cappedMentions, anchors), anchors };
   }
 
-  // A link inside a table cell is not checked for a boundary cut past
-  // its own cell (an edge case left as a documented gap, see
-  // docs/decisions.md): a pipe table's own cell boundaries are a much
-  // less plausible place for a sender to split a URL unnoticed than a
-  // formatting span or a mention, and each cell's text is still
-  // checked for a hidden character anywhere in the whole message.
+  // Table cells are not checked for a URL cut at a cell boundary.
   const hiddenCharAnywhere = BIDI_OR_FORMAT_CHAR.test(capped);
   const borderColor = tableBorderColor ?? '#888888';
   const html = Markdown.splitTables(capped)
@@ -270,80 +211,25 @@ function renderMessage(text, linkColor, tableBorderColor, mentions, spans) {
 // link.
 var LINK_SCHEMES = ['http:', 'https:', 'mailto:', 'tg:'];
 
-// HIDDEN_OR_UNUSUAL_CHAR matches a backslash, real whitespace, an
-// ASCII control character, or one of the Unicode "format" characters
-// (category Cf) a spoofed link has used to hide or split its own
-// destination: zero-width spaces and marks (U+200B-U+200F), bidi
-// embeddings and overrides (U+202A-U+202E), word joiner and invisible
-// operators (U+2060-U+2064), bidi isolates (U+2066-U+2069), and the
-// byte-order mark (U+FEFF). None of these ever belongs in a real link;
-// spanURL refuses a URL carrying any of them outright, the same rule
-// the helper's own domain.AllowedLinkURL enforces (see
-// docs/decisions.md). A backslash matters on its own because a
-// browser's own WHATWG URL parser ends an http(s) authority at one
-// the same as it does a forward slash, while urlHost's own authority
-// split (Links.js) does not.
+// HIDDEN_OR_UNUSUAL_CHAR matches what never belongs in a link: a backslash
+// (browsers treat it as '/'), whitespace, control and invisible format characters.
 var HIDDEN_OR_UNUSUAL_CHAR = /[\\\s\x00-\x1f\x7f\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
 
-// BIDI_OR_FORMAT_CHAR is the same Unicode "format" characters
-// (category Cf) HIDDEN_OR_UNUSUAL_CHAR lists, without its backslash,
-// real whitespace or ASCII control characters: those are exactly what
-// a normal sentence is full of, so testing a whole message against
-// HIDDEN_OR_UNUSUAL_CHAR itself would flag almost every message a
-// person actually writes, not only one carrying a genuine bidi
-// override or other invisible character. Used to decide whether any
-// link anywhere in a message must be confirmed regardless of whether
-// its own text and url already compare equal: a right-to-left
-// override placed just before a plain URL, outside the matched text
-// entirely, reverses how the whole run reads on screen while leaving
-// the matched text and its own href identical, which no comparison of
-// the link's own text against its url can ever catch (see
-// docs/decisions.md).
+// BIDI_OR_FORMAT_CHAR matches invisible format characters, such as a bidi
+// override that can reverse how a nearby link reads.
 var BIDI_OR_FORMAT_CHAR = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
 
-// URL_TOKEN_CHAR matches a character URL_PATTERN's own body would
-// still consume - kept in exact sync with the negated class inside
-// URL_PATTERN above (everything except real/line-breaking whitespace,
-// '<', '"' and '&'). continuesURLToken uses it to tell a link's own
-// end, reached because the regex ran out of body characters to match,
-// apart from one reached only because a formatting span or mention cut
-// the text there instead - exactly the gap a security review found: a
-// Telegram link entity covering only "https://paypal-login.ru" of
-// "https://paypal-login.ru.paypal.com/login" reads as one hostname on
-// screen, and a spoiler span placed over only part of a plain
-// autolinked URL leaves no visible seam at all (spoiler has no tag of
-// its own, see STYLE_TAGS) while still only linking the shorter prefix
-// before it (see docs/decisions.md).
+// URL_TOKEN_CHAR matches a character URL_PATTERN's body would consume; keep the two in sync.
 var URL_TOKEN_CHAR = /[^\u0009\u000a\u000b\u000c\u000d \u00A0\u1680\u2028\u2029\u202F\u205F\u3000\u2000-\u200A<\x22&]/;
 
-// continuesURLTokenLookup reports, for every position in text, the same
-// answer continuesURLToken(text, position) would: whether text keeps
-// spelling out what reads as the same URL-shaped run starting right
-// there, once that run's own trailing sentence punctuation (see
-// splitTrailingPunctuation) is dropped the same way a plain autolink's
-// own match already would have - so an ordinary link followed
-// immediately by a comma or a closing parenthesis, with nothing else
-// after it, is never flagged, only a real continuation. A render calls
-// this once per message rather than rescanning forward from every
-// mention and formatting-span boundary on its own: mentionHtml and
-// styledSegment each ask this question many times over the same text
-// (twice per mention, twice per styled range), and a naive forward
-// scan from each of those positions costs the square of the message's
-// length on a long, unbroken run - exactly the shell-stalling shape a
-// security review found here (see docs/decisions.md). This instead
-// sweeps text once, back to front: continues[i] needs only
-// continues[i + 1] and whether text[i] is itself a URL_TOKEN_CHAR and
-// trailing punctuation, so the whole array - and every answer it holds
-// - costs no more than one pass over text.
+// continuesURLTokenLookup returns, for every position in text, whether a
+// URL-shaped run continues there beyond trailing punctuation. One backward
+// pass, so a render never rescans from each boundary in quadratic time.
 function continuesURLTokenLookup(text) {
   const n = text.length;
   const continues = new Array(n + 1);
   continues[n] = false;
-  // restOfRunIsTrailingPunctuation tracks, for the run (if any) that
-  // text[i] belongs to, whether every character from i to that run's
-  // own end is trailing punctuation. It resets to true - vacuously,
-  // an empty run has nothing but trailing punctuation in it - at each
-  // position outside a run, the same base case continues[n] uses.
+  // Whether the rest of the current run is only trailing punctuation.
   let restOfRunIsTrailingPunctuation = true;
 
   for (let i = n - 1; i >= 0; i--) {
@@ -357,24 +243,13 @@ function continuesURLTokenLookup(text) {
   return continues;
 }
 
-// continuesURLToken reports whether text keeps spelling out what reads
-// as the same URL-shaped run starting right at end, the position a
-// link's own matched text or formatting span stopped at (see
-// continuesURLTokenLookup's own comment for what this means and why
-// it is never called more than once per position in a render).
+// continuesURLToken reports whether a URL-shaped run continues at end.
 function continuesURLToken(text, end) {
   return continuesURLTokenLookup(text)[end];
 }
 
-// hasHTTPAuthority reports whether value - already known to start with
-// "http:" or "https:" - spells out "://" followed by a real, non-empty
-// authority: the one shape an allowed http(s) URL must take. A
-// browser's own URL parser still resolves a host for
-// "https:evil.example", "https:\\evil.example" or
-// "https:/\evil.example" - each missing a real "//" authority of its
-// own, or carrying a backslash standing in for part of it - so this is
-// refused here rather than relying only on HIDDEN_OR_UNUSUAL_CHAR's
-// backslash check.
+// hasHTTPAuthority reports whether an http(s) value has "//" and a non-empty
+// host; browsers still find a host in forms like "https:evil.example".
 function hasHTTPAuthority(value) {
   const rest = value.replace(/^https?:/i, '');
   if (!rest.startsWith('//')) return false;
@@ -383,12 +258,8 @@ function hasHTTPAuthority(value) {
   return first !== '' && first !== '/' && first !== '?' && first !== '#';
 }
 
-// spanURL returns url unchanged when its scheme is one LINK_SCHEMES
-// allows, it carries none of HIDDEN_OR_UNUSUAL_CHAR's own characters,
-// and, for http(s), has a real "scheme://authority" shape (see
-// hasHTTPAuthority) - or '' to drop anything else, including text
-// with no scheme at all. mailto: and tg: carry no authority of their
-// own, so neither is held to that last rule.
+// spanURL returns url when its scheme is allowed, it has no hidden or unusual
+// character and an http(s) URL has a host, or '' otherwise.
 function spanURL(url) {
   const value = url || '';
   const match = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.exec(value);
@@ -479,8 +350,7 @@ function styledHtml(text, linkColor, mentions, spans, anchors = []) {
   const bounds = boundaryPoints(text, ranges);
   const startingAt = rangesByBound(ranges, (r) => r.start);
   const endingAt = rangesByBound(ranges, (r) => r.end);
-  // Computed once for the whole render (see continuesURLTokenLookup's
-  // own comment), never rescanned per boundary below.
+  // Computed once per render, not per boundary.
   const continuesLookup = continuesURLTokenLookup(text);
 
   let html = '';
@@ -542,19 +412,9 @@ function rangesByBound(ranges, boundAt) {
 // showing as plain text. A link's anchor gets a private, numbered href
 // (see linkHref) rather than its own URL, and anchors gets one more
 // {url, displayText, suspicious} entry for it - displayText is the
-// link range's whole own text (text.slice(link.start, link.end)), not
-// just this one cut of it, so a link split into several adjoining
-// anchors by a nested style still reports its full visible text for
-// any one of them (see messageLinkAnchors). suspicious is true when
-// hiddenCharAnywhere says text carries a bidi or other invisible
-// format character anywhere, or when continuesURLToken says more of
-// what reads as the same URL follows right after this range's own
-// end - a connector's own link entity covering only part of a
-// hostname, or a non-link style (spoiler, say, which adds no tag at
-// all) placed over only part of a plain autolinked URL, so it keeps
-// reading as one unbroken, honest-looking run while only the shorter
-// piece before the cut is ever actually linked (see
-// docs/decisions.md).
+// link range's whole own text, so a link split by a nested style still
+// reports its full visible text. suspicious is set as in linkify, here
+// also when the link range ends inside what reads as a longer URL.
 function styledSegment(text, start, end, linkColor, active, anchors = [], hiddenCharAnywhere = false, continuesLookup = null) {
   const continues = continuesLookup || continuesURLTokenLookup(text);
   const segment = text.slice(start, end);
@@ -588,14 +448,8 @@ function styledSegment(text, start, end, linkColor, active, anchors = [], hidden
 // rather than mis-rendering around it. anchors collects a {url,
 // displayText, suspicious} entry for every autolinked bare URL found
 // along the way (see lineHtml and messageLinkAnchors); a mention is
-// never a link itself, so it adds none of its own. Each of the three
-// lineHtml calls below passes continuesLookup[<its own slice's end>],
-// so a mention boundary landing inside what reads as one URL - the
-// same gap a formatting span can leave, see styledSegment - is caught
-// too, never only a plain autolink that happens to run uninterrupted
-// to this call's own end. continuesLookup is built once for the whole
-// text (see continuesURLTokenLookup's own comment), rather than
-// rescanned forward from every mention boundary.
+// never a link itself, so it adds none of its own. A mention boundary
+// inside a URL marks that link suspicious.
 function mentionHtml(text, linkColor, mentions, anchors = []) {
   const hiddenCharAnywhere = BIDI_OR_FORMAT_CHAR.test(text);
   const continuesLookup = continuesURLTokenLookup(text);
@@ -621,9 +475,6 @@ function mentionHtml(text, linkColor, mentions, anchors = []) {
 // table: escape it, link URLs, and keep its line breaks and runs of
 // spaces. anchors collects one {url, displayText, suspicious} entry
 // per autolinked URL (see linkify and messageLinkAnchors).
-// boundaryContinues and hiddenCharAnywhere pass straight through to
-// linkify (see its own doc comment); callers with nothing to report
-// leave both at their safe defaults.
 function lineHtml(text, linkColor, anchors = [], boundaryContinues = false, hiddenCharAnywhere = false) {
   return linkify(escapeHtml(text), linkColor, anchors, boundaryContinues, hiddenCharAnywhere)
     .replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
@@ -642,18 +493,9 @@ function longestLine(text) {
   return text.split('\n').reduce((longest, line) => (line.length > longest.length ? line : longest), '');
 }
 
-// splitEntities splits text into alternating plain and entity chunks,
-// an entity being "&" through its own next ";" kept together as one
-// piece - the same split /(&[^;]*;)/ produced, as a forward scan
-// rather than that regex: a security review found the regex shape
-// unanchored quantifier, excluded-terminator character class,
-// applied globally - backtracks that class to zero at every "&" in a
-// row with no ";" anywhere after it, costing the square of the run's
-// length, the same root cause already fixed for a different regex in
-// Links.trimTrailingSlashes. highlight's own escaped text is meant to
-// always carry a ";" within a few characters of every "&" (escapeHtml
-// writes only "&amp;", "&lt;", "&gt;" or "&quot;"), but this keeps the
-// function itself safe regardless of what a future caller hands it.
+// splitEntities splits text into alternating plain chunks and "&...;"
+// entities. A scan, not a regex, which would take quadratic time on a
+// run of '&' with no ';'.
 function splitEntities(text) {
   const parts = [];
   let start = 0;
@@ -666,9 +508,7 @@ function splitEntities(text) {
 
     const semicolon = text.indexOf(';', i + 1);
     if (semicolon === -1) {
-      // No ";" anywhere after this "&", so none of the "&"s still
-      // ahead can find one either: stop scanning and keep the rest
-      // as one plain chunk.
+      // No ';' after this '&' means none for any later '&' either.
       break;
     }
 
@@ -696,15 +536,8 @@ function highlight(escaped, query) {
     .join('');
 }
 
-// stripAsides removes a bracketed aside such as "(Manager)" from
-// full, replacing each with a single space - the same substitution
-// /\([^)]*\)/g made, as a forward scan rather than that regex, for
-// the same reason splitEntities replaced highlight's own one: a run
-// of "(" with no ")" anywhere after it backtracks that regex's
-// excluded-terminator class to zero at every one of them. A display
-// name reaching initials is capped server-side
-// (domain.MaxDisplayNameLength) today, but this keeps the function
-// itself safe regardless of any caller's own limit.
+// stripAsides replaces each bracketed aside such as "(Manager)" with a space.
+// A scan, not a regex, for the same quadratic-time reason as splitEntities.
 function stripAsides(full) {
   let out = '';
   let i = 0;
@@ -717,8 +550,7 @@ function stripAsides(full) {
 
     const close = full.indexOf(')', i + 1);
     if (close === -1) {
-      // No ")" anywhere after this "(": keep the rest exactly as it
-      // is, the same as the regex's own failed match would have.
+      // No ')' after this '(': keep the rest as it is.
       out += full.slice(i);
       break;
     }
@@ -840,10 +672,7 @@ function snoozeUntilLabel(ms, nowMs) {
   return `${datePart} ${clock}`;
 }
 
-// sendAtLabel describes when a scheduled message will send: "Sends at
-// 18:00" for later today, otherwise "Sends at Tomorrow 09:00" or "Sends
-// at Mon 09:00", the same clock-time wording snoozeUntilLabel already
-// reads a future time with, just under this command's own prefix.
+// sendAtLabel describes when a scheduled message sends: "Sends at 18:00" or "Sends at Mon 09:00".
 function sendAtLabel(ms, nowMs) {
   return `Sends at ${snoozeUntilLabel(ms, nowMs)}`;
 }

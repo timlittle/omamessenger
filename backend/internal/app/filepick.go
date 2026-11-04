@@ -13,60 +13,44 @@ import (
 const filePickTitle = "Choose a file"
 
 // attachFilters are the file kinds the composer's attach button
-// offers: images and video first, matching what a message can
-// actually carry, then every other file.
+// offers: images and video first, then every other file.
 var attachFilters = []portal.Filter{
 	{Name: "Images and video", Globs: []string{"*.jpg", "*.jpeg", "*.png", "*.gif", "*.webp", "*.heic", "*.mp4", "*.mov", "*.webm", "*.mkv"}},
 	{Name: "All files", Globs: []string{"*"}},
 }
 
 // soundFilters are the audio formats the notification sound picker
-// offers; the sandboxed transcoder's Sound profile is the real
-// authority on what actually plays (see notificationsound.go), this
-// only steers the dialog towards the formats that stand a chance.
-// ffmpeg itself decodes any of these, re-encoding whichever one the
-// user picks into the uncompressed WAV Qt's SoundEffect actually
-// plays.
+// offers; ffmpeg re-encodes whichever one the user picks into WAV.
 var soundFilters = []portal.Filter{
 	{Name: "Audio files", Globs: []string{"*.mp3", "*.wav", "*.ogg", "*.oga", "*.m4a", "*.flac"}},
 }
 
-// FilePickError reports that no file picker dialog could be shown at
-// all, the UI's own cue (see server/errors.go) to fall back to a
-// different file picker - never to the in-process GTK dialog that
-// once crashed the whole Omarchy shell (see docs/decisions.md).
-// Reason is the only detail that crosses the protocol: a safe, fixed
-// category, never the underlying dbus failure's own text.
+// FilePickError reports that no file picker dialog could be shown.
+// Reason is the only detail that crosses the protocol.
 type FilePickError struct {
 	Reason string
 	err    error
 }
 
-// Error renders the failure for the helper's own logs; only Reason
-// ever reaches the UI (see server/errors.go).
+// Error renders the failure for the helper's own logs.
 func (e *FilePickError) Error() string {
 	return fmt.Sprintf("file picker: %s: %v", e.Reason, e.err)
 }
 
-// Unwrap exposes the underlying failure for errors.Is/As, without it
-// ever crossing the protocol itself.
+// Unwrap exposes the underlying failure for errors.Is/As.
 func (e *FilePickError) Unwrap() error {
 	return e.err
 }
 
 // errFilePickerNotWired reports that this helper build has no
-// FilePicker at all; wrapped in a *FilePickError, reason "unavailable",
-// the same as any other failure to show the dialog.
+// FilePicker at all.
 var errFilePickerNotWired = errors.New("no file picker wired in")
 
 // PickFile opens a file-choosing dialog for purpose ("attach" or
-// "sound", which decides the filters offered) and returns the local
-// path the user chose, or "" with no error if they cancelled: a
-// cancelled pick is never a failure. Fails with a *FilePickError,
-// reason "unavailable", when no FilePicker was wired in or the dialog
-// itself could not be shown, which is the UI's own cue to fall back to
-// a different file picker rather than the in-process GTK dialog that
-// once crashed the whole shell (see docs/decisions.md).
+// "sound", which decides the filters offered) and returns the chosen
+// path, or "" with no error if the user cancelled. It fails with a
+// *FilePickError when no FilePicker is wired in or the dialog could
+// not be shown.
 func (c *Commands) PickFile(ctx context.Context, purpose, title string) (string, error) {
 	if c.filePicker == nil {
 		return "", &FilePickError{Reason: "unavailable", err: errFilePickerNotWired}

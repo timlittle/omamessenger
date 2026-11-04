@@ -116,12 +116,9 @@ func sendRevoke(ctx context.Context, dev device, chat types.JID, key messageKey,
 
 // deleteForMe removes a message from this account's own view of chat,
 // on every linked device, without telling whoever sent it. It goes
-// through sendOrganizePatch, the same choke point every other
-// app-state patch this connector sends uses (see appstate.go's own
-// doc comment), and addresses chat by its LID once whatsmeow's own LID
-// store has learned one, for the same reason organize.go's SetPinned
-// does: WhatsApp's server rejects a mutation addressed by a migrated
-// chat's now-superseded phone JID.
+// through sendOrganizePatch and addresses chat by its LID once known,
+// since WhatsApp's server rejects a mutation addressed by a migrated
+// chat's superseded phone JID.
 func (c *Connector) deleteForMe(ctx context.Context, dev device, chat types.JID, key messageKey, messageRemoteID string) error {
 	patchCtx, cancel := context.WithTimeout(ctx, deleteTimeout)
 	defer cancel()

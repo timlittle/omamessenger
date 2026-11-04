@@ -121,9 +121,8 @@ func (c *Commands) SetMuted(ctx context.Context, conversationID string, muted bo
 
 // SetPinned pins or unpins a conversation, then tells its service so a
 // pin made here, or synced back from another device, agrees everywhere.
-// The local change stands even if the service call fails; that failure is
-// reported back as a safe message the UI can show, through pinError,
-// rather than the generic internal error.
+// The local change stands even if the service call fails; pinError
+// turns that failure into a safe message for the UI.
 func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned bool) (domain.Conversation, error) {
 	if err := c.store.SetPinned(ctx, conversationID, pinned); err != nil {
 		return domain.Conversation{}, err
@@ -137,13 +136,10 @@ func (c *Commands) SetPinned(ctx context.Context, conversationID string, pinned 
 	return conv, c.pinError(ctx, conv.AccountID, pinned, c.organizer.SetPinned(ctx, conv, pinned))
 }
 
-// MovePin moves a pinned conversation one place up or down among the
-// other pinned conversations, through the store's own adjacent swap,
-// then publishes both conversations' new summaries so every open view
-// agrees: unlike SetPinned, nothing here ever reaches a service, since
-// a service's own notion of pin order (WhatsApp's own app order, say) is
-// never something this computer's local reordering is meant to drive.
-// direction must be "up" or "down"; anything else is ErrInvalidInput.
+// MovePin swaps a pinned conversation with its neighbor and publishes
+// both conversations' new summaries. Unlike SetPinned, nothing here
+// reaches a service: pin order is purely local. direction must be "up"
+// or "down"; anything else is ErrInvalidInput.
 func (c *Commands) MovePin(ctx context.Context, conversationID, direction string) (domain.Conversation, error) {
 	up, err := parsePinDirection(direction)
 	if err != nil {
@@ -178,16 +174,10 @@ func parsePinDirection(direction string) (bool, error) {
 	}
 }
 
-// pinError turns a connector's pin limit refusal into ErrInvalidInput
-// with a safe message naming the limit; any other failure, once the
-// local pin already stands, gets the same treatment archiveError gives
-// SetArchived's own service failures: a safe message naming what
-// happened, logged with its safe, precise class, rather than the fixed
-// internal error a request that changed nothing at all would get. Nil
-// passes through unchanged, as does connector.ErrOrganizeLocalOnly
-// once organizeLocalOnlyHandled has shown its own one-time notice for
-// accountID instead: that is never reported as a failure at all (see
-// organizenotice.go).
+// pinError turns a pin-limit refusal into ErrInvalidInput with a safe
+// message, and any other failure into a logged, safe-class error; nil
+// and an already-handled connector.ErrOrganizeLocalOnly pass through
+// as success.
 func (c *Commands) pinError(ctx context.Context, accountID string, pinned bool, err error) error {
 	if err == nil {
 		return nil
@@ -213,20 +203,11 @@ func (c *Commands) pinError(ctx context.Context, accountID string, pinned bool, 
 }
 
 // SetArchived files a conversation away, or brings it back, then tells
-// its service. Archiving a conversation this account had pinned also
-// unpins it here first, for any service whose own archiving does the
-// same (see ArchiveUnpinner): otherwise the list would show a
-// conversation both pinned and archived, a combination the real
-// service never has, and that stale local pin would stay stuck forever
-// once the service call below fails, since nothing else would ever
-// come along to correct it (see docs/decisions.md). That pin is
-// remembered first (RememberPinnedBeforeArchive) so unarchiving can
-// give it back: a person archiving, then later bringing a chat back,
-// does not expect the pin they had on it to be gone for good just
-// because the service's own archive always unpins too. The local
-// change always stands even if the service call fails; that failure is
-// reported back as a safe message the UI can show, through
-// archiveError, rather than the generic internal error.
+// its service. If the service's own archiving always unpins too (see
+// ArchiveUnpinner), the pin is cleared and remembered locally first,
+// so unarchiving can restore it. The local change always stands even
+// if the service call fails; archiveError turns that into a safe
+// message for the UI.
 func (c *Commands) SetArchived(ctx context.Context, conversationID string, archived bool) (domain.Conversation, error) {
 	conv, err := c.store.Conversation(ctx, conversationID)
 	if err != nil {
@@ -262,12 +243,8 @@ func (c *Commands) SetArchived(ctx context.Context, conversationID string, archi
 }
 
 // unpinForArchive clears conv's local pin before SetArchived archives
-// it, for a service whose own archive always unpins too (see
-// ArchiveUnpinner): otherwise the list would show a conversation both
-// pinned and archived, a combination the real service never has. The
-// pin is remembered first (RememberPinnedBeforeArchive) so unarchiving
-// can restore it later; a service that does not require this is left
-// alone entirely.
+// it, when ArchiveUnpinner says the service does the same, remembering
+// it first so unarchiving can restore it.
 func (c *Commands) unpinForArchive(ctx context.Context, conv domain.Conversation) error {
 	if !c.archiveUnpinner.ArchiveUnpins(conv.AccountID) {
 		return nil
@@ -280,11 +257,9 @@ func (c *Commands) unpinForArchive(ctx context.Context, conv domain.Conversation
 	return c.store.SetPinned(ctx, conv.ID, false)
 }
 
-// restorePinForUnarchive gives conversationID back the pin archiving
-// took away (see RestorePinnedFromArchive), reporting whether it
-// actually restored one so SetArchived knows whether to also ask the
-// service to re-pin it; a no-op, reporting false, while archiving
-// rather than unarchiving.
+// restorePinForUnarchive restores the pin archiving took away,
+// reporting whether it did so SetArchived knows whether to re-pin with
+// the service too; a no-op while archiving.
 func (c *Commands) restorePinForUnarchive(ctx context.Context, conversationID string, archived bool) (bool, error) {
 	if archived {
 		return false, nil
@@ -293,13 +268,9 @@ func (c *Commands) restorePinForUnarchive(ctx context.Context, conversationID st
 	return c.store.RestorePinnedFromArchive(ctx, conversationID)
 }
 
-// rePinAfterUnarchive asks conv's service to re-pin it, once its own
-// unarchive already succeeded, so the pin SetArchived already restored
-// locally (see RestorePinnedFromArchive) agrees with the service too.
-// Best effort, like MarkRead's own chat-read mutation: the local pin
-// stands either way, and a later resync corrects any miss, so a
-// failure here is only logged, with its safe, precise class, never
-// returned to the caller.
+// rePinAfterUnarchive asks the service to re-pin conv after a
+// successful unarchive, matching the pin SetArchived already restored
+// locally. Best effort: a failure is only logged, never returned.
 func (c *Commands) rePinAfterUnarchive(ctx context.Context, conv domain.Conversation) {
 	err := c.organizer.SetPinned(ctx, conv, true)
 	if err == nil || c.organizeLocalOnlyHandled(ctx, conv.AccountID, err) {
@@ -309,17 +280,11 @@ func (c *Commands) rePinAfterUnarchive(ctx context.Context, conv domain.Conversa
 	c.logger.Printf("conversations: re-pin after unarchive failed (error_class=%s)", organizeFailureClass(err))
 }
 
-// archiveError turns a service failure that followed SetArchived's own
+// archiveError turns a service failure that followed SetArchived's
 // already-applied local change into ErrInvalidInput with a safe
-// message the UI can show, after logging the failure's coarse, safe
-// class to stderr: unlike a request that never touched the store, the
-// user already has the result they asked for here, so even a failure
-// this package cannot name more precisely is safe to describe in those
-// terms, rather than the fixed internal error a request that changed
-// nothing at all would get. Nil passes through unchanged, as does
-// connector.ErrOrganizeLocalOnly once organizeLocalOnlyHandled has
-// shown its own one-time notice for accountID instead (see pinError's
-// own doc comment).
+// message, logging the failure's safe class; nil and an
+// already-handled connector.ErrOrganizeLocalOnly pass through as
+// success.
 func (c *Commands) archiveError(ctx context.Context, accountID string, archived bool, err error) error {
 	if err == nil {
 		return nil
@@ -341,21 +306,9 @@ func (c *Commands) archiveError(ctx context.Context, accountID string, archived 
 }
 
 // organizeFailureClass categorizes why a pin, archive or mark-read
-// change's service call failed, safe to log: "timeout" for a context
-// that ran out, "sync" when a connector reports its own local copy of
-// whatever state the service needs was not ready yet
-// (connector.ErrOrganizeSyncIncomplete, such as WhatsApp's app-state
-// sync never finishing after pairing), "rejected" when a connector
-// reports the service explicitly refused the change
-// (connector.ErrOrganizeRejected), "local" when a connector reports
-// the change could never be synced at all right now
-// (connector.ErrOrganizeLocalOnly) - every caller of this is expected
-// to have already handled that one through organizeLocalOnlyHandled
-// and never reach here with it, this class exists only so a caller
-// that forgets still logs something sensible rather than "other" -
-// and "other" for anything else, such as a plain network failure.
-// Never the error's own text, which a connector does not guarantee
-// free of an id or similar detail.
+// service call failed, safe to log: "timeout", "sync", "rejected",
+// "local" or "other". Never the error's own text, which may carry an
+// id or similar detail.
 func organizeFailureClass(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):

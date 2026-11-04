@@ -86,14 +86,10 @@ type device interface {
 	// @-mention picker.
 	groupParticipants(ctx context.Context, jid types.JID) ([]types.GroupParticipant, error)
 
-	// contactName is WhatsApp's own name for jid: a LID is mapped to its
-	// phone JID first, then whichever name the local contact store holds
-	// for it, in WhatsApp's own priority order, or "", false when
-	// nothing is known yet. verified reports whether that name came
-	// from a saved contact or a verified business name, rather than a
-	// bare, self-chosen push name (see contactDisplayName). It never
-	// does network I/O: everything it reads was already saved locally
-	// by an earlier sync.
+	// contactName is WhatsApp's own name for jid, or "", false when
+	// nothing is known yet; verified reports whether it came from a
+	// saved contact or business name rather than a bare push name.
+	// It never does network I/O.
 	contactName(ctx context.Context, jid types.JID) (name string, verified bool)
 
 	// isSelfChat reports whether jid is this account's own chat with
@@ -140,15 +136,8 @@ type device interface {
 	// change, so WhatsApp's own record of the chat agrees with it.
 	sendAppState(ctx context.Context, patch appstate.PatchInfo) error
 
-	// fetchAppState catches this device's own local copy of the named
-	// app-state collection up with the server: every page it has, not
-	// only the single conflicting response sendAppState's own one-time
-	// retry already applies (see appstate.go's sendAppStateRecovering).
-	// fullSync discards that local copy first and rebuilds it from the
-	// server's own snapshot, the one thing an incremental catch-up
-	// cannot do: fix a copy whose hash or a mutation's own MAC no
-	// longer agrees with the server at all, rather than one that is
-	// simply a page or two behind.
+	// fetchAppState catches up name's local app-state collection with the
+	// server; fullSync discards the local copy first and rebuilds it from scratch.
 	fetchAppState(ctx context.Context, name appstate.WAPatchName, fullSync bool) error
 
 	// chatSettings is jid's pinned and archived state exactly as
@@ -446,15 +435,8 @@ func (d *waDevice) sendAppState(ctx context.Context, patch appstate.PatchInfo) e
 	return d.cli.SendAppState(ctx, patch)
 }
 
-// fetchAppState resyncs name's own app-state collection from the
-// server, walking every page it has: a plain, incremental catch-up
-// when fullSync is false, the same call a notification-triggered
-// background resync makes; fullSync instead resets this device's own
-// stored version for name first, so whatsmeow asks for a fresh
-// snapshot and rebuilds the hash from it, rather than trying to keep
-// extending a local copy that may itself be the problem.
-// onlyIfNotSynced is always false: both callers want a catch-up now,
-// not only when nothing has ever synced.
+// fetchAppState resyncs name's app-state collection from the server: an
+// incremental catch-up, or a full rebuild when fullSync is true.
 func (d *waDevice) fetchAppState(ctx context.Context, name appstate.WAPatchName, fullSync bool) error {
 	return d.cli.FetchAppState(ctx, name, fullSync, false)
 }

@@ -1,14 +1,9 @@
 package transcode
 
-// jobinput.go gives the sandboxed ffmpeg a copy of the caller's own
-// input file, named sandbox.InputBaseName, inside the job directory
-// run already makes for every job - never the caller's own path,
-// which sandbox.Spec.validate now refuses outright. That path can
-// carry an outgoing attachment's own file name or a user-picked
-// notification sound, and the literal string given as Spec.Input
-// reaches bwrap's own argv, readable by any local user through
-// /proc for the life of the job (see sandbox's own package doc
-// comment).
+// jobinput.go gives the sandboxed ffmpeg a copy of the caller's input
+// file inside the job directory, never the caller's own path: that
+// path would otherwise be readable by any local user through /proc
+// for the life of the job.
 
 import (
 	"fmt"
@@ -19,23 +14,14 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/sandbox"
 )
 
-// maxJobInputCopyBytes bounds placeJobInput's own fallback copy,
-// used only once linking the caller's file into the job directory
-// has already failed (ordinarily because it is on a different
-// filesystem): generous for every kind this package ever
-// transcodes - a voice note, a reaction sound, a received video, a
-// user-picked notification sound - while still giving the copy its
-// own named cap, checked before a single byte is read, rather than
-// trusting whatever size the caller's own file happens to be.
+// maxJobInputCopyBytes bounds placeJobInput's fallback copy, used
+// when a hard link fails because the files are on different
+// filesystems, so the copy never trusts an unbounded file size.
 const maxJobInputCopyBytes = 512 << 20
 
-// placeJobInput makes path - the caller's own input file - available
-// inside jobDir at sandbox.InputBaseName, the only base name
-// sandbox.Spec.validate accepts for Spec.Input, and returns that new
-// path. A hard link costs no extra space and no copy; placeJobInput
-// falls back to an ordinary, size-capped copy only once linking has
-// already failed, which happens whenever path and jobDir are not on
-// the same filesystem.
+// placeJobInput makes path available inside jobDir at
+// sandbox.InputBaseName and returns the new path, preferring a hard
+// link and falling back to a size-capped copy across filesystems.
 func placeJobInput(path, jobDir string) (string, error) {
 	dst := filepath.Join(jobDir, sandbox.InputBaseName)
 

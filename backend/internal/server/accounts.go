@@ -1,9 +1,6 @@
 package server
 
-// accounts.go handles accounts.list, accounts.add, accounts.remove and
-// accounts.setAlias: split out of methods.go, which was already near
-// the file-length gate, the same reasoning connector_fakes_test.go
-// documents for its own split.
+// accounts.go handles accounts.list, accounts.add, accounts.remove and accounts.setAlias.
 
 import (
 	"context"
@@ -13,11 +10,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/app"
 )
 
-// accountsList lists the signed-in accounts, each with its connector's
-// current attachment limit (see app.AccountView): the same per-account
-// shape every account.updated event carries, so the composer's hint
-// never depends on which of the two ways an account's data last
-// arrived.
+// accountsList lists the signed-in accounts with their connector's current attachment limit.
 func accountsList(c *app.Commands) func(context.Context, none) (any, error) {
 	return func(ctx context.Context, _ none) (any, error) {
 		accounts, err := c.Accounts(ctx)
@@ -34,10 +27,8 @@ func accountsList(c *app.Commands) func(context.Context, none) (any, error) {
 	}
 }
 
-// addAccountParams names the service to add an account for. apiId and
-// apiHash are kept for Telegram accounts given their own API keys from
-// my.telegram.org; options is the general form other providers read
-// their own setup from. Both ways reach the provider as options.
+// addAccountParams names the service to add an account for. apiId and apiHash
+// hold Telegram's own API keys; options carries other providers' setup fields.
 type addAccountParams struct {
 	Service string            `json:"service"`
 	APIID   int               `json:"apiId"`
@@ -52,8 +43,7 @@ func accountsAdd(c *app.Commands) func(context.Context, addAccountParams) (any, 
 	}
 }
 
-// setupOptions merges a request's options object with its apiId and
-// apiHash fields, the long-standing way to give Telegram's own API keys.
+// setupOptions merges a request's options object with its apiId and apiHash fields.
 func setupOptions(p addAccountParams) map[string]string {
 	options := maps.Clone(p.Options)
 	if p.APIID == 0 && p.APIHash == "" {

@@ -26,19 +26,11 @@ const (
 	gifScale = float64(gifWidth) / 480.0
 )
 
-// placeholderGIF renders a genuine animated GIF: the same sunset over a
-// mountain lake as placeholderPhoto, with the reflection rippling and
-// sunlight glinting on the water in a seamless loop. A few flat bands
-// read as a rendering glitch in a demo recording, so each frame is
-// painted in full colour and dithered onto one shared 256-colour
-// palette. It is a stand-in for a real GIF document a sender attached,
-// not a video a service marked to play back like one, so this is the
-// one scripted media FetchMedia ever writes whose bytes are an actual
-// GIF header; it reaches the UI the same way any other "GIF video"
-// does, played through the sandboxed transcoder's Animation profile
-// (see docs/decisions.md). Generated fresh each run, the same
-// reasoning placeholderPhoto gives for not shipping a committed image
-// file.
+// placeholderGIF renders a genuine animated GIF: the same sunset over
+// a mountain lake as placeholderPhoto, with the reflection rippling
+// and sunlight glinting on the water in a seamless loop, dithered
+// onto one shared 256-colour palette. Generated fresh each run, like
+// placeholderPhoto.
 func placeholderGIF() []byte {
 	scenes := make([]*image.RGBA, gifFrames)
 	for i := range gifFrames {
@@ -65,13 +57,8 @@ func placeholderGIF() []byte {
 	return buf.Bytes()
 }
 
-// gifThumb renders the scene placeholderGIF animates, at its first
-// frame, as a JPEG, and returns it already base64-encoded: the still
-// preview an unplayed GIF bubble shows (see domain.Media.Thumb), the
-// same shape a real Telegram or WhatsApp GIF document's own thumbnail
-// arrives in. Unlike a sender-supplied thumbnail, these bytes are
-// entirely this package's own, so there is nothing here for imagesafe to
-// sanitize away.
+// gifThumb renders placeholderGIF's first frame as a base64-encoded
+// JPEG, the still preview an unplayed GIF bubble shows.
 func gifThumb() string {
 	var buf bytes.Buffer
 	_ = jpeg.Encode(&buf, gifScene(0), &jpeg.Options{Quality: 85}) // encoding a fixed in-memory image never fails

@@ -1,11 +1,7 @@
 // Package portal opens a file-choosing dialog through
-// org.freedesktop.portal.FileChooser on the session bus, so picking a
-// file never runs GTK inside the shared Omarchy shell process: that is
-// what QtQuick.Dialogs.FileDialog's native dialog did before, and a
-// GTK/dconf failure inside it took the whole shell down with a SIGABRT
-// (see docs/decisions.md). The dialog itself runs in the portal's own
-// process (xdg-desktop-portal-gtk or -hyprland on Omarchy), out of this
-// helper entirely.
+// org.freedesktop.portal.FileChooser on the session bus, so the dialog
+// runs in the portal's own process rather than crashing the shared
+// Omarchy shell (docs/decisions.md).
 package portal
 
 import (
@@ -34,11 +30,9 @@ type Filter struct {
 	Globs []string
 }
 
-// Bus is the one seam between Picker and a real D-Bus session bus
-// connection: opening the FileChooser's OpenFile dialog and waiting for
-// its own Request.Response signal. dialSessionBus is the production
-// implementation, over a real *dbus.Conn; tests use a hand-written fake
-// instead, so no test ever opens a real dialog.
+// Bus is the seam between Picker and a real D-Bus session bus
+// connection. dialSessionBus is the production implementation; tests
+// use a hand-written fake so no test opens a real dialog.
 type Bus interface {
 	// OpenFile calls FileChooser.OpenFile and returns the request
 	// object path its Response signal will carry.
@@ -57,14 +51,10 @@ type Picker struct {
 	Dial func(ctx context.Context) (Bus, func(), error)
 }
 
-// Pick opens title over the portal's own FileChooser, restricted to
+// Pick opens title over the portal's FileChooser, restricted to
 // filters, and returns the chosen file's local path. ok is false with
-// no error when the user cancelled the dialog - never confused with an
-// empty path being a real answer, since there is none - and err is
-// returned only when the dialog itself could not be shown at all, such
-// as no portal being reachable on the session bus: the caller's own
-// cue to fall back to a different file picker, never to the in-process
-// GTK dialog that crashed the whole shell (see docs/decisions.md).
+// no error when the user cancelled; err is returned only when the
+// dialog itself could not be shown, such as no portal being reachable.
 func (p *Picker) Pick(ctx context.Context, title string, filters []Filter) (path string, ok bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, pickTimeout)
 	defer cancel()
@@ -102,10 +92,7 @@ func (p *Picker) Pick(ctx context.Context, title string, filters []Filter) (path
 }
 
 // decodeFileURI converts a file:// URI the portal returned into a
-// local path, refusing anything that is not a file:// URI: the portal
-// contract only ever returns one of those, and treating any other
-// scheme as a path would trust a malformed reply more than it has
-// earned.
+// local path, refusing any other scheme.
 func decodeFileURI(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {

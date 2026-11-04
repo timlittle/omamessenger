@@ -4,15 +4,10 @@ import qs.Commons
 import "../theme"
 import "../lib/Toast.js" as ToastLogic
 
-// A small, rounded confirmation pill: where copying, saving, the
-// "Updated to vX" hint and a quiet heads-up such as "Play notification
-// sound" finding nothing to play now show, instead of the easily-missed
-// banner at the top of the window (see docs/decisions.md). It fades in
-// whenever text is set, auto-dismisses itself after dismissDelayMs, and
-// pauses that countdown while the pointer is over it so reading it does
-// not race its own timer. Errors keep using Panel's own banner; this is
-// never a failure the user needs to act on, so it never needs the
-// urgent colour.
+// A small, rounded confirmation pill for brief, non-error heads-up
+// notices, instead of the easily-missed banner at the top of the
+// window (see docs/decisions.md). Fades in when text is set,
+// auto-dismisses after dismissDelayMs, pausing while hovered.
 Item {
   id: root
 
@@ -78,20 +73,14 @@ Item {
     border.color: Theme.popups.border
     border.width: Style.normalBorderWidth
     implicitWidth: label.implicitWidth + Theme.spacing.xl * 2
-    // label.contentHeight, not implicitHeight: once a long notice wraps
-    // at label's own bounded width below, implicitHeight still reports
-    // the natural single-line height (it is defined to ignore an
-    // explicitly set width), while contentHeight is the real, wrapped
-    // height the pill actually has to make room for.
+    // contentHeight, not implicitHeight, which ignores a wrapped label's real height.
     implicitHeight: label.contentHeight + Theme.spacing.md * 2
 
     Text {
       id: label
       objectName: "toastLabel"
       anchors.centerIn: parent
-      // Bounded by the pill's own final width (itself clamped to
-      // Style.space(520) above, never by this), so a long notice wraps
-      // inside the pill instead of overflowing it on both sides.
+      // Bounded by the pill's width so a long notice wraps instead of overflowing.
       width: Math.min(label.implicitWidth, parent.width - Theme.spacing.xl * 2)
       text: root._label
       // A notice is always this plugin's own words, never a service's,

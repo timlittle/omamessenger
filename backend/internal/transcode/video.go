@@ -1,8 +1,7 @@
 package transcode
 
-// video.go runs the Video profile: ffmpeg's own fixed argument list
-// for re-encoding a received video into an MP4 the shell may safely
-// play. See docs/decisions.md for why each flag is there.
+// video.go runs the Video profile: re-encodes a received video into
+// an MP4 the shell may safely play (see docs/decisions.md).
 
 import (
 	"context"
@@ -11,40 +10,28 @@ import (
 	"time"
 )
 
-// videoOutputName is the file Video's own argv writes inside the
-// sandbox's output directory, and the one Video itself looks for
-// afterwards.
+// videoOutputName is the file Video's argv writes in the sandbox's
+// output directory.
 const videoOutputName = "out.mp4"
 
-// videoTimeout bounds a Video job's wall clock: generous next to the
-// cost measured re-encoding a 60-second 1080p clip to 720p (around 5
-// seconds inside the sandbox at two threads), scaled up for
-// videoDurationSeconds's own ten-minute cap, while still bounding a
-// file that makes ffmpeg hang rather than simply run slowly
-// (see docs/decisions.md).
+// videoTimeout bounds a Video job's wall clock, generous next to the
+// cost measured re-encoding a 1080p clip at videoDurationSeconds's
+// scale, while still catching a file that makes ffmpeg hang.
 const videoTimeout = 5 * time.Minute
 
-// videoDurationSeconds caps how much of the input Video actually
-// encodes (-t): the same ten-minute ceiling videosafe.maxDuration
-// already used for a video attachment (this package cannot import
-// videosafe; see .golangci.yml's depguard rules).
+// videoDurationSeconds caps how much of the input Video encodes (-t),
+// matching videosafe.maxDuration's own cap on a video attachment.
 const videoDurationSeconds = 600
 
-// videoMaxOutputBytes bounds Video's own output file, checked after
-// ffmpeg exits: videoRateControlArgs' own VBV cap bounds the worst
-// case at roughly 194.7 MB (600s * (2500+96) kbit/s / 8) regardless of
-// how adversarial the input is, so this leaves a margin above that -
-// not the looser, typical-content estimate an unbounded CRF encode
-// would otherwise need - well under the sandbox's own, blunter
-// backstop.
+// videoMaxOutputBytes bounds Video's output file, checked after
+// ffmpeg exits: a margin above the worst case videoRateControlArgs'
+// VBV cap already guarantees.
 const videoMaxOutputBytes = 200 << 20
 
 // Video re-encodes in - any video ffmpeg can decode - into an MP4 at
-// outDir: H.264 (main profile), scaled to fit 1280x1280 without ever
-// upscaling, at most 30 frames per second, with its first audio
-// stream, if any, as stereo AAC. It returns the output file's path, or
-// one of this package's own sentinel errors (see the package doc
-// comment).
+// outDir: H.264 (main profile), scaled to fit 1280x1280 without
+// upscaling, at most 30 fps, with its first audio stream as stereo
+// AAC.
 func (t *Transcoder) Video(ctx context.Context, in, outDir string) (string, error) {
 	return t.run(ctx, in, outDir, profile{
 		args:       videoArgs(),
@@ -55,14 +42,10 @@ func (t *Transcoder) Video(ctx context.Context, in, outDir string) (string, erro
 	})
 }
 
-// videoRemuxCaps bounds what videoRebuild's own call to remuxMP4
-// will accept: sample counts sized for Video's own duration cap at
-// 30 frames per second of video and, generously, 50 AAC-LC frames
-// per second of audio, each with a little slack (see remux.go), and
-// the rebuilt file's own combined video-plus-audio total bounded by
-// videoMaxOutputBytes, reused rather than given a tighter cap of its
-// own: a legitimate rebuild can never exceed what the sandboxed file
-// it rebuilds from was already capped at.
+// videoRemuxCaps bounds what videoRebuild's call to remuxMP4 will
+// accept: sample counts sized for Video's own duration cap, with a
+// little slack (see remux.go), and the output capped at
+// videoMaxOutputBytes.
 func videoRemuxCaps() remuxCaps {
 	return remuxCaps{
 		allowAudio:        true,
@@ -74,10 +57,8 @@ func videoRemuxCaps() remuxCaps {
 	}
 }
 
-// videoRebuild validates the MP4 ffmpeg wrote for Video and
-// rewrites it as sandboxedOutput's own replacement in jobDir (see
-// remuxMP4): a hijacked ffmpeg can then only ever reach Qt's own
-// H.264 and AAC decoders, through a container this package wrote.
+// videoRebuild validates and rewrites Video's MP4, so a hijacked ffmpeg
+// reaches the shell only through a container this package wrote.
 func videoRebuild(sandboxedOutput, jobDir string) (string, error) {
 	outPath := filepath.Join(jobDir, "remux.mp4")
 	if err := remuxMP4(sandboxedOutput, outPath, videoRemuxCaps()); err != nil {
@@ -86,7 +67,7 @@ func videoRebuild(sandboxedOutput, jobDir string) (string, error) {
 	return outPath, nil
 }
 
-// videoArgs is the Video profile's own fixed ffmpeg argument list.
+// videoArgs is the Video profile's ffmpeg argument list.
 func videoArgs() []string {
 	args := commonInputArgs()
 	args = append(args, filterThreadArgs()...)

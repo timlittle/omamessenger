@@ -154,15 +154,8 @@ func documentMedia(dc tg.DocumentClass) *domain.Media {
 			FileName: d.name, Size: doc.Size, Thumb: strippedThumb(doc.Thumbs), Animated: d.animated,
 		}
 	case isGIFImage(doc.MimeType, d.name):
-		// A real GIF image, sent as a plain document rather than
-		// through Telegram's "send as animation" picker, carries none
-		// of DocumentAttributeVideo or DocumentAttributeAnimated: only
-		// its mime type or name says what it is. It still reaches the
-		// UI as a video kind marked animated, exactly like a service's
-		// own GIF playback, so it plays inline the same way, through
-		// the sandboxed transcoder's Animation profile, the same path
-		// every other "GIF video" already takes (see
-		// docs/decisions.md).
+		// A plain-document GIF carries no video attributes, only its
+		// mime type or name, but still plays inline as an animated video.
 		return &domain.Media{Kind: domain.MediaVideo, FileName: gifFileName(d.name), Size: doc.Size, Animated: true}
 	case d.voice:
 		return &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Size: doc.Size, Duration: d.durationSec}
@@ -253,16 +246,7 @@ func documentLabel(dc tg.DocumentClass) string {
 
 // strippedThumb is the tiny blurred preview among a photo's or
 // document's sizes as a base64 JPEG, once imagesafe has checked it,
-// or "" when Telegram sent none or it failed that check. Expand turns
-// Telegram's own compact encoding back into a real, if tiny, JPEG
-// using fixed quantization tables, so this is already this
-// connector's own bytes rather than a sender's; running it through
-// imagesafe anyway costs little and means every thumbnail this UI
-// ever shows took the same path (see docs/decisions.md). Its own
-// verified dimensions are not needed here: store.sanitizedThumb
-// re-derives them from these same bytes on every read regardless of
-// how they were written, the one place
-// domain.Media.ThumbWidth/ThumbHeight are ever actually set.
+// or "" when Telegram sent none or it failed that check.
 func strippedThumb(sizes []tg.PhotoSizeClass) string {
 	for _, size := range sizes {
 		s, ok := size.(*tg.PhotoStrippedSize)
@@ -287,13 +271,11 @@ func strippedThumb(sizes []tg.PhotoSizeClass) string {
 }
 
 // imageProfile is the imagesafe.Profile a downloaded message's media
-// must pass before FetchMedia writes it to disk, and whether it is
-// one at all: a photo or a static WebP sticker, the only media kinds
-// this UI ever loads straight into a QML Image. Everything else,
-// including a video document Telegram itself marks as an actual GIF
-// file, is written unchanged: a "GIF" reaches the UI through the same
-// sandboxed transcoder every other video does (see
-// docs/decisions.md), never imagesafe.
+// must pass before FetchMedia writes it to disk, and whether it is one
+// at all: a photo or a static WebP sticker, the only kinds this UI loads
+// straight into a QML Image. A "GIF" video document is written
+// unchanged, since it reaches the UI through the sandboxed transcoder
+// instead (see docs/decisions.md).
 func imageProfile(m tg.MessageMediaClass) (imagesafe.Profile, bool) {
 	switch mm := m.(type) {
 	case *tg.MessageMediaPhoto:
@@ -306,15 +288,8 @@ func imageProfile(m tg.MessageMediaClass) (imagesafe.Profile, bool) {
 }
 
 // documentImageProfile is imageProfile's own case for a document,
-// mirroring documentMedia's own dispatch order exactly so the two
-// never disagree about which document is which: any sticker, whatever
-// mime type the sender claims for it, since the UI shows a fetched
-// sticker in a QML Image and imagesafe refuses bytes it cannot
-// validate. A document carrying DocumentAttributeVideo, or one
-// isGIFImage says is a genuine GIF file, is written unchanged here
-// either way: both reach the UI as a video-kind message, re-encoded
-// by the sandboxed transcoder on demand rather than imagesafe at
-// download time (see docs/decisions.md).
+// mirroring documentMedia's dispatch order so the two never disagree
+// about which document is which.
 func documentImageProfile(dc tg.DocumentClass) (imagesafe.Profile, bool) {
 	doc, ok := dc.(*tg.Document)
 	if !ok {

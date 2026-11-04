@@ -57,30 +57,17 @@ Item {
   // lastError is the safe text of the most recent request failure.
   property string lastError: ""
 
-  // notice is a brief, non-error confirmation for something that just
-  // worked, shown in the toast pill the same way
-  // ConversationController.notice already is (see
-  // WindowController.toastText): blocking, unblocking or reporting a
-  // contact as spam, none of which otherwise leave any visible sign
-  // beyond the chat itself quietly changing or disappearing.
+  // notice is a brief, non-error confirmation for something that just worked.
   property string notice: ""
 
-  // clearNotice dismisses the brief confirmation banner, the same way
-  // ConversationController.clearNotice does for its own, and with it
-  // whatever action it was offering to undo (see pendingUndo): once the
-  // "u to undo" hint is no longer shown, "u" no longer does anything,
-  // rather than silently reversing something the user may no longer
-  // even remember doing.
+  // clearNotice dismisses the notice banner and whatever action it offered to undo.
   function clearNotice(): void {
     root.notice = "";
     root.pendingUndo = null;
   }
 
-  // pendingUndo is the service call that would reverse whichever of
-  // archive, mute, pin, hide or block the notice above just confirmed
-  // happened (see ui/lib/Undo.js); only the newest such action is ever
-  // kept, so "u" always reverses the last one, never something further
-  // back, and null once there is nothing left to undo.
+  // pendingUndo is the service call that would reverse the action notice just
+  // confirmed, or null once there is nothing left to undo.
   property var pendingUndo: null
 
   // _offerUndo shows descriptor's own notice and remembers how to
@@ -90,10 +77,7 @@ Item {
     root.notice = descriptor.notice;
   }
 
-  // undo reverses whichever action _offerUndo last recorded, through
-  // the exact same request its own opposite command would send, then
-  // forgets it: pressing "u" again does nothing further until another
-  // action offers a new one.
+  // undo reverses whichever action _offerUndo last recorded, then forgets it.
   function undo(): void {
     const descriptor = root.pendingUndo;
     if (!descriptor) return;
@@ -111,20 +95,10 @@ Item {
   // {} until the first one, or after resetBurst.
   property var _typingGuardState: ({})
 
-  // guardTyping reports whether action - matched in the list or
-  // conversation context, or "" when the key matched nothing at all -
-  // should be held back because it looks like someone typing into the
-  // wrong place rather than reaching for a shortcut: either a guarded,
-  // conversation-changing action (see TypingGuard.GUARDED_ACTIONS)
-  // arriving right on the heels of another plain key, or any action at
-  // all once the burst itself looks like an ordinary typed word (see
-  // TypingGuard.next and docs/decisions.md). Holding it back shows a
-  // toast naming the key that actually starts writing, so the same
-  // burst lands in the composer next time instead of silently
-  // changing or opening something here again. Every call still
-  // advances the tracked burst, even one this returns false for, so a
-  // run of ordinary letters keeps building towards holding back
-  // whatever follows; see Panel.routeKey, the one caller.
+  // guardTyping reports whether action should be held back because it looks
+  // like someone typing into the wrong place rather than reaching for a
+  // shortcut (see docs/decisions.md), showing a toast naming the real
+  // compose key instead.
   function guardTyping(action: string): bool {
     const result = TypingGuard.next(action, Date.now(), root._typingGuardState, TypingGuard.NAVIGATION_ACTIONS, TypingGuard.GUARDED_ACTIONS);
     root._typingGuardState = result.state;
@@ -136,11 +110,8 @@ Item {
     return true;
   }
 
-  // resetBurst drops whatever guardTyping has tracked so far, for
-  // Escape - which this guard is never even called for (see
-  // Panel.routeKey's own isPlainKey check) - so a deliberate Esc then
-  // a shortcut never inherits a burst that started before it, purely
-  // because not enough real time happened to pass in between.
+  // resetBurst drops whatever guardTyping has tracked so far, for Escape, so
+  // a deliberate Esc then a shortcut never inherits an earlier burst.
   function resetBurst(): void {
     root._typingGuardState = TypingGuard.reset();
   }
@@ -173,21 +144,15 @@ Item {
   // meantime cannot alter what Enter actually does.
   property var _archiveAllIds: []
 
-  // archiveOneOpen shows the question asking whether to archive a
-  // single conversation: a stray key once archived a pinned chat with
-  // no warning at all (see docs/decisions.md), so archiving always
-  // asks first now; unarchiving never does, since it only ever reverses
-  // something already confirmed. It shares archiveAllOpen's own key
-  // context and accept/cancel actions below (see confirmArchiveAllRead
-  // and cancelArchiveAllRead): the two are never open at once.
+  // archiveOneOpen shows the question asking whether to archive a single
+  // conversation before doing it (see docs/decisions.md); unarchiving never
+  // asks. It shares archiveAllOpen's accept/cancel actions below.
   property bool archiveOneOpen: false
   // archiveOneTitle names the conversation the question applies to.
   property string archiveOneTitle: ""
-  // _archiveOneId and _archiveOneKind are the conversation and the
-  // action archiveOneOpen's question would run once confirmed:
-  // "toggle" for plain chat.archive, "archiveRead" for chat.archiveRead,
-  // which marks the chat read first. Captured when asked, the same
-  // reasoning as _archiveAllIds above.
+  // _archiveOneId and _archiveOneKind are the conversation and the action to
+  // run once confirmed: "toggle" for a plain archive, "archiveRead" to mark
+  // it read first.
   property string _archiveOneId: ""
   property string _archiveOneKind: "toggle"
 
@@ -202,10 +167,8 @@ Item {
   // meantime cannot alter what confirming it actually does.
   property string _blockConfirmId: ""
 
-  // _notificationSoundTargetId is the conversation the portal's own
-  // file picker applies to, captured when it was opened so a list
-  // change while that asynchronous call is still outstanding cannot
-  // alter what accepting it actually does.
+  // _notificationSoundTargetId is the conversation the portal's file picker
+  // applies to, captured when opened so a later list change cannot alter it.
   property string _notificationSoundTargetId: ""
 
   // _all holds every conversation the helper reported, unfiltered by the
@@ -380,13 +343,8 @@ Item {
     root._setOnCurrent("conversations.setPinned", "pinned", "Pinned", "Unpinned");
   }
 
-  // _movePin moves whichever conversation is contextually current one
-  // place up or down among the pinned conversations, through the
-  // helper's own adjacent swap. A no-op, with no request at all, on a
-  // conversation that is not pinned: there is nothing to move it
-  // against. Drag reordering (see ConversationList.qml's own
-  // DragHandler) calls this exact method too, through movePinTo below,
-  // so a keyboard move and a drag always persist the same way.
+  // _movePin moves whichever conversation is contextually current one place
+  // up or down among the pinned conversations. A no-op on an unpinned chat.
   function _movePin(direction: string): void {
     const id = root._currentId();
     const conversation = id ? root.findConversation(id) : null;
@@ -395,16 +353,9 @@ Item {
     root._requestMovePin(id, direction, null);
   }
 
-  // movePinTo drags conversationId toIndex places within the pinned
-  // group, by repeating the same adjacent-swap request a keyboard move
-  // makes, one step at a time (see ui/lib/Pin.js's planMove, the pure
-  // function that works out the direction and how many steps a drop at
-  // toIndex needs from pinnedIds, the pinned conversations in their
-  // current, server-given order). Dropped back on its own starting
-  // place, or outside the pinned group, this does nothing. Each step
-  // waits for the previous one's reply before asking for the next,
-  // since the helper answers requests concurrently and two swaps fired
-  // at once could each read the same pre-swap order.
+  // movePinTo drags conversationId to toIndex within the pinned group, by
+  // repeating the adjacent-swap request one step at a time, each waiting for
+  // the previous reply so two swaps never race.
   function movePinTo(conversationId: string, toIndex: int): void {
     const pinnedIds = root._all.filter((c) => c.pinned).map((c) => c.id);
     const plan = Pin.planMove(pinnedIds, conversationId, toIndex);
@@ -431,10 +382,8 @@ Item {
   }
 
   // _toggleArchive archives or unarchives whichever conversation is
-  // contextually current. Archiving always asks first (see
-  // archiveOneOpen's doc comment); unarchiving applies at once, the
-  // same way _toggleMute's own toggle does, since it only reverses
-  // something already confirmed.
+  // contextually current. Archiving always asks first; unarchiving applies
+  // at once.
   function _toggleArchive(): void {
     const id = root._currentId();
     const conversation = id ? root.findConversation(id) : null;
@@ -488,13 +437,8 @@ Item {
     });
   }
 
-  // _archiveAndMarkRead asks to mark whichever conversation is
-  // contextually current read, then archive it (see archiveOneOpen's
-  // doc comment), the same question a plain archive now asks - unless
-  // it is already archived, when Shift+A unarchives it at once instead,
-  // with no question: unarchiving only ever reverses something already
-  // confirmed, the same asymmetry _toggleArchive already has, so this
-  // is a toggle after all once the chat is on the other side of it.
+  // _archiveAndMarkRead asks to mark the current conversation read, then
+  // archive it (asking first); already archived, it unarchives at once instead.
   function _archiveAndMarkRead(): void {
     const id = root._currentId();
     const conversation = id ? root.findConversation(id) : null;
@@ -508,10 +452,8 @@ Item {
     root._askArchiveOne(id, conversation.title, "archiveRead");
   }
 
-  // _askArchiveOne shows the question asking whether to archive id,
-  // naming title and remembering kind: "toggle" for a plain archive, or
-  // "archiveRead" to mark it read first, once confirmed (see
-  // confirmArchiveAllRead below, which this shares its dialog with).
+  // _askArchiveOne shows the question asking whether to archive id, naming
+  // title and remembering kind ("toggle" or "archiveRead") for confirmArchiveAllRead.
   function _askArchiveOne(id: string, title: string, kind: string): void {
     root._archiveOneId = id;
     root.archiveOneTitle = title;
@@ -519,9 +461,8 @@ Item {
     root.archiveOneOpen = true;
   }
 
-  // _doArchive sends the conversations.setArchived request for id,
-  // applies the reply and offers to undo it: the one request every
-  // archive or unarchive path below ends at, confirmed or not.
+  // _doArchive sends the conversations.setArchived request for id, applies
+  // the reply and offers to undo it.
   function _doArchive(id: string, title: string, archived: bool): void {
     root.service.request("conversations.setArchived", { conversationId: id, archived: archived }, function(error, result) {
       if (error) { root.lastError = Rpc.errorText(error); return; }
@@ -543,11 +484,8 @@ Item {
     root.archiveAllOpen = true;
   }
 
-  // confirmArchiveAllRead runs whichever archive question is open:
-  // archiveOneOpen's single conversation, marking it read first when
-  // _archiveOneKind is "archiveRead", or else the bulk question's own
-  // list, archiving every conversation it named. Either way it closes
-  // the question first.
+  // confirmArchiveAllRead runs whichever archive question is open - single
+  // or bulk - closing it first.
   function confirmArchiveAllRead(): void {
     if (root.archiveOneOpen) {
       const id = root._archiveOneId;
@@ -583,9 +521,8 @@ Item {
     }
   }
 
-  // cancelArchiveAllRead leaves every conversation as it is, closing
-  // whichever archive question confirmArchiveAllRead above would have
-  // run.
+  // cancelArchiveAllRead leaves every conversation as it is, closing whichever
+  // archive question was open.
   function cancelArchiveAllRead(): void {
     if (root.archiveOneOpen) {
       root.archiveOneOpen = false;
@@ -642,18 +579,9 @@ Item {
   }
 
   // confirmBlock blocks, or reports as spam, the conversation
-  // blockConfirmOpen's question named, then closes it. Which method it
-  // calls follows blockConfirmKind: a plain block only blocks, while a
-  // spam report blocks and hides the chat together, on the helper's own
-  // side (see app.Commands.ReportSpam). The chat simply changing or
-  // disappearing from the list is otherwise the only sign either
-  // worked, so this also raises a toast naming what happened: a spam
-  // report on WhatsApp only ever blocks, since its own API has no
-  // report of its own (see whatsapp/block.go), so that wording would
-  // promise something that did not happen there. A plain block offers
-  // "u to undo" (see Undo.describeBlock); a spam report does not, since
-  // it also hides the chat and there is nothing sensible left here to
-  // undo it against.
+  // blockConfirmOpen's question named, then closes it: a plain block only
+  // blocks, a spam report blocks and hides the chat (see app.Commands.ReportSpam).
+  // A plain block offers "u to undo"; a spam report does not.
   function confirmBlock(): void {
     const id = root._blockConfirmId;
     const kind = root.blockConfirmKind;
@@ -678,19 +606,12 @@ Item {
     });
   }
 
-  // _setNotificationSound asks the helper to open a file picker
-  // restricted to audio files, out of process from the shared Omarchy
-  // shell (files.pick, over the portal's own file chooser - see
-  // docs/decisions.md), and once one is chosen, asks the helper to
-  // validate and store it as whichever conversation is contextually
-  // current's own notification sound - the command palette's "Set
-  // notification sound…". Does nothing with no current conversation.
-  // A cancelled pick does nothing further; one the portal could not
-  // show at all reports a fixed notice through lastError instead,
-  // never a fallback dialog of this UI's own - Qt's own non-native
-  // FileDialog rendered a sender-controlled file name as rich text
-  // through its delegate's default AutoText, which a security review
-  // found let a markup-named file already on disk run as HTML the
+  // _setNotificationSound asks the helper to open a portal file picker
+  // restricted to audio files (see docs/decisions.md), then stores the
+  // chosen file as the current conversation's notification sound. A
+  // cancelled pick does nothing; an unavailable portal reports through
+  // lastError, never a fallback dialog of this UI's own - a security review
+  // found Qt's non-native FileDialog could run a markup-named file as HTML the
   // moment the dialog merely listed its folder (see docs/decisions.md).
   function _setNotificationSound(): void {
     const id = root._currentId();
@@ -709,14 +630,9 @@ Item {
     });
   }
 
-  // notificationSoundPicked stores path as the conversation
-  // _setNotificationSound captured's own notification sound: the
-  // entry point the portal's own file picker's success reaches once
-  // the user picks a file, the same way movePinTo above is the entry
-  // point a pinned row's drag handler calls; a test with no real
-  // portal to drive calls this directly instead. An invalid file (not
-  // a format the helper's transcoder can read as audio at all) reports
-  // through lastError, the same as any other refused request.
+  // notificationSoundPicked stores path as the captured conversation's
+  // notification sound, the entry point the file picker's success reaches.
+  // An invalid file reports through lastError.
   function notificationSoundPicked(path: string): void {
     const id = root._notificationSoundTargetId;
     root._notificationSoundTargetId = "";
@@ -729,11 +645,8 @@ Item {
     });
   }
 
-  // _resetNotificationSound clears whichever conversation is
-  // contextually current's own notification sound, the command
-  // palette's "Reset notification sound", so it goes back to
-  // inheriting whichever one applies at the service or global default
-  // level.
+  // _resetNotificationSound clears the current conversation's own sound, so
+  // it inherits the service or global default again.
   function _resetNotificationSound(): void {
     const id = root._currentId();
     if (!id || !root.findConversation(id)) return;
@@ -777,12 +690,9 @@ Item {
     return (state.pane === "conversation" && state.activeId) ? state.activeId : root.selectedId;
   }
 
-  // _setOnCurrent flips boolean field on whichever conversation is
-  // contextually current: the open conversation if one is showing, else
-  // the list cursor, by calling method with {conversationId, <field>},
-  // then offers to undo it: labelOn/labelOff name the action in the
-  // toast, matching whichever direction the flip just took (see
-  // ui/lib/Undo.js).
+  // _setOnCurrent flips boolean field on the contextually current
+  // conversation via method, then offers to undo it; labelOn/labelOff name
+  // the toast for each direction.
   function _setOnCurrent(method: string, field: string, labelOn: string, labelOff: string): void {
     const id = root._currentId();
     const conversation = id ? root.findConversation(id) : null;
@@ -919,14 +829,9 @@ Item {
     for (let i = 0; i < visible.length; i++) listModel.set(i, root._row(visible[i]));
   }
 
-  // _row is a conversation as a list row. The helper leaves out match,
-  // but every row needs every field the view requires -
-  // ConversationList's own delegate declares a required property, which
-  // throws if a role is missing outright rather than merely empty.
-  // dimmed and dimLabel only mean anything in show-all, where the
-  // standard list's own rules decide which rows get drawn muted.
-  // reminderDue marks a row "Reminder" whenever its snooze has come
-  // due, in every view, not only show-all.
+  // _row is a conversation as a list row; every field is filled since
+  // ConversationList's delegate requires them all. dimmed and dimLabel only
+  // mean anything in show-all. reminderDue applies in every view.
   function _row(conversation: var): var {
     const now = Date.now();
     const keepId = root._keepId();

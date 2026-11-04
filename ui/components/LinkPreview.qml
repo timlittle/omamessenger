@@ -92,18 +92,11 @@ Item {
       // embedded in the message; this never fetches a remote URL.
       source: root.preview.thumb ? "data:" + Media.thumbMime(root.preview.thumb) + ";base64," + root.preview.thumb : ""
       fillMode: Image.PreserveAspectCrop
-      // Decodes off the UI thread: without this, Qt decoded the
-      // progressive JPEG thumbnail synchronously on the shell's own
-      // thread, which froze the desktop for a batch of heavy-but-
-      // within-limits thumbnails (see docs/decisions.md).
+      // Decodes off the UI thread, so a heavy thumbnail cannot freeze
+      // the shell (see docs/decisions.md).
       asynchronous: true
-      // Fit inside this thumbnail's own fixed box (see PhotoView.qml's
-      // own sourceSize for why the box alone is not enough). A link
-      // preview carries no width or height of its own - unlike a
-      // photo, video or sticker - so this always falls back to the
-      // box itself, exactly the bound this had before; imagesafe's
-      // own aspect-ratio cap is what keeps that box-only bound safe
-      // here (see docs/decisions.md).
+      // Falls back to the fixed box: a link preview carries no width
+      // or height of its own, unlike a photo, video or sticker.
       sourceSize.width: ImageBounds.boundedSourceSize(Style.space(56), Style.space(56), root.preview.width, root.preview.height).width
       sourceSize.height: ImageBounds.boundedSourceSize(Style.space(56), Style.space(56), root.preview.width, root.preview.height).height
     }

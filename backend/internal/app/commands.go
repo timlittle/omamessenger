@@ -11,26 +11,15 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/store"
 )
 
-// MaxSpellMisspellings bounds how many entries CheckSpelling ever
-// returns from one spell.check call. Composer.qml draws one underline
-// rectangle per entry and rebuilds them on every keystroke and caret
-// move, so a huge pasted string full of unrecognised words - a long
-// run of gibberish, or text in a language the loaded dictionary does
-// not cover - must never make it do unbounded layout work. Documented
-// in docs/api.md as an additive, non-breaking limit on spell.check's
-// result.
+// MaxSpellMisspellings bounds how many entries CheckSpelling returns,
+// so a huge pasted string cannot make the composer's underline
+// rendering do unbounded layout work.
 const MaxSpellMisspellings = 200
 
 // MaxSpellWordLength bounds how many Unicode code points a word may
-// have and still be offered to SuggestSpelling or AddSpellingWord. No
-// real dictionary word comes close to this long: gospell's own
-// suggester builds roughly n² candidate strings of n characters each,
-// so a multi-thousand-letter "word" - a run of letters copied from
-// another message, with no spaces of its own - could otherwise grow
-// the helper to tens of GB before returning a single suggestion. The
-// tokenizer feeding CheckSpelling applies the same cap (see
-// spell.maxCheckedWordLength) so such a run is never even flagged
-// misspelled in the first place.
+// have and still go to SuggestSpelling or AddSpellingWord: gospell's
+// suggester builds roughly n² candidates, so an extremely long "word"
+// could otherwise blow up memory.
 const MaxSpellWordLength = 64
 
 // Commands are the actions the UI can take.
@@ -215,10 +204,8 @@ func (c *Commands) ApplySettings(s Settings) {
 // CheckSpelling finds misspelled words in text; see spell.Checker.Check.
 // It returns nil without error when no spell checker was wired in, so a
 // test build that does not need one is not forced to provide one. text
-// is capped to domain.MaxTextLength first, the same limit messages.send
-// enforces on outgoing text, and the result to MaxSpellMisspellings, so
-// a huge pasted clipboard string can never make this scan an unbounded
-// amount of text or hand the UI an unbounded highlight list.
+// is capped to domain.MaxTextLength and the result to
+// MaxSpellMisspellings.
 func (c *Commands) CheckSpelling(ctx context.Context, text string) ([]spell.Misspelling, error) {
 	if c.spell == nil {
 		return nil, nil
@@ -256,9 +243,8 @@ func capTextLength(text string, max int) string {
 }
 
 // SuggestSpelling returns replacement words for a misspelled word; see
-// spell.Checker.Suggest. A word longer than MaxSpellWordLength is not
-// a dictionary word this helper will ever recognize, so it returns no
-// suggestions rather than passing it on to gospell's own suggester.
+// spell.Checker.Suggest. A word longer than MaxSpellWordLength gets no
+// suggestions.
 func (c *Commands) SuggestSpelling(ctx context.Context, word string) ([]string, error) {
 	if c.spell == nil || utf8.RuneCountInString(word) > MaxSpellWordLength {
 		return nil, nil
@@ -269,8 +255,7 @@ func (c *Commands) SuggestSpelling(ctx context.Context, word string) ([]string, 
 
 // AddSpellingWord adds word to the user's personal dictionary; see
 // spell.Checker.AddWord. A word longer than MaxSpellWordLength is
-// refused as invalid input, the same cap SuggestSpelling enforces,
-// rather than saved to the personal word list.
+// refused as invalid input.
 func (c *Commands) AddSpellingWord(ctx context.Context, word string) error {
 	if word == "" {
 		return fmt.Errorf("%w: word is required", ErrInvalidInput)

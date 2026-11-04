@@ -33,14 +33,9 @@ func (in *Ingest) retireOutgoingAttachment(ctx context.Context, m domain.Message
 	}
 }
 
-// outgoingCacheName names m's own attachment the same way the cache
-// would once it is adopted there: fixedMediaName's name for a photo or
-// video, or, for anything else, cacheIdentity plus the extension of
-// the file the user themselves chose to attach - safe to reuse as-is,
-// unlike a sender's claim about someone else's file, since nobody but
-// the user sending it picked this one. cache.FetchNamed's own lookup
-// matches any extension on its id, so only cacheIdentity, not this
-// exact extension, has to agree with what a later FetchMedia asks for.
+// outgoingCacheName names m's own attachment the way the cache will once
+// adopted: fixedMediaName's name for a photo or video, else cacheIdentity
+// plus the file's own extension, which the user chose and can be trusted.
 func outgoingCacheName(m domain.Message) string {
 	if name, ok := fixedMediaName(m); ok {
 		return name

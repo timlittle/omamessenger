@@ -79,24 +79,12 @@ function hints(message, bindings) {
   return parts.join(' · ');
 }
 
-// links returns every link the message's open key (o) can reach,
-// exactly as the bubble itself would render it: {url, displayText}
-// pairs, in the same order Format.messageLinkAnchors reports the
-// bubble's own anchors for this message's text, mentions and
-// formatting spans. A previous version of this matched the raw text
-// with Format.plainLinks instead, which agrees with the bubble only
-// for a plain autolinked URL: the bubble instead linkifies per
-// formatting span, per mention segment and per Markdown table cell
-// (see Format.js's styledSegment, lineHtml and mentionHtml, and
-// Markdown.js's own per-cell linkifying), so a span or mention
-// boundary landing inside what reads as one URL could make plainLinks
-// rejoin two separate, inert fragments into a single link the bubble
-// never showed at all, reaching a different, more dangerous
-// destination than any click on the message ever could (see
-// docs/decisions.md). A link preview's own URL is never one of them:
-// the sender sets it apart from the text the bubble shows, so only a
-// click on the card itself can reach it, and that asks first when the
-// text does not show it (see Links.previewDisplayText).
+// links returns every link the message's open key (o) can reach, as
+// {url, displayText} pairs, matching exactly what the bubble itself
+// renders (see Format.messageLinkAnchors) rather than a plain regex
+// match, which could disagree with the bubble across a formatting or
+// mention span boundary (see docs/decisions.md). A link preview's own
+// URL is never included; only a click on its card reaches that.
 function links(message) {
   const text = message && message.text ? message.text : '';
   const mentions = Timeline.mentions(message);

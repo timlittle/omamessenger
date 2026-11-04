@@ -23,11 +23,8 @@ QtObject {
   // again after the panel is recreated.
   property var pendingAuth: null
 
-  // accountNotice is the most recent account.notice event's own
-  // message, or "" once dismissed: a safe, one-time heads-up (today,
-  // WhatsApp's own app-state verification failing for an account, see
-  // docs/decisions.md) that WindowController.toastText falls back to,
-  // never the error banner.
+  // accountNotice is the latest account.notice message, or "" once
+  // dismissed: a safe, one-time heads-up shown as a toast, not an error.
   property string accountNotice: ""
 
   // version is the helper's protocol version, from hello.

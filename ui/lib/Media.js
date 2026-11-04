@@ -51,16 +51,7 @@ function isAnimated(media) {
   return !!media && media.kind === 'video' && !!media.animated;
 }
 
-// thumbMime names the MIME type thumb's own base64 bytes actually
-// decode as, sniffed from its own leading characters rather than
-// assumed from the message's kind: the helper's own imagesafe.Reencode
-// can write a thumbnail as either PNG or JPEG depending on whether it
-// carries real transparency - a sticker's cut-out shape, say - whatever
-// kind of message it illustrates (see docs/decisions.md), so a data
-// URI built from it must declare whichever one it actually is.
-// "iVBORw0KGgo" is the base64 encoding every PNG's own fixed signature
-// bytes always start with; any other thumb - including one with no
-// bytes at all - defaults to JPEG, the more common of the two.
+// thumbMime sniffs thumb's base64 bytes for the PNG signature, else assumes JPEG.
 function thumbMime(thumb) {
   if (thumb && thumb.indexOf('iVBORw0KGgo') === 0) {
     return 'image/png';
@@ -91,13 +82,7 @@ function mimeFor(media) {
   return null;
 }
 
-// copyable reports whether media's full file may sensibly be offered
-// for copying to the clipboard: mimeFor already limits this to a
-// photo or a video, which is as far as the UI needs to decide -
-// whether a video's own play copy can actually be built is the
-// helper's own call, made fresh inside media.copy itself (see
-// docs/decisions.md), not something a cached, possibly stale local
-// verdict should gate here.
+// copyable reports whether media's file may be offered for clipboard copy.
 function copyable(media) {
   return !!mimeFor(media);
 }

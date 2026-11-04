@@ -43,39 +43,17 @@ Item {
   // control handles them; see Composer.qml for why this is a function
   // property, not a signal.
   property var routeKey: null
-  // windowActive is whether the user can see the window at all: shown
-  // and focused. Every typed field - credentialsLoader's and
-  // answerLoader's own, below - exists only while this is also true: a
-  // field merely visible while the window sits unfocused in the
-  // background - alt-tabbed away - is still a live sink for a foreign
-  // Wayland clipboard offer, with no size or time limit (see
-  // docs/decisions.md). Defaults true so a caller or test that never
-  // sets it (tests/qml/FieldPaste, say) keeps every field exactly as it
-  // was before this existed.
+  // windowActive is whether the window is shown and focused; text fields
+  // exist only while it is, so an unfocused window cannot receive a
+  // foreign clipboard offer (see docs/decisions.md).
   property bool windowActive: true
 
-  // _apiIdDraft and _apiHashDraft hold the credentials step's own typed
-  // text outside the field itself: credentialsLoader below destroys and
-  // recreates it across a window-focus blip, so something outside it has
-  // to be the value's real home, the same reasoning Composer.qml's own
-  // text documents. Both always start "" since the credentials step is
-  // only ever shown once per setup session.
+  // _apiIdDraft and _apiHashDraft keep the typed credentials while their fields are destroyed.
   property string _apiIdDraft: ""
   property string _apiHashDraft: ""
-  // _answerDraft is the same, for whichever of the phone, code or
-  // password steps is showing; _focusStep below resets it to "" on
-  // every fresh entry to a new one of those steps, since - unlike the
-  // credentials step - this one step is reused for several different
-  // questions in turn, each of which must start empty.
+  // _answerDraft keeps the typed phone, code or password; each new step starts it empty.
   property string _answerDraft: ""
-  // _focusedField names whichever field last actually gained
-  // activeFocus - "apiId", "apiHash" or "answer" - until it loses that
-  // focus for a reason other than the window itself going inactive (a
-  // real blur: Tab, a click elsewhere); see each field's own
-  // onActiveFocusChanged below. windowActive turning true again only
-  // restores focus to the field this names, rather than stealing it
-  // from whatever the user had instead moved it to (Cancel, say)
-  // before switching away.
+  // _focusedField names the field to refocus when the window becomes active again.
   property string _focusedField: ""
 
   // serviceChosen reports the service picked at the chooseService step.
@@ -103,25 +81,12 @@ Item {
   // _field describes the typed answer the stage asks for, or null.
   readonly property var _field: Setup.field(root.stage)
 
-  // _credentials exposes credentialsLoader's own item, or null while the
-  // credentials step is not showing (see the Loader's own comment
-  // below). A plain var, not an alias, since Loader.item has no
-  // declared type for qmllint to check members against (the same
-  // reasoning Composer.qml's own `input` property documents).
+  // _credentials is the credentials fields, or null when not shown; a var because Loader.item is untyped.
   property var _credentials: credentialsLoader.item
-  // _answer exposes answerLoader's own item, or null while none of the
-  // phone, code or password steps is showing; see _credentials above.
+  // _answer is the answer field, or null when not shown.
   property var _answer: answerLoader.item
 
-  // submit continues from the current step, reading whatever was typed
-  // from _apiIdDraft/_apiHashDraft/_answerDraft rather than the live
-  // field: those hold the truth even for the instant right after a
-  // window-focus blip destroys it (see windowActive above). _credentials
-  // and _answer only exist while their own step is the one showing (see
-  // each Loader's own comment below), which is exactly when submit can
-  // be called for that step, so a missing one here would itself be a bug
-  // - but the guard costs nothing and keeps this from reading the wrong
-  // step's answer.
+  // submit continues from the current step with the typed drafts.
   function submit(): void {
     if (root.busy) return;
     if (root.stage === "credentials" && root._credentials) {
@@ -135,10 +100,7 @@ Item {
   // text field for credentials, a phone number, a code or a password, and
   // this Item itself for every other step, so j/k, the mnemonic letters
   // and p/q reach it through routeKey rather than needing a focused
-  // button of their own. Deferred with Qt.callLater by every caller
-  // below, so by the time this runs, credentialsLoader's and
-  // answerLoader's own active bindings (bound to the same stage this
-  // reads) have already created or destroyed their item.
+  // button of their own. Callers defer it so the Loaders have updated first.
   function _focusStep(): void {
     if (root.stage === "credentials") { if (root._credentials) root._credentials.idField.forceActiveFocus(); return; }
     if (root._field) {
@@ -149,12 +111,7 @@ Item {
     root.forceActiveFocus();
   }
 
-  // _restoreFocus puts keyboard focus back in whichever field actually
-  // had it when the window last went inactive (see _focusedField
-  // above), once windowActive turns true again: a user alt-tabbing away
-  // to copy a login code or an api_hash, then back, must not also lose
-  // their place. Deferred with Qt.callLater, for the same reason
-  // _focusStep already is.
+  // _restoreFocus refocuses the field that had focus before the window went inactive.
   function _restoreFocus(): void {
     if (root._focusedField === "apiId" && root._credentials) root._credentials.idField.forceActiveFocus();
     else if (root._focusedField === "apiHash" && root._credentials) root._credentials.hashField.forceActiveFocus();
@@ -172,7 +129,6 @@ Item {
   // for the value a binding already had when this object was created,
   // so this is what actually focuses the first step's field.
   Component.onCompleted: Qt.callLater(root._focusStep)
-  // See _restoreFocus above.
   onWindowActiveChanged: if (root.windowActive) Qt.callLater(root._restoreFocus)
 
   Keys.onPressed: event => {
@@ -252,30 +208,15 @@ Item {
         }
       }
 
-      // credentialsLoader holds the API id and hash fields, active only
-      // for the credentials step and only while the window is active
-      // (see windowActive above): a field merely hidden with `visible:`,
-      // or merely visible while the window sits unfocused in the
-      // background, is still a live Qt object that keeps reading every
-      // foreign Wayland clipboard offer, with no size or time limit, and
-      // WhatsApp's own connector can open this whole overlay unasked (a
-      // QR re-pairing after the linked device is logged out remotely),
-      // so the fields must actually be destroyed once this is not the
-      // step shown, not just hidden behind the waiting, qr, phone, code
-      // or password steps that can follow (see docs/decisions.md).
-      // _apiIdDraft/_apiHashDraft are what each field is seeded from and
-      // mirrors every keystroke into, so recreating them on return from
-      // an alt-tab loses nothing the user typed.
+      // The API id and hash fields: destroyed, not hidden, when not in use,
+      // since a hidden field still reads clipboard offers.
       Loader {
         id: credentialsLoader
         Layout.fillWidth: true
         active: root.stage === "credentials" && root.windowActive
 
         sourceComponent: ColumnLayout {
-          // idField and hashField expose the two fields so root.submit
-          // and root._focusStep can reach them through this Loader's
-          // own item, without either field needing to be known outside
-          // this Component.
+          // idField and hashField expose the two fields for focusing.
           property alias idField: idFieldInner
           property alias hashField: hashFieldInner
 
@@ -288,23 +229,11 @@ Item {
             text: root._apiIdDraft
             placeholderText: "API id"
             maximumLength: Limits.API_ID
-            // Qt's own right-click "Paste" menu would read the
-            // clipboard in-process, with no size or time limit of its
-            // own; routeKey below already routes Ctrl+V and
-            // Shift+Insert through the helper's bounded
-            // clipboard.readText instead (see docs/decisions.md), so
-            // this menu is removed outright - this field invites
-            // exactly that paste, from my.telegram.org.
+            // No context menu: its Paste would bypass the helper's size-limited clipboard read.
             ContextMenu.menu: null
             KeyNavigation.tab: hashFieldInner
             Keys.priority: Keys.BeforeItem
-            // Catches a native paste key (ui/lib/Paste.js's own
-            // isPasteKey, which covers Ctrl+Shift+Insert and the
-            // dedicated Paste key on top of Ctrl+V and Shift+Insert)
-            // ahead of the binding lookup below, so a rebound
-            // field.paste in keys.conf can never bring back this
-            // field's own unbounded native paste() (see
-            // docs/decisions.md).
+            // Route every paste key, even if rebound, through the helper's bounded paste.
             Keys.onPressed: event => {
               if (Paste.isPasteKey(event.key, event.modifiers)) {
                 if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
@@ -315,12 +244,7 @@ Item {
             }
             onAccepted: hashFieldInner.forceActiveFocus()
             onTextChanged: root._apiIdDraft = text
-            // Losing focus because the window itself went inactive is
-            // not a real blur: root.windowActive is already false by
-            // the time this runs, since that is what emptied
-            // credentialsLoader.active in the first place, so
-            // _focusedField is left alone for that case and only
-            // cleared for an actual Tab or a click elsewhere.
+            // A blur from the window going inactive keeps _focusedField for restoring.
             onActiveFocusChanged: {
               if (activeFocus) { root._focusedField = "apiId"; return; }
               if (root.windowActive) root._focusedField = "";
@@ -338,13 +262,7 @@ Item {
             maximumLength: Limits.API_HASH
             ContextMenu.menu: null
             Keys.priority: Keys.BeforeItem
-            // Catches a native paste key (ui/lib/Paste.js's own
-            // isPasteKey, which covers Ctrl+Shift+Insert and the
-            // dedicated Paste key on top of Ctrl+V and Shift+Insert)
-            // ahead of the binding lookup below, so a rebound
-            // field.paste in keys.conf can never bring back this
-            // field's own unbounded native paste() (see
-            // docs/decisions.md).
+            // Route every paste key, even if rebound, through the helper's bounded paste.
             Keys.onPressed: event => {
               if (Paste.isPasteKey(event.key, event.modifiers)) {
                 if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
@@ -355,7 +273,6 @@ Item {
             }
             onAccepted: root.submit()
             onTextChanged: root._apiHashDraft = text
-            // See idFieldInner's own onActiveFocusChanged above.
             onActiveFocusChanged: {
               if (activeFocus) { root._focusedField = "apiHash"; return; }
               if (root.windowActive) root._focusedField = "";
@@ -377,15 +294,7 @@ Item {
         fillMode: Image.PreserveAspectFit
       }
 
-      // answerLoader holds the phone, code and password field, active
-      // only while this step asks for one (root._field is non-null for
-      // exactly those three steps) and only while the window is active
-      // (see windowActive above): the same reasoning as credentialsLoader
-      // above, including WhatsApp's own ability to reopen this overlay at
-      // the qr or waiting step with nothing typed. _answerDraft is what
-      // the field is seeded from and mirrors every keystroke into, so
-      // recreating it on return from an alt-tab loses nothing typed so
-      // far for this step.
+      // The phone, code or password field, destroyed when not in use like the credentials.
       Loader {
         id: answerLoader
         Layout.fillWidth: true
@@ -400,13 +309,7 @@ Item {
           maximumLength: Limits.SETUP_ANSWER
           ContextMenu.menu: null
           Keys.priority: Keys.BeforeItem
-          // Catches a native paste key (ui/lib/Paste.js's own
-          // isPasteKey, which covers Ctrl+Shift+Insert and the
-          // dedicated Paste key on top of Ctrl+V and Shift+Insert)
-          // ahead of the binding lookup below, so a rebound
-          // field.paste in keys.conf can never bring back this
-          // field's own unbounded native paste() (see
-          // docs/decisions.md).
+          // Route every paste key, even if rebound, through the helper's bounded paste.
           Keys.onPressed: event => {
             if (Paste.isPasteKey(event.key, event.modifiers)) {
               if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
@@ -417,12 +320,7 @@ Item {
           }
           onAccepted: root.submit()
           onTextChanged: root._answerDraft = text
-          // Losing focus because the window itself went inactive is not
-          // a real blur: root.windowActive is already false by the time
-          // this runs, since that is what emptied answerLoader.active in
-          // the first place, so _focusedField is left alone for that
-          // case and only cleared for an actual Tab or a click
-          // elsewhere.
+          // A blur from the window going inactive keeps _focusedField for restoring.
           onActiveFocusChanged: {
             if (activeFocus) { root._focusedField = "answer"; return; }
             if (root.windowActive) root._focusedField = "";

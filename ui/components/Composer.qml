@@ -60,49 +60,21 @@ Item {
   // declared type for qmllint to check members against (the same
   // reasoning VoiceNoteController's own `_engine` documents).
   property var input: inputLoader.item ? inputLoader.item.area : null
-  // active is false while this composer's pane itself is not usable at
-  // all: no conversation open, or the conversation pane is hidden in a
-  // narrow window (see ConversationView.qml). The text input needs
-  // this and _writingRequested both true to exist (see
-  // inputLoader.active below) - active alone is not enough, since a
-  // merely visible field that nobody is typing into is itself a sink
-  // for a foreign Wayland clipboard offer with no size or time limit,
-  // the same risk every other field in this UI is gated against (see
-  // docs/decisions.md). Defaults true so a test or other caller that
-  // never sets it treats the pane as always usable, as it used to be
-  // the input's own only gate.
+  // active is false while this composer's pane is not usable at all: no
+  // conversation open, or the pane hidden in a narrow window.
   property bool active: true
   // windowActive is whether the user can see the window at all: shown
-  // and focused. The text input needs this, besides active and
-  // _writingRequested, to exist (see inputLoader.active below): a
-  // field merely visible while the window sits unfocused in the
-  // background - alt-tabbed away, or restored on a reopen that comes
-  // back inactive (see WindowReopen) - is still a live sink for a
-  // foreign Wayland clipboard offer, with no size or time limit, the
-  // same risk every other field in this UI is gated against (see
-  // docs/decisions.md). Defaults true so a test or other caller that
-  // never sets it (most of tests/qml/Composer, say) keeps the field
-  // exactly as it was before this existed.
+  // and focused. A field visible while the window is unfocused is
+  // still a sink for a foreign Wayland clipboard offer, so the real
+  // input needs this true too (see docs/decisions.md).
   property bool windowActive: true
-  // _writingRequested is true from the moment focusInput() is called -
-  // the composer's own single entry point for "the user wants to type
-  // now", reached through compose.focus (i/a), clicking the composer
-  // while it shows the placeholder below, or Up loading the last
-  // editable message - until the real input loses focus for a reason
-  // other than the window itself going inactive (a real blur: Escape,
-  // Tab, a click elsewhere), which clears it straight from the input's
-  // own onActiveFocusChanged. This, not merely being visible, is what
-  // the Loader below actually gates on; windowActive turning false and
-  // true again leaves it alone, so a window-focus blip while writing
-  // comes back writing, the same as it left off.
+  // _writingRequested is true from focusInput() until the real input
+  // loses focus for a genuine reason (Escape, Tab, a click elsewhere),
+  // not just the window going inactive. This, not mere visibility, is
+  // what inputLoader actually gates on.
   property bool _writingRequested: false
-  // _cursorPosition mirrors the real input's own cursorPosition,
-  // kept here rather than only in the input itself for the same reason
-  // text is: inputLoader below destroys and recreates the input across
-  // a window-focus blip or a conversation holding a blocked contact
-  // being unblocked, and only text surviving that round trip would
-  // otherwise leave the caret wherever a freshly set text defaults it
-  // to (its very end) rather than where the user actually left it.
+  // _cursorPosition mirrors the real input's cursorPosition, kept here
+  // so the caret survives the input being destroyed and recreated.
   property int _cursorPosition: 0
   // replyTo is the message being answered: {id, senderName, text}, or
   // null when the user is not replying to anything.
@@ -113,10 +85,8 @@ Item {
   // into text itself (see ComposerController.startEdit); this only
   // drives the banner and submit()'s send-or-save choice.
   property var editTarget: null
-  // scheduledEditing is true while the caller has loaded a queued "send
-  // later" message's own text in here to change it (see
-  // ComposerController.editingScheduled); drives the banner below and,
-  // together with editTarget, keeps the two never showing together.
+  // scheduledEditing is true while editing a queued "send later" message;
+  // keeps its banner and editTarget's from showing together.
   property bool scheduledEditing: false
   // attachmentPath is the file to send with the next message, or "" for
   // none. The chip above the text field shows it. Set only once the
@@ -136,26 +106,17 @@ Item {
   // guessed from its name. The chip shows a decoded preview only when
   // this is "photo": the one kind the helper has already sanitized.
   property string attachmentKind: ""
-  // attachmentSize is attachmentPath's own byte count, from the same
-  // helper round trip: 0 while no attachment is set. The chip shows it
-  // alongside attachmentLimit once it sits close to or over that limit.
+  // attachmentSize is attachmentPath's byte count; 0 while no attachment is set.
   property real attachmentSize: 0
-  // attachmentLimit is the cap attachmentPath was checked against, in
-  // bytes: the account's own connector limit for attachmentKind, or
-  // the helper's default when none is known. 0 while no attachment is
-  // set.
+  // attachmentLimit is the cap attachmentPath was checked against, in bytes.
   property real attachmentLimit: 0
-  // attachmentLimitHint is the open conversation's own account limit,
-  // shown as "Up to 2 GB" near the attach button before any file is
-  // picked; "" while it is not known yet.
+  // attachmentLimitHint shows the open conversation's limit near the
+  // attach button, e.g. "Up to 2 GB", or "" when unknown.
   property string attachmentLimitHint: ""
-  // _attachmentSizeLabel is the chip's size-and-limit text, computed
-  // once attachmentSize sits close to or over attachmentLimit; "" for
-  // an ordinary small attachment, which shows nothing extra.
+  // _attachmentSizeLabel is the chip's size-and-limit text, or "" for
+  // an ordinary small attachment.
   readonly property string _attachmentSizeLabel: Attachments.attachmentSizeLabel(root.attachmentSize, root.attachmentLimit)
-  // _attachmentOverLimit is true once attachmentSize is actually over
-  // attachmentLimit, for the chip's size label to show in the same
-  // urgent colour the error banner uses, rather than merely muted.
+  // _attachmentOverLimit is true once attachmentSize exceeds attachmentLimit.
   readonly property bool _attachmentOverLimit: root.attachmentLimit > 0 && root.attachmentSize > root.attachmentLimit
   // routeKey intercepts a key press before the input handles it; see the
   // file comment above for why this is a function property, not a signal.
@@ -219,15 +180,9 @@ Item {
   // input's own coordinates, recomputed by _recomputeOverlay.
   property var _overlayRects: []
 
-  // _truncatedAtLength is the exact length (TextArea.text's own UTF-16
-  // units) the input was cut to the last time its onTextChanged guard
-  // actually cut it, or -1 while the text is not currently pinned at
-  // the cap by a cut. textTruncated fires only when this is -1,
-  // tracking a cut "session" rather than every character the guard
-  // rejects while the user keeps typing or pasting past an already-cut
-  // text: it resets once the text actually shrinks below where the
-  // last cut left it (a deletion), so pasting over the limit again
-  // later fires the signal again.
+  // _truncatedAtLength is the length the input was last cut to, or -1
+  // when not currently pinned at the cap; textTruncated fires once per
+  // cut "session", resetting once the text shrinks below that length.
   property int _truncatedAtLength: -1
 
   // writing is true while the text input holds keyboard focus: typing
@@ -255,20 +210,12 @@ Item {
   // editCanceled reports that the user dismissed the editing banner.
   signal editCanceled()
   // scheduledEditCanceled reports that the user dismissed the queued
-  // message's own editing banner, leaving it queued unchanged.
+  // message's editing banner, leaving it queued unchanged.
   signal scheduledEditCanceled()
-  // fileAttached reports a file the caller's own file picker chose,
-  // for the caller to attach; a test with no real portal to drive
-  // emits this directly in place of one (see tests/qml/Flows).
+  // fileAttached reports a file the caller's file picker chose.
   signal fileAttached(string path)
-  // attachRequested asks the caller to run the portal's own file
-  // chooser over the helper (files.pick), out of process from the
-  // shared Omarchy shell, for the attach button and the command
-  // palette's "Attach a file" (see docs/decisions.md): never the
-  // in-process GTK dialog that once crashed the whole shell, and
-  // never a fallback dialog of this composer's own either - the
-  // caller shows a notice instead when the portal cannot be reached
-  // (see docs/decisions.md).
+  // attachRequested asks the caller to run the portal's file chooser
+  // over the helper, never an in-process dialog (see docs/decisions.md).
   signal attachRequested()
   // attachmentRemoveRequested asks the caller to clear attachmentPath,
   // from the chip's ✕ or Escape (handled by the caller's escape chain).
@@ -279,17 +226,10 @@ Item {
   // spellWordAdded asks the caller to add word to the personal
   // dictionary.
   signal spellWordAdded(string word)
-  // sendLaterRequested asks the caller to open the "Send later…"
-  // prompt, from the clock button beside Send: the same prompt
-  // Ctrl+L opens (see Keymap.js's compose.sendLater).
+  // sendLaterRequested asks the caller to open the "Send later…" prompt.
   signal sendLaterRequested()
-  // textTruncated reports that a paste or further typing just made the
-  // input's own guard actually cut the draft down to limit characters
-  // (SpellCheck.MAX_COMPOSER_TEXT_LENGTH), so the caller can show a
-  // toast naming the cap: see qml.md, a component never shows this
-  // itself, only reports the intent. Fired once per cut (see
-  // _truncatedAtLength below), not on every further keystroke while
-  // the text stays pinned at the limit.
+  // textTruncated reports that the input's guard just cut the draft to
+  // limit characters, fired once per cut (see _truncatedAtLength).
   signal textTruncated(int limit)
 
   // A binding from text straight to the input would break the moment
@@ -309,15 +249,8 @@ Item {
     root._mentionTokens = []
   }
 
-  // focusInput starts writing: the single entry point that turns
-  // _writingRequested true, which is what actually loads the text
-  // input (see inputLoader.active). Moves keyboard focus into it at
-  // once if it already exists; otherwise the Loader's own onLoaded
-  // grants the focus this asked for the moment the input actually
-  // loads - right away if active, windowActive and enabled are
-  // already true, or only once whichever of those was not catches up
-  // (the window becoming active again, or the contact being
-  // unblocked), never before.
+  // focusInput starts writing, loading the text input if it doesn't
+  // exist yet and moving keyboard focus into it.
   function focusInput() {
     root._writingRequested = true
     if (root.input) root.input.forceActiveFocus()
@@ -366,9 +299,7 @@ Item {
     root.input.cursorPosition = result.cursor
   }
 
-  // openFilePicker asks the caller to run the portal's own file
-  // chooser, for the attach button and the command palette's "Attach
-  // a file" command; see attachRequested.
+  // openFilePicker asks the caller to run the portal's file chooser.
   function openFilePicker() {
     root.attachRequested()
   }
@@ -465,13 +396,8 @@ Item {
   }
 
   // _recomputeOverlay rebuilds _overlayRects from _effectiveMisspellings,
-  // deferred with Qt.callLater since the text layout is not settled in
-  // the same tick a text or misspellings change arrives in. Capped to
-  // SpellCheck.MAX_RENDERED_MISSPELLINGS and built with push rather than
-  // repeated concat, so a huge misspelling list - the helper already
-  // bounds its own result, but an older helper or a connector bug could
-  // still hand over more - costs linear work here too, not quadratic,
-  // and never creates an unbounded number of underline delegates.
+  // deferred since the text layout isn't settled yet, capped to
+  // SpellCheck.MAX_RENDERED_MISSPELLINGS so a huge list stays linear cost.
   function _recomputeOverlay() {
     Qt.callLater(function() {
       if (!root.input) return // the input was destroyed before this deferred call ran
@@ -733,10 +659,7 @@ Item {
           font.pixelSize: Theme.font.bodySmall
         }
 
-        // attachmentSizeLabel names the file's size against its own
-        // limit, but only once Attachments.attachmentSizeLabel decides
-        // it is worth a heads-up (near or over it); an ordinary small
-        // attachment shows nothing here at all.
+        // Shows the file's size against its limit only once it's worth a heads-up.
         Text {
           objectName: "attachmentSizeLabel"
           Layout.fillWidth: true
@@ -797,24 +720,16 @@ Item {
         onClicked: root.openFilePicker()
       }
 
-      // placeholderRow shows root.text (or the placeholder) as plain,
-      // non-editable Text while the real input does not exist: a field
-      // merely visible but not focused is itself a sink for a foreign
-      // Wayland clipboard offer, with no size or time limit of its own
-      // (see docs/decisions.md), so the real TextArea below exists only
-      // from focusInput() (compose.focus, or a click here) until it
-      // loses focus. A click starts writing, the same gesture that
-      // would have placed the caret in a real field.
+      // placeholderRow shows root.text as plain, non-editable Text while
+      // the real input doesn't exist, since a visible-but-unfocused
+      // field is a clipboard sink (see docs/decisions.md). A click starts writing.
       Item {
         id: placeholderRow
         objectName: "composerPlaceholder"
         Layout.fillWidth: true
         Layout.preferredHeight: fontMetrics.height + Theme.spacing.inputPaddingY * 2
         visible: !inputLoader.active
-        // This only ever shows while not writing (it is what the real
-        // input swaps for the moment writing stops), so it carries the
-        // same dimmed look the real TextArea used to show in that
-        // state, rather than looking identical to the focused field.
+        // Dimmed the same way the real TextArea looks when not focused.
         opacity: root.dimmedOpacity
 
         Text {
@@ -838,19 +753,8 @@ Item {
       }
 
       // The real text input lives behind a Loader, active only while
-      // _writingRequested names this the field actually being edited
-      // right now (see root._writingRequested's own comment), the
-      // window is actually active, and the composer itself is enabled
-      // (not blocked): a hidden-but-alive TextArea still reads Wayland
-      // clipboard changes with no size or time limit, the same risk
-      // every other field in this UI is gated against (see
-      // docs/decisions.md), and a blocked conversation's own field can
-      // never gain focus to lose it and be destroyed that way, so it
-      // must never be created at all. Its text and cursor position are
-      // seeded from root.text and root._cursorPosition every time it
-      // loads; destroying it loses nothing, since every change already
-      // flowed up through the input's own onTextChanged and
-      // onCursorPositionChanged as it happened.
+      // writing, the window is active and the composer is enabled (see
+      // docs/decisions.md). Text and cursor are reseeded on each load.
       Loader {
         id: inputLoader
         Layout.fillWidth: true
@@ -887,20 +791,12 @@ Item {
             textFormat: TextEdit.PlainText
             selectByMouse: true
             placeholderText: root.blocked ? "Blocked" : "Message"
-            // Qt's own right-click "Paste" menu would read the
-            // clipboard in-process, with no size or time limit of its
-            // own; removed outright rather than relied on the
-            // spellRightClick MouseArea below happening to swallow the
-            // press first (see docs/decisions.md).
+            // Qt's right-click "Paste" menu reads the clipboard
+            // in-process with no size limit; removed outright (see docs/decisions.md).
             ContextMenu.menu: null
 
             onTextChanged: {
-              // A pasted clipboard string has no length limit of its
-              // own, unlike typing, so it is capped here to the same
-              // length messages.send would accept: assigning the
-              // capped text re-enters this handler once more, already
-              // within the cap, so the rest of it only ever runs on
-              // text that fits.
+              // A paste has no length limit of its own, unlike typing, so cap it here.
               const capped = SpellCheck.capComposerText(text)
               if (capped !== text) {
                 area.text = capped
@@ -923,30 +819,14 @@ Item {
                 root._closeSpellPicker()
               }
             }
-            // Losing focus for a real reason - Escape, Tab, a click
-            // elsewhere - ends writing: _writingRequested turns false,
-            // which destroys this field through inputLoader.active
-            // above rather than leaving it alive but merely hidden.
-            // Losing it only because the window itself just went
-            // inactive is not that: root.windowActive is already false
-            // by the time this runs, since that is what emptied
-            // inputLoader.active in the first place, so _writingRequested
-            // is left alone for that case, the same way the field itself
-            // is left to come back once the window is active again.
+            // A real blur (Escape, Tab, a click elsewhere) ends writing;
+            // the window merely going inactive does not.
             onActiveFocusChanged: if (!area.activeFocus && root.windowActive) root._writingRequested = false
 
             Keys.priority: Keys.BeforeItem
             Keys.onPressed: event => {
-              // Catches a native paste key (ui/lib/Paste.js's own
-              // isPasteKey, which covers Ctrl+Shift+Insert and the
-              // dedicated Paste key on top of Ctrl+V and Shift+Insert)
-              // ahead of every other check below, including the
-              // mention and spell pickers: a rebound compose.attach in
-              // keys.conf can never bring back this field's own
-              // unbounded native paste() (see docs/decisions.md).
-              // routeKey resolves nativePaste to compose.attach for
-              // the composer's own context, so it still tries a
-              // pasted image first, the same as Ctrl+V.
+              // Catches a native paste key ahead of every other check,
+              // so it can never bypass the clipboard guard (see docs/decisions.md).
               if (Paste.isPasteKey(event.key, event.modifiers)) {
                 if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true)
                 event.accepted = true
@@ -1037,19 +917,9 @@ Item {
             }
 
             // spellRightClick opens the spelling picker for the word
-            // under a right-click, without otherwise changing how the
-            // text input handles the mouse: a left-click, drag or
-            // scroll passes straight through to it. It also swallows a
-            // middle-click outright, rather than letting the TextArea's
-            // own default handling paste the Wayland primary selection:
-            // that is Qt's in-process clipboard reader again, with no
-            // size or time limit of its own, the same risk Ctrl+V's own
-            // fallback was rewritten to avoid (see docs/decisions.md).
-            // There is no equivalent helper-side read of the primary
-            // selection to fall back to instead - middle-click paste
-            // simply does nothing here now, a deliberately smaller loss
-            // than adding a second clipboard-reading path for one rarely
-            // used gesture.
+            // under a right-click, passing other mouse input through.
+            // It also swallows middle-click outright, rather than
+            // letting Qt paste the primary selection in-process (see docs/decisions.md).
             MouseArea {
               id: spellRightClick
               objectName: "spellRightClickArea"
@@ -1074,13 +944,8 @@ Item {
         }
       }
 
-      // sendLaterButton opens the "Send later…" prompt for whatever is
-      // already typed: the one visible entry point for it besides
-      // Ctrl+L, since nothing else in the composer hints that
-      // scheduling a message is possible at all. Only enabled with
-      // text typed, like Send itself needing something to send,
-      // though unlike Send an attachment alone is not enough:
-      // scheduling is text only (see WindowController._scheduleDraft).
+      // sendLaterButton opens the "Send later…" prompt; enabled only
+      // with text typed, since scheduling is text only.
       Ui.Button {
         id: sendLaterButton
         objectName: "sendLaterButton"

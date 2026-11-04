@@ -42,11 +42,9 @@ func (c *Connector) Members(ctx context.Context, conv domain.Conversation) ([]do
 	return out, nil
 }
 
-// memberName names a group participant: their resolved contact name
-// or push name (the same resolution senderDisplayName already gives a
-// message's own sender), falling back to the obfuscated display name
-// WhatsApp gives an anonymous participant of an announcement group, or
-// the generic label any other unresolved sender gets.
+// memberName names a group participant: resolved contact or push name,
+// falling back to the obfuscated name WhatsApp gives an anonymous
+// announcement-group participant, or the generic label otherwise.
 func memberName(ctx context.Context, dev device, p types.GroupParticipant) string {
 	if name, _ := dev.contactName(ctx, p.JID); name != "" {
 		return name

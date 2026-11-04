@@ -1,11 +1,8 @@
 package transcode
 
-// stillframe.go runs the StillFrame profile: ffmpeg's own fixed
-// argument list for extracting a static PNG from an animated WebP
-// sticker (which Go's standard library and x/image cannot decode at
-// all) or any other video or animation, for a thumbnail or a preview
-// before the user has asked to play it. See docs/decisions.md for why
-// each flag is there.
+// stillframe.go extracts a static PNG thumbnail from a video or
+// animation, including animated WebP stickers Go's own image packages
+// cannot decode. See docs/decisions.md for why each ffmpeg flag is there.
 
 import (
 	"context"
@@ -16,22 +13,16 @@ import (
 // inside the sandbox's output directory.
 const stillFrameOutputName = "out.png"
 
-// stillFrameTimeout bounds a StillFrame job's wall clock: decoding a
-// single frame is far cheaper than any full encode this package runs,
-// so this only needs room for ffmpeg's own startup and probing plus a
-// handful of frames' worth of decoding to reach the first one.
+// stillFrameTimeout bounds a StillFrame job's wall clock: decoding one
+// frame is far cheaper than a full encode.
 const stillFrameTimeout = 30 * time.Second
 
-// stillFrameMaxOutputBytes bounds StillFrame's own output file: a
-// single PNG frame scaled to fit 1024x1024, generous even for a
-// frame with large areas of fine, hard-to-compress detail.
+// stillFrameMaxOutputBytes bounds StillFrame's PNG output, generous
+// even for a frame with hard-to-compress detail.
 const stillFrameMaxOutputBytes = 4 << 20
 
-// StillFrame extracts in's first video frame - any video, animation
-// or animated image ffmpeg can decode - as a PNG at outDir, scaled to
-// fit 1024x1024 without ever upscaling. It returns the output file's
-// path, or one of this package's own sentinel errors (see the package
-// doc comment).
+// StillFrame extracts in's first video frame as a PNG at outDir,
+// scaled to fit 1024x1024 without upscaling.
 func (t *Transcoder) StillFrame(ctx context.Context, in, outDir string) (string, error) {
 	return t.run(ctx, in, outDir, profile{
 		args:       stillFrameArgs(),
@@ -41,15 +32,9 @@ func (t *Transcoder) StillFrame(ctx context.Context, in, outDir string) (string,
 	})
 }
 
-// stillFrameArgs is the StillFrame profile's own fixed ffmpeg
-// argument list: filterThreadArgs and outputThreadArgs bound its own
-// scale filter and its png encoder the same way every other profile
-// bounds its own filter and encoder (see mediaThreads' own doc
-// comment in args.go) - both otherwise default to this machine's own
-// core count (confirmed directly: without them, a real animated WebP
-// sticker through this exact profile needed prlimit --nproc above 52
-// to succeed at all, nothing like the handful of threads every other
-// profile's own fixed, capped pipeline needs).
+// stillFrameArgs is StillFrame's fixed ffmpeg argument list. Thread
+// args cap the scale filter and png encoder, which otherwise default
+// to this machine's full core count.
 func stillFrameArgs() []string {
 	args := commonInputArgs()
 	args = append(args, filterThreadArgs()...)

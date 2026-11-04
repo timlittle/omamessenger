@@ -24,14 +24,9 @@ const (
 var ErrInvalidMessage = errors.New("message needs conversationId and text")
 
 // AddMessage stores a message and updates its conversation's preview,
-// unread count and activity time. A message whose RemoteID is already stored
-// in the conversation is returned unchanged with inserted false, so a
-// connector replaying history never double-counts unread messages. Media
-// is filled into that existing row only when the new message's sender
-// and Outgoing flag also match it (see sameSender): a different sender
-// naming an already-stored id is never merged into it, so reusing a
-// remote id can never attach media to a message its own sender never
-// sent.
+// unread count and activity time. A message whose RemoteID is already
+// stored is returned unchanged with inserted false; from the same sender,
+// its media fills in the stored row's missing media.
 func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Message, inserted bool, _ error) {
 	return s.addMessage(ctx, m, true)
 }
@@ -73,17 +68,10 @@ func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread bo
 }
 
 // resolveReply fills a reply's quoted sender id, name and excerpt from
-// the message it answers, stored earlier in the same conversation, when
-// the caller did not already supply all three: a connector reporting an
-// incoming reply often knows only the quoted message's remote id, while
-// an outgoing reply the app builds already carries everything
-// resolveReplyTo could resolve itself. The lookup is always scoped to
-// m's own conversation, never the whole account: a message's remote id
-// is only unique within one conversation, so resolving against another
-// one is exactly the mix-up RefreshSenderName's own scoping depends on
-// this never doing (see sendernames.go and docs/decisions.md). A quoted
-// message not stored here yet, such as one still outside the loaded
-// history, leaves the reply as given, with no sender id.
+// the message it answers, when the caller did not already supply all
+// three. The lookup is scoped to m's own conversation, since a remote
+// id is only unique within one. A quoted message not stored yet
+// leaves the reply as given.
 func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Message {
 	if m.ReplyTo == nil || m.ReplyTo.RemoteID == "" {
 		return m
@@ -107,20 +95,14 @@ func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Messa
 }
 
 // sameSender reports whether m's sender and direction match an
-// already-stored message's: the guard every fill into an existing row
-// by (conversation, remote id) must pass before merging anything into
-// it. A service lets whoever sends a message choose its own id, so
-// without this a second sender naming an existing message's id -
-// someone else's, or this account's own - could attach their own media
-// to it just by reusing that id (see docs/decisions.md).
+// already-stored message's, so a second sender cannot attach media to
+// another sender's message by reusing its remote id.
 func sameSender(existing, m domain.Message) bool {
 	return existing.SenderID == m.SenderID && existing.Outgoing == m.Outgoing
 }
 
 // fillMedia adds media to a message stored before the service reported
-// it, such as one synced before link previews existed. Callers must
-// already know m's sender matches the stored message's (see
-// sameSender); fillMedia itself does not check it again.
+// it, such as one synced before link previews existed.
 func (s *Store) fillMedia(ctx context.Context, m domain.Message, media *domain.Media) (domain.Message, bool, error) {
 	media = verifyThumb(media)
 	encoded, err := encodeMedia(media)
@@ -235,10 +217,6 @@ func originalAttachment(media *domain.Media) (path string, modTime int64) {
 // bumpConversation counts m as unread when countUnread is set and it is
 // incoming and not yet read, and makes it the preview when it is the
 // newest message. Older history arriving later leaves the preview alone.
-// The stored preview is capped to domain.MaxPreviewLength: m.Text itself
-// can be up to domain.MaxIncomingTextLength, far more than the one line
-// a conversation row ever shows, and scanConversationWith only re-caps
-// it for a row already stored too large, not a new one.
 func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message, countUnread bool) error {
 	unread := boolInt(countUnread && !m.Outgoing && m.Status != domain.StatusRead)
 	preview := domain.CapPreview(m.Text)
@@ -258,11 +236,8 @@ func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message, countUn
 	return requireRow("bump conversation", res)
 }
 
-// Message returns one message by its local id. A row whose own
-// RemoteID or SenderID runs past domain.MaxRemoteIDLength - a message
-// an older release stored before app.Ingest refused one shaped like
-// this - is reported the same as one that is not there at all (see
-// oversizedID).
+// Message returns one message by its local id, or not found for a row
+// with an oversized id.
 func (s *Store) Message(ctx context.Context, id string) (domain.Message, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages WHERE id=?`, id)
 	m, err := scanMessage(row)
@@ -273,10 +248,7 @@ func (s *Store) Message(ctx context.Context, id string) (domain.Message, error) 
 	return m, wrap("message", err)
 }
 
-// MessageByRemote returns one message by its service's id, with the
-// same oversizedID check Message gives a stored row: EditMessage,
-// SetReactions and SetPoll all find the message they update through
-// this, so none of them can republish a legacy row shaped like this.
+// MessageByRemote returns one message by its service's id, like Message.
 func (s *Store) MessageByRemote(ctx context.Context, conversationID, remoteID string) (domain.Message, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT `+messageColumns+` FROM messages
 		WHERE conversation_id=? AND remote_id=? AND remote_id!=''`, conversationID, remoteID)
@@ -436,11 +408,7 @@ func (s *Store) Messages(ctx context.Context, conversationID, beforeID string, l
 	hasMore = len(page) > limit
 	page = page[:min(len(page), limit)]
 	slices.Reverse(page)
-	// A row with an oversized RemoteID or SenderID (see oversizedID) is
-	// dropped from the page rather than failing it outright, so the one
-	// legacy row a release before app.Ingest's own refusal existed left
-	// behind can never push every other message in the same page out of
-	// the UI with it.
+	// Drop a legacy row with an oversized id rather than failing the page.
 	page = slices.DeleteFunc(page, oversizedID)
 
 	return page, hasMore, nil
@@ -464,16 +432,9 @@ func (s *Store) pageCursor(ctx context.Context, conversationID, beforeID string)
 	return ` AND (created<? OR (created=? AND rowid<?))`, append(args, created, created, rowid), nil
 }
 
-// oversizedID reports whether m's own RemoteID or SenderID runs past
-// domain.MaxRemoteIDLength (see domain.ValidMessageIDs). app.Ingest
-// already refuses to store a message shaped like this, so this only
-// ever matches a row a release before that refusal existed left
-// behind. scanMessage cannot repair RemoteID or SenderID the way it
-// repairs every other field: RemoteID is the dedup key and the handle
-// React, Edit and Delete key off, so Message and MessageByRemote treat
-// a row like this as domain.ErrNotFound, and Messages drops it from
-// the page, rather than any of them truncating or clearing either
-// field.
+// oversizedID reports whether a row left by an older release has an
+// over-long RemoteID or SenderID, which is hidden rather than truncated
+// because RemoteID is the key for dedup, reactions, edits and deletes.
 func oversizedID(m domain.Message) bool {
 	return !domain.ValidMessageIDs(m)
 }
@@ -495,43 +456,26 @@ func scanMessage(row scanner) (domain.Message, error) {
 		return m, err
 	}
 
-	// A row an older release stored before domain.SanitizeIncoming's
-	// caps existed - a message's own text, sender name, reactions,
-	// mentions, formatting spans or media - comes back exactly as the
-	// sender sent it, with no bound of its own, unless it is repaired
-	// here on every read. This is the same reasoning sanitizedThumb
-	// above already gives a stored thumbnail: the cap is a property of
-	// what leaves the store, not of when the row was written, and
-	// calling the one function app.Ingest also calls for a newly
-	// arriving message means the two paths can never drift apart (see
-	// docs/decisions.md).
+	// Rows stored before the caps existed are capped on every read (see docs/decisions.md).
 	return domain.SanitizeIncoming(m), nil
 }
 
-// messageRawColumns holds scanMessage's own JSON-in-a-column fields -
-// media, a reply quote, reactions, mentions and formatting spans -
-// exactly as stored, bundled into one value so decodeMessageColumns
-// can take it as a single argument instead of one per column.
-// originalPath and originalModTime are media's own plain columns,
-// carried alongside its JSON since they are local-only fields (see
-// domain.Media's own comment) rather than something json.Unmarshal
-// can fill in for it.
+// messageRawColumns holds a message row's JSON columns as stored, plus
+// the local-only original file columns that media's JSON leaves out.
 type messageRawColumns struct {
 	media, replyTo, reactions, mentions, formatting string
 	originalPath                                    string
 	originalModTime                                 int64
 }
 
-// decodeMessageColumns unmarshals raw's own JSON-in-a-column fields
-// into m, in place.
+// decodeMessageColumns unmarshals raw's JSON columns into m.
 func decodeMessageColumns(m *domain.Message, raw messageRawColumns) error {
 	if raw.media != "" {
 		m.Media = &domain.Media{}
 		if err := json.Unmarshal([]byte(raw.media), m.Media); err != nil {
 			return err
 		}
-		// Re-checked on every read, not just once by a migration: see
-		// sanitizedThumb and docs/decisions.md.
+		// Re-checked on every read so older rows are covered without a migration.
 		m.Media.Thumb, m.Media.ThumbWidth, m.Media.ThumbHeight = sanitizedThumb(m.Media.Thumb)
 		m.Media.OriginalPath, m.Media.OriginalModTime = raw.originalPath, raw.originalModTime
 	}

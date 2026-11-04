@@ -1,9 +1,7 @@
 package transcode
 
-// remuxbuild.go builds the moov and ftyp remux.go's doRemux writes
-// for its rebuilt file, and copies its scratch file's already-
-// validated bytes into place: see remux.go for what is validated
-// before any of this runs.
+// remuxbuild.go builds the moov and ftyp for doRemux's rebuilt file
+// and copies the scratch file's validated bytes into place.
 
 import (
 	"fmt"
@@ -14,33 +12,27 @@ import (
 	"github.com/Eyevinn/mp4ff/mp4"
 )
 
-// mdatHeaderBytes is the ordinary 8-byte mdat header size this
-// package always gets: every profile's own cap keeps a rebuilt
-// file's total payload far under the 4 GiB a plain 32-bit size field
-// can hold.
+// mdatHeaderBytes is the ordinary 8-byte mdat header size: every
+// profile's cap keeps the payload well under the 32-bit size limit.
 const mdatHeaderBytes = 8
 
-// videoTrackID and audioTrackID are the fixed track IDs this package
-// gives the one video and, when present, one audio track it ever
-// writes.
+// videoTrackID and audioTrackID are the fixed track IDs given to the
+// one video and, when present, one audio track this package writes.
 const (
 	videoTrackID = 1
 	audioTrackID = 2
 )
 
-// remuxDescriptors bundles the two already-validated sample
-// descriptors buildMoov builds a fresh avc1 and, when audio is
-// present, mp4a sample entry from - one argument instead of two, to
-// keep writeRemuxed's own parameter count down.
+// remuxDescriptors bundles the validated sample descriptors buildMoov
+// builds fresh avc1 and mp4a sample entries from.
 type remuxDescriptors struct {
 	avcC *mp4.AvcCBox
 	asc  *aac.AudioSpecificConfig
 }
 
-// writeRemuxed builds the moov for video (and audio, when present),
-// then writes ftyp, moov and mdat to outPath, copying scratchPath's
-// own bytes - video's samples, then audio's - into mdat with a
-// bounded copy rather than holding them in memory at once.
+// writeRemuxed builds the moov for video (and audio, when present)
+// and writes ftyp, moov and mdat to outPath, copying scratchPath's
+// bytes into mdat without holding them in memory at once.
 func writeRemuxed(outPath, scratchPath string, descriptors remuxDescriptors, video, audio *remuxTrack) error {
 	moov, err := buildMoov(descriptors, video, audio)
 	if err != nil {
@@ -74,11 +66,9 @@ func writeRemuxed(outPath, scratchPath string, descriptors remuxDescriptors, vid
 	}
 }
 
-// assignChunkOffsets writes video's and, when present, audio's own
-// chunkOffset into the stco box buildMoov already gave each track:
-// moov's own size does not change when a stco slot's value changes,
-// only when the slot is added, so this can run after moov.Size() has
-// already been used to compute those very offsets.
+// assignChunkOffsets writes video's and, when present, audio's
+// chunkOffset into the stco box buildMoov already created; this runs
+// after moov.Size() since filling the value does not change the size.
 func assignChunkOffsets(moov *mp4.MoovBox, video, audio *remuxTrack) {
 	moov.Traks[0].Mdia.Minf.Stbl.Stco.ChunkOffset[0] = uint32(video.chunkOffset)
 	if audio != nil {
@@ -87,11 +77,8 @@ func assignChunkOffsets(moov *mp4.MoovBox, video, audio *remuxTrack) {
 }
 
 // buildMoov assembles a fresh moov for video (and, when present,
-// audio), using mp4ff's own sample-entry builders fed only the
-// values remux.go already validated: a fresh avcC from
-// descriptors.avcC's own already-validated SPS and PPS bytes, and,
-// for audio, a fresh esds from descriptors.asc. Neither sample entry
-// is copied from the file being rebuilt.
+// audio) from already-validated descriptors, never copying a sample
+// entry from the file being rebuilt.
 func buildMoov(descriptors remuxDescriptors, video, audio *remuxTrack) (*mp4.MoovBox, error) {
 	moov := mp4.NewMoovBox()
 	moov.AddChild(mp4.CreateMvhd())
@@ -120,10 +107,8 @@ func buildMoov(descriptors remuxDescriptors, video, audio *remuxTrack) (*mp4.Moo
 	return moov, nil
 }
 
-// buildVideoTrak returns a fresh trak for video, with its own avcC
-// built from srcAvcC's already-validated SPS and PPS bytes (never
-// srcAvcC itself, so nothing else it might carry crosses over) and
-// its sample tables built from video's own validated samples.
+// buildVideoTrak returns a fresh trak for video, with its avcC built
+// only from srcAvcC's validated SPS and PPS bytes.
 func buildVideoTrak(video *remuxTrack, srcAvcC *mp4.AvcCBox) (*mp4.TrakBox, error) {
 	trak := mp4.CreateEmptyTrak(videoTrackID, video.timescale, "video", "und")
 	if err := trak.SetAVCDescriptor("avc1", srcAvcC.SPSnalus, srcAvcC.PPSnalus, true); err != nil {
@@ -135,10 +120,9 @@ func buildVideoTrak(video *remuxTrack, srcAvcC *mp4.AvcCBox) (*mp4.TrakBox, erro
 	return trak, nil
 }
 
-// buildAudioTrak returns a fresh trak for audio, with its own esds
-// built from asc's already-validated fields (never the file's own
-// esds) and its sample tables built from audio's own validated
-// samples. Audio has no stss: every AAC-LC frame decodes on its own.
+// buildAudioTrak returns a fresh trak for audio, with its esds built
+// only from asc's validated fields. Audio has no stss: every AAC-LC
+// frame decodes on its own.
 func buildAudioTrak(audio *remuxTrack, asc *aac.AudioSpecificConfig) (*mp4.TrakBox, error) {
 	trak := mp4.CreateEmptyTrak(audioTrackID, audio.timescale, "audio", "und")
 	if err := trak.SetAACDescriptorWithChannelConfig(asc.ObjectType, asc.ChannelConfiguration, asc.SamplingFrequency); err != nil {
@@ -150,25 +134,22 @@ func buildAudioTrak(audio *remuxTrack, asc *aac.AudioSpecificConfig) (*mp4.TrakB
 	return trak, nil
 }
 
-// fillSampleTables replaces trak's own empty stts/stsc/stsz/stco
-// (and, when stss is non-nil, adds it too) with ones built from
-// track's own validated samples. track's chunkOffset is not known
-// yet at this point; buildMoov's own caller fills it in once moov's
-// size - and so the output file's layout - is known.
+// fillSampleTables replaces trak's empty stts/stsc/stsz/stco (and
+// stss, when non-nil) with ones built from track's validated samples.
+// chunkOffset is filled in later, once the output layout is known.
 func fillSampleTables(trak *mp4.TrakBox, track *remuxTrack, stss *mp4.StssBox) {
 	stbl := trak.Mdia.Minf.Stbl
 	stbl.Stts = buildStts(track.durations)
 	stbl.Stsc = &mp4.StscBox{}
-	_ = stbl.Stsc.AddEntry(1, uint32(len(track.sizes)), 1) // a fixed, always-valid entry: a first chunk of 1 can never fail validation
+	_ = stbl.Stsc.AddEntry(1, uint32(len(track.sizes)), 1) // a fixed entry; can never fail validation
 	stbl.Stsz = buildStsz(track.sizes)
 	stbl.Stco = &mp4.StcoBox{ChunkOffset: []uint32{0}}
 	stbl.Stss = stss
 	stbl.Children = sampleTableChildren(stbl)
 }
 
-// sampleTableChildren returns stbl's own children in the fixed
-// order a stbl box needs, given its own fields already set: stsd
-// first, then stts, stsc, stsz, stss (when present) and stco.
+// sampleTableChildren orders stbl's children as a stbl box requires:
+// stsd, stts, stsc, stsz, stss (when present), stco.
 func sampleTableChildren(stbl *mp4.StblBox) []mp4.Box {
 	children := []mp4.Box{stbl.Stsd, stbl.Stts, stbl.Stsc, stbl.Stsz}
 	if stbl.Stss != nil {
@@ -191,15 +172,13 @@ func buildStts(durs []uint32) *mp4.SttsBox {
 	return stts
 }
 
-// buildStsz lists sizes verbatim: this package's own tracks are
-// short enough that the uniform-size compaction a larger file
-// benefits from is not worth the extra code.
+// buildStsz lists sizes verbatim; these tracks are too short for
+// uniform-size compaction to be worth the extra code.
 func buildStsz(sizes []uint32) *mp4.StszBox {
 	return &mp4.StszBox{SampleNumber: uint32(len(sizes)), SampleSize: sizes}
 }
 
-// buildStss lists the 1-based sample numbers idr marks true: exactly
-// the IDR frames this package's own NAL filtering already found.
+// buildStss lists the 1-based sample numbers idr marks true.
 func buildStss(idr []bool) *mp4.StssBox {
 	stss := &mp4.StssBox{}
 	for i, v := range idr {
@@ -210,9 +189,8 @@ func buildStss(idr []bool) *mp4.StssBox {
 	return stss
 }
 
-// sumDurations adds up durs as an int64: every individual duration
-// and this package's own sample-count cap keep the total far under
-// an int64 overflow for any track this package ever builds.
+// sumDurations adds up durs as an int64; the duration and sample-count
+// caps keep the total well under overflow.
 func sumDurations(durs []uint32) int64 {
 	var total int64
 	for _, d := range durs {
@@ -222,11 +200,7 @@ func sumDurations(durs []uint32) int64 {
 }
 
 // rescaleTicks converts dur ticks at timescale from into the
-// equivalent tick count at timescale to, rounding to the nearest
-// tick. Every duration this package ever rescales is already capped
-// by a profile's own duration limit, so plain int64 arithmetic
-// cannot overflow here the way it would need to guard against for
-// an arbitrary, unbounded media duration.
+// equivalent tick count at timescale to, rounding to the nearest tick.
 func rescaleTicks(dur int64, from, to uint32) int64 {
 	if from == to || from == 0 {
 		return dur

@@ -1,15 +1,10 @@
 import QtQuick
 
-// Asks whether to archive one conversation, since a stray key once
-// archived a pinned chat with no warning at all, leaving the list
-// showing it both "Pinned" and "Archived" (see docs/decisions.md): the
-// same y/n idiom ArchiveAllConfirm's own bulk question uses. Unarchiving
-// never asks, since it only ever reverses something already confirmed.
+// Asks whether to archive one conversation before doing it (see docs/decisions.md).
 ChoiceDialog {
   id: root
 
-  // conversationTitle names the conversation this would archive; title
-  // is already ChoiceDialog's own property for the question itself.
+  // conversationTitle names the conversation this would archive.
   property string conversationTitle: ""
 
   // confirmed archives the conversation the question named.

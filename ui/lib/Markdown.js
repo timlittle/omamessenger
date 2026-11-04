@@ -11,28 +11,16 @@
 // dashes with optional leading/trailing colons for alignment.
 var SEPARATOR_CELL = /^:?-+:?$/;
 
-// MAX_TABLE_ROWS and MAX_TABLE_COLUMNS bound a pipe table this file
-// will ever render as an HTML <table>: a sender fully controls a
-// message's text, and an unbounded number of rows or columns could
-// otherwise make the UI lay out an unbounded amount of rich text in
-// one bubble. A table over either cap is not rendered as a table at
-// all - tryParseTable reports it as plain text instead, the same as
-// any other text with a stray "|" in it - rather than silently
-// dropping the rows or columns past the cap, which would show a
-// table that quietly disagreed with the sender's own message.
+// MAX_TABLE_ROWS and MAX_TABLE_COLUMNS bound a single pipe table this
+// file will ever render as an HTML <table>; one over either cap falls
+// back to plain text rather than silently dropping rows or columns.
 var MAX_TABLE_ROWS = 50;
 var MAX_TABLE_COLUMNS = 20;
 
 // MAX_TABLES_PER_MESSAGE and MAX_TOTAL_TABLE_CELLS bound how many
-// tables, and how many cells across all of them, one message ever
-// turns into HTML tables. MAX_TABLE_ROWS and MAX_TABLE_COLUMNS only
-// bound a single table on its own, so a message built of many small
-// tables could still add up to tens of thousands of cells - and as
-// many QTextTableCell frames for Qt to lay out - well within each
-// table's own cap. Once either total would be exceeded, every further
-// table in the same message falls back to plain text, the same way a
-// single table over its own cap already does, rather than letting the
-// cells and tables already counted keep growing unbounded.
+// tables, and total cells across all of them, one message ever turns
+// into HTML tables: many small tables could otherwise still add up to
+// an unbounded layout cost even within each table's own cap.
 var MAX_TABLES_PER_MESSAGE = 10;
 var MAX_TOTAL_TABLE_CELLS = 2000;
 
@@ -103,14 +91,9 @@ function tryParseTable(lines, start) {
     return null;
   }
 
-  // Stops scanning the moment the row count is already known to be
-  // over MAX_TABLE_ROWS, rather than walking every further body row
-  // first and only checking the cap once the whole run is counted:
-  // a message built of lines that each look like a fresh table start
-  // (every line reads as both a valid header and a valid separator)
-  // would otherwise make this scan, and the one after it from the
-  // next line, and the one after that, cost time quadratic in the
-  // message's own length.
+  // Stops scanning as soon as the row count is over MAX_TABLE_ROWS,
+  // rather than counting the whole run first, to avoid quadratic cost
+  // on a message where every line looks like a fresh table start.
   let end = start + 2;
   while (end < lines.length && end - (start + 2) <= MAX_TABLE_ROWS && isBodyRow(lines[end])) {
     end++;

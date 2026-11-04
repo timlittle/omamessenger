@@ -50,9 +50,8 @@ type Connector struct {
 	sent    map[string]string // "<remote id>/<message id>" to our message id
 	names   map[string]string // a user's remote id to the best real name learned for them
 
-	// resolving tracks resolvePlaceholderHash's background goroutines,
-	// so Run can wait for them to finish before it returns rather than
-	// only asking them to stop (see concurrency.md).
+	// resolving tracks resolvePlaceholderHash's background goroutines, so Run
+	// waits for them to finish before returning.
 	resolving sync.WaitGroup
 }
 
@@ -130,11 +129,8 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 		return gaps.Run(ctx, client.API(), self.ID, updates.AuthOptions{})
 	})
 
-	// Every resolvePlaceholderHash goroutine this run started derives
-	// its own timeout from ctx, so once client.Run has returned - ctx
-	// already done, one way or another - none of them can still be
-	// waiting on Telegram; this only waits out whatever is still
-	// unwinding.
+	// By the time client.Run returns, ctx is already done, so this only
+	// waits out any resolvePlaceholderHash goroutine still unwinding.
 	c.resolving.Wait()
 
 	return err
@@ -206,11 +202,9 @@ func (c *Connector) SubmitAuth(ctx context.Context, step, value string) error {
 	}
 }
 
-// Send sends a message, uploading its attachment first when it has one,
-// and reports it sent with Telegram's id. A conversation whose peer is
-// still an unresolved user placeholder is resolved first (see
-// resolveSendPeer), rather than ever sent to with a guessed or zero
-// access hash.
+// Send sends a message, uploading its attachment first when it has one, and
+// reports it sent with Telegram's id. An unresolved placeholder peer is
+// resolved first, rather than sent to with a guessed access hash.
 func (c *Connector) Send(ctx context.Context, conv domain.Conversation, m domain.Message) error {
 	api, sink, err := c.session()
 	if err != nil {

@@ -22,12 +22,9 @@ import (
 // failed send, with nothing on the far side to remove - is deleted
 // locally with no connector call at all. A connector that refuses,
 // such as a channel that only ever deletes for everyone or a message
-// too old to revoke, reports a safe message the UI can show. A
-// connector that reports connector.ErrOrganizeLocalOnly instead -
-// WhatsApp's own "delete for me" app-state patch found permanently
-// unsyncable, see docs/decisions.md - is not a refusal at all: the
-// delete proceeds locally, with the one-time notice
-// organizeLocalOnlyHandled shows in its place.
+// too old to revoke, reports a safe message the UI can show.
+// connector.ErrOrganizeLocalOnly is not a refusal: the delete proceeds
+// locally and organizeLocalOnlyHandled shows a one-time notice instead.
 func (c *Commands) DeleteMessages(ctx context.Context, conversationID string, messageIDs []string, forEveryone bool) error {
 	if strings.TrimSpace(conversationID) == "" {
 		return fmt.Errorf("%w: conversationId is required", ErrInvalidInput)

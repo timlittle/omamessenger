@@ -28,11 +28,8 @@ type mediaRef struct {
 	FileEncSHA256 []byte
 	FileLength    uint64
 	Mimetype      string
-	// FileName is only ever set for a mediaKindDocument reference,
-	// where it is what lets documentMedia tell a genuine GIF image
-	// sent as a plain file (see isGIFImage) apart from every other
-	// kind of document, which Kind alone cannot: unlike image and
-	// sticker, Kind never gets its own value for this case.
+	// FileName is only set for a mediaKindDocument reference, letting
+	// documentMedia tell a GIF sent as a plain file apart (see isGIFImage).
 	FileName string
 }
 
@@ -120,16 +117,11 @@ func mediaAndRef(msg *waE2E.Message) (*domain.Media, mediaRef, bool) {
 
 // linkPreview is a web page preview attached to a text message, or nil
 // until WhatsApp found one worth showing. Its URL, GetMatchedText(), is
-// written by the sender's own client alongside the text, not resolved by
-// any server, so it can name anything at all. It is kept only when its
-// scheme passes domain.AllowedLinkURL and the message's own truncated
-// text - the same text domain.SanitizeIncoming stores - actually shows
-// it; otherwise the card stays, with no URL to open, rather than
-// disguising one link as another. Checking against the truncated text,
-// not the raw text a sender's client sent, matters: a sender can pad a
-// message well past domain.MaxIncomingTextLength and place MatchedText
-// only in the part that padding pushes out, which the raw text would
-// still show but the message as stored never does.
+// sender-controlled, so it is kept only when its scheme passes
+// domain.AllowedLinkURL and it actually appears in the message's
+// truncated text (the same text domain.SanitizeIncoming stores) -
+// checking against the truncated text, not the raw text, stops a
+// sender hiding a mismatched URL past the truncation point.
 func linkPreview(m *waE2E.ExtendedTextMessage) *domain.Media {
 	title, description := m.GetTitle(), m.GetDescription()
 	if title == "" && description == "" {
@@ -204,13 +196,9 @@ func audioMedia(m *waE2E.AudioMessage) (*domain.Media, mediaRef, bool) {
 }
 
 // documentMedia is a file sent as a document, with its reference for
-// FetchMedia to download it later. A real GIF image sent this way
-// (rather than a video WhatsApp itself converted to a silent mp4 with
-// GifPlayback set) carries nothing to tell it apart from any other
-// document except its mime type or name, so it is marked the same way
-// that mp4 is - MediaVideo with Animated true - to reach the same
-// inline view, played through the sandboxed transcoder's Animation
-// profile (see docs/decisions.md).
+// FetchMedia to download it later. A real GIF sent this way is marked
+// MediaVideo with Animated true, same as WhatsApp's own converted mp4,
+// to reach the same inline view and the transcoder's Animation profile.
 func documentMedia(m *waE2E.DocumentMessage) (*domain.Media, mediaRef, bool) {
 	ref := mediaRef{
 		Kind: mediaKindDocument, DirectPath: m.GetDirectPath(), MediaKey: m.GetMediaKey(), FileSHA256: m.GetFileSHA256(),
@@ -273,19 +261,11 @@ func stickerMedia(m *waE2E.StickerMessage) (*domain.Media, mediaRef, bool) {
 	return sticker, ref, true
 }
 
-// thumb base64-encodes a message's embedded preview - a JPEG for
-// every kind but a sticker, which carries a PNG - once imagesafe has
-// stripped it of anything compressed or declaring a size this UI
-// never needs for a thumbnail. Returns "" when the message sent no
-// preview at all, or the preview failed that check: a sender's
-// thumbnail is exactly the untrusted image bytes the review that
-// found this package's own reason for existing was about (see
-// docs/decisions.md), so nothing unsanitized ever reaches the UI as a
-// thumbnail either. Its own verified dimensions are not needed here:
-// store.sanitizedThumb re-derives them from these same bytes on every
-// read regardless of how they were written, the one place
-// domain.Media.ThumbWidth/ThumbHeight are ever actually set (see
-// docs/decisions.md).
+// thumb base64-encodes a message's embedded preview - JPEG except for a
+// sticker's PNG - once imagesafe has sanitized it. Returns "" when
+// there is no preview or it fails sanitization, so nothing unsanitized
+// reaches the UI (see docs/decisions.md). Dimensions are re-derived
+// later by store.sanitizedThumb, not needed here.
 func thumb(data []byte) string {
 	if len(data) == 0 {
 		return ""
@@ -300,14 +280,10 @@ func thumb(data []byte) string {
 }
 
 // imageProfile is the imagesafe.Profile ref's downloaded bytes must
-// pass before FetchMedia writes them to disk, and whether ref is one
-// at all: an image or a sticker, both of which whatsmeow authenticates
-// the same way (see appInfo), always reach a QML Image component
-// directly. Every other kind is written unchanged, including a
-// document that turned out to be a genuine GIF image (see
-// isGIFImage): it reaches the UI as a video-kind message, re-encoded
-// by the sandboxed transcoder on demand rather than imagesafe at
-// download time (see docs/decisions.md).
+// pass before FetchMedia writes them to disk, and whether ref needs
+// one at all: only an image or a sticker reaches a QML Image component
+// directly. Everything else, including a GIF document, is written
+// unchanged and handled by the sandboxed transcoder instead.
 func imageProfile(ref mediaRef) (imagesafe.Profile, bool) {
 	switch ref.Kind {
 	case mediaKindImage:

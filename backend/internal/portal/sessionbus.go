@@ -1,12 +1,9 @@
 package portal
 
-// sessionbus.go is Bus's production implementation, driving a real
-// connection to the session bus: dialing it, asking
-// org.freedesktop.portal.FileChooser to open a dialog, and matching the
-// org.freedesktop.portal.Request.Response signal it answers with back
-// to the right request, trusting only the portal's own resolved
-// sender (see notify/sessionbus.go, the same pattern for a different
-// signal).
+// sessionbus.go is Bus's production implementation: dials the session
+// bus, asks org.freedesktop.portal.FileChooser to open a dialog, and
+// matches its Response signal back to the right request, trusting
+// only the portal's own resolved sender.
 
 import (
 	"context"
@@ -42,10 +39,8 @@ type dbusBus struct {
 	sig  chan *dbus.Signal
 
 	// sender is the portal's own unique bus name, resolved by
-	// watchSender once OpenFile has a connection to resolve it from.
-	// Empty until then, in which case Wait's own sender check never
-	// matches anything: any session-bus signal whose sender is unknown
-	// is refused, never trusted by default.
+	// watchSender. Empty until then, so Wait's sender check refuses
+	// any signal by default.
 	sender string
 }
 
@@ -105,10 +100,8 @@ func toPortalFilters(filters []Filter) []portalFilterGroup {
 }
 
 // OpenFile calls org.freedesktop.portal.FileChooser.OpenFile and
-// returns the request object path its Response signal will carry. It
-// resolves the portal's own unique bus name first (see watchSender),
-// so Wait knows which sender to trust before any signal for this
-// request can arrive.
+// returns the request object path its Response signal will carry,
+// resolving the portal's bus name first (see watchSender).
 func (b *dbusBus) OpenFile(_ context.Context, title string, filters []Filter) (dbus.ObjectPath, error) {
 	b.watchSender()
 
@@ -130,15 +123,10 @@ func (b *dbusBus) OpenFile(_ context.Context, title string, filters []Filter) (d
 	return handle, nil
 }
 
-// watchSender resolves xdg-desktop-portal's own unique bus name and
+// watchSender resolves xdg-desktop-portal's unique bus name and
 // narrows this connection's signal match to it, so Wait can refuse a
-// signal from anyone else: without this, any local process on the
-// session bus could send a fake Response and make Pick report a file
-// the user never actually chose. A failure to resolve or watch it is
-// never fatal - b.sender is simply left at "", which Wait's own check
-// treats the same as an untrusted sender - and does nothing to the
-// fakeObject-driven tests that construct a bare dbusBus with no real
-// connection at all.
+// signal from anyone else on the session bus. A failure to resolve or
+// watch it is never fatal; b.sender is simply left at "".
 func (b *dbusBus) watchSender() {
 	if b.conn == nil {
 		return
@@ -182,13 +170,10 @@ func (b *dbusBus) Wait(ctx context.Context, path dbus.ObjectPath) (string, error
 }
 
 // matchResponse reports whether sig is a well-formed
-// org.freedesktop.portal.Request.Response, and the chosen file's own
-// uri or error when it is. A signal whose body is too short, or whose
-// arguments are not the types the portal's own contract promises, is
-// never trusted enough to index further: that is exactly the bug a
-// spoofed or malformed signal could otherwise panic on and crash the
-// helper (see notify/sessionbus.go's matchActionInvoked, the same
-// discipline for a different signal).
+// org.freedesktop.portal.Request.Response, and the chosen file's uri
+// or error when it is. A body too short, or an argument of the wrong
+// type, is never trusted enough to index further, so a spoofed or
+// malformed signal can't panic the helper.
 func matchResponse(sig *dbus.Signal) (matched bool, uri string, err error) {
 	if sig.Name != sigResponse {
 		return false, "", nil

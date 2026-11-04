@@ -42,9 +42,7 @@ Item {
   MediaPlayer {
     id: player
 
-    // Follows the system's default output as it changes, rather than
-    // the one Qt picked when the shell started: a headset connected
-    // later would otherwise never hear anything.
+    // Tracks the system's default output, so a headset plugged in later still gets sound.
     audioOutput: AudioOutput { device: devices.defaultAudioOutput }
     onMediaStatusChanged: if (player.mediaStatus === MediaPlayer.EndOfMedia) root.ended()
     onErrorOccurred: (error, errorString) => root.failed(error)

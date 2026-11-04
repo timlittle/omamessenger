@@ -18,9 +18,7 @@ import (
 )
 
 // senderRefresh bundles accountID, senderRemoteID and the corrected
-// name - every argument renameSender and refreshReplyQuotes both need
-// - so passing ctx and tx alongside them never pushes either past
-// this codebase's own argument limit.
+// name for renameSender and refreshReplyQuotes.
 type senderRefresh struct {
 	accountID, senderRemoteID, name string
 }
@@ -125,21 +123,12 @@ func refreshPreviewSenders(ctx context.Context, tx *sql.Tx, accountID, senderRem
 }
 
 // refreshReplyQuotes brings every reply quote naming senderRemoteID as
-// its sender back in step with renameSender, within the conversations
-// senderRemoteID has a message in: a reply keeps its own copy of the
-// quoted message's sender id and name, resolved once when it was first
-// stored, within its own conversation (see resolveReply), so
-// correcting that sender's own messages is not enough on its own - a
-// reply already quoting one of them would otherwise keep showing
-// whatever name was known at the time forever. The query is scoped to
-// senderRemoteID's own conversations, and staleQuotes then matches
-// each candidate quote's own stored sender id, never its quoted
-// message's remote id: a remote id is only unique within one
-// conversation, so matching on that alone let a rename reach a quote
-// in a conversation senderRemoteID never sent that message in (see
-// docs/decisions.md). A quote with no stored sender id - one whose
-// quote could not be resolved when it was first stored - is never
-// rewritten.
+// its sender back in step with renameSender: a quote keeps its own
+// copy of the sender name, so correcting the sender's messages alone
+// is not enough. Matches on the quote's stored sender id, never the
+// quoted message's remote id, which is only unique within one
+// conversation (see docs/decisions.md). A quote with no stored sender
+// id is never rewritten.
 func refreshReplyQuotes(ctx context.Context, tx *sql.Tx, r senderRefresh) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, reply_to FROM messages

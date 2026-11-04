@@ -383,67 +383,34 @@ func messagesEdit(c *app.Commands) func(context.Context, editParams) (any, error
 }
 
 // mediaResult is where a downloaded photo, video, file or voice note
-// is on disk. Path is always the original: the downloaded bytes for
-// a video, voice note, audio message or file, or the display copy
-// for a photo or sticker (see app.Commands.displayCopy). PlayPath,
-// set only when the request asked for play and the helper's own
-// sandboxed transcode actually succeeded, is the one file the UI may
-// ever load into its in-window video or voice player; the UI falls
-// back to opening Path externally whenever PlayPath is omitted,
-// whether play was never asked for, the message's claimed duration
-// was already over the profile's own cap, or the transcode itself
-// failed or was unavailable - none of which is an error on its own
-// (see docs/decisions.md). Playable is omitted (false) exactly when
-// PlayPath is, kept only so a result's shape still carries a boolean
-// there for compatibility. Risky is true only when app.MediaRisk,
-// sniffing Path's own bytes, finds active or executable content - a
-// web page, a vector image or a script; omitted (false) for everyday
-// media, which is every message's media until proven otherwise. The
-// UI must ask for confirmation before opening a file this names
-// risky, never decide that itself from the message's own claimed
-// name (see docs/decisions.md).
+// is on disk. PlayPath, set only when play was requested and the
+// transcode succeeded, is the one file the UI may load into its
+// in-window player; otherwise the UI opens Path externally. Risky is
+// true only when app.MediaRisk finds active or executable content in
+// Path's bytes, and the UI must confirm before opening such a file.
 type mediaResult struct {
 	Path     string `json:"path"`
 	PlayPath string `json:"playPath,omitempty"`
 	Playable bool   `json:"playable,omitempty"`
 	Risky    bool   `json:"risky,omitempty"`
-	// Width and Height are the fetched file's own real dimensions,
-	// confirmed by the helper's own decode of it, never the message's
-	// own claimed size: a photo's or sticker's display copy (see
-	// app.Commands.displayCopy). The UI must size its decode of Path
-	// from these, never from media's own width/height field, which
-	// need not match what this file actually decodes to (see
-	// docs/decisions.md). Omitted for every other media kind.
+	// Width and Height are the display copy's real dimensions for a
+	// photo or sticker, confirmed by decode rather than taken from the
+	// message's claimed size. Omitted for every other media kind.
 	Width  int `json:"width,omitempty"`
 	Height int `json:"height,omitempty"`
-	// Kind and MediaSize report what this fetch actually served - the
-	// message's own media kind and size at the moment app.Commands
-	// read it, before any download ran - never the message's kind by
-	// the time this answer arrives. A fetch can be in flight for as
-	// long as its download takes, and an edit arriving during that
-	// window can change the message's media kind and back again
-	// before the answer returns; the UI compares both of these
-	// against the row's own current media, never only its earlier
-	// snapshot of it, before ever handing Path to an Image, so a
-	// kind the sender switched away from and back again while this
-	// request was in flight is caught even though the row's own
-	// before-and-after snapshots compare equal (see
-	// ui/controllers/MediaController.qml and docs/decisions.md).
+	// Kind and MediaSize report what this fetch actually served, read
+	// before the download ran, so the UI can detect a kind the sender
+	// changed and changed back while the fetch was in flight (see
+	// ui/controllers/MediaController.qml).
 	Kind      string `json:"kind,omitempty"`
 	MediaSize int64  `json:"mediaSize,omitempty"`
 }
 
-// mediaFetchParams names the message whose media to fetch. Auto is
-// true for a fetch the UI made on its own, with no click from the
-// user: today, only an animated "GIF" video autoplaying as soon as its
-// bubble is shown (see docs/api.md). Omitted, it defaults to false, a
-// deliberate fetch, which every existing caller before this field
-// existed is still treated as. Play, also optional and defaulting to
-// false, asks the helper to also prepare the in-window play copy
-// (mediaResult.PlayPath): set only for a video, voice note or audio
-// message a user is about to watch or listen to in place, never for
-// openExternal, save, copy or a silent prefetch, which never need one
-// (see docs/api.md).
+// mediaFetchParams names the message whose media to fetch. Auto marks
+// a fetch the UI made on its own rather than from a click, defaulting
+// to false. Play asks the helper to also prepare the in-window play
+// copy; it is only set when the user is about to watch or listen in
+// place.
 type mediaFetchParams struct {
 	MessageID string `json:"messageId"`
 	Auto      bool   `json:"auto,omitempty"`

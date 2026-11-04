@@ -114,18 +114,8 @@ Item {
     else if (direction === "oldest") conversationView.scrollToOldest()
   }
 
-  // conversationController restores whatever conversation was open the
-  // last time the panel existed from its own Component.onCompleted,
-  // which can run - and change activeId - before this file's own
-  // Connections below even exists yet, whenever the whole panel is torn
-  // down and rebuilt (Omarchy reloading the plugin, say): the usual
-  // "activeId just changed, focus the composer" signal is missed for
-  // that one restored conversation, though never for one a real click
-  // or search opens afterwards, since by then everything here already
-  // exists. Qt.callLater runs this once the event loop turns over, by
-  // which point conversationController's own restore has always
-  // already run, so this only ever needs to check its current state,
-  // not catch a signal.
+  // Catches a conversation already restored by the time this loads
+  // (a plugin reload), which onActiveIdChanged below would otherwise miss.
   Component.onCompleted: Qt.callLater(() => {
     if (root.conversationController && root.conversationController.activeId) conversationView.focusComposer()
   })
@@ -139,11 +129,8 @@ Item {
     function onScroll(direction) { root._scrollConversation(direction) }
     function onScrollToMessageRequested(id) { conversationView.scrollToMessage(id) }
     function onLinksRequested(urls) {
-      // Each entry is {url, displayText} (see MessageHighlight.openLink):
-      // passed through as two separate fields, never the same value
-      // twice, so openLink's own mismatch question - which a security
-      // review found this call defeated outright by always comparing
-      // url against itself - still has something real to compare.
+      // Pass url and displayText separately so the mismatch check has
+      // real values to compare.
       if (urls.length === 1) root.windowController.openLink(urls[0].url, urls[0].displayText, urls[0].suspicious === true);
       else root.windowController.openLinkChooser(urls);
     }
@@ -316,12 +303,8 @@ Item {
       onMediaOpenExternalRequested: id => root.conversationController.openMediaExternal(id)
       onLinkOpenRequested: (url, displayText, suspicious) => root.windowController.openLink(url, displayText, suspicious)
       onSend: (text, replyToId, mentions) => {
-        // Enter while editing a queued message's own text must never
-        // send it as a new message right now: there is still a time to
-        // pick, through the same Ctrl+L prompt that key already opens,
-        // so Enter here does exactly the same thing instead - the "keep
-        // consistent" outcome the "Edit" button's own Enter always
-        // reached, back when it opened that prompt immediately.
+        // Editing a scheduled message's text: Enter re-opens the time
+        // prompt rather than sending immediately.
         if (root.composerController.editingScheduled) root.windowController.run("compose.sendLater");
         else if (root.composerController.editing) root.composerController.saveEdit(text);
         else root.conversationController.send(text, replyToId, mentions);

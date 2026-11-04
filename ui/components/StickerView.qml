@@ -6,12 +6,8 @@ import "../lib/Links.js" as Links
 import "../lib/Media.js" as Media
 
 // A sticker in a message: a small, borderless static image, never
-// animated (an animated WebP or video sticker still only ever shows its
-// first frame here; a Telegram Lottie or WebM sticker a connector
-// cannot show as a still image at all leaves path and thumb both empty,
-// see domain.Media's own doc comment on the Go side). Falls back to the
-// sticker's own emoji, in large type, when there is neither a thumbnail
-// nor a downloaded image yet.
+// animated. Falls back to the sticker's own emoji, in large type,
+// when there is neither a thumbnail nor a downloaded image yet.
 Item {
   id: root
 
@@ -21,17 +17,13 @@ Item {
   // path is where the full image was downloaded, or "" until then.
   property string path: ""
   // failedReason is a failed automatic fetch's safe reason category
-  // (see server/errors.go), "" otherwise; "too-large" means the
-  // automatic fetch this sticker's own visibility asked for was
-  // refused only for being over that fetch's own, small cap (see
-  // _tooLargeAuto).
+  // (see server/errors.go), "" otherwise; "too-large" means it was
+  // only over the automatic fetch's small cap (see _tooLargeAuto).
   property string failedReason: ""
 
   // wanted asks for the full sticker image to be downloaded.
   signal wanted()
-  // retryRequested asks for the full sticker image to be downloaded
-  // deliberately, bypassing the automatic-fetch cap wanted's own fetch
-  // applies: the tap-to-load action _tooLargeAuto offers.
+  // retryRequested asks for the full image, bypassing the automatic-fetch cap.
   signal retryRequested()
 
   // _size is the sticker's fixed display size: small and square, with
@@ -41,21 +33,13 @@ Item {
   // image or a thumbnail. False means only the emoji fallback applies.
   readonly property bool _hasImage: root.path !== "" || !!root.sticker.thumb
 
-  // _haveFile is whether the full image, rather than its thumbnail,
-  // is the one actually shown right now - the same condition image's
-  // own source binding below uses.
+  // _haveFile is whether the full image, rather than the thumbnail, is shown right now.
   readonly property bool _haveFile: root.path !== ""
-  // _verifiedWidth and _verifiedHeight are the real, decoder-confirmed
-  // size to bound the image's own decode by (see
-  // ImageBounds.verifiedDimensions): never root.sticker.width/height,
-  // the sender's own claim, which a differential review found need
-  // not match either file's real shape.
+  // _verifiedWidth/_verifiedHeight are the decoder-confirmed size to
+  // bound the decode by, never the sender's own claimed width/height.
   readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.sticker, root._haveFile).width
   readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.sticker, root._haveFile).height
-  // _tooLargeAuto is true once the automatic fetch this sticker's own
-  // visibility asked for was refused only for being over its own,
-  // small cap: never a permanent failure, so a click still asks for
-  // the full image, deliberately (see retryRequested).
+  // _tooLargeAuto is true when the automatic fetch was refused only for being over its small cap.
   readonly property bool _tooLargeAuto: root.path === "" && root.failedReason === "too-large"
 
   implicitWidth: root._size
@@ -77,11 +61,7 @@ Item {
     // thumb; never a remote URL.
     source: root.path ? Links.fileURL(root.path) : (root.sticker.thumb ? "data:" + Media.thumbMime(root.sticker.thumb) + ";base64," + root.sticker.thumb : "")
     fillMode: Image.PreserveAspectFit
-    // Fit inside this sticker's own fixed box, computed from the
-    // sticker's own known width and height (see PhotoView.qml's own
-    // sourceSize for why the box alone is not enough). Reads the
-    // real, verified size (root._verifiedWidth/Height), never
-    // root.sticker.width/height, a sender's own claim.
+    // Fit inside this sticker's fixed box, using the verified size, never the sender's claim.
     sourceSize.width: ImageBounds.boundedSourceSize(root._size, root._size, root._verifiedWidth, root._verifiedHeight).width
     sourceSize.height: ImageBounds.boundedSourceSize(root._size, root._size, root._verifiedWidth, root._verifiedHeight).height
     asynchronous: true
@@ -95,11 +75,8 @@ Item {
     horizontalAlignment: Text.AlignHCenter
     visible: !root._hasImage
     text: root.sticker.emoji || "🏷️"
-    // The sticker's emoji fallback is sender-controlled: PlainText.
-    // domain.CapMedia already bounds it to MaxStickerEmojiLength, but
-    // this wraps and elides too, as defence in depth against a
-    // connector bug or an older helper still handing over something
-    // uncapped: never one unwrapped line at this font size again.
+    // Sender-controlled: PlainText, wrapped and elided as defence in
+    // depth against an uncapped value reaching here.
     textFormat: Text.PlainText
     wrapMode: Text.Wrap
     maximumLineCount: 2

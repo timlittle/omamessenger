@@ -103,24 +103,14 @@ func peerConversation(accountID string, peer tg.PeerClass, e entities) (domain.C
 	return c, true
 }
 
-// unknownGroupName is what a group or channel conversation is named
-// when placeholderConversation has nothing else to go on; its real
-// title arrives with the next dialog sync or a message that does
-// carry the chat's entity.
+// unknownGroupName names a group or channel conversation when
+// placeholderConversation has nothing else to go on.
 const unknownGroupName = "Telegram group"
 
-// placeholderConversation builds a conversation for a peer that
-// neither the update's own entities nor anything this connector has
-// learned before names: a stranger's very first message must still
-// create a conversation and be stored rather than vanish, even though
-// its title, and, for a user or channel, its access hash are not
-// known yet. A dialog sync or a later message that does carry the
-// entity corrects the title once Telegram resolves it (see
-// Connector.rememberName); nothing here corrects a conversation
-// already created this way, so the one accepted risk is a second,
-// fully-resolved conversation for the same peer turning up later -
-// preferred over losing the message outright. It reports false only
-// for a peer type this connector does not otherwise recognise.
+// placeholderConversation builds a conversation for a peer with no known
+// entity yet, so a stranger's first message is still stored rather than
+// lost; the title is corrected once Telegram resolves it. It reports false
+// only for an unrecognised peer type.
 func placeholderConversation(accountID string, peer tg.PeerClass) (domain.Conversation, bool) {
 	switch p := peer.(type) {
 	case *tg.PeerUser:
@@ -143,15 +133,8 @@ func placeholderConversation(accountID string, peer tg.PeerClass) (domain.Conver
 	}
 }
 
-// placeholderRemoteID is the remote id placeholderConversation would
-// have given peer: the same peer, with a user's or channel's access
-// hash forced to 0. Sync calls this for every dialog it lists so a
-// stale placeholder conversation, created before Telegram's hash for
-// that peer was known - whether moments ago or in a run before this
-// fix shipped - is found and upgraded (see sync.go). A chat has no
-// placeholder shape of its own to upgrade from: placeholderConversation
-// gives it the exact same id ("chat:<id>") a full resolution does,
-// so there is nothing for this to ever tell apart.
+// placeholderRemoteID is the remote id placeholderConversation would have
+// given peer, used by sync to find and upgrade stale placeholders.
 func placeholderRemoteID(peer tg.PeerClass) (string, bool) {
 	switch p := peer.(type) {
 	case *tg.PeerUser:

@@ -61,31 +61,17 @@ Item {
   // Escape chain.
   property var accountController: null
 
-  // scheduledController owns queued "send later" messages, read for the
-  // "Scheduled messages" command and driven by the composer's own
-  // "Send later…" command and a queued message's "Edit" button.
+  // scheduledController owns queued "send later" messages.
   property var scheduledController: null
 
-  // _scheduledAction is which of "sendNow", "edit" or "cancel" the
-  // "scheduledMessagesForChat" picker is about to apply to whichever
-  // row Enter picks, set by _runScheduledAction below.
+  // _scheduledAction is which action a "scheduledMessagesForChat" picker
+  // pick will apply, set by _runScheduledAction below.
   property string _scheduledAction: ""
 
-  // openExternalLink is the one place in this UI that ever asks the
-  // helper to open a URL that came from a message, a link preview or a
-  // service's own text, rather than a local file this UI already has
-  // on disk: every such caller reports a linkOpenRequested signal or
-  // calls openLink below, which always arrives here. It asks the
-  // helper's own links.open method, which opens it through the desktop
-  // portal rather than starting xdg-open with the url as one of its
-  // own command-line arguments - readable by any other local user
-  // through /proc (see docs/decisions.md) - and never falls back to
-  // that. Links.isAllowed checks url's scheme first, the same
-  // allow-list a message's own formatting span already checks, so a
-  // sender or a service can never make this ask the helper to open
-  // anything else; the helper re-checks the same allow-list on its own
-  // side regardless. Overridable so a test can record what would have
-  // opened instead of truly asking the helper to.
+  // openExternalLink asks the helper to open an external URL through the
+  // desktop portal rather than running xdg-open directly (see
+  // docs/decisions.md). Overridable so a test can record the call instead
+  // of truly opening it.
   property var openExternalLink: (url) => {
     if (!Links.isAllowed(url) || !root.service) return;
 
@@ -129,8 +115,7 @@ Item {
   property int paletteIndex: 0
 
   // linkChoices are the links offered when the palette opens in "links"
-  // mode: the highlighted message's own links, set by openLinkChooser,
-  // each a {url, displayText} pair (see MessageHighlight.openLink).
+  // mode: the highlighted message's own links, set by openLinkChooser.
   property var linkChoices: []
 
   // _messageSearchResults is the debounced message search's last answer:
@@ -207,18 +192,9 @@ Item {
   // true until the next restart.
   property bool _updateHintDismissed: false
 
-  // toastText is a brief, non-error heads-up, shown in the toast pill
-  // above the composer (see ui/components/Toast.qml) rather than the
-  // error banner at the top of the window: the quiet update hint takes
-  // priority the one time it has something to say, falling back to
-  // whatever a message action just confirmed, such as copying or
-  // saving a photo or video, or "Play notification sound" finding
-  // nothing to play (see ConversationController.notice), or blocking,
-  // unblocking or reporting a chat as spam (see ListController.notice),
-  // and finally to an account.notice the helper sent on its own (see
-  // Service.accountNotice) once nothing else is confirming anything.
-  // It never competes with an error: the two show in different places
-  // and can be visible at once.
+  // toastText is a brief, non-error heads-up shown in the toast pill above
+  // the composer: the update hint takes priority, then whatever a
+  // controller's own notice has to say.
   readonly property string toastText: Toast.pickText(
     !root._updateHintDismissed && !!root.service && root.service.showUpdateHint,
     root.service ? WhatsNew.hintText(root.service.appVersion) : "",
@@ -302,30 +278,16 @@ Item {
     root.paletteOpen = true;
   }
 
-  // openLinkChooser shows the palette listing links, for o on a
-  // message that carries more than one: picking one opens it, the
-  // same as the single-link case opens straight away without asking.
-  // links is {url, displayText} pairs (see MessageHighlight.openLink).
+  // openLinkChooser shows the palette listing links for a message that
+  // carries more than one.
   function openLinkChooser(links: var): void {
     root.linkChoices = links;
     root.openPalette("links");
   }
 
-  // openLink opens url through openExternalLink: the single-link case
-  // of o on a message, and anywhere else a link from a message, a link
-  // preview or a service's own text is opened. displayText is what
-  // the person actually saw for this link - the same text for a plain
-  // autolinked URL, but a formatting span's own text can read as
-  // something else entirely (see ui/lib/Links.js's resolveClickedLink,
-  // the caller's own job to run before this, never this function's).
-  // suspicious, when the caller has it (an anchor Format.js rendered;
-  // a link preview's own card never does, so it defaults false),
-  // forces the question below even when displayText and url already
-  // read as the same destination - a bidi override or a link entity
-  // covering only part of what reads as one hostname (see
-  // Format.messageLinkAnchors). Links.needsConfirmation decides
-  // whether any of this calls for asking first rather than opening it
-  // straight away.
+  // openLink opens url through openExternalLink, asking first when
+  // displayText doesn't match url or suspicious forces the question
+  // (see Links.needsConfirmation).
   function openLink(url: string, displayText: string, suspicious = false): void {
     if (Links.needsConfirmation(displayText, url, suspicious)) {
       root.pendingLinkURL = url;
@@ -471,11 +433,7 @@ Item {
     root._updateHintDismissed = true;
     if (root.conversationController) root.conversationController.clearNotice();
     if (root.listController) root.listController.clearNotice();
-    // Guarded by typeof, not just truthiness: a handful of other test
-    // harnesses script `service` as a bare QtObject standing in for
-    // just the properties they need, with no clearAccountNotice of
-    // its own, unlike conversationController and listController above,
-    // which are always the real components.
+    // typeof guard: some test harnesses script a bare service stub without this method.
     if (root.service && typeof root.service.clearAccountNotice === "function") root.service.clearAccountNotice();
   }
 
@@ -548,16 +506,10 @@ Item {
     else root.runCommand(chosen.action);
   }
 
-  // _scheduleDraft queues the composer's current text to send at at
-  // (Unix milliseconds), picked from the "Send later…" command's own
-  // palette prompt: a fresh queued message, or, while
-  // composerController.editingScheduled, the one its own scheduledEditId
-  // names - startScheduledEdit loaded it back in, from the keyboard's e
-  // on a highlighted queued row or the mouse's own "Edit" button.
-  // Either way it clears the composer, the same as sending for real
-  // does. Does nothing with no conversation open, no text typed, or an
-  // attachment pending: scheduling a message is text only in this first
-  // version (see docs/decisions.md).
+  // _scheduleDraft queues the composer's current text to send at at (Unix
+  // milliseconds), or reschedules the message being edited. Does nothing
+  // with no conversation, no text, or an attachment pending: scheduling is
+  // text only for now (see docs/decisions.md).
   function _scheduleDraft(at: real): void {
     if (!root.composerController || !root.conversationController || !root.scheduledController) return;
 
@@ -569,13 +521,7 @@ Item {
       if (error) { root.lastError = Rpc.errorText(error); return; }
       root.composerController.clearScheduledEdit();
       root.composerController.setDraft("");
-      // The palette this came from held focus, not the composer: ask
-      // for it back, the same way editScheduledMessage already does
-      // after loading a queued message's text in, so the composer -
-      // now empty - is still the one writing picks up where it left
-      // off, exactly as it would have looked before this existed only
-      // while actually being edited (see Composer.qml's own
-      // _writingRequested and docs/decisions.md).
+      // The palette held focus, not the composer: ask for it back.
       root.composerController.composeFocusRequested();
     };
 
@@ -587,14 +533,9 @@ Item {
     }
   }
 
-  // _runScheduledAction runs "Send scheduled message now" / "Edit
-  // scheduled message" / "Cancel scheduled message": action is
-  // "sendNow", "edit" or "cancel". With nothing queued in the open
-  // chat it says so in the toast instead of looking like the command
-  // did nothing (see "Play notification sound"'s own fix); with
-  // exactly one it acts on it directly; with more than one it opens a
-  // picker over that chat's own queued messages for _applyScheduledAction
-  // to read once Enter picks one (see acceptPalette).
+  // _runScheduledAction runs action ("sendNow", "edit" or "cancel") on the
+  // open chat's queued message, or opens a picker when there is more than
+  // one.
   function _runScheduledAction(action: string): void {
     if (!root.scheduledController || !root.conversationController) return;
 
@@ -612,11 +553,8 @@ Item {
     root.openPalette("scheduledMessagesForChat");
   }
 
-  // _applyScheduledAction runs action (defaulting to the one
-  // _runScheduledAction stashed in _scheduledAction, for the picker's
-  // own accept) on message: send it now, load it into the composer to
-  // edit (the same round trip a queued message's own "Edit" button
-  // uses), or cancel it outright.
+  // _applyScheduledAction sends, edits or cancels message, using action or
+  // the stashed _scheduledAction when action is empty.
   function _applyScheduledAction(message: var, action: string): void {
     const which = action !== "" ? action : root._scheduledAction;
     root._scheduledAction = "";
@@ -627,11 +565,8 @@ Item {
   }
 
   // runScheduledActionOn runs which ("sendNow", "edit" or "cancel") on
-  // scheduledId directly: the same three outcomes _runScheduledAction's
-  // own palette picker reaches, skipping the picker since the caller -
-  // Panel.routeKey, for the open chat's own highlighted queued message
-  // (see ConversationController.highlightedScheduledId) - already knows
-  // exactly which one. Does nothing if scheduledId is no longer queued.
+  // scheduledId directly, skipping the picker. Does nothing if it is no
+  // longer queued.
   function runScheduledActionOn(scheduledId: string, which: string): void {
     if (!root.scheduledController) return;
 
@@ -641,18 +576,8 @@ Item {
     root._applyScheduledAction(message, which);
   }
 
-  // editScheduledMessage starts editing a queued message - from the
-  // keyboard's e on a highlighted queued row (Panel.routeKey's own
-  // remap) or the mouse's own "Edit" button, both of which call this
-  // same function. Its text loads into the composer, focused and ready
-  // to type into, the same way editing a sent message already does
-  // (see ComposerController.startScheduledEdit); it does not jump
-  // straight to the "Send later…" time prompt any more - that left the
-  // loaded text unreachable, since the prompt took over the keyboard at
-  // once. Ctrl+L (compose.sendLater) opens that prompt once the text is
-  // right, reading scheduledEditId to reschedule it instead of queuing
-  // a fresh message (see _scheduleDraft); Esc cancels and leaves it
-  // queued unchanged (see ComposerController.cancelScheduledEdit).
+  // editScheduledMessage loads a queued message's text into the composer,
+  // focused and ready to edit.
   function editScheduledMessage(id: string, text: string): void {
     if (!root.composerController) return;
 
@@ -661,9 +586,7 @@ Item {
   }
 
   // _openScheduledMessage opens the conversation a "Scheduled messages"
-  // row belongs to, so its own pending list shows it - Enter there is
-  // a lookup, not an action on the message itself, the same as opening
-  // a conversation found through the "Messages" search section.
+  // row belongs to.
   function _openScheduledMessage(row: var): void {
     if (!root.listController || !root.conversationController) return;
 

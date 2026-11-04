@@ -85,19 +85,8 @@ func (s conversationScript) applyNewestMedia(messages []domain.Message) {
 		newest.Media = &domain.Media{Kind: domain.MediaVoice, FileName: "voice-message.ogg", Duration: 5}
 	case s.lastGif:
 		newest.Text = "[GIF]"
-		// Kind and Animated match exactly what a real Telegram or
-		// WhatsApp GIF document normalizes to (see
-		// telegram/media.go's and whatsapp/normalize_media.go's own
-		// isGIFImage case): a classification hint only, never what
-		// decides how it plays - FetchMedia below writes a genuine
-		// GIF file, which the sandboxed transcoder's Animation
-		// profile re-encodes into a real play copy exactly the way
-		// it would an actual MP4's bytes, with nothing here needing
-		// to tell the two apart first. Width, Height and Thumb
-		// match the real GIF document's own size: without a thumb the
-		// unplayed bubble (InlineVideo.qml) has nothing to show before
-		// a click, exactly as a real GIF document always arrives with
-		// one.
+		// Width, Height and Thumb mirror a real GIF document so the
+		// unplayed bubble has something to show before a click.
 		newest.Media = &domain.Media{
 			Kind: domain.MediaVideo, FileName: "run.gif", Animated: true,
 			Width: gifWidth, Height: gifHeight, Thumb: gifThumb(),

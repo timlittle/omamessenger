@@ -50,17 +50,12 @@ Item {
   // the message list to show.
   property var videoController: null
 
-  // scheduledController owns the open conversation's own queued "send
-  // later" messages, read so the highlight (see highlightedScheduledId)
-  // can move past the newest loaded message into them.
+  // scheduledController owns the open conversation's queued "send later"
+  // messages, so the highlight can move past the newest message into them.
   property var scheduledController: null
 
-  // openExternally hands a local file to the user's own application,
-  // through media (see MediaController), by asking the helper's own
-  // files.open method to open it through the desktop portal rather
-  // than starting xdg-open with path as one of its own command-line
-  // arguments (see docs/decisions.md); a test overrides it with a
-  // recorder rather than letting a video or file open for real.
+  // openExternally hands a local file to the user's own application, via
+  // the helper's files.open method; a test overrides it with a recorder.
   property var openExternally: (path) => {
     if (!root.service) return;
 
@@ -90,12 +85,8 @@ Item {
   // it, for the rest of the story.
   readonly property alias highlightedId: highlight.highlightedId
 
-  // highlightedScheduledId is the id of the open chat's own queued
-  // "send later" message j/k currently point at, once they have moved
-  // past the newest loaded message into the queue (see
-  // MessageHighlight and ScheduledList.qml); "" while the highlight is
-  // on an ordinary message instead, which is mutually exclusive with
-  // this.
+  // highlightedScheduledId is the queued "send later" message j/k point
+  // at once past the newest loaded message; "" otherwise.
   readonly property alias highlightedScheduledId: highlight.highlightedScheduledId
 
   // messages is the loaded timeline, newest first.
@@ -191,14 +182,7 @@ Item {
   signal scrollToMessageRequested(string id)
 
   // linksRequested asks the caller to open the highlighted message's
-  // link: opened directly (through WindowController.openLink, which
-  // asks the helper's own links.open method) when there is exactly
-  // one, the same choice the mouse path already makes, or let the
-  // user choose among several when there is more than one. Each entry
-  // is {url, displayText} (see MessageHighlight.openLink). Opening
-  // stays with the caller, rather than this controller, so it is
-  // checked by what it asked for rather than by stubbing how opening
-  // actually happens.
+  // link(s): one opens directly, several let the user choose.
   signal linksRequested(var urls)
 
   // handles reports whether this controller owns action.
@@ -379,12 +363,8 @@ Item {
   }
 
   // downloadMedia asks the helper for a message's media once, through
-  // media (see MediaController): the photo viewer reuses this rather
-  // than asking the helper itself, so there is one place that tracks an
-  // in-flight download. Always a deliberate fetch (auto false): the
-  // viewer only ever opens once the user asks to see something. play
-  // asks for the in-window play copy too, for the viewer to open a
-  // video straight into (see PhotoViewerController.show).
+  // media (see MediaController); play also asks for the in-window play
+  // copy for the photo viewer to open a video straight into.
   function downloadMedia(id: string, report: bool, play: bool, done: var): void {
     media.downloadMedia(timeline, id, report, false, play, done);
   }
@@ -532,15 +512,9 @@ Item {
 
   // _setActive is the common work for opening a conversation, whatever
   // found it: the list cursor, a search result or the new-chat dialog.
-  // conversation is copied into a plain object rather than stored by
-  // reference: a caller can hand this a live ListModel row (the list's
-  // own delegate data), and reading two of its fields together in the
-  // same binding - as the header's subtitle line does, for phone
-  // alongside title - hit a Qt binding-loop false positive once that
-  // row's fields came from a dynamically typed QML list model rather
-  // than a plain object. A snapshot also means the open conversation
-  // never changes shape underneath the view just because the list row
-  // it came from gets recycled.
+  // conversation is copied into a plain object, since it may be a live
+  // ListModel row that can change shape or trigger a Qt binding-loop
+  // false positive if stored by reference.
   function _setActive(id: string, conversation: var): void {
     root.activeId = id;
     root.conversation = conversation ? Object.assign({}, conversation) : conversation;
@@ -612,23 +586,16 @@ Item {
     if (highlight.moveOlder(timeline, root._scheduledIds())) root.loadOlder();
   }
 
-  // _scheduledIds returns the open conversation's own queued "send
-  // later" messages' ids, soonest due first, for the highlight to move
-  // into once past the newest loaded message (see MessageHighlight);
-  // empty with no conversation open or nothing queued for it.
+  // _scheduledIds returns the open conversation's queued message ids,
+  // soonest due first, for the highlight to move into.
   function _scheduledIds(): var {
     if (!root.scheduledController || !root.activeId) return [];
     return root.scheduledController.forConversation(root.activeId).map((m) => m.id);
   }
 
   // _reconcileHighlightedScheduled moves the highlight off a queued row
-  // that just stopped being queued - sent now or cancelled, by this
-  // computer or another client signed into the same account - onto
-  // whichever is now soonest due, or back to the newest loaded message
-  // once none are left, rather than leaving it pointing at a row that
-  // no longer exists. Run whenever scheduledController's own list
-  // changes (see the Connections below); a no-op while the highlight is
-  // not on a queued row, or still is on one.
+  // that just stopped being queued (sent or cancelled), onto the next
+  // soonest due, or back to the newest loaded message.
   function _reconcileHighlightedScheduled(): void {
     if (!root.highlightedScheduledId) return;
 
@@ -682,12 +649,8 @@ Item {
     if (root._hasCopyableMedia()) root.openMediaExternal(highlight.highlightedId);
   }
 
-  // _previewNotificationSound plays the open conversation's own
-  // notification sound on demand, through Service's exact precedence
-  // and do-not-disturb check; does nothing with no conversation open.
-  // When nothing is actually heard, it says why in the toast instead
-  // of leaving the command looking like it did nothing: no sound
-  // applies at all, or do-not-disturb is on.
+  // _previewNotificationSound plays the open conversation's notification
+  // sound on demand, and reports why in a toast when nothing is heard.
   function _previewNotificationSound(): void {
     if (!root.service || !root.conversation) return;
 
@@ -709,11 +672,7 @@ Item {
 
   // applyMessage applies a sent, retried or pushed message to the
   // timeline, ignoring one for a conversation that is not the open one.
-  // Reactions and the composer's own send both land here. A message
-  // flood can age the highlighted row out of the capped timeline (see
-  // MessageTimeline.upsert); when that just happened to this one, the
-  // highlight moves back to the newest loaded message rather than
-  // keep pointing at a row that is no longer there.
+  // Resets the highlight if the capped timeline just aged it out.
   function applyMessage(message: var): void {
     if (message.conversationId !== root.activeId) return;
     if (timeline.upsert(message, root.isGroup, highlight.highlightedId)) highlight.reset(timeline);
@@ -875,11 +834,7 @@ Item {
     }
   }
 
-  // The highlight follows a queued row it was pointing at wherever it
-  // goes - including off the end, once that row is no longer queued
-  // (see _reconcileHighlightedScheduled): sent now or cancelled from
-  // the keyboard answers synchronously in a test, but for real this is
-  // the helper's own asynchronous reply, or another client's.
+  // Keeps the highlight on a valid queued row whenever the queue changes.
   Connections {
     target: root.scheduledController
 

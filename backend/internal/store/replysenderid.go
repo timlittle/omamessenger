@@ -1,12 +1,8 @@
 package store
 
-// replysenderid.go backfills domain.Reply.SenderID on a reply quote
-// stored before that field existed: RefreshSenderName (see
-// sendernames.go) needs it to scope a sender's name correction to the
-// quote that actually names them, rather than trusting a message's
-// remote id, which is only unique within one conversation. resolveReply
-// fills it in for every reply from here on; this is the one-time
-// migration step that catches up data already on disk.
+// replysenderid.go backfills domain.Reply.SenderID on reply quotes
+// stored before that field existed, so RefreshSenderName can scope a
+// name correction to the quote that actually names the sender.
 
 import (
 	"context"
@@ -17,17 +13,14 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// replyRow is one candidate row backfillReplySenderIDs considers: its
-// rowid and conversation, for resolving the quote within that same
-// conversation, and its reply_to column exactly as stored.
+// replyRow is one candidate row backfillReplySenderIDs considers.
 type replyRow struct {
 	rowid          int64
 	conversationID string
 	replyTo        string
 }
 
-// scanReplyRow reads one row selected by backfillReplySenderIDs's own
-// query.
+// scanReplyRow reads one row selected by backfillReplySenderIDs.
 func scanReplyRow(row scanner) (replyRow, error) {
 	var r replyRow
 	err := row.Scan(&r.rowid, &r.conversationID, &r.replyTo)
@@ -35,14 +28,10 @@ func scanReplyRow(row scanner) (replyRow, error) {
 	return r, err
 }
 
-// repairReplySenderID fills in a reply's own quoted sender id by
-// resolving its RemoteID against a message already stored in
-// conversationID - the same lookup resolveReply does for a brand new
-// reply, scoped the same way. changed is false, and replyTo is returned
-// unchanged, when it carries no RemoteID, already has a SenderID, or
-// the quoted message cannot be found in conversationID: left empty
-// rather than guessed from a different conversation, exactly as an
-// unresolved reply is left today.
+// repairReplySenderID fills in a reply's quoted sender id by resolving
+// its RemoteID within conversationID. changed is false, and replyTo
+// unchanged, when it already has a SenderID or the quote can't be
+// resolved there.
 func repairReplySenderID(ctx context.Context, tx *sql.Tx, conversationID, replyTo string) (repaired string, changed bool, err error) {
 	var reply domain.Reply
 	if unmarshalErr := json.Unmarshal([]byte(replyTo), &reply); unmarshalErr != nil {
@@ -73,11 +62,8 @@ func repairReplySenderID(ctx context.Context, tx *sql.Tx, conversationID, replyT
 }
 
 // backfillReplySenderIDs fills in SenderID on every reply quote stored
-// before that field existed, the one-time migration step that catches
-// up data already on disk; resolveReply's own resolution keeps
-// guaranteeing this for every reply from now on. Idempotent: a reply
-// already carrying a SenderID, or one whose quote still cannot be
-// resolved, is left exactly as it is on a repeated run.
+// before that field existed. Idempotent: a reply already resolved, or
+// one that still can't be, is left unchanged on a repeated run.
 func backfillReplySenderIDs(ctx context.Context, tx *sql.Tx) error {
 	rows, err := tx.QueryContext(ctx, `SELECT rowid, conversation_id, reply_to FROM messages WHERE reply_to<>''`)
 	if err != nil {

@@ -11,15 +11,9 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// errSoundNotPlayable reports that a chosen file could not be
-// transcoded into a sound this chat can play: ffmpeg itself did not
-// recognise it as audio at all, or no transcoder was wired in (see
-// storeAndTranscodeSound). Wrapped in ErrInvalidInput, its message is
-// safe to show; it never names the file itself (see
-// docs/decisions.md's sign-in hint entry, the same reasoning: a fixed
-// sentence, not an echo of what the user gave), but it does name the
-// formats that do work, so the refusal is actionable rather than just
-// a dead end.
+// errSoundNotPlayable reports a chosen file could not be transcoded into
+// a sound this chat can play. Its message is safe to show and never
+// names the file itself.
 var errSoundNotPlayable = fmt.Errorf("%w: that file is not a sound this chat can play - try an MP3, WAV, Ogg, M4A or FLAC file", ErrInvalidInput)
 
 // soundKeyConversation is the sound store key a conversation's own
@@ -35,14 +29,9 @@ func soundKeyService(service string) string {
 	return "service-" + service
 }
 
-// SetNotificationSound gives a conversation its own notification
-// sound, transcoding path - a file the user picked from disk - into
-// the helper's own sound store before this conversation is ever
-// allowed to point at it: a user-chosen file is still untrusted bytes
-// to whatever eventually decodes it, so nothing but this helper's own
-// re-encoded WAV output is ever stored or played (see
-// docs/decisions.md). Fails with ErrInvalidInput when path cannot be
-// read or is not a format the transcoder recognises as audio.
+// SetNotificationSound gives a conversation its own notification sound,
+// transcoding path into the helper's sound store so only re-encoded WAV
+// output is ever stored or played (see docs/decisions.md).
 func (c *Commands) SetNotificationSound(ctx context.Context, conversationID, path string) (domain.Conversation, error) {
 	if conversationID == "" {
 		return domain.Conversation{}, fmt.Errorf("%w: conversationId is required", ErrInvalidInput)
@@ -66,10 +55,9 @@ func (c *Commands) SetNotificationSound(ctx context.Context, conversationID, pat
 	return c.store.Conversation(ctx, conversationID)
 }
 
-// ResetNotificationSound clears a conversation's own notification
-// sound, so it goes back to inheriting whichever one applies at the
-// service or global default level, and removes the file
-// SetNotificationSound copied in for it.
+// ResetNotificationSound clears a conversation's custom notification
+// sound, so it falls back to the service or global default, and
+// removes the stored file.
 func (c *Commands) ResetNotificationSound(ctx context.Context, conversationID string) (domain.Conversation, error) {
 	if conversationID == "" {
 		return domain.Conversation{}, fmt.Errorf("%w: conversationId is required", ErrInvalidInput)
@@ -88,15 +76,10 @@ func (c *Commands) ResetNotificationSound(ctx context.Context, conversationID st
 	return c.store.Conversation(ctx, conversationID)
 }
 
-// ResolveNotificationSound returns the playable, already-validated path
-// for a notification sound the UI has decided should play: exactly one
-// of conversationID (the conversation's own custom sound) or service
-// and path (a service's or the global default's manifest setting,
-// still just a raw string the UI forwarded, validated here on its
-// behalf) is given. An empty result with no error means nothing
-// playable was found - removed since, say, or a manifest path that no
-// longer resolves to a real sound - so the UI plays nothing rather than
-// treating a notification sound as worth failing over.
+// ResolveNotificationSound returns the playable path for a notification
+// sound: either conversationID's own custom sound, or service and path
+// from a manifest setting. An empty result with no error means nothing
+// playable was found, so the UI plays nothing.
 func (c *Commands) ResolveNotificationSound(ctx context.Context, conversationID, service, path string) (string, error) {
 	switch {
 	case conversationID != "":
@@ -108,9 +91,8 @@ func (c *Commands) ResolveNotificationSound(ctx context.Context, conversationID,
 	}
 }
 
-// resolveConversationSound returns conversationID's own stored sound,
-// or "" once it has no custom sound at all, or the stored file has
-// gone missing since (see playableSoundPath).
+// resolveConversationSound returns conversationID's stored sound, or
+// "" if it has none or the stored file is gone.
 func (c *Commands) resolveConversationSound(ctx context.Context, conversationID string) (string, error) {
 	conv, err := c.store.Conversation(ctx, conversationID)
 	if err != nil {
@@ -123,11 +105,9 @@ func (c *Commands) resolveConversationSound(ctx context.Context, conversationID 
 	return c.playableSoundPath(soundKeyConversation(conversationID)), nil
 }
 
-// resolveServiceSound copies and validates path - a service's or the
-// global default's manifest setting - under key, the same way
-// SetNotificationSound does for a conversation, but never reports an
-// error: an invalid manifest setting has no user action to fail here,
-// so it simply resolves to no sound.
+// resolveServiceSound transcodes and stores path under key, the same
+// way SetNotificationSound does, but never reports an error: an
+// invalid manifest setting just resolves to no sound.
 func (c *Commands) resolveServiceSound(ctx context.Context, service, path string) string {
 	if path == "" || c.sounds == nil {
 		return ""
@@ -141,24 +121,10 @@ func (c *Commands) resolveServiceSound(ctx context.Context, service, path string
 	return c.sounds.Path(key)
 }
 
-// storeAndTranscodeSound transcodes path - a file the user picked, or
-// a service's own manifest setting - into an uncompressed WAV through
-// the sandboxed transcoder's Sound profile, the only format Qt's
-// SoundEffect can play (see docs/decisions.md), and stores the result
-// in the sound store under key: path itself is never what the sound
-// store keeps, nor what resolve ever hands back. The transcode itself
-// runs only when path's own size or modification time has actually
-// changed since the last time this key was attempted (see
-// transcodedSoundCache): resolveServiceSound calls this on every
-// notification, and a service's default sound almost never changes,
-// so without this a contact spamming messages would occupy the
-// helper's one transcode slot on every single one, whether that
-// sound keeps transcoding successfully or - a broken manifest setting,
-// say - keeps failing the exact same way every time (see
-// docs/decisions.md). errSoundNotPlayable reports path decoding as
-// nothing ffmpeg itself recognises as audio, or no transcoder being
-// wired in at all; any other error means path itself could not even
-// be opened.
+// storeAndTranscodeSound transcodes path into a WAV and stores it under
+// key, skipping the transcode when path hasn't changed since the last
+// attempt for key (see transcodedSoundCache), so a flood of
+// notifications never floods the transcoder.
 func (c *Commands) storeAndTranscodeSound(ctx context.Context, key, path string) error {
 	if c.sounds == nil {
 		return fmt.Errorf("%w: notification sounds are not available", ErrInvalidInput)
@@ -195,9 +161,7 @@ func (c *Commands) storeAndTranscodeSound(ctx context.Context, key, path string)
 }
 
 // transcodeSoundTo runs path through the sandboxed transcoder's Sound
-// profile and copies its output into the sound store under key, the
-// work storeAndTranscodeSound needs only when path has actually
-// changed since the last time it ran for key.
+// profile and copies its output into the sound store under key.
 func (c *Commands) transcodeSoundTo(ctx context.Context, key, path string) error {
 	wav, err := c.transcoder.Sound(ctx, path, c.transcodeJobRoot)
 	if err != nil {
@@ -218,12 +182,8 @@ func (c *Commands) transcodeSoundTo(ctx context.Context, key, path string) error
 
 // transcodedSoundIdentity is the (path, size, modification time) a
 // sound-store key was last attempted from, and whether that attempt
-// failed: resolveServiceSound calls storeAndTranscodeSound on every
-// notification, so a source that fails to transcode - corrupt, not
-// actually audio - must be remembered as failing too, or a broken
-// custom or service sound would occupy the helper's one transcode
-// slot on every single notification, not just its first one (see
-// docs/decisions.md).
+// failed, so a source that keeps failing to transcode is remembered
+// rather than retried on every notification.
 type transcodedSoundIdentity struct {
 	path    string
 	size    int64
@@ -237,14 +197,10 @@ func (identity transcodedSoundIdentity) matches(path string, info os.FileInfo) b
 	return identity.path == path && identity.size == info.Size() && identity.modTime == info.ModTime().UnixNano()
 }
 
-// transcodedSoundCache remembers, per sound-store key, the identity
-// of the source file last attempted for it, and serialises
-// storeAndTranscodeSound per key (see lock) so two concurrent
-// resolves for the same key - two notifications arriving close
-// together, say - never both run the sandboxed transcoder for a sound
-// neither has actually changed: whichever arrives second simply
-// waits, then - almost always - finds the first call's own work
-// already covers it.
+// transcodedSoundCache remembers, per sound-store key, the identity of
+// the source file last attempted, and serialises storeAndTranscodeSound
+// per key so two concurrent resolves never both transcode the same
+// unchanged sound.
 type transcodedSoundCache struct {
 	keysMu sync.Mutex
 	keys   map[string]*sync.Mutex
@@ -259,11 +215,7 @@ func newTranscodedSoundCache() *transcodedSoundCache {
 }
 
 // lock reserves key's own lock, waiting for any other call already
-// holding it, and returns the func that releases it. The key space
-// here is small and chosen by the user, never a sender - one
-// conversation id per custom sound, plus one per service - so this
-// map simply grows with it rather than needing reference-counted
-// cleanup.
+// holding it, and returns the func that releases it.
 func (t *transcodedSoundCache) lock(key string) func() {
 	t.keysMu.Lock()
 	l, ok := t.keys[key]
@@ -298,13 +250,8 @@ func (t *transcodedSoundCache) record(key, path string, info os.FileInfo, failed
 	t.state[key] = transcodedSoundIdentity{path: path, size: info.Size(), modTime: info.ModTime().UnixNano(), failed: failed}
 }
 
-// playableSoundPath returns key's stored path, or "" - never an
-// error - once nothing is stored there, or it no longer exists on
-// disk: a sound removed since it was stored simply plays nothing
-// rather than failing the request that asked for it. The file is
-// always a WAV this helper's own transcoder produced (see
-// storeAndTranscodeSound), so there is nothing left to re-validate on
-// a read the way an unchecked, sender-chosen file still would.
+// playableSoundPath returns key's stored path, or "" if nothing is
+// stored or the file no longer exists on disk.
 func (c *Commands) playableSoundPath(key string) string {
 	path := c.sounds.Path(key)
 	if _, err := os.Stat(path); err != nil {

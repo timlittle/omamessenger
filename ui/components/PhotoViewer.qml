@@ -69,39 +69,21 @@ Item {
   // _isVideo is true while photo is actually a video or GIF, which
   // plays through FullVideoPlayer instead of the plain Image below.
   readonly property bool _isVideo: !!root.photo && root.photo.kind === "video"
-  // _isPhoto is true while photo is actually a photo: the Image
-  // below's own allow-list, checked instead of "not video", since a
-  // sender's edit can swap the open message's media for a file, voice
-  // note or audio message while the viewer is still open on it
-  // (Telegram allows a media edit; WhatsApp's resends the message).
-  // Only a photo's own path is the helper's re-encoded display copy; a
-  // file, voice note or audio message's path is the sender's original,
-  // unsanitized download, and Qt's Image decodes whatever source it is
-  // given by sniffing its own bytes, choosing the decoder from
-  // untrusted content a security review found this exact "not video"
-  // logic would otherwise hand it (see docs/decisions.md). The viewer
-  // never shows a sticker either, despite its path also being a
-  // display copy: show() only ever opens it for a photo or a video.
+  // _isPhoto is true only for an actual photo: a sender's edit can
+  // swap the open message's media for an unsanitized file or audio
+  // message, whose path Qt's Image must never be allowed to decode
+  // (see docs/decisions.md).
   readonly property bool _isPhoto: !!root.photo && root.photo.kind === "photo"
 
-  // _haveFile is whether the full image, rather than its thumbnail,
-  // is the one actually shown right now - the same condition image's
-  // own source binding below uses. root.photo.verifiedWidth/Height are
-  // only ever set from media.fetch's own result for a photo or
-  // sticker (see MediaController._applyVerifiedSize and
-  // app.servedPath), so requiring one here, not merely _isPhoto and a
-  // non-empty path, is this viewer's own check that path is actually
-  // the re-encoded display copy its Image may decode - never, by
-  // itself, some other kind's raw original left behind by a race
-  // between an edit and an in-flight fetch answer (see
+  // _haveFile is whether the full, verified image is the one shown
+  // right now rather than its thumbnail: verifiedWidth/Height are only
+  // ever set from a real media.fetch result, so this also guards
+  // against a race leaving a stale path from another kind (see
   // docs/decisions.md).
   readonly property bool _haveFile: root._isPhoto && !!root.path && root.photo.verifiedWidth > 0 && root.photo.verifiedHeight > 0
   // _verifiedWidth and _verifiedHeight are the real, decoder-confirmed
-  // size to bound the image's own decode by (see
-  // ImageBounds.verifiedDimensions): never root.photo.width/height,
-  // the sender's own claim, which a differential review found makes
-  // this viewer's own near-full-screen stage decode many times its
-  // own area when it disagrees with either file's real shape.
+  // size to bound the decode by, never the sender's own claim (see
+  // ImageBounds.verifiedDimensions and docs/decisions.md).
   readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.photo, root._haveFile).width
   readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.photo, root._haveFile).height
 
@@ -142,21 +124,13 @@ Item {
       anchors.fill: parent
       visible: root._isPhoto
       // Always the helper's own downloaded file or an embedded base64
-      // thumb; never a remote URL. Empty for anything but a photo: a
-      // hidden Image still decodes its source, and only a photo's own
-      // path is sanitized as one (see root._isPhoto). Gated on
-      // _haveFile, not merely root.path being set, so this never
-      // decodes a path recorded for some other kind (see _haveFile's
-      // own comment).
+      // thumb; never a remote URL. Empty for anything but a photo (see
+      // root._isPhoto), gated on _haveFile so this never decodes a
+      // path left over from another kind.
       source: root._isPhoto ? (root._haveFile ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:" + Media.thumbMime(root.photo.thumb) + ";base64," + root.photo.thumb : "")) : ""
       fillMode: Image.PreserveAspectFit
-      // Fit inside the viewer's own stage, computed from the photo's
-      // own known width and height (see PhotoView.qml's own
-      // sourceSize for why the stage alone is not enough). Reads the
-      // real, verified size (root._verifiedWidth/Height), never a
-      // sender's own claim: this viewer's stage is the one box a
-      // differential review found a lying claim still makes Qt cover
-      // many times over (see docs/decisions.md).
+      // Bounded to the viewer's stage using the real, verified size,
+      // never the sender's own claim (see docs/decisions.md).
       sourceSize.width: ImageBounds.boundedSourceSize(stage.width, stage.height, root._verifiedWidth, root._verifiedHeight).width
       sourceSize.height: ImageBounds.boundedSourceSize(stage.width, stage.height, root._verifiedWidth, root._verifiedHeight).height
       asynchronous: true

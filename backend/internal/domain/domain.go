@@ -119,10 +119,8 @@ type Conversation struct {
 	Muted         bool   `json:"muted"`
 	Pinned        bool   `json:"pinned"`
 
-	// PinOrder is where a pinned conversation sits among the others
-	// pinned, lowest first; 0, and meaningless, while Pinned is false.
-	// Reordering it is the only thing that ever changes it: pinning or
-	// unpinning a conversation never touches another one's.
+	// PinOrder ranks a pinned conversation among the others pinned, lowest
+	// first; meaningless while Pinned is false.
 	PinOrder     int   `json:"pinOrder"`
 	Archived     bool  `json:"archived"`
 	Hidden       bool  `json:"hidden"`
@@ -134,12 +132,8 @@ type Conversation struct {
 	// conversation has the one contact a block applies to.
 	Blocked bool `json:"blocked"`
 
-	// NotificationSound is "" to inherit whichever notification sound
-	// applies at the service or global default level, or "custom" once
-	// this conversation has its own (see app.Commands.SetNotificationSound).
-	// The sound's own bytes never cross the protocol; the UI asks for a
-	// playable copy with sounds.fetch only once it decides this
-	// conversation's own sound should actually play.
+	// NotificationSound is "" to inherit the default sound, or "custom"
+	// once this conversation has its own.
 	NotificationSound string `json:"notificationSound,omitempty"`
 
 	// ReminderAt is when a snoozed conversation comes back, in Unix
@@ -223,15 +217,9 @@ type Message struct {
 	RetrySince    int64 `json:"-"`
 }
 
-// ScheduledMessage is a text message the user queued to send at a
-// chosen time instead of right away (see app.Commands.ScheduleMessage).
-// It is local to this computer only, like a conversation's Reminder,
-// and exists only until it is sent, edited into an ordinary message,
-// or cancelled: once its own SendAt comes due, or the user asks to
-// send it now, it is removed and handed to the normal send path, so
-// from that moment on it is an ordinary outgoing Message with that
-// path's own retry and failure handling, not a state of its own this
-// type has to track.
+// ScheduledMessage is a text message queued to send at a chosen time
+// instead of right away. It is local to this computer only, and is removed
+// once sent, edited or cancelled.
 type ScheduledMessage struct {
 	ID             string `json:"id"`
 	ConversationID string `json:"conversationId"`
@@ -240,9 +228,8 @@ type ScheduledMessage struct {
 	// SendAt is when this message is due to send, in Unix milliseconds.
 	SendAt int64 `json:"sendAt"`
 
-	// Created is when the user queued this message, in Unix
-	// milliseconds, for the "Scheduled messages" list to show the
-	// oldest first among any due at the same time.
+	// Created is when the user queued this message, used to order the
+	// scheduled list when several are due at the same time.
 	Created int64 `json:"created"`
 }
 
@@ -265,14 +252,9 @@ type Reply struct {
 	SenderName string `json:"senderName,omitempty"`
 	Text       string `json:"text,omitempty"`
 
-	// SenderID is the quoted message's own sender id, resolved against
-	// a message stored in the same conversation as the reply that
-	// quotes it (see store.resolveReply). RefreshSenderName uses it to
-	// scope a sender's name correction to a quote that actually names
-	// them: a message's own remote id is only unique within its
-	// conversation, so matching on that alone let a rename reach a
-	// quote it never named (see docs/decisions.md). Empty when the
-	// quoted message could not be resolved locally.
+	// SenderID is the quoted message's sender id, resolved within the same
+	// conversation since a remote id alone is not unique across
+	// conversations (see docs/decisions.md). Empty if unresolved.
 	SenderID string `json:"senderId,omitempty"`
 }
 
@@ -296,13 +278,8 @@ type Media struct {
 	Thumb       string `json:"thumb,omitempty"`
 	Width       int    `json:"width,omitempty"`
 	Height      int    `json:"height,omitempty"`
-	// ThumbWidth and ThumbHeight are Thumb's own real, verified
-	// dimensions (see store.sanitizedThumb), filled in on every read
-	// from the thumbnail bytes themselves, never from Width/Height
-	// above: a sender's claimed photo or sticker size need not match
-	// what the thumbnail actually decodes to, and the UI must size its
-	// decode of Thumb from these while Width/Height still describe a
-	// full file that may not be downloaded yet (see docs/decisions.md).
+	// ThumbWidth and ThumbHeight are Thumb's own decoded dimensions, which
+	// can differ from Width/Height (the full file's claimed size).
 	ThumbWidth  int    `json:"thumbWidth,omitempty"`
 	ThumbHeight int    `json:"thumbHeight,omitempty"`
 	Duration    int    `json:"duration,omitempty"`

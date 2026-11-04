@@ -13,16 +13,10 @@ import (
 // UI will open with no filter of its own.
 var LinkSchemes = map[string]bool{"http": true, "https": true, "mailto": true, "tg": true}
 
-// AllowedLinkURL reports whether url is safe to open: its scheme is
-// one LinkSchemes allows, it carries none of hasHiddenOrUnusualRune's
-// own characters, and, for http(s), has a real "scheme://authority"
-// shape (see hasHTTPAuthority) rather than relying on a browser's own
-// forgiving parser to find a host some other way. A connector drops a
-// link entirely, never reporting a URL whose scheme, characters or
-// shape this rejects, rather than reporting it unfiltered and relying
-// on the UI to check it again; the UI's own ui/lib/Format.js spanURL
-// mirrors this exact rule, so a link can never be shown as safe on one
-// side and opened on the other (see docs/decisions.md).
+// AllowedLinkURL reports whether url is safe to open: its scheme is one
+// LinkSchemes allows, it has no hidden or unusual runes, and, for
+// http(s), a real "scheme://authority" shape (see hasHTTPAuthority).
+// ui/lib/Format.js's spanURL mirrors this rule (docs/decisions.md).
 func AllowedLinkURL(url string) bool {
 	scheme, rest, ok := strings.Cut(url, ":")
 	if !ok {
@@ -44,25 +38,18 @@ func AllowedLinkURL(url string) bool {
 }
 
 // hasHiddenOrUnusualRune reports whether r is a backslash, a Unicode
-// space or control character, or one of the Unicode "format"
-// characters isHiddenFormatRune lists: none of these ever belongs in
-// a real link, so AllowedLinkURL refuses a URL carrying any of them
-// outright, rather than opening it on the strength of a confirmation
-// that cannot show what such a character actually hides (see
-// docs/decisions.md). A backslash matters on its own because a
-// browser's own WHATWG URL parser ends an http(s) authority at one
-// the same as it does a forward slash, while this package's and
-// ui/lib/Links.js's own host-parsing never did.
+// space or control character, or one of isHiddenFormatRune's "format"
+// characters: none of these ever belongs in a real link. A backslash
+// matters because a browser's WHATWG URL parser ends an http(s)
+// authority at one, the same as a forward slash.
 func hasHiddenOrUnusualRune(r rune) bool {
 	return r == '\\' || unicode.IsSpace(r) || unicode.IsControl(r) || isHiddenFormatRune(r)
 }
 
-// hiddenFormatRuneRanges are the inclusive [low, high] Unicode code
-// point ranges isHiddenFormatRune checks: the specific "format"
-// characters (category Cf) a spoofed link has used to hide or split
-// its own destination - zero-width spaces and marks, bidi embeddings
-// and overrides, word joiner and invisible operators, bidi isolates,
-// and the byte-order mark.
+// hiddenFormatRuneRanges are the inclusive [low, high] Unicode "format"
+// (category Cf) ranges a spoofed link could use to hide or split its
+// destination: zero-width spaces and marks, bidi controls, word joiner,
+// invisible operators and the byte-order mark.
 var hiddenFormatRuneRanges = [][2]rune{
 	{0x200B, 0x200F},
 	{0x202A, 0x202E},
@@ -83,17 +70,11 @@ func isHiddenFormatRune(r rune) bool {
 	return false
 }
 
-// hasHTTPAuthority reports whether rest - url with its scheme and the
-// colon after it already cut off - starts with "//" followed by at
-// least one character that is not itself "/", "?" or "#": the one
-// shape an allowed http(s) URL's own authority must take. A browser's
-// own URL parser still resolves a host for "http:evil.example",
-// "https:\\evil.example" or "https:/\evil.example" - each missing a
-// real "//" authority of its own, or carrying a backslash standing in
-// for part of it - so refusing every one of them here, rather than
-// relying only on hasHiddenOrUnusualRune's backslash check, is what
-// keeps this package's own idea of a URL's shape from ever disagreeing
-// with the browser that will actually open it.
+// hasHTTPAuthority reports whether rest (url with its scheme and colon
+// already cut off) starts with "//" followed by a character that is
+// not "/", "?" or "#": the shape an allowed http(s) authority must
+// take, rejecting forms like "http:evil.example" a browser would still
+// resolve a host for.
 func hasHTTPAuthority(rest string) bool {
 	authority, ok := strings.CutPrefix(rest, "//")
 	if !ok {

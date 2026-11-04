@@ -100,25 +100,17 @@ func declaredMediaSize(m tg.MessageMediaClass) (int64, bool) {
 	return 0, false
 }
 
-// imageDownload bundles what downloadImage needs about a photo,
-// sticker or GIF document's own download, keeping that function
-// within the project's own argument limit: where Telegram keeps it,
-// where to write it and its own byte cap (see connector.ImageFetchCap).
+// imageDownload bundles downloadImage's arguments: where Telegram keeps
+// the file, where to write it, and its byte cap (connector.ImageFetchCap).
 type imageDownload struct {
 	location tg.InputFileLocationClass
 	path     string
 	max      int64
 }
 
-// downloadImage downloads id.location into memory, bounded by id.max
-// (see connector.ImageFetchCap) even if Telegram's declared size
-// undersold what it actually streams (see boundedBuffer, the backstop
-// under FetchMedia's own declaredMediaSize check), and writes the
-// result to id.path unchanged: the UI never loads this file directly
-// (see app.Commands's own display copy and docs/decisions.md), so
-// nothing here needs to check or rewrite it before it reaches disk,
-// the same as a video or other document streamed straight there
-// through download below.
+// downloadImage downloads id.location into memory, bounded by id.max even
+// if Telegram's declared size undersold the actual stream, and writes the
+// bytes to id.path unchanged; the UI never loads this file directly (docs/decisions.md).
 func downloadImage(ctx context.Context, api *tg.Client, id imageDownload) error {
 	downloadCtx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()

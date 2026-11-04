@@ -62,20 +62,15 @@ function withDefaults(settings, currentReadReceipts) {
   };
 }
 
-// resolveSound passes a manifest sound setting straight through: a
-// path, or the sentinels "default" and "none" (see
-// ui/lib/NotificationSound.js, which gives those two their meaning).
-// Anything not a string at all falls back to "", the same blank
-// default manifest.json itself gives every one of these three settings.
+// resolveSound passes a manifest sound setting straight through (a
+// path, or the sentinels "default"/"none", see NotificationSound.js),
+// falling back to "" for anything not a string.
 function resolveSound(value) {
   return typeof value === 'string' ? value : '';
 }
 
-// reopenAfterRestart resolves the "Reopen after restart" setting: true
-// unless the user turned it off in Omarchy's bar editor. It is read
-// straight off the raw settings object rather than through withDefaults,
-// since it is this UI's own choice and is never one of the fields
-// withDefaults prepares for settings.apply to send the helper.
+// reopenAfterRestart resolves the "Reopen after restart" setting, read
+// straight off the raw settings object since it is never sent to the helper.
 function reopenAfterRestart(settings) {
   var given = settings ?? {};
   return typeof given.reopenAfterRestart === 'boolean' ? given.reopenAfterRestart : DEFAULTS.reopenAfterRestart;

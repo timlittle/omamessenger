@@ -3,17 +3,9 @@ import QtQuick.Layouts
 import qs.Commons
 import "../theme"
 
-// The player shown inside the in-app media viewer (see PhotoViewer,
-// which reuses that same full-window viewer for a video, not only a
-// photo) once it is a video rather than a photo: the same
-// QtMultimedia-backed runtime the message bubble's own InlineVideo
-// uses, but sized to fill the window instead of staying bubble-sized,
-// with play/pause, a seek bar and mute. available is false when
-// QtMultimedia itself could not be loaded, the same probe
-// VideoController already runs elsewhere. This never loads a
-// sender's own bytes into the engine at all: the one file it ever
-// plays is playPath, the file the helper's own sandboxed transcoder
-// produced (see docs/decisions.md).
+// The full-window video player shown inside the in-app media viewer, with
+// play/pause, a seek bar and mute. It only ever plays playPath, the file
+// the helper's sandboxed transcoder produced (see docs/decisions.md).
 Item {
   id: root
 
@@ -82,11 +74,7 @@ Item {
     objectName: "fullVideoUnavailableLabel"
     anchors.centerIn: parent
     width: parent.width - Theme.spacing.sm * 2
-    // Covers both reasons this can never decode here: the machine has
-    // no QtMultimedia at all, or the helper's own play fetch produced
-    // no play copy (see docs/decisions.md) - never distinguished in
-    // the message itself, since the fix is the same either way: the
-    // "Open in your own video player" button above.
+    // Shown whether QtMultimedia is missing or the helper produced no play copy.
     visible: root.path !== "" && (!root.available || root.playPath === "")
     horizontalAlignment: Text.AlignHCenter
     wrapMode: Text.Wrap

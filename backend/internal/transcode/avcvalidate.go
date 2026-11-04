@@ -1,13 +1,9 @@
 package transcode
 
-// avcvalidate.go validates the avc1 and mp4a sample entries a
-// track's own stsd declares, and the handful of SPS, PPS,
-// AudioSpecificConfig and esds fields underneath them that remux.go's
-// own doRemux trusts once validated: see remux.go's own package doc
-// comment for why - a sandboxed ffmpeg's own avcC and esds are read
-// only to confirm they already describe exactly what this package's
-// own fixed ffmpeg arguments should have produced, never copied
-// across uninspected.
+// avcvalidate.go validates the avc1 and mp4a sample entries a track's
+// stsd declares, confirming they describe exactly what this package's
+// fixed ffmpeg arguments should have produced before doRemux trusts
+// them.
 
 import (
 	"bytes"
@@ -19,10 +15,8 @@ import (
 )
 
 // spsProfileMain, spsMaxLevel, spsChroma420 and remuxMaxDimension are
-// the exact SPS field values checkSPS accepts: AVC Main profile,
-// level 4.0 or below, 4:2:0 chroma, no larger than 1280 on either
-// side - precisely what videoArgs' and animationArgs' own fixed
-// ffmpeg settings produce (see args.go).
+// the exact SPS field values checkSPS accepts, matching videoArgs' and
+// animationArgs' fixed ffmpeg settings (args.go).
 const (
 	spsProfileMain    = 77
 	spsMaxLevel       = 40
@@ -30,34 +24,20 @@ const (
 	remuxMaxDimension = 1280
 )
 
-// spsMaxCodedMacroblocks bounds how many macroblocks a coded picture
-// may contain, before frame cropping: level 4.0's own MaxFS (ISO/IEC
-// 14496-10 Annex A, Table A-1) - the level this package's own fixed
-// ffmpeg invocation always requests (-level:v 4.0, see args.go), and
-// so the level Qt's own H.264 decoder must size its reference-frame
-// buffers for.
+// spsMaxCodedMacroblocks bounds the coded picture size, before
+// cropping, to level 4.0's MaxFS (ISO/IEC 14496-10 Annex A) - the
+// level our fixed ffmpeg invocation always requests.
 const spsMaxCodedMacroblocks = 8192
 
-// spsMaxRefFrames bounds an SPS's own num_ref_frames and, when the
-// VUI declares bitstream restrictions, its max_dec_frame_buffering:
-// both say how many full reference-frame buffers - each sized at the
-// coded picture, not the cropped display size (see checkSPSCoded) -
-// Qt's decoder keeps alive at once. Measured directly against this
-// package's own fixed "-preset veryfast -bf 0" (videoArgs,
-// animationArgs): x264 writes exactly 4, at every resolution these
-// profiles ever produce, so this is that measured figure, not a
-// looser, guessed headroom - a crafted SPS cannot multiply a
-// decoder's own memory use by declaring more.
+// spsMaxRefFrames bounds num_ref_frames and max_dec_frame_buffering to
+// the reference-frame buffer count x264 actually writes with our
+// fixed encoder settings, so a crafted SPS cannot inflate the
+// decoder's memory use by declaring more.
 const spsMaxRefFrames = 4
 
 // spsMaxCropLumaSamples bounds how many luma samples frame cropping
-// may remove from a coded picture's own right or bottom edge: x264
-// only ever crops to round a picture up to a whole macroblock (at
-// most 15 samples), and only ever crops those two edges, never the
-// left or top (checkSPSCrop refuses either of those outright). A
-// crafted SPS claiming a larger crop could otherwise hide a bigger
-// coded picture - the size Qt's decoder actually allocates - behind
-// a small display size checkSPSDimensions would otherwise accept.
+// may remove from the right or bottom edge, so a crafted SPS cannot
+// hide a larger coded picture behind a small display size.
 const spsMaxCropLumaSamples = 16
 
 // trakStsd returns trak's own sample description box, or nil if its
@@ -97,9 +77,8 @@ func classifyTrack(trak *mp4.TrakBox) trackKind {
 }
 
 // classifyTracks finds exactly one avc1 video track and, when
-// allowAudio, at most one mp4a audio track among moov's own tracks,
-// refusing anything else: a second video track, any audio track at
-// all when allowAudio is false, or a track that is neither.
+// allowAudio, at most one mp4a audio track among moov's tracks,
+// refusing anything else.
 func classifyTracks(moov *mp4.MoovBox, allowAudio bool) (video, audio *mp4.TrakBox, err error) {
 	for _, trak := range moov.Traks {
 		switch classifyTrack(trak) {
@@ -127,9 +106,7 @@ func classifyTracks(moov *mp4.MoovBox, allowAudio bool) (video, audio *mp4.TrakB
 }
 
 // validateVideoTrack confirms trak is exactly one avc1 sample entry
-// over an avcC with exactly one SPS and one PPS at NAL length size 4
-// (DecodeAVCDecConfRec itself refuses any other length size), whose
-// PPS passes checkPPS and whose SPS passes checkSPS.
+// with one SPS and one PPS, and that both pass their checks.
 func validateVideoTrack(trak *mp4.TrakBox) (*mp4.AvcCBox, error) {
 	avcX, avcC, err := avcDescriptor(trak)
 	if err != nil {
@@ -144,10 +121,8 @@ func validateVideoTrack(trak *mp4.TrakBox) (*mp4.AvcCBox, error) {
 	return avcC, nil
 }
 
-// avcDescriptor returns trak's own single avc1 sample entry and its
-// avcC, refusing anything else: no sample entry at all, more than
-// one, a sample entry that is not avc1, or an avcC without exactly
-// one SPS and one PPS.
+// avcDescriptor returns trak's single avc1 sample entry and its avcC,
+// refusing anything else.
 func avcDescriptor(trak *mp4.TrakBox) (*mp4.VisualSampleEntryBox, *mp4.AvcCBox, error) {
 	stsd := trakStsd(trak)
 	if stsd == nil || len(stsd.Children) != 1 || stsd.AvcX == nil {
@@ -170,11 +145,9 @@ func parseAndCheckPPS(nalu []byte) error {
 	return checkPPS(pps)
 }
 
-// parseAndCheckSPS parses nalu as a SPS, with parseVUIBeyondAspectRatio
-// true rather than just the default aspect-ratio prefix - checkSPS
-// needs the VUI's own bitstream-restriction fields (see
-// checkSPSRefFrames) - and runs checkSPS on it against entryWidth and
-// entryHeight.
+// parseAndCheckSPS parses nalu as a SPS, including the VUI's
+// bitstream-restriction fields checkSPSRefFrames needs, and runs
+// checkSPS against entryWidth and entryHeight.
 func parseAndCheckSPS(nalu []byte, entryWidth, entryHeight uint16) error {
 	sps, err := avc.ParseSPSNALUnit(nalu, true)
 	if err != nil {
@@ -183,13 +156,10 @@ func parseAndCheckSPS(nalu []byte, entryWidth, entryHeight uint16) error {
 	return checkSPS(sps, entryWidth, entryHeight)
 }
 
-// checkPPS checks pps's own num_slice_groups_minus1: AVC Main
-// profile forbids slice groups outright (ISO/IEC 14496-10 Annex A),
-// and decoding more than one needs extra per-macroblock state this
-// package's other caps do not otherwise bound, so a PPS declaring
-// one is refused here directly rather than only relied on to already
-// be impossible under the Main profile checkSPSCoding separately
-// requires.
+// checkPPS checks pps's num_slice_groups_minus1: slice groups need
+// extra per-macroblock state our other caps don't bound, so they are
+// refused directly rather than relying only on checkSPSCoding's
+// Main-profile check.
 func checkPPS(pps *avc.PPS) error {
 	if pps.NumSliceGroupsMinus1 != 0 {
 		return fmt.Errorf("%w: PPS num_slice_groups_minus1 %d, want 0", ErrFailed, pps.NumSliceGroupsMinus1)
@@ -230,16 +200,11 @@ func checkSPSCoding(sps *avc.SPS) error {
 	}
 }
 
-// checkSPSDimensions checks sps's own cropped display size - even,
-// no larger than remuxMaxDimension on either side, and equal to the
-// sample entry's own declared entryWidth and entryHeight - and the
-// coded picture underneath it (checkSPSCoded, checkSPSCrop): mp4ff's
-// own sps.Width/sps.Height are already cropped down to the display
-// size (see cropUnits), but Qt's decoder allocates every reference
-// frame at the larger, uncropped coded size, so a crafted SPS that
-// declares a huge coded picture and crops it down to a small,
-// innocent-looking display size must be caught here too, not just
-// at the display size this function otherwise checks.
+// checkSPSDimensions checks sps's cropped display size against
+// entryWidth/entryHeight and remuxMaxDimension, and also checks the
+// uncropped coded picture underneath it: the decoder allocates
+// reference frames at the larger coded size, so a crafted SPS can't
+// hide a huge coded picture behind a small display size.
 func checkSPSDimensions(sps *avc.SPS, entryWidth, entryHeight uint16) error {
 	cropUnitX, cropUnitY := cropUnits(sps)
 	codedWidth := sps.Width + (sps.FrameCropLeftOffset+sps.FrameCropRightOffset)*cropUnitX
@@ -264,16 +229,9 @@ func checkSPSDimensions(sps *avc.SPS, entryWidth, entryHeight uint16) error {
 	}
 }
 
-// cropUnits returns the horizontal and vertical units sps's own
+// cropUnits returns the horizontal and vertical units sps's
 // frame-cropping offsets are measured in (ISO/IEC 14496-10 Section
-// 7.4.2.1.1): mp4ff computes these itself while parsing the SPS, to
-// turn the same offsets into the cropped sps.Width/sps.Height it
-// exposes, but does not expose the units themselves, so this repeats
-// their short formula. checkSPSCoding has already required 4:2:0
-// chroma and frame_mbs_only by the time either caller below runs, so
-// this always resolves to (2, 2) in practice; it stays written
-// generally so it remains correct if that check's own bounds ever
-// change.
+// 7.4.2.1.1); mp4ff computes this internally but doesn't expose it.
 func cropUnits(sps *avc.SPS) (x, y uint) {
 	frameMbsOnly := uint(0)
 	if sps.FrameMbsOnlyFlag {
@@ -291,15 +249,9 @@ func cropUnits(sps *avc.SPS) (x, y uint) {
 	}
 }
 
-// checkSPSCoded checks the coded picture sps actually describes -
-// codedWidth and codedHeight, both before frame cropping is removed -
-// rather than the cropped display size checkSPSDimensions checks:
-// Qt's own decoder allocates every reference frame at this size, so
-// a crafted SPS that declares a huge coded picture and crops it down
-// to a small display size must be caught here, not there. Both
-// dimensions must already be a whole number of macroblocks:
-// checkSPSCoding has required frame_mbs_only by the time this runs,
-// so neither one needs rounding up first.
+// checkSPSCoded checks the uncropped coded picture size the decoder
+// actually allocates reference frames at, rather than the cropped
+// display size checkSPSDimensions checks.
 func checkSPSCoded(codedWidth, codedHeight uint) error {
 	switch {
 	case codedWidth%16 != 0 || codedHeight%16 != 0:
@@ -314,11 +266,9 @@ func checkSPSCoded(codedWidth, codedHeight uint) error {
 	}
 }
 
-// checkSPSCrop checks sps's own frame-cropping offsets, converted to
-// luma samples through cropUnits: x264 only ever crops the right and
-// bottom edges, by less than one macroblock, to round a coded
-// picture up to a whole one - never the left or top edge, and never
-// by a whole macroblock or more.
+// checkSPSCrop checks sps's frame-cropping offsets, converted to luma
+// samples: x264 only ever crops the right and bottom edges, by less
+// than one macroblock.
 func checkSPSCrop(sps *avc.SPS) error {
 	cropUnitX, cropUnitY := cropUnits(sps)
 	left := sps.FrameCropLeftOffset * cropUnitX

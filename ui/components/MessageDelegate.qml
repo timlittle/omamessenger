@@ -168,11 +168,7 @@ Item {
     Text {
       objectName: "senderName"
       x: Theme.spacing.md + root.indentWidth
-      // The helper caps a sender name's own length (see
-      // domain.CapDisplayName), but a width and an elide here are
-      // defence in depth against a name that still somehow reaches
-      // this far: one unbounded single line would otherwise make the
-      // shell lay out the whole string on its UI thread.
+      // Defence in depth against an unbounded name: an elide, behind the helper's own length cap.
       width: parent.width - x - Theme.spacing.md
       elide: Text.ElideRight
       visible: root.annotation.showSender

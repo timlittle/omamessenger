@@ -26,10 +26,8 @@ const (
 	EventAccountNotice       = "account.notice"
 )
 
-// ScheduledRemoved is the data of a scheduledMessage.removed event: a
-// queued message that was cancelled, sent now, or just came due,
-// identified by its own id and the conversation it belonged to, since
-// by the time the UI sees this the row itself is already gone.
+// ScheduledRemoved is the data of a scheduledMessage.removed event, naming the
+// scheduled message (now gone) and its conversation.
 type ScheduledRemoved struct {
 	ConversationID string `json:"conversationId"`
 	ScheduledID    string `json:"scheduledId"`
@@ -62,49 +60,30 @@ type AccountRemoved struct {
 	AccountID string `json:"accountId"`
 }
 
-// AccountView is the data of an account.updated event, and
-// accounts.list's own per-account shape: a stored domain.Account
-// enriched with its connector's current attachment limit, for the
-// composer's "Up to …" hint before a file is picked. Every place that
-// publishes account.updated uses this, not a bare domain.Account, so a
-// reconnect's own update - which WhatsApp's connector fires far more
-// often than Telegram's - never silently wipes the limit the UI
-// already had for the account (see viewAccount).
+// AccountView is a domain.Account enriched with its connector's current
+// attachment limit, used by account.updated and accounts.list alike.
 type AccountView struct {
 	domain.Account
 	AttachmentLimit int64 `json:"attachmentLimit"`
 }
 
-// viewAccount wraps account with limiter's current attachment limit
-// for it (see AccountView), the same lookup and fallback
-// AttachmentLimit itself runs, so every account.updated event reports
-// exactly what accounts.list would for the same account right now.
+// viewAccount wraps account with limiter's current attachment limit for it.
 func viewAccount(limiter AttachmentLimiter, account domain.Account) AccountView {
 	return AccountView{Account: account, AttachmentLimit: attachmentLimitFor(limiter, account.ID, domain.MediaFile)}
 }
 
-// NotificationSound is the data of a notification.sound event: a hint,
-// sent only once Ingest has already decided to show a desktop
-// notification for an arriving message (so a muted, missed or
-// already-read one never sends this at all), that the UI should decide
-// whether to play a sound for conversationID. It carries no sender
-// name, text or file path - only the service, so the UI knows which of
-// its own manifest settings to weigh alongside the conversation's own
-// choice (see ui/lib/NotificationSound.js).
+// NotificationSound is the data of a notification.sound event: a hint to the
+// UI to decide whether to play a sound, sent only when a notification is
+// already shown. It carries no sender name, text or file path.
 type NotificationSound struct {
 	ConversationID string `json:"conversationId"`
 	Service        string `json:"service"`
 	HasCustomSound bool   `json:"hasCustomSound"`
 }
 
-// AccountNotice is the data of an account.notice event: a safe,
-// one-time heads-up about something an account's service cannot do
-// right now, shown in the UI's existing toast rather than any error
-// banner - WhatsApp's own app-state verification permanently failing
-// for pin, archive, mark-read and delete-for-me is the only case
-// today (see connector.ErrOrganizeLocalOnly and docs/decisions.md).
-// Commands publishes it once per account per helper run, the first
-// time it discovers the condition (see organizeLocalOnlyHandled).
+// AccountNotice is the data of an account.notice event: a safe, one-time
+// heads-up shown in a toast about something the account's service cannot
+// do right now (see docs/decisions.md).
 type AccountNotice struct {
 	AccountID string `json:"accountId"`
 	Message   string `json:"message"`

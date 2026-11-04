@@ -178,19 +178,11 @@ func imageDimensions(data []byte) (width, height int) {
 
 // jpegThumbnail returns a small JPEG preview of a photo's bytes, no
 // larger than thumbMaxSize on its longer side, for WhatsApp to show
-// before the full image downloads. It returns nil when the photo
-// cannot be decoded, or declares dimensions past imagesafe.Outgoing's
-// own cap, which only costs that preview: the full image is still
-// sent and can still be fetched. data is always app's own already-
-// sanitized attachment by the time this runs - never over Outgoing's
-// cap in practice, since SanitizeOutgoingImageFile already shrinks
-// anything larger before the message ever reaches this connector -
-// but the check stays, named after the same profile, so this never
-// quietly assumes an invariant it does not itself enforce. The
-// declared size is checked by its header alone, the same way
-// imagesafe.Sanitize checks a downloaded image, before ever calling
-// image.Decode - a full decode, unlike DecodeConfig, allocates a
-// bitmap the size the header declares.
+// before the full image downloads. Returns nil when the photo cannot
+// be decoded or declares dimensions past imagesafe.Outgoing's cap,
+// which only costs the preview: the full image still sends. The
+// declared size is checked by its header alone before calling
+// image.Decode, which would otherwise allocate a bitmap that size.
 func jpegThumbnail(data []byte) []byte {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || !withinThumbnailSourceCaps(cfg.Width, cfg.Height) {

@@ -28,13 +28,9 @@ type filePickResult struct {
 	Path string `json:"path,omitempty"`
 }
 
-// filesPick opens a file-choosing dialog outside this process (the
-// xdg-desktop-portal FileChooser, over D-Bus), restricted to the file
-// kinds p.Purpose names; see app.Commands.PickFile. A portal that
-// cannot be reached fails with an internal error carrying a safe
-// "unavailable" reason (see rpcError), the UI's own cue to fall back
-// to a different file picker rather than the in-process GTK dialog
-// that once crashed the whole shell (see docs/decisions.md).
+// filesPick opens a file-choosing dialog through the xdg-desktop-portal
+// FileChooser, restricted to the kinds p.Purpose names (see
+// docs/decisions.md for why not an in-process dialog).
 func filesPick(c *app.Commands) func(context.Context, filePickParams) (any, error) {
 	return func(ctx context.Context, p filePickParams) (any, error) {
 		path, err := c.PickFile(ctx, p.Purpose, p.Title)

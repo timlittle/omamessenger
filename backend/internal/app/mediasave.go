@@ -115,16 +115,11 @@ func sanitizedStem(media *domain.Media) string {
 	return truncateRunes(cleaned, maxStemLen)
 }
 
-// isAllowedStemRune reports whether r is safe to keep unchanged in a
-// saved download's own name: a letter, a digit, or one of a
-// conservative, fixed set of punctuation. Markup characters - `<`,
-// `>`, `&`, `=`, `#`, `;` among them - are deliberately excluded: a
-// security review found Qt's own fallback file dialog
-// (FileDialogDelegateLabel.qml, used when the composer's attach
-// picker or the sound picker falls back from the portal) renders a
-// file's name with no textFormat override, so it defaults to
-// AutoText and reads a name like "<img src=...>" as rich text,
-// fetching a remote image just from listing the folder.
+// isAllowedStemRune reports whether r is a letter, digit, or one of a
+// conservative set of punctuation. Markup characters are excluded
+// because Qt's fallback file dialog renders file names as rich text,
+// so a name like "<img src=...>" could fetch a remote image just
+// from listing the folder.
 func isAllowedStemRune(r rune) bool {
 	if unicode.IsLetter(r) || unicode.IsDigit(r) {
 		return true
@@ -139,9 +134,7 @@ func isAllowedStemRune(r rune) bool {
 }
 
 // restrictStemChars replaces every rune isAllowedStemRune rejects
-// with an underscore, so a saved download's own name can never carry
-// a character able to make a file dialog or any other viewer treat
-// it as markup.
+// with an underscore.
 func restrictStemChars(s string) string {
 	return strings.Map(func(r rune) rune {
 		if isAllowedStemRune(r) {

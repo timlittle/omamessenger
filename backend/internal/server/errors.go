@@ -74,18 +74,14 @@ func mediaFetchRPCError(mediaErr *app.MediaFetchError) *jsonrpc2.Error {
 }
 
 // filePickErrorData is the only detail of a failed files.pick that
-// crosses the protocol: a safe reason category (see
-// app.FilePickError), so the UI knows to fall back to a different
-// file picker rather than the in-process GTK dialog that once crashed
-// the whole shell (see docs/decisions.md).
+// crosses the protocol: a safe reason category, so the UI can fall
+// back to a different file picker (see docs/decisions.md).
 type filePickErrorData struct {
 	Reason string `json:"reason"`
 }
 
 // filePickRPCError turns a *app.FilePickError into the internal-error
-// code every unexpected failure already uses, with its safe reason
-// category attached as the error's data field; nothing else about
-// what went wrong leaves the helper.
+// code, with its safe reason category attached as the error's data field.
 func filePickRPCError(pickErr *app.FilePickError) *jsonrpc2.Error {
 	rpcErr := &jsonrpc2.Error{Code: CodeInternal, Message: "internal error"}
 	rpcErr.SetError(filePickErrorData{Reason: pickErr.Reason})
@@ -95,18 +91,14 @@ func filePickRPCError(pickErr *app.FilePickError) *jsonrpc2.Error {
 
 // openErrorData is the only detail of a failed links.open,
 // media.openExternal or files.open that crosses the protocol: a safe
-// reason category (see app.OpenError), so the UI knows to show a
-// fixed message ("Couldn't open the link: no desktop portal") rather
-// than falling back to xdg-open's own argv leak (see
-// docs/decisions.md).
+// reason category, so the UI can show a fixed message rather than
+// falling back to xdg-open's own argv leak (see docs/decisions.md).
 type openErrorData struct {
 	Reason string `json:"reason"`
 }
 
-// openRPCError turns an *app.OpenError into the internal-error code
-// every unexpected failure already uses, with its safe reason category
-// attached as the error's data field; nothing else about what went
-// wrong leaves the helper.
+// openRPCError turns an *app.OpenError into the internal-error code,
+// with its safe reason category attached as the error's data field.
 func openRPCError(openErr *app.OpenError) *jsonrpc2.Error {
 	rpcErr := &jsonrpc2.Error{Code: CodeInternal, Message: "internal error"}
 	rpcErr.SetError(openErrorData{Reason: openErr.Reason})

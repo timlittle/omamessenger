@@ -75,20 +75,8 @@ Column {
   // voted asks the caller to cast optionIds as the user's vote in this
   // message's poll.
   signal voted(var optionIds)
-  // linkOpenRequested asks the caller to open url: a link in this
-  // message's own text, or its link preview's URL. displayText is
-  // what the person actually saw for it - identical to url for a link
-  // preview or a plain autolinked URL, but a formatting span's own
-  // text can read as something else entirely (see
-  // ui/lib/Links.js's resolveClickedLink, which is what the body
-  // TextEdit's onLinkActivated below uses to recover it, by the
-  // clicked anchor's own position, never by matching its href against
-  // a span's URL). suspicious is the resolved anchor's own flag (see
-  // Format.messageLinkAnchors), always false for a link preview's own
-  // card, which carries no such anchor. Reported rather than opened
-  // here directly, so the one allow-list check, and the one question
-  // about a mismatched or suspicious link, happen where every such
-  // request ends up (see WindowController.openLink).
+  // linkOpenRequested asks the caller to open url, with the text the user
+  // saw and whether the resolved anchor looked suspicious (see WindowController.openLink).
   signal linkOpenRequested(string url, string displayText, bool suspicious)
 
   // _mediaKind is which view media belongs in: "link", "photo", "video",
@@ -159,13 +147,9 @@ Column {
     text: Format.longestLine(body.caption)
   }
 
-  // Only the one view matching _mediaKind is ever created, each inside
-  // its own Loader gated on that kind: an inactive Loader holds no item
-  // at all, so a message's media never reaches a view it does not
-  // belong to - not even as a hidden sibling. That used to let a
-  // never-shown Image decode a thumbnail on the shell's own UI thread
-  // (see docs/decisions.md): the fix is to stop that view existing at
-  // all for a message of a different kind, not merely to hide it.
+  // Only the one view matching _mediaKind is ever created, each inside its
+  // own Loader, so an inactive view never decodes media it doesn't own
+  // (see docs/decisions.md).
   Loader {
     objectName: "linkPreviewLoader"
     active: root._mediaKind === "link"

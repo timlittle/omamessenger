@@ -1,11 +1,8 @@
 package transcode
 
-// remuxsamples.go reads and validates each sample of a track
-// remux.go's doRemux is rebuilding, writing the bytes this package
-// itself trusts - a video sample's own slice NAL units, filtered; an
-// audio sample's bytes, unchanged - to a scratch file on disk rather
-// than holding them in memory, so a long or adversarial track costs
-// this package disk space, never RAM.
+// remuxsamples.go validates each sample of a track being rebuilt and
+// writes the trusted bytes to a scratch file on disk, so a long track
+// costs disk space rather than RAM.
 
 import (
 	"encoding/binary"
@@ -18,18 +15,15 @@ import (
 )
 
 // mp4Source bundles a parsed intermediate file with the read-seeker
-// its lazy mdat decoding needs to actually fetch a sample's bytes,
-// so passing both around together is one argument, not two.
+// its lazy mdat decoding needs to fetch a sample's bytes.
 type mp4Source struct {
 	file *mp4.File
 	rs   io.ReadSeeker
 }
 
-// remuxTrack is one track's own validated shape: everything
-// writeRemuxed needs to build its moov and copy its bytes. idr is
-// nil for an audio track. chunkOffset is left at zero until
-// writeRemuxed assigns it, once it knows where in the output file
-// this track's one chunk will actually start.
+// remuxTrack is one track's validated shape: everything writeRemuxed
+// needs to build its moov and copy its bytes. idr is nil for an
+// audio track; chunkOffset is filled in by writeRemuxed.
 type remuxTrack struct {
 	durations   []uint32
 	sizes       []uint32
@@ -39,12 +33,10 @@ type remuxTrack struct {
 	chunkOffset int64
 }
 
-// collectSamples validates every sample of video (and, when present,
-// audio) and writes their trusted bytes, in order, to a fresh
-// scratch file at scratchPath: video's own filtered NAL units first,
-// then audio's own unchanged bytes. Both share one scratchWriter, so
-// caps.maxOutputBytes bounds their combined total, not each one
-// separately.
+// collectSamples validates video (and, when present, audio) samples
+// and writes their trusted bytes, in order, to a fresh scratch file
+// at scratchPath. Both tracks share one scratchWriter, so
+// caps.maxOutputBytes bounds their combined total.
 func collectSamples(src mp4Source, videoTrak, audioTrak *mp4.TrakBox, scratchPath string, caps remuxCaps) (video, audio *remuxTrack, err error) {
 	scratch, err := os.OpenFile(scratchPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -72,25 +64,18 @@ func collectSamples(src mp4Source, videoTrak, audioTrak *mp4.TrakBox, scratchPat
 	return video, audio, nil
 }
 
-// scratchWriter writes each validated sample to collectSamples' own
-// shared scratch file, refusing to grow video's and audio's combined
-// total past max: trakSampleMetadata and readOneSample only ever
-// bound one declared sample at a time, so without this, a crafted
-// sample table naming many thousands of samples that all alias the
-// same handful of bytes in the sandboxed file's own mdat - each
-// still under its own per-sample cap - could make this package write
-// that small, already-size-capped payload out again once per
-// declared sample (see remuxCaps.maxOutputBytes and
-// docs/decisions.md).
+// scratchWriter writes each validated sample to collectSamples'
+// shared scratch file, refusing to grow the combined total past max:
+// a crafted sample table could otherwise alias the same bytes many
+// times over and bypass the per-sample cap (see docs/decisions.md).
 type scratchWriter struct {
 	f     *os.File
 	total int64
 	max   int64
 }
 
-// write appends sample to w's own scratch file, refusing it - before
-// anything is actually written - once doing so would take w's own
-// running total past max.
+// write appends sample to w's scratch file, refusing it before
+// writing if doing so would take the running total past max.
 func (w *scratchWriter) write(sample []byte) error {
 	next := w.total + int64(len(sample))
 	if next > w.max {
@@ -103,10 +88,8 @@ func (w *scratchWriter) write(sample []byte) error {
 	return nil
 }
 
-// trakSampleMetadata returns trak's own declared samples (duration,
-// size, composition time offset), refusing a track with none at all
-// or more than maxSamples: a single absurd declared count must cost
-// this package no more than checking it costs.
+// trakSampleMetadata returns trak's declared samples, refusing a
+// track with none or more than maxSamples before doing further work.
 func trakSampleMetadata(trak *mp4.TrakBox, maxSamples int) ([]mp4.Sample, error) {
 	n := trak.GetNrSamples()
 	if n == 0 {
@@ -118,11 +101,8 @@ func trakSampleMetadata(trak *mp4.TrakBox, maxSamples int) ([]mp4.Sample, error)
 	return trak.GetSampleData(1, n)
 }
 
-// readOneSample fetches sample nr's own bytes from trak through
-// src's own lazy mdat reader, refusing anything past maxLen before
-// the read even happens: GetRangesForSampleInterval reports a
-// declared size without touching mdat, so an absurd one is caught
-// before this package asks ReadSampleData to satisfy it.
+// readOneSample fetches sample nr's bytes from trak, refusing
+// anything past maxLen using the declared size before reading mdat.
 func readOneSample(src mp4Source, trak *mp4.TrakBox, nr uint32, maxLen int64) ([]byte, error) {
 	ranges, err := trak.GetRangesForSampleInterval(nr, nr)
 	if err != nil {
@@ -168,10 +148,9 @@ func collectVideoSamples(src mp4Source, trak *mp4.TrakBox, sw *scratchWriter, ma
 	return track, nil
 }
 
-// processVideoSample validates one video sample's own metadata and
-// NAL content (see filterVideoSample), refusing a zero duration, a
-// nonzero composition time offset, or - for the first sample only -
-// anything but an IDR.
+// processVideoSample validates one video sample's metadata and NAL
+// content, refusing a zero duration, a nonzero composition time
+// offset, or a non-IDR first sample.
 func processVideoSample(src mp4Source, trak *mp4.TrakBox, s mp4.Sample, index int, maxSampleLen int64) ([]byte, bool, error) {
 	if s.Dur == 0 {
 		return nil, false, fmt.Errorf("%w: video sample %d has zero duration", ErrFailed, index+1)
@@ -193,11 +172,9 @@ func processVideoSample(src mp4Source, trak *mp4.TrakBox, s mp4.Sample, index in
 	return filtered, isIDR, nil
 }
 
-// filterVideoSample walks sample's own length-prefixed NAL units,
-// keeping only slice data (type 1 or 5) and dropping SEI (6) and AUD
-// (9), and refuses anything else at all - another in-band SPS or
-// PPS included - along with a sample that keeps nothing. It reports
-// whether what it kept included an IDR slice.
+// filterVideoSample keeps only slice NAL units (type 1 or 5), drops
+// SEI and AUD units, and refuses any other type or an empty result.
+// It reports whether an IDR slice was kept.
 func filterVideoSample(sample []byte) ([]byte, bool, error) {
 	nalus, err := avc.GetNalusFromSample(sample)
 	if err != nil {
@@ -228,9 +205,8 @@ func filterVideoSample(sample []byte) ([]byte, bool, error) {
 	return encodeNALUSample(kept), isIDR, nil
 }
 
-// encodeNALUSample rebuilds one sample's own bytes from nalus, each
-// prefixed with its own 4-byte big-endian length - the same framing
-// avcC's own NAL length size fixes at 4 throughout this package.
+// encodeNALUSample rebuilds one sample's bytes from nalus, each
+// prefixed with its 4-byte big-endian length.
 func encodeNALUSample(nalus [][]byte) []byte {
 	size := 0
 	for _, n := range nalus {
@@ -246,8 +222,8 @@ func encodeNALUSample(nalus [][]byte) []byte {
 	return out
 }
 
-// collectAudioSamples validates every sample of trak - nonzero
-// duration, no composition time offset, within maxSampleLen - and
+// collectAudioSamples validates every sample of trak (nonzero
+// duration, no composition time offset, within maxSampleLen) and
 // appends its bytes, unchanged, to sw.
 func collectAudioSamples(src mp4Source, trak *mp4.TrakBox, sw *scratchWriter, maxSamples int, maxSampleLen int64) (*remuxTrack, error) {
 	samples, err := trakSampleMetadata(trak, maxSamples)

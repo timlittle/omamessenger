@@ -72,11 +72,8 @@ type Facts struct {
 	// the session bus as org.freedesktop.Notifications.
 	NotificationServiceReachable bool
 
-	// PlaybackAvailable is true once this run confirmed, at startup,
-	// that ffmpeg and bubblewrap both resolve on PATH: the two external
-	// tools in-window video and voice playback need. False means a
-	// play fetch will never produce a playPath at all, not that any
-	// one message failed on its own.
+	// PlaybackAvailable is true once startup confirmed ffmpeg and
+	// bubblewrap both resolve on PATH, which in-window playback needs.
 	PlaybackAvailable bool
 
 	// RecentErrorCategories are the last few safe error categories
@@ -216,9 +213,7 @@ func notifyCheck(f Facts) Check {
 	return Check{Name: "Desktop notifications", OK: true, Detail: "notification service reachable"}
 }
 
-// playbackCheck flags ffmpeg or bubblewrap missing from PATH, which
-// means in-window video and voice playback can never work until both
-// are installed, not that this run happened to hit a failure.
+// playbackCheck flags ffmpeg or bubblewrap missing from PATH; without both, in-window playback can never work.
 func playbackCheck(f Facts) Check {
 	if !f.PlaybackAvailable {
 		return Check{Name: "In-window playback", OK: false, Detail: "needs ffmpeg and bubblewrap installed"}

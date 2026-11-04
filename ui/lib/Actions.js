@@ -45,9 +45,8 @@ var OWNERS = {
   'chat.reportSpam': 'list',
   'chat.setNotificationSound': 'list',
   'chat.resetNotificationSound': 'list',
-  // chat.playNotificationSound previews the sound the open chat itself
-  // would use, so ConversationController owns it: the one controller
-  // that already knows which conversation that is.
+  // chat.playNotificationSound previews the open chat's sound, so
+  // ConversationController owns it.
   'chat.playNotificationSound': 'conversation',
   'blockConfirm.accept': 'list',
   'blockConfirm.cancel': 'list',
@@ -201,16 +200,12 @@ var OWNERS = {
   // one chat.* action not owned by ListController, since the chat it
   // applies to is resolved only once the prompt is accepted.
   'chat.snoozeCustom': 'window',
-  // compose.sendLater opens the same kind of palette prompt, for when
-  // to send the composer's own text instead of which chat to snooze;
-  // scheduled.show lists what is already queued. Both open a palette
-  // mode WindowController owns, the same reasoning as chat.snoozeCustom.
+  // compose.sendLater and scheduled.show open palette modes the same way
+  // chat.snoozeCustom does.
   'compose.sendLater': 'window',
   'scheduled.show': 'window',
-  // The three commands below act on the open chat's own queued
-  // message, resolved through WindowController._runScheduledAction;
-  // with more than one queued it opens the same kind of palette
-  // picker chat.snoozeCustom and compose.sendLater already do.
+  // These act on the open chat's queued message via
+  // WindowController._runScheduledAction.
   'scheduled.sendNow': 'window',
   'scheduled.edit': 'window',
   'scheduled.cancel': 'window',
@@ -235,13 +230,9 @@ var OWNERS = {
   'close.keep': 'window',
   'escape': 'window',
 
-  // field.paste has no controller owner at all: Panel.routeKey answers
-  // it directly, pasting into whichever field actually has keyboard
-  // focus (see Keymap.js and ClipboardPaste.qml), since that field can
-  // belong to any of several different controllers' own overlays
-  // depending on which is open. "panel" names this explicitly, rather
-  // than leaving it out of OWNERS, so the exhaustiveness check below
-  // still catches a Keymap binding nothing accounts for at all.
+  // field.paste has no controller owner: Panel.routeKey pastes directly
+  // into whichever field has focus. "panel" keeps it in the
+  // exhaustiveness check below.
   'field.paste': 'panel'
 };
 

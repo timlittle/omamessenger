@@ -64,10 +64,8 @@ type Organizer interface {
 }
 
 // ArchiveUnpinner reports whether archiving a conversation also unpins
-// it with the account's own service, so SetArchived knows to unpin it
-// locally in the same call too, rather than only once the service's own
-// round trip reports it back - a correction that never arrives at all
-// if that call fails (see docs/decisions.md).
+// it with the account's own service, so SetArchived can unpin it
+// locally in the same call.
 type ArchiveUnpinner interface {
 	ArchiveUnpins(accountID string) bool
 }
@@ -115,15 +113,12 @@ type MemberLister interface {
 }
 
 // AttachmentLimiter reports the largest attachment an account's
-// connector currently accepts, through its service, when it knows one
-// narrower than MaxAttachmentSize, the backstop that applies
-// regardless.
+// connector currently accepts, when it knows one narrower than
+// MaxAttachmentSize.
 type AttachmentLimiter interface {
 	// AttachmentLimit is the limit accountID's connector reports for
-	// kind ("photo", "video" or "file"), and whether it reported one
-	// at all; false means there is no connector running for the
-	// account right now, or its connector has none narrower than
-	// MaxAttachmentSize.
+	// kind ("photo", "video" or "file"); false means no such limit is
+	// known.
 	AttachmentLimit(accountID, kind string) (int64, bool)
 }
 
@@ -159,24 +154,11 @@ type OutgoingMedia interface {
 }
 
 // Transcoder re-encodes untrusted media with the system ffmpeg, run
-// inside a sandbox, so the UI only ever plays a file this helper's own
-// fixed ffmpeg invocation produced - never a sender's bytes directly
-// (see docs/decisions.md). Five methods, one per fixed output profile
-// *transcode.Transcoder exposes, not the usual one or two (see
-// interfaces.md): each is a different ffmpeg invocation and output
-// container - Video and Animation both write an MP4, the one
-// difference being whether the source's own audio is kept; Audio
-// re-encodes a voice note or audio message; Sound re-encodes a
-// notification sound to WAV, the only format Qt's SoundEffect plays;
-// StillFrame extracts one frame, for a sticker format Go cannot decode
-// at all - so a caller already knows which it wants and a single
-// parameterized method would only make it pass that choice back in as
-// a value this interface would have to validate itself. Every method
-// takes the same (ctx, in, outDir) and returns the one output file's
-// path inside a fresh job directory under outDir, which the caller
-// moves into place and removes (see docs/decisions.md), or one of
-// transcode's own sentinel errors (ErrUnavailable, ErrTimeout,
-// ErrTooLong, ErrFailed).
+// inside a sandbox, so the UI only ever plays output this helper
+// produced, never a sender's bytes directly. Each method is a
+// different fixed ffmpeg profile; all return the output file's path in
+// a fresh job directory under outDir, or one of transcode's sentinel
+// errors.
 type Transcoder interface {
 	Video(ctx context.Context, in, outDir string) (string, error)
 	Animation(ctx context.Context, in, outDir string) (string, error)
@@ -185,28 +167,18 @@ type Transcoder interface {
 	StillFrame(ctx context.Context, in, outDir string) (string, error)
 }
 
-// SoundStore stores a validated copy of every custom notification sound
-// this helper plays, one file per key: a conversation's own id, or a
-// fixed name for a service's or the global default sound (see
-// notificationsound.go). Every key always overwrites its own file in
-// place, so a caller replacing one never needs to remove the old copy
-// first.
+// SoundStore stores a validated copy of every custom notification
+// sound, one file per key (a conversation id, or a fixed service or
+// default name). Storing under an existing key overwrites it.
 type SoundStore interface {
 	Store(ctx context.Context, key string, r io.Reader) (string, error)
 	Path(key string) string
 	Remove(ctx context.Context, key string) error
 }
 
-// ClipboardRunner reads and writes the Wayland clipboard. Quickshell's
-// QML cannot read clipboard image or text data, or put an image or
-// video on the clipboard at all, itself, so the helper shells out to
-// wl-paste and wl-copy; PasteImage asks for the first, PasteText for a
-// second, bounded read of the clipboard's plain text, and CopyMedia for
-// wl-copy. Four methods, not the usual one or two, because all four are
-// the one real resource - the system clipboard - a single command-line
-// pair already owns: splitting them into their own interfaces would
-// only mean several fields wired to the same implementation for no
-// caller's benefit.
+// ClipboardRunner reads and writes the Wayland clipboard. QML cannot
+// read clipboard image or text data itself, so the helper shells out to
+// wl-paste and wl-copy.
 type ClipboardRunner interface {
 	// Types lists the MIME types the clipboard currently offers.
 	Types(ctx context.Context) ([]string, error)
@@ -214,11 +186,8 @@ type ClipboardRunner interface {
 	// Read writes the clipboard's data of mimeType to w.
 	Read(ctx context.Context, mimeType string, w io.Writer) error
 
-	// ReadText returns the clipboard's text/plain offer, bounded the
-	// same way Read is for an image, but at a far smaller cap: the
-	// one safe way to read clipboard text at all, since Qt's own
-	// in-process reader has no size or time limit of its own (see
-	// docs/decisions.md).
+	// ReadText returns the clipboard's text/plain offer, bounded like
+	// Read but at a much smaller cap.
 	ReadText(ctx context.Context) (string, error)
 
 	// Write puts data on the clipboard as mimeType.
@@ -231,29 +200,21 @@ type SignIn interface {
 }
 
 // FilePicker opens a file-choosing dialog outside this process, so
-// picking a file never runs GTK inside the shared Omarchy shell (see
-// docs/decisions.md); *portal.Picker is the production implementation.
-// Pick returns ok false with no error when the user cancelled the
-// dialog, never confused with path "" being a real answer; err is
-// returned only when the dialog itself could not be shown at all,
-// such as no portal being reachable on the session bus.
+// picking a file never runs GTK inside the shared Omarchy shell.
+// Pick returns ok false with no error when the user cancels; err is
+// returned only when the dialog itself could not be shown.
 type FilePicker interface {
 	Pick(ctx context.Context, title string, filters []portal.Filter) (path string, ok bool, err error)
 }
 
-// URIOpener opens a link or a local file with the desktop's own
-// default handler, so Qt (or this helper) never starts a process whose
-// arguments carry the target: a process's argv is readable by every
-// other local user through /proc/<pid>/cmdline, and a link can carry
-// something as sensitive as a password-reset token (see
-// docs/decisions.md). *portal.Opener is the production implementation.
+// URIOpener opens a link or local file with the desktop's own default
+// handler, so this helper never starts a process whose argv carries
+// the target (see docs/decisions.md).
 type URIOpener interface {
-	// Open opens uri with the user's own default handler for its
-	// scheme, typically a browser.
+	// Open opens uri with the user's default handler for its scheme.
 	Open(ctx context.Context, uri string) error
 
-	// OpenFile opens the local file at path with the user's own
-	// default handler for its kind.
+	// OpenFile opens the local file at path with its default handler.
 	OpenFile(ctx context.Context, path string) error
 }
 
@@ -349,29 +310,21 @@ type Deps struct {
 	// guessing a location.
 	DownloadsDir string
 
-	// MediaCacheDir and OutgoingDir are, respectively, where a
-	// message's downloaded media and a user's own outgoing attachment
-	// live, and KeysConfigPath is this plugin's own key-bindings file
-	// (see docs/decisions.md). OpenFile refuses any path that, once its
-	// own symlinks are resolved, lies outside every one of these: the
-	// only local files it should ever be asked to open, however the
-	// caller built the path it sent.
+	// MediaCacheDir and OutgoingDir hold downloaded and outgoing
+	// attachments; KeysConfigPath is the plugin's key-bindings file.
+	// OpenFile refuses any resolved path outside these.
 	MediaCacheDir  string
 	OutgoingDir    string
 	KeysConfigPath string
 
-	// TranscodeJobRoot is where Transcoder writes a job's own output
-	// directory: a fixed root, cleared at startup, under this run's own
-	// data directory (see main.go), never /tmp.
+	// TranscodeJobRoot is where Transcoder writes each job's output
+	// directory: a fixed root under the data directory, cleared at
+	// startup, never /tmp.
 	TranscodeJobRoot string
 
-	// PlaybackAvailable is true once this run confirmed, at startup,
-	// that ffmpeg and bubblewrap both resolve on PATH - the two
-	// external tools in-window video and voice playback need (see
-	// docs/decisions.md). False means a play fetch will never produce a
-	// playPath at all; Doctor reports this as the likely cause, rather
-	// than Commands failing a request that is never going to succeed
-	// differently next time.
+	// PlaybackAvailable is true once startup confirmed ffmpeg and
+	// bubblewrap both resolve on PATH; false means playback will
+	// never produce a playPath.
 	PlaybackAvailable bool
 }
 

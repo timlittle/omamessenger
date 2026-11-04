@@ -1,35 +1,21 @@
 import QtQuick
 import Quickshell.Io
 
-// Asks Omarchy's own shell, read-only, whether its own do-not-disturb
-// is on right now, through the same fixed, literal argv
-// `omarchy-shell -q notifications isDnd` our own rules already call
-// safe for a read-only query (see omarchy.md's "listPlugins" note):
-// never a string built from anything this helper or a sender
-// controls. Omarchy's own notification daemon already silences a
-// popup under do-not-disturb; this is only so this plugin's own
-// notification sound follows the same rule, rather than sounding
-// through it.
+// Asks Omarchy's shell, read-only, whether do-not-disturb is on right
+// now, through the fixed literal argv `omarchy-shell -q notifications
+// isDnd`, so this plugin's own notification sound follows the same rule.
 Item {
   id: root
 
-  // timeoutMs bounds how long check waits for an answer before giving
-  // up and reporting not-on-do-not-disturb: a notification sound must
-  // never be held up for long by an external command that is slow,
-  // missing, or not running inside Omarchy at all (a dev build, a
-  // test).
+  // timeoutMs bounds how long check waits before giving up and
+  // reporting not-on-do-not-disturb, so a sound is never held up by a slow or missing command.
   property int timeoutMs: 500
 
   // _callback is the one check() in flight, or null between calls.
   property var _callback: null
 
   // check calls callback(active) exactly once: true only for a
-  // definite "on" reply within timeoutMs, false for anything else -
-  // "off", a missing shell, an unreadable reply, a check already in
-  // flight, or one that simply never answers in time. A notification
-  // sound is never worth blocking on or failing over, so every one of
-  // those failure shapes resolves the same safe way: not on
-  // do-not-disturb, play as usual.
+  // definite "on" reply within timeoutMs, false for any other outcome.
   function check(callback: var): void {
     if (root._callback) { callback(false); return; }
 

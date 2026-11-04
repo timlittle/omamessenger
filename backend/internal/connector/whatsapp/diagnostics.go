@@ -29,21 +29,18 @@ import (
 const reasonContentless = "contentless"
 
 // reasonForgedEdit is logDropped's reason for an edit whose sender is
-// not the message's original sender, nor this account editing its own
-// message from another linked device (see authorizedActor).
+// neither the message's original sender nor this account's own other
+// device (see authorizedActor).
 const reasonForgedEdit = "forged edit"
 
 // reasonForgedRevoke is logDropped's reason for a revoke whose sender
-// is not the message's original sender, nor this account deleting its
-// own message from another linked device (see authorizedActor).
+// fails the same authorizedActor check as reasonForgedEdit.
 const reasonForgedRevoke = "forged revoke"
 
 // reasonReusedMessageID is logDropped's reason for a message whose id
-// already names a different sender's message in message_keys: WhatsApp
-// lets whoever sends a stanza choose its id, so this connector never
-// lets a second sender's message take over what message_keys,
-// media_refs or the poll tables remember about the id's first sender
-// (see keys.go's putMessageKey and docs/decisions.md).
+// already names a different sender's message in message_keys, since a
+// sender picks its own stanza id and must never take over another
+// sender's id (see keys.go's putMessageKey).
 const reasonReusedMessageID = "message id reused by a different sender"
 
 // logDropped reports a message this connector deliberately did not
@@ -79,21 +76,15 @@ func logContentlessDrop(chat types.JID, content *waE2E.Message) {
 }
 
 // logUndecryptable reports a message whatsmeow received but could not
-// decrypt (see live.go's handleUndecryptable), so a report of "messages
-// missing" can be checked against how often this happens. mode is
-// logged by its safe category (see decryptFailCategory), never
-// verbatim: whatsmeow reads it straight off the stanza's own
-// "decrypt-fail" attribute, with no length limit or validation of its
-// own, so the attribute's sender could otherwise make this line carry
-// an arbitrarily long string.
+// decrypt (see live.go's handleUndecryptable). mode is logged by its
+// safe category (see decryptFailCategory), never verbatim: the raw
+// attribute has no length limit of its own.
 func logUndecryptable(unavailable bool, mode events.DecryptFailMode) {
 	log.Printf("whatsapp: undecryptable message (unavailable=%v, mode=%s)", unavailable, decryptFailCategory(mode))
 }
 
-// decryptFailCategory is logUndecryptable's own safe category for
-// mode: "show" or "hide" for whatsmeow's own events.DecryptFailShow and
-// DecryptFailHide, the only two values it ever means to set itself, or
-// "other" for anything else that attribute's own sender wrote.
+// decryptFailCategory is logUndecryptable's safe category for mode:
+// "show" or "hide" for whatsmeow's own two values, "other" otherwise.
 func decryptFailCategory(mode events.DecryptFailMode) string {
 	switch mode {
 	case events.DecryptFailShow:

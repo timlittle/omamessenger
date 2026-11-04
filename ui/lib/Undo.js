@@ -8,9 +8,7 @@
 
 // describeToggle describes undoing a boolean field just set to
 // newValue, through method, on conversation id: the opposite call
-// restores it. label is whichever of labelOn/labelOff names the
-// direction newValue just took, so pressing "u" on "Archived Nadia · u
-// to undo" reads back as "Unarchived Nadia · u to undo" once it runs.
+// restores it.
 function describeToggle(method, field, id, newValue, labelOn, labelOff, title) {
   const label = newValue ? labelOn : labelOff;
   const params = { conversationId: id };

@@ -77,12 +77,8 @@ function conversationOrder(conversations) {
 // who sent it, which conversation it is in and a snippet to show, kept
 // in the order the search already ranked them. A row with no
 // matchMessageId only matched by its title, so it belongs in the
-// "Conversations" section instead, not here. The helper's own snippet()
-// window already bounds match to a handful of words around the hit,
-// but Format.previewText caps it again here, the same cap the
-// conversation list's own preview already gets, as defence in depth
-// against a longer value from an older helper or a single very long
-// matched word.
+// "Conversations" section instead, not here. Format.previewText caps the
+// snippet again as defence in depth against an oversized value.
 function messageRows(conversations) {
   return (conversations ?? [])
     .filter((c) => c.matchMessageId)
@@ -170,11 +166,7 @@ var MODES = {
       keys: '', unread: 0, section: 'message'
     })))
   },
-  // linkChoices is already {url, displayText} pairs (see
-  // WindowController.openLinkChooser), so results passes them through
-  // unchanged rather than rebuilding a {url} wrapper around a bare
-  // string: acceptPalette reads displayText straight off the chosen
-  // entry to ask WindowController.openLink's own mismatch question.
+  // linkChoices is already {url, displayText} pairs, passed through unchanged.
   links: {
     results: (ctx) => search(ctx.linkChoices, ctx.query, (c) => c.url),
     items: (results) => results.map((c) => ({ label: 'Open link: ' + c.url, detail: '', keys: '' }))
@@ -183,14 +175,8 @@ var MODES = {
     results: (ctx) => Snooze.preview(ctx.query, ctx.now),
     items: (results) => results.map((r) => ({ label: r.label, detail: '', keys: '' }))
   },
-  // sendLaterCustom lists Snooze.sendLaterPresets' six named choices,
-  // matched against whatever has been typed so far (every one shows
-  // with an empty query, the same as the palette's own command list
-  // does), plus a preview row for a typed custom time Snooze.parse
-  // reads ("18:00", "2h", "mon 9:00"), worded for when a message will
-  // send rather than when a chat wakes up. WindowController
-  // ._scheduleDraft reads whichever row Enter picks's own "at" the
-  // same way setReminderOnCurrent reads snoozeCustom's.
+  // sendLaterCustom lists Snooze's named presets plus a preview row for a
+  // typed custom time ("18:00", "2h", "mon 9:00").
   sendLaterCustom: {
     results: (ctx) => {
       const presets = search(Snooze.sendLaterPresets(ctx.now), ctx.query, (p) => p.label);
@@ -201,14 +187,9 @@ var MODES = {
       ? { label: r.label, detail: Format.snoozeUntilLabel(r.at, ctx.now), keys: '' }
       : { label: Format.sendAtLabel(r.at, ctx.now), detail: '', keys: '' })
   },
-  // scheduledMessages lists every message still queued, best match
-  // first against its own text, for the "Scheduled messages" command;
-  // WindowController._openScheduledMessage reads conversationId off
-  // whichever row Enter picks. id and text ride along unused by that
-  // command, so scheduledMessagesForChat below can reuse this same
-  // shape for "Send scheduled message now" / "Edit scheduled message"
-  // / "Cancel scheduled message", which need to act on the chosen
-  // message itself rather than just open its chat.
+  // scheduledMessages lists every queued message, best match first against
+  // its text; id and text ride along so scheduledMessagesForChat can reuse
+  // this shape for actions that need the message itself.
   scheduledMessages: {
     results: (ctx) => search(ctx.scheduledMessages || [], ctx.query, (m) => m.text),
     items: (results, ctx) => results.map((m) => ({
@@ -216,11 +197,7 @@ var MODES = {
       detail: '', keys: '', conversationId: m.conversationId, id: m.id, text: m.text
     }))
   },
-  // scheduledMessagesForChat is scheduledMessages narrowed to the open
-  // chat's own queued messages: the picker
-  // ScheduledAction.resolve offers when it has more than one, for
-  // WindowController._runScheduledAction to act on whichever one Enter
-  // picks (see acceptPalette).
+  // scheduledMessagesForChat is scheduledMessages narrowed to the open chat.
   scheduledMessagesForChat: {
     results: (ctx) => search(
       (ctx.scheduledMessages || []).filter((m) => m.conversationId === ctx.conversationId),

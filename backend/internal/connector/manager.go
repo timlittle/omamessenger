@@ -245,10 +245,8 @@ func (m *Manager) Members(ctx context.Context, conv domain.Conversation) ([]doma
 }
 
 // AttachmentLimit reports the largest attachment of kind accountID's
-// connector currently accepts, and whether it reported one at all.
-// False means the caller's own default applies: there is no running
-// connector for the account right now, or its connector has no limit
-// narrower than the backstop that already applies regardless.
+// connector currently accepts, and whether it reported one at all;
+// false means the caller's own default applies.
 func (m *Manager) AttachmentLimit(accountID, kind string) (int64, bool) {
 	c, err := m.connectorFor(accountID)
 	if err != nil {
@@ -346,12 +344,9 @@ func (m *Manager) SetArchived(ctx context.Context, conv domain.Conversation, arc
 	return organizer.SetArchived(ctx, conv, archived)
 }
 
-// ArchiveUnpins reports whether accountID's own connector unpins a
-// conversation automatically when it archives it (see
-// ArchiveUnpinner), so Commands.SetArchived knows whether to unpin
-// locally too, in the same call, rather than leaving that only to the
-// service's own round trip; false when there is no connector running
-// for the account right now, or its connector does not.
+// ArchiveUnpins reports whether accountID's connector unpins a
+// conversation automatically when archiving it (see ArchiveUnpinner),
+// so Commands.SetArchived knows whether to unpin locally too.
 func (m *Manager) ArchiveUnpins(accountID string) bool {
 	c, err := m.connectorFor(accountID)
 	if err != nil {

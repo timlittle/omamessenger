@@ -1,81 +1,44 @@
 package sandbox
 
-// argv.go builds the exact command line Run executes: nice, lowering
-// CPU scheduling priority, running ionice, lowering I/O scheduling
-// priority, running env, ignoring the two signals this package's own
-// prlimit flags could otherwise trigger, running prlimit, with its
-// own resource-limit flags, running bwrap, with its own isolation
-// flags, running the caller's binary. buildArgv and bwrapArgs are
-// pure functions of their own arguments and the fixed constants in
-// limits.go - never of anything a sender or the file being processed
-// controls - so they are unit-tested exhaustively without starting
-// any process at all (see argv_test.go).
+// argv.go builds the command line Run executes: nice, ionice, env,
+// prlimit, bwrap, then the caller's binary. buildArgv and bwrapArgs
+// are pure functions, so they're unit-tested without starting a process.
 
 import (
 	"path/filepath"
 	"strconv"
 )
 
-// seccompFD is the file descriptor bwrap reads its seccomp program
-// from, once exec'd: os/exec always gives ExtraFiles its slots
-// starting at 3, after the three standard streams, and Run always sets
-// exactly one ExtraFiles entry (see process.go), so this is always
-// correct, not just the common case.
+// seccompFD is the file descriptor bwrap reads its seccomp program from:
+// os/exec always assigns ExtraFiles starting at 3, and Run sets exactly
+// one entry.
 const seccompFD = 3
 
-// ignoredSignals lists the signals env's own --ignore-signal sets to
-// SIG_IGN before prlimit, bwrap and the sandboxed binary each exec in
-// turn: XFSZ (prlimit's own --fsize limit) and XCPU (its own --cpu
-// limit's soft-limit warning). A signal set to SIG_IGN, unlike a
-// caught one, stays SIG_IGN across every exec in the chain (POSIX),
-// confirmed directly down to the final sandboxed process's own
-// /proc/self/status. Ignoring them turns what would otherwise be a
-// kill into an ordinary failed write (EFBIG) or a process that keeps
-// running past its own soft CPU warning - both of which this
-// package's own --core=0 and the hard CPU limit's own unconditional,
-// uncatchable SIGKILL (which never core-dumps) still bound. See
-// docs/decisions.md for why: every one of these signals core-dumps by
-// default, and systemd-coredump records every core-dumping signal,
-// with desktop crash notifiers reporting each one as a "Process
-// crashed" notification - confirmed directly - however deliberately,
-// or deep inside a sandbox, it happened.
+// ignoredSignals are set to SIG_IGN by env before prlimit, bwrap and the
+// sandboxed binary exec: XFSZ (the --fsize limit) and XCPU (the --cpu
+// soft-limit warning). SIG_IGN survives exec (POSIX), so this turns a
+// limit hit into a failed write or a warning instead of a core-dumping
+// kill (see docs/decisions.md).
 const ignoredSignals = "XFSZ,XCPU"
 
-// niceLevel is the niceness (see nice(1)) buildArgv's own outermost
-// nice wraps every job in: 19, the least favourable value Linux lets
-// an ordinary process ask for itself. A fork or exec always inherits
-// the calling process's own niceness (POSIX), confirmed directly all
-// the way down to the sandboxed binary bwrap finally execs, so
-// setting this once, on nice itself, is enough to cover every exec in
-// the chain below it (env, prlimit, bwrap and bwrap's own internal
-// fork) without any of them needing to ask for it again. See
-// docs/decisions.md for why a job's own CPU priority, not just how
-// much CPU time it may use in total, needs bounding too.
+// niceLevel is the niceness (nice(1)) applied once on the outermost
+// nice call: 19, the lowest an ordinary process can ask for. Niceness
+// is inherited across every exec below it (POSIX).
 const niceLevel = 19
 
-// ioClass is the I/O scheduling class (see ionice(1)) buildArgv's own
-// outermost ionice wraps every job in: 3, "idle", the least
-// favourable class Linux defines, inherited across fork and exec the
-// same way niceLevel is (confirmed directly) - so, like niceLevel,
-// setting it once on ionice itself is enough for the whole chain
-// below it.
+// ioClass is the I/O scheduling class (ionice(1)) applied once on the
+// outermost ionice call: 3, "idle", inherited the same way niceLevel is.
 const ioClass = 3
 
 // toolPaths bundles the five external binaries buildArgv chains
-// together for one job - nice and ionice, wrapping every job at the
-// lowest scheduling priority, then env, prlimit and bwrap, in that
-// same outermost-to-innermost order - each resolved once by
-// Runner.resolveTools, as one argument rather than five.
+// together, each resolved once by Runner.resolveTools.
 type toolPaths struct {
 	nice, ionice, env, prlimit, bwrap string
 }
 
-// buildArgv returns the full command Run starts for spec: nice,
-// lowering CPU priority to niceLevel, running ionice, lowering I/O
-// priority to ioClass, running env, named by its own resolved path,
-// ignoring ignoredSignals, running prlimit under every argument
-// needed to run bwrap under this package's fixed resource limits and
-// then, inside it, spec.Binary with spec.Args.
+// buildArgv returns the full command Run starts for spec: nice, ionice,
+// env (ignoring ignoredSignals), prlimit, bwrap, then spec.Binary with
+// spec.Args.
 func buildArgv(spec Spec, tools toolPaths) (name string, args []string) {
 	args = []string{
 		"-n", strconv.Itoa(niceLevel),
@@ -103,21 +66,11 @@ func buildArgv(spec Spec, tools toolPaths) (name string, args []string) {
 	return tools.nice, args
 }
 
-// innerPrlimitArgs returns the "--" plus prlimit invocation that bwrap
-// itself execs, right before spec.Binary: a second, inner prlimit -
-// not the outer one buildArgv already runs before bwrap, which sets
-// every other rlimit but cannot make --nproc do anything useful (see
-// maxProcessCount's own doc comment in limits.go for why: RLIMIT_NPROC
-// is counted per user ID within whichever user namespace set it, and
-// the outer prlimit runs before bwrap's own --unshare-user has created
-// one). Running this prlimit inside the sandbox, as the first thing
-// bwrap's own argv execs once every bind, unshare and seccomp flag in
-// bwrapArgs has already taken effect, is what makes --nproc apply to
-// the job's own fresh user namespace rather than the helper's. Its own
-// path is prlimitPath, the same absolute path the outer prlimit call
-// already resolved: /usr is bound read-only into the sandbox at that
-// same path (see bwrapArgs), so it resolves identically on either side
-// of the bwrap boundary.
+// innerPrlimitArgs returns a second prlimit invocation that bwrap execs
+// inside the sandbox, right before spec.Binary. RLIMIT_NPROC is counted
+// per user ID within whichever user namespace set it, so the outer
+// prlimit (run before bwrap creates its own namespace) can't make
+// --nproc do anything useful; running it again from inside does.
 func innerPrlimitArgs(prlimitPath string) []string {
 	return []string{
 		"--",
@@ -126,78 +79,30 @@ func innerPrlimitArgs(prlimitPath string) []string {
 	}
 }
 
-// bwrapArgs returns every bwrap flag Run passes for spec, stopping
-// just before the "--" that introduces the command bwrap itself runs
-// (buildArgv adds that part): a read-only /usr with the symlinks real
-// binaries expect to find their shared libraries through, a fresh
-// /proc, /dev with its own /dev/shm capped and separated from it,
-// a size-capped empty /tmp, spec's own input bound read-only at the
-// fixed InputPath, spec's own single output file bound read-write
-// under the fixed OutputDirPath with nothing else reachable there,
-// every namespace unshared with no way to open a new user namespace
-// from inside, a cleared environment with only PATH and LANG set,
-// this package's own seccomp filter, and finally bwrap's own root
-// remounted read-only now that everything that needs to stay
-// writable already has its own mount.
+// bwrapArgs returns every bwrap flag Run passes for spec: a read-only
+// /usr (with the symlinks real binaries expect), a fresh /proc, a
+// size-capped /dev/shm and /tmp, spec's input bound read-only, spec's
+// single output file bound read-write under OutputDirPath, every
+// namespace unshared, a cleared environment, our seccomp filter, and
+// finally the root remounted read-only.
 //
-// --size before --tmpfs /tmp (bwrap 0.12+): without it, bwrap's own
-// tmpfs defaults to half of this machine's own RAM, counted against
-// no limit above (see maxTmpBytes's own doc comment in limits.go).
+// --size must precede --tmpfs for /tmp and /dev/shm (bwrap 0.12+), or
+// bwrap defaults each to half of system RAM, uncapped by anything above.
 //
-// /dev/shm: --dev /dev already creates it, as part of /dev's own
-// tmpfs, with no size of its own - the same uncapped-tmpfs gap
-// maxTmpBytes already closes for /tmp, confirmed directly to be just
-// as uncapped at this path. Mounting a second, explicitly sized
-// tmpfs at /dev/shm right after replaces that; --remount-ro /dev then
-// closes /dev itself (nothing in any profile's own fixed ffmpeg
-// arguments ever writes there directly) without affecting the
-// separate tmpfs now mounted at /dev/shm - confirmed directly through
-// a real bwrap, the same way remounting OutputDirPath read-only below
-// never affects the file bound inside it.
-//
-// The output bind is three flags, not one: --tmpfs OutputDirPath
-// mounts a fresh, empty, writable tmpfs there first; --bind
-// spec.Output's own single file into it, at its own base name, is
-// what a profile's fixed ffmpeg arguments actually write to;
-// --remount-ro OutputDirPath then remounts that tmpfs read-only,
-// which does not affect the file bind already mounted inside it (that
-// mount keeps its own, separate read-write flag) but does mean
-// nothing else can be created, renamed or removed under OutputDirPath
-// at all - confirmed directly, with this exact sequence through a real
-// bwrap, that writing to the bound file still works while creating,
-// deleting or renaming any other entry under OutputDirPath now fails
-// with "Read-only file system". Before this, the whole job directory
-// was bound read-write here, which also exposed Input's own hard link
-// - living in that same directory - for writing (see
+// The output bind is three flags: mount a fresh tmpfs at OutputDirPath,
+// bind spec.Output's single file into it, then remount read-only. That
+// keeps the bound file writable while blocking any other write under
+// OutputDirPath — previously the whole job directory was bound
+// read-write there, which also exposed Input's hard link (see
 // docs/decisions.md).
 //
-// --unshare-user plus --disable-userns (on top of --unshare-all,
-// which does not by itself stop this): confirmed directly that
-// without them, a sandboxed job can still call unshare(CLONE_NEWUSER)
-// or clone's own equivalent flag and successfully open a second user
-// namespace nested inside the sandbox's own - bwrap's "unshare-all"
-// own manual notes this needs an explicit --unshare-user before
-// --disable-userns takes effect. A nested user namespace is a
-// privilege-regaining trick in its own right (a process can hold
-// capabilities, including CAP_SYS_ADMIN, over its own namespace's
-// resources), so this closes it rather than leaving it to whatever
-// the seccomp filter happens to deny.
+// --unshare-user plus --disable-userns close a privilege-escalation
+// path --unshare-all alone leaves open: without them a sandboxed job
+// can still open a nested user namespace and hold capabilities over it.
 //
-// --remount-ro / last: bwrap's own root - everywhere not explicitly
-// bound to something else - starts out as a plain, writable tmpfs
-// with no size of its own, the same uncapped-disk shape as /tmp and
-// /dev/shm before their own --size flags above, just with no fixed
-// path a caller would ever think to check. Remounting it read-only,
-// once every place that still needs to be writable (/tmp, /dev/shm,
-// the one output file) already has its own separate mount, closes
-// that without touching any of them - confirmed directly through a
-// real bwrap, with this exact flag last: a new file anywhere else
-// under / fails with "Read-only file system", while /tmp, /dev/shm
-// and the bound output file all still accept a write exactly as
-// before. This has to run after every other mount in this function,
-// never before: remounting first would make bwrap's own later setup
-// of those mounts fail outright, not just whatever a job tries to do
-// once it starts.
+// --remount-ro / must run last: it is what finally closes the writable
+// root tmpfs bwrap starts with, and remounting earlier would break the
+// mount setup for /tmp, /dev/shm and the output file above it.
 func bwrapArgs(spec Spec) []string {
 	args := []string{
 		"--ro-bind", "/usr", "/usr",

@@ -2,11 +2,8 @@ package sandbox
 
 // available.go checks, once per Runner, that this machine can actually
 // run a job: bwrap and prlimit resolve on PATH, and a trivial command
-// succeeds end to end through the real pipeline - namespaces,
-// resource limits and the seccomp filter together - not just that the
-// files exist, which says nothing about whether unprivileged
-// namespaces actually work here (a sysadmin can disable them
-// system-wide).
+// succeeds end to end through the real pipeline, not just that the
+// files exist.
 
 import (
 	"context"
@@ -22,20 +19,13 @@ import (
 // command Available itself runs failed.
 var ErrUnavailable = errors.New("sandbox: unavailable")
 
-// trueBinary is what Available's own smoke test runs: present on
-// every Omarchy system as part of coreutils, needs no arguments, and
-// exits 0 immediately, so it proves the sandbox mechanism itself works
-// without depending on whatever binary the caller actually wants to
-// run existing or behaving in any particular way.
+// trueBinary is what Available's smoke test runs: present on every
+// Omarchy system, needs no arguments, and exits 0 immediately.
 const trueBinary = "/usr/bin/true"
 
 // Available reports whether Run can actually sandbox binary on this
-// machine: bwrap and prlimit resolve on PATH, binary exists and is
-// executable, and a trivial sandboxed command succeeds end to end.
-// The expensive part - the trivial run - happens at most once per
-// Runner and is cached; binary itself is checked fresh on every call,
-// since that is cheap and different calls may name different
-// binaries.
+// machine. The expensive smoke test happens at most once per Runner
+// and is cached; binary itself is checked fresh on every call.
 func (r *Runner) Available(ctx context.Context, binary string) error {
 	if err := r.resolveTools(); err != nil {
 		return err

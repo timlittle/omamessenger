@@ -29,36 +29,20 @@ function mediaJustRetired(oldRow, message) {
   return !!message.outgoing && !!message.media && !CONFIRMED_STATUSES.has(oldRow.status) && CONFIRMED_STATUSES.has(message.status);
 }
 
-// MEDIA_IDENTITY_KEYS are the fields that, together with Kind, identify
-// which attachment a message's media points at: enough to tell a
-// caption edit (same attachment, same kind) apart from an edit that
-// swaps in different media altogether.
+// MEDIA_IDENTITY_KEYS are the fields that identify which attachment a
+// message's media points at, enough to tell a caption edit apart from
+// an edit that swaps in different media.
 var MEDIA_IDENTITY_KEYS = ['kind', 'fileName', 'size', 'width', 'height', 'duration', 'thumb', 'url'];
 
-// mediaIdentityChanged reports whether message's own media is a
-// different attachment from oldRow's own stored media - a different
-// kind, or the same kind pointing at different bytes (by
-// MEDIA_IDENTITY_KEYS) - so upsert knows a cached mediaPath and its
-// verdicts describe bytes this edit just replaced, not the ones now
-// shown, and must never be kept across it. A service's end-to-end
-// encrypted edit can change a message's media kind entirely (a voice
-// note edited into a photo, say), and the helper's own download cache
-// and safety checks are keyed by this message's id, not by its
-// media's own identity, so nothing on that side alone stops this UI
-// from reusing an older, unrelated file's path and verdicts if it is
-// not cleared here.
+// mediaIdentityChanged reports whether message's media is a different
+// attachment from oldRow's, so upsert knows any cached mediaPath and
+// its verdicts must not be kept across the change.
 function mediaIdentityChanged(oldRow, message) {
   return !mediaSignaturesMatch(mediaSignature(media(oldRow)), mediaSignature(message.media ?? null));
 }
 
-// mediaSignature returns a comparable snapshot of media's own identity
-// (every MEDIA_IDENTITY_KEYS field), or null for no media at all.
-// mediaIdentityChanged above compares two of these; MediaController's
-// own downloadMedia takes one when a fetch starts and compares it
-// against the message's current one when the answer arrives, so a
-// stale answer - started under one kind, delivered after an edit
-// swapped in another - never writes its path or verdicts back onto
-// media it was never checked for (see docs/decisions.md).
+// mediaSignature returns a comparable snapshot of media's identity, or
+// null for no media.
 function mediaSignature(attachment) {
   if (!attachment) return null;
 
@@ -82,14 +66,9 @@ function annotateAt(newestFirst, index, isGroup, nowMs) {
   return annotateForPair(newestFirst[index], newestFirst[index + 1] ?? null, isGroup, nowMs);
 }
 
-// annotateForPair is annotateAt's own per-row logic, taking a message
-// and its older neighbour (or null when it has none) directly rather
-// than an array and an index: the only two rows a caller that just
-// touched one or two loaded messages - a live upsert or remove - needs
-// to recompute, without walking every other loaded row to get there.
-// The expensive part for a large loaded list is the Date/toDateString
-// pair sameDay builds for every row annotate() visits; this is how
-// MessageTimeline avoids paying that for rows nothing changed about.
+// annotateForPair is annotateAt's per-row logic, taking a message and its
+// older neighbour directly so a live upsert or remove can recompute just
+// the rows it touched instead of the whole list.
 function annotateForPair(msg, older, isGroup, nowMs) {
   const showDay = !older || !sameDay(msg.created, older.created);
 
@@ -105,31 +84,16 @@ function annotateForPair(msg, older, isGroup, nowMs) {
 // to sit together without extra spacing.
 var GROUP_WINDOW_MS = 5 * 60 * 1000;
 
-// MAX_LOADED_ROWS bounds how many messages MessageTimeline keeps
-// loaded for the open conversation at once, however long it has stayed
-// open and however many messages a sender floods it with: every event
-// (message.added, message.updated, message.removed) costs work bounded
-// by this constant, not by how many messages have ever arrived (see
-// docs/decisions.md). 2000 rows is deep enough to scroll back through
-// 40 loadOlder pages of 50 before the cap is ever felt in ordinary use,
-// while keeping one event's worst case - a handful of small object
-// copies and an id -> position rebuild - a small, fixed amount of work
-// no flood can grow.
+// MAX_LOADED_ROWS bounds how many messages MessageTimeline keeps loaded
+// for the open conversation, so one event never costs more than a fixed
+// amount of work no matter how many messages a sender floods it with
+// (see docs/decisions.md).
 var MAX_LOADED_ROWS = 2000;
 
-// windowNewest drops rows past cap from the oldest end - the back of a
-// newest-first array - so a flood of live messages, or a long run of
-// loadOlder pages, never grows past a fixed bound. cap is absolute: an
-// earlier version let a "protected" id (the highlighted message) grow
-// the window past cap so it was never dropped, but highlightedId never
-// moves on its own as new messages arrive, so a flood that just kept
-// posting made protectAt - and the window - grow by one row per
-// message forever, the exact unbounded growth this function exists to
-// prevent (see docs/decisions.md). The highlighted row now falls out
-// like any other once it ages past cap; applyUpsert reports that to its
-// caller (protectIdEvicted) so the highlight can move back to the
-// newest message instead of pointing at a row that is no longer
-// loaded. rows is never mutated.
+// windowNewest drops rows past cap from the oldest end of a newest-first
+// array, so a flood of live messages never grows the window past a
+// fixed bound; the highlighted row falls out like any other once it
+// ages past cap (see docs/decisions.md). rows is never mutated.
 function windowNewest(rows, cap) {
   if (rows.length <= cap) return rows;
 
@@ -137,13 +101,7 @@ function windowNewest(rows, cap) {
 }
 
 // reindex builds an id -> position map from order, a newest-first list
-// of {id, created} pairs (or full rows, which also carry an id).
-// MAX_LOADED_ROWS keeps order a small constant size no matter how many
-// events have arrived, so this never grows with a flood's size.
-// Object.create(null) skips the prototype chain a flood's own ids
-// could otherwise collide with (an id of "constructor", say) and is
-// measurably cheaper to fill than a literal {} for a map rebuilt this
-// often.
+// of {id, created} pairs.
 function reindex(order) {
   const index = Object.create(null);
   for (let i = 0; i < order.length; i++) index[order[i].id] = i;
@@ -151,18 +109,10 @@ function reindex(order) {
 }
 
 // mergeRow builds the row upsert writes for message when id is already
-// loaded: a cached mediaPath, its verdicts (mediaPlayPath, mediaPlayable,
-// mediaPlayKnown, mediaRisky, mediaPreparing), mediaFailed and the
-// media's own verifiedWidth/verifiedHeight (see carryVerifiedDimensions)
-// normally carry over from oldRow untouched, since the service's own
-// update never carries any of them - but they are dropped instead the
-// moment this update is either the message's attachment being retired
-// into the download cache (see mediaJustRetired) or an edit that swaps
-// its media for a different kind or different bytes of the same kind
-// (see mediaIdentityChanged): in both cases the cached path, verdicts
-// and verified size describe bytes that are no longer this row's own,
-// and must be resolved and checked again rather than reused or shown
-// as missing forever.
+// loaded: cached media state carries over from oldRow untouched, unless
+// the attachment was just retired (mediaJustRetired) or swapped for
+// different media (mediaIdentityChanged), in which case it is dropped
+// and resolved again.
 function mergeRow(oldRow, message) {
   const mediaReplaced = mediaJustRetired(oldRow, message) || mediaIdentityChanged(oldRow, message);
   const kept = mediaReplaced
@@ -179,21 +129,11 @@ function mergeRow(oldRow, message) {
   return merged;
 }
 
-// carryVerifiedDimensions returns newMedia - message's own media, as
-// the service's message.updated echo sent it - with oldRow's own
-// verifiedWidth/verifiedHeight (see MediaController.setMedia) added
-// back onto it, when oldRow had them. The echo is always the sender's
-// original, unverified claim; it never carries these fields, since
-// they are MediaController's own record of media.fetch's answer, not
-// anything the message protocol sends (see ImageBounds.verifiedDimensions
-// and docs/decisions.md's "Known residual gap", now closed). Without
-// this, an unrelated update that keeps the same attachment - a
-// reaction, a delivery-status change, a caption edit - would silently
-// erase the full-file display stage's own verified size, the same way
-// a cached mediaPath would be lost if mergeRow did not keep it too.
-// Only called once mergeRow has already decided the media identity has
-// not changed, so newMedia is always the same attachment oldRow's own
-// media described.
+// carryVerifiedDimensions adds oldRow's verifiedWidth/verifiedHeight
+// back onto newMedia, since the service's own update never carries
+// them: without this an unrelated update (a reaction, a status change)
+// would silently erase the verified size mergeRow already decided to
+// keep (see docs/decisions.md).
 function carryVerifiedDimensions(oldRow, newMedia) {
   const before = media(oldRow);
   if (!before || (!before.verifiedWidth && !before.verifiedHeight)) return newMedia;
@@ -201,32 +141,12 @@ function carryVerifiedDimensions(oldRow, newMedia) {
   return Object.assign({ verifiedWidth: before.verifiedWidth || 0, verifiedHeight: before.verifiedHeight || 0 }, newMedia);
 }
 
-// applyUpsert decides how message changes a loaded timeline, without
-// touching any QML model: order is the timeline's {id, created} pairs,
-// newest first, kept in step with the real rows by whoever calls this
-// (see MessageTimeline.qml); index maps those same ids to their
-// position in order, so finding an existing message is O(1) instead of
-// a scan. cap bounds how many rows order may hold afterward (see
-// windowNewest), unconditionally: nothing, including protectId, ever
-// grows order past it. protectId names the highlighted message, when
-// there is one, purely so this can tell the caller whether this
-// particular insert is the one that just evicted it (protectIdEvicted);
-// it never changes which rows are kept.
-//
-// Returns update (true for an existing message, false for a new one),
-// at (the row's final position), the new order and index to keep
-// instead of the old ones, evicted (how many rows the cap just
-// dropped, usually 0), protectIdEvicted (whether protectId was among
-// them, for the caller to move the highlight off a row that no longer
-// exists) and touched (every position whose annotation may now be
-// wrong, for the caller to recompute - see annotateForPair).
-//
-// order and index are consumed, not copied: a flood calling this once
-// per message would otherwise pay for an extra O(MAX_LOADED_ROWS) copy
-// on top of the splice and reindex every insert already costs, and
-// MessageTimeline.qml's own caller never keeps the old order or index
-// around after the call to notice. Either call this only with values
-// you are ready to replace with the result, or pass copies of your own.
+// applyUpsert decides how message changes a loaded timeline: order is
+// the {id, created} pairs newest first, index maps ids to position.
+// cap bounds order's size (see windowNewest); protectId is the
+// highlighted message, so the caller can tell if it was just evicted
+// (protectIdEvicted). Returns the new order/index to use in place of
+// the old ones; order and index are consumed, not copied.
 function applyUpsert(order, index, message, cap, protectId) {
   const at = index[message.id];
   if (at !== undefined) {
@@ -249,13 +169,8 @@ function applyUpsert(order, index, message, cap, protectId) {
 }
 
 // applyRemove decides how dropping id changes a loaded timeline, the
-// same shape of state applyUpsert takes and returns, and the same
-// consumed-not-copied contract. removed is false, with order and
-// index unchanged, when id is not loaded: the service already removed
-// it, so there is nothing left to find. touched is the id that was
-// immediately newer than the removed row, if any, since its own
-// annotation depends on comparing itself to whichever row sits after
-// it, and that is now a different message.
+// same state shape and consumed-not-copied contract as applyUpsert.
+// Does nothing if id is not loaded.
 function applyRemove(order, index, id) {
   const at = index[id];
   if (at === undefined) return { removed: false, at: -1, order, index, touched: [] };
@@ -293,22 +208,11 @@ function insertIndex(newestFirst, message) {
 // the last download attempt failed, starts false; mediaFailedReason,
 // the safe category of that failure (see server/errors.go), starts
 // empty too. mediaPlayPath, the in-window play copy a play fetch
-// produced (see MessageTimeline.setMediaPlayPath and media.fetch's
-// playPath in docs/api.md), starts empty, the same as mediaPath,
-// until a play fetch answers; mediaPlayable is always just whether
-// mediaPlayPath is set, never a separate verdict of its own.
-// mediaPreparing is true only while a play fetch for this row is
-// actually in flight (see MessageTimeline.setMediaPreparing), for the
-// video or voice control to show "Preparing…" instead of its usual
-// play glyph. mediaRisky, the helper's own verdict on whether a
-// downloaded file is active or executable content that must be
-// confirmed before it opens externally (see
-// MessageTimeline.setMediaRisky), starts false. mediaPlayKnown is
-// whether a play fetch has actually answered for this row in this
-// session, so a caller deciding whether to trust a cached
-// mediaPlayPath (or its empty default) can tell a real answer apart
-// from "never asked yet" (see MessageTimeline.mediaPlayKnown); starts
-// false, even for a row whose mediaPath came already set.
+// produced, starts empty until one answers; mediaPlayable just mirrors
+// whether mediaPlayPath is set. mediaPreparing is true only while a
+// play fetch is in flight, for the "Preparing…" state. mediaPlayKnown
+// is whether a play fetch has actually answered this session, so a
+// cached mediaPlayPath can be told apart from "never asked yet".
 // mentionsMe is a plain boolean, which a ListModel role already
 // handles directly, so it needs no such encoding. retryAt, the
 // helper's next scheduled automatic retry for a failed outgoing

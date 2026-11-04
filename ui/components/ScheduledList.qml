@@ -8,14 +8,9 @@ import "../lib/Format.js" as Format
 import "../lib/Keymap.js" as Keymap
 import "../lib/ScheduledAction.js" as ScheduledAction
 
-// The open conversation's own queued "send later" messages, shown as a
-// quiet strip between the message list and the composer: a clock glyph,
-// when each is due, and its text, with buttons to send it now, edit it
-// or cancel it. Hidden outright while there is nothing queued for this
-// conversation. j/k also reach these rows from the message list (see
-// ConversationController.highlightedScheduledId): highlightedId marks
-// which one that way, with its own accent outline and key-hint row,
-// the same pattern a highlighted message already uses.
+// The open conversation's queued "send later" messages, shown as a
+// strip between the message list and composer, with send-now/edit/
+// cancel buttons. Hidden when nothing is queued.
 Column {
   id: root
 
@@ -23,18 +18,14 @@ Column {
   // due first: [{id, text, sendAt}].
   property var messages: []
 
-  // nowMs is the current time, read for each row's "Sends at" label.
-  // Defaults to the shared clock; a test overrides it to pick an
-  // arbitrary time (see MessageMeta.qml's own property of the same name).
+  // nowMs is the current time, used for each row's "Sends at" label.
   property real nowMs: Clock.nowMs
 
   // highlightedId is the queued message j/k currently point at, or ""
   // while none of these rows is highlighted.
   property string highlightedId: ""
 
-  // bindings are the effective key bindings (defaults merged with the
-  // user's keys.conf overrides), read for the highlighted row's own
-  // key-hint text (see ScheduledAction.hints).
+  // bindings are the effective key bindings, for the highlighted row's hints.
   property var bindings: Keymap.BINDINGS
 
   // cancelRequested asks the caller to cancel a queued message.
@@ -56,17 +47,12 @@ Column {
       id: row
       required property var modelData
 
-      // highlighted is true when this is the queued row the keyboard
-      // currently points at.
+      // highlighted is true when the keyboard points at this row.
       readonly property bool highlighted: row.modelData.id === root.highlightedId
 
       objectName: "scheduledRow-" + row.modelData.id
       width: root.width
       implicitHeight: content.implicitHeight + Theme.spacing.xs * 2
-      // The highlighted row's own tint, the same Util.alpha(accent,
-      // selectedFillAlpha) a selected conversation list row already
-      // uses (see HighlightFill.qml), paired with a thicker accent
-      // border so this is never colour alone.
       color: row.highlighted ? Util.alpha(Theme.accent, Style.selectedFillAlpha) : Theme.popups.background
       borderSpec: row.highlighted
         ? Border.flat(Theme.accent, Style.focusBorderWidth + Style.normalBorderWidth)
@@ -142,11 +128,8 @@ Column {
           }
         }
 
-        // highlightHints always takes its row's space, the same way a
-        // highlighted message's own hint row does (see
-        // MessageDelegate.qml), so showing or hiding it never changes
-        // this row's height or shifts any other row; only its opacity
-        // follows row.highlighted.
+        // Always takes its row's space so toggling opacity never
+        // shifts other rows.
         Text {
           objectName: "scheduledHighlightHints"
           Layout.fillWidth: true

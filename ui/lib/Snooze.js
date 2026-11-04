@@ -54,14 +54,9 @@ function parse(text, nowMs) {
   return parseDuration(trimmed, nowMs) ?? parseWeekdayClock(trimmed, nowMs) ?? parseClock(trimmed, nowMs);
 }
 
-// sendLaterPresets names the six quick choices the "Send later…"
-// prompt offers before anything is typed: five and thirty minutes from
-// now, an hour from now, this evening, tomorrow morning and next
-// Monday morning. Each reuses the same parsing or preset this file
-// already has for snoozing, rather than a second copy of "in five
-// minutes" or "9am the next day": "Tonight" is exactly what typing
-// "20:00" would mean right now, today if that has not passed yet or
-// tomorrow if it has (see parseClock).
+// sendLaterPresets returns the six quick choices the "Send later…"
+// prompt offers before anything is typed, reusing the same parsing and
+// presets snoozing uses.
 function sendLaterPresets(nowMs) {
   return [
     { label: 'In 5 minutes', at: parseDuration('5m', nowMs) },

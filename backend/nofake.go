@@ -16,14 +16,9 @@ func fakeConnectors() ([]connector.Connector, app.Injector) {
 	return nil, nil
 }
 
-// newTranscoder resolves the system ffmpeg and bubblewrap and returns
-// the real sandboxed transcoder, and whether both tools were actually
-// found on PATH. false is never a reason to fail startup: the helper
-// runs exactly the same either way, just without in-window video or
-// voice playback, which Doctor reports (see docs/decisions.md).
-// workRoot is sandbox.NewRunner's own scratch root and the parent
-// every transcode job's own directory is created under; the caller
-// creates and clears it first (see resetWorkRoot).
+// newTranscoder resolves the system ffmpeg and bubblewrap and returns the
+// real sandboxed transcoder, and whether both tools were found on PATH.
+// Missing tools never fail startup, just disable in-window playback.
 func newTranscoder(workRoot string) (app.Transcoder, bool) {
 	ffmpeg, ffmpegErr := exec.LookPath("ffmpeg")
 	_, bwrapErr := exec.LookPath("bwrap")

@@ -55,16 +55,10 @@ const organizeTimeout = 30 * time.Second
 const pinLimit = 3
 
 // SetPinned pins or unpins conv with WhatsApp, refusing with
-// connector.ErrPinLimit a pin that would push past WhatsApp's own limit
-// before ever asking the server. The patch itself is addressed by
-// jid's LID form once whatsmeow's own LID store has learned one (see
-// lidFormOf): once an account has migrated to LID addressing, WhatsApp's
-// server rejects this patch every time while it is still addressed by
-// the chat's now-superseded phone JID, the same asymmetry
-// sendChatReadState's own lidFormOf call (markread.go) already fixes
-// for the chat-read mutation - all three share the one patch type,
-// WAPatchRegularLow, and build their mutation index from the given JID
-// the same way (see docs/decisions.md).
+// connector.ErrPinLimit a pin that would push past WhatsApp's own
+// limit before ever asking the server. The patch is addressed by
+// jid's LID form (see lidFormOf), since a migrated account's server
+// rejects it when still addressed by the superseded phone JID.
 func (c *Connector) SetPinned(ctx context.Context, conv domain.Conversation, pinned bool) error {
 	dev, sink, err := c.session()
 	if err != nil {
@@ -91,11 +85,8 @@ func (c *Connector) SetPinned(ctx context.Context, conv domain.Conversation, pin
 
 // SetArchived files conv away, or brings it back, with WhatsApp.
 // Archiving a chat also unpins it there: appstate.BuildArchive already
-// bundles the matching unpin mutation into the same patch, so the
-// settings this reads back afterwards already reflect that, with
-// nothing for this connector to compute itself. The patch is addressed
-// by jid's LID form once one is known, for the same reason SetPinned
-// resolves it (see that method's own doc comment).
+// bundles the matching unpin mutation into the same patch. The patch
+// is addressed by jid's LID form, for the same reason as SetPinned.
 func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, archived bool) error {
 	dev, sink, err := c.session()
 	if err != nil {
@@ -117,25 +108,17 @@ func (c *Connector) SetArchived(ctx context.Context, conv domain.Conversation, a
 	return c.reportOrganized(ctx, sink, dev, target, conv.RemoteID)
 }
 
-// UnpinsOnArchive reports that WhatsApp's own archive always unpins
-// too: appstate.BuildArchive already bundles the matching unpin
-// mutation into the archive patch SetArchived sends above, the same as
-// WhatsApp's own app does, so a WhatsApp conversation is never both
-// pinned and archived at once (see connector.ArchiveUnpinner).
+// UnpinsOnArchive reports that WhatsApp's archive always unpins too
+// (see connector.ArchiveUnpinner), so a conversation is never both
+// pinned and archived at once.
 func (*Connector) UnpinsOnArchive() bool {
 	return true
 }
 
 // reportOrganized reports remoteID's current pinned and archived
-// state, read straight from whatsmeow's own chat settings store for
-// jid (see device.chatSettings): a read failure here should not arise,
-// since the patch that led here already succeeded, but is still
-// reported rather than silently guessed at. jid must be the same JID
-// form the patch was actually sent under (see SetPinned and
-// SetArchived's own lidFormOf resolution): whatsmeow's chat settings
-// store is keyed by exactly whichever address a mutation's own index
-// named, so reading it back under a different form of the same chat
-// would find nothing.
+// state, read from whatsmeow's own chat settings store for jid. jid
+// must be the same JID form the patch was sent under (see SetPinned
+// and SetArchived), since the store is keyed by that exact address.
 func (c *Connector) reportOrganized(ctx context.Context, sink connector.Sink, dev device, jid types.JID, remoteID string) error {
 	pinned, archived, err := dev.chatSettings(ctx, jid)
 	if err != nil {
@@ -151,13 +134,10 @@ func (c *Connector) reportOrganized(ctx context.Context, sink connector.Sink, de
 // among the ones this connector has ever reported (see
 // Connector.chatKinds), WhatsApp's own chat settings currently have
 // pinned. A chat WhatsApp already has pinned before this connector has
-// ever reported it is not countable yet, the same limit an in-memory
-// cache of this connector's own would have had too; a later sync or
-// message naturally brings it into chatKinds and so into this count.
-// Each remote id is resolved to its LID form before the read, the same
-// as SetPinned resolves one before sending a pin, since that is the
-// form whatsmeow's chat settings store now keys a pinned chat under
-// once it has migrated to LID addressing.
+// ever reported it is not countable yet; a later sync or message
+// naturally brings it into chatKinds and so into this count. Each
+// remote id is resolved to its LID form before the read, matching how
+// SetPinned addresses the chat settings store.
 func (c *Connector) pinnedCount(ctx context.Context, dev device, excludeRemoteID string) int {
 	n := 0
 	for _, remote := range c.knownChatIDs() {

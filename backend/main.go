@@ -83,9 +83,7 @@ func main() { // coverage-ignore: process entry point; run is tested
 
 // exitCode runs the helper and returns the process exit status: 0 on a
 // clean disconnect or SIGTERM, 1 if run reported an error. Stdout is
-// claimed for the protocol before anything else runs, so no
-// dependency - go.mau.fi/libsignal's own default logger especially,
-// see stdout.go - gets a chance to write to it first.
+// claimed for the protocol first, before any dependency can write to it.
 func exitCode() int {
 	protocolOut, err := claimProtocolStdout(int(os.Stdout.Fd()), os.Stderr)
 	if err != nil {
@@ -241,12 +239,8 @@ func serve(ctx context.Context, cfg config, s streams, env func(string) string) 
 	return nil
 }
 
-// resetWorkRoot creates path, private to this user, after removing
-// whatever a previous, uncleanly stopped run may have left there: a
-// transcode job's own directory under it is always removed once the
-// job finishes, win or lose (see app.Commands' own play and display
-// copy code), so anything still here is leftover from a crash, never
-// something still in use.
+// resetWorkRoot recreates path, private to this user, clearing out
+// anything a previous, uncleanly stopped run left behind.
 func resetWorkRoot(path string) error {
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("transcode work directory: %w", err)
@@ -259,11 +253,8 @@ func resetWorkRoot(path string) error {
 }
 
 // mediaCaches are the directories the helper keeps media in: downloaded
-// media, pruned once it grows past a limit; outgoing attachments, kept
-// until their message is sent or deleted; and validated copies of
-// custom notification sounds, one per conversation or service. dir and
-// outgoingDir are the downloaded and outgoing areas' own paths, read by
-// wire to build OpenFile's allow-list (see docs/decisions.md).
+// media, outgoing attachments, and validated custom notification sounds.
+// dir and outgoingDir feed wire's OpenFile allow-list.
 type mediaCaches struct {
 	dir         string
 	outgoingDir string

@@ -1,15 +1,8 @@
 import QtQuick
 
-// Owns every "send later" message the helper currently has queued,
-// kept in step with the helper's scheduledMessage.* events, and the
-// calls that queue, edit, cancel or send one right away.
-// ConversationView reads forConversation() for the open chat's own
-// pending list; WindowController reads all for the "Scheduled
-// messages" command. Not driven by the key router: ComposerController
-// and WindowController call its functions directly, so handles always
-// answers false.
-//
-// Item rather than QtObject: it holds the Connections child below.
+// Owns every "send later" message the helper has queued, kept in step with
+// scheduledMessage.* events, and the calls that queue, edit, cancel or send
+// one right away.
 Item {
   id: root
 
@@ -40,16 +33,9 @@ Item {
     });
   }
 
-  // _start loads the queued list if the service is already ready, the
-  // same check ListController.qml's own _start runs: Omarchy destroys
-  // and recreates the whole panel, this controller included, every
-  // time the window hides, while the helper itself (owned by
-  // Service.qml) keeps running underneath it. Without this, a fresh
-  // controller built against an already-ready service would wait
-  // forever for a status *change* that already happened before it
-  // existed, leaving every message queued in an earlier panel's
-  // lifetime invisible - the report's "no way to see scheduled
-  // messages" after reopening the window.
+  // _start loads the queued list if the service is already ready, since a
+  // fresh controller built against an already-ready service would otherwise
+  // wait forever for a status change that already happened.
   function _start(): void {
     if (root.service && root.service.status === "ready") root.load();
   }
@@ -115,10 +101,7 @@ Item {
     root.all = root.all.filter((m) => m.id !== id);
   }
 
-  // Omarchy may hand over the service after this controller is
-  // created, or replace it, so _start runs whenever it arrives too
-  // (see ListController.qml's own onServiceChanged for the same
-  // reasoning).
+  // The service may arrive after this controller is created, or be replaced.
   onServiceChanged: root._start()
   Component.onCompleted: root._start()
 

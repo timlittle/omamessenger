@@ -8,31 +8,16 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/imagesafe"
 )
 
-// decodeSlots is how many of this helper's own full-size image
-// re-encodes - connector.ReencodeImageFile (a display copy),
-// SanitizeOutgoingImage (a pasted image) and SanitizeOutgoingImageFile
-// (an attached or re-copied photo) - may run at once: one.
-// imagesafe.Reencode's own decode is the single largest allocation any
-// request this helper serves makes (see docs/decisions.md for the
-// measured peaks), and the UI auto-fetches every photo as it scrolls
-// into view, so without this, ten hostile photos in one chat would
-// decode in parallel rather than one at a time. One slot, not two:
-// the measured worst case at FullImage's own cap already approaches
-// its own MaxDecodeBytes, and SanitizeOutgoingImage(File) share that
-// same budget under imagesafe.Outgoing's own, larger pixel caps (see
-// docs/decisions.md), so a second concurrent decode would roughly
-// double the helper's own worst-case footprint for no benefit either
-// an incoming photo's single-column message list or a one-at-a-time
-// outgoing attachment ever needs.
+// decodeSlots is how many of this helper's full-size image re-encodes
+// may run at once: one, since imagesafe.Reencode's decode is the
+// single largest allocation this helper makes (see docs/decisions.md),
+// and the UI auto-fetches every photo as it scrolls into view.
 const decodeSlots = 1
 
 // acquireDecodeSlot reserves one of this Commands's decodeSlots,
 // waiting until one is free or ctx ends first, and returns the func
-// that releases it - call it exactly once. Every one of the three
-// re-encode operations above shares the same slots regardless of
-// which it is about to run: all three fill the same risk (see
-// decodeSlots), and sizing one pool once is simpler than sizing three
-// that would only ever be tuned together.
+// that releases it - call it exactly once. All re-encode operations
+// share the same pool, since they share the same risk (see decodeSlots).
 func (c *Commands) acquireDecodeSlot(ctx context.Context) (func(), error) {
 	select {
 	case c.decodeSlot <- struct{}{}:
@@ -43,11 +28,8 @@ func (c *Commands) acquireDecodeSlot(ctx context.Context) (func(), error) {
 }
 
 // reencodeImageFile wraps connector.ReencodeImageFile with this
-// helper's own decode slot (see decodeSlots), dropping width and
-// height: reencodeForDisplay's own callers already re-read a display
-// copy's real dimensions from its written file afterward (see
-// dimensionsOf), so threading them back through here would only ever
-// go unused.
+// helper's decode slot (see decodeSlots), dropping width and height:
+// callers re-read a display copy's real dimensions afterward (see dimensionsOf).
 func (c *Commands) reencodeImageFile(ctx context.Context, srcPath, dstPath string, profile imagesafe.Profile) (imagesafe.OutputFormat, error) {
 	release, err := c.acquireDecodeSlot(ctx)
 	if err != nil {

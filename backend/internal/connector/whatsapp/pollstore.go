@@ -56,16 +56,10 @@ func ensurePollTables(ctx context.Context, db *sql.DB) error {
 }
 
 // putPoll saves a poll's question, multiple-choice flag and option
-// text, replacing whatever was saved for it before. It is called once,
-// when a poll creation message is first seen. A poll creation message
-// carries its own option list straight from the wire, with no count or
-// id-length limit of its own before this runs, so an option list past
-// domain.MaxPollOptions, and any option whose own id runs past
-// domain.MaxRemoteIDLength - never a real option's own hash, always
-// exactly 64 hex characters, see poll.go's pollOptionID - are bounded
-// before the insert loop even starts, rather than written to this
-// account's database in full and only capped once domain.CapMedia reads
-// the message back out.
+// text, replacing whatever was saved before. Called once, when a poll
+// creation message is first seen; the option list and each option id
+// are bounded before the insert loop, since the wire gives neither a
+// limit of its own.
 func (m *mediaStore) putPoll(ctx context.Context, conversationRemoteID, messageRemoteID string, poll domain.Poll) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -150,23 +144,13 @@ func (m *mediaStore) pollOptions(ctx context.Context, conversationRemoteID, mess
 }
 
 // setVotes replaces voterID's selected options for a poll with
-// optionIDs, an empty list retracting every earlier vote, the way a
-// later PollUpdateMessage always carries the voter's complete, current
-// selection rather than a diff. A live vote decrypts to whatever option
-// ids its own sender's client put there, with no count or length limit
-// of its own before this runs (see vote.go's handlePollVote), so an id
-// list past domain.MaxPollOptions, and any individual id past
-// domain.MaxRemoteIDLength - never a real option's own hash, always
-// exactly 64 hex characters - are bounded before the insert loop even
-// starts, the same defence putPoll gives an oversized option list.
+// optionIDs, an empty list retracting every earlier vote, since a
+// later PollUpdateMessage always carries the complete selection, not a
+// diff. The id list and each id are bounded before the insert loop,
+// the same defence putPoll gives an oversized option list.
 func (m *mediaStore) setVotes(ctx context.Context, conversationRemoteID, messageRemoteID, voterID string, optionIDs []string) error {
-	// A live vote's own reactorKey reads a JID straight off the wire,
-	// with no length limit of its own; dropping an oversized one to ""
-	// rather than truncating it is the same treatment this function
-	// already gives an oversized option id below, and CapRemoteID gives
-	// a reply quote's own RemoteID elsewhere, for the same reason: a
-	// cut id could read as a different, real, shorter voter it was
-	// never actually cast by.
+	// Dropped to "" rather than truncated: a cut id could read as a
+	// different, real, shorter voter.
 	voterID = domain.CapRemoteID(voterID)
 
 	tx, err := m.db.BeginTx(ctx, nil)

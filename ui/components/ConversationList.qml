@@ -35,13 +35,7 @@ Item {
   // activated fires when a row is clicked.
   signal activated(string id)
 
-  // pinDropped fires once a drag on a pinned row ends, naming where it
-  // landed: toIndex is its final position among every row (which, since
-  // pinned rows always sit first, is also its rank among just the
-  // pinned ones - see ListController.movePinTo, the one thing this ever
-  // drives). Fires even when the row never actually moved, so the
-  // caller's own request can decide that is a no-op rather than this
-  // view trying to.
+  // pinDropped fires when a drag on a pinned row ends, naming its new rank among pinned rows.
   signal pinDropped(string id, int toIndex)
 
   // positionOn scrolls the row with this id into view.
@@ -66,10 +60,7 @@ Item {
     return root.model.count !== undefined ? root.model.count : root.model.length;
   }
 
-  // _pinnedCount returns how many rows at the top of the list are
-  // pinned: pinned rows are always sorted as one contiguous group ahead
-  // of everything else (see Rail.compareConversations), so this is
-  // exactly how far a dragged pinned row may ever move.
+  // _pinnedCount returns how many rows at the top of the list are pinned.
   function _pinnedCount() {
     const count = root._count();
     let pinned = 0;
@@ -139,11 +130,7 @@ Item {
       required property bool reminderDue
       required property bool blocked
 
-      // _dragStartIndex is where this row sat when a drag on it began,
-      // -1 while none is in progress: the drop target is always worked
-      // out from this fixed start plus the pointer's own total travel,
-      // never from this row's own index, which keeps changing as the
-      // live reorder below moves it.
+      // _dragStartIndex is where this row sat when a drag began, -1 when none is active.
       property int _dragStartIndex: -1
 
       width: list.width
@@ -154,11 +141,7 @@ Item {
         target: null
         xAxis.enabled: false
         enabled: wrapper.pinned && typeof root.model.move === "function"
-        // ConversationRow's own MouseArea (for the plain click that
-        // opens a chat) grabs on press by default; this lets a real
-        // drag - movement past Qt's own drag threshold - take that
-        // grab over instead of being shut out of it, the same way any
-        // PointerHandler must when it shares an item with a MouseArea.
+        // Lets a real drag take over the press grab from ConversationRow's click MouseArea.
         grabPermissions: PointerHandler.CanTakeOverFromItems
 
         onActiveChanged: {

@@ -84,26 +84,18 @@ func (c *Connector) handleContent(ctx context.Context, sink connector.Sink, dev 
 	inner := unwrap(e.Message)
 	key := messageKey{senderID: senderKeyID(e.Info), fromMe: e.Info.IsFromMe, timestamp: m.Created}
 
-	// saveIncomingKeyedData returning false means messageRemoteID
-	// actually names a different sender's message (see keys.go): m is
-	// then reported nowhere at all, neither as a replacement nor as a
-	// message of its own, or its text, media, reply or reactions would
-	// reach the sink attached to whatever that id's first sender
-	// already has stored - exactly the forgery saveIncomingKeyedData
-	// itself exists to stop.
+	// A false here means the id is reused by a different sender (see
+	// keys.go), so m is reported nowhere, never attached to that id's
+	// first sender.
 	keyed := incomingKeyedMessage{conversationRemoteID: remote, messageRemoteID: m.RemoteID, key: key, msg: inner}
 	if saveIncomingKeyedData(ctx, media, keyed) {
 		c.reportContent(ctx, sink, e, remote, m)
 	}
 }
 
-// reportContent delivers m to sink, once handleContent has already
-// confirmed m's id is not reused by a different sender: a redelivery
-// of a message first seen as an UndecryptableMessage (see
-// handleUndecryptable) replaces its placeholder rather than being
-// reported a second time, this account's own message echoed from
-// another of its devices is history, and anything else is an ordinary
-// incoming message.
+// reportContent delivers m to sink: replacing an undecryptable
+// placeholder (see handleUndecryptable), reporting our own echoed
+// message as history, or reporting it as an ordinary incoming message.
 func (c *Connector) reportContent(ctx context.Context, sink connector.Sink, e *events.Message, remote string, m domain.Message) {
 	if c.resolveUndecryptable(remote, m.RemoteID) {
 		if e.UnavailableRequestID != "" {
@@ -184,9 +176,7 @@ func reactorKey(ctx context.Context, dev device, info types.MessageInfo) string 
 }
 
 // handleRevoke reports a message deleted from the service, dropping it
-// when its sender is not the one allowed to delete it (see
-// authorizedActor): without this check, anyone in the chat could
-// delete any other message in it just by naming its id.
+// when its sender is not the one allowed to delete it (see authorizedActor).
 func (c *Connector) handleRevoke(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	remote := chatID(ctx, dev, media, e.Info.Chat)
 	messageRemoteID := revoke(e.Message)
@@ -200,9 +190,7 @@ func (c *Connector) handleRevoke(ctx context.Context, sink connector.Sink, dev d
 }
 
 // handleEdit reports a message changed after it was sent, dropping it
-// when its sender is not the one allowed to change it (see
-// authorizedActor): without this check, anyone in the chat could
-// rewrite any other message in it just by naming its id.
+// when its sender is not the one allowed to change it (see authorizedActor).
 func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.Message) {
 	remote := chatID(ctx, dev, media, e.Info.Chat)
 	messageRemoteID := e.Message.GetProtocolMessage().GetKey().GetID()

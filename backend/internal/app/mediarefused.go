@@ -6,26 +6,16 @@ import (
 )
 
 // refusedDisplayCopiesLimit bounds how many refusals
-// refusedDisplayCopies remembers at once, oldest dropped first: a
-// hostile conversation could in principle carry an unbounded number
-// of distinct refused photos, and this map must never grow with it
-// for a run's whole lifetime. Generous for any one conversation's
-// worth of them.
+// refusedDisplayCopies remembers at once, oldest dropped first, so a
+// hostile conversation can never grow this map unbounded.
 const refusedDisplayCopiesLimit = 500
 
-// refusedDisplayCopies remembers messages whose display copy has
-// already failed imagesafe's own safety check once - including the
-// one re-download retry recoverUnsafeImage gives it - so FetchMedia
-// can fail fast on a later call for the same message rather than
-// downloading and decoding it all over again: the UI auto-fetches
-// every visible photo, so without this, a hostile one would pay that
-// cost again on every scroll (see docs/decisions.md). Keyed by
-// cacheIdentity, the same id-plus-kind pairing the downloaded media
-// cache itself uses, so an edit that changes a message's media kind
-// is never stuck behind an earlier kind's own refusal. Cleared on
-// restart: it holds nothing durable, only a safe reason category
-// already fine to log (see MediaFetchReason), and a wrong refusal is
-// re-learned soon enough regardless.
+// refusedDisplayCopies remembers messages whose display copy already
+// failed imagesafe's check once, so FetchMedia can fail fast on a
+// later call instead of re-downloading and re-decoding it (see
+// docs/decisions.md). Keyed by cacheIdentity, so an edit that changes
+// media kind is never stuck behind an earlier kind's refusal. Cleared
+// on restart.
 type refusedDisplayCopies struct {
 	mu    sync.Mutex
 	order []string // oldest id first, for eviction
@@ -66,8 +56,7 @@ func (r *refusedDisplayCopies) lookup(id string) (MediaFetchReason, bool) {
 }
 
 // errRefusedDisplayCopyCached reports a FetchMedia that failed fast
-// from refusedDisplayCopies rather than a fresh download or decode
-// this time. Only the helper's own log and MediaFetchError.Error ever
-// read this; the UI sees nothing but the same safe Reason it always
-// would (see MediaFetchError).
+// from refusedDisplayCopies rather than a fresh download or decode.
+// The UI only ever sees the same safe Reason it always would (see
+// MediaFetchError).
 var errRefusedDisplayCopyCached = errors.New("media: display copy already refused this run")

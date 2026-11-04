@@ -7,10 +7,7 @@ import (
 )
 
 // clipboardMethods are the media.paste and clipboard.readText entries
-// of the protocol's method table - both the clipboard's own one real
-// resource, read through the helper's bounded wl-paste - split out of
-// methods() itself to keep that function within this codebase's line
-// limit.
+// of the protocol's method table.
 func clipboardMethods(c *app.Commands) map[string]method {
 	return map[string]method{
 		"media.paste":        bind(mediaPaste(c)),
@@ -44,10 +41,8 @@ type clipboardReadTextResult struct {
 }
 
 // clipboardReadText reads the clipboard's text/plain offer through the
-// helper's own bounded wl-paste path, for the composer's Ctrl+V to
-// insert at the cursor: the one safe way to read clipboard text at
-// all, since Qt's own in-process clipboard reader has no size or time
-// limit of its own (see docs/decisions.md). Fails with an
+// helper's bounded wl-paste path, since Qt's own clipboard reader has
+// no size or time limit (see docs/decisions.md). Fails with an
 // invalid-input error when the clipboard holds no text.
 func clipboardReadText(c *app.Commands) func(context.Context, none) (any, error) {
 	return func(ctx context.Context, _ none) (any, error) {

@@ -84,14 +84,8 @@ func (c *Connector) listDialogs(ctx context.Context, sink connector.Sink, dialog
 		}
 
 		previous := c.learnResolved(ctx, sink, conv.RemoteID)
-		// A full sync runs on every connect, including the very first
-		// one after a helper restart, when nothing is cached from any
-		// earlier run for learnResolved's own comparison above to
-		// catch. Asking again here, whenever that comparison did not
-		// already cover the same rename, is what makes a stale
-		// placeholder from before this run - or before this fix -
-		// found and merged too, idempotently: see reportUpgrade's own
-		// comment on why this is always safe to ask unconditionally.
+		// Catches a stale placeholder from before this run, which
+		// learnResolved's own cache comparison above has nothing to catch on a fresh start.
 		if placeholder, ok := placeholderRemoteID(dialog.Peer); ok && placeholder != conv.RemoteID && placeholder != previous {
 			c.reportUpgrade(ctx, sink, placeholder, conv.RemoteID)
 		}
@@ -176,10 +170,7 @@ func (c *Connector) history(ctx context.Context, api *tg.Client, sink connector.
 	for _, m := range messages.GetMessages() {
 		msg, ok := m.(*tg.Message)
 		if !ok {
-			// A group's own system notice (someone added, a title or
-			// photo changed, and the like) or an already-deleted
-			// placeholder: neither carries anything a person wrote, so
-			// it is skipped rather than shown as history.
+			// A system notice or deleted placeholder; nothing a person wrote.
 			logDropped("not a text message")
 			continue
 		}
@@ -213,12 +204,8 @@ func (c *Connector) syncContacts(ctx context.Context, api *tg.Client, sink conne
 }
 
 // learn records a conversation's full remote id under its short peer
-// key, for updates that name a peer without its access hash, such as
-// a read receipt or typing notice. It does not detect or report an
-// upgrade over a different id already learned for the same peer;
-// learnResolved does that for the paths that actually resolve a
-// peer's canonical id, so a placeholder's bare peer is never silently
-// replaced without telling the store.
+// key, for updates that name a peer without its access hash. Unlike
+// learnResolved, it never reports an upgrade over a different id already learned.
 func (c *Connector) learn(remote string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -226,17 +213,11 @@ func (c *Connector) learn(remote string) {
 	c.remotes[peerKey(remote)] = remote
 }
 
-// learnResolved records remote the same way learn does, additionally
-// reporting the change through sink when this replaces a different
-// remote id already learned this run for the same peer: almost
-// always a placeholder's bare peer (see placeholderConversation) now
-// replaced by its real access hash, resolved from a dialog sync, a
-// later message's or edit's own entities, or resolvePlaceholderHash's
-// background lookup (see resolve.go). previous is whatever was
-// cached before this call, "" the first time this run learns the
-// peer, for a caller such as listDialogs that also checks for a
-// stale placeholder from an earlier run and must not report the same
-// upgrade twice.
+// learnResolved records remote like learn, additionally reporting the
+// change through sink when it replaces a different remote id already
+// learned this run for the same peer. previous is whatever was cached
+// before this call, or "" the first time, so a caller such as
+// listDialogs can tell whether it must check for an older upgrade itself.
 func (c *Connector) learnResolved(ctx context.Context, sink connector.Sink, remote string) (previous string) {
 	c.mu.Lock()
 	key := peerKey(remote)
@@ -252,13 +233,8 @@ func (c *Connector) learnResolved(ctx context.Context, sink connector.Sink, remo
 }
 
 // reportUpgrade asks sink, when it implements connector.RemoteIDUpgrader,
-// to adopt newRemote as a conversation's remote id in place of
-// oldRemote (see connector.RemoteIDUpgrader). It is a safe no-op when
-// sink does not implement it, such as a test fake with no need to
-// track it, or when no conversation actually has oldRemote: the store
-// itself drops that case silently, so this can be called defensively,
-// such as by every dialog a sync lists, without first checking
-// whether oldRemote was ever really a placeholder.
+// to adopt newRemote in place of oldRemote. A safe no-op when sink
+// does not implement it, or when no conversation actually has oldRemote.
 func (c *Connector) reportUpgrade(ctx context.Context, sink connector.Sink, oldRemote, newRemote string) {
 	if upgrader, ok := sink.(connector.RemoteIDUpgrader); ok {
 		upgrader.ConversationRemoteIDChanged(ctx, c.account.ID, oldRemote, newRemote)

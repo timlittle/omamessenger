@@ -14,13 +14,10 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// pinOrderForNewPin is the pin_order a conversation gets the moment it
-// is newly pinned: one past whatever the highest among the other pinned
-// conversations already is, so a new pin always joins the bottom of the
-// pinned group rather than disturbing anyone else's place in it. The
-// CASE guards against reassigning it to a conversation that was already
-// pinned, whose own place the caller must leave exactly where the user
-// left it.
+// pinOrderForNewPin is the pin_order a newly pinned conversation gets:
+// one past the highest among the others, so it joins the bottom of
+// the pinned group. The CASE leaves an already-pinned conversation's
+// own order untouched.
 const pinOrderForNewPin = `CASE WHEN pinned=0 THEN (SELECT COALESCE(MAX(pin_order),0)+1 FROM conversations WHERE pinned=1) ELSE pin_order END`
 
 // setOrganizedPinned and setOrganizedUnpinned are SetOrganized's own two
@@ -31,13 +28,9 @@ const (
 	setOrganizedUnpinned = `UPDATE conversations SET pinned=?,archived=?,pin_order=0 WHERE id=? AND (pinned<>? OR archived<>?)`
 )
 
-// SetPinned pins or unpins a conversation, which decides whether it
-// leads the conversation list ahead of everything else, and where among
-// the other pinned conversations: unlimited, each such conversation
-// keeps its own place until moved (see MovePin). Pinning one already
-// pinned leaves its place alone; unpinning always clears it, so a later
-// pin starts fresh at the bottom rather than resuming an old place a
-// still-pinned conversation may have taken over since.
+// SetPinned pins or unpins a conversation. Pinning one already pinned
+// leaves its place alone; unpinning always clears pin_order, so a
+// later pin starts fresh at the bottom (see MovePin).
 func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
 	query := `UPDATE conversations SET pinned=1, pin_order=` + pinOrderForNewPin + ` WHERE id=?`
 	if !pinned {
@@ -52,14 +45,10 @@ func (s *Store) SetPinned(ctx context.Context, id string, pinned bool) error {
 	return requireRow("set pinned", res)
 }
 
-// MovePin moves a pinned conversation one place up or down among the
-// other pinned conversations, swapping its pin_order with whichever
-// pinned neighbor already sits there. It is a no-op, returning "" for
-// neighborID, at either edge of the pinned group: moving up from the
-// top, or down from the bottom. id must name a currently pinned
-// conversation, or this returns domain.ErrNotFound: moving a
-// conversation that is not pinned at all is meaningless, the same way
-// WhatsApp's own app has no such gesture for an unpinned chat.
+// MovePin moves a pinned conversation one place up or down, swapping
+// its pin_order with the neighbor there. A no-op, returning "", at
+// either edge. id must name a currently pinned conversation, or this
+// returns domain.ErrNotFound.
 func (s *Store) MovePin(ctx context.Context, id string, up bool) (neighborID string, _ error) {
 	ids, err := s.pinnedOrder(ctx)
 	if err != nil {
@@ -151,13 +140,10 @@ func pinOrderOf(ctx context.Context, tx *sql.Tx, id string) (int, error) {
 }
 
 // RememberPinnedBeforeArchive copies a conversation's current pinned
-// and pin_order into pinned_before_archive and pin_order_before_archive,
-// so RestorePinnedFromArchive can give the pin back on unarchive: called
-// by Commands.SetArchived right before it clears the local pin to match
-// a service whose own archive always unpins too (see
-// connector.ArchiveUnpinner and docs/decisions.md), which must happen
-// first, since SetPinned(ctx, id, false) immediately after would
-// otherwise clear pin_order to 0 before this ever reads it.
+// and pin_order into the _before_archive columns, so
+// RestorePinnedFromArchive can give the pin back later. Called by
+// Commands.SetArchived before it clears the local pin (see
+// connector.ArchiveUnpinner and docs/decisions.md).
 func (s *Store) RememberPinnedBeforeArchive(ctx context.Context, id string) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE conversations SET pinned_before_archive=pinned, pin_order_before_archive=pin_order WHERE id=?`, id)
@@ -168,15 +154,11 @@ func (s *Store) RememberPinnedBeforeArchive(ctx context.Context, id string) erro
 	return requireRow("remember pinned before archive", res)
 }
 
-// RestorePinnedFromArchive gives a conversation back the pin it had the
-// moment it was last archived (see RememberPinnedBeforeArchive),
-// reporting whether it actually had one to restore so the caller knows
-// whether to also ask the service to re-pin it: WhatsApp's own archive
-// unpins a chat there too, which a person does not expect to lose for
-// good just for archiving and later bringing it back (see
-// docs/decisions.md). Both before-archive columns are cleared either
-// way, so a later archive always starts this bookkeeping fresh rather
-// than reapplying a stale value from further back.
+// RestorePinnedFromArchive gives a conversation back the pin it had
+// when last archived (see RememberPinnedBeforeArchive), reporting
+// whether it actually had one so the caller knows whether to also
+// re-pin it with the service (see docs/decisions.md). The
+// before-archive columns are cleared either way.
 func (s *Store) RestorePinnedFromArchive(ctx context.Context, id string) (restored bool, _ error) {
 	var wasPinned bool
 	var order int
@@ -202,10 +184,8 @@ func (s *Store) RestorePinnedFromArchive(ctx context.Context, id string) (restor
 
 // SetOrganized sets a conversation's pinned and archived state, as a
 // dialog sync reports it. changed is false when both already matched.
-// Pinning it for the first time sends it to the bottom of the pinned
-// group, the same as SetPinned; a sync that reports a conversation
-// still pinned leaves its place exactly where the user left it, since
-// nothing but MovePin ever changes a still-pinned conversation's order.
+// Pinning it for the first time sends it to the bottom, the same as
+// SetPinned; a still-pinned conversation keeps its place.
 func (s *Store) SetOrganized(ctx context.Context, id string, pinned, archived bool) (bool, error) {
 	query := setOrganizedPinned
 	if !pinned {

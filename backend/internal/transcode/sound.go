@@ -1,12 +1,8 @@
 package transcode
 
-// sound.go runs the Sound profile: ffmpeg's own fixed argument list
-// for re-encoding a short notification or reaction sound into an
-// uncompressed WAV file this package itself rebuilds before the
-// shell ever sees it - the only format Qt's SoundEffect can play
-// (QTBUG and the Qt Multimedia documentation both confirm it decodes
-// no compressed codec itself). See docs/decisions.md for why each
-// flag is there.
+// sound.go runs the Sound profile: re-encoding a short notification
+// or reaction sound into uncompressed WAV, the only format Qt's
+// SoundEffect can play (see docs/decisions.md).
 
 import (
 	"context"
@@ -22,28 +18,19 @@ const soundOutputName = "out.wav"
 // soundSampleRate is Sound's own WAV sample rate.
 const soundSampleRate = 48000
 
-// soundTimeout bounds a Sound job's wall clock: PCM encoding is
-// close to free, and soundDurationSeconds already caps the input to
-// 30 seconds, so this only needs room for ffmpeg's own startup and
-// probing.
+// soundTimeout bounds a Sound job's wall clock.
 const soundTimeout = 45 * time.Second
 
-// soundDurationSeconds caps how much of the input Sound actually
-// encodes (-t): Qt's SoundEffect is for short notification and
-// reaction sounds, never a voice note (see Audio).
+// soundDurationSeconds caps how much of the input Sound encodes (-t).
 const soundDurationSeconds = 30
 
-// soundMaxOutputBytes bounds Sound's own output file: uncompressed
-// stereo PCM at soundSampleRate for soundDurationSeconds is exactly
-// 48000 * 2 channels * 2 bytes per sample * 30 seconds = 5,760,000
-// bytes; this leaves modest headroom above that exact figure.
+// soundMaxOutputBytes bounds Sound's output file, with headroom above
+// the exact size of 30 seconds of stereo PCM at soundSampleRate.
 const soundMaxOutputBytes = 8 << 20
 
 // Sound re-encodes in's first audio stream into an uncompressed WAV
-// file at outDir: mono stays mono, anything wider is downmixed to
-// stereo, at soundSampleRate, 16-bit PCM, no video, capped at 30
-// seconds. It returns the output file's path, or one of this
-// package's own sentinel errors (see the package doc comment).
+// file at outDir, downmixed to stereo at soundSampleRate and capped
+// at soundDurationSeconds.
 func (t *Transcoder) Sound(ctx context.Context, in, outDir string) (string, error) {
 	return t.run(ctx, in, outDir, profile{
 		args:       soundArgs(),
@@ -72,8 +59,7 @@ func soundArgs() []string {
 }
 
 // soundRebuild validates the WAV ffmpeg wrote for Sound and rewrites
-// it as sandboxedOutput's own replacement in jobDir (see
-// rebuildWAV).
+// it as sandboxedOutput's replacement in jobDir.
 func soundRebuild(sandboxedOutput, jobDir string) (string, error) {
 	finalPath := filepath.Join(jobDir, "final.wav")
 	if err := rebuildWAV(sandboxedOutput, finalPath, soundSampleRate, soundMaxOutputBytes); err != nil {

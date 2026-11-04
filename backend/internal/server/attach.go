@@ -7,12 +7,9 @@ import (
 )
 
 // attachPathParams names a file the user picked from disk for
-// media.attach to copy into the outgoing media area. AccountID is the
-// open conversation's account, read to look up its connector's own
-// attachment limit (see app.Commands.AttachmentLimit); "" falls back
-// to app.MaxAttachmentSize, the same as an account whose connector
-// reports none of its own, so an older UI that does not send it yet
-// keeps today's behaviour.
+// media.attach to copy into the outgoing media area. AccountID selects
+// the connector's own attachment limit; "" falls back to
+// app.MaxAttachmentSize.
 type attachPathParams struct {
 	Path      string `json:"path"`
 	AccountID string `json:"accountId"`
@@ -20,12 +17,8 @@ type attachPathParams struct {
 
 // attachResult is the file media.attach copied into the outgoing media
 // area and, for a photo, sanitized with imagesafe. Name is the
-// attachment's original file name, kept separately since Path's own
-// base name carries an internal id; the UI sends both back as
-// messages.send's attachment once the user sends it (see
-// attachmentParams in methods.go). Size is the file's own byte count;
-// Limit is the cap it was checked against, for the chip to show when
-// Size sits close to it.
+// original file name, since Path's base name carries an internal id.
+// Size and Limit let the UI warn when the file sits close to the cap.
 type attachResult struct {
 	Path   string `json:"path"`
 	Name   string `json:"name"`
@@ -39,8 +32,7 @@ type attachResult struct {
 // mediaAttach copies a file the user picked from disk into the
 // outgoing media area, sanitizing it with imagesafe when it looks like
 // a photo, before the composer ever shows a preview built from it; an
-// oversized or unsafe image fails with an invalid-input error naming
-// the limit instead.
+// oversized or unsafe image fails with an invalid-input error instead.
 func mediaAttach(c *app.Commands) func(context.Context, attachPathParams) (any, error) {
 	return func(ctx context.Context, p attachPathParams) (any, error) {
 		f, err := c.AttachFile(ctx, p.Path, p.AccountID)

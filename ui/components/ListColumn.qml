@@ -46,39 +46,21 @@ ColumnLayout {
   // routeKey is forwarded to the search field; see Composer.qml for why
   // a key router intercepts through a function property, not a signal.
   property var routeKey: null
-  // windowActive is whether the user can see the window at all: shown
-  // and focused. The search field exists only while this is true, on
-  // top of _editingSearch below (see searchFieldLoader): a field
-  // merely focused but not the active window's - alt-tabbed away,
-  // another window raised on top - still reads every foreign Wayland
-  // clipboard offer, with no size or time limit, for as long as the
-  // window sits open and unfocused (see docs/decisions.md). Defaults
-  // true so a caller or test that never sets it keeps the field
-  // exactly as it was before this existed.
+  // windowActive is whether the window is shown and focused. The search
+  // field exists only while this is true, to avoid an unfocused window
+  // keeping a live clipboard sink open (see docs/decisions.md).
+  // Defaults true so a caller that never sets it keeps prior behaviour.
   property bool windowActive: true
 
-  // _editingSearch is true from the moment the search field is entered
-  // (a click on its placeholder, or focusSearch()) until it is left
-  // (blur): the real TextField below exists only then, not merely
-  // while this column is shown, the same reasoning Composer.qml's own
-  // _writingRequested documents (see docs/decisions.md) - a field
-  // visible but untouched is itself a sink for a foreign Wayland
-  // clipboard offer, with no size or time limit of its own.
-  // windowActive turning false and true again leaves this alone, so a
-  // window-focus blip while searching comes back searching, the same
-  // way Composer.qml's own _writingRequested does: the field's own
-  // onActiveFocusChanged below only clears it for a real blur
-  // (Escape, Tab, a click elsewhere), never for losing focus because
-  // the window itself just went inactive.
+  // _editingSearch is true from entering the search field until a real
+  // blur: the real TextField exists only then, since a visible but
+  // untouched field is itself a clipboard sink (see docs/decisions.md).
+  // Survives a windowActive blip so searching resumes after refocus.
   property bool _editingSearch: false
 
   // focusSearch starts editing the search field, the way a click on its
-  // placeholder does; see ListController for the j/k-style keyboard
-  // paths that might call this. Moves keyboard focus into it at once if
-  // it already exists; otherwise the Loader's own onLoaded grants the
-  // focus this asked for the moment the field actually loads - right
-  // away if windowActive is already true, or only once it catches up
-  // (the window becoming active again).
+  // placeholder does. Focuses it at once if loaded, otherwise once the
+  // Loader's onLoaded catches up.
   function focusSearch(): void {
     root._editingSearch = true;
     if (root.searchField) root.searchField.forceActiveFocus();
@@ -111,11 +93,8 @@ ColumnLayout {
 
   spacing: Theme.spacing.sm
 
-  // searchPlaceholder shows the current query, or "Search", as plain,
-  // non-editable Text while the field is not being edited: clicking it
-  // starts editing (see focusSearch). A field merely visible but
-  // untouched is itself a clipboard sink, not only a hidden one (see
-  // _editingSearch's own comment above and docs/decisions.md).
+  // searchPlaceholder shows the current query, or "Search", as plain
+  // text while not being edited; clicking it starts editing.
   Rectangle {
     id: searchPlaceholder
     objectName: "searchPlaceholder"
@@ -146,22 +125,14 @@ ColumnLayout {
   }
 
   // The search field is destroyed, not merely hidden, while it is not
-  // being edited or the window is not active: a hidden-or-merely-
-  // visible but still-alive TextInput keeps reading Wayland clipboard
-  // changes with no size or time limit, the same risk
-  // tests/unit/textinput-lifetime.test.cjs guards for every other
-  // field (see docs/decisions.md). Its text is a one-way mirror of
-  // root.query, owned by ListController, so losing and recreating
-  // this item on every edit, or every window-focus blip, never loses
-  // anything: the controller's own value is what comes back.
+  // being edited or the window is not active: a still-alive TextInput
+  // keeps reading Wayland clipboard changes with no limit (see
+  // docs/decisions.md). Its text mirrors root.query one-way, so
+  // recreating it loses nothing.
   Loader {
     id: searchFieldLoader
     Layout.fillWidth: true
     active: root.visible && root._editingSearch && root.windowActive
-    // _editingSearch survives a window-focus blip (see its own
-    // comment), so it is still true here whenever this load is that
-    // blip ending, not only the first time focusSearch() asks to
-    // start editing.
     onLoaded: if (root._editingSearch) root.searchField.forceActiveFocus()
 
     sourceComponent: Ui.TextField {
@@ -169,22 +140,15 @@ ColumnLayout {
       placeholderText: "Search"
       text: root.query
       maximumLength: Limits.SEARCH_QUERY
-      // Qt's own right-click "Paste" menu would read the clipboard
-      // in-process, with no size or time limit of its own; routeKey
-      // below already routes Ctrl+V and Shift+Insert through the
-      // helper's bounded clipboard.readText instead (see
-      // docs/decisions.md), so this menu is removed outright.
+      // Qt's own right-click paste menu reads the clipboard in-process
+      // with no limit; routed through the helper instead (see
+      // docs/decisions.md), so remove it.
       ContextMenu.menu: null
 
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: event => {
-        // Catches a native paste key (ui/lib/Paste.js's own
-        // isPasteKey, which covers Ctrl+Shift+Insert and the
-        // dedicated Paste key on top of Ctrl+V and Shift+Insert)
-        // ahead of the binding lookup below, so a rebound
-        // field.paste in keys.conf can never bring back this
-        // field's own unbounded native paste() (see
-        // docs/decisions.md).
+        // Catches a native paste key ahead of the binding lookup so it
+        // can never trigger the field's own unbounded paste().
         if (Paste.isPasteKey(event.key, event.modifiers)) {
           if (root.routeKey) root.routeKey(event.key, event.modifiers, event.text, true);
           event.accepted = true;
@@ -194,16 +158,9 @@ ColumnLayout {
       }
 
       onTextChanged: root.queryEdited(text)
-      // Losing focus for a real reason - Escape, Tab, a click
-      // elsewhere - ends editing: _editingSearch turns false,
-      // destroying this field through searchFieldLoader.active above
-      // rather than leaving it alive but merely visible. Losing it
-      // only because the window itself just went inactive is not
-      // that: root.windowActive is already false by the time this
-      // runs, since that is what emptied searchFieldLoader.active in
-      // the first place, so _editingSearch is left alone for that
-      // case, the same way the field itself is left to come back once
-      // the window is active again.
+      // A real blur (Escape, Tab, click elsewhere) ends editing; losing
+      // focus because the window went inactive does not, since
+      // windowActive is already false by then.
       onActiveFocusChanged: if (!activeFocus && root.windowActive) root._editingSearch = false
 
       MiddleClickGuard {}

@@ -66,12 +66,9 @@ Item {
   property int _pendingAttempts: 0
 
   // open shows the window and, if the payload names a conversation,
-  // opens it. Omarchy calls this every time the panel is summoned, even
-  // while it is already open, so it always resets keyboard focus and
-  // only focuses an already-visible window rather than reshowing it. It
-  // also records the window as open, so a shell restart or plugin
-  // reload that later destroys it without the user asking to close it
-  // knows to bring it back.
+  // opens it. Always resets focus; only focuses an already-visible
+  // window rather than reshowing it, and records it as open so a
+  // restart that destroys it without the user's choice brings it back.
   function open(payloadJson: string): void {
     const alreadyVisible = window.visible;
     root.closingFromHost = false;
@@ -106,12 +103,8 @@ Item {
   }
 
   // close hides the window on the host's request, without reporting
-  // back. It records nothing about whether the user meant to close it:
-  // the host also calls this for every panel while reloading plugins
-  // (reloadPlugins hides them all first), so a deliberate close is only
-  // ever recorded where this plugin's own code acts on the user's
-  // request (the close question below, and Service.toggleFromBar): see
-  // docs/decisions.md.
+  // back or recording it as a deliberate close: the host also calls
+  // this while reloading plugins.
   function close(): void {
     root.closingFromHost = true;
     window.visible = false;
@@ -128,24 +121,13 @@ Item {
   // caller — the window's own key handler and those fields — gets a
   // plain boolean back and sets `accepted` on its own, real event.
   // nativePaste, passed only by a field that just caught Qt's own
-  // paste shortcut itself, forces the bounded paste path regardless of
-  // key bindings; every other caller omits it.
+  // paste shortcut, forces the bounded paste path regardless of key
+  // bindings; every other caller omits it.
   function routeKey(key: int, modifiers: int, text: string, nativePaste: bool): bool {
     const context = Navigation.keyContext(root._navState());
 
-    // nativePaste means the field itself already recognised the key as
-    // a paste - ui/lib/Paste.js's own isPasteKey, which lists every key
-    // some Qt keyboard scheme maps to StandardKey.Paste plus the
-    // dedicated Paste key, checked directly rather than through Qt's
-    // own event.matches() (see docs/decisions.md) - and is asking for
-    // the bounded helper paste unconditionally, not through a binding
-    // lookup. keys.conf can rebind which key runs field.paste or
-    // compose.attach, but it must
-    // never bring back Qt's own unbounded paste() for whatever key Qt
-    // itself treats as "paste" (see docs/decisions.md), so this skips
-    // Keymap.match - and the typing guard and scheduled remap below,
-    // neither of which apply to a paste key - and always runs the
-    // field's own bounded path for its context.
+    // Bypasses Keymap.match entirely: keys.conf must never be able to
+    // bring back Qt's own unbounded paste() (see docs/decisions.md).
     if (nativePaste) {
       if (context === "compose") return composerController.run("compose.attach") !== false;
       clipboardPaste.pasteInto(keyArea.Window.activeFocusItem);
@@ -154,31 +136,12 @@ Item {
 
     const action = Keymap.match(context, key, modifiers, text, root.bindings);
 
-    // Escape drops whatever the typing guard below has tracked so
-    // far: a deliberate Esc, then a shortcut typed quickly afterwards
-    // on purpose, must never inherit a burst that started before it
-    // just because not enough real time happened to pass in between
-    // (see ui/lib/TypingGuard.js and docs/decisions.md).
+    // A deliberate Esc must never let a later shortcut inherit an
+    // earlier typing burst (see ui/lib/TypingGuard.js).
     if (action === "escape") listController.resetBurst();
 
-    // A plain, printable letter arriving right on the heels of another
-    // one, while the list or an open conversation has focus, outside
-    // the composer, can mean someone is typing into the wrong place
-    // (see ui/lib/TypingGuard.js); listController.guardTyping holds
-    // back a guarded, conversation-changing action (archive, mute,
-    // pin, hide, block, delete, mark read/unread) the moment any plain
-    // key preceded it, and holds back *any* action once the burst
-    // itself looks like an ordinary typed word rather than a chosen
-    // shortcut - never a burst made up only of navigation keys, which
-    // is just fast scrolling - showing a toast naming the key that
-    // actually starts writing. This runs even when action is "" (the
-    // key matched nothing at all, the shape an ordinary typed word
-    // takes): an unmatched key can never itself be held back, but
-    // still counts towards holding back whatever follows it too soon
-    // after. Ctrl- or Alt-held shortcuts are never plain letters, so
-    // they always go through regardless; nor is Escape, Enter, Tab or
-    // Backspace, whose own key.text is a single, non-printable control
-    // character rather than "", not just text.length !== 1 alone.
+    // Guards against typing into the wrong place: a plain letter held
+    // against an ordinary word, not navigation or modified keys.
     const isPlainKey = /^[\x20-\x7e]$/.test(text) && (modifiers & Keymap.MOD.Ctrl) === 0 && (modifiers & Keymap.MOD.Alt) === 0;
     if (isPlainKey && (context === "list" || context === "conversation") && listController.guardTyping(action)) {
       return true;
@@ -186,25 +149,14 @@ Item {
 
     if (!action) return false;
 
-    // field.paste reaches here for every editable field except the
-    // composer (compose.attach wins there: a context's own binding is
-    // checked before this global one, see Keymap.js). keyArea.Window's
-    // own activeFocusItem is whichever field the key was actually
-    // typed into - the one thing every TextField and TextArea already
-    // has in common - so this needs no reference threaded down
-    // through every component and controller in between.
+    // Reaches here for every editable field except the composer.
     if (action === "field.paste") {
       clipboardPaste.pasteInto(keyArea.Window.activeFocusItem);
       return true;
     }
 
-    // The open chat's own highlighted queued "send later" message (see
-    // ConversationController.highlightedScheduledId and
-    // ScheduledList.qml) answers to the same three keys a highlighted
-    // message does - Enter, react's "e" and delete's "d" - for send
-    // now, edit and cancel instead, since there is no message there to
-    // open, react to or delete. Checked after the typing guard above,
-    // so a mistyped burst still cannot reach it either.
+    // A highlighted queued "send later" message remaps open/react/delete
+    // to send now/edit/cancel, since there is no message to act on.
     const scheduledId = conversationController.highlightedScheduledId;
     const scheduledRemap = { "message.open": "sendNow", "message.react": "edit", "message.delete": "cancel" };
     if (scheduledId && scheduledRemap[action]) {
@@ -447,20 +399,8 @@ Item {
         if (root.routeKey(event.key, event.modifiers, event.text)) event.accepted = true
       }
 
-      // Qt never walks back up to whichever ancestor still declares
-      // focus: true once the item actually holding activeFocus is
-      // gone: destroying it (the composer's or the search field's
-      // own Loader deactivating) drops activeFocusItem to null, and
-      // disabling it outright (blocking the open chat's contact
-      // while its composer is focused) leaves it on the window's own
-      // content item instead, neither of which is a real key
-      // handler. Every other way out already hands focus back
-      // explicitly (see Overlays.qml's _refocusIfClosed and
-      // MessengerLayout.qml's own leave/search handlers), but
-      // neither of those two covers "the field itself is gone or
-      // inert"; this is the one catch-all that does, so every global
-      // and context shortcut keeps reaching keyArea no matter how
-      // focus was lost.
+      // Catch-all: reclaims focus whenever the focused field is
+      // destroyed or disabled and nothing else hands focus back.
       Connections {
         target: keyArea.Window
         function onActiveFocusItemChanged() {

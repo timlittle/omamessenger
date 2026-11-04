@@ -3,26 +3,14 @@ package app
 import "sync"
 
 // refusedPlayCopiesLimit bounds how many ids refusedPlayCopies
-// remembers at once, oldest dropped first: a hostile conversation
-// could in principle carry an unbounded number of distinct videos
-// whose play copy never builds, and this set must never grow with it
-// for a run's whole lifetime. The same figure refusedDisplayCopies
-// uses, for the same reason.
+// remembers at once, oldest dropped first, since a hostile
+// conversation could otherwise grow this set unbounded.
 const refusedPlayCopiesLimit = 500
 
 // refusedPlayCopies remembers messages whose play copy has already
-// failed to build once - the transcoder timing out, running out of
-// its own size budget, or simply being unavailable - so playCopy can
-// fail fast on a later call for the same message rather than running
-// the sandboxed transcoder all over again: reopening a conversation
-// asks to play every message in it again, so without this, a video
-// whose transcode a crafted file made time out or fail once would
-// cost exactly as much every single time it is reopened (see
-// docs/decisions.md). Keyed by the same play-copy cache id
-// transcodedPlayCopy itself uses, so an edit that changes a message's
-// media kind is never stuck behind an earlier kind's own refusal.
-// Cleared on restart: refusing is re-learned soon enough regardless,
-// and nothing durable is lost by forgetting it.
+// failed to build once, so playCopy can fail fast on a later call
+// rather than running the sandboxed transcoder again (see
+// docs/decisions.md). Cleared on restart.
 type refusedPlayCopies struct {
 	mu    sync.Mutex
 	order []string // oldest id first, for eviction

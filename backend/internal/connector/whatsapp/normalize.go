@@ -271,13 +271,10 @@ func isSystemJID(jid types.JID) bool {
 }
 
 // contactDisplayName is WhatsApp's own name for a resolved contact, in
-// its own priority order: the name saved for them, their first name
-// alone, their business name, or their self-chosen push name.
-// fromContact reports whether name came from one of the first two -
-// something the user themselves saved - rather than a name the
-// contact chose; callers use this to rank a resolved name against
-// others (see rankFor). It returns "", false when info names no one,
-// or holds none of these.
+// priority order: saved name, first name, business name, push name.
+// fromContact reports whether the name is one the user saved, rather
+// than one the contact chose (used by rankFor). Returns "", false when
+// info names no one.
 func contactDisplayName(info types.ContactInfo) (name string, fromContact bool) {
 	switch {
 	case info.FullName != "":
@@ -292,14 +289,11 @@ func contactDisplayName(info types.ContactInfo) (name string, fromContact bool) 
 }
 
 // contactFromPushName turns one push name of a history sync into a
-// contact, or reports false when it names no one. When WhatsApp's own
-// contact store already resolves the same JID to a saved contact or
-// business name (see device.contactName), that name wins instead, the
-// same priority a saved contact already takes over a push name
-// everywhere else - the new-chat contact list must never show a
-// stranger's self-chosen "Mum" as if it were a saved contact (see
-// docs/decisions.md). rank is the resolved name's own nameRank, for
-// the caller to remember it at (see rankFor).
+// contact, or reports false when it names no one. A saved or business
+// name already resolved for the same JID (see device.contactName) wins
+// instead, so a stranger's self-chosen push name never displays as a
+// saved contact (see docs/decisions.md). rank is the resolved name's
+// nameRank, for the caller to remember (see rankFor).
 func contactFromPushName(ctx context.Context, dev device, accountID string, p *waHistorySync.Pushname) (contact domain.Contact, rank nameRank, ok bool) {
 	jid, err := types.ParseJID(p.GetID())
 	if err != nil || jid.IsEmpty() {

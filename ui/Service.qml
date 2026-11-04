@@ -63,9 +63,7 @@ Item {
   // pendingAuth is the sign-in step an account is waiting on, or null.
   readonly property var pendingAuth: appState.pendingAuth
 
-  // accountNotice is the most recent account.notice event's own
-  // message, or "" once dismissed (see WindowController.toastText and
-  // clearAccountNotice).
+  // accountNotice is the most recent account.notice message, or "" once dismissed.
   readonly property string accountNotice: appState.accountNotice
 
   // readReceipts mirrors the last readReceipts value sent to the helper,
@@ -74,10 +72,7 @@ Item {
   // palette's "Toggle read receipts" command knows which way to flip.
   property bool readReceipts: true
 
-  // reopenAfterRestart mirrors the "Reopen after restart" setting: off
-  // skips reopening the window after a shell restart or plugin reload
-  // tears it down without the user asking to close it first (see
-  // ui/service/WindowReopen.qml).
+  // reopenAfterRestart mirrors the "Reopen after restart" setting.
   property bool reopenAfterRestart: true
 
   // _lastSettings is the plugin settings object last given to
@@ -85,35 +80,20 @@ Item {
   // setting unchanged alongside the one it flips.
   property var _lastSettings: ({})
 
-  // _defaultSound, _whatsappSound and _telegramSound are the three
-  // manifest notification sound settings (see applySettings), kept
-  // here since the UI, not the helper, decides which one applies to an
-  // arriving message (see lib/NotificationSound.js): a conversation's
-  // own custom sound, read from the notification.sound event itself,
-  // always wins over these first.
+  // _defaultSound, _whatsappSound and _telegramSound are the manifest
+  // notification sound settings; a conversation's own custom sound wins over these.
   property string _defaultSound: ""
   property string _whatsappSound: ""
   property string _telegramSound: ""
 
-  // soundPlayer plays a notification sound's own file:// URL. Null
-  // uses the real engine loaded through _soundRuntime below; tests
-  // replace it with a fake so nothing ever reaches the live desktop's
-  // audio output (see ui-testing.md).
+  // soundPlayer plays a notification sound's file:// URL; tests override it with a fake.
   property var soundPlayer: null
 
-  // doNotDisturbCheck lets a test replace the do-not-disturb check
-  // with a fake, callback-based function, so nothing in a test ever
-  // shells out to omarchy-shell; null uses doNotDisturb below, the
-  // real, read-only check against Omarchy's own shell.
+  // doNotDisturbCheck lets a test fake the do-not-disturb check; null uses doNotDisturb below.
   property var doNotDisturbCheck: null
 
-  // _soundRuntimeSource is the sound effect engine _soundRuntime
-  // loads: NotificationSoundRuntime.qml by default, overridable so a
-  // test can point it at a broken or missing file instead, to drive
-  // the same Loader.Error path a machine without QtMultimedia would
-  // hit, without needing QtMultimedia to actually be missing from the
-  // machine running the test (see VoiceNoteController.qml's own
-  // runtimeSource, the same pattern).
+  // _soundRuntimeSource is the sound effect engine to load; overridable so tests can
+  // simulate a machine without QtMultimedia.
   property url _soundRuntimeSource: Qt.resolvedUrl("components/NotificationSoundRuntime.qml")
 
   // shell is the host facade Omarchy injects after creating this service,
@@ -158,10 +138,8 @@ Item {
   // has been applied to the state above.
   signal event(string name, var data)
 
-  // windowShown is whether the window is showing right now, as opposed
-  // to the stored state markWindowOpen and markWindowClosed keep for the
-  // next start: toggleFromBar uses it to tell a click that closes the
-  // window from one that opens it.
+  // windowShown is whether the window is showing right now, used by
+  // toggleFromBar to tell a closing click from an opening one.
   property bool windowShown: false
 
   // request sends method with params and calls callback(error, result)
@@ -206,34 +184,25 @@ Item {
     root.request("settings.apply", merged, function() {});
   }
 
-  // markWindowOpen records that the window is now open, so if a shell
-  // restart or plugin reload destroys it without the user asking first,
-  // the next Service start reopens it.
+  // markWindowOpen records that the window is now open, so a later restart reopens it.
   function markWindowOpen(): void {
     root.windowShown = true;
     root.request("ui.setWindowOpen", { open: true }, function() {});
   }
 
-  // noteWindowHidden records that the window went away without saying
-  // whether the user meant it, as when the host hides it while
-  // reloading plugins: the stored state is left alone, so a reload or
-  // restart still reopens it.
+  // noteWindowHidden records the window going away without saying whether the
+  // user meant it, leaving the stored reopen state alone.
   function noteWindowHidden(): void {
     root.windowShown = false;
   }
 
-  // toggleFromBar opens or closes the window for a click on the bar
-  // icon through shell, recording a click that closes it as the user
-  // deliberately closing it.
+  // toggleFromBar opens or closes the window for a bar icon click through shell.
   function toggleFromBar(shell: var, pluginId: string): void {
     if (root.windowShown) root.markWindowClosed();
     if (shell && typeof shell.toggle === "function") shell.toggle(pluginId, "{}");
   }
 
-  // markWindowClosed records that the user deliberately closed the
-  // window, the opposite of markWindowOpen, so it stays shut after a
-  // later restart. See docs/decisions.md for how a deliberate close is
-  // told apart from the window being torn down.
+  // markWindowClosed records a deliberate close so the window stays shut after a restart.
   function markWindowClosed(): void {
     root.windowShown = false;
     root.request("ui.setWindowOpen", { open: false }, function() {});
@@ -245,15 +214,9 @@ Item {
     root.applySettings(Object.assign({}, root._lastSettings, { readReceipts: !root.readReceipts }));
   }
 
-  // playNotificationSoundForConversation previews conversation's own
-  // notification sound, through the exact same precedence and
-  // do-not-disturb check _playNotificationSound runs for a real
-  // arrival: the command palette's "Play notification sound", so
-  // trying a sound choice never needs a real message to arrive first.
-  // outcome, if given, is called with "played", "silent" (nothing
-  // applies: no custom, service or default sound) or "doNotDisturb",
-  // so the caller can say why nothing was heard rather than leaving
-  // the command looking like it did nothing at all.
+  // playNotificationSoundForConversation previews conversation's sound via the
+  // same path a real arrival uses, for the "Play notification sound" command.
+  // outcome, if given, gets "played", "silent" or "doNotDisturb".
   function playNotificationSoundForConversation(conversation: var, outcome: var): void {
     if (!conversation || typeof conversation.id !== "string") return;
 
@@ -264,13 +227,8 @@ Item {
     }, outcome);
   }
 
-  // openKeyConfigFile is the palette's "Open key bindings file" command:
-  // it seeds keys.conf with a commented template the first time it is
-  // asked for (never overwriting one that already exists), then asks
-  // the helper's own files.open method to open it in the user's own
-  // editor through the desktop portal, rather than starting xdg-open
-  // with its path as one of its own command-line arguments (see
-  // docs/decisions.md).
+  // openKeyConfigFile is the palette's "Open key bindings file" command: it seeds
+  // keys.conf on first use, then opens it via the helper's files.open (see docs/decisions.md).
   function openKeyConfigFile(): void {
     if (root._keyConfigMissing) keysFile.setText(KeyBindings.template(Keymap.BINDINGS));
 
@@ -335,23 +293,14 @@ Item {
     root.event(name, data);
   }
 
-  // clearAccountNotice forgets the current account notice, so it does
-  // not reappear once the toast has shown and dismissed it (see
-  // WindowController.dismissToast).
+  // clearAccountNotice forgets the current account notice so it does not reappear.
   function clearAccountNotice(): void {
     appState.accountNotice = "";
   }
 
-  // _playNotificationSound decides, from data and this plugin's own
-  // settings, whether an arriving message should play a sound at all
-  // (see lib/NotificationSound.js), checking first whether Omarchy's
-  // own do-not-disturb is on right now: its own notification popups
-  // already go quiet under it, so this plugin's sound must too,
-  // rather than sounding through it. The helper never sends this
-  // event for a muted, missed or already-read arrival (see
-  // backend/internal/app/ingest.go), so this never has to check that
-  // itself. outcome, if given, is called the same way
-  // playNotificationSoundForConversation's own does.
+  // _playNotificationSound checks Omarchy's do-not-disturb, then resolves and plays
+  // a sound for an arriving message; outcome is called the same way
+  // playNotificationSoundForConversation's is.
   function _playNotificationSound(data: var, outcome: var): void {
     if (!data || typeof data.conversationId !== "string") return;
 
@@ -362,14 +311,8 @@ Item {
     });
   }
 
-  // _resolveAndPlaySound asks the helper for a validated, playable
-  // copy of whichever sound lib/NotificationSound.js's precedence
-  // picked, once _playNotificationSound has already confirmed
-  // do-not-disturb is not on. outcome, if given, is called the same
-  // way playNotificationSoundForConversation's own does; a failed
-  // sounds.fetch round trip calls nothing further, the same as before
-  // this was added, since that is the helper misbehaving rather than
-  // "nothing is set".
+  // _resolveAndPlaySound asks the helper for the sound lib/NotificationSound.js's
+  // precedence picked, then plays it.
   function _resolveAndPlaySound(data: var, outcome: var): void {
     const serviceSound = data.service === "telegram" ? root._telegramSound : root._whatsappSound;
     const decision = NotificationSound.resolve(!!data.hasCustomSound, serviceSound, root._defaultSound);
@@ -386,12 +329,7 @@ Item {
     });
   }
 
-  // _playSoundFile hands path's file:// URL (percent-encoded, like
-  // every other local file this UI opens - see lib/Links.js) to
-  // soundPlayer, or the loaded runtime engine when nothing overrides
-  // it and QtMultimedia is actually available on this machine; losing
-  // one sound while the engine is still loading, or on a machine
-  // without QtMultimedia at all, is not worth failing anything over.
+  // _playSoundFile hands path's file:// URL to soundPlayer or the loaded runtime engine.
   function _playSoundFile(path: string): void {
     const player = root.soundPlayer ?? (soundRuntime.status === Loader.Ready ? soundRuntime.item : null);
     if (!player) return;
@@ -437,21 +375,14 @@ Item {
     onEvent: function(name, data) { root._handleEvent(name, data); }
   }
 
-  // soundRuntime loads the actual sound effect engine, kept in its own
-  // file because it imports the optional QtMultimedia module (not
-  // every Omarchy install has it): importing it here directly, in a
-  // service that always loads, would make the whole UI fail to load on
-  // a machine without it, instead of just losing a notification sound.
-  // Living in Service, rather than a controller, means a sound can
-  // still play while the panel is hidden or closed - exactly when a
-  // notification matters most.
+  // soundRuntime loads the sound effect engine from its own file, since it imports
+  // the optional QtMultimedia module not every Omarchy install has.
   Loader {
     id: soundRuntime
     source: root._soundRuntimeSource
   }
 
-  // doNotDisturb is the real, read-only check against Omarchy's own
-  // shell; see ui/service/DoNotDisturb.qml.
+  // doNotDisturb is the real, read-only check against Omarchy's shell.
   DoNotDisturb {
     id: doNotDisturb
   }

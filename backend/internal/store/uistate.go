@@ -24,11 +24,8 @@ func (s *Store) SetSeenWhatsNewVersion(ctx context.Context, version string) erro
 	return wrap("set seen whats new version", err)
 }
 
-// WindowOpen reports whether the window was last left open rather than
-// deliberately closed, false before anything has been recorded
-// (including a fresh install). A shell restart or plugin reload that
-// destroys the window without the user asking to close it never changes
-// this, so the next start can reopen it.
+// WindowOpen reports whether the window was last left open rather
+// than deliberately closed, false before anything has been recorded.
 func (s *Store) WindowOpen(ctx context.Context) (bool, error) {
 	var open bool
 

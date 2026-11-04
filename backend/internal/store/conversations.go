@@ -50,12 +50,9 @@ func (s *Store) EnsureConversation(ctx context.Context, c domain.Conversation) (
 	return inserted, err == nil, err
 }
 
-// refreshConversation copies the remote service's title, kind and
-// member count onto a stored conversation. It never touches pinned,
-// archived or hidden: most reports, such as a live message's own
-// conversation, carry neither pinned nor archived meaningfully, so
-// only SetOrganized, from a dialog sync, may set them; hidden is local
-// to this computer and no report ever carries it at all.
+// refreshConversation copies the remote service's title, kind and member
+// count onto a stored conversation. It never touches pinned, archived or
+// hidden, which are set elsewhere.
 func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Conversation) (domain.Conversation, error) {
 	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=? WHERE id=?`,
 		c.Title, c.Kind, c.Members, id)
@@ -118,13 +115,9 @@ const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match,
 // hits picks the newest one per conversation, which becomes the ranking
 // signal and the Match snippet, MatchMessageID and MatchSender, read
 // through an external-content FTS5 table kept in step with messages by
-// triggers (see migrate.go). The snippet comes from FTS5's own
-// snippet() aux function, bounded to 32 tokens around the match
-// (FTS5's own max is 64) rather than a message's whole text - up to
-// domain.MaxIncomingTextLength, 64 KiB, with no limit of its own on how
-// long a single matched word's surrounding text can be - which would
-// otherwise make the command palette's "Messages" row lay out far more
-// than a search result ever needs to show.
+// triggers (see migrate.go). The snippet comes from FTS5's snippet() aux
+// function, bounded to 32 tokens around the match rather than a message's
+// whole text.
 const conversationsByTitleOrMessage = `WITH matched AS (
 		SELECT m.conversation_id AS conversation_id, m.id AS message_id, m.sender_name AS sender_name,
 			snippet(messages_fts, 0, '', '', '…', 32) AS snippet, bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
@@ -232,12 +225,9 @@ func (s *Store) SetMuted(ctx context.Context, id string, muted bool) error {
 	return requireRow("set muted", res)
 }
 
-// SetNotificationSound records whether a conversation has its own
-// custom notification sound: hasCustom true stores "custom", false
-// stores "" (inherit the service's or the global default). The sound's
-// own bytes live outside the database, in the helper's sound store,
-// keyed by this conversation's id (see cache.Sounds); this column only
-// ever says whether one is there to look up.
+// SetNotificationSound records whether a conversation has its own custom
+// notification sound; the sound's bytes live outside the database, in the
+// helper's sound store.
 func (s *Store) SetNotificationSound(ctx context.Context, id string, hasCustom bool) error {
 	sound := ""
 	if hasCustom {
@@ -365,21 +355,12 @@ func (s *Store) UnreadByService(ctx context.Context) (map[string]int, error) {
 	return byService, wrap("unread by service", rows.Err())
 }
 
-// UpgradeConversationRemoteID changes a conversation's remote id in
-// place, keeping its local id, messages and settings, for a connector
-// that resolves a better id for a conversation already stored under
-// an older one - such as Telegram learning a placeholder peer's real
-// access hash, whether moments after creating it or only on a later
-// reconnect's full resync. If a conversation already exists under
-// newRemoteID, oldRemoteID's messages are moved into it instead and
-// the oldRemoteID conversation is removed, so the two never end up
-// duplicated; a message the target already has under the same remote
-// id is kept once, under the target, never duplicated. It changes
-// nothing and reports domain.ErrNotFound when no conversation has
-// oldRemoteID - the common, harmless case for a connector that checks
-// a peer which never actually needed a placeholder. The format of
-// either id is not this package's concern: it only ever compares and
-// moves between two opaque strings a connector gives it.
+// UpgradeConversationRemoteID changes a conversation's remote id in place,
+// keeping its local id, messages and settings, for a connector that
+// resolves a better id for one already stored under an older one. If a
+// conversation already exists under newRemoteID, the two are merged
+// instead. It reports domain.ErrNotFound when no conversation has
+// oldRemoteID.
 func (s *Store) UpgradeConversationRemoteID(ctx context.Context, accountID, oldRemoteID, newRemoteID string) (domain.Conversation, error) {
 	if oldRemoteID == newRemoteID {
 		return s.ConversationByRemote(ctx, accountID, oldRemoteID)
@@ -412,13 +393,9 @@ func (s *Store) renameConversationRemoteID(ctx context.Context, id, remoteID str
 	return s.Conversation(ctx, id)
 }
 
-// mergeConversations moves fromID's messages into intoID and removes
-// fromID, for UpgradeConversationRemoteID's duplicate case. A message
-// fromID has under a remote id intoID already has is left behind:
-// moving it would violate the unique index on (conversation_id,
-// remote_id), so UPDATE OR IGNORE skips just that row, and it is
-// discarded along with fromID itself once the delete below cascades
-// onto whatever messages the move could not place.
+// mergeConversations moves fromID's messages into intoID and removes fromID.
+// A message under a remote id intoID already has is left behind and
+// discarded, since moving it would violate the unique index.
 func (s *Store) mergeConversations(ctx context.Context, fromID, intoID string) (domain.Conversation, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -450,13 +427,8 @@ func scanConversation(row scanner) (domain.Conversation, error) {
 }
 
 // scanConversationMatch reads conversationColumns followed by the search
-// match, matched message id and matched sender columns. Match gets the
-// same domain.CapPreview cap Preview already gets in scanConversationWith:
-// FTS5's own snippet() never splits a token, so a message stored as one
-// long run of letters with no spaces comes back in full regardless of
-// the 32-token window conversationsByTitleOrMessage asks for, the same
-// way a row written before domain.MaxIncomingTextLength existed could
-// still carry unbounded text today.
+// match, matched message id and matched sender columns, applying the same
+// caps scanConversationWith does.
 func scanConversationMatch(row scanner) (domain.Conversation, error) {
 	var match, messageID, sender sql.NullString
 	c, err := scanConversationWith(row, &match, &messageID, &sender)
@@ -467,18 +439,8 @@ func scanConversationMatch(row scanner) (domain.Conversation, error) {
 	return c, err
 }
 
-// scanConversationWith reads conversationColumns followed by extra
-// columns. Title and PreviewSender are sender-controlled - a group's
-// own title, and whoever sent its newest message - so they get the
-// same domain.CapDisplayName cap on every read that app.Ingest already
-// gives them on arrival, repairing a row an older release stored
-// before that cap existed, the same reasoning store.scanMessage gives
-// a legacy sender name (see domain.SanitizeIncoming). Preview is
-// sender-controlled too - a message's own text, with bumpConversation
-// the only writer - so it gets the matching domain.CapPreview cap here
-// as well: a release before that cap existed could still store a
-// message's full, unbounded text as the preview, and this is what
-// repairs that row on every read, not only for a preview set since.
+// scanConversationWith reads conversationColumns followed by extra columns,
+// re-applying the display-name and preview caps in case the row predates them.
 func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error) {
 	var c domain.Conversation
 	dest := append([]any{

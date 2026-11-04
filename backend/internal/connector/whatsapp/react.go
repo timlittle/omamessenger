@@ -95,19 +95,13 @@ func (c *Connector) React(ctx context.Context, conv domain.Conversation, message
 	return nil
 }
 
-// reactTo records sender's reaction to a message as emoji, or clears it
-// when emoji is "", and returns the message's full, recomputed tally. A
-// sender fully controls both the emoji text and which message id their
-// own reaction names, so this bounds every part of what it keeps: an
-// oversized emoji (domain.MaxReactionEmojiLength) is treated the same
-// as an empty one, an implausibly long messageRemoteID
-// (domain.MaxRemoteIDLength) is refused outright since it can never be
-// a real message id this connector would recognise again, a brand new
-// message tracked past maxReactionTargets evicts the oldest message
-// tracked so far, and a brand new reactor past maxReactorsPerMessage on
-// one message is refused rather than displacing an existing vote. A
-// message whose tally drops back to empty is forgotten outright, so a
-// sender cannot pad c.reactions by reacting then immediately clearing.
+// reactTo records sender's reaction to a message as emoji, or clears
+// it when emoji is "", and returns the message's recomputed tally.
+// Since a sender controls both fields, every part is bounded: an
+// oversized emoji or ID is rejected or treated as empty, old messages
+// are evicted past maxReactionTargets, extra reactors are refused past
+// maxReactorsPerMessage, and an emptied tally is forgotten outright so
+// reacting then clearing cannot be used to pad c.reactions.
 func (c *Connector) reactTo(conversationRemoteID, messageRemoteID, sender, emoji string) []domain.Reaction {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -102,14 +102,9 @@ func markReadFrom(ctx context.Context, dev device, chat types.JID, senderRemoteI
 }
 
 // The chat_patch values logMarkRead reports for sendChatReadState's
-// outcome: sent once WhatsApp accepted the mutation, failed once it
-// did not, skipped when there was no saved message to name it by at
-// all, and localOnly when this account's own regular_low collection
-// has already been found permanently unverifiable (see
-// connector.ErrOrganizeLocalOnly), so this mutation was never sent at
-// all - not a failure, since the per-message receipts markReadFrom
-// already sent still clear this chat's unread count and update
-// WhatsApp's own server-side progress regardless.
+// outcome: sent, failed, skipped (no saved message to name it by), or
+// localOnly when the account's regular_low collection is unverifiable
+// (connector.ErrOrganizeLocalOnly) and the mutation was never sent.
 const (
 	chatPatchSent      = "sent"
 	chatPatchFailed    = "failed"
@@ -129,20 +124,12 @@ type chatPatchResult struct {
 	failureClass string
 }
 
-// sendChatReadState sends the app-state mutation that marks chat fully
-// read, naming the newest message this connector has saved for it, so
-// WhatsApp's own servers, the phone and any other linked device agree
-// the chat is read up to that point; this is what actually clears the
-// badge WhatsApp itself shows, which the per-message receipts
-// markReadFrom already sent do not touch on their own. It is best
-// effort: a failure here is reported through the returned result rather
-// than failing the whole MarkRead call, the same as Telegram's own read
-// reporting, since the per-message receipts already sent still update
-// WhatsApp's server-side progress either way, and a later resync
-// corrects any miss. It goes through sendOrganizePatch, the same choke
-// point SetPinned and SetArchived use, so it skips WhatsApp's server
-// entirely, reporting chatPatchLocalOnly, once this account's own
-// regular_low collection has already been found unverifiable.
+// sendChatReadState sends the app-state mutation that marks chat read up
+// to its newest saved message; this is what clears WhatsApp's own unread
+// badge, which per-message receipts alone do not. It is best effort - a
+// failure is reported in the result rather than failing MarkRead - and
+// goes through sendOrganizePatch, which reports chatPatchLocalOnly instead
+// of sending once the account's regular_low collection is unverifiable.
 func (c *Connector) sendChatReadState(ctx context.Context, dev device, media *mediaStore, chat types.JID, convRemoteID string) chatPatchResult {
 	messageID, key, found, err := media.latestMessageKey(ctx, convRemoteID)
 	if err != nil || !found {

@@ -69,10 +69,8 @@ func (c *Connector) handleHistorySync(ctx context.Context, sink connector.Sink, 
 }
 
 // syncPushnames reports a contact for every push name a sync carries,
-// and remembers each one for titling direct chats that otherwise have
-// no name of their own. Each contact's own resolved rank (see
-// contactFromPushName) decides the rank it is remembered at, the same
-// as every other name this connector learns.
+// remembering each one for titling direct chats with no name of
+// their own, at the rank contactFromPushName resolves for it.
 func (c *Connector) syncPushnames(ctx context.Context, sink connector.Sink, dev device, names []*waHistorySync.Pushname) {
 	for _, p := range names {
 		contact, rank, ok := contactFromPushName(ctx, dev, c.account.ID, p)
@@ -162,26 +160,12 @@ func (c *Connector) reportSyncedOrganize(ctx context.Context, sink connector.Sin
 }
 
 // syncMessage reports one of a conversation's synced messages and
-// remembers its media reference, if it has one, for a later download,
-// doing nothing for a message with no content of its own to show (see
-// isContentless), which it logs the same way a live message's drop
-// is (see logContentlessDrop); a reaction, edit or revoke is dropped
-// here too, but silently, since those are not really missing: the
-// live events that cover them already reported them when this
-// account was connected to receive them, and a bulk sync never
-// replays them again. A message whose id already names a different
-// sender's message (see saveIncomingKeyedData and live.go's
-// handleContent) is dropped the same way: it is never reported, or its
-// text or media would reach the sink attached to whatever that id's
-// first sender already has stored. Its message_keys row (see keys.go),
-// saved the same way a live message's is, is what later lets MarkRead
-// pick this message out of the conversation's newest ones, even after
-// a restart (see markread.go): history sync carries each conversation's
-// unread count but not which of its messages are unread, so MarkRead
-// chooses for itself once it knows that count. It returns whether hm
-// was actually reported, for syncConversation's own count of how many
-// of a synced chat's messages that was true for (see
-// history_ondemand.go).
+// remembers its media reference for a later download. It drops a
+// message with no content to show (see isContentless), a reaction,
+// edit or revoke (already covered by live events), or one whose id
+// is reused by another sender (see saveIncomingKeyedData). It returns
+// whether hm was actually reported, so syncConversation can count how
+// many of a synced chat's messages were (see history_ondemand.go).
 func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target syncTarget, hm *waHistorySync.HistorySyncMsg) bool {
 	content := hm.GetMessage().GetMessage()
 	if content != nil {
@@ -212,10 +196,8 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	unwrapped := unwrap(content)
 	info := historyMessageInfo(target.chat, hm.GetMessage())
 	key := messageKey{senderID: senderKeyID(info), fromMe: m.Outgoing, timestamp: m.Created}
-	// saveIncomingKeyedData's own id-reuse check (see keys.go) applies
-	// here too, but unlike live.go's replacement case, a bulk sync has
-	// no undecryptable placeholder of its own to ever replace: a
-	// refusal here always means drop, never report.
+	// A bulk sync has no placeholder to replace, so a reused id here
+	// always means drop, never report.
 	keyed := incomingKeyedMessage{conversationRemoteID: target.convRemoteID, messageRemoteID: m.RemoteID, key: key, msg: unwrapped}
 	if !saveIncomingKeyedData(ctx, target.media, keyed) {
 		return false
@@ -226,20 +208,11 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 	return true
 }
 
-// resolveConversation is conv's best title, whether that title is
-// verified, and, for a group, its member count: the account's own
-// self-chat label (always verified: a fixed, reserved title, never a
-// self-chosen claim), the name and participants the sync itself
-// carried (a group's own name, always verified the same way - there is
-// no self-chosen identity to mark for a group's own topic, only for a
-// person's), a group's name and member count fetched and cached when
-// the sync left both blank, a direct chat's already-known contact or
-// push name, a business's own verified name or a sender's push name
-// carried by one of sc's own synced messages, or, with nothing else
-// known yet, a fallback title (also always verified: a phone number or
-// a neutral placeholder this connector built, never the sender's own
-// claim). A conversation with no title at all would be dropped rather
-// than shown, so this never returns "".
+// resolveConversation is conv's best title and, for a group, its
+// member count: the self-chat label, the sync's own name and
+// participants, a fetched group name, a direct chat's known contact
+// or push name, or a fallback title. Never returns "", since an
+// untitled conversation would be dropped rather than shown.
 func (c *Connector) resolveConversation(ctx context.Context, src syncSource, jid types.JID, conv domain.Conversation, sc *waHistorySync.Conversation) (title string, members int) {
 	if src.dev.isSelfChat(ctx, jid) {
 		return selfChatTitle, 0
@@ -278,24 +251,13 @@ func syncedPushName(sc *waHistorySync.Conversation) string {
 }
 
 // resolveDirectTitle is a direct chat's best title: its contact's
-// resolved name (mapping a LID to its phone JID first, see
-// device.contactName; this already covers a business whose name is
-// saved in the contact store, see contactDisplayName), the best name
-// already cached for its canonical chat id (see chatID), the
-// business's own name this particular report carries, the push name
-// it carries, or, with nothing else known, a fallback title built
-// from jid's mapped phone JID when whatsmeow already knows one, never
-// a LID formatted as if it were a phone number. Keying every lookup
-// and every name this resolves by the chat's canonical id, rather than
-// whichever address form this particular jid happens to be, is what
-// lets a name learned while the chat was addressed one way still
-// title it once WhatsApp reports the same chat addressed the other
-// way, and what stops a later report that resolves nothing new from
-// ever replacing a better name already cached with this call's own
-// weaker fallback (see rememberName). src bundles the device and
-// media store this needs, the same as every other step of a history
-// sync, so a live caller that has no sync of its own to bundle them
-// from (see live.go's ensureChat) builds one just for this call.
+// resolved name (see device.contactName), the name already cached for
+// its canonical chat id, the business or push name this report
+// carries, or a fallback built from its phone JID. Resolving by the
+// chat's canonical id, rather than whichever address form this report
+// uses, keeps a name learned under one address valid under another,
+// and stops a weaker fallback from overwriting a better cached name
+// (see rememberName).
 func (c *Connector) resolveDirectTitle(ctx context.Context, src syncSource, jid types.JID, pushName, businessName string) string {
 	remote := chatID(ctx, src.dev, src.media, jid)
 

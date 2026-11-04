@@ -22,11 +22,8 @@ import (
 )
 
 // MaxAttachmentSize is the largest attachment Send accepts for an
-// account whose connector reports no limit of its own (see
-// AttachmentLimit): Telegram's own free-account cap, the lower of the
-// two services' document limits (see connector/telegram/limits.go and
-// connector/whatsapp/limits.go), so a connector that reports nothing
-// still gets a real-world figure rather than an unbounded one.
+// account whose connector reports no limit of its own: Telegram's
+// free-account cap, the lower of the two services' document limits.
 const MaxAttachmentSize = 2 << 30
 
 // thumbMaxSize bounds an outgoing photo's inline preview, in pixels on
@@ -35,27 +32,19 @@ const MaxAttachmentSize = 2 << 30
 const thumbMaxSize = 48
 
 // AttachmentLimit is the largest attachment of kind ("photo", "video"
-// or "file") accountID's connector accepts, in bytes: whatever its own
-// connector reports through the AttachmentLimiter Deps.Limiter wraps,
-// or MaxAttachmentSize when there is none running for the account, or
-// its connector reports no limit of its own.
+// or "file") accountID's connector accepts, in bytes, or
+// MaxAttachmentSize when there is none or it reports nothing.
 func (c *Commands) AttachmentLimit(accountID, kind string) int64 {
 	return attachmentLimitFor(c.limiter, accountID, kind)
 }
 
-// ViewAccount wraps account with its connector's current attachment
-// limit (see AccountView): accounts.list's own per-account shape,
-// read directly rather than through viewAccount so server/accounts.go
-// never needs its own copy of the same lookup.
+// ViewAccount wraps account with its connector's current attachment limit (see AccountView).
 func (c *Commands) ViewAccount(account domain.Account) AccountView {
 	return viewAccount(c.limiter, account)
 }
 
 // attachmentLimitFor is AttachmentLimit's own lookup, shared with
-// viewAccount so an account.updated event reports the same limit
-// AttachmentLimit itself would for the same account and kind, rather
-// than repeating its fallback rule (MaxAttachmentSize once limiter is
-// nil or reports nothing) a second time.
+// viewAccount so both report the same limit for the same account and kind.
 func attachmentLimitFor(limiter AttachmentLimiter, accountID, kind string) int64 {
 	if limiter == nil {
 		return MaxAttachmentSize
@@ -111,25 +100,12 @@ func humanSize(bytes int64) string {
 	return fmt.Sprintf("%.1f %s", size, units[unit])
 }
 
-// prepareAttachment turns path into the domain.Media for id's message,
-// sent from accountID: refused with an invalid-input error naming the
-// limit when path is larger than AttachmentLimit allows for its own
-// kind and accountID's connector. name overrides the attachment's
-// display name when set; "" falls back to path's own base name, right
-// for a genuine disk path but wrong for one already inside the
-// outgoing area, whose base name carries an internal id (see
-// reuseAttachment, which the caller supplies the real name to
-// instead). An empty path means the message has no attachment, so it
-// returns nil media and no error.
-//
-// A path already inside the outgoing media area - one media.attach or
-// media.paste already copied in, sanitizing it with imagesafe there if
-// it looked like a photo, never one the user picked straight from disk
-// - is moved into place instead of being copied and sanitized all over
-// again (see reuseAttachment). Only a genuine disk path is copied and
-// sanitized here, and remembers OriginalPath and OriginalModTime too,
-// so a later retry can re-copy it if the outgoing copy ever goes
-// missing.
+// prepareAttachment turns path into the domain.Media for id's message
+// sent from accountID, refusing it when it exceeds AttachmentLimit.
+// An empty path means no attachment. A path already inside the
+// outgoing media area is moved into place rather than copied and
+// sanitized again (see reuseAttachment); a genuine disk path is
+// copied, sanitized, and remembers OriginalPath for a later retry.
 func (c *Commands) prepareAttachment(ctx context.Context, id, accountID, path, name string) (*domain.Media, error) {
 	if path == "" {
 		return nil, nil
@@ -173,14 +149,10 @@ func (c *Commands) prepareAttachment(ctx context.Context, id, accountID, path, n
 	return media, nil
 }
 
-// reuseAttachment moves path - a file media.attach or media.paste
-// already copied into the outgoing media area, sanitizing it with
-// imagesafe there if it looked like a photo - into its place under id,
-// without copying or sanitizing it again: both already happened once,
-// the moment it was attached or pasted. It carries no OriginalPath:
-// there is nothing further back to recopy from if this outgoing copy
-// goes missing, the same as an image pasted from the clipboard has
-// always had (see docs/decisions.md).
+// reuseAttachment moves path, already copied and sanitized by
+// media.attach or media.paste, into its place under id without
+// copying or sanitizing it again. It carries no OriginalPath, the
+// same as a clipboard paste (see docs/decisions.md).
 func (c *Commands) reuseAttachment(id, path, name string, size int64) (*domain.Media, error) {
 	stored := c.outgoing.Path(id, name)
 	if err := os.Rename(path, stored); err != nil {
@@ -197,11 +169,8 @@ func (c *Commands) reuseAttachment(id, path, name string, size int64) (*domain.M
 }
 
 // attachedFromDisk reports whether path names a file outside the
-// outgoing media area: one the user picked from disk, worth
-// remembering for a retry to go back to, as opposed to one media.attach
-// or media.paste already copied into the outgoing area, which has no
-// original of its own. With no outgoing area at all it answers true, so
-// a file is never treated as already prepared and skips its own checks.
+// outgoing media area, as opposed to one already copied in by
+// media.attach or media.paste. With no outgoing area it answers true.
 func (c *Commands) attachedFromDisk(path string) bool {
 	if c.outgoing == nil {
 		return true
@@ -231,16 +200,9 @@ func (c *Commands) storeAttachment(ctx context.Context, id, name, path string) (
 	return stored, nil
 }
 
-// describeAttachment sniffs a stored file's content to fill in a Media:
-// photo or video for a common type its bytes say it is, file otherwise,
-// with dimensions for a photo. name is the attachment's original file
-// name, kept for display even though the stored copy's own name also
-// carries the message id. A photo is run through imagesafe's own
-// full-size sanitizer first (see sanitizeAttachedPhoto), the same
-// check a downloaded or pasted photo already gets, before anything
-// here decodes it to read its dimensions or build a thumbnail: an
-// error means the attachment is refused outright, never sent with an
-// unchecked image.
+// describeAttachment sniffs a stored file's content to fill in a
+// Media, running a photo through imagesafe's sanitizer first (see
+// sanitizeAttachedPhoto) before reading its dimensions or thumbnail.
 func (c *Commands) describeAttachment(ctx context.Context, storedPath, name string, size int64) (*domain.Media, error) {
 	kind := sniffKind(storedPath)
 	if kind == domain.MediaPhoto {
@@ -258,16 +220,12 @@ func (c *Commands) describeAttachment(ctx context.Context, storedPath, name stri
 	return media, nil
 }
 
-// sanitizeAttachedPhoto overwrites storedPath - a photo attachment
-// already copied into the outgoing media area - in place with
-// imagesafe's own sanitized rewrite (see
-// connector.SanitizeOutgoingImageFile, run through this helper's own
-// decode slot - see decodeSlots), so an attached image is never
-// trusted further than one received from a sender or pasted from the
-// clipboard just because the user chose to attach it from disk (see
-// docs/decisions.md). The errors this can report are reduced to one
-// of three safe, fixed sentences, never the underlying error, which
-// could otherwise echo a file path.
+// sanitizeAttachedPhoto overwrites storedPath in place with
+// imagesafe's sanitized rewrite, through this helper's own decode
+// slot, so a disk attachment is trusted no more than a received or
+// pasted photo (see docs/decisions.md). Errors are reduced to one of
+// three safe, fixed sentences, never the underlying error, which
+// could echo a file path.
 func (c *Commands) sanitizeAttachedPhoto(ctx context.Context, storedPath string) error {
 	release, err := c.acquireDecodeSlot(ctx)
 	if err != nil {
@@ -392,17 +350,13 @@ func newAttachmentID() string {
 }
 
 // errAttachmentUnavailable reports a retry whose attachment cannot be
-// found: its outgoing copy is gone, and either it has no original file
-// to go back to, or that file no longer exists, or no longer looks like
-// the one that was attached.
+// found: its outgoing copy is gone and either there is no original
+// file to go back to, or it no longer matches.
 var errAttachmentUnavailable = fmt.Errorf("%w: the attachment is no longer available; attach it again", ErrInvalidInput)
 
 // restoreAttachment makes sure m's outgoing copy exists on disk before
-// a retry hands it to a connector, re-copying it from the original file
-// it was attached from when the stored copy has gone missing and that
-// file still looks like the one that was attached. It reads no file the
-// user did not attach themselves, and reports errAttachmentUnavailable,
-// a plain and safe message, when neither copy is available any more.
+// a retry hands it to a connector, re-copying it from the original
+// file when the stored copy has gone missing.
 func (c *Commands) restoreAttachment(ctx context.Context, m *domain.Message) error {
 	if m.Media == nil || c.outgoing == nil {
 		return nil
@@ -424,17 +378,10 @@ func (c *Commands) restoreAttachment(ctx context.Context, m *domain.Message) err
 }
 
 // recopyFromOriginal re-copies an attachment into the outgoing area
-// under id from the file media says it was originally attached from,
-// when that file still exists and still looks like the same one: same
-// size and modification time. Anything else - no original to go back
-// to, the file gone, or changed - reports errAttachmentUnavailable. A
-// photo recopied this way goes through sanitizeAttachedPhoto before
-// it is ever trusted again, the same check prepareAttachment already
-// gives a fresh attachment: without it, a photo a retry recopies -
-// the one way an attachment ever reaches the outgoing area outside
-// describeAttachment's own call to it - would reach FetchMedia's
-// servedPath check as the very first thing to fail it, rather than
-// already sanitized like every other outgoing photo.
+// from media's original file, when it still exists with the same
+// size and modification time; otherwise reports
+// errAttachmentUnavailable. A recopied photo goes through
+// sanitizeAttachedPhoto, the same check a fresh attachment gets.
 func (c *Commands) recopyFromOriginal(ctx context.Context, id string, media *domain.Media) error {
 	if media.OriginalPath == "" {
 		return errAttachmentUnavailable

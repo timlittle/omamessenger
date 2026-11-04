@@ -1,10 +1,7 @@
 package server
 
-// scheduled.go answers the messages.schedule, messages.listScheduled,
-// messages.editScheduled, messages.cancelScheduled and
-// messages.sendScheduledNow methods: queuing a text message to send at
-// a chosen time instead of right away, and managing what is still
-// queued. See docs/api.md.
+// scheduled.go answers the scheduled-message methods: queuing a message to
+// send later, and managing what is still queued. See docs/api.md.
 
 import (
 	"context"
@@ -13,11 +10,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// scheduledMethods are the messages.schedule, messages.listScheduled,
-// messages.editScheduled, messages.cancelScheduled and
-// messages.sendScheduledNow entries of the protocol's method table,
-// split out of methods() itself to keep that function within this
-// codebase's line limit.
+// scheduledMethods are the scheduled-message entries of the protocol's method table.
 func scheduledMethods(c *app.Commands) map[string]method {
 	return map[string]method{
 		"messages.schedule":         bind(messagesSchedule(c)),

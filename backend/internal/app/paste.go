@@ -72,14 +72,10 @@ func (c *Commands) PasteImage(ctx context.Context) (PastedImage, error) {
 }
 
 // PasteText returns the clipboard's text/plain offer, read through the
-// same bounded wl-paste path PasteImage uses for an image: Ctrl+V's
-// own fallback for plain text, once an image paste finds nothing,
-// calls this rather than ever letting Qt's own in-process clipboard
-// reader see the clipboard directly - that reader has no size or time
-// limit of its own, unlike this one (see docs/decisions.md). Fails
-// with an invalid-input error when the clipboard holds no text, or an
-// ordinary error when the helper's own bounded read was refused (too
-// large, too slow, or no wl-paste at all).
+// same bounded wl-paste path PasteImage uses, rather than Qt's
+// unbounded clipboard reader (see docs/decisions.md). Fails with an
+// invalid-input error when the clipboard holds no text, or an
+// ordinary error when the bounded read itself was refused.
 func (c *Commands) PasteText(ctx context.Context) (string, error) {
 	if c.clipboard == nil {
 		return "", fmt.Errorf("%w: %w", ErrInvalidInput, errNoClipboardText)

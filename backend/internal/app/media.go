@@ -59,36 +59,12 @@ func (e *MediaFetchError) Unwrap() error {
 }
 
 // FetchMedia returns the path of a message's photo, video, file or
-// voice note, together with width and height when it is a photo or
-// sticker: its own real dimensions, as displayCopy's own decode of
-// it just confirmed them, for the UI to size its decode from in
-// place of the message's own claimed size, which need not match what
-// the served file actually decodes to (see docs/decisions.md). Both
-// are zero for every other media kind. kind and mediaSize report what
-// this call actually served - m.Media.Kind and m.Media.Size, read
-// once here before anything else runs - never the message's current
-// state by the time this returns: a caller can be in flight for as
-// long as a slow download takes, during which an edit can change the
-// message's media kind and back again, and the server package needs
-// to tell the UI what was really fetched, not what the row happens to
-// show again by the time the answer arrives (see
-// server.mediaFetch and docs/decisions.md). An outgoing message's own
-// attachment is already on this machine, so its local copy is
-// returned at once, with no remote id needed; anything else is
-// downloaded from the service the first time, then kept in the media
-// cache. auto is true for a fetch the UI made on its own, with no
-// click from the user - today, only an animated "GIF" video
-// autoplaying as soon as it is shown - which every connector bounds to
-// a far smaller size than a deliberate click is trusted with (see
-// connector.MaxBytes); SaveMedia, always a deliberate action, passes
-// false. play, when true, also asks for the message's in-window play
-// copy (see playCopy): playPath is "" unless play was true and the
-// transcode actually succeeded, never an error on its own either way,
-// so a transcode failing or being unavailable never fails a fetch
-// that would otherwise have succeeded (see docs/decisions.md). A
-// download failure is always logged with its safe reason category and
-// returned as a *MediaFetchError, so nothing fails silently (see
-// docs/decisions.md).
+// voice note, with width and height for a photo or sticker (zero
+// otherwise), plus the kind and size actually served. auto marks a
+// fetch the UI made on its own rather than from a user click, and play
+// also requests an in-window play copy via playCopy, whose failure
+// never fails the fetch. A download failure is logged with its safe
+// reason category and returned as a *MediaFetchError.
 func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto, play bool) (path, playPath string, width, height int, kind string, mediaSize int64, err error) {
 	if strings.TrimSpace(messageID) == "" {
 		return "", "", 0, 0, "", 0, fmt.Errorf("%w: messageId is required", ErrInvalidInput)
@@ -129,10 +105,8 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto, play 
 	return path, playPath, width, height, kind, mediaSize, nil
 }
 
-// fetchAndServe downloads m's media from its service, for FetchMedia's
-// own use once it has found nothing local to serve already, and runs
-// servedPath's own guarantee over whatever comes back, the same as
-// any other path FetchMedia returns.
+// fetchAndServe downloads m's media when nothing local exists yet,
+// then runs the result through servedPath like any other path.
 func (c *Commands) fetchAndServe(ctx context.Context, conv domain.Conversation, m domain.Message, auto bool) (path string, width, height int, err error) {
 	if m.RemoteID == "" || c.media == nil || c.cache == nil {
 		return "", 0, 0, fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
@@ -147,16 +121,10 @@ func (c *Commands) fetchAndServe(ctx context.Context, conv domain.Conversation, 
 }
 
 // imageSafeProfile returns the imagesafe.Profile a message of kind
-// must pass before FetchMedia ever hands its file to the UI's own
-// Image, and true: a photo's full-size profile, or a sticker's far
-// smaller thumbnail one, since a sticker is always drawn small (see
-// imagesafe.Thumbnail) - a real GIF image passes through whichever of
-// these its own message kind already is, decoded as its own first
-// frame like any other still image, with no profile of its own any
-// more (see imagesafe.Reencode and docs/decisions.md). A video, voice
-// note or audio message has no display-copy profile at all: its own
-// in-window play copy, when one exists, comes from playCopy instead,
-// never from this function, so ok is false for every one of them.
+// must pass before FetchMedia hands its file to the UI, and true: the
+// full-size profile for a photo, the thumbnail one for a sticker. ok
+// is false for video, voice and audio, which get their play copy from
+// playCopy instead.
 func imageSafeProfile(kind string) (profile imagesafe.Profile, ok bool) {
 	switch kind {
 	case domain.MediaPhoto:
@@ -168,17 +136,11 @@ func imageSafeProfile(kind string) (profile imagesafe.Profile, ok bool) {
 	}
 }
 
-// servedPath is the one guarantee FetchMedia relies on before it ever
-// hands a path back: for a photo or sticker, path - the original,
-// downloaded or outgoing, bytes - is never that path at all, but
-// displayCopy's own display copy built from it, the only file this
-// helper ever lets the UI load into a QML Image (see
-// docs/decisions.md). refetchable is true once for a download
-// recoverUnsafeImage can retry from the service when building that
-// copy fails; false for an outgoing message's own copy, which has
-// nowhere else to come from. Every other media kind passes path
-// straight through unchecked here: it already has its own per-fetch
-// check elsewhere.
+// servedPath turns the original bytes at path into the display copy a
+// photo or sticker must pass before FetchMedia returns it; every other
+// kind passes path straight through. refetchable allows
+// recoverUnsafeImage one retry from the service when that copy fails
+// to build; it is false for an outgoing message's own local copy.
 func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m domain.Message, path string, refetchable bool) (string, int, int, error) {
 	profile, ok := imageSafeProfile(m.Media.Kind)
 	if !ok {
@@ -193,17 +155,11 @@ func (c *Commands) servedPath(ctx context.Context, conv domain.Conversation, m d
 	return view, width, height, nil
 }
 
-// tryDisplayCopy builds m's own display copy from originalPath (see
-// displayCopy), removing originalPath itself only when the failure
-// was imagesafe refusing its own bytes: a file that cannot be turned
-// into something safe to show is never left trusted on disk just
-// because of how or when it got there, whether this is servedPath's
-// own first attempt or recoverUnsafeImage's retry (see
-// docs/decisions.md). Any other failure - a cache write hitting a
-// full disk, say - says nothing about originalPath's own bytes, so it
-// is left exactly as it was: for an outgoing message, that is the
-// attachment a still-pending send needs to upload, not a file this
-// helper owns to delete on a whim.
+// tryDisplayCopy builds m's display copy from originalPath, removing
+// originalPath only when imagesafe refused its bytes outright: a file
+// that cannot be shown safely is never left trusted on disk. Any other
+// failure leaves originalPath alone, since it says nothing about the
+// bytes themselves.
 func (c *Commands) tryDisplayCopy(ctx context.Context, m domain.Message, originalPath string, profile imagesafe.Profile) (path string, width, height int, err error) {
 	path, width, height, err = c.displayCopy(ctx, m, originalPath, profile)
 	if err == nil {
@@ -220,38 +176,19 @@ func (c *Commands) tryDisplayCopy(ctx context.Context, m domain.Message, origina
 	return "", 0, 0, err
 }
 
-// displayCopyID names m's own slot for its display copy in the
-// downloaded media cache: distinct from cacheIdentity's own slot for
-// the original bytes it is built from, and a name no release before
-// this one ever wrote, so a cache hit under it is always this
-// release's own Reencode output, never a file an older release's
-// different checks already passed - the one invariant that makes
-// re-checking a cache hit unnecessary at all (see
-// docs/decisions.md). The same id serves a downloaded photo and an
-// outgoing one's own bubble alike, since both resolve to the same
-// m.ID and m.Media.Kind regardless of where their original bytes
-// currently live. The "-view" suffix, not ".view", matters: findByID
-// matches a stored file's id against everything up to its own next
-// '.', so cacheIdentity(m) alone - the original's own slot for a kind
-// fetched through FetchNamed, such as a voice note or sticker - must
-// never be a prefix of this id followed by '.', or a lookup for the
-// original could resolve to this derived copy instead (see
-// cache.findByID and docs/decisions.md).
+// displayCopyID names m's slot for its display copy in the media
+// cache, distinct from cacheIdentity's slot for the original bytes.
+// The "-view" suffix (not ".view") keeps it from matching as a prefix
+// of cacheIdentity(m) in cache.findByID's own lookup.
 func displayCopyID(m domain.Message) string {
 	return cacheIdentity(m) + "-view"
 }
 
-// displayCopy returns the path of m's own display copy, filling it -
-// once - by re-encoding originalPath's bytes through
-// connector.ReencodeImageFile under profile when no copy exists yet.
-// Re-encoding is a lossy, one-way rewrite, so it must never run again
-// once a copy exists: unlike the per-serve check this replaced,
-// FetchMedia can be called many times for the same photo as its
-// message bubble scrolls in and out of view, and a cache hit here is
-// served as is, with no re-check (see docs/decisions.md). width and
-// height are read back from the result's own header on every call,
-// including a cache hit (see imagesafe.Dimensions): cheap enough to
-// pay every time, unlike Reencode's own full decode.
+// displayCopy returns the path of m's display copy, re-encoding
+// originalPath once under profile and serving any later cache hit as
+// is, since re-encoding is lossy and must not repeat on every scroll.
+// width and height come from the result's own header on every call,
+// which is cheap compared to a full decode.
 func (c *Commands) displayCopy(ctx context.Context, m domain.Message, originalPath string, profile imagesafe.Profile) (path string, width, height int, err error) {
 	id := displayCopyID(m)
 	var format imagesafe.OutputFormat
@@ -278,25 +215,12 @@ func (c *Commands) displayCopy(ctx context.Context, m domain.Message, originalPa
 	return path, width, height, nil
 }
 
-// reencodeForDisplay is displayCopy's own fill: the ordinary
-// connector.ReencodeImageFile re-encode, falling back to the
-// sandboxed transcoder's StillFrame profile, then that single
-// extracted frame's own Reencode, only when the ordinary re-encode
-// refuses the bytes outright and a transcoder is actually wired in.
-// This is what makes a sticker format Go's own decoders cannot read
-// at all - an animated WebP, at least - still get a display copy:
-// StillFrame's ffmpeg decodes it where imagesafe never could, and the
-// frame it hands back then passes through exactly the same check and
-// encoder every other display copy does (see docs/decisions.md). A
-// failure that is not ErrUnsafeImage - originalPath too large or
-// unreadable - is returned as is, never worth a sandboxed job over.
-// Each of the (up to two) calls into imagesafe's own full decode
-// acquires this helper's own decode slot on its own (see
-// reencodeImageFile and decodeSlots), released again before the
-// sandboxed StillFrame job runs: that job has no use for the slot
-// imagesafe's own decode needs, and holding it idle for however long
-// ffmpeg takes would only ever delay some other request's own photo
-// for no reason.
+// reencodeForDisplay is displayCopy's fill: the ordinary re-encode,
+// falling back to the sandboxed transcoder's StillFrame (then a
+// second re-encode of that frame) only when the ordinary re-encode
+// refuses the bytes and a transcoder is wired in. This lets formats Go
+// can't decode at all, such as an animated WebP sticker, still get a
+// display copy via ffmpeg.
 func (c *Commands) reencodeForDisplay(ctx context.Context, originalPath, dst string, profile imagesafe.Profile) (imagesafe.OutputFormat, error) {
 	format, err := c.reencodeImageFile(ctx, originalPath, dst, profile)
 	if err == nil {
@@ -320,9 +244,8 @@ func (c *Commands) reencodeForDisplay(ctx context.Context, originalPath, dst str
 	return format, nil
 }
 
-// dimensionsOf reads width and height from path's own header through
-// imagesafe.Dimensions, never a full decode: the cheap check
-// displayCopy's own cache hit gets on every serve.
+// dimensionsOf reads width and height from path's header, without a
+// full decode.
 func dimensionsOf(path string) (width, height int, ok bool) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -333,20 +256,10 @@ func dimensionsOf(path string) (width, height int, ok bool) {
 	return imagesafe.Dimensions(f)
 }
 
-// recoverUnsafeImage responds to servedPath's own display copy
-// failing to build, which tryDisplayCopy has already removed the
-// original it tried to build from: a download gets exactly one
-// fresh retry from the service, since tryDisplayCopy's own removal
-// guarantees this retry's download actually asks the service for
-// something rather than finding the same bad file cached under the
-// same name again (see cache.Cache.Fetch). Anything else - an
-// outgoing message's own local copy, with nowhere further to come
-// from, or a retry that fails the same check again - is classified
-// and logged the same way any other failed fetch is (see
-// failDecodeCheck), and never served. profile is recomputed from m's
-// own kind rather than passed in, since servedPath already confirmed
-// imageSafeProfile finds one for this message before ever calling
-// here.
+// recoverUnsafeImage retries a download once, for a failed display
+// copy, since tryDisplayCopy already removed the bad original. An
+// outgoing message's own copy, or a retry that fails again, is
+// classified and logged via failDecodeCheck instead.
 func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversation, m domain.Message, checkErr error, refetchable bool) (string, int, int, error) {
 	if !refetchable {
 		return "", 0, 0, c.failDecodeCheck(ctx, m, checkErr)
@@ -366,17 +279,10 @@ func (c *Commands) recoverUnsafeImage(ctx context.Context, conv domain.Conversat
 	return view, width, height, nil
 }
 
-// failDecodeCheck classifies and logs a failure from recoverUnsafeImage's
-// own retry - a photo or sticker that still fails its display-copy
-// check on the one re-download it gets - the same way download
-// classifies and logs a failed fetch, so media that turned out to be
-// unreadable once its actual bytes were checked is never silently
-// left as it was. It also remembers m under c.refused, so a later
-// FetchMedia for the same message fails fast with this same reason
-// rather than downloading and decoding it all over again (see
-// refusedDisplayCopies): the UI auto-fetches every visible photo, so
-// without this, a refused photo or sticker would pay this exact cost
-// again on every scroll.
+// failDecodeCheck classifies and logs a failed display-copy check the
+// same way download does, and remembers m under c.refused so a later
+// FetchMedia fails fast instead of re-downloading and re-decoding on
+// every scroll.
 func (c *Commands) failDecodeCheck(ctx context.Context, m domain.Message, err error) error {
 	conv, convErr := c.store.Conversation(ctx, m.ConversationID)
 	if convErr != nil {
@@ -412,16 +318,12 @@ func (c *Commands) download(ctx context.Context, conv domain.Conversation, m dom
 	return "", &MediaFetchError{Reason: reason, err: err}
 }
 
-// fetchIntoCache fills the media cache for m: Fetch under a fixed, safe
-// name for a photo or video (see fixedMediaName), never chosen from
-// anything the sender claims, or FetchNamed's own sniffed one for
-// every other kind, chosen only once fill's downloaded bytes exist, so
-// a file, voice note or sticker's cache name is never again picked
-// from the sender's own file name the way it used to be (see
-// docs/decisions.md). Either way the name is built from cacheIdentity,
-// never m.ID alone, so an edit that changes m's own media kind is
-// never served whatever an earlier kind already had cached under the
-// same id.
+// fetchIntoCache fills the media cache for m: a fixed, safe name for a
+// photo or video (see fixedMediaName), or a name sniffed from the
+// downloaded bytes for every other kind, never from the sender's own
+// file name. Either way the name is built from cacheIdentity, not
+// m.ID alone, so a kind change on edit never reuses an older cache
+// entry.
 func (c *Commands) fetchIntoCache(ctx context.Context, m domain.Message, fill func(context.Context, string) error) (string, error) {
 	if name, ok := fixedMediaName(m); ok {
 		return c.cache.Fetch(ctx, name, fill)
@@ -438,13 +340,9 @@ func (c *Commands) fetchIntoCache(ctx context.Context, m domain.Message, fill fu
 	})
 }
 
-// cacheIdentity names m's own slot in the downloaded media cache: its
-// id combined with its own media kind, so an edit that turns one kind
-// of message into another - a voice note replaced by a sticker, say -
-// never reuses whatever an earlier kind already had cached under the
-// same id (see docs/decisions.md). Every cache name this package
-// builds for m, fixed or sniffed, is derived from this same pair,
-// never the id alone.
+// cacheIdentity names m's slot in the media cache as its id combined
+// with its media kind, so an edit that changes the kind never reuses
+// an earlier kind's cached file.
 func cacheIdentity(m domain.Message) string {
 	return m.ID + "." + m.Media.Kind
 }
@@ -544,19 +442,11 @@ func (c *Commands) localAttachment(m domain.Message) (string, bool) {
 }
 
 // fixedMediaName returns the cache name a photo or video always uses,
-// and true: an extension that says what it is, never the sender's
-// own filename or attributes, which fetchIntoCache must trust even
-// less for these two kinds than for any other, since this is the one
-// file playCopy or displayCopy ever reads as that kind's own original.
-// Every MediaVideo message is cached as ".mp4", even the rare one
-// whose downloaded bytes turn out to be a genuine GIF file rather
-// than an actual MP4 container: ffmpeg's own demuxer sniffs a file's
-// real format from its content, never its extension, the same as
-// Qt's image plugins already do for a photo, so playCopy's re-encode
-// produces a real MP4 play copy from either one with nothing extra to
-// check here first (see docs/decisions.md). ok is false for every
-// other kind, whose correct name can only be known once its own bytes
-// exist to sniff (see fetchIntoCache).
+// and true: a fixed extension, never the sender's own filename. A
+// video is always cached as ".mp4" even when the bytes turn out to be
+// a GIF, since ffmpeg's demuxer sniffs the real format from content,
+// not extension. ok is false for every other kind, whose name is only
+// known once the bytes exist to sniff.
 func fixedMediaName(m domain.Message) (name string, ok bool) {
 	switch m.Media.Kind {
 	case domain.MediaPhoto:

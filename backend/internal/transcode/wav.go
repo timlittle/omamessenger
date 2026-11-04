@@ -1,13 +1,9 @@
 package transcode
 
-// wav.go rebuilds the WAV file ffmpeg wrote inside the sandbox into
-// a brand-new file this package writes itself: only the handful of
-// fields a canonical 16-bit PCM WAV needs are ever read from
-// ffmpeg's own output - its own chunk order, any chunk beyond a
-// small, named allow-list, and anything at all past the data chunk
-// are discarded rather than trusted, so a hijacked ffmpeg can shape
-// only the PCM samples themselves, never the container the shell
-// actually opens.
+// wav.go rebuilds the WAV file ffmpeg wrote inside the sandbox into a
+// new file this package writes itself, trusting only the handful of
+// fields a canonical 16-bit PCM WAV needs: a hijacked ffmpeg can shape
+// the PCM samples, never the container the shell opens.
 
 import (
 	"encoding/binary"
@@ -40,15 +36,10 @@ const bitsPerSamplePCM16 = 16
 // muxer needs at most one or two.
 const wavMaxSkippedChunks = 4
 
-// maxFMTChunkBody bounds a fmt chunk's own declared size, checked
-// before parseFMTChunk allocates a buffer for it: a canonical PCM fmt
-// chunk is exactly 16 bytes, and even the cbSize extension some
-// encoders add stays far under this. Without this cap, the chunk
-// header's own 32-bit size field - read from the file, not yet
-// validated at all - would size that allocation directly, so a WAV a
-// few dozen bytes long could claim a fmt chunk approaching 4 GiB and
-// make this package allocate that much before ever reading a single
-// byte of it.
+// maxFMTChunkBody bounds a fmt chunk's declared size, checked before
+// parseFMTChunk allocates a buffer for it: a canonical fmt chunk is 16
+// bytes, so without this cap an unvalidated size field could claim
+// nearly 4 GiB and force a matching allocation.
 const maxFMTChunkBody = 64
 
 // wavSkippableChunkIDs are the only chunk kinds rebuildWAV will skip
@@ -69,13 +60,10 @@ type pcmFormat struct {
 	sampleRate uint32
 }
 
-// rebuildWAV validates path - a WAV file the sandboxed ffmpeg wrote -
-// against wantSampleRate and maxOutput, then writes a new file at
-// outPath holding this package's own canonical 44-byte PCM header
-// followed by exactly the validated data bytes, copied in bounded
-// pieces rather than held in memory at once. It returns ErrFailed,
-// wrapped, for anything about path that is not exactly the shape
-// this package's own fixed ffmpeg invocation should have produced.
+// rebuildWAV validates path, a WAV file the sandboxed ffmpeg wrote,
+// against wantSampleRate and maxOutput, then writes a canonical
+// 44-byte PCM header plus the validated data bytes to outPath. It
+// returns ErrFailed, wrapped, for anything not in the expected shape.
 func rebuildWAV(path, outPath string, wantSampleRate int, maxOutput int64) error {
 	in, err := os.Open(path)
 	if err != nil {
@@ -179,13 +167,10 @@ func (s *wavChunkScanner) handle(f io.ReadSeeker, header wavChunkHeader, wantSam
 	}
 }
 
-// findDataChunk walks f's own chunks in order, immediately after the
-// 12-byte RIFF/WAVE header readWAVHeader already consumed, until it
-// finds data: the one chunk this package actually wants. It
-// validates fmt along the way (see parseFMTChunk) and refuses any
-// chunk it is not already willing to skip (see wavSkippableChunkIDs),
-// so a crafted file cannot hide a second data chunk, or anything
-// else, behind a chunk kind this package has no reason to ever see.
+// findDataChunk walks f's chunks after the RIFF/WAVE header, validating
+// fmt along the way and refusing any chunk it isn't willing to skip,
+// so a crafted file can't hide a second data chunk behind an unknown
+// chunk kind.
 func findDataChunk(f io.ReadSeeker, wantSampleRate int) (pcmFormat, int64, error) {
 	scanner := &wavChunkScanner{}
 	for {
@@ -223,13 +208,10 @@ func readChunkHeader(f io.Reader) (wavChunkHeader, error) {
 	return wavChunkHeader{id: string(id), size: int64(size)}, nil
 }
 
-// parseFMTChunk reads exactly size bytes of a fmt chunk's own body
-// (plus its pad byte, if size is odd) and validates the handful of
-// fields a canonical PCM header needs: PCM format, one or two
-// channels, exactly wantSampleRate, 16-bit samples. Anything past
-// the first 16 bytes - a cbSize field some encoders add - is read
-// and discarded along with the rest of the declared body, never
-// inspected.
+// parseFMTChunk reads size bytes of a fmt chunk's body (plus its pad
+// byte if odd) and validates the fields a canonical PCM header needs:
+// PCM format, one or two channels, exactly wantSampleRate, 16-bit
+// samples.
 func parseFMTChunk(f io.Reader, size int64, wantSampleRate int) (pcmFormat, error) {
 	if size < 16 {
 		return pcmFormat{}, fmt.Errorf("%w: fmt chunk is %d bytes, want at least 16", ErrFailed, size)
@@ -309,16 +291,10 @@ func skipPad(f io.Reader, size int64) error {
 	return nil
 }
 
-// skipChunk moves f past size bytes (plus the pad byte an odd size
-// carries) of a chunk this package recognises as harmless but has no
-// use for, by seeking rather than reading: size comes straight from
-// the file, unvalidated, and a crafted chunk could declare it
-// anywhere up to 4 GiB, so reading and discarding that many bytes -
-// even into io.Discard, which needs no buffer of its own - would
-// still cost this package a read of every one of them. Seeking costs
-// nothing regardless of how large size claims to be; a size that
-// overruns the file is instead caught the moment the next read
-// (ordinarily the following chunk's own header) comes up short.
+// skipChunk moves f past size bytes (plus any pad byte) of a chunk we
+// have no use for, by seeking rather than reading: size is
+// unvalidated and could claim up to 4 GiB, so seeking avoids the cost
+// of reading it. An overrun is caught when the next read comes up short.
 func skipChunk(f io.Seeker, size int64) error {
 	skip := size
 	if size%2 != 0 {

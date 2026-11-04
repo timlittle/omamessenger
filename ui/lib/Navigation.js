@@ -44,10 +44,9 @@ function keyContext(state) {
 // photo viewer, the health check report, the "What's new" overlay,
 // palette, the reaction picker, the delete question, dialog, search,
 // composer, open conversation, query, the all-unreads view) and hides the
-// window only when there is nothing left to undo. Inside the composer
-// itself the order is: remove a pending attachment, then cancel a
-// queued message's own edit in progress, then cancel a sent message's
-// edit or reply in progress, then leave the composer.
+// window only when there is nothing left to undo. Inside the composer:
+// clear attachment, then cancel a scheduled edit, then a sent-message
+// edit or reply, then leave the composer.
 function escapeAction(state) {
   if (state.errorOpen) return 'dismiss-error';
   if (state.toastOpen && !state.composeFocused && !state.searchFocused) return 'dismiss-toast';

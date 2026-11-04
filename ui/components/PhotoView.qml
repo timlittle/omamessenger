@@ -65,26 +65,12 @@ Item {
   // forever.
   readonly property bool _tooLargeAuto: root.failed && root.failedReason === "too-large" && !root.path
 
-  // _haveFile is whether the full image, rather than its thumbnail,
-  // is the one actually shown right now - the same condition image's
-  // own source binding below uses - so _verifiedWidth/_verifiedHeight
-  // read the right one of the two verified sizes ImageBounds.
-  // verifiedDimensions can return. root.photo.verifiedWidth/Height are
-  // only ever set from media.fetch's own result for a photo or
-  // sticker (see MediaController._applyVerifiedSize and
-  // app.servedPath): a path set for any other kind never carries a
-  // verified size at all, so requiring one here, not merely a
-  // non-empty path, is this view's own check that path is actually
-  // the re-encoded display copy a photo's Image may decode - never, by
-  // itself, some other kind's raw original left behind by a race
-  // between an edit and an in-flight fetch answer (see
-  // docs/decisions.md).
+  // _haveFile is whether the full image is shown rather than its
+  // thumbnail: requires a verified size, so a path left over from a
+  // different kind of media is never treated as a photo file (see docs/decisions.md).
   readonly property bool _haveFile: !!root.path && !root._loadFailed && root.photo.verifiedWidth > 0 && root.photo.verifiedHeight > 0
   // _verifiedWidth and _verifiedHeight are the real, decoder-confirmed
-  // size to bound the image's own decode by (see
-  // ImageBounds.verifiedDimensions): never root.photo.width/height,
-  // the sender's own claim, which a differential review found need
-  // not match either file's real shape.
+  // size to bound the decode by, never the sender's claimed width/height.
   readonly property int _verifiedWidth: ImageBounds.verifiedDimensions(root.photo, root._haveFile).width
   readonly property int _verifiedHeight: ImageBounds.verifiedDimensions(root.photo, root._haveFile).height
 
@@ -118,23 +104,12 @@ Item {
     objectName: "photoImage"
     anchors.fill: parent
     // Always the helper's own downloaded file or an embedded base64
-    // thumb; never a remote URL. Gated on _haveFile, not merely on
-    // root.path being set, so this never decodes a path recorded for
-    // some other kind (see _haveFile's own comment).
+    // thumb; never a remote URL.
     source: root._haveFile ? Links.fileURL(root.path) : (root.photo.thumb ? "data:" + Media.thumbMime(root.photo.thumb) + ";base64," + root.photo.thumb : "")
     fillMode: Image.PreserveAspectFit
-    // Fit inside this bubble's own box, computed from the photo's own
-    // verified width and height rather than the box alone: Qt's own
-    // PreserveAspectFit/Crop scaling covers a sourceSize box by
-    // scaling to the image's longer side, so a sourceSize that does
-    // not share the real image's own ratio can still make Qt decode
-    // many times the box's own area (see ImageBounds.js and
-    // docs/decisions.md). ImageBounds.verifiedDimensions reads the
-    // thumbnail's own confirmed size while the full image is still
-    // downloading, and the full file's own confirmed size once it is
-    // here - never root.photo.width/height, the sender's own claim,
-    // which a differential review found need not match either file's
-    // real shape.
+    // Bound by the verified size, not just the box: a mismatched aspect
+    // ratio can otherwise make Qt decode far more than the box's area
+    // (see docs/decisions.md).
     sourceSize.width: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedWidth, root._verifiedHeight).width
     sourceSize.height: ImageBounds.boundedSourceSize(root.implicitWidth, root.implicitHeight, root._verifiedWidth, root._verifiedHeight).height
     asynchronous: true

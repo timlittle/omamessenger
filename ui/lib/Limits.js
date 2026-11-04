@@ -1,12 +1,9 @@
 .pragma library
 
-// Limits.js names every single-line editable field's maximumLength: the
-// most characters it accepts, typed or pasted, so a paste through the
-// helper's own 32 KiB clipboard.readText cap can never hand a field far
-// more text than it was ever meant to hold (see docs/decisions.md). The
-// composer has its own larger, Unicode-aware cap instead
-// (SpellCheck.MAX_COMPOSER_TEXT_LENGTH), since TextArea has no
-// maximumLength property of its own.
+// Limits.js names every single-line editable field's maximumLength, so
+// a paste can never hand a field far more text than it was meant to
+// hold (see docs/decisions.md). The composer has its own larger cap
+// instead (SpellCheck.MAX_COMPOSER_TEXT_LENGTH).
 
 // PALETTE_QUERY bounds the command palette's search field: a command
 // label or a conversation title, never anywhere near this long.

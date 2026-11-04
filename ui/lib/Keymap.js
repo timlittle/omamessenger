@@ -21,26 +21,18 @@ var MOD = { Shift: 0x02000000, Ctrl: 0x04000000, Alt: 0x08000000 };
 // KEY_NAMES shows spec names the way people type them.
 var KEY_NAMES = { Slash: '/', Question: '?', Up: '↑', Down: '↓', Left: '←', Right: '→', Escape: 'Esc', Period: '.' };
 
-// BINDINGS define every key action. Each has an action name, key specs,
-// the contexts it applies in (or "global"), a label, whether the footer
-// hints it, and whether the command palette
-// offers it. Global bindings use Ctrl or Alt, or are Escape, so they never
-// steal typing.
+// BINDINGS define every key action: action name, key specs, contexts
+// (or "global"), label, whether the footer hints it, and whether the
+// command palette offers it.
 var BINDINGS = [
   { action: 'palette.commands', keys: ['Ctrl+Slash', 'Ctrl+Shift+Question', 'Ctrl+Shift+P'], contexts: ['global'], label: 'Command palette', hint: true },
   { action: 'palette.conversations', keys: ['Ctrl+K', 'Ctrl+T'], contexts: ['global'], label: 'Jump to conversation', hint: true, command: true },
   { action: 'list.showAll', keys: [], contexts: ['global'], label: 'Show or hide all chats', command: true },
-  // The all-unreads view, like Slack's Ctrl+Shift+A: every unread
-  // conversation across every service and account, overriding the rail
-  // filter rather than narrowing it, the same way Slack's own shows every
-  // workspace's unreads at once. Esc or the shortcut again returns to
-  // whatever the list showed before.
+  // Every unread conversation across every service, overriding the rail filter.
   { action: 'list.unread', keys: ['Ctrl+Shift+A'], contexts: ['global'], label: 'Show unread conversations', command: true },
   { action: 'search.focus', keys: ['Ctrl+G'], contexts: ['global'], label: 'Search messages', command: true },
   { action: 'chat.new', keys: ['Ctrl+N', 'Ctrl+Shift+K'], contexts: ['global'], label: 'New message', hint: true, command: true },
-  // compose's own binding for Ctrl+J (see the compose context below)
-  // wins over this one while writing, so Ctrl+J only jumps to the next
-  // unread conversation outside the composer.
+  // compose's own Ctrl+J binding wins while writing, so this only fires outside the composer.
   { action: 'unread.next', keys: ['Ctrl+J', 'Alt+Shift+Down'], contexts: ['global'], label: 'Next unread conversation', command: true },
   { action: 'unread.prev', keys: ['Alt+Shift+Up'], contexts: ['global'], label: 'Previous unread conversation', command: true },
   { action: 'chat.next', keys: ['Alt+Down'], contexts: ['global'], label: 'Next conversation', command: true },
@@ -49,10 +41,7 @@ var BINDINGS = [
   { action: 'account.remove', keys: [], contexts: ['global'], label: 'Remove an account', command: true },
   { action: 'account.rename', keys: [], contexts: ['global'], label: 'Rename account', command: true },
   { action: 'account.addOwnKeys', keys: [], contexts: ['global'], label: 'Add a Telegram account with your own API keys', command: true },
-  // Incognito read receipts: off means MarkRead never reaches the
-  // service, so a chat read here stays unread on the phone and any
-  // other device signed into the same account. No key of its own, like
-  // account.add; reached through the command palette.
+  // Off means MarkRead never reaches the service, so a chat read here stays unread elsewhere.
   { action: 'settings.toggleReadReceipts', keys: [], contexts: ['global'], label: 'Toggle read receipts', command: true },
   { action: 'rail.all', keys: ['Ctrl+0'], contexts: ['global'], label: 'Show all services', command: true },
   { action: 'rail.whatsapp', keys: ['Ctrl+1'], contexts: ['global'], label: 'Show WhatsApp', command: true },
@@ -63,43 +52,18 @@ var BINDINGS = [
   { action: 'app.quit', keys: ['Ctrl+Q'], contexts: ['global'], label: 'Quit OmaMessenger', command: true },
   { action: 'helper.retryInstall', keys: ['Ctrl+R'], contexts: ['global'], label: 'Retry installing the helper', command: true },
   { action: 'helper.doctor', keys: [], contexts: ['global'], label: 'Run health check', command: true },
-  // Palette-only, like helper.doctor: a list of past releases is a
-  // deliberate lookup, not something worth a key of its own.
   { action: 'whatsNew.show', keys: [], contexts: ['global'], label: "What's new", command: true },
-  // keys.conf lets a person remap these bindings; these two commands
-  // manage that file rather than any key of their own, like account.add.
+  // These manage keys.conf rather than binding a key of their own.
   { action: 'keys.openConfig', keys: [], contexts: ['global'], label: 'Open key bindings file', command: true },
   { action: 'keys.showBindings', keys: [], contexts: ['global'], label: 'Show key bindings', command: true },
-  // Lists every message still queued to send later, across every
-  // conversation; no key of its own, like helper.doctor, since it is a
-  // deliberate lookup rather than something to reach for by reflex.
   { action: 'scheduled.show', keys: [], contexts: ['global'], label: 'Scheduled messages', command: true, keywords: ['send later'] },
-  // Act on the open chat's own queued message: directly with only one,
-  // or through a picker of that chat's own queued messages with more
-  // than one (see WindowController._runScheduledAction and
-  // ScheduledAction.resolve). No key of their own, like scheduled.show
-  // above - a deliberate lookup, not something to reach for by reflex.
+  // Acts on the open chat's queued message, directly or via a picker if there are several.
   { action: 'scheduled.sendNow', keys: [], contexts: ['conversation'], label: 'Send scheduled message now', command: true, keywords: ['send later', 'scheduled'] },
   { action: 'scheduled.edit', keys: [], contexts: ['conversation'], label: 'Edit scheduled message', command: true, keywords: ['send later', 'scheduled'] },
   { action: 'scheduled.cancel', keys: [], contexts: ['conversation'], label: 'Cancel scheduled message', command: true, keywords: ['send later', 'scheduled'] },
   { action: 'escape', keys: ['Escape'], contexts: ['global'], label: 'Back' },
-  // field.paste is Ctrl+V and Shift+Insert in every editable field
-  // except the composer: compose.attach (below) is bound in the
-  // "compose" context, which match() checks before this global one, so
-  // it keeps owning both keys there, pasted image and all. Everywhere
-  // else - the palette, search, a dialog's own search, account setup's
-  // fields, an account's alias - Panel.qml's own routeKey reads this
-  // action and pastes through the same bounded helper round trip
-  // Composer already uses, into whichever field actually has keyboard
-  // focus, never through a field's own unbounded built-in paste (see
-  // docs/decisions.md). These two keys are also the ones listed here
-  // for display and for keys.conf to remap; rebinding them changes
-  // which key reaches this action, but every field's own key handler
-  // still catches Qt's broader native paste shortcut (ui/lib/Paste.js's
-  // own isPasteKey, every key some Qt keyboard scheme maps to
-  // StandardKey.Paste, plus the dedicated Paste key) ahead of this
-  // lookup and forces the same bounded path regardless (see Panel.qml's
-  // routeKey and docs/decisions.md).
+  // Routes paste through the bounded helper path in every field except the
+  // composer, which owns these keys itself via compose.attach (see docs/decisions.md).
   { action: 'field.paste', keys: ['Ctrl+V', 'Shift+Insert'], contexts: ['global'], label: 'Paste' },
 
   { action: 'cursor.down', keys: ['j', 'Down'], contexts: ['list'], label: 'Next chat' },
@@ -110,80 +74,26 @@ var BINDINGS = [
   { action: 'pane.conversation', keys: ['Tab'], contexts: ['list'], label: 'Go to conversation' },
   { action: 'chat.mute', keys: ['m'], contexts: ['list', 'conversation'], label: 'Mute or unmute chat', command: true },
   { action: 'chat.pin', keys: [], contexts: ['list', 'conversation'], label: 'Pin or unpin chat', command: true },
-  // Reordering only ever does something on a chat that is already
-  // pinned (see ListController._movePin), the same as chat.unblock only
-  // doing something on one already blocked; Ctrl+Shift+Up/Down are free
-  // ones close to Alt+Up/Down (chat.prev/chat.next) and Alt+Shift+Up/Down
-  // (unread.prev/unread.next), without colliding with either.
+  // Only does something on a chat that is already pinned.
   { action: 'chat.movePinUp', keys: ['Ctrl+Shift+Up'], contexts: ['list', 'conversation'], label: 'Move pin up', command: true },
   { action: 'chat.movePinDown', keys: ['Ctrl+Shift+Down'], contexts: ['list', 'conversation'], label: 'Move pin down', command: true },
   { action: 'chat.archive', keys: [], contexts: ['list', 'conversation'], label: 'Archive or unarchive chat', command: true },
   { action: 'chat.hide', keys: [], contexts: ['list', 'conversation'], label: 'Hide or unhide chat', command: true },
-  // Palette-only: flagging a chat unread again is a deliberate lookup,
-  // not something worth a key of its own next to mute, pin and archive.
-  // keywords adds "read" as a search term the palette scores as cleanly
-  // as a standalone word (see Palette.js's bestScore): the label's own
-  // fuzzy match for "read" is dragged down by the "r" already in
-  // "Mark", so without this a plain "read" query ranked this well below
-  // commands that merely happen to contain the word "read" too.
+  // keywords adds "read" as a standalone search term for the palette (see Palette.js's bestScore).
   { action: 'chat.markUnread', keys: [], contexts: ['list', 'conversation'], label: 'Mark as unread', command: true, keywords: ['read', 'unread'] },
-  // The opposite of chat.markUnread above, reusing conversations.markRead
-  // the way opening a conversation already does, for a chat read
-  // elsewhere that this computer still shows unread. Same keyword, and
-  // for the same reason: "Mark" is also where "Mark as read" picks up
-  // its own dragged-down fuzzy match for "read".
   { action: 'chat.markRead', keys: [], contexts: ['list', 'conversation'], label: 'Mark as read', command: true, keywords: ['read'] },
-  // Block, unblock and report spam only ever apply to a direct chat's
-  // one contact (a group has no single contact to block); asking for
-  // either on a group fails with a safe error rather than being hidden
-  // from the palette outright, the same as a service's own pin limit
-  // surfaces through chat.pin rather than filtering it out in advance.
-  // No key of its own, like account.add: deliberate enough to look up
-  // in the palette, not something to reach for by reflex.
+  // Only ever applies to a direct chat's one contact; on a group it fails with a safe error.
   { action: 'chat.block', keys: [], contexts: ['list', 'conversation'], label: 'Block contact', command: true },
   { action: 'chat.unblock', keys: [], contexts: ['list', 'conversation'], label: 'Unblock contact', command: true },
   { action: 'chat.reportSpam', keys: [], contexts: ['list', 'conversation'], label: 'Report as spam', command: true },
-  // Palette-only, like chat.block: picking a sound file is a deliberate
-  // lookup, not a key-reachable toggle. "Reset" only ever does
-  // something on a chat that already has one, the same as
-  // chat.unblock only doing something on one already blocked.
   { action: 'chat.setNotificationSound', keys: [], contexts: ['list', 'conversation'], label: 'Set notification sound…', command: true },
   { action: 'chat.resetNotificationSound', keys: [], contexts: ['list', 'conversation'], label: 'Reset notification sound', command: true },
-  // Previews the open chat's own notification sound on demand, through
-  // the exact same precedence and do-not-disturb check a real arriving
-  // message takes (see Service.playNotificationSoundForConversation),
-  // so trying a sound choice never needs a real message to arrive
-  // first. Conversation-only, unlike chat.setNotificationSound above:
-  // there is no "selected" sound to preview from the list, only the
-  // one chat actually open.
   { action: 'chat.playNotificationSound', keys: [], contexts: ['conversation'], label: 'Play notification sound', command: true },
-  // A plain "a" once archived the selected chat with no warning and no
-  // way back, which a report found happening from a stray keypress
-  // while the user was really typing somewhere else; Shift+A needs a
-  // deliberate second key held down, the same reason message.edit below
-  // already answers only to Shift+E rather than a bare "e". The key is
-  // free in the list context (the conversation context already uses
-  // plain "a" for compose.focus), so it still reaches the selected chat
-  // and, through the command palette, the open one too, since a palette
-  // command runs through its owning controller regardless of context.
-  // Shift+A toggles on an already-archived chat too - unarchiving it
-  // at once, with no question - the same way the palette's own
-  // "Archive or unarchive chat" (chat.archive) does; see
-  // ListController._archiveAndMarkRead. The label stays "Archive and
-  // mark read" rather than naming the toggle too: mentioning
-  // "unarchive" here made this command itself rank above "Mark as
-  // unread" for a bare "unread" query, through nothing more than
-  // Palette.js's own fuzzy subsequence match, which this is not worth
-  // reopening for - the toggle is documented in docs/shortcuts.md and
-  // discoverable the moment it is tried on an archived chat.
+  // Shift+A, not a bare "a", so a stray keypress can't archive the chat by accident.
+  // Also unarchives an already-archived chat (see ListController._archiveAndMarkRead).
   { action: 'chat.archiveRead', keys: ['A'], contexts: ['list'], label: 'Archive and mark read', command: true },
-  // Archiving every read chat at once is bulk, so it is palette-only and
-  // asks for confirmation first (see the archiveConfirm bindings below).
   { action: 'list.archiveAllRead', keys: [], contexts: ['global'], label: 'Archive all read conversations', command: true },
-  // Reverses whichever of archive, unarchive, mute, pin, hide or block
-  // the toast's own "u to undo" is currently offering (see
-  // ui/lib/Undo.js); does nothing once there is none, so "u" is always
-  // safe to press. Free in both contexts.
+  // Reverses whatever the toast's "u to undo" is currently offering; a no-op once there is none.
   { action: 'chat.undo', keys: ['u'], contexts: ['list', 'conversation'], label: 'Undo last action', command: true },
   { action: 'chat.snoozeLaterToday', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until later today', command: true },
   { action: 'chat.snoozeTomorrow', keys: [], contexts: ['list', 'conversation'], label: 'Snooze until tomorrow', command: true },
@@ -202,56 +112,29 @@ var BINDINGS = [
   { action: 'message.open', keys: ['Enter'], contexts: ['conversation'], label: 'Open the highlighted message' },
   { action: 'message.reply', keys: ['r'], contexts: ['conversation'], label: 'Reply to the highlighted message', command: true },
   { action: 'message.react', keys: ['e'], contexts: ['conversation'], label: 'React to the highlighted message', command: true },
-  // Shift+E, alongside react's lowercase e: the same letter, the other
-  // case, for the other thing you can do to your own words (see g/G for
-  // oldest/newest above). Does nothing on a message that is not editable
-  // (see Edit.isEditable); the composer loads its text in "editing" mode.
+  // Does nothing on a message that is not editable (see Edit.isEditable).
   { action: 'message.edit', keys: ['E'], contexts: ['conversation'], label: 'Edit the highlighted message', command: true },
   { action: 'message.delete', keys: ['d'], contexts: ['conversation'], label: 'Delete the highlighted message', command: true },
   { action: 'message.retry', keys: ['t'], contexts: ['conversation'], label: 'Retry the highlighted message', command: true },
   { action: 'message.openLink', keys: ['o'], contexts: ['conversation'], label: "Open the highlighted message's link", command: true },
   { action: 'message.goToQuote', keys: ['p'], contexts: ['conversation'], label: 'Go to the replied-to message', command: true },
-  // Not hinted here, like message.retry: it only applies to a video.
   { action: 'message.play', keys: ['Space'], contexts: ['conversation'], label: 'Play or pause the highlighted video', command: true },
-  // Not hinted here, like message.play: each only applies to a photo
-  // or video.
   { action: 'message.copyMedia', keys: ['c'], contexts: ['conversation'], label: "Copy the highlighted photo or video", command: true },
   { action: 'message.saveMedia', keys: ['s'], contexts: ['conversation'], label: "Save the highlighted photo or video", command: true },
   { action: 'message.openExternal', keys: ['x'], contexts: ['conversation'], label: "Open the highlighted photo or video externally", command: true },
-  // Not hinted here: like message.retry, it only applies to some
-  // messages, so its "v vote" hint comes from Highlight.hints, shown
-  // beside the highlighted message itself, the moment it carries an
-  // open poll.
+  // Not hinted in the footer; its hint comes from Highlight.hints when a poll is highlighted.
   { action: 'message.vote', keys: ['v'], contexts: ['conversation'], label: 'Vote in the highlighted poll', command: true },
 
   { action: 'message.send', keys: ['Enter'], contexts: ['compose'], label: 'Send', hint: true },
-  // Ctrl+J inserts a line break while writing, the same as Shift+Enter:
-  // it used to mean "next unread conversation" here too (the global
-  // unread.next binding below), but that stole the one newline key
-  // IRC and Slack both train people to reach for. compose's own
-  // binding wins over the global one (see match's context-before-global
-  // order), so Ctrl+J only jumps to the next unread conversation outside
-  // the composer; Alt+Shift+Down/Up keep doing that while writing.
+  // Wins over the global unread.next binding on the same key while writing.
   { action: 'compose.newline', keys: ['Shift+Enter', 'Ctrl+J'], contexts: ['compose'], label: 'New line', hint: true },
   { action: 'compose.attach', keys: ['Ctrl+V', 'Shift+Insert'], contexts: ['compose'], label: 'Paste a clipboard image as an attachment' },
   { action: 'compose.attachFile', keys: [], contexts: ['conversation', 'compose'], label: 'Attach a file', command: true },
-  // Queues the composer's own text to send at a chosen time instead of
-  // right away; see WindowController._scheduleDraft. Ctrl+L is free in
-  // every context this binds in. Hinted, like compose.spellSuggestions,
-  // since the clock button beside Send was the only visible sign this
-  // existed at all - a report found it undiscoverable from the keyboard.
+  // Queues the composer's text to send at a chosen time (see WindowController._scheduleDraft).
   { action: 'compose.sendLater', keys: ['Ctrl+L'], contexts: ['compose'], label: 'Send later', hint: true, command: true },
-  // Up moves the caret while there is text, so this only ever fires once
-  // the composer is empty and something is actually editable (see
-  // Edit.upMeansEdit); otherwise ComposerController.run leaves the key
-  // unhandled and the TextArea's own Up keeps doing nothing useful on an
-  // empty field. Not hinted here, like message.retry and message.vote,
-  // since it only applies some of the time; it has no row of its own
-  // because there is no highlighted message to hint it beside.
+  // Only fires when the composer is empty and the last message is editable (see Edit.upMeansEdit).
   { action: 'compose.editLast', keys: ['Up'], contexts: ['compose'], label: 'Edit your last message' },
-  // Opens the spelling picker for the misspelled word the caret is
-  // currently inside; see Composer.qml and SpellCheck.js. Does nothing
-  // if the caret is not inside a flagged word.
+  // Opens the spelling picker for the word the caret is inside; a no-op elsewhere.
   { action: 'compose.spellSuggestions', keys: ['Ctrl+Period'], contexts: ['compose'], label: 'Spelling suggestions', hint: true, command: true },
   { action: 'search.accept', keys: ['Enter', 'Down'], contexts: ['search'], label: 'First result', hint: true },
 
@@ -275,35 +158,20 @@ var BINDINGS = [
   { action: 'reaction.right', keys: ['Right'], contexts: ['reactionPicker'], label: 'Next emoji' },
   { action: 'reaction.accept', keys: ['Enter'], contexts: ['reactionPicker'], label: 'React', hint: true },
 
-  // Voting in a poll, opened with message.vote above: j/k move the
-  // highlighted option, Space or Enter toggles it (letting a
-  // multiple-choice poll build up a selection before it is cast), and
-  // Enter alone also casts the vote once at least one option is
-  // checked, the same key doing both the way reactionPicker's Enter
-  // both highlights and accepts in one list.
+  // Space toggles an option (for multi-choice polls); Enter also casts the vote once any is checked.
   { action: 'pollVote.down', keys: ['j', 'Down'], contexts: ['pollVote'], label: 'Next option' },
   { action: 'pollVote.up', keys: ['k', 'Up'], contexts: ['pollVote'], label: 'Previous option' },
   { action: 'pollVote.toggle', keys: ['Space'], contexts: ['pollVote'], label: 'Check or uncheck the highlighted option', hint: true },
   { action: 'pollVote.accept', keys: ['Enter'], contexts: ['pollVote'], label: 'Cast the vote', hint: true },
   { action: 'pollVote.cancel', keys: ['Escape'], contexts: ['pollVote'], label: 'Cancel', hint: true },
 
-  // The @-mention picker, open while typing a group member's name after
-  // "@" in the composer. Up/Down move the highlight rather than j/k,
-  // which would just be typed as text; Tab or Enter inserts the
-  // highlighted member, and Escape closes the picker without leaving
-  // the composer (it does not fall through to the global "escape"
-  // action, since this context never includes it).
+  // The @-mention picker. Up/Down, not j/k, since those would just be typed as text.
   { action: 'mention.down', keys: ['Down'], contexts: ['mentionPicker'], label: 'Next member' },
   { action: 'mention.up', keys: ['Up'], contexts: ['mentionPicker'], label: 'Previous member' },
   { action: 'mention.accept', keys: ['Tab', 'Enter'], contexts: ['mentionPicker'], label: 'Insert mention', hint: true },
   { action: 'mention.cancel', keys: ['Escape'], contexts: ['mentionPicker'], label: 'Close without inserting', hint: true },
 
-  // The spelling suggestions picker, opened with compose.spellSuggestions
-  // above or a right-click on a flagged word: Up/Down move the
-  // highlight, Enter or Tab replaces the word with the highlighted
-  // suggestion, a and i add the word to the personal dictionary or
-  // ignore it for this session, and Escape closes the picker without
-  // changing anything.
+  // The spelling suggestions picker, opened with compose.spellSuggestions or a right-click.
   { action: 'spell.down', keys: ['Down'], contexts: ['spellPicker'], label: 'Next suggestion' },
   { action: 'spell.up', keys: ['Up'], contexts: ['spellPicker'], label: 'Previous suggestion' },
   { action: 'spell.accept', keys: ['Tab', 'Enter'], contexts: ['spellPicker'], label: 'Replace word', hint: true },
@@ -311,27 +179,19 @@ var BINDINGS = [
   { action: 'spell.ignore', keys: ['i'], contexts: ['spellPicker'], label: 'Ignore for this session', hint: true },
   { action: 'spell.cancel', keys: ['Escape'], contexts: ['spellPicker'], label: 'Close', hint: true },
 
-  // The service chooser, at the first step of adding an account: j/k and
-  // Up/Down move the highlight, Enter chooses it, and t/w jump straight
-  // to a known service without needing to navigate there first.
+  // The service chooser, the first step of adding an account.
   { action: 'setup.down', keys: ['j', 'Down'], contexts: ['chooseService'], label: 'Next service' },
   { action: 'setup.up', keys: ['k', 'Up'], contexts: ['chooseService'], label: 'Previous service' },
   { action: 'setup.accept', keys: ['Enter'], contexts: ['chooseService'], label: 'Choose the highlighted service', hint: true },
   { action: 'setup.chooseTelegram', keys: ['t'], contexts: ['chooseService'], label: 'Choose Telegram', hint: true },
   { action: 'setup.chooseWhatsapp', keys: ['w'], contexts: ['chooseService'], label: 'Choose WhatsApp', hint: true },
 
-  // The QR and phone steps can switch to each other without starting
-  // over: p while the QR code is shown, q while typing a phone number.
+  // The QR and phone steps can switch to each other without starting over.
   { action: 'qr.usePhone', keys: ['p'], contexts: ['qr'], label: 'Use phone number instead', hint: true },
   { action: 'phone.useQr', keys: ['q'], contexts: ['phone'], label: 'Use QR code instead', hint: true },
-  // Escape at the phone step backs out to the QR code rather than
-  // cancelling the whole sign-in, the one setup step with a real
-  // previous step to go back to.
+  // Backs out to the QR code rather than cancelling the whole sign-in.
   { action: 'phone.back', keys: ['Escape'], contexts: ['phone'], label: 'Back to the QR code' },
 
-  // Removing an account: j/k and Up/Down highlight one, a number jumps
-  // straight to it, and Enter or y removes whichever is highlighted,
-  // which is nothing (Cancel) until it is actually moved there.
   { action: 'remove.down', keys: ['j', 'Down'], contexts: ['removeAccount'], label: 'Next account' },
   { action: 'remove.up', keys: ['k', 'Up'], contexts: ['removeAccount'], label: 'Previous account' },
   { action: 'remove.pick1', keys: ['1'], contexts: ['removeAccount'], label: 'Highlight the first account' },
@@ -360,8 +220,7 @@ var BINDINGS = [
   { action: 'rename.accept', keys: ['Enter'], contexts: ['renameAccount'], label: 'Rename the highlighted account', hint: true },
   { action: 'rename.cancel', keys: ['n'], contexts: ['renameAccount'], label: 'Cancel', hint: true },
 
-  // The close question: h/l move the highlight across Cancel, Quit and
-  // Keep, Enter chooses it, and a mnemonic letter jumps straight to one.
+  // The close question: Cancel, Quit and Keep.
   { action: 'close.left', keys: ['h', 'Left'], contexts: ['confirm'], label: 'Previous choice' },
   { action: 'close.right', keys: ['l', 'Right'], contexts: ['confirm'], label: 'Next choice' },
   { action: 'close.accept', keys: ['Enter'], contexts: ['confirm'], label: 'Choose the highlighted answer', hint: true },
@@ -369,11 +228,7 @@ var BINDINGS = [
   { action: 'close.quit', keys: ['q'], contexts: ['confirm'], label: 'Quit', hint: true },
   { action: 'close.keep', keys: ['k'], contexts: ['confirm'], label: 'Keep in background', hint: true },
 
-  // The delete question: h/l move the highlight across whichever choices
-  // apply (Cancel, and, for a message this account sent, Delete for
-  // everyone, always Delete for me), Enter chooses it, and a mnemonic
-  // letter jumps straight to one. Cancel is the default highlight, so a
-  // stray Enter never deletes anything.
+  // The delete question. Cancel is the default highlight, so a stray Enter never deletes anything.
   { action: 'delete.left', keys: ['h', 'Left'], contexts: ['deleteConfirm'], label: 'Previous choice' },
   { action: 'delete.right', keys: ['l', 'Right'], contexts: ['deleteConfirm'], label: 'Next choice' },
   { action: 'delete.accept', keys: ['Enter'], contexts: ['deleteConfirm'], label: 'Choose the highlighted answer', hint: true },
@@ -381,21 +236,13 @@ var BINDINGS = [
   { action: 'delete.forMe', keys: ['m'], contexts: ['deleteConfirm'], label: 'Delete for me', hint: true },
   { action: 'delete.cancel', keys: ['n'], contexts: ['deleteConfirm'], label: 'Cancel', hint: true },
 
-  // Archiving every read chat at once: the same y/n idiom
-  // RemoveAccount's own confirmation uses, since Cancel is the only
-  // other choice and needs no highlight to move between.
   { action: 'archiveAll.accept', keys: ['Enter', 'y'], contexts: ['archiveConfirm'], label: 'Archive the read conversations', hint: true },
   { action: 'archiveAll.cancel', keys: ['n'], contexts: ['archiveConfirm'], label: 'Cancel', hint: true },
 
-  // Blocking a contact or reporting one as spam: the same y/n idiom as
-  // archiveConfirm above, since Cancel is again the only other choice.
   { action: 'blockConfirm.accept', keys: ['Enter', 'y'], contexts: ['blockConfirm'], label: 'Confirm', hint: true },
   { action: 'blockConfirm.cancel', keys: ['n'], contexts: ['blockConfirm'], label: 'Cancel', hint: true },
 
-  // A received file that can run code or load a web page, rather than
-  // only show its contents: unlike every other y/n question above,
-  // Enter chooses the safe default, Save to Downloads, not Cancel or
-  // Open, so a stray Enter never runs anything.
+  // A file that can run code or load a web page: Enter picks the safe default, not Open.
   { action: 'openConfirm.save', keys: ['Enter', 's'], contexts: ['openConfirm'], label: 'Save to Downloads', hint: true },
   { action: 'openConfirm.accept', keys: ['y'], contexts: ['openConfirm'], label: 'Open anyway', hint: true },
   { action: 'openConfirm.cancel', keys: ['n'], contexts: ['openConfirm'], label: 'Cancel', hint: true }
@@ -493,10 +340,7 @@ function display(spec) {
   return spec.split('+').map((part) => KEY_NAMES[part] ?? part).join('+');
 }
 
-// keyFor returns the display text for action's primary key, or "" when
-// it has none, for a button label that wants to show its own shortcut
-// beside it rather than naming the key a second time by hand. list
-// defaults to BINDINGS, same as match.
+// keyFor returns the display text for action's primary key, or "" when it has none.
 function keyFor(action, list) {
   const bindings = list || BINDINGS;
   const binding = bindings.find((b) => b.action === action);
@@ -504,14 +348,8 @@ function keyFor(action, list) {
 }
 
 // commands returns what the command palette offers: every command
-// binding, with its first key shown so people learn it, if it has one.
-// keywords carries through whatever extra search terms the binding
-// declared (see chat.markUnread), and scoped says whether the action
-// acts on a particular chat ("list" or "conversation") rather than
-// something global, such as a setting or a toggle - both are read by
-// Palette.js's ranking, so a chat's own command outranks a global one
-// it only ties with on the query's letters. list defaults to BINDINGS,
-// same as match.
+// binding with its first key, plus keywords and whether it is
+// chat-scoped, both read by Palette.js's ranking.
 function commands(list) {
   const bindings = list || BINDINGS;
   return bindings
@@ -522,11 +360,8 @@ function commands(list) {
     }));
 }
 
-// composeHint names the composer's current mode in words: what starts
-// writing, or what stops it once the input already has focus. It reads
-// its wording off the real compose.focus and escape bindings, the same
-// ones the key router already matches, rather than naming a key a
-// second time by hand. list defaults to BINDINGS, same as match.
+// composeHint names the composer's current mode: what starts writing,
+// or what stops it, reading the wording off the real key bindings.
 function composeHint(writing, list) {
   const bindings = list || BINDINGS;
   const action = writing ? 'escape' : 'compose.focus';

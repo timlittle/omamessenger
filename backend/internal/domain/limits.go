@@ -6,180 +6,95 @@ import (
 )
 
 // limits.go bounds every sender-controlled collection a message or its
-// media carries, so a connector that passes through whatever a service
-// reports can never make one message grow enough rich text, mentions,
-// reactions or poll options to slow the UI's layout pass, or carry a
-// link preview's text, or a link's own URL, past anything a legitimate
-// page's own metadata would ever need (see ui/lib/Format.js and
-// docs/decisions.md). SanitizeIncoming is the one place every cap here
-// is applied, used by app.Ingest for both a newly arrived message and
-// one the service reports edited, so neither path can drift from the
-// other's limits.
+// media carries, so a hostile sender can never grow one message past
+// what the UI can safely render. SanitizeIncoming applies every cap
+// here, for both a newly arrived message and an edit.
 
-// MaxFormattingSpans bounds how many rich-text spans (links, bold,
-// italic, underline, strike, code, pre, spoiler) one message's
-// Formatting carries. Real messages carry a handful; even heavily
-// formatted text rarely passes a few dozen, so this is generous while
-// still bounding what a hostile sender's entity list can make a
-// connector pass through unchanged.
+// MaxFormattingSpans bounds how many rich-text spans one message's
+// Formatting carries.
 const MaxFormattingSpans = 256
 
 // MaxMentions bounds how many "@name" tokens one message's Mentions
-// carries. Both services cap how many accounts a single message can
-// actually mention well below this.
+// carries.
 const MaxMentions = 64
 
 // MaxReactions bounds how many distinct emoji chips one message's
-// Reactions carries. A conversation's reaction palette is realistically
-// a handful of emoji; a chip beyond this adds nothing the space under a
-// message could still usefully show.
+// Reactions carries.
 const MaxReactions = 64
 
 // MaxReactionEmojiLength bounds one reaction chip's own emoji text, in
-// UTF-16 code units. Real emoji, including one combined from several
-// code points (a skin tone or gender modifier, a flag, a family), need
-// only a handful of units; a sender's own ReactionMessage.Text carries
-// whatever they put there, with no length limit of its own, so a chip
-// beyond this is dropped outright rather than truncated - cutting an
-// emoji mid-cluster would render as mojibake, not a shorter valid one.
+// UTF-16 code units. A chip beyond this is dropped outright rather than
+// truncated, since cutting an emoji mid-cluster would render as mojibake.
 const MaxReactionEmojiLength = 32
 
-// MaxPollOptions bounds how many choices one poll carries. Telegram's
-// own clients cap a poll at 10 options; this leaves room for a future
-// service with a higher cap while still bounding a hostile poll's size.
+// MaxPollOptions bounds how many choices one poll carries.
 const MaxPollOptions = 64
 
 // MaxPollOptionTextLength bounds one poll option's own text, in UTF-16
-// code units: generous for any real answer, far below what would make
-// an option's own row need more than a couple of lines.
+// code units.
 const MaxPollOptionTextLength = 300
 
 // MaxPollQuestionLength bounds a poll's own question, in UTF-16 code
-// units, the same reasoning as MaxPollOptionTextLength.
+// units.
 const MaxPollQuestionLength = 300
 
 // MaxLinkPreviewFieldLength bounds a link preview's title and site
-// name, in UTF-16 code units: both are shown on a single line, so
-// neither needs to be longer than a long headline.
+// name, in UTF-16 code units.
 const MaxLinkPreviewFieldLength = 300
 
 // MaxLinkPreviewDescriptionLength bounds a link preview's description,
-// in UTF-16 code units: shown as a short snippet under the title, never
-// a full article - the page a link points to fully controls this text,
-// the same as a sender controls their own message.
+// in UTF-16 code units.
 const MaxLinkPreviewDescriptionLength = 2000
 
 // MaxURLLength bounds a link's own URL - a formatting span's URL or a
-// link preview's Media.URL - in bytes. 2048 is the long-standing
-// practical web limit (Internet Explorer's own historical cap, still
-// the figure most servers, crawlers and link-preview generators were
-// built around), so no legitimate link a page or a sender's own client
-// generates needs anything near it. A sender fully controls both
-// fields, with no length limit of their own, so a URL beyond this is
-// dropped outright, the same drop-rather-than-truncate treatment
-// CapReactions already gives an oversized emoji: cutting a URL changes
-// where it points, rather than merely shortening what it says, so a
-// truncated one must never be kept.
+// link preview's Media.URL - in bytes. A URL beyond this is dropped
+// outright rather than truncated, since cutting it changes where it
+// points.
 const MaxURLLength = 2048
 
 // MaxGroupMembers bounds how many members Members ever returns for one
-// conversation: generous for any real group a person actually
-// participates in, while bounding the memory and layout cost a
-// maliciously inflated member list could otherwise force on the
-// mention picker.
+// conversation.
 const MaxGroupMembers = 5000
 
-// MaxContactResults bounds how many contacts one search ever returns:
-// generous for any real address book, while bounding what a service
-// that floods the local contact sync with fabricated entries could
-// make one search return.
+// MaxContactResults bounds how many contacts one search ever returns.
 const MaxContactResults = 1000
 
 // MaxDisplayNameLength bounds a sender-controlled display name, in
-// UTF-16 code units: a contact's own name, a push name, a group's
-// title, a message's SenderName, a reply quote's SenderName, or a
-// group member's own name. Generous for any real name or group title
-// - shown on a single line wherever it appears - while still bounding
-// what a hostile sender's own profile or group settings can make a
-// connector pass through unchanged.
+// UTF-16 code units: a contact's name, a push name, a group's title,
+// or a message's SenderName.
 const MaxDisplayNameLength = 256
 
 // MaxStickerEmojiLength bounds a sticker's own Emoji fallback text, in
-// UTF-16 code units, the same reasoning as MaxReactionEmojiLength: a
-// real emoji, even one combined from several code points, needs only a
-// handful of units, but WhatsApp's StickerMessage.Emojis and
-// Telegram's DocumentAttributeSticker.Alt carry whatever the sender put
-// there, with no length limit of their own. ui/components/StickerView.qml
-// renders this as a single, unwrapped line whenever the sticker has no
-// thumbnail or downloaded image, so an unbounded value stalls the
-// shell's layout pass the same way an unbounded reaction chip would.
+// UTF-16 code units, the same reasoning as MaxReactionEmojiLength.
 const MaxStickerEmojiLength = 32
 
-// MaxFileNameLength bounds a sender-controlled file name, in bytes:
-// generous for any real attachment's own name, shown as a single line
-// in the file view, while still bounding what a hostile sender's own
-// metadata can make a connector pass through unchanged. A byte count,
-// not UTF-16 units, since a file name is a path component rather than
-// text meant to be measured the way a message's own Text is; CapFileName
-// still never splits the UTF-8 encoding of one rune across the cut.
+// MaxFileNameLength bounds a sender-controlled file name, in bytes
+// rather than UTF-16 units, since a file name is a path component, not
+// display text.
 const MaxFileNameLength = 255
 
 // MaxMediaDimension bounds a photo, video or sticker's own claimed
-// Width and Height, in pixels: a sender's own metadata, with no limit
-// of its own, read only for display (ui/lib/Format.js's photoSize)
-// and to tell one attachment from another
-// (ui/lib/Timeline.js's mediaIdentityChanged), never for sizing a
-// decode - that always goes through the file's own verified size
-// instead (see docs/decisions.md). A security review found the UI
-// had nowhere else to turn for a real GIF video before that fix, so
-// this is defence in depth for any future sourceSize calculation that
-// ever again reads this claim directly: no real photo or video from
-// either service approaches this, so it only ever bounds a hostile
-// claim like 2000000x1, never a legitimate one.
+// Width and Height, in pixels. These are read only for display and
+// identity, never for sizing a decode (see docs/decisions.md); this is
+// defence in depth against any future code that reads the claim directly.
 const MaxMediaDimension = 1 << 16 // 65536
 
 // MaxInlineThumbLen bounds a message's own embedded preview
-// (Media.Thumb), in bytes of its base64 text, the one piece of a
-// message's media a connector embeds directly in the message itself
-// rather than something media.fetch downloads only once the user asks
-// for it. The open conversation's shell keeps every loaded message's
-// own Thumb in memory for as long as it stays open (see
-// ui/controllers/MessageTimeline.qml), so a sender flooding a chat can
-// make it hold one of these per message, unbounded, for however many
-// it sends - unlike a downloaded sticker's own bytes, which land on
-// disk, not the shell's memory, and still pass imagesafe.Thumbnail's
-// own, much larger bound first, at the connector. Real previews are a
-// handful of kilobytes; 64 KiB of base64 text is generous for one
-// while keeping a flood of them far short of what imagesafe.Thumbnail
-// alone would still let through.
+// (Media.Thumb), in bytes of its base64 text. The open conversation
+// keeps every loaded message's Thumb in memory, so this bounds what a
+// flood of messages can hold open at once.
 const MaxInlineThumbLen = 64 << 10
 
 // MaxRemoteIDLength bounds a sender- or service-chosen identifier that
-// is not itself display text: a mention's own UserID, or a reply
-// quote's own RemoteID. Measured against what a real one ever is: a
-// WhatsApp JID, as connector/whatsapp's remoteID renders it, is a user
-// part - at most a 15-digit E.164 phone number, or a LID, a large
-// integer printed in decimal - "@" and a server name, the longest of
-// which whatsmeow defines is "s.whatsapp.net" (14 bytes), so a real
-// JID never reaches 40 bytes; a Telegram remote id ("user:<id>:<access
-// hash>", both int64, see connector/telegram's own remoteID) never
-// reaches 50; and a WhatsApp poll option's own id - hex of the SHA-256
-// hash its vote protocol identifies an option by - is exactly 64. 64
-// bytes is generous for every one of these while still bounding a
-// hostile claim: a WhatsApp sender writes both
-// ContextInfo.MentionedJID and a quoted message's own
-// ContextInfo.StanzaID inside their message's own encrypted content,
-// which the service itself never inspects or bounds, and
-// whatsmeow's types.ParseJID keeps a JID's user part exactly as given,
-// with no length check of its own, so nothing but this cap stops
-// either field from being written far past any real id's length.
+// is not display text: a mention's UserID, or a reply quote's
+// RemoteID. Generous for the longest real id either service produces,
+// while still bounding a hostile claim neither service's own parsing
+// limits.
 const MaxRemoteIDLength = 64
 
-// CapRemoteID drops id entirely once it runs past MaxRemoteIDLength,
-// rather than truncating it, the same drop-rather-than-truncate
-// treatment CapURL already gives an oversized URL: a cut id could read
-// as a different, shorter real id it was never actually sent as, while
-// a cleared one can never be mistaken for one.
+// CapRemoteID drops id entirely once it runs past MaxRemoteIDLength
+// rather than truncating it: a cut id could read as a different,
+// shorter real id it was never sent as.
 func CapRemoteID(id string) string {
 	if len(id) > MaxRemoteIDLength {
 		return ""
@@ -189,32 +104,15 @@ func CapRemoteID(id string) string {
 }
 
 // ValidMessageIDs reports whether m's own RemoteID and SenderID both
-// sit within MaxRemoteIDLength. Both are read off the wire with no
-// length check of their own - whatsmeow reads a message's stanza id up
-// to its frame limit, and keeps a JID's user part, which a sender id
-// derives from, exactly as given - so a hostile sender can make either
-// arbitrarily long. Unlike every other field SanitizeIncoming repairs
-// by truncating or clearing it in place, RemoteID is the dedup key
-// AddMessage matches an arriving message against and the handle React,
-// Edit and Delete key off (see store.AddMessage, store.MessageByRemote):
-// truncating it could make a later report resolve to the wrong stored
-// message, and clearing it would make the message indistinguishable
-// from one with no remote id at all. A message shaped like this must
-// be refused outright, so this is checked separately from
-// SanitizeIncoming, at every point that can store one (app.Ingest's
-// save and Edited) or read one back that an older release stored
-// before this check existed (store.Message, store.MessageByRemote,
-// store.Messages).
+// sit within MaxRemoteIDLength. RemoteID is the dedup key other
+// messages match against, so it must be rejected outright rather than
+// truncated or cleared like the fields SanitizeIncoming repairs in place.
 func ValidMessageIDs(m Message) bool {
 	return len(m.RemoteID) <= MaxRemoteIDLength && len(m.SenderID) <= MaxRemoteIDLength
 }
 
 // MaxPreviewLength bounds a conversation's own Preview, in UTF-16 code
-// units: ui/lib/Format.js's previewText only ever shows the first 200
-// characters of it, prefixed in a group by the sender's own name, so a
-// margin above that covers every prefix the UI adds without ever
-// needing to store or send a message's full text, which a sender fully
-// controls (see store.bumpConversation and store.scanConversationWith).
+// units.
 const MaxPreviewLength = 300
 
 // capRange is a [start, end) range over Text in UTF-16 code units, the
@@ -223,9 +121,8 @@ type capRange struct {
 	start, end int
 }
 
-// capRanges drops any item whose range runs outside [0, textLen) - its
-// text no longer exists once TruncateIncomingText has cut the message
-// down - then keeps at most max of whatever remains, in order.
+// capRanges drops any item whose range runs outside [0, textLen), then
+// keeps at most max of whatever remains, in order.
 func capRanges[T any](items []T, textLen, max int, rangeOf func(T) capRange) []T {
 	if len(items) == 0 {
 		return items
@@ -252,11 +149,9 @@ func capRanges[T any](items []T, textLen, max int, rangeOf func(T) capRange) []T
 	return kept
 }
 
-// CapSpans drops a formatting span that no longer fits text (see
-// capRanges), keeps at most MaxFormattingSpans of what remains, and
-// drops any kept span's own URL past MaxURLLength (see CapURL): the
-// span's range and kind stay, since the UI already treats a link span
-// with no URL as plain text.
+// CapSpans drops a formatting span that no longer fits text, keeps at
+// most MaxFormattingSpans of what remains, and drops any kept span's
+// own URL past MaxURLLength.
 func CapSpans(spans []Span, textLen int) []Span {
 	kept := capRanges(spans, textLen, MaxFormattingSpans, func(s Span) capRange {
 		return capRange{s.Start, s.End}
@@ -269,15 +164,11 @@ func CapSpans(spans []Span, textLen int) []Span {
 	return kept
 }
 
-// CapMentions drops a mention that no longer fits text (see capRanges),
-// keeps at most MaxMentions of what remains, caps each kept mention's
-// own Name at MaxDisplayNameLength, and clears its own UserID past
-// MaxRemoteIDLength: unlike SenderName, a mention's Name has no length
-// limit of its own at the connector, and one hostile name or id can
-// arrive mentioned up to MaxMentions times in a single message. A
-// mention with its UserID cleared this way is still kept, the same as
-// CapSpans keeps a span whose own URL is dropped: its Name, Offset and
-// Length still describe real, already-rendered text in the message.
+// CapMentions drops a mention that no longer fits text, keeps at most
+// MaxMentions of what remains, caps each kept mention's Name at
+// MaxDisplayNameLength, and clears its UserID past MaxRemoteIDLength.
+// A mention with its UserID cleared is still kept, since its Name,
+// Offset and Length still describe real text in the message.
 func CapMentions(mentions []Mention, textLen int) []Mention {
 	kept := capRanges(mentions, textLen, MaxMentions, func(m Mention) capRange {
 		return capRange{m.Offset, m.Offset + m.Length}
@@ -293,11 +184,7 @@ func CapMentions(mentions []Mention, textLen int) []Mention {
 
 // CapReactions drops a reaction chip whose own emoji text runs past
 // MaxReactionEmojiLength, then keeps at most MaxReactions of what
-// remains. A connector folds a live reaction change into its message's
-// full tally itself (WhatsApp reports one person's reaction at a time,
-// never a conversation's own tally), so this is the one place that
-// tally is bounded before it ever reaches the UI, matching whatever
-// bound, if any, the connector's own cache already applies.
+// remains.
 func CapReactions(reactions []Reaction) []Reaction {
 	kept := make([]Reaction, 0, min(len(reactions), MaxReactions))
 	for _, r := range reactions {
@@ -314,26 +201,16 @@ func CapReactions(reactions []Reaction) []Reaction {
 	return kept
 }
 
-// CapDisplayName cuts s to MaxDisplayNameLength, after stripping every
-// control or bidi/format character (see stripControlAndFormatRunes):
-// the one cap every sender-controlled display name - a contact's name,
-// a push name, a group's title, a message's or reply quote's
-// SenderName, a member's own name - goes through once, wherever it
-// enters the helper, and again on every read, so a name stored before
-// this stripping existed is repaired too (see store.scanMessage and
-// store.scanConversationWith).
+// CapDisplayName cuts s to MaxDisplayNameLength after stripping every
+// control or bidi/format character (see stripControlAndFormatRunes).
 func CapDisplayName(s string) string {
 	return capText(stripControlAndFormatRunes(s), MaxDisplayNameLength)
 }
 
-// isControlOrFormatRune reports whether r is a character a
-// sender-controlled display name or file name must never carry
-// unescaped: an ASCII control character, or one of the Unicode bidi
-// override or invisible-format characters a self-chosen name could
-// use to reorder or hide part of itself, classically used to disguise
-// a dangerous file extension as a safe one. Split across
-// isASCIIControlRune and isBidiOrFormatRune so neither this function
-// nor either of those grows past this codebase's complexity limit.
+// isControlOrFormatRune reports whether r is a character a display
+// name or file name must never carry unescaped: an ASCII control
+// character, or a Unicode bidi/invisible-format character that could
+// disguise a dangerous file extension as a safe one.
 func isControlOrFormatRune(r rune) bool {
 	return isASCIIControlRune(r) || isBidiOrFormatRune(r)
 }
@@ -356,11 +233,8 @@ var bidiOrFormatRanges = [...][2]rune{
 
 // isBidiOrFormatRune reports whether r is one of the Unicode bidi
 // override or invisible-format characters isControlOrFormatRune also
-// flags. U+200D, the zero-width joiner, is deliberately kept even
-// though it sits inside the stripped U+200B-U+200F range: a real
-// emoji sequence - a family, a profession, a flag - is several code
-// points joined by it, and stripping it would break the glyph apart
-// into separate, unrelated ones.
+// flags. U+200D, the zero-width joiner, is kept: stripping it would
+// break multi-codepoint emoji apart.
 func isBidiOrFormatRune(r rune) bool {
 	if r == 0x200D {
 		return false
@@ -393,23 +267,14 @@ func stripControlAndFormatRunes(s string) string {
 	return b.String()
 }
 
-// CapPreview cuts s to MaxPreviewLength, the one cap a conversation's
-// own Preview goes through: once when store.bumpConversation first
-// stores it, and again on every later read (see
-// store.scanConversationWith), so a row a release before this cap
-// existed already wrote in full is repaired the same way CapDisplayName
-// repairs a legacy Title or PreviewSender.
+// CapPreview cuts s to MaxPreviewLength.
 func CapPreview(s string) string {
 	return capText(s, MaxPreviewLength)
 }
 
 // CapFileName cuts s to at most MaxFileNameLength bytes, never
-// splitting a rune's own UTF-8 encoding across the cut, after
-// stripping every control or bidi/format character (see
-// stripControlAndFormatRunes): a sender-claimed file name shown in the
-// UI gets the same treatment a display name does, since a right-to-left
-// override could otherwise make a dangerous extension read as a safe
-// one.
+// splitting a rune's UTF-8 encoding across the cut, after stripping
+// every control or bidi/format character.
 func CapFileName(s string) string {
 	s = stripControlAndFormatRunes(s)
 	if len(s) <= MaxFileNameLength {
@@ -425,10 +290,8 @@ func CapFileName(s string) string {
 }
 
 // CapURL drops url entirely once it runs past MaxURLLength bytes,
-// rather than truncating it: a formatting span's and a link preview's
-// own URL both carry whatever a sender's client put there, with no
-// length limit of their own, and cutting a URL short changes where it
-// points rather than merely shortening what it says.
+// rather than truncating it, since cutting a URL short changes where
+// it points.
 func CapURL(url string) string {
 	if len(url) > MaxURLLength {
 		return ""
@@ -437,18 +300,11 @@ func CapURL(url string) string {
 	return url
 }
 
-// CapMedia bounds a poll's options and text, a link preview's own
-// text fields and URL, a file name, or a claimed width and height, in
-// place, returning media unchanged for a nil media. FileName is
-// capped for every kind that carries one (file, video, voice note or
-// sticker), not only one media.Kind, since a sender names their own
-// attachment the same way whichever kind it is. URL is capped for
-// every kind too, even though only a link preview sets it today, so a
-// future kind that starts carrying one is covered without a second
-// change. Width and Height are capped at MaxMediaDimension the same
-// way, for every kind: defence in depth, since the UI itself never
-// sizes a decode from either field any more (see
-// MaxMediaDimension's own doc comment).
+// CapMedia bounds a poll's options and text, a link preview's text
+// fields and URL, a file name, and a claimed width and height, in
+// place, returning media unchanged for a nil media. FileName, URL,
+// Width and Height are capped for every kind, not just the kinds that
+// use them today, so a future kind is covered automatically.
 func CapMedia(media *Media) *Media {
 	if media == nil {
 		return nil
@@ -478,11 +334,7 @@ func CapMedia(media *Media) *Media {
 	return media
 }
 
-// capDimension clamps n to [0, MaxMediaDimension]: a negative claim
-// drops to zero the same as an unknown size already reads, and one
-// above the cap drops to the cap itself, never truncated some other
-// way - there is no "closer to the truth" value for a claim this far
-// from anything a real file could be.
+// capDimension clamps n to [0, MaxMediaDimension].
 func capDimension(n int) int {
 	if n < 0 {
 		return 0
@@ -494,21 +346,16 @@ func capDimension(n int) int {
 	return n
 }
 
-// CapPoll bounds poll's own question length and its option count and
-// each option's text length, the same cap CapMedia gives a poll
-// carried as part of a message. Ingest.PollUpdated calls this
-// directly for a poll reported changing on its own, without a full
-// message - a live vote or a tally update - the same way Ingest.Reacted
-// calls domain.CapReactions for a reaction tally reported the same way.
+// CapPoll bounds poll's question length, option count and each
+// option's text length. Ingest.PollUpdated calls this for a poll
+// reported changing on its own, without a full message.
 func CapPoll(poll Poll) Poll {
 	capPoll(&poll)
 	return poll
 }
 
-// capPoll bounds a poll's own question length and its option count and
-// each option's text length, in place. It does nothing for a nil poll:
-// a message whose Kind is MediaPoll always carries one, but CapMedia
-// never assumes that holds.
+// capPoll bounds a poll's question length, option count and each
+// option's text length, in place. It does nothing for a nil poll.
 func capPoll(poll *Poll) {
 	if poll == nil {
 		return
@@ -524,14 +371,8 @@ func capPoll(poll *Poll) {
 	}
 }
 
-// capText cuts s to max UTF-16 code units, never splitting a UTF-8
-// rune or a surrogate pair's own two units across the cut, the same
-// rune-safe treatment TruncateIncomingText gives a message's own text.
-// Checking whether a rune would push the running total past max,
-// rather than waiting for it to land on max exactly, matters once a
-// rune outside the Basic Multilingual Plane counts as two units: one
-// of those can otherwise jump straight over max without ever equalling
-// it.
+// capText cuts s to max UTF-16 code units, never splitting a rune or a
+// surrogate pair across the cut.
 func capText(s string, max int) string {
 	units := 0
 	for i, r := range s {
@@ -546,13 +387,9 @@ func capText(s string, max int) string {
 }
 
 // SanitizeIncoming truncates text and caps every sender-controlled
-// collection a message or its media carries, so a hostile sender can
-// never grow a single message past what the UI can safely render.
-// app.Ingest calls this for both a newly arrived message and one the
-// service reports edited, and store.scanMessage calls it again on
-// every read, so a row an older release stored before these caps
-// existed is repaired every time it is read back, not only for a
-// message ingested since - no path can diverge from another's caps.
+// collection a message or its media carries. app.Ingest calls this for
+// both a newly arrived message and an edit; store.scanMessage calls it
+// again on every read, so an older stored row is repaired too.
 func SanitizeIncoming(m Message) Message {
 	m.Text = TruncateIncomingText(m.Text)
 	textLen := UTF16Len(m.Text)
