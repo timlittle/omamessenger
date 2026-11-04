@@ -28,7 +28,6 @@ func everyInput() []policy.Input {
 					Missed:         bits&16 != 0,
 					Kind:           kind,
 					Sender:         "Priya",
-					SenderVerified: true,
 					Title:          "Climbing Crew",
 					Text:           "see you at 7",
 					ConversationID: "chat-1",
@@ -114,26 +113,23 @@ func TestNotification_NamesGroupsAndRespectsTheDetailLevel(t *testing.T) {
 	}
 }
 
-// TestNotification_MarksASelfChosenSenderName confirms a notification
-// marks an unverified sender with a leading "~", the same way the
-// official WhatsApp app marks a self-chosen name, so a stranger who
-// set their own push name to a saved contact's name, such as "Mum",
-// cannot make a notification look like it is from them. A group's own
-// title is never marked: only the person's own name can be
-// self-chosen this way.
-func TestNotification_MarksASelfChosenSenderName(t *testing.T) {
+// TestNotification_ShowsSenderNameExactlyAsGiven confirms a notification
+// never alters a sender's own name, even a bare, self-chosen one such
+// as "Mum" with no saved contact behind it, or one that happens to
+// match the reserved "You" label: only a message's own outgoing flag
+// ever means it is the user's own, never the sender name's text.
+func TestNotification_ShowsSenderNameExactlyAsGiven(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name           string
-		kind           string
-		senderVerified bool
-		wantTitle      string
+		name      string
+		kind      string
+		sender    string
+		wantTitle string
 	}{
-		{"verified direct", domain.KindDirect, true, "Priya"},
-		{"unverified direct", domain.KindDirect, false, "~Priya"},
-		{"verified group", domain.KindGroup, true, "Priya · Climbing Crew"},
-		{"unverified group", domain.KindGroup, false, "~Priya · Climbing Crew"},
+		{"direct", domain.KindDirect, "Priya", "Priya"},
+		{"group", domain.KindGroup, "Priya", "Priya · Climbing Crew"},
+		{"direct, self-chosen name matching the reserved label", domain.KindDirect, "You", "You"},
 	}
 
 	for _, c := range cases {
@@ -142,7 +138,7 @@ func TestNotification_MarksASelfChosenSenderName(t *testing.T) {
 
 			in := policy.Input{
 				Detail: policy.DetailNameOnly, Kind: c.kind,
-				Sender: "Priya", SenderVerified: c.senderVerified, Title: "Climbing Crew",
+				Sender: c.sender, Title: "Climbing Crew",
 				ConversationID: "chat-1",
 			}
 
@@ -151,24 +147,5 @@ func TestNotification_MarksASelfChosenSenderName(t *testing.T) {
 				t.Errorf("Notification title = %q, want %q", title, c.wantTitle)
 			}
 		})
-	}
-}
-
-// TestNotification_NeverMarksTheReservedOwnMessageLabel confirms a
-// sender literally named "You" - a stranger's own self-chosen push
-// name, never actually this account's own messages, which never
-// notify at all - still gets marked: the reserved label is never
-// shown unmarked just because the text happens to match it.
-func TestNotification_NeverMarksTheReservedOwnMessageLabel(t *testing.T) {
-	t.Parallel()
-
-	in := policy.Input{
-		Detail: policy.DetailNameOnly, Kind: domain.KindDirect,
-		Sender: "You", SenderVerified: false, ConversationID: "chat-1",
-	}
-
-	title, _, _ := policy.Notification(in)
-	if title != "~You" {
-		t.Errorf("Notification title = %q, want %q", title, "~You")
 	}
 }

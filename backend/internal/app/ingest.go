@@ -371,8 +371,8 @@ func (in *Ingest) OutgoingStatus(ctx context.Context, localMessageID, remoteID, 
 // Typing publishes a typing indicator for a known conversation. name
 // is sender-controlled (a group member's own display name), so it
 // gets the same cap SanitizeIncoming gives a message's own SenderName,
-// and state's Verified rides along unchanged so the UI marks it the
-// same way.
+// and state's Verified rides along unchanged, though the UI does not
+// currently read it.
 func (in *Ingest) Typing(ctx context.Context, accountID, conversationRemoteID, name string, state connector.TypingState) {
 	conv, err := in.store.ConversationByRemote(ctx, accountID, conversationRemoteID)
 	if err != nil {
@@ -583,7 +583,6 @@ func (in *Ingest) arrival(conv domain.Conversation, m domain.Message) policy.Inp
 		Missed:         missed,
 		Kind:           conv.Kind,
 		Sender:         m.SenderName,
-		SenderVerified: m.SenderVerified,
 		Title:          conv.Title,
 		Text:           m.Text,
 		ConversationID: conv.ID,
