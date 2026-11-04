@@ -29,11 +29,13 @@ func TestStillFrame_Args(t *testing.T) {
 		"-max_alloc", "536870912",
 		"-protocol_whitelist", "file",
 		"-i", sandbox.InputPath,
+		"-filter_threads", "2",
 		"-map", "0:v:0", "-an",
 		"-map_metadata", "-1", "-map_chapters", "-1", "-sn", "-dn",
 		"-vframes", "1",
 		"-vf", "scale='min(1024,iw)':'min(1024,ih)':force_original_aspect_ratio=decrease",
 		"-c:v", "png",
+		"-threads", "2",
 		"-f", "image2",
 		sandbox.OutputDirPath + "/out.png",
 	}

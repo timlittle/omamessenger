@@ -249,6 +249,68 @@ raise SystemExit(0 if result == -1 else 1)
 	}
 }
 
+func TestRun_PrlimitInsideSandboxStopsAThreadBomb(t *testing.T) {
+	t.Parallel()
+
+	r := requireSandbox(t, "/usr/bin/python3")
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	// A hijacked ffmpeg looping on clone(CLONE_THREAD) is exactly what
+	// the inner prlimit --nproc this package now runs inside the
+	// sandbox (see maxProcessCount's own doc comment in limits.go) must
+	// stop: the seccomp filter's own cloneRequiresThread still allows
+	// every one of these calls, since ordinary threading must keep
+	// working, so this has to be bounded by the process/thread count
+	// limit instead. threading.stack_size(64 KiB), well under the
+	// default 8 MiB glibc gives a new thread, is what makes this test
+	// actually exercise the nproc limit rather than maxAddressSpaceBytes
+	// - confirmed directly, without it, RLIMIT_AS alone (4 GiB /
+	// 8 MiB per default-sized stack) already stops a thread bomb
+	// around the 500 mark, long before 4000, which would make this
+	// test pass for the wrong reason, and exactly the shape of thread
+	// bomb the finding describes: one that deliberately asks for small
+	// stacks to dodge the address-space limit. Each thread just blocks
+	// forever (threading.Event that is never set) rather than doing any
+	// work, daemon=True so the interpreter never waits for thousands of
+	// permanently blocked threads to join at its own shutdown, which
+	// otherwise hangs the whole script regardless of whether the limit
+	// fired. Python's own thread creation raises RuntimeError (wrapping
+	// the kernel's EAGAIN from pthread_create) once the limit is hit,
+	// which this script turns into a non-zero exit - an ordinary
+	// failure, never a crash - well short of the thousands of threads
+	// an unbounded loop would otherwise start.
+	script := `
+import threading
+threading.stack_size(65536)
+block = threading.Event()
+try:
+    for _ in range(4000):
+        threading.Thread(target=block.wait, daemon=True).start()
+except RuntimeError:
+    raise SystemExit(0)
+raise SystemExit(1)
+`
+
+	spec := sandbox.Spec{
+		Binary: "/usr/bin/python3",
+		Args:   []string{"-c", script},
+		Output: mustOutputFile(t),
+	}
+
+	result, err := r.Run(ctx, spec)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Succeeded() {
+		t.Fatalf("Run() = %+v, want Succeeded() true: the script itself reports success only once starting a new thread failed", result)
+	}
+	if result.TimedOut {
+		t.Fatal("Run() timed out; the thread bomb was not stopped by an errno, so it ran until the deadline instead")
+	}
+}
+
 func TestRun_RootDevAndOversizedDevShmWritesAllFail(t *testing.T) {
 	t.Parallel()
 

@@ -96,10 +96,34 @@ func buildArgv(spec Spec, tools toolPaths) (name string, args []string) {
 		tools.bwrap,
 	}
 	args = append(args, bwrapArgs(spec)...)
+	args = append(args, innerPrlimitArgs(tools.prlimit)...)
 	args = append(args, "--", spec.Binary)
 	args = append(args, spec.Args...)
 
 	return tools.nice, args
+}
+
+// innerPrlimitArgs returns the "--" plus prlimit invocation that bwrap
+// itself execs, right before spec.Binary: a second, inner prlimit -
+// not the outer one buildArgv already runs before bwrap, which sets
+// every other rlimit but cannot make --nproc do anything useful (see
+// maxProcessCount's own doc comment in limits.go for why: RLIMIT_NPROC
+// is counted per user ID within whichever user namespace set it, and
+// the outer prlimit runs before bwrap's own --unshare-user has created
+// one). Running this prlimit inside the sandbox, as the first thing
+// bwrap's own argv execs once every bind, unshare and seccomp flag in
+// bwrapArgs has already taken effect, is what makes --nproc apply to
+// the job's own fresh user namespace rather than the helper's. Its own
+// path is prlimitPath, the same absolute path the outer prlimit call
+// already resolved: /usr is bound read-only into the sandbox at that
+// same path (see bwrapArgs), so it resolves identically on either side
+// of the bwrap boundary.
+func innerPrlimitArgs(prlimitPath string) []string {
+	return []string{
+		"--",
+		prlimitPath,
+		"--nproc=" + strconv.Itoa(maxProcessCount),
+	}
 }
 
 // bwrapArgs returns every bwrap flag Run passes for spec, stopping

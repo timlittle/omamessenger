@@ -162,6 +162,38 @@ const maxOutputFileBytes = 512 << 20
 // confirmed directly (see docs/decisions.md).
 const maxOpenFiles = 64
 
+// maxProcessCount bounds how many tasks (processes plus threads; the
+// kernel's own RLIMIT_NPROC counts both as one) the job's own user ID
+// may hold at once, inside the sandbox (prlimit --nproc, run as the
+// first thing bwrap execs - see innerPrlimitArgs in argv.go - never
+// the outer prlimit buildArgv also runs, which sets every other rlimit
+// before bwrap creates the job's own user namespace and so can never
+// bound this one: RLIMIT_NPROC is counted per user ID within the user
+// namespace that set it, confirmed directly - setting it outside bwrap's
+// own --unshare-user leaves the sandboxed job free to keep starting
+// threads with no limit at all, regardless of what the outer prlimit
+// call was given). seccomp.go's own processCreationSyscalls already
+// stop a hijacked job from forking a second process with a fresh
+// RLIMIT_AS and RLIMIT_CPU of its own, but it can still call
+// clone(CLONE_THREAD) - which that filter must keep allowing, since
+// every profile's own "-threads 2" needs it - in an unbounded loop:
+// each thread's stack is kernel memory the kernel itself allocates, not
+// something any limit in this file counts, so a loop of blocked
+// clone(CLONE_THREAD) calls can hold the user's entire process/thread
+// quota, and the whole session's, well before maxCPUSeconds or
+// maxAddressSpaceBytes notice anything is wrong: every later process or
+// thread this helper's own session tries to start - including
+// omarchy-shell's own Qt threads, its own Process launches and
+// Hyprland's exec - then fails too, until the job's own timeout. 40:
+// measured directly against every real profile this package runs (see
+// docs/decisions.md) - the heaviest, Video's own libx264 encode of a
+// real portrait clip with audio, peaked at 17 threads, and Animation's
+// identical video settings minus audio peaked lower still - more than
+// double that peak, generous headroom for a slower machine or a
+// slightly different libx264 build while still refusing a loop that
+// tries to hold hundreds.
+const maxProcessCount = 40
+
 // maxCapturedStderr bounds how much of a job's own stderr Run keeps
 // in memory (see boundedStderr): enough to tell a handful of known
 // failure shapes apart (see classify.go), far less than a pathological
@@ -188,5 +220,12 @@ const maxCapturedStderr = 4 << 10
 // (unlike every other fd a job can open), are refused outright by
 // the seccomp filter (see seccomp.go) rather than merely added to
 // this total, since there is no cap on either that would make adding
-// them here anything but a made-up number.
+// them here anything but a made-up number. System V shared memory,
+// message queues and semaphores, and POSIX message queues
+// (ipcSyscalls, seccomp.go) are refused the same way and for the same
+// reason: a fourth sandbox review found they share memfd's own
+// RLIMIT_AS bypass - a fresh IPC namespace starts at the kernel's own
+// defaults, not whatever this helper's own host happens to have
+// tuned shmmax/shmall to - so they too are left out of this sum
+// rather than given a made-up cap.
 const maxJobBytes = maxAddressSpaceBytes + maxTmpBytes + maxDevShmBytes + maxOutputFileBytes

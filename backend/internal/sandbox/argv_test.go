@@ -68,6 +68,9 @@ func TestBuildArgv_FullSpec(t *testing.T) {
 		"--seccomp", "3",
 		"--remount-ro", "/",
 		"--",
+		"/usr/bin/prlimit",
+		"--nproc=40",
+		"--",
 		"/usr/bin/ffmpeg",
 		"-i", "/work/in", "/work/out/out.mp4",
 	}
@@ -175,6 +178,19 @@ func TestBwrapArgs_RemountsRootReadOnlyAsTheFinalFlag(t *testing.T) {
 	want := []string{"--remount-ro", "/"}
 	if len(args) < 2 || !slices.Equal(args[len(args)-2:], want) {
 		t.Fatalf("args = %q, want to end with %q", args, want)
+	}
+}
+
+func TestInnerPrlimitArgs(t *testing.T) {
+	t.Parallel()
+
+	// This is the inner prlimit buildArgv runs right before spec.Binary,
+	// inside the sandbox's own user namespace - never the outer one,
+	// which runs before bwrap and so can never bound RLIMIT_NPROC (see
+	// maxProcessCount's own doc comment in limits.go).
+	want := []string{"--", "/usr/bin/prlimit", "--nproc=40"}
+	if got := innerPrlimitArgs("/usr/bin/prlimit"); !slices.Equal(got, want) {
+		t.Fatalf("innerPrlimitArgs() = %q, want %q", got, want)
 	}
 }
 

@@ -42,15 +42,26 @@ func (t *Transcoder) StillFrame(ctx context.Context, in, outDir string) (string,
 }
 
 // stillFrameArgs is the StillFrame profile's own fixed ffmpeg
-// argument list.
+// argument list: filterThreadArgs and outputThreadArgs bound its own
+// scale filter and its png encoder the same way every other profile
+// bounds its own filter and encoder (see mediaThreads' own doc
+// comment in args.go) - both otherwise default to this machine's own
+// core count (confirmed directly: without them, a real animated WebP
+// sticker through this exact profile needed prlimit --nproc above 52
+// to succeed at all, nothing like the handful of threads every other
+// profile's own fixed, capped pipeline needs).
 func stillFrameArgs() []string {
 	args := commonInputArgs()
+	args = append(args, filterThreadArgs()...)
 	args = append(args, "-map", "0:v:0", "-an")
 	args = append(args, stripMetadataArgs()...)
 	args = append(args,
 		"-vframes", "1",
 		"-vf", fitWithinFilter(1024),
 		"-c:v", "png",
+	)
+	args = append(args, outputThreadArgs()...)
+	args = append(args,
 		"-f", "image2",
 		outputPath(stillFrameOutputName),
 	)
