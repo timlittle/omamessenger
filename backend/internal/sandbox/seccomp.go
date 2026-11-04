@@ -107,6 +107,43 @@ var deniedSyscalls = []string{
 // as one more thing for limits.go's own numbers to somehow cover.
 var memfdSyscalls = []string{"memfd_create", "memfd_secret"}
 
+// ipcSyscalls names every System V shared-memory, System V message-
+// queue, System V semaphore and POSIX message-queue syscall: three
+// more routes, alongside memfd, to kernel memory charged to no
+// process's own RLIMIT_AS at all once the backing segment is
+// attached, written and detached again. docs/decisions.md's own third
+// sandbox review considered shmget/shmat and left them allowed,
+// reasoning they were "bounded differently - by system-wide shmmax/
+// shmall sysctls". That reasoning does not hold inside this sandbox:
+// --unshare-all (argv.go) gives every job a fresh IPC namespace, which
+// starts at the kernel's own compiled-in defaults - confirmed directly
+// on this machine, where /proc/sys/kernel/shmall reads
+// 18446744073692774399, effectively unlimited - never at whatever this
+// helper's own host happens to have tuned those sysctls to. A hijacked
+// ffmpeg can loop shmget/shmat/fill/shmdt: the pages stay allocated,
+// charged to the kernel's own shared-memory accounting rather than any
+// process's address space, until the job's whole IPC namespace is torn
+// down - up to videoTimeout's own 5 minutes - during which the OOM
+// killer, unable to free memory that belongs to no process, starts
+// killing real processes instead, such as omarchy-shell itself. Message
+// queues (msgget and friends) and semaphore sets (semget and friends)
+// share the same per-namespace-default, no-RLIMIT_AS-coverage shape,
+// so they are refused for the same reason even though no profile this
+// package runs has ever been seen to call them; mq_open and its own
+// POSIX message-queue siblings are a fourth, independent API to the
+// same kind of kernel object (backed by a mounted mqueue filesystem,
+// not SysV's own key-based tables) and get the same treatment. None of
+// deniedSyscalls' own "no legitimate reason to call this" framing
+// applies here - the reason is the RLIMIT_AS bypass memfdSyscalls
+// already exists to close, just three more ways into it - so this gets
+// its own named group and doc comment, the same way memfdSyscalls did.
+var ipcSyscalls = []string{
+	"shmget", "shmat", "shmdt", "shmctl",
+	"msgget", "msgsnd", "msgrcv", "msgctl",
+	"semget", "semop", "semtimedop", "semctl",
+	"mq_open", "mq_unlink", "mq_timedsend", "mq_timedreceive", "mq_notify", "mq_getsetattr",
+}
+
 // cloneThreadFlag is CLONE_THREAD, from the kernel's own
 // include/uapi/linux/sched.h: part of the stable UAPI, not something
 // either library this package uses exports as a constant. It is
@@ -219,6 +256,7 @@ func seccompInstructions() ([]bpf.Instruction, error) {
 		Syscalls: []seccomp.SyscallGroup{
 			{Action: epermAction, Names: deniedSyscalls},
 			{Action: epermAction, Names: memfdSyscalls},
+			{Action: epermAction, Names: ipcSyscalls},
 			{
 				Action:             epermAction,
 				Names:              processCreationSyscalls,

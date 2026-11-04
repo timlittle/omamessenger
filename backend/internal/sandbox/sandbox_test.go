@@ -211,6 +211,44 @@ func TestRun_OutputBindExposesOnlyTheSingleBoundFile(t *testing.T) {
 	}
 }
 
+func TestRun_SeccompDeniesSystemVSharedMemory(t *testing.T) {
+	t.Parallel()
+
+	r := requireSandbox(t, "/usr/bin/python3")
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	// python3's own ctypes module calls straight into libc's shmget,
+	// the exact route a hijacked ffmpeg would use to allocate memory
+	// the kernel charges to no process's own RLIMIT_AS at all (see
+	// ipcSyscalls' own doc comment in seccomp.go): a one-megabyte
+	// segment, IPC_CREAT so it does not need an existing key, read-
+	// write for the owner only. shmget returns -1 on any failure, so
+	// this does not depend on EPERM's own numeric value, only on the
+	// call failing at all.
+	script := `
+import ctypes
+libc = ctypes.CDLL(None, use_errno=True)
+result = libc.shmget(ctypes.c_long(0), ctypes.c_size_t(1024 * 1024), 0o600 | 0o1000)
+raise SystemExit(0 if result == -1 else 1)
+`
+
+	spec := sandbox.Spec{
+		Binary: "/usr/bin/python3",
+		Args:   []string{"-c", script},
+		Output: mustOutputFile(t),
+	}
+
+	result, err := r.Run(ctx, spec)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Succeeded() {
+		t.Fatalf("Run() = %+v, want Succeeded() true: the script itself reports success only when shmget failed", result)
+	}
+}
+
 func TestRun_RootDevAndOversizedDevShmWritesAllFail(t *testing.T) {
 	t.Parallel()
 

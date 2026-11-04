@@ -228,6 +228,33 @@ func TestSeccompInstructions_RefusesMemfdSyscallsOnTheNativeArch(t *testing.T) {
 	}
 }
 
+func TestSeccompInstructions_RefusesIPCSyscallsOnTheNativeArch(t *testing.T) {
+	t.Parallel()
+
+	native, err := arch.GetInfo("")
+	if err != nil {
+		t.Fatalf("arch.GetInfo() error = %v", err)
+	}
+
+	want := uint32(seccomp.ActionErrno) | errnoEPERM
+
+	for _, name := range ipcSyscalls {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			nr, ok := native.SyscallNames[name]
+			if !ok {
+				t.Fatalf("native arch %s has no syscall number for %q", native.Name, name)
+			}
+
+			pkt := seccompDataPacket(int32(nr), uint32(native.ID))
+			if got := runSeccompVM(t, pkt); got != want {
+				t.Errorf("action for %s (nr=%d) = %#x, want ActionErrno|EPERM (%#x)", name, nr, got, want)
+			}
+		})
+	}
+}
+
 func TestSeccompInstructions_RefusesForkAndVforkOnTheNativeArch(t *testing.T) {
 	t.Parallel()
 
