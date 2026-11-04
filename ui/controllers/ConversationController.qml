@@ -540,9 +540,18 @@ Item {
 
   // _setActive is the common work for opening a conversation, whatever
   // found it: the list cursor, a search result or the new-chat dialog.
+  // conversation is copied into a plain object rather than stored by
+  // reference: a caller can hand this a live ListModel row (the list's
+  // own delegate data), and reading two of its fields together in the
+  // same binding - as the header's subtitle line does, for phone
+  // alongside title - hit a Qt binding-loop false positive once that
+  // row's fields came from a dynamically typed QML list model rather
+  // than a plain object. A snapshot also means the open conversation
+  // never changes shape underneath the view just because the list row
+  // it came from gets recycled.
   function _setActive(id: string, conversation: var): void {
     root.activeId = id;
-    root.conversation = conversation;
+    root.conversation = conversation ? Object.assign({}, conversation) : conversation;
     root.groupMembers = [];
     root.pane = "conversation";
     highlight.clear();
