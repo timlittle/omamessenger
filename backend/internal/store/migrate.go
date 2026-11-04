@@ -272,6 +272,36 @@ var migrations = []migrationStep{
 	// the way the official WhatsApp app shows a stranger's number
 	// instead of trusting their self-chosen name.
 	{sql: `ALTER TABLE conversations ADD COLUMN phone TEXT NOT NULL DEFAULT '';`},
+	// A follow-up security review found the migration above wrong to
+	// default an upgraded row to verified: that is the same trust
+	// level as a name this connector has actually resolved and checked,
+	// for a row this helper has never checked at all. A stranger who
+	// messaged before the upgrade, naming themselves "Mum", kept
+	// showing unmarked forever, since nothing about an upgrade itself
+	// re-resolves their name. This step resets every existing row to
+	// unverified instead, the secure default for a row of unknown
+	// trust; a saved contact's messages and chat title are re-marked
+	// verified the next time this connector resolves their name, which
+	// WhatsApp's own AppStateSyncComplete event (see
+	// whatsapp/contacts.go's handleAppStateSyncComplete) already
+	// triggers for every known direct chat shortly after each
+	// reconnect, with no need to wait for their next message.
+	{sql: `UPDATE messages SET sender_verified=0;
+		UPDATE conversations SET title_verified=0;`},
+	// A security review found the new-chat picker showing every
+	// contact unmarked, with no phone number, however trustworthy
+	// its own name actually was: contacts never carried either column
+	// at all, so UpsertContact had nothing to write and Contact kept
+	// whatever its caller defaulted it to, regardless of what the
+	// connector actually reported. Both new columns default to
+	// unverified and no phone, the same secure-by-default choice as
+	// the reset above, rather than DEFAULT 1: a contact synced before
+	// this column existed is re-marked the next time its connector
+	// reports it again, which for WhatsApp happens through the push
+	// name sync history delivers from time to time (see
+	// whatsapp/history.go's syncPushnames).
+	{sql: `ALTER TABLE contacts ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE contacts ADD COLUMN phone TEXT NOT NULL DEFAULT '';`},
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

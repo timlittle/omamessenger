@@ -322,7 +322,10 @@ func contactDisplayName(info types.ContactInfo) (name string, verified bool) {
 // that name and its verified status win instead, the same priority a
 // saved contact already takes over a push name everywhere else - the
 // new-chat contact list must never show a stranger's self-chosen
-// "Mum" as if it were a saved contact (see docs/decisions.md).
+// "Mum" as if it were a saved contact (see docs/decisions.md). An
+// unverified contact also carries its own phone number, the same
+// stand-in an unverified chat title shows, so the picker can show it
+// next to a self-chosen name instead of nothing at all.
 func contactFromPushName(ctx context.Context, dev device, accountID string, p *waHistorySync.Pushname) (domain.Contact, bool) {
 	jid, err := types.ParseJID(p.GetID())
 	if err != nil || jid.IsEmpty() {
@@ -330,12 +333,17 @@ func contactFromPushName(ctx context.Context, dev device, accountID string, p *w
 	}
 
 	if name, verified := dev.contactName(ctx, jid); name != "" {
-		return domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: name, Verified: verified}, true
+		contact := domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: name, Verified: verified}
+		if !verified {
+			contact.Phone = phoneNumber(ctx, dev, jid)
+		}
+
+		return contact, true
 	}
 
 	if p.GetPushname() == "" {
 		return domain.Contact{}, false
 	}
 
-	return domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: p.GetPushname()}, true
+	return domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: p.GetPushname(), Phone: phoneNumber(ctx, dev, jid)}, true
 }

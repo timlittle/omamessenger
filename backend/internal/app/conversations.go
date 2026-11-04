@@ -16,11 +16,16 @@ func (c *Commands) Conversations(ctx context.Context, query string) ([]domain.Co
 }
 
 // OpenConversation returns the direct conversation with a contact, creating
-// it when there is none yet. Its title is always reported verified: the
-// user deliberately chose this exact contact by its shown name from
-// their own list, a different trust moment from an unsolicited incoming
-// message naming itself whatever it likes (see domain.Conversation.TitleVerified
-// and docs/decisions.md).
+// it when there is none yet. Its title is verified exactly when the
+// contact itself is: a security review found the picker already shows
+// every contact's own trust (a real saved contact or a reviewed
+// business, versus a bare, self-chosen push name), so choosing one
+// from the list must carry that same flag through rather than silently
+// promoting it to verified, which would let a stranger's "Mum" look
+// exactly like the real one the moment the user picks them (see
+// domain.Conversation.TitleVerified and docs/decisions.md). The
+// contact's own phone number comes along the same way, so an
+// unverified chat still shows it instead of going blank.
 func (c *Commands) OpenConversation(ctx context.Context, accountID, contactID string) (domain.Conversation, error) {
 	if accountID == "" || contactID == "" {
 		return domain.Conversation{}, fmt.Errorf("%w: accountId and contactId are required", ErrInvalidInput)
@@ -32,7 +37,8 @@ func (c *Commands) OpenConversation(ctx context.Context, accountID, contactID st
 	}
 
 	conv, created, err := c.store.EnsureConversation(ctx, domain.Conversation{
-		AccountID: accountID, RemoteID: contact.RemoteID, Kind: domain.KindDirect, Title: contact.Name, TitleVerified: true,
+		AccountID: accountID, RemoteID: contact.RemoteID, Kind: domain.KindDirect,
+		Title: contact.Name, TitleVerified: contact.Verified, Phone: contact.Phone,
 	})
 	if err != nil {
 		return conv, err

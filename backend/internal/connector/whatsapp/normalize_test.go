@@ -500,7 +500,7 @@ func TestContactFromPushName_NamesAContactOrReportsNone(t *testing.T) {
 	dev := newFakeDevice()
 
 	got, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net"), Pushname: strPtr("Nadia")})
-	want := domain.Contact{AccountID: "wa", RemoteID: "1@s.whatsapp.net", Name: "Nadia"}
+	want := domain.Contact{AccountID: "wa", RemoteID: "1@s.whatsapp.net", Name: "Nadia", Phone: "+1"}
 	if !ok || got != want {
 		t.Errorf("contactFromPushName = %+v, %t; want %+v, true", got, ok, want)
 	}

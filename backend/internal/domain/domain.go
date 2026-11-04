@@ -112,6 +112,14 @@ type Contact struct {
 	// exactly like a real saved contact unless this is checked (see
 	// docs/decisions.md).
 	Verified bool `json:"verified,omitempty"`
+
+	// Phone is this contact's own phone number, formatted "+<digits>",
+	// when the service gives one and Verified is false - the same
+	// stand-in Conversation.Phone shows beside an unverified chat
+	// title, so the new-chat picker can show a stranger's number next
+	// to their self-chosen name instead of nothing at all. Empty for a
+	// verified contact, which needs no such hint.
+	Phone string `json:"phone,omitempty"`
 }
 
 // Conversation is a direct chat or group, with the summary the
