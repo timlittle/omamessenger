@@ -288,15 +288,19 @@ func isSystemJID(jid types.JID) bool {
 
 // contactDisplayName is WhatsApp's own name for a resolved contact, in
 // its own priority order: the name saved for them, their first name
-// alone, their verified business name, or their self-chosen push
-// name. verified reports whether name came from one of the first
-// three - something the user saved or WhatsApp itself verified -
-// rather than info's own last-resort PushName, which is exactly as
-// self-chosen and unverified as a live message's own push name (see
-// senderName): a LID often carries no contact record but this push
-// name, cached by an earlier app-state sync, and showing that unmarked
-// would be exactly the gap a stranger naming themselves "Mum" exploits.
-// It returns "", false when info names no one, or holds none of these.
+// alone, their business name, or their self-chosen push name. verified
+// reports whether name came from one of the first two - something the
+// user themselves saved - rather than a name the contact chose: the
+// contact store's ContactInfo carries no verification level for a
+// business name (unlike a live message's types.VerifiedName, see
+// verifiedName), so it cannot be told apart from one set through the
+// free, unreviewed WhatsApp Business app, and is treated the same as
+// info's own last-resort PushName, which is exactly as self-chosen and
+// unverified as a live message's own push name (see senderName): a LID
+// often carries no contact record but this push name, cached by an
+// earlier app-state sync, and showing that unmarked would be exactly
+// the gap a stranger naming themselves "Mum" exploits. It returns "",
+// false when info names no one, or holds none of these.
 func contactDisplayName(info types.ContactInfo) (name string, verified bool) {
 	switch {
 	case info.FullName != "":
@@ -304,7 +308,7 @@ func contactDisplayName(info types.ContactInfo) (name string, verified bool) {
 	case info.FirstName != "":
 		return info.FirstName, true
 	case info.BusinessName != "":
-		return info.BusinessName, true
+		return info.BusinessName, false
 	default:
 		return info.PushName, false
 	}

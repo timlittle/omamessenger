@@ -185,16 +185,17 @@ func TestMessage_UnwrapGivesUpAfterTheDepthLimit(t *testing.T) {
 	}
 }
 
-// TestSenderName_FallsBackSensibly confirms senderName's name, and
-// that only a bare push name - self-chosen, exactly as a stranger
-// naming themselves "Mum" would use - comes back unverified; a
-// verified business name, and the generic label this falls back to
-// when WhatsApp gave neither (never itself a self-chosen claim), both
+// TestSenderName_FallsBackSensibly confirms a bare push name, or a
+// business name below WhatsApp's own "high" verification level (the
+// free Business app lets anyone set one lower), comes back unverified;
+// a "high"-level business name, and the generic fallback label, both
 // come back verified.
 func TestSenderName_FallsBackSensibly(t *testing.T) {
 	t.Parallel()
 
-	verifiedName := &types.VerifiedName{Details: &waVnameCert.VerifiedNameCertificate_Details{VerifiedName: strPtr("Acme Support")}}
+	withLevel := func(level string) *types.VerifiedName {
+		return &types.VerifiedName{Details: &waVnameCert.VerifiedNameCertificate_Details{VerifiedName: strPtr("Acme Support")}, VerifiedLevel: level}
+	}
 	tests := []struct {
 		name         string
 		info         types.MessageInfo
@@ -202,18 +203,16 @@ func TestSenderName_FallsBackSensibly(t *testing.T) {
 		wantVerified bool
 	}{
 		{"push name", types.MessageInfo{PushName: "Nadia"}, "Nadia", false},
-		{"verified business name", types.MessageInfo{VerifiedName: verifiedName}, "Acme Support", true},
+		{"high-level verified business name", types.MessageInfo{VerifiedName: withLevel("high")}, "Acme Support", true},
+		{"unreviewed business name falls back to the generic label", types.MessageInfo{VerifiedName: withLevel("low")}, "WhatsApp user", true},
 		{"verified name with no details", types.MessageInfo{VerifiedName: &types.VerifiedName{}}, "WhatsApp user", true},
 		{"no name at all", types.MessageInfo{}, "WhatsApp user", true},
 	}
 
 	for _, tt := range tests {
 		got, verified := senderName(tt.info)
-		if got != tt.want {
-			t.Errorf("senderName(%s) = %q, want %q", tt.name, got, tt.want)
-		}
-		if verified != tt.wantVerified {
-			t.Errorf("senderName(%s) verified = %t, want %t", tt.name, verified, tt.wantVerified)
+		if got != tt.want || verified != tt.wantVerified {
+			t.Errorf("senderName(%s) = %q,%t want %q,%t", tt.name, got, verified, tt.want, tt.wantVerified)
 		}
 	}
 }

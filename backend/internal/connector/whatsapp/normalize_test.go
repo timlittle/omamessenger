@@ -456,10 +456,13 @@ func TestIsSystemJID_RecognisesNonConversationJIDs(t *testing.T) {
 }
 
 // TestContactDisplayName_PrefersSavedNamesOverAPushName confirms the
-// name, and that only the push-name fallback - exactly as self-chosen
-// and unverified as one read straight off a live message - comes back
-// unverified; a saved full or first name, or a verified business
-// name, all come back verified.
+// name, and that only a saved full or first name - something the user
+// themselves recorded - comes back verified. A business name outranks
+// a push name for priority, but ContactInfo carries no verification
+// level for it, so, like the push-name fallback, it comes back
+// unverified: anyone can set one through the free, unreviewed
+// WhatsApp Business app, exactly as self-chosen as a live message's
+// own push name.
 func TestContactDisplayName_PrefersSavedNamesOverAPushName(t *testing.T) {
 	t.Parallel()
 
@@ -471,7 +474,7 @@ func TestContactDisplayName_PrefersSavedNamesOverAPushName(t *testing.T) {
 	}{
 		{"full name wins", types.ContactInfo{Found: true, FullName: "Nadia Rahman", PushName: "nads"}, "Nadia Rahman", true},
 		{"first name beats business and push", types.ContactInfo{Found: true, FirstName: "Nadia", BusinessName: "Acme", PushName: "nads"}, "Nadia", true},
-		{"business name beats push", types.ContactInfo{Found: true, BusinessName: "Acme Support", PushName: "nads"}, "Acme Support", true},
+		{"business name beats push but is unverified", types.ContactInfo{Found: true, BusinessName: "Acme Support", PushName: "nads"}, "Acme Support", false},
 		{"push name is the last resort", types.ContactInfo{Found: true, PushName: "nads"}, "nads", false},
 		{"nothing known", types.ContactInfo{Found: true}, "", false},
 	}
