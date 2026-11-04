@@ -49,7 +49,10 @@ test('no source file contains a literal invisible or bidirectional-control chara
     const root = path.join(REPO_ROOT, dir);
     if (!fs.existsSync(root)) continue;
     for (const file of sourceFiles(root)) {
-      const lines = fs.readFileSync(file, 'utf8').split('\n');
+      const bytes = fs.readFileSync(file);
+      // A built binary (bin/dev holds the test helper) is not source.
+      if (bytes.includes(0)) continue;
+      const lines = bytes.toString('utf8').split('\n');
       lines.forEach((line, index) => {
         const match = HIDDEN_CHARACTER.exec(line);
         if (match) {
