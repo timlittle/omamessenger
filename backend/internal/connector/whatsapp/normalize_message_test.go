@@ -185,10 +185,10 @@ func TestMessage_UnwrapGivesUpAfterTheDepthLimit(t *testing.T) {
 	}
 }
 
-// TestSenderName_FallsBackSensibly confirms a business name below
-// WhatsApp's own "high" verification level (the free Business app lets
-// anyone set one lower) falls back to the generic label, never shown
-// as if it were a reviewed business name.
+// TestSenderName_FallsBackSensibly confirms senderName's name: a bare
+// push name, a business name shown as given regardless of its
+// whatsmeow VerifiedLevel (see docs/decisions.md), or the generic
+// label when WhatsApp gave neither.
 func TestSenderName_FallsBackSensibly(t *testing.T) {
 	t.Parallel()
 
@@ -201,8 +201,8 @@ func TestSenderName_FallsBackSensibly(t *testing.T) {
 		want string
 	}{
 		{"push name", types.MessageInfo{PushName: "Nadia"}, "Nadia"},
-		{"high-level verified business name", types.MessageInfo{VerifiedName: withLevel("high")}, "Acme Support"},
-		{"unreviewed business name falls back to the generic label", types.MessageInfo{VerifiedName: withLevel("low")}, "WhatsApp user"},
+		{"high-level business name", types.MessageInfo{VerifiedName: withLevel("high")}, "Acme Support"},
+		{"low-level business name is still shown as given", types.MessageInfo{VerifiedName: withLevel("low")}, "Acme Support"},
 		{"verified name with no details", types.MessageInfo{VerifiedName: &types.VerifiedName{}}, "WhatsApp user"},
 		{"no name at all", types.MessageInfo{}, "WhatsApp user"},
 	}

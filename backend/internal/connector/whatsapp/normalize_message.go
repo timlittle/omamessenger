@@ -197,11 +197,9 @@ func senderDisplayName(ctx context.Context, dev device, info types.MessageInfo) 
 const genericSenderName = "WhatsApp user"
 
 // senderName names who sent a message: their self-chosen display
-// name, their business name at WhatsApp's own "high" verification
-// level (the free Business app lets anyone set an unreviewed name, so
-// a lower or unknown level is treated the same as having none), or a
-// generic label when WhatsApp reported neither. It never falls back
-// to the phone number in their JID, which is not a name.
+// name, their business name, or a generic label when WhatsApp reported
+// neither. It never falls back to the phone number in their JID, which
+// is not a name.
 func senderName(info types.MessageInfo) string {
 	if info.PushName != "" {
 		return info.PushName
@@ -214,18 +212,11 @@ func senderName(info types.MessageInfo) string {
 	return genericSenderName
 }
 
-// verifiedHighLevel is the level string whatsmeow reports for a
-// business name WhatsApp itself has reviewed, as opposed to "unknown"
-// or "low" for a name anyone can set through the free Business app.
-const verifiedHighLevel = "high"
-
-// verifiedName is a business account's verified name, or "" when the
-// sender has none or WhatsApp has not reviewed it at the "high" level.
+// verifiedName is a business account's own name, or "" when the sender
+// has none. WhatsApp shows this name as given, regardless of its
+// whatsmeow VerifiedLevel (see docs/decisions.md).
 func verifiedName(info types.MessageInfo) string {
 	if info.VerifiedName == nil || info.VerifiedName.Details == nil {
-		return ""
-	}
-	if info.VerifiedName.VerifiedLevel != verifiedHighLevel {
 		return ""
 	}
 
