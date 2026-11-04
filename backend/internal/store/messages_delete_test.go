@@ -14,7 +14,7 @@ func TestDeleteMessages_FallsBackPreviewAndLowersUnread(t *testing.T) {
 	s, _ := openChatStore(t)
 	ctx := t.Context()
 	addMessages(t, s,
-		domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", SenderName: "Alex", SenderVerified: true, Text: "first", Created: 1},
+		domain.Message{ID: "m1", ConversationID: "chat", RemoteID: "1", SenderName: "Alex", Text: "first", Created: 1},
 		domain.Message{ID: "m2", ConversationID: "chat", RemoteID: "2", SenderName: "Alex", Text: "second", Created: 2},
 	)
 
@@ -24,7 +24,7 @@ func TestDeleteMessages_FallsBackPreviewAndLowersUnread(t *testing.T) {
 	}
 
 	chat, err := s.Conversation(ctx, "chat")
-	if err != nil || chat.Preview != "first" || chat.LastActivity != 1 || chat.Unread != 1 || !chat.PreviewSenderVerified {
+	if err != nil || chat.Preview != "first" || chat.LastActivity != 1 || chat.Unread != 1 {
 		t.Errorf("conversation after deletion = %+v, %v", chat, err)
 	}
 

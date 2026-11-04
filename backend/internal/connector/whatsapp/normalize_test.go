@@ -391,42 +391,6 @@ func TestTitleFallback_PhoneNumberOrNeutralLabel(t *testing.T) {
 	}
 }
 
-// TestPhoneNumber_FormatsAKnownNumberOrReportsNone confirms
-// domain.Conversation.Phone's own source: a direct phone JID formats
-// straight away, a LID whatsmeow has already mapped to one formats
-// through that mapping, and a LID with no mapping yet, or a group,
-// gives "" - there is no real phone number to show.
-func TestPhoneNumber_FormatsAKnownNumberOrReportsNone(t *testing.T) {
-	t.Parallel()
-
-	phone := types.NewJID("15551234567", types.DefaultUserServer)
-	mappedLID := types.NewJID("987654", types.HiddenUserServer)
-	unmappedLID := types.NewJID("111222", types.HiddenUserServer)
-	dev := newFakeDevice()
-	dev.lidPhones = map[string]types.JID{mappedLID.String(): phone}
-
-	tests := []struct {
-		name string
-		jid  types.JID
-		want string
-	}{
-		{"phone JID", phone, "+15551234567"},
-		{"mapped LID", mappedLID, "+15551234567"},
-		{"unmapped LID", unmappedLID, ""},
-		{"group", types.NewJID("1-2", types.GroupServer), ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := phoneNumber(t.Context(), dev, tt.jid); got != tt.want {
-				t.Errorf("phoneNumber(%s) = %q, want %q", tt.name, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestIsSystemJID_RecognisesNonConversationJIDs(t *testing.T) {
 	t.Parallel()
 
@@ -456,25 +420,24 @@ func TestIsSystemJID_RecognisesNonConversationJIDs(t *testing.T) {
 }
 
 // TestContactDisplayName_PrefersSavedNamesOverAPushName confirms the
-// name, and that only a saved full or first name - something the user
-// themselves recorded - comes back verified. A business name outranks
-// a push name for priority, but ContactInfo carries no verification
-// level for it, so, like the push-name fallback, it comes back
-// unverified: anyone can set one through the free, unreviewed
-// WhatsApp Business app, exactly as self-chosen as a live message's
-// own push name.
+// name, and that fromContact is true only for a saved full or first
+// name - something the user themselves recorded. A business name
+// outranks a push name for priority, but ContactInfo carries no
+// verification level for it, so, like the push-name fallback, it
+// reports fromContact false too: callers rank it the same as a bare
+// push name (see rankFor).
 func TestContactDisplayName_PrefersSavedNamesOverAPushName(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		info         types.ContactInfo
-		want         string
-		wantVerified bool
+		name            string
+		info            types.ContactInfo
+		want            string
+		wantFromContact bool
 	}{
 		{"full name wins", types.ContactInfo{Found: true, FullName: "Nadia Rahman", PushName: "nads"}, "Nadia Rahman", true},
 		{"first name beats business and push", types.ContactInfo{Found: true, FirstName: "Nadia", BusinessName: "Acme", PushName: "nads"}, "Nadia", true},
-		{"business name beats push but is unverified", types.ContactInfo{Found: true, BusinessName: "Acme Support", PushName: "nads"}, "Acme Support", false},
+		{"business name beats push but is not from a contact", types.ContactInfo{Found: true, BusinessName: "Acme Support", PushName: "nads"}, "Acme Support", false},
 		{"push name is the last resort", types.ContactInfo{Found: true, PushName: "nads"}, "nads", false},
 		{"nothing known", types.ContactInfo{Found: true}, "", false},
 	}
@@ -483,12 +446,12 @@ func TestContactDisplayName_PrefersSavedNamesOverAPushName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, verified := contactDisplayName(tt.info)
+			got, fromContact := contactDisplayName(tt.info)
 			if got != tt.want {
 				t.Errorf("contactDisplayName(%s) = %q, want %q", tt.name, got, tt.want)
 			}
-			if verified != tt.wantVerified {
-				t.Errorf("contactDisplayName(%s) verified = %t, want %t", tt.name, verified, tt.wantVerified)
+			if fromContact != tt.wantFromContact {
+				t.Errorf("contactDisplayName(%s) fromContact = %t, want %t", tt.name, fromContact, tt.wantFromContact)
 			}
 		})
 	}
@@ -499,28 +462,28 @@ func TestContactFromPushName_NamesAContactOrReportsNone(t *testing.T) {
 
 	dev := newFakeDevice()
 
-	got, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net"), Pushname: strPtr("Nadia")})
-	want := domain.Contact{AccountID: "wa", RemoteID: "1@s.whatsapp.net", Name: "Nadia", Phone: "+1"}
+	got, _, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net"), Pushname: strPtr("Nadia")})
+	want := domain.Contact{AccountID: "wa", RemoteID: "1@s.whatsapp.net", Name: "Nadia"}
 	if !ok || got != want {
 		t.Errorf("contactFromPushName = %+v, %t; want %+v, true", got, ok, want)
 	}
 
-	if _, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net")}); ok {
+	if _, _, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("1@s.whatsapp.net")}); ok {
 		t.Error("a push name with no name became a contact")
 	}
 
-	if _, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{Pushname: strPtr("Nadia")}); ok {
+	if _, _, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{Pushname: strPtr("Nadia")}); ok {
 		t.Error("a push name with no id became a contact")
 	}
 }
 
 // TestContactFromPushName_PrefersAKnownContactOverTheBarePushName covers
 // a sync that carries a self-chosen push name for a JID WhatsApp's own
-// contact store already resolves to a saved contact: the saved name and
-// its verified status win, the same priority device.contactName already
-// gives a saved contact over a push name everywhere else, so the
-// new-chat contact list never shows a push name as if it were a saved
-// contact's own name just because it arrived through this sync (see
+// contact store already resolves to a saved contact: the saved name
+// wins, the same priority device.contactName already gives a saved
+// contact over a push name everywhere else, so the new-chat contact
+// list never shows a push name as if it were a saved contact's own
+// name just because it arrived through this sync (see
 // docs/decisions.md).
 func TestContactFromPushName_PrefersAKnownContactOverTheBarePushName(t *testing.T) {
 	t.Parallel()
@@ -528,8 +491,8 @@ func TestContactFromPushName_PrefersAKnownContactOverTheBarePushName(t *testing.
 	dev := newFakeDevice()
 	dev.contactNames = map[string]string{"2@s.whatsapp.net": "Nadia Rahman"}
 
-	got, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("2@s.whatsapp.net"), Pushname: strPtr("Nadia")})
-	want := domain.Contact{AccountID: "wa", RemoteID: "2@s.whatsapp.net", Name: "Nadia Rahman", Verified: true}
+	got, _, ok := contactFromPushName(t.Context(), dev, "wa", &waHistorySync.Pushname{ID: strPtr("2@s.whatsapp.net"), Pushname: strPtr("Nadia")})
+	want := domain.Contact{AccountID: "wa", RemoteID: "2@s.whatsapp.net", Name: "Nadia Rahman"}
 	if !ok || got != want {
 		t.Errorf("contactFromPushName = %+v, %t; want %+v, true", got, ok, want)
 	}

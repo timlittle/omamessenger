@@ -77,7 +77,7 @@ func TestHandleContactUpdate_CorrectsTheSendersNameOnAlreadyStoredMessages(t *te
 		JID: jid, Action: &waSyncAction.ContactAction{FullName: strPtr("Nadia Rahman")},
 	})
 
-	want := senderNameCall{accountID: "wa", senderRemoteID: "15551234567@s.whatsapp.net", name: "Nadia Rahman", verified: true}
+	want := senderNameCall{accountID: "wa", senderRemoteID: "15551234567@s.whatsapp.net", name: "Nadia Rahman"}
 	if len(sink.senderNames) != 1 || sink.senderNames[0] != want {
 		t.Errorf("SenderName calls = %+v, want exactly [%+v]", sink.senderNames, want)
 	}

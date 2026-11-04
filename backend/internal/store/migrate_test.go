@@ -439,7 +439,7 @@ func TestStaleQuotes_SkipsAnUnparsableReplyToJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fixes, err := staleQuotes(rows, "r-alex", "Alex Chen", true)
+	fixes, err := staleQuotes(rows, "r-alex", "Alex Chen")
 	if err != nil {
 		t.Fatalf("staleQuotes: %v", err)
 	}

@@ -70,17 +70,17 @@ func (c *Connector) handleHistorySync(ctx context.Context, sink connector.Sink, 
 
 // syncPushnames reports a contact for every push name a sync carries,
 // and remembers each one for titling direct chats that otherwise have
-// no name of their own. Each contact's own verified status (see
+// no name of their own. Each contact's own resolved rank (see
 // contactFromPushName) decides the rank it is remembered at, the same
 // as every other name this connector learns.
 func (c *Connector) syncPushnames(ctx context.Context, sink connector.Sink, dev device, names []*waHistorySync.Pushname) {
 	for _, p := range names {
-		contact, ok := contactFromPushName(ctx, dev, c.account.ID, p)
+		contact, rank, ok := contactFromPushName(ctx, dev, c.account.ID, p)
 		if !ok {
 			continue
 		}
 
-		c.rememberName(contact.RemoteID, contact.Name, rankFor(contact.Verified))
+		c.rememberName(contact.RemoteID, contact.Name, rank)
 		sink.Contact(ctx, contact)
 	}
 }
@@ -119,8 +119,7 @@ func (c *Connector) syncConversation(ctx context.Context, sink connector.Sink, s
 	}
 	conv.RemoteID = chatID(ctx, src.dev, src.media, jid)
 
-	conv.Title, conv.TitleVerified, conv.Members = c.resolveConversation(ctx, src, jid, conv, sc)
-	conv.Phone = phoneNumber(ctx, src.dev, jid)
+	conv.Title, conv.Members = c.resolveConversation(ctx, src, jid, conv, sc)
 	c.reportConversation(ctx, sink, conv)
 	c.reportSyncedOrganize(ctx, sink, src.dev, jid, conv.RemoteID)
 
@@ -241,23 +240,21 @@ func (c *Connector) syncMessage(ctx context.Context, sink connector.Sink, target
 // a neutral placeholder this connector built, never the sender's own
 // claim). A conversation with no title at all would be dropped rather
 // than shown, so this never returns "".
-func (c *Connector) resolveConversation(ctx context.Context, src syncSource, jid types.JID, conv domain.Conversation, sc *waHistorySync.Conversation) (title string, verified bool, members int) {
+func (c *Connector) resolveConversation(ctx context.Context, src syncSource, jid types.JID, conv domain.Conversation, sc *waHistorySync.Conversation) (title string, members int) {
 	if src.dev.isSelfChat(ctx, jid) {
-		return selfChatTitle, true, 0
+		return selfChatTitle, 0
 	}
 
 	if conv.Kind == domain.KindGroup {
-		name, members := c.resolveGroupName(ctx, src.dev, jid, conv.Title, conv.Members)
-		return name, true, members
+		return c.resolveGroupName(ctx, src.dev, jid, conv.Title, conv.Members)
 	}
 
 	if conv.Title != "" {
-		name, rank := c.rememberName(conv.RemoteID, conv.Title, nameRankContact)
-		return name, verifiedRank(rank), 0
+		name, _ := c.rememberName(conv.RemoteID, conv.Title, nameRankContact)
+		return name, 0
 	}
 
-	title, verified = c.resolveDirectTitle(ctx, src, jid, syncedPushName(sc), syncedBusinessName(sc))
-	return title, verified, 0
+	return c.resolveDirectTitle(ctx, src, jid, syncedPushName(sc), syncedBusinessName(sc)), 0
 }
 
 // syncedPushName is the push name carried by whichever of sc's own
@@ -280,54 +277,48 @@ func syncedPushName(sc *waHistorySync.Conversation) string {
 	return ""
 }
 
-// resolveDirectTitle is a direct chat's best title, and whether it is
-// verified: its contact's resolved name (mapping a LID to its phone
-// JID first, see device.contactName; this already covers a business
-// whose verified name is saved in the contact store, see
-// contactDisplayName, and tells a bare push name cached there apart
-// from the rest, which is just as unverified as one read straight off
-// a message), the best name and rank already cached for its canonical
-// chat id (see chatID), the business's own verified name this
-// particular report carries, the push name it carries (never
-// verified, either of the last two), or, with nothing else known, a
-// fallback title built from jid's mapped phone JID when whatsmeow
-// already knows one, never a LID formatted as if it were a phone
-// number (always verified: it is this connector's own neutral
-// placeholder or the number itself, never the sender's own claim).
-// Keying every lookup and every name this resolves by the chat's
-// canonical id, rather than whichever address form this particular
-// jid happens to be, is what lets a name learned while the chat was
-// addressed one way still title it once WhatsApp reports the same
-// chat addressed the other way, and what stops a later report that
-// resolves nothing new from ever replacing a better name already
-// cached with this call's own weaker fallback (see rememberName). src
-// bundles the device and media store this needs, the same as every
-// other step of a history sync, so a live caller that has no sync of
-// its own to bundle them from (see live.go's ensureChat) builds one
-// just for this call.
-func (c *Connector) resolveDirectTitle(ctx context.Context, src syncSource, jid types.JID, pushName, businessName string) (title string, verified bool) {
+// resolveDirectTitle is a direct chat's best title: its contact's
+// resolved name (mapping a LID to its phone JID first, see
+// device.contactName; this already covers a business whose name is
+// saved in the contact store, see contactDisplayName), the best name
+// already cached for its canonical chat id (see chatID), the
+// business's own name this particular report carries, the push name
+// it carries, or, with nothing else known, a fallback title built
+// from jid's mapped phone JID when whatsmeow already knows one, never
+// a LID formatted as if it were a phone number. Keying every lookup
+// and every name this resolves by the chat's canonical id, rather than
+// whichever address form this particular jid happens to be, is what
+// lets a name learned while the chat was addressed one way still
+// title it once WhatsApp reports the same chat addressed the other
+// way, and what stops a later report that resolves nothing new from
+// ever replacing a better name already cached with this call's own
+// weaker fallback (see rememberName). src bundles the device and
+// media store this needs, the same as every other step of a history
+// sync, so a live caller that has no sync of its own to bundle them
+// from (see live.go's ensureChat) builds one just for this call.
+func (c *Connector) resolveDirectTitle(ctx context.Context, src syncSource, jid types.JID, pushName, businessName string) string {
 	remote := chatID(ctx, src.dev, src.media, jid)
 
-	if name, contactVerified := src.dev.contactName(ctx, jid); name != "" {
-		resolved, rank := c.rememberName(remote, name, rankFor(contactVerified))
-		return resolved, verifiedRank(rank)
+	if name, fromContact := src.dev.contactName(ctx, jid); name != "" {
+		resolved, _ := c.rememberName(remote, name, rankFor(fromContact))
+		return resolved
 	}
 
-	if name, rank := c.nameFor(remote); name != "" {
-		return name, verifiedRank(rank)
+	if name, _ := c.nameFor(remote); name != "" {
+		return name
 	}
 
 	if businessName != "" {
-		resolved, rank := c.rememberName(remote, businessName, nameRankBusiness)
-		return resolved, verifiedRank(rank)
+		resolved, _ := c.rememberName(remote, businessName, nameRankBusiness)
+		return resolved
 	}
 
 	if pushName != "" {
-		resolved, rank := c.rememberName(remote, pushName, nameRankPushName)
-		return resolved, verifiedRank(rank)
+		resolved, _ := c.rememberName(remote, pushName, nameRankPushName)
+		return resolved
 	}
 
-	return titleFallback(phoneFormOf(ctx, src.dev, jid)), true
+	return titleFallback(phoneFormOf(ctx, src.dev, jid))
 }
 
 // resolveGroupName is a group's current name and member count: whichever

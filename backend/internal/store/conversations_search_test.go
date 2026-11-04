@@ -124,35 +124,6 @@ func TestConversations_SearchReportsTheMatchedMessageIDAndSender(t *testing.T) {
 	}
 }
 
-// TestConversations_SearchReportsWhetherTheMatchedSenderIsVerified
-// confirms MatchSenderVerified mirrors the matched message's own
-// SenderVerified, both true and false: the command palette's
-// "Messages" section shows MatchSender as a search result's own
-// label, so it needs the same "~" marking a message's sender label
-// gets everywhere else (see docs/decisions.md).
-func TestConversations_SearchReportsWhetherTheMatchedSenderIsVerified(t *testing.T) {
-	t.Parallel()
-
-	s, _ := openChatStore(t)
-	addMessages(t, s,
-		domain.Message{ID: "m1", ConversationID: "chat", SenderName: "Mum", SenderVerified: false, Text: "unverified ticket", Created: 1},
-	)
-	verifiedChat := addConversation(t, s, "wa", "chat2", "Chat2")
-	addMessages(t, s,
-		domain.Message{ID: "m2", ConversationID: verifiedChat.ID, SenderName: "Alex", SenderVerified: true, Text: "verified ticket", Created: 1},
-	)
-
-	unverified, err := s.Conversations(t.Context(), "unverified ticket")
-	if err != nil || len(unverified) != 1 || unverified[0].MatchSenderVerified {
-		t.Fatalf("Conversations(unverified ticket)[0] = %+v, %v, want MatchSenderVerified false", unverified, err)
-	}
-
-	verified, err := s.Conversations(t.Context(), "verified ticket")
-	if err != nil || len(verified) != 1 || !verified[0].MatchSenderVerified {
-		t.Fatalf("Conversations(verified ticket)[0] = %+v, %v, want MatchSenderVerified true", verified, err)
-	}
-}
-
 func TestConversations_RanksBestOrMostRecentMatchFirst(t *testing.T) {
 	t.Parallel()
 

@@ -30,7 +30,7 @@ func TestMembers(t *testing.T) {
 				})
 			},
 			remote: "channel:5:3",
-			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia Rahman", Verified: true}},
+			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia Rahman"}},
 		},
 		{
 			name: "from a basic group",
@@ -41,15 +41,10 @@ func TestMembers(t *testing.T) {
 				})
 			},
 			remote: "chat:7",
-			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia", Verified: true}},
+			want:   []domain.Member{{ID: "user:42:99", Name: "Nadia"}},
 		},
 		{
-			// A group member's own profile name is just as able to carry
-			// a self-chosen claim as a direct chat's sender is, unless
-			// Telegram says this account has saved them as a contact or
-			// Telegram itself verifies them (see
-			// domain.Message.SenderVerified and docs/decisions.md).
-			name: "a bare profile name with no contact or verified badge is unverified",
+			name: "a bare profile name with no contact or verified badge",
 			setup: func(f *fakeTelegram) {
 				f.reply(&tg.MessagesGetFullChatRequest{}, &tg.MessagesChatFull{
 					FullChat: &tg.ChatFull{ID: 8, Participants: &tg.ChatParticipants{ChatID: 8}},
@@ -57,7 +52,7 @@ func TestMembers(t *testing.T) {
 				})
 			},
 			remote: "chat:8",
-			want:   []domain.Member{{ID: "user:43:100", Name: "Mum", Verified: false}},
+			want:   []domain.Member{{ID: "user:43:100", Name: "Mum"}},
 		},
 		{
 			name:   "none for a direct chat",

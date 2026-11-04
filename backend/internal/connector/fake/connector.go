@@ -371,13 +371,12 @@ func (c *Connector) inject(ctx context.Context, remoteID string) (domain.Message
 
 	script, _ := c.script.find(remoteID)
 	m := domain.Message{
-		RemoteID:       fmt.Sprintf("fake-injected-%d", c.seq.Add(1)),
-		SenderID:       script.remoteID,
-		SenderName:     script.title,
-		SenderVerified: true,
-		Text:           "A scripted message arrived.",
-		Status:         domain.StatusReceived,
-		Created:        time.Now().UnixMilli(),
+		RemoteID:   fmt.Sprintf("fake-injected-%d", c.seq.Add(1)),
+		SenderID:   script.remoteID,
+		SenderName: script.title,
+		Text:       "A scripted message arrived.",
+		Status:     domain.StatusReceived,
+		Created:    time.Now().UnixMilli(),
 	}
 	r.sink.Incoming(ctx, c.script.account.ID, remoteID, m)
 

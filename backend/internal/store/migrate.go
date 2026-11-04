@@ -311,6 +311,14 @@ var migrations = []migrationStep{
 	// stored before this column existed was never actually checked
 	// either.
 	{sql: `ALTER TABLE conversations ADD COLUMN preview_sender_verified INTEGER NOT NULL DEFAULT 0;`},
+	// sender_verified, title_verified, phone (on both conversations and
+	// contacts), contacts.verified and preview_sender_verified, all
+	// added above, are no longer read or written by any Go code: the
+	// UI stopped reading them, and the plumbing that fed them was
+	// later removed too (see docs/decisions.md). Migrations are never
+	// edited or reversed, so these columns stay in the schema, simply
+	// unused, rather than getting a migration of their own to drop
+	// them.
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

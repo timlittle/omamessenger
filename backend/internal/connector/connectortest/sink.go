@@ -17,18 +17,17 @@ import (
 // "status tg connected" or "incoming user:42:99 7", and keeps earlier
 // messages by conversation.
 type Sink struct {
-	mu                 sync.Mutex
-	lines              []string
-	history            map[string][]domain.Message
-	live               map[string][]domain.Message
-	outgoing           map[string][]OutgoingUpdate
-	authSteps          []connector.AuthStep
-	conversations      map[string]domain.Conversation
-	unread             map[string]int
-	organized          map[string]organizedFlags
-	deleted            map[string]map[string]bool
-	polls              map[string]domain.Poll
-	lastTypingVerified bool
+	mu            sync.Mutex
+	lines         []string
+	history       map[string][]domain.Message
+	live          map[string][]domain.Message
+	outgoing      map[string][]OutgoingUpdate
+	authSteps     []connector.AuthStep
+	conversations map[string]domain.Conversation
+	unread        map[string]int
+	organized     map[string]organizedFlags
+	deleted       map[string]map[string]bool
+	polls         map[string]domain.Poll
 }
 
 // organizedFlags is a conversation's last reported pinned and archived
@@ -253,29 +252,9 @@ func (s *Sink) Outgoing(localMessageID string) []OutgoingUpdate {
 	return slices.Clone(s.outgoing[localMessageID])
 }
 
-// Typing records someone starting or stopping typing, and remembers
-// state.Verified for LastTypingVerified. Verified is left out of the
-// recorded line itself: every existing test checks the exact
-// "typing <remote> <bool>" string, which would break if a verified
-// marker joined it.
-func (s *Sink) Typing(_ context.Context, _, remote, _ string, state connector.TypingState) {
-	s.mu.Lock()
-	s.lastTypingVerified = state.Verified
-	s.mu.Unlock()
-
-	s.record("typing %s %t", remote, state.Active)
-}
-
-// LastTypingVerified reports verified from the most recent Typing
-// call, for a test that needs to tell a verified typing name apart
-// from an unverified one - a group's own typing indicator can carry a
-// bare, self-chosen name just as its messages can (see
-// docs/decisions.md).
-func (s *Sink) LastTypingVerified() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.lastTypingVerified
+// Typing records someone starting or stopping typing.
+func (s *Sink) Typing(_ context.Context, _, remote, _ string, active bool) {
+	s.record("typing %s %t", remote, active)
 }
 
 // Unread records the service's unread count for a conversation, and

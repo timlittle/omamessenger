@@ -50,7 +50,7 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 			"outgoing text",
 			outgoingInfo(), &waE2E.Message{Conversation: strPtr("back")},
 			domain.Message{
-				RemoteID: "ABCD1234", SenderID: "self", SenderName: "You", SenderVerified: true,
+				RemoteID: "ABCD1234", SenderID: "self", SenderName: "You",
 				Text: "back", Outgoing: true, Status: domain.StatusSent, Created: 1_800_000_000_000,
 			},
 		},
@@ -71,7 +71,7 @@ func TestMessage_FromIncomingOutgoingAndMedia(t *testing.T) {
 			},
 			&waE2E.Message{Conversation: strPtr("hi")},
 			domain.Message{
-				RemoteID: "X", SenderID: "15551234567@s.whatsapp.net", SenderName: "WhatsApp user", SenderVerified: true,
+				RemoteID: "X", SenderID: "15551234567@s.whatsapp.net", SenderName: "WhatsApp user",
 				Text: "hi", Status: domain.StatusReceived, Created: 1000,
 			},
 		},
@@ -185,11 +185,10 @@ func TestMessage_UnwrapGivesUpAfterTheDepthLimit(t *testing.T) {
 	}
 }
 
-// TestSenderName_FallsBackSensibly confirms a bare push name, or a
-// business name below WhatsApp's own "high" verification level (the
-// free Business app lets anyone set one lower), comes back unverified;
-// a "high"-level business name, and the generic fallback label, both
-// come back verified.
+// TestSenderName_FallsBackSensibly confirms a business name below
+// WhatsApp's own "high" verification level (the free Business app lets
+// anyone set one lower) falls back to the generic label, never shown
+// as if it were a reviewed business name.
 func TestSenderName_FallsBackSensibly(t *testing.T) {
 	t.Parallel()
 
@@ -197,22 +196,20 @@ func TestSenderName_FallsBackSensibly(t *testing.T) {
 		return &types.VerifiedName{Details: &waVnameCert.VerifiedNameCertificate_Details{VerifiedName: strPtr("Acme Support")}, VerifiedLevel: level}
 	}
 	tests := []struct {
-		name         string
-		info         types.MessageInfo
-		want         string
-		wantVerified bool
+		name string
+		info types.MessageInfo
+		want string
 	}{
-		{"push name", types.MessageInfo{PushName: "Nadia"}, "Nadia", false},
-		{"high-level verified business name", types.MessageInfo{VerifiedName: withLevel("high")}, "Acme Support", true},
-		{"unreviewed business name falls back to the generic label", types.MessageInfo{VerifiedName: withLevel("low")}, "WhatsApp user", true},
-		{"verified name with no details", types.MessageInfo{VerifiedName: &types.VerifiedName{}}, "WhatsApp user", true},
-		{"no name at all", types.MessageInfo{}, "WhatsApp user", true},
+		{"push name", types.MessageInfo{PushName: "Nadia"}, "Nadia"},
+		{"high-level verified business name", types.MessageInfo{VerifiedName: withLevel("high")}, "Acme Support"},
+		{"unreviewed business name falls back to the generic label", types.MessageInfo{VerifiedName: withLevel("low")}, "WhatsApp user"},
+		{"verified name with no details", types.MessageInfo{VerifiedName: &types.VerifiedName{}}, "WhatsApp user"},
+		{"no name at all", types.MessageInfo{}, "WhatsApp user"},
 	}
 
 	for _, tt := range tests {
-		got, verified := senderName(tt.info)
-		if got != tt.want || verified != tt.wantVerified {
-			t.Errorf("senderName(%s) = %q,%t want %q,%t", tt.name, got, verified, tt.want, tt.wantVerified)
+		if got := senderName(tt.info); got != tt.want {
+			t.Errorf("senderName(%s) = %q, want %q", tt.name, got, tt.want)
 		}
 	}
 }
@@ -377,7 +374,7 @@ func TestHistoryMessage_DirectAndGroup(t *testing.T) {
 				MessageTimestamp: u64(1_800_000_000),
 			}},
 			domain.Message{
-				RemoteID: "H2", SenderID: "self", SenderName: "You", SenderVerified: true,
+				RemoteID: "H2", SenderID: "self", SenderName: "You",
 				Text: "back", Outgoing: true, Status: domain.StatusSent, Created: 1_800_000_000_000,
 			},
 		},

@@ -6,12 +6,7 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// accountScript is one fake account and what it contains. Every
-// contacts entry below is marked Verified: true: each one stands in
-// for a real saved contact the new-chat picker shows, never a
-// stranger's self-chosen name (see app.OpenConversation and
-// docs/decisions.md), so a flow that opens a chat from one of these
-// must see the same trust a real saved contact would carry.
+// accountScript is one fake account and what it contains.
 type accountScript struct {
 	account       domain.Account
 	connectDelay  time.Duration
@@ -109,9 +104,9 @@ var scripts = []accountScript{
 			},
 		},
 		contacts: []domain.Contact{
-			{RemoteID: "wa:contact-ben", Name: "Ben Okafor", Verified: true},
-			{RemoteID: "wa:contact-carla", Name: "Carla Ruiz", Verified: true},
-			{RemoteID: "wa:contact-dev", Name: "Dev Patel", Verified: true},
+			{RemoteID: "wa:contact-ben", Name: "Ben Okafor"},
+			{RemoteID: "wa:contact-carla", Name: "Carla Ruiz"},
+			{RemoteID: "wa:contact-dev", Name: "Dev Patel"},
 		},
 	},
 	{
@@ -138,9 +133,9 @@ var scripts = []accountScript{
 			},
 		},
 		contacts: []domain.Contact{
-			{RemoteID: "tg:contact-elif", Name: "Elif Kaya", Verified: true},
-			{RemoteID: "tg:contact-femi", Name: "Femi Adeyemi", Verified: true},
-			{RemoteID: "tg:contact-greta", Name: "Greta Lind", Verified: true},
+			{RemoteID: "tg:contact-elif", Name: "Elif Kaya"},
+			{RemoteID: "tg:contact-femi", Name: "Femi Adeyemi"},
+			{RemoteID: "tg:contact-greta", Name: "Greta Lind"},
 		},
 	},
 	{
@@ -158,9 +153,9 @@ var scripts = []accountScript{
 			},
 		},
 		contacts: []domain.Contact{
-			{RemoteID: "tg:contact-hana", Name: "Hana Sato", Verified: true},
-			{RemoteID: "tg:contact-ivan", Name: "Ivan Petrov", Verified: true},
-			{RemoteID: "tg:contact-jo", Name: "Jo Park", Verified: true},
+			{RemoteID: "tg:contact-hana", Name: "Hana Sato"},
+			{RemoteID: "tg:contact-ivan", Name: "Ivan Petrov"},
+			{RemoteID: "tg:contact-jo", Name: "Jo Park"},
 		},
 	},
 }

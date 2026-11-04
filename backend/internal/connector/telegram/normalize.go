@@ -88,17 +88,12 @@ func peerConversation(accountID string, peer tg.PeerClass, e entities) (domain.C
 		return domain.Conversation{}, false
 	}
 
-	// A group or channel's own title is always verified: there is no
-	// self-chosen personal identity to mark for it, only for a
-	// person's own name (see userName), which the PeerUser case below
-	// overrides this default for.
-	c := domain.Conversation{AccountID: accountID, RemoteID: remoteID(input), Kind: domain.KindGroup, TitleVerified: true}
+	c := domain.Conversation{AccountID: accountID, RemoteID: remoteID(input), Kind: domain.KindGroup}
 
 	switch p := peer.(type) {
 	case *tg.PeerUser:
 		c.Kind = domain.KindDirect
-		c.Title, c.TitleVerified = userName(e.users[p.UserID])
-		c.Phone = sharedPhone(e.users[p.UserID])
+		c.Title = userName(e.users[p.UserID])
 	case *tg.PeerChat:
 		c.Title, c.Members = e.chats[p.ChatID].Title, e.chats[p.ChatID].ParticipantsCount
 	case *tg.PeerChannel:
@@ -130,17 +125,17 @@ func placeholderConversation(accountID string, peer tg.PeerClass) (domain.Conver
 	switch p := peer.(type) {
 	case *tg.PeerUser:
 		return domain.Conversation{
-			AccountID: accountID, Kind: domain.KindDirect, Title: unknownUserName, TitleVerified: true,
+			AccountID: accountID, Kind: domain.KindDirect, Title: unknownUserName,
 			RemoteID: remoteID(&tg.InputPeerUser{UserID: p.UserID}),
 		}, true
 	case *tg.PeerChat:
 		return domain.Conversation{
-			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName, TitleVerified: true,
+			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName,
 			RemoteID: remoteID(&tg.InputPeerChat{ChatID: p.ChatID}),
 		}, true
 	case *tg.PeerChannel:
 		return domain.Conversation{
-			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName, TitleVerified: true,
+			AccountID: accountID, Kind: domain.KindGroup, Title: unknownGroupName,
 			RemoteID: remoteID(&tg.InputPeerChannel{ChannelID: p.ChannelID}),
 		}, true
 	default:
@@ -190,7 +185,7 @@ func message(m *tg.Message, e entities, selfID int64) domain.Message {
 	}
 
 	if m.Out {
-		out.SenderID, out.SenderName, out.SenderVerified, out.Status = "self", "You", true, domain.StatusSent
+		out.SenderID, out.SenderName, out.Status = "self", "You", domain.StatusSent
 		return out
 	}
 
@@ -202,7 +197,7 @@ func message(m *tg.Message, e entities, selfID int64) domain.Message {
 
 	if u, ok := sender.(*tg.PeerUser); ok {
 		out.SenderID = strconv.FormatInt(u.UserID, 10)
-		out.SenderName, out.SenderVerified = userName(e.users[u.UserID])
+		out.SenderName = userName(e.users[u.UserID])
 	}
 
 	return out
@@ -278,68 +273,39 @@ func reactions(mr tg.MessageReactions) []domain.Reaction {
 // sender's name yet.
 const unknownUserName = "Telegram user"
 
-// userName names a user the way Telegram's chat list does, and
-// reports whether that name is verified: the chat with yourself is
-// your saved messages, a fixed, always-verified label, never a
-// self-chosen claim; otherwise see ownName.
-func userName(u *tg.User) (name string, verified bool) {
+// userName names a user the way Telegram's chat list does: the chat
+// with yourself is your saved messages, a fixed label; otherwise see
+// ownName.
+func userName(u *tg.User) string {
 	if u != nil && u.Self {
-		return "Saved Messages", true
+		return "Saved Messages"
 	}
 
 	return ownName(u)
 }
 
-// ownName names a person by first and last name, then username, and
-// reports whether that name is verified: true when u is someone the
-// account has saved as a contact or Telegram itself verifies
-// (u.Verified - its own badge for notable accounts), false for a bare
-// first/last name or username, exactly as self-chosen and unverified
-// as a WhatsApp push name (see domain.Message.SenderVerified). The
-// generic label this falls back to when u is nil or names neither is
-// never marked unverified: it is this connector's own placeholder, not
-// a claim the person made.
-func ownName(u *tg.User) (name string, verified bool) {
+// ownName names a person by first and last name, then username,
+// falling back to a generic label when u is nil or names neither.
+func ownName(u *tg.User) string {
 	switch {
 	case u == nil:
-		return unknownUserName, true
+		return unknownUserName
 	case strings.TrimSpace(u.FirstName+" "+u.LastName) != "":
-		return strings.TrimSpace(u.FirstName + " " + u.LastName), u.Contact || u.Verified
+		return strings.TrimSpace(u.FirstName + " " + u.LastName)
 	case u.Username != "":
-		return "@" + u.Username, u.Contact || u.Verified
+		return "@" + u.Username
 	default:
-		return unknownUserName, true
+		return unknownUserName
 	}
 }
 
-// sharedPhone is u's own phone number, formatted "+<digits>" to match
-// domain.Conversation.Phone's WhatsApp form, when u has chosen to
-// share one with this account; most Telegram accounts never do, so
-// "" is the common case. Shown beside an unverified direct chat's
-// title the way the official WhatsApp app shows a stranger's number
-// instead of trusting their self-chosen name.
-func sharedPhone(u *tg.User) string {
-	if u == nil || u.Phone == "" {
-		return ""
-	}
-
-	return "+" + u.Phone
-}
-
-// contact turns a user into a contact of the account. It is always
-// verified: contact's only caller reads Telegram's own
-// contacts.getContacts, so every user it names is already a saved
-// contact of this account, regardless of that user's own Contact or
-// Verified flags (see userName, which userName uses for a sender's or
-// group member's name - a bare, self-chosen one that carries no such
-// guarantee).
+// contact turns a user into a contact of the account. contact's only
+// caller reads Telegram's own contacts.getContacts, so every user it
+// names is already a saved contact of this account.
 func contact(accountID string, u *tg.User) domain.Contact {
-	name, _ := userName(u)
-
 	return domain.Contact{
 		AccountID: accountID,
 		RemoteID:  remoteID(&tg.InputPeerUser{UserID: u.ID, AccessHash: u.AccessHash}),
-		Name:      name,
-		Verified:  true,
+		Name:      userName(u),
 	}
 }

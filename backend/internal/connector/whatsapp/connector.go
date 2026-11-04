@@ -100,25 +100,12 @@ const (
 	nameRankContact
 )
 
-// verifiedRank reports whether rank is trustworthy enough to show
-// unmarked, matching domain.Message.SenderVerified: only a contact's
-// saved name or a group's own name is. A business name ranks above a
-// bare push name for priority (see nameRank), but anyone can set one
-// through the free, unreviewed WhatsApp Business app, so it is not
-// trusted enough to show unmarked by rank alone; only senderName's own
-// check of whatsmeow's VerifiedLevel grants that.
-func verifiedRank(rank nameRank) bool {
-	return rank == nameRankContact
-}
-
-// rankFor is verifiedRank's inverse, for a caller that already knows
-// only whether a name it resolved is verified, such as
-// device.contactName: nameRankContact for a verified one, matching
-// how this connector already ranked every contactName resolution
-// before verified existed to tell apart, or nameRankPushName for an
-// unverified one.
-func rankFor(verified bool) nameRank {
-	if verified {
+// rankFor turns device.contactName's own distinction between a saved
+// contact's name and a bare push name into the matching nameRank:
+// nameRankContact for a saved contact's name, nameRankPushName
+// otherwise.
+func rankFor(fromContact bool) nameRank {
+	if fromContact {
 		return nameRankContact
 	}
 
@@ -391,23 +378,23 @@ func (c *Connector) nameFor(remoteID string) (string, nameRank) {
 	return entry.name, entry.rank
 }
 
-// improvedSenderName replaces m's sender name and verified flag with
-// this connector's own cached name for the sender (see nameFor and
-// rememberName), but only when message or historyMessage could not
-// resolve one of their own and fell all the way back to
-// genericSenderName: a group's history sync often carries no push
-// name of its own for each individual message, even though the
-// account-wide push name list (see syncPushnames) or a later contact
-// event already named that same sender from somewhere else. A message
-// that already carries a real name, or one that is this account's
-// own, is returned unchanged.
+// improvedSenderName replaces m's sender name with this connector's
+// own cached name for the sender (see nameFor and rememberName), but
+// only when message or historyMessage could not resolve one of their
+// own and fell all the way back to genericSenderName: a group's
+// history sync often carries no push name of its own for each
+// individual message, even though the account-wide push name list
+// (see syncPushnames) or a later contact event already named that
+// same sender from somewhere else. A message that already carries a
+// real name, or one that is this account's own, is returned
+// unchanged.
 func (c *Connector) improvedSenderName(m domain.Message) domain.Message {
 	if m.Outgoing || m.SenderName != genericSenderName {
 		return m
 	}
 
-	if cached, rank := c.nameFor(m.SenderID); cached != "" {
-		m.SenderName, m.SenderVerified = cached, verifiedRank(rank)
+	if cached, _ := c.nameFor(m.SenderID); cached != "" {
+		m.SenderName = cached
 	}
 
 	return m

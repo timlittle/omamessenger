@@ -27,7 +27,7 @@ func TestRefreshSenderName_UpdatesTheGroupPreviewOnceTheSenderResolves(t *testin
 		SenderID: "r-priya", SenderName: "WhatsApp user", Text: "Thanks", Created: 100,
 	})
 
-	changed, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair", true)
+	changed, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair")
 	if err != nil {
 		t.Fatalf("RefreshSenderName: %v", err)
 	}
@@ -41,9 +41,6 @@ func TestRefreshSenderName_UpdatesTheGroupPreviewOnceTheSenderResolves(t *testin
 	}
 	if updated.PreviewSender != "Priya Nair" {
 		t.Errorf("conversation.PreviewSender = %q, want %q", updated.PreviewSender, "Priya Nair")
-	}
-	if !updated.PreviewSenderVerified {
-		t.Error("conversation.PreviewSenderVerified = false, want true once RefreshSenderName resolves a verified name")
 	}
 
 	stored, err := s.MessageByRemote(ctx, group.ID, "r1")
@@ -72,7 +69,7 @@ func TestRefreshSenderName_LeavesAnOlderMessagesPreviewAlone(t *testing.T) {
 		domain.Message{ID: "m2", ConversationID: group.ID, RemoteID: "r2", SenderID: "r-sam", SenderName: "Sam", Text: "Sounds good", Created: 200},
 	)
 
-	changed, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair", true)
+	changed, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair")
 	if err != nil {
 		t.Fatalf("RefreshSenderName: %v", err)
 	}
@@ -133,7 +130,7 @@ func TestRefreshSenderName_CorrectsAReplyQuoteToo(t *testing.T) {
 		},
 	)
 
-	if _, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair", true); err != nil {
+	if _, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair"); err != nil {
 		t.Fatalf("RefreshSenderName: %v", err)
 	}
 
@@ -154,85 +151,8 @@ func TestRefreshSenderName_CorrectsAReplyQuoteToo(t *testing.T) {
 	}
 
 	// Refreshing to the same name again is a no-op, not an error.
-	if _, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair", true); err != nil {
+	if _, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair"); err != nil {
 		t.Fatalf("RefreshSenderName (repeat): %v", err)
-	}
-}
-
-// TestRefreshSenderName_UpdatesSenderVerifiedOnEveryMessage reproduces
-// a sender first stored unverified - a bare push name - whose contact
-// then resolves: every message they already sent must flip to
-// verified along with the corrected name, not keep showing "~" next
-// to a name the UI would otherwise trust once it is corrected (see
-// docs/decisions.md).
-func TestRefreshSenderName_UpdatesSenderVerifiedOnEveryMessage(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	chat := addConversation(t, s, "wa", "chat", "Chat")
-	addMessages(t, s,
-		domain.Message{ID: "m1", ConversationID: chat.ID, RemoteID: "r1", SenderID: "r-priya", SenderName: "WhatsApp user", SenderVerified: false, Text: "hi", Created: 100},
-		domain.Message{ID: "m2", ConversationID: chat.ID, RemoteID: "r2", SenderID: "r-sam", SenderName: "Sam", SenderVerified: true, Text: "yo", Created: 150},
-	)
-
-	if _, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair", true); err != nil {
-		t.Fatalf("RefreshSenderName: %v", err)
-	}
-
-	refreshed, err := s.Message(ctx, "m1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !refreshed.SenderVerified {
-		t.Errorf("m1.SenderVerified = false after a verified refresh, want true")
-	}
-
-	other, err := s.Message(ctx, "m2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !other.SenderVerified {
-		t.Errorf("m2.SenderVerified = %t, want the other sender's own message left alone (still verified)", other.SenderVerified)
-	}
-}
-
-// TestRefreshSenderName_CorrectsAReplyQuotesVerifiedFlagToo confirms a
-// reply quote's own copy of its sender's verified flag is corrected
-// the same way its SenderName already is (see
-// TestRefreshSenderName_CorrectsAReplyQuoteToo): a quote resolved while
-// its sender was still a bare push name must stop showing "~" once a
-// contact resolves for them.
-func TestRefreshSenderName_CorrectsAReplyQuotesVerifiedFlagToo(t *testing.T) {
-	t.Parallel()
-
-	s := openStore(t)
-	ctx := t.Context()
-	addAccount(t, s, "wa")
-	chat := addConversation(t, s, "wa", "chat", "Chat")
-	addMessages(t, s,
-		domain.Message{
-			ID: "m1", ConversationID: chat.ID, RemoteID: "r1",
-			SenderID: "r-priya", SenderName: "WhatsApp user", SenderVerified: false, Text: "I'm about to try", Created: 100,
-		},
-		domain.Message{
-			ID: "m2", ConversationID: chat.ID, RemoteID: "r2",
-			SenderID: "self", SenderName: "You", SenderVerified: true, Text: "sure", Created: 200,
-			ReplyTo: &domain.Reply{RemoteID: "r1", SenderName: "WhatsApp user", SenderVerified: false, Text: "I'm about to try"},
-		},
-	)
-
-	if _, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair", true); err != nil {
-		t.Fatalf("RefreshSenderName: %v", err)
-	}
-
-	quoting, err := s.Message(ctx, "m2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if quoting.ReplyTo == nil || !quoting.ReplyTo.SenderVerified {
-		t.Errorf("m2.ReplyTo = %+v, want its quoted sender's verified flag corrected to true", quoting.ReplyTo)
 	}
 }
 
@@ -248,7 +168,7 @@ func TestRefreshSenderName_IgnoresASenderWithNoMessagesStored(t *testing.T) {
 	chat := addConversation(t, s, "wa", "chat", "Chat")
 	addMessages(t, s, domain.Message{ID: "m1", ConversationID: chat.ID, RemoteID: "r1", SenderID: "r-sam", SenderName: "Sam", Text: "hi", Created: 100})
 
-	changed, err := s.RefreshSenderName(ctx, "wa", "r-nobody", "Nobody", true)
+	changed, err := s.RefreshSenderName(ctx, "wa", "r-nobody", "Nobody")
 	if err != nil {
 		t.Fatalf("RefreshSenderName: %v", err)
 	}
@@ -273,7 +193,7 @@ func TestRefreshSenderName_IsScopedToOneAccount(t *testing.T) {
 		SenderID: "r-priya", SenderName: "WhatsApp user", Text: "Thanks", Created: 100,
 	})
 
-	changed, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair", true)
+	changed, err := s.RefreshSenderName(ctx, "wa", "r-priya", "Priya Nair")
 	if err != nil {
 		t.Fatalf("RefreshSenderName: %v", err)
 	}
@@ -317,7 +237,7 @@ func TestRefreshSenderName_NeverRelabelsAQuoteFromAnotherConversationsReusedRemo
 		domain.Message{ID: "mallory-x", ConversationID: dm.ID, RemoteID: "x", SenderID: "r-mallory", SenderName: "WhatsApp user", Text: "hey", Created: 170},
 	)
 
-	if _, err := s.RefreshSenderName(ctx, "wa", "r-mallory", "Bob", true); err != nil {
+	if _, err := s.RefreshSenderName(ctx, "wa", "r-mallory", "Bob"); err != nil {
 		t.Fatalf("RefreshSenderName: %v", err)
 	}
 
@@ -352,7 +272,7 @@ func TestRefreshSenderName_IgnoresANaturallyCollidingRemoteIDInAnotherConversati
 		domain.Message{ID: "b-42", ConversationID: chatB.ID, RemoteID: "42", SenderID: "r-priya", SenderName: "Priya", Text: "unrelated chat", Created: 200},
 	)
 
-	if _, err := s.RefreshSenderName(ctx, "tg", "r-priya", "Priya Nair", true); err != nil {
+	if _, err := s.RefreshSenderName(ctx, "tg", "r-priya", "Priya Nair"); err != nil {
 		t.Fatalf("RefreshSenderName: %v", err)
 	}
 

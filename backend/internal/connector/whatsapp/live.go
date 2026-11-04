@@ -133,7 +133,7 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 
 	if dev.isSelfChat(ctx, info.Chat) {
 		c.reportConversation(ctx, sink, domain.Conversation{
-			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: selfChatTitle, TitleVerified: true,
+			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: selfChatTitle,
 		})
 
 		return
@@ -142,7 +142,7 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 	if kindFor(info.Chat) == domain.KindGroup {
 		name, members := c.resolveGroupName(ctx, dev, info.Chat, "", 0)
 		c.reportConversation(ctx, sink, domain.Conversation{
-			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindGroup, Title: name, TitleVerified: true, Members: members,
+			AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindGroup, Title: name, Members: members,
 		})
 
 		return
@@ -154,10 +154,9 @@ func (c *Connector) ensureChat(ctx context.Context, sink connector.Sink, dev dev
 		pushName, businessName = "", ""
 	}
 
-	title, verified := c.resolveDirectTitle(ctx, syncSource{dev: dev, media: media}, info.Chat, pushName, businessName)
+	title := c.resolveDirectTitle(ctx, syncSource{dev: dev, media: media}, info.Chat, pushName, businessName)
 	c.reportConversation(ctx, sink, domain.Conversation{
-		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title, TitleVerified: verified,
-		Phone: phoneNumber(ctx, dev, info.Chat),
+		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: title,
 	})
 }
 
@@ -220,20 +219,13 @@ func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, dev dev
 // handleChatPresence reports someone typing or stopping, naming them
 // only in a group: a direct chat's single header has no room for a
 // name, matching how this helper's other connector reports it.
-// verified mirrors the same cached rank every other name this
-// connector reports for the sender is keyed by (see nameFor): a
-// group's typing indicator is just as able to carry a bare,
-// self-chosen name as its messages are.
 func (c *Connector) handleChatPresence(ctx context.Context, sink connector.Sink, dev device, media *mediaStore, e *events.ChatPresence) {
-	name, verified := "", true
+	name := ""
 	if e.IsGroup {
-		var rank nameRank
-		name, rank = c.nameFor(remoteID(e.Sender))
-		verified = verifiedRank(rank)
+		name, _ = c.nameFor(remoteID(e.Sender))
 	}
 
-	state := connector.TypingState{Verified: verified, Active: typingActive(e.State)}
-	sink.Typing(ctx, c.account.ID, chatID(ctx, dev, media, e.Chat), name, state)
+	sink.Typing(ctx, c.account.ID, chatID(ctx, dev, media, e.Chat), name, typingActive(e.State))
 }
 
 // handleReceipt reports the one kind of receipt that is ours to handle
@@ -300,14 +292,14 @@ func (c *Connector) handleUndecryptable(ctx context.Context, sink connector.Sink
 	}
 
 	if e.Info.IsFromMe {
-		m.SenderID, m.SenderName, m.SenderVerified, m.Status = "self", "You", true, domain.StatusSent
+		m.SenderID, m.SenderName, m.Status = "self", "You", domain.StatusSent
 		saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{fromMe: true, timestamp: m.Created})
 		sink.History(ctx, c.account.ID, remote, m)
 		return
 	}
 
 	m.SenderID = remoteID(e.Info.Sender)
-	m.SenderName, m.SenderVerified = senderName(e.Info)
+	m.SenderName = senderName(e.Info)
 	m = c.improvedSenderName(m)
 	saveMessageKey(ctx, media, remote, m.RemoteID, messageKey{senderID: senderKeyID(e.Info), fromMe: false, timestamp: m.Created})
 	sink.Incoming(ctx, c.account.ID, remote, m)

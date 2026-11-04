@@ -10,7 +10,6 @@ import (
 
 	"github.com/timlittle/omamessenger/backend/internal/app"
 	"github.com/timlittle/omamessenger/backend/internal/cache"
-	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 	"github.com/timlittle/omamessenger/backend/internal/server"
 )
@@ -71,7 +70,7 @@ func TestServer_PublishesEventsAsNotifications(t *testing.T) {
 	t.Parallel()
 
 	s := connect(t, false)
-	s.ingest.Typing(t.Context(), "wa", "r-chat", "Alex", connector.TypingState{Verified: true, Active: true})
+	s.ingest.Typing(t.Context(), "wa", "r-chat", "Alex", true)
 
 	s.events.await(t, app.EventTyping)
 }

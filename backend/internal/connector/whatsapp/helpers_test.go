@@ -712,7 +712,6 @@ func u64(n uint64) *uint64 { return &n }
 // senderNameCall records one call to recordingSink.SenderName.
 type senderNameCall struct {
 	accountID, senderRemoteID, name string
-	verified                        bool
 }
 
 // recordingSink wraps connectortest.Sink, additionally implementing
@@ -727,8 +726,8 @@ type recordingSink struct {
 }
 
 // SenderName records the call.
-func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string, verified bool) {
-	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name, verified})
+func (s *recordingSink) SenderName(_ context.Context, accountID, senderRemoteID, name string) {
+	s.senderNames = append(s.senderNames, senderNameCall{accountID, senderRemoteID, name})
 }
 
 // contains reports whether s holds substr.

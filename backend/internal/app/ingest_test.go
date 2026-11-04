@@ -77,7 +77,7 @@ func TestSenderName_RefreshesTheConversationThatChangedItPublishesOnlyThat(t *te
 	f.ingest.Incoming(ctx, "wa", other.RemoteID, domain.Message{RemoteID: "in-2", SenderID: "sam", SenderName: "Sam", Text: "hi", Created: 1})
 	f.published.take()
 
-	f.ingest.SenderName(ctx, "wa", "alex", "Alex Chen", true)
+	f.ingest.SenderName(ctx, "wa", "alex", "Alex Chen")
 
 	if got := f.published.take(); !slices.Equal(got, []string{app.EventConversationUpdated}) {
 		t.Errorf("events = %v, want exactly one conversation update", got)
@@ -121,7 +121,7 @@ func TestSenderName_CorrectsAnAlreadyStoredReplyQuoteToo(t *testing.T) {
 		ReplyTo: &domain.Reply{RemoteID: "100", SenderName: "WhatsApp user", Text: "I'm about to try"},
 	})
 
-	f.ingest.SenderName(ctx, "wa", "alex", "Alex Chen", true)
+	f.ingest.SenderName(ctx, "wa", "alex", "Alex Chen")
 
 	page, _, _, err := f.commands.Messages(ctx, chat.ID, "", 0)
 	if err != nil || len(page) != 2 {
@@ -182,7 +182,7 @@ func TestIncoming_FollowsSettingsMuteAndFocus(t *testing.T) {
 
 	f.commands.ApplySettings(app.Settings{Notifications: true, NotificationDetail: "nameOnly"})
 	f.ingest.Incoming(ctx, "wa", chat.RemoteID, incoming("hidden", "secret"))
-	f.ingest.Incoming(ctx, "wa", group.RemoteID, domain.Message{RemoteID: "g", SenderName: "Priya", SenderVerified: true, Text: "hi", Created: time.Now().UnixMilli()})
+	f.ingest.Incoming(ctx, "wa", group.RemoteID, domain.Message{RemoteID: "g", SenderName: "Priya", Text: "hi", Created: time.Now().UnixMilli()})
 
 	if _, err := f.commands.SetMuted(ctx, chat.ID, true); err != nil {
 		t.Fatal(err)

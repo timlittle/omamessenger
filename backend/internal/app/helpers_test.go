@@ -338,7 +338,7 @@ func (i *fakeInjector) Inject(ctx context.Context, remoteID string) (domain.Mess
 // incoming returns an incoming message from Alex, a verified sender,
 // with the given remote id.
 func incoming(remoteID, text string) domain.Message {
-	return domain.Message{RemoteID: remoteID, SenderID: "alex", SenderName: "Alex", SenderVerified: true, Text: text, Created: time.Now().UnixMilli()}
+	return domain.Message{RemoteID: remoteID, SenderID: "alex", SenderName: "Alex", Text: text, Created: time.Now().UnixMilli()}
 }
 
 // fakeAccounts adds and removes accounts straight in the store, failing

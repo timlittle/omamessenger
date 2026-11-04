@@ -12,7 +12,7 @@ import (
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me,retry_at,retry_attempts,retry_since,attachment_original_path,attachment_original_modtime,formatting,sender_verified`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me,retry_at,retry_attempts,retry_since,attachment_original_path,attachment_original_modtime,formatting`
 
 // Page sizes for Messages.
 const (
@@ -100,7 +100,6 @@ func (s *Store) resolveReply(ctx context.Context, m domain.Message) domain.Messa
 	reply := *m.ReplyTo
 	reply.SenderID = quoted.SenderID
 	reply.SenderName = quoted.SenderName
-	reply.SenderVerified = quoted.SenderVerified
 	reply.Text = domain.Excerpt(quoted.Text)
 	m.ReplyTo = &reply
 
@@ -213,9 +212,9 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message, countUnread
 
 	originalPath, originalModTime := originalAttachment(m.Media)
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo, reactions, mentions, m.MentionsMe,
-		m.RetryAt, m.RetryAttempts, m.RetrySince, originalPath, originalModTime, formatting, m.SenderVerified)
+		m.RetryAt, m.RetryAttempts, m.RetrySince, originalPath, originalModTime, formatting)
 	if err != nil {
 		return err
 	}
@@ -247,11 +246,10 @@ func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message, countUn
 			unread=unread+?,
 			preview=CASE WHEN ?>=last_activity THEN ? ELSE preview END,
 			preview_sender=CASE WHEN ?>=last_activity THEN ? ELSE preview_sender END,
-			preview_sender_verified=CASE WHEN ?>=last_activity THEN ? ELSE preview_sender_verified END,
 			preview_out=CASE WHEN ?>=last_activity THEN ? ELSE preview_out END,
 			last_activity=MAX(last_activity,?)
 		WHERE id=?`,
-		unread, m.Created, preview, m.Created, m.SenderName, m.Created, boolInt(m.SenderVerified),
+		unread, m.Created, preview, m.Created, m.SenderName,
 		m.Created, boolInt(m.Outgoing), m.Created, m.ConversationID)
 	if err != nil {
 		return err
@@ -488,7 +486,7 @@ func scanMessage(row scanner) (domain.Message, error) {
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
 		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &replyTo, &reactions,
 		&mentions, &m.MentionsMe, &m.RetryAt, &m.RetryAttempts, &m.RetrySince,
-		&originalPath, &originalModTime, &formatting, &m.SenderVerified); err != nil {
+		&originalPath, &originalModTime, &formatting); err != nil {
 		return m, err
 	}
 

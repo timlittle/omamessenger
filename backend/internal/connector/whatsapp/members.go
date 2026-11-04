@@ -36,27 +36,24 @@ func (c *Connector) Members(ctx context.Context, conv domain.Conversation) ([]do
 
 	out := make([]domain.Member, 0, len(participants))
 	for _, p := range participants {
-		name, verified := memberName(ctx, dev, p)
-		out = append(out, domain.Member{ID: remoteID(p.JID), Name: name, Verified: verified})
+		out = append(out, domain.Member{ID: remoteID(p.JID), Name: memberName(ctx, dev, p)})
 	}
 
 	return out, nil
 }
 
-// memberName names a group participant, and reports whether that name
-// is verified: their resolved contact name (verified) or push name
-// (not, the same gap senderDisplayName already closes for a message's
-// own sender - see domain.Message.SenderVerified), falling back to the
-// obfuscated display name WhatsApp gives an anonymous participant of
-// an announcement group, or the generic label any other unresolved
-// sender gets - neither a self-chosen claim, so both report verified.
-func memberName(ctx context.Context, dev device, p types.GroupParticipant) (string, bool) {
-	if name, verified := dev.contactName(ctx, p.JID); name != "" {
-		return name, verified
+// memberName names a group participant: their resolved contact name
+// or push name (the same resolution senderDisplayName already gives a
+// message's own sender), falling back to the obfuscated display name
+// WhatsApp gives an anonymous participant of an announcement group, or
+// the generic label any other unresolved sender gets.
+func memberName(ctx context.Context, dev device, p types.GroupParticipant) string {
+	if name, _ := dev.contactName(ctx, p.JID); name != "" {
+		return name
 	}
 	if p.DisplayName != "" {
-		return p.DisplayName, true
+		return p.DisplayName
 	}
 
-	return genericSenderName, true
+	return genericSenderName
 }

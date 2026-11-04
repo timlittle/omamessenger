@@ -320,9 +320,6 @@ func TestTyping_ReportsStartAndStopInKnownChats(t *testing.T) {
 	if got := sink.Lines(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
 	}
-	if !sink.LastTypingVerified() {
-		t.Error("a direct chat's typing indicator, which names no one, reported unverified")
-	}
 }
 
 func TestReactionsChanged_ReportsChipsForAKnownChatOnly(t *testing.T) {

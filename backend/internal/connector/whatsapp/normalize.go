@@ -249,22 +249,6 @@ func titleFallback(jid types.JID) string {
 	}
 }
 
-// phoneNumber is jid's own phone number, formatted the same way
-// titleFallback's own phone branch above does, for domain.Conversation.Phone:
-// shown beside an unverified direct chat's title, the way the official
-// WhatsApp app shows a stranger's number instead of trusting their
-// self-chosen name. jid is resolved through phoneFormOf first, so a
-// LID whatsmeow has already mapped to a phone JID still gives a real
-// number; "" when no real phone number is known for it at all.
-func phoneNumber(ctx context.Context, dev device, jid types.JID) string {
-	resolved := phoneFormOf(ctx, dev, jid)
-	if resolved.Server != types.DefaultUserServer {
-		return ""
-	}
-
-	return "+" + resolved.User
-}
-
 // isSystemJID reports whether jid names something history sync or a
 // live event can deliver that is not a conversation with anyone at
 // all: the status broadcast, an old-style broadcast list, or a
@@ -288,20 +272,13 @@ func isSystemJID(jid types.JID) bool {
 
 // contactDisplayName is WhatsApp's own name for a resolved contact, in
 // its own priority order: the name saved for them, their first name
-// alone, their business name, or their self-chosen push name. verified
-// reports whether name came from one of the first two - something the
-// user themselves saved - rather than a name the contact chose: the
-// contact store's ContactInfo carries no verification level for a
-// business name (unlike a live message's types.VerifiedName, see
-// verifiedName), so it cannot be told apart from one set through the
-// free, unreviewed WhatsApp Business app, and is treated the same as
-// info's own last-resort PushName, which is exactly as self-chosen and
-// unverified as a live message's own push name (see senderName): a LID
-// often carries no contact record but this push name, cached by an
-// earlier app-state sync, and showing that unmarked would be exactly
-// the gap a stranger naming themselves "Mum" exploits. It returns "",
-// false when info names no one, or holds none of these.
-func contactDisplayName(info types.ContactInfo) (name string, verified bool) {
+// alone, their business name, or their self-chosen push name.
+// fromContact reports whether name came from one of the first two -
+// something the user themselves saved - rather than a name the
+// contact chose; callers use this to rank a resolved name against
+// others (see rankFor). It returns "", false when info names no one,
+// or holds none of these.
+func contactDisplayName(info types.ContactInfo) (name string, fromContact bool) {
 	switch {
 	case info.FullName != "":
 		return info.FullName, true
@@ -315,35 +292,27 @@ func contactDisplayName(info types.ContactInfo) (name string, verified bool) {
 }
 
 // contactFromPushName turns one push name of a history sync into a
-// contact, or reports false when it names no one. A push name is
-// self-chosen, so it only ever makes an unverified contact; when
-// WhatsApp's own contact store already resolves the same JID to a
-// saved contact or verified business name (see device.contactName),
-// that name and its verified status win instead, the same priority a
-// saved contact already takes over a push name everywhere else - the
-// new-chat contact list must never show a stranger's self-chosen
-// "Mum" as if it were a saved contact (see docs/decisions.md). An
-// unverified contact also carries its own phone number, the same
-// stand-in an unverified chat title shows, so the picker can show it
-// next to a self-chosen name instead of nothing at all.
-func contactFromPushName(ctx context.Context, dev device, accountID string, p *waHistorySync.Pushname) (domain.Contact, bool) {
+// contact, or reports false when it names no one. When WhatsApp's own
+// contact store already resolves the same JID to a saved contact or
+// business name (see device.contactName), that name wins instead, the
+// same priority a saved contact already takes over a push name
+// everywhere else - the new-chat contact list must never show a
+// stranger's self-chosen "Mum" as if it were a saved contact (see
+// docs/decisions.md). rank is the resolved name's own nameRank, for
+// the caller to remember it at (see rankFor).
+func contactFromPushName(ctx context.Context, dev device, accountID string, p *waHistorySync.Pushname) (contact domain.Contact, rank nameRank, ok bool) {
 	jid, err := types.ParseJID(p.GetID())
 	if err != nil || jid.IsEmpty() {
-		return domain.Contact{}, false
+		return domain.Contact{}, 0, false
 	}
 
-	if name, verified := dev.contactName(ctx, jid); name != "" {
-		contact := domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: name, Verified: verified}
-		if !verified {
-			contact.Phone = phoneNumber(ctx, dev, jid)
-		}
-
-		return contact, true
+	if name, fromContact := dev.contactName(ctx, jid); name != "" {
+		return domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: name}, rankFor(fromContact), true
 	}
 
 	if p.GetPushname() == "" {
-		return domain.Contact{}, false
+		return domain.Contact{}, 0, false
 	}
 
-	return domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: p.GetPushname(), Phone: phoneNumber(ctx, dev, jid)}, true
+	return domain.Contact{AccountID: accountID, RemoteID: remoteID(jid), Name: p.GetPushname()}, nameRankPushName, true
 }

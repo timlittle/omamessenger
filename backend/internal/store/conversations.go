@@ -14,7 +14,7 @@ import (
 // conversationColumns lists the columns scanConversation reads, in order.
 // Queries alias conversations as c and join accounts as a.
 const conversationColumns = `c.id,c.account_id,a.service,c.remote_id,c.kind,c.title,c.members,
-	c.preview,c.preview_sender,c.preview_sender_verified,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked,c.notification_sound,c.title_verified,c.phone`
+	c.preview,c.preview_sender,c.preview_out,c.unread,c.muted,c.pinned,c.pin_order,c.archived,c.hidden,c.last_activity,c.reminder_at,c.reminder_notified_at,c.blocked,c.notification_sound`
 
 // conversationFrom is the FROM clause conversationColumns expects.
 const conversationFrom = ` FROM conversations c JOIN accounts a ON a.id=c.account_id`
@@ -50,16 +50,15 @@ func (s *Store) EnsureConversation(ctx context.Context, c domain.Conversation) (
 	return inserted, err == nil, err
 }
 
-// refreshConversation copies the remote service's title, kind, member
-// count and whether that title is verified onto a stored conversation.
-// It never touches pinned, archived or hidden: most reports, such as a
-// live message's own conversation, carry neither pinned nor archived
-// meaningfully, so only SetOrganized, from a dialog sync, may set
-// them; hidden is local to this computer and no report ever carries
-// it at all.
+// refreshConversation copies the remote service's title, kind and
+// member count onto a stored conversation. It never touches pinned,
+// archived or hidden: most reports, such as a live message's own
+// conversation, carry neither pinned nor archived meaningfully, so
+// only SetOrganized, from a dialog sync, may set them; hidden is local
+// to this computer and no report ever carries it at all.
 func (s *Store) refreshConversation(ctx context.Context, id string, c domain.Conversation) (domain.Conversation, error) {
-	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=?,title_verified=?,phone=? WHERE id=?`,
-		c.Title, c.Kind, c.Members, boolInt(c.TitleVerified), c.Phone, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE conversations SET title=?,kind=?,members=? WHERE id=?`,
+		c.Title, c.Kind, c.Members, id)
 	if err != nil {
 		return c, wrap("update conversation", err)
 	}
@@ -75,8 +74,8 @@ func (s *Store) insertConversation(ctx context.Context, c domain.Conversation) (
 	}
 
 	_, err := s.db.ExecContext(ctx, `INSERT INTO conversations
-		(id,account_id,remote_id,kind,title,members,muted,last_activity,title_verified,phone) VALUES(?,?,?,?,?,?,?,?,?,?)`,
-		c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), c.LastActivity, boolInt(c.TitleVerified), c.Phone)
+		(id,account_id,remote_id,kind,title,members,muted,last_activity) VALUES(?,?,?,?,?,?,?,?)`,
+		c.ID, c.AccountID, c.RemoteID, c.Kind, c.Title, c.Members, boolInt(c.Muted), c.LastActivity)
 	if err != nil {
 		return c, wrap("insert conversation", err)
 	}
@@ -106,7 +105,7 @@ func (s *Store) ConversationByRemote(ctx context.Context, accountID, remoteID st
 // of Conversations' search when query has no word characters to look up in
 // messages_fts: an empty FTS5 MATCH argument is invalid, so a query such as
 // "_" or "%" can only match a title, the way LIKE always has.
-const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match, NULL AS match_message_id, NULL AS match_sender, NULL AS match_sender_verified
+const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match, NULL AS match_message_id, NULL AS match_sender
 	` + conversationFrom + `
 	WHERE :query = '' OR c.title LIKE :pattern ESCAPE '\'
 	ORDER BY c.pinned DESC, c.pin_order ASC, c.last_activity DESC, c.id`
@@ -127,7 +126,7 @@ const conversationsByTitle = `SELECT ` + conversationColumns + `, NULL AS match,
 // otherwise make the command palette's "Messages" row lay out far more
 // than a search result ever needs to show.
 const conversationsByTitleOrMessage = `WITH matched AS (
-		SELECT m.conversation_id AS conversation_id, m.id AS message_id, m.sender_name AS sender_name, m.sender_verified AS sender_verified,
+		SELECT m.conversation_id AS conversation_id, m.id AS message_id, m.sender_name AS sender_name,
 			snippet(messages_fts, 0, '', '', '…', 32) AS snippet, bm25(messages_fts) AS rank, m.created AS created, m.rowid AS rowid
 		FROM messages_fts
 		JOIN messages m ON m.rowid = messages_fts.rowid
@@ -138,7 +137,7 @@ const conversationsByTitleOrMessage = `WITH matched AS (
 		) AS rn
 		FROM matched
 	)
-	SELECT ` + conversationColumns + `, hits.snippet AS match, hits.message_id AS match_message_id, hits.sender_name AS match_sender, hits.sender_verified AS match_sender_verified
+	SELECT ` + conversationColumns + `, hits.snippet AS match, hits.message_id AS match_message_id, hits.sender_name AS match_sender
 	` + conversationFrom + `
 	LEFT JOIN hits ON hits.conversation_id = c.id AND hits.rn = 1
 	WHERE c.title LIKE :pattern ESCAPE '\' OR hits.conversation_id IS NOT NULL
@@ -460,12 +459,10 @@ func scanConversation(row scanner) (domain.Conversation, error) {
 // still carry unbounded text today.
 func scanConversationMatch(row scanner) (domain.Conversation, error) {
 	var match, messageID, sender sql.NullString
-	var senderVerified sql.NullBool
-	c, err := scanConversationWith(row, &match, &messageID, &sender, &senderVerified)
+	c, err := scanConversationWith(row, &match, &messageID, &sender)
 	c.Match = domain.CapPreview(match.String)
 	c.MatchMessageID = messageID.String
 	c.MatchSender = domain.CapDisplayName(sender.String)
-	c.MatchSenderVerified = senderVerified.Bool
 
 	return c, err
 }
@@ -486,7 +483,7 @@ func scanConversationWith(row scanner, extra ...any) (domain.Conversation, error
 	var c domain.Conversation
 	dest := append([]any{
 		&c.ID, &c.AccountID, &c.Service, &c.RemoteID, &c.Kind, &c.Title, &c.Members,
-		&c.Preview, &c.PreviewSender, &c.PreviewSenderVerified, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked, &c.NotificationSound, &c.TitleVerified, &c.Phone,
+		&c.Preview, &c.PreviewSender, &c.PreviewOut, &c.Unread, &c.Muted, &c.Pinned, &c.PinOrder, &c.Archived, &c.Hidden, &c.LastActivity, &c.ReminderAt, &c.ReminderNotifiedAt, &c.Blocked, &c.NotificationSound,
 	}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return c, err

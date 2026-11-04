@@ -26,22 +26,18 @@ func TestMembers_NamesEachParticipant(t *testing.T) {
 	}
 
 	want := []domain.Member{
-		{ID: remoteID(alice), Name: "Alice", Verified: true},
-		{ID: remoteID(bob), Name: "Participant", Verified: true},
+		{ID: remoteID(alice), Name: "Alice"},
+		{ID: remoteID(bob), Name: "Participant"},
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("members = %+v, want %+v", got, want)
 	}
 }
 
-// TestMembers_MarksABarePushNameUnverified confirms a member resolved
-// only through a push name cached in the contact store - no saved name
-// or verified business name behind it, the same gap senderDisplayName
-// already closes for a message's own sender - reports Verified false:
-// a group member's own name is just as able to carry a self-chosen
-// claim, such as "Mum", as a direct chat's sender is (see
-// docs/decisions.md).
-func TestMembers_MarksABarePushNameUnverified(t *testing.T) {
+// TestMembers_NamesAMemberFromABarePushName confirms a member resolved
+// only through a push name cached in the contact store - no saved
+// contact name behind it - is still named with it.
+func TestMembers_NamesAMemberFromABarePushName(t *testing.T) {
 	t.Parallel()
 
 	mallory := types.NewJID("4444", types.DefaultUserServer)
@@ -54,7 +50,7 @@ func TestMembers_MarksABarePushNameUnverified(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []domain.Member{{ID: remoteID(mallory), Name: "Mum", Verified: false}}
+	want := []domain.Member{{ID: remoteID(mallory), Name: "Mum"}}
 	if !slices.Equal(got, want) {
 		t.Errorf("members = %+v, want %+v", got, want)
 	}
@@ -71,8 +67,8 @@ func TestMembers_FallsBackToTheGenericName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Name != genericSenderName || !got[0].Verified {
-		t.Errorf("members = %+v, want the generic name, verified", got)
+	if len(got) != 1 || got[0].Name != genericSenderName {
+		t.Errorf("members = %+v, want the generic name", got)
 	}
 }
 

@@ -85,53 +85,46 @@ func (c *Connector) handleAppStateSyncComplete(ctx context.Context, sink connect
 			continue
 		}
 
-		if name, verified := dev.contactName(ctx, jid); name != "" {
-			c.retitleDirectChat(ctx, upd, jid, name, rankFor(verified))
+		if name, fromContact := dev.contactName(ctx, jid); name != "" {
+			c.retitleDirectChat(ctx, upd, jid, name, rankFor(fromContact))
 		}
 	}
 }
 
 // retitleDirectChat updates this connector's cached name for jid and,
 // if that improves it, reports jid's own direct chat again, so the UI
-// picks up the better name and verified flag without a restart, and
-// corrects jid's name and verified flag on every message already
-// stored under a weaker one, anywhere they sent one, so a group's
-// preview catches up too when one of its members is who resolved (see
-// Sink.SenderName). rememberName never lets either of these replace a
-// good name with a worse one. The self-chat is never retitled this
-// way, however a contact or push name might resolve for the account's
-// own identity: ensureChat is the only place that titles it, always
-// with the fixed "Message yourself" label (see normalize.go's
-// selfChatTitle). jid is resolved through chatID, not the bare
-// remoteID: a contact, push name or business name update can name
-// someone by a LID even when their chat is already known by its phone
-// JID (or the reverse), and retitling the wrong, unresolved id would
-// create a ghost conversation instead of fixing the real one's name.
-// before and after compare both the name and its rank, not the name
-// alone: a report that only changes which rank already-identical text
-// resolved at - a push name later confirmed by a saved contact under
-// the same spelling - must still correct the verified flag already
-// reported for it.
+// picks up the better name without a restart, and corrects jid's name
+// on every message already stored under a weaker one, anywhere they
+// sent one, so a group's preview catches up too when one of its
+// members is who resolved (see Sink.SenderName). rememberName never
+// lets either of these replace a good name with a worse one. The
+// self-chat is never retitled this way, however a contact or push
+// name might resolve for the account's own identity: ensureChat is the
+// only place that titles it, always with the fixed "Message yourself"
+// label (see normalize.go's selfChatTitle). jid is resolved through
+// chatID, not the bare remoteID: a contact, push name or business name
+// update can name someone by a LID even when their chat is already
+// known by its phone JID (or the reverse), and retitling the wrong,
+// unresolved id would create a ghost conversation instead of fixing
+// the real one's name.
 func (c *Connector) retitleDirectChat(ctx context.Context, upd nameUpdate, jid types.JID, name string, rank nameRank) {
 	if upd.dev.isSelfChat(ctx, jid) {
 		return
 	}
 
 	remote := chatID(ctx, upd.dev, upd.media, jid)
-	beforeName, beforeRank := c.nameFor(remote)
-	afterName, afterRank := c.rememberName(remote, name, rank)
-	if afterName == beforeName && afterRank == beforeRank {
+	beforeName, _ := c.nameFor(remote)
+	afterName, _ := c.rememberName(remote, name, rank)
+	if afterName == beforeName {
 		return
 	}
 
-	verified := verifiedRank(afterRank)
 	if namer, ok := upd.sink.(connector.SenderNamer); ok {
-		namer.SenderName(ctx, c.account.ID, remote, afterName, verified)
+		namer.SenderName(ctx, c.account.ID, remote, afterName)
 	}
 
 	c.reportConversation(ctx, upd.sink, domain.Conversation{
-		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: afterName, TitleVerified: verified,
-		Phone: phoneNumber(ctx, upd.dev, jid),
+		AccountID: c.account.ID, RemoteID: remote, Kind: domain.KindDirect, Title: afterName,
 	})
 }
 
