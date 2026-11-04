@@ -33,6 +33,39 @@ func TestUpsertContact_RenamesExisting(t *testing.T) {
 	}
 }
 
+// TestUpsertContact_RoundTripsVerifiedAndPhone confirms a security
+// review's fix: Verified and Phone used to be dropped entirely, so
+// every contact showed unmarked in the new-chat picker, however
+// trustworthy its own name actually was, and opening a chat from it
+// then had no phone number to show beside an unverified title either
+// (see docs/decisions.md). A later report for the same remote id also
+// overwrites both fields, not just the name.
+func TestUpsertContact_RoundTripsVerifiedAndPhone(t *testing.T) {
+	t.Parallel()
+
+	s := openStore(t)
+	ctx := t.Context()
+	addAccount(t, s, "wa")
+
+	if err := s.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "1", Name: "Mum", Verified: false, Phone: "+15551234567"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Contact(ctx, "wa", "1")
+	if err != nil || got.Verified || got.Phone != "+15551234567" {
+		t.Fatalf("Contact = %+v, %v, want unverified with the phone number kept", got, err)
+	}
+
+	if err := s.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "1", Name: "Mum", Verified: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err = s.Contact(ctx, "wa", "1")
+	if err != nil || !got.Verified || got.Phone != "" {
+		t.Fatalf("Contact after re-report = %+v, %v, want verified with no phone number, not the stale one", got, err)
+	}
+}
+
 func TestContacts_SearchIgnoresCaseAndSortsByName(t *testing.T) {
 	t.Parallel()
 

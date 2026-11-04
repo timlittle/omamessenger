@@ -42,6 +42,9 @@ func TestRefreshSenderName_UpdatesTheGroupPreviewOnceTheSenderResolves(t *testin
 	if updated.PreviewSender != "Priya Nair" {
 		t.Errorf("conversation.PreviewSender = %q, want %q", updated.PreviewSender, "Priya Nair")
 	}
+	if !updated.PreviewSenderVerified {
+		t.Error("conversation.PreviewSenderVerified = false, want true once RefreshSenderName resolves a verified name")
+	}
 
 	stored, err := s.MessageByRemote(ctx, group.ID, "r1")
 	if err != nil {

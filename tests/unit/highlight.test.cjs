@@ -145,14 +145,14 @@ test('links never reaches a link preview URL the message text does not show', ()
   // The preview's URL is the sender's to set, independently of the text
   // the bubble shows, so the open key only ever reaches visible links.
   const linked = message({ text: 'https://text.example/one', media: { kind: 'link', url: 'https://preview.example/two' } });
-  assert.deepEqual(Highlight.links(linked), [{ url: 'https://text.example/one', displayText: 'https://text.example/one' }]);
+  assert.deepEqual(Highlight.links(linked), [{ url: 'https://text.example/one', displayText: 'https://text.example/one', suspicious: false }]);
 });
 
 test('links finds every URL in the text, in order, trimming trailing punctuation', () => {
   const texted = message({ text: 'see https://a.example/x. then (https://b.example/y) too' });
   assert.deepEqual(Highlight.links(texted), [
-    { url: 'https://a.example/x', displayText: 'https://a.example/x' },
-    { url: 'https://b.example/y', displayText: 'https://b.example/y' }
+    { url: 'https://a.example/x', displayText: 'https://a.example/x', suspicious: false },
+    { url: 'https://b.example/y', displayText: 'https://b.example/y', suspicious: false }
   ]);
 });
 
@@ -168,7 +168,7 @@ test('links stops exactly where the bubble would for a plain autolinked URL', ()
   // userinfo@host past it; this is the no-spans, no-mentions case
   // where that alone is enough to agree with the bubble.
   const spoofed = message({ text: 'https://bank.com>@evil.example/login' });
-  assert.deepEqual(Highlight.links(spoofed), [{ url: 'https://bank.com', displayText: 'https://bank.com' }]);
+  assert.deepEqual(Highlight.links(spoofed), [{ url: 'https://bank.com', displayText: 'https://bank.com', suspicious: false }]);
 });
 
 test('links agrees with the bubble when a formatting span starts at the exact character that would otherwise join two URLs into one', () => {
@@ -189,7 +189,12 @@ test('links agrees with the bubble when a formatting span starts at the exact ch
   const text = 'https://bank.example@evil.example/login';
   const spans = [{ kind: 'bold', start: text.indexOf('@'), end: text.length }];
   const disguised = message({ text, formatting: spans });
-  assert.deepEqual(Highlight.links(disguised), [{ url: 'https://bank.example', displayText: 'https://bank.example' }]);
+  // Still flagged suspicious: more of what reads as the same URL
+  // ("@evil.example/login") does immediately follow the link's own
+  // end, even though it renders bold rather than seamlessly, so
+  // Links.needsConfirmation always asks before opening it (see
+  // Format.continuesURLToken and docs/decisions.md).
+  assert.deepEqual(Highlight.links(disguised), [{ url: 'https://bank.example', displayText: 'https://bank.example', suspicious: true }]);
 });
 
 test('links agrees with the bubble when a would-be URL spans two Markdown table cells', () => {
@@ -205,7 +210,7 @@ test('links agrees with the bubble when a would-be URL spans two Markdown table 
   // bubble never rendered at all.
   const tableText = '| https://bank.example.com|@evil.example/login |\n|-|-|\n| a | b |';
   assert.deepEqual(Highlight.links(message({ text: tableText })), [
-    { url: 'https://bank.example.com', displayText: 'https://bank.example.com' }
+    { url: 'https://bank.example.com', displayText: 'https://bank.example.com', suspicious: false }
   ]);
 });
 
@@ -239,7 +244,7 @@ test('links always equals the bubble\'s own anchors: a property check over many 
 
     const got = Highlight.links(message({ text, mentions, formatting }));
     const want = Format.messageLinkAnchors(text, mentions, formatting);
-    assert.deepEqual(got, Array.from(want, (a) => ({ url: a.url, displayText: a.displayText })),
+    assert.deepEqual(got, want,
       `case ${i}: text=${JSON.stringify(text)} mentions=${JSON.stringify(mentions)} formatting=${JSON.stringify(formatting)}`);
   }
 });
@@ -262,6 +267,6 @@ test('links strips a long run of trailing punctuation in linear time, not quadra
   const found = Highlight.links(message({ text: adversarial }));
   const elapsedMs = Date.now() - start;
 
-  assert.deepEqual(found, [{ url: adversarial, displayText: adversarial }]);
+  assert.deepEqual(found, [{ url: adversarial, displayText: adversarial, suspicious: false }]);
   assert.ok(elapsedMs < 2000, `links took ${elapsedMs}ms on an adversarial trailing-punctuation run, want well under 2000ms`);
 });

@@ -118,9 +118,13 @@ func scanConversationID(row scanner) (string, error) {
 // picks up the refreshed name.
 func refreshPreviewSenders(ctx context.Context, tx *sql.Tx, accountID, senderRemoteID string) error {
 	_, err := tx.ExecContext(ctx, `
-		UPDATE conversations SET preview_sender=COALESCE((
-			SELECT sender_name FROM messages WHERE conversation_id=conversations.id ORDER BY created DESC, rowid DESC LIMIT 1
-		), '')
+		UPDATE conversations SET
+			preview_sender=COALESCE((
+				SELECT sender_name FROM messages WHERE conversation_id=conversations.id ORDER BY created DESC, rowid DESC LIMIT 1
+			), ''),
+			preview_sender_verified=COALESCE((
+				SELECT sender_verified FROM messages WHERE conversation_id=conversations.id ORDER BY created DESC, rowid DESC LIMIT 1
+			), 0)
 		WHERE account_id=?
 			AND id IN (SELECT conversation_id FROM messages WHERE sender_id=?)`,
 		accountID, senderRemoteID)

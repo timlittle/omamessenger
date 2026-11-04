@@ -112,6 +112,14 @@ type Contact struct {
 	// exactly like a real saved contact unless this is checked (see
 	// docs/decisions.md).
 	Verified bool `json:"verified,omitempty"`
+
+	// Phone is this contact's own phone number, formatted "+<digits>",
+	// when the service gives one and Verified is false - the same
+	// stand-in Conversation.Phone shows beside an unverified chat
+	// title, so the new-chat picker can show a stranger's number next
+	// to their self-chosen name instead of nothing at all. Empty for a
+	// verified contact, which needs no such hint.
+	Phone string `json:"phone,omitempty"`
 }
 
 // Conversation is a direct chat or group, with the summary the
@@ -126,10 +134,19 @@ type Conversation struct {
 	Members       int    `json:"members"`
 	Preview       string `json:"preview"`
 	PreviewSender string `json:"previewSender"`
-	PreviewOut    bool   `json:"previewOutgoing"`
-	Unread        int    `json:"unread"`
-	Muted         bool   `json:"muted"`
-	Pinned        bool   `json:"pinned"`
+
+	// PreviewSenderVerified mirrors TitleVerified, but for
+	// PreviewSender specifically: a group's own name can be verified
+	// while the member who sent its newest message is not, so the UI
+	// must mark the two independently (see Verify.markedName and
+	// docs/decisions.md). Omitted (so false) for a row stored before
+	// this field existed, the secure default for a sender this helper
+	// has not actually checked.
+	PreviewSenderVerified bool `json:"previewSenderVerified,omitempty"`
+	PreviewOut            bool `json:"previewOutgoing"`
+	Unread                int  `json:"unread"`
+	Muted                 bool `json:"muted"`
+	Pinned                bool `json:"pinned"`
 
 	// PinOrder is where a pinned conversation sits among the others
 	// pinned, lowest first; 0, and meaningless, while Pinned is false.

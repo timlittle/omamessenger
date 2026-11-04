@@ -7,13 +7,18 @@ import (
 )
 
 // contactColumns lists the columns scanContact reads, in order.
-const contactColumns = `account_id,remote_id,name`
+const contactColumns = `account_id,remote_id,name,verified,phone`
 
-// UpsertContact records a contact, or renames an existing one.
+// UpsertContact records a contact, or renames an existing one. Verified
+// and Phone are overwritten too, not just Name: a contact a connector
+// reports again always carries its current trust and phone number, and
+// a security review found the picker showing every contact unmarked
+// traced back to this store never keeping either at all (see
+// docs/decisions.md).
 func (s *Store) UpsertContact(ctx context.Context, c domain.Contact) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO contacts(`+contactColumns+`) VALUES(?,?,?)
-		ON CONFLICT(account_id,remote_id) DO UPDATE SET name=excluded.name`,
-		c.AccountID, c.RemoteID, c.Name)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO contacts(`+contactColumns+`) VALUES(?,?,?,?,?)
+		ON CONFLICT(account_id,remote_id) DO UPDATE SET name=excluded.name,verified=excluded.verified,phone=excluded.phone`,
+		c.AccountID, c.RemoteID, c.Name, boolInt(c.Verified), c.Phone)
 
 	return wrap("upsert contact", err)
 }
@@ -51,11 +56,13 @@ func (s *Store) Contacts(ctx context.Context, accountID, query string) ([]domain
 // repairing a row an older release stored before that cap existed.
 func scanContact(row scanner) (domain.Contact, error) {
 	var c domain.Contact
-	if err := row.Scan(&c.AccountID, &c.RemoteID, &c.Name); err != nil {
+	var verified bool
+	if err := row.Scan(&c.AccountID, &c.RemoteID, &c.Name, &verified, &c.Phone); err != nil {
 		return c, err
 	}
 
 	c.Name = domain.CapDisplayName(c.Name)
+	c.Verified = verified
 
 	return c, nil
 }

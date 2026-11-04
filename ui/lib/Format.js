@@ -1,5 +1,6 @@
 .pragma library
 .import "Markdown.js" as Markdown
+.import "Verify.js" as Verify
 
 // Text formatting for the conversation list and message view: HTML escaping
 // and links, pipe tables (via Markdown.js), search highlights, initials,
@@ -147,11 +148,11 @@ function splitTrailingPunctuation(match) {
 }
 
 // linkify turns http(s) URLs in escaped text into anchors, in color
-// when given, appending one {url, displayText} entry to anchors for
-// each (see messageLinkAnchors): a plain autolinked URL's own visible
-// text is always the URL itself. Each anchor's href names its own
-// position in anchors (see linkHref) rather than carrying the URL
-// directly, the same private scheme every anchor this file writes
+// when given, appending one {url, displayText, suspicious} entry to
+// anchors for each (see messageLinkAnchors): a plain autolinked URL's
+// own visible text is always the URL itself. Each anchor's href names
+// its own position in anchors (see linkHref) rather than carrying the
+// URL directly, the same private scheme every anchor this file writes
 // uses. Punctuation that ends a sentence stays outside the link. The
 // visible text between the anchor's own tags stays in escaped's own
 // escaped form, so it renders correctly on screen, but anchors itself
@@ -160,14 +161,29 @@ function splitTrailingPunctuation(match) {
 // came back as literally '&amp;' - made the url this file's own
 // callers later open functionally different from the one the sender
 // actually sent, and made it never match a link preview's own raw URL
-// either (see previewDisplayText and docs/decisions.md).
-function linkify(escaped, color, anchors = []) {
+// either (see previewDisplayText and docs/decisions.md). suspicious is
+// true when hiddenCharAnywhere says the message carries a bidi or
+// other invisible format character anywhere at all - a right-to-left
+// override placed just before a plain URL reverses how the whole run
+// reads on screen while leaving the matched text and its own href
+// identical, which a plain textual comparison can never catch - or
+// when boundaryContinues (resolved by the caller through
+// continuesURLToken, against the full original message text, never
+// just this call's own escaped fragment) says a match reaching the
+// very end of escaped was cut short by a segment boundary rather than
+// reaching the end of what reads as one URL: a mention or a formatting
+// span can each end a linkify call's own text mid-token (see
+// docs/decisions.md). Either way, a caller must always confirm before
+// opening a suspicious anchor, whatever its own text and url compare
+// equal to.
+function linkify(escaped, color, anchors = [], boundaryContinues = false, hiddenCharAnywhere = false) {
   const style = color ? ` style="color:${color}"` : '';
-  return escaped.replace(URL_PATTERN, (match) => {
+  return escaped.replace(URL_PATTERN, (match, offset) => {
     const [displayURL, trailing] = splitTrailingPunctuation(match);
     const url = unescapeHtml(displayURL);
     const href = linkHref(anchors.length);
-    anchors.push({ url, displayText: url });
+    const cutShort = boundaryContinues && offset + displayURL.length === escaped.length;
+    anchors.push({ url, displayText: url, suspicious: hiddenCharAnywhere || cutShort });
     return `<a href="${href}"${style}>${displayURL}</a>${trailing}`;
   });
 }
@@ -233,11 +249,18 @@ function renderMessage(text, linkColor, tableBorderColor, mentions, spans) {
     return { html: mentionHtml(capped, linkColor, cappedMentions, anchors), anchors };
   }
 
+  // A link inside a table cell is not checked for a boundary cut past
+  // its own cell (an edge case left as a documented gap, see
+  // docs/decisions.md): a pipe table's own cell boundaries are a much
+  // less plausible place for a sender to split a URL unnoticed than a
+  // formatting span or a mention, and each cell's text is still
+  // checked for a hidden character anywhere in the whole message.
+  const hiddenCharAnywhere = BIDI_OR_FORMAT_CHAR.test(capped);
   const borderColor = tableBorderColor ?? '#888888';
   const html = Markdown.splitTables(capped)
     .map((part) => (part.kind === 'table'
-      ? Markdown.tableHtml(part.table, escapeHtml, (cell) => linkify(cell, linkColor, anchors), borderColor)
-      : lineHtml(part.text, linkColor, anchors)))
+      ? Markdown.tableHtml(part.table, escapeHtml, (cell) => linkify(cell, linkColor, anchors, false, hiddenCharAnywhere), borderColor)
+      : lineHtml(part.text, linkColor, anchors, false, hiddenCharAnywhere)))
     .join('');
   return { html, anchors };
 }
@@ -262,6 +285,57 @@ var LINK_SCHEMES = ['http:', 'https:', 'mailto:', 'tg:'];
 // the same as it does a forward slash, while urlHost's own authority
 // split (Links.js) does not.
 var HIDDEN_OR_UNUSUAL_CHAR = /[\\\s\x00-\x1f\x7f\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
+
+// BIDI_OR_FORMAT_CHAR is the same Unicode "format" characters
+// (category Cf) HIDDEN_OR_UNUSUAL_CHAR lists, without its backslash,
+// real whitespace or ASCII control characters: those are exactly what
+// a normal sentence is full of, so testing a whole message against
+// HIDDEN_OR_UNUSUAL_CHAR itself would flag almost every message a
+// person actually writes, not only one carrying a genuine bidi
+// override or other invisible character. Used to decide whether any
+// link anywhere in a message must be confirmed regardless of whether
+// its own text and url already compare equal: a right-to-left
+// override placed just before a plain URL, outside the matched text
+// entirely, reverses how the whole run reads on screen while leaving
+// the matched text and its own href identical, which no comparison of
+// the link's own text against its url can ever catch (see
+// docs/decisions.md).
+var BIDI_OR_FORMAT_CHAR = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/;
+
+// URL_TOKEN_CHAR matches a character URL_PATTERN's own body would
+// still consume - kept in exact sync with the negated class inside
+// URL_PATTERN above (everything except real/line-breaking whitespace,
+// '<', '"' and '&'). continuesURLToken uses it to tell a link's own
+// end, reached because the regex ran out of body characters to match,
+// apart from one reached only because a formatting span or mention cut
+// the text there instead - exactly the gap a security review found: a
+// Telegram link entity covering only "https://paypal-login.ru" of
+// "https://paypal-login.ru.paypal.com/login" reads as one hostname on
+// screen, and a spoiler span placed over only part of a plain
+// autolinked URL leaves no visible seam at all (spoiler has no tag of
+// its own, see STYLE_TAGS) while still only linking the shorter prefix
+// before it (see docs/decisions.md).
+var URL_TOKEN_CHAR = /[^\u0009\u000a\u000b\u000c\u000d \u00A0\u1680\u2028\u2029\u202F\u205F\u3000\u2000-\u200A<\x22&]/;
+
+// continuesURLToken reports whether text keeps spelling out what reads
+// as the same URL-shaped run starting right at end, the position a
+// link's own matched text or formatting span stopped at: it scans
+// forward through every further URL_TOKEN_CHAR, then drops that run's
+// own trailing sentence punctuation (see splitTrailingPunctuation) the
+// same way a plain autolink's own match already would have, so an
+// ordinary link followed immediately by a comma or a closing
+// parenthesis, with nothing else after it, is never flagged - only a
+// real continuation, with non-punctuation text still left once that
+// trailing punctuation is dropped, counts.
+function continuesURLToken(text, end) {
+  let i = end;
+  while (i < text.length && URL_TOKEN_CHAR.test(text[i])) {
+    i++;
+  }
+
+  const [core] = splitTrailingPunctuation(text.slice(end, i));
+  return core.length > 0;
+}
 
 // hasHTTPAuthority reports whether value - already known to start with
 // "http:" or "https:" - spells out "://" followed by a real, non-empty
@@ -368,8 +442,9 @@ function styledRanges(text, mentions, spans) {
 // messageLinkAnchors).
 function styledHtml(text, linkColor, mentions, spans, anchors = []) {
   const ranges = styledRanges(text, mentions, spans);
+  const hiddenCharAnywhere = BIDI_OR_FORMAT_CHAR.test(text);
   if (ranges.length === 0) {
-    return lineHtml(text, linkColor, anchors);
+    return lineHtml(text, linkColor, anchors, false, hiddenCharAnywhere);
   }
 
   const bounds = boundaryPoints(text, ranges);
@@ -383,7 +458,7 @@ function styledHtml(text, linkColor, mentions, spans, anchors = []) {
     const end = bounds[i + 1];
 
     active = active.concat(startingAt.get(start) || []);
-    html += styledSegment(text, start, end, linkColor, active, anchors);
+    html += styledSegment(text, start, end, linkColor, active, anchors, hiddenCharAnywhere);
 
     const leaving = endingAt.get(end);
     if (leaving) {
@@ -434,15 +509,24 @@ function rangesByBound(ranges, boundAt) {
 // share one monospace look; spoiler and any other kind add no tag,
 // showing as plain text. A link's anchor gets a private, numbered href
 // (see linkHref) rather than its own URL, and anchors gets one more
-// {url, displayText} entry for it - displayText is the link range's
-// whole own text (text.slice(link.start, link.end)), not just this one
-// cut of it, so a link split into several adjoining anchors by a
-// nested style still reports its full visible text for any one of
-// them (see messageLinkAnchors).
-function styledSegment(text, start, end, linkColor, active, anchors = []) {
+// {url, displayText, suspicious} entry for it - displayText is the
+// link range's whole own text (text.slice(link.start, link.end)), not
+// just this one cut of it, so a link split into several adjoining
+// anchors by a nested style still reports its full visible text for
+// any one of them (see messageLinkAnchors). suspicious is true when
+// hiddenCharAnywhere says text carries a bidi or other invisible
+// format character anywhere, or when continuesURLToken says more of
+// what reads as the same URL follows right after this range's own
+// end - a connector's own link entity covering only part of a
+// hostname, or a non-link style (spoiler, say, which adds no tag at
+// all) placed over only part of a plain autolinked URL, so it keeps
+// reading as one unbroken, honest-looking run while only the shorter
+// piece before the cut is ever actually linked (see
+// docs/decisions.md).
+function styledSegment(text, start, end, linkColor, active, anchors = [], hiddenCharAnywhere = false) {
   const segment = text.slice(start, end);
   const link = active.find((r) => r.kind === 'link');
-  let html = link ? plainHtml(segment) : lineHtml(segment, linkColor, anchors);
+  let html = link ? plainHtml(segment) : lineHtml(segment, linkColor, anchors, continuesURLToken(text, end), hiddenCharAnywhere);
 
   if (active.some((r) => r.kind === 'code' || r.kind === 'pre')) {
     html = `<span style="font-family:monospace">${html}</span>`;
@@ -457,7 +541,8 @@ function styledSegment(text, start, end, linkColor, active, anchors = []) {
   if (link) {
     const style = linkColor ? ` style="color:${linkColor}"` : '';
     const href = linkHref(anchors.length);
-    anchors.push({ url: link.url, displayText: text.slice(link.start, link.end) });
+    const suspicious = hiddenCharAnywhere || continuesURLToken(text, link.end);
+    anchors.push({ url: link.url, displayText: text.slice(link.start, link.end), suspicious });
     html = `<a href="${href}"${style}>${html}</a>`;
   }
 
@@ -468,10 +553,16 @@ function styledSegment(text, start, end, linkColor, active, anchors = []) {
 // skipping ahead past a mention that no longer fits text (the message
 // was edited to something shorter after it was sent, for instance)
 // rather than mis-rendering around it. anchors collects a {url,
-// displayText} entry for every autolinked bare URL found along the way
-// (see lineHtml and messageLinkAnchors); a mention is never a link
-// itself, so it adds none of its own.
+// displayText, suspicious} entry for every autolinked bare URL found
+// along the way (see lineHtml and messageLinkAnchors); a mention is
+// never a link itself, so it adds none of its own. Each of the three
+// lineHtml calls below passes continuesURLToken(text, <its own slice's
+// end>), so a mention boundary landing inside what reads as one URL -
+// the same gap a formatting span can leave, see styledSegment - is
+// caught too, never only a plain autolink that happens to run
+// uninterrupted to this call's own end.
 function mentionHtml(text, linkColor, mentions, anchors = []) {
+  const hiddenCharAnywhere = BIDI_OR_FORMAT_CHAR.test(text);
   const ordered = [...mentions].sort((a, b) => a.offset - b.offset);
   let html = '';
   let pos = 0;
@@ -481,20 +572,25 @@ function mentionHtml(text, linkColor, mentions, anchors = []) {
       continue;
     }
 
-    html += lineHtml(text.slice(pos, m.offset), linkColor, anchors);
-    html += `<b>${lineHtml(text.slice(m.offset, m.offset + m.length), linkColor, anchors)}</b>`;
-    pos = m.offset + m.length;
+    html += lineHtml(text.slice(pos, m.offset), linkColor, anchors, continuesURLToken(text, m.offset), hiddenCharAnywhere);
+    const boldEnd = m.offset + m.length;
+    html += `<b>${lineHtml(text.slice(m.offset, boldEnd), linkColor, anchors, continuesURLToken(text, boldEnd), hiddenCharAnywhere)}</b>`;
+    pos = boldEnd;
   }
 
-  return html + lineHtml(text.slice(pos), linkColor, anchors);
+  return html + lineHtml(text.slice(pos), linkColor, anchors, false, hiddenCharAnywhere);
 }
 
 // lineHtml is messageHtml's handling for a stretch of text that is not a
 // table: escape it, link URLs, and keep its line breaks and runs of
-// spaces. anchors collects one {url, displayText} entry per autolinked
-// URL (see linkify and messageLinkAnchors).
-function lineHtml(text, linkColor, anchors = []) {
-  return linkify(escapeHtml(text), linkColor, anchors).replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
+// spaces. anchors collects one {url, displayText, suspicious} entry
+// per autolinked URL (see linkify and messageLinkAnchors).
+// boundaryContinues and hiddenCharAnywhere pass straight through to
+// linkify (see its own doc comment); callers with nothing to report
+// leave both at their safe defaults.
+function lineHtml(text, linkColor, anchors = [], boundaryContinues = false, hiddenCharAnywhere = false) {
+  return linkify(escapeHtml(text), linkColor, anchors, boundaryContinues, hiddenCharAnywhere)
+    .replace(/ (?= )/g, '&nbsp;').replace(/\r?\n/g, '<br>');
 }
 
 // singleLine collapses a message's line breaks and runs of whitespace
@@ -750,7 +846,12 @@ function statusGlyph(status) {
 }
 
 // previewLine is the preview under a conversation's title. In groups it
-// names who wrote the last message.
+// names who wrote the last message, marked with a leading "~" when
+// that sender's own name is unverified - a bare, self-chosen name a
+// group member fully controls - the same way an unverified senderName
+// is marked inside the chat itself (see Verify.markedName and
+// docs/decisions.md): a security review found this line left that
+// name unmarked even when the bubble it comes from shows it marked.
 function previewLine(conv) {
   if (!conv.preview || conv.kind !== 'group') {
     return previewText(conv.preview);
@@ -760,7 +861,12 @@ function previewLine(conv) {
     return previewText(`You: ${conv.preview}`);
   }
 
-  return previewText(conv.previewSender ? `${conv.previewSender}: ${conv.preview}` : conv.preview);
+  if (!conv.previewSender) {
+    return previewText(conv.preview);
+  }
+
+  const sender = Verify.markedName(conv.previewSender, conv.previewSenderVerified);
+  return previewText(`${sender}: ${conv.preview}`);
 }
 
 // MAX_PREVIEW_LENGTH bounds a conversation row's one-line preview: a row

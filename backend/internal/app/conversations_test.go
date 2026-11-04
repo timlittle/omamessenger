@@ -49,22 +49,44 @@ func TestOpenConversation_CreatesOnce(t *testing.T) {
 }
 
 // TestOpenConversation_TitleIsVerified confirms a conversation started
-// from the contact picker is never marked "~": the user deliberately
-// chose this exact entry by its shown name, a different trust moment
-// from an unsolicited incoming message naming itself whatever it likes
-// (see docs/decisions.md).
+// from a verified contact is never marked "~": the user deliberately
+// chose this exact entry, a real saved contact or a reviewed business,
+// a different trust moment from an unsolicited incoming message naming
+// itself whatever it likes (see docs/decisions.md).
 func TestOpenConversation_TitleIsVerified(t *testing.T) {
 	t.Parallel()
 
 	f := newFixture(t, false)
 	ctx := t.Context()
-	if err := f.store.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "c1", Name: "New Contact"}); err != nil {
+	if err := f.store.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "c1", Name: "New Contact", Verified: true}); err != nil {
 		t.Fatal(err)
 	}
 
 	conv, err := f.commands.OpenConversation(ctx, "wa", "c1")
-	if err != nil || !conv.TitleVerified {
-		t.Fatalf("OpenConversation = %+v, %v, want TitleVerified true", conv, err)
+	if err != nil || !conv.TitleVerified || conv.Phone != "" {
+		t.Fatalf("OpenConversation = %+v, %v, want TitleVerified true and no phone", conv, err)
+	}
+}
+
+// TestOpenConversation_CarriesAnUnverifiedContactsFlagAndPhone
+// reproduces a security review's finding: the picker already shows
+// every contact's own trust, so a security review found opening a
+// chat from one must carry that same flag and phone number through,
+// never silently promoting a stranger's self-chosen push name to
+// verified, or wiping the phone number a chat already showed beside
+// an unverified title, just because it was opened from the picker.
+func TestOpenConversation_CarriesAnUnverifiedContactsFlagAndPhone(t *testing.T) {
+	t.Parallel()
+
+	f := newFixture(t, false)
+	ctx := t.Context()
+	if err := f.store.UpsertContact(ctx, domain.Contact{AccountID: "wa", RemoteID: "c1", Name: "Mum", Verified: false, Phone: "+15551234567"}); err != nil {
+		t.Fatal(err)
+	}
+
+	conv, err := f.commands.OpenConversation(ctx, "wa", "c1")
+	if err != nil || conv.TitleVerified || conv.Phone != "+15551234567" {
+		t.Fatalf("OpenConversation = %+v, %v, want TitleVerified false and the contact's own phone number kept", conv, err)
 	}
 }
 

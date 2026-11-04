@@ -317,11 +317,17 @@ Item {
   // the person actually saw for this link - the same text for a plain
   // autolinked URL, but a formatting span's own text can read as
   // something else entirely (see ui/lib/Links.js's resolveClickedLink,
-  // the caller's own job to run before this, never this function's) -
-  // and Links.needsConfirmation decides whether that calls for asking
-  // first rather than opening it straight away.
-  function openLink(url: string, displayText: string): void {
-    if (Links.needsConfirmation(displayText, url)) {
+  // the caller's own job to run before this, never this function's).
+  // suspicious, when the caller has it (an anchor Format.js rendered;
+  // a link preview's own card never does, so it defaults false),
+  // forces the question below even when displayText and url already
+  // read as the same destination - a bidi override or a link entity
+  // covering only part of what reads as one hostname (see
+  // Format.messageLinkAnchors). Links.needsConfirmation decides
+  // whether any of this calls for asking first rather than opening it
+  // straight away.
+  function openLink(url: string, displayText: string, suspicious = false): void {
+    if (Links.needsConfirmation(displayText, url, suspicious)) {
       root.pendingLinkURL = url;
       root.linkConfirmOpen = true;
       return;
@@ -533,7 +539,7 @@ Item {
 
     root.closePalette();
     if (root.paletteMode === "conversations") root._openConversation(chosen);
-    else if (root.paletteMode === "links") root.openLink(chosen.url, chosen.displayText);
+    else if (root.paletteMode === "links") root.openLink(chosen.url, chosen.displayText, chosen.suspicious === true);
     else if (root.paletteMode === "snoozeCustom") { if (root.listController) root.listController.setReminderOnCurrent(chosen.at); }
     else if (root.paletteMode === "sendLaterCustom") root._scheduleDraft(chosen.at);
     else if (root.paletteMode === "scheduledMessages") root._openScheduledMessage(chosen);

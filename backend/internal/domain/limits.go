@@ -566,6 +566,7 @@ func SanitizeIncoming(m Message) Message {
 		m.ReplyTo.SenderName = CapDisplayName(m.ReplyTo.SenderName)
 		m.ReplyTo.Text = Excerpt(m.ReplyTo.Text)
 		m.ReplyTo.RemoteID = CapRemoteID(m.ReplyTo.RemoteID)
+		m.ReplyTo.SenderID = CapRemoteID(m.ReplyTo.SenderID)
 	}
 
 	return m

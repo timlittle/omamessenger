@@ -33,13 +33,13 @@ ShellRoot {
     {
       id: "c1", title: "Short Chat", titleVerified: true, kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 2, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now, preview: "See you then",
-      previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: false
     },
     {
       id: "c2", title: "Muted Group", titleVerified: true, kind: "group", service: "telegram", accountId: "a2",
       unread: 0, muted: true, pinned: false, archived: false, hidden: false, lastActivity: root.now, preview: "ok",
-      previewSender: "Sam", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      previewSender: "Sam", previewSenderVerified: false, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: false
     },
     {
@@ -49,25 +49,25 @@ ShellRoot {
       kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: true, archived: false, hidden: false, lastActivity: root.now,
       preview: "A long preview that keeps going well past the edge of the narrow column",
-      previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: false
     },
     {
       id: "c4", title: "Older Chat", titleVerified: true, kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: false, archived: false, hidden: true, lastActivity: root.now,
-      preview: "see you around", previewSender: "", previewOutgoing: false, match: "", dimmed: true, dimLabel: "Hidden",
+      preview: "see you around", previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: true, dimLabel: "Hidden",
       reminderAt: 0, reminderDue: false, blocked: false
     },
     {
       id: "c5", title: "Blocked Contact", titleVerified: true, kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now,
-      preview: "", previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      preview: "", previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: true
     },
     {
       id: "c6", title: "Mum", titleVerified: false, kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now,
-      preview: "", previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      preview: "", previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: false
     }
   ]
@@ -271,8 +271,25 @@ ShellRoot {
       return Check.fail("activated " + JSON.stringify(root.activated) + ", want [\"c2\"]");
 
     if (!root.checkUnverifiedTitleIsMarked()) return;
+    if (!root.checkUnverifiedPreviewSenderIsMarked()) return;
 
     root.checkLiveUpdates();
+  }
+
+  // checkUnverifiedPreviewSenderIsMarked mirrors
+  // checkUnverifiedTitleIsMarked, but for a group's preview sender: c2's
+  // previewSender "Sam" carries no previewSenderVerified at all, the
+  // secure default for a row the helper never marked, so the preview
+  // line must show "~Sam: ok" through the real delegate, not "Sam: ok"
+  // (see docs/decisions.md).
+  function checkUnverifiedPreviewSenderIsMarked(): bool {
+    const row = Check.find(list, "row-c2");
+    if (!row) return Check.fail("row-c2 not found");
+
+    const preview = Check.find(row, "previewText");
+    if (!preview || preview.text !== "~Sam: ok")
+      return Check.fail("unverified preview sender = " + (preview && preview.text) + ", want ~Sam: ok");
+    return true;
   }
 
   // checkUnverifiedTitleIsMarked verifies an unverified title - a

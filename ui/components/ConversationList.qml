@@ -137,6 +137,11 @@ Item {
       required property real lastActivity
       required property string preview
       required property string previewSender
+      // previewSenderVerified mirrors titleVerified above, but for
+      // previewSender specifically: a group's own name can be
+      // verified while the member who sent its newest message is not
+      // (see Verify.markedName and docs/decisions.md).
+      required property bool previewSenderVerified
       required property bool previewOutgoing
       required property string match
       required property bool dimmed
@@ -215,6 +220,7 @@ Item {
           "lastActivity": wrapper.lastActivity,
           "preview": wrapper.preview,
           "previewSender": wrapper.previewSender,
+          "previewSenderVerified": wrapper.previewSenderVerified,
           "previewOutgoing": wrapper.previewOutgoing,
           "match": wrapper.match,
           "reminderAt": wrapper.reminderAt,

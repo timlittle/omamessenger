@@ -101,11 +101,14 @@ const (
 )
 
 // verifiedRank reports whether rank is trustworthy enough to show
-// unmarked, matching domain.Message.SenderVerified: a contact's saved
-// name or a group's own name, and a business's own verified name, both
-// are; a bare push name, self-chosen and unverified, is not.
+// unmarked, matching domain.Message.SenderVerified: only a contact's
+// saved name or a group's own name is. A business name ranks above a
+// bare push name for priority (see nameRank), but anyone can set one
+// through the free, unreviewed WhatsApp Business app, so it is not
+// trusted enough to show unmarked by rank alone; only senderName's own
+// check of whatsmeow's VerifiedLevel grants that.
 func verifiedRank(rank nameRank) bool {
-	return rank == nameRankContact || rank == nameRankBusiness
+	return rank == nameRankContact
 }
 
 // rankFor is verifiedRank's inverse, for a caller that already knows

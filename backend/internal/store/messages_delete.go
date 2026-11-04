@@ -144,10 +144,11 @@ func refreshAfterDeletion(ctx context.Context, tx *sql.Tx, conversationID string
 	_, err := tx.ExecContext(ctx, `UPDATE conversations SET
 			preview=COALESCE((`+fmt.Sprintf(newest, "text")+`),''),
 			preview_sender=COALESCE((`+fmt.Sprintf(newest, "sender_name")+`),''),
+			preview_sender_verified=COALESCE((`+fmt.Sprintf(newest, "sender_verified")+`),0),
 			preview_out=COALESCE((`+fmt.Sprintf(newest, "outgoing")+`),0),
 			last_activity=COALESCE((`+fmt.Sprintf(newest, "created")+`),0)
 		WHERE id=?`,
-		conversationID, conversationID, conversationID, conversationID, conversationID)
+		conversationID, conversationID, conversationID, conversationID, conversationID, conversationID)
 
 	return err
 }

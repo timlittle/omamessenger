@@ -20,6 +20,14 @@ import "../lib/Links.js" as Links
 // line computed from it, the fixed message in place of "It will
 // open:", and no Open or Copy choice left for a stray keypress to
 // land on - just a way to close it.
+//
+// A later review found the host line itself could still mislead even
+// for an allowed target: showing it exactly as spelled let a
+// lookalike domain (a Cyrillic "а" standing in for the Latin letter,
+// say) read as identical to the real one the user meant to open. The
+// host now goes through Links.hostForDisplay, which spells out any
+// non-ASCII character as its own code point rather than a glyph, so a
+// lookalike can never hide behind this dialog's own display.
 ChoiceDialog {
   id: root
 
@@ -54,7 +62,7 @@ ChoiceDialog {
   // link with no separate authority host at all, rather than naming
   // an empty one - the same as for a refused link, which has no host
   // this dialog will compute at all.
-  emphasisText: root._host !== "" ? "Really opens: " + root._host : ""
+  emphasisText: root._host !== "" ? "Really opens: " + Links.hostForDisplay(root._host) : ""
   description: root._allowed ? "It will open:\n" + root.target : Links.REFUSED_LINK_MESSAGE
   // Elides the middle, not the end, so both the scheme and whatever
   // sits nearest the real host stay in view here too; emphasisText

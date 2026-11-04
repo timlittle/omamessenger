@@ -322,9 +322,19 @@ const previewLineCases = [
   ['returns text for direct message',
     { kind: 'direct', preview: 'Hello there', previewSender: 'Alice', previewOutgoing: false },
     'Hello there'],
-  ['returns sender: text for group incoming',
-    { kind: 'group', preview: 'Hello team', previewSender: 'Alice', previewOutgoing: false },
+  ['returns sender: text for group incoming from a verified sender',
+    { kind: 'group', preview: 'Hello team', previewSender: 'Alice', previewSenderVerified: true, previewOutgoing: false },
     'Alice: Hello team'],
+  // A security review found this line unmarked even when the same
+  // sender's name shows marked inside the chat itself: a group member
+  // fully controls their own name, so it must never look unmarked by
+  // default (see docs/decisions.md).
+  ['marks an unverified group sender with a leading "~"',
+    { kind: 'group', preview: 'send me the code', previewSender: 'Mum', previewSenderVerified: false, previewOutgoing: false },
+    '~Mum: send me the code'],
+  ['marks a group sender with no previewSenderVerified at all, such as a row stored before it existed',
+    { kind: 'group', preview: 'Hello team', previewSender: 'Alice', previewOutgoing: false },
+    '~Alice: Hello team'],
   ['returns You: text for group outgoing',
     { kind: 'group', preview: 'I agree', previewSender: 'Me', previewOutgoing: true },
     'You: I agree'],
@@ -350,7 +360,7 @@ for (const [name, conv, want] of previewLineCases) {
 
 test('previewLine caps a huge preview to one row\'s worth of text', () => {
   const huge = 'x'.repeat(100000);
-  const line = Format.previewLine({ kind: 'group', preview: huge, previewSender: 'Alice', previewOutgoing: false });
+  const line = Format.previewLine({ kind: 'group', preview: huge, previewSender: 'Alice', previewSenderVerified: true, previewOutgoing: false });
   assert.equal(line.length, Format.MAX_PREVIEW_LENGTH);
   assert.ok(line.startsWith('Alice: x'));
 });
