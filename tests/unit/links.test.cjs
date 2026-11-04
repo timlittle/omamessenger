@@ -115,7 +115,7 @@ test('resolveClickedLink returns a span\'s own visible text and url for its own 
   const text = 'see click here for more';
   const spans = [{ kind: 'link', start: 4, end: 14, url: 'https://evil.example.com' }];
   const href = Format.linkHref(0);
-  assert.deepEqual(Links.resolveClickedLink(href, text, [], spans), { url: 'https://evil.example.com', displayText: 'click here' });
+  assert.deepEqual(Links.resolveClickedLink(href, text, [], spans), { url: 'https://evil.example.com', displayText: 'click here', suspicious: false });
 });
 
 test('resolveClickedLink tells apart two spans that carry the same url with different visible text', () => {
@@ -136,8 +136,8 @@ test('resolveClickedLink tells apart two spans that carry the same url with diff
   const honest = Links.resolveClickedLink(Format.linkHref(0), text, [], spans);
   const disguise = Links.resolveClickedLink(Format.linkHref(1), text, [], spans);
 
-  assert.deepEqual(honest, { url, displayText: url });
-  assert.deepEqual(disguise, { url, displayText: 'Barclays here' });
+  assert.deepEqual(honest, { url, displayText: url, suspicious: false });
+  assert.deepEqual(disguise, { url, displayText: 'Barclays here', suspicious: false });
   assert.strictEqual(Links.needsConfirmation(honest.displayText, honest.url), false);
   assert.strictEqual(Links.needsConfirmation(disguise.displayText, disguise.url), true);
 });
@@ -161,7 +161,7 @@ test('resolveClickedLink refuses an href naming an index past the end of the anc
 test('resolveClickedLink needs no confirmation for a plain auto-linked url', () => {
   const text = 'see https://good.example for more';
   const resolved = Links.resolveClickedLink(Format.linkHref(0), text, [], []);
-  assert.deepEqual(resolved, { url: 'https://good.example', displayText: 'https://good.example' });
+  assert.deepEqual(resolved, { url: 'https://good.example', displayText: 'https://good.example', suspicious: false });
   assert.strictEqual(Links.needsConfirmation(resolved.displayText, resolved.url), false);
 });
 
@@ -308,4 +308,54 @@ test('urlHost stays linear on a long run of userinfo padding, not quadratic', ()
 
   assert.strictEqual(host, 'evil.example');
   assert.ok(elapsedMs < 2000, `urlHost took ${elapsedMs}ms on a 65000-character userinfo, want well under 2000ms`);
+});
+
+// The following four tests reproduce a security review's own named
+// examples: a bidi override, a link entity or formatting span cut
+// short of what reads as one hostname, and a lookalike host. Each
+// invisible or confusable character is built from its code point
+// (see tests/unit/no-hidden-characters.test.cjs), never written
+// literally into this file.
+
+test('a right-to-left override before a plain autolink is flagged suspicious even though its text and url already match', () => {
+  // U+202E before the scheme sits outside the matched text entirely,
+  // so url and displayText are identical, exactly as any plain
+  // autolink's already are - sameTarget alone would never object.
+  const rtlOverride = String.fromCodePoint(0x202e);
+  const url = 'https://nigol.sh/moc.lapyap.www';
+  const text = rtlOverride + url;
+
+  const anchors = Format.messageLinkAnchors(text, [], []);
+  assert.deepEqual(anchors, [{ url, displayText: url, suspicious: true }]);
+  assert.strictEqual(Links.needsConfirmation(anchors[0].displayText, anchors[0].url, anchors[0].suspicious), true);
+});
+
+test('a Telegram link entity covering only a prefix of what reads as one hostname is flagged suspicious', () => {
+  const prefix = 'https://paypal-login.ru';
+  const text = prefix + '.paypal.com/login';
+  const spans = [{ kind: 'link', start: 0, end: prefix.length, url: prefix }];
+
+  const anchors = Format.messageLinkAnchors(text, [], spans);
+  assert.deepEqual(anchors, [{ url: prefix, displayText: prefix, suspicious: true }]);
+  assert.strictEqual(Links.needsConfirmation(anchors[0].displayText, anchors[0].url, anchors[0].suspicious), true);
+});
+
+test('a spoiler span over only part of a plain autolinked URL is flagged suspicious, even with no visible seam of its own', () => {
+  // "spoiler" adds no tag at all (see Format.js's STYLE_TAGS), so the
+  // bubble itself shows no seam where the cut happens; this is the one
+  // place that still catches it.
+  const prefix = 'https://paypal-login.ru';
+  const text = prefix + '.paypal.com/login';
+  const spans = [{ kind: 'spoiler', start: prefix.length, end: text.length }];
+
+  const anchors = Format.messageLinkAnchors(text, [], spans);
+  assert.deepEqual(anchors, [{ url: prefix, displayText: prefix, suspicious: true }]);
+});
+
+test('hostForDisplay spells out a lookalike host\'s non-ASCII characters as their own code points', () => {
+  const cyrillicA = String.fromCodePoint(0x0430);
+  const lookalike = 'p' + cyrillicA + 'ypal.com';
+
+  assert.strictEqual(Links.hostForDisplay(lookalike), 'p\\u{430}ypal.com');
+  assert.strictEqual(Links.hostForDisplay('paypal.com'), 'paypal.com');
 });

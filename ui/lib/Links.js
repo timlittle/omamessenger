@@ -114,12 +114,22 @@ function isQueryMailto(url) {
 
 // needsConfirmation reports whether a link's own visible text could
 // mislead about where it actually goes: true for a mailto: link
-// carrying a query string (see isQueryMailto), or when displayText
-// does not name the same destination as url (see sameTarget). A plain
-// autolinked URL always has text identical to its own href, so it
-// already matches by the time this runs.
-function needsConfirmation(displayText, url) {
-  return isQueryMailto(url) || !sameTarget(displayText, url);
+// carrying a query string (see isQueryMailto), when suspicious says
+// so, or when displayText does not name the same destination as url
+// (see sameTarget). suspicious is the anchor's own flag Format.js
+// computed while rendering (see Format.messageLinkAnchors): true when
+// the message carries a bidi or other invisible format character
+// anywhere at all - a right-to-left override placed just before a
+// plain URL reverses how the whole run reads on screen while leaving
+// the matched text and its own href identical, which sameTarget's
+// plain textual comparison can never catch - or when the anchor's own
+// span stopped short of what reads as one continuous URL, cut by a
+// connector's own link entity or a formatting span that covers only
+// part of it (see Format.continuesURLToken and docs/decisions.md). A
+// plain autolinked URL always has text identical to its own href, so
+// sameTarget alone would otherwise never catch either case.
+function needsConfirmation(displayText, url, suspicious = false) {
+  return suspicious || isQueryMailto(url) || !sameTarget(displayText, url);
 }
 
 // resolveClickedLink turns href - exactly what Qt's onLinkActivated
@@ -178,6 +188,28 @@ function urlHost(url) {
   const authority = afterScheme.slice(2).split(/[/?#]/, 1)[0];
   const host = authority.slice(authority.lastIndexOf('@') + 1);
   return host.replace(/:\d*$/, '');
+}
+
+// hostForDisplay returns host unchanged when it is pure ASCII, or, when
+// it carries any character outside that range, a form that spells each
+// one out as its own "\uXXXX" code point rather than rendering it as a
+// glyph at all: a security review found LinkOpenConfirm showing a
+// lookalike host exactly as spelled - "pаypal.com" with a Cyrillic "а"
+// standing in for the Latin letter - looks identical to the real
+// domain the user actually meant to open, which defeats the one job
+// this confirmation has. No decoding, resolving or script-name lookup
+// of any kind runs here, since any of those is itself a step a spoof
+// could abuse (see urlHost's own doc comment); this only ever changes
+// how a character already in host is shown, never which host string
+// this helper or Qt.openUrlExternally actually treats as real.
+function hostForDisplay(host) {
+  if (/^[\x00-\x7f]*$/.test(host)) {
+    return host;
+  }
+
+  return Array.from(host)
+    .map((ch) => (ch.codePointAt(0) <= 0x7f ? ch : '\\u{' + ch.codePointAt(0).toString(16) + '}'))
+    .join('');
 }
 
 // previewDisplayText returns what a link preview card showed for url,

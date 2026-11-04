@@ -144,7 +144,7 @@ Item {
       // twice, so openLink's own mismatch question - which a security
       // review found this call defeated outright by always comparing
       // url against itself - still has something real to compare.
-      if (urls.length === 1) root.windowController.openLink(urls[0].url, urls[0].displayText);
+      if (urls.length === 1) root.windowController.openLink(urls[0].url, urls[0].displayText, urls[0].suspicious === true);
       else root.windowController.openLinkChooser(urls);
     }
   }
@@ -314,7 +314,7 @@ Item {
       onMediaCopyRequested: id => root.conversationController.copyMedia(id)
       onMediaSaveRequested: id => root.conversationController.saveMedia(id)
       onMediaOpenExternalRequested: id => root.conversationController.openMediaExternal(id)
-      onLinkOpenRequested: (url, displayText) => root.windowController.openLink(url, displayText)
+      onLinkOpenRequested: (url, displayText, suspicious) => root.windowController.openLink(url, displayText, suspicious)
       onSend: (text, replyToId, mentions) => {
         // Enter while editing a queued message's own text must never
         // send it as a new message right now: there is still a time to

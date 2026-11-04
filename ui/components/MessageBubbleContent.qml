@@ -83,11 +83,13 @@ Column {
   // ui/lib/Links.js's resolveClickedLink, which is what the body
   // TextEdit's onLinkActivated below uses to recover it, by the
   // clicked anchor's own position, never by matching its href against
-  // a span's URL). Reported rather than opened here directly, so the
-  // one allow-list check, and the one question about a mismatched
-  // link, happen where every such request ends up (see
-  // WindowController.openLink).
-  signal linkOpenRequested(string url, string displayText)
+  // a span's URL). suspicious is the resolved anchor's own flag (see
+  // Format.messageLinkAnchors), always false for a link preview's own
+  // card, which carries no such anchor. Reported rather than opened
+  // here directly, so the one allow-list check, and the one question
+  // about a mismatched or suspicious link, happen where every such
+  // request ends up (see WindowController.openLink).
+  signal linkOpenRequested(string url, string displayText, bool suspicious)
 
   // _mediaKind is which view media belongs in: "link", "photo", "video",
   // "voice", "audio", "file", or "" for no media, read only from the
@@ -144,7 +146,7 @@ Column {
     // unquestioned (see Links.js's own header comment).
     onLinkActivated: href => {
       const resolved = Links.resolveClickedLink(href, body.caption, root.mentions, root.formatting);
-      if (resolved) root.linkOpenRequested(resolved.url, resolved.displayText);
+      if (resolved) root.linkOpenRequested(resolved.url, resolved.displayText, resolved.suspicious === true);
     }
   }
 
@@ -176,7 +178,7 @@ Column {
         // The sender sets a preview's URL apart from the text the
         // bubble shows, so a card whose URL that text never shows
         // asks first.
-        onOpened: url => root.linkOpenRequested(url, Links.previewDisplayText(url, root.message ? root.message.text : "", root.mentions, root.formatting, root.media ? root.media.title : ""))
+        onOpened: url => root.linkOpenRequested(url, Links.previewDisplayText(url, root.message ? root.message.text : "", root.mentions, root.formatting, root.media ? root.media.title : ""), false)
       }
     }
   }

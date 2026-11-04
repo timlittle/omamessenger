@@ -140,10 +140,11 @@ Item {
   // message's poll.
   signal voted(string id, var optionIds)
   // linkOpenRequested asks the caller to open url: a link in this
-  // message's own text, or its link preview's URL. displayText is
-  // what the person actually saw for it (see MessageBubbleContent's
-  // own signal of the same name).
-  signal linkOpenRequested(string url, string displayText)
+  // message's own text, or its link preview's URL. displayText and
+  // suspicious are what the person actually saw for it, and whether
+  // Format.js flagged it (see MessageBubbleContent's own signal of the
+  // same name).
+  signal linkOpenRequested(string url, string displayText, bool suspicious)
 
   width: ListView.view ? ListView.view.width : implicitWidth
   implicitHeight: column.implicitHeight
@@ -308,7 +309,7 @@ Item {
           onVideoMuteToggled: root.videoMuteToggled(root.message.id)
           onQuoteOpened: remoteId => root.quoteOpened(remoteId)
           onVoted: optionIds => root.voted(root.message.id, optionIds)
-          onLinkOpenRequested: (url, displayText) => root.linkOpenRequested(url, displayText)
+          onLinkOpenRequested: (url, displayText, suspicious) => root.linkOpenRequested(url, displayText, suspicious)
         }
 
         MessageMeta {

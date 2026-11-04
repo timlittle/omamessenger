@@ -457,7 +457,7 @@ ShellRoot {
     // pairing collapsed into comparing a url against itself, which
     // left WindowController.openLink's own mismatch question with
     // nothing it could ever catch (see docs/decisions.md).
-    if (JSON.stringify(root.capturedLinks) !== '[{"url":"https://example.com/offer","displayText":"https://example.com/offer"}]')
+    if (JSON.stringify(root.capturedLinks) !== '[{"url":"https://example.com/offer","displayText":"https://example.com/offer","suspicious":false}]')
       return Check.fail("o did not report the highlighted message's own link: " + JSON.stringify(root.capturedLinks));
 
     // A formatting span can make a message's own visible text read as
@@ -479,7 +479,7 @@ ShellRoot {
 
     root.capturedLinks = null;
     t.keyClick(Qt.Key_O);
-    if (JSON.stringify(root.capturedLinks) !== '[{"url":"https://evil.example.com/login","displayText":"click here"}]')
+    if (JSON.stringify(root.capturedLinks) !== '[{"url":"https://evil.example.com/login","displayText":"click here","suspicious":false}]')
       return Check.fail("o did not report the formatting span's own mismatched url and visible text: " + JSON.stringify(root.capturedLinks));
 
     t.keyClick(Qt.Key_K);
