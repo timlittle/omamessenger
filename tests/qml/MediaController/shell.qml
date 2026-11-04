@@ -114,6 +114,13 @@ ShellRoot {
       // security review's own scenario: an edit swaps its media for a
       // photo while its own media.fetch is still in flight.
       { id: "stale1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Voice note]", outgoing: false, status: "received", created: -7, media: { kind: "voice", duration: 3 }, mediaPath: "" },
+      // rt1 is a never-clicked undownloaded photo, for the round-trip
+      // scenario: its own media.fetch is still in flight when an edit
+      // swaps it for a document and then straight back to this exact
+      // same photo, so the row's own before-and-after signature
+      // compares equal even though a document's own raw bytes were
+      // the ones actually downloaded while it was in flight.
+      { id: "rt1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Photo]", outgoing: false, status: "received", created: -7.5, media: { kind: "photo", width: 400, height: 300, size: 1000 }, mediaPath: "" },
       // v9 and vn1, both never-clicked and undownloaded, are for the
       // play-never-joins-a-download-only-fetch check: a video and a
       // voice note, each asked for with a silent, download-only
@@ -242,6 +249,17 @@ ShellRoot {
     callback(null, { path: path, playPath: playable ? path : "" });
   }
 
+  // answerFetchSuccessServedAs resolves a held media.fetch call with
+  // path, kind and mediaSize, the same as a real helper's result now
+  // carries (see docs/api.md): kind and mediaSize report what the
+  // fetch actually served, which can be a different kind from
+  // whatever the row reads as by the time this answer arrives.
+  function answerFetchSuccessServedAs(id, path, kind, mediaSize) {
+    const callback = service.pendingFetch[id];
+    delete service.pendingFetch[id];
+    callback(null, { path: path, kind: kind, mediaSize: mediaSize });
+  }
+
   // answerFetchSuccessRisky resolves a held media.fetch call with path,
   // flagged risky, the same as the helper does for active or
   // executable content (see app.MediaRisk and docs/decisions.md).
@@ -261,6 +279,7 @@ ShellRoot {
     if (!root.checkDifferentMessageStillOpensDuringAnothersCooldown()) return;
     if (!root.checkOpenDuringAnInFlightPrefetchStillOpensOnceAnswered()) return;
     if (!root.checkStaleMediaFetchNeverWritesBackAfterAnEditChangesKind()) return;
+    if (!root.checkStaleMediaFetchNeverWritesBackAfterARoundTripEditRestoresTheSameSignature()) return;
 
     cooldownTimer.start();
   }
@@ -740,6 +759,59 @@ ShellRoot {
     root.answerFetchSuccess("stale1", "/tmp/stale1-photo.jpg", true);
     if (controller.timeline.mediaPath("stale1") !== "/tmp/stale1-photo.jpg") {
       return Check.fail("the fresh fetch for the photo kind never landed once it answered: " + controller.timeline.mediaPath("stale1"));
+    }
+    return true;
+  }
+
+  // checkStaleMediaFetchNeverWritesBackAfterARoundTripEditRestoresTheSameSignature
+  // reproduces the second security review scenario, which the plain
+  // before-and-after signature check above does not catch on its own:
+  // rt1's media.fetch is still in flight when an edit swaps it from
+  // photo to document, then a second edit swaps it straight back to
+  // this exact same photo - so by the time the in-flight answer
+  // arrives, the row's own signature matches what downloadMedia
+  // recorded before it ever asked, even though the bytes actually
+  // downloaded in between were the document's, never the photo's.
+  // media.fetch's own kind and mediaSize fields (see docs/api.md) are
+  // what this fix checks instead: the answer reports it served the
+  // document, which does not match the row's current photo, so it
+  // must still be dropped and a fresh fetch started for the photo
+  // actually showing now.
+  function checkStaleMediaFetchNeverWritesBackAfterARoundTripEditRestoresTheSameSignature(): bool {
+    service.fetchRequests = [];
+    const originalPhoto = { kind: "photo", width: 400, height: 300, size: 1000 };
+
+    controller.downloadMedia("rt1", false, true, () => {});
+    if (service.fetchRequests.filter((id) => id === "rt1").length !== 1) {
+      return Check.fail("downloadMedia did not send exactly one media.fetch for rt1: " + JSON.stringify(service.fetchRequests));
+    }
+
+    controller.timeline.upsert({
+      id: "rt1", conversationId: "c1", senderId: "s", senderName: "S", text: "[File]",
+      outgoing: false, status: "received", created: -7.5, edited: true,
+      media: { kind: "document", fileName: "invoice.pdf", size: 50000 }
+    }, false, "");
+
+    controller.timeline.upsert({
+      id: "rt1", conversationId: "c1", senderId: "s", senderName: "S", text: "[Photo]",
+      outgoing: false, status: "received", created: -7.5, edited: true,
+      media: originalPhoto
+    }, false, "");
+    if (controller.timeline.media("rt1").kind !== "photo") {
+      return Check.fail("the round-trip edit did not land before the stale fetch answered");
+    }
+
+    root.answerFetchSuccessServedAs("rt1", "/tmp/rt1-document.bin", "document", 50000);
+    if (controller.timeline.mediaPath("rt1") !== "") {
+      return Check.fail("a media.fetch answer served for the document kind still landed once the row read as a photo again: " + controller.timeline.mediaPath("rt1"));
+    }
+    if (service.fetchRequests.filter((id) => id === "rt1").length !== 2) {
+      return Check.fail("the mismatched-kind answer did not trigger a fresh fetch for the row's current photo: " + JSON.stringify(service.fetchRequests));
+    }
+
+    root.answerFetchSuccessServedAs("rt1", "/tmp/rt1-photo.jpg", "photo", 1000);
+    if (controller.timeline.mediaPath("rt1") !== "/tmp/rt1-photo.jpg") {
+      return Check.fail("the fresh fetch for the photo kind never landed once it answered: " + controller.timeline.mediaPath("rt1"));
     }
     return true;
   }

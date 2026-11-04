@@ -60,7 +60,7 @@ func (c *Commands) CopyMedia(ctx context.Context, messageID string) error {
 		return err
 	}
 
-	path, playPath, _, _, err := c.FetchMedia(ctx, messageID, false, true)
+	path, playPath, _, _, _, _, err := c.FetchMedia(ctx, messageID, false, true)
 	if err != nil {
 		return err
 	}

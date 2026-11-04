@@ -88,7 +88,11 @@ ShellRoot {
   // label show while the full image has not downloaded yet.
   function checkLoadingState(): bool {
     viewer.open = true;
-    viewer.photo = { kind: "photo", width: 1600, height: 900, thumb: "" };
+    // verifiedWidth/verifiedHeight stand in for what MediaController
+    // records once media.fetch actually confirms a photo's display
+    // copy (see PhotoViewer._haveFile): required here too, now that
+    // the viewer never decodes a path without them.
+    viewer.photo = { kind: "photo", width: 1600, height: 900, verifiedWidth: 1600, verifiedHeight: 900, thumb: "" };
     viewer.path = "";
 
     const label = Check.texts(viewer).find(node => node.text === "Loading…" && node.objectName === "loadingLabel");
@@ -267,7 +271,7 @@ ShellRoot {
   // its own bytes (see docs/decisions.md).
   function checkEditedToFileNeverLoadsItsRawBytes(): bool {
     viewer.open = true;
-    viewer.photo = { kind: "photo", width: 400, height: 300, thumb: "" };
+    viewer.photo = { kind: "photo", width: 400, height: 300, verifiedWidth: 400, verifiedHeight: 300, thumb: "" };
     viewer.path = String(Qt.resolvedUrl("fixture.png")).replace("file://", "");
 
     const image = Check.find(viewer, "photoImage");

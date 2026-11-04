@@ -29,6 +29,7 @@ ShellRoot {
   property var steps: [
     root.checkUnavailableMessage,
     root.checkLyingDimensionsNeverRaiseSourceSize,
+    root.checkUnverifiedPathNeverReachesTheImage,
     root.waitForBrokenPhotoToAskAgain,
     root.waitForRealJpegThumbToRender,
     root.waitForMatchedExtensionFileToRender,
@@ -123,6 +124,29 @@ ShellRoot {
     return true;
   }
 
+  // checkUnverifiedPathNeverReachesTheImage covers the fix for a
+  // security review's media-identity race: a media.fetch answer served
+  // for one kind can land on a row that reads as a photo again by the
+  // time it arrives, even though MediaController's own staleness check
+  // is meant to catch it (see ui/controllers/MediaController.qml). As
+  // a second, independent check, this view itself must never decode a
+  // path unless its own verifiedWidth/verifiedHeight - set only once
+  // MediaController has recorded media.fetch's result for this exact
+  // photo - are there too: a path with no verified size at all, even
+  // though it is set and looks like any other path, falls back to the
+  // thumbnail instead of ever reaching the Image.
+  function checkUnverifiedPathNeverReachesTheImage(): var {
+    const image = Check.find(unverifiedPhoto, "photoImage");
+    if (!image) return "could not find unverifiedPhoto's own Image";
+    if (String(image.source).includes("opaque.jpg")) {
+      return "the Image decoded an unverified path instead of falling back to the thumbnail";
+    }
+    if (!String(image.source).startsWith("data:image/jpeg;base64,")) {
+      return "the Image source = " + image.source + ", want the thumbnail data URL";
+    }
+    return true;
+  }
+
   // waitForBrokenPhotoToAskAgain holds until brokenPhoto, whose path
   // names a file that does not exist, asks for a fresh one once its
   // real Image fails to load it.
@@ -155,8 +179,26 @@ ShellRoot {
       }
 
       PhotoView {
+        id: unverifiedPhoto
+        // path names a real, decodable JPEG - the same opaque.jpg
+        // matchedExtensionPhoto below loads successfully - so this
+        // only proves the fix, not a path that would have failed to
+        // decode anyway. No verifiedWidth/verifiedHeight, exactly as
+        // it would be for a mismatched-kind answer that slipped past
+        // MediaController's own check: this view must still refuse to
+        // decode it, even though it is a perfectly real image file.
+        photo: ({ kind: "photo", width: 4, height: 3, thumb: root.realJpegThumbBase64 })
+        path: root.testRoot + "/opaque.jpg"
+      }
+
+      PhotoView {
         id: brokenPhoto
-        photo: ({ kind: "photo", width: 4, height: 3, thumb: "" })
+        // verifiedWidth/verifiedHeight stand in for what
+        // MediaController records once media.fetch actually confirms
+        // a photo's display copy (see PhotoView._haveFile): required
+        // here too, now that the view never decodes a path without
+        // them, even one that turns out not to exist on disk.
+        photo: ({ kind: "photo", width: 4, height: 3, verifiedWidth: 4, verifiedHeight: 3, thumb: "" })
         path: "/nonexistent/path-for-photoview-test.jpg"
         onWanted: root.reloadWantedCount++
       }
@@ -176,13 +218,13 @@ ShellRoot {
 
       PhotoView {
         id: matchedExtensionPhoto
-        photo: ({ kind: "photo", width: 4, height: 3, thumb: "" })
+        photo: ({ kind: "photo", width: 4, height: 3, verifiedWidth: 4, verifiedHeight: 3, thumb: "" })
         path: root.testRoot + "/opaque.jpg"
       }
 
       PhotoView {
         id: mismatchedExtensionPhoto
-        photo: ({ kind: "photo", width: 8, height: 8, thumb: "" })
+        photo: ({ kind: "photo", width: 8, height: 8, verifiedWidth: 8, verifiedHeight: 8, thumb: "" })
         path: root.testRoot + "/mismatched.jpg"
       }
     }

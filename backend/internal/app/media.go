@@ -64,44 +64,53 @@ func (e *MediaFetchError) Unwrap() error {
 // it just confirmed them, for the UI to size its decode from in
 // place of the message's own claimed size, which need not match what
 // the served file actually decodes to (see docs/decisions.md). Both
-// are zero for every other media kind. An
-// outgoing message's own attachment is already on this machine, so
-// its local copy is returned at once, with no remote id needed;
-// anything else is downloaded from the service the first time, then
-// kept in the media cache. auto is true for a fetch the UI made on
-// its own, with no click from the user - today, only an animated
-// "GIF" video autoplaying as soon as it is shown - which every
-// connector bounds to a far smaller size than a deliberate click is
-// trusted with (see connector.MaxBytes); SaveMedia, always a
-// deliberate action, passes false. play, when true, also asks for the
-// message's in-window play copy (see playCopy): playPath is "" unless
-// play was true and the transcode actually succeeded, never an error
-// on its own either way, so a transcode failing or being unavailable
-// never fails a fetch that would otherwise have succeeded (see
-// docs/decisions.md). A download failure is always logged with its
-// safe reason category and returned as a *MediaFetchError, so nothing
-// fails silently (see docs/decisions.md).
-func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto, play bool) (path, playPath string, width, height int, err error) {
+// are zero for every other media kind. kind and mediaSize report what
+// this call actually served - m.Media.Kind and m.Media.Size, read
+// once here before anything else runs - never the message's current
+// state by the time this returns: a caller can be in flight for as
+// long as a slow download takes, during which an edit can change the
+// message's media kind and back again, and the server package needs
+// to tell the UI what was really fetched, not what the row happens to
+// show again by the time the answer arrives (see
+// server.mediaFetch and docs/decisions.md). An outgoing message's own
+// attachment is already on this machine, so its local copy is
+// returned at once, with no remote id needed; anything else is
+// downloaded from the service the first time, then kept in the media
+// cache. auto is true for a fetch the UI made on its own, with no
+// click from the user - today, only an animated "GIF" video
+// autoplaying as soon as it is shown - which every connector bounds to
+// a far smaller size than a deliberate click is trusted with (see
+// connector.MaxBytes); SaveMedia, always a deliberate action, passes
+// false. play, when true, also asks for the message's in-window play
+// copy (see playCopy): playPath is "" unless play was true and the
+// transcode actually succeeded, never an error on its own either way,
+// so a transcode failing or being unavailable never fails a fetch
+// that would otherwise have succeeded (see docs/decisions.md). A
+// download failure is always logged with its safe reason category and
+// returned as a *MediaFetchError, so nothing fails silently (see
+// docs/decisions.md).
+func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto, play bool) (path, playPath string, width, height int, kind string, mediaSize int64, err error) {
 	if strings.TrimSpace(messageID) == "" {
-		return "", "", 0, 0, fmt.Errorf("%w: messageId is required", ErrInvalidInput)
+		return "", "", 0, 0, "", 0, fmt.Errorf("%w: messageId is required", ErrInvalidInput)
 	}
 
 	m, err := c.store.Message(ctx, messageID)
 	if err != nil {
-		return "", "", 0, 0, err
+		return "", "", 0, 0, "", 0, err
 	}
 
 	if m.Media == nil || m.Media.Kind == domain.MediaLink {
-		return "", "", 0, 0, fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
+		return "", "", 0, 0, "", 0, fmt.Errorf("%w: this message has nothing to download", ErrInvalidInput)
 	}
+	kind, mediaSize = m.Media.Kind, m.Media.Size
 
 	if reason, ok := c.refused.lookup(cacheIdentity(m)); ok {
-		return "", "", 0, 0, &MediaFetchError{Reason: reason, err: errRefusedDisplayCopyCached}
+		return "", "", 0, 0, kind, mediaSize, &MediaFetchError{Reason: reason, err: errRefusedDisplayCopyCached}
 	}
 
 	conv, err := c.store.Conversation(ctx, m.ConversationID)
 	if err != nil {
-		return "", "", 0, 0, err
+		return "", "", 0, 0, kind, mediaSize, err
 	}
 
 	if local, ok := c.localAttachment(m); ok {
@@ -110,14 +119,14 @@ func (c *Commands) FetchMedia(ctx context.Context, messageID string, auto, play 
 		path, width, height, err = c.fetchAndServe(ctx, conv, m, auto)
 	}
 	if err != nil {
-		return "", "", 0, 0, err
+		return "", "", 0, 0, kind, mediaSize, err
 	}
 
 	if play {
 		playPath = c.playCopy(ctx, m, path)
 	}
 
-	return path, playPath, width, height, nil
+	return path, playPath, width, height, kind, mediaSize, nil
 }
 
 // fetchAndServe downloads m's media from its service, for FetchMedia's

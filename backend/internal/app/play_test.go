@@ -28,7 +28,7 @@ func TestFetchMedia_PlayPathOnlyWhenPlayIsRequested(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, playPath, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+	_, playPath, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 	if err != nil || playPath != "" {
 		t.Fatalf("FetchMedia(play=false) = playPath %q, %v; want \"\", nil", playPath, err)
 	}
@@ -36,7 +36,7 @@ func TestFetchMedia_PlayPathOnlyWhenPlayIsRequested(t *testing.T) {
 		t.Errorf("transcoder calls = %d, want 0 when play was never asked for", f.transcoder.callCount())
 	}
 
-	_, playPath, _, _, err = f.commands.FetchMedia(ctx, "m1", false, true)
+	_, playPath, _, _, _, _, err = f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || playPath == "" {
 		t.Fatalf("FetchMedia(play=true) = playPath %q, %v; want a real path, nil", playPath, err)
 	}
@@ -62,7 +62,7 @@ func TestFetchMedia_PlaysAnAnimatedVideoThroughTheAnimationProfile(t *testing.T)
 		t.Fatal(err)
 	}
 
-	_, playPath, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	_, playPath, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || playPath == "" {
 		t.Fatalf("FetchMedia(play=true) = playPath %q, %v; want a real path, nil", playPath, err)
 	}
@@ -90,7 +90,7 @@ func TestFetchMedia_PlaysVoiceAndAudioThroughTheAudioProfile(t *testing.T) {
 	}
 
 	for _, id := range []string{"voice", "audio"} {
-		_, playPath, _, _, err := f.commands.FetchMedia(ctx, id, false, true)
+		_, playPath, _, _, _, _, err := f.commands.FetchMedia(ctx, id, false, true)
 		if err != nil || playPath == "" {
 			t.Fatalf("FetchMedia(%q, play=true) = playPath %q, %v; want a real path, nil", id, playPath, err)
 		}
@@ -118,7 +118,7 @@ func TestFetchMedia_NoPlayPathWhenTheTranscoderFails(t *testing.T) {
 	}
 
 	f.transcoder.err = errors.New("ffmpeg exploded")
-	path, playPath, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	path, playPath, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || path == "" || playPath != "" {
 		t.Fatalf("FetchMedia(play=true, transcoder failing) = path %q, playPath %q, %v; want the original path, no playPath, no error", path, playPath, err)
 	}
@@ -147,7 +147,7 @@ func TestFetchMedia_FailsFastOnASecondPlayFetchAfterAFailedTranscode(t *testing.
 
 	f.transcoder.err = errors.New("ffmpeg exploded")
 
-	path, playPath, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	path, playPath, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || path == "" || playPath != "" {
 		t.Fatalf("first FetchMedia(play=true) = path %q, playPath %q, %v; want the original path, no playPath, no error", path, playPath, err)
 	}
@@ -155,7 +155,7 @@ func TestFetchMedia_FailsFastOnASecondPlayFetchAfterAFailedTranscode(t *testing.
 		t.Fatalf("transcoder calls after the first play fetch = %d, want 1", calls)
 	}
 
-	path, playPath, _, _, err = f.commands.FetchMedia(ctx, "m1", false, true)
+	path, playPath, _, _, _, _, err = f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || path == "" || playPath != "" {
 		t.Fatalf("second FetchMedia(play=true) = path %q, playPath %q, %v; want the original path, no playPath, no error", path, playPath, err)
 	}
@@ -181,7 +181,7 @@ func TestFetchMedia_TranscodesAMessagesPlayCopyOnlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, first, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	_, first, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || first == "" {
 		t.Fatalf("first FetchMedia(play=true) = %q, %v; want a real path, nil", first, err)
 	}
@@ -189,7 +189,7 @@ func TestFetchMedia_TranscodesAMessagesPlayCopyOnlyOnce(t *testing.T) {
 		t.Fatalf("transcoder calls after the first play fetch = %d, want 1", calls)
 	}
 
-	_, second, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	_, second, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || second != first {
 		t.Fatalf("second FetchMedia(play=true) = %q, %v; want the same path %q again, nil", second, err, first)
 	}
@@ -215,7 +215,7 @@ func TestFetchMedia_PlaysAnOutgoingAttachmentTheSameWay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, playPath, _, _, err := f.commands.FetchMedia(ctx, sent.ID, false, true)
+	_, playPath, _, _, _, _, err := f.commands.FetchMedia(ctx, sent.ID, false, true)
 	if err != nil || playPath == "" {
 		t.Fatalf("FetchMedia(outgoing, play=true) = playPath %q, %v; want a real path, nil", playPath, err)
 	}
@@ -242,7 +242,7 @@ func TestFetchMedia_SkipsThePlayCopyWhenTheClaimedDurationIsOverTheCap(t *testin
 		t.Fatal(err)
 	}
 
-	_, playPath, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	_, playPath, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || playPath != "" {
 		t.Fatalf("FetchMedia(play=true, over-cap duration) = playPath %q, %v; want \"\", nil", playPath, err)
 	}
@@ -267,7 +267,7 @@ func TestFetchMedia_PlayNeverAppliesToAPhotoOrSticker(t *testing.T) {
 	}
 
 	f.media.data = testPNGBytes(t, 2, 2)
-	path, playPath, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	path, playPath, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil || path == "" || playPath != "" {
 		t.Fatalf("FetchMedia(photo, play=true) = path %q, playPath %q, %v; want a path, no playPath, no error", path, playPath, err)
 	}
@@ -298,7 +298,7 @@ func TestFetchMedia_PlayCopyNameNeverMatchesTheOriginalsOwnLookup(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	original, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
+	original, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestFetchMedia_PlayCopyNameNeverMatchesTheOriginalsOwnLookup(t *testing.T) 
 	// ordinary, non-playing fetch would) must still return the
 	// original, never the play copy a buggy "." separator could make
 	// findByID return instead.
-	again, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+	again, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 	if err != nil || again != original {
 		t.Fatalf("FetchMedia(play=false) after a play fetch = %q, %v; want the original %q again, nil", again, err, original)
 	}

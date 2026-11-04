@@ -433,7 +433,7 @@ QtObject {
       root._rejoinAsPlay(timeline, id, entry.rejoin);
       return;
     }
-    if (root._answerIsStale(timeline, id, expected, play)) {
+    if (root._answerIsStale(timeline, id, expected, play, result)) {
       root._rejoinAsPlay(timeline, id, entry.rejoin);
       return;
     }
@@ -478,8 +478,15 @@ QtObject {
   // open) is not this: the helper's verdict still belongs with the
   // download, not a row that may or may not come back, exactly as
   // checkRiskyVerdictSurvivesTheListBeingCleared expects, so that case
-  // runs the normal path below unchanged. Only an actual mismatch on a
-  // still-loaded row is stale: the answer describes bytes nobody has
+  // runs the normal path below unchanged. Comparing only expected
+  // against current is not enough on its own: a sender who edits a
+  // photo into a document and back again, while the document's own
+  // download is still in flight, leaves current's signature identical
+  // to expected's by the time the answer arrives, even though the
+  // bytes served were never the photo's own - so result's own kind and
+  // mediaSize, what media.fetch actually served (see
+  // _answerMatchesCurrentMedia), are checked against current too.
+  // Either mismatch is stale: the answer describes bytes nobody has
   // checked against id's current kind, so it is dropped outright
   // rather than written back (an unchecked file could otherwise reach
   // whatever sink that kind's own view trusts, such as a photo's Image
@@ -490,14 +497,35 @@ QtObject {
   // prefetch would ask for - asking for play again too when the stale
   // request itself had, so retrying never quietly downgrades it to a
   // download-only fetch.
-  function _answerIsStale(timeline: var, id: string, expected: var, play: bool): bool {
+  function _answerIsStale(timeline: var, id: string, expected: var, play: bool, result: var): bool {
     const current = timeline.media(id);
-    if (!current || Timeline.mediaSignaturesMatch(expected, Timeline.mediaSignature(current))) return false;
+    if (!current) return false;
+
+    const signatureMatches = Timeline.mediaSignaturesMatch(expected, Timeline.mediaSignature(current));
+    if (signatureMatches && root._answerMatchesCurrentMedia(current, result)) return false;
 
     delete root._riskyVerdicts[id];
     console.warn("media.fetch answered after message " + id + " changed media; refetching");
     root.downloadMedia(timeline, id, false, true, play, () => {});
     return true;
+  }
+
+  // _answerMatchesCurrentMedia reports whether result - the media.fetch
+  // answer that just arrived - was served for the same media current
+  // (id's own media right now) names: result.kind and result.mediaSize
+  // are what app.Commands.FetchMedia actually read before it ran the
+  // download (see docs/api.md), never current's own kind by the time
+  // this answer arrives, so this catches a fetch that served one kind
+  // while the row read as another at request time and is back to
+  // reading as that same one again now (see _answerIsStale's own
+  // comment). Both fields are optional, omitted by an older helper
+  // that predates them: true in that case, since there is nothing here
+  // to check the answer against.
+  function _answerMatchesCurrentMedia(current: var, result: var): bool {
+    if (result.kind === undefined) return true;
+    if (result.kind !== current.kind) return false;
+
+    return result.mediaSize === undefined || current.size === undefined || result.mediaSize === current.size;
   }
 
   // _applyVerifiedSize records result's verified width and height on

@@ -41,7 +41,7 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 	// stand-in - the message's own remote id, as plain text - is
 	// swapped for a real PNG here, unlike the file case below.
 	f.media.data = testPNGBytes(t, 2, 2)
-	path, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+	path, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 	if err != nil || filepath.Base(path) != "m1.photo-view.png" {
 		t.Fatalf("FetchMedia = %q, %v; want the display copy m1.photo-view.png in the cache", path, err)
 	}
@@ -60,7 +60,7 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 		t.Errorf("original = %v, %v; want the downloaded bytes kept unchanged alongside the display copy", original, err)
 	}
 
-	if _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); err != nil || !slices.Equal(f.media.fetched, []string{"40"}) {
+	if _, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); err != nil || !slices.Equal(f.media.fetched, []string{"40"}) {
 		t.Errorf("second FetchMedia = %v, downloads %v; want the cached copy", err, f.media.fetched)
 	}
 
@@ -72,7 +72,7 @@ func TestFetchMedia_DownloadsOnceIntoTheCache(t *testing.T) {
 	// A file, unlike a photo, carries no image check, so the plain text
 	// default works here unchanged.
 	f.media.data = nil
-	if path, _, _, _, err := f.commands.FetchMedia(ctx, "m2", false, false); err != nil || filepath.Base(path) != "m2.file.txt" {
+	if path, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m2", false, false); err != nil || filepath.Base(path) != "m2.file.txt" {
 		t.Errorf("FetchMedia(file) = %q, %v; want m2.file.txt, named from its own sniffed content", path, err)
 	}
 }
@@ -97,7 +97,7 @@ func TestFetchMedia_CachesEveryVideoWithAnMp4Extension(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+	path, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 	if err != nil || filepath.Base(path) != "m1.video.mp4" {
 		t.Fatalf("FetchMedia = %q, %v; want m1.video.mp4 in the cache", path, err)
 	}
@@ -124,7 +124,7 @@ func TestFetchMedia_Rejects(t *testing.T) {
 		"link":    app.ErrInvalidInput,
 		"missing": domain.ErrNotFound,
 	} {
-		if _, _, _, _, err := f.commands.FetchMedia(ctx, id, false, false); !errors.Is(err, want) {
+		if _, _, _, _, _, _, err := f.commands.FetchMedia(ctx, id, false, false); !errors.Is(err, want) {
 			t.Errorf("FetchMedia(%q) = %v, want %v", id, err, want)
 		}
 	}
@@ -143,7 +143,7 @@ func TestFetchMedia_OutgoingPhotoUsesTheLocalCopyWhileStillPending(t *testing.T)
 		t.Fatalf("Send() = %+v, %v; want it still pending with no remote id", sent, err)
 	}
 
-	got, _, _, _, err := f.commands.FetchMedia(ctx, sent.ID, false, false)
+	got, _, _, _, _, _, err := f.commands.FetchMedia(ctx, sent.ID, false, false)
 	if err != nil {
 		t.Fatalf("FetchMedia() error = %v", err)
 	}
@@ -192,7 +192,7 @@ func TestFetchMedia_OutgoingPhotoFallsBackToDownloadIfTheLocalCopyIsGone(t *test
 	// fake connector returns a real PNG here rather than its usual
 	// remote-id placeholder.
 	f.media.data = testPNGBytes(t, 2, 2)
-	got, _, _, _, err := f.commands.FetchMedia(ctx, sent.ID, false, false)
+	got, _, _, _, _, _, err := f.commands.FetchMedia(ctx, sent.ID, false, false)
 	if err != nil || filepath.Base(got) != sent.ID+".photo-view.png" {
 		t.Fatalf("FetchMedia() = %q, %v; want the service's display copy once the local one is gone", got, err)
 	}
@@ -221,7 +221,7 @@ func TestFetchMedia_ReportsADownloadFailure(t *testing.T) {
 	}
 
 	f.media.err = errors.New("offline")
-	if _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.Is(err, f.media.err) {
+	if _, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.Is(err, f.media.err) {
 		t.Errorf("FetchMedia = %v, want the download's error", err)
 	}
 }
@@ -262,7 +262,7 @@ func TestFetchMedia_LogsAndCategorizesEveryFailureReason(t *testing.T) {
 			}
 
 			f.media.err = tt.connectorErr
-			_, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+			_, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 
 			var mediaErr *app.MediaFetchError
 			if !errors.As(err, &mediaErr) || mediaErr.Reason != tt.wantReason {
@@ -304,7 +304,7 @@ func TestFetchMedia_ReportsACacheFailureWithoutCallingTheConnector(t *testing.T)
 		Store: f.store, Media: f.media, Cache: &fakeCache{err: errors.New("cache: disk full")}, Logger: logger,
 	})
 
-	_, _, _, _, err := commands.FetchMedia(ctx, "m1", false, false)
+	_, _, _, _, _, _, err := commands.FetchMedia(ctx, "m1", false, false)
 
 	var mediaErr *app.MediaFetchError
 	if !errors.As(err, &mediaErr) || mediaErr.Reason != app.MediaCacheFailed {
@@ -347,7 +347,7 @@ func TestFetchMedia_ReportsATooLargeFileTheCacheRefusedAfterDownloading(t *testi
 		Store: f.store, Media: f.media, Cache: cache.New(filepath.Join(t.TempDir(), "media"), limit), Logger: logger,
 	})
 
-	_, _, _, _, err := commands.FetchMedia(ctx, "m1", false, false)
+	_, _, _, _, _, _, err := commands.FetchMedia(ctx, "m1", false, false)
 
 	var mediaErr *app.MediaFetchError
 	if !errors.As(err, &mediaErr) || mediaErr.Reason != app.MediaTooLarge {

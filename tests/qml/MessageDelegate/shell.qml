@@ -517,7 +517,12 @@ ShellRoot {
   // thumbnail on the shell's own UI thread whether or not it was ever
   // shown (see docs/decisions.md).
   function checkPhoto(): bool {
-    const photo = { kind: "photo", width: 400, height: 200, size: 1024, thumb: "" };
+    // verifiedWidth/verifiedHeight stand in for what MediaController
+    // records once media.fetch confirms a photo's display copy (see
+    // PhotoView._haveFile): required for the downloaded-photo check
+    // below, which sets mediaPath directly, now that PhotoView never
+    // decodes a path without them.
+    const photo = { kind: "photo", width: 400, height: 200, verifiedWidth: 400, verifiedHeight: 200, size: 1024, thumb: "" };
     delegate.message = { id: "m8", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(photo), mediaPath: "" };
 
     const view = Check.find(delegate, "photoView");
@@ -543,7 +548,7 @@ ShellRoot {
   // to its thumb when it has one, or otherwise shows a quiet message
   // naming the file rather than staying an empty box.
   function checkPhotoLoadFailure(): bool {
-    const noThumb = { kind: "photo", width: 400, height: 200, thumb: "", fileName: "trip.jpg" };
+    const noThumb = { kind: "photo", width: 400, height: 200, verifiedWidth: 400, verifiedHeight: 200, thumb: "", fileName: "trip.jpg" };
     delegate.message = { id: "m16", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(noThumb), mediaPath: "/does/not/exist.jpg" };
 
     // The PhotoView swaps the Image away from the failed file once it
@@ -553,7 +558,7 @@ ShellRoot {
     if (!root.waitUntil(() => label.visible, 3000)) return Check.fail("unavailable message not shown once the photo failed to load");
     if (label.text.indexOf("trip.jpg") < 0) return Check.fail("unavailable message does not name the file: " + label.text);
 
-    const withThumb = { kind: "photo", width: 400, height: 200, thumb: root.tinyThumb, fileName: "trip.jpg" };
+    const withThumb = { kind: "photo", width: 400, height: 200, verifiedWidth: 400, verifiedHeight: 200, thumb: root.tinyThumb, fileName: "trip.jpg" };
     delegate.message = { id: "m16b", senderId: "s1", senderName: "Alex", senderVerified: true, text: "[Photo]", outgoing: false, status: "received", created: root.now, media: JSON.stringify(withThumb), mediaPath: "/does/not/exist-either.jpg" };
 
     const image2 = Check.find(delegate, "photoImage");

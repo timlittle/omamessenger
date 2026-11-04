@@ -86,8 +86,16 @@ Item {
 
   // _haveFile is whether the full image, rather than its thumbnail,
   // is the one actually shown right now - the same condition image's
-  // own source binding below uses.
-  readonly property bool _haveFile: root._isPhoto && !!root.path
+  // own source binding below uses. root.photo.verifiedWidth/Height are
+  // only ever set from media.fetch's own result for a photo or
+  // sticker (see MediaController._applyVerifiedSize and
+  // app.servedPath), so requiring one here, not merely _isPhoto and a
+  // non-empty path, is this viewer's own check that path is actually
+  // the re-encoded display copy its Image may decode - never, by
+  // itself, some other kind's raw original left behind by a race
+  // between an edit and an in-flight fetch answer (see
+  // docs/decisions.md).
+  readonly property bool _haveFile: root._isPhoto && !!root.path && root.photo.verifiedWidth > 0 && root.photo.verifiedHeight > 0
   // _verifiedWidth and _verifiedHeight are the real, decoder-confirmed
   // size to bound the image's own decode by (see
   // ImageBounds.verifiedDimensions): never root.photo.width/height,
@@ -136,8 +144,11 @@ Item {
       // Always the helper's own downloaded file or an embedded base64
       // thumb; never a remote URL. Empty for anything but a photo: a
       // hidden Image still decodes its source, and only a photo's own
-      // path is sanitized as one (see root._isPhoto).
-      source: root._isPhoto ? (root.path ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:" + Media.thumbMime(root.photo.thumb) + ";base64," + root.photo.thumb : "")) : ""
+      // path is sanitized as one (see root._isPhoto). Gated on
+      // _haveFile, not merely root.path being set, so this never
+      // decodes a path recorded for some other kind (see _haveFile's
+      // own comment).
+      source: root._isPhoto ? (root._haveFile ? Links.fileURL(root.path) : (root.photo && root.photo.thumb ? "data:" + Media.thumbMime(root.photo.thumb) + ";base64," + root.photo.thumb : "")) : ""
       fillMode: Image.PreserveAspectFit
       // Fit inside the viewer's own stage, computed from the photo's
       // own known width and height (see PhotoView.qml's own

@@ -356,6 +356,39 @@ func TestMediaFetch_OmitsDimensionsForEverydayMedia(t *testing.T) {
 	}
 }
 
+// TestMediaFetch_ReportsTheKindAndSizeItActuallyServed confirms
+// media.fetch's result carries the media kind and size it actually
+// fetched, read once before the download ran, so the UI can tell what
+// an answer was really served for apart from the row's own current
+// media: a fetch that was in flight while the sender edited the
+// message's media kind away and back again must never be mistaken for
+// one answering the row's current kind just because a before-and-after
+// snapshot of it happens to compare equal (see
+// ui/controllers/MediaController.qml and docs/decisions.md).
+func TestMediaFetch_ReportsTheKindAndSizeItActuallyServed(t *testing.T) {
+	t.Parallel()
+
+	s := connectWithMedia(t, fakeMediaWriter{content: []byte("plain file bytes")}, cache.New(t.TempDir(), 1<<20))
+	msg := domain.Message{
+		ID: "m1", ConversationID: "chat", RemoteID: "r-1", Text: "[File]", Created: 1,
+		Media: &domain.Media{Kind: domain.MediaFile, FileName: "a.txt", Size: 4096},
+	}
+	if _, _, err := s.store.AddMessage(t.Context(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := call[struct {
+		Kind      string `json:"kind"`
+		MediaSize int64  `json:"mediaSize"`
+	}](t, s, "media.fetch", map[string]any{"messageId": "m1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Kind != domain.MediaFile || got.MediaSize != 4096 {
+		t.Errorf("media.fetch kind/mediaSize = %q/%d, want %q/4096", got.Kind, got.MediaSize, domain.MediaFile)
+	}
+}
+
 // TestPanicLogLine_NeverIncludesTheRecoveredValuesOwnContent confirms
 // the line call logs once it recovers from a method's own panic names
 // only the recovered value's own type, never whatever it actually

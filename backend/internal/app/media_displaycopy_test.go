@@ -55,7 +55,7 @@ func TestFetchMedia_KeepsTheOriginalWhenTheDisplayCopyFailsForAnUnrelatedReason(
 		Cache: &fakeCache{err: errors.New("cache: disk full")}, Logger: f.logger,
 	})
 
-	if _, _, _, _, err := commands.FetchMedia(ctx, sent.ID, false, false); err == nil {
+	if _, _, _, _, _, _, err := commands.FetchMedia(ctx, sent.ID, false, false); err == nil {
 		t.Fatal("FetchMedia() succeeded despite the cache failure")
 	}
 
@@ -90,7 +90,7 @@ func TestFetchMedia_FallsBackToStillFrameWhenReencodeCannotDecodeTheOriginal(t *
 	// the fallback even runs.
 	f.media.data = []byte("not an image Go can decode at all")
 
-	path, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+	path, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 	if err != nil {
 		t.Fatalf("FetchMedia() = %v, want the StillFrame fallback to still produce a display copy", err)
 	}
@@ -125,7 +125,7 @@ func TestFetchMedia_ReportsTheOriginalRefusalWhenTheStillFrameFallbackAlsoFails(
 	f.media.data = []byte("not an image at all, and the transcoder can't help either")
 	f.transcoder.err = errors.New("ffmpeg: no video stream found")
 
-	if _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); err == nil {
+	if _, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); err == nil {
 		t.Fatal("FetchMedia() succeeded despite both Reencode and the StillFrame fallback failing")
 	}
 }
@@ -167,7 +167,7 @@ func TestFetchMedia_RemovesAnUnsafeLegacyCacheFileAndRefetches(t *testing.T) {
 	// this test is actually about.
 	f.transcoder.err = errors.New("ffmpeg: no video stream found")
 	f.media.data = testPNGBytes(t, 2, 2)
-	path, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+	path, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 	if err != nil {
 		t.Fatalf("FetchMedia() = %v, want the unsafe legacy file replaced by a fresh, safe download", err)
 	}
@@ -218,7 +218,7 @@ func TestFetchMedia_NeverServesAnUnsafeFileWhenNoSafeReplacementExists(t *testin
 	f.media.data = svg
 
 	var fetchErr *app.MediaFetchError
-	path, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+	path, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 	if path != "" || !errors.As(err, &fetchErr) {
 		t.Fatalf("FetchMedia() = %q, %v; want a *MediaFetchError and no path", path, err)
 	}
@@ -256,7 +256,7 @@ func TestFetchMedia_RemovesAnUnsafeStickerCacheFileAndRefetches(t *testing.T) {
 	}
 
 	f.media.data = testPNGBytes(t, 1, 1)
-	path, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
+	path, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false)
 	if err != nil {
 		t.Fatalf("FetchMedia() = %v, want the unsafe legacy sticker replaced by a fresh, safe download", err)
 	}
@@ -296,7 +296,7 @@ func TestFetchMedia_FailsFastOnASecondFetchAfterARefusedDisplayCopy(t *testing.T
 	f.media.data = []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`)
 
 	var firstErr *app.MediaFetchError
-	if _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.As(err, &firstErr) {
+	if _, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.As(err, &firstErr) {
 		t.Fatalf("first FetchMedia() = %v, want a *MediaFetchError", err)
 	}
 	// The first fetch already costs two downloads on its own: the
@@ -312,7 +312,7 @@ func TestFetchMedia_FailsFastOnASecondFetchAfterARefusedDisplayCopy(t *testing.T
 	}
 
 	var secondErr *app.MediaFetchError
-	if _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.As(err, &secondErr) {
+	if _, _, _, _, _, _, err := f.commands.FetchMedia(ctx, "m1", false, false); !errors.As(err, &secondErr) {
 		t.Fatalf("second FetchMedia() = %v, want the same kind of *MediaFetchError, fast", err)
 	}
 	if secondErr.Reason != firstErr.Reason {
@@ -356,7 +356,7 @@ func TestFetchMedia_EditingKindNeverReusesTheOldKindsCachedFile(t *testing.T) {
 	}
 	localID := messages[0].ID
 
-	voicePath, _, _, _, err := f.commands.FetchMedia(ctx, localID, false, false)
+	voicePath, _, _, _, _, _, err := f.commands.FetchMedia(ctx, localID, false, false)
 	if err != nil {
 		t.Fatalf("FetchMedia(voice) = %v", err)
 	}
@@ -365,7 +365,7 @@ func TestFetchMedia_EditingKindNeverReusesTheOldKindsCachedFile(t *testing.T) {
 		RemoteID: "e1", SenderID: "alex", Text: "look", Media: &domain.Media{Kind: domain.MediaPhoto},
 	})
 
-	if _, _, _, _, err := f.commands.FetchMedia(ctx, localID, false, false); err == nil {
+	if _, _, _, _, _, _, err := f.commands.FetchMedia(ctx, localID, false, false); err == nil {
 		t.Fatal("FetchMedia(edited to photo) succeeded, want the unsafe bytes rejected")
 	}
 

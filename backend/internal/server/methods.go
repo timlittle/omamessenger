@@ -416,6 +416,21 @@ type mediaResult struct {
 	// docs/decisions.md). Omitted for every other media kind.
 	Width  int `json:"width,omitempty"`
 	Height int `json:"height,omitempty"`
+	// Kind and MediaSize report what this fetch actually served - the
+	// message's own media kind and size at the moment app.Commands
+	// read it, before any download ran - never the message's kind by
+	// the time this answer arrives. A fetch can be in flight for as
+	// long as its download takes, and an edit arriving during that
+	// window can change the message's media kind and back again
+	// before the answer returns; the UI compares both of these
+	// against the row's own current media, never only its earlier
+	// snapshot of it, before ever handing Path to an Image, so a
+	// kind the sender switched away from and back again while this
+	// request was in flight is caught even though the row's own
+	// before-and-after snapshots compare equal (see
+	// ui/controllers/MediaController.qml and docs/decisions.md).
+	Kind      string `json:"kind,omitempty"`
+	MediaSize int64  `json:"mediaSize,omitempty"`
 }
 
 // mediaFetchParams names the message whose media to fetch. Auto is
@@ -440,7 +455,7 @@ type mediaFetchParams struct {
 // copy too (see app.Commands.FetchMedia).
 func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, error) {
 	return func(ctx context.Context, p mediaFetchParams) (any, error) {
-		path, playPath, width, height, err := c.FetchMedia(ctx, p.MessageID, p.Auto, p.Play)
+		path, playPath, width, height, kind, mediaSize, err := c.FetchMedia(ctx, p.MessageID, p.Auto, p.Play)
 		if err != nil {
 			return mediaResult{}, err
 		}
@@ -448,6 +463,7 @@ func mediaFetch(c *app.Commands) func(context.Context, mediaFetchParams) (any, e
 		return mediaResult{
 			Path: path, PlayPath: playPath, Playable: playPath != "",
 			Risky: app.MediaRisk(path), Width: width, Height: height,
+			Kind: kind, MediaSize: mediaSize,
 		}, nil
 	}
 }
