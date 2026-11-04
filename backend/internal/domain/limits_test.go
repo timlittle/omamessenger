@@ -590,15 +590,20 @@ func TestSanitizeIncoming_AppliesEveryCapTogether(t *testing.T) {
 // TestSanitizeIncoming_CapsSenderNameAndReplyQuoteSenderName confirms
 // a message's own SenderName and a reply quote's SenderName are both
 // capped the same way as any other sender-controlled display name,
-// and that a message with no reply quote is never given one.
+// that a reply quote's own SenderID is capped the same way RemoteID
+// already is - a security review found this one left uncapped, the
+// only field of the four SanitizeIncoming caps on ReplyTo that was
+// not (see docs/decisions.md) - and that a message with no reply
+// quote is never given one.
 func TestSanitizeIncoming_CapsSenderNameAndReplyQuoteSenderName(t *testing.T) {
 	t.Parallel()
 
 	long := strings.Repeat("n", domain.MaxDisplayNameLength+10)
+	longID := strings.Repeat("i", domain.MaxRemoteIDLength+10)
 	m := domain.Message{
 		Text:       "hi",
 		SenderName: long,
-		ReplyTo:    &domain.Reply{RemoteID: "r1", SenderName: long, Text: "quoted"},
+		ReplyTo:    &domain.Reply{RemoteID: "r1", SenderID: longID, SenderName: long, Text: "quoted"},
 	}
 
 	got := domain.SanitizeIncoming(m)
@@ -607,6 +612,9 @@ func TestSanitizeIncoming_CapsSenderNameAndReplyQuoteSenderName(t *testing.T) {
 	}
 	if n := domain.UTF16Len(got.ReplyTo.SenderName); n != domain.MaxDisplayNameLength {
 		t.Errorf("SanitizeIncoming kept ReplyTo.SenderName at %d units, want exactly %d", n, domain.MaxDisplayNameLength)
+	}
+	if got.ReplyTo.SenderID != "" {
+		t.Errorf("SanitizeIncoming kept an oversized ReplyTo.SenderID = %q, want it dropped like an oversized RemoteID", got.ReplyTo.SenderID)
 	}
 
 	withoutReply := domain.SanitizeIncoming(domain.Message{Text: "hi"})
