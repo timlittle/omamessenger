@@ -4,11 +4,11 @@
 // is drawn with reduced opacity and a "Hidden" label, every empty state
 // shows the right text, including the all-unreads view's own wording,
 // clicking a row emits activated() with its id, a blocked row shows its
-// "Blocked" marker and an unverified title shows marked with a leading
-// "~" through the real ListView delegate (not just when ConversationRow
-// is driven directly, see tests/qml/ConversationRow: the delegate used
-// to drop the "blocked" field on the way from the model to the row, the
-// same way it silently dropped titleVerified until this caught it), and
+// "Blocked" marker and a self-chosen title or preview sender renders
+// exactly as given through the real ListView delegate (not just when
+// ConversationRow is driven directly, see tests/qml/ConversationRow:
+// the delegate used to drop the "blocked" field on the way from the
+// model to the row, the kind of silent drop this guards against), and
 // a row ListController keeps in place across a
 // conversation.updated event (reordering it, rather than tearing the row
 // down and redrawing it) still shows its pin and mute marks as soon as
@@ -31,43 +31,42 @@ ShellRoot {
 
   property var conversations: [
     {
-      id: "c1", title: "Short Chat", titleVerified: true, kind: "direct", service: "whatsapp", accountId: "a1",
+      id: "c1", title: "Short Chat", kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 2, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now, preview: "See you then",
-      previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: false
     },
     {
-      id: "c2", title: "Muted Group", titleVerified: true, kind: "group", service: "telegram", accountId: "a2",
+      id: "c2", title: "Muted Group", kind: "group", service: "telegram", accountId: "a2",
       unread: 0, muted: true, pinned: false, archived: false, hidden: false, lastActivity: root.now, preview: "ok",
-      previewSender: "Sam", previewSenderVerified: false, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      previewSender: "Sam", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: false
     },
     {
       id: "c3",
       title: "A very long conversation title that will not fit in the narrow list column at all",
-      titleVerified: true,
       kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: true, archived: false, hidden: false, lastActivity: root.now,
       preview: "A long preview that keeps going well past the edge of the narrow column",
-      previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: false
     },
     {
-      id: "c4", title: "Older Chat", titleVerified: true, kind: "direct", service: "whatsapp", accountId: "a1",
+      id: "c4", title: "Older Chat", kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: false, archived: false, hidden: true, lastActivity: root.now,
-      preview: "see you around", previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: true, dimLabel: "Hidden",
+      preview: "see you around", previewSender: "", previewOutgoing: false, match: "", dimmed: true, dimLabel: "Hidden",
       reminderAt: 0, reminderDue: false, blocked: false
     },
     {
-      id: "c5", title: "Blocked Contact", titleVerified: true, kind: "direct", service: "whatsapp", accountId: "a1",
+      id: "c5", title: "Blocked Contact", kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now,
-      preview: "", previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      preview: "", previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: true
     },
     {
-      id: "c6", title: "Mum", titleVerified: false, kind: "direct", service: "whatsapp", accountId: "a1",
+      id: "c6", title: "Mum", kind: "direct", service: "whatsapp", accountId: "a1",
       unread: 0, muted: false, pinned: false, archived: false, hidden: false, lastActivity: root.now,
-      preview: "", previewSender: "", previewSenderVerified: true, previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
+      preview: "", previewSender: "", previewOutgoing: false, match: "", dimmed: false, dimLabel: "",
       reminderAt: 0, reminderDue: false, blocked: false
     }
   ]
@@ -270,48 +269,43 @@ ShellRoot {
     if (JSON.stringify(root.activated) !== '["c2"]')
       return Check.fail("activated " + JSON.stringify(root.activated) + ", want [\"c2\"]");
 
-    if (!root.checkUnverifiedTitleIsMarked()) return;
-    if (!root.checkUnverifiedPreviewSenderIsMarked()) return;
+    if (!root.checkTitleRendersPlainly()) return;
+    if (!root.checkPreviewSenderRendersPlainly()) return;
 
     root.checkLiveUpdates();
   }
 
-  // checkUnverifiedPreviewSenderIsMarked mirrors
-  // checkUnverifiedTitleIsMarked, but for a group's preview sender: c2's
-  // previewSender "Sam" carries no previewSenderVerified at all, the
-  // secure default for a row the helper never marked, so the preview
-  // line must show "~Sam: ok" through the real delegate, not "Sam: ok"
-  // (see docs/decisions.md).
-  function checkUnverifiedPreviewSenderIsMarked(): bool {
+  // checkPreviewSenderRendersPlainly mirrors checkTitleRendersPlainly,
+  // but for a group's preview sender: c2's previewSender "Sam" must
+  // show exactly as given through the real delegate.
+  function checkPreviewSenderRendersPlainly(): bool {
     const row = Check.find(list, "row-c2");
     if (!row) return Check.fail("row-c2 not found");
 
     const preview = Check.find(row, "previewText");
-    if (!preview || preview.text !== "~Sam: ok")
-      return Check.fail("unverified preview sender = " + (preview && preview.text) + ", want ~Sam: ok");
+    if (!preview || preview.text !== "Sam: ok")
+      return Check.fail("preview sender = " + (preview && preview.text) + ", want Sam: ok");
     return true;
   }
 
-  // checkUnverifiedTitleIsMarked verifies an unverified title - a
-  // self-chosen name the helper did not resolve to a saved contact,
-  // such as a bare WhatsApp push name - shows marked with a leading
-  // "~" through the real ListView delegate, the same way a verified
-  // one (every other row here) shows unmarked; see
-  // docs/decisions.md. This is the one place that would have caught
-  // the delegate silently dropping titleVerified on the way from the
-  // model to the row, the same regression ConversationRow's own
-  // header comment already names for "blocked".
-  function checkUnverifiedTitleIsMarked(): bool {
+  // checkTitleRendersPlainly verifies a self-chosen title - a name the
+  // helper did not resolve to a saved contact, such as a bare WhatsApp
+  // push name - renders exactly as given through the real ListView
+  // delegate, the same as any other row. This is the one place that
+  // would catch the delegate silently dropping a title field on the
+  // way from the model to the row, the same regression ConversationRow's
+  // own header comment already names for "blocked".
+  function checkTitleRendersPlainly(): bool {
     const row = Check.find(list, "row-c6");
     if (!row) return Check.fail("row-c6 not found");
 
     const title = Check.find(row, "titleText");
-    if (!title || title.text !== "~Mum")
-      return Check.fail("unverified title = " + (title && title.text) + ", want ~Mum");
+    if (!title || title.text !== "Mum")
+      return Check.fail("title = " + (title && title.text) + ", want Mum");
 
-    const verifiedTitle = Check.find(Check.find(list, "row-c1"), "titleText");
-    if (!verifiedTitle || verifiedTitle.text !== "Short Chat")
-      return Check.fail("verified title = " + (verifiedTitle && verifiedTitle.text) + ", want unmarked Short Chat");
+    const otherTitle = Check.find(Check.find(list, "row-c1"), "titleText");
+    if (!otherTitle || otherTitle.text !== "Short Chat")
+      return Check.fail("title = " + (otherTitle && otherTitle.text) + ", want Short Chat");
     return true;
   }
 

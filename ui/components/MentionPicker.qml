@@ -2,7 +2,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import qs.Commons
 import "../theme"
-import "../lib/Verify.js" as Verify
 
 // The @-mention picker: a short list of a group's members matching what
 // was typed after "@", shown above the composer's text field while it
@@ -61,11 +60,7 @@ Rectangle {
           id: label
           anchors.verticalCenter: parent.verticalCenter
           x: Theme.spacing.sm
-          // Marked with a leading "~" when the helper reports this
-          // member's own name as unverified - self-chosen, like a bare
-          // push name - so it never looks like a saved contact's own
-          // name (see docs/decisions.md).
-          text: Verify.markedName(row.modelData.name, row.modelData.verified)
+          text: row.modelData.name
           // A group member's display name is sender-controlled: PlainText.
           textFormat: Text.PlainText
           color: Theme.foreground

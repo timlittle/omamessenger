@@ -137,11 +137,9 @@ type Conversation struct {
 
 	// PreviewSenderVerified mirrors TitleVerified, but for
 	// PreviewSender specifically: a group's own name can be verified
-	// while the member who sent its newest message is not, so the UI
-	// must mark the two independently (see Verify.markedName and
-	// docs/decisions.md). Omitted (so false) for a row stored before
-	// this field existed, the secure default for a sender this helper
-	// has not actually checked.
+	// while the member who sent its newest message is not. Omitted (so
+	// false) for a row stored before this field existed. The UI does
+	// not currently read this field (see docs/decisions.md).
 	PreviewSenderVerified bool `json:"previewSenderVerified,omitempty"`
 	PreviewOut            bool `json:"previewOutgoing"`
 	Unread                int  `json:"unread"`
@@ -240,14 +238,13 @@ type Message struct {
 	// never from a bare, self-chosen name such as a WhatsApp push name
 	// or a Telegram profile name with no contact or verification
 	// behind it. A stranger can set their own push name to "Mum" or
-	// "You"; this is what lets the UI mark that instead of showing it
-	// unmarked like a name the user actually saved (see
-	// docs/decisions.md). Never decided by comparing SenderName itself
-	// against "You" - only Outgoing (or, for a connector, the sender's
-	// own account id) ever means this message is the user's own.
-	// Omitted (so false) for a row stored before this field existed is
-	// corrected by a migration to true instead, preserving whatever
-	// trust that row already showed.
+	// "You" too; this field is never decided by comparing SenderName
+	// itself against "You" - only Outgoing (or, for a connector, the
+	// sender's own account id) ever means this message is the user's
+	// own. The UI does not currently read this field (see
+	// docs/decisions.md). Omitted (so false) for a row stored before
+	// this field existed is corrected by a migration to true instead,
+	// preserving whatever trust that row already showed.
 	SenderVerified bool   `json:"senderVerified,omitempty"`
 	Text           string `json:"text"`
 	Outgoing       bool   `json:"outgoing"`

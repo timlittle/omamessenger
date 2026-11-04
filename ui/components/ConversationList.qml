@@ -120,12 +120,6 @@ Item {
       required property int index
       required property string id
       required property string title
-      // titleVerified is whether title is a saved contact's name, a
-      // verified business name or a group's own name, rather than a
-      // bare, self-chosen one; absent (so false) for a row from an
-      // older helper, which ConversationRow then marks with "~" (see
-      // Verify.markedName and docs/decisions.md).
-      required property bool titleVerified
       required property string kind
       required property string service
       required property string accountId
@@ -137,11 +131,6 @@ Item {
       required property real lastActivity
       required property string preview
       required property string previewSender
-      // previewSenderVerified mirrors titleVerified above, but for
-      // previewSender specifically: a group's own name can be
-      // verified while the member who sent its newest message is not
-      // (see Verify.markedName and docs/decisions.md).
-      required property bool previewSenderVerified
       required property bool previewOutgoing
       required property string match
       required property bool dimmed
@@ -208,7 +197,6 @@ Item {
         conversation: {
           "id": wrapper.id,
           "title": wrapper.title,
-          "titleVerified": wrapper.titleVerified,
           "kind": wrapper.kind,
           "service": wrapper.service,
           "accountId": wrapper.accountId,
@@ -220,7 +208,6 @@ Item {
           "lastActivity": wrapper.lastActivity,
           "preview": wrapper.preview,
           "previewSender": wrapper.previewSender,
-          "previewSenderVerified": wrapper.previewSenderVerified,
           "previewOutgoing": wrapper.previewOutgoing,
           "match": wrapper.match,
           "reminderAt": wrapper.reminderAt,

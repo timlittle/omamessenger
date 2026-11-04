@@ -1,6 +1,5 @@
 .pragma library
 .import "Markdown.js" as Markdown
-.import "Verify.js" as Verify
 
 // Text formatting for the conversation list and message view: HTML escaping
 // and links, pipe tables (via Markdown.js), search highlights, initials,
@@ -883,12 +882,7 @@ function statusGlyph(status) {
 }
 
 // previewLine is the preview under a conversation's title. In groups it
-// names who wrote the last message, marked with a leading "~" when
-// that sender's own name is unverified - a bare, self-chosen name a
-// group member fully controls - the same way an unverified senderName
-// is marked inside the chat itself (see Verify.markedName and
-// docs/decisions.md): a security review found this line left that
-// name unmarked even when the bubble it comes from shows it marked.
+// names who wrote the last message.
 function previewLine(conv) {
   if (!conv.preview || conv.kind !== 'group') {
     return previewText(conv.preview);
@@ -902,8 +896,7 @@ function previewLine(conv) {
     return previewText(conv.preview);
   }
 
-  const sender = Verify.markedName(conv.previewSender, conv.previewSenderVerified);
-  return previewText(`${sender}: ${conv.preview}`);
+  return previewText(`${conv.previewSender}: ${conv.preview}`);
 }
 
 // MAX_PREVIEW_LENGTH bounds a conversation row's one-line preview: a row

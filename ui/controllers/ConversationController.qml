@@ -3,7 +3,6 @@ import "../lib/Selection.js" as Selection
 import "../lib/Actions.js" as Actions
 import "../lib/Rail.js" as Rail
 import "../lib/Rpc.js" as Rpc
-import "../lib/Verify.js" as Verify
 
 // Owns the open conversation itself: which one is open, paging through
 // its messages, sending, retrying, scrolling and the typing indicator.
@@ -128,13 +127,6 @@ Item {
 
   // typingName is who is typing, for the header subtitle.
   property string typingName: ""
-
-  // typingVerified is whether typingName is a saved contact's or
-  // verified business's own name rather than a bare, self-chosen one;
-  // false by default, same as an unverified name everywhere else, since
-  // a group's typing indicator can name a member by nothing more than
-  // their own push name (see Verify.markedName).
-  property bool typingVerified: false
 
   // windowActive is whether the user can see the window: shown and
   // focused. The helper reads messages on arrival only while it is, and
@@ -742,7 +734,6 @@ Item {
     if (data.active) {
       root.typing = true;
       root.typingName = data.name;
-      root.typingVerified = data.verified ?? false;
       typingTimer.restart();
     } else {
       root._resetTyping();
@@ -754,18 +745,15 @@ Item {
     typingTimer.stop();
     root.typing = false;
     root.typingName = "";
-    root.typingVerified = false;
   }
 
   // _subtitleText computes the header's subtitle: typing wins, then group
   // size or the owning account's connection status, with that account's
   // own display name appended once more than one account shares its
   // service (see Rail.accountSuffix), so it is never ambiguous which
-  // one a conversation belongs to. A typing name is marked with "~"
-  // when unverified, the same as everywhere else this connector's own
-  // data can carry a bare, self-chosen name (see Verify.markedName).
+  // one a conversation belongs to.
   function _subtitleText(): string {
-    if (root.typing) return root.typingName ? (Verify.markedName(root.typingName, root.typingVerified) + " is typing…") : "typing…";
+    if (root.typing) return root.typingName ? (root.typingName + " is typing…") : "typing…";
     if (!root.conversation) return "";
 
     const base = root.conversation.kind === "group" ? root.conversation.members + " members" : root._accountStatusText();

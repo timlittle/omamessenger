@@ -2,10 +2,9 @@
 // and hovering it shows the quiet hover fill. An audit found this row had
 // the selected/not-selected branches every other row has, but no hover
 // fallback, so a contact never lit up under the pointer; this is the
-// regression test for that gap. Also checks that an unverified contact's
-// name is marked, since the helper's own contact list can carry a bare,
-// self-chosen name with no saved contact behind it (see
-// docs/decisions.md).
+// regression test for that gap. Also checks that a contact's name
+// renders exactly as the helper gives it, including a bare,
+// self-chosen name with no saved contact behind it.
 import QtQuick
 import QtTest
 import Quickshell
@@ -30,14 +29,14 @@ ShellRoot {
       NewChatContactRow {
         id: contactRow
         width: 280
-        contact: ({ accountId: "a1", remoteId: "r1", name: "Ben Okafor", verified: true })
+        contact: ({ accountId: "a1", remoteId: "r1", name: "Ben Okafor" })
         current: false
       }
 
       NewChatContactRow {
-        id: unverifiedRow
+        id: selfChosenRow
         width: 280
-        contact: ({ accountId: "a1", remoteId: "r2", name: "Mum", verified: false })
+        contact: ({ accountId: "a1", remoteId: "r2", name: "Mum" })
         current: false
       }
     }
@@ -55,8 +54,8 @@ ShellRoot {
   }
 
   // run moves the pointer on and off the row, checks the fill colour,
-  // then checks that a verified contact's name is unmarked and an
-  // unverified one is marked with "~".
+  // then checks that both a saved contact's name and a bare,
+  // self-chosen name render exactly as given.
   function run(): void {
     t.mouseMove(container, 2, container.height - 2); // start away from the row
     t.wait(50);
@@ -68,23 +67,23 @@ ShellRoot {
     if (contactRow.color.a === 0)
       return Check.fail("hovering the row shows no hover fill: still " + contactRow.color);
 
-    if (!checkVerifiedStatusIsMarked())
+    if (!checkNamesRenderPlainly())
       return;
 
     console.log("PASS NewChatContactRow");
     Qt.exit(0);
   }
 
-  // checkVerifiedStatusIsMarked confirms a verified contact's name shows
-  // unmarked and an unverified one shows with a leading "~".
-  function checkVerifiedStatusIsMarked(): bool {
-    const verifiedName = Check.find(contactRow, "contactName");
-    if (!verifiedName || verifiedName.text !== "Ben Okafor")
-      return Check.fail("verified contact name = " + (verifiedName && verifiedName.text) + ", want unmarked Ben Okafor");
+  // checkNamesRenderPlainly confirms both a saved contact's name and a
+  // bare, self-chosen name show exactly as given, with no marker.
+  function checkNamesRenderPlainly(): bool {
+    const name = Check.find(contactRow, "contactName");
+    if (!name || name.text !== "Ben Okafor")
+      return Check.fail("contact name = " + (name && name.text) + ", want Ben Okafor");
 
-    const unverifiedName = Check.find(unverifiedRow, "contactName");
-    if (!unverifiedName || unverifiedName.text !== "~Mum")
-      return Check.fail("unverified contact name = " + (unverifiedName && unverifiedName.text) + ", want ~Mum");
+    const selfChosenName = Check.find(selfChosenRow, "contactName");
+    if (!selfChosenName || selfChosenName.text !== "Mum")
+      return Check.fail("self-chosen contact name = " + (selfChosenName && selfChosenName.text) + ", want Mum");
 
     return true;
   }

@@ -7,7 +7,6 @@ import "../lib/SenderColor.js" as SenderColor
 import "../lib/Keymap.js" as Keymap
 import "../lib/Format.js" as Format
 import "../lib/Media.js" as Media
-import "../lib/Verify.js" as Verify
 
 // One message row in a conversation: an optional day separator, the sender
 // name for a grouped incoming message, the bubble with its text and any
@@ -177,11 +176,7 @@ Item {
       width: parent.width - x - Theme.spacing.md
       elide: Text.ElideRight
       visible: root.annotation.showSender
-      // Marked with a leading "~" when the helper reports the sender's
-      // name as unverified - self-chosen, like a bare WhatsApp push
-      // name - so it never looks like a saved contact's own name (see
-      // docs/decisions.md).
-      text: Verify.markedName(root.message.senderName, root.message.senderVerified)
+      text: root.message.senderName
       // The sender's own display name, unescaped: PlainText.
       textFormat: Text.PlainText
       color: root.nameColor

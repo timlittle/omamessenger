@@ -25,7 +25,6 @@ type Input struct {
 	Missed         bool   // sent well before it arrived, caught up after being offline
 	Kind           string
 	Sender         string
-	SenderVerified bool // see domain.Message.SenderVerified
 	Title          string
 	Text           string
 	ConversationID string // carried in the notification, so a click can reopen it
@@ -47,14 +46,9 @@ func ShouldNotify(in Input) bool {
 // Notification returns the title, body and conversation id for a desktop
 // notification, shaped by in.Detail. DetailNone hides who it is from too,
 // so the title is a generic app name rather than the sender's; the other
-// two levels name the sender, and a group also names the conversation,
-// with the body showing the message text only at DetailNameAndMessage.
-// An unverified sender's own name is marked with a leading "~", the
-// way the official WhatsApp app marks a self-chosen name, so a
-// stranger cannot make a notification look like it is from a saved
-// contact just by setting their own push name to one (see
-// domain.Message.SenderVerified and docs/decisions.md); a group's own
-// title is never marked this way. The conversation id passes straight
+// two levels name the sender, exactly as the sender gave it, and a group
+// also names the conversation, with the body showing the message text
+// only at DetailNameAndMessage. The conversation id passes straight
 // through, so a click on the notification can reopen it.
 func Notification(in Input) (title, body, conversationID string) {
 	if in.Detail == DetailNone {
@@ -62,9 +56,6 @@ func Notification(in Input) (title, body, conversationID string) {
 	}
 
 	title = in.Sender
-	if !in.SenderVerified {
-		title = "~" + title
-	}
 	if in.Kind == domain.KindGroup {
 		title += " · " + in.Title
 	}
