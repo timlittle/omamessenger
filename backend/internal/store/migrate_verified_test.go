@@ -25,11 +25,12 @@ func TestMigrate_DefaultsSenderAndTitleVerifiedToTrueForExistingRows(t *testing.
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "verified-default.db"))
-	// Stop four short of the full set: the verified columns are
-	// fourth-from-last, appended after the reply sender id backfill and
+	// Stop five short of the full set: the verified columns are
+	// fifth-from-last, appended after the reply sender id backfill and
 	// before the conversation phone column, the verified-by-default
-	// reset and the contact verified and phone columns.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-4]); err != nil {
+	// reset, the contact verified and phone columns and the
+	// preview-sender-verified column.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-5]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -39,7 +40,7 @@ func TestMigrate_DefaultsSenderAndTitleVerifiedToTrueForExistingRows(t *testing.
 
 	// Apply only the verified columns' own migration, not the phone
 	// column or the reset after it, to see the column default alone.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-3]); err != nil {
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-4]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,11 +70,12 @@ func TestMigrate_ResetsVerifiedByDefaultRowsToUnverified(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "verified-reset.db"))
-	// Stop two short of the full set: the reset is second-from-last,
+	// Stop three short of the full set: the reset is third-from-last,
 	// appended after the sender/title verified columns and the
 	// conversation phone column, both already present by this point,
-	// and before the contact verified and phone columns.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-2]); err != nil {
+	// and before the contact verified and phone columns and the
+	// preview-sender-verified column.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-3]); err != nil {
 		t.Fatal(err)
 	}
 

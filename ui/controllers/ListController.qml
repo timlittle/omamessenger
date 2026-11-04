@@ -920,13 +920,14 @@ Item {
   }
 
   // _row is a conversation as a list row. The helper leaves out match,
-  // and titleVerified when it is false, but every row needs every field
-  // the view requires - ConversationList's own delegate declares
-  // titleVerified a required property, which throws if the role is
-  // missing outright rather than merely false. titleVerified defaults
-  // to false, the same fail-safe default Verify.markedName already
-  // gives a missing flag, so a row from an older helper that has never
-  // heard of this field is marked rather than trusted by default. dimmed
+  // and titleVerified or previewSenderVerified when either is false,
+  // but every row needs every field the view requires -
+  // ConversationList's own delegate declares both a required property,
+  // which throws if a role is missing outright rather than merely
+  // false. Both default to false, the same fail-safe default
+  // Verify.markedName already gives a missing flag, so a row from an
+  // older helper that has never heard of either field is marked rather
+  // than trusted by default. dimmed
   // and dimLabel only mean anything in show-all, where the standard
   // list's own rules decide which rows get drawn muted. reminderDue
   // marks a row "Reminder" whenever its snooze has come due, in every
@@ -941,7 +942,8 @@ Item {
       dimLabel: root.showAll ? Rail.dimLabel(conversation, now, keepId) : "",
       reminderDue: Rail.isDueReminder(conversation, now),
       blocked: conversation.blocked ?? false,
-      titleVerified: conversation.titleVerified ?? false
+      titleVerified: conversation.titleVerified ?? false,
+      previewSenderVerified: conversation.previewSenderVerified ?? false
     });
   }
 

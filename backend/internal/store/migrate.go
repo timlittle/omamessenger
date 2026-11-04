@@ -302,6 +302,15 @@ var migrations = []migrationStep{
 	// whatsapp/history.go's syncPushnames).
 	{sql: `ALTER TABLE contacts ADD COLUMN verified INTEGER NOT NULL DEFAULT 0;
 		ALTER TABLE contacts ADD COLUMN phone TEXT NOT NULL DEFAULT '';`},
+	// A security review found a group's conversation-list preview
+	// showing its last sender's own self-chosen name with no "~" mark
+	// at all, even though the same name shows marked inside the chat
+	// itself: preview_sender carried no verified flag of its own to
+	// show one with. Defaults to unverified, the same secure-by-default
+	// choice as every other column added for this review, since a row
+	// stored before this column existed was never actually checked
+	// either.
+	{sql: `ALTER TABLE conversations ADD COLUMN preview_sender_verified INTEGER NOT NULL DEFAULT 0;`},
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

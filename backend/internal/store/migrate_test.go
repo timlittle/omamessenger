@@ -80,16 +80,17 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "gif.db"))
-	// The GIF migration is fourteenth-from-last, before the audio
+	// The GIF migration is fifteenth-from-last, before the audio
 	// migration, the pin_order column, the scheduled_messages table,
 	// the notification_sound column, the window-open column, the
 	// pin_order backfill, the before-archive pin columns, the legacy
 	// thumbnail repair, the reply sender id backfill, the sender/title
 	// verified columns, the conversation phone column, the
-	// verified-by-default reset and the contact verified and phone
-	// columns, all appended after it; stop short of all fourteen so
-	// inserting the pre-fix rows below still finds them unreclassified.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-14]); err != nil {
+	// verified-by-default reset, the contact verified and phone columns
+	// and the preview-sender-verified column, all appended after it;
+	// stop short of all fifteen so inserting the pre-fix rows below
+	// still finds them unreclassified.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-15]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -122,7 +123,7 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into a video.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-14].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-15].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,15 +146,15 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "audio.db"))
-	// The audio migration is thirteenth-from-last, before the pin_order
+	// The audio migration is fourteenth-from-last, before the pin_order
 	// column, the scheduled_messages table, the notification_sound
 	// column, the window-open column, the pin_order backfill, the
 	// before-archive pin columns, the legacy thumbnail repair, the
 	// reply sender id backfill, the sender/title verified columns, the
-	// conversation phone column, the verified-by-default reset and the
-	// contact verified and phone columns, all appended after it; stop
-	// short of all thirteen.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-13]); err != nil {
+	// conversation phone column, the verified-by-default reset, the
+	// contact verified and phone columns and the preview-sender-verified
+	// column, all appended after it; stop short of all fourteen.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-14]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,7 +187,7 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into audio.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-13].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-14].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -208,15 +209,15 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "pin-backfill.db"))
-	// Stop eight short of the full set: the backfill is
-	// eighth-from-last, appended after pin_order's own column,
-	// scheduled messages, the notification sound column and the
-	// window-open column, and ahead of the before-archive pin columns,
-	// the legacy thumbnail repair, the reply sender id backfill, the
-	// sender/title verified columns, the conversation phone column, the
-	// verified-by-default reset and the contact verified and phone
-	// columns, all appended after it.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-8]); err != nil {
+	// Stop nine short of the full set: the backfill is
+	// ninth-from-last, appended after pin_order's own column, scheduled
+	// messages, the notification sound column and the window-open
+	// column, and ahead of the before-archive pin columns, the legacy
+	// thumbnail repair, the reply sender id backfill, the sender/title
+	// verified columns, the conversation phone column, the
+	// verified-by-default reset, the contact verified and phone columns
+	// and the preview-sender-verified column, all appended after it.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-9]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -247,7 +248,7 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	// order: it is idempotent, like the GIF and audio reclassifications
 	// above, since recomputing the same recency ranking over rows whose
 	// relative order has not changed yields the same ranks.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-8].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-9].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -272,12 +273,12 @@ func TestMigrate_SanitizesLegacyThumbnails(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "legacy-thumbs.db"))
-	// The thumbnail repair is sixth-from-last, appended after the
+	// The thumbnail repair is seventh-from-last, appended after the
 	// pin_order backfill above and before the reply sender id backfill,
 	// the sender/title verified columns, the conversation phone column,
-	// the verified-by-default reset and the contact verified and phone
-	// columns below.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-6]); err != nil {
+	// the verified-by-default reset, the contact verified and phone
+	// columns and the preview-sender-verified column below.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-7]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -355,11 +356,12 @@ func TestMigrate_BackfillsReplySenderID(t *testing.T) {
 	t.Parallel()
 
 	db := openRaw(t, filepath.Join(t.TempDir(), "legacy-replies.db"))
-	// The reply sender id backfill is fifth-from-last, appended after
+	// The reply sender id backfill is sixth-from-last, appended after
 	// the thumbnail repair above and before the sender/title verified
 	// columns, the conversation phone column, the verified-by-default
-	// reset and the contact verified and phone columns.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-5]); err != nil {
+	// reset, the contact verified and phone columns and the
+	// preview-sender-verified column.
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-6]); err != nil {
 		t.Fatal(err)
 	}
 

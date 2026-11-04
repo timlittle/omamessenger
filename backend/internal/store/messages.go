@@ -247,11 +247,12 @@ func bumpConversation(ctx context.Context, tx *sql.Tx, m domain.Message, countUn
 			unread=unread+?,
 			preview=CASE WHEN ?>=last_activity THEN ? ELSE preview END,
 			preview_sender=CASE WHEN ?>=last_activity THEN ? ELSE preview_sender END,
+			preview_sender_verified=CASE WHEN ?>=last_activity THEN ? ELSE preview_sender_verified END,
 			preview_out=CASE WHEN ?>=last_activity THEN ? ELSE preview_out END,
 			last_activity=MAX(last_activity,?)
 		WHERE id=?`,
-		unread, m.Created, preview, m.Created, m.SenderName, m.Created, boolInt(m.Outgoing),
-		m.Created, m.ConversationID)
+		unread, m.Created, preview, m.Created, m.SenderName, m.Created, boolInt(m.SenderVerified),
+		m.Created, boolInt(m.Outgoing), m.Created, m.ConversationID)
 	if err != nil {
 		return err
 	}
