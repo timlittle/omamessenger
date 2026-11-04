@@ -27,7 +27,7 @@ func claimProtocolStdout(fd int, redirectTo *os.File) (*os.File, error) {
 	syscall.CloseOnExec(dupFD)
 	protocol := os.NewFile(uintptr(dupFD), "protocol-stdout")
 
-	if err := syscall.Dup2(int(redirectTo.Fd()), fd); err != nil {
+	if err := syscall.Dup3(int(redirectTo.Fd()), fd, 0); err != nil {
 		return nil, fmt.Errorf("claim protocol stdout: redirect fd %d: %w", fd, err)
 	}
 
