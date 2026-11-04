@@ -1,6 +1,20 @@
 {
   "releases": [
     {
+      "version": "0.3.6",
+      "date": "2026-11-04",
+      "changes": [
+        "Pin as many chats as you like, and reorder them by dragging or with Ctrl+Shift+↑ / ↓",
+        "Send a message later: pick a time, or use the 5- and 30-minute presets",
+        "Choose a notification sound per chat or per service, including MP3 files",
+        "See each chat's attachment size limit before you send",
+        "Archiving asks first and can be undone",
+        "The window reopens after the shell restarts, if it was open",
+        "Videos, voice notes and GIFs are converted safely before they play",
+        "Safer handling of links and of images you receive"
+      ]
+    },
+    {
       "version": "0.3.5",
       "date": "2026-10-21",
       "changes": [
