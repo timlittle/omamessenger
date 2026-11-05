@@ -1,13 +1,7 @@
 package app
 
-// expiry.go sweeps away a disappearing message once its timer runs
-// out: it is removed exactly like a user's own delete (its text, its
-// media and the search entry the full-text index keeps alongside it),
-// and the UI is told the same way a delete tells it, but its service
-// is never asked to delete anything - the sender's own timer already
-// did that on its own end. It is shaped like retry.go's scheduler: one
-// goroutine for the life of the helper, re-arming itself for whichever
-// expiry is soonest.
+// expiry.go removes a disappearing message locally when its timer runs
+// out. The service is never asked: the sender's timer handles its end.
 
 import (
 	"context"
@@ -101,7 +95,8 @@ func (e *expirySweeper) sweep(ctx context.Context, m domain.Message) {
 	before := e.events.unreadTotal(ctx)
 
 	deleted, err := e.store.DeleteMessagesByID(ctx, []string{m.ID})
-	if err != nil || len(deleted) == 0 {
+	if err != nil {
+		e.logger.Printf("expiry: remove message %s failed: %v", m.ID, err)
 		return
 	}
 
