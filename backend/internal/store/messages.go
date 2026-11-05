@@ -56,13 +56,29 @@ func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread, s
 	}
 
 	if existing, found, err := s.existingByRemote(ctx, m); found || err != nil {
-		if err != nil || existing.Media != nil || m.Media == nil || !sameSender(existing, m) {
-			return existing, false, err
-		}
-
-		return s.fillMedia(ctx, existing, m.Media)
+		return s.mergeIntoExisting(ctx, existing, m, err)
 	}
 
+	return s.insertNewMessage(ctx, m, countUnread, skipAlreadyExpired)
+}
+
+// mergeIntoExisting folds m's media into a message already stored under
+// the same remote id, the one way AddMessage and AddHistoryMessage
+// update a row rather than inserting one (see addMessage). lookupErr is
+// existingByRemote's own error, returned unchanged.
+func (s *Store) mergeIntoExisting(ctx context.Context, existing, m domain.Message, lookupErr error) (domain.Message, bool, error) {
+	if lookupErr != nil || existing.Media != nil || m.Media == nil || !sameSender(existing, m) {
+		return existing, false, lookupErr
+	}
+
+	return s.fillMedia(ctx, existing, m.Media)
+}
+
+// insertNewMessage stores m as a new row: its id and initial status, its
+// expiry armed where that is already known, dropped unstored when
+// skipAlreadyExpired finds it already past that expiry, its reply
+// resolved and its thumbnail checked.
+func (s *Store) insertNewMessage(ctx context.Context, m domain.Message, countUnread, skipAlreadyExpired bool) (domain.Message, bool, error) {
 	m = withMessageDefaults(m)
 	m = armExpiry(m)
 	if skipAlreadyExpired && alreadyExpired(m) {
