@@ -30,9 +30,12 @@ import (
 )
 
 // providers lists every messaging service this helper can add an account
-// for. Adding a service means adding its Provider here.
+// for. Adding a service means adding its Provider here. signalProviders
+// comes from signal_cgo.go or signal_nocgo.go, depending on whether this
+// build links libsignal.
 func providers() []connector.Provider {
-	return []connector.Provider{telegram.Provider{Version: helperVersion}, whatsapp.Provider{}}
+	p := []connector.Provider{telegram.Provider{Version: helperVersion}, whatsapp.Provider{}}
+	return append(p, signalProviders()...)
 }
 
 // mediaCacheLimit is how much downloaded media the helper keeps before it

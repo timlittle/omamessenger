@@ -44,9 +44,33 @@ FAKE_HELPER := build/fake/oma-messenger-service
 THIRD_PARTY_NOTICES := build/THIRD_PARTY_NOTICES
 
 # Licenses the helper's dependencies may use. go.mau.fi/libsignal (GPL-3.0,
-# pulled in by WhatsApp support) is why release binaries are GPL-3.0 even
-# though this repository's own source stays MIT; see docs/decisions.md.
-ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC,MPL-2.0,GPL-3.0
+# pulled in by WhatsApp support) and go.mau.fi/mautrix-signal (AGPL-3.0,
+# Signal support) are why release binaries are AGPL-3.0 even though this
+# repository's own source stays MIT; see docs/decisions.md.
+ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC,MPL-2.0,GPL-3.0,AGPL-3.0
+
+# libsignal-ffi, pinned to the full commit signalmeow's own
+# pkg/libsignalgo/signalversion names (go.mau.fi/mautrix-signal v26.10,
+# libsignal v0.105.0: git ls-remote --tags https://github.com/signalapp/libsignal
+# v0.105.0 resolves the annotated tag to this commit). A tag alone is a
+# marketplace finding (remote-git-execution-unpinned), so this is the
+# commit itself, verified by scripts/libsignal.sh after checkout.
+LIBSIGNAL_VERSION := v0.105.0
+LIBSIGNAL_COMMIT := 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
+LIBSIGNAL_ARCH := $(shell $(GO) env GOARCH)
+LIBSIGNAL_DIR := build/libsignal/$(LIBSIGNAL_VERSION)/$(LIBSIGNAL_ARCH)
+LIBSIGNAL_ARCHIVE := $(LIBSIGNAL_DIR)/libsignal_ffi.a
+# The Rust build peaks around 3.5 GB; cap how many codegen units cargo
+# runs at once rather than letting it use every core, and keep its own
+# scratch under build/ for the same reason GOTMPDIR is (see resources.md).
+CARGO_BUILD_JOBS ?= 2
+CARGO_TARGET_DIR := $(CURDIR)/build/cargo-target
+
+# cgo is on by default once a C compiler is found, so a plain go build
+# would already try to link libsignal_ffi.a; make that explicit and point
+# the linker at the architecture this checkout just built.
+export CGO_ENABLED := 1
+export CGO_LDFLAGS := -L$(CURDIR)/$(LIBSIGNAL_DIR)
 
 # github.com/segmentio/asm (a Telegram dependency) is MIT ("MIT No
 # Attribution"); go-licenses' classifier does not recognise that exact
@@ -61,7 +85,7 @@ LICENSE_IGNORE := --ignore github.com/segmentio/asm
 # so no test notification reaches the desktop.
 NO_DESKTOP_BUS := DBUS_SESSION_BUS_ADDRESS=unix:path=/nonexistent
 
-.PHONY: help check build build-fake build-all install-helper marketplace-update test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local install-hooks release-check benchmark ci ci-remote clean
+.PHONY: help check build build-fake build-all install-helper marketplace-update test test-build test-go vulncheck test-js test-qml demo keys lint license-check third-party-notices tools validate install-local install-hooks release-check benchmark ci ci-remote clean libsignal
 
 help: ## Show the development commands
 	@awk 'BEGIN {FS = ":.*##"} /^[a-z-]+:.*##/ {printf "  make %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -69,34 +93,43 @@ help: ## Show the development commands
 check: build test test-qml lint license-check ## Run every gate: build, tests with coverage, QML tests, lint, dependency licenses, then a leak check
 	@./scripts/check-leaks.sh
 
-build: ## Build the helper for this machine into bin/dev/, which the launcher prefers
-	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -o bin/dev/oma-messenger-service ./backend
+build: libsignal ## Build the helper for this machine into bin/dev/, which the launcher prefers
+	$(GO) build -trimpath -buildvcs=false -o bin/dev/oma-messenger-service ./backend
 
 build-fake: ## Build the test helper, which runs scripted fake accounts, into build/fake/
 	CGO_ENABLED=0 $(GO) build -tags fake -trimpath -buildvcs=false -o $(FAKE_HELPER) ./backend
 
-build-all: third-party-notices ## Build the release helpers, SHA256SUMS and license notices into build/release/
+build-all: third-party-notices libsignal ## Build this machine's release helper, SHA256SUMS and license notices into build/release/
 	./scripts/build-release.sh
 
-# Cross-compiles both release binaries, so it is too slow for `make check`;
-# run it by hand before a release, or in CI only for a tag push. It installs
+# Skips the build once $(LIBSIGNAL_ARCHIVE) already exists, so a repeat
+# `make check` only fetches and builds libsignal-ffi once per checkout.
+libsignal: $(LIBSIGNAL_ARCHIVE) ## Fetch and build libsignal-ffi, pinned to the commit signalmeow expects
+
+$(LIBSIGNAL_ARCHIVE):
+	./scripts/libsignal.sh "$(LIBSIGNAL_COMMIT)" "$(LIBSIGNAL_VERSION)" "$(LIBSIGNAL_ARCH)" "$(LIBSIGNAL_DIR)" "$(CARGO_TARGET_DIR)" "$(CARGO_BUILD_JOBS)"
+
+# Builds this host's own architecture only: cgo linking libsignal_ffi.a
+# cannot cross-compile, unlike the old CGO_ENABLED=0 build (see
+# scripts/build-release.sh). Too slow for `make check`; run it by hand
+# before a release, or in CI once per release-build runner. It installs
 # into a throwaway HOME, never the real one, and cleans up after itself.
 # It checks install-helper.sh's own mechanics (the atomic move, the no-op
-# re-run, the desktop entry), not that this machine's toolchain reproduces
-# the exact bytes GitHub's release build published, so it pins a throwaway
-# helper-checksums computed from this run's own build/release/SHA256SUMS
-# rather than reading the repository's committed one.
-release-check: build-all ## Install a real cross-compiled release into a throwaway HOME, end to end
+# re-run, the desktop entry) and that the binary links nothing beyond the
+# system libraries release-check.sh's allowlist expects, not that this
+# machine's toolchain reproduces the exact bytes GitHub's release build
+# published, so it pins a throwaway helper-checksums computed from this
+# run's own build/release/SHA256SUMS rather than reading the repository's
+# committed one.
+release-check: build-all ## Install a real release build into a throwaway HOME, end to end
+	@./scripts/release-check-ldd.sh "build/release/oma-messenger-service-linux-$(LIBSIGNAL_ARCH)"
 	@tmp=$$(mktemp -d -p build); \
 	trap 'rm -rf "$$tmp"' EXIT; \
 	mkdir -p "$$tmp/home" "$$tmp/data"; \
 	version=$$(cut -d'#' -f1 helper-version | tr -d ' \n'); \
 	checksums="$$tmp/helper-checksums"; \
-	: > "$$checksums"; \
-	for a in amd64 arm64; do \
-		h=$$(sha256sum "build/release/oma-messenger-service-linux-$$a" | cut -d' ' -f1); \
-		printf '%s  oma-messenger-service-%s-linux-%s\n' "$$h" "$$version" "$$a" >> "$$checksums"; \
-	done; \
+	h=$$(sha256sum "build/release/oma-messenger-service-linux-$(LIBSIGNAL_ARCH)" | cut -d' ' -f1); \
+	printf '%s  oma-messenger-service-%s-linux-%s\n' "$$h" "$$version" "$(LIBSIGNAL_ARCH)" > "$$checksums"; \
 	base="file://$(CURDIR)/build/release"; \
 	run() { HOME="$$tmp/home" XDG_DATA_HOME="$$tmp/data" OMA_RELEASE_BASE="$$base" OMA_CHECKSUMS_FILE="$$checksums" ./scripts/install-helper.sh "$$@"; }; \
 	if run --status; then echo "release-check: expected --status to fail before install" >&2; exit 1; fi; \
@@ -118,15 +151,15 @@ test: test-go test-js ## Run the Go and JavaScript tests
 # binary, exactly as test-go builds them, without running a test: CI's
 # build job runs this once and caches the result, so later jobs reuse the
 # compiled packages instead of each recompiling the largest ones.
-test-build: ## Compile the helper and all test binaries without running tests
+test-build: libsignal ## Compile the helper and all test binaries without running tests
 	$(GO) build ./...
 	$(GO) build -tags fake ./...
 	$(GO) test -race -tags fake -coverprofile=$(GOTMPDIR)/test-build.cover -run '^$$' ./... >/dev/null
 
-vulncheck: $(GOVULNCHECK) ## Report known vulnerabilities in the helper's dependencies that its code reaches
+vulncheck: libsignal $(GOVULNCHECK) ## Report known vulnerabilities in the helper's dependencies that its code reaches
 	$(GOVULNCHECK) ./backend/...
 
-test-go: $(GO_TEST_COVERAGE) ## Run Go tests with the race detector and the coverage gates in .testcoverage.yml
+test-go: libsignal $(GO_TEST_COVERAGE) ## Run Go tests with the race detector and the coverage gates in .testcoverage.yml
 	@mkdir -p $(dir $(COVERAGE_FILE))
 	$(NO_DESKTOP_BUS) $(GO) test -race -tags fake -coverprofile=$(COVERAGE_FILE) ./...
 	$(GO_TEST_COVERAGE) --config .testcoverage.yml
@@ -237,7 +270,7 @@ demo: build-fake ## Record the offscreen demo GIFs and rebuild docs/demo/ and pr
 
 # Cheapest checks first, so a workflow typo or a Go lint finding fails
 # before the slower QML lint even starts.
-lint: $(GOLANGCI_LINT) $(ACTIONLINT) $(ZIZMOR) ## Lint Go (golangci-lint, privacy), GitHub workflows, shell scripts and QML
+lint: libsignal $(GOLANGCI_LINT) $(ACTIONLINT) $(ZIZMOR) ## Lint Go (golangci-lint, privacy), GitHub workflows, shell scripts and QML
 	$(ACTIONLINT)
 	$(ZIZMOR) .github/workflows
 	$(GOLANGCI_LINT) run ./...
@@ -252,13 +285,14 @@ lint: $(GOLANGCI_LINT) $(ACTIONLINT) $(ZIZMOR) ## Lint Go (golangci-lint, privac
 # go-licenses tells the standard library apart by GOROOT. go.mod pins a
 # toolchain that Go downloads into the module cache, so point it at that
 # toolchain's GOROOT rather than the one go-licenses was built with.
-license-check: $(GO_LICENSES) ## Fail if a helper dependency's license is not on the allow-list
+license-check: libsignal $(GO_LICENSES) ## Fail if a helper dependency's license is not on the allow-list
 	GOROOT="$$($(GO) env GOROOT)" $(GO_LICENSES) check ./backend --allowed_licenses=$(ALLOWED_LICENSES) $(LICENSE_IGNORE)
 
-third-party-notices: $(GO_LICENSES) ## Generate build/THIRD_PARTY_NOTICES, published with each release
+third-party-notices: libsignal $(GO_LICENSES) ## Generate build/THIRD_PARTY_NOTICES, published with each release
 	@mkdir -p $(dir $(THIRD_PARTY_NOTICES))
 	GOROOT="$$($(GO) env GOROOT)" $(GO_LICENSES) report ./backend $(LICENSE_IGNORE) --ignore github.com/timlittle/omamessenger \
 		--template scripts/third-party-notices.tmpl > $(THIRD_PARTY_NOTICES)
+	cat build/libsignal/$(LIBSIGNAL_VERSION)/src/acknowledgments/acknowledgments-desktop.md >> $(THIRD_PARTY_NOTICES)
 
 tools: $(GOLANGCI_LINT) $(GO_TEST_COVERAGE) $(GO_LICENSES) $(GOVULNCHECK) $(ACTIONLINT) $(ZIZMOR) ## Build the pinned golangci-lint, go-test-coverage, go-licenses, govulncheck, actionlint and zizmor
 

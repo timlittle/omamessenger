@@ -6,6 +6,13 @@ OmaMessenger is an Omarchy plugin first and a messaging client second. Keep it n
 
 Needs Go 1.26+, Node 22+, and, for QML lint and the offscreen tests, Omarchy's shell and Qt 6.
 
+The helper also links Signal's `libsignal` through cgo, built natively by `make libsignal` (a prerequisite of `build`, `test-build`, `test-go`, `lint`, `license-check`, `third-party-notices` and `vulncheck`; see docs/decisions.md). That needs:
+
+- `rustup` — honours libsignal's own `rust-toolchain` file, installing the pinned Rust version itself
+- `cmake`, `protoc` (`protobuf-compiler` on Debian/Ubuntu) and `clang` — build libsignal's native dependencies
+
+The build peaks around 3.5 GB of memory; `CARGO_BUILD_JOBS` (default 2) caps how many codegen units cargo runs at once. It is skipped once `build/libsignal/<version>/<arch>/libsignal_ffi.a` already exists, so only the first `make build` or `make check` on a checkout pays for it.
+
 ```sh
 make help            # list the commands
 make check           # every gate: build, tests with coverage, lint
