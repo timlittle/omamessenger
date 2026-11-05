@@ -60,6 +60,21 @@ func (s *Store) PendingRetries(ctx context.Context) ([]domain.Message, error) {
 	return messages, wrap("pending retries", err)
 }
 
+// PendingExpiries returns every message with a disappearing timer
+// armed, soonest due first, so the sweeper can re-arm itself for
+// whichever is next, including right after a restart.
+func (s *Store) PendingExpiries(ctx context.Context) ([]domain.Message, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+messageColumns+` FROM messages
+		WHERE expires_at>0 ORDER BY expires_at`)
+	if err != nil {
+		return nil, wrap("pending expiries", err)
+	}
+
+	messages, err := scanAll(rows, scanMessage)
+
+	return messages, wrap("pending expiries", err)
+}
+
 // MessageExists reports whether a message with id is still stored, for
 // the outgoing media area's sweep to tell an orphaned copy - one whose
 // message no longer exists at all - from a pending or failed message's

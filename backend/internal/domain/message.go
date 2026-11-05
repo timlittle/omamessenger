@@ -112,6 +112,22 @@ func Excerpt(text string) string {
 	return string(runes[:ExcerptLength]) + "…"
 }
 
+// ViewOncePlaceholder is the text a view-once message shows instead of
+// its media, which is never downloaded here: the sender's own device is
+// the only place it can still be opened. kind picks the wording; any
+// kind but MediaVideo and MediaVoice reads as a photo, which covers
+// WhatsApp's and Telegram's own view-once media today.
+func ViewOncePlaceholder(kind string) string {
+	switch kind {
+	case MediaVideo:
+		return "View-once video: open it on your phone"
+	case MediaVoice:
+		return "View-once voice note: open it on your phone"
+	default:
+		return "View-once photo: open it on your phone"
+	}
+}
+
 // MediaPlaceholder is the caption a photo, video or file gets when the
 // user sends it without one, since every stored message has text. The UI
 // hides a caption that exactly matches its media's placeholder (see

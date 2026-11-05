@@ -209,6 +209,15 @@ var migrations = []migrationStep{
 	// preview_sender_verified are no longer read or written by any Go
 	// code (see docs/decisions.md). Migrations are never reversed, so
 	// they stay in the schema, unused.
+	// A disappearing message's period, whether its countdown starts only
+	// once it is read, the absolute time it is due to be swept away (0
+	// until armed), and whether it is view-once media never downloaded
+	// here.
+	{sql: `ALTER TABLE messages ADD COLUMN expire_after INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE messages ADD COLUMN arm_on_read INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE messages ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0;
+		ALTER TABLE messages ADD COLUMN view_once INTEGER NOT NULL DEFAULT 0;
+	CREATE INDEX messages_expiry ON messages(expires_at) WHERE expires_at > 0;`},
 }
 
 // ErrSchemaTooNew reports a database written by a newer helper. Opening it

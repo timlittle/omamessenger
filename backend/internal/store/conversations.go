@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
@@ -190,10 +191,28 @@ func ftsQuery(query string) string {
 	return strings.Join(terms, " ")
 }
 
-// MarkRead clears a conversation's unread count. changed is false when it
-// was already read.
+// MarkRead clears a conversation's unread count and arms the expiry of
+// any message in it whose disappearing timer starts only once read
+// (Signal's own rule for something received; see domain.Message.ArmOnRead).
+// changed is false when the conversation was already read.
 func (s *Store) MarkRead(ctx context.Context, id string) (changed bool, _ error) {
-	return s.SetUnread(ctx, id, 0)
+	changed, err := s.SetUnread(ctx, id, 0)
+	if err != nil {
+		return changed, err
+	}
+
+	return changed, s.armReadExpiries(ctx, id)
+}
+
+// armReadExpiries starts the countdown, from now, of every message in
+// conversationID whose expiry waits for this moment and has not already
+// started one.
+func (s *Store) armReadExpiries(ctx context.Context, conversationID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE messages SET expires_at=?+expire_after*1000
+		WHERE conversation_id=? AND arm_on_read=1 AND expire_after>0 AND expires_at=0`,
+		time.Now().UnixMilli(), conversationID)
+
+	return wrap("arm read expiries", err)
 }
 
 // SetUnread sets a conversation's unread count, as the service counts it.

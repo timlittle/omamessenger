@@ -215,6 +215,30 @@ type Message struct {
 	// Neither crosses the protocol: they mean nothing to the UI.
 	RetryAttempts int   `json:"-"`
 	RetrySince    int64 `json:"-"`
+
+	// ExpireAfter is the disappearing-message period a connector
+	// reported, in seconds, or 0 for a message with none. It never
+	// crosses the protocol: the UI only needs the resulting ExpiresAt.
+	ExpireAfter int64 `json:"-"`
+
+	// ArmOnRead is true when ExpireAfter's countdown starts only once
+	// this message is read, rather than as soon as it is stored
+	// (Signal's own rule for a received message; WhatsApp and Telegram
+	// both count from sending instead). The store arms ExpiresAt at
+	// insert time when this is false, or when the message's status
+	// first advances to StatusRead when this is true.
+	ArmOnRead bool `json:"-"`
+
+	// ExpiresAt is when a disappearing message is due to be swept away,
+	// in Unix milliseconds, or 0 while it carries no expiry or one not
+	// yet armed. The UI shows it as a timer glyph with the time left.
+	ExpiresAt int64 `json:"expiresAt,omitempty"`
+
+	// ViewOnce is true for media meant to be opened once on the sending
+	// device and never downloaded here (WhatsApp's view-once wrappers,
+	// Telegram's self-destructing photos and videos). Such a message
+	// carries no Media at all: Text already names what it was instead.
+	ViewOnce bool `json:"viewOnce,omitempty"`
 }
 
 // ScheduledMessage is a text message queued to send at a chosen time

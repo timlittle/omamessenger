@@ -90,7 +90,7 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// and the preview-sender-verified column, all appended after it;
 	// stop short of all fifteen so inserting the pre-fix rows below
 	// still finds them unreclassified.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-15]); err != nil {
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-16]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -123,7 +123,7 @@ func TestMigrate_ReclassifiesAStoredGIFDocumentAsAnimatedVideo(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into a video.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-15].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-16].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +154,7 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	// conversation phone column, the verified-by-default reset, the
 	// contact verified and phone columns and the preview-sender-verified
 	// column, all appended after it; stop short of all fourteen.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-14]); err != nil {
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-15]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -187,7 +187,7 @@ func TestMigrate_ReclassifiesAStoredWhatsAppAudioFileAsAudio(t *testing.T) {
 	// database through migrate's own version gate, but the UPDATE
 	// itself is idempotent too, since its WHERE clause no longer
 	// matches a row it already turned into audio.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-14].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-15].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -217,7 +217,7 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	// verified columns, the conversation phone column, the
 	// verified-by-default reset, the contact verified and phone columns
 	// and the preview-sender-verified column, all appended after it.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-9]); err != nil {
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-10]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -248,7 +248,7 @@ func TestMigrate_BackfillsDistinctPinOrderForConversationsPinnedBeforeOrdering(t
 	// order: it is idempotent, like the GIF and audio reclassifications
 	// above, since recomputing the same recency ranking over rows whose
 	// relative order has not changed yields the same ranks.
-	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-9].sql); err != nil {
+	if _, err := db.ExecContext(t.Context(), migrations[len(migrations)-10].sql); err != nil {
 		t.Fatal(err)
 	}
 
@@ -278,7 +278,7 @@ func TestMigrate_SanitizesLegacyThumbnails(t *testing.T) {
 	// the sender/title verified columns, the conversation phone column,
 	// the verified-by-default reset, the contact verified and phone
 	// columns and the preview-sender-verified column below.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-7]); err != nil {
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-8]); err != nil {
 		t.Fatal(err)
 	}
 
@@ -361,7 +361,7 @@ func TestMigrate_BackfillsReplySenderID(t *testing.T) {
 	// columns, the conversation phone column, the verified-by-default
 	// reset, the contact verified and phone columns and the
 	// preview-sender-verified column.
-	if err := migrate(t.Context(), db, migrations[:len(migrations)-6]); err != nil {
+	if err := migrate(t.Context(), db, migrations[:len(migrations)-7]); err != nil {
 		t.Fatal(err)
 	}
 

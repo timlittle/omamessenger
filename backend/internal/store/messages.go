@@ -7,12 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
 // messageColumns lists the columns scanMessage reads, in order.
-const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me,retry_at,retry_attempts,retry_since,attachment_original_path,attachment_original_modtime,formatting`
+const messageColumns = `id,conversation_id,remote_id,sender_id,sender_name,text,outgoing,status,created,media,edited,reply_to,reactions,mentions,mentions_me,retry_at,retry_attempts,retry_since,attachment_original_path,attachment_original_modtime,formatting,expire_after,arm_on_read,expires_at,view_once`
 
 // Page sizes for Messages.
 const (
@@ -28,23 +29,28 @@ var ErrInvalidMessage = errors.New("message needs conversationId and text")
 // stored is returned unchanged with inserted false; from the same sender,
 // its media fills in the stored row's missing media.
 func (s *Store) AddMessage(ctx context.Context, m domain.Message) (_ domain.Message, inserted bool, _ error) {
-	return s.addMessage(ctx, m, true)
+	return s.addMessage(ctx, m, true, false)
 }
 
 // AddHistoryMessage stores a message the same way AddMessage does, but
-// never counts it towards the conversation's unread total. Older history
-// is not new: the service's own unread count, synced separately through
-// Unread, is authoritative, so a backfilled message (the first open of a
+// never counts it towards the conversation's unread total, and silently
+// drops one whose disappearing timer, armed immediately, has already
+// run out by now: a connector backfilling history must never resurrect
+// a message that would already be gone. Older history is not new: the
+// service's own unread count, synced separately through Unread, is
+// authoritative, so a backfilled message (the first open of a
 // conversation whose history was not yet paged locally, or scrolling
 // further back) must never raise or lower it.
 func (s *Store) AddHistoryMessage(ctx context.Context, m domain.Message) (_ domain.Message, inserted bool, _ error) {
-	return s.addMessage(ctx, m, false)
+	return s.addMessage(ctx, m, false, true)
 }
 
 // addMessage is AddMessage and AddHistoryMessage's shared implementation.
 // countUnread decides whether an unread, incoming message bumps its
-// conversation's unread count.
-func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread bool) (_ domain.Message, inserted bool, _ error) {
+// conversation's unread count; skipAlreadyExpired decides whether a
+// message already past its own disappearing timer is dropped instead of
+// stored (see AddHistoryMessage).
+func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread, skipAlreadyExpired bool) (_ domain.Message, inserted bool, _ error) {
 	if m.ConversationID == "" || m.Text == "" {
 		return m, false, fmt.Errorf("store: add message: %w", ErrInvalidMessage)
 	}
@@ -58,6 +64,11 @@ func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread bo
 	}
 
 	m = withMessageDefaults(m)
+	m = armExpiry(m)
+	if skipAlreadyExpired && alreadyExpired(m) {
+		return m, false, nil
+	}
+
 	m = s.resolveReply(ctx, m)
 	m.Media = verifyThumb(m.Media)
 	if err := s.insertMessage(ctx, m, countUnread); err != nil {
@@ -65,6 +76,24 @@ func (s *Store) addMessage(ctx context.Context, m domain.Message, countUnread bo
 	}
 
 	return m, true, nil
+}
+
+// armExpiry computes a disappearing message's ExpiresAt as soon as its
+// countdown is known to have started: immediately, for every rule but
+// Signal's own "starts when read" one, which arms instead the first
+// time UpdateMessageStatus reports it read (see that function).
+func armExpiry(m domain.Message) domain.Message {
+	if m.ExpireAfter > 0 && !m.ArmOnRead && m.ExpiresAt == 0 {
+		m.ExpiresAt = m.Created + m.ExpireAfter*1000
+	}
+
+	return m
+}
+
+// alreadyExpired reports whether m's own disappearing timer, once armed,
+// has already run out by now.
+func alreadyExpired(m domain.Message) bool {
+	return m.ExpiresAt > 0 && m.ExpiresAt <= time.Now().UnixMilli()
 }
 
 // resolveReply fills a reply's quoted sender id, name and excerpt from
@@ -194,9 +223,10 @@ func (s *Store) insertMessage(ctx context.Context, m domain.Message, countUnread
 
 	originalPath, originalModTime := originalAttachment(m.Media)
 
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(`+messageColumns+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		m.ID, m.ConversationID, m.RemoteID, m.SenderID, m.SenderName, m.Text, m.Outgoing, m.Status, m.Created, media, m.Edited, replyTo, reactions, mentions, m.MentionsMe,
-		m.RetryAt, m.RetryAttempts, m.RetrySince, originalPath, originalModTime, formatting)
+		m.RetryAt, m.RetryAttempts, m.RetrySince, originalPath, originalModTime, formatting,
+		m.ExpireAfter, m.ArmOnRead, m.ExpiresAt, m.ViewOnce)
 	if err != nil {
 		return err
 	}
@@ -447,7 +477,8 @@ func scanMessage(row scanner) (domain.Message, error) {
 	if err := row.Scan(&m.ID, &m.ConversationID, &m.RemoteID, &m.SenderID, &m.SenderName,
 		&m.Text, &m.Outgoing, &m.Status, &m.Created, &media, &m.Edited, &replyTo, &reactions,
 		&mentions, &m.MentionsMe, &m.RetryAt, &m.RetryAttempts, &m.RetrySince,
-		&originalPath, &originalModTime, &formatting); err != nil {
+		&originalPath, &originalModTime, &formatting,
+		&m.ExpireAfter, &m.ArmOnRead, &m.ExpiresAt, &m.ViewOnce); err != nil {
 		return m, err
 	}
 
