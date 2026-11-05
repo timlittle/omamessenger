@@ -43,12 +43,8 @@ func TestLogWriter_NoTrailingNewline(t *testing.T) {
 	}
 }
 
-// TestSetUpLogging_DoesNotPanic checks that signalmeow's own logger
-// can be pointed at a standard logger without reaching libsignal-ffi
-// in a way that panics. signalmeow guards SetLogger to run only once
-// per process, so this cannot assert anything about the level it
-// installed without a real libsignal-ffi call, which risks double
-// initialization across the whole test binary.
+// TestSetUpLogging_DoesNotPanic checks that pointing signalmeow's
+// logger at a standard logger does not panic.
 func TestSetUpLogging_DoesNotPanic(t *testing.T) {
 	t.Parallel()
 

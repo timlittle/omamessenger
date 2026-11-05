@@ -7,10 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// messageRemoteID is the remote id a message's sender aci and own sent
-// timestamp give it. Reactions, edits, deletes and poll votes all name
-// the message they act on this same way, since Signal's wire protocol
-// carries no message id of its own.
+// messageRemoteID is a message's remote id: sender aci plus sent
+// timestamp, since Signal's wire protocol carries no id of its own.
 func messageRemoteID(aci uuid.UUID, sentTimestamp uint64) string {
 	return aci.String() + ":" + strconv.FormatUint(sentTimestamp, 10)
 }

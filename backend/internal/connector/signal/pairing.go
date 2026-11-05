@@ -15,10 +15,8 @@ import (
 // linkHint tells people where to scan the code.
 const linkHint = "Open Signal on your phone, go to Settings → Linked Devices → Link New Device, and scan this code."
 
-// qrRefreshInterval is how long a linking QR code stays valid before a
-// fresh one is drawn: Signal's own servers close the provisioning
-// socket after 60 seconds, and Signal Desktop refreshes at 45, so this
-// matches the same rhythm WhatsApp's own pairing uses.
+// qrRefreshInterval is how long a QR code stays valid before a fresh
+// one is drawn, matching Signal Desktop's own 45-second rhythm.
 const qrRefreshInterval = 45 * time.Second
 
 // maxQRRefreshes bounds how many codes one linking attempt draws before
@@ -29,10 +27,8 @@ const maxQRRefreshes = 20
 // during one linking attempt.
 var errLinkTimedOut = errors.New("signal: the pairing attempt timed out; try again")
 
-// provisioner is signalmeow.PerformProvisioning's own shape: it starts
-// a linking attempt and reports its steps over the returned channel.
-// It is a field, not a direct call, so pairing can be tested without
-// reaching Signal's servers.
+// provisioner is signalmeow.PerformProvisioning's shape, a field so
+// pairing can be tested without reaching Signal's servers.
 type provisioner func(ctx context.Context, deviceStore sstore.DeviceStore, deviceName string, allowBackup bool) chan signalmeow.ProvisioningResponse
 
 // deviceName is what this helper calls itself in Signal's linked

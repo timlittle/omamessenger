@@ -1,13 +1,7 @@
 package signal
 
 // This file runs the shared connector conformance checks against
-// Signal. CheckLifecycle runs offline against a fake device, since
-// Run's shape (connect, cancel, refuse a second concurrent run, leave
-// no goroutine behind) is signalmeow's own event-loop structure, not
-// anything Signal's servers decide; an internal test is the only way
-// to reach the unexported open field a fake device needs (see
-// helpers_test.go), the same reason WhatsApp's own conformance test
-// stays in its package rather than *_test.
+// Signal, offline against a fake device, the same as WhatsApp's own.
 
 import (
 	"testing"

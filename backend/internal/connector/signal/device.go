@@ -23,14 +23,9 @@ import (
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver, no cgo of its own
 )
 
-// device is the signalmeow client surface the connector drives once an
-// account is linked: starting and stopping the receive loops, unlinking,
-// resolving a contact or group's name, importing the history transfer
-// and paging it, and downloading an attachment. The methods stay
-// together because Run, history import and live receive all drive this
-// one client to get one linked account connected and keep it talking;
-// splitting them would only scatter that one client's surface across
-// more interfaces, the same reasoning WhatsApp's device interface gives.
+// device is the signalmeow client surface the connector drives once
+// linked: receive loops, naming, history and attachment download,
+// kept together as WhatsApp's own device interface is.
 type device interface {
 	// aci is this device's own account identifier.
 	aci() uuid.UUID
@@ -60,10 +55,8 @@ type device interface {
 	// disappearing-message timer.
 	groupInfo(ctx context.Context, gid types.GroupIdentifier) (title string, members []signalmeow.GroupMember, disappearingSeconds int64, err error)
 
-	// groupIdentifierForMasterKey derives the group identifier a
-	// transferred backup's own group master key names, so an imported
-	// group chat resolves to the same identifier a live message for it
-	// carries in events.MessageInfo.ChatID.
+	// groupIdentifierForMasterKey derives the identifier a backup's
+	// group master key names, matching a live message's ChatID.
 	groupIdentifierForMasterKey(ctx context.Context, masterKey types.SerializedGroupMasterKey) (types.GroupIdentifier, error)
 
 	// waitForTransfer waits for Signal's primary phone to offer this
@@ -187,12 +180,8 @@ func (*sigDevice) downloadAttachment(ctx context.Context, ptr *signalpb.Attachme
 	return err
 }
 
-// sessionStore is an account's Signal session database: the device
-// store signalmeow's own linking and client code reads and writes, plus
-// a small sidecar file remembering which account identifier this
-// computer's copy of the account last linked as, since nothing else
-// here is keyed by account id the way signalmeow's own store is keyed
-// by account identifier (ACI).
+// sessionStore is an account's Signal session database, plus a
+// sidecar file remembering which account identifier it last linked as.
 type sessionStore struct {
 	container *sstore.Container
 	db        *sql.DB

@@ -7,12 +7,8 @@ import (
 	"go.mau.fi/mautrix-signal/pkg/signalmeow"
 )
 
-// SetUpLogging points signalmeow's own package-level logger (shared by
-// libsignal-ffi, the Rust library behind it) at out, logging only
-// warnings and above, since signalmeow logs some fields unsafe to keep
-// (for example the whole media backup key, at info level) and this is
-// process-wide and unsynchronized, so it must run once before any
-// Signal account connects.
+// SetUpLogging points signalmeow's process-wide logger at out, kept
+// to warnings and above since signalmeow logs some fields unsafely.
 func SetUpLogging(out *log.Logger) {
 	signalmeow.SetLogger(zerolog.New(logWriter{log: out}).Level(zerolog.WarnLevel))
 }

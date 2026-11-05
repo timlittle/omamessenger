@@ -19,10 +19,8 @@ type linkDeps struct {
 	provision provisioner
 }
 
-// openDevice opens the account's session database in dir, linking it
-// by QR code first if it has never linked, and returns the
-// connected-phase client, reporting whether this call just completed a
-// fresh link.
+// openDevice opens the session in dir, linking by QR code if needed,
+// and reports whether this call just completed a fresh link.
 func openDevice(ctx context.Context, dir, accountID string, deps linkDeps) (device, bool, error) {
 	session, err := openSession(ctx, dir, accountID)
 	if err != nil {

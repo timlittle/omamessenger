@@ -10,10 +10,7 @@ import (
 )
 
 // Members lists conv's current members, for the @-mention picker.
-// Only a group conversation has members beyond this account and one
-// other person; a direct chat's RemoteID is never a group identifier
-// (see isGroupChat), so Members reports an empty list for one rather
-// than treating it as an error.
+// A direct chat reports an empty list, not an error.
 func (c *Connector) Members(ctx context.Context, conv domain.Conversation) ([]domain.Member, error) {
 	if !isGroupChat(conv.RemoteID) {
 		return nil, nil

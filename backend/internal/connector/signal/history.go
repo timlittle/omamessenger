@@ -24,12 +24,8 @@ var _ connector.HistoryLoader = (*Connector)(nil)
 // as the user scrolls.
 const historyPageSize = 50
 
-// importHistory waits for Signal's primary phone to offer this fresh
-// link's history transfer, imports it, and reports every chat it
-// contains with its newest page of messages. It is best effort: a
-// phone that answered "Don't transfer" or never answers at all leaves
-// this account with no history, which is not an error (see
-// docs/plan.md's Signal section).
+// importHistory waits for the phone to offer this fresh link's history
+// transfer and imports it. Best effort: no answer leaves no history.
 func (c *Connector) importHistory(ctx context.Context, dev device, sink connector.Sink) {
 	meta, err := dev.waitForTransfer(ctx)
 	if err != nil {
@@ -93,12 +89,8 @@ func (c *Connector) importChat(ctx context.Context, dev device, sink connector.S
 // does not repeat its store package's import alias at every call site.
 type backupChat = sstore.BackupChat
 
-// LoadOlder reports, through the Sink, up to limit messages older than
-// beforeRemoteID in conv, paging Signal's own transferred history
-// archive. It never reaches Signal's live servers: once the transfer's
-// own history is exhausted, it reports zero with no error, the same as
-// any other connector whose service has told it there is nothing
-// older left.
+// LoadOlder reports up to limit messages older than beforeRemoteID in
+// conv, paging the transferred history archive; never Signal's servers.
 func (c *Connector) LoadOlder(ctx context.Context, conv domain.Conversation, beforeRemoteID string, limit int) (int, error) {
 	dev, sink, err := c.session()
 	if err != nil {
@@ -202,10 +194,8 @@ func (c *Connector) resolveChatIdentity(ctx context.Context, dev device, recipie
 	}
 }
 
-// normalizeBackupItem maps one transferred message to the domain
-// message LoadOlder and importHistory report, or ok false for an item
-// kind this connector does not import yet (a payment notice, a gift
-// badge, a group update and the like carry no message text to show).
+// normalizeBackupItem maps one transferred message to a domain
+// message, or ok false for an item kind not imported yet.
 func (c *Connector) normalizeBackupItem(ctx context.Context, dev device, item *backuppb.ChatItem) (domain.Message, bool) {
 	standard, ok := item.GetItem().(*backuppb.ChatItem_StandardMessage)
 	if !ok || standard.StandardMessage == nil {

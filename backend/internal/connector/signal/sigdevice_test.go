@@ -1,15 +1,8 @@
 package signal
 
-// sigDevice adapts a real signalmeow client, which this test drives
-// against a real session database the same way device_test.go does,
-// never reaching Signal's own servers. Its network-bound methods
-// (startReceiveLoops, contactName, groupInfo, waitForTransfer,
-// fetchAndProcessTransfer, downloadAttachment, unlink and
-// groupIdentifierForMasterKey) are not exercised here, the same gap
-// the WhatsApp connector's own device wrapper has for connect,
-// disconnect, qrCodes, pairPhone and sendMessage: a real Signal
-// account is the only way to reach them, and privacy.md and
-// resources.md forbid a test doing that.
+// This file drives a real signalmeow client against a real session
+// database, never Signal's servers; network-bound methods need a real
+// account and so are untested here, the same gap WhatsApp's own has.
 
 import (
 	"encoding/base64"
@@ -69,11 +62,9 @@ func TestSigDevice_NumberAndACI(t *testing.T) {
 	}
 }
 
-// TestSigDevice_BackupStore checks the local backup-store
-// delegations: a chat and its recipient, added the way a history
-// import does, come back out through backupChats, backupRecipient
-// and backupChatItems. None of this reaches Signal's servers: the
-// backup store is this account's own local SQLite table.
+// TestSigDevice_BackupStore checks that a chat and recipient added as
+// a history import would come back out through the backup-store
+// delegations, all local SQLite, never Signal's servers.
 func TestSigDevice_BackupStore(t *testing.T) {
 	t.Parallel()
 

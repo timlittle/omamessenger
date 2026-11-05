@@ -15,14 +15,8 @@ import (
 const genericSenderName = "Signal user"
 
 // normalizeDataMessage turns a DataMessage into the domain message
-// events.go's event handler reports, given the sender and chat already
-// known from the event's own envelope and senderName already resolved
-// (or genericSenderName when nothing has resolved one yet). outgoing
-// is true only for this account's own sent messages, carried on a sync
-// message rather than received live. The returned pointer, when not
-// nil, is the attachment events.go should remember for a later
-// MediaFetcher.FetchMedia (see fetch.go); never set for a link
-// preview, which already carries everything FetchMedia would add.
+// events.go reports. The returned pointer, when not nil, is the
+// attachment to remember for a later FetchMedia (see fetch.go).
 func normalizeDataMessage(aci uuid.UUID, senderName string, sentTimestamp uint64, msg *signalpb.DataMessage, outgoing bool) (domain.Message, *signalpb.AttachmentPointer) {
 	m := domain.Message{
 		RemoteID:   messageRemoteID(aci, sentTimestamp),
@@ -52,11 +46,8 @@ func normalizeDataMessage(aci uuid.UUID, senderName string, sentTimestamp uint64
 	return m, ptr
 }
 
-// applyMedia fills m's Media or ViewOnce flag from msg's attachment,
-// sticker, link preview or poll, in that priority: a message carries
-// at most one of these, matching every other connector's one-Media
-// model. It returns the attachment pointer behind an attachment or
-// sticker, for the caller to remember for FetchMedia.
+// applyMedia fills m's Media or ViewOnce flag from msg's one
+// attachment, sticker, link preview or poll, and returns its pointer.
 func applyMedia(m *domain.Message, msg *signalpb.DataMessage) *signalpb.AttachmentPointer {
 	switch {
 	case msg.GetIsViewOnce():
@@ -182,9 +173,7 @@ func formatOptionID(index int) string {
 }
 
 // sanitizedThumb base64-encodes an embedded preview image once
-// imagesafe has sanitized it, so nothing unsanitized ever reaches the
-// UI. Returns "" when there is nothing embedded or it fails
-// sanitization.
+// sanitized, or "" when there is none or it fails sanitization.
 func sanitizedThumb(data []byte) string {
 	if len(data) == 0 {
 		return ""
@@ -235,9 +224,7 @@ func spanKind(style signalpb.BodyRange_Style) (string, bool) {
 }
 
 // mentions maps Signal's "@-mention" style ranges to the UI's
-// mentions, naming the mentioned account by its id: the connector has
-// no name resolved for every possible member at message-normalize
-// time, so the UI resolves a display name from its own member list.
+// mentions, naming each by id; the UI resolves the display name.
 func mentions(ranges []*signalpb.BodyRange) []domain.Mention {
 	var out []domain.Mention
 
