@@ -6,11 +6,12 @@ helper binary distributed with this release, and the full text of each
 component's license.
 
 OmaMessenger's own source is MIT-licensed; see LICENSE in the repository. The
-helper binary built for releases also links go.mau.fi/libsignal, which is
-GPL-3.0, by way of go.mau.fi/whatsmeow (WhatsApp support). That makes the
-combined binary a work covered by the GPL-3.0, whose full text is in
-LICENSE-GPL-3.0 next to this file. See the "License" section of the README
-for a short summary.
+helper binary built for releases also links go.mau.fi/libsignal (GPL-3.0, by
+way of go.mau.fi/whatsmeow, WhatsApp support) and go.mau.fi/mautrix-signal's
+signalmeow (AGPL-3.0, Signal support), which itself links Signal's own
+libsignal Rust library. That makes the combined binary a work covered by the
+AGPL-3.0, whose full text is in LICENSE-AGPL-3.0 next to this file. See the
+"License" section of the README for a short summary.
 
 The corresponding source for this binary is the public repository at the
 commit tagged for this release: https://github.com/timlittle/omamessenger
@@ -169,3 +170,16 @@ advertising or publicity pertaining to distribution of the software
 and/or database.  Title to copyright in this software, database and
 any associated documentation shall at all times remain with
 Princeton University and LICENSEE agrees to preserve same.
+
+================================================================================
+libsignal's own Rust dependencies
+================================================================================
+
+go-licenses only inspects this binary's Go module graph, so it cannot see
+the Rust crates libsignal_ffi.a is built from (see docs/decisions.md for
+why Signal support links that library through cgo). libsignal publishes
+its own generated notices for exactly that build target in its
+repository's acknowledgments/ directory; `make third-party-notices`
+appends that file's contents, read from the pinned commit this release's
+libsignal_ffi.a was built from, after this template, so what follows is
+libsignal's own acknowledgments-desktop.md, unmodified.

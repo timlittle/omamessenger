@@ -106,4 +106,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and contributio
 
 ## License
 
-OmaMessenger's own source is MIT, see [LICENSE](LICENSE). The helper binary built for releases also includes GPL-3.0 code (libsignal, used for WhatsApp's encryption), so release binaries are distributed under GPL-3.0, see [LICENSE-GPL-3.0](LICENSE-GPL-3.0). Third-party notices for everything the helper links are in `THIRD_PARTY_NOTICES`, next to the binary in each release.
+OmaMessenger's own source is MIT, see [LICENSE](LICENSE). The helper binary built for releases also includes GPL-3.0 code (libsignal, used for WhatsApp's encryption) and AGPL-3.0 code (Signal's own libsignal Rust library, linked through `signalmeow` for Signal support), so release binaries are distributed under AGPL-3.0, see [LICENSE-AGPL-3.0](LICENSE-AGPL-3.0). Third-party notices for everything the helper links are in `THIRD_PARTY_NOTICES`, next to the binary in each release.
