@@ -33,6 +33,10 @@ TOOLS := $(CURDIR)/build/tools
 # memory until reboot.
 export GOTMPDIR := $(CURDIR)/build/gotmp
 $(shell mkdir -p $(GOTMPDIR))
+# The cgo linker ignores GOTMPDIR and writes ~200 MB per link to TMPDIR.
+# The leading underscore keeps it out of ./... package patterns.
+export TMPDIR := $(CURDIR)/build/_tmp
+$(shell mkdir -p $(TMPDIR))
 GOLANGCI_LINT := $(TOOLS)/golangci-lint
 GO_TEST_COVERAGE := $(TOOLS)/go-test-coverage
 GO_LICENSES := $(TOOLS)/go-licenses
