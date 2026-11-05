@@ -9,6 +9,7 @@ import "errors"
 const (
 	ServiceWhatsApp = "whatsapp"
 	ServiceTelegram = "telegram"
+	ServiceSignal   = "signal"
 )
 
 // Account connection states.
@@ -355,5 +356,5 @@ type Media struct {
 
 // ValidService reports whether service is a supported provider.
 func ValidService(service string) bool {
-	return service == ServiceWhatsApp || service == ServiceTelegram
+	return service == ServiceWhatsApp || service == ServiceTelegram || service == ServiceSignal
 }
