@@ -18,7 +18,7 @@ func TestUpsertAccount_RejectsInvalidAccounts(t *testing.T) {
 	}{
 		{"missing id", domain.Account{Service: domain.ServiceWhatsApp, Name: "Name"}},
 		{"missing name", domain.Account{ID: "id", Service: domain.ServiceWhatsApp}},
-		{"unsupported service", domain.Account{ID: "id", Service: "signal", Name: "Name"}},
+		{"unsupported service", domain.Account{ID: "id", Service: "carrierpigeon", Name: "Name"}},
 	}
 
 	for _, tt := range tests {

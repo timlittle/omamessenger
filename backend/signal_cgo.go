@@ -3,13 +3,19 @@
 package main
 
 import (
-	// Blank import: forces the cgo link now, before the connector exists.
-	_ "go.mau.fi/mautrix-signal/pkg/signalmeow"
+	"log"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
+	"github.com/timlittle/omamessenger/backend/internal/connector/signal"
 )
 
-// signalProviders returns no provider yet; the connector lands later.
+// signalProviders returns the Signal provider: this build was linked
+// against libsignal-ffi.
 func signalProviders() []connector.Provider {
-	return nil
+	return []connector.Provider{signal.Provider{}}
+}
+
+// signalSetUpLogging points signalmeow's own logger at out.
+func signalSetUpLogging(out *log.Logger) {
+	signal.SetUpLogging(out)
 }

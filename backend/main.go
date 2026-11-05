@@ -92,6 +92,7 @@ func exitCode() int {
 		return 1
 	}
 	quietLibsignalLogger(log.New(os.Stderr, "", 0))
+	signalSetUpLogging(log.New(os.Stderr, "", 0))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
