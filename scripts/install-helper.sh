@@ -81,7 +81,7 @@ work=$(TMPDIR="$bin_dir" mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 printf 'Downloading OmaMessenger helper %s for %s...\n' "$version" "$arch"
-fetch "$base/$name" 67108864 "$work/$name" || fail "could not download $name"
+fetch "$base/$name" 134217728 "$work/$name" || fail "could not download $name"
 fetch "$base/SHA256SUMS" 65536 "$work/SHA256SUMS" || fail "could not download SHA256SUMS"
 expected=$(awk -v n="$name" '$2 == n || $2 == "*" n { print $1 }' "$work/SHA256SUMS")
 [ -n "$expected" ] || fail "SHA256SUMS has no entry for $name"
