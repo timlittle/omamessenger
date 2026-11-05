@@ -20,6 +20,12 @@ concurrency:
 # token grant is zero.
 permissions: {}
 
+# Kept in sync by hand with LIBSIGNAL_COMMIT in the Makefile: the full
+# commit signalmeow's own pkg/libsignalgo/signalversion names, never a
+# tag (see the Makefile for how it was resolved and verified).
+env:
+  LIBSIGNAL_COMMIT: 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
+
 jobs:
   # Compiles the helper and every test binary once, race detector and
   # coverage included, and saves Go's build cache (setup-go keys it on
@@ -28,7 +34,7 @@ jobs:
   # to compile.
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -38,6 +44,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Libsignal build tools
+        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/libsignal
+          key: libsignal-${{ runner.arch }}-${{ env.LIBSIGNAL_COMMIT }}
       - name: Compile the helper and all test binaries
         run: make test-build
 
@@ -57,6 +69,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
+      - name: Libsignal build tools
+        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/libsignal
+          key: libsignal-${{ runner.arch }}-${{ env.LIBSIGNAL_COMMIT }}
       - name: Go tests with coverage gates
         run: make test-go
       - name: JavaScript tests with coverage gates
@@ -66,7 +84,7 @@ jobs:
   checks:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     permissions:
       contents: read
     steps:
@@ -76,6 +94,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Libsignal build tools
+        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/libsignal
+          key: libsignal-${{ runner.arch }}-${{ env.LIBSIGNAL_COMMIT }}
       - name: Go lint and the privacy check
         run: |
           make tools
@@ -93,11 +117,17 @@ jobs:
           command -v shellcheck >/dev/null || { $(command -v sudo) apt-get update -q && $(command -v sudo) apt-get install -yq shellcheck; }
           shellcheck -x scripts/*.sh bin/oma-messenger-service hooks/commit-msg
 
-  # Runs only once everything else has passed.
+  # Runs only once everything else has passed. A two-runner matrix, one
+  # per architecture: cgo linking libsignal_ffi.a cannot cross-compile,
+  # so this is the one place arm64 is actually built before merge (the
+  # release workflow's own matrix is this job's architectures again).
   release-build:
     needs: [test, checks, qml]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 12
     permissions:
       contents: read
     steps:
@@ -107,6 +137,12 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Libsignal build tools
+        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/libsignal
+          key: libsignal-${{ runner.arch }}-${{ env.LIBSIGNAL_COMMIT }}
       - name: Release build
         run: make build-all
 
@@ -134,7 +170,8 @@ jobs:
         # (with its FFmpeg backend) is pinned alongside them since it
         # links against the same Qt minor version.
         run: |
-          pacman -Syu --noconfirm --needed git go nodejs quickshell qt6-declarative qt6-multimedia qt6-multimedia-ffmpeg
+          pacman -Syu --noconfirm --needed git go nodejs quickshell qt6-declarative qt6-multimedia qt6-multimedia-ffmpeg rustup cmake clang protobuf
+          rustup default stable
           cd /tmp
           # Each package's sha256, pinned by downloading the exact URL
           # below once and hashing it: a compromised mirror or cache
@@ -171,6 +208,10 @@ jobs:
             echo "omarchy checkout = $got, want $omarchy_commit" >&2
             exit 1
           fi
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/libsignal
+          key: libsignal-${{ runner.arch }}-${{ env.LIBSIGNAL_COMMIT }}
       - name: Offscreen QML tests
         run: make build test-qml
       - name: Qt 6 qmllint

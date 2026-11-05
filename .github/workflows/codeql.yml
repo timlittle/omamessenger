@@ -15,6 +15,12 @@ on:
 # token grant is zero.
 permissions: {}
 
+# Kept in sync by hand with the Makefile's own LIBSIGNAL_COMMIT and
+# LIBSIGNAL_VERSION (see ci.yml).
+env:
+  LIBSIGNAL_COMMIT: 4beb029d8a941f81e7d9c6d8af1ed25a677569a8
+  LIBSIGNAL_VERSION: v0.105.0
+
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
@@ -42,19 +48,33 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Libsignal build tools
+        if: matrix.language == 'go'
+        run: sudo apt-get update -q && sudo apt-get install -yq cmake protobuf-compiler clang
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        if: matrix.language == 'go'
+        with:
+          path: build/libsignal
+          key: libsignal-${{ runner.arch }}-${{ env.LIBSIGNAL_COMMIT }}
+
       - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
       - name: Build the Go module
-        # The helper never uses cgo; building it the same way the Makefile
-        # does keeps this build identical to what CI and releases ship,
-        # rather than relying on autobuild's own heuristics.
+        # Building it the same way the Makefile does (cgo on, linked
+        # against the libsignal built just above) keeps this build
+        # identical to what CI and releases ship and scans the Signal
+        # connector too, rather than relying on autobuild's own
+        # heuristics or skipping cgo code.
         if: matrix.language == 'go'
-        env:
-          CGO_ENABLED: "0"
-        run: go build ./...
+        run: |
+          make libsignal
+          export CGO_ENABLED=1
+          export CGO_LDFLAGS="-L$(pwd)/build/libsignal/$LIBSIGNAL_VERSION/$(go env GOARCH)"
+          go build ./...
 
       - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
