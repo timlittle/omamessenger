@@ -67,7 +67,13 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, info
 	m, ptr := normalizeDataMessage(info.Sender, name, msg.GetTimestamp(), msg, outgoing)
 	m.MentionsMe = mentionsSelf(m.Mentions, c.selfID())
 	resolveMentionNames(m.Mentions, c.nameFor)
-	c.rememberAttachment(info.ChatID, m.RemoteID, ptr)
+	c.rememberAttachment(ctx, info.ChatID, m.RemoteID, ptr)
+
+	// An edit carries neither a server GUID nor a report-spam token, so
+	// only an incoming original is ever saved here; see handleEdit.
+	if !outgoing {
+		c.rememberMessageMeta(ctx, info.ChatID, m.RemoteID, info.ServerGUID, info.ReportingToken)
+	}
 
 	if seconds := msg.GetExpireTimer(); seconds > 0 {
 		reportDisappearingTimer(ctx, sink, c.account.ID, info.ChatID, int64(seconds))
@@ -75,7 +81,7 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, info
 
 	if poll := msg.GetPollCreate(); poll != nil {
 		options := poll.GetOptions()
-		c.trackPoll(m.RemoteID, poll.GetQuestion(), options, poll.GetAllowMultiple())
+		c.trackPoll(ctx, info.ChatID, m.RemoteID, poll.GetQuestion(), options, poll.GetAllowMultiple())
 	}
 
 	if outgoing {
@@ -127,7 +133,7 @@ func (c *Connector) handlePollVote(ctx context.Context, sink connector.Sink, inf
 		indexes[i] = int(idx)
 	}
 
-	poll, ok := c.recordVote(targetRemoteID, info.Sender, indexes, c.selfID())
+	poll, ok := c.recordVote(ctx, info.ChatID, targetRemoteID, info.Sender, indexes, c.selfID())
 	if !ok {
 		return
 	}
@@ -140,7 +146,7 @@ func (c *Connector) handlePollVote(ctx context.Context, sink connector.Sink, inf
 func (c *Connector) handlePollTerminate(ctx context.Context, sink connector.Sink, info events.MessageInfo, terminate *signalpb.DataMessage_PollTerminate) {
 	targetRemoteID := messageRemoteID(info.Sender, terminate.GetTargetSentTimestamp())
 
-	poll, ok := c.closePoll(targetRemoteID, c.selfID())
+	poll, ok := c.closePoll(ctx, info.ChatID, targetRemoteID, c.selfID())
 	if !ok {
 		return
 	}
@@ -168,7 +174,7 @@ func (c *Connector) handleEdit(ctx context.Context, sink connector.Sink, info ev
 	m.Edited = true
 	m.MentionsMe = mentionsSelf(m.Mentions, c.selfID())
 	resolveMentionNames(m.Mentions, c.nameFor)
-	c.rememberAttachment(info.ChatID, m.RemoteID, ptr)
+	c.rememberAttachment(ctx, info.ChatID, m.RemoteID, ptr)
 
 	sink.Edited(ctx, c.account.ID, info.ChatID, m)
 }
@@ -196,10 +202,8 @@ func contactDisplayName(r *types.Recipient) string {
 	return r.Profile.Name
 }
 
-// handleACIFound upgrades a contact first seen by its phone-number
-// identity (PNI) to its real account identifier (ACI), so a
-// conversation already stored under the PNI merges into the one under
-// the ACI instead of duplicating it.
+// handleACIFound upgrades a contact first seen by phone number (PNI)
+// to its real account identifier (ACI), merging the conversation.
 func (c *Connector) handleACIFound(ctx context.Context, sink connector.Sink, found *events.ACIFound) {
 	upgrader, ok := sink.(connector.RemoteIDUpgrader)
 	if !ok {
@@ -212,9 +216,7 @@ func (c *Connector) handleACIFound(ctx context.Context, sink connector.Sink, fou
 }
 
 // ensureConversation reports info's conversation the first time this
-// run sees it: a group's title, member count and disappearing timer
-// resolved from Signal, or a direct chat's bare existence, which the
-// store already has a contact name for once resolveSenderName runs.
+// run sees it, resolving a group's title and members from Signal.
 func (c *Connector) ensureConversation(ctx context.Context, sink connector.Sink, info events.MessageInfo) {
 	if c.markReported(info.ChatID) {
 		return
@@ -314,6 +316,18 @@ func reportDisappearingTimer(ctx context.Context, sink connector.Sink, accountID
 	}
 
 	reporter.DisappearingTimer(ctx, accountID, conversationRemoteID, seconds)
+}
+
+// rememberMessageMeta saves an incoming message's server GUID and
+// report-spam token, for a later spam report. Best effort, the same
+// as rememberAttachment: without a media store nothing is saved.
+func (c *Connector) rememberMessageMeta(ctx context.Context, conversationRemoteID, messageRemoteID, serverGUID string, reportToken []byte) {
+	media := c.mediaFor()
+	if media == nil {
+		return
+	}
+
+	_ = media.putMessageMeta(ctx, conversationRemoteID, messageRemoteID, serverGUID, reportToken)
 }
 
 // reportPollUpdate reports poll's updated tallies, when sink supports

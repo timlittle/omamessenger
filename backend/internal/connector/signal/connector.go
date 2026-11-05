@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow"
 	"go.mau.fi/mautrix-signal/pkg/signalmeow/events"
-	"go.mau.fi/mautrix-signal/pkg/signalmeow/protobuf/signalpb"
 
 	"github.com/timlittle/omamessenger/backend/internal/connector"
 	"github.com/timlittle/omamessenger/backend/internal/domain"
@@ -26,48 +25,31 @@ var errNotConnected = errors.New("signal: not connected")
 // yet: sending and acting on messages are a later addition.
 var errNotImplemented = errors.New("signal: not yet implemented")
 
-// opener opens the account's session, pairing it by QR code first if it
-// has never linked, and returns the connected-phase client, reporting
-// whether this call just completed a fresh link (so Run knows to import
-// history). It exists as a field, not a plain call, so tests can run
-// the connector's whole lifecycle against a fake client with no
-// session database and no network.
+// opener opens the account's session, linking by QR code if needed,
+// and reports whether this call just completed a fresh link.
 type opener func(ctx context.Context, handler func(events.SignalEvent) bool, report func(connector.AuthStep)) (dev device, freshlyLinked bool, err error)
 
 // Connector is one Signal account.
 type Connector struct {
-	account domain.Account
-	open    opener
+	account   domain.Account
+	open      opener
+	openMedia func(ctx context.Context) (*mediaStore, error)
 
 	mu      sync.Mutex
 	running bool
 	dev     device
 	sink    connector.Sink
+	media   *mediaStore
 	selfACI uuid.UUID
 
-	// polls tracks the options and tallies of every poll this run has
-	// seen created, by message remote id, so a later vote or terminate
-	// (which arrive with no option text of their own) can be folded in
-	// and reported; see poll.go. Bounded by maxTrackedPolls.
-	polls      map[string]*pollState
-	pollOrder  []string
 	identityMu sync.Mutex
 	names      map[string]string // resolved contact and group names, by remote id
 
-	// reactions tracks who reacted to each message, by
-	// "<conversation remote id>/<message remote id>", so a live
-	// reaction event, which carries only the reactor's own emoji, can
-	// still report the message's whole set of chips. Bounded by
-	// maxTrackedReactions; see reaction.go.
+	// reactions tracks who reacted to each message; see reaction.go.
+	// In memory only, not persisted, matching the WhatsApp connector.
 	reactions     map[string]map[uuid.UUID]string
 	reactionOrder []string
 	reportedChats map[string]bool // conversation remote ids already reported this run
-
-	// attachments remembers each message's own attachment pointer, by
-	// "<conversation remote id>/<message remote id>", for FetchMedia
-	// (see fetch.go). Bounded by maxTrackedAttachments.
-	attachments     map[string]*signalpb.AttachmentPointer
-	attachmentOrder []string
 
 	// chatIDs maps a conversation's remote id to the transferred
 	// history's own chat id, for LoadOlder (see history.go).
@@ -88,6 +70,7 @@ func New(account domain.Account, dir string) *Connector {
 	c.open = func(ctx context.Context, handler func(events.SignalEvent) bool, report func(connector.AuthStep)) (device, bool, error) {
 		return openDevice(ctx, dir, account.ID, linkDeps{handler: handler, report: report, provision: signalmeow.PerformProvisioning})
 	}
+	c.openMedia = func(ctx context.Context) (*mediaStore, error) { return openMediaStore(ctx, dir, account.ID) }
 
 	return c
 }
@@ -97,10 +80,9 @@ func (c *Connector) Account() domain.Account {
 	return c.account
 }
 
-// Run opens the account's session, links it by QR code if it has never
-// linked, imports its transferred history on a fresh link, and then
-// follows live messages until ctx is cancelled or the connection ends
-// for good.
+// Run opens the account's session, links it by QR code if needed,
+// imports transferred history on a fresh link, and follows live
+// messages until ctx is cancelled or the connection ends for good.
 func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	if err := c.startRun(); err != nil {
 		return err
@@ -118,13 +100,19 @@ func (c *Connector) Run(ctx context.Context, sink connector.Sink) error {
 	}
 	defer func() { _ = dev.close() }() // the receive loop below is what matters; a close failure changes nothing
 
+	media, err := c.openMedia(ctx)
+	if err != nil {
+		return fmt.Errorf("signal: open media store: %w", err)
+	}
+	defer func() { _ = media.close() }() // same as the session close above
+
 	statusCh, err := dev.startReceiveLoops(ctx)
 	if err != nil {
 		return fmt.Errorf("signal: connect: %w", err)
 	}
 	defer func() { _ = dev.stopReceiveLoops() }()
 
-	c.connected(dev, sink)
+	c.connected(dev, sink, media)
 	defer c.disconnected()
 
 	return c.watch(ctx, dev, sink, statusCh, freshlyLinked)
@@ -187,10 +175,8 @@ func (*Connector) MarkRead(context.Context, domain.Conversation) error {
 	return errNotImplemented
 }
 
-// Logout tells Signal to unlink this device, if a run is currently
-// connected. Manager.Remove calls it, best effort, before stopping
-// this connector for good; when nothing is connected there is nothing
-// to unlink, so it reports success rather than errNotConnected.
+// Logout tells Signal to unlink this device when a run is connected,
+// and reports success when nothing is connected: nothing to unlink.
 func (c *Connector) Logout(ctx context.Context) error {
 	dev, _, err := c.session()
 	if err != nil {
@@ -200,13 +186,14 @@ func (c *Connector) Logout(ctx context.Context) error {
 	return dev.unlink(ctx)
 }
 
-// connected records the device and sink of a signed-in run, so Logout,
-// LoadOlder, Members and FetchMedia have something to act on.
-func (c *Connector) connected(dev device, sink connector.Sink) {
+// connected records the device, sink and media store of a signed-in
+// run, so Logout, LoadOlder, Members, FetchMedia and incoming events
+// have something to act on.
+func (c *Connector) connected(dev device, sink connector.Sink, media *mediaStore) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.dev, c.sink, c.selfACI = dev, sink, dev.aci()
+	c.dev, c.sink, c.media, c.selfACI = dev, sink, media, dev.aci()
 }
 
 // selfID returns this run's own account identifier, or uuid.Nil
@@ -218,12 +205,21 @@ func (c *Connector) selfID() uuid.UUID {
 	return c.selfACI
 }
 
-// disconnected forgets the run's device and sink.
+// disconnected forgets the run's device, sink and media store.
 func (c *Connector) disconnected() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.dev, c.sink = nil, nil
+	c.dev, c.sink, c.media = nil, nil, nil
+}
+
+// mediaFor returns the media store of the current run, or nil when
+// this connector was never given one, such as a test built without one.
+func (c *Connector) mediaFor() *mediaStore {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.media
 }
 
 // session returns the device and sink of the current run, or

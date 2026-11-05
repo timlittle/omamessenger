@@ -17,7 +17,7 @@ func TestMembers_DirectChat(t *testing.T) {
 
 	dev := newFakeDevice(uuid.New())
 	c := newTestConnector(dev)
-	c.connected(dev, &connectortest.Sink{})
+	c.connected(dev, &connectortest.Sink{}, nil)
 
 	members, err := c.Members(t.Context(), domain.Conversation{RemoteID: uuid.New().String()})
 	if err != nil || members != nil {
@@ -36,7 +36,7 @@ func TestMembers_Group(t *testing.T) {
 	dev.groupMembers = []signalmeow.GroupMember{{ACI: alice}}
 
 	c := newTestConnector(dev)
-	c.connected(dev, &connectortest.Sink{})
+	c.connected(dev, &connectortest.Sink{}, nil)
 
 	groupID := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	members, err := c.Members(t.Context(), domain.Conversation{RemoteID: groupID})

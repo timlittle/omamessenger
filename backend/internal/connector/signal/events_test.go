@@ -30,11 +30,17 @@ func (s *upgradeSink) ConversationRemoteIDChanged(_ context.Context, _, oldRemot
 }
 
 // connectedTestConnector returns a connector already "connected" to
-// dev, with sink recording everything reported.
+// dev, with sink recording everything reported and an in-memory media
+// store wired in, so an attachment, poll or message's metadata saved
+// during the test can be read back.
 func connectedTestConnector(dev *fakeDevice) (*Connector, *connectortest.Sink) {
 	c := newTestConnector(dev)
 	sink := &connectortest.Sink{}
-	c.connected(dev, sink)
+	media, err := newInMemoryMediaStore(context.Background())
+	if err != nil {
+		panic(err) // the in-memory driver cannot fail to open; a test helper has no *testing.T to report through
+	}
+	c.connected(dev, sink, media)
 
 	return c, sink
 }
@@ -170,6 +176,43 @@ func TestHandleMessage_Outgoing(t *testing.T) {
 	history := sink.Messages()[sender.String()]
 	if len(history) != 1 || !history[0].Outgoing {
 		t.Errorf("history = %+v, want one outgoing message", history)
+	}
+}
+
+// TestHandleMessage_SavesIncomingMessageMeta checks that an incoming
+// message's server GUID and report-spam token are saved for later
+// use, while a synced outgoing message, which carries neither for
+// itself, saves nothing.
+func TestHandleMessage_SavesIncomingMessageMeta(t *testing.T) {
+	t.Parallel()
+
+	sender := uuid.New()
+	dev := newFakeDevice(uuid.New())
+	c, sink := connectedTestConnector(dev)
+
+	info := events.MessageInfo{Sender: sender, ChatID: sender.String(), ServerGUID: "guid-1", ReportingToken: []byte{1, 2}}
+	msg := &signalpb.DataMessage{Body: proto.String("hi"), Timestamp: proto.Uint64(5)}
+	c.handleMessage(t.Context(), sink, info, msg, false)
+
+	wantID := messageRemoteID(sender, 5)
+	guid, token, found, err := c.mediaFor().messageMeta(t.Context(), sender.String(), wantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || guid != "guid-1" || string(token) != "\x01\x02" {
+		t.Errorf("messageMeta() = %q %v found=%t", guid, token, found)
+	}
+
+	outgoingInfo := events.MessageInfo{Sender: sender, ChatID: sender.String(), ServerGUID: "should-not-save"}
+	outgoingMsg := &signalpb.DataMessage{Body: proto.String("from another device"), Timestamp: proto.Uint64(6)}
+	c.handleMessage(t.Context(), sink, outgoingInfo, outgoingMsg, true)
+
+	_, _, found, err = c.mediaFor().messageMeta(t.Context(), sender.String(), messageRemoteID(sender, 6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("messageMeta() saved metadata for a synced outgoing message")
 	}
 }
 
@@ -364,7 +407,7 @@ func TestHandleEvent_ACIFound(t *testing.T) {
 	aci := uuid.New()
 	dev := newFakeDevice(uuid.New())
 	c := newTestConnector(dev)
-	c.connected(dev, &connectortest.Sink{})
+	c.connected(dev, &connectortest.Sink{}, nil)
 	sink := &upgradeSink{Sink: &connectortest.Sink{}}
 
 	found := &events.ACIFound{PNI: libsignalgo.NewPNIServiceID(pni), ACI: libsignalgo.NewACIServiceID(aci)}

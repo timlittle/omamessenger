@@ -154,10 +154,20 @@ func testOpener(dev device, freshlyLinked bool) opener {
 }
 
 // newTestConnector returns a connector wired to dev through a fake
-// opener, with no session database and no network.
+// opener, with no session database and no network, and an in-memory
+// media store so Run can open one as it would a real one.
 func newTestConnector(dev *fakeDevice) *Connector {
 	c := &Connector{account: domain.Account{ID: "acc1", Service: domain.ServiceSignal}}
 	c.open = testOpener(dev, false)
+	c.openMedia = newInMemoryMediaStore
 
 	return c
+}
+
+// newInMemoryMediaStore opens a private, in-memory media store, for a
+// connector under test that never reads a saved attachment, message
+// metadata or poll back out of this package; a test that does opens
+// its own with newTestMediaStore instead.
+func newInMemoryMediaStore(ctx context.Context) (*mediaStore, error) {
+	return openMediaStoreDSN(ctx, "file::memory:")
 }

@@ -47,7 +47,7 @@ func TestResolveChatIdentity_Self(t *testing.T) {
 	dev := newFakeDevice(self)
 	dev.recipients = map[uint64]*backuppb.Recipient{2: {Destination: &backuppb.Recipient_Self{Self: &backuppb.Self{}}}}
 	c := newTestConnector(dev)
-	c.connected(dev, &connectortest.Sink{})
+	c.connected(dev, &connectortest.Sink{}, nil)
 
 	remoteID, kind, ok := c.resolveChatIdentity(t.Context(), dev, 2)
 	if !ok || remoteID != self.String() || kind != domain.KindDirect {
@@ -293,7 +293,7 @@ func TestLoadOlder_PagesTransferredHistory(t *testing.T) {
 
 	c := newTestConnector(dev)
 	sink := &connectortest.Sink{}
-	c.connected(dev, sink)
+	c.connected(dev, sink, nil)
 	c.rememberChatID(friend.String(), 10)
 
 	conv := domain.Conversation{RemoteID: friend.String()}
@@ -319,7 +319,7 @@ func TestLoadOlder_UnknownConversation(t *testing.T) {
 
 	dev := newFakeDevice(uuid.New())
 	c := newTestConnector(dev)
-	c.connected(dev, &connectortest.Sink{})
+	c.connected(dev, &connectortest.Sink{}, nil)
 
 	n, err := c.LoadOlder(t.Context(), domain.Conversation{RemoteID: "unknown"}, "", 10)
 	if err != nil || n != 0 {

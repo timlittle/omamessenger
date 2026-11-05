@@ -10,57 +10,42 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
-// maxTrackedAttachments bounds how many messages' attachment pointers
-// one run remembers for a later FetchMedia, the same way the poll and
-// reaction tables are bounded. An attachment received in an earlier
-// run is not fetchable again after a restart: a known limitation, see
-// docs/decisions.md.
-const maxTrackedAttachments = 1024
-
-// rememberAttachment records ptr as the attachment behind
-// conversationRemoteID's messageRemoteID, for FetchMedia, evicting the
-// oldest remembered attachment first once this run is already at
-// maxTrackedAttachments. A nil ptr is a no-op: most messages carry no
-// fetchable attachment at all.
-func (c *Connector) rememberAttachment(conversationRemoteID, messageRemoteID string, ptr *signalpb.AttachmentPointer) {
+// rememberAttachment saves ptr as the attachment behind
+// conversationRemoteID's messageRemoteID, for a later FetchMedia.
+// Best effort, as WhatsApp's saveMediaRef is; a nil ptr is a no-op.
+func (c *Connector) rememberAttachment(ctx context.Context, conversationRemoteID, messageRemoteID string, ptr *signalpb.AttachmentPointer) {
 	if ptr == nil {
 		return
 	}
 
-	c.identityMu.Lock()
-	defer c.identityMu.Unlock()
+	media := c.mediaFor()
+	if media == nil {
+		return
+	}
 
-	key := conversationRemoteID + "/" + messageRemoteID
-	if c.attachments == nil {
-		c.attachments = map[string]*signalpb.AttachmentPointer{}
-	}
-	if _, exists := c.attachments[key]; !exists && len(c.attachments) >= maxTrackedAttachments {
-		oldest, rest := c.attachmentOrder[0], c.attachmentOrder[1:]
-		delete(c.attachments, oldest)
-		c.attachmentOrder = rest
-	}
-	if _, exists := c.attachments[key]; !exists {
-		c.attachmentOrder = append(c.attachmentOrder, key)
-	}
-	c.attachments[key] = ptr
+	_ = media.putAttachment(ctx, conversationRemoteID, messageRemoteID, ptr)
 }
 
-// attachmentFor returns the attachment pointer remembered for
+// attachmentFor returns the attachment pointer saved for
 // conversationRemoteID's messageRemoteID, or nil when none was.
-func (c *Connector) attachmentFor(conversationRemoteID, messageRemoteID string) *signalpb.AttachmentPointer {
-	c.identityMu.Lock()
-	defer c.identityMu.Unlock()
+func (c *Connector) attachmentFor(ctx context.Context, conversationRemoteID, messageRemoteID string) *signalpb.AttachmentPointer {
+	media := c.mediaFor()
+	if media == nil {
+		return nil
+	}
 
-	return c.attachments[conversationRemoteID+"/"+messageRemoteID]
+	ptr, found, err := media.attachment(ctx, conversationRemoteID, messageRemoteID)
+	if err != nil || !found {
+		return nil
+	}
+
+	return ptr
 }
 
 // FetchMedia downloads and decrypts messageRemoteID's attachment to
-// path. auto is accepted to satisfy connector.MediaFetcher; Signal
-// attachments are never large enough to need a different limit for an
-// automatic fetch than for one the user asked for (see limits.go in
-// the WhatsApp connector for the contrast), so it is otherwise unused.
+// path. auto is unused: Signal attachments need no separate limit.
 func (c *Connector) FetchMedia(ctx context.Context, conv domain.Conversation, messageRemoteID, path string, _ bool) error {
-	ptr := c.attachmentFor(conv.RemoteID, messageRemoteID)
+	ptr := c.attachmentFor(ctx, conv.RemoteID, messageRemoteID)
 	if ptr == nil {
 		return fmt.Errorf("signal: fetch media: %w", errNotImplemented)
 	}

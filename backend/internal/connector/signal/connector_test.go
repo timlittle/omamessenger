@@ -43,7 +43,7 @@ func TestLogout_Connected(t *testing.T) {
 
 	dev := newFakeDevice(uuid.New())
 	c := newTestConnector(dev)
-	c.connected(dev, &connectortest.Sink{})
+	c.connected(dev, &connectortest.Sink{}, nil)
 
 	if err := c.Logout(t.Context()); err != nil {
 		t.Fatalf("Logout() error = %v", err)
