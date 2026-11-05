@@ -81,7 +81,7 @@ func (c *Connector) handleMessage(ctx context.Context, sink connector.Sink, info
 
 	if poll := msg.GetPollCreate(); poll != nil {
 		options := poll.GetOptions()
-		c.trackPoll(ctx, info.ChatID, m.RemoteID, poll.GetQuestion(), options, poll.GetAllowMultiple())
+		c.trackPoll(ctx, info.ChatID, m.RemoteID, newPoll{question: poll.GetQuestion(), options: options, multipleChoice: poll.GetAllowMultiple()})
 	}
 
 	if outgoing {
@@ -133,7 +133,7 @@ func (c *Connector) handlePollVote(ctx context.Context, sink connector.Sink, inf
 		indexes[i] = int(idx)
 	}
 
-	poll, ok := c.recordVote(ctx, info.ChatID, targetRemoteID, info.Sender, indexes, c.selfID())
+	poll, ok := c.recordVote(ctx, info.ChatID, targetRemoteID, info.Sender, indexes)
 	if !ok {
 		return
 	}
@@ -146,7 +146,7 @@ func (c *Connector) handlePollVote(ctx context.Context, sink connector.Sink, inf
 func (c *Connector) handlePollTerminate(ctx context.Context, sink connector.Sink, info events.MessageInfo, terminate *signalpb.DataMessage_PollTerminate) {
 	targetRemoteID := messageRemoteID(info.Sender, terminate.GetTargetSentTimestamp())
 
-	poll, ok := c.closePoll(ctx, info.ChatID, targetRemoteID, c.selfID())
+	poll, ok := c.closePoll(ctx, info.ChatID, targetRemoteID)
 	if !ok {
 		return
 	}

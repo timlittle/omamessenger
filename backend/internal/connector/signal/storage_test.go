@@ -162,7 +162,7 @@ func TestPollStore_VoteAndCloseSurviveAReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := store.putPoll(t.Context(), "conv-1", "msg-1", "Pizza?", []string{"Yes", "No"}, false); err != nil {
+	if err := store.putPoll(t.Context(), "conv-1", "msg-1", newPoll{question: "Pizza?", options: []string{"Yes", "No"}, multipleChoice: false}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.setVotes(t.Context(), "conv-1", "msg-1", "self", []int{0}); err != nil {
@@ -209,7 +209,7 @@ func TestPollStore_RevoteReplaces(t *testing.T) {
 
 	store := newTestMediaStore(t)
 
-	if err := store.putPoll(t.Context(), "conv-1", "msg-1", "Pizza?", []string{"Yes", "No"}, true); err != nil {
+	if err := store.putPoll(t.Context(), "conv-1", "msg-1", newPoll{question: "Pizza?", options: []string{"Yes", "No"}, multipleChoice: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.setVotes(t.Context(), "conv-1", "msg-1", "voter", []int{0}); err != nil {
@@ -278,7 +278,7 @@ func TestMediaStore_ClosedDatabaseErrors(t *testing.T) {
 	if _, _, _, err := store.messageMeta(t.Context(), "c", "m"); err == nil {
 		t.Error("messageMeta() on a closed store succeeded")
 	}
-	if err := store.putPoll(t.Context(), "c", "m", "q", []string{"a"}, false); err == nil {
+	if err := store.putPoll(t.Context(), "c", "m", newPoll{question: "q", options: []string{"a"}, multipleChoice: false}); err == nil {
 		t.Error("putPoll() on a closed store succeeded")
 	}
 	if err := store.setVotes(t.Context(), "c", "m", "v", []int{0}); err == nil {

@@ -206,7 +206,7 @@ func (m *mediaStore) messageMeta(ctx context.Context, conversationRemoteID, mess
 
 // putPoll saves a newly created poll's question, multiple-choice flag
 // and option text, replacing whatever was saved before.
-func (m *mediaStore) putPoll(ctx context.Context, conversationRemoteID, messageRemoteID, question string, options []string, multipleChoice bool) error {
+func (m *mediaStore) putPoll(ctx context.Context, conversationRemoteID, messageRemoteID string, p newPoll) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("signal: save poll: %w", err)
@@ -215,13 +215,13 @@ func (m *mediaStore) putPoll(ctx context.Context, conversationRemoteID, messageR
 
 	const meta = `INSERT INTO poll_meta (conversation_id, message_id, question, multiple_choice) VALUES (?, ?, ?, ?)
 		ON CONFLICT (conversation_id, message_id) DO UPDATE SET question = excluded.question, multiple_choice = excluded.multiple_choice`
-	if _, err := tx.ExecContext(ctx, meta, conversationRemoteID, messageRemoteID, question, multipleChoice); err != nil {
+	if _, err := tx.ExecContext(ctx, meta, conversationRemoteID, messageRemoteID, p.question, p.multipleChoice); err != nil {
 		return fmt.Errorf("signal: save poll: %w", err)
 	}
 
 	const option = `INSERT INTO poll_options (conversation_id, message_id, option_id, text, position) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (conversation_id, message_id, option_id) DO UPDATE SET text = excluded.text, position = excluded.position`
-	for i, text := range options {
+	for i, text := range p.options {
 		if _, err := tx.ExecContext(ctx, option, conversationRemoteID, messageRemoteID, formatOptionID(i), text, i); err != nil {
 			return fmt.Errorf("signal: save poll: %w", err)
 		}

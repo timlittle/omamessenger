@@ -8,20 +8,27 @@ import (
 	"github.com/timlittle/omamessenger/backend/internal/domain"
 )
 
+// newPoll is a poll as created, before anyone votes.
+type newPoll struct {
+	question       string
+	options        []string
+	multipleChoice bool
+}
+
 // trackPoll saves a newly created poll's options under
 // messageRemoteID, so a later vote or terminate can be folded in.
-func (c *Connector) trackPoll(ctx context.Context, conversationRemoteID, messageRemoteID, question string, options []string, multipleChoice bool) {
+func (c *Connector) trackPoll(ctx context.Context, conversationRemoteID, messageRemoteID string, p newPoll) {
 	media := c.mediaFor()
 	if media == nil {
 		return
 	}
 
-	_ = media.putPoll(ctx, conversationRemoteID, messageRemoteID, question, options, multipleChoice)
+	_ = media.putPoll(ctx, conversationRemoteID, messageRemoteID, p)
 }
 
 // recordVote replaces voter's choice for the poll tracked under
 // messageRemoteID and reports its current tallies, or found false.
-func (c *Connector) recordVote(ctx context.Context, conversationRemoteID, messageRemoteID string, voter uuid.UUID, optionIndexes []int, self uuid.UUID) (domain.Poll, bool) {
+func (c *Connector) recordVote(ctx context.Context, conversationRemoteID, messageRemoteID string, voter uuid.UUID, optionIndexes []int) (domain.Poll, bool) {
 	media := c.mediaFor()
 	if media == nil {
 		return domain.Poll{}, false
@@ -31,7 +38,7 @@ func (c *Connector) recordVote(ctx context.Context, conversationRemoteID, messag
 		return domain.Poll{}, false
 	}
 
-	poll, found, err := media.pollTally(ctx, conversationRemoteID, messageRemoteID, senderRemoteID(self))
+	poll, found, err := media.pollTally(ctx, conversationRemoteID, messageRemoteID, senderRemoteID(c.selfID()))
 	if err != nil {
 		return domain.Poll{}, false
 	}
@@ -42,7 +49,7 @@ func (c *Connector) recordVote(ctx context.Context, conversationRemoteID, messag
 // closePoll marks the poll tracked under messageRemoteID closed and
 // reports its final tallies, or found false when this run never saw
 // that poll created.
-func (c *Connector) closePoll(ctx context.Context, conversationRemoteID, messageRemoteID string, self uuid.UUID) (domain.Poll, bool) {
+func (c *Connector) closePoll(ctx context.Context, conversationRemoteID, messageRemoteID string) (domain.Poll, bool) {
 	media := c.mediaFor()
 	if media == nil {
 		return domain.Poll{}, false
@@ -52,7 +59,7 @@ func (c *Connector) closePoll(ctx context.Context, conversationRemoteID, message
 		return domain.Poll{}, false
 	}
 
-	poll, found, err := media.pollTally(ctx, conversationRemoteID, messageRemoteID, senderRemoteID(self))
+	poll, found, err := media.pollTally(ctx, conversationRemoteID, messageRemoteID, senderRemoteID(c.selfID()))
 	if err != nil {
 		return domain.Poll{}, false
 	}

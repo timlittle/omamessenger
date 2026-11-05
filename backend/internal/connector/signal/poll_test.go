@@ -25,10 +25,11 @@ func TestPoll_VoteAndClose(t *testing.T) {
 	c := newTestPollConnector(t)
 	self := uuid.New()
 	other := uuid.New()
+	c.selfACI = self
 
-	c.trackPoll(t.Context(), "conv1", "msg1", "Pizza?", []string{"Yes", "No"}, false)
+	c.trackPoll(t.Context(), "conv1", "msg1", newPoll{question: "Pizza?", options: []string{"Yes", "No"}, multipleChoice: false})
 
-	poll, ok := c.recordVote(t.Context(), "conv1", "msg1", self, []int{0}, self)
+	poll, ok := c.recordVote(t.Context(), "conv1", "msg1", self, []int{0})
 	if !ok {
 		t.Fatal("recordVote reported the poll not found")
 	}
@@ -36,7 +37,7 @@ func TestPoll_VoteAndClose(t *testing.T) {
 		t.Errorf("after own vote: %+v", poll.Options[0])
 	}
 
-	poll, ok = c.recordVote(t.Context(), "conv1", "msg1", other, []int{0}, self)
+	poll, ok = c.recordVote(t.Context(), "conv1", "msg1", other, []int{0})
 	if !ok {
 		t.Fatal("recordVote reported the poll not found")
 	}
@@ -44,7 +45,7 @@ func TestPoll_VoteAndClose(t *testing.T) {
 		t.Errorf("after second vote: %+v", poll)
 	}
 
-	poll, ok = c.closePoll(t.Context(), "conv1", "msg1", self)
+	poll, ok = c.closePoll(t.Context(), "conv1", "msg1")
 	if !ok || !poll.Closed {
 		t.Errorf("closePoll: ok=%t poll=%+v", ok, poll)
 	}
@@ -58,10 +59,10 @@ func TestPoll_UnknownMessage(t *testing.T) {
 
 	c := newTestPollConnector(t)
 
-	if _, ok := c.recordVote(t.Context(), "conv1", "missing", uuid.New(), []int{0}, uuid.Nil); ok {
+	if _, ok := c.recordVote(t.Context(), "conv1", "missing", uuid.New(), []int{0}); ok {
 		t.Error("recordVote found an untracked poll")
 	}
-	if _, ok := c.closePoll(t.Context(), "conv1", "missing", uuid.Nil); ok {
+	if _, ok := c.closePoll(t.Context(), "conv1", "missing"); ok {
 		t.Error("closePoll found an untracked poll")
 	}
 }
@@ -75,9 +76,9 @@ func TestPoll_RevoteReplaces(t *testing.T) {
 	c := newTestPollConnector(t)
 	voter := uuid.New()
 
-	c.trackPoll(t.Context(), "conv1", "msg1", "Pizza?", []string{"Yes", "No"}, true)
-	c.recordVote(t.Context(), "conv1", "msg1", voter, []int{0}, uuid.Nil)
-	poll, _ := c.recordVote(t.Context(), "conv1", "msg1", voter, []int{1}, uuid.Nil)
+	c.trackPoll(t.Context(), "conv1", "msg1", newPoll{question: "Pizza?", options: []string{"Yes", "No"}, multipleChoice: true})
+	c.recordVote(t.Context(), "conv1", "msg1", voter, []int{0})
+	poll, _ := c.recordVote(t.Context(), "conv1", "msg1", voter, []int{1})
 
 	if poll.Options[0].Votes != 0 || poll.Options[1].Votes != 1 {
 		t.Errorf("after revote: %+v", poll.Options)
@@ -98,9 +99,9 @@ func TestPoll_SurvivesARestart(t *testing.T) {
 	}
 	self := uuid.New()
 
-	first := &Connector{media: before}
-	first.trackPoll(t.Context(), "conv1", "msg1", "Pizza?", []string{"Yes", "No"}, false)
-	first.recordVote(t.Context(), "conv1", "msg1", self, []int{0}, self)
+	first := &Connector{media: before, selfACI: self}
+	first.trackPoll(t.Context(), "conv1", "msg1", newPoll{question: "Pizza?", options: []string{"Yes", "No"}, multipleChoice: false})
+	first.recordVote(t.Context(), "conv1", "msg1", self, []int{0})
 	if err := before.close(); err != nil {
 		t.Fatal(err)
 	}
@@ -111,8 +112,8 @@ func TestPoll_SurvivesARestart(t *testing.T) {
 	}
 	defer func() { _ = after.close() }()
 
-	second := &Connector{media: after}
-	poll, ok := second.closePoll(t.Context(), "conv1", "msg1", self)
+	second := &Connector{media: after, selfACI: self}
+	poll, ok := second.closePoll(t.Context(), "conv1", "msg1")
 	if !ok || !poll.Closed || poll.Options[0].Votes != 1 || !poll.Options[0].Chosen {
 		t.Errorf("poll after restart = %+v, ok=%t", poll, ok)
 	}
@@ -126,15 +127,15 @@ func TestPoll_ClosedMediaStore(t *testing.T) {
 
 	media := newTestMediaStore(t)
 	c := &Connector{media: media}
-	c.trackPoll(t.Context(), "conv1", "msg1", "Pizza?", []string{"Yes", "No"}, false)
+	c.trackPoll(t.Context(), "conv1", "msg1", newPoll{question: "Pizza?", options: []string{"Yes", "No"}, multipleChoice: false})
 	if err := media.close(); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, ok := c.recordVote(t.Context(), "conv1", "msg1", uuid.New(), []int{0}, uuid.Nil); ok {
+	if _, ok := c.recordVote(t.Context(), "conv1", "msg1", uuid.New(), []int{0}); ok {
 		t.Error("recordVote succeeded against a closed media store")
 	}
-	if _, ok := c.closePoll(t.Context(), "conv1", "msg1", uuid.Nil); ok {
+	if _, ok := c.closePoll(t.Context(), "conv1", "msg1"); ok {
 		t.Error("closePoll succeeded against a closed media store")
 	}
 }
@@ -146,12 +147,12 @@ func TestPoll_NoMediaStore(t *testing.T) {
 	t.Parallel()
 
 	c := &Connector{}
-	c.trackPoll(t.Context(), "conv1", "msg1", "Pizza?", []string{"Yes", "No"}, false)
+	c.trackPoll(t.Context(), "conv1", "msg1", newPoll{question: "Pizza?", options: []string{"Yes", "No"}, multipleChoice: false})
 
-	if _, ok := c.recordVote(t.Context(), "conv1", "msg1", uuid.New(), []int{0}, uuid.Nil); ok {
+	if _, ok := c.recordVote(t.Context(), "conv1", "msg1", uuid.New(), []int{0}); ok {
 		t.Error("recordVote found a poll with no media store")
 	}
-	if _, ok := c.closePoll(t.Context(), "conv1", "msg1", uuid.Nil); ok {
+	if _, ok := c.closePoll(t.Context(), "conv1", "msg1"); ok {
 		t.Error("closePoll found a poll with no media store")
 	}
 }
